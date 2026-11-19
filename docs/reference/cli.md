@@ -373,10 +373,10 @@ it to; it does not ask the server, so it does not say whether the project
 exists or which sessions are already imported.
 
 A skill is checked here the way the server checks it: `SKILL.md` frontmatter
-the parser accepts, at most 64 files, 1 MiB a supporting file, 128 KiB for
+the parser accepts, at most 256 files, 1 MiB a supporting file, 128 KiB for
 `SKILL.md` and 2 MiB in all. A folder over one of these is not drafted and is
 named under `failed` with the bound, such as `failed NAME: schema.xsd is over
-1048576 bytes`. A skill's revisions hold at most 16 MiB of files together, so
+1048576 bytes` or `failed NAME: more than 256 files`. A skill's revisions hold at most 16 MiB of files together, so
 a skill with large files has fewer than 32 revisions: a change past that is
 named under `failed` and nothing is written. The
 skill keeps the `name` in its `SKILL.md`, whatever its folder is called. The

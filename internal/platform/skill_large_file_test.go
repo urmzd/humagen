@@ -6,6 +6,8 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -57,6 +59,9 @@ type hasher struct {
 	mu     sync.Mutex
 	asked  []string
 	hashes map[string][32]byte
+	// tree is every file in the directories granted to a host turn, by
+	// path under its directory, as the program would find them.
+	tree map[string][32]byte
 }
 
 func (m *hasher) ReadsHostFiles() bool { return m.host }
@@ -82,6 +87,23 @@ func (m *hasher) Stream(ctx context.Context, req saigetypes.Request) (<-chan sai
 		if data, err := os.ReadFile(found[1]); err == nil {
 			m.hashes[filepath.Base(found[1])] = sha256.Sum256(data)
 		}
+	}
+	for _, dir := range granted {
+		if m.tree == nil {
+			m.tree = map[string][32]byte{}
+		}
+		_ = filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+			if err != nil || d.IsDir() {
+				return err
+			}
+			data, err := os.ReadFile(p)
+			if err != nil {
+				return err
+			}
+			rel, _ := filepath.Rel(dir, p)
+			m.tree[filepath.ToSlash(rel)] = sha256.Sum256(data)
+			return nil
+		})
 	}
 	m.mu.Unlock()
 	deltas := say("Checked.")
@@ -182,6 +204,86 @@ func TestALargeSupportingFileReachesACodingAgentWholeAndNeverThePrompt(t *testin
 		out, err = use(t, p, req, platform.ToolFileRead, map[string]any{"path": "skill:schemas/schemas/large.xsd"})
 		if !errors.Is(err, platform.ErrSandbox) || !strings.Contains(err.Error(), fmt.Sprintf("over the %d bytes file_read returns", readBound)) || out != "" {
 			t.Fatalf("file_read of the large file = %d bytes, %v", len(out), err)
+		}
+	})
+}
+
+// A skill of as many files as a package may hold is listed in a turn's text
+// only as far as 63 supporting files, the most a package held before, with
+// how many more there are. file_read reads one that is not listed, and a
+// coding agent is given every file on the host.
+func TestATurnListsAtMost63SkillFilesAndGivesEveryOne(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		t.Setenv("TMPDIR", t.TempDir())
+		coder, plain := &hasher{host: true, hashes: map[string][32]byte{}}, &hasher{hashes: map[string][32]byte{}}
+		providers := map[string]native.ProviderFunc{
+			"coder": func(native.Spec) (saigetypes.Provider, error) { return coder, nil },
+			"plain": func(native.Spec) (saigetypes.Provider, error) { return plain, nil },
+		}
+		p := startWith(t, platform.Config{Backends: platform.Backends{State: open(t)}, Ext: platform.Extensions{Providers: providers}})
+		for _, name := range []string{"coder", "plain"} {
+			if _, err := p.Agents.Create(t.Context(), tenant, wire.AgentSpec{Name: name, Provider: name, Model: "m", SystemPrompt: "Answer."}, "test"); err != nil {
+				t.Fatal(err)
+			}
+		}
+		who := auth.Principal{Kind: auth.User, Tenant: tenant, Subject: "ada", Roles: []auth.Role{auth.Admin}}
+		if _, err := p.CreateProject(t.Context(), tenant, govern, platform.ProjectInput{Name: "Shared"}); err != nil {
+			t.Fatal(err)
+		}
+		d := library.Definition{Skill: projects.Skill{Name: "many"}, Tools: []string{"file_read"}, Files: []library.File{
+			{Path: "SKILL.md", Data: []byte("---\nname: many\ndescription: Validates documents against generated schemas\n---\nRead schemas/ on demand.\n")},
+		}}
+		want := map[string][32]byte{}
+		for i := range library.MaxPackageFiles - 1 {
+			f := library.File{Path: fmt.Sprintf("schemas/part%03d.xsd", i), Data: generatedText(512, fmt.Sprint("part", i))}
+			d.Files = append(d.Files, f)
+			want["many/"+f.Path] = sha256.Sum256(f.Data)
+		}
+		first, err := p.DraftSkill(who, library.Scope{Kind: "project", Project: "Shared"}, d, 0, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		tested, err := p.TestSkill(t.Context(), who, first.ID, 1, "lead", "Shared", "Try this skill")
+		if err != nil {
+			t.Fatal(err)
+		}
+		await(t, p, tested.ID, runs.Completed)
+		if _, err := p.PublishSkill(who, first.ID, 1); err != nil {
+			t.Fatal(err)
+		}
+		files := library.MaxPackageFiles - 1
+		remainder := fmt.Sprintf("63 of %d supporting files are listed; %d more are not.", files, files-63)
+
+		posted, err := p.StartThread(t.Context(), who, platform.ThreadInput{Project: "Shared", Agents: []string{"plain"}, Text: "$many Validate the document"})
+		if err != nil || len(posted.Runs) != 1 {
+			t.Fatalf("start: %v", err)
+		}
+		run := await(t, p, posted.Runs[0].ID, runs.Completed)
+		plain.mu.Lock()
+		asked := strings.Join(plain.asked, "\n")
+		plain.mu.Unlock()
+		if n := strings.Count(asked, "\nskill:many/"); n != 63 || !strings.Contains(asked, "skill:many/schemas/part062.xsd (512 bytes)\n"+remainder) || strings.Contains(asked, "part063.xsd") {
+			t.Fatalf("the native list named %d files: %.4000s", n, asked)
+		}
+		req := runtime.Request{RunID: run.ID, Tenant: tenant, Definition: native.Revision{Spec: native.Spec{Name: "plain"}, Version: wire.VersionOf(1)}}
+		out, err := use(t, p, req, platform.ToolFileRead, map[string]any{"path": "skill:many/schemas/part254.xsd"})
+		if err != nil || sha256.Sum256([]byte(out)) != want["many/schemas/part254.xsd"] {
+			t.Fatalf("file_read of a file not listed: %d bytes, %v", len(out), err)
+		}
+
+		posted, err = p.StartThread(t.Context(), who, platform.ThreadInput{Project: "Shared", Agents: []string{"coder"}, Text: "$many Validate the document"})
+		if err != nil || len(posted.Runs) != 1 {
+			t.Fatalf("start: %v", err)
+		}
+		await(t, p, posted.Runs[0].ID, runs.Completed)
+		coder.mu.Lock()
+		asked, tree := strings.Join(coder.asked, "\n"), maps.Clone(coder.tree)
+		coder.mu.Unlock()
+		if n := len(toldFile.FindAllString(asked, -1)); n != 63 || !strings.Contains(asked, "63 of 255 supporting files are listed; 192 more are not, all of them under ") {
+			t.Fatalf("the host list named %d files: %.4000s", n, asked)
+		}
+		if len(tree) != files || !maps.Equal(tree, want) {
+			t.Fatalf("the coding agent was given %d files, want every one of %d with its bytes", len(tree), files)
 		}
 	})
 }

@@ -596,17 +596,21 @@ never one named in a message, and the files are placed whether the coding
 agent is the agent's first model or a fallback. Checked live on Claude Code
 and Codex; the fallback directions are checked by test, not in a live run.
 
-A library skill's supporting file may be up to 1 MiB and its package 2 MiB,
-while `SKILL.md`, whose body is what a model is asked, stays at 128 KiB. So
-`humagen import skills` drafts a skill that ships a large schema or source
-file instead of naming it under `failed`. A skill's revisions hold at most
+A library skill's supporting file may be up to 1 MiB and its package 256
+files and 2 MiB, while `SKILL.md`, whose body is what a model is asked, stays
+at 128 KiB. So `humagen import skills` drafts a skill that ships a large
+schema or source file, or a tree of many schema files, instead of naming it
+under `failed`. A turn's text lists at most 63 of a skill's supporting files
+and says how many more there are; `file_read` reads any of them, and a coding
+agent's directory holds them all. A skill's revisions hold at most
 16 MiB of files together, as 32 revisions of the earlier 512 KiB package did,
 so a stored record and a history answer do not grow. A coding agent is given
 such a file whole on the host; a native model is told it is over the 128 KiB
 `file_read` returns, and `file_read` refuses it. Checked by test on memory
 and Postgres with generated files; not checked against a real skill library
 or in a live run ([managed library](managed-library.md#skills-are-immutable-packages)).
-The console's folder upload still stops at 128 KiB a file and 512 KiB in all.
+The console's folder upload still stops at 64 files, 128 KiB a file and
+512 KiB in all.
 
 Coding agents on Claude Code or Codex have a [model kind](../guides/coding-agents.md)
 each. A turn on Codex fails only when the program says the turn failed, with

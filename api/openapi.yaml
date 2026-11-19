@@ -12390,7 +12390,7 @@ components:
           description: Immutable package files. SKILL.md supplies metadata and instructions. Omitted on compact list responses and legacy revisions.
           type: array
           minItems: 1
-          maxItems: 64
+          maxItems: 256
           items: {$ref: '#/components/schemas/LibrarySkillFile'}
         tools:
           description: Exact permitted tools, intersected with the agent's grants. Empty permits no tools.

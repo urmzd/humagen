@@ -18,8 +18,11 @@ import (
 // coding agent reads it on the host. Only SKILL.md's body is put into
 // what a model is asked, so its bounds do not grow with the others.
 const (
-	// MaxPackageFiles is how many files a package holds, SKILL.md included.
-	MaxPackageFiles = 64
+	// MaxPackageFiles is how many files a package holds, SKILL.md included:
+	// room for skills that ship a tree of schema files. MaxPackageBytes, not
+	// this count, bounds what they hold, and a turn's text lists at most 63
+	// of them, as many as the earlier bound of 64 allowed.
+	MaxPackageFiles = 256
 	// MaxPackageFileBytes is the largest supporting file: room for the
 	// schema and source files skills ship.
 	MaxPackageFileBytes = 1 << 20

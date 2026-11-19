@@ -96,7 +96,7 @@ and a draft sent after another writer's revision is refused by the
 optimistic version check. See the
 [CLI reference](../reference/cli.md#import-sessions-skills-and-agents).
 
-Limits are enforced by the server, after base64 decoding: 64 files, 1 MiB per
+Limits are enforced by the server, after base64 decoding: 256 files, 1 MiB per
 supporting file, 128 KiB for `SKILL.md` and 2 MiB in total. A supporting file
 has room for the schema and source files skills ship; `SKILL.md` keeps the
 smaller bound because its body is what a model is asked. The revisions of one
@@ -122,7 +122,12 @@ be read through the existing gated `file_read` tool with `skill:<name>/<path>`.
 What `file_read` returns enters the model's context, so it reads a supporting
 file of at most 128 KiB: a larger one is listed with its size and the words
 "over the 131072 bytes file_read returns", and reading it is refused. A
-supporting file's bytes are never put into the turn's text.
+supporting file's bytes are never put into the turn's text. The turn's text
+lists at most 63 supporting files of a skill, as many as a package of the
+earlier 64 files held, so the list costs a model no more than it did; past
+that it says how many of how many are listed and how many more there are.
+`file_read` reads any file of the pinned package, listed or not, and a
+coding agent's directory holds every file.
 A later draft cannot change that read. Binary content, unselected packages,
 missing files and cross-tenant references are refused. Reading a script does not
 execute it. Private packages retain the existing publication classification.

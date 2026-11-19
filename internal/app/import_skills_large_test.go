@@ -65,19 +65,34 @@ func TestImportSkillsDraftsALargeSupportingFileAndNamesWhatIsOver(t *testing.T) 
 		for i := range 3 {
 			putFile(t, dir, fmt.Sprintf("oversize-package/schemas/part%d.xsd", i), generatedFile(800<<10, fmt.Sprint("part", i)))
 		}
+		// many-files holds as many files as a package may, SKILL.md
+		// included; too-many-files one more.
+		for _, name := range []string{"many-files", "too-many-files"} {
+			putFile(t, dir, name+"/SKILL.md", fmt.Sprintf(skillMD, name, name, name))
+		}
+		for i := range library.MaxPackageFiles - 1 {
+			putFile(t, dir, fmt.Sprintf("many-files/schemas/part%03d.xsd", i), generatedFile(512, fmt.Sprint("many", i)))
+		}
+		for i := range library.MaxPackageFiles {
+			putFile(t, dir, fmt.Sprintf("too-many-files/schemas/part%03d.xsd", i), generatedFile(512, fmt.Sprint("too many", i)))
+		}
 
 		out, err := runImport(t, "skills", dir, "--server", server.URL)
-		if err == nil || err.Error() != "2 skills were not drafted" {
+		if err == nil || err.Error() != "3 skills were not drafted" {
 			t.Fatalf("err = %v\n%s", err, out)
 		}
 		for _, want := range []string{
-			"Added 1 skills and updated 0 as drafts in the personal library; 0 already there, 0 in conflict, 2 failed.",
+			"Added 2 skills and updated 0 as drafts in the personal library; 0 already there, 0 in conflict, 3 failed.",
+			fmt.Sprintf("failed too-many-files: more than %d files", library.MaxPackageFiles),
 			fmt.Sprintf("failed oversize-file: main.xsd is over %d bytes", library.MaxPackageFileBytes),
 			fmt.Sprintf("failed oversize-package: library: invalid: package exceeds %d bytes", library.MaxPackageBytes),
 		} {
 			if !strings.Contains(out, want) {
 				t.Errorf("out lacks %q:\n%s", want, out)
 			}
+		}
+		if rows, err := p.SkillLibrary.History("acme", library.Scope{Kind: "personal", Subject: "dev"}, "many-files"); err != nil || len(rows) != 1 || len(rows[0].Files) != library.MaxPackageFiles {
+			t.Fatalf("many-files = %v", err)
 		}
 		rows, err := p.SkillLibrary.History("acme", library.Scope{Kind: "personal", Subject: "dev"}, "schema-kit")
 		if err != nil || len(rows) != 1 {

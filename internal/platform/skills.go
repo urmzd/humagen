@@ -295,12 +295,15 @@ func withSkills(req runtime.Request, host func(runtime.Request, []pinnedSkill) (
 		}
 		if files.tool {
 			manifest := []string{"Supporting files are read on demand with file_read using these exact paths. Reading a script does not execute it:"}
-			for _, resource := range s.Resources {
+			for _, resource := range listedSkillFiles(s.Resources) {
 				line := fmt.Sprintf("skill:%s/%s (%d bytes)", s.Name, resource.Path, resource.Size)
 				if resource.Size > maxSkillFileRead {
 					line += fmt.Sprintf(", over the %d bytes file_read returns", maxSkillFileRead)
 				}
 				manifest = append(manifest, line)
+			}
+			if more := len(s.Resources) - maxListedSkillFiles; more > 0 {
+				manifest = append(manifest, fmt.Sprintf("%d of %d supporting files are listed; %d more are not. Read one of them with file_read at skill:%s/ and the path the instructions give it.", maxListedSkillFiles, len(s.Resources), more, s.Name))
 			}
 			parts = append(parts, strings.Join(manifest, "\n"))
 		}
@@ -312,14 +315,29 @@ func withSkills(req runtime.Request, host func(runtime.Request, []pinnedSkill) (
 				opening = "If you are not offered file_read, the same files are on this host for this turn only, read only. Read them on demand with your own file tools at these exact paths. Reading a script does not execute it:"
 			}
 			manifest := []string{opening}
-			for _, resource := range s.Resources {
+			for _, resource := range listedSkillFiles(s.Resources) {
 				manifest = append(manifest, fmt.Sprintf("%s (%d bytes)", filepath.Join(files.dir, s.Name, filepath.FromSlash(resource.Path)), resource.Size))
+			}
+			if more := len(s.Resources) - maxListedSkillFiles; more > 0 {
+				manifest = append(manifest, fmt.Sprintf("%d of %d supporting files are listed; %d more are not, all of them under %s.", maxListedSkillFiles, len(s.Resources), more, filepath.Join(files.dir, s.Name)+string(filepath.Separator)))
 			}
 			parts = append(parts, strings.Join(manifest, "\n"))
 		}
 	}
 	req.Text = strings.Join(append(parts, req.Text), "\n\n")
 	return req, nil
+}
+
+// maxListedSkillFiles is how many supporting files of one skill a turn's
+// text lists: as many as a package could hold before it took more than 64
+// files, so the list costs a model no more than it did then. The rest are
+// counted, not named; file_read reads any file of the pinned package, listed
+// or not, and a coding agent is given every file on the host.
+const maxListedSkillFiles = 63
+
+// listedSkillFiles is the supporting files a turn's text names, in package order.
+func listedSkillFiles(resources []saigeskills.SkillResource) []saigeskills.SkillResource {
+	return resources[:min(len(resources), maxListedSkillFiles)]
 }
 
 // ProjectSkills is the skills a project declares, at the project's version,

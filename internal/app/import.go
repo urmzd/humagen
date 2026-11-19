@@ -280,9 +280,11 @@ func (a importAPI) do(ctx context.Context, method, path string, body, into any) 
 	}
 	defer resp.Body.Close()
 	// The largest answer is every revision of one skill with its files:
-	// library.MaxSkillBytes of files in base64 (under 22 MiB), and each
-	// revision's text fields.
-	data, err := io.ReadAll(io.LimitReader(resp.Body, 32<<20))
+	// library.MaxSkillBytes of files in base64 (under 23 MiB), each file's
+	// path (up to 256 bytes, six JSON bytes each at worst, for each of
+	// library.MaxPackageFiles files of library.MaxVersions revisions: under
+	// 13 MiB) and each revision's text fields (under 8 MiB).
+	data, err := io.ReadAll(io.LimitReader(resp.Body, 64<<20))
 	if err != nil {
 		return err
 	}

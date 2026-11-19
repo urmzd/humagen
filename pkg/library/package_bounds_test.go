@@ -52,7 +52,7 @@ func TestPackageBoundsForSupportingFilesSkillFileAndTotal(t *testing.T) {
 	if !errors.Is(err, ErrInvalid) || !strings.Contains(err.Error(), fmt.Sprintf("schemas/part0.xsd is over %d bytes", MaxPackageFileBytes)) {
 		t.Fatalf("a supporting file one byte over: %v", err)
 	}
-	if MaxPackageFileBytes != 1<<20 || MaxPackageSkillFileBytes != 128<<10 || MaxPackageBytes != 2<<20 || MaxSkillBytes != 16<<20 {
+	if MaxPackageFiles != 256 || MaxPackageFileBytes != 1<<20 || MaxPackageSkillFileBytes != 128<<10 || MaxPackageBytes != 2<<20 || MaxSkillBytes != 16<<20 {
 		t.Fatal("the bounds the docs and api/openapi.yaml state changed")
 	}
 
@@ -133,4 +133,22 @@ func TestLargeSupportingFilesAreKeptWholeAndBoundedPerSkill(t *testing.T) {
 			t.Fatalf("the skill holds %d bytes of files", held)
 		}
 	})
+}
+
+// A package may hold MaxPackageFiles files, SKILL.md included, and one more
+// is refused with the bound named.
+func TestPackageFileCountBound(t *testing.T) {
+	many := func(n int) Definition {
+		d := schemaSkill("schemas")
+		for i := range n - 1 {
+			d.Files = append(d.Files, File{Path: fmt.Sprintf("schemas/part%03d.xsd", i), Data: generatedSchema(256, fmt.Sprint(i))})
+		}
+		return d
+	}
+	if d, err := many(MaxPackageFiles).Normalize(); err != nil || len(d.Files) != MaxPackageFiles {
+		t.Fatalf("a package of exactly %d files: %v", MaxPackageFiles, err)
+	}
+	if _, err := many(MaxPackageFiles + 1).Normalize(); !errors.Is(err, ErrInvalid) || !strings.Contains(err.Error(), fmt.Sprintf("a package needs 1 to %d files", MaxPackageFiles)) {
+		t.Fatalf("a package of %d files: %v", MaxPackageFiles+1, err)
+	}
 }
