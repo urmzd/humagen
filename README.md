@@ -191,7 +191,7 @@ make tilt
 
 ## Documentation
 
-[Start with Humagen](docs/README.md) to render a local review and open your first session.
+The [Humagen guide](https://docs.urmzd.com/humagen/) walks through rendering a local review and opening your first session. The documentation workflow checks the guide on pull requests and publishes changes from `main` to GitHub Pages.
 
 Build the documentation from the repository root with [uv](https://docs.astral.sh/uv/). The static site is written to `site/`. The preview command prints the local address.
 
