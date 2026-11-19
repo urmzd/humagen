@@ -344,33 +344,49 @@ func (s *Server) authed(perm auth.Permission, h handler) http.HandlerFunc {
 			bodyLimit = platform.MaxRecordingBytes
 		}
 		r.Body = http.MaxBytesReader(w, r.Body, bodyLimit)
-		if r.Method != http.MethodGet {
+		// A route registered for GET also answers HEAD, and both are reads.
+		read := strings.HasPrefix(r.Pattern, http.MethodGet+" ")
+		if !read {
 			s.Log.Info("httpapi: change", "subject", who.Subject, "kind", who.Kind, "tenant", who.Tenant,
 				"method", r.Method, "path", r.URL.Path)
 		}
 		// A read is what a response shows: the records of what this one
-		// shows by exception are written together before its first byte, and
-		// when they cannot be the answer is that nothing is there.
+		// shows by exception are written together before its first header,
+		// and when they cannot be the answer is that nothing is there. That
+		// holds for a HEAD as for a GET: its headers tell of what it read.
 		who, commit := s.P.ResponseReader(who, r.Pattern)
-		if r.Method != http.MethodGet {
+		if !read {
 			h(w, r.WithContext(auth.With(r.Context(), who)), who)
 			return
 		}
-		recorded := &recordedResponse{ResponseWriter: w, commit: commit, had: w.Header().Clone()}
-		h(recorded, r.WithContext(auth.With(r.Context(), who)), who)
+		// A refusal ends the request for its handler too, so a stream that
+		// would go on waiting for events lets go of what it follows.
+		ctx, end := context.WithCancel(r.Context())
+		defer end()
+		recorded := &recordedResponse{ResponseWriter: w, commit: commit, end: end, had: w.Header().Clone()}
+		h(recorded, r.WithContext(auth.With(ctx, who)), who)
 		// An answer with no body is still an answer.
 		recorded.decide()
 	}
 }
 
+// errResponseRefused is what a handler's writes come to once its response
+// was refused: there is nobody to write to, as when a client has gone.
+var errResponseRefused = errors.New("httpapi: the response was refused: its read records could not be written")
+
 // recordedResponse holds a response back until the records of what it shows
 // by exception are written (Platform.ResponseReader). The first header or
 // byte the handler sends decides it: with the records written the response
 // goes out as the handler wrote it, and without them the caller is told 404
-// and nothing the handler wrote or set, a header included, leaves.
+// at once and nothing the handler wrote or set, a header included, leaves.
+// After a refusal the handler's request is ended and its writes and flushes
+// fail, so a stream's handler returns and lets go of what it follows; a
+// handler that ignores both has written to nowhere.
 type recordedResponse struct {
 	http.ResponseWriter
 	commit func() bool
+	// end ends the handler's request.
+	end func()
 	// had is the headers set before the handler ran, which a refusal keeps.
 	had     http.Header
 	decided bool
@@ -387,6 +403,9 @@ func (w *recordedResponse) decide() bool {
 			clear(header)
 			maps.Copy(header, w.had)
 			notFound(w.ResponseWriter)
+			// The refusal leaves now, not when a stream's handler returns.
+			_ = http.NewResponseController(w.ResponseWriter).Flush()
+			w.end()
 		}
 	}
 	return !w.refused
@@ -400,20 +419,33 @@ func (w *recordedResponse) WriteHeader(code int) {
 
 func (w *recordedResponse) Write(b []byte) (int, error) {
 	if !w.decide() {
-		return len(b), nil
+		return 0, errResponseRefused
 	}
 	return w.ResponseWriter.Write(b)
+}
+
+// ReadFrom is how io.Copy and http.ServeContent send a file: the records are
+// written before its first byte, and the writer below still sends it its
+// own way.
+func (w *recordedResponse) ReadFrom(src io.Reader) (int64, error) {
+	if !w.decide() {
+		return 0, errResponseRefused
+	}
+	if from, ok := w.ResponseWriter.(io.ReaderFrom); ok {
+		return from.ReadFrom(src)
+	}
+	return io.Copy(struct{ io.Writer }{w.ResponseWriter}, src)
 }
 
 // FlushError is what http.ResponseController flushes a stream through.
 func (w *recordedResponse) FlushError() error {
 	if !w.decide() {
-		return nil
+		return errResponseRefused
 	}
 	return http.NewResponseController(w.ResponseWriter).Flush()
 }
 
-// Unwrap gives http.ResponseController the writer's deadlines.
+// Unwrap gives http.ResponseController the writer's deadlines and duplex.
 func (w *recordedResponse) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 
 func (s *Server) me(w http.ResponseWriter, _ *http.Request, who auth.Principal) {

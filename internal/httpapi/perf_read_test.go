@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"maps"
 	"net/http"
 	"slices"
@@ -457,6 +458,187 @@ func TestASessionPageIsRefusedWholeWhenARecordCannotBeWritten(t *testing.T) {
 			})
 			if want := slices.Sorted(slices.Values(append([]string{up}, children...))); !slices.Equal(got, want) {
 				t.Fatalf("GET %s recorded %v, want the session and those under it %v", path, got, want)
+			}
+		}
+	})
+}
+
+// auditFixture is a workspace where Olu started every session and Ana, an
+// administrator, reads them by exception, on a store whose read records can
+// be made to fail. kept is the threads of the read records it holds, oldest
+// first, and raw makes a request with a client that gives up after two
+// seconds, returning the response once its body has been read to the end.
+type auditFixture struct {
+	*fixture
+	store    *failingAudit
+	ana      string
+	sessions []string
+}
+
+func newAuditFixture(t *testing.T, st state.Store) *auditFixture {
+	t.Helper()
+	store := &failingAudit{Store: st}
+	f := newFixtureWith(t, platform.Config{Backends: platform.Backends{State: store}, Now: seedClock()})
+	olu := auth.Principal{Subject: "olu", Tenant: "acme", Kind: auth.User, Name: "Olu", Roles: []auth.Role{auth.Admin}}
+	seedVolume(t, f.p, olu, volume{Sessions: 4, Children: 0, Runs: 6, Alerts: 0, Parallel: 2})
+	a := &auditFixture{fixture: f, store: store, ana: f.person(t, "acme", "ana", "Ana", "humagen-admins")}
+	recs, err := f.p.Threads.Records("acme", func(th threads.Thread) bool { return th.Session != nil })
+	if err != nil || len(recs) != 4 {
+		t.Fatalf("seeded sessions = %d, %v", len(recs), err)
+	}
+	for _, th := range recs {
+		a.sessions = append(a.sessions, th.ID)
+	}
+	slices.Sort(a.sessions)
+	return a
+}
+
+func (a *auditFixture) kept(t *testing.T) []string {
+	t.Helper()
+	all, err := a.p.ReadAudit.List("acme", time.Now().Add(-25*24*time.Hour), time.Now().Add(24*time.Hour), readaudit.MaxRows)
+	if err != nil || len(all) >= readaudit.MaxRows {
+		t.Fatalf("the read records = %d, %v", len(all), err)
+	}
+	out := make([]string, len(all))
+	for i, r := range all {
+		out[len(all)-1-i] = r.Thread
+	}
+	return out
+}
+
+// raw answers with the response, its whole body and how long both took. open
+// is called once the headers have arrived, before the body is read.
+func (a *auditFixture) raw(t *testing.T, method, path string, open func(*http.Response)) (*http.Response, []byte, time.Duration, error) {
+	t.Helper()
+	req, err := http.NewRequest(method, a.srv.URL+path, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Authorization", "Bearer "+a.ana)
+	started := time.Now()
+	res, err := (&http.Client{Timeout: 2 * time.Second}).Do(req)
+	if err != nil {
+		return nil, nil, time.Since(started), err
+	}
+	defer res.Body.Close()
+	if open != nil {
+		open(res)
+	}
+	body, err := io.ReadAll(res.Body)
+	return res, body, time.Since(started), err
+}
+
+// A HEAD of a route registered for GET is a read like the GET: what it reads
+// by exception is recorded before its headers leave, the same records the
+// GET writes, and when they cannot be written it answers 404 with none of
+// the handler's headers and no record kept.
+func TestAHeadIsRecordedAndRefusedAsItsGetIs(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		a := newAuditFixture(t, open(t))
+		path := "/api/sessions/" + a.sessions[0]
+		before := len(a.kept(t))
+		if res, body, _, err := a.raw(t, "GET", path, nil); err != nil || res.StatusCode != http.StatusOK || len(body) == 0 {
+			t.Fatalf("GET = %v, %v", res, err)
+		}
+		byGet := a.kept(t)[before:]
+		if !slices.Equal(byGet, []string{a.sessions[0]}) {
+			t.Fatalf("the GET recorded %v, want the session", byGet)
+		}
+		before = len(a.kept(t))
+		res, body, _, err := a.raw(t, "HEAD", path, nil)
+		if err != nil || res.StatusCode != http.StatusOK || len(body) != 0 || res.Header.Get("Content-Type") != "application/json" {
+			t.Fatalf("HEAD = %v, a body of %d bytes, %v", res, len(body), err)
+		}
+		if byHead := a.kept(t)[before:]; !slices.Equal(byHead, byGet) {
+			t.Fatalf("the HEAD recorded %v, its GET %v", byHead, byGet)
+		}
+		// The stream's handler sets headers of its own before it answers.
+		for _, path := range []string{path, path + "/stream"} {
+			a.store.all.Store(true)
+			before := a.kept(t)
+			res, body, took, err := a.raw(t, "HEAD", path, nil)
+			a.store.all.Store(false)
+			if err != nil || res.StatusCode != http.StatusNotFound || len(body) != 0 {
+				t.Fatalf("HEAD %s with no record written = %v, %v after %s", path, res, err, took)
+			}
+			if res.Header.Get("Cache-Control") == "no-cache" || res.Header.Get("X-Accel-Buffering") != "" || strings.Contains(res.Header.Get("Content-Type"), "event-stream") {
+				t.Fatalf("the refused HEAD %s carries the handler's headers: %v", path, res.Header)
+			}
+			if after := a.kept(t); !slices.Equal(after, before) {
+				t.Fatalf("the refused HEAD %s left read records of %v", path, after[len(before):])
+			}
+		}
+	})
+}
+
+// A stream whose opening read cannot be recorded is refused at once and ends:
+// the client is told 404 and reaches the end of the answer, which it does
+// only when the handler has returned, well inside its two seconds; the room
+// has no viewer left; and no record is kept. With records written the same
+// stream opens.
+func TestARefusedStreamAnswersAtOnceAndEnds(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		a := newAuditFixture(t, open(t))
+		session := a.sessions[0]
+		turns, err := a.p.Runs.Conversation("acme", session)
+		if err != nil || len(turns) == 0 {
+			t.Fatalf("the session's runs = %d, %v", len(turns), err)
+		}
+		// The workspace's stream reads nothing by exception before its first
+		// byte, so there is nothing to refuse it for: it opens, and each
+		// event it would show by exception is recorded as it is granted, or
+		// not sent. With no record written it shows this run nothing and
+		// keeps no record.
+		a.store.all.Store(true)
+		kept := a.kept(t)
+		opened := false
+		_, _, _, _ = a.raw(t, "GET", "/api/events?run="+turns[0].ID, func(res *http.Response) {
+			opened = res.StatusCode == http.StatusOK
+			res.Body.Close()
+		})
+		a.store.all.Store(false)
+		if after := a.kept(t); !opened || !slices.Equal(after, kept) {
+			t.Fatalf("the workspace stream with no record written: opened %v, records of %v", opened, after[len(kept):])
+		}
+		for name, path := range map[string]string{
+			"session stream": "/api/sessions/" + session + "/stream",
+			"room stream":    "/api/events?thread=" + session,
+		} {
+			a.store.all.Store(true)
+			before := a.kept(t)
+			res, body, took, err := a.raw(t, "GET", path, nil)
+			a.store.all.Store(false)
+			if err != nil {
+				t.Fatalf("%s, refused: %v after %s", name, err, took)
+			}
+			if res.StatusCode != http.StatusNotFound || !strings.Contains(string(body), "not found") || strings.Contains(res.Header.Get("Content-Type"), "event-stream") {
+				t.Fatalf("%s, refused = %d %q %v", name, res.StatusCode, body, res.Header)
+			}
+			if took > time.Second {
+				t.Fatalf("%s: the refusal and the end of the stream took %s", name, took)
+			}
+			// The handler had returned when the answer ended, and left the room.
+			if n := a.p.Rooms.Viewers("acme", session); n != 0 {
+				t.Fatalf("%s: the room still has %d viewers after the refusal", name, n)
+			}
+			if after := a.kept(t); !slices.Equal(after, before) {
+				t.Fatalf("%s: the refused stream left read records of %v", name, after[len(before):])
+			}
+			// With records written the stream opens; the client then leaves.
+			opened := false
+			_, _, _, _ = a.raw(t, "GET", path, func(res *http.Response) {
+				opened = res.StatusCode == http.StatusOK && strings.Contains(res.Header.Get("Content-Type"), "event-stream")
+				res.Body.Close()
+			})
+			if !opened {
+				t.Fatalf("%s did not open once its records could be written", name)
+			}
+			// The client has left: the open stream's handler lets go of the
+			// room before the next case counts its viewers.
+			for deadline := time.Now().Add(2 * time.Second); a.p.Rooms.Viewers("acme", session) != 0; time.Sleep(5 * time.Millisecond) {
+				if time.Now().After(deadline) {
+					t.Fatalf("%s: the room kept %d viewers after its client left", name, a.p.Rooms.Viewers("acme", session))
+				}
 			}
 		}
 	})
