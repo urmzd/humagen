@@ -2008,6 +2008,16 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	}
 	c.call(acme, "PUT", "/api/knowledge/{name}/documents/{id}/text", docPath+"/text", `{"title":"Refunds","text":"Stale.","digest":"`+doc.str("digest")+`"}`, http.StatusConflict)
 	c.call(acme, "PUT", "/api/knowledge/{name}/documents/{id}/text", docPath+"/text", `{"title":"Refunds","text":"No digest."}`, http.StatusBadRequest)
+	// An imported session's document and its structure, on the import
+	// routes; the ordinary routes take no structure. The session is made up.
+	session := `{"tool":"codex","id":"generated-contract","turns":[{"speaker":"user","text":"generated question"}],"branches":0,"omitted":{"turns":0,"results":0,"cut_turns":0,"attachments":0}}`
+	c.call(acme, "POST", "/api/knowledge/{name}/documents", "/api/knowledge/handbook/documents", `{"title":"A chat","uri":"codex:generated-contract","text":"generated","session":`+session+`}`, http.StatusBadRequest)
+	imported := c.call(acme, "POST", "/api/knowledge/{name}/imports", "/api/knowledge/handbook/imports", `{"title":"A chat","uri":"codex:generated-contract","text":"generated","session":`+session+`}`, http.StatusCreated)
+	c.call(acme, "POST", "/api/knowledge/{name}/imports", "/api/knowledge/handbook/imports", `{"title":"A chat","uri":"codex:generated-contract","text":"generated"}`, http.StatusBadRequest)
+	importPath := "/api/knowledge/handbook/imports/" + imported.str("id")
+	c.call(acme, "PUT", "/api/knowledge/{name}/imports/{id}", importPath, `{"title":"A chat","text":"generated, grown","digest":"`+imported.str("digest")+`","session":`+session+`}`, http.StatusOK)
+	c.call(acme, "PUT", "/api/knowledge/{name}/imports/{id}", importPath, `{"title":"A chat","text":"stale","digest":"`+imported.str("digest")+`","session":`+session+`}`, http.StatusConflict)
+	c.call(globex, "POST", "/api/knowledge/{name}/imports", "/api/knowledge/handbook/imports", `{"title":"A chat","uri":"codex:generated-contract","text":"generated","session":`+session+`}`, http.StatusNotFound)
 	c.call(globex, "PUT", "/api/knowledge/{name}/documents/{id}/text", docPath+"/text", `{"title":"Refunds","text":"Theirs.","digest":"`+replaced.str("digest")+`"}`, http.StatusNotFound)
 
 	// Corpora hold sources; another tenant never sees one.
@@ -2769,7 +2779,8 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/knowledge/{name}/configuration":         {"name": "handbook"}, "/api/knowledge/{name}/credential": {"name": "handbook"}, "/api/knowledge/{name}/sync": {"name": "handbook"},
 		"/api/knowledge/{name}/documents": {"name": "handbook"}, "/api/knowledge/{name}/documents/{id}": {"name": "handbook", "id": doc.str("id")},
 		"/api/knowledge/{name}/documents/{id}/text": {"name": "handbook", "id": doc.str("id")},
-		"/api/knowledge/{name}/variants":            {"name": "handbook"}, "/api/knowledge/{name}/variants/{variant}": {"name": "handbook"},
+		"/api/knowledge/{name}/imports":             {"name": "handbook"}, "/api/knowledge/{name}/imports/{id}": {"name": "handbook", "id": imported.str("id")},
+		"/api/knowledge/{name}/variants": {"name": "handbook"}, "/api/knowledge/{name}/variants/{variant}": {"name": "handbook"},
 		"/api/project-forks/{name}": {"name": "Forked"}, "/api/projects/{name}/fork": {"name": "Field"},
 		"/api/projects/{name}": {"name": "Launch"}, "/api/projects/{name}/memory": {"name": "Launch"}, "/api/projects/{name}/history": {"name": "Launch"},
 		"/api/projects/{name}/agents":         {"name": "Launch"},
@@ -2807,6 +2818,8 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/inbox/{id}/parts/{part}/resolve": `{"action":"acknowledge"}`, "/api/knowledge/{name}/documents": `{"title":"t","text":"words here"}`,
 		"/api/knowledge/{name}/documents/{id}": `{"excluded":false}`, "/api/knowledge/{name}/variants": `{"name":"other"}`,
 		"/api/knowledge/{name}/documents/{id}/text": `{"title":"t","text":"words here","digest":""}`,
+		"/api/knowledge/{name}/imports":             `{"title":"t","uri":"codex:generated-contract","text":"words here","session":` + session + `}`,
+		"/api/knowledge/{name}/imports/{id}":        `{"title":"t","text":"words here","digest":"","session":` + session + `}`,
 		"/api/projects/{name}":                      `{"version":1}`, "/api/projects/{name}/memory": `{"text":"x"}`, "/api/projects/{name}/memory/approve": `{"ids":[]}`,
 		"/api/inbox/{id}/deliveries/{client}": `{"channel":"C0123ABC","ts":"1700000000.000100"}`, "/api/inbox/{id}/dismiss": ``, "/api/inbox/{id}/unhide": ``,
 		"/api/inbox/marks": `{"ids":["m-1"],"mark":"read"}`, "/api/inbox/read-all": `{"view":"inbox"}`,
@@ -3003,6 +3016,7 @@ var unexercised = map[string]string{
 	"PUT /api/knowledge/{name}/attachment 429": "bounded relation store refuses new attachments at10000 records; cap exercised in source-link suggestion store tests",
 
 	"POST /api/knowledge/{name}/documents 409": "source scope can change between authorization and insertion; atomic rejection is exercised by pkg/knowledge promotion and scope tests",
+	"POST /api/knowledge/{name}/imports 409":   "source scope can change between authorization and insertion, as for an ordinary add; the store's guard is the one AddForScope uses",
 	// A workspace holds at most 1,000 call policies, one per agent. Making
 	// that many agents here would only test a counter, which
 	// pkg/callpolicy's tests do.

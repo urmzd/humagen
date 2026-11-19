@@ -106,6 +106,11 @@ type Document struct {
 	Digest string `json:"digest,omitempty"`
 	// UpdatedAt is when its text was last replaced. Nil is never.
 	UpdatedAt *time.Time `json:"updated_at,omitempty"`
+	// StructureBytes is the size, as JSON, of the imported session's
+	// structure kept with this revision (imported.go): zero for a document
+	// no import wrote, or one edited since. A source's are bounded together
+	// by MaxImportedSourceBytes.
+	StructureBytes int `json:"structure_bytes,omitempty"`
 }
 
 // Digest is the digest a document of this title and text is kept with: the
@@ -717,6 +722,9 @@ func (s *Store) add(tenant, name, title, uri, text, by string, at time.Time, exp
 	doc := &Document{ID: hex.EncodeToString(id), Title: title, URI: uri, Bytes: len(text), AddedBy: by, AddedAt: at, Digest: Digest(title, text)}
 	texts := split(text)
 	doc.Passages = len(texts)
+	if session != nil {
+		doc.StructureBytes = importedSize(*session)
+	}
 
 	err := state.Retry(func() error {
 		src, srcAt, err := s.meta(tenant, name)
@@ -735,6 +743,9 @@ func (s *Store) add(tenant, name, title, uri, text, by string, at time.Time, exp
 		}
 		if len(docs) >= MaxImportDocuments || totalBytes > MaxImportBytes {
 			return fmt.Errorf("%w: source document or byte limit reached", ErrInvalid)
+		}
+		if session != nil && structureBytes(docs, -1, doc.StructureBytes) > MaxImportedSourceBytes {
+			return sourceStructuresFull()
 		}
 		if guard {
 			if expected == nil {
@@ -766,7 +777,9 @@ func (s *Store) add(tenant, name, title, uri, text, by string, at time.Time, exp
 		b := s.kept.Batch()
 		b.Put(tenant, textKey(name, seq), stored{Passages: texts})
 		b.Create(tenant, docKey(name, seq), stored{Document: doc})
-		putImported(b, tenant, name, seq, session, doc.Digest)
+		if session != nil {
+			b.Put(tenant, importedKey(name, seq), stored{Imported: &importedRecord{Session: new(cloneImported(*session)), Document: doc.Digest, By: by, At: at}})
+		}
 		b.PutAt(tenant, sourceKey(name), stored{Source: &meta}, srcAt)
 		putClock(b, tenant, contentClock{Name: name, Value: version, Seq: seq}, clkAt)
 		return b.Commit()
@@ -789,16 +802,18 @@ func (s *Store) add(tenant, name, title, uri, text, by string, at time.Time, exp
 // at the version of the source read, as an insertion is: a failed
 // replacement leaves the document as it was, and of two made at once from
 // the same digest one is refused. The old vectors go with the old text. The
-// structure of a session the document was imported from is kept as it was:
-// it names the digest it was written with, which an edit changes, so it is
-// no longer trusted (Store.OriginForScope says Changed).
+// structure of a session the document was imported from, if one is kept, is
+// marked edited in the same write and is never trusted again: only another
+// import writes a trusted one (Store.OriginForScope says Changed). Putting
+// the old title and text back does not undo that.
 func (s *Store) ReplaceForScope(tenant, name, id, title, text, digest string, at time.Time, expected *SourceConfig) (Document, error) {
-	return s.replace(tenant, name, id, title, text, digest, at, expected, nil)
+	return s.replace(tenant, name, id, title, text, digest, at, expected, nil, "")
 }
 
 // replace replaces a document's title and text, and in the same write its
-// structure with session when one is given.
-func (s *Store) replace(tenant, name, id, title, text, digest string, at time.Time, expected *SourceConfig, session *Imported) (Document, error) {
+// structure: with session as by asserts it when one is given, and otherwise
+// by marking the one kept edited.
+func (s *Store) replace(tenant, name, id, title, text, digest string, at time.Time, expected *SourceConfig, session *Imported, by string) (Document, error) {
 	title, text = strings.TrimSpace(title), strings.TrimSpace(text)
 	switch {
 	case title == "":
@@ -840,6 +855,25 @@ func (s *Store) replace(tenant, name, id, title, text, digest string, at time.Ti
 		doc := row.doc
 		stamp := at
 		doc.Title, doc.Bytes, doc.Passages, doc.Digest, doc.UpdatedAt = title, len(text), len(texts), Digest(title, text), &stamp
+		var structure *importedRecord
+		if session != nil {
+			doc.StructureBytes = importedSize(*session)
+			if structureBytes(docs, row.seq, doc.StructureBytes) > MaxImportedSourceBytes {
+				return sourceStructuresFull()
+			}
+			structure = &importedRecord{Session: new(cloneImported(*session)), Document: doc.Digest, By: by, At: at}
+		} else {
+			doc.StructureBytes = 0
+			kept, err := s.kept.Lookup(tenant, importedKey(name, row.seq))
+			switch {
+			case errors.Is(err, state.ErrNotFound):
+			case err != nil:
+				return err
+			case kept.Value.Imported != nil && !kept.Value.Imported.Edited:
+				was := kept.Value.Imported
+				structure = &importedRecord{Document: was.Document, By: was.By, At: was.At, Edited: true}
+			}
+		}
 		docs[i].doc = doc
 		totalBytes := 0
 		for _, d := range docs {
@@ -868,7 +902,9 @@ func (s *Store) replace(tenant, name, id, title, text, digest string, at time.Ti
 		b.Put(tenant, textKey(name, row.seq), stored{Passages: texts})
 		b.Delete(tenant, vecKey(name, row.seq))
 		b.PutAt(tenant, docKey(name, row.seq), stored{Document: &doc}, row.version)
-		putImported(b, tenant, name, row.seq, session, doc.Digest)
+		if structure != nil {
+			b.Put(tenant, importedKey(name, row.seq), stored{Imported: structure})
+		}
 		b.PutAt(tenant, sourceKey(name), stored{Source: &meta}, srcAt)
 		putClock(b, tenant, contentClock{Name: name, Value: version, Seq: max(clk.Seq, nextSeq(clk, docs)-1)}, clkAt)
 		if err := b.Commit(); err != nil {

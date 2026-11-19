@@ -63,6 +63,10 @@ func (s *Server) observeRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/knowledge/{name}/documents", s.authed(auth.KnowledgeWrite, s.seenSource(s.auditedSource("source.document.add", s.addDocument))))
 	mux.HandleFunc("DELETE /api/knowledge/{name}/documents/{id}", s.authed(auth.KnowledgeWrite, s.seenSource(s.auditedSource("source.document.remove", s.removeDocument))))
 	mux.HandleFunc("PUT /api/knowledge/{name}/documents/{id}/text", s.authed(auth.KnowledgeWrite, s.seenSource(s.auditedSource("source.document.replace", s.replaceDocument))))
+	// An import writes a session's document with the session's structure,
+	// under its own permission (import_documents.go).
+	mux.HandleFunc("POST /api/knowledge/{name}/imports", s.authed(auth.KnowledgeImport, s.seenSource(s.auditedSourceUnder("source.document.import", auth.KnowledgeImport, s.importDocument))))
+	mux.HandleFunc("PUT /api/knowledge/{name}/imports/{id}", s.authed(auth.KnowledgeImport, s.seenSource(s.auditedSourceUnder("source.document.reimport", auth.KnowledgeImport, s.reimportDocument))))
 	mux.HandleFunc("PUT /api/knowledge/{name}/documents/{id}", s.authed(auth.KnowledgeWrite, s.seenSource(s.auditedSource("source.document.exclude", s.excludeDocument))))
 	mux.HandleFunc("POST /api/knowledge/{name}/variants", s.authed(auth.KnowledgeWrite, s.seenSource(s.auditedSource("source.variant.save", s.saveVariant))))
 	mux.HandleFunc("DELETE /api/knowledge/{name}/variants/{variant}", s.authed(auth.KnowledgeWrite, s.seenSource(s.auditedSource("source.variant.delete", s.deleteVariant))))
@@ -630,10 +634,6 @@ func (s *Server) addDocument(w http.ResponseWriter, r *http.Request, who auth.Pr
 		Title string `json:"title"`
 		URI   string `json:"uri"`
 		Text  string `json:"text"`
-		// Session is the structure of the session an import wrote the
-		// document from. It is kept with this revision of the document, in
-		// the one write that adds it.
-		Session *knowledge.Imported `json:"session"`
 	}
 	if !decode(w, r, &body) {
 		return
@@ -647,12 +647,7 @@ func (s *Server) addDocument(w http.ResponseWriter, r *http.Request, who auth.Pr
 		s.problem(w, fmt.Errorf("%w: managed copies are changed by Refresh Copy", knowledge.ErrInvalid))
 		return
 	}
-	var doc knowledge.Document
-	if body.Session != nil {
-		doc, err = s.P.Knowledge.AddImportedForScope(who.Tenant, r.PathValue("name"), body.Title, body.URI, body.Text, who.Subject, time.Now(), sourceConfigOf(src), *body.Session)
-	} else {
-		doc, err = s.P.Knowledge.AddForScope(who.Tenant, r.PathValue("name"), body.Title, body.URI, body.Text, who.Subject, time.Now(), sourceConfigOf(src))
-	}
+	doc, err := s.P.Knowledge.AddForScope(who.Tenant, r.PathValue("name"), body.Title, body.URI, body.Text, who.Subject, time.Now(), sourceConfigOf(src))
 	if err != nil {
 		s.problem(w, err)
 		return
@@ -676,19 +671,15 @@ func (s *Server) removeDocument(w http.ResponseWriter, r *http.Request, who auth
 // replaceDocument replaces a document's title and text in place, if they are
 // still the title and text the caller names by digest. The store checks the digest
 // and writes in one step, so the document keeps its id and whether it is
-// left out of search, and a refused replacement changes nothing. An import
-// sends the structure of the session the new text is written from, and it
-// is kept in the same write. A replacement without one, as an edit in the
-// console is, leaves the structure kept before untrusted: it names the
-// digest of a title and text the document no longer has.
+// left out of search, and a refused replacement changes nothing. It takes
+// no session structure: one an import kept with the document is marked
+// edited in the same write and is not trusted again until an import writes
+// the document (import_documents.go).
 func (s *Server) replaceDocument(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	var body struct {
 		Title  string  `json:"title"`
 		Text   string  `json:"text"`
 		Digest *string `json:"digest"`
-		// Session is given by an import replacing the document of a session
-		// that changed.
-		Session *knowledge.Imported `json:"session"`
 	}
 	if !decode(w, r, &body) {
 		return
@@ -706,12 +697,7 @@ func (s *Server) replaceDocument(w http.ResponseWriter, r *http.Request, who aut
 		s.problem(w, fmt.Errorf("%w: managed copies are changed by Refresh Copy", knowledge.ErrInvalid))
 		return
 	}
-	var doc knowledge.Document
-	if body.Session != nil {
-		doc, err = s.P.Knowledge.ReplaceImportedForScope(who.Tenant, r.PathValue("name"), r.PathValue("id"), body.Title, body.Text, *body.Digest, time.Now(), sourceConfigOf(src), *body.Session)
-	} else {
-		doc, err = s.P.Knowledge.ReplaceForScope(who.Tenant, r.PathValue("name"), r.PathValue("id"), body.Title, body.Text, *body.Digest, time.Now(), sourceConfigOf(src))
-	}
+	doc, err := s.P.Knowledge.ReplaceForScope(who.Tenant, r.PathValue("name"), r.PathValue("id"), body.Title, body.Text, *body.Digest, time.Now(), sourceConfigOf(src))
 	if err != nil {
 		s.problem(w, err)
 		return

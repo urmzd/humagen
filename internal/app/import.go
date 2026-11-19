@@ -381,6 +381,11 @@ type sessionsResult struct {
 	ElsewhereChanged []string       `json:"elsewhere_changed,omitempty"`
 	DryRun           bool           `json:"dry_run,omitempty"`
 	ByTool           map[string]int `json:"by_tool"`
+	// StructuresNotKept says why this run wrote its sessions' documents
+	// without their structures: a server older than this command, with no
+	// import route, or a token that may not import. Empty when every
+	// document this run wrote went with its structure.
+	StructuresNotKept string `json:"structures_not_kept,omitempty"`
 }
 
 type importFailed struct {
@@ -424,6 +429,51 @@ type sessionSink struct {
 	// while an export is read, and empty for the sessions of this machine.
 	project string
 	res     *sessionsResult
+}
+
+// structureLimits are the bounds the server keeps a structure within.
+var structureLimits = sessionimport.Limits{Bytes: knowledge.MaxImportedBytes, Turns: knowledge.MaxImportedTurns, TurnBytes: knowledge.MaxImportedTurnBytes, ID: knowledge.MaxImportedID}
+
+// noImport reads a refusal of an import route as the reason this run
+// writes documents without structures from then on: a server that has no
+// such route (older than this command), or a token that may not import.
+// Any other error is the write's own, and "" is returned.
+func noImport(err error) string {
+	var e *apiError
+	if !errors.As(err, &e) {
+		return ""
+	}
+	switch {
+	case e.status == http.StatusMethodNotAllowed, e.status == http.StatusNotFound && strings.Contains(e.body, "no such route"):
+		return "the server has no import route: it is older than this command"
+	case e.status == http.StatusForbidden:
+		return "this token may not import sessions (knowledge:import)"
+	}
+	return ""
+}
+
+// write sends a session's document: through the import route with the
+// session's structure, which the server keeps with that revision and never
+// reads out of its text, or else through the ordinary route without one.
+// importPath and plainPath are the two routes, and body the document's
+// fields. A server that has no import route, or a token that may not
+// import, is found on the first write; this run then writes every document
+// without its structure and says so (StructuresNotKept). A session no
+// structure can name (an id too long, or with control characters) is
+// written without one.
+func (k *sessionSink) write(method, importPath, plainPath string, body map[string]any, s sessionimport.Session) error {
+	st, ok := s.Structure(structureLimits)
+	if ok && k.res.StructuresNotKept == "" {
+		body["session"] = st
+		err := k.api.do(k.ctx, method, importPath, body, nil)
+		reason := noImport(err)
+		if reason == "" {
+			return err
+		}
+		k.res.StructuresNotKept = reason
+		delete(body, "session")
+	}
+	return k.api.do(k.ctx, method, plainPath, body, nil)
 }
 
 // held is a session's document as the server has it. A session is known by
@@ -623,9 +673,10 @@ func (k *sessionSink) add(s sessionimport.Session) {
 				return
 			}
 		}
-		err := k.api.do(k.ctx, http.MethodPost, "/api/knowledge/"+url.PathEscape(name)+"/documents", withStructure(map[string]any{
+		src := "/api/knowledge/" + url.PathEscape(name)
+		err := k.write(http.MethodPost, src+"/imports", src+"/documents", map[string]any{
 			"title": title, "uri": s.URI(), "text": s.Markdown(k.c.maxBytes),
-		}, s), nil)
+		}, s)
 		var refused *apiError
 		if errors.As(err, &refused) && refused.status == http.StatusBadRequest && strings.Contains(refused.body, "limit reached") {
 			k.full[name] = true
@@ -639,17 +690,6 @@ func (k *sessionSink) add(s sessionimport.Session) {
 		return
 	}
 	k.res.Failed = append(k.res.Failed, importFailed{Name: s.URI(), Reason: "every source for " + base + " is full"})
-}
-
-// withStructure adds to a document's body the session's structure: its main
-// path as data, which the server keeps with that revision of the document
-// and never reads out of its text. A session no structure can name is sent
-// without one, and its document is kept with none.
-func withStructure(body map[string]any, s sessionimport.Session) map[string]any {
-	if st, ok := s.Structure(sessionimport.Limits{Bytes: knowledge.MaxImportedBytes, Turns: knowledge.MaxImportedTurns, TurnBytes: knowledge.MaxImportedTurnBytes, ID: knowledge.MaxImportedID}); ok {
-		body["session"] = st
-	}
-	return body
 }
 
 // holds reports whether a source named for a directory or a project says it
@@ -698,8 +738,8 @@ func (k *sessionSink) said(name string) (string, error) {
 // it is left out of search, and a refused or failed call leaves it as it
 // was.
 //
-// The session's structure goes in the same call, so the document and its
-// structure are replaced together or neither is.
+// The session's structure goes in the same call (write), so the document
+// and its structure are replaced together or neither is.
 //
 // The call is made once. A run the server refuses lost to another writer,
 // and never writes over what that writer left: it reads the document again,
@@ -714,10 +754,11 @@ func (k *sessionSink) replace(was held, title string, s sessionimport.Session) (
 		k.res.Present++
 		return false
 	}
-	docs := "/api/knowledge/" + url.PathEscape(was.source) + "/documents"
-	err := k.api.do(k.ctx, http.MethodPut, docs+"/"+url.PathEscape(was.id)+"/text", withStructure(map[string]any{
+	src := "/api/knowledge/" + url.PathEscape(was.source)
+	docs := src + "/documents"
+	err := k.write(http.MethodPut, src+"/imports/"+url.PathEscape(was.id), docs+"/"+url.PathEscape(was.id)+"/text", map[string]any{
 		"title": title, "text": text, "digest": was.digest,
-	}, s), nil)
+	}, s)
 	switch {
 	case err == nil:
 		k.have[s.URI()] = held{source: was.source}
@@ -1095,6 +1136,9 @@ func importSessions(ctx context.Context, c importOptions, api importAPI, out io.
 	}
 	if res.Updated > 0 {
 		fmt.Fprintf(out, "Updated %d sessions whose documents read differently now, in place.\n", res.Updated)
+	}
+	if res.StructuresNotKept != "" {
+		fmt.Fprintf(out, "Structures were not kept: %s. The documents were written without them, and a later run against a server that keeps them writes them only for sessions that change.\n", res.StructuresNotKept)
 	}
 	if len(res.Conflicts) > 0 {
 		fmt.Fprintf(out, "Left %d sessions as another import wrote them while this one ran; nothing of this run's was written over them: %s.\n", len(res.Conflicts), strings.Join(res.Conflicts, ", "))

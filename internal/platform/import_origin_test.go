@@ -14,13 +14,12 @@ import (
 func importedFixture() knowledge.Imported {
 	at := time.Date(2026, 10, 7, 8, 0, 0, 0, time.UTC)
 	later := at.Add(time.Minute)
-	zero, one := 0, 1
 	return knowledge.Imported{Tool: knowledge.ToolClaudeAI, ID: "generated-origin", StartedAt: &at, EndedAt: &later, Branches: 1,
 		Turns: []knowledge.ImportedTurn{
 			{Speaker: knowledge.SpeakerUser, At: &at, Text: "generated question"},
 			{Speaker: knowledge.SpeakerAssistant, At: &later, Text: "generated answer"},
 		},
-		Omitted: knowledge.ImportedOmitted{Turns: &zero, Results: &zero, CutTurns: &zero, Attachments: &one}}
+		Omitted: knowledge.ImportedOmitted{Attachments: 1}}
 }
 
 // The structure of an imported document is read as the reader: only where
@@ -45,7 +44,7 @@ func TestAnImportedDocumentsStructureIsReadAsTheReaderSeesIt(t *testing.T) {
 	owner := auth.Principal{Tenant: "tenant", Subject: "owner", Kind: auth.User, Scopes: []auth.Permission{auth.KnowledgeRead}}
 
 	got, err := p.ImportedOrigin(owner, "private", doc.ID)
-	if err != nil || got.Session == nil || got.Unknown != "" || !reflect.DeepEqual(*got.Session, want) || got.Document.Digest != doc.Digest {
+	if err != nil || got.Session == nil || got.Unknown != "" || !reflect.DeepEqual(*got.Session, want) || got.Document.Digest != doc.Digest || got.ImportedBy != "owner" {
 		t.Fatalf("origin = %+v, %v", got, err)
 	}
 	if got, err := p.ImportedOrigin(owner, "private", legacy.ID); err != nil || got.Session != nil || got.Unknown != knowledge.NotKept {
@@ -75,7 +74,7 @@ func TestAnImportedDocumentsStructureIsReadAsTheReaderSeesIt(t *testing.T) {
 	if _, err := p.Knowledge.ReplaceForScope("tenant", "private", doc.ID, "A generated chat, renamed", "# A generated chat", doc.Digest, p.now(), &cfg); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := p.ImportedOrigin(owner, "private", doc.ID); err != nil || got.Session != nil || got.Unknown != knowledge.Changed {
+	if got, err := p.ImportedOrigin(owner, "private", doc.ID); err != nil || got.Session != nil || got.Unknown != knowledge.Changed || got.ImportedBy != "owner" {
 		t.Fatalf("edited = %+v, %v", got, err)
 	}
 

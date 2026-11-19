@@ -95,6 +95,7 @@ import type {
   HandoffUpdate,
   Health,
   HealthComponent,
+  ImportKnowledgeDocumentBody,
   InboxCounts,
   InboxDeliveryInput,
   InboxMessage,
@@ -214,6 +215,7 @@ import type {
   QueryJournalResponse,
   QuestionAnswer,
   Readiness,
+  ReimportKnowledgeDocumentBody,
   RememberOutcomeDecisionBody,
   ReplaceKnowledgeDocumentTextBody,
   ResetAgentBody,
@@ -6583,7 +6585,7 @@ grounds nothing until a source of that name is made again.
     });
   }
 
-  /** The text is sent as a string. Binary uploads are not built. `humagen import sessions` also sends the structure of the session the document is written from, which is kept with the document in the same write and is not shown in any answer. */
+  /** The text is sent as a string. Binary uploads are not built. A session's structure is not taken here (400 for a `session` field); an import sends it to `POST /api/knowledge/{name}/imports`. */
   async addKnowledgeDocument(name: string, body: AddKnowledgeDocumentBody, options?: RequestOptions): Promise<KnowledgeDocument> {
     let path = "/api/knowledge/{name}/documents";
     path = path.replace("{name}", encodeURIComponent(String(name)));
@@ -6646,7 +6648,7 @@ grounds nothing until a source of that name is made again.
     });
   }
 
-  /** The document keeps its id, its URI, who added it and whether it is left out of search. The replacement is made only if the document's title and text are still the ones `digest` names, and is one write with that check. A document changed since answers 409 and nothing is written. Only documents of a manual source are replaced this way. */
+  /** The document keeps its id, its URI, who added it and whether it is left out of search. The replacement is made only if the document's title and text are still the ones `digest` names, and is one write with that check. A document changed since answers 409 and nothing is written. Only documents of a manual source are replaced this way. A session's structure is not taken here (400 for a `session` field), and one an import kept with the document is no longer trusted after this write, even if the old title and text are put back. */
   async replaceKnowledgeDocumentText(name: string, id: string, body: ReplaceKnowledgeDocumentTextBody, options?: RequestOptions): Promise<KnowledgeDocument> {
     let path = "/api/knowledge/{name}/documents/{id}/text";
     path = path.replace("{name}", encodeURIComponent(String(name)));
@@ -6660,6 +6662,50 @@ grounds nothing until a source of that name is made again.
 
   async replaceKnowledgeDocumentTextRaw(name: string, id: string, body: ReplaceKnowledgeDocumentTextBody, options?: RequestOptions): Promise<ApiResponse<KnowledgeDocument>> {
     let path = "/api/knowledge/{name}/documents/{id}/text";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<KnowledgeDocument>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** What `humagen import sessions` sends. The document and the session's structure are one write, and the structure is kept as the caller's assertion: the server keeps who sent it and when, and cannot verify that the session came from the tool it names. It is trusted only for this revision of the document. A structure that is not of the conversation the `uri` names (the tool, a colon and the id), thin or past a bound is refused with the document (400). The structures of one source's documents are at most 8 MiB together: past that the write is refused (400, `limit reached`). */
+  async importKnowledgeDocument(name: string, body: ImportKnowledgeDocumentBody, options?: RequestOptions): Promise<KnowledgeDocument> {
+    let path = "/api/knowledge/{name}/imports";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<KnowledgeDocument>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async importKnowledgeDocumentRaw(name: string, body: ImportKnowledgeDocumentBody, options?: RequestOptions): Promise<ApiResponse<KnowledgeDocument>> {
+    let path = "/api/knowledge/{name}/imports";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<KnowledgeDocument>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** As `PUT /api/knowledge/{name}/documents/{id}/text`, made only if the document's title and text are still the ones `digest` names, and in the same write the session's structure, kept as the caller's assertion. A refused replacement (409, or 400 for a structure that is not of the document's conversation, thin, or past a bound) changes neither. */
+  async reimportKnowledgeDocument(name: string, id: string, body: ReimportKnowledgeDocumentBody, options?: RequestOptions): Promise<KnowledgeDocument> {
+    let path = "/api/knowledge/{name}/imports/{id}";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<KnowledgeDocument>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async reimportKnowledgeDocumentRaw(name: string, id: string, body: ReimportKnowledgeDocumentBody, options?: RequestOptions): Promise<ApiResponse<KnowledgeDocument>> {
+    let path = "/api/knowledge/{name}/imports/{id}";
     path = path.replace("{name}", encodeURIComponent(String(name)));
     path = path.replace("{id}", encodeURIComponent(String(id)));
     return this.rawRequest<KnowledgeDocument>("PUT", path, {

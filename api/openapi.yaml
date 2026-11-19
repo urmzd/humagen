@@ -7425,7 +7425,7 @@ paths:
       operationId: addKnowledgeDocument
       tags: [knowledge]
       summary: Add a document to a source
-      description: The text is sent as a string. Binary uploads are not built. `humagen import sessions` also sends the structure of the session the document is written from, which is kept with the document in the same write and is not shown in any answer.
+      description: The text is sent as a string. Binary uploads are not built. A session's structure is not taken here (400 for a `session` field); an import sends it to `POST /api/knowledge/{name}/imports`.
       x-permission: knowledge:write
       parameters:
         - {$ref: "#/components/parameters/SourceName"}
@@ -7440,7 +7440,6 @@ paths:
                 title: {type: string}
                 uri: {type: string}
                 text: {type: string}
-                session: {$ref: "#/components/schemas/ImportedSession"}
       responses:
         "201":
           description: The document.
@@ -7504,7 +7503,7 @@ paths:
       operationId: replaceKnowledgeDocumentText
       tags: [knowledge]
       summary: Replace a document's title and text in place
-      description: The document keeps its id, its URI, who added it and whether it is left out of search. The replacement is made only if the document's title and text are still the ones `digest` names, and is one write with that check. A document changed since answers 409 and nothing is written. Only documents of a manual source are replaced this way.
+      description: The document keeps its id, its URI, who added it and whether it is left out of search. The replacement is made only if the document's title and text are still the ones `digest` names, and is one write with that check. A document changed since answers 409 and nothing is written. Only documents of a manual source are replaced this way. A session's structure is not taken here (400 for a `session` field), and one an import kept with the document is no longer trusted after this write, even if the old title and text are put back.
       x-permission: knowledge:write
       parameters:
         - {$ref: "#/components/parameters/SourceName"}
@@ -7522,9 +7521,77 @@ paths:
                 digest:
                   type: string
                   description: The document's `digest` as last read, or the empty string for a document that has none. Such a document is replaced once this way, and has a digest from then on.
-                session:
-                  $ref: "#/components/schemas/ImportedSession"
-                  description: The structure of the session the new text is written from, kept in the same write. A replacement without one leaves the structure kept before no longer trusted, since it names the old digest.
+      responses:
+        "200":
+          description: The document, with its new digest.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/KnowledgeDocument"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/knowledge/{name}/imports:
+    post:
+      operationId: importKnowledgeDocument
+      tags: [knowledge]
+      summary: Add an imported session's document with its structure
+      description: "What `humagen import sessions` sends. The document and the session's structure are one write, and the structure is kept as the caller's assertion: the server keeps who sent it and when, and cannot verify that the session came from the tool it names. It is trusted only for this revision of the document. A structure that is not of the conversation the `uri` names (the tool, a colon and the id), thin or past a bound is refused with the document (400). The structures of one source's documents are at most 8 MiB together: past that the write is refused (400, `limit reached`)."
+      x-permission: knowledge:import
+      parameters:
+        - {$ref: "#/components/parameters/SourceName"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, uri, text, session]
+              properties:
+                title: {type: string}
+                uri: {type: string}
+                text: {type: string}
+                session: {$ref: "#/components/schemas/ImportedSession"}
+      responses:
+        "201":
+          description: The document.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/KnowledgeDocument"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/knowledge/{name}/imports/{id}:
+    put:
+      operationId: reimportKnowledgeDocument
+      tags: [knowledge]
+      summary: Replace an imported session's document and its structure in place
+      description: "As `PUT /api/knowledge/{name}/documents/{id}/text`, made only if the document's title and text are still the ones `digest` names, and in the same write the session's structure, kept as the caller's assertion. A refused replacement (409, or 400 for a structure that is not of the document's conversation, thin, or past a bound) changes neither."
+      x-permission: knowledge:import
+      parameters:
+        - {$ref: "#/components/parameters/SourceName"}
+        - {$ref: "#/components/parameters/DocumentID"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, text, digest, session]
+              properties:
+                title: {type: string}
+                text: {type: string}
+                digest:
+                  type: string
+                  description: The document's `digest` as last read.
+                session: {$ref: "#/components/schemas/ImportedSession"}
       responses:
         "200":
           description: The document, with its new digest.
@@ -11864,6 +11931,7 @@ components:
         - alerts:write
         - knowledge:read
         - knowledge:write
+        - knowledge:import
         - evals:read
         - evals:write
         - billing:read
@@ -17181,9 +17249,13 @@ components:
           type: string
           format: date-time
           description: When its text was last replaced. Absent if never.
+        structure_bytes:
+          type: integer
+          minimum: 0
+          description: The size, as JSON, of the imported session's structure kept with this revision. Absent for a document no import wrote, or one edited since.
     ImportedSession:
       type: object
-      description: "The structure of a session `humagen import sessions` wrote a document from: its main path as data, kept with the revision of the document it is written with and trusted only while the document's digest is that revision's. A structure past a bound is refused with the document (400): the importer cuts and counts what it cut."
+      description: "The structure of a session `humagen import sessions` wrote a document from: its main path as data. It is the importer's assertion, kept with who sent it and when; the server cannot verify that the session came from the tool it names. It is trusted only for the revision of the document it was written with, and an ordinary edit leaves it untrusted. A structure past a bound is refused with the document (400): the importer cuts and counts what it cut."
       required: [tool, id, turns, branches, omitted]
       properties:
         tool: {type: string, enum: [claude, codex, chatgpt, claude-ai]}
@@ -17207,7 +17279,7 @@ components:
         branches:
           type: integer
           minimum: 0
-          description: How many branches of the conversation are not on the main path. None of their turns are kept.
+          description: How many branches of the conversation are not on the main path, every one counted. None of their turns are kept.
         omitted: {$ref: "#/components/schemas/ImportedOmitted"}
     ImportedTurn:
       type: object
@@ -17225,23 +17297,23 @@ components:
           description: The text is the opening of a longer turn.
     ImportedOmitted:
       type: object
-      description: What an import left out of a session's main path or cut. Each count is null when it is not known, which is never zero.
+      description: What an import left out of a session's main path or cut. Every count is exact and required.
       required: [turns, results, cut_turns, attachments]
       properties:
         turns:
-          type: [integer, "null"]
+          type: integer
           minimum: 0
           description: Turns other than tool results left out to fit, the oldest first.
         results:
-          type: [integer, "null"]
+          type: integer
           minimum: 0
           description: Tool results left out to fit, before any other turn.
         cut_turns:
-          type: [integer, "null"]
+          type: integer
           minimum: 0
-          description: Kept turns that hold only their opening.
+          description: Kept turns that hold only their opening, cut when the export was read (a long tool result or tool line) or to fit.
         attachments:
-          type: [integer, "null"]
+          type: integer
           minimum: 0
           description: Turns of the main path that carried files. No file is kept.
     CatalogColumn:

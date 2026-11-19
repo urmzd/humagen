@@ -8,16 +8,21 @@ import (
 // ImportedOrigin reads, as who, one document and the structure of the
 // session it was imported from: the tool, the conversation's id, its main
 // path with who said what and when, its start and end, and what the import
-// left out or cut. The structure is what an import sent in the write of the
-// document's revision that is read (knowledge.Imported), never something
-// read out of the document's text, title or URI, which a person may edit.
+// left out or cut. The structure is what an import sent through the import
+// routes in the write of the document's revision that is read
+// (knowledge.Imported), never something read out of the document's text,
+// title or URI, which a person may edit.
+//
+// It is the importer's assertion, not a verified record: the server cannot
+// tell that a session came from the tool it names. Origin.ImportedBy and
+// Origin.ImportedAt say who sent it, holding knowledge:import, and when; a
+// caller that shows the structure names them, and never calls it verified.
 //
 // A document with no trusted structure answers with Origin.Session nil and
-// Origin.Unknown saying why: knowledge.NotKept for one written before
-// structures were kept or not by an import, knowledge.Changed for one whose
-// title or text changed since its import, knowledge.Malformed for a kept
-// structure this version does not accept. A caller says the structure is
-// unknown, and does not guess one.
+// Origin.Unknown saying why: knowledge.NotKept for one no import wrote,
+// knowledge.Changed for one edited since its import (even back to the same
+// text), knowledge.Malformed for a kept structure this version does not
+// accept. A caller says the structure is unknown, and does not guess one.
 //
 // who must be able to read knowledge and see the source: a source of a
 // project the reader does not see, another tenant's, an excluded document

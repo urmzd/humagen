@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -15,8 +16,6 @@ import (
 // Every session below is made up for these tests.
 const sessionURI = "chatgpt:generated-0001"
 
-func count(n int) *int { return &n }
-
 func at(minute int) *time.Time {
 	t := time.Date(2026, 10, 7, 8, minute, 0, 0, time.UTC)
 	return &t
@@ -25,7 +24,7 @@ func at(minute int) *time.Time {
 // generated is a made-up session of turns alternating asked and answered.
 func generated(turns int) Imported {
 	im := Imported{Tool: ToolChatGPT, ID: "generated-0001", StartedAt: at(0), EndedAt: at(turns), Turns: []ImportedTurn{}, Branches: 2,
-		Omitted: ImportedOmitted{Turns: count(3), Results: count(1), CutTurns: count(0), Attachments: count(0)}}
+		Omitted: ImportedOmitted{Turns: 3, Results: 1, CutTurns: 0, Attachments: 0}}
 	for i := range turns {
 		speaker := SpeakerUser
 		if i%2 == 1 {
@@ -86,7 +85,7 @@ func TestAnImportedStructureIsKeptWithTheRevisionItWasWrittenWith(t *testing.T) 
 			t.Fatalf("origin = %+v, session = %+v", got, got.Session)
 		}
 		// What is read is a copy: a caller cannot change what is kept.
-		got.Session.Turns[0].Text, *got.Session.Omitted.Turns = "changed", 99
+		got.Session.Turns[0].Text, got.Session.StartedAt = "changed", at(59)
 		if again := origin(t, s, doc.ID); !reflect.DeepEqual(*again.Session, want) {
 			t.Fatalf("a caller changed what is kept: %+v", again.Session)
 		}
@@ -124,31 +123,42 @@ func TestAnEditOfAnImportedDocumentLeavesItsStructureUntrusted(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		if got := origin(t, s, doc.ID); got.Session == nil || got.ImportedBy != "ada" || got.ImportedAt == nil || !got.ImportedAt.Equal(now) || doc.StructureBytes == 0 {
+			t.Fatalf("imported: %+v, %+v", got, doc)
+		}
 		// An ordinary edit, of the title alone or of the text, carries no
-		// structure. The one kept names the digest it was written with,
-		// which is no longer the document's.
+		// structure and leaves the one kept untrusted, still naming who
+		// imported it. The structure itself is not kept.
 		for i, edit := range [][2]string{{"A chat, renamed", text}, {"A chat, renamed", text + "\n\nA note somebody added."}} {
 			was := origin(t, s, doc.ID).Document
 			edited, err := s.ReplaceForScope("acme", "handbook", doc.ID, edit[0], edit[1], was.Digest, now.Add(time.Duration(i+1)*time.Minute), nil)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got := origin(t, s, doc.ID); got.Session != nil || got.Unknown != Changed || got.Document.Digest != edited.Digest {
+			if got := origin(t, s, doc.ID); got.Session != nil || got.Unknown != Changed || got.ImportedBy != "ada" || got.Document.Digest != edited.Digest || edited.StructureBytes != 0 {
 				t.Fatalf("after edit %d: %+v", i, got)
 			}
-			if rec, ok := keptStructure(t, s, "acme", "handbook", doc.ID); !ok || rec.Document != doc.Digest {
+			if rec, ok := keptStructure(t, s, "acme", "handbook", doc.ID); !ok || !rec.Edited || rec.Session != nil {
 				t.Fatalf("after edit %d, kept = %+v", i, rec)
 			}
 		}
-		// The structure describes the title and text it was written with:
-		// put back to exactly those, the document is what it describes
-		// again. Any other text is not.
+		// Put back to exactly the title and text it was imported with, it
+		// is still not trusted: an edit came after the import, and only an
+		// import writes a trusted structure.
 		back, err := s.ReplaceForScope("acme", "handbook", doc.ID, "A generated chat", text, origin(t, s, doc.ID).Document.Digest, now.Add(time.Hour), nil)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got := origin(t, s, doc.ID); back.Digest != doc.Digest || got.Session == nil || !reflect.DeepEqual(*got.Session, generated(2)) {
+		if got := origin(t, s, doc.ID); back.Digest != doc.Digest || got.Session != nil || got.Unknown != Changed {
 			t.Fatalf("put back: %+v", got)
+		}
+		// An import writes it again, as the importer asserts it.
+		again, err := s.ReplaceImportedForScope("acme", "handbook", doc.ID, "A generated chat", text+" again", back.Digest, "bo", now.Add(2*time.Hour), nil, generated(2))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := origin(t, s, doc.ID); got.Session == nil || got.ImportedBy != "bo" || got.Document.Digest != again.Digest {
+			t.Fatalf("imported again: %+v", got)
 		}
 	})
 }
@@ -161,7 +171,7 @@ func TestAnImportReplacesADocumentAndItsStructureTogether(t *testing.T) {
 		}
 		// Refused from a digest the document does not have: neither the
 		// document nor its structure changes.
-		if _, err := s.ReplaceImportedForScope("acme", "handbook", doc.ID, "A generated chat", "four turns", "stale", now, nil, generated(4)); !errors.Is(err, ErrChanged) {
+		if _, err := s.ReplaceImportedForScope("acme", "handbook", doc.ID, "A generated chat", "four turns", "stale", "ada", now, nil, generated(4)); !errors.Is(err, ErrChanged) {
 			t.Fatalf("stale digest: err = %v", err)
 		}
 		if got := origin(t, s, doc.ID); got.Document.Digest != doc.Digest || got.Session == nil || len(got.Session.Turns) != 2 {
@@ -171,13 +181,13 @@ func TestAnImportReplacesADocumentAndItsStructureTogether(t *testing.T) {
 		// document's URI names.
 		other := generated(4)
 		other.ID = "generated-0002"
-		if _, err := s.ReplaceImportedForScope("acme", "handbook", doc.ID, "A generated chat", "four turns", doc.Digest, now, nil, other); !errors.Is(err, ErrInvalid) {
+		if _, err := s.ReplaceImportedForScope("acme", "handbook", doc.ID, "A generated chat", "four turns", doc.Digest, "ada", now, nil, other); !errors.Is(err, ErrInvalid) {
 			t.Fatalf("another conversation: err = %v", err)
 		}
 		if got := origin(t, s, doc.ID); got.Document.Digest != doc.Digest || got.Session == nil || len(got.Session.Turns) != 2 {
 			t.Fatalf("after a refusal: %+v", got)
 		}
-		grown, err := s.ReplaceImportedForScope("acme", "handbook", doc.ID, "A generated chat", "four turns", doc.Digest, now.Add(time.Minute), nil, generated(4))
+		grown, err := s.ReplaceImportedForScope("acme", "handbook", doc.ID, "A generated chat", "four turns", doc.Digest, "ada", now.Add(time.Minute), nil, generated(4))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -196,7 +206,7 @@ func TestAnImportReplacesADocumentAndItsStructureTogether(t *testing.T) {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				_, errs[i] = s.ReplaceImportedForScope("acme", "handbook", doc.ID, "A generated chat", fmt.Sprintf("state %d", i), grown.Digest, now.Add(time.Hour), nil, generated(10+i))
+				_, errs[i] = s.ReplaceImportedForScope("acme", "handbook", doc.ID, "A generated chat", fmt.Sprintf("state %d", i), grown.Digest, "ada", now.Add(time.Hour), nil, generated(10+i))
 			}()
 		}
 		wg.Wait()
@@ -325,7 +335,7 @@ func TestAStructurePastItsBoundsIsRefusedAndNothingIsWritten(t *testing.T) {
 			"a long turn":           change(func(im *Imported) { im.Turns[0].Text = big + "x" }),
 			"a zero byte":           change(func(im *Imported) { im.Turns[0].Text = "a\x00b" }),
 			"text that is not text": change(func(im *Imported) { im.Turns[0].Text = "a\xffb" }),
-			"a negative count":      change(func(im *Imported) { im.Omitted.Turns = count(-1) }),
+			"a negative count":      change(func(im *Imported) { im.Omitted.Turns = -1 }),
 			"negative branches":     change(func(im *Imported) { im.Branches = -1 }),
 			"too many bytes": change(func(im *Imported) {
 				for range MaxImportedBytes/MaxImportedTurnBytes + 1 {
@@ -347,13 +357,13 @@ func TestAStructurePastItsBoundsIsRefusedAndNothingIsWritten(t *testing.T) {
 		// At the bounds it is kept, with every count it states: one the
 		// import knows, and one it does not.
 		full := generated(MaxImportedTurns)
-		full.Omitted = ImportedOmitted{Turns: count(1200), Results: count(340), CutTurns: count(2), Attachments: nil}
+		full.Omitted = ImportedOmitted{Turns: 1200, Results: 340, CutTurns: 2, Attachments: 5}
 		doc, err := s.AddImportedForScope("acme", "handbook", "A generated chat", sessionURI, "the newest turns", "ada", now, nil, full)
 		if err != nil {
 			t.Fatal(err)
 		}
 		got := origin(t, s, doc.ID)
-		if got.Session == nil || len(got.Session.Turns) != MaxImportedTurns || !reflect.DeepEqual(got.Session.Omitted, full.Omitted) || got.Session.Omitted.Attachments != nil || *got.Session.Omitted.Turns != 1200 {
+		if got.Session == nil || len(got.Session.Turns) != MaxImportedTurns || !reflect.DeepEqual(got.Session.Omitted, full.Omitted) || got.Session.Omitted.Turns != 1200 || doc.StructureBytes != importedSize(full) {
 			t.Fatalf("at the bounds: %+v", got.Session)
 		}
 	})
@@ -380,19 +390,188 @@ func TestAStructureOfAnotherRevisionIsNotTrusted(t *testing.T) {
 		}
 		// Records no write of this store makes: a structure kept with
 		// another revision's digest, with none, and one that is not valid.
-		put(importedRecord{Session: generated(2), Document: Digest("A generated chat", "another text")})
+		put(importedRecord{Session: new(generated(2)), Document: Digest("A generated chat", "another text"), By: "ada", At: now})
 		if got := origin(t, s, doc.ID); got.Session != nil || got.Unknown != Changed {
 			t.Fatalf("another revision: %+v", got)
 		}
-		put(importedRecord{Session: generated(2)})
+		put(importedRecord{Session: new(generated(2)), By: "ada", At: now})
 		if got := origin(t, s, doc.ID); got.Session != nil || got.Unknown != Changed {
 			t.Fatalf("no digest: %+v", got)
 		}
 		bad := generated(2)
 		bad.ID = "generated-0002"
-		put(importedRecord{Session: bad, Document: doc.Digest})
+		put(importedRecord{Session: &bad, Document: doc.Digest, By: "ada", At: now})
 		if got := origin(t, s, doc.ID); got.Session != nil || got.Unknown != Malformed {
 			t.Fatalf("another conversation's: %+v", got)
 		}
+		// One that names nobody who imported it is not trusted either.
+		put(importedRecord{Session: new(generated(2)), Document: doc.Digest})
+		if got := origin(t, s, doc.ID); got.Session != nil || got.Unknown != Malformed {
+			t.Fatalf("no importer: %+v", got)
+		}
 	})
+}
+
+// marked is a structure whose first turn names the text it was written for.
+func marked(text string) Imported {
+	im := generated(2)
+	im.Turns[0].Text = "for " + text
+	return im
+}
+
+// Importers, ordinary editors and readers at once. Whenever a read answers
+// with a trusted structure, it is the one written with the text whose
+// digest the read's document carries.
+func TestAReaderNeverTrustsAStructureOfAnotherRevision(t *testing.T) {
+	eachSeeded(t, func(t *testing.T, s *Store) {
+		const title = "A generated chat"
+		doc, err := s.AddImportedForScope("acme", "handbook", title, sessionURI, "state 0", "ada", now, nil, marked("state 0"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var stop atomic.Bool
+		var wg sync.WaitGroup
+		var seq, trusted, writes atomic.Int64
+		write := func(imported bool) {
+			defer wg.Done()
+			for !stop.Load() {
+				got, err := s.OriginForScope("acme", "handbook", doc.ID, nil)
+				if err != nil {
+					continue
+				}
+				text := fmt.Sprintf("state %d", seq.Add(1))
+				if imported {
+					_, err = s.ReplaceImportedForScope("acme", "handbook", doc.ID, title, text, got.Document.Digest, "ada", now.Add(time.Minute), nil, marked(text))
+				} else {
+					_, err = s.ReplaceForScope("acme", "handbook", doc.ID, title, text, got.Document.Digest, now.Add(time.Minute), nil)
+				}
+				if err == nil {
+					writes.Add(1)
+				} else if !errors.Is(err, ErrChanged) && !errors.Is(err, state.ErrBusy) && !strings.Contains(err.Error(), "busy") {
+					t.Errorf("write: %v", err)
+				}
+			}
+		}
+		read := func() {
+			defer wg.Done()
+			for !stop.Load() {
+				got, err := s.OriginForScope("acme", "handbook", doc.ID, nil)
+				if err != nil || got.Session == nil {
+					continue
+				}
+				trusted.Add(1)
+				if text := strings.TrimPrefix(got.Session.Turns[0].Text, "for "); Digest(title, text) != got.Document.Digest {
+					t.Errorf("a structure written for %q was trusted with the document's digest %s", text, got.Document.Digest)
+					stop.Store(true)
+				}
+			}
+		}
+		for range 3 {
+			wg.Add(3)
+			go write(true)
+			go write(false)
+			go read()
+		}
+		time.Sleep(2 * time.Second)
+		stop.Store(true)
+		wg.Wait()
+		if writes.Load() == 0 || trusted.Load() == 0 {
+			t.Fatalf("the race was not exercised: %d writes, %d trusted reads", writes.Load(), trusted.Load())
+		}
+	})
+}
+
+// A document removed and added again as the same session, without a
+// structure, does not pick up the removed one's.
+func TestADocumentAddedAgainAfterItsRemovalHasNoStructure(t *testing.T) {
+	eachSeeded(t, func(t *testing.T, s *Store) {
+		doc, err := s.AddImportedForScope("acme", "handbook", "A generated chat", sessionURI, "same text", "ada", now, nil, marked("same text"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := s.Remove("acme", "handbook", doc.ID, now); err != nil {
+			t.Fatal(err)
+		}
+		again, err := s.AddForScope("acme", "handbook", "A generated chat", sessionURI, "same text", "ada", now, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := origin(t, s, again.ID); got.Session != nil || got.Unknown != NotKept || got.ImportedBy != "" {
+			t.Fatalf("added again without a structure, read %+v", got)
+		}
+	})
+}
+
+// The structures of one source are bounded together. Past the bound an
+// import is refused whole, with a reason that says which limit, and nothing
+// is cut or written; removing a document makes room again.
+func TestASourcesStructuresAreBoundedTogether(t *testing.T) {
+	eachSeeded(t, func(t *testing.T, s *Store) {
+		big := func(id string) Imported {
+			im := generated(0)
+			im.ID = id
+			for i := 0; importedSize(im) < MaxImportedBytes-MaxImportedTurnBytes-200; i++ {
+				im.Turns = append(im.Turns, ImportedTurn{Speaker: SpeakerAssistant, Text: strings.Repeat("g", MaxImportedTurnBytes-100)})
+			}
+			return im
+		}
+		fit := MaxImportedSourceBytes / importedSize(big("generated-0000"))
+		var last Document
+		for i := range fit {
+			id := fmt.Sprintf("generated-%04d", i)
+			doc, err := s.AddImportedForScope("acme", "handbook", "A generated chat", "chatgpt:"+id, "chat "+id, "ada", now, nil, big(id))
+			if err != nil {
+				t.Fatalf("structure %d of %d: %v", i, fit, err)
+			}
+			last = doc
+		}
+		before, _ := s.Documents("acme", "handbook")
+		_, err := s.AddImportedForScope("acme", "handbook", "A generated chat", "chatgpt:generated-over", "chat over", "ada", now, nil, big("generated-over"))
+		if !errors.Is(err, ErrInvalid) || !strings.Contains(err.Error(), "limit reached") || !strings.Contains(err.Error(), "structures") {
+			t.Fatalf("past the bound: %v", err)
+		}
+		// A replacement that would grow past it is refused the same way,
+		// and leaves the document and its structure as they were.
+		grown := big(strings.TrimPrefix(last.URI, "chatgpt:"))
+		grown.Turns = append(grown.Turns, ImportedTurn{Speaker: SpeakerUser, Text: strings.Repeat("g", MaxImportedTurnBytes-100)})
+		if importedSize(grown) <= MaxImportedBytes {
+			if _, err := s.ReplaceImportedForScope("acme", "handbook", last.ID, "A generated chat", "grown", last.Digest, "ada", now, nil, grown); err != nil && !strings.Contains(err.Error(), "limit reached") {
+				t.Fatalf("growing past the bound: %v", err)
+			}
+		}
+		if after, _ := s.Documents("acme", "handbook"); len(after) != len(before) {
+			t.Fatalf("a refused import changed the documents: %d, then %d", len(before), len(after))
+		}
+		if err := s.Remove("acme", "handbook", last.ID, now); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.AddImportedForScope("acme", "handbook", "A generated chat", "chatgpt:generated-over", "chat over", "ada", now, nil, big("generated-over")); err != nil {
+			t.Fatalf("after a removal: %v", err)
+		}
+	})
+}
+
+// A structure as an import route reads it: every field the contract
+// requires is there, and a thin or loose one is refused rather than read as
+// zeros.
+func TestAThinStructureIsRefusedAsTheContractRequires(t *testing.T) {
+	full := `{"tool":"chatgpt","id":"generated-0001","turns":[{"speaker":"user","text":"generated"}],"branches":0,"omitted":{"turns":0,"results":0,"cut_turns":0,"attachments":0}}`
+	if im, err := ParseImported([]byte(full)); err != nil || im.Tool != ToolChatGPT || len(im.Turns) != 1 {
+		t.Fatalf("a full structure: %+v, %v", im, err)
+	}
+	for name, raw := range map[string]string{
+		"no turns":         `{"tool":"chatgpt","id":"generated-0001","branches":0,"omitted":{"turns":0,"results":0,"cut_turns":0,"attachments":0}}`,
+		"null turns":       `{"tool":"chatgpt","id":"generated-0001","turns":null,"branches":0,"omitted":{"turns":0,"results":0,"cut_turns":0,"attachments":0}}`,
+		"no omitted":       `{"tool":"chatgpt","id":"generated-0001","turns":[],"branches":0}`,
+		"a count missing":  `{"tool":"chatgpt","id":"generated-0001","turns":[],"branches":0,"omitted":{"turns":0,"results":0,"cut_turns":0}}`,
+		"a null count":     `{"tool":"chatgpt","id":"generated-0001","turns":[],"branches":0,"omitted":{"turns":0,"results":0,"cut_turns":null,"attachments":0}}`,
+		"no branches":      `{"tool":"chatgpt","id":"generated-0001","turns":[],"omitted":{"turns":0,"results":0,"cut_turns":0,"attachments":0}}`,
+		"a turn's speaker": `{"tool":"chatgpt","id":"generated-0001","turns":[{"text":"generated"}],"branches":0,"omitted":{"turns":0,"results":0,"cut_turns":0,"attachments":0}}`,
+		"an unknown field": strings.Replace(full, `"branches":0`, `"branches":0,"trusted":true`, 1),
+		"not an object":    `[]`,
+	} {
+		if _, err := ParseImported([]byte(raw)); !errors.Is(err, ErrInvalid) {
+			t.Errorf("%s: err = %v", name, err)
+		}
+	}
 }

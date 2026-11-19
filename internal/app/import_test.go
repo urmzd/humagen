@@ -83,6 +83,12 @@ type importServer struct {
 	puts             map[string][]int
 	hold             string
 	reached, release chan struct{}
+	// older is a server from before the import routes: it answers them as
+	// a route it does not have. noImport is one whose token may not
+	// import. imported counts the writes that came through them.
+	older, noImport bool
+	imported        int
+	importTries     int
 }
 
 const importTenant, importPerson = "acme", "dev"
@@ -128,7 +134,11 @@ func (s *importServer) start(t *testing.T) *httptest.Server {
 	}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		who := r.Header.Get("Authorization")
-		replacing := r.Method == http.MethodPut && strings.HasSuffix(r.URL.Path, "/text")
+		parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/"), "/")
+		// The import routes write as the ordinary ones do, with the
+		// session's structure, which the ordinary ones refuse.
+		importing := len(parts) >= 3 && parts[0] == "knowledge" && parts[2] == "imports"
+		replacing := r.Method == http.MethodPut && (strings.HasSuffix(r.URL.Path, "/text") || importing)
 		s.mu.Lock()
 		if r.Method == http.MethodPost && r.URL.Path == "/api/library/skills" && s.skillGate > 0 {
 			s.gateWaiting++
@@ -162,7 +172,40 @@ func (s *importServer) start(t *testing.T) *httptest.Server {
 		if r.Method != http.MethodGet {
 			s.writes++
 		}
-		parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/"), "/")
+		if importing {
+			s.importTries++
+			switch {
+			case s.older:
+				w.WriteHeader(http.StatusNotFound)
+				fmt.Fprint(w, `{"error":"no such route"}`)
+				return
+			case s.noImport:
+				problem(http.StatusForbidden, "you need knowledge:import")
+				return
+			}
+			parts[2] = "documents"
+			if len(parts) == 4 {
+				parts = append(parts, "text")
+			}
+		}
+		// sent reads a document's body, and refuses one whose structure
+		// came on a route that does not take it, or did not come on one
+		// that needs it.
+		sent := func(into any) bool {
+			raw, _ := io.ReadAll(r.Body)
+			_ = json.Unmarshal(raw, into)
+			var shape struct{ Session json.RawMessage }
+			_ = json.Unmarshal(raw, &shape)
+			if (len(shape.Session) > 0) != importing {
+				w.WriteHeader(http.StatusBadRequest)
+				fmt.Fprint(w, `{"error":"request body is not the expected JSON"}`)
+				return false
+			}
+			if importing {
+				s.imported++
+			}
+			return true
+		}
 		switch {
 		case r.Method == "GET" && r.URL.Path == "/api/knowledge":
 			var sources []map[string]string
@@ -206,7 +249,9 @@ func (s *importServer) start(t *testing.T) *httptest.Server {
 				Digest      *string
 				Session     json.RawMessage
 			}
-			_ = json.NewDecoder(r.Body).Decode(&body)
+			if !sent(&body) {
+				return
+			}
 			answer := func(status int) {
 				if s.puts == nil {
 					s.puts = map[string][]int{}
@@ -228,9 +273,9 @@ func (s *importServer) start(t *testing.T) *httptest.Server {
 					return
 				}
 				answer(200)
-				// The structure the server trusts is the one the call
-				// carries, or none: one kept before names the digest of a
-				// text the document no longer has.
+				// The structure the server trusts is the one an import
+				// carries, or none: an ordinary edit leaves the one kept
+				// untrusted.
 				d["title"], d["text"], d["digest"], d["session"] = body.Title, body.Text, knowledge.Digest(body.Title, body.Text), string(body.Session)
 				fmt.Fprintf(w, `{"id":%q}`, d["id"])
 				return
@@ -242,7 +287,9 @@ func (s *importServer) start(t *testing.T) *httptest.Server {
 				Title, URI, Text string
 				Session          json.RawMessage
 			}
-			_ = json.NewDecoder(r.Body).Decode(&body)
+			if !sent(&body) {
+				return
+			}
 			doc := map[string]string{"title": body.Title, "uri": body.URI, "text": body.Text, "session": string(body.Session)}
 			if s.refused[doc["uri"]] {
 				problem(413, "too large")
@@ -557,7 +604,7 @@ func TestImportSessionsDryRunSendsNothingAndAFailureIsReported(t *testing.T) {
 	t.Setenv("IMPORT_TOKEN", "writer")
 	var buf bytes.Buffer
 	err = importCmd([]string{"sessions", "--home", home, "--server", server.URL, "--token", "env:IMPORT_TOKEN"}, &buf)
-	if err == nil || err.Error() != "1 sessions were not added" || !strings.Contains(buf.String(), "failed claude:c-2: POST /api/knowledge/sessions-claude-2026-10/documents: HTTP 413") || !strings.Contains(buf.String(), "Added 3 sessions") {
+	if err == nil || err.Error() != "1 sessions were not added" || !strings.Contains(buf.String(), "failed claude:c-2: POST /api/knowledge/sessions-claude-2026-10/imports: HTTP 413") || !strings.Contains(buf.String(), "Added 3 sessions") {
 		t.Fatalf("err = %v\n%s", err, buf.String())
 	}
 	for _, got := range api.auth {
@@ -2017,14 +2064,12 @@ func TestImportSessionsReplacesAnExportsDocumentInItsProjectsSourceWithoutProjec
 }
 
 // structureOf is the structure the server keeps with a document, read as
-// the server reads it: no field it does not know, and valid for a document
-// of that URI.
+// the import route reads it: every field the contract requires, none it
+// does not know, and valid for a document of that URI.
 func structureOf(t *testing.T, doc map[string]string) knowledge.Imported {
 	t.Helper()
-	var im knowledge.Imported
-	dec := json.NewDecoder(strings.NewReader(doc["session"]))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&im); err != nil {
+	im, err := knowledge.ParseImported([]byte(doc["session"]))
+	if err != nil {
 		t.Fatalf("%s: structure %q: %v", doc["uri"], doc["session"], err)
 	}
 	if err := knowledge.CheckImported(im, doc["uri"]); err != nil {
@@ -2064,7 +2109,7 @@ func TestImportSessionsSendsEachSessionsStructureWithItsDocument(t *testing.T) {
 			im.Turns[0].Speaker != knowledge.SpeakerUser || im.Turns[0].Text != tt.first || im.Turns[tt.turns-1].Speaker != knowledge.SpeakerAssistant || im.Turns[tt.turns-1].Text != tt.last {
 			t.Errorf("%s: structure = %+v", tt.source, im)
 		}
-		if o := im.Omitted; o.Turns == nil || *o.Turns != 0 || o.Results == nil || *o.Results != 0 || o.Attachments == nil || *o.Attachments != 1 {
+		if o := im.Omitted; o.Turns != 0 || o.Results != 0 || o.Attachments != 1 {
 			t.Errorf("%s: omitted = %+v", tt.source, o)
 		}
 	}
@@ -2125,5 +2170,62 @@ func TestImportSessionsReplacesASessionsStructureWithItsDocument(t *testing.T) {
 	run("added 0 updated 0 present 1 failed []")
 	if doc["session"] != "" || api.docWrites != 0 {
 		t.Fatalf("a document that reads the same was written: %d writes", api.docWrites)
+	}
+}
+
+// A server from before the import routes, or a token that may not import:
+// the first write finds it, every session's document is still written,
+// through the ordinary route and without its structure, and the run says
+// why, in its JSON and in words. It is not a failure; a session that could
+// not be written still is one.
+func TestImportSessionsWithoutAnImportRouteWritesEveryDocumentAndSaysSo(t *testing.T) {
+	for _, tt := range []struct {
+		name            string
+		older, noImport bool
+		reason          string
+	}{
+		{"an older server", true, false, "the server has no import route: it is older than this command"},
+		{"a token that may not import", false, true, "this token may not import sessions (knowledge:import)"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			api := &importServer{older: tt.older, noImport: tt.noImport}
+			server := api.start(t)
+			home, chatgpt, claudeAI := syntheticHome(t)
+			args := []string{"sessions", "--home", home, "--export", chatgpt, "--export", claudeAI, "--server", server.URL}
+			out, err := runImport(t, append(args, "--json")...)
+			var res struct {
+				Added             int    `json:"added"`
+				StructuresNotKept string `json:"structures_not_kept"`
+			}
+			_ = json.Unmarshal([]byte(out), &res)
+			if err != nil || counts(t, out) != "added 4 updated 0 present 0 failed []" || res.StructuresNotKept != tt.reason {
+				t.Fatalf("err = %v\n%s", err, out)
+			}
+			if api.importTries != 1 || api.imported != 0 {
+				t.Fatalf("%d calls to the import routes, %d taken: the first should find it, and no other try", api.importTries, api.imported)
+			}
+			for name, docs := range api.docs {
+				for _, d := range docs {
+					if d["session"] != "" || d["text"] == "" {
+						t.Fatalf("%s: %v", name, d)
+					}
+				}
+			}
+			// In words, and a session that could not be written is still a
+			// failure.
+			grow(t, home)
+			api.refused = map[string]bool{"chatgpt:gpt0r1g1-cccc-4ddd-8eee-000000000003": true}
+			api.mu.Lock()
+			for name := range api.docs {
+				if strings.Contains(name, "chatgpt") {
+					delete(api.docs, name)
+				}
+			}
+			api.mu.Unlock()
+			out, err = runImport(t, args...)
+			if err == nil || !strings.Contains(out, "Structures were not kept: "+tt.reason) || !strings.Contains(out, "failed chatgpt:") {
+				t.Fatalf("err = %v\n%s", err, out)
+			}
+		})
 	}
 }
