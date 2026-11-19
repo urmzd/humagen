@@ -1,6 +1,9 @@
 package platform
 
 import (
+	"fmt"
+	"time"
+
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/knowledge"
 )
@@ -39,4 +42,30 @@ func (p *Platform) ImportedOrigin(who auth.Principal, source, id string) (knowle
 		expected = &cfg
 	}
 	return p.Knowledge.OriginForScope(who.Tenant, source, id, expected)
+}
+
+// ImportDocument adds, as who, a session's document with the session's
+// structure, through the import route. The route checks knowledge:import;
+// writing a document's text is also writing knowledge, so who must hold
+// knowledge:write as well, or nothing is written (auth.ErrForbidden). The
+// structure is who's assertion and names them.
+func (p *Platform) ImportDocument(who auth.Principal, source, title, uri, text string, at time.Time, expected *knowledge.SourceConfig, session knowledge.Imported) (knowledge.Document, error) {
+	if !who.Can(auth.KnowledgeWrite) {
+		return knowledge.Document{}, fmt.Errorf("%w: importing a session writes a document, which needs knowledge:write as well as knowledge:import", auth.ErrForbidden)
+	}
+	return p.Knowledge.AddImportedForScope(who.Tenant, source, title, uri, text, who.Subject, at, expected, session)
+}
+
+// ReimportDocument replaces, as who, a session's document and its
+// structure in place, from the digest last read, under the same rule as
+// ImportDocument. It may replace any document of the source whose uri names
+// the session's tool and id, one a person added through the ordinary route
+// included: holding knowledge:write, who could edit that document anyway,
+// so this is no wider than an ordinary edit, and the structure it leaves
+// names who as its importer.
+func (p *Platform) ReimportDocument(who auth.Principal, source, id, title, text, digest string, at time.Time, expected *knowledge.SourceConfig, session knowledge.Imported) (knowledge.Document, error) {
+	if !who.Can(auth.KnowledgeWrite) {
+		return knowledge.Document{}, fmt.Errorf("%w: importing a session writes a document, which needs knowledge:write as well as knowledge:import", auth.ErrForbidden)
+	}
+	return p.Knowledge.ReplaceImportedForScope(who.Tenant, source, id, title, text, digest, who.Subject, at, expected, session)
 }

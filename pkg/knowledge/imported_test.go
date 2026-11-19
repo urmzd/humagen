@@ -575,3 +575,85 @@ func TestAThinStructureIsRefusedAsTheContractRequires(t *testing.T) {
 		}
 	}
 }
+
+// sized is a generated structure of id whose JSON is exactly n bytes.
+func sized(t *testing.T, id string, n int) Imported {
+	t.Helper()
+	im := generated(0)
+	im.ID = id
+	for importedSize(im) < n-MaxImportedTurnBytes-64 {
+		im.Turns = append(im.Turns, ImportedTurn{Speaker: SpeakerAssistant, Text: strings.Repeat("g", MaxImportedTurnBytes-100)})
+	}
+	im.Turns = append(im.Turns, ImportedTurn{Speaker: SpeakerUser, Text: "g"})
+	last := &im.Turns[len(im.Turns)-1]
+	last.Text = strings.Repeat("g", 1+n-importedSize(im))
+	if got := importedSize(im); got != n {
+		t.Fatalf("sized %d: got %d", n, got)
+	}
+	return im
+}
+
+// The source bound is at most MaxImportedSourceBytes: a structure that
+// lands the source exactly on it is kept, one a byte more is refused.
+func TestASourcesStructureBoundIsExactToTheByte(t *testing.T) {
+	eachSeeded(t, func(t *testing.T, s *Store) {
+		per := MaxImportedBytes - 1024
+		total := 0
+		for i := range MaxImportedSourceBytes / per {
+			id := fmt.Sprintf("generated-%04d", i)
+			doc, err := s.AddImportedForScope("acme", "handbook", "A generated chat", "chatgpt:"+id, "chat "+id, "ada", now, nil, sized(t, id, per))
+			if err != nil {
+				t.Fatalf("%d: %v", i, err)
+			}
+			total += doc.StructureBytes
+		}
+		rest := MaxImportedSourceBytes - total
+		if _, err := s.AddImportedForScope("acme", "handbook", "A generated chat", "chatgpt:generated-over", "over", "ada", now, nil, sized(t, "generated-over", rest+1)); err == nil || !strings.Contains(err.Error(), "limit reached") {
+			t.Fatalf("a byte past the bound: err = %v", err)
+		}
+		if _, err := s.AddImportedForScope("acme", "handbook", "A generated chat", "chatgpt:generated-edge", "edge", "ada", now, nil, sized(t, "generated-edge", rest)); err != nil {
+			t.Fatalf("exactly at the bound: %v", err)
+		}
+	})
+}
+
+// Imports racing into the last room of a source: what is kept never passes
+// the bound.
+func TestRacingImportsNeverPassTheSourceBound(t *testing.T) {
+	eachSeeded(t, func(t *testing.T, s *Store) {
+		per := MaxImportedBytes - 1024
+		for i := range MaxImportedSourceBytes/per - 2 {
+			id := fmt.Sprintf("generated-%04d", i)
+			if _, err := s.AddImportedForScope("acme", "handbook", "A generated chat", "chatgpt:"+id, "chat "+id, "ada", now, nil, sized(t, id, per)); err != nil {
+				t.Fatal(err)
+			}
+		}
+		racers := make([]Imported, 8)
+		for i := range racers {
+			racers[i] = sized(t, fmt.Sprintf("generated-race-%d", i), per)
+		}
+		var wg sync.WaitGroup
+		for i, im := range racers {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				_, err := s.AddImportedForScope("acme", "handbook", "A generated chat", "chatgpt:"+im.ID, fmt.Sprintf("race %d", i), "ada", now, nil, im)
+				if err != nil && !strings.Contains(err.Error(), "limit reached") {
+					t.Errorf("racer %d: %v", i, err)
+				}
+			}()
+		}
+		wg.Wait()
+		docs, err := s.Documents("acme", "handbook")
+		if err != nil {
+			t.Fatal(err)
+		}
+		sum := 0
+		for _, d := range docs {
+			sum += d.StructureBytes
+		}
+		if sum > MaxImportedSourceBytes {
+			t.Fatalf("racing imports passed the bound: %d", sum)
+		}
+	})
+}

@@ -89,6 +89,10 @@ type importServer struct {
 	older, noImport bool
 	imported        int
 	importTries     int
+	// foreignCorpora are corpora another person owns, by name: "hidden"
+	// is one this token may not read (404, then 409 when made), and
+	// "locked" one it reads and may not change (403 on a member).
+	foreignCorpora map[string]string
 }
 
 const importTenant, importPerson = "acme", "dev"
@@ -237,7 +241,11 @@ func (s *importServer) start(t *testing.T) *httptest.Server {
 		case len(parts) == 3 && parts[0] == "knowledge" && parts[2] == "documents" && r.Method == "GET":
 			out := []map[string]any{}
 			for _, d := range s.docs[parts[1]] {
-				out = append(out, map[string]any{"id": d["id"], "title": d["title"], "uri": d["uri"], "digest": d["digest"], "excluded": d["excluded"] == "true"})
+				row := map[string]any{"id": d["id"], "title": d["title"], "uri": d["uri"], "digest": d["digest"], "excluded": d["excluded"] == "true"}
+				if d["session"] != "" {
+					row["structure_bytes"] = len(d["session"])
+				}
+				out = append(out, row)
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"documents": out})
 		case len(parts) == 5 && parts[0] == "knowledge" && parts[2] == "documents" && parts[4] == "text" && r.Method == "PUT":
@@ -342,9 +350,17 @@ func (s *importServer) start(t *testing.T) *httptest.Server {
 				}
 				_ = json.NewEncoder(w).Encode(map[string]any{"name": name, "members": out})
 			}
+			foreign := ""
+			if len(parts) >= 2 {
+				foreign = s.foreignCorpora[parts[1]]
+			}
 			switch {
+			case r.Method == "GET" && len(parts) == 2 && foreign == "hidden":
+				problem(404, "no such corpus")
+			case r.Method == "POST" && len(parts) == 3 && parts[2] == "members" && foreign == "locked":
+				problem(403, "only the corpus's owner changes it")
 			case r.Method == "GET" && len(parts) == 2:
-				if _, ok := s.corpora[parts[1]]; !ok {
+				if _, ok := s.corpora[parts[1]]; !ok && foreign == "" {
 					problem(404, "no such corpus")
 					return
 				}
@@ -352,6 +368,10 @@ func (s *importServer) start(t *testing.T) *httptest.Server {
 			case r.Method == "POST" && len(parts) == 1:
 				var body struct{ Name string }
 				_ = json.NewDecoder(r.Body).Decode(&body)
+				if s.foreignCorpora[body.Name] != "" {
+					problem(409, "a corpus of that name exists")
+					return
+				}
 				s.corpora[body.Name] = []string{}
 				w.WriteHeader(201)
 				members(body.Name)
@@ -1049,6 +1069,9 @@ func counts(t *testing.T, out string) string {
 	out = fmt.Sprintf("added %v updated %v present %v failed %v", res["added"], res["updated"], res["present"], res["failed"])
 	if c, _ := res["conflicts"].([]any); len(c) > 0 {
 		out += fmt.Sprintf(" conflicts %v", c)
+	}
+	if n, _ := res["restored"].(float64); n > 0 {
+		out += fmt.Sprintf(" restored %v", n)
 	}
 	return out
 }
@@ -2161,15 +2184,22 @@ func TestImportSessionsReplacesASessionsStructureWithItsDocument(t *testing.T) {
 	}
 
 	// Kept with the same text and no structure, as a version before
-	// structures wrote it: nothing says the session changed, so nothing is
-	// written.
+	// structures wrote it, or after an edit that changed nothing: the
+	// structure is sent again with the text as it is, and the run after
+	// that writes nothing.
 	api.mu.Lock()
+	text := doc["text"]
 	doc["session"] = ""
 	api.mu.Unlock()
 	api.docWrites = 0
+	run("added 0 updated 0 present 0 failed [] restored 1")
+	if again := structureOf(t, doc); len(again.Turns) != len(now.Turns) || doc["text"] != text || api.docWrites != 1 {
+		t.Fatalf("restored: %d turns, %d writes, text changed: %v", len(again.Turns), api.docWrites, doc["text"] != text)
+	}
+	api.docWrites = 0
 	run("added 0 updated 0 present 1 failed []")
-	if doc["session"] != "" || api.docWrites != 0 {
-		t.Fatalf("a document that reads the same was written: %d writes", api.docWrites)
+	if api.docWrites != 0 {
+		t.Fatalf("a restored document was written again: %d writes", api.docWrites)
 	}
 }
 
@@ -2225,6 +2255,97 @@ func TestImportSessionsWithoutAnImportRouteWritesEveryDocumentAndSaysSo(t *testi
 			out, err = runImport(t, args...)
 			if err == nil || !strings.Contains(out, "Structures were not kept: "+tt.reason) || !strings.Contains(out, "failed chatgpt:") {
 				t.Fatalf("err = %v\n%s", err, out)
+			}
+		})
+	}
+}
+
+// A run that could not keep structures (a token that may not import) after a
+// session grew, and after a new session: the documents are written without
+// them. A later run that may import restores both, the replaced document and
+// the new one, without changing their text, and the run after that finds
+// them present.
+func TestImportSessionsRestoresTheStructuresARunCouldNotKeep(t *testing.T) {
+	api := &importServer{}
+	server := api.start(t)
+	home, chatgpt, _ := syntheticHome(t)
+	args := []string{"sessions", "--home", home, "--from", "claude", "--server", server.URL, "--json"}
+	run := func(want string) map[string]any {
+		t.Helper()
+		out, err := runImport(t, args...)
+		if got := counts(t, out); err != nil || got != want {
+			t.Fatalf("got %s (%v), want %s\n%s", got, err, want, out)
+		}
+		var res map[string]any
+		_ = json.Unmarshal([]byte(out), &res)
+		return res
+	}
+	run("added 1 updated 0 present 0 failed []")
+
+	// A writer who may not import: the claude session grew, and the
+	// export's session is new to the server.
+	api.noImport = true
+	grow(t, home)
+	args = []string{"sessions", "--home", home, "--from", "claude", "--export", chatgpt, "--server", server.URL, "--json"}
+	res := run("added 1 updated 1 present 0 failed []")
+	if res["structures_not_kept"] == "" || res["without_structure"] != float64(2) {
+		t.Fatalf("fallback run: %v", res)
+	}
+	for _, d := range append(api.docs["sessions-claude-2026-10"], api.docs["sessions-chatgpt-2026-10"]...) {
+		if d["session"] != "" {
+			t.Fatalf("a structure kept in fallback: %s", d["uri"])
+		}
+	}
+	texts := api.held()
+
+	// An importer: both restored, the text left as it was.
+	api.noImport = false
+	api.docWrites = 0
+	res = run("added 0 updated 0 present 0 failed [] restored 2")
+	if res["structures_not_kept"] != nil || res["without_structure"] != float64(0) || api.docWrites != 2 {
+		t.Fatalf("restoring run: %v, %d writes", res, api.docWrites)
+	}
+	for _, d := range append(api.docs["sessions-claude-2026-10"], api.docs["sessions-chatgpt-2026-10"]...) {
+		structureOf(t, d)
+	}
+	if strings.ReplaceAll(api.held(), "\x00", "") == strings.ReplaceAll(texts, "\x00", "") {
+		t.Fatal("no structure was written")
+	}
+	api.docWrites = 0
+	run("added 0 updated 0 present 2 failed []")
+	if api.docWrites != 0 {
+		t.Fatalf("a run after the restore wrote %d documents", api.docWrites)
+	}
+
+	// In words, in fallback: how many documents remain without one.
+	api.mu.Lock()
+	for _, d := range api.docs["sessions-claude-2026-10"] {
+		d["session"] = ""
+	}
+	api.mu.Unlock()
+	api.noImport = true
+	out, err := runImport(t, args[:len(args)-1]...)
+	if err != nil || !strings.Contains(out, "Structures were not kept: this token may not import sessions (knowledge:import). 1 documents remain without a structure") {
+		t.Fatalf("err = %v\n%s", err, out)
+	}
+}
+
+// A second person importing into the same corpus name finds it is another
+// person's (not theirs to read, 409 when made again, or not theirs to
+// change): their sources go in the next corpus, and no session fails.
+func TestImportSessionsFilesInTheNextCorpusWhenOneIsAnotherPersons(t *testing.T) {
+	for _, tt := range []struct{ name, foreign string }{{"not readable", "hidden"}, {"not changeable", "locked"}} {
+		t.Run(tt.name, func(t *testing.T) {
+			api := &importServer{foreignCorpora: map[string]string{"sessions": tt.foreign}}
+			server := api.start(t)
+			home, chatgpt, _ := syntheticHome(t)
+			out, err := runImport(t, "sessions", "--home", home, "--from", "none", "--export", chatgpt, "--server", server.URL, "--json")
+			var res struct {
+				Corpora []string `json:"corpora"`
+			}
+			_ = json.Unmarshal([]byte(out), &res)
+			if err != nil || counts(t, out) != "added 1 updated 0 present 0 failed []" || strings.Join(res.Corpora, ",") != "sessions-2" || len(api.corpora["sessions-2"]) != 1 {
+				t.Fatalf("err = %v, corpora %v\n%s", err, api.corpora, out)
 			}
 		})
 	}

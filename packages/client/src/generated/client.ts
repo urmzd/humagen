@@ -6671,7 +6671,7 @@ grounds nothing until a source of that name is made again.
     });
   }
 
-  /** What `humagen import sessions` sends. The document and the session's structure are one write, and the structure is kept as the caller's assertion: the server keeps who sent it and when, and cannot verify that the session came from the tool it names. It is trusted only for this revision of the document. A structure that is not of the conversation the `uri` names (the tool, a colon and the id), thin or past a bound is refused with the document (400). The structures of one source's documents are at most 8 MiB together: past that the write is refused (400, `limit reached`). */
+  /** What `humagen import sessions` sends. Besides this route's knowledge:import, the caller must hold knowledge:write, since the text is written too (403 otherwise). The document and the session's structure are one write, and the structure is kept as the caller's assertion: the server keeps who sent it and when, and cannot verify that the session came from the tool it names. It is trusted only for this revision of the document. A structure that is not of the conversation the `uri` names (the tool, a colon and the id), thin or past a bound is refused with the document (400). The structures of one source's documents are at most 8 MiB together: past that the write is refused (400, `limit reached`). */
   async importKnowledgeDocument(name: string, body: ImportKnowledgeDocumentBody, options?: RequestOptions): Promise<KnowledgeDocument> {
     let path = "/api/knowledge/{name}/imports";
     path = path.replace("{name}", encodeURIComponent(String(name)));
@@ -6692,7 +6692,7 @@ grounds nothing until a source of that name is made again.
     });
   }
 
-  /** As `PUT /api/knowledge/{name}/documents/{id}/text`, made only if the document's title and text are still the ones `digest` names, and in the same write the session's structure, kept as the caller's assertion. A refused replacement (409, or 400 for a structure that is not of the document's conversation, thin, or past a bound) changes neither. */
+  /** As `PUT /api/knowledge/{name}/documents/{id}/text`, and like the add, needing knowledge:write as well as this route's knowledge:import (403 otherwise). It may replace any document of the source whose `uri` names the session, one a person added included, as an ordinary edit could; the structure then names the caller. It is made only if the document's title and text are still the ones `digest` names, and in the same write the session's structure, kept as the caller's assertion. A refused replacement (409, or 400 for a structure that is not of the document's conversation, thin, or past a bound) changes neither. */
   async reimportKnowledgeDocument(name: string, id: string, body: ReimportKnowledgeDocumentBody, options?: RequestOptions): Promise<KnowledgeDocument> {
     let path = "/api/knowledge/{name}/imports/{id}";
     path = path.replace("{name}", encodeURIComponent(String(name)));

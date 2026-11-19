@@ -386,6 +386,15 @@ type sessionsResult struct {
 	// import route, or a token that may not import. Empty when every
 	// document this run wrote went with its structure.
 	StructuresNotKept string `json:"structures_not_kept,omitempty"`
+	// Restored are the sessions whose documents read as this run would
+	// write them and had no trusted structure (one an earlier run could not
+	// keep, or one an edit ended): this run sent them again through the
+	// import route, with their structure, leaving their text as it was.
+	Restored int `json:"restored"`
+	// WithoutStructure counts the documents of this run's sessions left
+	// without a trusted structure: written without one, or found without one
+	// and not restored. A later run that may import restores them.
+	WithoutStructure int `json:"without_structure"`
 }
 
 type importFailed struct {
@@ -473,7 +482,32 @@ func (k *sessionSink) write(method, importPath, plainPath string, body map[strin
 		k.res.StructuresNotKept = reason
 		delete(body, "session")
 	}
-	return k.api.do(k.ctx, method, plainPath, body, nil)
+	err := k.api.do(k.ctx, method, plainPath, body, nil)
+	if err == nil {
+		k.res.WithoutStructure++
+	}
+	return err
+}
+
+// restore sends a session's document again through the import route, with
+// its structure and the title and text it already has, when the server
+// keeps no trusted structure with it. It reports whether it did; a run that
+// cannot import counts the document as left without one.
+func (k *sessionSink) restore(was held, title, text string, s sessionimport.Session) (restored bool, err error) {
+	st, ok := s.Structure(structureLimits)
+	if !ok || k.res.StructuresNotKept != "" {
+		k.res.WithoutStructure++
+		return false, nil
+	}
+	err = k.api.do(k.ctx, http.MethodPut, "/api/knowledge/"+url.PathEscape(was.source)+"/imports/"+url.PathEscape(was.id), map[string]any{
+		"title": title, "text": text, "digest": was.digest, "session": st,
+	}, nil)
+	if reason := noImport(err); reason != "" {
+		k.res.StructuresNotKept = reason
+		k.res.WithoutStructure++
+		return false, nil
+	}
+	return err == nil, err
 }
 
 // held is a session's document as the server has it. A session is known by
@@ -484,6 +518,10 @@ func (k *sessionSink) write(method, importPath, plainPath string, body map[strin
 type held struct {
 	source, id string
 	digest     string
+	// structured is whether the server keeps a trusted structure with the
+	// document: its listing gives the structure's size, which is zero for
+	// one no import wrote and for one edited since.
+	structured bool
 }
 
 // load reads what the server already has under the prefix.
@@ -503,9 +541,10 @@ func (k *sessionSink) load() error {
 		}
 		var docs struct {
 			Documents []struct {
-				ID     string `json:"id"`
-				URI    string `json:"uri"`
-				Digest string `json:"digest"`
+				ID             string `json:"id"`
+				URI            string `json:"uri"`
+				Digest         string `json:"digest"`
+				StructureBytes int    `json:"structure_bytes"`
 			} `json:"documents"`
 		}
 		if err := k.api.do(k.ctx, http.MethodGet, "/api/knowledge/"+url.PathEscape(src.Name)+"/documents", nil, &docs); err != nil {
@@ -516,7 +555,7 @@ func (k *sessionSink) load() error {
 		k.count[src.Name] = len(docs.Documents)
 		for _, d := range docs.Documents {
 			if _, ok := k.have[d.URI]; d.URI != "" && !ok {
-				k.have[d.URI] = held{source: src.Name, id: d.ID, digest: d.Digest}
+				k.have[d.URI] = held{source: src.Name, id: d.ID, digest: d.Digest, structured: d.StructureBytes > 0}
 			}
 		}
 	}
@@ -750,15 +789,31 @@ func (k *sessionSink) replace(was held, title string, s sessionimport.Session) (
 	text := s.Markdown(k.c.maxBytes)
 	digest := knowledge.Digest(title, text)
 	// A document this run sent has no id here, and is as it was sent.
-	if was.id == "" || was.digest == digest {
+	if was.id == "" || was.digest == digest && was.structured {
 		k.res.Present++
 		return false
 	}
 	src := "/api/knowledge/" + url.PathEscape(was.source)
 	docs := src + "/documents"
-	err := k.write(http.MethodPut, src+"/imports/"+url.PathEscape(was.id), docs+"/"+url.PathEscape(was.id)+"/text", map[string]any{
-		"title": title, "text": text, "digest": was.digest,
-	}, s)
+	var err error
+	restoring := was.digest == digest
+	if restoring {
+		// It reads as this run would write it, and the server keeps no
+		// trusted structure with it: the structure is sent again.
+		var restored bool
+		if restored, err = k.restore(was, title, text, s); err == nil {
+			if restored {
+				k.res.Restored++
+			} else {
+				k.res.Present++
+			}
+			return false
+		}
+	} else {
+		err = k.write(http.MethodPut, src+"/imports/"+url.PathEscape(was.id), docs+"/"+url.PathEscape(was.id)+"/text", map[string]any{
+			"title": title, "text": text, "digest": was.digest,
+		}, s)
+	}
 	switch {
 	case err == nil:
 		k.have[s.URI()] = held{source: was.source}
@@ -993,6 +1048,11 @@ func (k *sessionSink) file() {
 			err = k.api.do(k.ctx, http.MethodPost, "/api/corpora", map[string]any{
 				"name": name, "title": "Imported sessions", "description": "Sessions imported from other assistants with humagen import sessions.",
 			}, &have)
+			if status(err) == http.StatusConflict {
+				// It is there and not this token's to read: another
+				// person's. The sources go in the next one.
+				continue
+			}
 		}
 		if err != nil {
 			fail(name, err)
@@ -1006,18 +1066,31 @@ func (k *sessionSink) file() {
 		}
 		room := maxCorpusMembers - len(have.Members)
 		var left []string
+		foreign := false
+	members:
 		for _, src := range sources {
 			switch {
 			case in[src]:
 			case room <= 0:
 				left = append(left, src)
 			default:
-				if err := k.api.do(k.ctx, http.MethodPost, "/api/corpora/"+url.PathEscape(name)+"/members", map[string]string{"kind": "source", "name": src}, nil); err != nil {
+				err := k.api.do(k.ctx, http.MethodPost, "/api/corpora/"+url.PathEscape(name)+"/members", map[string]string{"kind": "source", "name": src}, nil)
+				if status(err) == http.StatusForbidden && room == maxCorpusMembers-len(have.Members) {
+					// Readable and not this token's to change, and
+					// nothing added to it yet: the sources go in the
+					// next one.
+					foreign = true
+					break members
+				}
+				if err != nil {
 					fail(name, err)
 					return
 				}
 				room--
 			}
+		}
+		if foreign {
+			continue
 		}
 		k.res.Corpora = append(k.res.Corpora, name)
 		sources = left
@@ -1137,8 +1210,11 @@ func importSessions(ctx context.Context, c importOptions, api importAPI, out io.
 	if res.Updated > 0 {
 		fmt.Fprintf(out, "Updated %d sessions whose documents read differently now, in place.\n", res.Updated)
 	}
+	if res.Restored > 0 {
+		fmt.Fprintf(out, "Restored the structure of %d sessions whose documents read the same but had none kept with them.\n", res.Restored)
+	}
 	if res.StructuresNotKept != "" {
-		fmt.Fprintf(out, "Structures were not kept: %s. The documents were written without them, and a later run against a server that keeps them writes them only for sessions that change.\n", res.StructuresNotKept)
+		fmt.Fprintf(out, "Structures were not kept: %s. %d documents remain without a structure; a run that may import restores them.\n", res.StructuresNotKept, res.WithoutStructure)
 	}
 	if len(res.Conflicts) > 0 {
 		fmt.Fprintf(out, "Left %d sessions as another import wrote them while this one ran; nothing of this run's was written over them: %s.\n", len(res.Conflicts), strings.Join(res.Conflicts, ", "))

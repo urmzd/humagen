@@ -7,10 +7,12 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/knowledge"
+	"github.com/urmzd/humagen/pkg/projects"
 )
 
 // importedBody is a made-up session's structure as an import sends it.
@@ -148,5 +150,86 @@ func TestAWriterWhoMayNotImportCannotForgeAStructure(t *testing.T) {
 	want(t, f, cy, "PUT", docs+"/"+id+"/text", `{"title":"A generated chat","text":"generated text","digest":"`+fmt.Sprint(edited["digest"])+`"}`, http.StatusOK)
 	if got, _ := f.p.ImportedOrigin(reader, "chats", id); got.Session != nil || got.Unknown != knowledge.Changed {
 		t.Fatalf("put back by another writer: %+v", got)
+	}
+}
+
+// An import writes a document's text, so it needs knowledge:write as well as
+// the route's knowledge:import: a role holding import alone is refused on
+// both routes and nothing is written. Operators, who hold neither, are
+// refused; another workspace is not found; a caller cannot name the
+// importer, the time or the size; a source in a project the caller does not
+// see is not found; a managed copy is refused. A document a person added
+// through the ordinary route with a tool:id uri may be reimported, as it
+// could be edited, and its structure then names the importer.
+func TestAnImportNeedsKnowledgeWriteAsWellAndNamesItsImporter(t *testing.T) {
+	f := newFixtureGranting(t, platform.Config{},
+		"role importer extends viewer { allow import on knowledge }\n"+
+			"grant importer to subject \"00u-imp\"\n"+
+			"grant manager to subject \"00u-mo\"\n")
+	ana := f.person(t, "acme", "00u-ana", "Ana", "humagen-admins")
+	imp := f.person(t, "acme", "00u-imp", "Imp")
+	mo := f.person(t, "acme", "00u-mo", "Mo")
+	op := f.person(t, "acme", "00u-op", "Op", "humagen-operators")
+	bo := f.person(t, "globex", "00u-bo", "Bo", "humagen-admins")
+	reader := auth.Principal{Tenant: "acme", Subject: "00u-ana", Kind: auth.User, Scopes: []auth.Permission{auth.KnowledgeRead}}
+	want(t, f, ana, "POST", "/api/knowledge", `{"name":"chats"}`, http.StatusCreated)
+	docs, imports := "/api/knowledge/chats/documents", "/api/knowledge/chats/imports"
+	body := func(id, extra string) string {
+		return `{"title":"A chat","uri":"chatgpt:` + id + `","text":"generated text","session":` + importedBody(id, 2) + extra + `}`
+	}
+	count := func() int {
+		t.Helper()
+		return len(sliceOf(want(t, f, ana, "GET", docs, "", http.StatusOK)["documents"]))
+	}
+
+	held := want(t, f, mo, "POST", imports, body("generated-held", ""), http.StatusCreated)
+	id, digest := fmt.Sprint(held["id"]), fmt.Sprint(held["digest"])
+	// Import alone: refused on both routes, and nothing changes.
+	want(t, f, imp, "POST", imports, body("generated-imp", ""), http.StatusForbidden)
+	want(t, f, imp, "PUT", imports+"/"+id, `{"title":"A chat","text":"agents now read this","digest":"`+digest+`","session":`+importedBody("generated-held", 2)+`}`, http.StatusForbidden)
+	want(t, f, imp, "POST", docs, `{"title":"x","text":"y"}`, http.StatusForbidden)
+	if got, err := f.p.ImportedOrigin(reader, "chats", id); err != nil || count() != 1 || got.Document.Digest != digest || got.ImportedBy != "00u-mo" {
+		t.Fatalf("after an import-only role's tries: %d documents, %+v, %v", count(), got, err)
+	}
+	want(t, f, op, "POST", imports, body("generated-op", ""), http.StatusForbidden)
+	want(t, f, bo, "POST", imports, body("generated-bo", ""), http.StatusNotFound)
+
+	// The importer, the time and the size are the server's.
+	for name, b := range map[string]string{
+		"by":              strings.Replace(body("generated-by", ""), `"title"`, `"by":"mallory","title"`, 1),
+		"imported_by":     strings.Replace(body("generated-by", ""), `"title"`, `"imported_by":"mallory","title"`, 1),
+		"structure_bytes": strings.Replace(body("generated-by", ""), `"title"`, `"structure_bytes":1,"title"`, 1),
+	} {
+		if r, _ := f.do(t, nil, "POST", imports, mo, b); r.StatusCode != http.StatusBadRequest {
+			t.Errorf("%s: %d", name, r.StatusCode)
+		}
+	}
+
+	// A document a person added on the ordinary route, with a tool:id uri.
+	person := want(t, f, ana, "POST", docs, `{"title":"Notes","uri":"chatgpt:generated-person","text":"written by a person"}`, http.StatusCreated)
+	pid := fmt.Sprint(person["id"])
+	want(t, f, mo, "PUT", imports+"/"+pid, `{"title":"A chat","text":"generated text","digest":"`+fmt.Sprint(person["digest"])+`","session":`+importedBody("generated-person", 2)+`}`, http.StatusOK)
+	if got, _ := f.p.ImportedOrigin(reader, "chats", pid); got.Session == nil || got.ImportedBy != "00u-mo" {
+		t.Fatalf("reimported over a person's document: %+v", got)
+	}
+
+	// A source in a project Mo does not see, and a managed copy.
+	if _, err := f.p.Projects.Create("acme", projects.Project{Name: "Secret", Members: []projects.Entry{{Who: "00u-ana", Role: projects.Owner}}}, projects.Writer{By: "00u-ana", Govern: true}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.p.Knowledge.Create("acme", "hidden", "", "00u-ana", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.p.Knowledge.Configure("acme", "hidden", knowledge.SourceConfig{Mode: knowledge.Indexed, Provider: "manual", Owner: "00u-ana", Project: "Secret"}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	want(t, f, mo, "POST", "/api/knowledge/hidden/imports", body("generated-hidden", ""), http.StatusNotFound)
+	if _, err := f.p.Knowledge.Create("acme", "live", "", "00u-ana", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.p.Knowledge.Configure("acme", "live", knowledge.SourceConfig{Mode: knowledge.Live, Provider: "manual", Owner: "00u-ana"}, time.Now()); err == nil {
+		if r, out := f.do(t, nil, "POST", "/api/knowledge/live/imports", ana, body("generated-live", "")); r.StatusCode == http.StatusCreated {
+			t.Fatalf("imported into a managed copy: %v", out)
+		}
 	}
 }

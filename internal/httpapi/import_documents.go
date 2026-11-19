@@ -11,8 +11,9 @@ import (
 )
 
 // The import routes write a session's document together with the session's
-// structure (knowledge.Imported), under knowledge:import, which the
-// ordinary document routes never take. The server cannot verify that a
+// structure (knowledge.Imported). Each route checks knowledge:import, which
+// the ordinary document routes never take, and the platform also requires
+// knowledge:write, since the text is written too (Platform.ImportDocument). The server cannot verify that a
 // session came from the tool it names: the structure is what the caller
 // asserts, and the store keeps the caller's subject and the time with it.
 // An ordinary add or edit sends no structure, and an edit leaves the one
@@ -60,7 +61,7 @@ func (s *Server) importDocument(w http.ResponseWriter, r *http.Request, who auth
 		s.problem(w, err)
 		return
 	}
-	doc, err := s.P.Knowledge.AddImportedForScope(who.Tenant, r.PathValue("name"), body.Title, body.URI, body.Text, who.Subject, time.Now(), sourceConfigOf(src), session)
+	doc, err := s.P.ImportDocument(who, r.PathValue("name"), body.Title, body.URI, body.Text, time.Now(), sourceConfigOf(src), session)
 	if err != nil {
 		s.problem(w, err)
 		return
@@ -98,7 +99,7 @@ func (s *Server) reimportDocument(w http.ResponseWriter, r *http.Request, who au
 		s.problem(w, err)
 		return
 	}
-	doc, err := s.P.Knowledge.ReplaceImportedForScope(who.Tenant, r.PathValue("name"), r.PathValue("id"), body.Title, body.Text, *body.Digest, who.Subject, time.Now(), sourceConfigOf(src), session)
+	doc, err := s.P.ReimportDocument(who, r.PathValue("name"), r.PathValue("id"), body.Title, body.Text, *body.Digest, time.Now(), sourceConfigOf(src), session)
 	if err != nil {
 		s.problem(w, err)
 		return
