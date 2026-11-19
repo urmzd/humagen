@@ -580,18 +580,27 @@ with synthetic exports and read back from a local server; it is not checked
 against real exports of each tool, and file bytes are not imported
 ([import](../reference/cli.md#import-sessions-skills-and-agents)).
 
-Each imported session's document is kept with the session's structure, sent
-in the call that writes the document and written with it in one write
-(`pkg/knowledge/imported.go`): the tool, the conversation's id, its start and
-end, the main path's turns with speaker, time and text, branches not on it,
-and counts of what was left out or cut, at most 200 turns and 128 KiB, tool
-results dropped before turns and the oldest first. It is trusted only while
-the document's digest is the one it was written with, so an edit leaves it
-untrusted, and it goes with the document or its source. `ImportedOrigin` in
-`internal/platform` reads it as the reader, or says why it is unknown
-(`not_kept`, `changed`, `malformed`). Built and tested on memory and Postgres
-for the four formats' synthetic records; nothing reads it yet: continuing an
-imported conversation is designed, not built.
+Each imported session's document is kept with the session's structure,
+written through its own routes under `knowledge:import` (held by `manager`
+and `admin`) in the same write as the document (`pkg/knowledge/imported.go`,
+`internal/httpapi/import_documents.go`): the tool, the conversation's id, its
+start and end, the main path's turns with speaker, time and text, every
+branch not on it counted, and exact counts of what was left out or cut, at
+most 200 turns and 128 KiB a structure and 8 MiB a source, tool results
+dropped before turns and the oldest first. It is the importer's assertion,
+kept with who sent it and when; the server cannot verify the session. The
+ordinary document routes refuse a structure, and an ordinary edit leaves it
+untrusted for good, until an import writes it again; it goes with the
+document or its source. `ImportedOrigin` in `internal/platform` reads it as
+the reader, with its importer, or says why it is unknown (`not_kept`,
+`changed`, `malformed`). The CLI falls back to the ordinary routes, without
+structures, against a server that has no import routes or a token that may
+not import, and says so. Tested: the store on memory and Postgres, the four
+formats' generated records included (`pkg/knowledge`); the routes, the
+read function and the CLI against a real server and a stub older server on
+memory only (`internal/httpapi`, `internal/platform`, `internal/app`).
+Nothing reads it yet: continuing an imported conversation is designed, not
+built.
 
 A branch of a conversation on a coding agent (Claude Code or Codex) is
 answered by a session of its own: a session is continued only by a turn whose

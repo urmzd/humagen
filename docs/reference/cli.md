@@ -292,19 +292,34 @@ holds the later state of the session, so it does not choose. A conflict is not
 a failure: the exit code stays 0, and `conflicts` is empty in every other
 case. Run the import again from the copy you want kept.
 
-The call that adds or replaces a session's document also sends the session's
-structure, which the server keeps with that revision of the document in the
-same write and shows in no answer: the tool, the conversation's id, its start
-and end, the main path's turns in order with who said each and when, how many
-branches are not on it, and counts of what was left out or cut. It is made
-from the session's records, never from the document's text, so a line in an
-answer that reads as a heading or a speaker is text in that turn. It holds at
-most 200 turns, 16 KiB a turn and 128 KiB in all: tool results go first, then
-the oldest turns, and each count says how many went. The server trusts it
-only while the document's title and text are the ones it was written with,
-so an edit in the console leaves the document with no trusted structure until
-a run imports the session again. A document an earlier version wrote has
-none, and a run that finds it unchanged leaves it so.
+A session's document is written through the import routes
+(`POST /api/knowledge/{name}/imports`, `PUT /api/knowledge/{name}/imports/{id}`,
+under `knowledge:import`), which also take the session's structure and keep
+it with that revision of the document in the same write. The structure is
+the tool, the conversation's id, its start and end, the main path's turns in
+order with who said each and when, how many branches are not on it, every
+one counted, and exact counts of what was left out or cut (tool results and
+tool lines cut when the export was read included). It is made from the
+session's records, never from the document's text, so a line in an answer
+that reads as a heading or a speaker is text in that turn. It holds at most
+200 turns, 16 KiB a turn and 128 KiB in all: tool results go first, then
+the oldest turns, and each count says how many went. A source's structures
+are at most 8 MiB together; past that the server refuses the write and the
+run goes on in the next source, as it does when a source's text is full.
+
+The structure is what this run asserts, not something the server can
+verify: the server keeps who sent it and when, and trusts it only for the
+revision of the document it was written with. The ordinary document routes
+take no structure, and an edit of the document, by anyone, leaves it
+untrusted, even if the old title and text are put back, until a run imports
+the session again. A document an earlier version wrote has none, and a run
+that finds it unchanged leaves it so.
+
+Against a server older than this command, which has no import routes, or
+with a token that may not import, the first write finds out: every document
+is then written through the ordinary route without its structure, the run
+says so (`Structures were not kept: ...`, and `structures_not_kept` in its
+JSON), and that alone is not a failure.
 
 A source holds at most 200 documents and 8 MiB, so a busy month continues in
 `sessions-TOOL-YYYY-MM-2` and so on. The sources are put in a corpus, titled
@@ -461,7 +476,9 @@ and neither names anything on this server. So `agents` needs `--provider` and
 no tools: grant what it needs under Agents. The file's `model` and `tools` are
 not sent.
 
-`sessions` needs `knowledge:read` and `knowledge:write`; `skills` needs
+`sessions` needs `knowledge:read` and `knowledge:write`, and
+`knowledge:import` to keep each session's structure (the built-in `manager`
+and `admin` roles hold all three); `skills` needs
 `projects:read` and `projects:write`; `agents` needs `agents:read` and
 `agents:write`. When some sessions, skills or agents are not
 sent, the rest still are, each one left out is named with the reason, and the
