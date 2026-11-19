@@ -1,4 +1,4 @@
-import { replay as fold, settled } from "@humagen/adapter";
+import { endedRunTurn, replay as fold, settled } from "@humagen/adapter";
 import { emptyTurn, reduce, type Turn } from "@humagen/core";
 import { useEffect, useReducer, useRef } from "react";
 import { adapter, type Run, type RunEvent, turnOf } from "./adapter.ts";
@@ -21,7 +21,7 @@ export function replay(run: Run, events: RunEvent[]): Turn | undefined {
   return fold(run, events, { hue: hueOf });
 }
 
-export function useRunTurn(run: Run | undefined, history = false): Turn | undefined {
+export function useRunTurn(run: Run | undefined): Turn | undefined {
   const [state, dispatch] = useReducer(
     (s: { turn?: Turn; to: ReturnType<typeof adapter>; fresh: boolean }, a: Action) => {
       switch (a.type) {
@@ -50,15 +50,14 @@ export function useRunTurn(run: Run | undefined, history = false): Turn | undefi
     if (!run || !id || !agent) return;
     dispatch({ type: "seed", turn: turnOf(run) });
     // A run that has ended is read from the journal, which still has its reasoning
-    // and tool calls after the stream has let them go. Its record stands in until
-    // then, and stays if the journal holds nothing.
+    // and tool calls after the stream has let them go, in a session as anywhere
+    // else: without them a reloaded answer loses its steps and runs what it said
+    // before each one into its first line. Its record stands in until then, and
+    // stays if the journal no longer holds the run whole.
     if (isEnded(run)) {
-      if (run.thread?.startsWith("s_") && !history) return;
       let on = true;
-      api
-        .runEvents(id)
-        .then(({ events }) => {
-          const turn = replay(run, events);
+      endedRunTurn(run, api.runEvents, { hue: hueOf })
+        .then((turn) => {
           if (on && turn) dispatch({ type: "seed", turn });
         })
         .catch(() => {});
@@ -84,7 +83,7 @@ export function useRunTurn(run: Run | undefined, history = false): Turn | undefi
         onEvent: (event) => dispatch({ type: "event", event }),
       },
     );
-  }, [id, agent, history]);
+  }, [id, agent]);
 
   if (!run || !state.turn) return undefined;
   const recorded = turnOf(run);
