@@ -20,11 +20,11 @@ source grants remain independent of an agent-call grant. The ledger decides
 the accepted run's outcome and usage is recorded at the run's place.
 
 See [agent operations](../architecture/agent-operations.md),
-[call primitive](../../pkg/call/call.go),
-[placement and admission](../../internal/platform/admit.go),
-[handoff recording](../../internal/platform/handoffs.go),
-[call policy](../../internal/platform/call_policy.go) and
-[usage accounting](../../pkg/usage/usage.go).
+[call primitive](https://github.com/urmzd/humagen/blob/main/pkg/call/call.go),
+[placement and admission](https://github.com/urmzd/humagen/blob/main/internal/platform/admit.go),
+[handoff recording](https://github.com/urmzd/humagen/blob/main/internal/platform/handoffs.go),
+[call policy](https://github.com/urmzd/humagen/blob/main/internal/platform/call_policy.go) and
+[usage accounting](https://github.com/urmzd/humagen/blob/main/pkg/usage/usage.go).
 
 Merely changing the handoff's project or accepting a destination argument in
 the current child edge would not establish a destination execution boundary.

@@ -156,7 +156,7 @@ are included in context so the next answer can account for feedback. Reactions
 do not start runs or grant permission to change code. Reads require the token's Issues and Pull
 requests permissions. GitHub's 3,000-file PR API limit still applies.
 
-The [agent template](../../examples/github-review/agent.json) grants this read
+The [agent template](https://github.com/urmzd/humagen/blob/main/examples/github-review/agent.json) grants this read
 tool and specifies the structured review contract. Replace `YOUR_MODEL_ID`
 with a model available to your configured Anthropic provider, then register it:
 
@@ -250,7 +250,7 @@ Explicit delivery overrides retain their configured destination.
 ## Requested fixes
 
 Enable mutations and register the optional
-[fixer spec](../../examples/github-review/fixer.json) after configuring its model:
+[fixer spec](https://github.com/urmzd/humagen/blob/main/examples/github-review/fixer.json) after configuring its model:
 
 ```sh
 export HUMAGEN_GITHUB_MUTATIONS=true
@@ -324,7 +324,7 @@ Run the formatter without a GitHub token or model:
 go run ./examples/github-review
 ```
 
-The [rendered preview](../../examples/github-review/preview.md) uses synthetic
+The [rendered preview](https://github.com/urmzd/humagen/blob/main/examples/github-review/preview.md) uses synthetic
 findings to demonstrate severity counts, comments, the aligned evidence table,
 related concepts, and native feedback instructions. It is not a repository review.
 

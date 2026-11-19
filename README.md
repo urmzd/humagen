@@ -191,6 +191,15 @@ make tilt
 
 ## Documentation
 
+[Start with Humagen](docs/README.md) to render a local review and open your first session.
+
+Build the documentation from the repository root with [uv](https://docs.astral.sh/uv/). The static site is written to `site/`. The preview command prints the local address.
+
+```sh
+uvx --from zensical==0.1.2 zensical build
+uvx --from zensical==0.1.2 zensical serve
+```
+
 - [Roadmap](docs/plans/roadmap.md)
 - [Architecture and status](docs/architecture/overview.md)
 - [API contract and events](docs/reference/api.md)
