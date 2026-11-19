@@ -598,7 +598,11 @@ the reader, with its importer, or says why it is unknown (`not_kept`,
 `changed`, `malformed`). The CLI falls back to the ordinary routes, without
 structures, against a server that has no import routes or a token that may
 not import, says so with how many documents remain without one, and a later
-run that may import restores them (`restored`). Tested: the store on memory
+run that may import restores them (`restored`), writing the structure alone:
+no new embedding, no new content version. A restore refused for lack of
+room among a source's structures leaves the document present and counted
+(`structures_full`), and a token without `knowledge:write` fails the run
+with that reason instead of falling back. Tested: the store on memory
 and Postgres, the four formats' generated records included
 (`pkg/knowledge`); the routes, the read function and the CLI against a real
 server and a stub older server on memory only (`internal/httpapi`,

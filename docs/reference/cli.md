@@ -318,7 +318,14 @@ the session again. A run that may import and finds a session's document
 reading as it would write it, with no trusted structure kept (one an earlier
 version or a run without `knowledge:import` wrote, or one an edit left
 untrusted), sends it again through the import route with the text as it is,
-and counts it `restored`, apart from `updated`. A reimport may also replace a
+and counts it `restored`, apart from `updated`: the server then writes the
+structure alone, so the document is not embedded again and its source does
+not read as changed. A restore refused because the source's structures are
+at their bound is not a failure: the document stays present and unchanged,
+is counted in `without_structure`, and the run names the source once
+(`structures_full`). A restore that loses to another writer, where the
+document then reads the same and still has no structure, is counted the
+same way. A reimport may also replace a
 document a person added through the ordinary route with a `TOOL:ID` uri: it
 takes `knowledge:write`, which could edit that document anyway, and the
 structure then names the importer.
@@ -329,11 +336,17 @@ is then written through the ordinary route without its structure, the run
 says so (`Structures were not kept: ...`, and `structures_not_kept` in its
 JSON), with how many of its documents remain without a structure
 (`without_structure`), and that alone is not a failure. A later run that may
-import restores them.
+import restores them. A token that may import and may not write knowledge
+does not fall back, since an ordinary write would be refused too: the
+server's refusal says `you need knowledge:write`, and every session fails
+with that reason.
 
 When the corpus a run would file its sources in is another person's (one it
 may not read, or may not change), the sources go in the next one,
-`sessions-2` and so on, and no session is counted as failed.
+`sessions-2` and so on, and no session is counted as failed. When every name
+up to `sessions-20` is another person's or full, the sources are left out of
+any corpus and the run says so once (`not_in_corpus`, with
+`not_in_corpus_reason`).
 
 A source holds at most 200 documents and 8 MiB, so a busy month continues in
 `sessions-TOOL-YYYY-MM-2` and so on. The sources are put in a corpus, titled
