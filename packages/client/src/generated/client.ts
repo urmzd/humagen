@@ -6583,7 +6583,7 @@ grounds nothing until a source of that name is made again.
     });
   }
 
-  /** The text is sent as a string. Binary uploads are not built. */
+  /** The text is sent as a string. Binary uploads are not built. `humagen import sessions` also sends the structure of the session the document is written from, which is kept with the document in the same write and is not shown in any answer. */
   async addKnowledgeDocument(name: string, body: AddKnowledgeDocumentBody, options?: RequestOptions): Promise<KnowledgeDocument> {
     let path = "/api/knowledge/{name}/documents";
     path = path.replace("{name}", encodeURIComponent(String(name)));

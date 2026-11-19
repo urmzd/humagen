@@ -59,6 +59,16 @@ func (ts *turns) add(role, text string, at time.Time, id, call string) {
 	*ts = append(*ts, Turn{Role: role, Text: text, At: at, ID: id, Call: call})
 }
 
+// result appends what a tool gave back, cut to MaxResult, and marks it cut
+// when it was.
+func (ts *turns) result(text string, at time.Time, id, call string) {
+	n := len(*ts)
+	ts.add("result", result(text), at, id, call)
+	if len(*ts) > n && len(strings.TrimSpace(text)) > MaxResult {
+		(*ts)[n].Cut = true
+	}
+}
+
 // attach names the files a message carried, on the turn that holds what the
 // message said, or on a turn of its own when it said nothing.
 func (ts *turns) attach(role string, files []attachment, at time.Time, id string) {

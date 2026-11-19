@@ -165,16 +165,18 @@ type Store struct {
 }
 
 // stored is one record: a source, a document, a document's passages or
-// vectors, a name's content clock, or the stamp every new source moves. A
-// document's passages are written when it is added and when its text is
-// replaced, and its record again whenever it changes.
+// vectors, the structure of the session it was imported from, a name's
+// content clock, or the stamp every new source moves. A document's passages
+// are written when it is added and when its text is replaced, and its record
+// again whenever it changes.
 type stored struct {
-	Clock    *contentClock `json:"clock,omitempty"`
-	Source   *Source       `json:"source,omitempty"`
-	Vectors  *vectorRecord `json:"vectors,omitempty"`
-	Document *Document     `json:"document,omitempty"`
-	Passages []string      `json:"passages,omitempty"`
-	Stamp    int64         `json:"stamp,omitempty"`
+	Clock    *contentClock   `json:"clock,omitempty"`
+	Imported *importedRecord `json:"imported,omitempty"`
+	Source   *Source         `json:"source,omitempty"`
+	Vectors  *vectorRecord   `json:"vectors,omitempty"`
+	Document *Document       `json:"document,omitempty"`
+	Passages []string        `json:"passages,omitempty"`
+	Stamp    int64           `json:"stamp,omitempty"`
 }
 
 // namespace is where sources are kept. The tenant is the shard key; within
@@ -184,6 +186,8 @@ type stored struct {
 //	doc/<name>/<seq>       a document, numbered in the order it was added
 //	text/<name>/<seq>      its passages
 //	vec/<name>/<seq>       their vectors
+//	imported/<name>/<seq>  the structure of the session it was imported
+//	                       from, for a document an import wrote (imported.go)
 //	version/<name>         the name's content clock, kept after a delete
 //	head                   a stamp every new source moves, so two processes
 //	                       creating sources at once cannot both count under
@@ -568,6 +572,7 @@ func (s *Store) deleteWithScope(tenant, name string, expected *SourceConfig, gua
 			b.Delete(tenant, docKey(name, d.seq))
 			b.Delete(tenant, textKey(name, d.seq))
 			b.Delete(tenant, vecKey(name, d.seq))
+			b.Delete(tenant, importedKey(name, d.seq))
 		}
 		b.DeleteAt(tenant, sourceKey(name), at)
 		putClock(b, tenant, contentClock{Name: name, Value: version, Seq: nextSeq(clk, docs) - 1}, clkAt)
@@ -683,7 +688,7 @@ func (s *Store) documents(tenant, name string, expected *SourceConfig, guard boo
 
 // Add cuts a document into passages and stores it.
 func (s *Store) Add(tenant, name, title, uri, text, by string, at time.Time) (Document, error) {
-	return s.add(tenant, name, title, uri, text, by, at, nil, false)
+	return s.add(tenant, name, title, uri, text, by, at, nil, false, nil)
 }
 
 // AddForScope inserts only while the source retains the exact expected public
@@ -692,10 +697,12 @@ func (s *Store) Add(tenant, name, title, uri, text, by string, at time.Time) (Do
 // so a concurrent Configure cannot broaden the audience or replace the source
 // authority between them.
 func (s *Store) AddForScope(tenant, name, title, uri, text, by string, at time.Time, expected *SourceConfig) (Document, error) {
-	return s.add(tenant, name, title, uri, text, by, at, expected, true)
+	return s.add(tenant, name, title, uri, text, by, at, expected, true, nil)
 }
 
-func (s *Store) add(tenant, name, title, uri, text, by string, at time.Time, expected *SourceConfig, guard bool) (Document, error) {
+// add stores a document, and with it the structure of the session it was
+// imported from when session is given.
+func (s *Store) add(tenant, name, title, uri, text, by string, at time.Time, expected *SourceConfig, guard bool, session *Imported) (Document, error) {
 	title, text = strings.TrimSpace(title), strings.TrimSpace(text)
 	switch {
 	case title == "":
@@ -759,6 +766,7 @@ func (s *Store) add(tenant, name, title, uri, text, by string, at time.Time, exp
 		b := s.kept.Batch()
 		b.Put(tenant, textKey(name, seq), stored{Passages: texts})
 		b.Create(tenant, docKey(name, seq), stored{Document: doc})
+		putImported(b, tenant, name, seq, session, doc.Digest)
 		b.PutAt(tenant, sourceKey(name), stored{Source: &meta}, srcAt)
 		putClock(b, tenant, contentClock{Name: name, Value: version, Seq: seq}, clkAt)
 		return b.Commit()
@@ -780,8 +788,17 @@ func (s *Store) add(tenant, name, title, uri, text, by string, at time.Time, exp
 // The condition, the new passages and the document's record are one write
 // at the version of the source read, as an insertion is: a failed
 // replacement leaves the document as it was, and of two made at once from
-// the same digest one is refused. The old vectors go with the old text.
+// the same digest one is refused. The old vectors go with the old text. The
+// structure of a session the document was imported from is kept as it was:
+// it names the digest it was written with, which an edit changes, so it is
+// no longer trusted (Store.OriginForScope says Changed).
 func (s *Store) ReplaceForScope(tenant, name, id, title, text, digest string, at time.Time, expected *SourceConfig) (Document, error) {
+	return s.replace(tenant, name, id, title, text, digest, at, expected, nil)
+}
+
+// replace replaces a document's title and text, and in the same write its
+// structure with session when one is given.
+func (s *Store) replace(tenant, name, id, title, text, digest string, at time.Time, expected *SourceConfig, session *Imported) (Document, error) {
 	title, text = strings.TrimSpace(title), strings.TrimSpace(text)
 	switch {
 	case title == "":
@@ -815,6 +832,11 @@ func (s *Store) ReplaceForScope(tenant, name, id, title, text, digest string, at
 		if row.doc.Digest != digest {
 			return ErrChanged
 		}
+		if session != nil {
+			if err := CheckImported(*session, row.doc.URI); err != nil {
+				return err
+			}
+		}
 		doc := row.doc
 		stamp := at
 		doc.Title, doc.Bytes, doc.Passages, doc.Digest, doc.UpdatedAt = title, len(text), len(texts), Digest(title, text), &stamp
@@ -846,6 +868,7 @@ func (s *Store) ReplaceForScope(tenant, name, id, title, text, digest string, at
 		b.Put(tenant, textKey(name, row.seq), stored{Passages: texts})
 		b.Delete(tenant, vecKey(name, row.seq))
 		b.PutAt(tenant, docKey(name, row.seq), stored{Document: &doc}, row.version)
+		putImported(b, tenant, name, row.seq, session, doc.Digest)
 		b.PutAt(tenant, sourceKey(name), stored{Source: &meta}, srcAt)
 		putClock(b, tenant, contentClock{Name: name, Value: version, Seq: max(clk.Seq, nextSeq(clk, docs)-1)}, clkAt)
 		if err := b.Commit(); err != nil {
@@ -908,6 +931,7 @@ func (s *Store) removeWithScope(tenant, name, id string, at time.Time, expected 
 		b.DeleteAt(tenant, docKey(name, gone.seq), gone.version)
 		b.Delete(tenant, textKey(name, gone.seq))
 		b.Delete(tenant, vecKey(name, gone.seq))
+		b.Delete(tenant, importedKey(name, gone.seq))
 		b.PutAt(tenant, sourceKey(name), stored{Source: &next}, srcAt)
 		putClock(b, tenant, contentClock{Name: name, Value: version, Seq: max(clk.Seq, nextSeq(clk, docs)-1, gone.seq)}, clkAt)
 		return b.Commit()

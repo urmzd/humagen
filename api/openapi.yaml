@@ -7425,7 +7425,7 @@ paths:
       operationId: addKnowledgeDocument
       tags: [knowledge]
       summary: Add a document to a source
-      description: The text is sent as a string. Binary uploads are not built.
+      description: The text is sent as a string. Binary uploads are not built. `humagen import sessions` also sends the structure of the session the document is written from, which is kept with the document in the same write and is not shown in any answer.
       x-permission: knowledge:write
       parameters:
         - {$ref: "#/components/parameters/SourceName"}
@@ -7440,6 +7440,7 @@ paths:
                 title: {type: string}
                 uri: {type: string}
                 text: {type: string}
+                session: {$ref: "#/components/schemas/ImportedSession"}
       responses:
         "201":
           description: The document.
@@ -7521,6 +7522,9 @@ paths:
                 digest:
                   type: string
                   description: The document's `digest` as last read, or the empty string for a document that has none. Such a document is replaced once this way, and has a digest from then on.
+                session:
+                  $ref: "#/components/schemas/ImportedSession"
+                  description: The structure of the session the new text is written from, kept in the same write. A replacement without one leaves the structure kept before no longer trusted, since it names the old digest.
       responses:
         "200":
           description: The document, with its new digest.
@@ -17177,6 +17181,69 @@ components:
           type: string
           format: date-time
           description: When its text was last replaced. Absent if never.
+    ImportedSession:
+      type: object
+      description: "The structure of a session `humagen import sessions` wrote a document from: its main path as data, kept with the revision of the document it is written with and trusted only while the document's digest is that revision's. A structure past a bound is refused with the document (400): the importer cuts and counts what it cut."
+      required: [tool, id, turns, branches, omitted]
+      properties:
+        tool: {type: string, enum: [claude, codex, chatgpt, claude-ai]}
+        id:
+          type: string
+          minLength: 1
+          description: The conversation's id in that tool, at most 256 bytes with no control characters. The document's `uri` is the tool, a colon and this id.
+        child:
+          type: boolean
+          description: Set on a session another session started. A person did not write its user turns.
+        started_at: {type: string, format: date-time}
+        ended_at:
+          type: string
+          format: date-time
+          description: When the main path was last added to.
+        turns:
+          type: array
+          maxItems: 200
+          description: The turns of the main path that were kept, in order, at most 131072 bytes as JSON in all.
+          items: {$ref: "#/components/schemas/ImportedTurn"}
+        branches:
+          type: integer
+          minimum: 0
+          description: How many branches of the conversation are not on the main path. None of their turns are kept.
+        omitted: {$ref: "#/components/schemas/ImportedOmitted"}
+    ImportedTurn:
+      type: object
+      description: One turn of an imported session's main path.
+      required: [speaker, text]
+      properties:
+        speaker: {type: string, enum: [user, assistant, tool, result]}
+        at: {type: string, format: date-time}
+        text:
+          type: string
+          minLength: 1
+          description: What was said, at most 16384 bytes.
+        cut:
+          type: boolean
+          description: The text is the opening of a longer turn.
+    ImportedOmitted:
+      type: object
+      description: What an import left out of a session's main path or cut. Each count is null when it is not known, which is never zero.
+      required: [turns, results, cut_turns, attachments]
+      properties:
+        turns:
+          type: [integer, "null"]
+          minimum: 0
+          description: Turns other than tool results left out to fit, the oldest first.
+        results:
+          type: [integer, "null"]
+          minimum: 0
+          description: Tool results left out to fit, before any other turn.
+        cut_turns:
+          type: [integer, "null"]
+          minimum: 0
+          description: Kept turns that hold only their opening.
+        attachments:
+          type: [integer, "null"]
+          minimum: 0
+          description: Turns of the main path that carried files. No file is kept.
     CatalogColumn:
       type: object
       required: [name]

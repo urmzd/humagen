@@ -4098,6 +4098,45 @@ export interface KnowledgeDocument {
   updated_at?: string;
 }
 
+/** The structure of a session `humagen import sessions` wrote a document from: its main path as data, kept with the revision of the document it is written with and trusted only while the document's digest is that revision's. A structure past a bound is refused with the document (400): the importer cuts and counts what it cut. */
+export interface ImportedSession {
+  tool: "claude" | "codex" | "chatgpt" | "claude-ai";
+  /** The conversation's id in that tool, at most 256 bytes with no control characters. The document's `uri` is the tool, a colon and this id. */
+  id: string;
+  /** Set on a session another session started. A person did not write its user turns. */
+  child?: boolean;
+  started_at?: string;
+  /** When the main path was last added to. */
+  ended_at?: string;
+  /** The turns of the main path that were kept, in order, at most 131072 bytes as JSON in all. */
+  turns: ImportedTurn[];
+  /** How many branches of the conversation are not on the main path. None of their turns are kept. */
+  branches: number;
+  omitted: ImportedOmitted;
+}
+
+/** One turn of an imported session's main path. */
+export interface ImportedTurn {
+  speaker: "user" | "assistant" | "tool" | "result";
+  at?: string;
+  /** What was said, at most 16384 bytes. */
+  text: string;
+  /** The text is the opening of a longer turn. */
+  cut?: boolean;
+}
+
+/** What an import left out of a session's main path or cut. Each count is null when it is not known, which is never zero. */
+export interface ImportedOmitted {
+  /** Turns other than tool results left out to fit, the oldest first. */
+  turns: number | null;
+  /** Tool results left out to fit, before any other turn. */
+  results: number | null;
+  /** Kept turns that hold only their opening. */
+  cut_turns: number | null;
+  /** Turns of the main path that carried files. No file is kept. */
+  attachments: number | null;
+}
+
 export interface CatalogColumn {
   name: string;
   type?: string;
@@ -6460,6 +6499,7 @@ export interface AddKnowledgeDocumentBody {
   title: string;
   uri?: string;
   text: string;
+  session?: ImportedSession;
 }
 
 export interface SetKnowledgeDocumentExcludedBody {
@@ -6470,6 +6510,7 @@ export interface ReplaceKnowledgeDocumentTextBody {
   title: string;
   text: string;
   digest: string;
+  session?: ImportedSession;
 }
 
 export interface SaveKnowledgeVariantBody {

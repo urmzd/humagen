@@ -700,7 +700,7 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		"GraphNode": {typ: graph.Node{}}, "GraphEdge": {typ: graph.Edge{}}, "GraphStaleness": {typ: graph.Staleness{}}, "GraphNodeView": {typ: platform.GraphNodeView{}}, "GraphHealth": {typ: platform.GraphHealth{}}, "GraphView": {typ: platform.GraphView{}}, "OwnerAction": {typ: platform.OwnerAction{}, written: true},
 		"CorpusHit": {typ: platform.CorpusHit{}}, "CorpusSearchWarning": {typ: platform.CorpusSearchWarning{}}, "CorpusSearch": {typ: platform.CorpusSearch{}},
 		"CorpusMemberRef": {typ: corpora.Member{}, written: true}, "CorpusCreate": {typ: platform.CorpusCreate{}, written: true}, "CorpusChange": {typ: platform.CorpusChange{}, written: true},
-		"KnowledgeDocument": {typ: knowledge.Document{}}, "KnowledgeHit": {typ: knowledge.Hit{}},
+		"KnowledgeDocument": {typ: knowledge.Document{}}, "KnowledgeHit": {typ: knowledge.Hit{}}, "ImportedSession": {typ: knowledge.Imported{}, written: true}, "ImportedTurn": {typ: knowledge.ImportedTurn{}, written: true}, "ImportedOmitted": {typ: knowledge.ImportedOmitted{}, written: true},
 		"PolicyScope": {typ: policy.Scope{}}, "Policy": {typ: policyView{}}, "PolicyChange": {typ: policyChangeView{}},
 		"Measure": {typ: measure{}}, "ScopeUsage": {typ: scopeUsage{}}, "UsageEntry": {typ: usage.Entry{}},
 		"SkillAgentUse": {typ: platform.SkillAgentUse{}}, "SkillUsage": {typ: platform.SkillUsage{}},

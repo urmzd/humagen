@@ -580,6 +580,19 @@ with synthetic exports and read back from a local server; it is not checked
 against real exports of each tool, and file bytes are not imported
 ([import](../reference/cli.md#import-sessions-skills-and-agents)).
 
+Each imported session's document is kept with the session's structure, sent
+in the call that writes the document and written with it in one write
+(`pkg/knowledge/imported.go`): the tool, the conversation's id, its start and
+end, the main path's turns with speaker, time and text, branches not on it,
+and counts of what was left out or cut, at most 200 turns and 128 KiB, tool
+results dropped before turns and the oldest first. It is trusted only while
+the document's digest is the one it was written with, so an edit leaves it
+untrusted, and it goes with the document or its source. `ImportedOrigin` in
+`internal/platform` reads it as the reader, or says why it is unknown
+(`not_kept`, `changed`, `malformed`). Built and tested on memory and Postgres
+for the four formats' synthetic records; nothing reads it yet: continuing an
+imported conversation is designed, not built.
+
 A branch of a conversation on a coding agent (Claude Code or Codex) is
 answered by a session of its own: a session is continued only by a turn whose
 conversation so far begins with everything that session holds, so a branch

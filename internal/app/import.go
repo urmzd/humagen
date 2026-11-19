@@ -623,9 +623,9 @@ func (k *sessionSink) add(s sessionimport.Session) {
 				return
 			}
 		}
-		err := k.api.do(k.ctx, http.MethodPost, "/api/knowledge/"+url.PathEscape(name)+"/documents", map[string]string{
+		err := k.api.do(k.ctx, http.MethodPost, "/api/knowledge/"+url.PathEscape(name)+"/documents", withStructure(map[string]any{
 			"title": title, "uri": s.URI(), "text": s.Markdown(k.c.maxBytes),
-		}, nil)
+		}, s), nil)
 		var refused *apiError
 		if errors.As(err, &refused) && refused.status == http.StatusBadRequest && strings.Contains(refused.body, "limit reached") {
 			k.full[name] = true
@@ -639,6 +639,17 @@ func (k *sessionSink) add(s sessionimport.Session) {
 		return
 	}
 	k.res.Failed = append(k.res.Failed, importFailed{Name: s.URI(), Reason: "every source for " + base + " is full"})
+}
+
+// withStructure adds to a document's body the session's structure: its main
+// path as data, which the server keeps with that revision of the document
+// and never reads out of its text. A session no structure can name is sent
+// without one, and its document is kept with none.
+func withStructure(body map[string]any, s sessionimport.Session) map[string]any {
+	if st, ok := s.Structure(sessionimport.Limits{Bytes: knowledge.MaxImportedBytes, Turns: knowledge.MaxImportedTurns, TurnBytes: knowledge.MaxImportedTurnBytes, ID: knowledge.MaxImportedID}); ok {
+		body["session"] = st
+	}
+	return body
 }
 
 // holds reports whether a source named for a directory or a project says it
@@ -687,6 +698,9 @@ func (k *sessionSink) said(name string) (string, error) {
 // it is left out of search, and a refused or failed call leaves it as it
 // was.
 //
+// The session's structure goes in the same call, so the document and its
+// structure are replaced together or neither is.
+//
 // The call is made once. A run the server refuses lost to another writer,
 // and never writes over what that writer left: it reads the document again,
 // counts it present if it reads as this run would have written it, and
@@ -701,9 +715,9 @@ func (k *sessionSink) replace(was held, title string, s sessionimport.Session) (
 		return false
 	}
 	docs := "/api/knowledge/" + url.PathEscape(was.source) + "/documents"
-	err := k.api.do(k.ctx, http.MethodPut, docs+"/"+url.PathEscape(was.id)+"/text", map[string]string{
+	err := k.api.do(k.ctx, http.MethodPut, docs+"/"+url.PathEscape(was.id)+"/text", withStructure(map[string]any{
 		"title": title, "text": text, "digest": was.digest,
-	}, nil)
+	}, s), nil)
 	switch {
 	case err == nil:
 		k.have[s.URI()] = held{source: was.source}

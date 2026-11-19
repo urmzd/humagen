@@ -57,6 +57,9 @@ type Turn struct {
 	// and size where the export states them, and its text where the export
 	// holds text. The files themselves are not read.
 	Attached string
+	// Cut is set on a result turn whose Text is the opening of a longer
+	// result, cut to MaxResult when the session was read.
+	Cut bool
 }
 
 // Session is one conversation.
@@ -362,7 +365,7 @@ func ReadClaude(r io.Reader) (Session, error) {
 				case b.Type == "tool_use":
 					ts.add("tool", called(b.Name, b.Input), at, rec.UUID, b.ID)
 				case b.Type == "tool_result":
-					ts.add("result", result(blockText(b.Content)), at, rec.UUID, b.ToolUseID)
+					ts.result(blockText(b.Content), at, rec.UUID, b.ToolUseID)
 				}
 			}
 			ts.attach("user", files, at, rec.UUID)
@@ -484,7 +487,7 @@ func ReadCodex(r io.Reader) (Session, error) {
 				_ = json.Unmarshal(p.Output, &obj)
 				out = obj.Output + obj.Content
 			}
-			ts.add("result", result(out), at, p.ID, p.CallID)
+			ts.result(out, at, p.ID, p.CallID)
 		}
 	})
 	if err != nil {
@@ -610,7 +613,7 @@ func (m *gptMessage) turns(key, caller string) []Turn {
 	var ts turns
 	switch {
 	case role == "tool":
-		ts.add("result", result(text), at, id, caller)
+		ts.result(text, at, id, caller)
 	case role == "assistant" && m.Recipient != "" && m.Recipient != "all":
 		if line := clip(oneLine(text), 200); line != "" {
 			ts.add("tool", m.Recipient+": "+line, at, id, "")
@@ -688,7 +691,7 @@ func exported(raw json.RawMessage) (Session, error) {
 				case "tool_use":
 					ts.add("tool", called(b.Name, b.Input), at, m.UUID, b.ID)
 				case "tool_result":
-					ts.add("result", result(blockText(b.Content)), at, m.UUID, b.ToolUseID)
+					ts.result(blockText(b.Content), at, m.UUID, b.ToolUseID)
 				}
 			}
 			if blocks == 0 {

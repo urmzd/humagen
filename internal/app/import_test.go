@@ -204,6 +204,7 @@ func (s *importServer) start(t *testing.T) *httptest.Server {
 			var body struct {
 				Title, Text string
 				Digest      *string
+				Session     json.RawMessage
 			}
 			_ = json.NewDecoder(r.Body).Decode(&body)
 			answer := func(status int) {
@@ -227,15 +228,22 @@ func (s *importServer) start(t *testing.T) *httptest.Server {
 					return
 				}
 				answer(200)
-				d["title"], d["text"], d["digest"] = body.Title, body.Text, knowledge.Digest(body.Title, body.Text)
+				// The structure the server trusts is the one the call
+				// carries, or none: one kept before names the digest of a
+				// text the document no longer has.
+				d["title"], d["text"], d["digest"], d["session"] = body.Title, body.Text, knowledge.Digest(body.Title, body.Text), string(body.Session)
 				fmt.Fprintf(w, `{"id":%q}`, d["id"])
 				return
 			}
 			answer(404)
 			problem(404, "no such document")
 		case len(parts) == 3 && parts[0] == "knowledge" && parts[2] == "documents" && r.Method == "POST":
-			var doc map[string]string
-			_ = json.NewDecoder(r.Body).Decode(&doc)
+			var body struct {
+				Title, URI, Text string
+				Session          json.RawMessage
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			doc := map[string]string{"title": body.Title, "uri": body.URI, "text": body.Text, "session": string(body.Session)}
 			if s.refused[doc["uri"]] {
 				problem(413, "too large")
 				return
@@ -998,14 +1006,15 @@ func counts(t *testing.T, out string) string {
 	return out
 }
 
-// held is every document the server has, as source, id, uri and text.
+// held is every document the server has, as source, id, uri, text and the
+// structure kept with it.
 func (s *importServer) held() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var out []string
 	for name, docs := range s.docs {
 		for _, d := range docs {
-			out = append(out, strings.Join([]string{name, d["id"], d["uri"], d["title"], d["text"], d["excluded"]}, "\x00"))
+			out = append(out, strings.Join([]string{name, d["id"], d["uri"], d["title"], d["text"], d["excluded"], d["session"]}, "\x00"))
 		}
 	}
 	sort.Strings(out)
@@ -2004,5 +2013,117 @@ func TestImportSessionsReplacesAnExportsDocumentInItsProjectsSourceWithoutProjec
 		if err == nil || res.Updated != 0 || res.Added != 0 || api.docWrites != 0 || api.docs["sessions-in-harbor"][0]["digest"] != digest || len(res.Failed) != 1 {
 			t.Fatalf("%q: err = %v, res = %+v, %d document writes", said, err, res, api.docWrites)
 		}
+	}
+}
+
+// structureOf is the structure the server keeps with a document, read as
+// the server reads it: no field it does not know, and valid for a document
+// of that URI.
+func structureOf(t *testing.T, doc map[string]string) knowledge.Imported {
+	t.Helper()
+	var im knowledge.Imported
+	dec := json.NewDecoder(strings.NewReader(doc["session"]))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&im); err != nil {
+		t.Fatalf("%s: structure %q: %v", doc["uri"], doc["session"], err)
+	}
+	if err := knowledge.CheckImported(im, doc["uri"]); err != nil {
+		t.Fatalf("%s: %v", doc["uri"], err)
+	}
+	return im
+}
+
+// Each session's document is sent with the session's structure, in the one
+// call that adds it: the tool, the conversation's id and the main path, as
+// the server accepts them. A second run sends nothing, and the structures
+// stay as they are.
+func TestImportSessionsSendsEachSessionsStructureWithItsDocument(t *testing.T) {
+	api := &importServer{}
+	server := api.start(t)
+	home, chatgpt, claudeAI := syntheticHome(t)
+	args := []string{"sessions", "--home", home, "--export", chatgpt, "--export", claudeAI, "--server", server.URL, "--json"}
+	out, err := runImport(t, args...)
+	if err != nil || counts(t, out) != "added 4 updated 0 present 0 failed []" {
+		t.Fatalf("err = %v\n%s", err, out)
+	}
+	for _, tt := range []struct {
+		source, tool, id, first, last string
+		turns, branches               int
+	}{
+		{"sessions-claude-2026-10", knowledge.ToolClaude, "cc0rig1d-aaaa-4bbb-8ccc-000000000001", "CC-USER-ONE list the files in the alpha site", "CC-BRANCH-B-ANSWER", 7, 1},
+		{"sessions-codex-2026-10", knowledge.ToolCodex, "c0dex0r1-bbbb-4ccc-8ddd-000000000002", "CX-USER-ONE count the beta tools", "CX-ASSISTANT-LATE-STAMP (stamped 09:30, second message in file)", 5, 0},
+		{"sessions-chatgpt-2026-10", knowledge.ToolChatGPT, "gpt0r1g1-cccc-4ddd-8eee-000000000003", "GPT-USER-ONE what is in the attached sheet?", "GPT-BRANCH-B-ANSWER stamped 08:05 EARLIEST", 6, 1},
+		{"sessions-claude-ai-2026-10", knowledge.ToolClaudeAI, "cai0r1g1-dddd-4eee-8fff-000000000004", "CAI-USER-ONE summarise the attached note", "CAI-BRANCH-B-ANSWER", 6, 1},
+	} {
+		docs := api.docs[tt.source]
+		if len(docs) != 1 {
+			t.Fatalf("%s holds %v", tt.source, docs)
+		}
+		im := structureOf(t, docs[0])
+		if im.Tool != tt.tool || im.ID != tt.id || len(im.Turns) != tt.turns || im.Branches != tt.branches || im.StartedAt == nil || im.EndedAt == nil ||
+			im.Turns[0].Speaker != knowledge.SpeakerUser || im.Turns[0].Text != tt.first || im.Turns[tt.turns-1].Speaker != knowledge.SpeakerAssistant || im.Turns[tt.turns-1].Text != tt.last {
+			t.Errorf("%s: structure = %+v", tt.source, im)
+		}
+		if o := im.Omitted; o.Turns == nil || *o.Turns != 0 || o.Results == nil || *o.Results != 0 || o.Attachments == nil || *o.Attachments != 1 {
+			t.Errorf("%s: omitted = %+v", tt.source, o)
+		}
+	}
+	before := api.held()
+	api.docWrites = 0
+	out, err = runImport(t, args...)
+	if got := counts(t, out); err != nil || got != "added 0 updated 0 present 4 failed []" || api.held() != before || api.docWrites != 0 {
+		t.Fatalf("second run: %s (%v), changed: %v, %d document writes", got, err, api.held() != before, api.docWrites)
+	}
+}
+
+// A session that grew has its document and its structure replaced in the one
+// call. A document somebody edited has no structure until the session is
+// imported again, which writes both. A document an earlier version wrote
+// with the text this version writes is left as it is, with no structure.
+func TestImportSessionsReplacesASessionsStructureWithItsDocument(t *testing.T) {
+	const source = "sessions-claude-2026-10"
+	api := &importServer{}
+	server := api.start(t)
+	home, _, _ := syntheticHome(t)
+	args := []string{"sessions", "--home", home, "--from", "claude", "--server", server.URL, "--token", "", "--json"}
+	run := func(want string) {
+		t.Helper()
+		out, _ := runImport(t, args...)
+		if got := counts(t, out); got != want {
+			t.Fatalf("got %s, want %s\n%s", got, want, out)
+		}
+	}
+	run("added 1 updated 0 present 0 failed []")
+	doc := api.docs[source][0]
+	was := structureOf(t, doc)
+
+	grow(t, home)
+	run("added 0 updated 1 present 0 failed []")
+	now := structureOf(t, doc)
+	if len(now.Turns) != len(was.Turns)+1 || now.Turns[len(now.Turns)-1].Text != "CC-GREW one more thing" || !strings.Contains(doc["text"], "CC-GREW one more thing") || len(api.puts[""]) != 1 {
+		t.Fatalf("grown: %d turns, was %d, in %v calls", len(now.Turns), len(was.Turns), api.puts)
+	}
+
+	// An edit in the console: the title and text change, and the server
+	// trusts no structure with the edited text.
+	api.mu.Lock()
+	doc["text"], doc["session"] = doc["text"]+"\n\nA note somebody added.", ""
+	doc["digest"] = knowledge.Digest(doc["title"], doc["text"])
+	api.mu.Unlock()
+	run("added 0 updated 1 present 0 failed []")
+	if again := structureOf(t, doc); len(again.Turns) != len(now.Turns) || strings.Contains(doc["text"], "A note somebody added.") {
+		t.Fatalf("imported again: %d turns\n%s", len(again.Turns), doc["text"])
+	}
+
+	// Kept with the same text and no structure, as a version before
+	// structures wrote it: nothing says the session changed, so nothing is
+	// written.
+	api.mu.Lock()
+	doc["session"] = ""
+	api.mu.Unlock()
+	api.docWrites = 0
+	run("added 0 updated 0 present 1 failed []")
+	if doc["session"] != "" || api.docWrites != 0 {
+		t.Fatalf("a document that reads the same was written: %d writes", api.docWrites)
 	}
 }
