@@ -9,6 +9,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/urmzd/humagen/internal/wire"
+	"github.com/urmzd/humagen/pkg/continuation"
 	"github.com/urmzd/humagen/pkg/library"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
@@ -201,4 +202,5 @@ func (p *Platform) releaseSkillFiles(req runtime.Request) {
 func (p *Platform) releaseTurn(req runtime.Request) {
 	p.releaseSourceGrounding(req)
 	p.releaseSkillFiles(req)
+	continuation.Release(req.Tenant, req.RunID)
 }

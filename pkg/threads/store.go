@@ -930,7 +930,7 @@ func (s *Store) update(tenantName, id string, version int, at time.Time, fn func
 			return fmt.Errorf("%w: the approval mode is changed on its own", ErrInvalid)
 		case next.Moves != cur.Moves:
 			return fmt.Errorf("%w: placement history is server managed", ErrInvalid)
-		case next.ID != cur.ID || !sameSurface(next.Surface, cur.Surface) || next.Announcement != cur.Announcement || !sameFork(next.Fork, cur.Fork):
+		case next.ID != cur.ID || !sameSurface(next.Surface, cur.Surface) || next.Announcement != cur.Announcement || !sameFork(next.Fork, cur.Fork) || !sameImport(next.Import, cur.Import):
 			return fmt.Errorf("%w: a thread stays where it was started", ErrInvalid)
 		case moves && (!moving || cur.Visibility != Private || next.Visibility != Private || cur.Surface != nil || cur.Announcement != ""):
 			return fmt.Errorf("%w: a thread stays where it was started; a private conversation moves, and Share moves one as it shares it", ErrInvalid)

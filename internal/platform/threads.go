@@ -273,7 +273,7 @@ func (p *Platform) mayPost(person auth.Principal, at Place, need projects.Role) 
 		return keeps, nil
 	}
 	th, err := p.Threads.Get(person.Tenant, at.Thread)
-	if err == nil && (th.Fork != nil || th.Session != nil) && !p.SeesThread(person, at.Thread) {
+	if err == nil && (th.Fork != nil || th.Import != nil || th.Session != nil) && !p.SeesThread(person, at.Thread) {
 		return false, threads.ErrNotFound
 	}
 	if err == nil && th.ReadOnly {
@@ -1104,7 +1104,7 @@ func (p *Platform) carryOut(ctx context.Context, poster auth.Principal, tenant s
 		}
 		th = cur
 	}
-	if (th.Fork != nil || th.Session != nil) && !p.SeesThread(poster, th.ID) {
+	if (th.Fork != nil || th.Import != nil || th.Session != nil) && !p.SeesThread(poster, th.ID) {
 		return Posted{}, threads.ErrNotFound
 	}
 	def, unavailable := p.defaultOf(tenant, th, sees)

@@ -191,6 +191,11 @@ func (s *shower) thread(th threads.Thread) threads.Thread {
 		}
 		th.Fork = &f
 	}
+	if th.Import != nil {
+		im := *th.Import
+		im.By, im.ImportedBy = s.key(im.By), s.key(im.ImportedBy)
+		th.Import = &im
+	}
 	th.CreatedBy = s.key(th.CreatedBy)
 	return th
 }

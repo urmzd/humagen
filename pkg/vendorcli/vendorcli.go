@@ -41,6 +41,7 @@ import (
 	saigetypes "github.com/urmzd/saige/agent/types"
 	"github.com/urmzd/saige/flow/turn/native"
 
+	"github.com/urmzd/humagen/pkg/continuation"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/sessionimport"
 	"github.com/urmzd/humagen/pkg/skillfiles"
@@ -695,7 +696,14 @@ func (p *provider) writeThread(conv string, t thread) error {
 // starts one from what was said rather than guess. The same holds when the
 // state cannot be held against other processes, or the session cannot be
 // taken out of it: another turn could then take it too.
-func (p *provider) take(conv string, h history) string {
+func (p *provider) take(conv string, h history) string { return p.taking(conv, h, false) }
+
+// takeOwn is take for a conversation continued from an imported one: only a
+// session its own thread's turns noted may be taken, never a first turn's
+// that names no thread, which could be any conversation's.
+func (p *provider) takeOwn(conv string, h history) string { return p.taking(conv, h, true) }
+
+func (p *provider) taking(conv string, h history, own bool) string {
 	if !h.known || len(h.lines) == 0 {
 		return ""
 	}
@@ -716,7 +724,10 @@ func (p *provider) take(conv string, h history) string {
 		found, at = n.Session, i
 	}
 	dir := filepath.Join(p.cfg.StateDir, "begun")
-	entries, _ := os.ReadDir(dir)
+	var entries []os.DirEntry
+	if !own {
+		entries, _ = os.ReadDir(dir)
+	}
 	for _, e := range entries {
 		path := filepath.Join(dir, e.Name())
 		b, err := os.ReadFile(path)
@@ -833,6 +844,11 @@ func resumed(ask string) (session, rest string) {
 
 // ErrSession is a session a conversation may not carry on from.
 var ErrSession = errors.New("vendorcli: session")
+
+// ErrContinuationResume refuses /resume in a conversation continued from an
+// imported one: the session it names would carry on without what was
+// imported.
+var ErrContinuationResume = fmt.Errorf("%w: this conversation continues one imported from another tool, and /resume would carry on from a session of the program's own without it; start a plain conversation to resume a session", ErrSession)
 
 // mayFork refuses a session that began outside the provider's directory. A
 // copy of a Codex session works where the original did, so one from another
@@ -1054,12 +1070,32 @@ func (p *provider) Stream(ctx context.Context, req saigetypes.Request) (<-chan s
 	// A turn the platform runs names its thread in what it asks. Anything
 	// else that calls the provider is known by what was said so far.
 	conv := conversation(t.ask)
+	// A turn of a conversation continued from an imported one is told so by
+	// the platform, through the run claim and never through its text
+	// (pkg/continuation): its thread is the one the platform names, its
+	// first turn starts a new session, and a later turn continues only a
+	// session that thread's own turns noted. The imported lines it is sent
+	// can then never select another conversation's session, whatever they
+	// say. A session a person names (/resume) would carry on without what
+	// was imported, so it is refused, on every turn of the conversation.
+	rule, continuing := continuation.Of(ctx)
+	if continuing {
+		if named, _ := resumed(t.ask); named != "" {
+			return nil, ErrContinuationResume
+		}
+		conv = rule.Thread
+	}
 	// A session is continued only when everything it holds is the start of
 	// this turn's conversation so far, so a branch never continues the
 	// session of another branch.
 	var h history
 	session := ""
 	switch {
+	case continuing && rule.First:
+		h = historyOf(t.ask)
+	case continuing:
+		h = historyOf(t.ask)
+		session = p.takeOwn(conv, h)
 	case conv != "":
 		h = historyOf(t.ask)
 		session = p.take(conv, h)
@@ -1069,7 +1105,7 @@ func (p *provider) Stream(ctx context.Context, req saigetypes.Request) (<-chan s
 		h = historyOf(t.ask)
 	}
 	// A conversation that has no session yet may name one to carry on from.
-	if session == "" && len(t.before) == 0 {
+	if session == "" && len(t.before) == 0 && !continuing {
 		t.fork, t.forkAsk = resumed(t.ask)
 		if err := p.mayFork(t.fork); err != nil {
 			return nil, err

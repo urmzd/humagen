@@ -79,8 +79,12 @@ func (p *Platform) sourcesFor(tag event.Envelope, edge call.Edge, project string
 // workspace's model policy for the one the agent names (resolveModel), the
 // knowledge sources the run was pinned with (withSources), and the skills it
 // was told to use, ahead of its text (withSkills). The pinned definition
-// itself is never changed.
+// itself is never changed. A turn of a conversation continued from an
+// imported one is marked as one for its run first (markContinuation).
 func (p *Platform) resolveRevision(req runtime.Request) (runtime.Request, error) {
+	if err := p.markContinuation(req); err != nil {
+		return req, err
+	}
 	var promptErr error
 	if req, promptErr = withPromptLayers(req); promptErr != nil {
 		return req, promptErr

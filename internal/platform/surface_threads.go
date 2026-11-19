@@ -300,13 +300,15 @@ func (p *Platform) seedOf(tenant string, th threads.Thread) (threads.Announcemen
 	return a, true
 }
 
-// seedTurns is the turn a thread's room starts with: its announcement, when
-// it was started from one.
+// seedTurns is the turns a thread's room starts with: the imported
+// conversation it continues, when it continues one, then the history it was
+// forked with, then its announcement, when it was started from one.
 func (p *Platform) seedTurns(tenant string, th threads.Thread) []threads.Turn {
+	seed := append(threads.ImportSeed(th.Import), forkSeed(th)...)
 	if a, ok := p.seedOf(tenant, th); ok {
-		return append(forkSeed(th), threads.AnnouncementTurn(a))
+		return append(seed, threads.AnnouncementTurn(a))
 	}
-	return forkSeed(th)
+	return seed
 }
 
 // surfaceOfPost checks a message posted with its surface into a thread: the

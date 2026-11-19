@@ -609,8 +609,39 @@ with that reason instead of falling back. Tested: the store on memory
 and Postgres, the four formats' generated records included
 (`pkg/knowledge`); the routes, the read function and the CLI against a real
 server and a stub older server on memory only (`internal/httpapi`,
-`internal/platform`, `internal/app`). Nothing reads it yet: continuing an
-imported conversation is designed, not built.
+`internal/platform`, `internal/app`).
+
+Continuing an imported conversation is built in the platform, with no route
+and no console yet (`ContinueImport` in `internal/platform/import_continue.go`).
+It starts a private plain thread of the caller's, in the source's project
+(the one it is scoped to, else the one it is attached to, else the workspace
+itself), holding the conversation's origin (`Thread.import`, read only in the
+contract): the source, the document, the document digest and the structure
+digest the caller read, pinned together; who imported the structure and when;
+who continued it and when; the conversation's start and end; the branches not
+continued; what the import itself left out; and the passive turns its agent is
+sent. Those are the newest turns of the main path that fit half the
+workspace's history limit as the transcript is written, labels and fence
+counted, and a fork's bounds (200 turns, 128 KiB), tool results left out first
+and every turn left out counted; nothing is summarized. Each line is labelled
+from fixed lists, such as `imported from chatgpt, the assistant there`, and
+what it says starts `(imported, not said here)`, on one line, so it cannot
+open or close the transcript or pose as a speaker. A document no import kept a
+structure with is continued as one block whose speakers are not known; one
+whose structure was edited or is malformed, or that is not an imported
+session's, is refused, and so is one whose document or structure digest
+changed since it was read, whose source was detached from the project it was
+seen in, excluded, deleted or hidden, or where the caller may not start a run
+(`runs:write`) or post. It is
+audited (`conversation.continue_import`). A reader must still see the origin
+source to read the thread, as a fork's reader must see its source, on every
+read path; a fork of it keeps its origin and that rule, and neither is
+published raw. On a coding agent, the platform marks each turn of such a
+thread through the run claim (`pkg/continuation`), never its text: its first
+turn starts a new session, a later turn continues only the thread's own, and
+`/resume` is refused on any of its turns. Tested on memory, the thread record
+on Postgres too (`pkg/threads`, `pkg/vendorcli`, `internal/platform`). The
+route that starts one and the console's Continue Conversation are not built.
 
 A branch of a conversation on a coding agent (Claude Code or Codex) is
 answered by a session of its own: a session is continued only by a turn whose

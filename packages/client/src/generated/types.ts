@@ -1565,6 +1565,7 @@ not selected. Absent when none is selected.
   mode?: ThreadMode;
   surface?: ThreadSurface;
   fork?: ThreadFork;
+  import?: ThreadImport;
   archive?: ThreadArchive;
   /** How the conversation's gated tool actions are approved, and who chose it. Absent asks a person. `auto` approves for that person what they may approve themselves, within policy; a budget request and an action the agent or the policy always asks about still go to a person. */
   approval?: ThreadApproval;
@@ -1654,6 +1655,86 @@ export interface ThreadFork {
   by: string;
   at: string;
   context: ThreadForkContextItem[];
+}
+
+/** Where a conversation continued from an imported one came from: a
+knowledge document an import wrote from a session of another tool,
+pinned by its source, its id, its digest and its structure's digest.
+It is fixed when the conversation is started, and a fork of it keeps
+it. Its context is passive text the agent is sent ahead of the
+conversation's own turns, each line labelled with the tool and the
+speaker there and marked "(imported, not said here)"; it is never a
+message or a run. Only a reader who still sees the source reads the
+conversation, and it is published only through a reviewed summary.
+A kept structure is what its importer stated (`imported_by`), not a
+verified record. No route starts a continuation yet.
+ */
+export interface ThreadImport {
+  /** The knowledge source the document is in. */
+  source: string;
+  /** The document's id in the source. */
+  document: string;
+  /** The document's uri when it was continued. Shown only; it decides nothing. */
+  uri: string;
+  /** The document's title when it was continued. Shown only. */
+  title: string;
+  /** `kept` when an import kept the conversation's structure with the revision continued, and the context is its main path; `not_kept` when none was, and the context is the document's text as one block whose speakers are not known. */
+  structure: "kept" | "not_kept";
+  /** The tool the conversation is from, as its importer stated it. Absent when the structure is not kept. */
+  tool?: "claude" | "codex" | "chatgpt" | "claude-ai";
+  /** The conversation was started by another session, so a person did not write its user turns. */
+  child?: boolean;
+  /** The digest of the document revision continued. */
+  document_digest: string;
+  /** The digest of the structure continued. Absent when the structure is not kept. */
+  structure_digest?: string;
+  /** The handle of whoever sent the structure through an import route, whose assertion it is. Absent when the structure is not kept. */
+  imported_by?: string;
+  imported_at?: string;
+  /** When the imported conversation began, as the import stated it. Absent when not stated. */
+  started_at?: string;
+  /** When the imported conversation's main path was last added to, as the import stated it. */
+  ended_at?: string;
+  /** The handle of the person who continued it. */
+  by: string;
+  /** When it was continued. */
+  at: string;
+  /** The turns of the main path the agent is sent, oldest first, the newest that fit half the workspace's history limit as the transcript is written. At most 200 turns and 128 KiB of text. */
+  context: ThreadImportTurn[];
+  omitted: ThreadImportOmitted;
+  /** How many branches of the conversation are not on its main path; none is continued. Absent when the structure is not kept, so unknown. */
+  branches?: number;
+  import_cut?: ThreadImportCut;
+}
+
+/** One passive turn of an imported conversation. */
+export interface ThreadImportTurn {
+  /** `user`, `assistant`, `tool` (a line naming a tool the assistant called) or `result` (what a tool gave back), as the importer stated it; `document` for the one block of a document whose structure is not kept. */
+  speaker: "user" | "assistant" | "tool" | "result" | "document";
+  /** When it was said, as the import stated it. */
+  at?: string;
+  text: string;
+  /** The text is the opening of a longer turn, cut by the import or to fit. */
+  cut?: boolean;
+}
+
+/** What the context leaves out of the turns the import kept, every count exact. */
+export interface ThreadImportOmitted {
+  /** Turns other than tool results left out to fit, the oldest. */
+  turns: number;
+  /** Tool results left out to fit. They go before any other turn. */
+  results: number;
+  /** Turns of the context cut to their opening to fit. */
+  cut: number;
+}
+
+/** What the import itself stated it left out of the conversation's main path, or cut, when it wrote the document. Absent when the structure is not kept, so unknown. */
+export interface ThreadImportCut {
+  turns: number;
+  results: number;
+  cut_turns: number;
+  /** Turns of the main path that carried files. No file is imported. */
+  attachments: number;
 }
 
 /** One tag in a message, and what it came to. */
