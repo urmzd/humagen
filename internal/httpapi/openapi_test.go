@@ -2021,12 +2021,13 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	// the threads route with its imported origin as the contract says, and
 	// another workspace does not find it. The source is filed nowhere, so
 	// the project is the workspace itself.
-	structure, err := knowledge.ParseImported([]byte(session))
-	if err != nil {
-		t.Fatal(err)
+	// The digests are the ones the import answered with, as a client reads
+	// them.
+	if grown.str("structure_digest") == "" {
+		t.Fatalf("the import answered no structure digest: %s", grown.raw)
 	}
 	continuePath := "/api/knowledge/handbook/documents/" + grown.str("id") + "/continue"
-	pins := `"document_digest":"` + grown.str("digest") + `","structure_digest":"` + knowledge.StructureDigest(structure) + `"`
+	pins := `"document_digest":"` + grown.str("digest") + `","structure_digest":"` + grown.str("structure_digest") + `"`
 	continued := c.call(ana, "POST", "/api/knowledge/{name}/documents/{id}/continue", continuePath, `{`+pins+`,"project":"~"}`, http.StatusCreated)
 	if origin := obj(continued.field("import")); origin["document_digest"] != grown.str("digest") || origin["tool"] != "codex" || origin["by"] != "ana" || continued.str("visibility") != "private" {
 		t.Fatalf("the continuation answers %s", continued.raw)
@@ -2843,7 +2844,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/knowledge/{name}/documents/{id}/text":     `{"title":"t","text":"words here","digest":""}`,
 		"/api/knowledge/{name}/imports":                 `{"title":"t","uri":"codex:generated-contract","text":"words here","session":` + session + `}`,
 		"/api/knowledge/{name}/imports/{id}":            `{"title":"t","text":"words here","digest":"","session":` + session + `}`,
-		"/api/knowledge/{name}/documents/{id}/continue": `{"document_digest":"` + grown.str("digest") + `","structure_digest":"` + knowledge.StructureDigest(structure) + `","project":"~"}`,
+		"/api/knowledge/{name}/documents/{id}/continue": `{"document_digest":"` + grown.str("digest") + `","structure_digest":"` + grown.str("structure_digest") + `","project":"~"}`,
 		"/api/projects/{name}":                          `{"version":1}`, "/api/projects/{name}/memory": `{"text":"x"}`, "/api/projects/{name}/memory/approve": `{"ids":[]}`,
 		"/api/inbox/{id}/deliveries/{client}": `{"channel":"C0123ABC","ts":"1700000000.000100"}`, "/api/inbox/{id}/dismiss": ``, "/api/inbox/{id}/unhide": ``,
 		"/api/inbox/marks": `{"ids":["m-1"],"mark":"read"}`, "/api/inbox/read-all": `{"view":"inbox"}`,

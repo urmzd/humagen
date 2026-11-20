@@ -4196,6 +4196,8 @@ export interface KnowledgeDocument {
   updated_at?: string;
   /** The size, as JSON, of the imported session's structure kept with this revision. Absent for a document no import wrote, or one edited since. */
   structure_bytes?: number;
+  /** The digest of the imported session's structure kept with this revision, absent when `structure_bytes` is. With `digest`, it is what `POST /api/knowledge/{name}/documents/{id}/continue` pins. */
+  structure_digest?: string;
 }
 
 /** The structure of a session `humagen import sessions` wrote a document from: its main path as data. It is the importer's assertion, kept with who sent it and when; the server cannot verify that the session came from the tool it names. It is trusted only for the revision of the document it was written with, and an ordinary edit leaves it untrusted. A structure past a bound is refused with the document (400): the importer cuts and counts what it cut. */

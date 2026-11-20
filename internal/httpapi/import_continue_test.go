@@ -134,22 +134,28 @@ func (d importedDoc) pins(project string) string {
 }
 
 // importSession writes a generated session's document into source through
-// the import route, as ana.
+// the import route, as ana, and reads back from the document listing, as a
+// client does, what pins it.
 func (c continueFixture) importSession(t *testing.T, source, id string, turns []generatedTurn) importedDoc {
 	t.Helper()
-	session := sessionJSON(id, turns)
-	doc := want(t, c.fixture, c.ana, "POST", "/api/knowledge/"+source+"/imports", `{"title":"A generated chat","uri":"chatgpt:`+id+`","text":"# A generated chat\n\ngenerated text","session":`+session+`}`, http.StatusCreated)
-	return c.pinned(t, source, doc, session)
+	doc := want(t, c.fixture, c.ana, "POST", "/api/knowledge/"+source+"/imports", `{"title":"A generated chat","uri":"chatgpt:`+id+`","text":"# A generated chat\n\ngenerated text","session":`+sessionJSON(id, turns)+`}`, http.StatusCreated)
+	read := c.listedDocument(t, c.ana, source, fmt.Sprint(doc["id"]))
+	if read["structure_digest"] == nil || read["structure_digest"] != doc["structure_digest"] || read["digest"] != doc["digest"] {
+		t.Fatalf("the import answered %v and the listing %v", doc, read)
+	}
+	return importedDoc{id: fmt.Sprint(read["id"]), digest: fmt.Sprint(read["digest"]), structure: fmt.Sprint(read["structure_digest"]), path: "/api/knowledge/" + source + "/documents/" + fmt.Sprint(read["id"]) + "/continue"}
 }
 
-func (c continueFixture) pinned(t *testing.T, source string, doc map[string]any, session string) importedDoc {
+// listedDocument is document id as tok reads it in source's listing.
+func (c continueFixture) listedDocument(t *testing.T, tok, source, id string) map[string]any {
 	t.Helper()
-	structure, err := knowledge.ParseImported([]byte(session))
-	if err != nil {
-		t.Fatal(err)
+	for _, d := range sliceOf(want(t, c.fixture, tok, "GET", "/api/knowledge/"+source+"/documents", "", http.StatusOK)["documents"]) {
+		if obj(d)["id"] == id {
+			return obj(d)
+		}
 	}
-	id := fmt.Sprint(doc["id"])
-	return importedDoc{id: id, digest: fmt.Sprint(doc["digest"]), structure: knowledge.StructureDigest(structure), path: "/api/knowledge/" + source + "/documents/" + id + "/continue"}
+	t.Fatalf("%s is not listed in %s", id, source)
+	return nil
 }
 
 // listed reports whether tok's page of conversations holds id.
@@ -452,6 +458,73 @@ func TestAContinuationsLinesFitHalfTheHistoryLimit(t *testing.T) {
 		_, sent := c.ask(t, c.bo, fmt.Sprint(th["id"]), "@coder go on")
 		if strings.Contains(sent, "earlier turns omitted") || strings.Count(sent, "(imported, not said here)") != len(lines) {
 			t.Fatalf("the first turn did not send every kept line:\n%s", sent)
+		}
+	})
+}
+
+// A client continues an imported conversation with only what the API gives
+// it: the import route's answer, then the document listing's `digest` and
+// `structure_digest`, sent back as they were read. A document no import
+// kept a structure with is listed without either structure field.
+func TestAClientContinuesWithWhatTheListingGivesIt(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		c := newContinueFixture(t, open(t))
+		imported := want(t, c.fixture, c.ana, "POST", "/api/knowledge/chats/imports", `{"title":"A generated chat","uri":"chatgpt:generated-client","text":"generated text","session":`+sessionJSON("generated-client", portTurns)+`}`, http.StatusCreated)
+		id := fmt.Sprint(imported["id"])
+		read := c.listedDocument(t, c.bo, "chats", id)
+		digest, structure := read["digest"], read["structure_digest"]
+		if s, ok := structure.(string); !ok || len(s) != 64 || read["structure_bytes"] == nil || structure != imported["structure_digest"] {
+			t.Fatalf("listed %v, imported %v", read, imported)
+		}
+		th := want(t, c.fixture, c.bo, "POST", "/api/knowledge/chats/documents/"+id+"/continue", fmt.Sprintf(`{"document_digest":%q,"structure_digest":%q,"project":"Field"}`, digest, structure), http.StatusCreated)
+		if im := obj(th["import"]); im["document_digest"] != digest || im["structure_digest"] != structure || im["structure"] != threads.StructureKept {
+			t.Fatalf("continued %v", th)
+		}
+
+		plain := want(t, c.fixture, c.ana, "POST", "/api/knowledge/chats/documents", `{"title":"A runbook","uri":"https://example.invalid/runbook","text":"generated runbook"}`, http.StatusCreated)
+		if got := c.listedDocument(t, c.bo, "chats", fmt.Sprint(plain["id"])); got["structure_digest"] != nil || got["structure_bytes"] != nil {
+			t.Fatalf("a document with no structure is listed %v", got)
+		}
+	})
+}
+
+// A reader who cannot see a source gets neither a document's digest nor
+// its structure's: the listing is not found for a project they are not
+// in, or another workspace, and is refused without knowledge:read.
+func TestAStructuresDigestIsReadOnlyWithItsSource(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		c := newContinueFixture(t, open(t))
+		want(t, c.fixture, c.ana, "POST", "/api/projects", `{"name":"Vault"}`, http.StatusCreated)
+		want(t, c.fixture, c.ana, "PUT", "/api/projects/Vault/members", `{"version":1,"members":[{"who":"00u-ana","role":"owner"}]}`, http.StatusOK)
+		if _, err := c.p.Knowledge.Create("acme", "vault-chats", "", "00u-ana", time.Now()); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := c.p.Knowledge.Configure("acme", "vault-chats", knowledge.SourceConfig{Mode: knowledge.Indexed, Provider: "manual", Owner: "00u-ana", Project: "Vault"}, time.Now()); err != nil {
+			t.Fatal(err)
+		}
+		vault := c.importSession(t, "vault-chats", "generated-hidden", portTurns)
+		foreign := c.person(t, "globex", "00u-bo", "Bo", "humagen-admins")
+		runsOnly := c.machine(t, "acme", "humagen:runs:write", "humagen:runs:read")
+		for name, tok := range map[string]string{"a person outside Vault": c.bo, "another workspace": foreign, "no knowledge:read": runsOnly} {
+			res, out := c.do(t, nil, "GET", "/api/knowledge/vault-chats/documents", tok, "")
+			if res.StatusCode != http.StatusNotFound && res.StatusCode != http.StatusForbidden {
+				t.Errorf("%s: %d %v", name, res.StatusCode, out)
+			}
+			if raw := fmt.Sprint(out); strings.Contains(raw, vault.structure) || strings.Contains(raw, vault.digest) {
+				t.Errorf("%s was given a digest: %v", name, out)
+			}
+		}
+		// Bo, outside Vault, finds no digest anywhere else either: the
+		// source list and the search.
+		for _, path := range []string{"/api/knowledge", "/api/knowledge/search?q=generated"} {
+			res, out := c.do(t, nil, "GET", path, c.bo, "")
+			if raw := fmt.Sprint(out); strings.Contains(raw, vault.structure) || strings.Contains(raw, vault.digest) {
+				t.Errorf("%s (%d) gave a digest: %v", path, res.StatusCode, out)
+			}
+		}
+		// Its owner reads both.
+		if got := c.listedDocument(t, c.ana, "vault-chats", vault.id); got["structure_digest"] != vault.structure {
+			t.Fatalf("the owner reads %v", got)
 		}
 	})
 }

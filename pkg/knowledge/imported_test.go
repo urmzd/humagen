@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -925,6 +926,102 @@ func TestARestoreKeepsTheSourceBoundExact(t *testing.T) {
 		}
 		if _, err := s.AddImportedForScope("acme", "handbook", "A generated chat", "chatgpt:generated-small", "small", "ada", now, nil, sized(t, "generated-small", 500)); err != nil {
 			t.Fatalf("freed bytes not used again: %v", err)
+		}
+	})
+}
+
+// A document says its kept structure's digest, beside its size, in the
+// listing and in each write's answer: set by an import, the same through
+// exclusion, gone after an ordinary edit, back after a restore, and
+// another after a reimport of another structure. It is always the digest a
+// reader of the structure is given (Origin.StructureDigest). A document
+// whose structure was kept before documents held the digest is given it
+// when listed, and so is its exclusion's answer.
+func TestADocumentSaysItsKeptStructuresDigest(t *testing.T) {
+	eachSeeded(t, func(t *testing.T, s *Store) {
+		listed := func(id string) Document {
+			t.Helper()
+			docs, err := s.Documents("acme", "handbook")
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, d := range docs {
+				if d.ID == id {
+					return d
+				}
+			}
+			t.Fatalf("no document %s", id)
+			return Document{}
+		}
+		agree := func(name string, answered Document, want string) {
+			t.Helper()
+			got := listed(answered.ID)
+			if answered.StructureDigest != want || got.StructureDigest != want || (want == "") != (got.StructureBytes == 0) {
+				t.Fatalf("%s: answered %q, listed %q (%d bytes), want %q", name, answered.StructureDigest, got.StructureDigest, got.StructureBytes, want)
+			}
+			if o := origin(t, s, answered.ID); o.StructureDigest != want {
+				t.Fatalf("%s: the origin reads %q, want %q", name, o.StructureDigest, want)
+			}
+		}
+		const title = "A generated chat"
+		doc, err := s.AddImportedForScope("acme", "handbook", title, sessionURI, "generated text", "ada", now, nil, generated(2))
+		if err != nil {
+			t.Fatal(err)
+		}
+		agree("imported", doc, StructureDigest(generated(2)))
+		excluded, err := s.SetExcluded("acme", "handbook", doc.ID, true, now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if excluded.StructureDigest != StructureDigest(generated(2)) || listed(doc.ID).StructureDigest != excluded.StructureDigest {
+			t.Fatalf("excluded: %q", excluded.StructureDigest)
+		}
+		included, err := s.SetExcluded("acme", "handbook", doc.ID, false, now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		edited, err := s.ReplaceForScope("acme", "handbook", doc.ID, title, "generated text, edited by hand", included.Digest, now.Add(time.Hour), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		agree("edited", edited, "")
+		restored, err := s.ReplaceImportedForScope("acme", "handbook", doc.ID, title, "generated text, edited by hand", edited.Digest, "bo", now.Add(2*time.Hour), nil, generated(2))
+		if err != nil {
+			t.Fatal(err)
+		}
+		agree("restored", restored, StructureDigest(generated(2)))
+		reimported, err := s.ReplaceImportedForScope("acme", "handbook", doc.ID, title, "generated text, grown", restored.Digest, "bo", now.Add(3*time.Hour), nil, generated(4))
+		if err != nil {
+			t.Fatal(err)
+		}
+		agree("reimported", reimported, StructureDigest(generated(4)))
+
+		// Kept before documents held the digest: the record has it, the
+		// document does not.
+		rows, err := s.docs("acme", "handbook")
+		if err != nil {
+			t.Fatal(err)
+		}
+		i := slices.IndexFunc(rows, func(r docRow) bool { return r.doc.ID == doc.ID })
+		old := rows[i].doc
+		old.StructureDigest = ""
+		b := s.kept.Batch()
+		b.PutAt("acme", docKey("handbook", rows[i].seq), stored{Document: &old}, rows[i].version)
+		if err := b.Commit(); err != nil {
+			t.Fatal(err)
+		}
+		if got := listed(doc.ID); got.StructureDigest != StructureDigest(generated(4)) {
+			t.Fatalf("an earlier document is listed with %q", got.StructureDigest)
+		}
+		if got, err := s.SetExcluded("acme", "handbook", doc.ID, true, now); err != nil || got.StructureDigest != StructureDigest(generated(4)) {
+			t.Fatalf("an earlier document's exclusion answers %q: %v", got.StructureDigest, err)
+		}
+		// One whose record an edit left untrusted is given none.
+		if _, err := s.ReplaceForScope("acme", "handbook", doc.ID, title, "edited again", reimported.Digest, now.Add(4*time.Hour), nil); err != nil {
+			t.Fatal(err)
+		}
+		if got := listed(doc.ID); got.StructureDigest != "" {
+			t.Fatalf("an edited document is listed with %q", got.StructureDigest)
 		}
 	})
 }

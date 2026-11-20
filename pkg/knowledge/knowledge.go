@@ -121,6 +121,12 @@ type Document struct {
 	// no import wrote, or one edited since. A source's are bounded together
 	// by MaxImportedSourceBytes.
 	StructureBytes int `json:"structure_bytes,omitempty"`
+	// StructureDigest is that structure's own digest (StructureDigest),
+	// set and cleared with StructureBytes: what a reader pins, with Digest,
+	// to continue the conversation the document was imported from. A
+	// document whose structure was kept before the digest was written here
+	// is given it when read (Store.documents).
+	StructureDigest string `json:"structure_digest,omitempty"`
 }
 
 // Digest is the digest a document of this title and text is kept with: the
@@ -726,6 +732,11 @@ func (s *Store) documents(tenant, name string, expected *SourceConfig, guard boo
 		if err != nil {
 			return nil, err
 		}
+		for i := range docs {
+			if err := s.backfillStructureDigest(tenant, name, &docs[i]); err != nil {
+				return nil, err
+			}
+		}
 		// The documents are the source's at the version its scope was
 		// checked at, or they are read again.
 		if _, again, err := s.meta(tenant, name); err != nil {
@@ -774,7 +785,7 @@ func (s *Store) add(tenant, name, title, uri, text, by string, at time.Time, exp
 	texts := split(text)
 	doc.Passages = len(texts)
 	if session != nil {
-		doc.StructureBytes = importedSize(*session)
+		doc.StructureBytes, doc.StructureDigest = importedSize(*session), StructureDigest(*session)
 	}
 
 	err := state.Retry(func() error {
@@ -925,7 +936,7 @@ func (s *Store) replace(tenant, name, id, title, text, digest string, at time.Ti
 			// back as it was, at the version read, so writes to the
 			// source stay one at a time and the bound holds.
 			doc := row.doc
-			doc.StructureBytes = importedSize(*session)
+			doc.StructureBytes, doc.StructureDigest = importedSize(*session), StructureDigest(*session)
 			if structureBytes(docs, row.seq, doc.StructureBytes) > MaxImportedSourceBytes {
 				return sourceStructuresFull()
 			}
@@ -945,13 +956,13 @@ func (s *Store) replace(tenant, name, id, title, text, digest string, at time.Ti
 		doc.Title, doc.Bytes, doc.Passages, doc.Digest, doc.UpdatedAt = title, len(text), len(texts), Digest(title, text), &stamp
 		var structure *importedRecord
 		if session != nil {
-			doc.StructureBytes = importedSize(*session)
+			doc.StructureBytes, doc.StructureDigest = importedSize(*session), StructureDigest(*session)
 			if structureBytes(docs, row.seq, doc.StructureBytes) > MaxImportedSourceBytes {
 				return sourceStructuresFull()
 			}
 			structure = newImportedRecord(*session, doc.Digest, by, at)
 		} else {
-			doc.StructureBytes = 0
+			doc.StructureBytes, doc.StructureDigest = 0, ""
 			kept, err := s.kept.Lookup(tenant, importedKey(name, row.seq))
 			switch {
 			case errors.Is(err, state.ErrNotFound):
@@ -1105,6 +1116,9 @@ func (s *Store) setExcludedWithScope(tenant, name, id string, excluded bool, at 
 		i := slices.IndexFunc(docs, func(d docRow) bool { return d.doc.ID == id })
 		if i < 0 {
 			return fmt.Errorf("%w: document %q", ErrNotFound, id)
+		}
+		if err := s.backfillStructureDigest(tenant, name, &docs[i]); err != nil {
+			return err
 		}
 		row := docs[i]
 		changed := row.doc.Excluded != excluded

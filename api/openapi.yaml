@@ -7596,7 +7596,7 @@ paths:
                   type: string
                   pattern: "^[0-9a-f]{64}$"
                 structure_digest:
-                  description: The digest of the document's kept structure as the caller read it. Required when a structure is kept, and absent when none is.
+                  description: The document's `structure_digest` as the caller read it. Required when a structure is kept, and absent when none is.
                   type: string
                   pattern: "^[0-9a-f]{64}$"
                 project:
@@ -17508,6 +17508,10 @@ components:
           type: integer
           minimum: 0
           description: The size, as JSON, of the imported session's structure kept with this revision. Absent for a document no import wrote, or one edited since.
+        structure_digest:
+          type: string
+          pattern: "^[0-9a-f]{64}$"
+          description: The digest of the imported session's structure kept with this revision, absent when `structure_bytes` is. With `digest`, it is what `POST /api/knowledge/{name}/documents/{id}/continue` pins.
     ImportedSession:
       type: object
       description: "The structure of a session `humagen import sessions` wrote a document from: its main path as data. It is the importer's assertion, kept with who sent it and when; the server cannot verify that the session came from the tool it names. It is trusted only for the revision of the document it was written with, and an ordinary edit leaves it untrusted. A structure past a bound is refused with the document (400): the importer cuts and counts what it cut."
