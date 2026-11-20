@@ -94,6 +94,7 @@ func (p *Platform) ended(ctx context.Context, run runs.Run) {
 		{"questions", func() error { return p.settleQuestionsOf(run) }},
 		{"cascade", func() error { return p.cascade(ctx, run) }},
 		{"answer", func() error { return p.deliverAnswer(ctx, run) }},
+		{"followups", func() error { return p.drainFollowups(ctx, run.Tenant, run.Thread) }},
 		{"housekeeping", func() error {
 			switch {
 			case run.Origin == runs.OriginSystem:

@@ -25,7 +25,7 @@ var ErrNameTaken = errors.New("platform: name taken")
 // agentTaken reports whether a handle is an agent's name in a workspace, so
 // no person is given it.
 func (p *Platform) agentTaken(tenant, handle string) bool {
-	if IsBuiltin(handle) {
+	if IsBuiltin(handle) || handle == p.cfg.EntryAgent {
 		return true
 	}
 	_, err := p.Catalog().Get(context.Background(), tenant, handle, 0)

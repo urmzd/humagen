@@ -1325,3 +1325,25 @@ func clipText(text string, n int) string {
 	}
 	return string([]rune(text)[:n])
 }
+
+// HandleFollowup marks an already dispatched message without changing its decision.
+func (s *Store) HandleFollowup(tenant, id, mid string) error {
+	return state.Retry(func() error {
+		cur, _, err := s.writable(tenant, id)
+		if err != nil {
+			return err
+		}
+		m, v, err := s.message(tenant, id, seqOf(mid, cur.Head))
+		if err != nil {
+			return err
+		}
+		if m.Followup == nil || m.Followup.Handled {
+			return nil
+		}
+		m = m.clone()
+		m.Followup.Handled = true
+		w := s.write()
+		w.at(tenant, messageKey(id, seqOf(mid, cur.Head)), m, v)
+		return w.commit(s)
+	})
+}

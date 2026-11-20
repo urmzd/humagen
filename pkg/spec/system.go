@@ -464,6 +464,7 @@ type S3 struct {
 
 // Execution bounds what runs.
 type Execution struct {
+	EntryAgent  string       `json:"entry_agent,omitempty"`
 	Workspace   string       `json:"workspace,omitempty"`
 	Concurrency int          `json:"concurrency,omitempty"`
 	MaxDepth    int          `json:"max_depth,omitempty"`
@@ -564,6 +565,9 @@ func (s *System) Defaults() {
 	if sp.Egress.Kind == "" {
 		sp.Egress.Kind = "none"
 	}
+	if sp.Execution.EntryAgent == "" {
+		sp.Execution.EntryAgent = "humagen"
+	}
 	if sp.Execution.MaxDepth == 0 {
 		sp.Execution.MaxDepth = 4
 	}
@@ -641,6 +645,9 @@ func (s System) check(kinds Kinds) error {
 			name string
 			slot Slot
 		}{SlotExtensions, e})
+	}
+	if name := sp.Execution.EntryAgent; name != "" && !regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`).MatchString(name) {
+		return fmt.Errorf("system: execution.entry_agent must be lowercase kebab case")
 	}
 	// A child at depth d triggers with d hops and its run events carry one
 	// more, so the deepest child must stay within the bus's hop limit.

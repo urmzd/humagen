@@ -792,7 +792,20 @@ export function Chat({
   const sending: typeof queue = {
     ...queue,
     send: (text) => {
-      queue.send(text, shownPick);
+      if (threadId && queue.running) {
+        coworking.post(threadId, { text, ...shownPick })
+          .then((p) => {
+            setRoom((r) => r ? { ...r, turns: [...r.turns,
+              { kind: "message", message: p.message },
+              ...p.runs.map((run) => ({ kind: "run" as const, run })),
+            ] } : r);
+            onChanged();
+          })
+          .catch((e) => {
+            setProblem(e instanceof ApiError ? e.message : words.failed.post);
+            setSeed({ text });
+          });
+      } else queue.send(text, shownPick);
       setPick({});
     },
     sendNow: (text) => {

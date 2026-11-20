@@ -1565,8 +1565,18 @@ export interface Attachment {
   unread?: string;
 }
 
+export interface ThreadFollowup {
+  model?: string;
+  effort?: string;
+  outcome: "queue" | "replace" | "stop";
+  reason: string;
+  waiting: string[];
+  handled?: boolean;
+}
+
 /** A person's turn in a thread. It starts no run of its own. Its author is always a person. */
 export interface ThreadMessage {
+  followup?: ThreadFollowup;
   attachments?: Attachment[];
   /** `m-` and its place in the thread, from 1. */
   id: string;

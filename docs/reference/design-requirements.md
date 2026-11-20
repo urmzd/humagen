@@ -1779,3 +1779,15 @@ pass at phone and desktop widths (14 captures): `customize-agents`,
 `home-project-picker`, `conversation-overview` and `conversation-jump-latest`.
 Overview captures Environment, Context and Agents with Changes collapsed;
 its existing small file-link target remains outside this review's fixes.
+
+### DES-070: Messages during work
+
+Follow-ups are posted immediately for server classification. The existing
+message timeline shows one quiet line from shared copy: "Queued: handled when
+the current answer finishes" or "Replaced the earlier request". Stop requests
+point to the earlier answer's retained progress. Nothing waiting on a person
+animates. Decision, reason and affected runs persist on the message.
+
+Evidence: `TestFollowupOutcomesAndFallback`, `TestFollowupStrictJSON`, and
+`TestFollowupWaitsForSettlementAndKeepsDecision`; conversation rendering uses
+`Room.tsx` and shared `copy.ts`. Full screenshots remain delegated to CI.

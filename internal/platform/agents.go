@@ -242,6 +242,9 @@ func (p *Platform) Route(ctx context.Context, tenant, project, message string) (
 // join asks every candidate in a project at once and returns those that
 // take the message, in order. With none it is ErrNoTakers.
 func (p *Platform) join(ctx context.Context, tenant string, tree *projects.Tree, project, message string, keep func(string) bool) ([]join.Decision, error) {
+	if name := p.availableEntry(ctx, tenant, project); name != "" && (keep == nil || keep(name)) {
+		return []join.Decision{{Agent: name, Join: true, Reason: "Workspace entry agent."}}, nil
+	}
 	cs, err := p.candidates(ctx, tenant, tree, project, keep)
 	if err != nil {
 		return nil, err
@@ -317,6 +320,9 @@ func (p *Platform) DefaultAt(tenant string, at Place) Nearer {
 	}
 	if agent, from := p.Projects.Tree(tenant).DefaultOf(at.Project); agent != "" {
 		return Nearer{Agent: agent, From: fromProject(from)}
+	}
+	if name := p.availableEntry(context.Background(), tenant, at.Project); name != "" {
+		return Nearer{Agent: name, From: "workspace"}
 	}
 	return Nearer{}
 }
@@ -626,7 +632,7 @@ func (p *Platform) SetAgentHome(ctx context.Context, tenant, agent, project stri
 func (p *Platform) setAgentHome(ctx context.Context, tenant, agent, project string, w projects.Writer) error {
 	p.skillDefaultsMu.Lock()
 	defer p.skillDefaultsMu.Unlock()
-	if IsBuiltin(agent) && projects.NameOf(project) != projects.Root {
+	if (IsBuiltin(agent) || agent == p.cfg.EntryAgent) && projects.NameOf(project) != projects.Root {
 		return fmt.Errorf("%w: built-in agents live in Company", projects.ErrInvalid)
 	}
 	if _, err := p.Catalog().Get(ctx, tenant, agent, 0); err != nil {

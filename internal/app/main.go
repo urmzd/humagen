@@ -227,6 +227,7 @@ func serve(o Options, args []string, d serveDefaults) error {
 	maxDepth := fs.Int("max-depth", 4, "deepest an agent-to-agent call may land")
 	maxFanOut := fs.Int("max-fan-out", 16, "most calls one run may make")
 	seed := fs.Bool("seed", d.seed, "create example agents that need no model key")
+	entryAgent := fs.String("entry-agent", "humagen", "deployment entry agent name")
 	builtinProvider := fs.String("builtin-provider", "", `model provider for the agents the platform provides, such as "anthropic" or "openai". Empty means none are provided`)
 	builtinModel := fs.String("builtin-model", "", "model for the agents the platform provides")
 	personRefsFlag := fs.String("person-refs", "", `how the references each tenant's people may give for their own tool credentials start, with {subject} where each person's subject goes, as "tenant=op://People/{subject}/,keychain:humagen-people-{subject}/;tenant=env:HUMAGEN_PERSON_{subject}_". The server reads them with its own access, so a person may give only their own. A tenant not listed may reference nothing`)
@@ -455,6 +456,7 @@ func serve(o Options, args []string, d serveDefaults) error {
 		Log:              log,
 		BuiltinProvider:  *builtinProvider,
 		BuiltinModel:     *builtinModel,
+		EntryAgent:       *entryAgent,
 		Blobs:            blobs,
 		Embedder:         embedder,
 		Speech:           transcriber,

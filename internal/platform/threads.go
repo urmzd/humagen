@@ -907,6 +907,18 @@ func (p *Platform) PostMessage(ctx context.Context, who auth.Principal, id strin
 		a := *in.Answers
 		msg.Answers = &a
 	}
+	if !in.PostOnly && in.Answers == nil && !in.reply && (len(mentions) == 0 || slices.ContainsFunc(mentions, func(m threads.Mention) bool {
+		return m.Refused == "" && (m.Kind == threads.Agent || m.Kind == threads.Skill)
+	})) {
+		msg.Followup, err = p.classifyFollowup(ctx, person, th, msg.Text)
+		if err != nil {
+			return Posted{}, err
+		}
+		if msg.Followup != nil {
+			msg.Followup.Model, msg.Followup.Effort = in.Model, in.Effort
+			p.SeePerson(person)
+		}
+	}
 	if th, err = p.recordOf(who.Tenant, id, p.claimant(person, th.Project)); err != nil {
 		return Posted{}, err
 	}
@@ -918,11 +930,31 @@ func (p *Platform) PostMessage(ctx context.Context, who auth.Principal, id strin
 		return Posted{}, err
 	}
 	if !fresh {
+		if m.Followup != nil {
+			if err := p.stopForFollowup(ctx, person, m); err != nil {
+				return Posted{}, err
+			}
+			if err := p.drainFollowups(ctx, who.Tenant, th.ID); err != nil {
+				return Posted{}, err
+			}
+		}
 		again := p.posted(who.Tenant, th, m)
 		again.Repeated = true
 		return again, nil
 	}
 	p.repliedTo(who.Tenant, th.ID, m)
+	if m.Followup != nil {
+		if err := p.stopForFollowup(ctx, person, m); err != nil {
+			return Posted{}, err
+		}
+		if err := p.drainFollowups(ctx, who.Tenant, th.ID); err != nil {
+			return Posted{}, err
+		}
+		out := p.posted(who.Tenant, th, m)
+		out.Refused = append(out.Refused, unmapped...)
+		out.Notified = p.notifyTagged(who.Tenant, tree, th, m, m.Mentions)
+		return out, nil
+	}
 	out, err := p.carryOut(withMessageChoice(ctx, choice), person, who.Tenant, tree, th, m, clientOf(in.ActAs), in.PostOnly, in.Answers != nil || in.reply, keeps, sees)
 	out.Refused = append(out.Refused, unmapped...)
 	return out, err
@@ -1058,7 +1090,7 @@ func (p *Platform) carryOut(ctx context.Context, poster auth.Principal, tenant s
 	// A person posting in the console, as themselves, runs only the agents
 	// they tag: no default answers them. A client's surface keeps its
 	// defaults, where mentioning the app is what asks.
-	tagsOnly := via == ""
+	tagsOnly := via == "" && p.availableEntry(ctx, tenant, th.Project) == ""
 	// The thread's selected agents answer an untagged message, those the
 	// poster may read: one they may not is passed over for them.
 	routed, mode := slices.DeleteFunc(slices.Clone(th.Agents), func(a string) bool { return sees != nil && !sees(a) }), th.Mode

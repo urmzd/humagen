@@ -129,6 +129,7 @@ spec:
       timeout: 60s          # one request; the default, at most 10m
 
   execution:
+    entry_agent: humagen                   # deployment name, lowercase kebab case
     workspace: ""           # agents' files. Empty is the user cache directory
     concurrency: 4          # a run that calls another agent waits in one place while it runs in another
     max_depth: 4            # 1 to 7: a deeper call would pass the bus's hop limit of 8
@@ -1292,3 +1293,13 @@ servers and reviews their tool lists in Customize. Changes to schemas,
 metadata or read-only hints require another review; every write tool asks
 that person for approval. MCP clients and credential resolution run in the
 trusted worker, outside the agent sandbox.
+
+### Entry agent
+
+`execution.entry_agent` defaults to `humagen` (`--entry-agent`). Use `codex`
+for a deployment branded Codex. The name is a stable package identity, so
+changing `workspace_name` does not rename stored agent revisions or grants.
+The entry is installed in `humagen/core` when `execution.builtin` names a
+provider and model. Ordinary agents and customized entry revisions keep
+explicit spawn grants; platform entry revisions resolve available specialists
+from the run's project. Callee policies, call limits and budgets still apply.

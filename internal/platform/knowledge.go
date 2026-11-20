@@ -1,6 +1,7 @@
 package platform
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"maps"
@@ -96,6 +97,17 @@ func (p *Platform) resolveRevision(req runtime.Request) (runtime.Request, error)
 		return req, err
 	}
 	if err := p.CheckAssignmentSourceHealth(req); err != nil {
+		return req, err
+	}
+	projectForEntry, _ := p.operationPlace(req)
+	if req.Agent() == p.cfg.EntryAgent {
+		rev, readErr := p.Catalog().Get(context.Background(), req.Tenant, req.Agent(), wire.RevOf(req.Definition.Version))
+		if readErr != nil {
+			return req, readErr
+		}
+		req.Definition.Spec.Access.Spawn, err = p.entrySpawn(context.Background(), req.Tenant, projectForEntry, rev)
+	}
+	if err != nil {
 		return req, err
 	}
 	req, err = p.resolveOperations(req)

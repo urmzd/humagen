@@ -10760,11 +10760,24 @@ components:
         alt: {type: string}
         origin: {type: string}
         unread: {type: string}
+    ThreadFollowup:
+      type: object
+      required: [outcome, reason, waiting]
+      properties:
+        model: {type: string}
+        effort: {type: string}
+        outcome: {type: string, enum: [queue, replace, stop]}
+        reason: {type: string}
+        waiting:
+          type: array
+          items: {type: string}
+        handled: {type: boolean}
     ThreadMessage:
       description: A person's turn in a thread. It starts no run of its own. Its author is always a person.
       type: object
       required: [id, thread, by, name, text, mentions, via, at]
       properties:
+        followup: {$ref: "#/components/schemas/ThreadFollowup"}
         attachments:
           type: array
           items: {$ref: "#/components/schemas/Attachment"}

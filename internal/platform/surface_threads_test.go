@@ -195,6 +195,9 @@ func TestAClientsListHoldsWhereverItPostsForAPerson(t *testing.T) {
 	if got := agents(posted); !slices.Equal(got, []string{"helper"}) || len(posted.Refused) != 1 || posted.Refused[0].Name != "lead" {
 		t.Fatalf("a message the client posted for ana in a console thread started %v, refusing %+v", got, posted.Refused)
 	}
+	for _, r := range posted.Runs {
+		await(t, p, r.ID, runs.Completed)
+	}
 	herself := auth.Principal{Subject: "ana", Tenant: tenant, Kind: auth.User, Roles: []auth.Role{auth.Operator}}
 	own, err := p.PostMessage(t.Context(), herself, room.Thread.ID, platform.MessageInput{Text: "@lead look"})
 	if err != nil {
@@ -509,6 +512,7 @@ func TestOnASurfaceTheDefaultAnswersAndFailsClosed(t *testing.T) {
 	if open.Rule != threads.RuleDefault || len(open.Runs) != 1 || open.Runs[0].Agent != "helper" || open.Runs[0].Actor.User != "ana" {
 		t.Fatalf("an untagged message from Slack started %+v (%s)", open.Runs, open.Rule)
 	}
+	await(t, p, open.Runs[0].ID, runs.Completed)
 	console := post(t, p, auth.Principal{Subject: "ana", Tenant: tenant, Kind: auth.User, Roles: []auth.Role{auth.Operator}}, open.Thread.ID, platform.MessageInput{Text: "and here?"})
 	if console.Rule != threads.RuleUntagged || len(console.Runs) != 0 {
 		t.Fatalf("an untagged message from the console started %+v (%s)", console.Runs, console.Rule)

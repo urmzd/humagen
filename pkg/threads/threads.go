@@ -306,7 +306,18 @@ type Mention struct {
 }
 
 // Message is a person's turn in a thread. It starts no run of its own.
+// Followup records a decision and the runs whose settlement releases the message.
+type Followup struct {
+	Model   string   `json:"model,omitempty"`
+	Effort  string   `json:"effort,omitempty"`
+	Outcome string   `json:"outcome"`
+	Reason  string   `json:"reason"`
+	Waiting []string `json:"waiting"`
+	Handled bool     `json:"handled,omitempty"`
+}
+
 type Message struct {
+	Followup    *Followup               `json:"followup,omitempty"`
 	Attachments []attachment.Attachment `json:"attachments,omitempty"`
 	// ID is "m-" and the message's place in the thread, from 1.
 	ID     string `json:"id"`
@@ -331,6 +342,11 @@ type Message struct {
 }
 
 func (m Message) clone() Message {
+	if m.Followup != nil {
+		f := *m.Followup
+		f.Waiting = slices.Clone(f.Waiting)
+		m.Followup = &f
+	}
 	m.Attachments = slices.Clone(m.Attachments)
 	m.Mentions = cloneMentions(m.Mentions)
 	if m.Answers != nil {

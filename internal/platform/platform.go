@@ -233,6 +233,7 @@ type Config struct {
 	// run on. With either empty there are no built-in agents.
 	BuiltinProvider string
 	BuiltinModel    string
+	EntryAgent      string
 	// AgentOptions are passed to every agent the sandbox builds. A test
 	// uses them to script a model.
 	AgentOptions []native.Option
@@ -448,6 +449,15 @@ type Platform struct {
 
 // New assembles a platform. Nothing runs until Run is called.
 func New(cfg Config) (*Platform, error) {
+	if cfg.EntryAgent == "" {
+		cfg.EntryAgent = BuiltinEntry
+	}
+	if !projects.ValidAgent(cfg.EntryAgent) {
+		return nil, fmt.Errorf("entry agent: invalid name %q", cfg.EntryAgent)
+	}
+	if err := (wire.AgentSpec{Name: cfg.EntryAgent, Provider: "offline", Model: "entry", SystemPrompt: "entry"}).Validate(); err != nil {
+		return nil, fmt.Errorf("entry agent: %w", err)
+	}
 	if cfg.ProjectTemplates == nil {
 		cfg.ProjectTemplates = projects.DefaultTemplates()
 	}
@@ -878,6 +888,10 @@ func (p *Platform) call(ctx context.Context, tenant, runID string, req call.Requ
 	rev, err := p.Catalog().Get(ctx, tenant, parent.Agent, parent.Rev)
 	if err != nil {
 		return runs.Run{}, fmt.Errorf("platform: caller's spec: %w", err)
+	}
+	rev.Spec.Access.Spawn, err = p.entrySpawn(ctx, tenant, p.RunPlace(tenant, parent).Project, rev)
+	if err != nil {
+		return runs.Run{}, err
 	}
 	if !slices.Contains(rev.Spec.Access.Spawn, req.Agent) || sees != nil && !sees(req.Agent) {
 		return runs.Run{}, fmt.Errorf("%w: refused by the caller: %q may not call %q, which its spec's spawn allowlist does not name", ErrForbidden, parent.Agent, req.Agent)

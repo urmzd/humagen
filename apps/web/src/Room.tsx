@@ -296,6 +296,10 @@ function MessageView({
     <>
       {m.surface_id && <span>{words.fromSlack}</span>}
       {m.answers && <span>{words.answered}</span>}
+      {m.followup && <span>{m.followup.outcome === "replace"
+        ? defaultCopy.conversation.followupReplaced
+        : m.followup.outcome === "stop" ? defaultCopy.conversation.followupStopped
+        : defaultCopy.conversation.followupQueued}</span>}
     </>
   );
   const row = (

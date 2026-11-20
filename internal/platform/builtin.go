@@ -24,6 +24,11 @@ import (
 // A built-in needs a model to be of any use, so none exists until the server
 // is told which provider and model to give them.
 
+// BuiltinEntry is the default deployment entry agent.
+const BuiltinEntry = "humagen"
+
+const entryPrompt = `You are the workspace's entry agent. Answer simple asks directly. Otherwise choose the right available specialists and delegate with call_agent in subagent mode, or tag_<agent> when offered. Give each specialist the context and completion criteria it needs, wait for results, then reply once with a merged answer naming who did what. For code review asks, delegate to code-reviewer. Use only tools actually offered to you; never invent tools or claim work that did not finish.`
+
 // BuiltinWriter writes a document and publishes it.
 const BuiltinWriter = "humagen-writer"
 
@@ -116,7 +121,7 @@ func reviewTools() []string {
 
 // Builtins lists the names of the agents the platform provides.
 func Builtins() []string {
-	return []string{BuiltinWriter, BuiltinAnalyst, BuiltinBuilder, BuiltinCodeReviewer, BuiltinSecurityReviewer, BuiltinArchitectReviewer, BuiltinQAReviewer}
+	return []string{BuiltinWriter, BuiltinAnalyst, BuiltinBuilder, BuiltinCodeReviewer, BuiltinSecurityReviewer, BuiltinArchitectReviewer, BuiltinQAReviewer, BuiltinEntry}
 }
 
 // IsBuiltin reports whether a name belongs to the platform.
@@ -184,12 +189,17 @@ func (p *Platform) builtinSpecs() []wire.AgentSpec {
 		SystemPrompt: qaReviewerPrompt,
 		Tools:        reviewTools(),
 	}}
+	specs = append(specs[:3], append([]wire.AgentSpec{{
+		Name: p.cfg.EntryAgent, Description: "Answers and coordinates specialists for the workspace",
+		Provider: p.cfg.BuiltinProvider, Model: p.cfg.BuiltinModel,
+		SystemPrompt: entryPrompt,
+	}}, specs[3:]...)...)
 	// Hash each complete package before adding provenance.
 	for _, group := range []struct {
 		name       string
 		start, end int
 	}{
-		{"humagen/core", 0, 3}, {"humagen/review", 3, 7},
+		{"humagen/core", 0, 4}, {"humagen/review", 4, 8},
 	} {
 		raw, _ := json.Marshal(specs[group.start:group.end])
 		version := fmt.Sprintf("sha256:%x", sha256.Sum256(raw))

@@ -312,7 +312,7 @@ func (p *Platform) agentsReport(ctx context.Context, tenant, own string) (string
 			if !open(r.Spec.Name) || len(out) >= 200 {
 				continue
 			}
-			out = append(out, agent{r.Spec.Name, r.Spec.Description, r.Spec.Provider + "/" + r.Spec.Model, r.Spec.Tools, r.Rev, IsBuiltin(r.Spec.Name)})
+			out = append(out, agent{r.Spec.Name, r.Spec.Description, r.Spec.Provider + "/" + r.Spec.Model, r.Spec.Tools, r.Rev, (IsBuiltin(r.Spec.Name) || r.Spec.Name == p.cfg.EntryAgent)})
 		}
 		if next == "" {
 			break
