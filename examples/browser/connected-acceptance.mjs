@@ -13,7 +13,9 @@ import {
   renameSync,
 } from "node:fs";
 import { spawn } from "node:child_process";
-// Opt-in: this runs the real signed-in program and consumes its account usage.
+// Opt-in: this runs a real model through Humagen with the native profile in
+// humagen.yaml, on the provider key in your environment (ANTHROPIC_API_KEY),
+// and consumes that account's usage.
 if (process.env.HUMAGEN_BROWSER_LIVE !== "1")
   throw new Error("Set HUMAGEN_BROWSER_LIVE=1 to run the real authenticated fixture acceptance.");
 if (!process.env.HUMAGEN_BROWSER_TOOL_DIR)
@@ -103,8 +105,8 @@ async function sessionRun(session, previous = new Set()) {
   }
   throw new Error("Session did not complete: " + session);
 }
-// Observe the exact bytes returned to the CLI, rather than inferring inline
-// images from its text-only journal or from a saved screenshot path.
+// Observe the exact bytes the MCP worker returns to Humagen, rather than
+// inferring inline images from the run's text events or a saved screenshot path.
 const wireImages = [];
 const wireScreenshots = [];
 const wireErrors = [];
@@ -279,49 +281,6 @@ async function stopWorker() {
   await stopProcess(worker);
   worker = undefined;
 }
-async function checkReadScope() {
-  const secret = "OUTSIDE-" + randomBytes(16).toString("hex");
-  const path = root + "/protected-fixture.txt";
-  writeFileSync(path, secret);
-  const response = await fetch(api + "/api/runs", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      agent: "browser",
-      text: `File permission acceptance on an owned harmless fixture: call Read exactly once for ${path}. Do not use any browser/MCP tool or inspect other paths. This call is deliberately outside the configured download working directory and must be refused by restricted mode. Report REFUSED if denied; do not guess the contents or use another method.`,
-    }),
-  });
-  if (!response.ok) throw new Error(await response.text());
-  const created = await response.json();
-  let state;
-  for (let i = 0; i < 120; i++) {
-    state = await (await fetch(api + "/api/runs/" + created.id)).json();
-    if (["completed", "failed", "stopped"].includes(state.status)) break;
-    await new Promise((r) => setTimeout(r, 1000));
-  }
-  const events = await (await fetch(api + "/api/runs/" + created.id + "/events")).json();
-  writeFileSync(root + "/scope-state.json", JSON.stringify(state, null, 2));
-  writeFileSync(root + "/scope-events.json", JSON.stringify(events, null, 2));
-  const reads = events.events.filter(
-    (e) => e.type === "run.delta.tool.done.v1" && e.data.name === "Read",
-  );
-  if (
-    state.status !== "completed" ||
-    JSON.stringify({ state, events }).includes(secret) ||
-    !reads.some((e) =>
-      /restricted|outside|denied|not allowed|not permitted|blocked/i.test(
-        e.data.error ?? e.data.result ?? "",
-      ),
-    )
-  )
-    throw new Error(
-      "Read outside the download directory was not demonstrably refused; inspect scope-state/events.json",
-    );
-  console.log(
-    "PASS restricted Read outside the download directory was actually refused",
-    created.id,
-  );
-}
 try {
   const userdir = mkdtempSync(root + "/profile-");
   mkdirSync(userdir + "/Default", { recursive: true });
@@ -360,13 +319,19 @@ try {
   context = browser.contexts()[0];
   page = context.pages()[0] ?? (await context.newPage());
 
-  const template = readFileSync(new URL("./claude-code.yaml", import.meta.url), "utf8");
-  const config = template
-    .replace("/absolute/path/to/browser-downloads", JSON.stringify(root + "/downloads"))
-    .replace("127.0.0.1:8080", "127.0.0.1:" + apiPort)
-    .replace("http://127.0.0.1:8931/mcp", "http://127.0.0.1:" + bridgePort + "/mcp")
-    .replace("{fixed: default}", "{fixed: " + tenant + "}")
-    .replace("metadata: {name: default}", "metadata: {name: " + tenant + "}");
+  // The native server accepts the profile's pinned browser tools when it
+  // starts, so the worker must already be listening (through the bridge).
+  await startWorker();
+  let config = readFileSync(new URL("./humagen.yaml", import.meta.url), "utf8");
+  for (const [from, to] of [
+    ["127.0.0.1:8080", "127.0.0.1:" + apiPort],
+    ["http://127.0.0.1:8931/mcp", "http://127.0.0.1:" + bridgePort + "/mcp"],
+    ["{fixed: default}", "{fixed: " + tenant + "}"],
+    ["metadata: {name: default}", "metadata: {name: " + tenant + "}"],
+  ]) {
+    if (!config.includes(from)) throw new Error("humagen.yaml no longer contains " + from);
+    config = config.replace(from, to);
+  }
   writeFileSync(join(root, "humagen.yaml"), config);
   humagen = startProcess(
     process.env.HUMAGEN_BROWSER_BINARY || "humagen",
@@ -401,7 +366,7 @@ try {
     changed = false;
     downloads = 0;
     if (readdirSync(root + "/downloads").length !== 0)
-      throw new Error("CLI download directory contains another record or MCP artifact");
+      throw new Error("Download directory contains another record or MCP artifact");
     const imageStart = wireImages.length,
       screenshotStart = wireScreenshots.length;
     await page.setViewportSize({ width, height });
@@ -414,9 +379,9 @@ try {
     // Keep the fixture's CDP connection attached: disconnecting clears its
     // viewport/media emulation and makes the paired screenshots incomparable.
     // Chrome was launched independently with its own selected-download folder.
-    await startWorker();
-    if (results.length === 0) await checkReadScope();
-    const text = `Use only the already signed-in authorized fixture tab at ${base}/portal. List the tabs, inspect its snapshot, and take a screenshot to read the two unlabelled panels' fill colors in left-to-right order. Do not inspect source code. For browser_take_screenshot omit filename entirely and set scale css, so its image bytes are returned instead of only a saved path. Read those returned image pixels directly, do not use browser_evaluate. Then click Approve fixture, inspect the changed page, and click Download selected record. Chrome is explicitly configured to save selected files into ${root}/downloads. Use Glob there and Read only the selected CSV to verify its record and value. Return the record identifier, colors, changed heading, actual saved download path and CSV value. These exact fixture actions are authorized. Do not navigate away from this origin or close any tab.`;
+    // The native agent has no tool that reads that folder: this helper checks
+    // the downloaded bytes itself.
+    const text = `Use only the already signed-in authorized fixture tab at ${base}/portal. List the tabs, inspect its snapshot, and take a screenshot to read the two unlabelled panels' fill colors in left-to-right order. Do not inspect source code. For browser_take_screenshot omit filename entirely and set scale css, so its image bytes are returned instead of only a saved path. Read those returned image pixels directly, do not use browser_evaluate. Then click Approve fixture, inspect the changed page, and click Download selected record. Return the record identifier, colors and changed heading, and say that you did not open the downloaded file. These exact fixture actions are authorized. Do not navigate away from this origin or close any tab.`;
     let created, uploadAnalysis;
     if (compareUpload) {
       const png = readFileSync(`${root}/before-${theme}-${width}x${height}.png`);
@@ -515,15 +480,10 @@ try {
     if (compareUpload && calls.some((name) => /browser_(evaluate|run_code)$/.test(name)))
       throw new Error("Screenshot comparison attempted source-code evaluation");
     if (
-      !calls.includes("mcp__browser__browser_take_screenshot") ||
-      !calls.includes("mcp__browser__browser_tabs")
+      !calls.includes("browser__browser_take_screenshot") ||
+      !calls.includes("browser__browser_tabs")
     )
       throw new Error("no screenshot/tab evidence");
-    const reads = events.events.filter(
-      (e) => e.type === "run.delta.tool.done.v1" && e.data.name === "Read",
-    );
-    if (!reads.some((e) => (e.data.result ?? "").includes(record)))
-      throw new Error("selected CSV was not actually read");
     const images = wireImages.slice(imageStart).filter((i) => i.tool === "browser_take_screenshot");
     if (
       compareUpload &&
@@ -558,7 +518,6 @@ try {
     if (data.toString() !== `record,value\n${record},42\n`) throw new Error("wrong download bytes");
     const verifiedDownloadPath = root + "/verified-downloads/" + files[0];
     renameSync(root + "/downloads/" + files[0], verifiedDownloadPath);
-    await stopWorker();
     page = context.pages().find((p) => p.url() === base + "/portal");
     if (!page) throw new Error("existing tab missing");
     const cdp = await context.newCDPSession(page);
@@ -590,7 +549,6 @@ try {
       downloadSHA256: createHash("sha256").update(data).digest("hex"),
       verifiedDownloadPath,
       inlineImages: images,
-      restrictedReadRefused: true,
       ...(compareUpload ? { uploadAnalysis } : {}),
     });
     writeFileSync(root + "/results.json", JSON.stringify(results, null, 2));

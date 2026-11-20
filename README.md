@@ -200,6 +200,8 @@ uvx --from zensical==0.1.2 zensical build
 uvx --from zensical==0.1.2 zensical serve
 ```
 
+The deployed guide loads its shared theme from `/brand/`. To preview the same logo, fonts and colors locally, follow the [shared-brand preview instructions](https://github.com/urmzd/urmzd.github.io#preview-a-guide-with-the-shared-brand).
+
 - [Roadmap](docs/plans/roadmap.md)
 - [Architecture and status](docs/architecture/overview.md)
 - [API contract and events](docs/reference/api.md)

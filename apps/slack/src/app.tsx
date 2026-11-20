@@ -1,6 +1,7 @@
 import "./react.ts";
 import { createHash } from "node:crypto";
 import {
+  type AnswerRequest,
   actedFor,
   answerOfAction,
   answers,
@@ -78,6 +79,7 @@ import {
 } from "./humagen.ts";
 import { eventKey, runId, type Session, sessionName, sessionOf, threadKey } from "./keys.ts";
 import { Presenter } from "./present.tsx";
+import { promptIn, recordedOf, settleCard, settledElsewhere } from "./questions.tsx";
 import { type Envelope, type SlackApi, SlackError } from "./slack.ts";
 
 /**
@@ -1588,6 +1590,8 @@ export class App {
     mine = as && !sent ? await readFor(as) : null;
     if (mine && as) return this.onPersonal(p, ui, mine, as);
     if (answers(ui)) return this.onAnswer(p, ui);
+    // Humagen takes a decision on a call, not a question about it: say so, not nothing.
+    if (ui.id === ActionId.ask) return this.whisper(p, this.words.askNotYet);
     if (ui.id === ActionId.retry || ui.id === ActionId.resume) {
       const run = await this.humagen.getRun(ui.payload.turnId);
       const outcome = run ? await this.again(run, p.user.id, p.message?.ts) : "elsewhere";
@@ -1769,19 +1773,19 @@ export class App {
   private async onAnswer(p: ActionPayload, ui: UiAction): Promise<void> {
     const answer = answerOfAction(ui);
     if (!answer) {
-      // humagen: a modal that collects a reply to a question (as feedbackModal does for a
-      // rating), for Something Else and Reply. Until then a reply is typed in the console.
-      if (ui.id === ActionId.clarifyOther) return this.whisper(p, this.words.replyInConsole);
+      // Something Else and Reply carry no words yet: a modal collects them.
+      if (ui.id === ActionId.clarifyOther) return this.askForAnswer(p, ui);
       return;
     }
-    const as = await this.actAs(p.user.id);
-    if (!as) {
+    const who = await this.mapped(p.user.id);
+    if (!who) {
       this.log(`an answer from ${p.user.id} was not sent: this client does not map them to anyone`);
       return this.whisper(p, defaultCopy.noPermission);
     }
     try {
-      await this.humagen.answerQuestion(answer, as);
+      const recorded = await this.humagen.answerQuestion(answer, who.as);
       this.log(`question ${answer.question} on ${answer.run} answered for ${p.user.id}`);
+      await this.settleStale(p, answer, recorded, who.person);
     } catch (e) {
       this.log(
         `question ${answer.question} on ${answer.run} was not answered: ${(e as Error).message}`,
@@ -1792,6 +1796,67 @@ export class App {
         status === 403 ? defaultCopy.noPermission : defaultCopy.failure.internal(),
       );
     }
+  }
+
+  /**
+   * Where the card was when its reply modal opened, by who opened it and for
+   * which question: a refusal, or a question settled meanwhile, is said there.
+   */
+  private readonly replying = new Recent<ActionPayload>(500);
+
+  /**
+   * Open the reply modal for a question's Something Else or Reply, while the
+   * trigger is fresh. Only someone the client maps is asked for words: the
+   * answer is sent as them, so nobody else is shown a form that cannot send.
+   */
+  private async askForAnswer(p: ActionPayload, ui: UiAction): Promise<void> {
+    const target = { run: ui.payload.turnId, question: ui.payload.target ?? "" };
+    if (!(await this.actAs(p.user.id))) {
+      this.log(`a reply from ${p.user.id} was not asked for: this client maps them to nobody`);
+      return this.whisper(p, defaultCopy.noPermission);
+    }
+    if (!p.trigger_id || !target.run || !target.question)
+      return this.whisper(p, this.words.replyInConsole);
+    const context = promptIn(p.message?.blocks ?? [], target.question);
+    this.replying.set(replyingKey(p.user.id, target), p);
+    try {
+      await this.slack.call("views.open", {
+        trigger_id: p.trigger_id,
+        view: replyModal(target, context ? { context } : {}),
+      });
+    } catch (e) {
+      this.log(`the reply modal for ${target.question} did not open: ${(e as Error).message}`);
+      await this.whisper(p, defaultCopy.failure.internal());
+    }
+  }
+
+  /**
+   * Humagen recorded something other than what was just sent: the question
+   * was answered elsewhere, expired, or its run stopped. The person is told,
+   * and the card they pressed, which nothing else will settle, shows the record.
+   */
+  private async settleStale(
+    p: ActionPayload,
+    answer: AnswerRequest,
+    message: unknown,
+    person: string,
+  ): Promise<void> {
+    const recorded = recordedOf(message, answer.question);
+    if (!recorded || !settledElsewhere(recorded, answer.body, person)) return;
+    await this.whisper(p, this.words.alreadySettled);
+    const channel = p.channel?.id ?? p.container?.channel_id;
+    const blocks = p.message?.blocks;
+    if (!channel || !p.message?.ts || !blocks) return;
+    const settled = settleCard(blocks, answer.run, recorded, this.copy);
+    if (!settled) return;
+    await this.slack
+      .call("chat.update", {
+        channel,
+        ts: p.message.ts,
+        ...(p.message.text ? { text: p.message.text.slice(0, LIMITS.fallbackText) } : {}),
+        blocks: settled,
+      })
+      .catch((e: Error) => this.log(`a settled question's card was not updated: ${e.message}`));
   }
 
   // The inbox
@@ -1885,9 +1950,15 @@ export class App {
    * waits on. Someone the client does not map is not asked for at all.
    */
   private async onReply(user: string, text: string, target: ReplyTarget): Promise<void> {
-    const as = await this.actAs(user);
-    if (!as) {
+    // The card the modal was opened from, when it was a question in a thread.
+    const key = "run" in target ? replyingKey(user, target) : "";
+    const card = key ? this.replying.get(key) : undefined;
+    if (key) this.replying.delete(key);
+    const who = await this.mapped(user);
+    const as = who?.as;
+    if (!who || !as) {
       this.log(`a reply from ${user} was not sent: this client does not map them to anyone`);
+      if (card) await this.whisper(card, defaultCopy.noPermission);
       return;
     }
     try {
@@ -1906,13 +1977,24 @@ export class App {
             ...this.personalView(updated),
           });
       } else {
-        await this.humagen.answerQuestion(
-          { run: target.run, question: target.question, body: { action: "reply", text } },
-          as,
-        );
+        const answer: AnswerRequest = {
+          run: target.run,
+          question: target.question,
+          body: { action: "reply", text },
+        };
+        const recorded = await this.humagen.answerQuestion(answer, as);
+        this.log(`question ${answer.question} on ${answer.run} answered in words for ${user}`);
+        if (card) await this.settleStale(card, answer, recorded, who.person);
       }
     } catch (e) {
       this.log(`a reply from ${user} was refused: ${(e as Error).message}`);
+      // The modal is closed by now: the refusal is said where the card is.
+      const status = e instanceof HumagenError ? e.status : 0;
+      if (card)
+        await this.whisper(
+          card,
+          status === 403 ? defaultCopy.noPermission : defaultCopy.failure.internal(),
+        );
     }
   }
 
@@ -2697,6 +2779,10 @@ export class App {
   }
 }
 
+/** One person's reply to one question, as `replying` keeps the card it was opened from. */
+const replyingKey = (user: string, at: { run: string; question: string }) =>
+  `${user}\n${at.run}\n${at.question}`;
+
 /** The team a delivery says it is from. Each kind of delivery carries it somewhere else. */
 function teamOf(type: string, p: Record<string, unknown>): string | undefined {
   const at = (v: unknown, k: string) =>
@@ -2730,7 +2816,7 @@ interface ActionPayload {
   container?: { type?: string; channel_id?: string };
   view?: { type?: string };
   trigger_id?: string;
-  message?: { ts: string; thread_ts?: string };
+  message?: { ts: string; thread_ts?: string; text?: string; blocks?: unknown[] };
   actions?: { action_id: string; value?: string; selected_option?: { value: string } }[];
   state?: Parameters<typeof decodeSlackAction>[1];
 }

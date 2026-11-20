@@ -3,6 +3,8 @@ package library
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -107,6 +109,133 @@ func importDraftsARevisionMarkedAsImported(t *testing.T, open func(*testing.T) s
 	if err != nil || len(rows) != 2 || rows[0].Via != ViaImport || rows[1].Via != "" {
 		t.Fatalf("history = %+v, %v", rows, err)
 	}
+}
+
+// A tool list that is absent stays absent, and an empty one stays empty,
+// through what is stored and read back: absent does not limit a run's tools
+// and empty allows none. An imported revision is limited only as its
+// SKILL.md declares, the empty list an earlier import wrote included; an
+// edit saved in the editor is limited as stored.
+func TestAToolListKeepsAbsentApartFromEmpty(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		s, err := Open(open(t))
+		if err != nil {
+			t.Fatal(err)
+		}
+		scope, now := Scope{Kind: "workspace"}, time.Now()
+		pkg := func(name, allowed string) Definition {
+			return Definition{Skill: projects.Skill{Name: name}, Files: []File{
+				{Path: "SKILL.md", Data: []byte("---\nname: " + name + "\ndescription: Generated fixture\n" + allowed + "---\nRead references/guide.md.\n")},
+				{Path: "references/guide.md", Data: []byte("Generated fixture guide")},
+			}}
+		}
+		cases := []struct {
+			name, allowed string
+			tools         []string
+			imported      bool
+			stored, limit []string
+		}{
+			{"now", "", nil, true, nil, nil},
+			{"before-cli", "", []string{}, true, nil, nil},
+			{"declared", "allowed-tools: file_read file_read\n", nil, true, []string{"file_read"}, []string{"file_read"}},
+			{"declared-none", "allowed-tools: \"\"\n", nil, true, []string{}, []string{}},
+			{"edited", "", []string{}, false, []string{}, []string{}},
+			{"edited-open", "", nil, false, nil, nil},
+		}
+		for _, c := range cases {
+			d := pkg(c.name, c.allowed)
+			d.Tools = c.tools
+			if c.imported {
+				_, err = s.Import("acme", "ada", scope, d, 0, now)
+			} else {
+				_, err = s.Draft("acme", "ada", scope, d, 0, nil, now)
+			}
+			if err != nil {
+				t.Fatalf("%s: %v", c.name, err)
+			}
+			rows, err := s.History("acme", scope, c.name)
+			if err != nil || len(rows) != 1 {
+				t.Fatalf("%s: %v", c.name, err)
+			}
+			r := rows[0]
+			if (r.Tools == nil) != (c.stored == nil) || !slices.Equal(r.Tools, c.stored) {
+				t.Errorf("%s stored %#v, want %#v", c.name, r.Tools, c.stored)
+			}
+			if limit := r.ToolLimit(); (limit == nil) != (c.limit == nil) || !slices.Equal(limit, c.limit) {
+				t.Errorf("%s limits to %#v, want %#v", c.name, limit, c.limit)
+			}
+		}
+	})
+}
+
+// A revision an import wrote before this release holds the empty list that
+// import sent whatever the folder said. It is read with the limit its
+// SKILL.md declares, a list past the bounds read as allowing none, and the
+// next write of the record stores what is read, so the store, what it
+// answers and what limits a run agree.
+func TestAnEarlierImportIsReadWithItsDeclaredLimit(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		s, err := Open(open(t))
+		if err != nil {
+			t.Fatal(err)
+		}
+		scope := Scope{Kind: "workspace"}
+		var many []string
+		for i := range MaxSkillTools + 1 {
+			many = append(many, fmt.Sprintf("t%d", i))
+		}
+		for _, c := range []struct {
+			name, allowed string
+			limit         []string
+		}{
+			{"legacy-open", "", nil},
+			{"legacy-declared", "allowed-tools: file_read\n", []string{"file_read"}},
+			{"legacy-over", "allowed-tools: " + strings.Join(many, " ") + "\n", []string{}},
+		} {
+			d := Definition{Skill: projects.Skill{Name: c.name, Description: "Generated fixture", Instructions: "Read references/guide.md."}, Tools: []string{}, Files: []File{
+				{Path: "SKILL.md", Data: []byte("---\nname: " + c.name + "\ndescription: Generated fixture\n" + c.allowed + "---\nRead references/guide.md.\n")},
+				{Path: "references/guide.md", Data: []byte("Generated fixture guide")},
+			}}
+			if d, err = d.Normalize(); err != nil {
+				t.Fatal(err)
+			}
+			d.Tools = []string{}
+			row := Revision{ID: ID(scope, c.name), Via: ViaImport, Definition: d, Scope: scope, Version: 1, By: "ada", At: time.Now(), Tests: []string{}}
+			raw, err := json.Marshal([]Revision{row})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := s.raw.Put("acme", skillKey(scope, c.name), raw); err != nil {
+				t.Fatal(err)
+			}
+			read := func(when string) {
+				t.Helper()
+				rows, err := s.History("acme", scope, c.name)
+				if err != nil || len(rows) != 1 {
+					t.Fatalf("%s %s: %v", c.name, when, err)
+				}
+				if got := rows[0].Tools; (got == nil) != (c.limit == nil) || !slices.Equal(got, c.limit) || !slices.Equal(rows[0].ToolLimit(), c.limit) {
+					t.Fatalf("%s %s: read %#v, want %#v", c.name, when, got, c.limit)
+				}
+			}
+			read("as stored")
+			if err := s.Tested("acme", scope, c.name, 1, "generated-test"); err != nil {
+				t.Fatal(err)
+			}
+			read("after a write")
+			item, err := s.raw.Lookup("acme", skillKey(scope, c.name))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var stored []Revision
+			if err := json.Unmarshal(item.Value, &stored); err != nil {
+				t.Fatal(err)
+			}
+			if got := stored[0].Tools; (got == nil) != (c.limit == nil) || !slices.Equal(got, c.limit) {
+				t.Fatalf("%s: stored %#v after a write, want %#v", c.name, got, c.limit)
+			}
+		}
+	})
 }
 
 // A record this release cannot read, such as one a later release wrote past

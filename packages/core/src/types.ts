@@ -197,7 +197,11 @@ export type Answer =
   | { kind: "answered"; by: string; at: string; optionIds: string[]; other?: string }
   | { kind: "declined"; by: string; at: string; reason?: string }
   /** "I'm not sure": the agent should proceed with its best judgment or ask differently. */
-  | { kind: "unsure"; by: string; at: string };
+  | { kind: "unsure"; by: string; at: string }
+  /** Nobody answered in time. `note` says what applied instead, in words, when anything did. */
+  | { kind: "expired"; at: string; note?: string }
+  /** The run stopped or ended before anyone answered. `note` says which, in words. */
+  | { kind: "cancelled"; at: string; note?: string };
 
 /** The agent needs the human to pick or type something before continuing. */
 export interface Clarification {

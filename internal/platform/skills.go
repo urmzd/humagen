@@ -41,8 +41,9 @@ import (
 //     ahead of the turn's text, under a line that says they rank below the
 //     agent's own instructions.
 //   - a skill's supporting files are named after its instructions: as
-//     file_read paths, or for a model whose program reads this host's files
-//     itself, as paths to a copy placed for the turn (hostSkillFiles).
+//     skill_file_read paths, a tool the turn is then always offered, or for
+//     a model whose program reads this host's files itself, as paths to a
+//     copy placed for the turn (hostSkillFiles).
 //
 // A Slack client's command whose name is a skill's on the chain uses that
 // skill too: the client posts "/<name> ..." as the message, and the runs it
@@ -256,12 +257,16 @@ const skillsPrecedence = "The person asked you to use these skills for this turn
 // read is refused: only the platform writes it.
 //
 // Supporting files are named after each skill's instructions. A model that
-// is offered the platform's tools reads them with file_read. One whose
-// program reads this host's files itself is offered no such tool, so host
-// places the pinned files where it can read them and they are named by
-// their paths there (hostSkillFiles); a turn they cannot be placed for is
-// refused rather than run without them. A turn whose chain holds both kinds
-// of model is told both ways. A nil host places nothing.
+// is offered the platform's tools reads them with skill_file_read, which a
+// turn whose text lists skill: paths is always offered: it is added to the
+// turn's tools here, after a skill's tool list and the agent's grants have
+// narrowed them (resolveOperations), so the text never names a tool the
+// turn lacks (ToolSkillFileRead). One whose program reads this host's files
+// itself is offered no platform tool, so host places the pinned files where
+// it can read them and they are named by their paths there
+// (hostSkillFiles); a turn they cannot be placed for is refused rather than
+// run without them. A turn whose chain holds both kinds of model is told
+// both ways. A nil host places nothing.
 func withSkills(req runtime.Request, host func(runtime.Request, []pinnedSkill) (hostFiles, error)) (runtime.Request, error) {
 	raw, ok := req.Meta[runs.MetaSkills]
 	if !ok {
@@ -296,16 +301,16 @@ func withSkills(req runtime.Request, host func(runtime.Request, []pinnedSkill) (
 			continue
 		}
 		if files.tool {
-			manifest := []string{"Supporting files are read on demand with file_read using these exact paths. Reading a script does not execute it:"}
+			manifest := []string{"Supporting files are read on demand with " + ToolSkillFileRead + " using these exact paths. Reading a script does not execute it:"}
 			for _, resource := range listedSkillFiles(s.Instructions, s.Resources) {
 				line := fmt.Sprintf("skill:%s/%s (%d bytes)", s.Name, resource.Path, resource.Size)
 				if resource.Size > maxSkillFileRead {
-					line += fmt.Sprintf(", over the %d bytes file_read returns", maxSkillFileRead)
+					line += fmt.Sprintf(", over the %d bytes %s returns", maxSkillFileRead, ToolSkillFileRead)
 				}
 				manifest = append(manifest, line)
 			}
 			if more := len(s.Resources) - maxListedSkillFiles; more > 0 {
-				manifest = append(manifest, fmt.Sprintf("%d of %d supporting files are listed: those the instructions name first, then by path. %d more are not listed; file_read reads any path the instructions name, as skill:%s/<path>.", maxListedSkillFiles, len(s.Resources), more, s.Name))
+				manifest = append(manifest, fmt.Sprintf("%d of %d supporting files are listed: those the instructions name first, then by path. %d more are not listed; %s reads any path the instructions name, as skill:%s/<path>.", maxListedSkillFiles, len(s.Resources), more, ToolSkillFileRead, s.Name))
 			}
 			parts = append(parts, strings.Join(manifest, "\n"))
 		}
@@ -314,7 +319,7 @@ func withSkills(req runtime.Request, host func(runtime.Request, []pinnedSkill) (
 			if files.tool {
 				// The turn may run on either kind of model, and each is
 				// told which of the two ways is its own.
-				opening = "If you are not offered file_read, the same files are on this host for this turn only, read only. Read them on demand with your own file tools at these exact paths. Reading a script does not execute it:"
+				opening = "If you are not offered " + ToolSkillFileRead + ", the same files are on this host for this turn only, read only. Read them on demand with your own file tools at these exact paths. Reading a script does not execute it:"
 			}
 			manifest := []string{opening}
 			for _, resource := range listedSkillFiles(s.Instructions, s.Resources) {
@@ -326,15 +331,28 @@ func withSkills(req runtime.Request, host func(runtime.Request, []pinnedSkill) (
 			parts = append(parts, strings.Join(manifest, "\n"))
 		}
 	}
+	if files.tool && slices.ContainsFunc(skills, func(s pinnedSkill) bool { return len(s.Resources) > 0 }) {
+		req = withSkillFileRead(req)
+	}
 	req.Text = strings.Join(append(parts, req.Text), "\n\n")
 	return req, nil
+}
+
+// withSkillFileRead offers the turn skill_file_read, on the request's copy of
+// the revision: the pinned definition itself is never changed.
+func withSkillFileRead(req runtime.Request) runtime.Request {
+	if slices.Contains(req.Definition.Spec.Tools, ToolSkillFileRead) {
+		return req
+	}
+	req.Definition.Spec.Tools = append(slices.Clone(req.Definition.Spec.Tools), ToolSkillFileRead)
+	return req
 }
 
 // maxListedSkillFiles is how many supporting files of one skill a turn's
 // text lists: as many as a package could hold before it took more than 64
 // files, so the list costs a model no more than it did then. The rest are
-// counted, not named; file_read reads any file of the pinned package, listed
-// or not, and a coding agent is given every file on the host.
+// counted, not named; skill_file_read reads any file of the pinned package,
+// listed or not, and a coding agent is given every file on the host.
 const maxListedSkillFiles = 63
 
 // listedSkillFiles is the supporting files a turn's text names: first those

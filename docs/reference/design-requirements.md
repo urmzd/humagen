@@ -79,7 +79,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-047 | Skills are slash commands, the only way the console offers them: `/` opens a menu of the skills a message here can name, fuzzy filtered with the match highlighted; `@` offers no skill or `@skill:`, `$` opens nothing, and a posted `$name` or `@skill:name` shows as a `/name` chip | Implemented: `commands.ts`, `tags.ts`, `Composer.tsx`, `ui.tsx` (`Mentioned`), `pkg/threads/tags.go`; web, threads and platform tests pass; `chat-at`, `chat-slash`, `chat-slash-picked` and `composer-menu-skill-selection` screens at 390x844 and 1280x800 |
 | DES-048 | A turn reads as a transcript: words and runs of tool calls in the order they came, each run one line that names what it did, a file written opening in the Workspace, and the reader's messages on the right | Implemented: `packages/core/src/timeline.ts`, `packages/components/src/timeline.ts`, `WorkSteps.tsx`, `ToolLines` for Slack, `Room.tsx` message sides; core, components, adapter, render-slack and web DOM tests pass; `pnpm validate:slack` passes; screen `conversation-timeline` passes at 390x844 and 1280x800 |
 | DES-049 | The sidebar lists Recents newest first, Pinned on top, Projects and Archived as views; each row says its project, its age or an unread dot, and whether it waits on a person, runs or failed | Implemented: `conversationList.ts`, `marks.ts`, `Sidebar.tsx`, `pkg/marks`, `PATCH /api/threads/{id}/marks`, `waiting` and `last` on thread summaries; Go, web and DOM tests pass; `sidebar-recents`, `sidebar-row-actions`, `sidebar-projects` and `sidebar-archived` screens pass at 390x844 and 1280x800 |
-| DES-049 | A finished turn that changed files ends with a card of them: how many and their lines, a Review, and a row per file that opens its changes | Implemented: core `turnChanges`, web `TurnChanges`; core and web DOM tests pass; screen `conversation-timeline` passes at 390x844 and 1280x800 |
+| DES-049 | A finished turn that changed files ends with a card of them: how many and their lines, a Review, and a row per file that opens its changes | Implemented: core `turnChanges`, web `TurnChanges`, `ChangedFiles` for Slack (`packages/components/src/turn-changes.tsx`); core, web DOM, render-slack and Slack app tests pass; screen `conversation-timeline` passes at 390x844 and 1280x800; the Slack fixtures `changesTurn` and `manyChangesTurn` pass `blocks.validate` |
 | DES-050 | The Workspace is a pane of tabs beside the conversation: + opens items, tabs close, Expand and Show Two Tabs, tabs in the address, a full-screen sheet on a phone | Implemented: `Workspace.tsx`, `pane.ts`, `Inspector` `expanded`; web, pane and route tests pass; `workspace-pane-split`, `workspace-pane-expanded` and the other Workspace screens pass at 390x844 and 1280x800 |
 | DES-051 | Memories by scope: what a conversation, its session and each message used and wrote, read only | Implemented: `Memories.tsx`, `GET /api/threads/{id}/memory`, `Run.memory`; web, route and Go tests pass; `workspace-memories` screens pass at 390x844 and 1280x800 |
 | DES-052 | Conversation files, scratchpads, code editing, change review and artifact publication, in one Workspace panel opened from Conversation Settings beside a compact header | Implemented: `WorkspaceFiles.tsx`, `Workspace.tsx`, `ConversationShell.tsx`, `/api/threads/{id}/files`, `GET /api/threads/{id}/sandboxes`; web, route, Go race and confinement suites pass; `conversation-header`, `workspace-*` and `ide-*` screens pass at 390x844 and 1280x800 |
@@ -100,12 +100,13 @@ planned collections, browser, protocol and improvement work from this UI pass.
 
 ### DES-001: Working integrations
 
-The public-web profile in `examples/public-web/claude-code.yaml` enables the
-program's built-in WebSearch and WebFetch only; user hooks and plugins still
-load. Supporting URLs are model-reported answer text, not verified citations. Actual HTTP tool events and a separate
-official-source retrieval validate search/open/version agreement. See
-[public-source research](../guides/public-web.md) for identity, permissions and
-unsupported browser operations. No console connection control is implied.
+The public-web profile in `examples/public-web/humagen.yaml` grants a native
+agent `web_search` and `web_fetch` only. Supporting URLs are model-reported
+answer text, not verified citations. The earlier search/open/version check
+ran on the Claude Code profile removed with #383; the native profile has not
+been run with a live model. See [public-source research](../guides/public-web.md)
+for identity, permissions and unsupported browser operations. No console
+connection control is implied.
 
 - Build on the existing client, connector, credentials, project-binding, and
   generated API client paths. Keep API calls and identity in surface hosts and
@@ -1607,6 +1608,12 @@ sidebar destinations; the tip card was removed.
   (`fileEdits`), one row per path: a file written whole more than once counts
   from what the turn started with to what it left; edits add up.
 - No card while the turn runs, or when it changed no file.
+- Slack draws the same files as one muted block under the answer, in every
+  place a turn is shown: "N files changed +a -b", then a line per file with
+  its path as code and its own lines, at most eight lines of files, the rest
+  counted in the last as "and N more". One file is named without repeating
+  its counts. A turn that failed or was stopped after it wrote shows it too;
+  a bridge that carries outcomes only does not.
 - The chat bar's prompt is "Ask anything, @ to mention, / for actions".
 
 ### DES-057: The composer's chrome: project, approvals
@@ -1747,14 +1754,15 @@ is a connection blocker, not a successful desktop-control result.
 The browser worker configuration and connection instructions are in
 `examples/browser/` and `docs/guides/browser.md`. Browser tool schemas are pinned;
 navigation and interaction require a write grant. The real connector acceptance
-is opt-in (`TestBrowserLive`). The separate Claude Code/CDP helper verifies an
-actual model using the same signed-in local fixture tab, screenshot pixels, an
-authorized action and selected CSV read at both widths and themes. Actual wire
-receipts check PNG blocks; restricted file-tool refusal and separated artifact
-and download directories are exercised. Existing tabs
-require an explicit extension or CDP connection; third-party SSO/MFA and extension
-handoff remain unverified. The CLI profile uses its own tool permissions, not
-native grants. No console control implies an authenticated browser connection.
+is opt-in (`TestBrowserLive`). The separate CDP helper,
+`examples/browser/connected-acceptance.mjs`, runs an actual model on the native
+profile against the same signed-in local fixture tab: screenshot pixels, an
+authorized action and an exact-byte download at both widths and themes, with
+wire receipts for PNG blocks and separated artifact and download directories.
+It passed on the Claude Code profile before #383 and has not been rerun on the
+native one. Existing tabs require an explicit extension or CDP connection;
+third-party SSO/MFA and extension handoff remain unverified. No console
+control implies an authenticated browser connection.
 
 - Customize groups the existing Agents, Skills, Connected Accounts and Your tool
   servers sections at `/customize/{section}`, with permission-filtered tabs.

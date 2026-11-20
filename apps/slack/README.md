@@ -194,7 +194,10 @@ buttons. A click is answered through Humagen as the Slack person, only when
 `HUMAGEN_CLIENT` names a client whose `slack.machine` is this app's
 credential and whose `slack.people` maps them; anyone else is told they cannot,
 and Humagen is not asked. The same mapping makes the runs a mapped person
-asks for theirs. A reply is typed in the console for now. See
+asks for theirs. Something Else opens a modal for the words, sent as the
+same person. A press on a card whose question is no longer waiting (answered
+elsewhere, expired, its run stopped) changes nothing: the person is told and
+the card shows what was recorded. See
 [clients](../../docs/reference/clients.md#people-a-slack-app-answers-for).
 
 A refusal or error from Humagen is shown in Humagen's failure words; the

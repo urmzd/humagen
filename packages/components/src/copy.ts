@@ -2083,6 +2083,8 @@ export const defaultCopy = {
         `Review the ${n === 1 ? "change" : `${n} changed files`} in the Workspace`,
       show: "Show changed files",
       hide: "Hide changed files",
+      /** Files a summary with a cap leaves out, as its last line. */
+      more: (n: number) => `and ${n} more`,
     },
     askAgent: (agent: string) => `Ask ${agent}`,
     reply: "Reply",
@@ -2199,6 +2201,7 @@ export const defaultCopy = {
     inspect: (name: string, version: number) => `Open ${name}, Version ${version}, in a new tab`,
     tools: "Tool Restrictions",
     noTools: "No Tools",
+    agentTools: "Not Restricted",
     review: "Review Default Skills",
     needsReview: "Default skills need review before another turn can start.",
     title: "Default skills",
@@ -2278,6 +2281,11 @@ export const defaultCopy = {
     tools: "Allowed Tools",
     toolsHint:
       "Exact tool names, one per line. Empty permits no tools. Agent and workspace restrictions still apply.",
+    limitTools: "Limit the tools of a run that uses this skill",
+    toolsFromSkillFile:
+      "Imported: the limit is what SKILL.md declares in allowed-tools. Saving here sets it instead.",
+    toolsUnlimited:
+      "Not limited: a run that uses this skill keeps the agent's own tools. Its supporting files are always readable.",
     save: "Save Draft",
     draft: "Draft",
     published: "Published",
@@ -2287,7 +2295,8 @@ export const defaultCopy = {
     test: "Test Skill",
     agent: "Test Agent",
     request: "Test Request",
-    testHint: "Tests use the exact selected version. Every permitted action requires approval.",
+    testHint:
+      "Tests use the exact selected version. Every permitted action requires approval, except reading the skill's own files.",
     personalTestLocation: "This test runs in your personal project.",
     testProjectUnavailable:
       "Your personal test project is not available yet. Reload the library and try again.",
@@ -2298,6 +2307,11 @@ export const defaultCopy = {
       "No listed agent is available in this test project. Choose another test project or review the agent's home.",
     publish: "Publish Version",
     publishNeedsTest: "Complete a readable test for this exact revision before publishing.",
+    publishNeedsCleanTest:
+      "No finished test of this revision passed. Open a test to see why, fix the skill and test again before publishing.",
+    testFailed: "Test failed",
+    testUnknown: "Result unknown",
+    testWarned: "Passed with warnings",
     testPending:
       "A test for this revision is still waiting or running. Open its conversation to review progress.",
     promotion: "Promote to Another Scope",
@@ -2640,6 +2654,11 @@ export const defaultCopy = {
   /** A question answered in words, not by picking one of its options. */
   repliedBy: (by: string, text: string, time: string) => `${by} answered "${text}" | ${time}`,
   declinedBy: (by: string, time: string) => `Declined by ${by} | ${time}`,
+  /** A question nobody answered in time: what applied instead, as the platform words it. */
+  questionExpired: "Nobody answered in time",
+  /** A question whose run stopped or ended before anyone answered. `why` is the platform's words. */
+  questionCancelled: (why?: string) =>
+    why ? `Not answered. ${why}` : "Not answered. The run ended first",
   approvalNeeded: (summary: string) => `Approval needed: ${summary}`,
   /** The approval agent's view of a call, on its approval card. */
   judgement: {

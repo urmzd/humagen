@@ -32,8 +32,13 @@ export const words = {
   /** What the Home tab says the app does, before how to reach it. */
   homeIntro: "I hand your questions to this workspace's agents.",
   notInChannel: "I'm not in this channel yet. Invite me with `/invite`, then try again.",
-  // humagen: needs a reply modal for questions; until then this says where to answer.
+  /** A Reply with nothing to open a form from, or on a part a form cannot answer. */
   replyInConsole: "Replies to this question are typed in the console for now.",
+  /** A press on a question that was settled already: the card is brought up to date beside it. */
+  alreadySettled: "This is no longer waiting for an answer. The card now shows what was recorded.",
+  // humagen: the API takes a decision on a call (approve or deny, with a note), not a question
+  // about it. Until it does, Ask a question says so instead of doing nothing.
+  askNotYet: "Asking about a call is not available yet. You can approve or decline it.",
   /** Under a mention or a question sent to a person's direct messages: where it was said. */
   openThread: "Open Thread",
   // humagen: belongs in copy.ts, as copy.interrupted.
