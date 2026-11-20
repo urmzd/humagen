@@ -1308,6 +1308,15 @@ function Console({
                       can={can}
                       onChanged={loadSchedules}
                       onSchedule={(name) => go({ page: "schedules", name })}
+                      tab={route.tab ?? "schedules"}
+                      onTab={(tab) =>
+                        go(
+                          tab === "background"
+                            ? { page: "automations", tab }
+                            : { page: "automations" },
+                        )
+                      }
+                      onConversation={(id) => go({ page: "conversation", id })}
                     />
                   )}
                   {route.page === "schedules" && (

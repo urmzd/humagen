@@ -580,3 +580,10 @@ test("a workbench tab is an address of Details, and Details is its default", () 
     expanded: true,
   });
 });
+
+test("background work is a tab of Scheduled with an address of its own", () => {
+  assert.equal(href({ page: "automations", tab: "background" }), "/scheduled/background");
+  assert.deepEqual(at("/scheduled/background"), { page: "automations", tab: "background" });
+  assert.deepEqual(at("/scheduled"), { page: "automations" });
+  assert.deepEqual(at("/scheduled/other"), { page: "automations" });
+});
