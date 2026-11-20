@@ -191,7 +191,7 @@ make tilt
 
 ## Documentation
 
-The [Humagen guide](https://docs.urmzd.com/humagen/) walks through rendering a local review and opening your first session. The documentation workflow checks the guide on pull requests. [docs.urmzd.com](https://github.com/urmzd/docs.urmzd.com) publishes changes from `main` within 30 minutes.
+The [Humagen guide](https://docs.urmzd.com/humagen/) walks through rendering a local review and opening your first session. The documentation workflow checks the guide on pull requests. [docs.urmzd.com](https://github.com/urmzd/urmzd.com/tree/main/docs-site) publishes changes from `main` within 30 minutes.
 
 Build the documentation from the repository root with [uv](https://docs.astral.sh/uv/). The static site is written to `site/`. The preview command prints the local address.
 
