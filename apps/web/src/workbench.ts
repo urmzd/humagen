@@ -10,6 +10,7 @@ import {
 } from "@humagen/render-web";
 import { type ComponentType, createContext, useContext } from "react";
 import type { Run } from "./adapter.ts";
+import { lazyView } from "./lazy.tsx";
 import {
   type ConversationView,
   MAX_BENCH_REF,
@@ -19,6 +20,7 @@ import {
 import { DetailsTab } from "./SessionPanel.tsx";
 import type { SessionSummary } from "./sessionSummary.ts";
 import type { Reference as Ref } from "./trace.ts";
+import { changesAvailable } from "./workbenchChanges.ts";
 
 /*
  * The session's workbench: the pane Details opens, as tabs. The thread stays
@@ -122,7 +124,13 @@ const entries: Record<WorkbenchTabId, WorkbenchTabEntry | undefined> = {
   // Terminal slot: a terminal in the session's sandbox (WorkbenchTerminal.tsx).
   terminal: undefined,
   // Changes slot: what the session changed, to keep or discard (WorkbenchChanges.tsx).
-  changes: undefined,
+  changes: {
+    view: lazyView(
+      () => import("./WorkbenchChanges.tsx"),
+      (m) => m.WorkbenchChanges,
+    ),
+    available: changesAvailable,
+  },
   // Side chat slot: a chat beside the thread that does not post in it (WorkbenchSidechat.tsx).
   sidechat: undefined,
   // Search slot: pull requests, artifacts and tools (WorkbenchSearch.tsx).
