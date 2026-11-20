@@ -2,6 +2,7 @@ package platform_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/urmzd/humagen/internal/platform"
@@ -189,5 +190,79 @@ func TestAChannelWithNoReportedAudienceIsPrivateToTheAsker(t *testing.T) {
 	}
 	if a, _ := p.SessionAudience(tenant, v.ID); a.Kind != "private" || len(a.Members) != 1 || a.Members[0] != "ana" {
 		t.Fatalf("audience = %+v, want private to ana", a)
+	}
+}
+
+// machineSays is one message from the client's machine for a person, as the
+// Slack app sends it to the messages route.
+func machineSays(channel, ts, thread, text string) platform.MessagesInput {
+	in := sayIn(text, slackRef(channel, ts, thread))
+	in.Ref.AppUser, in.Ref.Audience = "UAPP", &platform.SurfaceAudience{Type: platform.ChannelPublic}
+	in.ActAs = &platform.ActAs{Client: "app", User: "U0ANA"}
+	return in
+}
+
+func TestTheMessagesRouteStartsASlackThreadsSessionOnItsFirstMessage(t *testing.T) {
+	p, machine := slackRoom(t, nil)
+	first, err := p.SendMessages(t.Context(), machine, machineSays("C01RENEW", "1700000000.000100", "", "<@UAPP> what changed in the renewal?"))
+	if err != nil || !first.Created || first.Root == "" || first.ID == "" || len(first.Posted.Runs) != 1 {
+		t.Fatalf("the thread's first message = %+v, %v", first, err)
+	}
+	if first.Posted.Message.ID != first.ID || !strings.HasPrefix(first.ID, first.Root+":") {
+		t.Fatalf("the message's id = %q, and %q in what it did; want one id, under the root", first.ID, first.Posted.Message.ID)
+	}
+	root, err := p.ReadSession(t.Context(), machine, first.Root, "", "", false)
+	if err != nil || root.Parent != "slack://T0TEAM/C01RENEW/1700000000.000100" {
+		t.Fatalf("the root's place = %q, %v", root.Parent, err)
+	}
+	if run := first.Posted.Runs[0]; run.Thread != first.Root || run.Actor.User != "ana" {
+		t.Fatalf("the run answers in %q for %q; want the root, for ana", run.Thread, run.Actor.User)
+	}
+	await(t, p, first.Posted.Runs[0].ID, runs.Completed)
+	// The same message again starts nothing, and a reply lands in the same root.
+	again, err := p.SendMessages(t.Context(), machine, machineSays("C01RENEW", "1700000000.000100", "", "<@UAPP> what changed in the renewal?"))
+	if err != nil || again.Created || again.Root != first.Root || !again.Posted.Repeated {
+		t.Fatalf("the same message again = %+v, %v", again, err)
+	}
+	reply, err := p.SendMessages(t.Context(), machine, machineSays("C01RENEW", "1700000000.000300", "1700000000.000100", "<@UAPP> and the price?"))
+	if err != nil || reply.Created || reply.Root != first.Root || len(reply.Posted.Runs) != 1 {
+		t.Fatalf("a reply in the thread = %+v, %v", reply, err)
+	}
+	quiet := machineSays("C01RENEW", "1700000000.000200", "1700000000.000100", "said before the app was asked")
+	quiet.PostOnly = true
+	if got, err := p.SendMessages(t.Context(), machine, quiet); err != nil || got.Root != first.Root || len(got.Posted.Runs) != 0 {
+		t.Fatalf("a message posted only = %+v, %v", got, err)
+	}
+}
+
+func TestOnlyTheClientsMachinePostsForAPersonOnTheMessagesRoute(t *testing.T) {
+	p, machine := slackRoom(t, nil)
+	stranger := auth.Principal{Subject: "svc-other", Tenant: tenant, Kind: auth.Machine, Scopes: machine.Scopes}
+	if _, err := p.SendMessages(t.Context(), stranger, machineSays("C01RENEW", "1700000000.000100", "", "hello")); err == nil {
+		t.Fatal("another machine posted for a person of the client")
+	}
+	for name, change := range map[string]func(*platform.MessagesInput){
+		"no ref":       func(in *platform.MessagesInput) { in.Ref = nil },
+		"no client":    func(in *platform.MessagesInput) { in.Ref.Client = "" },
+		"another team": func(in *platform.MessagesInput) { in.Ref.Team = "T0OTHER" },
+		"a github ref": func(in *platform.MessagesInput) {
+			in.Ref = &platform.ExternalRef{Type: platform.RefGitHub, Repo: "acme/web", Kind: "pull", Number: 9}
+		},
+		"two messages": func(in *platform.MessagesInput) { in.Messages = append(in.Messages, in.Messages[0]) },
+		"a reply with no ts of its own": func(in *platform.MessagesInput) {
+			in.Ref.ThreadTS, in.Ref.TS = "1700000000.000100", ""
+		},
+		"a ref of its own": func(in *platform.MessagesInput) { in.Messages[0].Ref = slackRef("C01RENEW", "1700000000.000100", "") },
+	} {
+		in := machineSays("C01RENEW", "1700000000.000100", "", "hello")
+		change(&in)
+		if _, err := p.SendMessages(t.Context(), machine, in); !errors.Is(err, threads.ErrInvalid) {
+			t.Fatalf("%s = %v", name, err)
+		}
+	}
+	only := sayIn("hello", slackRef("C01RENEW", "1700000000.000100", ""))
+	only.PostOnly = true
+	if _, err := p.SendMessages(t.Context(), machine, only); !errors.Is(err, threads.ErrInvalid) {
+		t.Fatalf("post_only with nobody to post for = %v", err)
 	}
 }

@@ -5387,12 +5387,15 @@ export interface ContextResult {
   note?: string;
 }
 
-/** People's messages from one origin. Who said them is the caller. */
+/** People's messages from one origin. Who said them is the caller, or with act_as the person a client's own machine posts for. */
 export interface MessagesInput {
   messages: InMessage[];
   ref?: ExternalRef;
   /** Accepted; follow GET /api/messages/{id}/stream for what happens beneath. */
   stream?: boolean;
+  act_as?: ActAs;
+  /** With act_as, record the message and start nothing, for what people said in the thread before the app was asked. */
+  post_only?: boolean;
 }
 
 /** One person's message. role is user; the platform writes the agents' messages. */
@@ -5452,6 +5455,10 @@ export interface ExternalRef {
   ts?: string;
   thread_ts?: string;
   audience?: SurfaceAudience;
+  /** The Slack app's own bot user id, whose mention is how a channel message reaches the app and is not a tag. Read only from a client's own machine posting for a person (act_as). */
+  app_user?: string;
+  /** Ask the platform to ingest the Slack message's files. Read only from a client's own machine posting for a person (act_as). */
+  files?: boolean;
   repo?: string;
   kind?: "pull" | "issue" | "comment";
   number?: number;
