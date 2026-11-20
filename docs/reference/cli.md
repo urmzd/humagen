@@ -1,3 +1,21 @@
+## Install an app
+
+`humagen install` registers the app with the service in your browser and
+connects it, so there is nothing to copy by hand for GitHub and two tokens to
+paste for Slack.
+
+```sh
+humagen install slack
+humagen install github --webhook-url https://hooks.example.com/connectors/github
+```
+
+`install slack` creates the app from Humagen's manifest, checks the bot token
+and the app-level token with Slack, keeps them in the keychain and writes
+their references into the spec. `install github` registers a GitHub App from
+a manifest, waits for you to install it, and creates the client through the
+API with the key and webhook secret GitHub issued. See the
+[Slack](../guides/slack.md) and [GitHub](../guides/github.md) guides.
+
 ## Connect a surface
 
 `humagen create` creates a client in the running platform's store through the
