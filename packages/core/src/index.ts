@@ -2,6 +2,7 @@ export * from "./actions";
 export * from "./agent-change";
 export * from "./events";
 export * from "./home";
+export * from "./human-activity";
 export * from "./inbox";
 export * from "./mailbox";
 export * from "./queue";
