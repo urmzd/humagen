@@ -315,7 +315,7 @@ func (i installer) github(args []string) error {
 	})
 	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	go func() { _ = srv.Serve(ln) }()
-	defer srv.Close()
+	defer func() { _ = srv.Close() }()
 
 	fmt.Fprintf(i.out, "Opening GitHub to register %q. Confirm its name, then choose the repositories it may work in.\n", *appName)
 	if *quiet || i.open(here+"/") != nil {
@@ -396,11 +396,11 @@ func (i installer) githubJSON(ctx context.Context, method, path, bearer string, 
 	}
 	resp, err := i.http.Do(req)
 	if err != nil {
-		return errors.New("GitHub could not be reached")
+		return errors.New("could not reach GitHub")
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("GitHub answered HTTP %d", resp.StatusCode)
+		return fmt.Errorf("an answer of HTTP %d from GitHub", resp.StatusCode)
 	}
 	return json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(v)
 }
@@ -437,7 +437,7 @@ func (i installer) githubInstallationOwner(ctx context.Context, app githubApp, i
 		return "", err
 	}
 	if !githubSlug.MatchString(got.Account.Login) {
-		return "", errors.New("GitHub named no account for the installation")
+		return "", errors.New("no account named by GitHub for the installation")
 	}
 	return got.Account.Login, nil
 }
@@ -456,7 +456,7 @@ func (i installer) slackCall(ctx context.Context, method, token string, v any) e
 	req.Header.Set("Authorization", "Bearer "+token)
 	resp, err := i.http.Do(req)
 	if err != nil {
-		return errors.New("Slack could not be reached")
+		return errors.New("could not reach Slack")
 	}
 	defer resp.Body.Close()
 	return json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(v)
@@ -541,7 +541,7 @@ func (i installer) slack(o Options, args []string) error {
 		return err
 	}
 	if !who.OK || !clients.ValidSlackID(who.TeamID) {
-		return fmt.Errorf("Slack refused the bot token (%s)", or(who.Error, "no workspace named"))
+		return fmt.Errorf("the bot token was refused by Slack (%s)", or(who.Error, "no workspace named"))
 	}
 	app, err := i.secret("App-level token (xapp-): ")
 	if err != nil {
@@ -558,7 +558,7 @@ func (i installer) slack(o Options, args []string) error {
 		return err
 	}
 	if !socket.OK {
-		return fmt.Errorf("Slack refused the app-level token (%s); it needs the scope connections:write", or(socket.Error, "no reason given"))
+		return fmt.Errorf("the app-level token was refused by Slack (%s); it needs the scope connections:write", or(socket.Error, "no reason given"))
 	}
 
 	botRef, appRef := "env:SLACK_BOT_TOKEN", "env:SLACK_APP_TOKEN"

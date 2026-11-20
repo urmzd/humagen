@@ -63,8 +63,8 @@ before you install, as `surfaces.slack.background_color` in the spec.
 
 | What you see | What to do |
 |---|---|
-| `Slack refused the bot token` | Copy the token again from **OAuth & Permissions**. It starts with `xoxb-`. Install the app to the workspace first. |
-| `Slack refused the app-level token` | Generate a new one with the scope `connections:write`. It starts with `xapp-`. |
+| `the bot token was refused by Slack` | Copy the token again from **OAuth & Permissions**. It starts with `xoxb-`. Install the app to the workspace first. |
+| `the app-level token was refused by Slack` | Generate a new one with the scope `connections:write`. It starts with `xapp-`. |
 | `the keychain could not be written` | Run again with `--store env`. |
 | `the Slack app cannot sign in to Humagen through Tailscale Serve` | Use `oidc` sign-in, or `dev` on one machine. |
 | The app does not answer | Check that `humagen start` is running and that the app is in the channel. |
