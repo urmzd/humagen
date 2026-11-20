@@ -895,6 +895,8 @@ html[data-gallery], html[data-gallery] body, html[data-gallery] #root {
     padding-right: env(safe-area-inset-right);
     translate: 0 1.5rem;
   }
+  /* A body that lays itself out (a terminal, a browser view) has no height of its own to ask for. */
+  .humagen-inspector[data-fill] { height: calc(var(--humagen-app-height) - var(--humagen-keyboard, 0px) - env(safe-area-inset-top) - 1rem); }
   .humagen-inspector[open] { translate: none; }
   @starting-style {
     .humagen-inspector[open] { translate: 0 1.5rem; }

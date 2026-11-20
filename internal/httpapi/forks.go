@@ -19,6 +19,17 @@ func (s *Server) forkThread(w http.ResponseWriter, r *http.Request, who auth.Pri
 	ok(w, http.StatusCreated, s.P.Seer(who).Thread(s.P.ShowThread(who.Tenant, th)))
 }
 
+// listForks lists the caller's readable forks of a conversation, without
+// their saved history.
+func (s *Server) listForks(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	forks, err := s.P.ForksOf(who, r.PathValue("id"))
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, map[string]any{"forks": forks})
+}
+
 func (s *Server) bringBackResult(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	var in platform.BringBackInput
 	if !decode(w, r, &in) {

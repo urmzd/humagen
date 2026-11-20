@@ -77,6 +77,60 @@ Do not expose that endpoint publicly or copy a personal browser profile.
 URL to match. Connecting an existing browser grants access to its context; the
 prompt asking for a particular tab and origin is not an authorization boundary.
 
+## Look at the browser and act on it from the console
+
+A session whose agent used the browser has a Browser tab in its workbench, and
+a card under each answer that used it, which opens the tab. The tab lists what
+the agent did, step by step, with the page each step left the browser on.
+
+A person who may post in the session can act on that same browser from the
+tab: take a screenshot, go to an address, go back, and click or type into
+something on the page. Pick the element on the screenshot or in the list under
+it, then press Click or Type. The screenshot is taken again after each action.
+This is the way to sign in for the agent, pass a prompt it cannot, or put the
+browser on the right page before asking for more.
+
+Each thing done this way is listed above the composer and goes with the
+person's next message, so the agent reads where the browser was left. What was
+typed is never in that list: it says how many characters, and into what.
+Nothing is sent to the agent before the person sends a message.
+
+The tab calls `POST /api/sessions/{id}/browser` (`runs:write`). It reaches the
+browser through the provider the session's agent holds a write grant on, on
+the connection the agent's own runs use, and only with the tools an admin
+accepted. It is refused when:
+
+- the session's agent holds no `mcp:<name>:write` grant on a provider whose
+  accepted tools include `browser_take_screenshot`;
+- that provider is reached over stdio, or with each person's own credential;
+- the caller may not post in the session, or is not a person;
+- the action policy for the agent, the project or the person says `ask` or
+  `never` for `other` or `external_messages`. A request for approval is the
+  agent's to make, so ask the agent instead;
+- the address is not `http` or `https`, or the target is not an element
+  reference from the page's own tree.
+
+Every action but a screenshot is in the audit log as `session.browser.<action>`
+with the address, the element and the key. Text typed is recorded as a count.
+
+The browser is the workspace's, not the session's: a screenshot shows whatever
+that browser shows now, whichever session last used it. That is the same
+browser any agent holding the grant would be shown. Keep one provider per
+group of people who may see each other's pages.
+
+What is not there:
+
+- Screenshots the agent took are not kept. A tool's result reaches a run's
+  events as text, so the tab has the agent's steps and no picture of them. The
+  pictures in the tab are the ones taken from it, kept in the browser tab's
+  memory and gone on reload.
+- No live video. The page is drawn again after each action and on Refresh.
+- No click by coordinates, drag, hover, file upload or dialog answer by hand.
+  The pinned tool list has no coordinate tools, and the rest are left to the
+  agent.
+- A session whose agent calls another agent that holds the grant has the
+  steps and the card, and no control: the session's own agent holds no browser.
+
 ## Read pages and inspect pixels
 
 After navigation or interaction, call `browser_snapshot` without `filename`.

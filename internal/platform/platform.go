@@ -213,6 +213,11 @@ type Config struct {
 	// that run (RFC 0004). The zero value is unisolated: tools run on this
 	// host as they always did, the shell is refused, and New says so.
 	Sandbox isolation.Sandbox
+	// SandboxContained says a command in one of Sandbox's instances cannot
+	// reach this host, as with the docker sandbox. Only then may a person
+	// run a command of their own in a conversation's sandbox
+	// (person_command.go). The zero value refuses.
+	SandboxContained bool
 	// Blobs holds the bytes of published files. Nil means a disk store in
 	// the workspace directory.
 	Blobs blob.Store
@@ -447,6 +452,9 @@ type Platform struct {
 	// ToolProviders is the MCP servers agents reach through "mcp:<name>"
 	// grants, and the tools accepted from each.
 	ToolProviders toolprovider.Store
+	// toolGrants expands a provider grant into its accepted tools, for a
+	// run and for a person acting on a session's browser (browser_view.go).
+	toolGrants browserGrants
 	// closers release what New opened, in reverse, on Close.
 	closers []func() error
 
@@ -458,6 +466,8 @@ type Platform struct {
 	publishing sync.Mutex
 	// workspaceMu serializes host scratch writes with isolated-run copyback.
 	workspaceMu sync.Mutex
+	// personCommands counts the commands people are running by hand.
+	personCommands personCommands
 
 	broker  bus.Bus
 	sinks   *connector.Registry

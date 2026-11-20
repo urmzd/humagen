@@ -178,3 +178,6 @@ func (p *Platform) ResolveSkills(req runtime.Request) (runtime.Request, error) {
 }
 
 func (p *Platform) ReleaseTurn(req runtime.Request) { p.releaseTurn(req) }
+
+// SetPersonCommandTimeout shortens how long a person's command may run.
+func (p *Platform) SetPersonCommandTimeout(d time.Duration) { p.personCommands.timeout = d }
