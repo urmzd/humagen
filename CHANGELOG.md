@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.161.0 (2026-11-20)
+
+### Features
+
+- **background**: every agent's turn for a person has the background tools (#458) ([03c20f3](https://github.com/urmzd/humagen/commit/03c20f3d078da409d3172667297fa5a365d738ae))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.160.0...v0.161.0)
+
+
 ## 0.160.0 (2026-11-20)
 
 ### Features
