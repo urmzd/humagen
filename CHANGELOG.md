@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.143.0 (2026-11-20)
+
+### Features
+
+- **console**: give the agent store its own tab, a catalog and package pages (#395) ([52f290f](https://github.com/urmzd/humagen/commit/52f290f14f1d94c98e9a447eec45b31e84b5629d))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.142.0...v0.143.0)
+
+
 ## 0.142.0 (2026-11-20)
 
 ### Features
