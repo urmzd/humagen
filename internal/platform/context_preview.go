@@ -73,7 +73,7 @@ func (p *Platform) ProjectContextAs(ctx context.Context, who auth.Principal, pro
 	if err != nil {
 		return missing()
 	}
-	if !tree.IsAvailable(project, agent) {
+	if !p.answersIn(who.Tenant, tree, project, agent) {
 		return missing()
 	}
 	if channel != "" {

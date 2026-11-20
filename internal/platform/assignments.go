@@ -7,16 +7,18 @@ import (
 	"errors"
 
 	"fmt"
+	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/urmzd/humagen/pkg/audit"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/operations"
 	"github.com/urmzd/humagen/pkg/projects"
-	"github.com/urmzd/orchagent/flow/connectors/cron"
-	"github.com/urmzd/orchagent/flow/event"
-	"github.com/urmzd/orchagent/flow/runtime"
+	"github.com/urmzd/saige/flow/connectors/cron"
+	"github.com/urmzd/saige/flow/event"
+	"github.com/urmzd/saige/flow/runtime"
 
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/runs"
@@ -106,7 +108,12 @@ func (p *Platform) SetAssignment(ctx context.Context, who auth.Principal, a oper
 		if old.Owner != who.Subject && !who.Can(auth.ProjectsGovern) {
 			return operations.Assignment{}, ErrForbidden
 		}
-		if old.Trigger != a.Trigger || old.Source != a.Source || old.Cron != a.Cron || old.Agent != a.Agent || old.Project != a.Project || old.Thread != a.Thread || old.Goal != a.Goal || old.DoneWhen != a.DoneWhen {
+		// A change that names no checks, as one from a client that does not
+		// know them, keeps the ones the assignment has.
+		if a.DoneChecks == nil && a.MaxContinue == 0 {
+			a.DoneChecks, a.MaxContinue = old.DoneChecks, old.MaxContinue
+		}
+		if old.Trigger != a.Trigger || old.Source != a.Source || old.Cron != a.Cron || old.Agent != a.Agent || old.Project != a.Project || old.Thread != a.Thread || old.Goal != a.Goal || old.DoneWhen != a.DoneWhen || !slices.Equal(old.DoneChecks, a.DoneChecks) || old.MaxContinue != a.MaxContinue {
 			return operations.Assignment{}, fmt.Errorf("%w: create a new assignment to change its execution contract", operations.ErrInvalid)
 		}
 	}
@@ -379,7 +386,12 @@ func (p *Platform) settleTenantOperations(ctx context.Context, tenant string) {
 	for _, a := range pending {
 		run, err := p.Runs.Get(tenant, a.RunID)
 		if errors.Is(err, runs.ErrNotFound) {
-			p.recoverAssignmentInvocation(ctx, tenant, a)
+			if !p.recoverContinuation(ctx, tenant, a) {
+				p.recoverAssignmentInvocation(ctx, tenant, a)
+			}
+			continue
+		}
+		if err == nil && run.Status == runs.Completed && p.continueAssignment(ctx, tenant, a, run) {
 			continue
 		}
 		if err == nil && run.Status.Terminal() {
@@ -388,6 +400,118 @@ func (p *Platform) settleTenantOperations(ctx context.Context, tenant string) {
 			}
 		}
 	}
+}
+
+// An assignment with done checks is not settled by its run completing. The
+// answer is held to the checks, which are text rules and ask no model. One
+// that fails is not a result: the platform reserves the next run under a
+// deterministic identity and asks the same agent, in the same conversation,
+// to go on, saying which checks failed. That is repeated at most
+// Assignment.Continues times, after which the assignment is blocked for its
+// owner with the checks that never passed. Every step is a write to the
+// operations store before the run is admitted, so a restart finds the
+// reservation and admits the same run again (recoverContinuation).
+
+// settleRunOperations ends what a terminal run was recorded for, as its
+// completion does. A completed run whose assignment's checks its answer
+// fails is continued instead.
+func (p *Platform) settleRunOperations(ctx context.Context, run runs.Run) error {
+	if run.Status == runs.Completed {
+		a, ok, err := p.Operations.AssignmentOfRun(run.Tenant, run.ID)
+		if err != nil {
+			return err
+		}
+		if ok && p.continueAssignment(ctx, run.Tenant, a, run) {
+			return nil
+		}
+	}
+	return p.Operations.Settle(run.Tenant, run.ID, run.Status == runs.Completed, p.now())
+}
+
+// continuationTag is the trigger identity of an assignment's nth
+// continuation. version is the assignment's after its work was reserved.
+func continuationTag(tenant, id string, version, n int) string {
+	base := "assignment-" + assignmentSchedule(tenant, id) + "-" + strconv.Itoa(version-1)
+	if n == 0 {
+		return base
+	}
+	return base + "-c" + strconv.Itoa(n)
+}
+
+// continueAssignment holds a completed run's answer to the assignment's
+// checks. It reports whether it dealt with the run: false leaves it to be
+// settled as any run is.
+func (p *Platform) continueAssignment(ctx context.Context, tenant string, a operations.Assignment, run runs.Run) bool {
+	if len(a.DoneChecks) == 0 || a.State != operations.InProgress || a.RunID != run.ID {
+		return false
+	}
+	unmet := a.Unmet(run.Answer)
+	if len(unmet) == 0 {
+		return false
+	}
+	block := func(reason string) {
+		if err := p.Operations.BlockAssignment(tenant, a.ID, reason, p.now()); err != nil {
+			p.log.Error("platform: assignment blocker could not be kept", "error", err)
+		}
+	}
+	if a.Continued >= a.Continues() {
+		block(fmt.Sprintf("The work was continued %d times and is still not done: %s.", a.Continued, checkList(unmet, "; ")))
+		return true
+	}
+	if !p.standingOwner(tenant, a.Project, a.Owner) {
+		block("The work is not done, and its owner no longer has the access to continue it.")
+		return true
+	}
+	tag := continuationTag(tenant, a.ID, a.Version, a.Continued+1)
+	next, err := p.Operations.Continue(tenant, a.ID, run.ID, runtime.RunID(tenant, tag), p.now())
+	if err != nil {
+		p.log.Error("platform: assignment continuation could not be reserved", "error", err)
+		return true
+	}
+	p.admitContinuation(ctx, tenant, next, run.ID, unmet)
+	return true
+}
+
+// recoverContinuation admits again a continuation that was reserved and
+// whose run does not exist: the process ended between the two. It reports
+// whether the assignment's reserved run is a continuation.
+func (p *Platform) recoverContinuation(ctx context.Context, tenant string, a operations.Assignment) bool {
+	if a.Continued == 0 || a.State != operations.InProgress || a.RunID != runtime.RunID(tenant, continuationTag(tenant, a.ID, a.Version, a.Continued)) {
+		return false
+	}
+	prev, err := p.Runs.Get(tenant, runtime.RunID(tenant, continuationTag(tenant, a.ID, a.Version, a.Continued-1)))
+	if err != nil {
+		p.blockUnknownAssignment(tenant, a.ID, "The run this work continues from is not recorded. Its owner must review it.")
+		return true
+	}
+	p.admitContinuation(ctx, tenant, a, prev.ID, a.Unmet(prev.Answer))
+	return true
+}
+
+// admitContinuation asks the assignment's agent to go on after run, as its
+// owner, under the identity the store reserved.
+func (p *Platform) admitContinuation(ctx context.Context, tenant string, a operations.Assignment, after string, unmet []operations.Check) {
+	owner := p.byPolicy(tenant, a.Owner)
+	text := "This work is not done yet.\n\nGoal: " + a.Goal + "\nDone when: " + a.DoneWhen +
+		"\n\nYour last answer did not pass these checks:\n- " + checkList(unmet, "\n- ") +
+		"\n\nContinue the work, then answer again so that every check passes."
+	_, err := p.Converse(ctx, tenant, Turn{ID: continuationTag(tenant, a.ID, a.Version, a.Continued), Agent: a.Agent, Text: text, Project: a.Project, After: after, Actor: ActorOf(owner), AssignmentID: a.ID, Sees: p.Seer(owner).Agent})
+	switch {
+	case err == nil, errors.Is(err, operations.ErrPaused):
+		// Paused work stays reserved and is admitted when it is resumed.
+	case errors.Is(err, operations.ErrDenied), errors.Is(err, ErrForbidden), errors.Is(err, ErrProjectDeleted), errors.Is(err, ErrNotAvailable):
+		p.blockUnknownAssignment(tenant, a.ID, "The work is not done, and continuing it no longer meets its access or dependency requirements. Its owner must review it.")
+	default:
+		p.log.Error("platform: assignment continuation could not be admitted", "error", err)
+	}
+}
+
+func checkList(checks []operations.Check, sep string) string {
+	out := make([]string, len(checks))
+	for i, c := range checks {
+		out[i] = c.String()
+	}
+	return strings.Join(out, sep)
 }
 
 // AssignmentSchedule reports schedules whose only mutation surface is their

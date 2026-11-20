@@ -1,9 +1,12 @@
 package state
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
+	"slices"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -49,7 +52,10 @@ type Postgres struct {
 	pool *pgxpool.Pool
 }
 
-var _ Store = (*Postgres)(nil)
+var (
+	_ Store = (*Postgres)(nil)
+	_ Many  = (*Postgres)(nil)
+)
 
 // OpenPostgres creates the table if it is not there. It takes no lock: any
 // number of processes may open one database, since every store reads and
@@ -105,6 +111,24 @@ func (p *Postgres) Lookup(ctx context.Context, namespace, tenant, key string) (R
 		return Record{}, fmt.Errorf("state: get: %w", err)
 	}
 	return r, nil
+}
+
+// LookupMany implements Many: one statement, which probes the primary key
+// once a key.
+func (p *Postgres) LookupMany(ctx context.Context, namespace, tenant string, keys []string) ([]Record, error) {
+	rows, err := p.pool.Query(ctx, `SELECT key, value, version FROM `+table+` WHERE namespace = $1 AND tenant = $2 AND key = ANY($3::text[])`, namespace, tenant, keys)
+	if err != nil {
+		return nil, fmt.Errorf("state: lookup many: %w", err)
+	}
+	out, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (Record, error) {
+		r := Record{Tenant: tenant}
+		err := row.Scan(&r.Key, &r.Value, &r.Version)
+		return r, err
+	})
+	if err != nil {
+		return nil, fmt.Errorf("state: lookup many: %w", err)
+	}
+	return out, nil
 }
 
 // List implements Store.
@@ -199,12 +223,29 @@ func (p *Postgres) Write(ctx context.Context, namespace string, ops ...Op) error
 // depends on: the usage ledger's shared counters commit with the entry that
 // moved them. A conditional op that fails returns ErrConflict, and the caller
 // must roll the transaction back.
+//
+// The ops reach the database ordered by tenant and key, ops on one key in the
+// order given, which leaves the outcome as it was: ops on different keys do
+// not depend on each other. Every write then locks its rows in one order.
+// The whole batch is sent at once, so a write that has already lost a
+// condition still runs its later ops, and it keeps the lock on a row it
+// waited for though it did not change it. In the caller's order such a write
+// could hold a row a second writer needed while waiting on a row that writer
+// held, and Postgres ended the circle by failing either one with a deadlock,
+// which is not a conflict and is not retried. A caller that makes several
+// calls in one transaction orders its own calls.
 func WriteTx(ctx context.Context, tx pgx.Tx, namespace string, ops ...Op) error {
 	if err := checkNames(namespace, ops); err != nil {
 		return err
 	}
 	if len(ops) == 0 {
 		return nil
+	}
+	if len(ops) > 1 {
+		ops = slices.Clone(ops)
+		slices.SortStableFunc(ops, func(a, b Op) int {
+			return cmp.Or(strings.Compare(a.Tenant, b.Tenant), strings.Compare(a.Key, b.Key))
+		})
 	}
 	b := &pgx.Batch{}
 	for _, op := range ops {

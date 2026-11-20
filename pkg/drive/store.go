@@ -369,6 +369,70 @@ func (s *Store) History(ctx context.Context, tenant string, who Actor, tree Tree
 	return out, nil
 }
 
+// FileHistory returns at most limit versions older than before in which the
+// file at p changed, newest first. Before 0 starts at the head. A version is
+// one where the file's entry differs from the version before it: written,
+// rewritten or removed. Each version's Entries hold that file's entry alone,
+// and are empty where it was removed. The oldest version a tree keeps counts
+// when it holds the file. One call reads at most the MaxVersions a tree keeps.
+func (s *Store) FileHistory(ctx context.Context, tenant string, who Actor, tree Tree, p string, before int64, limit int) ([]Version, error) {
+	if err := s.check(who, tree, func(g Grant) bool { return g.Read }); err != nil {
+		return nil, err
+	}
+	p, err := CleanPath(p)
+	if err != nil {
+		return nil, err
+	}
+	if limit <= 0 || limit > MaxPage {
+		limit = MaxPage
+	}
+	h, _, err := s.head(ctx, tenant, tree)
+	if err != nil {
+		return nil, err
+	}
+	n := h.Version
+	if before > 0 && before-1 < n {
+		n = before - 1
+	}
+	oldest := max(h.Oldest, 1)
+	// at reads the file's entry at a version. A version the tree no longer
+	// keeps holds nothing.
+	at := func(n int64) (Version, Entry, error) {
+		if n < oldest {
+			return Version{}, Entry{}, nil
+		}
+		v, err := s.version(ctx, tenant, h, n)
+		if errors.Is(err, ErrNotFound) {
+			return Version{}, Entry{}, nil
+		}
+		if err != nil {
+			return Version{}, Entry{}, err
+		}
+		e, _ := v.Lookup(p)
+		return v, e, nil
+	}
+	out := []Version{}
+	v, e, err := at(n)
+	if err != nil {
+		return nil, err
+	}
+	for ; n >= oldest && len(out) < limit; n-- {
+		prev, was, err := at(n - 1)
+		if err != nil {
+			return nil, err
+		}
+		if v.N == n && e != was {
+			v.Entries = []Entry{}
+			if e.Path != "" {
+				v.Entries = []Entry{e}
+			}
+			out = append(out, v)
+		}
+		v, e = prev, was
+	}
+	return out, nil
+}
+
 // ReadFile returns a file's content at a version, 0 for the head.
 func (s *Store) ReadFile(ctx context.Context, tenant string, who Actor, tree Tree, version int64, p string) ([]byte, Entry, error) {
 	p, err := CleanPath(p)

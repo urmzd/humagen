@@ -276,7 +276,7 @@ Team",
     {
       "text": {
         "emoji": true,
-        "text": "Connections",
+        "text": "Plugins",
         "type": "plain_text",
       },
       "type": "header",
@@ -637,7 +637,7 @@ Team",
     {
       "text": {
         "emoji": true,
-        "text": "Connections",
+        "text": "Plugins",
         "type": "plain_text",
       },
       "type": "header",
@@ -894,7 +894,7 @@ exports[`homeView > renders the empty Home tab 1`] = `
     {
       "text": {
         "emoji": true,
-        "text": "Connections",
+        "text": "Plugins",
         "type": "plain_text",
       },
       "type": "header",
@@ -1255,7 +1255,7 @@ Team",
     {
       "text": {
         "emoji": true,
-        "text": "Connections",
+        "text": "Plugins",
         "type": "plain_text",
       },
       "type": "header",
@@ -1499,7 +1499,7 @@ Team",
     {
       "text": {
         "emoji": true,
-        "text": "Connections",
+        "text": "Plugins",
         "type": "plain_text",
       },
       "type": "header",
@@ -2049,7 +2049,7 @@ Account | in Field engineering | active <!date^1791288000^{date_short_pretty} at
     {
       "text": {
         "emoji": true,
-        "text": "Connections",
+        "text": "Plugins",
         "type": "plain_text",
       },
       "type": "header",
@@ -2591,7 +2591,7 @@ Team",
     {
       "text": {
         "emoji": true,
-        "text": "Connections",
+        "text": "Plugins",
         "type": "plain_text",
       },
       "type": "header",

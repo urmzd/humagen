@@ -5,6 +5,8 @@ import { cacheSessionFeedback } from "./sessionFeedback.ts";
 /** Preserve the server's permission metadata while existing controls migrate. */
 export function sessionPage(session: AgentSession): ThreadPage {
   if (!session.thread) throw new Error("The session response is missing its access metadata.");
+  // A message is a person's or a run's answer. Who answers is one run: what
+  // it called, and why it answers, are its activity, never a turn here.
   const turns: ThreadTurn[] = session.messages.flatMap((message): ThreadTurn[] => {
     if (message.run) {
       cacheSessionFeedback(message.run.id, [

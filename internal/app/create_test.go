@@ -26,9 +26,13 @@ func TestCreateAPI(t *testing.T) {
 		name                                       string
 		args                                       []string
 		list, method, path, body, response, output string
-		force, bearer, json                        bool
+		// store is what GET /api/store/packages answers; empty is 404.
+		store               string
+		force, bearer, json bool
 	}{
-		{name: "github", args: createGitHubArgs(), body: `{"name":"github","surface":"github","identity":{"app_id":"123","installation":"456","owners":["acme","other"]},"default_agent":"code-reviewer","github":{"read_repositories":["acme/one","acme/two","other/three"]},"credentials":{"token":{"ref":"op://vault/gh/key"},"signing_secret":{"ref":"env:HUMAGEN_GH_SECRET"}}}`, response: `{"id":"gh-1","name":"github","surface":"github","default_agent":"code-reviewer"}`, output: "Created github client github (id gh-1), answered by @code-reviewer\nNext: mention @code-reviewer on a pull request\n"},
+		{name: "github", args: createGitHubArgs(), body: `{"name":"github","surface":"github","identity":{"app_id":"123","installation":"456","owners":["acme","other"]},"default_agent":"code-reviewer","github":{"read_repositories":["acme/one","acme/two","other/three"]},"credentials":{"token":{"ref":"op://vault/gh/key"},"signing_secret":{"ref":"env:HUMAGEN_GH_SECRET"}}}`, response: `{"id":"gh-1","name":"github","surface":"github","default_agent":"code-reviewer"}`, output: "Created github client github (id gh-1), answered by @code-reviewer\nNext: install the Review package from the Store, then mention @code-reviewer on a pull request\n", store: reviewStore(false)},
+		{name: "github with review", args: createGitHubArgs(), body: `{"name":"github","surface":"github","identity":{"app_id":"123","installation":"456","owners":["acme","other"]},"default_agent":"code-reviewer","github":{"read_repositories":["acme/one","acme/two","other/three"]},"credentials":{"token":{"ref":"op://vault/gh/key"},"signing_secret":{"ref":"env:HUMAGEN_GH_SECRET"}}}`, response: `{"id":"gh-1","name":"github","surface":"github","default_agent":"code-reviewer"}`, output: "Created github client github (id gh-1), answered by @code-reviewer\nNext: mention @code-reviewer on a pull request\n", store: reviewStore(true)},
+		{name: "github without a store", args: createGitHubArgs(), body: `{"name":"github","surface":"github","identity":{"app_id":"123","installation":"456","owners":["acme","other"]},"default_agent":"code-reviewer","github":{"read_repositories":["acme/one","acme/two","other/three"]},"credentials":{"token":{"ref":"op://vault/gh/key"},"signing_secret":{"ref":"env:HUMAGEN_GH_SECRET"}}}`, response: `{"id":"gh-1","name":"github","surface":"github","default_agent":"code-reviewer"}`, output: "Created github client github (id gh-1), answered by @code-reviewer\nNext: mention @code-reviewer on a pull request\n"},
 		{name: "slack default", args: createSlackArgs(), body: `{"name":"slack","surface":"slack","identity":{"app_id":"A123","team":"T123"},"default_agent":"","slack":{},"credentials":{"token":{"ref":"env:HUMAGEN_SLACK_TOKEN"},"signing_secret":{"ref":"env:HUMAGEN_SLACK_SECRET"}}}`, response: `{"id":"sl-1","name":"slack","surface":"slack"}`, output: "Created slack client slack (id sl-1), answered by the workspace default\nNext: mention the app in Slack\n"},
 		{name: "slack explicit", args: append(createSlackArgs(), "--signing-secret", "keychain:humagen/slack", "--agent", "helper", "--name", "acme"), body: `{"name":"acme","surface":"slack","identity":{"app_id":"A123","team":"T123"},"default_agent":"helper","slack":{},"credentials":{"token":{"ref":"env:HUMAGEN_SLACK_TOKEN"},"signing_secret":{"ref":"keychain:humagen/slack"}}}`, response: `{"id":"sl-2","name":"acme","surface":"slack","default_agent":"helper"}`, output: "Created slack client acme (id sl-2), answered by @helper\nNext: mention @helper in Slack\n", bearer: true},
 		{name: "duplicate", args: createSlackArgs(), list: `{"clients":[{"id":"sl-1","name":"slack","surface":"slack"}]}`, output: "client slack exists; pass --force to update it"},
@@ -43,6 +47,15 @@ func TestCreateAPI(t *testing.T) {
 			}
 			calls := 0
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == http.MethodGet && r.URL.Path == "/api/store/packages" {
+					if tt.store == "" {
+						http.NotFound(w, r)
+						return
+					}
+					w.Header().Set("Content-Type", "application/json")
+					fmt.Fprint(w, tt.store)
+					return
+				}
 				calls++
 				wantAuth := ""
 				if tt.bearer {
@@ -346,4 +359,9 @@ func TestCreateOtherBadRequestIsPreserved(t *testing.T) {
 			}
 		})
 	}
+}
+
+// reviewStore is the store with the Review package, installed or not.
+func reviewStore(installed bool) string {
+	return fmt.Sprintf(`{"packages":[{"name":"humagen/review","title":"Review","installed":%v,"agents":[{"name":"code-reviewer","installed":%v,"taken":false}]}]}`, installed, installed)
 }

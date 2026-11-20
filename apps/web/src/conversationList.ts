@@ -34,20 +34,8 @@ export function standingOf(t: ThreadSummary, marks: Marks): RowStanding {
   return isUnread(t, marks) ? "unread" : "";
 }
 
-/** How long ago, in the fewest characters: now, 5m, 3h, 2d, 3w, 9mo, 2y. */
-export function age(iso: string, now: number): string {
-  const s = Math.max(0, (now - Date.parse(iso)) / 1000);
-  if (!Number.isFinite(s) || s < 60) return "now";
-  const m = s / 60;
-  if (m < 60) return `${Math.floor(m)}m`;
-  const h = m / 60;
-  if (h < 24) return `${Math.floor(h)}h`;
-  const d = h / 24;
-  if (d < 7) return `${Math.floor(d)}d`;
-  if (d < 30) return `${Math.floor(d / 7)}w`;
-  if (d < 365) return `${Math.floor(d / 30)}mo`;
-  return `${Math.floor(d / 365)}y`;
-}
+// One rule for every age and relative time in the console: format.ts.
+export { age } from "./format.ts";
 
 /**
  * Splits what is loaded into what each view lists. Archived conversations

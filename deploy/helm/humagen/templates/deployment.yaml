@@ -15,6 +15,9 @@
 {{- if ne (include "humagen.storesKind" .) "postgres" }}
 {{- fail "more than one server replica needs system.spec.stores.kind=postgres: replicas share the stores, the run queue and the bus through Postgres" }}
 {{- end }}
+{{- if eq (dig "spec" "bus" "kind" "" (.Values.system | default dict) | default "") "memory" }}
+{{- fail "more than one server replica needs a bus the replicas share, and system.spec.bus.kind=memory keeps each pod's events to itself: set system.spec.bus.kind=postgres or leave it out, or run one replica (replicaCount and autoscaling.maxReplicas of 1)" }}
+{{- end }}
 {{- if has (include "humagen.blobsKind" .) (list "disk" "memory") }}
 {{- fail "more than one server replica needs shared blobs (system.spec.blobs.kind s3 or gcs): each pod's disk is its own" }}
 {{- end }}

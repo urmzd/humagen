@@ -1,21 +1,26 @@
 package platform
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/urmzd/humagen/internal/mcptools"
 	runsettings "github.com/urmzd/humagen/pkg/settings"
-	"github.com/urmzd/orchagent/flow/mcptools"
+	"image"
+	"image/png"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/urmzd/humagen/internal/toolprovider"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/personctx"
 	"github.com/urmzd/humagen/pkg/runctx"
-	"github.com/urmzd/orchagent/flow/toolprovider"
-	"github.com/urmzd/orchagent/flow/turn/native/saigetypes"
+	saigetypes "github.com/urmzd/saige/agent/types"
+	"github.com/urmzd/saige/flow/runtime"
 )
 
 func TestPersonToolsRequireExplicitGrant(t *testing.T) {
@@ -75,13 +80,13 @@ func TestPersonalToolListChangeAndWriteApproval(t *testing.T) {
 	read.Class = toolprovider.ClassRead
 	write := read
 	write.Class = toolprovider.ClassWrite
-	tool := &personalTool{Tool: &fixturePersonTool{capability: saigetypes.ToolCapabilityWrite}, person: "ana"}
-	approval, needed := tool.Approval(saigetypes.ToolCallPart{})
-	if !needed || len(approval.Approvers) != 1 || approval.Approvers[0] != "ana" || !approval.SelfApproval {
+	tool := &personServerTool{Tool: &fixturePersonTool{capability: saigetypes.ToolCapabilityWrite}, person: "ana"}
+	approval, needed := declaredApproval(runtime.Request{}, tool.declaration(), saigetypes.ToolCallPart{})
+	if !needed || len(approval.Approvers) != 1 || approval.Approvers[0] != "ana" || !approval.SelfApproval || approval.ExpiresIn != 24*time.Hour || !tool.declaration().ActsForPerson {
 		t.Fatalf("write approval: %+v %v", approval, needed)
 	}
 	tool.Tool = &fixturePersonTool{capability: saigetypes.ToolCapabilityRead}
-	if _, needed := tool.Approval(saigetypes.ToolCallPart{}); needed {
+	if _, needed := declaredApproval(runtime.Request{}, tool.declaration(), saigetypes.ToolCallPart{}); needed || !tool.declaration().ActsForPerson {
 		t.Fatal("read hint requested write approval")
 	}
 	if samePersonTools([]toolprovider.Tool{read}, []toolprovider.Tool{write}) {
@@ -97,9 +102,13 @@ func (t *fixturePersonTool) Definition() saigetypes.ToolDef {
 func (t *fixturePersonTool) Execute(context.Context, map[string]any) (string, error) { return "", nil }
 
 func TestPersonalToolsTrustedWorkerSnapshotsAndRevocation(t *testing.T) {
+	var pixels bytes.Buffer
+	if err := png.Encode(&pixels, image.NewRGBA(image.Rect(0, 0, 1, 1))); err != nil {
+		t.Fatal(err)
+	}
 	server := mcp.NewServer(&mcp.Implementation{Name: "notes", Version: "1"}, nil)
 	server.AddTool(&mcp.Tool{Name: "lookup", Description: "Read notes", InputSchema: map[string]any{"type": "object"}, Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true}}, func(context.Context, *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: "a note"}}}, nil
+		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: "a note"}, &mcp.ImageContent{MIMEType: "image/png", Data: pixels.Bytes()}}}, nil
 	})
 	httpServer := httptest.NewTLSServer(mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return server }, nil))
 	defer httpServer.Close()
@@ -146,12 +155,30 @@ func TestPersonalToolsTrustedWorkerSnapshotsAndRevocation(t *testing.T) {
 	if err != nil || !strings.Contains(text, "a note") {
 		t.Fatalf("execute: %q %v", text, err)
 	}
+	rich, ok := group.Tools[0].(saigetypes.RichTool)
+	if !ok {
+		t.Fatal("personal connection stripped the rich-tool interface")
+	}
+	result, err := rich.ExecuteRich(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Parts) != 2 {
+		t.Fatalf("personal rich result parts=%d", len(result.Parts))
+	}
+	src, ok := saigetypes.SourceOf(result.Parts[1])
+	if !ok || !bytes.Equal(src.Inline, pixels.Bytes()) {
+		t.Fatal("personal connection lost screenshot bytes")
+	}
 	// Adding a write tool invalidates the entire list, including held reads.
 	server.AddTool(&mcp.Tool{Name: "write", InputSchema: map[string]any{"type": "object"}}, func(context.Context, *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		return &mcp.CallToolResult{}, nil
 	})
 	if _, err := group.Tools[0].Execute(ctx, nil); !errors.Is(err, mcptools.ErrHeldBack) {
 		t.Fatalf("changed list: %v", err)
+	}
+	if _, err := rich.ExecuteRich(ctx, nil); !errors.Is(err, mcptools.ErrHeldBack) {
+		t.Fatalf("changed rich tool list: %v", err)
 	}
 	changed, err := p.DiscoverPersonTools(ctx, who, host)
 	if err != nil {
@@ -166,5 +193,8 @@ func TestPersonalToolsTrustedWorkerSnapshotsAndRevocation(t *testing.T) {
 	}
 	if _, err := group.Tools[0].Execute(ctx, nil); !errors.Is(err, mcptools.ErrHeldBack) {
 		t.Fatalf("revoked server: %v", err)
+	}
+	if _, err := rich.ExecuteRich(ctx, nil); !errors.Is(err, mcptools.ErrHeldBack) {
+		t.Fatalf("revoked rich server: %v", err)
 	}
 }

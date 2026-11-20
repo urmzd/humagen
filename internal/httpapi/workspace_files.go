@@ -9,6 +9,7 @@ import (
 
 func (s *Server) workspaceFileRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/threads/{id}/sandboxes", s.authed(auth.RunsRead, s.seenThread(s.sandboxes)))
+	mux.HandleFunc("POST /api/threads/{id}/sandboxes/commands", s.authed(auth.RunsWrite, s.seenThread(s.runPersonCommand)))
 	mux.HandleFunc("GET /api/threads/{id}/memory", s.authed(auth.RunsRead, s.seenThread(s.conversationMemory)))
 	mux.HandleFunc("GET /api/threads/{id}/files", s.authed(auth.RunsRead, s.seenThread(s.workspaceFiles)))
 	mux.HandleFunc("GET /api/threads/{id}/files/content", s.authed(auth.RunsRead, s.seenThread(s.workspaceFile)))
@@ -20,6 +21,24 @@ func (s *Server) workspaceFileRoutes(mux *http.ServeMux) {
 
 func (s *Server) sandboxes(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	out, err := s.P.Sandboxes(r.Context(), who, r.PathValue("id"))
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, out)
+}
+
+// runPersonCommand runs one command a person typed, in the conversation's
+// sandbox, and answers when it has ended.
+func (s *Server) runPersonCommand(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	if !s.workspaceFileThread(w, r, who) {
+		return
+	}
+	var in platform.PersonCommand
+	if !decode(w, r, &in) {
+		return
+	}
+	out, err := s.P.RunPersonCommand(r.Context(), who, r.PathValue("id"), in)
 	if err != nil {
 		s.problem(w, err)
 		return

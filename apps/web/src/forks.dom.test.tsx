@@ -8,7 +8,6 @@ import { stubFetch } from "./dom.ts";
 import { BringBackResult, ForkContext, ForkConversation } from "./ForkConversation.tsx";
 import { ForkProject } from "./ForkProject.tsx";
 import { ProjectRollup } from "./ProjectRollup.tsx";
-import { NewProject } from "./Projects.tsx";
 import { QuickSwitcher } from "./QuickSwitcher.tsx";
 
 const at = "2026-10-20T12:00:00Z";
@@ -150,7 +149,7 @@ test("project switcher uses a bounded server search and preserves navigable link
   const link = await screen.findByRole("link", { name: /^Launch Plan/ });
   assert.equal(query?.get("limit"), "20");
   fireEvent.click(link);
-  assert.deepEqual(opened, [{ page: "project", name: "Launch", tab: "context" }]);
+  assert.deepEqual(opened, [{ page: "project", name: "Launch" }]);
 });
 
 test("project fork copies only selected confirmed memory and does not navigate before publication", async () => {
@@ -204,51 +203,6 @@ test("project fork copies only selected confirmed memory and does not navigate b
   assert.deepEqual(bodies[0], bodies[1]);
   assert.deepEqual((bodies[0] as { memory: string[] }).memory, ["n1"]);
   assert.equal((bodies[0] as { archive_conversations: boolean }).archive_conversations, true);
-});
-
-test("project creation chooses a native template and can live under an initiative", async () => {
-  let posted: unknown;
-  net = stubFetch({
-    "GET /api/project-templates": () => ({
-      templates: [
-        {
-          name: "delivery",
-          title: "Delivery Project",
-          description: "Plan delivery",
-          kind: "team",
-          initiative: false,
-        },
-      ],
-    }),
-    "POST /api/projects": (body) => {
-      posted = body;
-      return { name: "Launch" };
-    },
-  });
-  render(
-    <NewProject
-      places={[]}
-      parent={{ name: "Strategy", kind: "team", depth: 1 }}
-      canGovern={false}
-      onCreated={() => {}}
-      onCancel={() => {}}
-    />,
-  );
-  await screen.findByRole("option", { name: "Delivery Project" });
-  fireEvent.change(screen.getByLabelText(defaultCopy.projectTemplates.start), {
-    target: { value: "delivery" },
-  });
-  fireEvent.change(screen.getByLabelText(new RegExp(`^${defaultCopy.projects.form.title}`)), {
-    target: { value: "Launch" },
-  });
-  fireEvent.click(screen.getByRole("button", { name: defaultCopy.projects.createProject }));
-  await waitFor(() => assert.ok(posted));
-  assert.deepEqual(posted, {
-    name: "Launch",
-    template: "delivery",
-    kind: "team",
-    parent: "Strategy",
-  });
 });
 
 test("global discovery navigates real agent and conversation results using bounded kind filters", async () => {
@@ -312,11 +266,11 @@ test("initiative rollup opens original child work and never invents progress", a
   assert.ok(await screen.findByText("Confirmed delivery risk"));
   assert.equal(
     screen.getByRole("link", { name: "Launch Plan" }).getAttribute("href"),
-    "/projects/Launch/context",
+    "/projects/Launch",
   );
   assert.equal(
     screen.getByRole("link", { name: "Review: Launch" }).getAttribute("href"),
-    "/projects/Launch/context",
+    "/projects/Launch",
   );
   assert.ok(screen.getByText("Runs in 30 Days"));
   assert.equal(screen.queryByRole("progressbar"), null);

@@ -17,7 +17,7 @@ import (
 	"github.com/urmzd/humagen/pkg/auth"
 	githubflow "github.com/urmzd/humagen/pkg/integrations/github"
 	slackflow "github.com/urmzd/humagen/pkg/integrations/slack"
-	"github.com/urmzd/orchagent/flow/signature"
+	"github.com/urmzd/saige/flow/signature"
 )
 
 func TestSignedIntegrationsRunThroughThePlatformAndAppearInItsConsoleAPI(t *testing.T) {

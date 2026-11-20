@@ -1,7 +1,21 @@
 # Feedback, run signals and training export
 
-Status: proposed. This document changes no behavior. It describes the target
-design and the order of the changes that reach it.
+Status: partly built. Checked against `main` on 2026-11-19. Change 1 and the
+eval case part of change 4 have landed. The rest has not.
+
+## What is built
+
+Numbers are the items of [Changes](#changes). Each was read in code on `main`.
+Nothing was run for this list.
+
+| # | Change | State | Evidence |
+|---|--------|-------|----------|
+| 1 | The signals record and its pure fold | Built | #147; `pkg/signals/signals.go` |
+| 2 | Signals store, recompute on rating, reward fields in analytics | Not built | The one caller of `signals.Fold` is `internal/platform/online_evals.go`, with no ratings; no reward fields in `api/openapi.yaml` |
+| 3 | Asking: sample rate, caps, opt out, the asked record | Not built | No code found in `pkg/spec`, `pkg/feedback` or `pkg/prefs` |
+| 4 | Proposals: the review queue and eval case drafts | Partly built | The eval candidate queue: `internal/platform/eval_candidates.go`, `GET /api/eval-candidates` in `internal/httpapi/observe.go`. Instruction and memory proposals from rated runs: not confirmed |
+| 5, 6 | Consent, redaction, KTO and DPO export | Not built | No code found on main |
+| 7 | Reward analytics on Monitor | Not built | No code found in `apps/web/src` |
 
 ## Goal
 

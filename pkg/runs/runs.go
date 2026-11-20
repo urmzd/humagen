@@ -24,11 +24,12 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
-	"github.com/urmzd/orchagent/flow/event"
-	"github.com/urmzd/orchagent/flow/runtime"
+	"github.com/urmzd/saige/flow/event"
+	"github.com/urmzd/saige/flow/runtime"
 
 	"github.com/urmzd/humagen/internal/wire"
 
@@ -172,7 +173,9 @@ func AskedBy(r Run) string {
 
 // ClientOf returns the external client that raised a tag, or "".
 func ClientOf(tag event.Envelope) string {
-	if wire.Origin(tag) == "slack" || wire.Origin(tag) == "github" {
+	// The connectors write it, and the platform writes it on a run it raises
+	// for a surface's verified message. A caller of the API never can.
+	if o := wire.Origin(tag); o == "slack" || o == "github" || o == OriginAPI {
 		return wire.Meta(tag)[MetaClient]
 	}
 	return ""
@@ -264,6 +267,10 @@ type Run struct {
 	Parent string    `json:"parent,omitempty"`
 	Depth  int       `json:"depth"`
 	Mode   call.Mode `json:"mode,omitempty"`
+	// CallID is the API's id for the caller's tool call that started this
+	// run (htu_<run>_<n>): the call its activity streams under, and the one
+	// questions and stops name. Empty on a root.
+	CallID string `json:"call_id,omitempty"`
 	// Lifecycle is set on a run another run called.
 	Lifecycle Lifecycle `json:"lifecycle,omitempty"`
 	// Schedule names the schedule that raised the run, if one did.
@@ -326,8 +333,13 @@ type Run struct {
 	// Answer is the final text of a completed run. On a stopped run it is the
 	// partial answer: what the agent had said when it stopped, which people
 	// may already have read. It is never the whole answer, and Status says so.
-	Answer  string   `json:"answer,omitempty"`
-	Outcome *Outcome `json:"outcome,omitempty"`
+	Answer string `json:"answer,omitempty"`
+	// Output is the answer as structured data, for an agent whose spec
+	// declares an output schema: the answer, checked against that schema.
+	// It is absent for a free-text answer, and for one that did not hold
+	// to the schema.
+	Output  json.RawMessage `json:"output,omitempty"`
+	Outcome *Outcome        `json:"outcome,omitempty"`
 	// Sandbox is what the run left in its conversation's files.
 	Sandbox *Sandbox `json:"sandbox,omitempty"`
 	// Memory is the memory trees the run's instance was given and what it
@@ -337,9 +349,15 @@ type Run struct {
 	// Reason says what a parked run is waiting for, or that a run which has
 	// answered is waiting for the agents attached to it.
 	Reason string `json:"reason,omitempty"`
-	// Question is what a parked run is waiting on a person for. It is gone
+	// Question is what a parked run is waiting on a person for: the first
+	// question, when a batch of tool calls parked it on several. It is gone
 	// once the run resumes or ends.
 	Question *event.Question `json:"question,omitempty"`
+	// Questions is every question a parked run waits on when it waits on
+	// more than one, in the order its tool calls asked them. Each is
+	// answered on its own, and the run resumes once every one is. Empty for
+	// a run parked on Question alone. Waits reads either form.
+	Questions []event.Question `json:"questions,omitempty"`
 	// Cause says why a stopped run was stopped.
 	Cause string `json:"cause,omitempty"`
 	// Stopping is true from the moment someone asks a run to stop until the
@@ -377,6 +395,28 @@ type Run struct {
 	observedBy   string
 	lastSeq      uint64
 	openAttached int
+}
+
+// Waits returns every question a parked run waits on, in the order its tool
+// calls asked them: Questions when there are several, else Question alone.
+func (r Run) Waits() []event.Question {
+	if len(r.Questions) > 0 {
+		return slices.Clone(r.Questions)
+	}
+	if r.Question == nil {
+		return nil
+	}
+	return []event.Question{*r.Question}
+}
+
+// WaitsOn reports whether a parked run waits on the question id.
+func (r Run) WaitsOn(id string) (event.Question, bool) {
+	for _, q := range r.Waits() {
+		if q.ID == id {
+			return q, true
+		}
+	}
+	return event.Question{}, false
 }
 
 // Requesters returns the names pinned for the person who asked for the run.
@@ -546,7 +586,7 @@ func (x *Index) Record(runID string, tag event.Envelope, rev int) error {
 			ID:        runID, TagID: tag.ID, Tenant: tag.Tenant, Agent: wire.AgentOf(tag), Rev: rev, Origin: wire.Origin(tag),
 			Text: text, Input: input, Actor: wire.ActorOf(tag), Thread: thread, Prev: prev, Picked: picked, Routed: routed, Project: project, Within: slices.Clone(within), Client: client,
 			Channel: channel, Message: message,
-			Root: root, Parent: parent, Depth: edge.Depth, Mode: edge.Mode, Lifecycle: lifecycleOf(parent, edge.Mode),
+			Root: root, Parent: parent, Depth: edge.Depth, Mode: edge.Mode, CallID: edge.CallID, Lifecycle: lifecycleOf(parent, edge.Mode),
 			Lease: edge.Lease, Schedule: schedule,
 			Status: Accepted, CreatedAt: tag.Time, UpdatedAt: tag.Time,
 			tag: tag, observedBy: x.instance,
@@ -609,9 +649,9 @@ func (x *Index) Observe(e event.Envelope) (Run, bool) {
 		r.UpdatedAt = e.Time
 		switch b := e.Data.(type) {
 		case event.Started, event.Resumed:
-			r.Status, r.Reason, r.Question = Running, "", nil
+			r.Status, r.Reason, r.Question, r.Questions = Running, "", nil, nil
 		case event.Parked:
-			r.Status, r.Reason, r.Question = Parked, b.Reason, b.Question
+			r.Status, r.Reason, r.Question, r.Questions = Parked, b.Reason, b.Question, slices.Clone(b.Questions)
 			if b.Question != nil {
 				if err := t.neededPerson(r); err != nil {
 					return err
@@ -649,7 +689,7 @@ func (x *Index) Observe(e event.Envelope) (Run, bool) {
 		}
 		if r.Status.Terminal() {
 			x.finishAssistance(r)
-			r.Stopping, r.Question = false, nil
+			r.Stopping, r.Question, r.Questions = false, nil, nil
 		}
 		out, ended = citationSnapshot(r), r.Status.Terminal()
 		return nil
@@ -751,6 +791,23 @@ func (x *Index) SetUsageChecked(tenant, runID string, u *event.RunUsage, micros 
 		}
 		r.tally, r.closed = nil, true
 		r.Spent += micros
+		return nil
+	})
+}
+
+// SetOutput keeps a run's answer as structured data (Run.Output), once its
+// answer has been checked against its agent's output schema.
+func (x *Index) SetOutput(tenant, runID string, output json.RawMessage) error {
+	return x.do(tenant, func(t *txn) error {
+		r, err := t.run(runID)
+		if err != nil {
+			return err
+		}
+		if r == nil {
+			return ErrNotFound
+		}
+		t.touch(r)
+		r.Output = slices.Clone(output)
 		return nil
 	})
 }
@@ -858,11 +915,21 @@ func (x *Index) Unfinished() []Run {
 // ledger's call, and the two can disagree: a run that exhausts its retries is
 // failed in the ledger without a final event ever being published.
 func (x *Index) End(tenant, runID string, status Status, answer, failure string, at time.Time) (Run, bool) {
+	return x.EndRecorded(tenant, runID, status, answer, failure, nil, at)
+}
+
+// EndRecorded is End for a run whose usage the ledger already holds: usage,
+// when given, is the runtime's own record of the run, and goes on the run in
+// the write that ends it, as a completed event's does. A reader that sees the
+// run ended therefore sees what it used, never what had been tallied from
+// the events folded so far.
+func (x *Index) EndRecorded(tenant, runID string, status Status, answer, failure string, usage *event.RunUsage, at time.Time) (Run, bool) {
 	return x.update("end", tenant, runID, func(t *txn, r *Run) (Run, bool) {
 		if r.Status.Terminal() || !status.Terminal() {
 			return Run{}, false
 		}
 		t.touch(r)
+		recordUsage(r, usage)
 		if answer != "" {
 			r.Answer = answer
 		}
@@ -873,10 +940,20 @@ func (x *Index) End(tenant, runID string, status Status, answer, failure string,
 			// Held open: written, but not ended.
 			return Run{}, false
 		}
-		r.Status, r.UpdatedAt, r.Finishing, r.Reason, r.Stopping, r.Question = status, at, false, "", false, nil
+		r.Status, r.UpdatedAt, r.Finishing, r.Reason, r.Stopping, r.Question, r.Questions = status, at, false, "", false, nil, nil
 		x.finishAssistance(r)
 		return citationSnapshot(r), true
 	})
+}
+
+// recordUsage keeps the runtime's own record of what a run used, once: a
+// record already kept stands.
+func recordUsage(r *Run, usage *event.RunUsage) {
+	if usage == nil || r.final {
+		return
+	}
+	u := *usage
+	r.Usage, r.final = &u, true
 }
 
 // hold keeps a run that has answered open while runs attached to it are still
@@ -960,15 +1037,22 @@ func (x *Index) AskStop(tenant, runID string, at time.Time) (Run, bool) {
 // what the run had said, and cause is why it stopped. It returns the run and
 // whether this call is what ended it.
 func (x *Index) Stop(tenant, runID, answer, cause string, at time.Time) (Run, bool) {
+	return x.StopRecorded(tenant, runID, answer, cause, nil, at)
+}
+
+// StopRecorded is Stop for a run whose usage the ledger already holds, kept
+// on the run in the write that ends it (see EndRecorded).
+func (x *Index) StopRecorded(tenant, runID, answer, cause string, usage *event.RunUsage, at time.Time) (Run, bool) {
 	return x.update("stop", tenant, runID, func(t *txn, r *Run) (Run, bool) {
 		if r.Status.Terminal() {
 			return Run{}, false
 		}
 		t.touch(r)
+		recordUsage(r, usage)
 		if answer != "" {
 			r.Answer = answer
 		}
-		r.Status, r.Cause, r.UpdatedAt, r.Finishing, r.Reason, r.Stopping, r.Question = Stopped, causeOf(cause, ""), at, false, "", false, nil
+		r.Status, r.Cause, r.UpdatedAt, r.Finishing, r.Reason, r.Stopping, r.Question, r.Questions = Stopped, causeOf(cause, ""), at, false, "", false, nil, nil
 		x.finishAssistance(r)
 		return citationSnapshot(r), true
 	})
@@ -1045,6 +1129,56 @@ func (x *Index) Get(tenant, runID string) (Run, error) {
 	return citationSnapshot(r), nil
 }
 
+// Many reads several runs at once, by id: their numbers in one statement
+// for every state.MaxList not already known, then the runs in one more. A
+// run the tenant has none of is left out.
+func (x *Index) Many(tenant string, ids []string) (map[string]Run, error) {
+	seqs := make([]int64, 0, len(ids))
+	var ask []string
+	asked := map[string]string{}
+	for _, id := range ids {
+		if id == "" {
+			continue
+		}
+		if n, ok := x.seqs.Load(tenant + "\x00" + id); ok {
+			seqs = append(seqs, n.(int64))
+			continue
+		}
+		if _, dup := asked[ptrKey(id)]; !dup {
+			asked[ptrKey(id)] = id
+			ask = append(ask, ptrKey(id))
+		}
+	}
+	for chunk := range slices.Chunk(ask, state.MaxList) {
+		c, cancel := ctx()
+		recs, err := state.LookupMany(c, x.st, namespace, tenant, chunk)
+		cancel()
+		if err != nil {
+			return nil, err
+		}
+		for _, rec := range recs {
+			var n int64
+			if err := json.Unmarshal(rec.Value, &n); err != nil {
+				return nil, fmt.Errorf("runs: %q: %w", rec.Key, err)
+			}
+			if n != 0 {
+				x.seqs.Store(tenant+"\x00"+asked[rec.Key], n)
+				seqs = append(seqs, n)
+			}
+		}
+	}
+	slices.Sort(seqs)
+	found, err := x.all(tenant, slices.Compact(seqs))
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]Run, len(found))
+	for _, r := range found {
+		out[r.ID] = citationSnapshot(r)
+	}
+	return out, nil
+}
+
 // List returns a tenant's runs, newest first, at most limit of them, and at
 // most state.MaxList.
 func (x *Index) List(tenant string, limit int) []Run {
@@ -1052,7 +1186,7 @@ func (x *Index) List(tenant string, limit int) []Run {
 		limit = state.MaxList
 	}
 	var out []Run
-	err := x.scan(tenant, func(r *Run) bool {
+	err := x.scanBy(tenant, limit, func(r *Run) bool {
 		out = append(out, citationSnapshot(r))
 		return len(out) < limit
 	})
@@ -1124,6 +1258,34 @@ func (x *Index) ConversationSummary(tenant, id string) (ThreadSummary, error) {
 	return s.summary(), err
 }
 
+// ConversationSummaries reads the retained projections of several
+// conversations at once, by id: one statement for every state.MaxList of
+// them, and at most MaxThreadScan. One the index holds no run of is left out.
+func (x *Index) ConversationSummaries(tenant string, ids []string) (map[string]ThreadSummary, error) {
+	ids = ids[:min(len(ids), MaxThreadScan)]
+	keys := make([]string, len(ids))
+	for i, id := range ids {
+		keys[i] = threadKey(id)
+	}
+	out := make(map[string]ThreadSummary, len(ids))
+	for chunk := range slices.Chunk(keys, state.MaxList) {
+		c, cancel := ctx()
+		recs, err := state.LookupMany(c, x.st, namespace, tenant, chunk)
+		cancel()
+		if err != nil {
+			return nil, err
+		}
+		for _, rec := range recs {
+			var s storedThread
+			if err := json.Unmarshal(rec.Value, &s); err != nil {
+				return nil, fmt.Errorf("runs: %q: %w", rec.Key, err)
+			}
+			out[s.ID] = s.summary()
+		}
+	}
+	return out, nil
+}
+
 // A governed child remains in its execution tree, but a canonical child
 // session has a separate user-facing transcript of its own.
 func conversationTurn(r *Run) bool {
@@ -1167,6 +1329,54 @@ func (x *Index) Conversation(tenant, thread string) ([]Run, error) {
 	out := make([]Run, 0, len(turns))
 	for _, r := range turns {
 		out = append(out, citationSnapshot(r))
+	}
+	return out, nil
+}
+
+// Conversations returns the turns of several threads at once, oldest first
+// in each, as Conversation does for one: the turn keys of each thread, a few
+// threads at a time, then every run in one statement for each state.MaxList
+// of them. A thread the index holds no turn of is left out. Each thread
+// holds at most MaxTree turns.
+func (x *Index) Conversations(tenant string, threads []string) (map[string][]Run, error) {
+	seqs := make([][]int64, len(threads))
+	errs := make([]error, len(threads))
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, keyReads)
+	for i, thread := range threads {
+		sem <- struct{}{}
+		wg.Go(func() {
+			defer func() { <-sem }()
+			keys, err := x.keys(tenant, turnPrefix(thread), MaxTree)
+			errs[i] = err
+			for _, k := range keys {
+				seqs[i] = append(seqs[i], seqOf(k))
+			}
+		})
+	}
+	wg.Wait()
+	if err := errors.Join(errs...); err != nil {
+		return nil, err
+	}
+	var every []int64
+	for _, s := range seqs {
+		every = append(every, s...)
+	}
+	turns, err := x.all(tenant, every)
+	if err != nil {
+		return nil, err
+	}
+	bySeq := make(map[int64]*Run, len(turns))
+	for _, r := range turns {
+		bySeq[r.seq] = r
+	}
+	out := make(map[string][]Run, len(threads))
+	for i, thread := range threads {
+		for _, n := range seqs[i] {
+			if r := bySeq[n]; r != nil {
+				out[thread] = append(out[thread], citationSnapshot(r))
+			}
+		}
 	}
 	return out, nil
 }

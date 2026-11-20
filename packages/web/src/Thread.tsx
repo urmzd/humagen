@@ -1,16 +1,18 @@
-import { ArrowDownIcon } from "@humagen/render-web";
-import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef } from "react";
+import { LatestButton, useLatest } from "./Latest.tsx";
 import { TurnRail, type TurnRailEntry } from "./TurnRail";
-
-const NEAR_BOTTOM_PX = 48;
 
 /**
  * Scrolling message list that sticks to the bottom while content streams in,
- * unless the reader has scrolled up; then a "Jump to latest" button appears.
+ * unless the reader has scrolled up; then the LatestButton appears, and
+ * shows whether an answer is still being written below (`busy`).
  *
  * role="log" with live announcements off: AgentMessage announces state
  * changes itself, so screen readers don't hear every token.
  */
+/** The fewest turns a conversation has before its turn rail shows. */
+export const RAIL_MIN_TURNS = 6;
+
 export function Thread({
   children,
   label = "Conversation",
@@ -36,18 +38,12 @@ export function Thread({
   /** Shows a thin indeterminate bar at the top while a turn is in flight. */
   busy?: boolean;
 }) {
-  const scroller = useRef<HTMLDivElement>(null);
-  const content = useRef<HTMLDivElement>(null);
-  const stuck = useRef(!focus);
-  const [atBottom, setAtBottom] = useState(true);
+  const { scroller, content, look, onScroll, jump, release } = useLatest({
+    working: busy,
+    follow: true,
+    startAtEnd: !focus,
+  });
   const revealed = useRef<string | undefined>(undefined);
-
-  const toBottom = useCallback((smooth: boolean) => {
-    const el = scroller.current;
-    if (!el) return;
-    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-    el.scrollTo({ top: el.scrollHeight, behavior: smooth && !reduce ? "smooth" : "auto" });
-  }, []);
 
   useEffect(() => {
     if (!focus) {
@@ -59,8 +55,7 @@ export function Thread({
     const target = root?.querySelector<HTMLElement>(`[data-turn-id="${CSS.escape(focus)}"]`);
     if (!root || !target) return;
     revealed.current = focus;
-    stuck.current = false;
-    setAtBottom(false);
+    release();
     root.scrollTo({
       top:
         root.scrollTop +
@@ -69,29 +64,10 @@ export function Thread({
         root.clientHeight / 3,
       behavior: "auto",
     });
-  }, [focus, turns]);
+  }, [focus, turns, scroller, release]);
 
-  useEffect(() => {
-    const el = content.current;
-    if (!el || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(() => {
-      if (stuck.current) toBottom(false);
-    });
-    observer.observe(el);
-    // The list itself shrinking (the keyboard opening on a phone) keeps the latest in view too.
-    if (scroller.current) observer.observe(scroller.current);
-    return () => observer.disconnect();
-  }, [toBottom]);
-
-  const onScroll = () => {
-    const el = scroller.current;
-    if (!el) return;
-    const near = el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX;
-    stuck.current = near;
-    setAtBottom(near);
-  };
-
-  const wave = turns && turns.length > 1 ? turns : null;
+  // The rail is a way around a long conversation; a short one needs none.
+  const wave = turns && turns.length >= RAIL_MIN_TURNS ? turns : null;
   return (
     <div className={`relative flex min-h-0 flex-col ${className ?? ""}`}>
       {busy && <div aria-hidden className="aui-busy-bar absolute inset-x-0 top-0 z-10" />}
@@ -113,26 +89,7 @@ export function Thread({
           {children}
         </div>
       </div>
-      {!atBottom && (
-        <>
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-aui-bg via-aui-bg/90 to-transparent"
-          />
-          <button
-            type="button"
-            data-layer="thread-jump"
-            onClick={() => {
-              stuck.current = true;
-              toBottom(true);
-            }}
-            className="aui-pop-in absolute bottom-3 left-1/2 z-10 inline-flex h-7 -translate-x-1/2 items-center gap-1.5 rounded-full border border-aui-border bg-aui-bg px-3 text-aui-fg text-aui-xs shadow-md transition-colors hover:bg-aui-surface focus-visible:outline-2 focus-visible:outline-aui-accent"
-          >
-            <ArrowDownIcon size={13} />
-            Jump to latest
-          </button>
-        </>
-      )}
+      <LatestButton look={look} onJump={jump} scroller={scroller} />
     </div>
   );
 }

@@ -3,36 +3,24 @@ import {
   BellIcon,
   BotIcon,
   BrainIcon,
-  CheckCircleIcon,
-  ClipboardListIcon,
   GaugeIcon,
-  ListChecksIcon,
+  MicIcon,
   MonitorIcon,
   MoonIcon,
+  NetworkIcon,
   PaletteIcon,
-  PauseIcon,
   PlugIcon,
   ScrollTextIcon,
   ServerIcon,
   ShieldIcon,
-  SlidersIcon,
   SunIcon,
   TrashIcon,
   UserIcon,
-  UsersIcon,
 } from "@humagen/render-web";
 import { Input } from "@humagen/render-web/ui/input";
 import { NativeSelect } from "@humagen/render-web/ui/native-select";
 import { Switch as SettingSwitch } from "@humagen/render-web/ui/switch";
-import {
-  type FormEvent,
-  Fragment,
-  type MouseEvent,
-  type ReactNode,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { type FormEvent, Fragment, type MouseEvent, type ReactNode, useRef, useState } from "react";
 import { AccessExplain } from "./AccessExplain.tsx";
 import { doing } from "./access.ts";
 import {
@@ -41,17 +29,18 @@ import {
   type Me,
   type Preferences,
   type Revision,
-  type RouterSettings,
   type Settings as Workspace,
 } from "./api.ts";
 import { BillingSettings } from "./Billing.tsx";
 import { ClientSettings } from "./Clients.tsx";
 import { DeletionQueue } from "./DeletionQueue.tsx";
+import { ModelProviderSettings } from "./ModelProviders.tsx";
 import { PersonalPreferences } from "./PersonalPreferences.tsx";
 import type { PrefsRead } from "./preferences.ts";
 import { ReadAudit } from "./ReadAudit.tsx";
 import { href, type Route, type SettingsSection } from "./route.ts";
 import { SettingsFormRow } from "./SettingsFormRow.tsx";
+import { Avatar, linked, workspaceSettingsRoute } from "./settingsLinks.tsx";
 import {
   agentOptions,
   button,
@@ -66,41 +55,12 @@ import {
   SkeletonRows,
   useStrip,
 } from "./ui.tsx";
+import { VoiceSettings } from "./VoiceSettings.tsx";
 
 export type Section = SettingsSection;
 
-/** A person's picture, or their initial when they have none. */
-export function Avatar({
-  name,
-  prefs,
-  size = 28,
-}: {
-  name: string;
-  prefs: Preferences | null;
-  size?: number;
-}) {
-  if (prefs?.has_photo) {
-    return (
-      <img
-        src={`/api/preferences/photo?v=${prefs.photo_version}`}
-        alt=""
-        width={size}
-        height={size}
-        className="shrink-0 rounded-full object-cover"
-        style={{ width: size, height: size }}
-      />
-    );
-  }
-  return (
-    <span
-      aria-hidden
-      className="inline-flex shrink-0 items-center justify-center rounded-full bg-aui-hover font-medium text-aui-fg"
-      style={{ width: size, height: size, fontSize: Math.round(size * 0.42) }}
-    >
-      {(name.trim()[0] ?? "?").toUpperCase()}
-    </span>
-  );
-}
+// Kept here for their callers; the sidebar reads them from settingsLinks.tsx.
+export { Avatar, workspaceSettingsRoute };
 
 /** A plain link's click: in place on a plain click, left to the browser on a modified one. */
 const follow = (go: () => void) => (e: MouseEvent<HTMLAnchorElement>) => {
@@ -125,7 +85,6 @@ export function Settings({
   onWorkspace,
   onOpenProjects,
   onOpenWorkspace,
-  onOpenWorkspaceAgents = onOpenWorkspace,
   onNavigate,
 }: {
   me: Me;
@@ -148,8 +107,6 @@ export function Settings({
   onOpenProjects: () => void;
   /** Opens the workspace's own project, where its instructions and notes are. */
   onOpenWorkspace: () => void;
-  /** Opens the workspace's Agents tab, where the Workspace Default is. */
-  onOpenWorkspaceAgents?: () => void;
   onNavigate?: (route: Route) => void;
 }) {
   const setSection = onSection;
@@ -229,6 +186,16 @@ export function Settings({
               </>
             ))}
 
+          {section === "voice" && (
+            <>
+              <header className="pb-2">
+                <h1 className={pageTitle}>{defaultCopy.voiceSettings.title}</h1>
+                <p className={pageLede}>{defaultCopy.voiceSettings.lede}</p>
+              </header>
+              <VoiceSettings canEdit={me.permissions.includes("clients:write")} />
+            </>
+          )}
+
           {section === "deletions" &&
             (canGovern ? (
               <DeletionQueue />
@@ -239,61 +206,15 @@ export function Settings({
               </>
             ))}
 
-          {section === "routing" && (
+          {section === "providers" && (
             <>
               <header className="pb-2">
-                <h1 className={pageTitle}>Agent routing</h1>
+                <h1 className={pageTitle}>Model providers</h1>
                 <p className={pageLede}>
-                  A message goes to the agents it tags. One that tags none goes to the default where
-                  it is posted. When that is Everyone decides, each agent available there decides
-                  for itself whether to answer, and each that does answers in the same thread. When
-                  none does, the message waits for a person to answer or tag an agent.
+                  What agents run on. An agent runs once a provider its models name is enabled.
                 </p>
               </header>
-              {workspace && (
-                <RouterControl
-                  key={JSON.stringify(workspace.router ?? null)}
-                  saved={workspace.router ?? { enabled: false }}
-                  canEdit={canAdmin}
-                  onSave={(router) => saveWorkspace({ router })}
-                />
-              )}
-              <section className={`${card} flex flex-col gap-3`}>
-                <h2 className="text-aui-sm font-medium text-aui-fg">
-                  {defaultCopy.workspaceDefault}
-                </h2>
-                <p className="text-aui-sm text-aui-muted">
-                  {defaultCopy.workspaceDefault} answers a message that tags no agent, unless a
-                  project sets its own. It lives on the workspace's Agents tab.
-                </p>
-                <a
-                  href={href({ page: "project", name: "", tab: "agents" })}
-                  className={`${button} self-start`}
-                  onClick={follow(onOpenWorkspaceAgents)}
-                >
-                  {defaultCopy.workspaceDefault}
-                </a>
-              </section>
-              <section className={`${card} flex flex-col gap-3`}>
-                <h2 className="text-aui-sm font-medium text-aui-fg">Agent capabilities</h2>
-                <p className="text-aui-xs text-aui-muted">
-                  Each agent reads its description first when deciding whether to take a message.
-                  Edit them in Agents.
-                </p>
-                {agents.length === 0 && (
-                  <p className="text-aui-sm text-aui-muted">No agents configured.</p>
-                )}
-                {agents.map((a) => (
-                  <div key={a.spec.name}>
-                    <p className="text-aui-sm font-medium text-aui-fg">{a.spec.name}</p>
-                    <p className="text-aui-xs text-aui-muted">
-                      {a.spec.tagged_only
-                        ? "Only when tagged."
-                        : a.spec.description || "Decides using its name and instructions."}
-                    </p>
-                  </div>
-                ))}
-              </section>
+              <ModelProviderSettings canEdit={me.permissions.includes("clients:write")} />
             </>
           )}
 
@@ -631,181 +552,18 @@ export function Settings({
   );
 }
 
-/**
- * Whether agents decide for themselves to take a message that names no agent,
- * and the model that asks them. The provider is one this deployment declares;
- * its key comes from an environment variable or a secrets manager, never from
- * here.
- */
-function RouterControl({
-  saved,
-  canEdit,
-  onSave,
-}: {
-  saved: RouterSettings;
-  canEdit: boolean;
-  onSave: (next: RouterSettings) => void;
-}) {
-  const [draft, setDraft] = useState<RouterSettings>(saved);
-  const [providers, setProviders] = useState<string[] | null>(null);
-  useEffect(() => {
-    let live = true;
-    api
-      .modelProviders()
-      .then(
-        (all) =>
-          live &&
-          setProviders(all.filter((p) => p.declared && p.name !== "offline").map((p) => p.name)),
-      )
-      .catch(() => live && setProviders([]));
-    return () => {
-      live = false;
-    };
-  }, []);
-  const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
-  const problem =
-    draft.enabled && !draft.provider
-      ? "Choose a provider."
-      : draft.enabled && !draft.model?.trim()
-        ? "Name a model."
-        : null;
-  const choices = providers ?? [];
-  // A saved provider stays listed even when this deployment no longer declares it, so the field shows what is saved.
-  const listed =
-    draft.provider && !choices.includes(draft.provider) ? [draft.provider, ...choices] : choices;
-  return (
-    <section className={`${card} flex flex-col gap-3`} aria-label="Agents decide for themselves">
-      <SettingsFormRow
-        id="workspace-router"
-        label="Agents decide for themselves"
-        description="On, every agent available where an untagged message is posted is asked, all at once, whether it should answer. Off, no agent takes a message on its own."
-        compact
-      >
-        <SettingSwitch
-          id="workspace-router"
-          aria-describedby="workspace-router-hint"
-          checked={draft.enabled}
-          disabled={!canEdit}
-          onCheckedChange={(enabled) => setDraft((d) => ({ ...d, enabled }))}
-        />
-      </SettingsFormRow>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Label text="Provider" hint="One this deployment declares.">
-          <NativeSelect
-            aria-label="Router provider"
-            value={draft.provider ?? ""}
-            disabled={!canEdit || !draft.enabled}
-            onChange={(e) => setDraft((d) => ({ ...d, provider: e.target.value || undefined }))}
-          >
-            <option value="">
-              {providers === null
-                ? "Loading providers"
-                : listed.length === 0
-                  ? "No provider declared"
-                  : "Choose a provider"}
-            </option>
-            {listed.map((name) => (
-              <option key={name} value={name}>
-                {name}
-              </option>
-            ))}
-          </NativeSelect>
-        </Label>
-        <Label text="Model" hint="A small, fast model is enough: each agent answers yes or no.">
-          <input
-            className={field}
-            maxLength={200}
-            value={draft.model ?? ""}
-            disabled={!canEdit || !draft.enabled}
-            onChange={(e) => setDraft((d) => ({ ...d, model: e.target.value || undefined }))}
-          />
-        </Label>
-      </div>
-      <p className="text-aui-xs text-aui-muted">
-        No credential is stored here. The provider's key comes from an environment variable or a
-        secrets manager.
-      </p>
-      {canEdit && (
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          {problem && dirty && <span className="text-aui-xs text-aui-bad">{problem}</span>}
-          {dirty && (
-            <button type="button" className={button} onClick={() => setDraft(saved)}>
-              Discard
-            </button>
-          )}
-          <button
-            type="button"
-            className={primary}
-            disabled={!dirty || problem !== null}
-            onClick={() => onSave(draft)}
-          >
-            Save Routing
-          </button>
-        </div>
-      )}
-    </section>
-  );
-}
-
-// Workspace pages shown inside workspace settings. Schedules and Projects live in the sidebar.
-const linked = [
-  {
-    label: "People",
-    icon: <UsersIcon size={16} />,
-    route: { page: "directory", tab: "people" } as Route,
-    permission: "people:read",
-  },
-  {
-    label: "Usage",
-    icon: <ClipboardListIcon size={16} />,
-    route: { page: "usage" } as Route,
-    permission: "runs:read",
-  },
-  {
-    label: "Health",
-    icon: <CheckCircleIcon size={16} />,
-    route: { page: "monitor", tab: "health" } as Route,
-    permission: "alerts:read",
-  },
-  {
-    label: "Policies",
-    icon: <SlidersIcon size={16} />,
-    route: { page: "action-policy" } as Route,
-    permission: "agents:read",
-  },
-  {
-    label: "Audit",
-    icon: <ListChecksIcon size={16} />,
-    route: { page: "audit" } as Route,
-    permission: "projects:govern",
-  },
-  {
-    label: "Agent controls",
-    icon: <PauseIcon size={16} />,
-    route: { page: "agent-control" } as Route,
-    permission: "agents:write",
-  },
-];
-
 /** Your own settings; every other section is the workspace's. */
 const yours: Section[] = ["profile", "notifications", "appearance"];
 /** Pages shown inside Your settings. */
 const yourPages = [
-  { label: "Connections", icon: <PlugIcon size={16} />, route: { page: "connections" } as Route },
+  { label: "Plugins", icon: <PlugIcon size={16} />, route: { page: "connections" } as Route },
 ];
-
-/**
- * Where Workspace settings opens for someone: its first section for an admin,
- * else the first workspace page they may read, else nowhere.
- */
-export function workspaceSettingsRoute(
-  can: (permission: string) => boolean,
-  roles: string[] = [],
-): Route | null {
-  if (roles.includes("admin") || can("agents:write") || can("projects:govern"))
-    return { page: "settings", section: "workspace" } as Route;
-  return linked.find((item) => can(item.permission))?.route ?? null;
-}
+/** Apps the workspace installs once (Slack, GitHub): an administrator's page, in Workspace settings. */
+const appsPage = {
+  label: "Apps",
+  icon: <NetworkIcon size={16} />,
+  route: { page: "connections", scope: "apps" } as Route,
+};
 
 /** The settings sections, and the workspace pages that live inside settings. */
 export function SettingsNav({
@@ -839,8 +597,9 @@ export function SettingsNav({
   const workspaceEntries: Entry[] = admin
     ? [
         { id: "workspace", label: "Workspace", icon: <ServerIcon size={16} /> },
-        { id: "routing", label: "Agent routing", icon: <BotIcon size={16} /> },
+        { id: "providers", label: "Model providers", icon: <BrainIcon size={16} /> },
         { id: "limits", label: "Limits", icon: <GaugeIcon size={16} /> },
+        { id: "voice", label: defaultCopy.voiceSettings.title, icon: <MicIcon size={16} /> },
         { id: "access", label: "Access", icon: <ShieldIcon size={16} /> },
         ...(canReadAudit
           ? [
@@ -920,20 +679,21 @@ export function SettingsNav({
                 ))}
               {scope === "workspace" &&
                 onNavigate &&
-                linked
-                  .filter((item) => me.permissions.includes(item.permission))
-                  .map((item) => (
-                    <a
-                      key={item.label}
-                      href={href(item.route)}
-                      onClick={follow(() => onNavigate(item.route))}
-                      aria-current={active === item.label ? "page" : undefined}
-                      className={sectionLink}
-                    >
-                      {item.icon}
-                      {item.label}
-                    </a>
-                  ))}
+                [
+                  ...(me.permissions.includes("clients:write") ? [appsPage] : []),
+                  ...linked.filter((item) => me.permissions.includes(item.permission)),
+                ].map((item) => (
+                  <a
+                    key={item.label}
+                    href={href(item.route)}
+                    onClick={follow(() => onNavigate(item.route))}
+                    aria-current={active === item.label ? "page" : undefined}
+                    className={sectionLink}
+                  >
+                    {item.icon}
+                    {item.label}
+                  </a>
+                ))}
             </Fragment>
           ))}
         </nav>

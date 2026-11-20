@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/urmzd/orchagent/flow/event"
+	"github.com/urmzd/saige/flow/event"
 
 	"github.com/urmzd/humagen/internal/platform"
 )
@@ -42,27 +42,44 @@ func shownEvent(names platform.Names, e platform.APIEvent) platform.APIEvent {
 		return e
 	}
 	var body map[string]json.RawMessage
-	if err := json.Unmarshal(e.Data, &body); err != nil || len(body["answer"]) == 0 {
+	if err := json.Unmarshal(e.Data, &body); err != nil || (len(body["answer"]) == 0 && len(body["answers"]) == 0) {
 		return e
 	}
-	var answer map[string]json.RawMessage
-	if err := json.Unmarshal(body["answer"], &answer); err != nil || answer == nil {
-		return e
+	// named is an answer with the name of whoever gave it beside their
+	// subject, or the answer as it was when it names nobody.
+	named := func(raw json.RawMessage) json.RawMessage {
+		var answer map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &answer); err != nil || answer == nil {
+			return raw
+		}
+		var by string
+		if err := json.Unmarshal(answer["by"], &by); err != nil || by == "" {
+			return raw
+		}
+		name, err := json.Marshal(names.Of(by))
+		if err != nil {
+			return raw
+		}
+		answer["by_name"] = name
+		out, err := json.Marshal(answer)
+		if err != nil {
+			return raw
+		}
+		return out
 	}
-	var by string
-	if err := json.Unmarshal(answer["by"], &by); err != nil || by == "" {
-		return e
+	if len(body["answer"]) > 0 {
+		body["answer"] = named(body["answer"])
 	}
-	name, err := json.Marshal(names.Of(by))
-	if err != nil {
-		return e
+	// A run parked on several questions resumes with every answer.
+	var all []json.RawMessage
+	if len(body["answers"]) > 0 && json.Unmarshal(body["answers"], &all) == nil {
+		for i := range all {
+			all[i] = named(all[i])
+		}
+		if raw, err := json.Marshal(all); err == nil {
+			body["answers"] = raw
+		}
 	}
-	answer["by_name"] = name
-	raw, err := json.Marshal(answer)
-	if err != nil {
-		return e
-	}
-	body["answer"] = raw
 	data, err := json.Marshal(body)
 	if err != nil {
 		return e

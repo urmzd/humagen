@@ -13,9 +13,9 @@ import (
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/runs"
-	transport "github.com/urmzd/orchagent/flow/connectors/github"
-	"github.com/urmzd/orchagent/flow/event"
-	"github.com/urmzd/orchagent/flow/session"
+	transport "github.com/urmzd/saige/flow/connectors/github"
+	"github.com/urmzd/saige/flow/event"
+	"github.com/urmzd/saige/flow/session"
 )
 
 const reviewNeedsCorrection = "Review needs correction: its scope does not match the recorded review context."

@@ -11,13 +11,13 @@ import (
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/urmzd/humagen/internal/mcptools"
+	"github.com/urmzd/humagen/internal/toolprovider"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/personctx"
-	"github.com/urmzd/orchagent/flow/mcptools"
-	"github.com/urmzd/orchagent/flow/runtime"
-	"github.com/urmzd/orchagent/flow/toolprovider"
-	"github.com/urmzd/orchagent/flow/turn/native"
-	"github.com/urmzd/orchagent/flow/turn/native/saigetypes"
+	saigetypes "github.com/urmzd/saige/agent/types"
+	"github.com/urmzd/saige/flow/runtime"
+	"github.com/urmzd/saige/flow/turn/native"
 )
 
 const personToolsGrant = "mcp:person_tools:write"
@@ -192,13 +192,16 @@ func (p *Platform) personalToolGroup(ctx context.Context, req runtime.Request) (
 		}
 		go func() { <-ctx.Done(); _ = session.Close() }()
 		for _, tool := range tools.All() {
-			out = append(out, &personalTool{Tool: tool, p: p, req: req, server: server, person: c.Person})
+			out = append(out, &personServerTool{Tool: tool, p: p, req: req, server: server, person: c.Person})
 		}
 	}
 	return native.ToolGroup{Name: personToolsGrant, Tools: out}, nil
 }
 
-type personalTool struct {
+// personServerTool is one tool of a server a person connected, checked
+// against what the person approved each time it runs. What it declares
+// (declaration) is read by the one wrapper every run tool passes through.
+type personServerTool struct {
 	saigetypes.Tool
 	p      *Platform
 	req    runtime.Request
@@ -206,32 +209,55 @@ type personalTool struct {
 	person string
 }
 
-func (t *personalTool) ActsForPerson() bool { return true }
-func (t *personalTool) Approval(_ saigetypes.ToolCallPart) (native.ApprovalRequest, bool) {
-	if t.Definition().Capability == saigetypes.ToolCapabilityRead {
-		return native.ApprovalRequest{}, false
+// declaration is what a personal tool declares, as a registry tool would: it
+// acts with the person's own account, and a call that is not a read waits
+// for that person, who may be the one asking, for a day.
+func (t *personServerTool) declaration() SystemTool {
+	d := SystemTool{Name: t.Definition().Name, ActsForPerson: true}
+	if t.Definition().Capability != saigetypes.ToolCapabilityRead {
+		d.Approval = ToolApproval{Mode: ApprovalAlways, Approvers: []string{t.person}, SelfApproval: true, Expires: 24 * time.Hour, Prompt: allowPrompt}
 	}
-	return native.ApprovalRequest{Prompt: fmt.Sprintf("Allow %s to use %s?", t.req.Agent(), t.Definition().Name), Approvers: []string{t.person}, SelfApproval: true, ExpiresIn: 24 * time.Hour}, true
+	return d
 }
-func (t *personalTool) Execute(ctx context.Context, args map[string]any) (string, error) {
+func (t *personServerTool) checkCurrent(ctx context.Context) error {
 	own, err := t.p.PersonContexts.Get(t.req.Tenant, t.person)
 	if err != nil {
-		return "", err
+		return err
 	}
 	if !slices.ContainsFunc(own.ToolServers, func(s personctx.ToolServer) bool {
 		return s.Name == t.server.Name && s.URL == t.server.URL && s.Credential == t.server.Credential && s.OAuth == t.server.OAuth && samePersonTools(s.Tools, t.server.Tools)
 	}) {
-		return "", mcptools.ErrHeldBack
+		return mcptools.ErrHeldBack
 	}
 	offered, err := t.p.discoverPersonToolsFor(ctx, t.req.Tenant, t.person, t.server)
 	if err != nil {
-		return "", err
+		return err
 	}
 	if !samePersonTools(offered, t.server.Tools) {
-		return "", mcptools.ErrHeldBack
+		return mcptools.ErrHeldBack
+	}
+	return nil
+}
+
+func (t *personServerTool) Execute(ctx context.Context, args map[string]any) (string, error) {
+	if err := t.checkCurrent(ctx); err != nil {
+		return "", err
 	}
 	return t.Tool.Execute(ctx, args)
 }
+
+func (t *personServerTool) ExecuteRich(ctx context.Context, args map[string]any) (saigetypes.ToolResult, error) {
+	if err := t.checkCurrent(ctx); err != nil {
+		return saigetypes.ToolResult{}, err
+	}
+	if rich, ok := t.Tool.(saigetypes.RichTool); ok {
+		return rich.ExecuteRich(ctx, args)
+	}
+	text, err := t.Tool.Execute(ctx, args)
+	return saigetypes.TextResult(text), err
+}
+
+var _ saigetypes.RichTool = (*personServerTool)(nil)
 
 func (p *Platform) personHTTPClient() *http.Client {
 	base := http.DefaultClient

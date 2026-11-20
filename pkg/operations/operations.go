@@ -10,9 +10,12 @@ package operations
 import (
 	"errors"
 	"maps"
+	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/urmzd/humagen/internal/legacy"
 )
@@ -106,13 +109,23 @@ const (
 )
 
 type Assignment struct {
-	ID             string    `json:"id"`
-	Agent          string    `json:"agent"`
-	Project        string    `json:"project"`
-	Thread         string    `json:"thread,omitempty"`
-	Owner          string    `json:"owner"`
-	Goal           string    `json:"goal"`
-	DoneWhen       string    `json:"done_when"`
+	ID       string `json:"id"`
+	Agent    string `json:"agent"`
+	Project  string `json:"project"`
+	Thread   string `json:"thread,omitempty"`
+	Owner    string `json:"owner"`
+	Goal     string `json:"goal"`
+	DoneWhen string `json:"done_when"`
+	// DoneChecks are what the agent's answer must pass before the assignment
+	// settles as a result. A completed run whose answer fails one is
+	// continued in the same conversation, at most MaxContinue times.
+	DoneChecks []Check `json:"done_checks,omitempty"`
+	// MaxContinue bounds those continuations. Zero with checks is
+	// DefaultContinue.
+	MaxContinue int `json:"max_continue,omitempty"`
+	// Continued counts the continuations of the work in progress. The
+	// server keeps it.
+	Continued      int       `json:"continued,omitempty"`
 	DueAt          time.Time `json:"due_at,omitempty"`
 	DeadlineMissed bool      `json:"deadline_missed,omitempty"`
 	Schedule       string    `json:"schedule,omitempty"`
@@ -130,6 +143,95 @@ type Assignment struct {
 	CreatedAt      time.Time `json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`
 }
+
+// The kinds of check an answer is held to. They are the answer checks of an
+// eval (pkg/evals), and as there nothing here asks a model.
+const (
+	Contains    = "contains"
+	NotContains = "not_contains"
+	Matches     = "matches"
+	Equals      = "equals"
+)
+
+// Bounds on an assignment's checks.
+const (
+	MaxDoneChecks   = 8
+	MaxCheckValue   = 500
+	MaxContinues    = 10
+	DefaultContinue = 3
+)
+
+// Check is one thing an answer must satisfy: it contains or does not
+// contain Value, equals it, or matches it as a regular expression.
+type Check struct {
+	Kind  string `json:"kind"`
+	Value string `json:"value"`
+}
+
+func (c Check) valid() bool {
+	if c.Value == "" || len(c.Value) > MaxCheckValue || !utf8.ValidString(c.Value) {
+		return false
+	}
+	switch c.Kind {
+	case Contains, NotContains, Equals:
+		return true
+	case Matches:
+		_, err := regexp.Compile(c.Value)
+		return err == nil
+	}
+	return false
+}
+
+// String says what the check asks for, as a person or an agent reads it.
+func (c Check) String() string {
+	switch c.Kind {
+	case Contains:
+		return "the answer contains " + strconv.Quote(c.Value)
+	case NotContains:
+		return "the answer does not contain " + strconv.Quote(c.Value)
+	case Equals:
+		return "the answer is exactly " + strconv.Quote(c.Value)
+	}
+	return "the answer matches " + strconv.Quote(c.Value)
+}
+
+func (c Check) passes(answer string) bool {
+	switch c.Kind {
+	case Contains:
+		return strings.Contains(answer, c.Value)
+	case NotContains:
+		return !strings.Contains(answer, c.Value)
+	case Equals:
+		return strings.TrimSpace(answer) == strings.TrimSpace(c.Value)
+	case Matches:
+		re, err := regexp.Compile(c.Value)
+		return err == nil && re.MatchString(answer)
+	}
+	return false
+}
+
+// Unmet are the assignment's checks that answer does not pass, in order.
+func (a Assignment) Unmet(answer string) []Check {
+	var out []Check
+	for _, c := range a.DoneChecks {
+		if !c.passes(answer) {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// Continues is how many times the assignment's work may be continued.
+func (a Assignment) Continues() int {
+	if len(a.DoneChecks) == 0 {
+		return 0
+	}
+	if a.MaxContinue == 0 {
+		return DefaultContinue
+	}
+	return a.MaxContinue
+}
+
 type Input struct {
 	Type      string `json:"type"`
 	Reference string `json:"reference"`
@@ -190,6 +292,7 @@ func clone(r record) record {
 	}
 	if r.Assignment != nil {
 		v := *r.Assignment
+		v.DoneChecks = slices.Clone(v.DoneChecks)
 		r.Assignment = &v
 	}
 	if r.Handoff != nil {
@@ -271,6 +374,22 @@ func validAssignment(a Assignment) bool {
 	}
 	if a.Trigger == CronTrigger && a.Cron == "" {
 		return false
+	}
+	if len(a.DoneChecks) > MaxDoneChecks || a.MaxContinue < 0 || a.MaxContinue > MaxContinues || a.Continued < 0 {
+		return false
+	}
+	// A clock or a source starts its own runs. Continuing is for work a
+	// person starts.
+	if len(a.DoneChecks) > 0 && a.Trigger != ManualTrigger && a.Trigger != "" {
+		return false
+	}
+	if a.MaxContinue > 0 && len(a.DoneChecks) == 0 {
+		return false
+	}
+	for _, c := range a.DoneChecks {
+		if !c.valid() {
+			return false
+		}
 	}
 	return identifier(a.ID) && identifier(a.Agent) && identifier(a.Owner) && len(a.Project) <= 256 && len(a.Thread) <= 256 && text(a.Goal, 8000) && text(a.DoneWhen, 4000) && validState(a.State) && len(a.Blocker) <= 4000 && len(a.Cron) <= 128 && (a.State != Blocked || text(a.Blocker, 4000))
 }

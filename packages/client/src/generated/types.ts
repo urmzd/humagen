@@ -141,6 +141,31 @@ export interface SessionSandbox {
   retention_days: 7;
   writable: boolean;
   reason?: string;
+  /** A person may run a command of their own here (POST sandboxes/commands): the deployment's sandbox is contained. Writable still decides whether they may now. */
+  commands: boolean;
+}
+
+export interface SandboxCommand {
+  /** Run with sh -c, starting in the conversation's files. */
+  command: string;
+}
+
+export interface SandboxCommandResult {
+  command: string;
+  /** The command's exit status, or -1 when it was stopped at the time limit. */
+  exit_code: number;
+  timed_out: boolean;
+  /** The end of stdout and stderr, as one stream: at most 16384 bytes. */
+  output: string;
+  /** Earlier output was cut. */
+  truncated: boolean;
+  duration_ms: number;
+  /** The conversation's files the command changed or removed. */
+  files: SandboxFile[];
+  /** Changed files past the ones named. */
+  more?: number;
+  /** Changes that were not kept, and why. */
+  conflicts: string[];
 }
 
 export interface RunSandbox {
@@ -440,6 +465,12 @@ export interface Assignment {
   owner: string;
   goal: string;
   done_when: string;
+  /** Checks the agent's answer must pass before the assignment settles as a result. A completed run whose answer fails one is continued in the same conversation. For a manual assignment only. */
+  done_checks?: AssignmentCheck[];
+  /** How many times failing work is continued before the assignment is blocked for its owner. Absent or 0 with checks means 3. */
+  max_continue?: number;
+  /** How many times the work in progress was continued. Kept by the server. */
+  continued?: number;
   due_at?: string;
   deadline_missed?: boolean;
   schedule?: string;
@@ -454,6 +485,13 @@ export interface Assignment {
   created_at: string;
 }
 
+/** One thing an answer must satisfy. Nothing here asks a model. */
+export interface AssignmentCheck {
+  /** `contains` and `not_contains` look for the value in the answer; `equals` compares the whole answer, spacing aside; `matches` reads the value as a regular expression. */
+  kind: "contains" | "not_contains" | "matches" | "equals";
+  value: string;
+}
+
 export interface AssignmentInput {
   trigger?: "manual" | "cron" | "source_change";
   source?: string;
@@ -464,6 +502,10 @@ export interface AssignmentInput {
   owner: string;
   goal: string;
   done_when: string;
+  /** Checks the agent's answer must pass before the assignment settles as a result. A completed run whose answer fails one is continued in the same conversation. For a manual assignment only. */
+  done_checks?: AssignmentCheck[];
+  /** How many times failing work is continued before the assignment is blocked for its owner. Absent or 0 with checks means 3. */
+  max_continue?: number;
   due_at?: string;
   cron?: string;
   state: "requested" | "accepted" | "in_progress" | "watching" | "result" | "blocked" | "needs_person" | "cancelled";
@@ -526,7 +568,7 @@ export interface Refusal {
   resets_at?: string;
 }
 
-export type Permission = "agents:read" | "agents:write" | "runs:read" | "runs:write" | "schedules:read" | "schedules:write" | "alerts:read" | "alerts:write" | "knowledge:read" | "knowledge:write" | "evals:read" | "evals:write" | "billing:read" | "billing:write" | "artifacts:read" | "artifacts:write" | "clients:read" | "clients:write" | "projects:read" | "projects:write" | "projects:govern" | "people:read" | "speech:write";
+export type Permission = "agents:read" | "agents:write" | "runs:read" | "runs:write" | "schedules:read" | "schedules:write" | "alerts:read" | "alerts:write" | "knowledge:read" | "knowledge:write" | "knowledge:import" | "evals:read" | "evals:write" | "billing:read" | "billing:write" | "artifacts:read" | "artifacts:write" | "clients:read" | "clients:write" | "projects:read" | "projects:write" | "projects:govern" | "people:read" | "speech:write";
 
 /** An authenticated caller. The tenant is the workspace everything they touch is confined to. */
 export interface Principal {
@@ -653,6 +695,69 @@ export interface AgentPackage {
   latest: string;
 }
 
+/** One of the agent store's packages, as the workspace has it. */
+export interface StorePackage {
+  /** The package's name, the one its agents record in `package.name`. */
+  name: string;
+  title: string;
+  description: string;
+  /** The package's current version. */
+  version: string;
+  /** True while any of its agents is in the workspace, not retired. */
+  installed: boolean;
+  agents: StoreAgent[];
+  /** The agents installing would add. A name one of the workspace's own agents holds is taken, never missing. */
+  missing: string[];
+}
+
+/** One agent of a store package, as the workspace has it. */
+export interface StoreAgent {
+  name: string;
+  description: string;
+  /** The workspace has it, from this package. */
+  installed: boolean;
+  /** Someone in the workspace changed it since the platform last wrote it. */
+  customized: boolean;
+  /** It is customized and based on an older version than the package's current one. */
+  update_available: boolean;
+  /** One of the workspace's own agents, not based on this package, holds the name. Installing is refused until it is renamed. */
+  taken: boolean;
+  /** The model provider it runs on, as `AgentSpec.provider`. This and
+the fields after it are what installing grants the agent, read
+from the spec the package ships: the same for every workspace,
+and never the workspace's own revision. An installed agent that
+someone changed may differ; its own revision says what it has.
+ */
+  provider: string;
+  /** The model it runs on, as `AgentSpec.model`. */
+  model: string;
+  /** The models tried in order when the first fails, as `AgentSpec.fallbacks`. */
+  fallbacks: ModelRef[];
+  /** The tools it is granted, as `AgentSpec.tools`. A tool group is one name, `mcp:<server>` or `mcp:<server>:write`. The agents it may call are in `access.spawn`, each an agent of the platform. */
+  tools: string[];
+  access: AgentAccess;
+  /** The surfaces whose connection its tools act through (`github`, `slack`), sorted and worked out from `tools`. Such a tool works only once the workspace has connected one. */
+  connectors: string[];
+  /** The tool servers its tool groups name, sorted and worked out from `tools`. */
+  tool_servers: string[];
+}
+
+/** What installing a package added. */
+export interface StoreInstall {
+  package: StorePackage;
+  /** The agents created or restored. Empty when the package was installed already. */
+  added: string[];
+}
+
+/** What removing a package retired. */
+export interface StoreRemoval {
+  package: StorePackage;
+  /** The agents retired. Their history and pinned revisions stay readable. */
+  retired: string[];
+  /** Those of them with changes made in the workspace, retired because the removal was forced. */
+  customized: string[];
+}
+
 /** An agent's definition. */
 export interface AgentSpec {
   package?: PackageBase;
@@ -669,6 +774,8 @@ most 4, none repeating the primary or each other.
   fallbacks?: ModelRef[];
   /** When a call moves to the next fallback. Empty means any error another model could get past. Needs at least one fallback. */
   fallback_on?: FallbackCondition[];
+  /** The reasoning effort the agent's own first model is asked for, such as `low`, `medium` or `high`. Absent leaves the model's default. It is sent only when that model takes it: a run moved to a fallback, or on a model that takes no such effort, answers at the model's default. */
+  effort?: string;
   system_prompt: string;
   tools?: string[];
   sources?: AgentSource[];
@@ -693,15 +800,20 @@ anyone in the workspace approve, except the person who asked.
   answerers?: string[];
   /** The agent runs only when a message names it. It is never asked whether to take an untagged message. Off by default. */
   tagged_only?: boolean;
-  choices?: AgentChoices;
+  output?: AgentOutput;
 }
 
-/** What a person may pick, for one message, in place of the agent's model and reasoning effort. Absent offers nothing, and a message runs on the agent's own model at its default effort. */
-export interface AgentChoices {
-  /** Models offered, each `provider/model`, sorted. The agent's own model needs no listing. */
-  models?: string[];
-  /** Reasoning efforts offered, such as `low` and `high`, sorted and in lower case. Whether a model takes one is checked when a run builds it. */
-  efforts?: string[];
+/** The shape of the agent's answer. The model is asked for structured
+output under `schema`, and a model that cannot give it fails the run
+rather than answering in free text. The answer, checked against the
+schema, is kept on the run as `output`. The approval agent's schema
+must hold `decision` (a required string whose enum is drawn from
+allow, ask and deny) and `reason` (a required string); anything
+else in it is shown with the approval.
+ */
+export interface AgentOutput {
+  /** A JSON Schema for an object, at most 16 KiB. */
+  schema: Record<string, unknown>;
 }
 
 /** A class of model error that moves a call on to the next model. `any` cannot be combined with another. */
@@ -739,16 +851,24 @@ export interface Revision {
   created_by_name?: string;
 }
 
-/** Whether each agent is asked, about a message that names no agent,
-"should I be involved?", and the model that asks. The provider is one
-the deployment declares; its key is a reference (an environment
-variable or a secrets manager), never stored here. Off by default:
-no agent takes a message on its own.
- */
-export interface RouterSettings {
-  enabled: boolean;
-  provider?: string;
-  model?: string;
+/** Vertex AI, where a google provider's calls go. With no key the server's own credentials are used. */
+export interface ModelProviderVertex {
+  project: string;
+  location: string;
+}
+
+/** A model provider the workspace's administrators set up. Its key is never returned. */
+export interface ModelProvider {
+  name: string;
+  kind: "anthropic" | "google" | "openai";
+  base_url?: string;
+  vertex?: ModelProviderVertex;
+  /** The key's env:NAME reference, when it is one. */
+  key_ref?: string;
+  /** A value is kept for it in the secret store. */
+  key_stored?: boolean;
+  added_by?: string;
+  added_at?: string;
 }
 
 /** One agent's answer to whether it should take a message that names no agent. */
@@ -810,13 +930,13 @@ export interface LibrarySkillDefinition {
   outputs?: string;
   /** Immutable package files. SKILL.md supplies metadata and instructions. Omitted on compact list responses and legacy revisions. */
   files?: LibrarySkillFile[];
-  /** Exact permitted tools, intersected with the agent's grants. Empty permits no tools. */
-  tools: string[];
+  /** The tools a run that uses the skill is limited to, intersected with the agent's grants. Absent does not limit them: the agent's own tools apply. Empty permits no tools. A package's `allowed-tools` narrows the list, and narrows an absent list to the tools it names. A draft with `via: import` takes no list (400 for a non-empty one; an empty one reads as none): it is limited only as its `SKILL.md` declares, at most 128 names of at most 128 characters, and is stored and answered so. Whatever the list, a run is offered `skill_file_read` to read the supporting files of the skills it uses; the list may not name it (400). */
+  tools?: string[];
 }
 
 export interface LibrarySkillFile {
   path: string;
-  /** Base64-encoded bytes. At most 128 KiB per file and 512 KiB per package after decoding. */
+  /** Base64-encoded bytes. After decoding, at most 1 MiB for a supporting file and 128 KiB for SKILL.md, 2 MiB for the package, and 16 MiB for the files of every revision of one skill together. */
   data: string;
 }
 
@@ -826,7 +946,7 @@ export interface LibraryProvenance {
   version: number;
 }
 
-export type LibrarySkill = LibrarySkillDefinition & { id: string; scope: LibraryScope; version: number; by: string; at: string; published_at?: string; published_by?: string; tests: string[]; from?: LibraryProvenance; origin_run?: string };
+export type LibrarySkill = LibrarySkillDefinition & { id: string; scope: LibraryScope; version: number; by: string; at: string; published_at?: string; published_by?: string; tests: string[]; test_results?: { run: string; verdict: "passed" | "failed" | "unknown"; reason?: string; warnings?: string[] }[]; from?: LibraryProvenance; via?: "import"; package_hash?: string; origin_run?: string };
 
 export interface AuditRecord {
   id: string;
@@ -911,7 +1031,7 @@ export interface DriveVersion {
   tree: DriveTree;
   version: number;
   parent?: number;
-  /** Absent from a history listing. */
+  /** Absent from a history listing. In one file's history, that file's entry alone, or none where it was removed. */
   entries: DriveEntry[] | null;
   by?: string;
   at?: string;
@@ -941,6 +1061,8 @@ export interface MemoryFiles {
   at?: string;
   entries: DriveEntry[];
   proposals: DriveProposal[];
+  /** You may write a file in this tree, by the check the write route makes. */
+  can_write: boolean;
 }
 
 export interface MemoryFile {
@@ -952,6 +1074,18 @@ export interface MemoryFile {
   /** The file as text, empty when it is not text. */
   content: string;
   binary?: boolean;
+}
+
+export interface MemoryWriteInput {
+  scope: "me" | "project" | "agent";
+  project?: string;
+  agent?: string;
+  /** The file's path in the tree. */
+  file: string;
+  /** The file's new text, at most 1 MiB. */
+  content: string;
+  /** The tree version the file was read at. 0 is a tree never written. */
+  base_version: number;
 }
 
 export interface MemoryRestoreInput {
@@ -1001,6 +1135,44 @@ export interface Actor {
   bot?: boolean;
   /** The person the run acts for, by their subject in this workspace: the person signed in, the person a surface asked for (`act_as`), or the person a Slack client maps the Slack user to. Its tools that act as a person use this person's own credentials. Absent when the run acts for nobody. */
   user?: string;
+}
+
+/** The caller's background work. */
+export interface BackgroundList {
+  items: BackgroundTask[];
+}
+
+/** One watch, goal or task an agent keeps at for a person: a loop of runs of the same agent, acting for them, until it ends. */
+export interface BackgroundTask {
+  id: string;
+  kind: "watch" | "goal" | "task";
+  /** What to watch for, the goal, or the task's ask. */
+  text: string;
+  /** How a watch is checked, or when a goal is met. */
+  how?: string;
+  state: "active" | "done" | "expired" | "stopped" | "failed";
+  agent: string;
+  project?: string;
+  /** How long after one check of a watch the next starts, as a Go duration. */
+  every?: string;
+  /** When it stops if it has not ended. */
+  until: string;
+  /** When the next run starts, while one is waited for. */
+  next?: string;
+  /** Whether a run is working now. */
+  working: boolean;
+  /** Runs started. */
+  runs: number;
+  /** The most runs it makes. */
+  limit: number;
+  /** The conversation that asked. */
+  session: string;
+  /** The conversation its runs are in. */
+  thread?: string;
+  /** What the last run said, and once ended, what the person was told. */
+  result?: string;
+  created_at: string;
+  ended_at?: string;
 }
 
 /** The workspace's tools that act as the caller, how the caller stands with each, and what the workspace lets people give. */
@@ -1197,6 +1369,8 @@ turned back into it.
   parent?: string;
   depth: number;
   mode?: CallMode;
+  /** The id of the caller's tool call that started this run (htu_<run>_<n>): the call its activity streams under. Empty on a root. */
+  call_id?: string;
   /** Set on a run another run called. An attached run ends with its caller. A delegated one does not. */
   lifecycle?: "attached" | "delegated";
   /** The schedule that raised the run, if one did. */
@@ -1254,6 +1428,12 @@ partial answer, what the agent had said when it stopped, which may
 be empty. It is never the whole answer when `status` is `stopped`.
  */
   answer?: string;
+  /** The answer as structured data, for an agent whose spec declares
+an `output` schema: the answer, checked against that schema.
+Absent for a free-text answer and for one that did not hold to
+the schema.
+ */
+  output?: Record<string, unknown>;
   outcome?: RunOutcome;
   sandbox?: RunSandboxRecord;
   memory?: RunMemoryUse[];
@@ -1262,6 +1442,8 @@ be empty. It is never the whole answer when `status` is `stopped`.
   /** What a parked run is waiting for. */
   reason?: string;
   question?: Question;
+  /** Every question a parked run waits on, in the order its tool calls asked them, when a batch of tool calls parked it on more than one. Each is answered on its own, and the run resumes once every one is. Absent for a run parked on `question` alone. */
+  questions?: Question[];
   /** Why a stopped run was stopped, as the runtime reported it, such as `Stopped by ada`. */
   cause?: string;
   /** The run was asked to stop and has not ended yet. It starts no further calls. Absent once the run has ended, however it ended. */
@@ -1446,8 +1628,9 @@ not selected. Absent when none is selected.
   mode?: ThreadMode;
   surface?: ThreadSurface;
   fork?: ThreadFork;
+  import?: ThreadImport;
   archive?: ThreadArchive;
-  /** How the conversation's gated tool actions are approved, and who chose it. Absent asks a person. `auto` approves for that person what they may approve themselves, within policy; a budget request and an action the agent or the policy always asks about still go to a person. */
+  /** How the conversation's gated tool actions are approved, and who chose it. Absent asks a person. `auto` approves for that person what they may approve themselves, within policy; a budget request and an action the agent or the policy always asks about still go to a person. `decide` does that too, and also answers for them a question an agent asks a person when the session already settles it. */
   approval?: ThreadApproval;
   /** The inbox id of the announcement the thread was started from, a reply to its post on the thread's surface. It never changes, and the thread's turns start with it. */
   announcement?: string;
@@ -1537,6 +1720,109 @@ export interface ThreadFork {
   context: ThreadForkContextItem[];
 }
 
+/** One fork of a conversation at a glance, without its saved history. */
+export interface ThreadForkSummary {
+  id: string;
+  /** The fork's title, empty when it was given none. */
+  title: string;
+  /** The message or run of the source the fork's history ends at. */
+  through: string;
+  /** When it was forked. */
+  at: string;
+  /** When anything last happened in it. */
+  updated_at: string;
+}
+
+/** Where a conversation continued from an imported one came from: a
+knowledge document an import wrote from a session of another tool,
+pinned by its source and that source's id, the document's id, its
+digest and its structure's digest.
+It is fixed when the conversation is started, and a fork of it keeps
+it. Its context is passive text the agent is sent ahead of the
+conversation's own turns, each line labelled with the tool and the
+speaker there and marked "(imported, not said here)"; it is never a
+message or a run. Only a reader who still sees the source reads the
+conversation, and it is published only through a reviewed summary.
+While the workspace's history setting is none, nothing is posted,
+run or forked in it.
+A kept structure is what its importer stated (`imported_by`), not a
+verified record. One is started by
+`POST /api/knowledge/{name}/documents/{id}/continue`.
+ */
+export interface ThreadImport {
+  /** The knowledge source the document is in. */
+  source: string;
+  /** The source's id when the conversation was continued
+(KnowledgeSource `id`). A source of the same name made since is
+another source, and so is one whose id was lost: no one reads
+the conversation through either.
+ */
+  source_id: string;
+  /** The document's id in the source. */
+  document: string;
+  /** The document's uri when it was continued. Shown only; it decides nothing. */
+  uri: string;
+  /** The document's title when it was continued. Shown only. */
+  title: string;
+  /** `kept` when an import kept the conversation's structure with the revision continued, and the context is its main path; `not_kept` when none was, and the context is the document's text as one block whose speakers are not known. */
+  structure: "kept" | "not_kept";
+  /** The tool the conversation is from, as its importer stated it. Absent when the structure is not kept. */
+  tool?: "claude" | "codex" | "chatgpt" | "claude-ai";
+  /** The conversation was started by another session, so a person did not write its user turns. */
+  child?: boolean;
+  /** The digest of the document revision continued. */
+  document_digest: string;
+  /** The digest of the structure continued. Absent when the structure is not kept. */
+  structure_digest?: string;
+  /** The handle of whoever sent the structure through an import route, whose assertion it is. Absent when the structure is not kept. */
+  imported_by?: string;
+  imported_at?: string;
+  /** When the imported conversation began, as the import stated it. Absent when not stated. */
+  started_at?: string;
+  /** When the imported conversation's main path was last added to, as the import stated it. */
+  ended_at?: string;
+  /** The handle of the person who continued it. */
+  by: string;
+  /** When it was continued. */
+  at: string;
+  /** The turns of the main path the agent is sent, oldest first, the newest that fit half the workspace's history limit as the transcript is written. At most 200 turns and 128 KiB of text. */
+  context: ThreadImportTurn[];
+  omitted: ThreadImportOmitted;
+  /** How many branches of the conversation are not on its main path; none is continued. Absent when the structure is not kept, so unknown. */
+  branches?: number;
+  import_cut?: ThreadImportCut;
+}
+
+/** One passive turn of an imported conversation. */
+export interface ThreadImportTurn {
+  /** `user`, `assistant`, `tool` (a line naming a tool the assistant called) or `result` (what a tool gave back), as the importer stated it; `document` for the one block of a document whose structure is not kept. */
+  speaker: "user" | "assistant" | "tool" | "result" | "document";
+  /** When it was said, as the import stated it. */
+  at?: string;
+  text: string;
+  /** The text is the opening of a longer turn, cut by the import or to fit. */
+  cut?: boolean;
+}
+
+/** What the context leaves out of the turns the import kept, every count exact. */
+export interface ThreadImportOmitted {
+  /** Turns other than tool results left out to fit, the oldest. */
+  turns: number;
+  /** Tool results left out to fit. They go before any other turn. */
+  results: number;
+  /** Turns of the context cut to their opening to fit. */
+  cut: number;
+}
+
+/** What the import itself stated it left out of the conversation's main path, or cut, when it wrote the document. Absent when the structure is not kept, so unknown. */
+export interface ThreadImportCut {
+  turns: number;
+  results: number;
+  cut_turns: number;
+  /** Turns of the main path that carried files. No file is imported. */
+  attachments: number;
+}
+
 /** One tag in a message, and what it came to. */
 export interface ThreadMention {
   /** `agent`, `person` and `sme` as tagged; `skill` for `$<name>`,
@@ -1570,8 +1856,27 @@ export interface Attachment {
   unread?: string;
 }
 
+/** What a message posted while agents worked in its thread does to that
+work: `queue` (it starts once the work has ended), `replace` (the
+work is asked to stop, keeping what it has said, and the message
+starts once it has) or `stop` (the work is asked to stop and nothing
+starts). The first word after any leading mentions forces it:
+`queue`, `replace` or `stop`, with an optional colon. Otherwise a
+model decides, and when unsure, or when there is no model, it queues.
+ */
+export interface ThreadFollowup {
+  outcome: "queue" | "replace" | "stop";
+  /** Why, in one line. A stop forced by its first word says what was written after it, which may be nothing. */
+  reason: string;
+  /** The runs it waits on, which a replace or a stop asked to stop. */
+  waiting: string[];
+  /** It was carried out. A queue or a replace started what it calls for; a stop is handled as it is posted. */
+  handled?: boolean;
+}
+
 /** A person's turn in a thread. It starts no run of its own. Its author is always a person. */
 export interface ThreadMessage {
+  followup?: ThreadFollowup;
   attachments?: Attachment[];
   /** `m-` and its place in the thread, from 1. */
   id: string;
@@ -1589,6 +1894,10 @@ export interface ThreadMessage {
   /** `console`, or the id of the client it came through. */
   via: string;
   surface_id?: string;
+  /** Said in voice mode and transcribed. */
+  spoken?: boolean;
+  /** When its author last corrected a spoken message's words. */
+  edited_at?: string;
   at: string;
 }
 
@@ -1622,6 +1931,8 @@ export interface ThreadTurn {
   run?: Run;
   announcement?: ThreadAnnouncement;
   ask?: ThreadAsk;
+  /** Every question a parked run waits on that a person answers, as the reader stands to each, in the order the run asked them. A run parked by a batch of tool calls waits on several at once. */
+  asks?: ThreadAsk[];
 }
 
 /** The question a parked run waits on, as the reader stands to it, on a
@@ -1685,6 +1996,8 @@ export interface ThreadPage {
 channel, visibility and default are left out.
  */
 export interface ThreadInput {
+  /** Inline uploaded files, sniffed and stored under the caller's tenant; at most 25 MiB decoded bytes in total. */
+  uploads?: Upload[];
   /** Where it is filed. Empty or `~` is the workspace itself. */
   project?: string;
   /** The project's channel. Empty is `general`. */
@@ -1699,10 +2012,6 @@ export interface ThreadInput {
   text: string;
   /** Post without any agent answering, unless the message tags one. In the console this is what an untagged message does anyway. */
   post_only?: boolean;
-  /** A model, `provider/model`, the runs this message starts use in place of their agent's own. Applied only for an agent whose `choices.models` offers it; any other runs on its own model. The run's model ceilings still apply. */
-  model?: string;
-  /** A reasoning effort, such as `low` or `high`, the runs this message starts use. Applied only for an agent whose `choices.efforts` offers it. A model that does not take it fails the run before any model call. */
-  effort?: string;
   act_as?: ActAs;
   surface?: SurfaceRef;
 }
@@ -1750,17 +2059,17 @@ export interface ThreadNotAdded {
 
 /** A message posted in a thread. */
 export interface ThreadMessageInput {
+  /** Inline uploaded files, sniffed and stored under the caller's tenant; at most 25 MiB decoded bytes in total. */
+  uploads?: Upload[];
   text: string;
   /** The turn it follows. Empty follows the latest. */
   after?: string;
   post_only?: boolean;
-  /** A model, `provider/model`, the runs this message starts use in place of their agent's own. Applied only for an agent whose `choices.models` offers it; any other runs on its own model. The run's model ceilings still apply. */
-  model?: string;
-  /** A reasoning effort, such as `low` or `high`, the runs this message starts use. Applied only for an agent whose `choices.efforts` offers it. A model that does not take it fails the run before any model call. */
-  effort?: string;
   answers?: ThreadAnswerRef;
   act_as?: ActAs;
   surface?: SurfaceRef;
+  /** The person said it in voice mode and the words were transcribed. It only marks the message. */
+  spoken?: boolean;
 }
 
 /** How a thread's selected agents answer an untagged message a person
@@ -1819,10 +2128,11 @@ or experts), `reply` (it answers a question or replies to a
 mention), `post_only`, `routed` (it tags no agent, and the thread's
 selected agents answer it, see `ThreadMode`), `untagged` (posted by
 a person as themselves, as the console does, and it tags no agent,
-so nothing runs), or `default` (the inherited default answers, if
-there is one).
+so nothing runs), `default` (the inherited default answers, if
+there is one), or `followup` (it was posted while agents worked in
+the thread, so its `followup` decides what it starts and when).
  */
-export type ThreadRule = "tagged" | "people" | "reply" | "post_only" | "routed" | "untagged" | "default";
+export type ThreadRule = "tagged" | "people" | "reply" | "post_only" | "routed" | "untagged" | "default" | "followup";
 
 /** What posting a message did. */
 export interface ThreadPosted {
@@ -1980,6 +2290,36 @@ export interface SurfaceRef {
   message?: string;
   /** The app's own bot user id, whose mention is not a tag. */
   app_user?: string;
+  audience?: SurfaceAudience;
+  /** Slack's short-lived token for acting for the person in this turn. Accepted and never kept or passed on. */
+  action_token?: string;
+}
+
+/** Who is in the Slack conversation a message was asked in. A root
+session's audience follows it: a public channel's is shared where it
+is filed; a private channel's or a group direct message's is private
+to the members the client maps to people, kept to the members of the
+latest message; a direct message's is private to its person. Absent,
+a D channel is a direct message and anything else is private to the
+person asking: a channel id never says the channel is public.
+ */
+export interface SurfaceAudience {
+  type: "public_channel" | "private_channel" | "mpim" | "im";
+  /** The conversation's members by Slack user id, for a private channel or a group direct message. */
+  members?: string[];
+}
+
+/** What one message posted to a chat surface's root session did. */
+export interface SessionPosted {
+  message: SessionPostedMessage;
+  /** The runs it started, in the root or in the child of the agent it named. */
+  runs: Run[];
+  notified: string[];
+  refused: ThreadMention[];
+  rule: string;
+  reason?: string;
+  /** The message was already posted; nothing started again. */
+  repeated?: boolean;
 }
 
 /** The thread on a client's surface this thread is. It never changes. */
@@ -2036,6 +2376,38 @@ project's sources, then each project's above it, nearest first,
 each once. Empty for a caller without `knowledge:read`.
  */
   given: ProjectKnowledgeSource[];
+}
+
+/** The corpora a project attaches, its context, at the project's version, and what a session filed in it searches. */
+export interface ProjectCorpora {
+  version: number;
+  /** The corpora the project attaches itself, in its order, each one the caller may read. */
+  corpora: ProjectCorpus[];
+  /** What a session filed here searches: the project's corpora, then
+each project's above it, nearest first, each once, at most 40,
+each one the caller may read.
+ */
+  given: ProjectCorpusRef[];
+}
+
+/** One corpus a project attaches. */
+export interface ProjectCorpus {
+  name: string;
+  title?: string;
+  /** How many of its members the caller may see. */
+  sources: number;
+}
+
+/** A corpus a session searches, and the project on its chain that attaches it (`""` is the workspace). */
+export interface ProjectCorpusRef {
+  name: string;
+  from: string;
+}
+
+/** The corpora a project attaches, as a whole, and the project's version as read. */
+export interface ProjectCorporaInput {
+  version: number;
+  corpora: string[];
 }
 
 /** The knowledge sources a project names, as a whole, from the version read. */
@@ -2206,6 +2578,11 @@ which `GET /api/projects/{name}/skills` reads. Set with `PUT
 change in the project's history records them the same way.
  */
   skills?: ProjectSkillBrief[];
+  /** What every session filed here and below is given besides its
+instructions. Set with `PUT /api/projects/{name}/corpora`.
+Absent when it attaches nothing.
+ */
+  context?: ProjectContext2;
   /** An archived project takes no new sub-projects and nothing moves under it. The workspace is never archived. */
   archived?: boolean;
   /** The lowest role that may post an announcement here. Absent reads as owner. */
@@ -2382,7 +2759,7 @@ project names as experts, `knowledge` to the knowledge sources it
 names, and `channel` to one of its channels, which `channel`
 holds before and after.
  */
-  what: "created" | "updated" | "deleted" | "managed" | "moved" | "archived" | "members" | "agents" | "home" | "experts" | "knowledge" | "skills" | "channel";
+  what: "created" | "updated" | "deleted" | "managed" | "moved" | "archived" | "members" | "agents" | "home" | "experts" | "knowledge" | "skills" | "channel" | "context";
   /** The agent a `home` change is about. Absent when it lives in a project the caller may not read. */
   agent?: string;
   /** Says more, such as that a project created under a deleted name adopts its old conversations. */
@@ -2448,11 +2825,11 @@ export interface ProjectAgentsView {
   allow?: string[];
   default?: string;
   available: AgentAvailability;
-  /** Each available agent and where it comes from, `*` first when every platform agent is. */
+  /** Always empty. Projects no longer offer agents. */
   offers: AgentOffer[];
-  /** The agents that live here. */
+  /** The agents homed here, which this project's readers see. */
   homes: string[];
-  /** Who answers an untagged message here, or null when nothing does. */
+  /** Who answers an untagged message here, the workspace default, or null when nothing does. */
   default_resolved: DefaultResolved | null;
 }
 
@@ -2468,21 +2845,129 @@ empty list sends one back. Otherwise it names at least one agent.
   default?: string;
 }
 
-/** Where an agent lives and which projects enable it. */
+/** Who sees an agent, as its home. */
 export interface AgentPlace {
-  /** The project it lives in. Absent for a platform agent. */
+  /** The project whose readers see it. Absent when the whole workspace does. */
   home?: string;
-  /** The projects whose enable list names it, or holds `*` for a platform agent. `~` is the workspace. */
+  /** Always empty. Projects no longer enable agents; kept until the console stops reading it. */
   enabled_in: string[];
 }
 
-/** Where an agent now lives. */
+/** Who now sees an agent, as its home. */
 export type AgentHome = { agent: string } & AgentPlace;
 
-/** Whether voice notes are transcribed, and the largest recording taken. */
+/** What voice a workspace has, and the largest recording taken. */
 export interface VoiceSettings {
   transcribe: boolean;
+  speak: boolean;
+  provider?: "groq" | "openai";
   max_bytes: number;
+}
+
+/** What a voice provider charges, in micro-USD. Zero is unpriced. */
+export interface VoicePrice {
+  hear_per_hour: number;
+  min_seconds: number;
+  speak_per_million_chars: number;
+}
+
+/** A workspace's voice provider. Its key is never shown. */
+export interface VoiceProvider {
+  kind: "groq" | "openai";
+  /** Transcribes. */
+  model: string;
+  /** Speaks. */
+  speech_model: string;
+  voice: string;
+  price: VoicePrice;
+  key_ref?: string;
+  key_stored: boolean;
+  set_by: string;
+  set_at: string;
+}
+
+export interface VoiceProviderInput {
+  kind: "groq" | "openai";
+  model?: string;
+  speech_model?: string;
+  voice?: string;
+  price?: VoicePrice;
+  key_ref?: string;
+  key?: string;
+}
+
+/** A kind a voice provider can be, with its defaults and the voices it is known to offer. */
+export interface VoiceKind {
+  kind: "groq" | "openai";
+  model: string;
+  speech_model: string;
+  voice: string;
+  voices: string[];
+  price: VoicePrice;
+}
+
+export interface VoiceProviderView {
+  provider?: VoiceProvider;
+  kinds: VoiceKind[];
+}
+
+/** What voice mode has used in a session, counted also in the workspace's usage. */
+export interface VoiceUsage {
+  /** How long the person spoke, as the provider measured it. */
+  heard_ms: number;
+  spoken_chars: number;
+  /** What it cost, in micro-USD. */
+  micros: number;
+  calls: number;
+  unpriced_calls?: number;
+}
+
+/** A finished run's answer as one clip. */
+export interface SpokenAnswer {
+  /** The clip, base64. */
+  audio: Blob;
+  media_type: string;
+  /** What the clip says. */
+  text: string;
+  /** The answer is said in full, not cut at 1,200 characters. */
+  whole: boolean;
+  cost_micros: number;
+}
+
+export interface SpokenCorrection {
+  text: string;
+}
+
+export interface VoiceSpeechInput {
+  /** A run of this session whose answer is spoken. */
+  run: string;
+  /** The offset to speak from: 0, then each answer's `next`. */
+  from?: number;
+}
+
+/** The next part of a run's answer, spoken. */
+export interface VoiceSpeech {
+  /** The sound, base64. Left out while pending. */
+  audio?: Blob;
+  media_type?: string;
+  /** What was said, for captions. */
+  text: string;
+  /** The offset to ask from next. */
+  next: number;
+  /** The answer is still being written and has no whole sentence after the offset yet; ask again when more arrives. */
+  pending?: boolean;
+  /** The answer has ended and has been said in full. */
+  done?: boolean;
+  cost_micros: number;
+}
+
+/** The sample a check spoke, and what was heard back from it. */
+export interface VoiceCheck {
+  /** The spoken sample, base64. */
+  audio: Blob;
+  media_type: string;
+  heard: string;
+  cost_micros: number;
 }
 
 /** What a recording said, and the language it was said in when the speech kind reports one. */
@@ -2550,7 +3035,11 @@ it stands when each call starts. A policy an agent still runs on
 cannot be removed (409).
  */
   model_policies: ModelPolicy[];
-  router: RouterSettings;
+  /** The model providers the workspace's administrators set up, with no
+key. A settings write keeps them as they are; they change through
+`/api/model-providers/{name}`.
+ */
+  model_providers: ModelProvider[];
   /** Set once by the server when an admin first saves settings. */
   setup_at?: string;
   setup_by?: string;
@@ -2582,6 +3071,8 @@ export interface PersonalPreferences {
 export interface Branding {
   /** The product's name. */
   name: string;
+  /** The entry agent's agent name. People see it as name, never as this. */
+  entry_agent: string;
   /** The text beside the logo in the sidebar. Empty shows the logo alone. */
   wordmark: string;
   /** What follows the page's name in the browser tab. */
@@ -2696,6 +3187,12 @@ export interface AnnouncementInput {
   severity?: "info" | "warning";
 }
 
+/** How many alerts wait on a reader. */
+export interface AlertCount {
+  /** Open session alerts addressed to the reader, urgent or normal, in sessions they may read. */
+  waiting: number;
+}
+
 /** What a reader's inbox holds open. */
 export interface InboxCounts {
   /** Open messages that may need the reader, less what they hid or deleted. */
@@ -2735,8 +3232,28 @@ question is addressed to, by subject or by a role they hold, so it
 reads the message for them (`act_as_client`, `act_as_user`) and
 tells them in Slack. A message to several people it maps, such as
 experts named by a role, is one notice for each, at most 20.
+A `result` is forwarded only when background work (a watch, a
+goal or a task ending on its own) or `notify` sent it, for the
+person the work is for. Work asked in a Slack thread of one of
+the workspace's Slack clients is forwarded to that client alone.
  */
   for?: ActAs;
+  /** With `for`, on a background result only: the client's own Slack
+thread the work was asked from, to post the result in as a
+reply. Absent when the work was asked anywhere else, or when its
+runs read private context or the person may no longer read that
+conversation; the client then tells the person in a direct
+message.
+ */
+  reply_in?: InboxNoticeReply;
+}
+
+/** A Slack thread of a client's to reply in with a background result. */
+export interface InboxNoticeReply {
+  channel: string;
+  ts: string;
+  /** The private session to open for the details, a watch's checks or a task's run. Absent when the work ran in the conversation that asked. */
+  session?: string;
 }
 
 export interface InboxFrom {
@@ -2953,6 +3470,32 @@ answering checks again.
   steered_for?: string;
   /** What the person in `steered_for` is called, their name, else their handle, never a subject that holds an address. Set with `steered_for`. */
   steered_for_name?: string;
+  judgement?: InboxJudgement;
+}
+
+/** What the approval agent said about an approval, once it was asked,
+whether it allowed the call, denied it or left it for a person. On
+a choice or a reply, in a conversation set to `decide`, `allow` is
+an answer it gave and `ask` a question it left for a person.
+ */
+export interface InboxJudgement {
+  decision: "allow" | "ask" | "deny";
+  reason: string;
+  /** What the decision rests on. */
+  references?: string[];
+  /** What the workspace's own schema for the answer adds, such as a risk level, in the order the agent gave them. */
+  fields?: InboxJudgementField[];
+  /** The approval agent's run that decided. */
+  run?: string;
+}
+
+/** One field a workspace's schema adds to a judgement. */
+export interface InboxJudgementField {
+  /** The field's name in the schema. */
+  name: string;
+  /** How a person reads the name, such as `Expires in` for `expires_in`. */
+  label: string;
+  value: string;
 }
 
 /** A post an agent wrote for a project, waiting for one of its owners. */
@@ -3064,11 +3607,12 @@ export interface InboxChange {
   message: string;
   at: string;
   by?: string;
-  what: "raised" | "read" | "unread" | "resolved" | "dismissed" | "snoozed" | "withdrawn" | "delivered" | "unhidden" | "reminded" | "hidden" | "deleted" | "restored";
+  what: "raised" | "read" | "unread" | "resolved" | "dismissed" | "snoozed" | "withdrawn" | "delivered" | "unhidden" | "reminded" | "hidden" | "deleted" | "restored" | "judged";
   part?: string;
   action?: string;
   note?: string;
   until?: string;
+  judgement?: InboxJudgement;
 }
 
 /** What a person decided about a part. */
@@ -3238,7 +3782,7 @@ export interface Span {
 /** `budget` is raised by a billing policy, never by a rule, and a rule
 cannot be created with it.
  */
-export type AlertKind = "run_failed" | "failure_rate" | "slow_run" | "eval_below" | "spend" | "budget" | "session" | "mention" | "source" | "approval" | "clarification" | "failure" | "operation" | "alert" | "connection";
+export type AlertKind = "run_failed" | "failure_rate" | "slow_run" | "eval_below" | "spend" | "budget" | "session" | "mention" | "source" | "approval" | "clarification" | "failure" | "operation" | "alert" | "connection" | "knowledge";
 
 export type AlertSeverity = "warning" | "critical";
 
@@ -3321,7 +3865,41 @@ export interface Alert {
   acked_at?: string;
 }
 
-export type EvalTarget = "agent" | "knowledge";
+/** `corpus` scores a corpus's search as an agent runs it, with the access of whoever starts the run; its cases name the documents (by title) a query should return. */
+export type EvalTarget = "agent" | "knowledge" | "corpus";
+
+/** The question behind an answer rated down with a reason, awaiting a reviewer. It never holds the answer. */
+export interface EvalCandidate {
+  id: string;
+  /** The run that was rated. */
+  run: string;
+  /** The agent that answered. */
+  agent: string;
+  /** The project the run was filed in; empty for the root. */
+  project: string;
+  /** The question that was asked. */
+  input: string;
+  /** The reason given with the rating. */
+  reason: string;
+  /** What the person added. */
+  comment?: string;
+  /** When the rating last changed. */
+  at: string;
+}
+
+/** A page of candidates, newest first. */
+export interface EvalCandidatePage {
+  candidates: EvalCandidate[];
+  /** The after of the next page; empty on the last. */
+  next: string;
+}
+
+export interface EvalCandidateAccept {
+  /** The name of the suite the case is added to. */
+  suite: string;
+  /** What a good answer to the question looks like. Every one must pass. */
+  checks: EvalCheck[];
+}
 
 /** A deterministic check on an agent's output. */
 export interface EvalCheck {
@@ -3426,7 +4004,7 @@ source; records are warehouse tables kept as schema only and
 queried live.
  */
   holds?: "files" | "references" | "records";
-  /** manual, drive, notion, s3, gcs, bigquery, snowflake and so on. */
+  /** manual, drive, onedrive, notion, s3, gcs, bigquery, snowflake and so on. */
   provider?: string;
   /** Indexed documents, or the tables and views a warehouse lists. */
   items: number;
@@ -3448,6 +4026,20 @@ export interface Corpus {
   owner: string;
   readers: CorpusReader[];
   members: CorpusMember[];
+  /** The agents granted it that the reader can see. A run of one reads only as the person it acts for, who must be a reader too. */
+  agents: string[];
+  /** A JSON Schema (2020-12) of the types it adds to the graph: $defs, x-relations, x-metadata. */
+  ontology?: Record<string, unknown>;
+  /** An inferred ontology waiting for its owner to accept it. */
+  proposed_ontology?: Record<string, unknown>;
+  /** Marks the last inferred proposal, so one accepted or discarded is not proposed again. */
+  ontology_seen?: string;
+  /** How sensitive its content is. Confidential and restricted content stays in its reader's private conversation. */
+  label: "public" | "internal" | "confidential" | "restricted";
+  /** Why its agents may read it; required to grant a restricted corpus. */
+  purpose?: string;
+  /** Adds the workspace graph to its search. */
+  graph_search?: boolean;
   /** Whether its graph links to other shared corpora. Isolated by default. */
   links: "isolated" | "shared";
   created_at: string;
@@ -3457,12 +4049,107 @@ export interface Corpus {
   mine: boolean;
 }
 
+export interface GraphNode {
+  id: string;
+  key: string;
+  /** person, team, project, system, topic, document, or a corpus ontology's type. */
+  type: string;
+  name: string;
+  uri?: string;
+  /** The corpus member it was built from, as source/<name> or catalog/<name>. */
+  member?: string;
+  props?: Record<string, string>;
+  changed_at?: string;
+  suggested_owner?: string;
+  out_of_date?: boolean;
+  corpora?: string[];
+}
+
+export interface GraphEdge {
+  from: string;
+  to: string;
+  /** authored, edited, owns, about, mentions, supersedes, contradicts, depends_on or part_of. */
+  type: string;
+  corpora?: string[];
+}
+
+export interface GraphStaleness {
+  score: number;
+  stale: boolean;
+  reasons?: ("old" | "unowned" | "out_of_date" | "superseded")[];
+}
+
+export type GraphNodeView = GraphNode & { owner?: string; owner_name?: string; owner_state: "" | "suggested" | "confirmed" | "unowned"; staleness?: GraphStaleness };
+
+export interface GraphHealth {
+  nodes: number;
+  edges: number;
+  by_type: Record<string, number>;
+  unowned: number;
+  stale: number;
+  built_at?: string;
+  truncated?: boolean;
+}
+
+export interface GraphView {
+  nodes: GraphNodeView[];
+  edges: GraphEdge[];
+  health: GraphHealth;
+  more?: boolean;
+}
+
+export interface OwnerAction {
+  action: "confirm" | "decline" | "hand_off";
+  /** Who it is handed to, for hand_off. */
+  to?: string;
+}
+
+export interface CorpusHit {
+  corpus: string;
+  member: CorpusMemberRef;
+  holds: "files" | "references" | "records";
+  document_id?: string;
+  /** A document's title, or a warehouse table's path. */
+  title: string;
+  uri?: string;
+  index?: number;
+  text: string;
+  /** The fused rank score, comparable within one answer. */
+  score: number;
+  /** Other members the same passage came through. */
+  also?: CorpusMemberRef[];
+  /** Who owns the document, when graph retrieval found it. */
+  owner?: string;
+  stale?: boolean;
+  /** Its corpus's label. */
+  label?: "public" | "internal" | "confidential" | "restricted";
+}
+
+export interface CorpusSearchWarning {
+  corpus: string;
+  member?: CorpusMemberRef;
+  cause: string;
+}
+
+export interface CorpusSearch {
+  hits: CorpusHit[];
+  warnings: CorpusSearchWarning[];
+  /** Kept for a search an agent ran; absent here. */
+  citations?: RunCitation[];
+}
+
 export interface CorpusCreate {
   name: string;
   title?: string;
   description?: string;
   readers?: CorpusReader[];
   members?: CorpusMemberRef[];
+  agents?: string[];
+  ontology?: Record<string, unknown>;
+  label?: "public" | "internal" | "confidential" | "restricted";
+  purpose?: string;
+  /** Adds the workspace graph to its search. */
+  graph_search?: boolean;
   links?: "isolated" | "shared";
 }
 
@@ -3471,13 +4158,29 @@ export interface CorpusChange {
   description?: string;
   readers?: CorpusReader[];
   members?: CorpusMemberRef[];
+  /** Replaces its declared ontology; {} clears it. */
+  ontology?: Record<string, unknown>;
+  /** Restricting a corpus that agents are granted takes a workspace admin and a purpose. */
+  label?: "public" | "internal" | "confidential" | "restricted";
+  purpose?: string;
+  /** Adds the workspace graph to its search. */
+  graph_search?: boolean;
   links?: "isolated" | "shared";
+  /** Replaces the agents granted it; agents the owner can no longer see are kept. */
+  agents?: string[];
   /** Hands the corpus to another person. */
   owner?: string;
   version?: number;
 }
 
 export interface KnowledgeSource {
+  /** Tells this source apart from any earlier or later source of the
+same name: set when it is created, never changed, and never
+given to another source. Absent for a source created before
+sources kept ids until a conversation imported into it is
+continued, which gives it one.
+ */
+  id?: string;
   lifecycle?: KnowledgeLifecycle;
   content_version?: number;
   name: string;
@@ -3508,7 +4211,7 @@ export interface SourceLinkSuggestion {
 }
 
 export interface SourceLinkRuleInput {
-  provider: "github" | "slack" | "drive" | "notion";
+  provider: "github" | "slack" | "drive" | "onedrive" | "notion";
   attribute: string;
   pattern: string;
   project: string;
@@ -3585,6 +4288,53 @@ export interface KnowledgeDocument {
   excluded: boolean;
   added_by?: string;
   added_at: string;
+  /** The SHA-256, in hex, of the document's title, a zero byte and its text, each without the space around it, so it changes when either does. A document kept before digests were has none. */
+  digest?: string;
+  /** When its text was last replaced. Absent if never. */
+  updated_at?: string;
+  /** The size, as JSON, of the imported session's structure kept with this revision. Absent for a document no import wrote, or one edited since. */
+  structure_bytes?: number;
+  /** The digest of the imported session's structure, recorded by the write that kept the structure with this revision and removed by an ordinary edit. Absent when `structure_bytes` is, and also on a document whose structure an earlier release kept, until it is imported again. With `digest`, it is what `POST /api/knowledge/{name}/documents/{id}/continue` pins. A recorded digest does not by itself make the structure trusted; the continuation checks it again. */
+  structure_digest?: string;
+}
+
+/** The structure of a session `humagen import sessions` wrote a document from: its main path as data. It is the importer's assertion, kept with who sent it and when; the server cannot verify that the session came from the tool it names. It is trusted only for the revision of the document it was written with, and an ordinary edit leaves it untrusted. A structure past a bound is refused with the document (400): the importer cuts and counts what it cut. */
+export interface ImportedSession {
+  tool: "claude" | "codex" | "chatgpt" | "claude-ai";
+  /** The conversation's id in that tool, at most 256 bytes with no control characters. The document's `uri` is the tool, a colon and this id. */
+  id: string;
+  /** Set on a session another session started. A person did not write its user turns. */
+  child?: boolean;
+  started_at?: string;
+  /** When the main path was last added to. */
+  ended_at?: string;
+  /** The turns of the main path that were kept, in order, at most 131072 bytes as JSON in all. */
+  turns: ImportedTurn[];
+  /** How many branches of the conversation are not on the main path, every one counted. None of their turns are kept. */
+  branches: number;
+  omitted: ImportedOmitted;
+}
+
+/** One turn of an imported session's main path. */
+export interface ImportedTurn {
+  speaker: "user" | "assistant" | "tool" | "result";
+  at?: string;
+  /** What was said, at most 16384 bytes. */
+  text: string;
+  /** The text is the opening of a longer turn. */
+  cut?: boolean;
+}
+
+/** What an import left out of a session's main path or cut. Every count is exact and required. */
+export interface ImportedOmitted {
+  /** Turns other than tool results left out to fit, the oldest first. */
+  turns: number;
+  /** Tool results left out to fit, before any other turn. */
+  results: number;
+  /** Kept turns that hold only their opening, cut when the export was read (a long tool result or tool line) or to fit. */
+  cut_turns: number;
+  /** Turns of the main path that carried files. No file is kept. */
+  attachments: number;
 }
 
 export interface CatalogColumn {
@@ -3633,7 +4383,33 @@ export interface CatalogConnector {
   generation: number;
 }
 
-export type CatalogConnectorView = CatalogConnector & { capabilities: ("catalog" | "live")[]; mine: boolean; last_error?: string };
+export interface SnowflakeSetupInput {
+  name: string;
+  /** The account identifier, such as myorg-myaccount. */
+  account: string;
+  database: string;
+  warehouse: string;
+  /** The role the owner's crawl uses; empty is their default role. Queries use each reader's own default role. */
+  role?: string;
+  /** How logins are given. Defaults to OAUTH. */
+  token_type?: "OAUTH" | "PROGRAMMATIC_ACCESS_TOKEN";
+  /** Defaults to 200. */
+  max_rows?: number;
+  /** Defaults to 60. */
+  timeout_seconds?: number;
+  /** How often the schema is crawled again. Defaults to 24. */
+  refresh_hours?: number;
+}
+
+/** Exactly one of ref and value. */
+export interface CatalogLoginInput {
+  /** A reference to your token, under a start the workspace lists. */
+  ref?: string;
+  /** Your token, where the workspace lets people keep values. */
+  value?: string;
+}
+
+export type CatalogConnectorView = CatalogConnector & { capabilities: ("catalog" | "live")[]; mine: boolean; last_error?: string; login?: "connected" | "missing" | "unavailable" };
 
 export interface CatalogPage {
   connectors: CatalogConnectorView[];
@@ -3883,12 +4659,14 @@ export interface GitHubAutomation {
   name: string;
   repository: string;
   event: "check_run" | "issues" | "pull_request" | "push";
+  /** Never `labeled` or `unlabeled`: labels start nothing. A rule stored on one reads paused, with a note. */
   action: string;
   conclusion?: string;
-  label?: string;
   agent: string;
   instructions: string;
   paused: boolean;
+  /** Read-only. What of a rule stored earlier is ignored now, such as a label (labels start nothing). Dropped when the rule is saved. */
+  note?: string;
 }
 
 export interface GitHubOptions {
@@ -3896,7 +4674,13 @@ export interface GitHubOptions {
   automations?: GitHubAutomation[];
   /** Exact verified non-bot GitHub logins mapped explicitly by this installation to workspace subjects. No inferred identity or cross-installation fallback. */
   people?: Record<string, string>;
-  auto_labels?: Record<string, Record<string, string>>;
+  /** Reviews a pull request when it opens or reopens ready for review,
+leaves draft, or gets a push, by the client's default agent.
+Left out, it is on. Labels start nothing.
+ */
+  auto_review?: GitHubOptionsAutoReview;
+  /** When set, the only GitHub logins whose mentions, reviews and pull requests the client acts on, among people with write access to the repository (owner, member or collaborator) and people it maps. */
+  askers?: string[];
   checks?: boolean;
   guides?: boolean;
   mutations?: boolean;
@@ -3949,7 +4733,7 @@ export interface ClientView {
   default_agent?: string;
   /** The agents it may route to besides its default, leaving out every
 agent that lives in a project the caller may not read, as `bots`
-and `github.auto_labels` do. The machine that hosts the client's
+and `github.automations` do. The machine that hosts the client's
 surface, its `slack.machine`, is shown every agent it names.
  */
   agents?: string[];
@@ -3979,16 +4763,20 @@ discriminator: dotted segments and a version, such as
 or one type. The set is open: a reader passes over a type it does not
 know (`UnknownEvent`). This list is the catalog this build registers.
  */
-export type EventType = "control.compact.v1" | "control.stop.v1" | "cron.tick.v1" | "github.issue_comment.created.v1" | "github.issues.labeled.v1" | "github.issues.opened.v1" | "github.pull_request.labeled.v1" | "github.pull_request.opened.v1" | "github.pull_request.ready_for_review.v1" | "github.pull_request.review_requested.v1" | "github.pull_request.synchronize.v1" | "github.pull_request_review.submitted.v1" | "github.pull_request_review_comment.created.v1" | "jira.comment.created.v1" | "jira.issue.assigned.v1" | "jira.issue.created.v1" | "message.posted.v1" | "run.accepted.v1" | "run.action.taken.v1" | "run.child.parked.v1" | "run.completed.v1" | "run.context.compacted.v1" | "run.delta.citation.v1" | "run.delta.text.v1" | "run.delta.thinking.v1" | "run.delta.tool.call.v1" | "run.delta.tool.done.v1" | "run.failed.v1" | "run.feedback.v1" | "run.parked.v1" | "run.resumed.v1" | "run.started.v1" | "run.stopped.v1" | "run.usage.child.v1" | "run.usage.v1" | "slack.command.invoked.v1" | "slack.session.stopped.v1";
+export type EventType = "control.compact.v1" | "control.stop.v1" | "cron.tick.v1" | "github.issue_comment.created.v1" | "github.issues.labeled.v1" | "github.issues.opened.v1" | "github.pull_request.labeled.v1" | "github.pull_request.opened.v1" | "github.pull_request.ready_for_review.v1" | "github.pull_request.review_requested.v1" | "github.pull_request.synchronize.v1" | "github.pull_request_review.submitted.v1" | "github.pull_request_review_comment.created.v1" | "jira.comment.created.v1" | "jira.issue.assigned.v1" | "jira.issue.created.v1" | "message.posted.v1" | "run.accepted.v1" | "run.action.taken.v1" | "run.child.parked.v1" | "run.completed.v1" | "run.context.compacted.v1" | "run.delta.citation.v1" | "run.delta.text.v1" | "run.delta.thinking.v1" | "run.delta.tool.call.v1" | "run.delta.tool.done.v1" | "run.delta.tool.marker.v1" | "run.failed.v1" | "run.feedback.v1" | "run.parked.v1" | "run.resumed.v1" | "run.started.v1" | "run.stopped.v1" | "run.usage.child.v1" | "run.usage.v1" | "slack.command.invoked.v1" | "slack.session.stopped.v1";
 
 /** One fragment of the agent's answer, in order. Concatenate fragments. */
 export interface TextPayload {
   text: string;
+  /** The tool call ids, from the run's own agent down, of the nested agent that produced this, when an agent the run's agent runs as a tool did. Absent for the run's own agent. */
+  parent?: string[];
 }
 
 /** One fragment of extended reasoning. Most surfaces do not show it. */
 export interface ThinkingPayload {
   text: string;
+  /** The tool call ids, from the run's own agent down, of the nested agent that produced this, when an agent the run's agent runs as a tool did. Absent for the run's own agent. */
+  parent?: string[];
 }
 
 /** The agent reaching for a tool. */
@@ -4002,6 +4790,8 @@ export interface ToolCallPayload {
   arguments?: Record<string, unknown>;
   /** The size of arguments left out for being too large, so "left out" reads apart from "none". */
   arguments_bytes?: number;
+  /** The tool call ids, from the run's own agent down, of the nested agent that produced this, when an agent the run's agent runs as a tool did. Absent for the run's own agent. */
+  parent?: string[];
 }
 
 /** A tool execution finished. */
@@ -4015,6 +4805,8 @@ export interface ToolDonePayload {
   arguments?: Record<string, unknown>;
   /** The size of arguments left out for being too large, so "left out" reads apart from "none". */
   arguments_bytes?: number;
+  /** The tool call ids, from the run's own agent down, of the nested agent that produced this, when an agent the run's agent runs as a tool did. Absent for the run's own agent. */
+  parent?: string[];
 }
 
 /** Where a cited passage came from. */
@@ -4049,6 +4841,37 @@ export interface CitationPayload {
   text: string;
   source: Provenance;
   index: number;
+  /** The tool call whose result the citation came from, when a tool's result rather than retrieval cited the source. */
+  tool_call_id?: string;
+  /** The tool call ids, from the run's own agent down, of the nested agent that produced this, when an agent the run's agent runs as a tool did. Absent for the run's own agent. */
+  parent?: string[];
+}
+
+/** The body of `run.delta.tool.marker.v1`, a tool call that waits for a decision before it runs, such as an approval. The call's arguments are on its `run.delta.tool.call.v1` events. The question a person answers is on `run.parked.v1`. */
+export interface ToolMarkerPayload {
+  /** The call's id, as its `run.delta.tool.call.v1` and `run.delta.tool.done.v1` carry it. */
+  id: string;
+  name?: string;
+  /** Why the call waits. */
+  markers?: ToolMarker[];
+  interrupt?: ToolMarkerInterrupt;
+  /** The tool call ids, from the run's own agent down, of the nested agent that produced this, when an agent the run's agent runs as a tool did. Absent for the run's own agent. */
+  parent?: string[];
+}
+
+/** One reason a tool call waits. */
+export interface ToolMarker {
+  /** The marker's kind, such as `human_approval` or `clarification`. */
+  kind: string;
+  message?: string;
+}
+
+/** The pending decision a waiting tool call names. */
+export interface ToolMarkerInterrupt {
+  id: string;
+  /** What the decision is, such as `approval`, `clarification`, `budget` or `input`. */
+  kind?: string;
+  expires_at?: string;
 }
 
 /** The body of `run.accepted.v1`. */
@@ -4068,12 +4891,16 @@ export interface ParkedPayload {
   /** What the run is waiting for. */
   reason?: string;
   question?: Question;
+  /** Every question of a park that waits on more than one at once, in the order the agent's tool calls asked them. A batch of calls that each wait parks the run once, on all of them. Each is answered on its own, and the run resumes when every one is. Absent when the run parked on one question. */
+  questions?: Question[];
 }
 
 /** The body of `run.resumed.v1`. */
 export interface ResumedPayload {
   attempt?: number;
   answer?: Answer;
+  /** Every answer the run resumed with, in the order of its park's `questions`, when it parked on more than one. Absent otherwise. */
+  answers?: Answer[];
 }
 
 /** The body of `run.completed.v1`. */
@@ -4307,9 +5134,24 @@ export interface EventRequest {
   actor?: Actor;
   /** The agents the request names, in order. */
   mentions?: string[];
+  /** The agents, people, places and links the request refers to, in the order each was first written. The model is shown the people, places and links next to the text. */
+  references?: EventReference[];
   attachments?: Attachment[];
   /** Host context shown to the model next to the body's own fields. */
   context?: Record<string, string>;
+}
+
+/** One thing a request refers to, an agent or a person it names, a place it points at, or a link it carries. */
+export interface EventReference {
+  kind: "agent" | "person" | "place" | "link";
+  /** The agent's name, or what a person saw in the text, such as `@ada` or `#12`. */
+  name?: string;
+  /** The native id on the surface the event came from, such as a Slack user id or a GitHub login. */
+  id?: string;
+  /** The canonical address of what is referred to, when it is known. */
+  address?: string;
+  /** A link exactly as it was written. */
+  url?: string;
 }
 
 /** Where in Slack a message was posted. */
@@ -4445,7 +5287,7 @@ which variant it is. A type not in the mapping is an `UnknownEvent`.
 The API sends run events only (`run.*`); the other types are listed
 so the union is the whole catalog.
  */
-export type RunEvent = CompactRequestedEvent | StopRequestedEvent | CronTickEvent | GitHubIssueCommentCreatedEvent | GitHubIssueLabeledEvent | GitHubIssueOpenedEvent | GitHubPullLabeledEvent | GitHubPullOpenedEvent | GitHubPullReadyForReviewEvent | GitHubReviewRequestedEvent | GitHubPullSynchronizeEvent | GitHubReviewSubmittedEvent | GitHubReviewCommentCreatedEvent | JiraCommentCreatedEvent | JiraIssueAssignedEvent | JiraIssueCreatedEvent | MessagePostedEvent | RunAcceptedEvent | ActionTakenEvent | ChildParkedEvent | RunCompletedEvent | ContextCompactedEvent | CitationEvent | TextDeltaEvent | ThinkingDeltaEvent | ToolCallEvent | ToolDoneEvent | RunFailedEvent | RunFeedbackEvent | RunParkedEvent | RunResumedEvent | RunStartedEvent | RunStoppedEvent | UsageChildEvent | UsageCallEvent | SlackCommandInvokedEvent | SlackSessionStoppedEvent;
+export type RunEvent = CompactRequestedEvent | StopRequestedEvent | CronTickEvent | GitHubIssueCommentCreatedEvent | GitHubIssueLabeledEvent | GitHubIssueOpenedEvent | GitHubPullLabeledEvent | GitHubPullOpenedEvent | GitHubPullReadyForReviewEvent | GitHubReviewRequestedEvent | GitHubPullSynchronizeEvent | GitHubReviewSubmittedEvent | GitHubReviewCommentCreatedEvent | JiraCommentCreatedEvent | JiraIssueAssignedEvent | JiraIssueCreatedEvent | MessagePostedEvent | RunAcceptedEvent | ActionTakenEvent | ChildParkedEvent | RunCompletedEvent | ContextCompactedEvent | CitationEvent | TextDeltaEvent | ThinkingDeltaEvent | ToolCallEvent | ToolDoneEvent | ToolMarkerEvent | RunFailedEvent | RunFeedbackEvent | RunParkedEvent | RunResumedEvent | RunStartedEvent | RunStoppedEvent | UsageChildEvent | UsageCallEvent | SlackCommandInvokedEvent | SlackSessionStoppedEvent;
 
 /** A request that a run compact its context. The runtime's traffic, never sent on this API. */
 export type CompactRequestedEvent = EventEnvelope & { type: "control.compact.v1"; data: CompactRequestPayload };
@@ -4528,6 +5370,9 @@ export type ToolCallEvent = EventEnvelope & { type: "run.delta.tool.call.v1"; da
 /** A tool finished. */
 export type ToolDoneEvent = EventEnvelope & { type: "run.delta.tool.done.v1"; data: ToolDonePayload };
 
+/** A tool call waits for a decision before it runs. */
+export type ToolMarkerEvent = EventEnvelope & { type: "run.delta.tool.marker.v1"; data: ToolMarkerPayload };
+
 /** An attempt failed. Final only when `terminal` is true. */
 export type RunFailedEvent = EventEnvelope & { type: "run.failed.v1"; data: FailedPayload };
 
@@ -4587,32 +5432,393 @@ export interface SessionIdentity {
   source_alert?: string;
 }
 
+export interface MessageFeedbackInput {
+  rating: "up" | "down";
+  note?: string;
+}
+
+/** What get_context pulled, from which place, and what it drew on. */
+export interface ContextResult {
+  /** The place it was pulled from: the session's origin address. */
+  origin: string;
+  text: string;
+  sources: ContextResultSourcesItem[];
+  truncated?: boolean;
+  note?: string;
+}
+
+/** People's messages from one origin. Who said them is the caller, or with act_as the person a client's own machine posts for. */
+export interface MessagesInput {
+  messages: InMessage[];
+  ref?: ExternalRef;
+  /** Accepted; follow GET /api/messages/{id}/stream for what happens beneath. */
+  stream?: boolean;
+  act_as?: ActAs;
+  /** With act_as, record the message and start nothing, for what people said in the thread before the app was asked. */
+  post_only?: boolean;
+}
+
+/** One person's message. role is user; the platform writes the agents' messages. */
+export interface InMessage {
+  role: "user";
+  content: MessageContent;
+  ref?: ExternalRef;
+  /** The person said it in voice mode and the words were transcribed. It only marks the message, which is answered as a typed one is. */
+  spoken?: boolean;
+}
+
+/** A string, or content blocks. */
+export type MessageContent = string | ContentBlock[];
+
+export interface Upload {
+  name: string;
+  /** Base64-encoded file bytes, at most 25 MiB decoded across the request. */
+  data: string;
+  /** Optional expected content kind, checked against sniffed bytes. */
+  kind?: string;
+}
+
+/** One block of a message: text; a mention of an agent or a person a
+surface already resolved, which picks who answers as an @mention in
+the text does; or a link to another place. image, document, audio, video and file blocks carry inline base64 data and a name.
+Their bytes are sniffed and stored as durable attachments. Answer blocks remain refused.
+ */
+export interface ContentBlock {
+  type: "text" | "mention" | "link" | "image" | "document" | "audio" | "video" | "file" | "answer";
+  /** Base64-encoded file bytes. */
+  data?: string;
+  name?: string;
+  text?: string;
+  agent?: string;
+  person?: string;
+  ref?: ExternalRef;
+}
+
+/** Where a message came from, its origin: a union on type. slack (team,
+channel, ts, thread_ts for a reply, audience), github (repo as
+owner/name, kind pull, issue or comment, number, comment_id; a
+comment on a pull request sends kind pull), schedule (name,
+occurrence), url (url) or web (the console). A place has one root
+session, keyed slack://team/channel/thread_ts,
+github://owner/repo/pull/N or issues/N, schedule://name/occurrence or
+the normalized URL. client is the Humagen client the origin is
+reached through: it files the root where the client's channel is
+bound and maps a Slack conversation's members to people.
+ */
+export interface ExternalRef {
+  type: "slack" | "github" | "schedule" | "url" | "web";
+  client?: string;
+  team?: string;
+  channel?: string;
+  /** Who wrote the message on the surface (a Slack user id, a GitHub login). Set by surfaces built into the server; the API ignores it, since the token says who speaks. */
+  user?: string;
+  ts?: string;
+  thread_ts?: string;
+  audience?: SurfaceAudience;
+  /** The Slack app's own bot user id, whose mention is how a channel message reaches the app and is not a tag. Read only from a client's own machine posting for a person (act_as). */
+  app_user?: string;
+  /** Ask the platform to ingest the Slack message's files. Read only from a client's own machine posting for a person (act_as). */
+  files?: boolean;
+  repo?: string;
+  kind?: "pull" | "issue" | "comment";
+  number?: number;
+  comment_id?: number;
+  name?: string;
+  occurrence?: string;
+  url?: string;
+}
+
+/** The message a request created, the root it is under, and what it did. */
+export interface MessageCreated {
+  /** The message's id, session:message. */
+  id: string;
+  /** The root session's id. */
+  root: string;
+  role: "user";
+  content: MessageContent;
+  /** This request started the root. */
+  created: boolean;
+  posted: SessionPosted;
+}
+
+/** Who a root's place was asked in front of, by kind alone. Who was there is never shown. */
+export interface MessageAudience {
+  kind: "public" | "private" | "group" | "direct";
+}
+
+/** One message of a tree. A session stands as its first message: beneath
+it are the agents' messages that follow it up to the next person's
+message (its answer), the
+child sessions started for it, and the session's later people's
+messages. Beneath a later person's message are the agents' messages
+that follow it and the child sessions started for it. A child session
+is a node whose id is the session's. A child session the caller may
+not read is left out and not counted.
+ */
+export interface MessageNode {
+  /** A session's id for a session's node, else session:message. */
+  id: string;
+  /** The session the message is in. */
+  session: string;
+  role: "user" | "assistant";
+  author: SessionAuthor;
+  /** That of the runs beneath the message; done when there are none. */
+  status: "working" | "waiting" | "done" | "failed" | "stopped";
+  /** The message's text. */
+  content: SessionPart[];
+  at: string;
+  /** How many children the message has, shown or not. */
+  children_count: number;
+  /** When anything beneath the message last changed. */
+  latest_at: string;
+  audience?: MessageAudience;
+  /** The latest 200 children at most, in time order, while depth lasts; empty beyond it. */
+  children: MessageNode[];
+}
+
+/** What ran to answer a message. */
+export interface MessageTrace {
+  /** The id asked for. */
+  message: string;
+  /** The runs that answered the message, in the order they started, each with what it called beneath it. */
+  nodes: TraceNode[];
+  /** How many runs and child sessions were left out because the caller may not read them. */
+  hidden: number;
+  /** A bound cut the trace: at most 500 nodes, and 200 tools, context reads, sources and approvals per node. */
+  truncated: boolean;
+}
+
+/** One run and what it did, each as the caller may see it: the tools it
+called, the context it pulled with get_context, the sources it cited,
+the approvals it waited on and the questions it asked a person.
+ */
+export interface TraceNode {
+  run: string;
+  agent: string;
+  status: "accepted" | "running" | "parked" | "completed" | "failed" | "stopped";
+  started_at: string;
+  /** When the run ended; absent while it works. */
+  ended_at?: string;
+  /** How long it ran, or has run so far. */
+  ms: number;
+  /** What it spent in micro-USD, what it called included once they ended. Absent when nothing was metered. */
+  cost?: number;
+  pick?: TracePick;
+  /** The model its latest call used, when that was recorded. */
+  model?: string;
+  /** What it answered. */
+  answer?: string;
+  /** Why it failed, when it did. */
+  error?: string;
+  tools: TraceTool[];
+  context: TraceContext[];
+  /** The run's citations as the caller is shown them. */
+  sources: TraceSource[];
+  approvals: TraceApproval[];
+  questions: TraceQuestion[];
+  /** The runs it called, in the order they started. */
+  children: TraceNode[];
+}
+
+/** Why a message's answer came from where it did, on the root run the platform chose. It is activity, never a line of the conversation. */
+export interface TracePick {
+  decision: "answer_myself" | "delegate";
+  /** The agents the message mentioned, or the one that answers in the entry agent's place, that the caller may read. */
+  agents: string[];
+  /** Why, in words. Empty when it would name an agent the caller may not read. */
+  reason: string;
+  /** The words of the message that matched. */
+  matched: string[];
+}
+
+/** One tool call. Input and output are left out when withheld. */
+export interface TraceTool {
+  /** htu_<run>_<seq>: the run's seq-th call, as the response stream names it. Provider call ids are never shown. */
+  id: string;
+  name: string;
+  /** When it was asked. */
+  at: string;
+  /** How long it ran; absent while it runs. */
+  ms?: number;
+  /** The arguments it ran with. */
+  input?: Record<string, unknown>;
+  /** What it returned, cut at 4000 bytes and ending in an ellipsis when cut. */
+  output?: string;
+  error?: string;
+  /** The caller may not see its input or output. */
+  withheld: boolean;
+}
+
+/** One get_context call. Request, reference, summary and sources are empty when withheld. */
+export interface TraceContext {
+  /** htu_<run>_<seq>, counted with the run's tool calls. */
+  id: string;
+  /** When it was asked. */
+  at: string;
+  /** How long it took; absent while it runs. */
+  ms?: number;
+  /** What the agent asked for, in words. */
+  request: string;
+  /** The place it read, such as slack://team/channel/ts: the message's own, bound by the platform. */
+  reference: string;
+  /** The start of what came back, or why nothing could be. */
+  summary: string;
+  sources: TraceSource[];
+  /** What came back was cut. */
+  truncated: boolean;
+  error?: string;
+  withheld: boolean;
+}
+
+/** Something a run cited or a context read drew on. */
+export interface TraceSource {
+  title: string;
+  url?: string;
+}
+
+/** A question a run asked a person with ask_person, as the caller may see
+it: a choice among options, or a reply in words. Answer it with
+answerToolUse and `tool`.
+ */
+export interface TraceQuestion {
+  /** The question's id. */
+  id: string;
+  /** The id of the call that asked it, htu_<run>_<n>. */
+  tool?: string;
+  kind: "choice" | "reply";
+  prompt: string;
+  options: string[];
+  /** asked while it waits; expired when nobody answered in time and its default stood; closed when its run ended first. */
+  status: "asked" | "answered" | "expired" | "closed";
+  /** The choice or the reply. */
+  answer?: string;
+  /** Who answered, by name. */
+  by?: string;
+  at?: string;
+}
+
+/** An action a run waited on a person for, and how it was decided. ask is one still waiting. */
+export interface TraceApproval {
+  /** The question's id. */
+  id: string;
+  /** The id of the tool call it gates (a TraceTool's or a TraceContext's), when it gates one. */
+  tool?: string;
+  /** The tool it would call, or what it asked. */
+  action: string;
+  decision: "allow" | "deny" | "ask";
+  /** Who decided, by name. */
+  by?: string;
+  note?: string;
+  at?: string;
+}
+
+/** One root session, as its first message. */
+export interface RootMessage {
+  id: string;
+  title: string;
+  status: "working" | "waiting" | "done" | "failed" | "stopped";
+  /** The agent that owns the root. */
+  agent: string;
+  author: SessionAuthor;
+  /** The root's place: its address, such as slack://team/channel/ts or github://owner/repo/pull/N. */
+  parent: string;
+  project: string;
+  latest_at: string;
+  children_count: number;
+  audience?: MessageAudience;
+}
+
+/** A page of roots, newest first. */
+export interface RootMessagePage {
+  messages: RootMessage[];
+  /** The after of the next page; empty on the last. */
+  next: string;
+}
+
 export interface SessionInput {
+  /** Inline uploaded files, sniffed and stored under the caller's tenant; at most 25 MiB decoded bytes in total. */
+  uploads?: Upload[];
   text: string;
   agent?: string;
   parent?: string;
   label?: string;
   fresh?: boolean;
   project?: string;
-  model?: string;
-  effort?: string;
   /** The readable session alert that anchors this fix conversation. */
   source_alert?: string;
+  surface?: SurfaceRef;
+  act_as?: ActAs;
+  /** The kind of chat surface: slack, the default and only one taken today. */
+  surface_kind?: string;
+  /** With surface: post the message without starting anything. */
+  post_only?: boolean;
+}
+
+/** What a person asks of a session's browser. */
+export interface BrowserAction {
+  /** The browser's tool provider, for a session whose agent holds more than one. Left out, the first. */
+  provider?: string;
+  /** `look` reads the page and changes nothing. The rest act on it. */
+  action: "look" | "navigate" | "back" | "click" | "type" | "press";
+  /** Where `navigate` goes. http or https. */
+  url?: string;
+  /** The element `click` and `type` act on, a `ref` from the last view's elements. Never a selector. */
+  target?: string;
+  /** How the person saw the target named, kept in the audit record. */
+  element?: string;
+  /** What `type` enters. It is not kept in the audit record. */
+  text?: string;
+  /** With `type`, press Enter afterwards. */
+  submit?: boolean;
+  /** What `press` presses, such as Enter, ArrowDown or Control+a. */
+  key?: string;
+}
+
+/** A screenshot of the page as it is now, in CSS pixels. */
+export interface BrowserImage {
+  media_type: string;
+  /** The image, base64. At most 8 MiB decoded. */
+  data: Blob;
+}
+
+/** One thing on the page a person can act on. */
+export interface BrowserElement {
+  /** What `click` and `type` take as their target. */
+  ref: string;
+  /** Its role in the page's tree, such as link, button or textbox. */
+  role: string;
+  name?: string;
+  /** Where it is in the screenshot, in CSS pixels: x, y, width, height. Absent for an element with no place on the screen. */
+  box?: number[];
+}
+
+/** A session's browser after an action. */
+export interface BrowserView {
+  /** The tool provider the browser is reached through. */
+  provider: string;
+  action: "look" | "navigate" | "back" | "click" | "type" | "press";
+  url?: string;
+  title?: string;
+  screenshot?: BrowserImage;
+  /** Links, buttons and fields, in the page's order. At most 400. */
+  elements: BrowserElement[];
+  /** How many elements were left out for being over the limit. */
+  more?: number;
 }
 
 /** A session message with optional routing to a mentioned agent. */
 export interface SessionPostInput {
+  /** Inline uploaded files, at most 25 MiB decoded bytes in total. */
+  uploads?: Upload[];
   text: string;
   /** The turn it follows. Empty follows the latest. */
   after?: string;
   post_only?: boolean;
-  /** A model, `provider/model`, the runs this message starts use in place of their agent's own. Applied only for an agent whose `choices.models` offers it; any other runs on its own model. The run's model ceilings still apply. */
-  model?: string;
-  /** A reasoning effort, such as `low` or `high`, the runs this message starts use. Applied only for an agent whose `choices.efforts` offers it. A model that does not take it fails the run before any model call. */
-  effort?: string;
   answers?: ThreadAnswerRef;
   act_as?: ActAs;
   surface?: SurfaceRef;
+  /** The person said it in voice mode and the words were transcribed. It only marks the message. */
+  spoken?: boolean;
   /** The @agent in text whose child receives this request. */
   agent?: string;
   /** Start an independent child instead of continuing its existing session. */
@@ -4636,9 +5842,12 @@ export interface SessionAuthor {
   kind: string;
   name: string;
   version?: string;
+  /** The name people see when it differs from name: the workspace's own name for its entry agent. */
+  display?: string;
 }
 
 export interface SessionPart {
+  /** text. */
   type: string;
   text?: string;
   session?: string;
@@ -4674,9 +5883,11 @@ export interface SessionLink {
 }
 
 export interface AgentSession {
+  posted?: SessionPosted;
   /** More changed messages remain after cursor; continue with since until false. */
   more?: boolean;
   usage?: RunUsage;
+  voice?: VoiceUsage;
   conversation: ThreadSummary;
   thread: Thread;
   id: string;
@@ -4991,7 +6202,7 @@ export interface PreparedCallInputMessagesItem {
 }
 
 export interface ThreadApproval {
-  mode: "auto";
+  mode: "auto" | "decide";
   by: string;
   roles?: string[];
   at: string;
@@ -5030,12 +6241,21 @@ export interface ThreadForkContextItem {
   at: string;
 }
 
+export interface SessionPostedMessage {
+  id: string;
+  text: string;
+}
+
 export interface ProjectFork {
   operation: string;
   source?: string;
   by: string;
   at: string;
   ready: boolean;
+}
+
+export interface ProjectContext2 {
+  corpora?: string[];
 }
 
 export interface ProjectChangeChannel {
@@ -5061,6 +6281,11 @@ export interface UsageEntryGrant {
   tokens?: number;
 }
 
+export interface GitHubOptionsAutoReview {
+  enabled?: boolean;
+  repositories?: Record<string, boolean>;
+}
+
 export interface ClientInputCredentials {
   token?: SecretInput;
   signing_secret?: SecretInput;
@@ -5074,6 +6299,24 @@ export interface ClientViewCredentials {
 export interface ManifestUsage {
   metered: boolean;
   total: Usage;
+}
+
+export interface ContextResultSourcesItem {
+  title: string;
+  url?: string;
+}
+
+export interface StopMessageBody {
+  children?: boolean;
+}
+
+export interface AnswerToolUseBody {
+  tool_use_id: string;
+  answer: QuestionAnswer;
+}
+
+export interface GetMessageContextBody {
+  request: string;
 }
 
 export interface SaveSessionFeedbackBody {
@@ -5130,12 +6373,14 @@ export interface ListMemoryFoldersResponse {
 
 export interface ListLibrarySkillsResponse {
   skills: LibrarySkill[];
+  unreadable: string[];
 }
 
 export interface DraftLibrarySkillBody {
   scope: LibraryScope;
   definition: LibrarySkillDefinition;
   version: number;
+  via?: string;
 }
 
 export interface GetLibrarySkillResponse {
@@ -5185,10 +6430,22 @@ export interface AmendAgentSetupBody {
 export interface ListModelProvidersResponseProvidersItem {
   name: string;
   declared: boolean;
+  kind?: "anthropic" | "google" | "openai";
+  source?: "deployment" | "workspace";
 }
 
 export interface ListModelProvidersResponse {
   providers: ListModelProvidersResponseProvidersItem[];
+  kinds: ("anthropic" | "google" | "openai")[];
+  workspace?: ModelProvider[];
+}
+
+export interface SetModelProviderBody {
+  kind: "anthropic" | "google" | "openai";
+  base_url?: string;
+  vertex?: ModelProviderVertex;
+  key_ref?: string;
+  key?: string;
 }
 
 export interface ListAgentsResponse {
@@ -5206,6 +6463,10 @@ export interface ReviseAgentBody {
 
 export interface ResetAgentBody {
   expected_rev: number;
+}
+
+export interface ListStorePackagesResponse {
+  packages: StorePackage[];
 }
 
 export interface SetAgentHomeBody {
@@ -5303,6 +6564,10 @@ export interface ForkThreadBody {
   mode?: ThreadMode;
 }
 
+export interface ListThreadForksResponse {
+  forks: ThreadForkSummary[];
+}
+
 export interface BringBackThreadResultBody {
   run: string;
   text?: string;
@@ -5333,7 +6598,8 @@ export interface PublishThreadSummaryBody {
 }
 
 export interface SetApprovalModeBody {
-  mode: "ask" | "auto";
+  mode: "ask" | "auto" | "decide";
+  act_as?: ActAs;
 }
 
 export interface ListSchedulesResponse {
@@ -5434,6 +6700,10 @@ export interface ListCorporaResponse {
   corpora: Corpus[];
 }
 
+export interface AcceptCorpusOntologyBody {
+  types?: string[];
+}
+
 export interface ListKnowledgeSourcesResponse {
   sources: KnowledgeSource[];
 }
@@ -5498,6 +6768,35 @@ export interface AddKnowledgeDocumentBody {
 
 export interface SetKnowledgeDocumentExcludedBody {
   excluded: boolean;
+}
+
+export interface ReplaceKnowledgeDocumentTextBody {
+  title: string;
+  text: string;
+  digest: string;
+}
+
+export interface ContinueImportedDocumentBody {
+  document_digest: string;
+  structure_digest?: string;
+  project: string;
+  title?: string;
+  agents?: string[];
+  mode?: ThreadMode;
+}
+
+export interface ImportKnowledgeDocumentBody {
+  title: string;
+  uri: string;
+  text: string;
+  session: ImportedSession;
+}
+
+export interface ReimportKnowledgeDocumentBody {
+  title: string;
+  text: string;
+  digest: string;
+  session: ImportedSession;
 }
 
 export interface SaveKnowledgeVariantBody {

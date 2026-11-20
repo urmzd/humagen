@@ -1,10 +1,18 @@
+import { defaultCopy } from "@humagen/components";
 import { Modal } from "@humagen/web";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AgentSession } from "../../../packages/client/src/generated/types.ts";
 import { call } from "./api.ts";
 import { href } from "./route.ts";
 import { AlertMark } from "./SessionCenter.tsx";
-import { type Alert, openAlert, orderAlerts, sessionCenter } from "./sessionCenter.ts";
+import {
+  type Alert,
+  alertActionLabel,
+  alertPage,
+  openAlert,
+  orderAlerts,
+  sessionCenter,
+} from "./sessionCenter.ts";
 import { button, field, Problem, primary } from "./ui.tsx";
 
 export function useSessionAlerts(
@@ -114,16 +122,19 @@ export function SessionAlerts({
     <>
       {alerts.map((alert) => {
         const anchor = alertAnchor(alert);
-        const agent = alert.kind === "eval_below" ? "humagen-builder" : alert.agent;
-        const action =
-          (
-            {
-              answer: "Open question",
-              approve: "Review approval",
-              retry: "Review failed answer",
-              reconnect: "Open connections",
-            } as Record<string, string>
-          )[alert.action ?? ""] ?? "Open session";
+        const agent = alert.kind === "eval_below" ? "humagen" : alert.agent;
+        // A knowledge alert's action is the page it is about, such as its corpus.
+        const page = alertPage(alert);
+        const action = page
+          ? alertActionLabel(alert)
+          : ((
+              {
+                answer: "Open question",
+                approve: "Review approval",
+                retry: "Review failed answer",
+                reconnect: "Open connections",
+              } as Record<string, string>
+            )[alert.action ?? ""] ?? "Open session");
         return (
           <section
             key={alert.id}
@@ -137,19 +148,23 @@ export function SessionAlerts({
             </div>
             {alert.body && <p className="whitespace-pre-wrap text-aui-muted">{alert.body}</p>}
             {alert.resolve_when && (
-              <p className="text-aui-xs text-aui-muted">Resolved when: {alert.resolve_when}</p>
+              <p className="text-aui-xs text-aui-muted">
+                {defaultCopy.attention.doneWhen(alert.resolve_when)}
+              </p>
             )}
             <div className="flex flex-wrap gap-2">
               <a
                 className={button}
                 href={
-                  alert.action === "reconnect"
-                    ? "/connections"
-                    : href({
-                        page: "conversation",
-                        id: alert.session!,
-                        ...(anchor ? { message: anchor } : {}),
-                      })
+                  page
+                    ? href(page)
+                    : alert.action === "reconnect"
+                      ? "/connections"
+                      : href({
+                          page: "conversation",
+                          id: alert.session!,
+                          ...(anchor ? { message: anchor } : {}),
+                        })
                 }
               >
                 {action}
@@ -162,7 +177,7 @@ export function SessionAlerts({
                     disabled={attention.busy}
                     onClick={() => void attention.change(alert, "resolved")}
                   >
-                    Resolve
+                    {defaultCopy.attention.markDone}
                   </button>
                   <button
                     type="button"
@@ -170,7 +185,7 @@ export function SessionAlerts({
                     disabled={attention.busy}
                     onClick={() => void attention.change(alert, "snoozed")}
                   >
-                    Snooze 1h
+                    {defaultCopy.attention.snooze}
                   </button>
                 </>
               )}

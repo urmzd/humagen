@@ -9,7 +9,7 @@ import (
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/projects"
-	"github.com/urmzd/orchagent/flow/runtime"
+	"github.com/urmzd/saige/flow/runtime"
 )
 
 type builderConnection struct {
@@ -113,12 +113,9 @@ func (p *Platform) builderPlacementPreview(req runtime.Request, spec wire.AgentS
 						listens = append(listens, builderListen{Connection: c.Name, Place: rule.Repository + ": " + rule.Event + "/" + rule.Action, Project: project, Enabled: c.Enabled && c.AllowsEvent(rule.Event) && !rule.Paused})
 					}
 				}
-				for repo, labels := range c.GitHub.AutoLabels {
-					for label, agent := range labels {
-						if agent == spec.Name {
-							listens = append(listens, builderListen{Connection: c.Name, Place: repo + ": label " + label, Project: project, Enabled: c.Enabled && c.AllowsEvent("issues")})
-						}
-					}
+				if c.DefaultAgent == spec.Name {
+					on := c.GitHub.AutoReview == nil || c.GitHub.AutoReview.Enabled == nil || *c.GitHub.AutoReview.Enabled
+					listens = append(listens, builderListen{Connection: c.Name, Place: "GitHub pull requests: automatic review", Project: project, Enabled: c.Enabled && c.AllowsEvent("pull_request") && on})
 				}
 			}
 		}

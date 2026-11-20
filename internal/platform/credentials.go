@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/urmzd/orchagent/flow/event"
-	"github.com/urmzd/orchagent/flow/mcptools"
-	"github.com/urmzd/orchagent/flow/toolprovider"
+	"github.com/urmzd/humagen/internal/mcptools"
+	"github.com/urmzd/humagen/internal/toolprovider"
+	"github.com/urmzd/saige/flow/event"
 
 	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/wire"
@@ -241,8 +241,9 @@ func (p *Platform) ownStarts(tenant, subject string) []string {
 // are checked here as well as when the credential was given, so one the
 // workspace no longer allows is not used, however it was kept.
 func (p *Platform) personCredential(_ context.Context, tenant string, prov toolprovider.Provider, actor event.Actor) (mcptools.PersonCredential, error) {
-	// Native source consent is not consent to an MCP endpoint.
-	if strings.HasPrefix(prov.Name, "hsrc-") {
+	// Native source consent, and a warehouse login, is not consent to an
+	// MCP endpoint.
+	if strings.HasPrefix(prov.Name, "hsrc-") || strings.HasPrefix(prov.Name, "hcat-") {
 		return mcptools.PersonCredential{}, mcptools.ErrNoPersonCredential
 	}
 	person := actor.User

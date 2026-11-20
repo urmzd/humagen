@@ -1,0 +1,404 @@
+[
+  {
+    "name": "browser_close",
+    "description": "Close the page",
+    "input_schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {},
+      "type": "object"
+    },
+    "schema_hash": "71fc596a20f27da3dec80050e5d1f553eba34aea24c2853b853488a811e6b892",
+    "class": "write"
+  },
+  {
+    "name": "browser_resize",
+    "description": "Resize the browser window",
+    "input_schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "height": {
+          "description": "Height of the browser window",
+          "type": "number"
+        },
+        "width": {
+          "description": "Width of the browser window",
+          "type": "number"
+        }
+      },
+      "required": [
+        "width",
+        "height"
+      ],
+      "type": "object"
+    },
+    "schema_hash": "4a80d1f511092cf5e94b689f81afd36ec42b0ac74a510f7220a7c9987af00b84",
+    "class": "write"
+  },
+  {
+    "name": "browser_handle_dialog",
+    "description": "Handle a dialog",
+    "input_schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "accept": {
+          "description": "Whether to accept the dialog.",
+          "type": "boolean"
+        },
+        "promptText": {
+          "description": "The text of the prompt in case of a prompt dialog.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "accept"
+      ],
+      "type": "object"
+    },
+    "schema_hash": "2d4cacf71e9fd7f902bebbc84f106614b891c2654de32b71b1f0d629a10d8b5c",
+    "class": "write"
+  },
+  {
+    "name": "browser_fill_form",
+    "description": "Fill multiple form fields",
+    "input_schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "description": "Fields to fill in",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "element": {
+                "description": "Human-readable element description used to obtain permission to interact with the element",
+                "type": "string"
+              },
+              "name": {
+                "description": "Human-readable field name",
+                "type": "string"
+              },
+              "target": {
+                "description": "Exact target element reference from the page snapshot, or a unique element selector",
+                "type": "string"
+              },
+              "type": {
+                "description": "Type of the field",
+                "enum": [
+                  "textbox",
+                  "checkbox",
+                  "radio",
+                  "combobox",
+                  "slider"
+                ],
+                "type": "string"
+              },
+              "value": {
+                "description": "Value to fill in the field. If the field is a checkbox, the value should be `true` or `false`. If the field is a combobox, the value should be the text of the option.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "target",
+              "name",
+              "type",
+              "value"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "fields"
+      ],
+      "type": "object"
+    },
+    "schema_hash": "c991223a68247bd517c0fa1b61db444178ff6ad546e7214936d29b8de4c2f2ee",
+    "class": "write"
+  },
+  {
+    "name": "browser_press_key",
+    "description": "Press a key on the keyboard",
+    "input_schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "description": "Name of the key to press or a character to generate, such as `ArrowLeft` or `a`",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key"
+      ],
+      "type": "object"
+    },
+    "schema_hash": "57a7f701ebf865e5a7a759c15e8d04bca12cb756c2e3f4ae7280070bb6e310e2",
+    "class": "write"
+  },
+  {
+    "name": "browser_type",
+    "description": "Type text into editable element",
+    "input_schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "element": {
+          "description": "Human-readable element description used to obtain permission to interact with the element",
+          "type": "string"
+        },
+        "slowly": {
+          "description": "Whether to type one character at a time. Useful for triggering key handlers in the page. By default entire text is filled in at once.",
+          "type": "boolean"
+        },
+        "submit": {
+          "description": "Whether to submit entered text (press Enter after)",
+          "type": "boolean"
+        },
+        "target": {
+          "description": "Exact target element reference from the page snapshot, or a unique element selector",
+          "type": "string"
+        },
+        "text": {
+          "description": "Text to type into the element",
+          "type": "string"
+        }
+      },
+      "required": [
+        "target",
+        "text"
+      ],
+      "type": "object"
+    },
+    "schema_hash": "ed892740ebc14bb2a49467c08b8bb02717d50f1f3ef8ed06d51abf5ebb3249da",
+    "class": "write"
+  },
+  {
+    "name": "browser_navigate",
+    "description": "Navigate to a URL",
+    "input_schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "url": {
+          "description": "The URL to navigate to",
+          "type": "string"
+        }
+      },
+      "required": [
+        "url"
+      ],
+      "type": "object"
+    },
+    "schema_hash": "2165538e098634780eec628947d795a2619b4d2e3cef0e36d3084ac46abb94f7",
+    "class": "write"
+  },
+  {
+    "name": "browser_navigate_back",
+    "description": "Go back to the previous page in the history",
+    "input_schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {},
+      "type": "object"
+    },
+    "schema_hash": "71fc596a20f27da3dec80050e5d1f553eba34aea24c2853b853488a811e6b892",
+    "class": "write"
+  },
+  {
+    "name": "browser_take_screenshot",
+    "description": "Take a screenshot of the current page. Use browser_snapshot for actions by default. With the vision capability enabled, use screenshot coordinates with the coordinate-based mouse tools for elements not exposed in the accessibility snapshot.",
+    "input_schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "element": {
+          "description": "Human-readable element description used to obtain permission to interact with the element",
+          "type": "string"
+        },
+        "filename": {
+          "description": "File name to save the screenshot to. Relative file names are resolved against the workspace root. If not specified, the screenshot is saved into the output directory as `page-{timestamp}.{png|jpeg|webp}`.",
+          "type": "string"
+        },
+        "fullPage": {
+          "description": "When true, takes a screenshot of the full scrollable page, instead of the currently visible viewport. Cannot be used with element screenshots.",
+          "type": "boolean"
+        },
+        "scale": {
+          "default": "css",
+          "description": "Image resolution scale. \"css\" produces a screenshot sized in CSS pixels (smaller, consistent across devices). \"device\" produces a high-resolution screenshot using device pixels (larger, accounts for the device pixel ratio). Default is css.",
+          "enum": [
+            "css",
+            "device"
+          ],
+          "type": "string"
+        },
+        "target": {
+          "description": "Exact target element reference from the page snapshot, or a unique element selector",
+          "type": "string"
+        },
+        "type": {
+          "description": "Image format for the screenshot. If unset, inferred from the filename extension, otherwise png.",
+          "enum": [
+            "png",
+            "jpeg",
+            "webp"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "scale"
+      ],
+      "type": "object"
+    },
+    "schema_hash": "78dcb99cc226d741aa8c11a11ee0df62e15a9f9ab9db1a1ce4fdc5512d323d96",
+    "class": "write"
+  },
+  {
+    "name": "browser_snapshot",
+    "description": "Capture accessibility snapshot of the current page, this is better than screenshot",
+    "input_schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "boxes": {
+          "description": "Include each element's bounding box as [box=x,y,width,height] in the snapshot. Coordinates are viewport-relative, in CSS pixels (Element.getBoundingClientRect)",
+          "type": "boolean"
+        },
+        "depth": {
+          "description": "Limit the depth of the snapshot tree",
+          "type": "number"
+        },
+        "filename": {
+          "description": "Save snapshot to a file instead of returning it in the response. Relative file names are resolved against the workspace root.",
+          "type": "string"
+        },
+        "target": {
+          "description": "Exact target element reference from the page snapshot, or a unique element selector",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "schema_hash": "1d7650f3b9f3612bbb4f1511c77944e7b9ed6e98c9e012926a243c58f016df6f",
+    "class": "write"
+  },
+  {
+    "name": "browser_click",
+    "description": "Perform click on a web page",
+    "input_schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "button": {
+          "description": "Button to click, defaults to left",
+          "enum": [
+            "left",
+            "right",
+            "middle"
+          ],
+          "type": "string"
+        },
+        "doubleClick": {
+          "description": "Whether to perform a double click instead of a single click",
+          "type": "boolean"
+        },
+        "element": {
+          "description": "Human-readable element description used to obtain permission to interact with the element",
+          "type": "string"
+        },
+        "modifiers": {
+          "description": "Modifier keys to press",
+          "items": {
+            "enum": [
+              "Alt",
+              "Control",
+              "ControlOrMeta",
+              "Meta",
+              "Shift"
+            ],
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "target": {
+          "description": "Exact target element reference from the page snapshot, or a unique element selector",
+          "type": "string"
+        }
+      },
+      "required": [
+        "target"
+      ],
+      "type": "object"
+    },
+    "schema_hash": "7fed82f52ae7018670d967e4429b63501948c80de2df2e9279ce4c103694d0d3",
+    "class": "write"
+  },
+  {
+    "name": "browser_tabs",
+    "description": "List, create, close, or select a browser tab.",
+    "input_schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "description": "Operation to perform",
+          "enum": [
+            "list",
+            "new",
+            "close",
+            "select"
+          ],
+          "type": "string"
+        },
+        "index": {
+          "description": "Tab index, used for close/select. If omitted for close, current tab is closed.",
+          "type": "number"
+        },
+        "isolatedContext": {
+          "description": "Name of an isolated browser context to create the new tab in, used for new. Tabs in the same isolated context share cookies and storage, tabs in different contexts are fully isolated. If omitted or \"default\", the tab is created in the default context.",
+          "type": "string"
+        },
+        "url": {
+          "description": "URL to navigate to in the new tab, used for new.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "action"
+      ],
+      "type": "object"
+    },
+    "schema_hash": "fc3f534e7428342371db86b438fad5f52abbe45d43b6e18fd79fb3d23de782c8",
+    "class": "write"
+  },
+  {
+    "name": "browser_wait_for",
+    "description": "Wait for text to appear or disappear or a specified time to pass. When both text and textGone are provided, waits for the first one to happen",
+    "input_schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "text": {
+          "description": "The text to wait for",
+          "type": "string"
+        },
+        "textGone": {
+          "description": "The text to wait for to disappear",
+          "type": "string"
+        },
+        "time": {
+          "description": "The time to wait in seconds, at most 30. When combined with text or textGone, serves as a timeout for them instead of the default action timeout",
+          "type": "number"
+        }
+      },
+      "type": "object"
+    },
+    "schema_hash": "cee58694f677034e21fc68446200888eb28469696b4ca9259047e15084fb22ff",
+    "class": "write"
+  }
+]

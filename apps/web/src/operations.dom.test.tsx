@@ -383,3 +383,77 @@ test("stale default bindings expose a review link without granting a resume or d
     false,
   );
 });
+
+test("an assignment shows the checks its answer is held to and opens the run it holds", async () => {
+  const assignment = {
+    id: "checked",
+    agent: "helper",
+    owner: "ada",
+    owner_name: "Ada",
+    project: "",
+    goal: "File the report",
+    done_when: "It is filed",
+    done_checks: [
+      { kind: "matches", value: "^DONE:" },
+      { kind: "not_contains", value: "TODO" },
+    ],
+    max_continue: 2,
+    continued: 1,
+    state: "result",
+    run_id: "continuation-run",
+    run_status: "completed",
+    version: 3,
+    updated_by: "ada",
+    updated_at: control.updated_at,
+    created_at: control.updated_at,
+  };
+  net = stubFetch({ "GET /api/assignments": () => [assignment] });
+  let run = "";
+  let message = "";
+  render(
+    <Assignments
+      agents={["helper"]}
+      projects={[]}
+      subject="ada"
+      canWrite
+      onRun={(id) => {
+        run = id;
+      }}
+      onMessage={(id) => {
+        message = id;
+      }}
+    />,
+  );
+  await screen.findByText("The answer is held to these checks");
+  assert.ok(screen.getByText("^DONE:"));
+  assert.ok(screen.getByText("TODO"));
+  assert.ok(screen.getByText(/Matches/));
+  assert.ok(screen.getByText(/Does not contain/));
+  assert.ok(screen.getByText("Continued once"));
+  // The recorded run opens as its own message, where its answer is, and not
+  // as the conversation's first run.
+  fireEvent.click(screen.getByRole("button", { name: "Open Recorded Run" }));
+  assert.equal(message, "continuation-run");
+  assert.equal(run, "");
+});
+
+test("an assignment without checks shows none", async () => {
+  net = stubFetch({
+    "GET /api/assignments": () => [
+      {
+        id: "plain",
+        agent: "helper",
+        owner: "ada",
+        project: "",
+        goal: "Review",
+        done_when: "Report",
+        state: "requested",
+        version: 1,
+      },
+    ],
+  });
+  render(<Assignments agents={["helper"]} projects={[]} subject="ada" canWrite onRun={() => {}} />);
+  await screen.findByText("Review");
+  assert.equal(screen.queryByText("The answer is held to these checks"), null);
+  assert.equal(screen.queryByText(/Continued/), null);
+});

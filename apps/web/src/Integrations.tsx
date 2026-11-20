@@ -183,7 +183,7 @@ export function Integrations({
         <Empty title={only === "client" ? "No workspace apps installed" : "No data sources yet"}>
           {only === "client"
             ? "Install Slack or GitHub above so agents can answer there."
-            : "Connect Google Drive, BigQuery or Snowflake above, and what they hold becomes searchable knowledge."}
+            : "Connect Google Drive, OneDrive, BigQuery or Snowflake above, and what they hold becomes searchable knowledge."}
         </Empty>
       ) : (
         <div className="grid min-w-0 grid-cols-1 items-start gap-6 @4xl:grid-cols-[15rem_minmax(0,1fr)]">
@@ -419,7 +419,7 @@ export function ConnectSource({
 }: {
   onCreated: (name: string) => void;
   onCancel: () => void;
-  initialProvider?: "drive" | "notion" | "gcs" | "s3";
+  initialProvider?: "drive" | "onedrive" | "notion" | "gcs" | "s3";
 }) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -506,6 +506,7 @@ export function ConnectSource({
           <option value="gcs">Google Cloud Storage</option>
           <option value="s3">Amazon S3</option>
           <option value="drive">{defaultCopy.sourceLifecycle.providers.drive}</option>
+          <option value="onedrive">{defaultCopy.sourceLifecycle.providers.onedrive}</option>
           <option value="notion">{defaultCopy.sourceLifecycle.providers.notion}</option>
         </select>
       </Label>
@@ -562,9 +563,11 @@ export function ConnectSource({
             ? "Notion page ID"
             : provider === "drive"
               ? "Google Drive folder ID"
-              : provider === "gcs"
-                ? "Cloud Storage bucket"
-                : "S3 bucket"
+              : provider === "onedrive"
+                ? defaultCopy.sourceCatalog.onedriveOrigin
+                : provider === "gcs"
+                  ? "Cloud Storage bucket"
+                  : "S3 bucket"
         }
       >
         <input
@@ -970,7 +973,7 @@ function SourceRules({
       setBusy(false);
     }
   };
-  if (!["drive", "notion", "github", "slack"].includes(provider))
+  if (!["drive", "onedrive", "notion", "github", "slack"].includes(provider))
     return <p className="text-aui-sm text-aui-muted">{words.rulesUnsupported}</p>;
   return (
     <section className="flex min-w-0 flex-col gap-4">

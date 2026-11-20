@@ -5,7 +5,7 @@ import (
 	"regexp"
 	"strings"
 
-	transport "github.com/urmzd/orchagent/flow/connectors/github"
+	transport "github.com/urmzd/saige/flow/connectors/github"
 )
 
 // ReviewScope pins the review to the exact source revision it inspected.
@@ -57,14 +57,14 @@ func validateV2(r ReviewReport) error {
 
 // NativeReview prepares a real pull request review, preserving invalid anchors
 // in the body. The transport checks every anchor against the actual diff.
-// Agents never approve (RFC 0009): an approve verdict is posted as a comment,
+// Agents never approve: an approve verdict is posted as a comment,
 // and a person approves and merges.
 func NativeReview(report ReviewReport, files []transport.ContextFile) (transport.Review, error) {
 	r, err := nativeReview(report)
 	if err != nil {
 		return transport.Review{}, err
 	}
-	return transport.PrepareReview(r, files, false)
+	return transport.PrepareReview(r, files)
 }
 
 // RecoveredReview reproduces a review already posted, so a retried delivery
@@ -80,7 +80,7 @@ func RecoveredReview(report ReviewReport, files []transport.ContextFile, disposi
 		r.Event = disposition
 		return r, nil
 	}
-	return transport.PrepareReview(r, files, false)
+	return transport.PrepareReview(r, files)
 }
 
 func nativeReview(report ReviewReport) (transport.Review, error) {

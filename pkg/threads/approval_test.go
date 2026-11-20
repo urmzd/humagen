@@ -39,7 +39,23 @@ func TestApprovalModeIsSetOnItsOwnAndKept(t *testing.T) {
 		if got, _ := s.SetApproval("acme", th.ID, threads.ApprovalAsk, "dana", nil, t0); got.Approval != nil {
 			t.Fatalf("ask = %+v", got.Approval)
 		}
-		for _, bad := range [][2]string{{"maybe", "dana"}, {threads.ApprovalAuto, ""}} {
+		// Decide does what auto does, and also answers questions.
+		got, err = s.SetApproval("acme", th.ID, threads.ApprovalDecide, "dana", []string{"operator"}, t0)
+		if err != nil || !got.Approval.Auto() || !got.Approval.Decides() || got.Approval.ModeOf() != threads.ApprovalDecide {
+			t.Fatalf("decide = %+v, %v", got.Approval, err)
+		}
+		if kept, _ := threads.Open(st); kept != nil {
+			if k, _ := kept.Get("acme", th.ID); !k.Approval.Decides() {
+				t.Fatalf("decide after restart = %+v", k.Approval)
+			}
+		}
+		if got, _ := s.SetApproval("acme", th.ID, threads.ApprovalAuto, "dana", nil, t0); got.Approval.Decides() || !got.Approval.Auto() {
+			t.Fatalf("auto after decide = %+v", got.Approval)
+		}
+		if got, _ := s.SetApproval("acme", th.ID, threads.ApprovalAsk, "dana", nil, t0); got.Approval.ModeOf() != threads.ApprovalAsk || got.Approval.Decides() {
+			t.Fatalf("ask after decide = %+v", got.Approval)
+		}
+		for _, bad := range [][2]string{{"maybe", "dana"}, {threads.ApprovalAuto, ""}, {threads.ApprovalDecide, ""}} {
 			if _, err := s.SetApproval("acme", th.ID, bad[0], bad[1], nil, t0); !errors.Is(err, threads.ErrInvalid) {
 				t.Fatalf("%v = %v", bad, err)
 			}

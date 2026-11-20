@@ -84,7 +84,7 @@ func (p *Platform) raiseOnlineHealth(run runs.Run, result evals.Online) error {
 	if !p.openWork(run.Tenant, run.Project)(run) && owner == "" {
 		return nil
 	}
-	sessionID, err := p.EnsureAlertSession(context.Background(), run.Tenant, BuiltinBuilder, run.Project, owner, "Agent health: "+run.Agent)
+	sessionID, err := p.EnsureAlertSession(context.Background(), run.Tenant, p.cfg.EntryAgent, run.Project, owner, "Agent health: "+run.Agent)
 	if err != nil {
 		return err
 	}

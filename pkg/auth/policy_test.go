@@ -34,8 +34,10 @@ var legacyRolePermissions = map[auth.Role][]auth.Permission{
 }
 
 // managerPermissions is the manager role, added after the legacy table:
-// everything an operator has, and writing agents and knowledge.
-var managerPermissions = append(slices.Clone(legacyRolePermissions[auth.Operator]), auth.AgentsWrite, auth.KnowledgeWrite)
+// everything an operator has, and writing agents and knowledge, and
+// importing sessions into knowledge, which whoever writes knowledge did
+// before it had a permission of its own.
+var managerPermissions = append(slices.Clone(legacyRolePermissions[auth.Operator]), auth.AgentsWrite, auth.KnowledgeWrite, auth.KnowledgeImport)
 
 func sorted(ps []auth.Permission) []auth.Permission {
 	out := slices.Clone(ps)
@@ -267,7 +269,7 @@ func TestManagerIsAnOperatorWhoWritesAgentsAndKnowledge(t *testing.T) {
 		t.Fatalf("manager grants %v, want %v", got, managerPermissions)
 	}
 	who := auth.Principal{Subject: "m", Tenant: "acme", Kind: auth.User, Roles: []auth.Role{auth.Manager}}
-	for _, p := range []auth.Permission{auth.AgentsWrite, auth.KnowledgeWrite, auth.RunsWrite, auth.SchedulesWrite} {
+	for _, p := range []auth.Permission{auth.AgentsWrite, auth.KnowledgeWrite, auth.KnowledgeImport, auth.RunsWrite, auth.SchedulesWrite} {
 		if !who.Can(p) {
 			t.Errorf("a manager cannot %s", p)
 		}

@@ -8,6 +8,7 @@ import {
   type Suite,
   type SuiteView,
 } from "./api.ts";
+import { EvalCandidates } from "./EvalCandidates.tsx";
 import { ago, button, Chip, card, field, Label, Menu, Problem, primary, took } from "./ui.tsx";
 
 const checkLabel: Record<Check["kind"], string> = {
@@ -416,6 +417,9 @@ export function Evals({
             onChanged();
           }}
         />
+      )}
+      {target === "agent" && (
+        <EvalCandidates agent={subject} suites={mine} canWrite={canWrite} onChanged={onChanged} />
       )}
       {mine.length === 0 && !editing && (
         <p className={`${card} text-aui-sm text-aui-muted`}>

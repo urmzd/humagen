@@ -16,23 +16,24 @@
 </p>
 
 <p align="center">
-  <img src="showcase/agents.png" alt="Humagen agent console with seeded example agents" width="80%">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="showcase/demo-dark.gif">
+    <img src="showcase/demo-light.gif" alt="A person tags @lead with a launch task. lead asks researcher and writer in parallel, and answers in about ten seconds with both parts and a note on what was not verified." width="80%">
+  </picture>
 </p>
-<p align="center"><em>Local preview with seeded example data, captured with teasr. No model calls.</em></p>
-
-Formerly warp. Old settings, config files and specs still work, with a note at start. See [docs/guides/upgrading-from-warp.md](docs/guides/upgrading-from-warp.md).
+<p align="center"><em>Real models on a local preview: <code>lead</code> asks <code>researcher</code> and <code>writer</code>, then answers. Idle pauses shortened.</em></p>
 
 ## Features
 
-- **Conversations** that branch across agents. Tag `@agent`, or let every available agent decide whether to join: each that does answers side by side, and with none the message waits for a person.
-- **Channels and threads** where people and agents talk in one room, with private threads, project inboxes and announcements.
-- **Projects** with members, owners, tighter limits below them, and knowledge sources that ground every run.
-- **Archive and deletion review**: archived conversations wait 30 days in a queue where an admin restores them or approves permanent deletion.
-- **Agent lifecycle**: revisions, deterministic evals, schedules, run traces, alerts and analytics.
-- **Governance**: tenant permissions, depth and fan-out limits, admission policies and usage accounting.
-- **Slack**: bind a project to a channel, post as mapped people, and answer with streamed console components over Socket Mode.
-- **GitHub**: ask the app in a comment, through signed webhook ingress.
-- **Per-person MCP tools**: agents act with each person's own credential, never a shared one.
+- **Agents that work together**: tag an `@agent`, or let every available agent decide whether to join. Agents call each other as subagents, handoffs or delegations, and wait for a person when they need an approval or an answer.
+- **Any model, per agent**: Anthropic, OpenAI, Google Gemini directly or through Vertex AI, or any OpenAI-compatible server such as Ollama. Each agent names its own model and its fallbacks.
+- **Self-hosted**: one process and Postgres, on a laptop, a VM or Kubernetes. Your data stays on machines you own.
+- **Rules you set**: tenant permissions, per-project limits, action policies and admission checks. Nothing is allowed until it is granted, and spend is counted per run.
+- **A record of every run**: traces, the journal, alerts, usage and spend show who asked, which agent answered, what it called and what it cost. Runs are durable and replay after a crash.
+- **Where people already work**: the web console, a Slack app in channels and threads, and GitHub comments, all showing the same events.
+- **Answers from your knowledge**: projects hold knowledge sources searched by vectors and keywords, and search returns only what the person asking may read.
+- **Tools that act as you**: MCP tools run in a sandbox with each person's own credential, never a shared one.
+- **Agents with a lifecycle**: revisions, deterministic evals, schedules and analytics. A run keeps the definition it started with.
 
 What is built, and its current limits, is in the [status table](docs/architecture/overview.md#status).
 
@@ -53,6 +54,8 @@ go mod download
 pnpm install
 ```
 
+Humagen was called warp. Old settings, config files and specs still work, with a note at start. See [docs/guides/upgrading-from-warp.md](docs/guides/upgrading-from-warp.md).
+
 ## Quick Start
 
 ```sh
@@ -60,16 +63,25 @@ pnpm --filter @humagen/console build
 go run ./cmd/humagen start
 ```
 
-Open <http://127.0.0.1:8080>. `humagen start` runs everything in one process: loopback sign-in, in-memory stores, seeded example agents on an offline provider, and the console. No model key needed.
+Open <http://127.0.0.1:8080>. `humagen start` runs everything in one process: loopback sign-in, in-memory stores, an example project, and the console. Agents need a model: enable a provider in Settings, under Model providers (an Anthropic, OpenAI or Google key, Vertex AI, or an OpenAI-compatible server such as Ollama). A new workspace has the entry agent, `humagen`, and the approval agent; the writer, the analyst and the code reviewers are packages to install from the Store on the Agents page. The built-in agents run as soon as one their models name is enabled.
 
 On a terminal, the first start asks a few questions (name, model providers, MCP tools, sign-in, Slack) and writes `humagen.yaml` to your config directory.
 
 <p align="center">
-  <img src="showcase/runs.png" alt="Seeded offline conversation" width="30%"> &nbsp;
-  <img src="showcase/analytics.png" alt="Analytics for the seeded offline runs" width="30%"> &nbsp;
-  <img src="showcase/ui-approval.png" alt="Approval card" width="30%">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="showcase/agents-dark.png">
+    <img src="showcase/agents-light.png" alt="The Agents page: each agent with its health, runs, success rate and median time over 24 hours" width="30%">
+  </picture> &nbsp;
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="showcase/usage-dark.png">
+    <img src="showcase/usage-light.png" alt="The Usage page: runs, how many finished without help, failures, spend and tokens" width="30%">
+  </picture> &nbsp;
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="showcase/policies-dark.png">
+    <img src="showcase/policies-light.png" alt="The action policy: whether agents may read context, write files, publish, send messages or call other agents" width="30%">
+  </picture>
 </p>
-<p align="center"><em>Runs &middot; Analytics &middot; Approvals</em></p>
+<p align="center"><em>Agents &middot; Usage &middot; Policies</em></p>
 
 ## Examples
 
@@ -85,7 +97,7 @@ On a terminal, the first start asks a few questions (name, model providers, MCP 
 
 `POST /api/runs` takes `agent`, `text`, and optionally `after` and `project`.
 
-- `agent` names who answers, or `*` to ask every available agent whether to join; each that does answers in the same conversation (the first run is returned), and with none the answer is 409. The workspace's `router` setting turns this on and names the model that asks.
+- `agent` names who answers, or `*` to ask every available agent whether to join; each that does answers in the same conversation (the first run is returned), and with none the answer is 409. Routing is the entry agent's: until it lands, `*` asks agents only where a program built on Humagen supplies its own asker.
 - Leave `agent` out and the nearest default answers: the project's, its ancestors', then the workspace's. With none set, the answer is 409.
 - `after` names the turn the message follows. Naming a turn that already has a reply starts a branch.
 
@@ -95,7 +107,17 @@ Set `ANTHROPIC_API_KEY` before starting and configure an agent with provider `an
 
 ### Connect Slack and GitHub
 
-A workspace answers through one or more [clients](docs/reference/clients.md): a Slack app or a GitHub installation, each with its own identity, secrets, agents and limits. Follow the [integration guide](docs/guides/integrations.md), then [Slack](docs/reference/slack.md) or [GitHub](docs/reference/github.md).
+A workspace answers through one or more [clients](docs/reference/clients.md): a Slack app or a GitHub installation, each with its own identity, secrets, agents and limits. Run `humagen install slack` or `humagen install github` and follow the [Slack](docs/guides/slack.md) or [GitHub](docs/guides/github.md) guide. The references are [Slack](docs/reference/slack.md) and [GitHub](docs/reference/github.md).
+
+### Manage the workspace from an MCP client
+
+`POST /api/mcp` is the humagen MCP. Each management operation of the API is a tool: agents, evals, sessions and runs, messages, alerts, connections, model providers, schedules and settings. A call is made as you, through the same route, so you are offered only what your permissions allow. Add it to an MCP client with your workspace's address and a bearer token, for example in Claude Code:
+
+```sh
+claude mcp add --transport http humagen https://YOUR_HOST/api/mcp --header "Authorization: Bearer $HUMAGEN_TOKEN"
+```
+
+A local preview with dev sign-in needs no token.
 
 ### Deploy
 
@@ -103,16 +125,16 @@ Run the same config on your own infrastructure with compose, Helm or Flux. Point
 
 ## How it works
 
-One repository holds the platform. [saige](https://github.com/urmzd/saige) and [orchagent](https://github.com/urmzd/orchagent) are dependencies: orchagent's `flow` is the transport (formerly fiber), `durable` keeps runs durable (formerly anchor) and `sandbox` confines them (formerly playscape).
+One repository holds the platform. [saige](https://github.com/urmzd/saige) is its dependency: saige's `flow` is the transport (formerly fiber), `durable` keeps runs durable (formerly anchor) and `sandbox` confines them (formerly playscape).
 
 | Concept | What it is |
 |---------|------------|
 | **Event** | One envelope (`id`, `source`, `type`, `channel`, `time`, `hops`, `data`). `type` is the only discriminator and carries the version, such as `message.posted.v1` or `run.completed.v1`. A type this build does not know is kept as raw bytes, never guessed |
 | **Channel** | Where an event is published, such as `slack://T01/C02`. One bus carries every event; a subscriber names channels and type prefixes, and an empty subscription receives nothing |
 | **Definition** | An agent is a saige definition, stored per workspace and versioned. A run pins its name, version and digest, and fails rather than replay a prompt that moved |
-| **Runtime** | One turn of a run. The default wraps saige inside an orchagent sandbox; `humagen.WithRuntime` plugs in another. orchagent's `durable` keeps runs durable |
+| **Runtime** | One turn of a run. The default wraps saige's agent loop inside a saige sandbox; `humagen.WithRuntime` plugs in another. saige's `durable` keeps runs durable |
 
-A message in the console, Slack or GitHub is an event, the agent's answer streams back as `run.*` events on the same channel, and each surface renders them. See [architecture](docs/architecture/overview.md) and [flow's event design](https://github.com/urmzd/orchagent/blob/main/flow/docs/architecture/events.md).
+A message in the console, Slack or GitHub is an event, the agent's answer streams back as `run.*` events on the same channel, and each surface renders them. See [architecture](docs/architecture/overview.md) and [flow's event design](https://github.com/urmzd/saige/blob/main/docs/architecture/flow-events.md).
 
 ## Configuration
 
@@ -149,6 +171,7 @@ Name where each secret lives (`env:NAME`, `keychain:SERVICE`, `op://VAULT/ITEM/F
 | `GET`, `POST /api/schedules`, `DELETE /api/schedules/{name}`, `POST .../pause`, `.../resume`, `.../run` | `schedules:read`, `schedules:write` |
 | `GET /api/alerts`, `POST /api/alerts/{id}/ack`, `GET`, `POST`, `DELETE /api/alert-rules` | `alerts:read`, `alerts:write` |
 | `GET`, `POST /api/knowledge`, `.../{name}/documents`, `GET /api/knowledge/search?q=` | `knowledge:read`, `knowledge:write` |
+| `POST /api/knowledge/{name}/imports`, `PUT .../imports/{id}` | `knowledge:import` (the platform also requires `knowledge:write`) |
 
 ## Development
 
@@ -176,15 +199,26 @@ make tilt
 | Regenerate the TypeScript client | `make client` |
 | Client typecheck and tests | `make client-check` |
 | Lint the API spec | `make spec-lint` |
-| Refresh `showcase/` | `SCREENS_SHOWCASE=1 make screens` (needs Chrome and [teasr](https://github.com/urmzd/teasr)) |
+| Record the README and website demo | `make dev-live`, then `make showcase` (real models; needs Chrome and ffmpeg) |
 
 ## Documentation
+
+The [Humagen guide](https://docs.urmzd.com/humagen/) walks through rendering a local review and opening your first session. The documentation workflow checks the guide on pull requests. [docs.urmzd.com](https://github.com/urmzd/urmzd.com/tree/main/docs-site) publishes changes from `main` within 30 minutes.
+
+Build the documentation from the repository root with [uv](https://docs.astral.sh/uv/). The static site is written to `site/`. The preview command prints the local address.
+
+```sh
+uvx --from zensical==0.1.2 zensical build
+uvx --from zensical==0.1.2 zensical serve
+```
+
+The deployed guide loads its shared theme from `/brand/`. To preview the same logo, fonts and colors locally, follow the [shared-brand preview instructions](https://github.com/urmzd/urmzd.github.io#preview-a-guide-with-the-shared-brand).
 
 - [Roadmap](docs/plans/roadmap.md)
 - [Architecture and status](docs/architecture/overview.md)
 - [API contract and events](docs/reference/api.md)
 - [The spec](docs/reference/spec.md)
-- [orchagent flow: events, channels, definitions and the Runtime](https://github.com/urmzd/orchagent/blob/main/flow/docs/architecture/events.md)
+- [saige flow: events, channels, definitions and the Runtime](https://github.com/urmzd/saige/blob/main/docs/architecture/flow-events.md)
 - [Projects](docs/architecture/projects.md)
 - [Agent calls](docs/architecture/agent-calls.md)
 - [Authorization](docs/reference/authorization.md)

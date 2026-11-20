@@ -4,6 +4,7 @@ import (
 	"math"
 	"slices"
 	"sort"
+	"strings"
 )
 
 // Search ranking. A message is matched against each agent's name, prompt,
@@ -21,6 +22,12 @@ const (
 	// nameWeight counts a word of an agent's name this many times: a
 	// message that names what the agent is called is the strongest signal.
 	nameWeight = 3
+	// descriptionWeight counts a word of what an agent is for (Describe)
+	// this many times: it says the agent's domain, where the rest of a
+	// prompt says how it works.
+	descriptionWeight = 2
+	// maxDescription bounds a description taken from a prompt.
+	maxDescription = 200
 	// BM25's term saturation and length normalisation, as pkg/catalog uses.
 	k1 = 1.2
 	b  = 0.75
@@ -28,10 +35,28 @@ const (
 
 // Match is a candidate the search found for a message: its score, and the
 // words of the message that matched it, in the order the message says them.
+// Strong says it is more than a passing word: a word of the message is in
+// the agent's name or what it is for, or two or more different words
+// matched. A weak match is no reason on its own to hand a message to an
+// agent.
 type Match struct {
 	Candidate
-	Score float64
-	Terms []string
+	Score  float64
+	Terms  []string
+	Strong bool
+}
+
+// Describe is what an agent is for, in a line: its description, or with
+// none the first sentence of its prompt.
+func Describe(c Candidate) string {
+	if d := strings.TrimSpace(c.Description); d != "" {
+		return d
+	}
+	prompt := strings.TrimSpace(c.Prompt)
+	if i := strings.IndexAny(prompt, ".!?\n"); i >= 0 {
+		prompt = prompt[:i+1]
+	}
+	return strings.TrimSpace(clip(prompt, maxDescription))
 }
 
 // Search ranks candidates against message and returns at most k that match
@@ -47,6 +72,7 @@ func Search(cs []Candidate, message string, k int) []Match {
 		return nil
 	}
 	docs := make([]map[string]int, len(cs))
+	labels := make([]map[string]bool, len(cs))
 	lengths := make([]int, len(cs))
 	df := map[string]int{}
 	total := 0
@@ -59,8 +85,12 @@ func Search(cs []Candidate, message string, k int) []Match {
 				n += weight
 			}
 		}
+		label := map[string]bool{}
+		for _, w := range words(c.Name + " " + Describe(c)) {
+			label[w] = true
+		}
 		add(c.Name, nameWeight)
-		add(c.Description, 1)
+		add(Describe(c), descriptionWeight)
 		add(clip(c.Prompt, maxPrompt), 1)
 		for j, ask := range c.Asks {
 			if j == MaxAsks {
@@ -71,7 +101,7 @@ func Search(cs []Candidate, message string, k int) []Match {
 		for w := range tf {
 			df[w]++
 		}
-		docs[i], lengths[i] = tf, n
+		docs[i], labels[i], lengths[i] = tf, label, n
 		total += n
 	}
 	avg := float64(total) / float64(len(cs))
@@ -82,6 +112,7 @@ func Search(cs []Candidate, message string, k int) []Match {
 	for i, c := range cs {
 		var score float64
 		var terms []string
+		strong := false
 		for _, w := range query {
 			f := float64(docs[i][w])
 			if f == 0 {
@@ -90,9 +121,10 @@ func Search(cs []Candidate, message string, k int) []Match {
 			idf := math.Log(1 + (float64(len(cs))-float64(df[w])+0.5)/(float64(df[w])+0.5))
 			score += idf * f * (k1 + 1) / (f + k1*(1-b+b*float64(lengths[i])/avg))
 			terms = append(terms, w)
+			strong = strong || labels[i][w]
 		}
 		if score > 0 {
-			out = append(out, Match{Candidate: c, Score: score, Terms: terms})
+			out = append(out, Match{Candidate: c, Score: score, Terms: terms, Strong: strong || len(terms) >= 2})
 		}
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Score > out[j].Score })

@@ -10,11 +10,12 @@ import (
 )
 
 func TestPackageAgentsCanBeCustomizedAndReset(t *testing.T) {
-	f := newFixtureWith(t, platform.Config{BuiltinProvider: "offline", BuiltinModel: "offline"})
+	f := newFixtureWith(t, platform.Config{TestBuiltinProvider: "offline", TestBuiltinModel: "offline"})
 	admin := f.machine(t, "acme", everything...)
 	if err := f.p.EnsureBuiltins(t.Context(), "acme"); err != nil {
 		t.Fatal(err)
 	}
+	want(t, f, admin, "POST", "/api/store/packages/core/install", "", http.StatusOK)
 	original, err := f.p.Agents.Get(t.Context(), "acme", platform.BuiltinWriter, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -81,7 +82,7 @@ func TestPackageUpdateAvailableInAPI(t *testing.T) {
 	if _, err := store.Revise(t.Context(), "acme", spec, base.Rev, "ana"); err != nil {
 		t.Fatal(err)
 	}
-	f := newFixtureWith(t, platform.Config{BuiltinProvider: "offline", BuiltinModel: "offline", Backends: platform.Backends{Agents: store}})
+	f := newFixtureWith(t, platform.Config{TestBuiltinProvider: "offline", TestBuiltinModel: "offline", Backends: platform.Backends{Agents: store}})
 	admin := f.machine(t, "acme", everything...)
 	res, history := f.do(t, nil, "GET", "/api/agents/humagen-writer/history", admin, "")
 	if res.StatusCode != http.StatusOK {

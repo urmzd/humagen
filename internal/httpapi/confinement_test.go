@@ -14,11 +14,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/urmzd/humagen/internal/toolprovider"
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/background"
 	"github.com/urmzd/humagen/pkg/catalog"
-	"github.com/urmzd/orchagent/flow/event"
-	"github.com/urmzd/orchagent/flow/toolprovider"
+	"github.com/urmzd/humagen/pkg/graph"
+	"github.com/urmzd/saige/flow/event"
 
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/alerts"
@@ -67,11 +69,16 @@ type hidden struct {
 	sourceRule                                                    string
 	sourceSuggestion                                              string
 	project, agent, schedule, rule, source, eval, client, variant string
+	modelProvider                                                 string
 	run, thread, message, artifact, agentNote, projectNote, doc   string
 	workspaceFile, workspaceRevision                              string
 	scratchpad                                                    string
-	memoryProposal                                                string
-	personalNote                                                  string
+	// candidate is the eval candidate a down rating of the hidden run opened.
+	candidate      string
+	memoryProposal string
+	personalNote   string
+	// background is a watch another person of the hidden workspace owns.
+	background string
 	// connector is a catalog connector of the hidden project, owned by the
 	// workspace's machine and published to that project.
 	connector string
@@ -152,7 +159,10 @@ func hide(t *testing.T, f *fixture, owner string, inside bool) hidden {
 		setup:   seedHiddenSetup(t, f),
 		inside:  inside,
 		project: "Canary" + marker, agent: "canary-" + marker, schedule: "canary-" + marker, rule: "canary-" + marker,
-		source: "canary-" + marker, eval: "canary-" + marker, client: "canary-" + marker, variant: "lean-" + marker,
+		// A provider is the whole workspace's, as a client is: its name is no
+		// secret from the workspace's own people, so it carries no marker.
+		modelProvider: "hidden-models",
+		source:        "canary-" + marker, eval: "canary-" + marker, client: "canary-" + marker, variant: "lean-" + marker,
 		provider: canaryProvider,
 	}
 	must := func(method, path, body string, want int) map[string]any {
@@ -167,6 +177,7 @@ func hide(t *testing.T, f *fixture, owner string, inside bool) hidden {
 
 	must("POST", "/api/agents", `{"name":"`+h.agent+`","model":"offline","provider":"offline","system_prompt":"Prompt `+marker+`."}`, http.StatusCreated)
 	must("POST", "/api/projects", `{"name":"`+h.project+`","description":"Project `+marker+`."}`, http.StatusCreated)
+	must("PUT", "/api/model-providers/"+h.modelProvider, `{"kind":"openai","base_url":"http://127.0.0.1:9/v1"}`, http.StatusOK)
 	// The agent lives in the project, and the project is members only: its
 	// creator, who holds projects:govern, is its one member.
 	must("PUT", "/api/agents/"+h.agent+"/home", `{"project":"`+h.project+`"}`, http.StatusOK)
@@ -189,6 +200,11 @@ func hide(t *testing.T, f *fixture, owner string, inside bool) hidden {
 		t.Fatal(err)
 	}
 	h.personalNote = personal.ID
+	watch, err := f.p.Background.Create("acme", background.Spec{Kind: background.Watch, Owner: "canary-memory-owner", Agent: h.agent, Session: "canary-session", Project: h.project, Text: "Watch " + marker + "."}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.background = watch.ID
 	skill, err := f.p.SkillLibrary.Draft("acme", "svc-acme", library.Scope{Kind: "project", Project: h.project}, library.Definition{Skill: projects.Skill{Name: "hidden-skill", Description: "Skill " + marker, Instructions: "Instructions " + marker}, Tools: []string{}}, 0, nil, time.Now())
 	if err != nil {
 		t.Fatal(err)
@@ -209,6 +225,7 @@ func hide(t *testing.T, f *fixture, owner string, inside bool) hidden {
 	run := must("POST", "/api/runs", `{"agent":"`+h.agent+`","text":"Run `+marker+`.","project":"`+h.project+`"}`, http.StatusAccepted)
 	h.run, h.thread = str(run, "id"), str(run, "thread")
 	ended(t, f, owner, h.run)
+	h.rateDown(t, f, owner)
 	h.seedSession(t, f, f.person(t, "acme", "00u-session-owner", "Canary", "humagen-admins"))
 	h.handoff = "handoff-" + marker
 	if _, err := f.p.Operations.SetHandoff("acme", operations.Handoff{ID: h.handoff, From: h.agent, To: h.agent, Project: h.project, Thread: h.thread, Owner: "svc-acme", Goal: "Contract " + marker, DoneWhen: "Review " + marker, State: operations.Result, RunID: h.run, Chain: []string{"root", h.agent}, Inputs: []operations.Input{}}, 0, time.Now()); err != nil {
@@ -387,6 +404,21 @@ func hide(t *testing.T, f *fixture, owner string, inside bool) hidden {
 	return h
 }
 
+// rateDown rates the hidden run down with a reason, as tok, which opens an
+// eval candidate holding the run's words.
+func (h *hidden) rateDown(t *testing.T, f *fixture, tok string) {
+	t.Helper()
+	want(t, f, tok, "PUT", "/api/runs/"+h.run+"/feedback", `{"rating":"down","reason":"wrong","comment":"Comment `+marker+`"}`, http.StatusOK)
+	for _, c := range kept(f.p.Evals.OpenCandidates("acme", h.agent)) {
+		if c.Run == h.run {
+			h.candidate = c.ID
+		}
+	}
+	if h.candidate == "" {
+		t.Fatal("the down rating of the hidden run opened no eval candidate")
+	}
+}
+
 // naming is a Slack client's body naming the hidden agent: as its default,
 // in its list, beside an agent the outsider sees when they are in the
 // workspace, and as the agent a bot stands for.
@@ -415,6 +447,7 @@ func hidePrivate(t *testing.T, f *fixture, owner string) hidden {
 	h.thread = started["thread"].(map[string]any)["id"].(string)
 	h.run = started["runs"].([]any)[0].(map[string]any)["id"].(string)
 	ended(t, f, ana, h.run)
+	h.rateDown(t, f, ana)
 	h.seedSession(t, f, ana)
 	h.handoff = "private-handoff-" + marker
 	if _, err := f.p.Operations.SetHandoff("acme", operations.Handoff{ID: h.handoff, From: h.agent, To: h.agent, Project: h.project, Thread: h.thread, Owner: "00u-ana", Goal: "Contract " + marker, DoneWhen: "Review " + marker, State: operations.Result, RunID: h.run, Chain: []string{"root", h.agent}, Inputs: []operations.Input{}}, 0, time.Now()); err != nil {
@@ -561,8 +594,13 @@ func (h hidden) holds(body string) bool {
 // unplaced are the path parameters that name something outside any project,
 // which a member of the workspace may see.
 func (h hidden) unplaced(path, param string) bool {
+	if strings.HasPrefix(path, "/api/store/") {
+		// A store package is the platform's, the same in every workspace:
+		// naming one names nothing the hidden workspace holds.
+		return true
+	}
 	if h.private {
-		if strings.HasPrefix(path, "/api/sessions/") {
+		if strings.HasPrefix(path, "/api/sessions/") || strings.HasPrefix(path, "/api/messages/") {
 			return false
 		}
 		if param == "part" || param == "question" {
@@ -574,7 +612,7 @@ func (h hidden) unplaced(path, param string) bool {
 		case strings.HasPrefix(path, "/api/inbox/"):
 			return h.message == ""
 		}
-		return !slices.ContainsFunc([]string{"/api/runs/", "/api/threads/", "/api/deletions/", "/api/artifacts/", "/api/alerts/", "/api/assignments/", "/api/handoffs/"}, func(p string) bool { return strings.HasPrefix(path, p) })
+		return !slices.ContainsFunc([]string{"/api/runs/", "/api/threads/", "/api/deletions/", "/api/artifacts/", "/api/alerts/", "/api/assignments/", "/api/handoffs/", "/api/eval-candidates/"}, func(p string) bool { return strings.HasPrefix(path, p) })
 	}
 	if !h.inside {
 		return false
@@ -583,7 +621,7 @@ func (h hidden) unplaced(path, param string) bool {
 	case param == "variant", param == "client", param == "handle", param == "provider":
 		// A tool provider is the workspace's: everyone in it may connect to it.
 		return true
-	case strings.HasPrefix(path, "/api/knowledge/"), strings.HasPrefix(path, "/api/clients/"):
+	case strings.HasPrefix(path, "/api/knowledge/"), strings.HasPrefix(path, "/api/clients/"), strings.HasPrefix(path, "/api/model-providers/"):
 		return true
 	case strings.HasPrefix(path, "/api/branding/"):
 		// Branding is the workspace's: everyone in it reads its fonts.
@@ -612,6 +650,8 @@ func (h hidden) value(path, param string) (string, bool) {
 			return h.corpus, true
 		case prefix("/api/alert-rules/"):
 			return h.rule, true
+		case prefix("/api/model-providers/"):
+			return h.modelProvider, h.modelProvider != ""
 		case prefix("/api/knowledge/"):
 			return h.source, true
 		case prefix("/api/evals/"):
@@ -626,7 +666,7 @@ func (h hidden) value(path, param string) (string, bool) {
 		}
 	case "id":
 		switch {
-		case prefix("/api/sessions/"):
+		case prefix("/api/sessions/"), prefix("/api/messages/"):
 			return h.session, h.session != ""
 		case prefix("/api/library/skills/"):
 			return h.librarySkill, true
@@ -634,13 +674,16 @@ func (h hidden) value(path, param string) (string, bool) {
 			return h.notificationID, true
 		case prefix("/api/me/memory/"):
 			return h.personalNote, true
+		case prefix("/api/me/background/"):
+			return h.background, h.background != ""
 		case prefix("/api/agents/{name}/memory/"):
 			return h.agentNote, true
 		case prefix("/api/projects/{name}/memory/"):
 			return h.projectNote, true
 		case prefix("/api/memory/files/proposals/"):
 			return h.memoryProposal, true
-		case prefix("/api/knowledge/{name}/documents/"):
+		case prefix("/api/knowledge/{name}/documents/"), prefix("/api/knowledge/{name}/imports/"):
+			// An import names the document it replaces as an edit does.
 			return h.doc, true
 		case prefix("/api/source-link-suggestions/"):
 			return h.sourceSuggestion, true
@@ -648,6 +691,8 @@ func (h hidden) value(path, param string) (string, bool) {
 			return h.sourceRule, true
 		case prefix("/api/handoffs/"):
 			return h.handoff, true
+		case prefix("/api/eval-candidates/"):
+			return h.candidate, true
 		case prefix("/api/assignments/"):
 			return h.assignment, true
 		case prefix("/api/runs/"):
@@ -662,6 +707,10 @@ func (h hidden) value(path, param string) (string, bool) {
 			return h.client, true
 		case prefix("/api/alerts/"):
 			return h.alert, true
+		case prefix("/api/graph/nodes/"):
+			// The hidden corpus is isolated, so its warehouse's system node
+			// is keyed under it.
+			return graph.ID("corpus:" + h.corpus + "/system:catalog/" + h.connector), h.corpus != ""
 		case prefix("/api/projects/{name}/announcements/"):
 			return h.announcement, true
 		}
@@ -822,7 +871,7 @@ func sweepGets(t *testing.T, f *fixture, owner, outsider string, inside bool) {
 func sweepGetsOf(t *testing.T, f *fixture, outsider string, h hidden) {
 	t.Helper()
 	s := loadSpec(t)
-	defaults := map[string]string{"run": "missing", "channel": "C01PUBLIC", "project": "~", "permission": "runs:read", "q": "hello", "agent": h.agent, "names": "missing", "scope": "project", "file": "notes/missing.md", "path": h.workspaceFile, "revision": h.workspaceRevision, "repo": "acme/missing", "number": "1"}
+	defaults := map[string]string{"run": "missing", "channel": "C01PUBLIC", "project": "~", "permission": "runs:read", "q": "hello", "agent": h.agent, "names": "missing", "scope": "project", "file": "notes/missing.md", "path": h.workspaceFile, "revision": h.workspaceRevision, "repo": "acme/missing", "number": "1", "roots": "true"}
 
 	var keys []string
 	for key := range s.ops {
@@ -1251,6 +1300,11 @@ func sweepWrites(t *testing.T, f *fixture, owner, outsider string, h hidden) {
 	for _, a := range kept(f.p.Alerts.Alerts("acme")) {
 		if a.ID == h.alert && !a.Open() {
 			t.Errorf("after the sweep the hidden alert was acknowledged by %s", a.AckedBy)
+		}
+	}
+	if h.background != "" {
+		if w, err := f.p.Background.Get("acme", h.background); err != nil || w.State != background.Active {
+			t.Errorf("after the sweep the hidden watch is %q: %v", w.State, err)
 		}
 	}
 }

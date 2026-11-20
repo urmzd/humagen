@@ -8,8 +8,8 @@ import (
 
 	"github.com/urmzd/humagen/internal/wire"
 
-	"github.com/urmzd/orchagent/flow/event"
-	"github.com/urmzd/orchagent/flow/runtime"
+	"github.com/urmzd/saige/flow/event"
+	"github.com/urmzd/saige/flow/runtime"
 
 	"github.com/urmzd/humagen/pkg/call"
 )
@@ -382,4 +382,65 @@ func TestACallEndingAfterItsCallerSettlesClimbsToTheRoot(t *testing.T) {
 	if got, _ := x.Get("acme", rootID); got.Spent != 1000 {
 		t.Fatalf("the root spent %d, want the whole tree's 1000", got.Spent)
 	}
+}
+
+// A run the ledger ends before its final event is observed is ended with the
+// usage the runtime recorded, in one write: whoever reads it as ended reads
+// what it used, not what its events had tallied so far, and what is observed
+// or settled afterwards does not change it.
+func TestARunEndedFromTheLedgerCarriesItsRecordedUsage(t *testing.T) {
+	one := event.Usage{ModelCalls: 1, Requests: 1}
+	recorded := &event.RunUsage{Own: one, Children: one.Add(one), Total: one.Add(one).Add(one)}
+	child := event.UsageChild{AccountingID: event.ChildRunAccountingID("c1"), RunID: "c1", Agent: "ops", Depth: 1, Usage: one}
+	for name, finish := range map[string]func(x *Index) (Run, bool){
+		"completed": func(x *Index) (Run, bool) {
+			return x.EndRecorded("acme", "r1", Completed, "done", "", recorded, t0.Add(time.Second))
+		},
+		"stopped": func(x *Index) (Run, bool) {
+			return x.StopRecorded("acme", "r1", "so far", "asked", recorded, t0.Add(time.Second))
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			x := NewIndex()
+			record(t, x, "acme", "r1", "lead", "api", 0, nil)
+			// Only the first of two children's reports was observed when the
+			// ledger said the run was over.
+			if _, ok := x.ObserveUsage(event.Envelope{Run: "r1", Tenant: "acme", Seq: 1, Type: event.TypeUsageChild, Data: child, Time: t0}); !ok {
+				t.Fatal("the child's usage was not folded")
+			}
+			r, ended := finish(x)
+			if !ended || !r.Status.Terminal() {
+				t.Fatalf("got %+v, %v", r, ended)
+			}
+			for _, got := range []Run{r, get(t, x, "acme", "r1")} {
+				if !got.UsageRecorded() || got.Usage.Children.ModelCalls != 2 || got.Usage.Own.ModelCalls != 1 || got.Usage.Total.ModelCalls != 3 {
+					t.Fatalf("the ended run's usage is %+v (recorded %v), want the ledger's", got.Usage, got.UsageRecorded())
+				}
+			}
+			// A report observed late, and settling, leave the record alone.
+			late := child
+			late.AccountingID, late.RunID = event.ChildRunAccountingID("c9"), "c9"
+			x.ObserveUsage(event.Envelope{Run: "r1", Tenant: "acme", Seq: 2, Type: event.TypeUsageChild, Data: late, Time: t0})
+			x.SetUsage("acme", "r1", &event.RunUsage{}, 0)
+			if got := get(t, x, "acme", "r1"); got.Usage.Children.ModelCalls != 2 || got.Usage.Total.ModelCalls != 3 {
+				t.Fatalf("the recorded usage changed to %+v", got.Usage)
+			}
+		})
+	}
+	// Without a record the run ends as before, with what was tallied.
+	x := NewIndex()
+	record(t, x, "acme", "r1", "lead", "api", 0, nil)
+	x.ObserveUsage(event.Envelope{Run: "r1", Tenant: "acme", Seq: 1, Type: event.TypeUsageChild, Data: child, Time: t0})
+	if r, ended := x.End("acme", "r1", Completed, "done", "", t0.Add(time.Second)); !ended || r.UsageRecorded() || r.Usage == nil || r.Usage.Children.ModelCalls != 1 {
+		t.Fatalf("got %+v (usage %+v), %v", r, r.Usage, ended)
+	}
+}
+
+func get(t *testing.T, x *Index, tenant, id string) Run {
+	t.Helper()
+	r, err := x.Get(tenant, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return r
 }

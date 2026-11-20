@@ -4,16 +4,16 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/threads"
-	"github.com/urmzd/orchagent/flow/event"
+	"github.com/urmzd/saige/flow/event"
 )
 
 func (s *Server) sessionRoutes(mux *http.ServeMux) {
@@ -23,6 +23,7 @@ func (s *Server) sessionRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/sessions/{id}/messages", s.authed(auth.RunsWrite, s.seenSession(s.postSession)))
 	mux.HandleFunc("GET /api/sessions/{id}/stream", s.authed(auth.RunsRead, s.seenSession(s.sessionEvents)))
 	mux.HandleFunc("POST /api/sessions/{id}/stop", s.authed(auth.RunsWrite, s.seenSession(s.stopSession)))
+	mux.HandleFunc("POST /api/sessions/{id}/browser", s.authed(auth.RunsWrite, s.seenSession(s.sessionBrowser)))
 	mux.HandleFunc("POST /api/sessions/{id}/people", s.authed(auth.RunsWrite, s.seenSession(s.inviteSession)))
 	mux.HandleFunc("POST /api/sessions/{id}/links", s.authed(auth.RunsWrite, s.seenSession(s.linkSession)))
 	mux.HandleFunc("PUT /api/sessions/{id}/messages/{mid}/feedback", s.authed(auth.RunsRead, s.seenSession(s.sessionFeedback)))
@@ -44,6 +45,19 @@ func (s *Server) startSession(w http.ResponseWriter, r *http.Request, who auth.P
 	if !decode(w, r, &in) {
 		return
 	}
+	if in.Surface != nil {
+		v, started, err := s.P.StartSurfaceSession(r.Context(), who, in)
+		if err != nil {
+			s.problem(w, err)
+			return
+		}
+		status := http.StatusOK
+		if started {
+			status = http.StatusCreated
+		}
+		ok(w, status, v)
+		return
+	}
 	v, err := s.P.StartSession(r.Context(), who, in)
 	if err != nil {
 		s.problem(w, err)
@@ -62,11 +76,6 @@ func (s *Server) listSessions(w http.ResponseWriter, r *http.Request, who auth.P
 		}
 		limit = n
 	}
-	all, err := s.P.ListSessions(r.Context(), who, q.Get("parent"), q.Get("agent"), q.Get("project"), q.Get("status"))
-	if err != nil {
-		s.problem(w, err)
-		return
-	}
 	if q.Has("roots") && q.Get("roots") != "true" && q.Get("roots") != "false" {
 		fail(w, 400, "roots is true or false")
 		return
@@ -75,50 +84,19 @@ func (s *Server) listSessions(w http.ResponseWriter, r *http.Request, who auth.P
 		fail(w, 400, "mine is true or false")
 		return
 	}
-	filtered := all[:0]
-	for _, v := range all {
-		if q.Get("roots") == "true" && strings.HasPrefix(v.Parent, "s_") {
-			continue
-		}
-		if q.Get("mine") == "true" {
-			th, err := s.P.SessionRecord(r.Context(), who, v.ID)
-			if err != nil {
-				continue
-			}
-			mine := th.CreatedBy == who.Subject
-			for _, person := range th.Participants {
-				if person.Kind == threads.Person && person.Name == who.Subject {
-					mine = true
-				}
-			}
-			if !mine {
-				continue
-			}
-		}
-		filtered = append(filtered, v)
+	page, next, err := s.P.SessionsPage(r.Context(), who, platform.SessionQuery{
+		Parent: q.Get("parent"), Agent: q.Get("agent"), Project: q.Get("project"), Status: q.Get("status"),
+		Roots: q.Get("roots") == "true", Mine: q.Get("mine") == "true",
+	}, limit, q.Get("after"))
+	if errors.Is(err, threads.ErrCursor) {
+		fail(w, 400, "after is not the next of a page of sessions")
+		return
 	}
-	all = filtered
-	start := 0
-	if after := q.Get("after"); after != "" {
-		found := false
-		for i, v := range all {
-			if v.ID == after {
-				start = i + 1
-				found = true
-				break
-			}
-		}
-		if !found {
-			fail(w, 400, "after is not a session cursor in this listing")
-			return
-		}
+	if err != nil {
+		s.problem(w, err)
+		return
 	}
-	end := min(start+limit, len(all))
-	next := ""
-	if end < len(all) {
-		next = all[end-1].ID
-	}
-	ok(w, 200, map[string]any{"sessions": all[start:end], "next": next})
+	ok(w, 200, map[string]any{"sessions": page, "next": next})
 }
 func (s *Server) getSession(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	q := r.URL.Query()

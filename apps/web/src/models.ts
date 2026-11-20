@@ -6,9 +6,8 @@ export const POLICY = "policy";
 /** The most fallbacks a chain may hold. The platform refuses more. */
 export const MAX_FALLBACKS = 4;
 
-/** A model each provider starts on when picked. */
+/** A model each provider kind starts on when picked. */
 export const defaultModel: Record<string, string> = {
-  offline: "offline",
   anthropic: "claude-sonnet-5-5",
   openai: "gpt-5.1",
 };
@@ -49,6 +48,20 @@ export const providerCatalog: ProviderInfo[] = [
   },
 ];
 
+/** The catalog entry for a provider kind, when the console lists models for it. */
+export const catalogFor = (kind?: string) => providerCatalog.find((p) => p.id === kind);
+
+/** A provider set up for agents: its name, and its kind where the server knows it. */
+export type ConfiguredProvider = { name: string; kind?: string };
+
+/**
+ * The kind of the provider an agent names: the one the server reports for it, else the
+ * name itself when that is a kind (a deployment that names its provider "anthropic").
+ */
+export function kindOf(name: string, configured: ConfiguredProvider[] = []): string | undefined {
+  return configured.find((c) => c.name === name)?.kind ?? catalogFor(name)?.id;
+}
+
 /** A provider's display name, falling back to its id. */
 export const providerName = (id: string) => providerCatalog.find((p) => p.id === id)?.name ?? id;
 
@@ -63,7 +76,6 @@ export const providers = [
     label: "openai",
     hint: "OpenAI, or a server that speaks its API, such as Ollama or vLLM.",
   },
-  { value: "offline", label: "offline", hint: "Calls no model. For trying the platform out." },
 ];
 
 /** When a call moves to the next model, in words. `any` is the default and stands alone. */

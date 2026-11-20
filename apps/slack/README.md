@@ -39,14 +39,35 @@ Run `pnpm install` once from the repository root. The adapter and renderers are 
 | `/skill` or `/agent skills` | Lists this client's configured skills. `/skill name arguments` invokes one; code channels also offer each configured slash command dynamically. |
 | `/agent connections` | Opens your private provider status and connect/disconnect controls. Supply an allowed secret reference; keep tokens out of Slack. |
 | `/agent canvas RUN_ID` | Publishes a finished answer from this channel as a Slack canvas, shared with the channel (or just you in a DM). |
+| A plan, in a code channel | The turn's plan is kept as a checklist on one canvas, attached to the channel as the **Plan** tab, where people may comment and only the app writes. See [The plan tab](#the-plan-tab). |
 | Uploaded files and images | A mapped person's triggering message is reread through its client on the server and ingested as agent attachments, including file-only DMs. Unread files are explained to the agent. |
+| **Run Details** on a finished turn | Shows you alone, in an ephemeral message, the run's agent, model, tokens, cost and elapsed time. Offered when the app's client maps people; the run is read as you, so you see it only where you may read the run. |
 | Stop button | Stops the run, confirms in the thread, sets the session to active. |
 | Home tab | For a person the client maps, the shared Home read as them: what needs them, what's new in their projects and their projects, with Ask a Question, Build an Agent and Search Context. Anyone else sees what is waiting on them in Humagen's inbox. |
 
 A turn streams with `chat.startStream`, `appendStream` and `stopStream`, and
 the session status follows it: processing while it works, active when it ends.
+While it works, one line above the reply box says what it is doing, such as
+"Checking recent deploys": the running step's title, else the plan's, else
+"Thinking", set with `assistant.threads.setStatus` and cleared when the run
+waits on a person or ends. See
+[the status line](../../docs/reference/slack.md#the-slack-apps-status-line).
 Where native streaming is refused, the turn is posted once and edited. A
 message sent while a turn is running waits for it, as in the console.
+
+In a code channel the session is the channel itself. There a turn also keeps
+the channel's context bar to what its run says (the project, the agent
+answering, and the conversation in the console when `HUMAGEN_PUBLIC_URL` is
+set) with `agents.conversations.setProperties`, and the session is named once
+after its conversation's title with `agents.sessions.rename`, when Humagen has
+one. A run names no repository, branch, pull request or check, so the bar
+shows none. An ordinary thread or direct message makes neither call, and a
+channel Slack refuses either for is not asked again; the answer never depends
+on them. `apps/slack/src/codechannel.ts` also holds the close of a code
+channel (post a summary, close the session, archive with the summary shared
+back to where the session began), which nothing calls yet: Humagen has no
+event that says a session is over, and the app never archives a channel on
+its own.
 
 Bot messages, the app's own messages, edits and joins never start a run.
 Deliveries from any team but `SLACK_TEAM_ID` are ignored.
@@ -63,8 +84,10 @@ modal preserves an existing comment. The store uses the configured state backend
 so use Postgres to keep feedback across server restarts.
 
 File intake requires a configured Slack client whose bot token can read the
-message, and `files:read`. Bytes live in the server workspace's `attachments`
-directory as tenant-scoped, content-addressed blobs. `orchagent/flow/attachment` bounds file count,
+message, and `files:read`. The record the server keeps for an app it starts
+(`slack-app-<team>`) has no bot token, so an app run that way reads no files:
+a message with a file is refused. Bytes live in the server workspace's `attachments`
+directory as tenant-scoped, content-addressed blobs. `saige/flow/attachment` bounds file count,
 bytes and fetch time, checks content types, and resolves the references for the
 model. The app supplies only a message location, never a download URL or digest.
 Files from another person's Slack message are refused. Reinstall or reauthorize
@@ -78,6 +101,86 @@ gives the runs it starts that skill's instructions. Changes appear
 in a code channel on its next message after the client cache refreshes (30 seconds).
 Ordinary Slack channels use `/skill`; Slack's dynamic command API applies only to
 code channels. This does not install new agent skills or grant additional tools.
+
+## Code channels
+
+Off by default. With `code_channels: true` on the Slack surface
+(`SLACK_CODE_CHANNELS=1` when the app is run by hand), a finished answer in a
+thread or a direct message carries a **Continue in a Code Channel** button.
+Nothing decides for the person that a request is coding work: the app knows an
+agent by its name and description and a run names no repository, so there is no
+signal to trust, and a channel is opened only when someone presses.
+
+Pressing it calls `agents.conversations.create` with a session id made from the
+thread (`<channel>-<thread ts>`), so a second press, a redelivery or a restart
+asks for the same channel and never a second one, and posts
+"Continuing in #channel. Follow along there." in the thread. The person who
+asked or an operator may press in a channel thread; in a direct message it is
+theirs already.
+
+The conversation does not change, only where it is shown. A mention in the code
+channel is keyed by the thread the channel was opened from, so it is the next
+turn of that same Humagen conversation, and the thread keeps working too. The
+link from the channel back to its thread is read from Slack
+(`conversations.info`, the channel's `agent_session.origin_link`), not stored.
+The first turn in the channel carries what people said in the thread since the
+app was last asked there, as [thread history](#thread-history) does. The
+channel's stop button stops the turn in flight in it, and Retry pressed there
+asks again there.
+
+Turning it on changes the manifest: `humagen slack manifest -f humagen.yaml`
+then adds the `code_channels` feature and the `code_channels:manage`,
+`channels:read` and `groups:read` scopes. Push the manifest and reinstall the
+app, or Slack refuses the call. Every refusal leaves things as they were:
+
+| Slack says | What happens |
+|---|---|
+| `agents.conversations.create` is refused for a reason that will not pass by itself (a missing scope, a plan or an app without code channels) | The person who pressed is told the thread carries on, nothing is posted, and the button is not offered again until the app restarts |
+| It is refused for a reason that may pass (rate limit, a Slack error) | The person is told, and the button stays |
+| `conversations.info` is refused | The channel is answered as an ordinary one, as before this setting; after a missing scope Slack is not asked again |
+| The thread cannot be read | The first turn in the channel goes without the thread's messages |
+
+Not moved: a thread in a channel bound to a project, and a thread a mapped
+person posts in as themselves (that conversation is the platform's, found by
+the Slack thread itself). In a code channel a mapped person asks through the
+app as themselves, and files attached there are refused, as they are for
+anyone who asks through the app. Inbox items of a moved conversation are still
+posted in the thread it started in.
+
+## The plan tab
+
+In a Slack code channel, a turn that has a plan (a plan title and its steps)
+is written to one canvas per channel and attached as the **Plan** tab with
+comment access (`canvases.create`, then `agents.conversations.setView`). Each
+step is a checkbox: empty when not started, empty and marked *in progress*
+while it runs, ticked when done. One line above the steps says how the work
+stands. Later plans replace the canvas in place
+(`agents.conversations.setCanvasContent`), so a comment stays on a line that
+did not change.
+
+Before the next turn in that channel the app reads the open comments
+(`agents.conversations.getCanvas`) and puts the ones the agent has not been
+shown ahead of the question, each with who wrote it and the line it is on,
+between two lines that mark them as people's comments on the plan. A comment
+goes once: it is recorded as shown when the run starts. At most 20 comments
+and 4,000 characters go with one turn, oldest first; the rest go with the next.
+
+Two limits today:
+
+- A plan title comes from the shared turn model (`plan.updated`). Humagen's run
+  events do not carry one yet, so no run produces a plan tab until the adapter
+  maps one.
+- Comments reach a run the app starts itself. A person the client maps posts as
+  themselves through `POST /api/threads`, which takes only their own words and
+  a Slack message to anchor them; comments wait there until a turn can carry
+  them.
+
+Nothing here applies outside a code channel. A direct message is never asked
+about. Any other channel is asked once (`agents.conversations.listViews`,
+before any canvas is made, so an ordinary channel never gets a stray canvas),
+and a channel Slack refuses is left alone for an hour. A refusal never costs a
+turn: the plan still streams in the thread as before. It needs no scope beyond
+`canvases:write`.
 
 ## Thread history
 
@@ -144,6 +247,15 @@ events.
    answers 409 and the app asks the person to tag an agent, naming one it may
    reach.
 
+`HUMAGEN_CLIENT` is the id of the client record this app is. An app that
+`humagen serve` starts is given it by the server, and only when the Platform
+document maps people (`surfaces.slack.people`): the server keeps the record
+`slack-app-<team id in lowercase>` with that map and its own machine, routing
+to any agent with no default, so who answers is as it is with no client. With
+nobody mapped it is not set. An app run by hand sets it itself, to a client
+made through the API. See
+[the spec](../../docs/reference/spec.md#whom-the-slack-app-acts-for).
+
 Nothing is picked in the app. With `HUMAGEN_CLIENT` set, the client record's
 default agent and `agents` list apply, read again every 30 seconds. A client
 that lists agents and names no default answers nothing: the default Humagen would
@@ -153,7 +265,12 @@ reason such a client never sends `auto`, as a tag or as its default, since
 
 ## Identity and permissions
 
-The app authenticates as a machine. Least privilege:
+The app authenticates as a machine. Under `tailscale` sign-in, where no
+process can sign in from outside, the server that starts the app makes its
+credential: a token new at every start, with the scopes below and the subject
+`slack-app:<team id>`
+([security](../../docs/architecture/security.md#the-slack-app-under-tailscale)).
+An app run by hand has no credential in that mode. Least privilege:
 
 | Scope | For |
 |-------|-----|
@@ -193,7 +310,10 @@ buttons. A click is answered through Humagen as the Slack person, only when
 `HUMAGEN_CLIENT` names a client whose `slack.machine` is this app's
 credential and whose `slack.people` maps them; anyone else is told they cannot,
 and Humagen is not asked. The same mapping makes the runs a mapped person
-asks for theirs. A reply is typed in the console for now. See
+asks for theirs. Something Else opens a modal for the words, sent as the
+same person. A press on a card whose question is no longer waiting (answered
+elsewhere, expired, its run stopped) changes nothing: the person is told and
+the card shows what was recorded. See
 [clients](../../docs/reference/clients.md#people-a-slack-app-answers-for).
 
 A refusal or error from Humagen is shown in Humagen's failure words; the
@@ -220,7 +340,7 @@ Slack redelivery joins the run it started, and the app asks Humagen before
 starting it. The stop button asks Humagen which runs in the thread are still
 going.
 
-One thing is kept on disk: the Slack streams this process has open (channel,
+Two things are kept on disk. The first is the Slack streams this process has open (channel,
 message and thread, nothing else), in `SLACK_STREAM_JOURNAL`, by default
 `$XDG_STATE_HOME/warp-slack/streams-<team>.json` (`~/.local/state` when
 unset). A process that crashes or is killed mid-turn leaves its streams open;
@@ -228,6 +348,11 @@ the next one closes each with a note that the answer was cut off and asks
 again, and sets the thread's session to active, before it connects. A close
 that fails for want of the network is tried again at the next start. One
 journal file serves one process.
+
+Beside it, in `plan-canvases-<team>.json`, is which canvas is each code
+channel's plan and which of its comments the agent has been shown: Slack ids
+only. Without it the next plan takes up the channel's Plan tab again or makes a
+new canvas for it, and open comments are shown to the agent once more.
 
 Kept in memory, and lost on restart:
 

@@ -6,12 +6,12 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/urmzd/humagen/internal/mcptools"
 	"github.com/urmzd/humagen/pkg/audit"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/connectionauth"
 	"github.com/urmzd/humagen/pkg/personctx"
-	"github.com/urmzd/orchagent/flow/mcptools"
 )
 
 // ConnectionPreset lists a service and the next available connection action.
@@ -28,7 +28,16 @@ type ConnectionPreset struct {
 	Scope             string            `json:"scope"`
 	GrantedScopes     *[]string         `json:"granted_scopes,omitempty"`
 	Health            *ConnectionHealth `json:"health,omitempty"`
+	// client names the registered application a preset signs in through when
+	// its service takes no registration of its own: "google" for the Google
+	// Workspace tool servers, which share one Google Cloud OAuth client.
+	client string
 }
+
+// GoogleClient is the name of the one registered Google application
+// (connections.clients.google) every Google Workspace tool server signs in
+// through.
+const GoogleClient = "google"
 
 var connectionPresets = []ConnectionPreset{
 	{ID: "slack", Name: "Slack", Kind: "client_oauth", Endpoint: "https://slack.com/api/", Scope: "workspace"},
@@ -36,7 +45,20 @@ var connectionPresets = []ConnectionPreset{
 	{ID: "notion", Name: "Notion", Kind: "oauth", Endpoint: "https://mcp.notion.com/mcp", Scope: "person"},
 	{ID: "linear", Name: "Linear", Kind: "oauth", Endpoint: "https://mcp.linear.app/mcp", Scope: "person"},
 	{ID: "granola", Name: "Granola", Kind: "oauth", Endpoint: "https://mcp.granola.ai/mcp", Scope: "person"},
+	// Jira, Confluence, Jira Service Management and the Teamwork Graph, on
+	// Atlassian's own server. It registers a client by itself.
+	{ID: "atlassian", Name: "Atlassian", Kind: "oauth", Endpoint: "https://mcp.atlassian.com/v2/mcp", Scope: "person"},
+	// Google's own Workspace tool servers (Developer Preview). Google takes no
+	// client registration, so they sign in through the deployment's Google
+	// application.
+	{ID: "gmail", Name: "Gmail", Kind: "oauth", Endpoint: "https://gmailmcp.googleapis.com/mcp/v1", Scope: "person", client: GoogleClient},
+	{ID: "google-calendar", Name: "Google Calendar", Kind: "oauth", Endpoint: "https://calendarmcp.googleapis.com/mcp/v1", Scope: "person", client: GoogleClient},
+	{ID: "google-drive", Name: "Google Drive files", Kind: "oauth", Endpoint: "https://drivemcp.googleapis.com/mcp/v1", Scope: "person", client: GoogleClient},
+	{ID: "google-docs", Name: "Google Docs", Kind: "oauth", Endpoint: "https://docsmcp.googleapis.com/mcp/v1", Scope: "person", client: GoogleClient},
+	{ID: "google-sheets", Name: "Google Sheets", Kind: "oauth", Endpoint: "https://sheetsmcp.googleapis.com/mcp/v1", Scope: "person", client: GoogleClient},
+	{ID: "google-slides", Name: "Google Slides", Kind: "oauth", Endpoint: "https://slidesmcp.googleapis.com/mcp/v1", Scope: "person", client: GoogleClient},
 	{ID: "drive", Name: "Google Drive", Kind: "source_oauth", Endpoint: "https://www.googleapis.com/drive/v3/", Scope: "person"},
+	{ID: "onedrive", Name: "OneDrive", Kind: "source_oauth", Endpoint: "https://graph.microsoft.com/v1.0/", Scope: "person"},
 	{ID: "bigquery", Name: "BigQuery", Kind: "catalog_oauth", Endpoint: "https://bigquery.googleapis.com/bigquery/v2/", Scope: "person"},
 	{ID: "other", Name: "Other MCP", Kind: "tools", Scope: "person"},
 }
@@ -46,7 +68,7 @@ var connectionPresets = []ConnectionPreset{
 func DefaultConnectionProviders() []connectionauth.Provider {
 	out := []connectionauth.Provider{}
 	for _, p := range connectionPresets {
-		if p.Kind == "oauth" {
+		if p.Kind == "oauth" && p.client == "" {
 			out = append(out, connectionauth.Provider{Name: p.ID, Resource: p.Endpoint})
 		}
 	}
@@ -101,6 +123,9 @@ func (p *Platform) ConnectionPresets(who auth.Principal) ([]ConnectionPreset, er
 		}
 		if !p.ConnectionAuth.Available(c.ID) {
 			c.Reason = "An administrator must enable secure account connections for this workspace."
+			if c.client == GoogleClient && p.ConnectionAuth != nil {
+				c.Reason = "An administrator must add a Google OAuth client (connections.clients.google) before Google Workspace can be connected."
+			}
 			continue
 		}
 		if c.Kind == "oauth" && !resolved.Ceilings.AllowsToolServer((personctx.ToolServer{URL: c.Endpoint}).Host()) {
@@ -271,7 +296,7 @@ func (p *Platform) AuthorizeConnection(ctx context.Context, who auth.Principal, 
 	if base == "slack" && (!shared || !who.Can(auth.ClientsWrite)) {
 		return connectionauth.Authorization{}, ErrForbidden
 	}
-	if (base == "drive" || base == "bigquery") && shared {
+	if (oauthSource(base) || base == "bigquery") && shared {
 		return connectionauth.Authorization{}, personctx.ErrInvalid
 	}
 	resource := in.Endpoint
@@ -326,7 +351,7 @@ func (p *Platform) CompleteConnection(ctx context.Context, who auth.Principal, n
 	if !known && !strings.HasPrefix(base, "other-") {
 		return ErrProviderNotFound
 	}
-	if (base == "drive" || base == "bigquery") && strings.HasPrefix(name, "workspace-") {
+	if (oauthSource(base) || base == "bigquery") && strings.HasPrefix(name, "workspace-") {
 		return personctx.ErrInvalid
 	}
 	owner := connectionOwner(who, name)

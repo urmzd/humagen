@@ -2,8 +2,9 @@
 // process: small documents, each named by a namespace, a tenant and a key.
 //
 // It holds no domain logic. Every store built on it reads and writes per
-// request: it treats the database as the truth, reads one record (Lookup) or
-// one bounded page of a tenant's keys (List), and changes a record only at
+// request: it treats the database as the truth, reads one record (Lookup),
+// a bounded set of a tenant's keys at once (LookupMany) or one bounded page
+// of them (List), and changes a record only at
 // the version it read (Op.If), retrying on ErrConflict. A cache in front of it
 // may be dropped at any time without changing an answer. So any number of
 // processes on one database agree, and OpenPostgres takes no lock. The
@@ -160,6 +161,57 @@ type Store interface {
 	// Write applies ops in order, all or none. A conditional op whose record
 	// is not at its version fails the write with ErrConflict.
 	Write(ctx context.Context, namespace string, ops ...Op) error
+}
+
+// Many is a Store that reads several of one tenant's keys in one statement.
+// Both backends are one; LookupMany asks any Store.
+type Many interface {
+	// LookupMany returns the records of the keys that have one, in no
+	// order. A key with no record is left out.
+	LookupMany(ctx context.Context, namespace, tenant string, keys []string) ([]Record, error)
+}
+
+// LookupMany reads several of one tenant's keys at once: the records of the
+// keys that have one, in no order, a key with none left out. It is the read
+// for a page of rows that each name a record, in place of a Lookup a row. At
+// most MaxList keys are read at once; more is ErrInvalid. A Store that is not
+// a Many is asked for each key in turn.
+func LookupMany(ctx context.Context, st Store, namespace, tenant string, keys []string) ([]Record, error) {
+	if err := checkNames(namespace, nil); err != nil {
+		return nil, err
+	}
+	if len(keys) > MaxList {
+		return nil, errors.Join(ErrInvalid, errors.New("state: too many keys in one read"))
+	}
+	seen := make(map[string]bool, len(keys))
+	uniq := make([]string, 0, len(keys))
+	for _, k := range keys {
+		if k == "" || !utf8.ValidString(k) || strings.ContainsRune(k, 0) {
+			return nil, errors.Join(ErrInvalid, errors.New("state: a key is required, as UTF-8 without a NUL"))
+		}
+		if !seen[k] {
+			seen[k] = true
+			uniq = append(uniq, k)
+		}
+	}
+	if len(uniq) == 0 {
+		return nil, nil
+	}
+	if m, ok := st.(Many); ok {
+		return m.LookupMany(ctx, namespace, tenant, uniq)
+	}
+	out := make([]Record, 0, len(uniq))
+	for _, k := range uniq {
+		r, err := st.Lookup(ctx, namespace, tenant, k)
+		if errors.Is(err, ErrNotFound) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, nil
 }
 
 func checkNames(namespace string, ops []Op) error {

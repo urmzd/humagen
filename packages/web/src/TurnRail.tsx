@@ -305,7 +305,7 @@ export function TurnRail({
               <span
                 aria-hidden
                 data-mark="person"
-                className="inline-flex size-4 shrink-0 items-center justify-center rounded-full bg-aui-hover text-[9px] font-medium text-aui-fg"
+                className="inline-flex size-4 shrink-0 items-center justify-center rounded-full bg-aui-hover text-aui-2xs leading-none font-medium text-aui-fg"
               >
                 {(shown.agent.trim()[0] ?? "?").toUpperCase()}
               </span>

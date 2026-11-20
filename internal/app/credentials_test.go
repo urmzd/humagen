@@ -6,7 +6,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/urmzd/orchagent/flow/toolprovider"
+	"github.com/urmzd/humagen/internal/toolprovider"
 
 	"github.com/urmzd/humagen/pkg/credref"
 )

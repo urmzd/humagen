@@ -11,7 +11,7 @@ export interface HubTab {
 /** Workspace pages use Settings navigation instead of a second hub tab strip. */
 export function settingsPageLabel(route: Route): string | undefined {
   if (route.page === "directory" && route.tab === "people") return "People";
-  if (route.page === "connections") return "Connections";
+  if (route.page === "connections") return route.scope === "apps" ? "Apps" : "Plugins";
   if (route.page === "usage") return "Usage";
   if (route.page === "monitor" && route.tab === "health") return "Health";
   if (route.page === "action-policy") return "Policies";
@@ -29,11 +29,23 @@ export function workspaceHub(route: Route): WorkspaceHub | null {
   if (route.page === "monitor" && route.tab === "rules") return "notifications";
   if (route.page === "library" && (route.section === "skills" || route.section === "memory"))
     return "agents";
-  if (route.page === "context") return "agents";
   if (
-    ["agents", "agent", "agent-setup", "agent-network", "assignments", "agent-control"].includes(
-      route.page,
-    )
+    route.page === "knowledge" ||
+    route.page === "corpus" ||
+    route.page === "context" ||
+    route.page === "knowledge-graph"
+  )
+    return "agents";
+  if (
+    [
+      "agents",
+      "agent",
+      "agent-setup",
+      "agent-network",
+      "agent-store",
+      "assignments",
+      "agent-control",
+    ].includes(route.page)
   )
     return "agents";
   if (["operations", "action-policy", "usage", "monitor", "audit"].includes(route.page))
@@ -116,9 +128,19 @@ export function hubTabs(
               },
               {
                 label: "Knowledge",
-                route: { page: "context" },
-                active: route.page === "context",
+                route: { page: "knowledge" },
+                active:
+                  route.page === "knowledge" ||
+                  route.page === "corpus" ||
+                  route.page === "context" ||
+                  route.page === "knowledge-graph",
                 visible: can("knowledge:read"),
+              },
+              {
+                label: defaultCopy.agentStore.title,
+                route: { page: "agent-store" },
+                active: route.page === "agent-store",
+                visible: can("agents:read"),
               },
             ]
           : [

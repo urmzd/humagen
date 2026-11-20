@@ -52,3 +52,36 @@ func (s *Server) bigQueryProblem(w http.ResponseWriter, err error) {
 		s.problem(w, err)
 	}
 }
+
+func (s *Server) createSnowflakeConnector(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	var in platform.SnowflakeSetupInput
+	if !decode(w, r, &in) {
+		return
+	}
+	connector, err := s.P.CreateSnowflakeConnector(who, in)
+	if err != nil {
+		s.bigQueryProblem(w, err)
+		return
+	}
+	ok(w, http.StatusCreated, connector)
+}
+
+func (s *Server) putCatalogLogin(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	var in platform.CatalogLoginInput
+	if !decode(w, r, &in) {
+		return
+	}
+	if err := s.P.SetCatalogLogin(who, r.PathValue("name"), in); err != nil {
+		s.bigQueryProblem(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) deleteCatalogLogin(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	if err := s.P.DeleteCatalogLogin(who, r.PathValue("name")); err != nil {
+		s.bigQueryProblem(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}

@@ -11,8 +11,8 @@ import (
 	"github.com/urmzd/humagen/pkg/agents"
 	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/humagen/pkg/state/statetest"
-	"github.com/urmzd/orchagent/flow/definition"
-	"github.com/urmzd/orchagent/flow/definition/definitiontest"
+	"github.com/urmzd/saige/flow/definition"
+	"github.com/urmzd/saige/flow/definition/definitiontest"
 )
 
 func open2(t *testing.T, a, b state.Store) (*agents.Store, *agents.Store) {

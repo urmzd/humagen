@@ -107,7 +107,7 @@ func (p *Platform) GetConnection(ctx context.Context, who auth.Principal, name s
 			out.Mappings = append(out.Mappings, m)
 		}
 	}
-	if name == "drive" && who.Can(auth.KnowledgeRead) && p.Knowledge != nil {
+	if oauthSource(name) && who.Can(auth.KnowledgeRead) && p.Knowledge != nil {
 		sources, err := p.SourcesAs(who)
 		if err != nil {
 			return out, err
@@ -184,9 +184,11 @@ func (p *Platform) GetConnection(ctx context.Context, who auth.Principal, name s
 						repos = append(repos, rule.Repository)
 					}
 				}
-				for repo := range c.GitHub.AutoLabels {
-					if !slices.Contains(repos, repo) {
-						repos = append(repos, repo)
+				if a := c.GitHub.AutoReview; a != nil {
+					for repo, on := range a.Repositories {
+						if on && !slices.Contains(repos, repo) {
+							repos = append(repos, repo)
+						}
 					}
 				}
 				slices.Sort(repos)

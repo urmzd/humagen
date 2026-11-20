@@ -59,6 +59,7 @@ func exerciseSessionContract(t *testing.T, c *contract) map[string]string {
 	alert := c.call(token, "POST", "/api/sessions/{id}/alerts", path+"/alerts", `{"title":"Service needs review","priority":"normal"}`, 201)
 	c.call(token, "PATCH", "/api/alerts/{id}", "/api/alerts/"+alert.str("id"), `{"state":"resolved"}`, 200)
 	c.call(token, "POST", "/api/sessions/{id}/stop", path+"/stop", `{"children":true}`, 204)
+	exerciseMessagesContract(t, c, token, f.person(t, "session-contract", "cy", "Cy", "humagen-operators"))
 	// Streaming bodies have their own reconnect test. Validate the first real
 	// session event here so success coverage still requires a live response.
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)

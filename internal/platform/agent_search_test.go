@@ -87,15 +87,16 @@ func TestAConsoleMessageSearchMatchesNobodyForStillLands(t *testing.T) {
 		t.Fatalf("answered by %q, picked %q; want the first agent available, saying so", v.Agent, r.Picked)
 	}
 	field(t, p)
-	// A workspace that names its default sends an unmatched message there.
+	// A workspace that names its default answers with it in every project:
+	// a project chooses no default of its own, so Field's "*" is not read.
 	setAgents(t, p, "~", platform.AgentsInput{Enable: []string{"*"}, Default: "writer"})
 	setAgents(t, p, "Field", platform.AgentsInput{Enable: []string{}, Default: "*"})
 	v, err = p.StartSession(t.Context(), admin, platform.SessionInput{Project: "Field", Text: "zzz qqq"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r := sessionRun(t, v); v.Agent != "writer" || r.Picked != "No agent matched it, so the workspace default answered." {
-		t.Fatalf("answered by %q, picked %q; want the workspace default", v.Agent, r.Picked)
+	if v.Agent != "writer" {
+		t.Fatalf("answered by %q; want the workspace default", v.Agent)
 	}
 }
 

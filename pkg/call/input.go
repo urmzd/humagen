@@ -8,8 +8,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/urmzd/orchagent/flow/event"
 	saigeeval "github.com/urmzd/saige/eval"
+	"github.com/urmzd/saige/flow/event"
 )
 
 // Bounded inputs keep a helper's independently constructed context finite.

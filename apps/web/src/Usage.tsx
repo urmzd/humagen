@@ -14,12 +14,11 @@ import {
   textLink,
   took,
 } from "./ui.tsx";
-import { money } from "./usage.ts";
+import { defaultUsageView, money, type UsageView } from "./usage.ts";
 
 const words = defaultCopy.usagePage;
 const DAY = 24 * 60 * 60 * 1000;
-export type UsageView = { days: 7 | 14 | 30; day?: string; display: "chart" | "table" };
-export const defaultUsageView: UsageView = { days: 14, display: "chart" };
+export { defaultUsageView, type UsageView };
 
 /** Calendar days use UTC, including today's partial day. Server bounds stay under 30 days. */
 export function usageInterval(

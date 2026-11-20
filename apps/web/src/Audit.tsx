@@ -81,7 +81,7 @@ export function Audit() {
             : row.resource === "skill"
               ? `/library/skills?${new URLSearchParams({ scope: row.scope, project: row.project ?? "", skill: row.resource_id })}`
               : row.scope === "project"
-                ? href({ page: "project", name: row.project ?? "", tab: "history" })
+                ? href({ page: "project", name: row.project ?? "" })
                 : undefined;
   const humanize = (value: string) =>
     value.replace(/[_.:-]+/g, " ").replace(/^./, (letter) => letter.toUpperCase());

@@ -13,15 +13,16 @@ import { Input } from "@humagen/render-web/ui/input";
 import { NativeSelect } from "@humagen/render-web/ui/native-select";
 import { Textarea } from "@humagen/render-web/ui/textarea";
 import { FileBrowser, Inspector, ResourceBrowser } from "@humagen/web";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   MemoryFolder,
   Note,
   NoteInput,
 } from "../../../packages/client/src/generated/types.ts";
 import { api } from "./api.ts";
+import { MemoryFiles } from "./MemoryFiles.tsx";
 import { href } from "./route.ts";
-import { AgentMark, Page, Problem, SkeletonRows } from "./ui.tsx";
+import { AgentMark, Page, Problem, SkeletonRows, Tabs } from "./ui.tsx";
 
 type Scope = "personal" | "workspace" | "project" | "agent";
 const localDate = (value: string) => {
@@ -32,7 +33,11 @@ export interface MemoryLibraryLocation {
   scope: Scope;
   owner?: string;
   file?: string;
+  /** Set while the chain is shown as its files instead of its notes. */
+  memoryView?: "files";
 }
+/** Whether the address asks for a chain's files. */
+const filesInAddress = () => new URLSearchParams(window.location.search).get("view") === "files";
 export function MemoryLibrary({
   onLocationChange,
   file,
@@ -49,7 +54,22 @@ export function MemoryLibrary({
     () => new URLSearchParams(window.location.search).get("owner") ?? "",
   );
   const [selectedFile, setSelectedFile] = useState(file ?? "");
+  // Notes or files. The address holds it, so Back and a shared link keep it.
+  const [view, setView] = useState<"notes" | "files">(() => (filesInAddress() ? "files" : "notes"));
+  useEffect(() => {
+    const follow = () => setView(filesInAddress() ? "files" : "notes");
+    window.addEventListener("popstate", follow);
+    return () => window.removeEventListener("popstate", follow);
+  }, []);
   useEffect(() => setSelectedFile(file ?? ""), [file]);
+  // Whether the Files view holds a changed draft. Leaving the view or the
+  // chain asks before the draft is lost.
+  const unsavedFile = useRef(false);
+  const noteDraft = useCallback((unsaved: boolean) => {
+    unsavedFile.current = unsaved;
+  }, []);
+  const mayLeaveFiles = () =>
+    !unsavedFile.current || window.confirm(defaultCopy.memoryFiles.leaveDraft);
   const [destinationsCatalog, setDestinationsCatalog] = useState<MemoryFolder[]>([]);
   const [folders, setFolders] = useState<MemoryFolder[] | null>(null);
   const [folderQuery, setFolderQuery] = useState("");
@@ -369,7 +389,7 @@ export function MemoryLibrary({
           }
           onScopeChange={(next) => {
             const found = folders.find((folder) => folder.id === next);
-            if (!found) return;
+            if (!found || !mayLeaveFiles()) return;
             setScope(found.scope);
             setOwner(found.owner ?? "");
             setSelectedFile("");
@@ -415,165 +435,201 @@ export function MemoryLibrary({
                   </div>
                 </details>
               </header>
-              <div className="relative">
-                <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  type="search"
-                  className="pl-9"
-                  aria-label={copy.search}
-                  placeholder={copy.search}
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
+              <Tabs
+                label={defaultCopy.memoryFiles.views}
+                value={view}
+                tabs={[
+                  { id: "notes", label: defaultCopy.memoryFiles.notes },
+                  { id: "files", label: defaultCopy.memoryFiles.files },
+                ]}
+                onChange={(next) => {
+                  if (!mayLeaveFiles()) return;
+                  setView(next);
+                  setSelectedFile("");
+                  onLocationChange?.({
+                    scope,
+                    owner,
+                    ...(next === "files" ? { memoryView: "files" as const } : {}),
+                  });
+                }}
+              />
+              {view === "files" ? (
+                <MemoryFiles
+                  scope={scope === "personal" ? "me" : scope === "agent" ? "agent" : "project"}
+                  project={scope === "project" ? owner : undefined}
+                  agent={scope === "agent" ? owner : undefined}
+                  file={selectedFile}
+                  onDraft={noteDraft}
+                  onFile={(path) => {
+                    setSelectedFile(path);
+                    onLocationChange?.({ scope, owner, file: path, memoryView: "files" });
+                  }}
                 />
-              </div>
-              {loadError ? (
-                <div className="space-y-3">
-                  <Problem message={copy.loadFailed} />
-                  <Button variant="outline" onClick={() => setRefresh((n) => n + 1)}>
-                    {copy.retry}
-                  </Button>
-                </div>
-              ) : notes === null ? (
-                <SkeletonRows count={3} />
-              ) : selectedFile ? (
+              ) : (
                 <>
-                  <Button variant="ghost" className="self-start" onClick={() => select()}>
-                    {copy.back}
-                  </Button>
-                  {!selected ? (
-                    <p className="text-sm text-muted-foreground">{copy.fileMissing}</p>
-                  ) : (
-                    <FileBrowser
-                      label={copy.entries}
-                      paths={visible.map(filePath)}
-                      labels={Object.fromEntries(
-                        visible.map((note) => [filePath(note), note.text]),
-                      )}
-                      selected={filePath(selected)}
-                      onSelect={(path) => select(notes.find((note) => filePath(note) === path))}
-                    >
-                      <div className="flex min-w-0 flex-col gap-5 p-5">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <FileIcon />
-                          <span className="min-w-0 truncate text-xs text-muted-foreground">
-                            {selected.id}.md
-                          </span>
-                          <Badge variant="outline">{status(selected)}</Badge>
-                          <Badge variant="secondary">{copy[selected.kind ?? "fact"]}</Badge>
-                        </div>
-                        <p className="whitespace-pre-wrap break-words text-base leading-7">
-                          {selected.text}
-                        </p>
-                        {actions(selected)}
-                        <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-3 border-t border-border pt-4 text-sm">
-                          <dt className="text-muted-foreground">{copy.source}</dt>
-                          <dd className="min-w-0 break-words">
-                            {selected.source_url ? (
-                              <a
-                                className="underline underline-offset-4"
-                                href={selected.source_url}
-                              >
-                                {selected.source_name ?? copy.openSource}
-                              </a>
-                            ) : (
-                              (selected.source_name ?? selected.by_name ?? selected.source)
-                            )}
-                          </dd>
-                          <dt className="text-muted-foreground">{copy.uses}</dt>
-                          <dd>{selected.uses ?? 0}</dd>
-                          <dt className="text-muted-foreground">{copy.created}</dt>
-                          <dd>
-                            <time dateTime={selected.at}>
-                              {new Date(selected.at).toLocaleString()}
-                            </time>
-                          </dd>
-                          {selected.expires_at && (
-                            <>
-                              <dt className="text-muted-foreground">{copy.expires}</dt>
-                              <dd>{new Date(selected.expires_at).toLocaleString()}</dd>
-                            </>
+                  <div className="relative">
+                    <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      type="search"
+                      className="pl-9"
+                      aria-label={copy.search}
+                      placeholder={copy.search}
+                      value={query}
+                      onChange={(event) => setQuery(event.target.value)}
+                    />
+                  </div>
+                  {loadError ? (
+                    <div className="space-y-3">
+                      <Problem message={copy.loadFailed} />
+                      <Button variant="outline" onClick={() => setRefresh((n) => n + 1)}>
+                        {copy.retry}
+                      </Button>
+                    </div>
+                  ) : notes === null ? (
+                    <SkeletonRows count={3} />
+                  ) : selectedFile ? (
+                    <>
+                      <Button variant="ghost" className="self-start" onClick={() => select()}>
+                        {copy.back}
+                      </Button>
+                      {!selected ? (
+                        <p className="text-sm text-muted-foreground">{copy.fileMissing}</p>
+                      ) : (
+                        <FileBrowser
+                          label={copy.entries}
+                          paths={visible.map(filePath)}
+                          labels={Object.fromEntries(
+                            visible.map((note) => [filePath(note), note.text]),
                           )}
-                          {selected.edited_at && (
-                            <>
-                              <dt className="text-muted-foreground">{copy.corrected}</dt>
-                              <dd>{new Date(selected.edited_at).toLocaleString()}</dd>
-                            </>
-                          )}
-                        </dl>
-                        {folder.can_promote &&
-                          destinations.length > 0 &&
-                          selected.status === "approved" &&
-                          status(selected) !== copy.expired && (
-                            <details className="border-t border-border pt-3 text-sm">
-                              <summary className="cursor-pointer py-2 font-medium">
-                                {copy.promote}
-                              </summary>
-                              <div className="flex flex-col gap-3 pt-2">
-                                <p className="text-muted-foreground">{copy.promotionReview}</p>
-                                <label className="flex flex-col gap-2">
-                                  {copy.destination}
-                                  <NativeSelect
-                                    aria-label={copy.destination}
-                                    value={
-                                      destinations.some(
-                                        (folder) => (folder.owner || "~") === destination,
-                                      )
-                                        ? destination
-                                        : destinations[0]?.owner || "~"
-                                    }
-                                    onChange={(event) => setDestination(event.target.value)}
+                          selected={filePath(selected)}
+                          onSelect={(path) => select(notes.find((note) => filePath(note) === path))}
+                        >
+                          <div className="flex min-w-0 flex-col gap-5 p-5">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <FileIcon />
+                              <span className="min-w-0 truncate text-xs text-muted-foreground">
+                                {selected.id}.md
+                              </span>
+                              <Badge variant="outline">{status(selected)}</Badge>
+                              <Badge variant="secondary">{copy[selected.kind ?? "fact"]}</Badge>
+                            </div>
+                            <p className="whitespace-pre-wrap break-words text-base leading-7">
+                              {selected.text}
+                            </p>
+                            {actions(selected)}
+                            <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-3 border-t border-border pt-4 text-sm">
+                              <dt className="text-muted-foreground">{copy.source}</dt>
+                              <dd className="min-w-0 break-words">
+                                {selected.source_url ? (
+                                  <a
+                                    className="underline underline-offset-4"
+                                    href={selected.source_url}
                                   >
-                                    {destinations.map((folder) => (
-                                      <option key={folder.id} value={folder.owner || "~"}>
-                                        {folder.scope === "workspace"
-                                          ? copy.workspace
-                                          : folder.title}
-                                      </option>
-                                    ))}
-                                  </NativeSelect>
-                                </label>
-                                <Button
-                                  variant="outline"
-                                  className="self-start"
-                                  disabled={busy}
-                                  onClick={() => void promote(selected)}
-                                >
-                                  {copy.promote}
-                                </Button>
-                              </div>
-                            </details>
-                          )}
-                      </div>
-                    </FileBrowser>
+                                    {selected.source_name ?? copy.openSource}
+                                  </a>
+                                ) : (
+                                  (selected.source_name ?? selected.by_name ?? selected.source)
+                                )}
+                              </dd>
+                              <dt className="text-muted-foreground">{copy.uses}</dt>
+                              <dd>{selected.uses ?? 0}</dd>
+                              <dt className="text-muted-foreground">{copy.created}</dt>
+                              <dd>
+                                <time dateTime={selected.at}>
+                                  {new Date(selected.at).toLocaleString()}
+                                </time>
+                              </dd>
+                              {selected.expires_at && (
+                                <>
+                                  <dt className="text-muted-foreground">{copy.expires}</dt>
+                                  <dd>{new Date(selected.expires_at).toLocaleString()}</dd>
+                                </>
+                              )}
+                              {selected.edited_at && (
+                                <>
+                                  <dt className="text-muted-foreground">{copy.corrected}</dt>
+                                  <dd>{new Date(selected.edited_at).toLocaleString()}</dd>
+                                </>
+                              )}
+                            </dl>
+                            {folder.can_promote &&
+                              destinations.length > 0 &&
+                              selected.status === "approved" &&
+                              status(selected) !== copy.expired && (
+                                <details className="border-t border-border pt-3 text-sm">
+                                  <summary className="cursor-pointer py-2 font-medium">
+                                    {copy.promote}
+                                  </summary>
+                                  <div className="flex flex-col gap-3 pt-2">
+                                    <p className="text-muted-foreground">{copy.promotionReview}</p>
+                                    <label className="flex flex-col gap-2">
+                                      {copy.destination}
+                                      <NativeSelect
+                                        aria-label={copy.destination}
+                                        value={
+                                          destinations.some(
+                                            (folder) => (folder.owner || "~") === destination,
+                                          )
+                                            ? destination
+                                            : destinations[0]?.owner || "~"
+                                        }
+                                        onChange={(event) => setDestination(event.target.value)}
+                                      >
+                                        {destinations.map((folder) => (
+                                          <option key={folder.id} value={folder.owner || "~"}>
+                                            {folder.scope === "workspace"
+                                              ? copy.workspace
+                                              : folder.title}
+                                          </option>
+                                        ))}
+                                      </NativeSelect>
+                                    </label>
+                                    <Button
+                                      variant="outline"
+                                      className="self-start"
+                                      disabled={busy}
+                                      onClick={() => void promote(selected)}
+                                    >
+                                      {copy.promote}
+                                    </Button>
+                                  </div>
+                                </details>
+                              )}
+                          </div>
+                        </FileBrowser>
+                      )}
+                    </>
+                  ) : visible.length === 0 ? (
+                    <p className="py-10 text-sm text-muted-foreground">
+                      {query ? copy.noMatches : copy.empty}
+                    </p>
+                  ) : (
+                    <ul className="divide-y divide-border">
+                      {visible.map((note) => (
+                        <li key={note.id} className="flex flex-wrap items-center gap-x-3 px-2 py-3">
+                          <button
+                            type="button"
+                            onClick={() => select(note)}
+                            className="flex min-h-12 min-w-0 flex-1 items-start gap-3 rounded-md py-2 text-left hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
+                          >
+                            <FileIcon className="mt-1" />
+                            <span className="min-w-0 flex-1">
+                              <span className="line-clamp-2 text-sm leading-6">{note.text}</span>
+                              <span className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                                <span>{status(note)}</span>
+                                <span>{copy[note.kind ?? "fact"]}</span>
+                                <time dateTime={note.at}>
+                                  {new Date(note.at).toLocaleDateString()}
+                                </time>
+                              </span>
+                            </span>
+                          </button>
+                          {actions(note)}
+                        </li>
+                      ))}
+                    </ul>
                   )}
                 </>
-              ) : visible.length === 0 ? (
-                <p className="py-10 text-sm text-muted-foreground">
-                  {query ? copy.noMatches : copy.empty}
-                </p>
-              ) : (
-                <ul className="divide-y divide-border">
-                  {visible.map((note) => (
-                    <li key={note.id} className="flex flex-wrap items-center gap-x-3 px-2 py-3">
-                      <button
-                        type="button"
-                        onClick={() => select(note)}
-                        className="flex min-h-12 min-w-0 flex-1 items-start gap-3 rounded-md py-2 text-left hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
-                      >
-                        <FileIcon className="mt-1" />
-                        <span className="min-w-0 flex-1">
-                          <span className="line-clamp-2 text-sm leading-6">{note.text}</span>
-                          <span className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                            <span>{status(note)}</span>
-                            <span>{copy[note.kind ?? "fact"]}</span>
-                            <time dateTime={note.at}>{new Date(note.at).toLocaleDateString()}</time>
-                          </span>
-                        </span>
-                      </button>
-                      {actions(note)}
-                    </li>
-                  ))}
-                </ul>
               )}
             </div>
           )}

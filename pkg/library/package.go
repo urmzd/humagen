@@ -13,12 +13,56 @@ import (
 	"github.com/urmzd/saige/agent/skills"
 )
 
+// The bounds of one package and of one skill. A supporting file is read on
+// demand: a native model reads one of at most 128 KiB with file_read, and a
+// coding agent reads it on the host. Only SKILL.md's body is put into
+// what a model is asked, so its bounds do not grow with the others.
 const (
-	MaxPackageFiles        = 64
-	MaxPackageFileBytes    = 128 << 10
-	MaxPackageBytes        = 512 << 10
+	// MaxPackageFiles is how many files a package holds, SKILL.md included:
+	// room for skills that ship a tree of schema files. MaxPackageBytes, not
+	// this count, bounds what they hold, and a turn's text lists at most 63
+	// of them, as many as the earlier bound of 64 allowed.
+	MaxPackageFiles = 256
+	// MaxPackageFileBytes is the largest supporting file: room for the
+	// schema and source files skills ship.
+	MaxPackageFileBytes = 1 << 20
+	// MaxPackageSkillFileBytes is the largest SKILL.md, frontmatter
+	// included.
+	MaxPackageSkillFileBytes = 128 << 10
+	// MaxPackageBytes is the most one package's files hold together.
+	MaxPackageBytes = 2 << 20
+	// MaxPackageInstructions is how many characters SKILL.md's body holds.
 	MaxPackageInstructions = 32000
+	// MaxSkillBytes is the most the files of every revision of one skill
+	// hold together: file bytes, what MaxVersions packages of the earlier
+	// 512 KiB bound came to. A skill's revisions are one stored record and
+	// one history answer, which also hold each file's path and each
+	// revision's text, so they are larger. At worst, with every path 256
+	// bytes the JSON encoder escapes to six and every text field at its
+	// bound in such characters, over MaxVersions (32) revisions:
+	//
+	//	files     16 MiB in base64                 22,369,622 B
+	//	paths     32 x 256 files x 256 B x 6       12,582,912 B
+	//	          (with 64 files a revision         3,145,728 B)
+	//	SKILL.md  32 x 32000 characters x 6         6,144,000 B
+	//	body      inputs, outputs, tools, the rest  about 2.7 MB
+	//
+	// The largest record measures 43,783,718 B (41.8 MiB), and was
+	// 34,479,661 B (32.9 MiB) with 64 files
+	// (TestTheLargestSkillRecordStaysUnderItsStatedBound). A history answer
+	// adds a package hash a revision. A record of real files is near its
+	// file bytes in base64.
+	MaxSkillBytes = 16 << 20
 )
+
+// PackageBytes is how many bytes the files of a package hold together.
+func PackageBytes(files []File) int {
+	total := 0
+	for _, file := range files {
+		total += len(file.Data)
+	}
+	return total
+}
 
 // File is a package-relative immutable file. JSON encodes Data as base64.
 type File struct {
@@ -48,8 +92,11 @@ func (d Definition) Package() (skills.Skill, error) {
 	seen, total := map[string]bool{}, 0
 	for _, file := range d.Files {
 		path, err := skills.CleanResourcePath(file.Path)
-		if file.Data == nil || err != nil || path != file.Path || len(path) > 256 || seen[path] || len(file.Data) > MaxPackageFileBytes {
+		if file.Data == nil || err != nil || path != file.Path || len(path) > 256 || seen[path] {
 			return skills.Skill{}, fmt.Errorf("%w: invalid or duplicate package path %q", ErrInvalid, file.Path)
+		}
+		if limit := maxFileBytes(path); len(file.Data) > limit {
+			return skills.Skill{}, fmt.Errorf("%w: %s is over %d bytes", ErrInvalid, path, limit)
 		}
 		if path == skills.SkillFile && bytes.ContainsRune(file.Data, 0) {
 			return skills.Skill{}, fmt.Errorf("%w: SKILL.md must be text", ErrInvalid)
@@ -81,8 +128,18 @@ func (d Definition) Package() (skills.Skill, error) {
 	return pkg, nil
 }
 
+// maxFileBytes is the bound of one package file: SKILL.md has its own.
+func maxFileBytes(path string) int {
+	if path == skills.SkillFile {
+		return MaxPackageSkillFileBytes
+	}
+	return MaxPackageFileBytes
+}
+
 // Normalize makes SKILL.md authoritative for metadata and instructions.
-// Frontmatter only narrows the explicit platform tool selection.
+// Frontmatter only narrows the platform tool selection: an explicit one to
+// the tools allowed-tools names, and an absent one, which limits nothing,
+// to those tools.
 func (d Definition) Normalize() (Definition, error) {
 	if d.Files == nil {
 		return d, nil
@@ -92,9 +149,87 @@ func (d Definition) Normalize() (Definition, error) {
 		return Definition{}, err
 	}
 	d.Description, d.Instructions = pkg.Description, pkg.Body
-	if pkg.AllowedTools != nil {
+	switch {
+	case pkg.AllowedTools == nil:
+	case d.Tools == nil:
+		if d.Tools, err = declaredTools(pkg.AllowedTools); err != nil {
+			return Definition{}, err
+		}
+	default:
 		d.Tools = slices.DeleteFunc(slices.Clone(d.Tools), func(tool string) bool { return !slices.Contains(pkg.AllowedTools, tool) })
 	}
+	return d, nil
+}
+
+// MaxSkillTools is how many tools a skill's tool list, or its SKILL.md's
+// allowed-tools, may name, and MaxSkillToolName the longest name either may
+// hold. A list of one assistant's tools and a server's MCP tools fits; the
+// skills the import was checked with name at most a few.
+const (
+	MaxSkillTools    = 128
+	MaxSkillToolName = 128
+)
+
+// SkillFileRead is the tool a run is offered to read the supporting files of
+// the skills it uses (wire.SkillFileRead). It is not a grant, so no skill's
+// tool list or allowed-tools may name it.
+const SkillFileRead = "skill_file_read"
+
+// errSkillFileRead is why a list that names SkillFileRead is refused.
+var errSkillFileRead = fmt.Errorf("%w: %s cannot be named in a skill's tools: a run that uses a skill with supporting files is always offered it", ErrInvalid, SkillFileRead)
+
+// CheckTools refuses a tool list that names SkillFileRead, with the reason.
+func CheckTools(d Definition) error {
+	if slices.Contains(d.Tools, SkillFileRead) {
+		return errSkillFileRead
+	}
+	return nil
+}
+
+// declaredTools is an allowed-tools list as a tool selection: each name
+// once, in the order declared; nil stays nil, and an empty list stays empty.
+// A list past MaxSkillTools names, or with a name past MaxSkillToolName
+// characters or one a list cannot hold, is refused, with the bound.
+func declaredTools(allowed []string) ([]string, error) {
+	if allowed == nil {
+		return nil, nil
+	}
+	out := []string{}
+	for _, tool := range allowed {
+		if tool == "" || len(tool) > MaxSkillToolName || strings.ContainsAny(tool, "\x00\r\n") {
+			return nil, fmt.Errorf("%w: SKILL.md's allowed-tools names a tool of %d characters; a tool name holds at most %d, on one line", ErrInvalid, len(tool), MaxSkillToolName)
+		}
+		if tool == SkillFileRead {
+			return nil, errSkillFileRead
+		}
+		if !slices.Contains(out, tool) {
+			out = append(out, tool)
+		}
+	}
+	if len(out) > MaxSkillTools {
+		return nil, fmt.Errorf("%w: SKILL.md's allowed-tools names %d tools; a skill names at most %d", ErrInvalid, len(out), MaxSkillTools)
+	}
+	return out, nil
+}
+
+// ImportTools is the tool list of a draft read from a skill folder, before
+// it is normalized: none, so its limit is what its SKILL.md declares
+// (Normalize). An empty list, which an import before this release sent
+// whatever the folder said, is read as none, and so is the list the
+// SKILL.md declares. Any other list is refused: an imported skill's limit
+// comes from its SKILL.md, and a list the server would store and not apply
+// is not taken.
+func ImportTools(d Definition) (Definition, error) {
+	if len(d.Tools) > 0 {
+		declared := []string(nil)
+		if pkg, err := d.Package(); err == nil {
+			declared, _ = declaredTools(pkg.AllowedTools)
+		}
+		if !slices.Equal(d.Tools, declared) {
+			return Definition{}, fmt.Errorf("%w: an imported skill's tool limit comes from the allowed-tools of its SKILL.md; send no tools", ErrInvalid)
+		}
+	}
+	d.Tools = nil
 	return d, nil
 }
 

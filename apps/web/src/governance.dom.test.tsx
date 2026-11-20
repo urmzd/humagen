@@ -86,3 +86,39 @@ test("a call that acts as the person says so", async () => {
   );
   await screen.findByText(defaultCopy.actsForPerson);
 });
+
+test("the approval agent's view shows with the workspace's own fields, and nothing shows without one", async () => {
+  open(
+    waiting({
+      judgement: {
+        decision: "ask",
+        reason: "Nobody in the session asked to search the wiki.",
+        references: ["Policy: searches need a person"],
+        fields: [
+          { name: "risk", label: "Risk", value: "high" },
+          { name: "conditions", label: "Conditions", value: "only on main" },
+          { name: "expires_in", label: "Expires in", value: "3600" },
+        ],
+      },
+    }),
+    "ben",
+  );
+  await screen.findByText("Search the wiki?");
+  assert.ok(screen.getByText(/Asked a person: "Nobody in the session asked to search the wiki\."/));
+  for (const [label, value] of [
+    ["Risk", "high"],
+    ["Conditions", "only on main"],
+    ["Expires in", "3600"],
+  ] as const) {
+    const shown = screen.getByText(`${label}:`).parentElement?.textContent;
+    assert.equal(shown, `${label}: ${value}`);
+  }
+  assert.ok(screen.getByText("Based on: Policy: searches need a person"));
+  cleanup();
+  net?.restore();
+
+  open(waiting({}), "ben");
+  await screen.findByText("Search the wiki?");
+  assert.ok(!screen.queryByText(/Approval agent/));
+  assert.ok(!screen.queryByText(/Risk/));
+});

@@ -3,7 +3,9 @@ package httpapi
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/urmzd/humagen/pkg/catalog"
 )
@@ -62,6 +64,15 @@ func TestACorpusIsReadByItsReadersAndChangedByItsOwner(t *testing.T) {
 		}
 	}
 
+	// Only agents that exist are granted it.
+	want(t, f, ana, "POST", "/api/agents", helperSpec, http.StatusCreated)
+	if code, _ := status(t, f, ana, "PATCH", "/api/corpora/hr", `{"agents":["nobody"]}`); code != http.StatusBadRequest {
+		t.Fatalf("granted to an agent that does not exist: %d", code)
+	}
+	if granted := want(t, f, ana, "PATCH", "/api/corpora/hr", `{"agents":["helper"]}`, http.StatusOK); fmt.Sprint(granted["agents"]) != "[helper]" {
+		t.Fatalf("granted %v", granted["agents"])
+	}
+
 	// Dee reads it and may write knowledge, but is not its owner.
 	if code, _ := status(t, f, dee, "PATCH", "/api/corpora/hr", `{"links":"shared"}`); code != http.StatusForbidden {
 		t.Fatalf("a reader who is not the owner changed it: %d", code)
@@ -69,6 +80,7 @@ func TestACorpusIsReadByItsReadersAndChangedByItsOwner(t *testing.T) {
 
 	// The owner opens it to the workspace and drops the handbook; the
 	// warehouse she can see stays because she sent it.
+	made = want(t, f, ana, "GET", "/api/corpora/hr", "", http.StatusOK)
 	changed := want(t, f, ana, "PATCH", "/api/corpora/hr", fmt.Sprintf(`{"version":%v,"readers":[{"kind":"workspace"}],"members":[{"kind":"catalog","name":"warehouse"}]}`, made["version"]), http.StatusOK)
 	if len(sliceOf(changed["members"])) != 1 {
 		t.Fatalf("changed %v", changed)
@@ -92,4 +104,42 @@ func TestACorpusIsReadByItsReadersAndChangedByItsOwner(t *testing.T) {
 		t.Fatalf("a member the owner cannot see was dropped, or not named to its owner: %s", got)
 	}
 	want(t, f, dee, "DELETE", "/api/corpora/hr", "", http.StatusNoContent)
+}
+
+// A corpus's retrieval is evaluated like an agent: a suite of queries, each
+// naming the documents it should find, scored on the same search agents
+// run.
+func TestACorpusRetrievalIsEvaluated(t *testing.T) {
+	f := newFixture(t)
+	ana := f.person(t, "acme", "00u-ana", "Ana", "humagen-admins")
+	cy := f.person(t, "acme", "00u-cy", "Cy", "humagen-admins")
+	want(t, f, ana, "POST", "/api/knowledge", `{"name":"handbook"}`, http.StatusCreated)
+	want(t, f, ana, "POST", "/api/knowledge/handbook/documents", `{"title":"Parental leave","text":"Parental leave is sixteen weeks, paid in full."}`, http.StatusCreated)
+	want(t, f, ana, "POST", "/api/knowledge/handbook/documents", `{"title":"Travel","text":"Book travel two weeks ahead."}`, http.StatusCreated)
+	want(t, f, ana, "POST", "/api/corpora", `{"name":"hr","members":[{"kind":"source","name":"handbook"}]}`, http.StatusCreated)
+	suite := `{"name":"hr-retrieval","target":"corpus","subject":"hr","k":1,"cases":[{"id":"leave","input":"how long is parental leave","expect":["Parental leave"]},{"id":"miss","input":"travel booking","expect":["Parental leave"]}]}`
+	if code, _ := status(t, f, cy, "POST", "/api/evals", strings.Replace(suite, "hr-retrieval", "cy-retrieval", 1)); code != http.StatusNotFound {
+		t.Fatalf("a suite over a corpus its maker cannot read = %d", code)
+	}
+	want(t, f, ana, "POST", "/api/evals", suite, http.StatusCreated)
+	want(t, f, ana, "POST", "/api/evals/hr-retrieval/run", "", http.StatusAccepted)
+	var run map[string]any
+	for range 400 {
+		runs := sliceOf(want(t, f, ana, "GET", "/api/evals/hr-retrieval/runs", "", http.StatusOK)["runs"])
+		if len(runs) > 0 && obj(runs[0])["status"] != "running" {
+			run = obj(runs[0])
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if run == nil {
+		t.Fatal("the corpus eval did not finish")
+	}
+	results := sliceOf(run["results"])
+	if len(results) != 2 || obj(results[0])["passed"] != true || obj(results[1])["passed"] == true {
+		t.Fatalf("results %v", results)
+	}
+	if metrics := obj(run["metrics"]); metrics["hit_rate"] != 0.5 {
+		t.Fatalf("metrics %v", metrics)
+	}
 }

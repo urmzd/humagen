@@ -11,13 +11,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/urmzd/orchagent/sandbox/isolate"
-	"github.com/urmzd/orchagent/sandbox/isolate/docker"
-	"github.com/urmzd/orchagent/sandbox/isolate/local"
+	"github.com/urmzd/saige/sandbox/isolate"
+	"github.com/urmzd/saige/sandbox/isolate/docker"
+	"github.com/urmzd/saige/sandbox/isolate/local"
 
 	"github.com/urmzd/humagen/pkg/spec"
-	"github.com/urmzd/orchagent/flow/isolation"
-	poolleaser "github.com/urmzd/orchagent/flow/isolation/isolate"
+	"github.com/urmzd/saige/flow/isolation"
+	poolleaser "github.com/urmzd/saige/flow/isolation/isolate"
 )
 
 // sandboxFlags say where a run's tools execute (docs/reference/spec.md,
@@ -41,6 +41,15 @@ func addSandboxFlags(fs *flag.FlagSet, runtime string, insecure bool) sandboxFla
 		tlsDir:          fs.String("sandbox-tls-dir", "", "with -sandbox-host, the directory with ca.pem, cert.pem and key.pem; a tcp:// host requires it"),
 		workRoot:        fs.String("sandbox-work-root", "", "with -sandbox=docker, the host directory runs' work directories are made in; the Docker daemon must be able to mount it. With -sandbox=local, where instances are made. Empty means the system temporary directory"),
 	}
+}
+
+// contained reports whether the sandbox the flags name keeps a command away
+// from this host: the docker sandbox, on any runtime. The local sandbox's
+// instances are host processes, and a kind a downstream program adds has
+// made no such promise, so neither lets a person run a command of their own.
+func (f sandboxFlags) contained() bool {
+	kind := strings.TrimSpace(*f.kind)
+	return kind == "" || kind == "docker"
 }
 
 // openSandbox builds the sandbox the flags name, and what to close on

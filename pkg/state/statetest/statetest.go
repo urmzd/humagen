@@ -402,6 +402,31 @@ func Run(t *testing.T, open func(t *testing.T) state.Store) {
 		}
 	})
 
+	t.Run("lookup many reads one tenant's keys that have a record", func(t *testing.T) {
+		st := open(t)
+		must(t, st.Write(ctx, "ns", state.Put("t", "a", []byte("1")), state.Put("t", "b", []byte("2")), state.Put("t", "b", []byte("3"))))
+		must(t, st.Write(ctx, "ns", state.Put("u", "c", []byte("other tenant"))))
+		must(t, st.Write(ctx, "other", state.Put("t", "d", []byte("other namespace"))))
+		recs, err := state.LookupMany(ctx, st, "ns", "t", []string{"b", "a", "c", "d", "missing", "a"})
+		must(t, err)
+		got := map[string]string{}
+		for _, r := range recs {
+			got[r.Key] = fmt.Sprintf("%s@%d in %s", r.Value, r.Version, r.Tenant)
+		}
+		if len(recs) != 2 || got["a"] != "1@1 in t" || got["b"] != "3@2 in t" {
+			t.Fatalf("lookup many = %v", got)
+		}
+		if recs, err := state.LookupMany(ctx, st, "ns", "t", nil); err != nil || len(recs) != 0 {
+			t.Fatalf("no keys = %v, %v", recs, err)
+		}
+		if _, err := state.LookupMany(ctx, st, "ns", "t", make([]string, state.MaxList+1)); !errors.Is(err, state.ErrInvalid) {
+			t.Fatalf("too many keys = %v, want ErrInvalid", err)
+		}
+		if _, err := state.LookupMany(ctx, st, "ns", "t", []string{""}); !errors.Is(err, state.ErrInvalid) {
+			t.Fatalf("an empty key = %v, want ErrInvalid", err)
+		}
+	})
+
 	t.Run("list pages a tenant by prefix", func(t *testing.T) {
 		st := open(t)
 		for i := range 25 {

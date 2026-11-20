@@ -158,7 +158,7 @@ export const defaultCopy = {
     thisWeek: "This week",
     untitled: "Untitled conversation",
     empty: "Nothing matches these filters.",
-    emptyHint: "Start a conversation, or ask @code-reviewer to review a pull request.",
+    emptyHint: "Start a conversation, or add agents from the Store, under Agents.",
     loading: "Loading…",
     more: "Show More",
   },
@@ -529,6 +529,46 @@ export const defaultCopy = {
       failed: "Needs Attention",
     },
   },
+  agentStore: {
+    title: "Store",
+    installed: "Installed",
+    install: "Install",
+    restore: "Restore Missing",
+    installing: "Installing…",
+    remove: "Remove",
+    removing: "Removing…",
+    failed: "The store could not be read. Reload to try again.",
+    empty: "This server ships no agents of its own, so the store is empty.",
+    version: (version: string) => `Version ${version.replace(/^sha256:/, "").slice(0, 7)}`,
+    missing: (names: string[]) => `Missing: ${names.join(", ")}. Install again to restore.`,
+    taken: (names: string[]) =>
+      `${names.join(", ")} ${names.length === 1 ? "is the name of one of your agents" : "are names of your agents"}. Rename ${names.length === 1 ? "it" : "them"} to install.`,
+    customized: (names: string[]) =>
+      `${names.join(", ")} ${names.length === 1 ? "has" : "have"} changes made in this workspace.`,
+    removeQuestion: (title: string, customized: string[]) =>
+      `Remove ${title}? Its agents are retired; their history stays.${customized.length ? ` Changes to ${customized.join(", ")} stay in ${customized.length === 1 ? "its" : "their"} history too.` : ""}`,
+    installedNote: (names: string[]) => `Added ${names.join(", ")}.`,
+    removedNote: (names: string[]) => `Retired ${names.join(", ")}. Their history stays.`,
+    uses: "What each agent is granted",
+    needs: "Needs",
+    modelName: (provider: string, model: string) => `${provider} / ${model}`,
+    connector: (surface: string) =>
+      ({ github: "GitHub connection", slack: "Slack connection" })[surface] ??
+      `${surface} connection`,
+    toolServer: (name: string) => `${name} tool server`,
+    // The catalog and a package's own page.
+    notFound: (name: string) => `The store has no package named ${name}.`,
+    incomplete: "Incomplete",
+    changed: "Changed Here",
+    nameTaken: "Name Taken",
+    agentCount: (n: number) => `${n} ${n === 1 ? "agent" : "agents"}`,
+    agents: "Agents",
+    runsOn: "Runs on",
+    // One line for a model and the ones tried after it, in order.
+    modelChain: (names: string[]) => names.join(", then "),
+    everyAgentTools: "Every agent may use",
+    callsNamed: (names: string[]) => `Hands work to ${names.map((n) => `@${n}`).join(", ")}`,
+  },
   agentSetup: {
     title: "New Agent",
     lede: "Review its role, context and actions, then test the inactive draft before activation.",
@@ -538,9 +578,8 @@ export const defaultCopy = {
     description: "Description",
     template: "Starting Template",
     roles: { analyst: "Analyst", writer: "Writer", coordinator: "Coordinator" },
-    project: "Home Project",
-    projectHint:
-      "People who can read this project can read the agent’s specification. Personal keeps it in your own project.",
+    project: "Access",
+    projectHint: "Who can see the agent and read its specification. Private keeps it to you.",
     provider: "Model Provider",
     workspaceModelPolicy: "Workspace Model Policy",
     model: "Model",
@@ -647,6 +686,8 @@ export const defaultCopy = {
 
   preferences: {
     openFor: (name: string) => `Preferences for ${name}`,
+    /** Said after the name the account button shows, to say what it opens. */
+    open: "preferences",
     ownershipTitle: "Your workspace, your infrastructure",
     ownershipDescription:
       "Deploy Humagen internally to control your workspace data, storage and access in your own environment.",
@@ -688,7 +729,7 @@ export const defaultCopy = {
       inbox: ["You're all caught up", "New approvals, alerts and updates land here."],
       unread: ["Nothing unread", "Opening a notification marks it read."],
       hidden: ["Nothing hidden", "What you hide moves here. Others still see it."],
-      done: ["Nothing done yet", "What was resolved or dismissed for everyone lands here."],
+      done: ["Nothing done yet", "What was handled or dismissed for everyone lands here."],
     } as Record<"inbox" | "unread" | "hidden" | "done", [string, string]>,
   },
   inboxControls: {
@@ -741,6 +782,10 @@ export const defaultCopy = {
     manualHint: "A searchable collection you manage. Upload UTF-8 text, Markdown, CSV or JSON.",
     drive: "Google Drive",
     driveHint: "Google Docs and text files in the selected folder. Query live or collect a copy.",
+    onedrive: "OneDrive",
+    onedriveHint:
+      "Text, Markdown, CSV, JSON and HTML files in the selected folder. Query live or collect a copy.",
+    onedriveOrigin: "OneDrive folder ID, or root",
     notion: "Notion",
     notionHint:
       "Text from a selected page and supported nested blocks. Query live or collect a copy.",
@@ -775,6 +820,300 @@ export const defaultCopy = {
       crawled: (ago: string) => `Crawled ${ago}`,
       columns: (path: string) => `Columns of ${path}`,
       failed: "The catalog action could not be completed.",
+    },
+  },
+  /** Agents › Knowledge: corpora, named bodies of knowledge that hold sources. */
+  corpora: {
+    title: "Knowledge",
+    newCorpus: "New Corpus",
+    empty: "No corpora yet",
+    emptyHint:
+      "A corpus is a named body of knowledge. Add sources to it, then give it to an agent.",
+    loadFailed: "Knowledge could not be loaded.",
+    edit: "Edit",
+    delete: "Delete",
+    deleteAsk: (name: string) => `Delete ${name}? Its sources stay.`,
+    deleteAction: "Delete Corpus",
+    deleted: (name: string) => `${name} deleted`,
+    isolated: "Isolated",
+    shared: "Shared",
+    openCorpus: "Open Corpus",
+    openGraph: "Open Graph",
+    openTypes: "Open Types",
+    labels: {
+      title: "Label",
+      public: "Public",
+      internal: "Internal",
+      confidential: "Confidential",
+      restricted: "Restricted",
+      meaning: "Confidential and restricted content stays in each reader's private conversation.",
+      purpose: "Purpose",
+      purposeHint: "Why agents may read it, such as payroll questions.",
+      adminNeeded: "A workspace admin must grant a restricted corpus to agents.",
+      graphSearch: "Search the graph too",
+      graphSearchHint: "Adds documents whose names, owners or systems match.",
+    },
+    links: {
+      title: "Graph",
+      shared: "Link with other shared corpora",
+      sharedHint: "Its documents and systems merge with theirs in the workspace graph.",
+    },
+    changed: "Someone else changed this corpus. It has been reloaded, try again.",
+    failed: "That did not work. Try again.",
+    notFound: (name: string) => `No corpus named ${name}`,
+    back: "Knowledge",
+    unfiled: (n: number) => `${n} ${n === 1 ? "source is" : "sources are"} not in a corpus`,
+    form: {
+      newTitle: "New corpus",
+      editTitle: (name: string) => `Edit ${name}`,
+      title: "Title",
+      nameIs: (name: string) => `Name: ${name}`,
+      name: "Name",
+      nameHint: "Lowercase letters, digits and dashes.",
+      description: "Description",
+      readers: "Who can read it",
+      onlyMe: "Only me",
+      workspace: "Everyone in the workspace",
+      chosen: "People and projects",
+      people: "People",
+      projects: "Projects",
+      add: "Add",
+      none: "None yet.",
+      create: "Create Corpus",
+      save: "Save",
+      cancel: "Cancel",
+      created: (name: string) => `${name} created`,
+      saved: "Saved",
+    },
+    tabs: {
+      sources: "Sources",
+      search: "Search",
+      graph: "Graph",
+      types: "Types",
+      evals: "Evals",
+      access: "Access",
+    },
+    graph: {
+      health: (parts: string[]) => parts.join(" | "),
+      documents: (n: number) => `${n} ${n === 1 ? "document" : "documents"}`,
+      systems: (n: number) => `${n} ${n === 1 ? "system" : "systems"}`,
+      people: (n: number) => `${n} ${n === 1 ? "person" : "people"}`,
+      unowned: (n: number) => `${n} unowned`,
+      stale: (n: number) => `${n} stale`,
+      built: (ago: string) => `built ${ago}`,
+      notBuilt: "not built yet",
+      more: "Showing the first 200.",
+      rebuild: "Rebuild",
+      rebuilt: "Graph rebuilt",
+      empty: "Nothing in the graph yet",
+      failed: "The graph could not be loaded.",
+      noOwner: "No owner",
+      you: "You",
+      someone: "Someone",
+      states: { suggested: "Suggested", confirmed: "Confirmed", unowned: "Unowned" },
+      staleLabel: "Stale",
+      reasons: {
+        old: "old",
+        unowned: "no owner",
+        out_of_date: "sync failed",
+        superseded: "superseded",
+      } as Record<string, string>,
+      confirm: "Confirm",
+      handOff: "Hand Off",
+      decline: "Decline",
+      confirmed: (name: string) => `You own ${name}`,
+      declined: (name: string) => `${name} declined`,
+      handedOff: (name: string, to: string) => `${name} handed to ${to}`,
+      handOffTitle: (name: string) => `Hand off ${name}`,
+      to: "New owner",
+      workspaceTitle: "Knowledge graph",
+      openWorkspace: "Graph",
+      nodes: (n: number) => `${n} ${n === 1 ? "node" : "nodes"}`,
+      relations: (n: number) => `${n} ${n === 1 ? "relation" : "relations"}`,
+      howBuilt: "A corpus's owner builds its part with Rebuild on the corpus's Graph tab.",
+      openKnowledge: "Open Knowledge",
+      retry: "Retry",
+    },
+    types: {
+      declared: "Types",
+      none: "No types yet.",
+      properties: "Properties",
+      relations: "Relations",
+      relation: (name: string, to: string, many: boolean) =>
+        `${name} ${to}${many ? " (many)" : ""}`,
+      infer: "Propose From Warehouse",
+      proposed: "Proposed",
+      acceptSelected: "Accept Selected",
+      acceptAll: "Accept All",
+      discard: "Discard",
+      accepted: "Types accepted",
+      discarded: "Proposal discarded",
+      inferred: "Types proposed",
+      editJson: "Edit as JSON",
+      json: "Ontology (JSON Schema)",
+      save: "Save Types",
+      saved: "Types saved",
+      badJson: "That is not valid JSON.",
+    },
+    evals: {
+      loadFailed: "Evals could not be loaded.",
+      noAccess: "You do not have access to evals",
+      none: "No eval suite yet",
+      noCases: "No cases yet",
+      cases: "Cases",
+      runs: "Runs",
+      addCase: "Add Case",
+      newCase: "New case",
+      query: "Question",
+      queryHint: "What someone would search this corpus for.",
+      expect: "Documents it should return",
+      expectHint: "Titles, separated by commas. One in the top results passes.",
+      save: "Save Case",
+      cancel: "Cancel",
+      added: "Case added",
+      remove: "Remove",
+      removeCase: (query: string) => `Remove the case: ${query}`,
+      removed: "Case removed",
+      lastCaseAsk: (name: string) =>
+        `This is the last case. Removing it deletes ${name} and its runs.`,
+      run: "Run Evals",
+      started: "Run started",
+      deleteSuite: "Delete Suite",
+      deleteAsk: (name: string) => `Delete ${name}? Its cases and runs go with it.`,
+      deleted: (name: string) => `${name} deleted`,
+      status: { running: "Running", passed: "Passed", failed: "Failed", errored: "Errored" },
+      casePassed: "Passed",
+      caseMissed: "Missed",
+      caseErrored: "Errored",
+      rank: (n: number) => `Rank ${n}`,
+      noRuns: "Not run yet.",
+      passedOf: (passed: number, total: number) => `${passed} of ${total} passed`,
+      progress: (done: number, total: number) => `${done} of ${total} cases done`,
+      when: "Started",
+      result: "Result",
+      state: "Status",
+      recall: "Recall",
+      precision: "Precision",
+      ndcg: "nDCG",
+    },
+    noSources: "No sources yet",
+    addSource: "Add Source",
+    holds: { files: "Files", references: "References", records: "Records" },
+    status: {
+      ready: "Ready",
+      syncing: "Syncing",
+      failed: "Failed",
+      missing: "Missing",
+      hidden: "Hidden",
+    },
+    // How fresh a source is, from its syncs. Not the Graph tab's stale, which is about one document.
+    freshness: {
+      state: {
+        fresh: "Fresh",
+        stale: "Stale",
+        syncing: "Syncing",
+        failed: "Failed",
+        never: "Never synced",
+      },
+      // A corpus card says the worst state among its sources.
+      rollup: {
+        fresh: "Sources fresh",
+        stale: "Source stale",
+        syncing: "Source syncing",
+        failed: "Source failed",
+        never: "Source never synced",
+      },
+      synced: (when: string) => `Last synced ${when}`,
+    },
+    hidden: "A source you cannot see",
+    hiddenToOwner: "You can no longer see this source",
+    remove: "Remove",
+    removed: (name: string) => `${name} removed`,
+    undo: "Undo",
+    added: (name: string) => `${name} added`,
+    add: {
+      title: "Add source",
+      existing: "Existing",
+      new: "New",
+      addOne: "Add",
+      addTo: (name: string) => `Add ${name}`,
+      upload: "Upload Files",
+      back: "Back",
+      files: "Files",
+      uploadAction: "Upload and Add",
+      uploadName: (corpus: string) => `${corpus}-files`,
+      snowflakeName: (corpus: string) => `${corpus}-snowflake`,
+      skipped: (why: string) => `Some files were skipped: ${why}`,
+    },
+    providers: {
+      manual: "Uploads",
+      drive: "Google Drive",
+      notion: "Notion",
+      s3: "Amazon S3",
+      gcs: "Google Cloud Storage",
+      bigquery: "BigQuery",
+      snowflake: "Snowflake",
+    } as Record<string, string>,
+    access: {
+      owner: "Owner",
+      readers: "Readers",
+      you: "You",
+      onlyOwner: "Only the owner",
+      handOff: "Hand Off",
+      handOffTo: "New owner",
+      handedOff: (name: string) => `Handed to ${name}`,
+    },
+    search: {
+      label: "Search this corpus",
+      action: "Search",
+      searching: "Searching…",
+      none: "Nothing matches.",
+      failed: "The search failed.",
+      warning: (member: string, cause: string) => `${member} could not be searched: ${cause}`,
+      graph: "The workspace graph",
+    },
+    agents: {
+      title: "Agents",
+      none: "No agents yet.",
+      hint: "An agent uses it once its tools include corpus_search and corpus_query.",
+      add: "Add",
+    },
+    login: {
+      connect: "Connect Your Login",
+      forget: "Forget My Login",
+      forgotten: "Login forgotten",
+      connected: "Your login is connected",
+      unavailable: "Logins are not set up here",
+      title: (name: string) => `Your login to ${name}`,
+      kind: "Give it as",
+      ref: "A reference",
+      refLabel: "Reference",
+      refHint: "Such as op://vault/item/token",
+      value: "The token",
+      valueLabel: "Token",
+      save: "Save Login",
+      saved: "Login saved",
+      done: "Done",
+    },
+    snowflake: {
+      account: "Account",
+      accountHint: "Such as myorg-myaccount",
+      database: "Database",
+      warehouse: "Warehouse",
+      role: "Role (optional)",
+      tokenType: "People sign in with",
+      oauth: "OAuth",
+      pat: "Programmatic access token",
+      create: "Save and Add",
+    },
+    file: {
+      title: "Add to a corpus",
+      corpus: "Corpus",
+      sources: "Sources",
+      action: "Add to Corpus",
+      noCorpus: "You own no corpus yet.",
+      filed: (n: number, corpus: string) =>
+        `${n} ${n === 1 ? "source" : "sources"} added to ${corpus}`,
     },
   },
   projectWork: {
@@ -813,6 +1152,8 @@ export const defaultCopy = {
     you: "You",
     sources: "Sources",
     deliverables: "Deliverables",
+    /** The sidebar's destination for files agents made, and that page's title. */
+    artifacts: "Artifacts",
     skills: "Skills",
     memory: "Memory",
     needsYou: "Needs You",
@@ -1098,6 +1439,7 @@ export const defaultCopy = {
     providers: {
       manual: "Manual",
       drive: "Google Drive",
+      onedrive: "OneDrive",
       notion: "Notion",
       gcs: "Google Cloud Storage",
       s3: "Amazon S3",
@@ -1264,6 +1606,14 @@ export const defaultCopy = {
     accept: "Accept Assignment",
     retry: "Retry Assignment",
     openRun: "Open Recorded Run",
+    doneChecks: "The answer is held to these checks",
+    doneCheckKinds: {
+      contains: "Contains",
+      not_contains: "Does not contain",
+      equals: "Is exactly",
+      matches: "Matches",
+    },
+    continued: (n: number) => (n === 1 ? "Continued once" : `Continued ${n} times`),
     conversation: "Open Conversation",
     empty: "No assignments are visible here yet.",
     blocker: "Blocker",
@@ -1716,6 +2066,10 @@ export const defaultCopy = {
       files: (n: number) => `Updated ${n} files`,
       running: (what: string) => `Running ${what}`,
       failed: (n: number) => `${n} failed`,
+      /** Every call in the run failed, so there is nothing done to name. */
+      allFailed: (n: number) => `${n} steps failed`,
+      earlierFailed: (n: number) =>
+        `${n} earlier failed ${n === 1 ? "command" : "commands"} not shown`,
       waiting: "waiting for you",
       showMore: "Show more",
       showLess: "Show less",
@@ -1733,6 +2087,8 @@ export const defaultCopy = {
         `Review the ${n === 1 ? "change" : `${n} changed files`} in the Workspace`,
       show: "Show changed files",
       hide: "Hide changed files",
+      /** Files a summary with a cap leaves out, as its last line. */
+      more: (n: number) => `and ${n} more`,
     },
     askAgent: (agent: string) => `Ask ${agent}`,
     reply: "Reply",
@@ -1849,6 +2205,7 @@ export const defaultCopy = {
     inspect: (name: string, version: number) => `Open ${name}, Version ${version}, in a new tab`,
     tools: "Tool Restrictions",
     noTools: "No Tools",
+    agentTools: "Not Restricted",
     review: "Review Default Skills",
     needsReview: "Default skills need review before another turn can start.",
     title: "Default skills",
@@ -1928,16 +2285,23 @@ export const defaultCopy = {
     tools: "Allowed Tools",
     toolsHint:
       "Exact tool names, one per line. Empty permits no tools. Agent and workspace restrictions still apply.",
+    limitTools: "Limit the tools of a run that uses this skill",
+    toolsFromSkillFile:
+      "Imported: the limit is what SKILL.md declares in allowed-tools. Saving here sets it instead.",
+    toolsUnlimited:
+      "Not limited: a run that uses this skill keeps the agent's own tools. Its supporting files are always readable.",
     save: "Save Draft",
     draft: "Draft",
     published: "Published",
     version: "Version",
-    empty: "No skills in this scope.",
+    empty: "No skills here yet",
+    emptyHint: "Create a skill, or import a folder that holds a SKILL.md.",
     failed: "The skill library could not be loaded or changed.",
     test: "Test Skill",
     agent: "Test Agent",
     request: "Test Request",
-    testHint: "Tests use the exact selected version. Every permitted action requires approval.",
+    testHint:
+      "Tests use the exact selected version. Every permitted action requires approval, except reading the skill's own files.",
     personalTestLocation: "This test runs in your personal project.",
     testProjectUnavailable:
       "Your personal test project is not available yet. Reload the library and try again.",
@@ -1948,6 +2312,11 @@ export const defaultCopy = {
       "No listed agent is available in this test project. Choose another test project or review the agent's home.",
     publish: "Publish Version",
     publishNeedsTest: "Complete a readable test for this exact revision before publishing.",
+    publishNeedsCleanTest:
+      "No finished test of this revision passed. Open a test to see why, fix the skill and test again before publishing.",
+    testFailed: "Test failed",
+    testUnknown: "Result unknown",
+    testWarned: "Passed with warnings",
     testPending:
       "A test for this revision is still waiting or running. Open its conversation to review progress.",
     promotion: "Promote to Another Scope",
@@ -1962,18 +2331,19 @@ export const defaultCopy = {
   },
   personalAgents: {
     title: "My Agents",
-    description: "Agents whose home is your personal project.",
-    empty: "No personal agents yet.",
+    description: "Your private agents. Only you see them.",
+    empty: "No private agents yet.",
     failed: "Your agents could not be loaded or changed.",
     pause: "Pause",
     resume: "Resume",
     settings: "Agent Settings",
-    add: "Add to a Project",
-    project: "Destination Project",
-    review: "Review Audience",
-    confirm: "Move Agent to Project",
+    add: "Change Access",
+    project: "Access",
+    review: "Review Access",
+    confirm: "Confirm Access",
     cancel: "Cancel",
-    audience: "Members of the destination can use this agent and read its configuration.",
+    audience:
+      "Members of this project will see this agent and read its configuration. It will no longer be private.",
     create: "Create Agent",
   },
   emailNotifications: {
@@ -2045,6 +2415,61 @@ export const defaultCopy = {
       artifact: "Files",
       alert: "Alerts",
     },
+  },
+  memoryFiles: {
+    views: "Memory views",
+    notes: "Notes",
+    files: "Files",
+    browse: "Memory files",
+    empty: "No files in this memory yet.",
+    loadFailed: "The files could not be loaded. Try again.",
+    fileFailed: "This file could not be read. Try again.",
+    historyFailed: "The versions could not be loaded. Try again.",
+    actionFailed: "That did not go through. Nothing was changed.",
+    retry: "Retry",
+    binary: "This file is not text, so it cannot be shown here.",
+    tooLarge: (size: string) => `This file is ${size}, which is too large to show here.`,
+    history: "Versions",
+    version: (n: number) => `Version ${n}`,
+    newest: "Newest",
+    viewing: (n: number) => `Showing every file as it was at version ${n}.`,
+    restoredFrom: (n: number) => `Restored from version ${n}`,
+    view: "View",
+    backToNewest: "Back to Newest",
+    restore: "Restore",
+    restoreAsk: (n: number) =>
+      `Restore every file in this memory to version ${n}? Files changed since then go back to how they were.`,
+    restored: (n: number) => `Every file was restored to version ${n}.`,
+    edit: "Edit",
+    cancel: "Cancel",
+    saved: (n: number) => `Saved as version ${n}.`,
+    conflict: "This file changed since it was read. Your text is still here and was not saved.",
+    loadLatest: "Load Latest Version",
+    latestFailed: "The latest version could not be loaded. Your text is still here.",
+    newFile: "New File",
+    newPath: "Path of the new file",
+    create: "Create",
+    pathInvalid: "Enter a path inside this memory, such as notes/plan.md.",
+    pathTaken: "A file with this path already exists.",
+    newDraft: (path: string) => `New file ${path}. It is created when you save.`,
+    delete: "Delete",
+    deleteAsk: (path: string) => `Delete ${path}? Earlier versions keep it.`,
+    deleted: (path: string) => `${path} was deleted.`,
+    deleteConflict:
+      "This file changed since it was read, so it was not deleted. The newest version is shown.",
+    fileHistory: "Versions of this file",
+    fileVersion: (path: string, n: number) => `${path} at version ${n}`,
+    fileHistoryFailed: "This file's versions could not be loaded. Try again.",
+    removed: "Removed",
+    leaveDraft: "Leave and discard your unsaved changes to this memory file?",
+    proposals: "Proposed changes",
+    proposalBy: (who: string) => `Proposed by ${who}`,
+    proposalOn: (n: number) => `On version ${n}`,
+    removes: "Removes",
+    writes: "Writes",
+    approve: "Approve",
+    discard: "Discard",
+    more: "Load More",
   },
   memoryLibrary: {
     chains: "Memory Chains",
@@ -2234,7 +2659,20 @@ export const defaultCopy = {
   /** A question answered in words, not by picking one of its options. */
   repliedBy: (by: string, text: string, time: string) => `${by} answered "${text}" | ${time}`,
   declinedBy: (by: string, time: string) => `Declined by ${by} | ${time}`,
+  /** A question nobody answered in time: what applied instead, as the platform words it. */
+  questionExpired: "Nobody answered in time",
+  /** A question whose run stopped or ended before anyone answered. `why` is the platform's words. */
+  questionCancelled: (why?: string) =>
+    why ? `Not answered. ${why}` : "Not answered. The run ended first",
   approvalNeeded: (summary: string) => `Approval needed: ${summary}`,
+  /** The approval agent's view of a call, on its approval card. */
+  judgement: {
+    by: "Approval agent",
+    decision: { allow: "Allowed", deny: "Denied", ask: "Asked a person" },
+    /** A question the approval agent answered in a session set to Run and Answer (DES-079). */
+    answered: "Answered by the approval agent",
+    basedOn: (references: string[]) => `Based on: ${references.join("; ")}`,
+  },
   /** A run the platform held at a limit, for a person to grant it more or stop it. */
   /** A structured code review an agent returned (`humagen.github.review.v1`). */
   reviewReport: {
@@ -2300,6 +2738,8 @@ export const defaultCopy = {
   runLink: (url: string) => `[${url}](${url})`,
   disclaimer: (name: string) =>
     `${name} is AI and can make mistakes. Double-check its answers before you rely on them.`,
+  /** Under an answer, where the host can move the conversation into a code channel. */
+  continueInCodeChannel: "Continue in a Code Channel",
   helpful: "Helpful",
   notHelpful: "Not helpful",
   /** Asked after a rating. Answering is optional; the rating is already recorded. */
@@ -2316,6 +2756,31 @@ export const defaultCopy = {
       { id: "slow", label: "Too slow" },
       { id: "other", label: "Other" },
     ],
+  },
+  evalCandidates: {
+    title: "From feedback",
+    asked: "Asked",
+    addToSuite: "Add to Suite",
+    dismiss: "Dismiss",
+    suite: "Suite",
+    passesWhen: "The answer passes when it",
+    check: "Check",
+    checkValue: "Value",
+    addCheck: "Add Check",
+    removeCheck: "Remove check",
+    confirm: "Add Case",
+    cancel: "Cancel",
+    noSuite: "This agent has no eval yet. Create one, then add this question to it.",
+    checkKinds: {
+      contains: "Contains",
+      not_contains: "Does not contain",
+      matches: "Matches pattern",
+      equals: "Equals",
+      within_ms: "Answers within (ms)",
+    },
+    loadFailed: "The feedback could not be read.",
+    acceptFailed: "The question could not be added to the suite.",
+    dismissFailed: "The feedback could not be dismissed.",
   },
   status: {
     queued: "Queued",
@@ -2343,8 +2808,14 @@ export const defaultCopy = {
   },
   resume: "Resume",
   handoff: (to: string) => `Switched to ${to}`,
-  /** Where a row can't look different, the words say another agent did it. */
-  delegated: (name: string, title: string) => `${name}: ${title}`,
+  /**
+   * Where a row can't look different, the words say another agent did it: its
+   * name, then the step's own title when it has one that is not just the name.
+   */
+  delegated: (name: string, title: string) =>
+    !title.trim() || title.trim().toLowerCase() === name.trim().toLowerCase()
+      ? name
+      : `${name}: ${title}`,
   subagent: (name: string, steps?: number, tokens?: number) =>
     [name, steps ? `${steps} steps` : null, tokens ? `${Math.round(tokens / 1000)}k tokens` : null]
       .filter(Boolean)
@@ -2373,8 +2844,34 @@ export const defaultCopy = {
   needsYou: "Needs you",
   alerts: "System alerts",
   failures: "Failed runs",
-  resolved: "Resolved",
+  resolved: "Done",
   openConversation: "Open Conversation",
+  /**
+   * The link a Slack answer ends with, to its conversation: an arrow pointing
+   * up and right, held to text (U+FE0E) so it is not drawn as an emoji. Slack
+   * gives a link no label of its own, so this is also what a screen reader says.
+   */
+  conversationLink: "↗︎",
+  /** What a run used, shown on request to the one person who asked. */
+  runDetails: {
+    button: "Run Details",
+    title: "Run details",
+    agent: "Agent",
+    model: "Model",
+    input: "Input tokens",
+    output: "Output tokens",
+    withCached: (tokens: string, cached: string) => `${tokens} (${cached} from cache)`,
+    cost: "Cost",
+    atLeast: (amount: string) => `At least ${amount}`,
+    notPriced: "Not priced",
+    elapsed: "Elapsed",
+    none: "This run recorded no model usage.",
+    onlyYou: "Only you can see this.",
+    notConnected:
+      "Run details are shown only to people whose Slack account is connected to this workspace. Ask an admin to connect yours.",
+    notReadable: "You do not have access to this run's details.",
+    unavailable: "Run details could not be read. Try again in a moment.",
+  },
   dismiss: "Dismiss",
   snooze: "Snooze 1 Hour",
   from: (label: string) => `From ${label}`,
@@ -2396,12 +2893,19 @@ export const defaultCopy = {
   budgetTitle: "Limit reached",
   budgetBody: (used: string, limit: string, period?: string, needs?: string) =>
     `${used} of ${limit} used${period ? ` this ${period}` : ""}.${needs ? ` This run needs ${needs} more.` : ""}`,
-  noPermission: "You can read this, but you don't have permission to resolve it.",
+  noPermission: "You can read this, but you don't have permission to act on it.",
+  /** A page of the console whose code could not be read, as after an update or without a network. */
+  pageLoad: {
+    title: "This page did not load",
+    failed: "This page could not be loaded. Check your connection, then try again.",
+    /** Something that opens over the page, such as search, whose code could not be read. */
+    partFailed: "That could not be opened. Check your connection, then try again.",
+  },
   mailbox: {
     /** How many are open, beside the Inbox's title. */
     openCount: (n: number) => `${n} open`,
     empty: "Nothing here",
-    emptyHint: "Approvals, questions, alerts and new artifacts arrive here, and are resolved here.",
+    emptyHint: "Approvals, questions, alerts and new artifacts arrive here, and are handled here.",
     emptyOpen: "You're all caught up",
     emptyOpenHint: "Nothing is waiting on you. New approvals, alerts and artifacts land here.",
     pick: "Select a notification",
@@ -2432,7 +2936,102 @@ export const defaultCopy = {
       .join(" | "),
   /** Said next to the kind tag, so urgency never rests on color. */
   severity: { bad: "Urgent", warn: "Warning" } as Partial<Record<string, string>>,
-  show: { label: "Show", open: "Open", resolved: "Resolved", all: "All" },
+  /** Whose move it is: waiting on the reader, or done. The stored states keep their names. */
+  show: { label: "Show", open: "Waiting", resolved: "Done", all: "All" },
+  /**
+   * An alert, by whose move it is: waiting on the person, put off for an hour,
+   * or done. The API and the address keep open, snoozed and resolved.
+   */
+  attention: {
+    stateLabel: "Alert state",
+    states: { open: "Waiting", snoozed: "Snoozed", resolved: "Done" } as Record<
+      "open" | "snoozed" | "resolved",
+      string
+    >,
+    empty: {
+      open: "Nothing is waiting on you.",
+      snoozed: "Nothing is snoozed.",
+      resolved: "Nothing is done yet.",
+    } as Record<"open" | "snoozed" | "resolved", string>,
+    markDone: "Mark Done",
+    markDoneNamed: (title: string) => `Mark ${title} done`,
+    /** The alerts table: its name, its column headings and what its header says once rows are ticked. */
+    table: {
+      label: "Alerts",
+      selectAll: "Select all alerts",
+      selected: (n: number) => `${n} selected`,
+      alert: "Alert",
+      source: "Source",
+      priority: "Priority",
+      when: "When",
+    },
+    markSelectedDone: "Mark Selected Done",
+    snooze: "Snooze 1h",
+    snoozeSelected: "Snooze Selected for 1 Hour",
+    doneWhen: (condition: string) => `Done when: ${condition}`,
+    updated: (n: number) => `Updated ${n} ${n === 1 ? "alert" : "alerts"}.`,
+  },
+  /** The Artifacts page: what agents published, and tiles that start a new one. */
+  artifactsPage: {
+    makeNew: "Make something new",
+    /** One per file an agent writes natively. `ask` is the request the chat bar starts with. */
+    starters: [
+      { label: "Document", format: "Word, .docx", ask: "Create a document (.docx) about " },
+      { label: "Slides", format: "PowerPoint, .pptx", ask: "Create a slide deck (.pptx) about " },
+      { label: "Sheet", format: "Excel, .xlsx", ask: "Create a spreadsheet (.xlsx) of " },
+      { label: "Report", format: "PDF", ask: "Create a PDF report about " },
+    ],
+  },
+  /** Plugins, in your settings: what you add for your own work. Apps are the workspace's, on a page of their own. */
+  plugins: {
+    title: "Plugins",
+    lede: "What this workspace offers for your own work. What you add is yours alone: it is used when you ask directly, and an agent uses only what is set on that agent.",
+    /** The two views of the page: everything this deployment offers, and what you have added. */
+    view: "Plugins shown",
+    catalog: "Catalog",
+    installed: "Installed",
+    search: "Search plugins",
+    noMatch: "No plugin matches that search.",
+    noneInstalled: "You have not added any plugins yet. Add one from the catalog.",
+    mcps: "MCPs",
+    /** The shelves MCPs sit on. */
+    families: {
+      google: {
+        title: "Google Workspace",
+        lede: "Mail, calendar and files in your Google account.",
+      },
+      work: {
+        title: "Work tools",
+        lede: "Notes, issues and meetings from the tools your team uses.",
+      },
+      yours: { title: "Added by you", lede: "MCPs you added by address or key." },
+    } as Record<"google" | "work" | "yours", { title: string; lede: string }>,
+    /** One line on what each offered MCP does, by its id. */
+    about: {
+      notion: "Search, read and update pages in your Notion workspace.",
+      linear: "Find, create and update issues and projects.",
+      granola: "Read your meeting notes and transcripts.",
+      atlassian: "Search and update Jira and Confluence.",
+      gmail: "Search, read, draft and send email.",
+      "google-calendar": "Check availability and schedule events.",
+      "google-drive": "Search, upload and share files.",
+      "google-docs": "Read, draft and edit documents.",
+      "google-sheets": "Read, write and format spreadsheets.",
+      "google-slides": "Read, edit and export presentations.",
+    } as Record<string, string | undefined>,
+    skills: "Skills",
+    skillsLede: "Your personal skills.",
+    manageSkills: "Manage Skills",
+    noSkills: "No personal skills yet",
+    noSkillsHint:
+      "A skill teaches the assistant how you do a task. Create one, or import a folder, in Manage Skills.",
+    /** The page's tabs: the kinds of plugin. */
+    kinds: "Kinds of plugin",
+    apps: {
+      title: "Apps",
+      lede: "Installed once for the workspace by an administrator. Everyone in the workspace can then use them.",
+    },
+  },
   /** The tag every message carries, in the list and above its parts. */
   partKind: {
     text: "Note",
@@ -2476,7 +3075,7 @@ export const defaultCopy = {
     /** Under an open announcement, whose button is Hide for Me. */
     readOnly: "Nothing to decide. Hide it when you're done. Others still see it.",
     /** A project's inbox with nothing open for the reader. */
-    emptyOpenHint: "New announcements land here. What you hid is under Resolved.",
+    emptyOpenHint: "New announcements land here. What you hid is under Done.",
     includeSubProjects: "Include Sub-projects",
     postedIn: (project: string) => `Posted in ${project}`,
     withdrawnBy: (who: string) => `Withdrawn by ${who}`,
@@ -2526,6 +3125,8 @@ export const defaultCopy = {
     archivedCount: (count: number) => `Archived, not yet due (${count})`,
   },
   sidebar: {
+    /** Recents older than yesterday. */
+    earlier: "Earlier",
     pinned: "Pinned",
     you: "You",
     agents: (names: string[]) => `Agents: ${names.join(", ")}`,
@@ -2534,6 +3135,10 @@ export const defaultCopy = {
     moreParticipants: (count: number) => `+${count}`,
     pinProject: (title: string, pinned: boolean) => `${pinned ? "Unpin" : "Pin"} project ${title}`,
     dismiss: "Dismiss navigation",
+    /** A section's name on the icon rail, where its count is not shown as text. */
+    needYou: (label: string, count: number) => `${label}, ${count} need you`,
+    /** Said after a section's label and count, which the open sidebar shows. */
+    needYouSuffix: "need you",
     /** The conversation list's views, chosen from its filter menu. */
     view: "View",
     recents: "Recents",
@@ -2570,38 +3175,31 @@ export const defaultCopy = {
   /** A conversation's approval mode, a text control under the composer (DES-057). */
   approvals: {
     label: "Approvals",
-    ask: "Default",
-    askHint: "Ask a person before a gated action runs.",
-    auto: "Approve for Me",
+    ask: "Ask Me",
+    askHint: "Every gated action waits for you.",
+    auto: "Run",
     autoHint:
-      "Approve gated actions as you, within policy. Budget requests and actions the agent or the policy always asks about still come to a person. Every approval is audited.",
-    autoFor: (name: string) => `Approved for ${name}`,
+      "The approval agent decides each action the policy asks about, and hands you anything it is unsure of. Every decision is audited.",
+    autoFor: (name: string) => `Run, chosen by ${name}`,
+    /** The secondary option beside Run: the approval agent also answers questions (DES-079). */
+    answers: "Answer Questions",
+    decide: "Run and Answer",
+    decideHint:
+      "The approval agent also answers a question an agent asks you when the session already settles it, and hands you the rest. Each answer says it was the approval agent's, and is audited.",
+    decideFor: (name: string) => `Run and Answer, chosen by ${name}`,
+    waiting: "No model is enabled for the approval agent yet, so every action waits for a person.",
     failed: "Could not change approvals. Try again.",
-  },
-  /**
-   * Under the composer: the model and reasoning effort for the next message
-   * alone, from what the agents it may start offer (DES-067).
-   */
-  pick: {
-    label: "Model and effort for this message",
-    agentModel: "Agent's model",
-    agentEffort: "Default effort",
-    models: "Model",
-    efforts: "Effort",
-    hint: "Applies to this message only, for agents that offer it.",
-    effort: (effort: string) => effort.charAt(0).toUpperCase() + effort.slice(1),
-  },
-  agentChoices: {
-    title: "Message choices",
-    hint: "Let people choose a model or reasoning effort for each message. Leave both lists empty to use only this agent's model and default effort.",
-    models: "Allowed models",
-    modelsHint:
-      "One provider/model per line. The agent's own model is always available. Only configured providers can be saved.",
-    efforts: "Allowed reasoning efforts",
-    effortsHint:
-      "One effort per line, such as low, medium or high. Choose efforts supported by the models you offer; unsupported efforts fail before a model call.",
-    modelProblem: "Enter each model as provider/model, with no spaces.",
-    effortProblem: "Enter each effort as a word, such as low or high, with no spaces.",
+    /** In the menu of an approval waiting in a Slack thread: sets the conversation, not the call. */
+    letAgentDecide: "Let the approval agent decide in this thread",
+    /** Under the note that the approval agent decides, to set the thread back. */
+    askMeAgain: "Ask Me Again",
+    /** Under the note that a person decides again, to hand it back to the approval agent. */
+    letAgentDecideAgain: "Let the Approval Agent Decide",
+    /** What changed in the thread, said where everyone in it reads it. */
+    nowAuto: (who: string) =>
+      `${who} let the approval agent decide gated actions in this thread. It decides from the next action on, as ${who} could, and hands a person anything it is unsure of. An action already waiting still waits for a person.`,
+    nowAsk: (who: string) =>
+      `${who} set this thread to ask a person about every gated action again.`,
   },
   /** Over Home's chat bar: the person's own project, where a conversation in no project is filed (DES-057). */
   noProject: "No project",
@@ -2726,6 +3324,7 @@ export const defaultCopy = {
       home: "An agent's home changed",
       experts: "Experts changed",
       knowledge: "Knowledge sources changed",
+      context: "Corpora changed",
       skills: "Skills changed",
       channel: "A channel changed",
     } as Record<string, string>,
@@ -2803,6 +3402,58 @@ export const defaultCopy = {
   },
   /** The chat bar's + menu and what it selects for a conversation. */
   /** Voice notes recorded in the composer and transcribed by the deployment's speech kind. */
+  voiceSettings: {
+    /** The settings section and its nav entry. */
+    title: "Voice",
+    lede: "The service that hears people and speaks agents' answers. With one set up, a voice clip sent in Slack is heard and answered out loud as well as in writing, and the console's microphone uses it too. Without one, the microphone uses the browser's own dictation.",
+    /** The kinds, by name. */
+    kinds: { groq: "Groq", openai: "OpenAI" } as Record<string, string>,
+    off: "Not set up",
+    on: "On",
+    setUp: "Set Up",
+    replaces: (other: string) => `Replaces ${other}`,
+    edit: "Edit",
+    turnOff: "Turn Off",
+    keep: "Keep",
+    confirmOff: "Turn Off Voice",
+    tryVoice: "Try Voice",
+    trying: "Speaking a sample",
+    /** What a check heard back from its own sample. */
+    heard: (text: string) => `Heard back: "${text}"`,
+    /** One line saying how it is set up, never its key. */
+    summary: (model: string, voice: string, key: string) => `${model} · voice ${voice} · ${key}`,
+    keyKept: "key kept",
+    noKey: "no key",
+    formTitle: (kind: string) => `Set up ${kind}`,
+    changeTitle: (kind: string) => `Change ${kind}`,
+    key: "Key",
+    keyWay: "How the key is given",
+    pasteIt: "Paste it",
+    envVar: "Environment variable",
+    value: "Value",
+    keepsKey: "Leave empty to keep the key it has.",
+    keptHint: "Kept in the secret store, never shown again.",
+    reference: "Reference",
+    referenceHint: "An env:HUMAGEN_ name this server gives the workspace.",
+    voice: "Voice",
+    more: "Models and prices",
+    hearModel: "Transcription model",
+    speakModel: "Speech model",
+    hearPrice: "Dollars an hour of audio heard",
+    minSeconds: "Least seconds billed a recording",
+    speakPrice: "Dollars a million characters spoken",
+    priceHint:
+      "The provider's published price unless you change it. Every call is counted in Usage.",
+    badPrice: "A price is dollars, such as 0.04, up to 1000.",
+    cancel: "Cancel",
+    save: "Save",
+    saving: "Saving",
+    readOnly: "Only someone who manages the workspace's connections can change voice.",
+    loadFailed: "Voice settings could not be read.",
+    saveFailed: "Voice could not be saved.",
+    offFailed: "Voice could not be turned off.",
+    checkFailed: (why: string) => `The sample could not be spoken: ${why}`,
+  },
   voice: {
     /** The microphone button, before recording. */
     record: "Record a voice note",
@@ -2823,7 +3474,7 @@ export const defaultCopy = {
   },
   chat: {
     /** The + button, which opens the menu. */
-    plus: "Add files, agents or a project",
+    plus: "Add files or agents",
     /** The shortcut that opens it, said in its tooltip: Cmd+/ on a Mac, Ctrl+/ elsewhere. */
     plusShortcut: (mac: boolean) => (mac ? "Cmd+/" : "Ctrl+/"),
     /** The sidebar's filter of conversations, and how many filters are on. */
@@ -2867,7 +3518,7 @@ export const defaultCopy = {
     notHere: (agents: string[]) =>
       `${agents.join(", ")} can't answer in this project. Pick another project, or mention another agent.`,
     /** The chat bar's prompt. */
-    placeholder: "Message @agent",
+    placeholder: "Ask anything",
     /** Under an answer that went to an agent because it was selected, not tagged. */
     routedAll: (agent: string) => `Routed to ${agent}, with every agent selected`,
     routed: (agent: string) => `Routed to ${agent}`,
@@ -2908,25 +3559,25 @@ export const defaultCopy = {
   workspaceDefault: "Workspace Default",
   /** The control that makes an agent live in a project. */
   livesHere: "Lives Here",
-  /** Where an agent can answer, on its Access tab and in the Directory. */
+  /** Where an agent comes from, on a project's Agents tab. */
   agentPlace: {
     livesIn: (project: string) => `Lives in ${project}`,
-    availableIn: "Available in",
-    platform: "Workspace agent: available wherever a project enables it",
-    everywhere: "Available everywhere",
-    nowhere: "Not enabled in any project yet.",
     loses: (n: number) => `${n} ${n === 1 ? "place" : "places"} will lose this agent.`,
-    /** On an agent's Access tab. */
-    title: "Where it answers",
-    hint: "Workspace agents answer wherever a project enables them. An agent with another project as its home answers there and below.",
-    home: "Lives in",
-    noHome: "Workspace",
     livesHere: "Lives here",
-    /** Where a project agent answers: its home and everything below it. */
-    homeAndBelow: (title: string) => `${title} and the projects below it`,
     fromProject: (title: string) => `from ${title}`,
-    moved: "Saved. It answers where it lives now.",
     failed: "Where the agent lives could not be changed.",
+  },
+  /** Who sees an agent, on its Access tab and in the agent list. */
+  agentAccess: {
+    title: "Who sees it",
+    label: "Access",
+    private: "Private",
+    privateHint: "Only you see it. It answers only where you alone read.",
+    workspace: "Workspace",
+    workspaceHint: "Everyone in the workspace sees it.",
+    membersOf: (project: string) => `Members of ${project}`,
+    membersHint: (project: string) => `Only members of ${project} see it.`,
+    failed: "Who sees the agent could not be changed.",
   },
   /** Who and what is in the workspace, readable by everyone in it. */
   directory: {
@@ -2947,11 +3598,6 @@ export const defaultCopy = {
       `${names.join(", ")}${more ? ` and ${more} more` : ""}`,
     more: "Show More",
     failed: "The directory could not be read.",
-    /** An agent's row: where it lives or that it is a platform agent, and where it is enabled. */
-    platformAgent: "Workspace agent",
-    enabledIn: (places: string) => `Enabled in ${places}`,
-    enabledEverywhere: "Enabled everywhere",
-    notEnabled: "Not enabled anywhere",
     /** A project's row: what it holds besides its tasks. */
     holds: (schedules: number, notes: number) =>
       [
@@ -2960,7 +3606,6 @@ export const defaultCopy = {
       ]
         .filter(Boolean)
         .join(", "),
-    livingHere: (agents: string) => `Agents living here: ${agents}`,
     /** People are tagged by handle; agents by name. */
     roles: (roles: string[]) => (roles.length ? roles.join(", ") : "No role"),
   },
@@ -2988,6 +3633,32 @@ export const defaultCopy = {
     empty: "Nothing scheduled yet",
     active: "Active",
     paused: "Paused",
+    tabs: "Scheduled work",
+    schedulesTab: "Schedules",
+    backgroundTab: "Background",
+  },
+  background: {
+    title: "Background",
+    empty: "No background work",
+    stop: "Stop",
+    retry: "Retry",
+    couldNotLoad: "Background work could not be loaded",
+    couldNotStop: "It could not be stopped",
+    kind: { watch: "Watch", goal: "Goal", task: "Task" } as Record<string, string>,
+    state: {
+      active: "Active",
+      done: "Done",
+      expired: "Ran out",
+      stopped: "Stopped",
+      failed: "Failed",
+    } as Record<string, string>,
+    working: "Working",
+    every: (every: string) => `Every ${every}`,
+    checks: (runs: number) => (runs === 1 ? "1 check" : `${runs} checks`),
+    turns: (runs: number, limit: number) => `Turn ${runs} of ${limit}`,
+    next: (when: string) => `Next ${when}`,
+    nextSoon: "Next run soon",
+    stopsIn: (when: string) => `Stops ${when}`,
   },
   schedules: {
     deliver: "Send to",
@@ -3035,6 +3706,26 @@ export const defaultCopy = {
       weekends: (at: string) => `Weekends at ${at} UTC`,
       weekly: (day: number, at: string) =>
         `${["Sundays", "Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays"][day]} at ${at} UTC`,
+      everyMinutes: (n: number) => `Every ${n} minutes`,
+      everyHours: (n: number) => `Every ${n} hours`,
+    },
+    /**
+     * The fields of an approval card for a schedule an agent proposes from a
+     * conversation (create_schedule, update_schedule): what it checks, how
+     * often, which agent, where it posts, and when it runs next.
+     */
+    proposal: {
+      name: "Schedule",
+      checks: "Checks",
+      every: "How often",
+      agent: "Agent",
+      posts: "Posts",
+      nextRun: "Next run",
+      postsHere: "In this Slack channel, only when something fires",
+      postsSlack: (channel: string) => `In Slack channel ${channel}, only when something fires`,
+      postsGitHub: (issue: string) => `On ${issue}, only when something fires`,
+      postsInbox: "To your inbox, only when something fires",
+      postsNowhere: "Nowhere: each answer stays in its own session",
     },
   },
   /** The one-field form a Slack mention or an expert's question opens to reply. */
@@ -3090,6 +3781,10 @@ export const defaultCopy = {
       },
     } as Record<string, { label: string; description: string; slack?: string }>,
     needsYou: "Needs you",
+    /** The strip under the chat bar on the web: the newest things the person's agents made. */
+    recentlyMade: "Recently made",
+    /** In place of the strip when it could not be read. */
+    madeFailed: "Recent artifacts could not be loaded.",
     nothingWaiting: "Nothing needs you right now, and no alerts are open.",
     /** The page's one-line point, after the greeting. */
     notificationCount: (n: number) =>
@@ -3152,7 +3847,7 @@ export const defaultCopy = {
     review: "Review",
     whoAnswers: "Who answers you",
     dmRouting: "In direct messages, send my questions to",
-    connections: "Connections",
+    connections: "Plugins",
     manageAll: "Manage all",
     connectedTo: (account: string) => `Connected to ${account}`,
     connectedHere: "Connected for this workspace.",
@@ -3189,18 +3884,30 @@ export const defaultCopy = {
     personalTitle: "Personal",
     companyStart: "Start in the workspace",
     unreadUpdates: "Unread updates",
+    loading: "Loading projects",
+    pinned: "Pinned",
     title: "Projects",
-    lede: "Where work belongs. A project's instructions, notes and limits reach everything below it.",
     /** A kind in words, on a row and in a project's meta line. */
     kind: { company: "Company-wide", team: "Team", account: "Account" } as Record<string, string>,
-    /** The Projects page's groups, in the order they are shown. */
+    /** Projects of a kind, as the Projects page's kind filter names them. */
     group: { company: "Company-wide", team: "Teams", account: "Accounts" } as Record<
       string,
       string
     >,
-    anyKind: "All",
+    anyKind: "All kinds",
     kindFilter: "Kind",
     search: "Search projects",
+    /** How the Projects page orders its cards. Pinned ones come first in any order. */
+    sort: {
+      label: "Sort by",
+      activity: "Last activity",
+      name: "Name",
+      created: "Created",
+    },
+    /** A card's last activity: "Updated 2 days ago". */
+    updated: (when: string) => `Updated ${when}`,
+    /** On a card whose project only its members read. */
+    private: "Private",
     details: "Details",
     moreAgents: (count: number) => `+${count} more agents`,
     /** The workspace is the root of the tree. */
@@ -3208,8 +3915,7 @@ export const defaultCopy = {
     workspaceHint: "Holds every project. Its instructions and notes reach every agent.",
     /** Where a row sits when the row above it is not its parent: "in Field › Globex". */
     within: (path: string[]) => `in ${path.join(" › ")}`,
-    empty: "No projects yet.",
-    emptyCreate: "No projects yet. Make one to keep related conversations together.",
+    empty: "No projects yet",
     noMatch: "No project matches.",
     allProjects: "All projects",
     /** Before the agent that answers a project's untagged Slack and GitHub messages, in its meta line: "Lead globex-helper". */
@@ -3241,6 +3947,14 @@ export const defaultCopy = {
       externalId: "Customer id elsewhere (optional)",
       url: "Link to the customer's record (optional)",
       governed: "Only those who govern projects make company-wide ones.",
+      /** Who reads a project made from the Projects page. */
+      access: "Access",
+      accessPrivate: "Private",
+      accessPrivateHint: "You and the people you add",
+      accessWorkspace: "Workspace",
+      accessWorkspaceHint: "Everyone in the workspace",
+      /** A name with nothing in it a project's name can hold. */
+      nameNeeded: "Use at least one letter or digit.",
       /** Under the kind, for an account: who sees it. */
       accountMembersOnly:
         "Accounts are members only: you, the people you add and the owners above see it. Under a project everyone owns, everyone sees it.",
@@ -3315,6 +4029,135 @@ export const defaultCopy = {
     managed: "The platform file declares this project. Fields it sets can't be changed here.",
     governed: "Only those who govern projects change the workspace and company-wide projects.",
     stale: "Someone changed this project since you opened it. Its latest version is shown now.",
+    /**
+     * One project's page: Home's composer over its recent sessions, and
+     * beside them what every session in it is given.
+     */
+    page: {
+      /** The composer's placeholder: "New session in Globex". */
+      composer: (title: string) => `New session in ${title}`,
+      recents: "Recents",
+      /** A session in Recents: where it started. */
+      trace: {
+        slack: "Slack",
+        github: "GitHub",
+        console: "Console",
+        scheduled: "Scheduled",
+        /** A schedule's run: "Scheduled: weekly-recap". */
+        schedule: (name: string) => `Scheduled: ${name}`,
+        /** More agents or people than the row shows: "+2". */
+        more: (n: number) => `+${n}`,
+      },
+      noSessions: "No sessions yet",
+      untitled: "Untitled session",
+      showMore: "Show More",
+      loadingMore: "Loading…",
+      sessionsFailed: "The sessions could not be loaded.",
+      retry: "Try Again",
+      /** The side column, for assistive technology. */
+      side: "Project settings",
+      editHeading: "Edit project",
+      save: "Save",
+      saving: "Saving…",
+      cancel: "Cancel",
+      instructions: {
+        title: "Instructions",
+        none: "No instructions",
+        add: "Add",
+        edit: "Edit",
+        addLabel: "Add Instructions",
+        editLabel: "Edit Instructions",
+        /** Under the editor: "120 / 4,000". */
+        count: (n: number) => `${n.toLocaleString()} / 4,000`,
+        failed: "The instructions could not be saved. Try again.",
+      },
+      context: {
+        title: "Context",
+        none: "No corpora",
+        /** A corpus on the card: "HR policies, 3 sources". */
+        corpus: (title: string, sources: number) =>
+          `${title}, ${sources} ${sources === 1 ? "source" : "sources"}`,
+        add: "Add",
+        edit: "Edit",
+        addLabel: "Add Context",
+        editLabel: "Edit Context",
+        /** The sheet, when the reader may read no corpus. */
+        noCorpora: "No corpora to attach",
+        failed: "The context could not be saved. Try again.",
+        stale:
+          "Someone changed this project's context since you opened it. Its latest is shown now.",
+      },
+      memory: {
+        title: "Memory",
+        /** The card: "3 notes, 1 waiting". */
+        summary: (notes: number, waiting: number) =>
+          [
+            `${notes} ${notes === 1 ? "note" : "notes"}`,
+            ...(waiting > 0 ? [`${waiting} waiting`] : []),
+          ].join(", "),
+        view: "View",
+        viewLabel: "View Memory",
+        none: "No notes",
+        waiting: "Waiting for approval",
+        kept: "Notes",
+        keep: "Keep",
+        discard: "Discard",
+        forget: "Forget",
+        /** A pending note's controls: "Keep note: The launch is Tuesday". */
+        keepLabel: (text: string) => `Keep note: ${text}`,
+        discardLabel: (text: string) => `Discard note: ${text}`,
+        forgetLabel: (text: string) => `Forget note: ${text}`,
+        note: "New note",
+        add: "Add Note",
+        failed: "The notes could not be changed. Try again.",
+      },
+      scheduled: {
+        title: "Scheduled",
+        none: "Nothing scheduled",
+        add: "Add",
+        addLabel: "Add Schedule",
+        heading: "New schedule",
+        name: "Name",
+        when: "When",
+        custom: "Custom",
+        expression: "Cron expression",
+        expressionHint: "Minute, hour, day, month and weekday, in UTC",
+        agent: "Agent",
+        text: "What to ask",
+        create: "Create Schedule",
+        paused: "Paused",
+        failed: "The schedule could not be saved. Try again.",
+      },
+      slack: {
+        /** The card holds every link out of Humagen; Slack channels are the kind a project keeps today. */
+        title: "External references",
+        none: "No references linked",
+        add: "Add",
+        addLabel: "Add External Reference",
+        heading: "Link a Slack channel",
+        client: "Slack app",
+        channel: "Slack channel ID",
+        channelHint: "Starts with C, or G for a private channel",
+        invalid: "Use a Slack channel ID that starts with C or G.",
+        noClients: "No Slack app is connected",
+        link: "Link Channel",
+        remove: "Remove",
+        /** One link on the card: "#C0123 via Acme Slack". */
+        via: (channel: string, client: string) => `#${channel} via ${client}`,
+        removeLabel: (channel: string) => `Remove #${channel}`,
+        failed: "The Slack channel could not be linked. Try again.",
+        removeFailed: "The Slack channel could not be removed. Try again.",
+      },
+      visibility: {
+        title: "Access",
+        private: "Private",
+        shared: "Shared",
+        workspace: "Workspace",
+        change: "Change",
+        changeLabel: "Change Access",
+        heading: "Who can see this project",
+      },
+    },
     failed: {
       create: "The project could not be created. Try again.",
       save: "The project could not be saved. Try again.",
@@ -3396,6 +4239,513 @@ export const defaultCopy = {
     },
   },
   /** Channels and shared threads: where people and agents work together in a project. */
+  /** An item people pointed at: a PR, an issue, a Slack thread, a URL. */
+  items: {
+    kind: (kind: string) =>
+      kind === "github"
+        ? "GitHub"
+        : kind === "slack"
+          ? "Slack"
+          : kind === "url"
+            ? "Web page"
+            : kind === "schedule"
+              ? "Schedule"
+              : "Item",
+    sessions: "Sessions",
+    noSessions: "No sessions yet",
+    /** Places that mentioned the item: a pasted link, a permalink, "#243". */
+    backlinks: "Also discussed in",
+    /** The header's link to the session's item. */
+    open: "Item",
+  },
+  /** Where a session started, as the Sessions list filters it. */
+  places: {
+    label: "Session place",
+    any: "All places",
+    slack: "Slack",
+    github: "GitHub",
+    schedule: "Scheduled",
+    console: "Console",
+    item: (label: string) => `On ${label}`,
+    clearItem: "Clear Item",
+  },
+  /** A session's Details panel: its progress, agents, outputs, where it ran, and what it used. */
+  details: {
+    title: "Details",
+    /** The header's Details button, with how many calls are running or waiting. */
+    open: (n: number) => (n ? `Details, ${n} working` : "Details"),
+    progress: "Progress",
+    working: (agents: number, tools: number) =>
+      [
+        "Working",
+        agents ? `${agents} ${agents === 1 ? "agent" : "agents"}` : "",
+        tools ? `${tools} ${tools === 1 ? "tool" : "tools"}` : "",
+      ]
+        .filter(Boolean)
+        .join(" · "),
+    waiting: "Waiting for you",
+    agents: "Agents",
+    calls: (n: number) => `${n} ${n === 1 ? "call" : "calls"}`,
+    outputs: "Outputs",
+    environment: "Environment",
+    usedTitle: "Used in this session",
+    used: {
+      origin: "Origin",
+      uploads: "Uploads",
+      connections: "Connections",
+      knowledge: "Knowledge",
+      context: "Context",
+      web: "Web",
+      memory: "Memory",
+    },
+    read: "Read",
+    wrote: "Wrote",
+    back: "Back",
+    files: (n: number) => `${n} ${n === 1 ? "file" : "files"}`,
+  },
+  /**
+   * The session's workbench: the tabs of the pane Details opens, and what a
+   * person did by hand in them, which goes with their next message
+   * (docs/architecture/workbench.md).
+   */
+  workbench: {
+    tabs: "Workbench",
+    tab: {
+      details: "Details",
+      browser: "Browser",
+      terminal: "Terminal",
+      changes: "Changes",
+      sidechat: "Side Chat",
+      search: "Search",
+    },
+    expand: "Expand Workbench",
+    collapse: "Collapse Workbench",
+    byHand: {
+      /** The list above the composer. */
+      pending: (n: number) =>
+        n === 1
+          ? "1 thing you did goes with your next message"
+          : `${n} things you did go with your next message`,
+      source: {
+        terminal: "Terminal",
+        browser: "Browser",
+        files: "Files",
+        changes: "Changes",
+        other: "Other",
+      },
+      remove: (summary: string) => `Remove: ${summary}`,
+      clear: "Clear All",
+      /** Above the newest few, when the list holds more than it shows. */
+      earlier: (n: number) => `Show ${n} Earlier`,
+      fewer: "Show Fewer",
+      /** On a line whose detail the next message has no room for. */
+      rowBare: "Goes without its detail, which does not fit",
+      /** On a line the next message has no room for at all. */
+      rowLater: "Does not fit, and goes with the message after",
+      /** Under the list when some lines go without their detail. */
+      bare: (n: number) =>
+        n === 1
+          ? "1 goes without its detail, to fit in your next message. Remove others to send it in full."
+          : `${n} go without their detail, to fit in your next message. Remove others to send them in full.`,
+      /** Under the list when it was full and the oldest were dropped. */
+      dropped: (n: number, max: number) =>
+        n === 1
+          ? `The list holds ${max}. The oldest 1 was dropped and will not be sent.`
+          : `The list holds ${max}. The oldest ${n} were dropped and will not be sent.`,
+      /** Under the list when the next message cannot carry all of it. */
+      overflow: (n: number) =>
+        n === 1
+          ? "1 does not fit in your next message and will go with the one after."
+          : `${n} do not fit in your next message and will go with the one after.`,
+      /** In a thread, the collapsed line on a message that carried some. */
+      did: (n: number, mine: boolean) =>
+        `${mine ? "You did" : "Did"} ${n} ${n === 1 ? "thing" : "things"} by hand`,
+      omitted: (n: number) => `${n} more did not fit in this message.`,
+    },
+  },
+  // Each workbench tab keeps its own words in its own block below, so two
+  // tabs never change the same lines. Only the tab's own change edits its block.
+  /** The Browser tab (WorkbenchBrowser.tsx). */
+  workbenchBrowser: {
+    /** The card under an answer that used the browser. It opens the tab. */
+    card: {
+      title: "Browser",
+      open: "Open Browser",
+      steps: (n: number) => (n === 1 ? "1 step" : `${n} steps`),
+      /** Where the browser runs: the tool provider it is reached through. */
+      on: (provider: string) => `on ${provider}`,
+      working: "Working",
+      thumbnail: "The latest screenshot",
+    },
+    /** What the agent did at one step, from its tool call. */
+    step: {
+      navigate: (url: string) => `Went to ${url}`,
+      back: "Went back",
+      click: (what: string) => `Clicked ${what}`,
+      type: (what: string) => `Typed into ${what}`,
+      fill: "Filled in a form",
+      press: (key: string) => `Pressed ${key}`,
+      screenshot: "Took a screenshot",
+      snapshot: "Read the page",
+      tabs: "Changed tabs",
+      wait: "Waited for the page",
+      resize: "Resized the window",
+      dialog: "Answered a dialog",
+      close: "Closed the page",
+      computer: (action: string) => `Computer: ${action}`,
+      other: (tool: string) => tool,
+      thePage: "the page",
+    },
+    failed: "Failed",
+    running: "Running",
+    /** The list of what the agent did. */
+    steps: "What the agent did",
+    stepOf: (n: number, total: number) => `Step ${n} of ${total}`,
+    earlier: "Earlier Step",
+    later: "Later Step",
+    goThere: "Go To This Address",
+    /** Nothing was done in a browser in this session. */
+    none: "No browser work in this session",
+    ask: "Ask For Browser Work",
+    askSeed: "Use the browser to ",
+    toDetails: "Back To Details",
+    /** The page as it is now. */
+    page: "The page now",
+    untitled: "Untitled page",
+    noShot: "No screenshot yet",
+    look: "Take Screenshot",
+    refresh: "Refresh",
+    back: "Back",
+    address: "Address",
+    addressHint: "https://",
+    go: "Go",
+    working: "Working in the browser",
+    /** On the screenshot: pick what to act on. */
+    screenshot: (title: string) => `Screenshot of ${title}`,
+    pick: "Pick something on the page to click or type into",
+    elements: "On this page",
+    element: (role: string, name: string) => (name ? `${role} "${name}"` : role),
+    moreElements: (n: number) => `${n} more are not listed`,
+    selected: "Selected",
+    click: "Click",
+    typeInto: (what: string) => `Text for ${what}`,
+    type: "Type",
+    submit: "Press Enter after",
+    cancel: "Cancel",
+    /** Screenshots this console took, newest first. */
+    shots: "Screenshots taken here",
+    shotOf: (when: string, what: string) => `${when}: ${what}`,
+    latest: "Latest",
+    /** Why the page cannot be opened from here. */
+    noControl: "This session's browser cannot be opened from here",
+    notKept: "Screenshots the agent took are not kept",
+    /** An action's answer never arrived. */
+    cut: "No answer arrived, so this may or may not have happened. Take a screenshot to see the page as it is.",
+    /** What a person did, as their next message says it. */
+    did: {
+      look: "Took a screenshot",
+      navigate: (url: string) => `Went to ${url} in the browser`,
+      back: (url: string) =>
+        url ? `Went back in the browser, to ${url}` : "Went back in the browser",
+      click: (what: string, page: string) => `Clicked ${what} on ${page}`,
+      type: (n: number, what: string, submit: boolean) =>
+        `Typed ${n} ${n === 1 ? "character" : "characters"} into ${what}${submit ? " and pressed Enter" : ""}`,
+      press: (key: string) => `Pressed ${key} in the browser`,
+      failed: (what: string, why: string) => `Tried in the browser, and it failed: ${what}. ${why}`,
+      /** The answer never arrived, so nobody knows whether it was done. */
+      unknown: (what: string) =>
+        `Tried in the browser, outcome unknown (no answer arrived, so it may or may not have happened): ${what}`,
+      page: (title: string, url: string) =>
+        [title && `Page: ${title}`, url].filter(Boolean).join("\n"),
+    },
+  },
+  /** The Terminal tab (WorkbenchTerminal.tsx). */
+  workbenchTerminal: {
+    /** The log's name, for assistive technology. */
+    log: "Commands run in this session",
+    /** Who ran a command. */
+    you: "You",
+    agent: "Agent",
+    /** How a command came out. */
+    state: {
+      queued: "Queued",
+      running: "Running",
+      waiting: "Waiting for approval",
+      exited: (code: number) => `Exit ${code}`,
+      done: "Done",
+      failed: "Did not run",
+      denied: "Not run",
+      stopped: "Stopped",
+      timed_out: "Stopped at the time limit",
+    },
+    /** One command's name, for assistive technology. */
+    entry: (who: string, command: string, state: string) => `${who} ran ${command}: ${state}`,
+    hidden: "A command you may not read",
+    cut: "Earlier output was cut.",
+    noOutput: "No output.",
+    showAll: (lines: number) => `Show All ${lines} Lines`,
+    showLess: "Show Less",
+    changed: (files: string) => `Changed: ${files}`,
+    removed: (path: string) => `${path} (removed)`,
+    notKept: (n: number) => (n === 1 ? "1 change was not kept." : `${n} changes were not kept.`),
+    /** No command has run. */
+    empty: "No commands yet",
+    toDetails: "Open Details",
+    /** The reader's own command line. */
+    input: "Command",
+    placeholder: "Run a command in the sandbox",
+    run: "Run",
+    /** Under the command line. A command leaves nothing behind but its files. */
+    fresh:
+      "Each command starts fresh in this session's files, with no network, for up to 15 seconds.",
+    busy: "You can run a command when the agents are not working.",
+    /** Said aloud when the reader's command ends. */
+    ended: (state: string, lines: number) =>
+      `${state}. ${lines === 1 ? "1 line" : `${lines} lines`} of output.`,
+    failedToRun: "The command could not be run.",
+    /** What goes with the reader's next message. */
+    ran: (command: string, outcome: string) => `Ran ${command}: ${outcome}`,
+    exit: (code: number) => `exit ${code}`,
+    timedOut: "stopped at the 15 second limit",
+  },
+  /** The Changes tab (WorkbenchChanges.tsx). */
+  workbenchChanges: {
+    empty: "No changes yet",
+    openFiles: "Open Files",
+    failed: "The changes could not be read.",
+    retry: "Try Again",
+    refresh: "Refresh",
+    list: "Files this session changed",
+    state: { added: "Added", changed: "Changed", removed: "Removed" },
+    by: (agent: string) => `by ${agent}`,
+    linesAdded: (count: number) => `${count} ${count === 1 ? "line" : "lines"} added`,
+    linesRemoved: (count: number) => `${count} ${count === 1 ? "line" : "lines"} removed`,
+    conflict: "A run's change to this file was not copied back.",
+    partial: "Older runs are not listed.",
+    compare: "Compare",
+    compareAll: "Whole File",
+    compareLast: "Last Change",
+    noEarlier: "No earlier text is kept. Every line shows as added.",
+    same: "No lines differ.",
+    gone: "Removed. Its text was not kept.",
+    binary: (size: string) => `Binary file, ${size}. Nothing to compare as text.`,
+    large: (size: string) => `Large file, ${size}.`,
+    compareAnyway: "Compare Anyway",
+    unreadable: "This file could not be read.",
+    diffFor: (path: string) => `Changes to ${path}`,
+    oldLine: "Old line",
+    newLine: "New line",
+    change: "Change",
+    text: "Text",
+    lineAdded: "Added",
+    lineRemoved: "Removed",
+    fold: (count: number) => `${count} unchanged ${count === 1 ? "line" : "lines"}`,
+    more: "Show More Lines",
+    truncated: "The comparison is cut here.",
+    edit: "Edit File",
+    restore: "Restore Earlier Text",
+    remove: "Delete File",
+    confirmRestore: (path: string) => `Put ${path} back to its text before the last change?`,
+    confirmRemove: (path: string) => `Delete ${path} from the session's files?`,
+    keep: "Keep It",
+    restored: "Restored",
+    removed: "Deleted",
+    stale: "The file changed. It was read again.",
+    actionFailed: "That did not work. Nothing was changed.",
+    recordRestored: (path: string, added: number, removed: number) =>
+      `Discarded the last change to ${path}: restored its earlier text (${added} lines added, ${removed} removed)`,
+    recordRemoved: (path: string, lines?: number) =>
+      lines === undefined
+        ? `Discarded ${path}: deleted the file`
+        : `Discarded ${path}: deleted the file (${lines} ${lines === 1 ? "line" : "lines"})`,
+    recordEdited: (path: string, added: number, removed: number) =>
+      `Edited ${path}: ${added} ${added === 1 ? "line" : "lines"} added, ${removed} removed`,
+    recordCreated: (path: string, lines: number) =>
+      `Created ${path} (${lines} ${lines === 1 ? "line" : "lines"})`,
+    recordDeleted: (path: string) => `Deleted ${path}`,
+  },
+  /** The Side Chat tab (WorkbenchSidechat.tsx). */
+  workbenchSidechat: {
+    /** The tab before anything is asked: its title, over the box. */
+    empty: "Ask about this session on the side",
+    /** The session has no saved turn a side chat could start from. */
+    nothing: "Nothing to ask about yet",
+    /** The reader may not post here, so may not start one. */
+    readOnly: "You can read this session, not ask in it",
+    placeholder: "Ask on the side",
+    earlier: "Earlier side chats",
+    /** A side chat that was given no title. */
+    untitled: "Side chat",
+    /** The title a side chat is saved under, from its first question. */
+    title: (question: string) => `Side chat: ${question}`,
+    all: "All Side Chats",
+    fresh: "New Side Chat",
+    openFull: "Open as Conversation",
+    /** Under a side chat's header: how much of the session it was given. */
+    from: (when: string) => `Reads this session as it was ${when}. Nothing here is posted in it.`,
+    thread: "Side chat",
+    saidBy: (name: string) => `Message from ${name}`,
+    answeredBy: (name: string) => `Answer from ${name}`,
+    add: "Add to Message",
+    added: "Added to Message",
+    /** What the main thread's agent reads above the answer. */
+    summary: (agent: string, question: string) =>
+      question
+        ? `Side chat answer from ${agent} to "${question}"`
+        : `Side chat answer from ${agent}`,
+    part: (summary: string, i: number, n: number) => `${summary} (part ${i} of ${n})`,
+    missing: "This side chat is unavailable",
+    failed: {
+      start: "The side chat could not be started. Try again.",
+      post: "The message could not be sent. Try again.",
+      list: "Earlier side chats could not be read.",
+      stop: "The answer could not be stopped.",
+    },
+  },
+  /** The Search tab (WorkbenchSearch.tsx). */
+  workbenchSearch: {
+    field: "Search this session",
+    /** The key that puts the cursor in the field, as the field shows it. */
+    shortcut: { mac: "⌘⇧F", other: "Ctrl Shift F" },
+    clear: "Clear Search",
+    results: "Results",
+    group: {
+      files: "Files",
+      pulls: "Pull requests and issues",
+      links: "Links",
+      commands: "Commands",
+      browser: "Browser steps",
+      tools: "Tools",
+      agents: "Agents",
+      attachments: "Attachments",
+    },
+    /** Where a result opens, at the end of its row. */
+    opens: {
+      workspace: "Workspace",
+      terminal: "Terminal",
+      browser: "Browser",
+      activity: "Activity",
+      session: "Session",
+      message: "Message",
+      page: "Page",
+      external: "New tab",
+    },
+    /** A link's second line. */
+    note: {
+      origin: "Where this session started",
+      child: "A session this one started",
+      context: "Linked for context",
+      evidence: "Linked as evidence",
+    },
+    calls: (n: number) => `${n} ${n === 1 ? "call" : "calls"}`,
+    count: (n: number) => `${n} ${n === 1 ? "result" : "results"}`,
+    showAll: (n: number) => `Show All ${n}`,
+    keys: "↑ ↓ to move, Enter to open",
+    empty: "Nothing in this session to find yet",
+    emptyAction: "Open Details",
+    none: (query: string) => `Nothing in this session matches "${query}"`,
+    /** The session's own record could not be read; the rest is still searched. */
+    partial: "Linked sessions and attachments could not be read.",
+    retry: "Retry",
+  },
+  /** The control that returns to the end of a thread or of an answer's activity, named by what is there. */
+  latest: {
+    jump: "Jump to latest",
+    /** An answer is still being written out of view. */
+    working: "Jump to latest, answer in progress",
+    /** Something arrived out of view and has not been seen. */
+    unseen: "Jump to latest, new content",
+  },
+  /** A message's references and the work under it: its origin, what it read and touched, what it delegated. */
+  trace: {
+    /** The section in Details that collects every message's references. */
+    references: "References",
+    delegatedTo: (agents: string) => `Delegated to ${agents}`,
+    /** Under an answer more than one agent worked on: it opens the response's activity in Details. */
+    viewActivity: "View activity",
+    agents: (n: number) => `${n} agents`,
+    /** Every run behind a response, flat, in Details and on a focused message. */
+    activity: "Activity",
+    /** On a call that does not wait: the agent carries on by itself and answers later. */
+    delegated: "Delegated",
+    asked: "Asked",
+    /** Under an answer: how long the response worked and how much it brought in. */
+    worked: (time: string, agents: number, tools: number) =>
+      [
+        `Worked ${time}`,
+        agents ? `${agents} ${agents === 1 ? "agent" : "agents"}` : "",
+        tools ? `${tools} ${tools === 1 ? "tool" : "tools"}` : "",
+      ]
+        .filter(Boolean)
+        .join(" · "),
+    working: (time: string) => `Working ${time}`,
+    /** How a response that did not finish ended, once, in plain words. */
+    stoppedAfter: (time: string, unfinished: number, agents: number) =>
+      agents
+        ? `Stopped after ${time} · ${unfinished} of ${agents} ${agents === 1 ? "agent" : "agents"} unfinished`
+        : `Stopped after ${time}`,
+    failedAfter: (time: string, unfinished: number, agents: number) =>
+      agents
+        ? `Failed after ${time} · ${unfinished} of ${agents} ${agents === 1 ? "agent" : "agents"} unfinished`
+        : `Failed after ${time}`,
+    waitingForYou: "Waiting for you",
+    thinking: "Thinking",
+    input: "Input",
+    result: "Result",
+    privateSteps: (n: number) => `${n} private ${n === 1 ? "step" : "steps"}`,
+    approve: "Approve",
+    deny: "Deny",
+    answerFailed: "That answer was not taken. Try again.",
+    answerSent: "Answer sent",
+    yourReply: "Your reply",
+    send: "Send",
+    status: {
+      queued: "Queued",
+      running: "Working",
+      awaiting_approval: "Waiting for approval",
+      awaiting_input: "Waiting for a reply",
+      done: "Done",
+      error: "Failed",
+      denied: "Denied",
+      stopped: "Stopped",
+    },
+    focus: (agent: string) => `Open ${agent}'s message on its own`,
+    message: "Message",
+    messageBy: (agent: string) => `${agent}'s message`,
+    breadcrumb: "Where this message sits",
+    root: "Session",
+    notFound: "This message could not be found.",
+    picked: (reason: string) => `Picked: ${reason}`,
+    failedTool: (tool: string) => `${tool} failed`,
+    decided: {
+      allow: "Approved",
+      deny: "Denied",
+      ask: "Waiting for",
+    },
+    by: (who: string) => `by ${who}`,
+    /** Where a session started, in its header. */
+    place: {
+      label: "Started in",
+      openIn: (where: string) => `Open in ${where}`,
+      openSchedule: "Open schedule",
+      /** Who sent the root message. */
+      from: (who: string) => `from ${who}`,
+    },
+    /** Who can read the session where it started. */
+    audience: {
+      label: "Audience",
+      dm: "Direct message",
+      /** A Slack channel whose kind the platform has not said. */
+      channel: "Slack channel",
+      publicChannel: "Public channel",
+      privateChannel: "Private channel",
+      group: "Group DM",
+      private: "Private",
+      shared: "Shared",
+    },
+    /** A person's message in a session that started in Slack or GitHub, posted from the console instead. */
+    postedFromWeb: "Posted from the web",
+  },
   threads: {
     posted: (at: string) => `Posted ${at}`,
     /** A channel's title on its page: "#renewals". */
@@ -3442,7 +4792,7 @@ export const defaultCopy = {
     privateHint: "Only the people in it read a private thread. Tagging a person invites them.",
     /** Who takes part, in the meta line. */
     participants: (n: number) => `${n} ${n === 1 ? "person" : "people"}`,
-    startThread: "Message @agent",
+    startThread: "Ask anything",
     reply: "Reply",
     send: "Send",
     /** The control that posts a message no agent answers, unless it tags one. */
@@ -3484,6 +4834,12 @@ export const defaultCopy = {
     inSlack: "Also in Slack",
     /** A message posted in Slack, beside when it was posted. */
     fromSlack: "From Slack",
+    /** Beside a message posted while an agent worked: what it did to that work. */
+    followup: {
+      queued: "Queued until the current answer finishes",
+      replaced: "Replaced the current answer",
+      stopped: (reason: string) => (reason ? `Stopped: ${reason}` : "Stopped"),
+    },
     /** A failed answer to the reader's own message: it is asked again for them from their inbox. */
     retryFromInbox: "Retry it from your inbox, where it answers your message again.",
     /** A failed turn that acted for nobody, such as a machine's from before threads: it is retried for nobody, by anyone who may start runs. */
@@ -3491,6 +4847,8 @@ export const defaultCopy = {
       "This turn acted for nobody, so anyone who may start runs can retry it from the inbox.",
     answer: "Answer",
     answered: "Answered",
+    /** An agent's answer, as a screen reader names it. */
+    answeredBy: (agent: string) => `Answered by ${agent}`,
     typeahead: "People and agents to tag",
     /** The `/` command menu, as a screen reader names it. */
     commands: "Slash commands",
@@ -3503,7 +4861,7 @@ export const defaultCopy = {
     /** A mention kind, as completion offers `@kind:`: its title, or what it is. */
     mentionKind: (kind: string, title?: string) => title || `Mention by ${kind}`,
     /** The chat bar's prompt in a conversation. Nothing runs until a message tags an agent. */
-    message: "Message @agent",
+    message: "Reply",
     /** The control at the top of a private conversation that shares it in a project's channel. */
     share: "Share",
     shareTitle: "Share this conversation",

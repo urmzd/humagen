@@ -52,11 +52,16 @@ const (
 	AlertsWrite    Permission = "alerts:write"
 	KnowledgeRead  Permission = "knowledge:read"
 	KnowledgeWrite Permission = "knowledge:write"
-	EvalsRead      Permission = "evals:read"
-	EvalsWrite     Permission = "evals:write"
-	BillingRead    Permission = "billing:read"
-	BillingWrite   Permission = "billing:write"
-	ArtifactsRead  Permission = "artifacts:read"
+	// KnowledgeImport is writing a document with the structure of the
+	// session it was imported from (`humagen import sessions`). The server
+	// keeps the structure as this caller's assertion, naming them: it cannot
+	// verify that the session came from the tool it names.
+	KnowledgeImport Permission = "knowledge:import"
+	EvalsRead       Permission = "evals:read"
+	EvalsWrite      Permission = "evals:write"
+	BillingRead     Permission = "billing:read"
+	BillingWrite    Permission = "billing:write"
+	ArtifactsRead   Permission = "artifacts:read"
 	// ArtifactsWrite is deleting published files. Publishing is something an
 	// agent does in a run, which runs:write already covers.
 	ArtifactsWrite Permission = "artifacts:write"
@@ -91,7 +96,7 @@ const (
 func Permissions() []Permission {
 	return []Permission{
 		AgentsRead, AgentsWrite, RunsRead, RunsWrite, SchedulesRead, SchedulesWrite,
-		AlertsRead, AlertsWrite, KnowledgeRead, KnowledgeWrite, EvalsRead, EvalsWrite,
+		AlertsRead, AlertsWrite, KnowledgeRead, KnowledgeWrite, KnowledgeImport, EvalsRead, EvalsWrite,
 		BillingRead, BillingWrite, ArtifactsRead, ArtifactsWrite,
 		ClientsRead, ClientsWrite, ProjectsRead, ProjectsWrite, ProjectsGovern,
 		PeopleRead, SpeechWrite,

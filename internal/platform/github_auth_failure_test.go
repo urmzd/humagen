@@ -16,7 +16,7 @@ import (
 // through a fake transport. No external provider is contacted.
 func assertGitHubAuthFailureOwnership(t *testing.T, p, replica *Platform, creator auth.Principal, c clients.Client, key string) {
 	t.Helper()
-	if _, err := p.Agents.Create(t.Context(), creator.Tenant, wire.AgentSpec{Name: BuiltinBuilder, Model: "offline", Provider: "offline", SystemPrompt: "Reconnect"}, "test"); err != nil {
+	if _, err := p.Agents.Create(t.Context(), creator.Tenant, wire.AgentSpec{Name: BuiltinEntry, Model: "offline", Provider: "offline", SystemPrompt: "Reconnect"}, "test"); err != nil {
 		t.Fatal(err)
 	}
 	entered, release := make(chan struct{}), make(chan struct{})

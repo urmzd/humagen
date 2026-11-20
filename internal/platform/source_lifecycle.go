@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/urmzd/humagen/internal/mcptools"
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/artifacts"
 	"github.com/urmzd/humagen/pkg/audit"
@@ -19,7 +20,6 @@ import (
 	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/knowledge"
 	"github.com/urmzd/humagen/pkg/projects"
-	"github.com/urmzd/orchagent/flow/mcptools"
 )
 
 // SourceHealth is safe for internal assignment admission. Public callers must filter source access first.
@@ -76,7 +76,7 @@ func (p *Platform) sourceProvider(kind string) knowledge.Provider {
 	if kind == "gcs" || kind == "s3" {
 		return objectstorage.Provider{System: kind}
 	}
-	if kind == "drive" || kind == "notion" {
+	if kind == "drive" || kind == "notion" || kind == "onedrive" {
 		return knowledge.HTTPProvider{Kind: kind}
 	}
 	return nil
@@ -123,7 +123,7 @@ func (p *Platform) sourceSecret(ctx context.Context, who auth.Principal, src kno
 		return mcptools.Secret{}, knowledge.ProviderError{Cause: knowledge.AuthExpired}
 	}
 	if marker != "" {
-		if src.Lifecycle.Provider != "drive" || provider != "drive" {
+		if !oauthSource(src.Lifecycle.Provider) || provider != src.Lifecycle.Provider {
 			return mcptools.Secret{}, knowledge.ProviderError{Cause: knowledge.AuthExpired}
 		}
 		token, err := p.ConnectionAuth.BoundToken(ctx, who.Tenant, who.Subject, sourceCredentialID(src), provider)

@@ -5,12 +5,12 @@ import (
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/operations"
 	"github.com/urmzd/humagen/pkg/runs"
-	"github.com/urmzd/orchagent/flow/connector"
-	transport "github.com/urmzd/orchagent/flow/connectors/github"
-	"github.com/urmzd/orchagent/flow/event"
-	"github.com/urmzd/orchagent/flow/runtime"
-	"github.com/urmzd/orchagent/flow/turn/native"
 	saigetypes "github.com/urmzd/saige/agent/types"
+	"github.com/urmzd/saige/flow/connector"
+	transport "github.com/urmzd/saige/flow/connectors/github"
+	"github.com/urmzd/saige/flow/event"
+	"github.com/urmzd/saige/flow/runtime"
+	"github.com/urmzd/saige/flow/turn/native"
 	"testing"
 	"time"
 )
@@ -45,7 +45,7 @@ func TestFixPRRequiresActualRequesterRepositoryPermissionAndApproval(t *testing.
 		t.Fatal("revoked repository write accepted")
 	}
 	req := runtime.Request{Tenant: "t", RunID: "run", Definition: native.Revision{Spec: native.Spec{Name: "a"}}}
-	tool := p.operationTool(req, &saigetypes.ToolFunc{Def: saigetypes.ToolDef{Name: "github_create_fix_pr"}}, operations.ExternalMessages).(*operationTool)
+	tool := p.operationTool(req, &saigetypes.ToolFunc{Def: saigetypes.ToolDef{Name: "github_create_fix_pr"}}, p.toolDeclaration("github_create_fix_pr")).(*operationTool)
 	if tool.decision() != operations.Ask {
 		t.Fatal("fix PR default did not ask for approval")
 	}

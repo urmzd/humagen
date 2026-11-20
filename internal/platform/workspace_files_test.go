@@ -15,8 +15,8 @@ import (
 	"github.com/urmzd/humagen/pkg/call"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/threads"
-	"github.com/urmzd/orchagent/flow/isolation"
-	"github.com/urmzd/orchagent/flow/isolation/isolationtest"
+	"github.com/urmzd/saige/flow/isolation"
+	"github.com/urmzd/saige/flow/isolation/isolationtest"
 )
 
 func TestWorkspaceFileRevisionsPreventConcurrentLostEdits(t *testing.T) {

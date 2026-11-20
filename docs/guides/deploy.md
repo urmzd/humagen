@@ -7,11 +7,11 @@ process with its stores beside it.
 
 | Where | What | Files |
 |-------|------|-------|
-| Your machine, no containers | `humagen start`, or `make dev` and `make web` | [README](../../README.md#quick-start) |
+| Your machine, no containers | `humagen start`, or `make dev` and `make web` | [README](https://github.com/urmzd/humagen/blob/main/README.md#quick-start) |
 | Your machine, while developing | `make tilt`: API, console with hot reload, Postgres, restarted as you edit | [develop](develop.md) |
-| Your machine or one host | Docker Compose: Humagen, Postgres, optional MinIO | [`deploy/compose`](../../deploy/compose) |
-| Kubernetes | A Helm chart | [`deploy/helm/humagen`](../../deploy/helm/humagen) |
-| Kubernetes, from Git | Flux deploying that chart | [`deploy/flux`](../../deploy/flux) |
+| Your machine or one host | Docker Compose: Humagen, Postgres, optional MinIO | [`deploy/compose`](https://github.com/urmzd/humagen/tree/main/deploy/compose) |
+| Kubernetes | A Helm chart | [`deploy/helm/humagen`](https://github.com/urmzd/humagen/tree/main/deploy/helm/humagen) |
+| Kubernetes, from Git | Flux deploying that chart | [`deploy/flux`](https://github.com/urmzd/humagen/tree/main/deploy/flux) |
 | Wherever the spec says | `humagen deploy`: the spec's `deploy` slot picks `local`, `compose` or `kubernetes`, and `-o DIR` writes what it would apply and stops | [the spec](../reference/spec.md#deploying-it) |
 
 ## What to know first
@@ -118,7 +118,7 @@ spec you give it: set `sandbox` there for compose and kubernetes targets too.
 
 ### Upgrading: runc is refused by default
 
-orchagent's sandbox (playscape v0.10.0 and later) refuses a runtime that shares the host's kernel. A spec
+saige's sandbox (playscape v0.10.0 and later) refuses a runtime that shares the host's kernel. A spec
 with `sandbox.docker.runtime: runc` now logs `sandbox: docker is unavailable`
 and every tool that needs an instance refuses, until it also sets
 `insecure_development_runtime: true` (or the server gets
@@ -127,9 +127,76 @@ machine without gVisor. Every container also starts with a seccomp profile
 stricter than Docker's default, which denies `ptrace`, `mount`, `unshare`,
 `bpf`, `keyctl` and similar syscalls a tool has no use for.
 
+### Upgrading: library skills past the earlier bounds
+
+From this release a library skill may hold 256 files, 1 MiB a supporting
+file and 2 MiB in all, where it held 64 files, 128 KiB a file and 512 KiB
+([managed library](../architecture/managed-library.md#skills-are-immutable-packages)).
+The change is forward-only once one skill past the earlier bounds is drafted,
+by `humagen import skills` or through the API. A release before this one
+cannot read that skill's record, and fails the listing of its whole scope:
+
+- `GET /api/library/skills` for that scope answers 400 `library: invalid`, so
+  the console's Library page for that scope and `humagen import skills` into
+  it fail.
+- Its skills drop out of what a message can complete in that scope. A
+  published skill of the scope other than the large one is still used when a
+  message names it; the large one cannot be read, used or found by id.
+
+Rolling forward again reads every record as before. This release, and every
+one after it, lists the rest of a scope when one record cannot be read, and
+names that record under `unreadable`.
+
+### Upgrading: what an imported skill limits
+
+From this release a skill drafted by `humagen import skills` limits the tools
+of a run that uses it only as its `SKILL.md` declares in `allowed-tools`
+([managed library](../architecture/managed-library.md#skills-are-immutable-packages)).
+Before, the import wrote an empty tool list whatever the folder said, which
+gave a run no tools at all, `file_read` included, so a skill could not read
+its own supporting files.
+
+- **Skills that change**: every revision an import wrote since v0.138.1, the
+  first release that marks an import (`via: import`). Such a revision whose
+  `SKILL.md` declares no `allowed-tools`, published and named in a message or
+  bound as an agent's default, now leaves a run the agent's own tools where
+  it left none; one that declares `allowed-tools` limits a run to those of
+  them the agent holds. The library answers each with that limit, and the
+  next write of its record stores it.
+- **Skills that do not change**: a revision imported before v0.138.1 carries
+  no import mark, keeps its empty list, and still gives a run no tool. A
+  revision saved in the editor, or promoted from one, keeps its list.
+
+Every run whose skills have supporting files is now offered
+`skill_file_read`, which reads only those files. To give a skill imported
+before v0.138.1 the agent's tools, open it under Library, Skills, clear
+"Limit the tools of a run that uses this skill" under Allowed Tools, save,
+test and publish the new revision. An import now refuses a `SKILL.md` that
+declares more than 128 tools, or a name over 128 characters, and names the
+bound. A release before this one reads a revision with more than 32 tools as
+`unreadable` ([library skills past the earlier bounds](#upgrading-library-skills-past-the-earlier-bounds)).
+
+### Upgrading: knowledge source ids
+
+From this release each knowledge source has an id
+([status](../architecture/overview.md#status)), and a conversation continued
+from an imported one pins it. A source kept before this release has none
+until a conversation imported into it is continued, which gives it one.
+
+A replica still on an earlier release does not know the id. During a rolling
+update, when it writes a source (a document added, replaced, excluded or
+removed, a variant, a configuration, a sync), the record it writes has no id.
+That fails closed: the source's continuations are seen by no one, an admin
+included, and nothing is posted in them, from then on. A source it deletes
+and makes again has no id either, and an empty id matches no continuation,
+so none is revived. To avoid losing continuations, keep knowledge writes off
+older replicas until every replica runs this release. Continuations are
+started through `POST /api/knowledge/{name}/documents/{id}/continue`, so a
+deployment that has used that route has some to lose.
+
 ## The image
 
-The [`Dockerfile`](../../Dockerfile) at the root builds the console (`pnpm
+The [`Dockerfile`](https://github.com/urmzd/humagen/blob/main/Dockerfile) at the root builds the console (`pnpm
 install`, then `turbo run build --filter=@humagen/console`) and a static `humagen`
 (`CGO_ENABLED=0`, as `make build`), and ships them on Alpine:
 
@@ -158,7 +225,7 @@ the server over HTTP.
 
 ## Docker Compose
 
-[`deploy/compose/compose.yaml`](../../deploy/compose/compose.yaml) runs Humagen and
+[`deploy/compose/compose.yaml`](https://github.com/urmzd/humagen/blob/main/deploy/compose/compose.yaml) runs Humagen and
 Postgres 17, with one optional profile: `s3` (MinIO, and a one-shot job that
 creates the bucket). Each service has a healthcheck, and Humagen waits
 for what it depends on.
@@ -171,12 +238,12 @@ make down                                            # stop, keep the volumes
 make down V=1                                        # stop and delete the volumes
 ```
 
-[`config/warp.yaml`](../../deploy/compose/config/warp.yaml) holds a System
+[`config/warp.yaml`](https://github.com/urmzd/humagen/blob/main/deploy/compose/config/warp.yaml) holds a System
 document (OIDC, Postgres through `env:HUMAGEN_POSTGRES_URL`, disk files) and a
 `default` Platform document, mounted at `/etc/warp` with any file it names.
 compose runs `serve -f /etc/warp -addr 0.0.0.0:8080 -web /usr/share/warp/web`
 and passes `.env` to the container, so a variable a reference names only has to
-be in `.env`. [`.env.example`](../../deploy/compose/.env.example) lists them,
+be in `.env`. [`.env.example`](https://github.com/urmzd/humagen/blob/main/deploy/compose/.env.example) lists them,
 commented. `COMPOSE_PROFILES=s3` turns on the profile; uncomment the
 matching `blobs` block in `humagen.yaml` as well.
 
@@ -186,8 +253,8 @@ browsers use.
 
 ### Without an identity provider
 
-[`compose.dev.yaml`](../../deploy/compose/compose.dev.yaml) mounts
-[`dev/warp.yaml`](../../deploy/compose/dev/warp.yaml) instead: `auth.kind: dev`,
+[`compose.dev.yaml`](https://github.com/urmzd/humagen/blob/main/deploy/compose/compose.dev.yaml) mounts
+[`dev/warp.yaml`](https://github.com/urmzd/humagen/blob/main/deploy/compose/dev/warp.yaml) instead: `auth.kind: dev`,
 seeded agents on the offline provider, the same Platform document. Humagen runs
 on the host's network, listening on `127.0.0.1:8080`, with Postgres (and MinIO) published on the host's loopback for it. It needs host networking: Linux, or Docker Desktop 4.34+ with
 it turned on.
@@ -201,12 +268,12 @@ Every request is an admin. Do not use it anywhere but your own machine.
 
 ## Kubernetes with Helm
 
-[`deploy/helm/humagen`](../../deploy/helm/humagen) deploys one Humagen server: a Deployment, a
+[`deploy/helm/humagen`](https://github.com/urmzd/humagen/tree/main/deploy/helm/humagen) deploys one Humagen server: a Deployment, a
 Service, an optional Ingress, a ConfigMap, a PersistentVolumeClaim for the
 workspace when blobs are on disk, a PodDisruptionBudget, and a ServiceAccount
 with no API token. The pod runs as non-root with a read-only root filesystem
 and no capabilities. Every value is documented in
-[`values.yaml`](../../deploy/helm/humagen/values.yaml).
+[`values.yaml`](https://github.com/urmzd/humagen/blob/main/deploy/helm/humagen/values.yaml).
 
 The `system` value (`metadata` and `spec`) and each item of `platforms` are
 rendered verbatim, with `api_version` and `kind` added, into one `humagen.yaml`
@@ -243,7 +310,7 @@ helm install humagen deploy/helm/humagen -n humagen \
 ```
 
 Models, tools and agents go in a values file under `platforms`, as in the
-[Flux example](../../deploy/flux/app/values.yaml). Helm merges maps key by key and
+[Flux example](https://github.com/urmzd/humagen/blob/main/deploy/flux/app/values.yaml). Helm merges maps key by key and
 replaces lists, so a `platforms` override replaces the default list.
 
 `make chart-check` (`deploy/helm/check.sh`) lints the chart, renders it with
@@ -327,7 +394,7 @@ built with caddy-tailscale, that joins the tailnet (auth key from a Secret
 through `tailscale.proxy.envFrom`) and reverse-proxies to `127.0.0.1:8080`,
 where Humagen listens. Its config (a Caddyfile) goes in
 `tailscale.proxy.files`, mounted at `/etc/tailscale-proxy`; `values.yaml` and
-[`ci/tailscale-values.yaml`](../../deploy/helm/humagen/ci/tailscale-values.yaml)
+[`ci/tailscale-values.yaml`](https://github.com/urmzd/humagen/blob/main/deploy/helm/humagen/ci/tailscale-values.yaml)
 show one. The proxy is the only way in: the chart refuses an Ingress, and the
 Service exposes no Humagen port (only the webhooks port, when on). The
 Tailscale Kubernetes operator's ingress proxies to the Service or pod IP, not
@@ -373,21 +440,21 @@ compares both replicas' live and stored events; it does not stop either pod.
 
 ## Flux
 
-[`deploy/flux`](../../deploy/flux) deploys the chart straight from this repository.
+[`deploy/flux`](https://github.com/urmzd/humagen/tree/main/deploy/flux) deploys the chart straight from this repository.
 Its objects (the namespace, the `GitRepository`, the `Kustomization`, the
 `HelmRelease` and the Secret it reads) keep the name `warp` they had before
 the product was renamed, because the example `Kustomization` prunes what it no
 longer applies:
 
-- [`clusters/example/humagen.yaml`](../../deploy/flux/clusters/example/humagen.yaml): a
+- [`clusters/example/humagen.yaml`](https://github.com/urmzd/humagen/blob/main/deploy/flux/clusters/example/humagen.yaml): a
   `GitRepository` for this repository (narrowed to `deploy/`) and a Flux
   `Kustomization` that applies `deploy/flux/app`. Commit it where your cluster's
   Flux already reconciles.
-- [`app/`](../../deploy/flux/app): the `warp` namespace and a `HelmRelease` named
+- [`app/`](https://github.com/urmzd/humagen/tree/main/deploy/flux/app): the `warp` namespace and a `HelmRelease` named
   `warp` whose chart is `./deploy/helm/humagen` from that source, rebuilt on
   every revision, and upgraded in place when the chart's name changes
   (`chartNameChangeStrategy: InPlaceUpdate`). Its
-  values come from [`app/values.yaml`](../../deploy/flux/app/values.yaml), an
+  values come from [`app/values.yaml`](https://github.com/urmzd/humagen/blob/main/deploy/flux/app/values.yaml), an
   override example in the spec's shape (`system`, `platforms`), through a generated ConfigMap whose name changes with its
   content, so an edit upgrades the release.
 
@@ -401,7 +468,7 @@ the `GitRepository`; nothing is published yet.
 
 ## Local Kubernetes with Tilt
 
-The [`Tiltfile`](../../Tiltfile) at the root runs humagen on a local cluster
+The [`Tiltfile`](https://github.com/urmzd/humagen/blob/main/Tiltfile) at the root runs humagen on a local cluster
 through this chart, rebuilding as you edit:
 
 ```sh
@@ -411,8 +478,8 @@ tilt up                  # then open http://127.0.0.1:8080
 
 It needs Docker, helm, Go and pnpm beside Tilt. The binary and the console
 are built on the host, where Go's and pnpm's caches keep a change to seconds,
-then copied into a small image ([`deploy/tilt/Dockerfile`](../../deploy/tilt/Dockerfile))
-that the chart runs with [`deploy/tilt/values.yaml`](../../deploy/tilt/values.yaml):
+then copied into a small image ([`deploy/tilt/Dockerfile`](https://github.com/urmzd/humagen/blob/main/deploy/tilt/Dockerfile))
+that the chart runs with [`deploy/tilt/values.yaml`](https://github.com/urmzd/humagen/blob/main/deploy/tilt/values.yaml):
 development sign-in, memory stores, example agents and the offline model, so
 nothing needs a key, a database or an identity provider.
 
@@ -434,10 +501,10 @@ The compose files pass `docker compose config`, and both compose specs pass
 serve` and served the console. `make chart-check` passes: `helm lint --strict`,
 `kubeconform -strict` on the renders (the defaults with the required OIDC
 values, every option on in
-[`ci/full-values.yaml`](../../deploy/helm/humagen/ci/full-values.yaml), the worker, KEDA,
+[`ci/full-values.yaml`](https://github.com/urmzd/humagen/blob/main/deploy/helm/humagen/ci/full-values.yaml), the worker, KEDA,
 autoscaler, disruption budgets and `gcs` blobs in
-[`ci/scale-values.yaml`](../../deploy/helm/humagen/ci/scale-values.yaml), tailscale behind
-its proxy in [`ci/tailscale-values.yaml`](../../deploy/helm/humagen/ci/tailscale-values.yaml),
+[`ci/scale-values.yaml`](https://github.com/urmzd/humagen/blob/main/deploy/helm/humagen/ci/scale-values.yaml), tailscale behind
+its proxy in [`ci/tailscale-values.yaml`](https://github.com/urmzd/humagen/blob/main/deploy/helm/humagen/ci/tailscale-values.yaml),
 and the Flux and Tilt overrides; KEDA's ScaledObject and TriggerAuthentication
 are skipped, having no schema), `humagen config check` on each rendered
 `humagen.yaml`, the refusals (grace period too short, unparsable durations,

@@ -67,7 +67,7 @@ export function SessionRelations({ id, canWrite = false }: { id: string; canWrit
   };
   const link = async () => {
     setActionProblem("");
-    const match = /(?:^|\/)sessions\/(s_[a-z0-9]+)(?:[/?#]|$)/i.exec(target.trim());
+    const match = /(?:^|\/)(?:sessions|messages)\/(s_[a-z0-9]+)(?:[/?#]|$)/i.exec(target.trim());
     if (!match?.[1]) {
       setActionProblem("Paste a session link from this workspace.");
       return;

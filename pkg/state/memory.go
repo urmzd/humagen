@@ -24,7 +24,10 @@ type entry struct {
 // NewMemory returns an empty store.
 func NewMemory() *Memory { return &Memory{by: map[string]map[[2]string]entry{}} }
 
-var _ Store = (*Memory)(nil)
+var (
+	_ Store = (*Memory)(nil)
+	_ Many  = (*Memory)(nil)
+)
 
 // Get implements Store.
 func (m *Memory) Get(ctx context.Context, namespace, tenant, key string) ([]byte, error) {
@@ -44,6 +47,22 @@ func (m *Memory) Lookup(ctx context.Context, namespace, tenant, key string) (Rec
 		return Record{}, ErrNotFound
 	}
 	return Record{Tenant: tenant, Key: key, Value: bytes.Clone(e.value), Version: e.version}, nil
+}
+
+// LookupMany implements Many.
+func (m *Memory) LookupMany(ctx context.Context, namespace, tenant string, keys []string) ([]Record, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	out := make([]Record, 0, len(keys))
+	for _, key := range keys {
+		if e, ok := m.by[namespace][[2]string{tenant, key}]; ok {
+			out = append(out, Record{Tenant: tenant, Key: key, Value: bytes.Clone(e.value), Version: e.version})
+		}
+	}
+	return out, nil
 }
 
 // List implements Store.
