@@ -63,6 +63,7 @@ also reaches the console or email. When a Slack app's client maps you
 |---|---|
 | A Slack thread of that app's | A reply in that thread naming you, with the result's one line (the inbox subject, such as `Stopped watching: the status page is green`) and Open Session, a link to the watch's checks or the task's run (the conversation itself for a goal or `notify`). The details stay in your inbox |
 | The same thread, when a run behind the result read private context (a person's own credentials, personal sources, or anything a schedule's answer would be kept for its creator for), or you can no longer read the conversation | A direct message from that app, with the whole message, to you alone. Nothing is posted in the thread |
+| The same thread, when the app does not deliver outcomes or its channel is bound to a project for incoming messages only | A direct message from that app, to you alone. Nothing is posted in the thread |
 | Anywhere else (the console, the API, a Slack thread of another app) | A direct message from each app whose client maps you; work asked in another Slack app's thread is reported by that app alone |
 | Work someone stopped | Nothing, anywhere |
 

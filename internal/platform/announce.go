@@ -234,7 +234,7 @@ func (p *Platform) SurfaceNoticesFor(ctx context.Context, who auth.Principal, n 
 					// The client whose Slack thread asked reports it.
 					continue
 				}
-				if client != "" && p.mayReplyIn(ctx, person, report) {
+				if client != "" && p.outcomesAllowedIn(c, at.Channel) && p.mayReplyIn(ctx, person, report) {
 					one.Reply = &at
 				}
 			}

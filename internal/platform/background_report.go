@@ -107,6 +107,20 @@ func (p *Platform) reportsTo(tenant string, r backgroundReport) (client string, 
 	return c.ID, SurfaceReply{Channel: th.Surface.Channel, TS: th.Surface.TS, Session: r.session}
 }
 
+// outcomesAllowedIn reports whether a client may post what a run found in a
+// Slack channel at all: its installation delivers outcomes, and a channel
+// bound to a project is not bound for messages coming in only. It is the
+// rule every other answer a client posts is held to (bridgeMayDeliver). A
+// result it refuses is not lost: the person is told in their direct
+// messages instead, as when the result read private context.
+func (p *Platform) outcomesAllowedIn(c clients.Client, channel string) bool {
+	if !c.AllowsOutcomes() {
+		return false
+	}
+	direction, bound := p.bridgeDirection(c, channel)
+	return !bound || direction.AllowsOutcomes()
+}
+
 // mayReplyIn reports whether a background result may be posted in the
 // conversation that asked for it, for the person it is for: they may still
 // read the conversation, and none of the runs whose words it carries read

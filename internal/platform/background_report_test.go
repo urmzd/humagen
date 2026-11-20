@@ -154,6 +154,43 @@ func TestBackgroundWorkAskedInSlackRepliesInTheThread(t *testing.T) {
 	}
 }
 
+// A client whose installation does not deliver outcomes posts no background
+// result in the thread that asked: the machine hears of it for ada with no
+// thread to reply in, so she is told in her direct messages.
+func TestABackgroundResultIsNotPostedWhereOutcomesAreOff(t *testing.T) {
+	p, _, req := slackPlatform(t)
+	machine := slackReporting(t, p, "app", "svc-slack")
+	_, req = askedInSlack(t, p, machine, req)
+	c, err := p.Clients.Get("acme", "app")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !p.outcomesAllowedIn(c, "C0PLAUD") {
+		t.Fatal("a client with no capability limits may not post outcomes")
+	}
+	c.Capabilities = &clients.Capabilities{Events: clients.EventIDs(clients.Slack), Actions: []string{}, DeliverOutcomes: false}
+	if p.outcomesAllowedIn(c, "C0PLAUD") {
+		t.Fatal("a client that delivers no outcomes may post one")
+	}
+	if _, err := p.Clients.Update("acme", c, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := p.UseTool(t.Context(), req, ToolNotify, map[string]any{"subject": "Plaud is back"}); err != nil {
+		t.Fatal(err)
+	}
+	var key string
+	page, _ := p.Inbox.Snapshot("acme")
+	for _, m := range page {
+		if m.Subject == "Plaud is back" {
+			key = m.Key
+		}
+	}
+	heard := heardFor(t, p, machine, key)
+	if len(heard) != 1 || heard[0].For != (ActAs{Client: "app", User: "U0ADA"}) || heard[0].Reply != nil {
+		t.Fatalf("the machine hears of notify as %+v, want it for ada with no thread to reply in", heard)
+	}
+}
+
 // What a run that read private context found never reaches a shared Slack
 // thread: the machine hears of it for ada with no thread to reply in, so she
 // is told in her direct messages, as a schedule's private answer is kept for
