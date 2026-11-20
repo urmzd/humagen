@@ -118,6 +118,15 @@ export type ComposerSeed =
  * message behind it, Cmd+Enter (Ctrl+Enter) stops the reply and sends it
  * now, and Esc with nothing typed stops the reply.
  */
+/**
+ * A line the bar says while a person types (no match, no skills yet, a refusal).
+ * It floats where the completion list would, so the bar keeps its size and
+ * nothing around it moves.
+ */
+const floatNote =
+  // Over the bar where it sits at the foot of a page; under it on Home's wide layout, where the greeting is above.
+  "absolute right-2 bottom-full left-2 z-20 mb-1 rounded-aui border border-aui-border bg-aui-surface px-3 py-2 text-aui-xs text-aui-muted shadow-lg md:[.humagen-home_&]:top-full md:[.humagen-home_&]:bottom-auto md:[.humagen-home_&]:mt-1 md:[.humagen-home_&]:mb-0";
+
 export function Composer({
   queue,
   placeholder,
@@ -905,12 +914,12 @@ export function Composer({
           className="humagen-composer-input relative max-h-[200px] min-h-10 pointer-coarse:min-h-11 w-full resize-none bg-transparent px-3 pt-2 text-aui-base text-aui-fg outline-none placeholder:text-aui-muted"
         />
         {tags && typing?.query && typing.sigil === "@" && !shown.length && (
-          <p role="status" className="px-3 text-aui-xs text-aui-muted">
+          <p role="status" className={floatNote}>
             No matching people or agents for @{typing.query}
           </p>
         )}
         {tags && typing?.sigil === "/" && !commands.length && (
-          <p role="status" className="px-3 text-aui-xs text-aui-muted">
+          <p role="status" className={floatNote}>
             {tags.options.some((o) => o.kind === "skill") ? (
               <>No skill matches /{typing.query}.</>
             ) : (
@@ -924,7 +933,7 @@ export function Composer({
           </p>
         )}
         {notice && (
-          <p role="status" className="px-3 text-aui-xs text-aui-muted">
+          <p role="status" className={floatNote}>
             {notice}
           </p>
         )}
