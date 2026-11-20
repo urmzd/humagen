@@ -10,6 +10,7 @@ import {
 } from "@humagen/render-web";
 import { type ComponentType, createContext, useContext } from "react";
 import type { Run } from "./adapter.ts";
+import { lazyView } from "./lazy.tsx";
 import {
   type ConversationView,
   MAX_BENCH_REF,
@@ -124,7 +125,14 @@ const entries: Record<WorkbenchTabId, WorkbenchTabEntry | undefined> = {
   // Changes slot: what the session changed, to keep or discard (WorkbenchChanges.tsx).
   changes: undefined,
   // Side chat slot: a chat beside the thread that does not post in it (WorkbenchSidechat.tsx).
-  sidechat: undefined,
+  sidechat: {
+    view: lazyView(
+      () => import("./WorkbenchSidechat.tsx"),
+      (m) => m.WorkbenchSidechat,
+    ),
+    available: (session) => session.canPost,
+    fill: true,
+  },
   // Search slot: pull requests, artifacts and tools (WorkbenchSearch.tsx).
   search: undefined,
 };
