@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.148.0 (2026-11-20)
+
+### Features
+
+- **console**: show artifacts as cards with a picture of what each holds (#429) ([ab85120](https://github.com/urmzd/humagen/commit/ab851206ce8efb0718269df1c2d29d46714ac7c9))
+- **slack**: link to the conversation with an arrow, not a line of its own (#394) ([27f60c6](https://github.com/urmzd/humagen/commit/27f60c61cf6d51d906ce896536eb1064725464a1))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.147.0...v0.148.0)
+
+
 ## 0.146.0 (2026-11-20)
 
 ### Features
