@@ -256,7 +256,12 @@ export function partResolution(part: MessagePart): Resolution | null {
         .map((o) => o.label);
       const said = a.kind === "answered" && a.other ? [`"${a.other}"`] : [];
       const detail = [...picked, ...said].join(", ");
-      return { outcome: a.kind, by: a.by, at: a.at, ...(detail ? { detail } : {}) };
+      return {
+        outcome: a.kind,
+        by: "by" in a ? a.by : "",
+        at: a.at,
+        ...(detail ? { detail } : {}),
+      };
     }
     case "text":
     case "reference":

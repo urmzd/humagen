@@ -141,6 +141,31 @@ export interface SessionSandbox {
   retention_days: 7;
   writable: boolean;
   reason?: string;
+  /** A person may run a command of their own here (POST sandboxes/commands): the deployment's sandbox is contained. Writable still decides whether they may now. */
+  commands: boolean;
+}
+
+export interface SandboxCommand {
+  /** Run with sh -c, starting in the conversation's files. */
+  command: string;
+}
+
+export interface SandboxCommandResult {
+  command: string;
+  /** The command's exit status, or -1 when it was stopped at the time limit. */
+  exit_code: number;
+  timed_out: boolean;
+  /** The end of stdout and stderr, as one stream: at most 16384 bytes. */
+  output: string;
+  /** Earlier output was cut. */
+  truncated: boolean;
+  duration_ms: number;
+  /** The conversation's files the command changed or removed. */
+  files: SandboxFile[];
+  /** Changed files past the ones named. */
+  more?: number;
+  /** Changes that were not kept, and why. */
+  conflicts: string[];
 }
 
 export interface RunSandbox {
@@ -905,8 +930,8 @@ export interface LibrarySkillDefinition {
   outputs?: string;
   /** Immutable package files. SKILL.md supplies metadata and instructions. Omitted on compact list responses and legacy revisions. */
   files?: LibrarySkillFile[];
-  /** Exact permitted tools, intersected with the agent's grants. Empty permits no tools. */
-  tools: string[];
+  /** The tools a run that uses the skill is limited to, intersected with the agent's grants. Absent does not limit them: the agent's own tools apply. Empty permits no tools. A package's `allowed-tools` narrows the list, and narrows an absent list to the tools it names. A draft with `via: import` takes no list (400 for a non-empty one; an empty one reads as none): it is limited only as its `SKILL.md` declares, at most 128 names of at most 128 characters, and is stored and answered so. Whatever the list, a run is offered `skill_file_read` to read the supporting files of the skills it uses; the list may not name it (400). */
+  tools?: string[];
 }
 
 export interface LibrarySkillFile {
@@ -921,7 +946,7 @@ export interface LibraryProvenance {
   version: number;
 }
 
-export type LibrarySkill = LibrarySkillDefinition & { id: string; scope: LibraryScope; version: number; by: string; at: string; published_at?: string; published_by?: string; tests: string[]; from?: LibraryProvenance; via?: "import"; package_hash?: string; origin_run?: string };
+export type LibrarySkill = LibrarySkillDefinition & { id: string; scope: LibraryScope; version: number; by: string; at: string; published_at?: string; published_by?: string; tests: string[]; test_results?: { run: string; verdict: "passed" | "failed" | "unknown"; reason?: string; warnings?: string[] }[]; from?: LibraryProvenance; via?: "import"; package_hash?: string; origin_run?: string };
 
 export interface AuditRecord {
   id: string;
@@ -1657,6 +1682,19 @@ export interface ThreadFork {
   context: ThreadForkContextItem[];
 }
 
+/** One fork of a conversation at a glance, without its saved history. */
+export interface ThreadForkSummary {
+  id: string;
+  /** The fork's title, empty when it was given none. */
+  title: string;
+  /** The message or run of the source the fork's history ends at. */
+  through: string;
+  /** When it was forked. */
+  at: string;
+  /** When anything last happened in it. */
+  updated_at: string;
+}
+
 /** Where a conversation continued from an imported one came from: a
 knowledge document an import wrote from a session of another tool,
 pinned by its source and that source's id, the document's id, its
@@ -1670,7 +1708,8 @@ conversation, and it is published only through a reviewed summary.
 While the workspace's history setting is none, nothing is posted,
 run or forked in it.
 A kept structure is what its importer stated (`imported_by`), not a
-verified record. No route starts a continuation yet.
+verified record. One is started by
+`POST /api/knowledge/{name}/documents/{id}/continue`.
  */
 export interface ThreadImport {
   /** The knowledge source the document is in. */
@@ -4195,6 +4234,8 @@ export interface KnowledgeDocument {
   updated_at?: string;
   /** The size, as JSON, of the imported session's structure kept with this revision. Absent for a document no import wrote, or one edited since. */
   structure_bytes?: number;
+  /** The digest of the imported session's structure, recorded by the write that kept the structure with this revision and removed by an ordinary edit. Absent when `structure_bytes` is, and also on a document whose structure an earlier release kept, until it is imported again. With `digest`, it is what `POST /api/knowledge/{name}/documents/{id}/continue` pins. A recorded digest does not by itself make the structure trusted; the continuation checks it again. */
+  structure_digest?: string;
 }
 
 /** The structure of a session `humagen import sessions` wrote a document from: its main path as data. It is the importer's assertion, kept with who sent it and when; the server cannot verify that the session came from the tool it names. It is trusted only for the revision of the document it was written with, and an ordinary edit leaves it untrusted. A structure past a bound is refused with the document (400): the importer cuts and counts what it cut. */
@@ -5646,6 +5687,58 @@ export interface SessionInput {
   post_only?: boolean;
 }
 
+/** What a person asks of a session's browser. */
+export interface BrowserAction {
+  /** The browser's tool provider, for a session whose agent holds more than one. Left out, the first. */
+  provider?: string;
+  /** `look` reads the page and changes nothing. The rest act on it. */
+  action: "look" | "navigate" | "back" | "click" | "type" | "press";
+  /** Where `navigate` goes. http or https. */
+  url?: string;
+  /** The element `click` and `type` act on, a `ref` from the last view's elements. Never a selector. */
+  target?: string;
+  /** How the person saw the target named, kept in the audit record. */
+  element?: string;
+  /** What `type` enters. It is not kept in the audit record. */
+  text?: string;
+  /** With `type`, press Enter afterwards. */
+  submit?: boolean;
+  /** What `press` presses, such as Enter, ArrowDown or Control+a. */
+  key?: string;
+}
+
+/** A screenshot of the page as it is now, in CSS pixels. */
+export interface BrowserImage {
+  media_type: string;
+  /** The image, base64. At most 8 MiB decoded. */
+  data: Blob;
+}
+
+/** One thing on the page a person can act on. */
+export interface BrowserElement {
+  /** What `click` and `type` take as their target. */
+  ref: string;
+  /** Its role in the page's tree, such as link, button or textbox. */
+  role: string;
+  name?: string;
+  /** Where it is in the screenshot, in CSS pixels: x, y, width, height. Absent for an element with no place on the screen. */
+  box?: number[];
+}
+
+/** A session's browser after an action. */
+export interface BrowserView {
+  /** The tool provider the browser is reached through. */
+  provider: string;
+  action: "look" | "navigate" | "back" | "click" | "type" | "press";
+  url?: string;
+  title?: string;
+  screenshot?: BrowserImage;
+  /** Links, buttons and fields, in the page's order. At most 400. */
+  elements: BrowserElement[];
+  /** How many elements were left out for being over the limit. */
+  more?: number;
+}
+
 /** A session message with optional routing to a mentioned agent. */
 export interface SessionPostInput {
   /** Inline uploaded files, at most 25 MiB decoded bytes in total. */
@@ -6404,6 +6497,10 @@ export interface ForkThreadBody {
   mode?: ThreadMode;
 }
 
+export interface ListThreadForksResponse {
+  forks: ThreadForkSummary[];
+}
+
 export interface BringBackThreadResultBody {
   run: string;
   text?: string;
@@ -6609,6 +6706,15 @@ export interface ReplaceKnowledgeDocumentTextBody {
   title: string;
   text: string;
   digest: string;
+}
+
+export interface ContinueImportedDocumentBody {
+  document_digest: string;
+  structure_digest?: string;
+  project: string;
+  title?: string;
+  agents?: string[];
+  mode?: ThreadMode;
 }
 
 export interface ImportKnowledgeDocumentBody {

@@ -7,7 +7,7 @@ import {
   CheckIcon,
   ChevronRightIcon,
   CodeIcon,
-  EllipsisVerticalIcon,
+  EllipsisIcon,
   FolderIcon,
   FolderOpenIcon,
   HistoryIcon,
@@ -94,7 +94,7 @@ export function SidebarItem({
       aria-label={
         open ? undefined : count ? (badgeLabel ?? defaultCopy.sidebar.needYou(label, count)) : label
       }
-      className={`relative flex h-9 pointer-coarse:h-11 items-center gap-2.5 [&>svg]:size-[18px] rounded-aui text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-hover aria-[current=page]:font-medium aria-[current=page]:text-aui-fg ${
+      className={`relative flex h-9 pointer-coarse:h-11 items-center gap-2.5 [&>svg]:size-[18px] [&>svg]:[stroke-width:1.75] rounded-aui text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover/60 hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-hover aria-[current=page]:font-medium aria-[current=page]:text-aui-fg ${
         open ? "px-2.5" : "w-9 justify-center"
       }`}
     >
@@ -340,6 +340,7 @@ function TaskRow({
   standing = "",
   ageText = "",
   glyph,
+  to,
   onSelect,
   onPin,
   onRename,
@@ -360,6 +361,8 @@ function TaskRow({
   ageText?: string;
   /** Where it came from, when not the chat itself: a small mark on the right. */
   glyph?: ReactNode;
+  /** Its address, so it opens in a new tab as a link does. */
+  to: string;
   onSelect: () => void;
   onPin?: (button: HTMLButtonElement) => void;
   onRename?: (title: string) => void;
@@ -407,29 +410,38 @@ function TaskRow({
               setRenaming(false);
             }
           }}
-          className="h-12 w-full rounded-aui border border-aui-accent bg-transparent px-2.5 text-aui-sm text-aui-fg outline-none"
+          className="h-9 w-full rounded-aui border border-aui-accent bg-transparent px-2.5 text-aui-sm text-aui-fg outline-none"
         />
       ) : (
-        <button
-          type="button"
-          onClick={onSelect}
+        <a
+          href={to}
+          onClick={(e) => {
+            // A modified click opens it in a new tab, as any link does.
+            if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+            e.preventDefault();
+            onSelect();
+          }}
           {...peek.bind}
           aria-describedby={peek.at ? peekId : undefined}
           data-thread-row={task.id}
           aria-current={current ? "page" : undefined}
-          className={`flex min-h-8 pointer-coarse:min-h-11 w-full items-center gap-2 rounded-aui py-1 pr-2 pl-2.5 text-left text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-subtle aria-[current=page]:font-medium aria-[current=page]:text-aui-fg ${current || peek.at ? "[@media(pointer:coarse)]:pr-12" : ""} ${hasMenu ? "[@media(pointer:fine)]:group-focus-within/task:pr-10 [@media(pointer:fine)]:group-hover/task:pr-10" : ""}`}
+          // The age keeps the width the menu button takes, so a title is cut at the same place at rest and under the pointer.
+          className={`relative flex min-h-9 pointer-coarse:min-h-11 w-full items-center gap-2 rounded-aui py-1 pr-2 pl-2.5 text-left text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover/60 hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-hover aria-[current=page]:font-medium aria-[current=page]:text-aui-fg ${current || peek.at ? "[@media(pointer:coarse)]:pr-12" : ""}`}
         >
           {priority && (
             <span
               title={`${priority} alert`}
               aria-label={`${priority} alert`}
-              className={`mt-0.5 text-aui-xs ${priority === "urgent" ? "text-aui-bad" : "text-aui-muted"}`}
+              className={`text-aui-xs ${priority === "urgent" ? "text-aui-bad" : "text-aui-muted"}`}
             >
               {priority === "urgent" ? "!" : priority === "normal" ? "•" : "|"}
             </span>
           )}
           {!priority && dot && (
-            <span aria-hidden data-standing={standing} className="humagen-row-dot mt-[7px]" />
+            // In the gutter, so a title starts on the same line whether or not its row has a dot.
+            <span aria-hidden className="absolute inset-y-0 left-0.5 flex items-center">
+              <span data-standing={standing} className="humagen-row-dot" />
+            </span>
           )}
           <span className="flex min-w-0 flex-1 flex-col">
             <span className="flex min-w-0 items-center gap-1.5">
@@ -449,10 +461,10 @@ function TaskRow({
           <span
             data-row-age
             // One line: where it came from, then its age, so every row is the same height.
-            className={`mt-0.5 inline-flex shrink-0 items-center gap-1 text-aui-2xs font-normal text-aui-muted tabular-nums ${hasMenu ? "[@media(pointer:fine)]:group-focus-within/task:invisible [@media(pointer:fine)]:group-hover/task:invisible" : ""}`}
+            className={`inline-flex min-w-6 shrink-0 items-center justify-end gap-1 text-aui-2xs font-normal text-aui-muted tabular-nums ${standing === "unread" ? "" : "mt-0.5"} ${hasMenu ? "[@media(pointer:fine)]:group-focus-within/task:invisible [@media(pointer:fine)]:group-hover/task:invisible" : ""}`}
           >
             {standing === "unread" ? (
-              <span aria-hidden data-standing="unread" className="humagen-row-dot mt-1 block" />
+              <span aria-hidden data-standing="unread" className="humagen-row-dot block" />
             ) : (
               <>
                 {glyph}
@@ -461,21 +473,22 @@ function TaskRow({
             )}
           </span>
           {said && <span className="sr-only">, {said}</span>}
-        </button>
+        </a>
       )}
       {hasMenu && !renaming && (
         <div
           ref={actions}
           data-pin-thread={task.id}
-          className="absolute top-1 right-1 flex items-center [@media(pointer:coarse)]:top-0.5"
+          className="absolute inset-y-0 right-0 flex items-center"
         >
           <div data-row-menu onPointerDown={peek.close} onFocus={peek.close}>
             <Popover
               narrow
               align="right"
               label={`Manage ${title}`}
+              popup="menu"
               className={`${rowAction} opacity-0 group-hover/task:opacity-100 group-focus-within/task:opacity-100 focus-visible:opacity-100 aria-expanded:opacity-100 aria-expanded:bg-aui-hover aria-expanded:text-aui-fg [@media(pointer:coarse)]:size-11 ${current || peek.at ? "[@media(pointer:coarse)]:opacity-100" : "[@media(pointer:coarse)]:pointer-events-none [@media(pointer:coarse)]:group-focus-within/task:pointer-events-auto"}`}
-              button={<EllipsisVerticalIcon size={15} />}
+              button={<EllipsisIcon size={16} />}
             >
               {(close) => (
                 <RowMenu
@@ -636,8 +649,9 @@ function RowMenu({
 /** A small section label, as Claude's sidebar draws Pinned and Recents. */
 function Label({ children, action }: { children: ReactNode; action?: ReactNode }) {
   return (
-    <div className="aui-chrome sticky top-0 z-10 flex h-8 items-center justify-between gap-1 pr-2 pl-2 shadow-none">
-      <p className="px-2 text-aui-xs text-aui-muted">{children}</p>
+    // Solid on a desktop, in the sidebar's own color, so rows pass under it without showing through.
+    <div className="humagen-sidebar-label sticky top-0 z-10 flex h-8 items-center justify-between gap-1 pr-2 pl-2">
+      <p className="px-2.5 text-aui-xs text-aui-muted">{children}</p>
       {action}
     </div>
   );
@@ -1048,6 +1062,7 @@ export function Sidebar({
       archived={archivedSet.has(t.id)}
       standing={standingOf(t, marks)}
       ageText={sessionMode ? age(t.updated_at, now) : ""}
+      to={href({ page: "conversation", id: t.id })}
       onSelect={() => go({ page: "conversation", id: t.id })}
       onPin={
         canPin && !archivedSet.has(t.id)
@@ -1113,7 +1128,7 @@ export function Sidebar({
         }`}
       >
         <div
-          className={`flex h-12 shrink-0 items-center ${open ? "justify-between pr-2 pl-3.5" : "justify-center"}`}
+          className={`flex h-12 shrink-0 items-center ${open ? "justify-between pr-2 pl-4.5" : "justify-center"}`}
         >
           {open && (
             <span className="humagen-display humagen-sidebar-reveal flex min-w-0 items-center gap-2 truncate text-aui-base font-semibold text-aui-fg">
@@ -1129,7 +1144,11 @@ export function Sidebar({
             aria-label={open ? "Close sidebar" : "Open sidebar"}
             className="inline-flex size-8 pointer-coarse:size-11 items-center justify-center rounded-aui text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
           >
-            {open ? <PanelLeftCloseIcon size={18} /> : <PanelLeftOpenIcon size={18} />}
+            {open ? (
+              <PanelLeftCloseIcon size={18} strokeWidth={1.75} />
+            ) : (
+              <PanelLeftOpenIcon size={18} strokeWidth={1.75} />
+            )}
           </button>
         </div>
 
@@ -1154,7 +1173,7 @@ export function Sidebar({
                 type="button"
                 onClick={onSearch}
                 aria-label={nav.search}
-                className={`group/search flex h-9 pointer-coarse:h-11 items-center gap-2.5 rounded-aui text-aui-sm text-aui-muted hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent ${open ? "px-2.5" : "w-9 justify-center"}`}
+                className={`group/search flex h-9 pointer-coarse:h-11 items-center gap-2.5 [&>svg]:[stroke-width:1.75] rounded-aui text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover/60 hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent ${open ? "px-2.5" : "w-9 justify-center"}`}
               >
                 <SearchIcon size={18} />
                 {open && (
@@ -1249,14 +1268,14 @@ export function Sidebar({
                       narrow
                       align="right"
                       label={defaultCopy.chat.filter(filters)}
-                      className="relative inline-flex size-6 pointer-coarse:size-11 items-center justify-center rounded-aui text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-expanded:bg-aui-hover aria-expanded:text-aui-fg"
+                      className="relative inline-flex size-8 pointer-coarse:size-11 items-center justify-center rounded-aui text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-expanded:bg-aui-hover aria-expanded:text-aui-fg"
                       button={
                         <>
                           <SlidersIcon size={14} />
                           {(filters > 0 || view !== "recents") && (
                             <span
                               aria-hidden
-                              className="absolute top-0.5 right-0.5 size-1.5 rounded-full bg-aui-accent"
+                              className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-aui-accent"
                             />
                           )}
                         </>
@@ -1502,7 +1521,7 @@ export function Sidebar({
           </p>
         )}
         <div
-          className={`flex shrink-0 items-center gap-1 border-aui-border border-t p-1.5 ${open ? "" : "flex-col"}`}
+          className={`flex shrink-0 items-center gap-1 border-aui-border border-t py-1.5 ${open ? "pr-1.5 pl-3.5" : "flex-col px-1.5"}`}
         >
           <div className={open ? "min-w-0 flex-1" : ""}>
             <Popover

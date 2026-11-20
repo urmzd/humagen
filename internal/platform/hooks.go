@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"slices"
 	"strings"
 	"time"
@@ -97,6 +98,7 @@ func (p *Platform) ended(ctx context.Context, run runs.Run) {
 		{"usage", func() error { return p.settleUsage(ctx, run) }},
 		{"alerts", func() error { return p.raise(run) }},
 		{"online_eval", func() error { return p.scoreOnline(run) }},
+		{"skill_test", func() error { return p.recordSkillTest(run) }},
 		{"spoken", func() error { return p.speakToSurface(ctx, run) }},
 		{"questions", func() error { return p.settleQuestionsOf(run) }},
 		{"session_alerts", func() error { return p.settleSessionAlerts(run.Tenant, run.Thread) }},
@@ -132,7 +134,12 @@ func (p *Platform) ended(ctx context.Context, run runs.Run) {
 			return
 		}
 		if err := step.apply(); err != nil {
-			p.log.Error("platform: completion action will retry", "run", run.ID, "action", step.name, "error", err)
+			level := slog.LevelError
+			if errors.Is(err, errSkillTestWait) {
+				// Bounded by the step itself, which says once when it stops.
+				level = slog.LevelDebug
+			}
+			p.log.Log(ctx, level, "platform: completion action will retry", "run", run.ID, "action", step.name, "error", err)
 			failed = true
 			continue
 		}

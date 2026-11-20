@@ -195,8 +195,6 @@ function decisionOf(s: Settled | undefined): Approval["decision"] {
   }
 }
 
-// humagen: Clarification.answer has no state for "nobody answered in time" or
-// "the run was stopped", so both read as declined, with the reason in words.
 function answerOf(s: Settled | undefined, options: readonly string[]): Clarification["answer"] {
   if (!s) return { kind: "pending" };
   switch (s.action) {
@@ -205,7 +203,11 @@ function answerOf(s: Settled | undefined, options: readonly string[]): Clarifica
     case "reply":
       return { kind: "answered", by: s.by ?? "", at: s.at, optionIds: [], other: s.note ?? "" };
     case "expired":
-      return { kind: "declined", by: NOBODY, at: s.at, reason: s.note ?? "Nobody answered in time" };
+      return { kind: "expired", at: s.at, ...(s.note ? { note: s.note } : {}) };
+    case "stopped":
+    case "closed":
+      // Nobody answered: the run was stopped, or ended first.
+      return { kind: "cancelled", at: s.at, ...(s.note ? { note: s.note } : {}) };
     default:
       return { kind: "declined", by: s.by && s.by !== "system" ? s.by : NOBODY, at: s.at, ...(s.note ? { reason: s.note } : {}) };
   }

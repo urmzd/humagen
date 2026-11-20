@@ -8,6 +8,7 @@
 | [Projects](architecture/projects.md) | Architecture | Design of record for nested projects, policies, agents, inboxes and shared threads |
 | [Company, personal work and finding help](architecture/company-workspace.md) | Architecture | The Company root project, personal projects, publishing work and Find Help |
 | [Conversation workspace](architecture/conversation-workspace.md) | Architecture | The conversation page, activity and deliverables in the console |
+| [Session workbench](architecture/workbench.md) | Architecture | The tabbed pane beside a session, how to add a tab, and how what a person did by hand reaches the agent |
 | [Agent calls](architecture/agent-calls.md) | Architecture | How an answering agent calls other agents with the `agent` tool |
 | [Agent operations](architecture/agent-operations.md) | Architecture | Agent controls, action policies, assignments and handoff contracts |
 | [Security](architecture/security.md) | Architecture | Callers, roles, rules the code holds, credentials, inbox and break-glass reads |
@@ -20,18 +21,16 @@
 | [Typed learning dependencies](architecture/learning-dependencies.md) | Architecture | How skills and reviewed memory link back to the runs that produced them |
 | [Develop with Tilt](guides/develop.md) | Guide | One `tilt up` for the API, the console with hot reload and Postgres, reusable by projects built on Humagen |
 | [Deploy](guides/deploy.md) | Guide | Run Humagen locally, with Compose, Helm, Flux or `humagen deploy` |
-| [Generate and revise a raster image](guides/image-generation.md) | Guide | Use Codex's account-backed image tool, inspect real pixels and retain local image revisions |
 | [GitHub and Slack trial](guides/integrations.md) | Guide | Set up a local trial with a GitHub installation and a Slack app |
-| [Read and organize a local folder](guides/local-files.md) | Guide | An agent on Claude Code surveys a folder on this host in place, plans, and applies only what a person approves |
-| [Edit a document and audit a workbook](guides/office-files.md) | Guide | An agent on Claude Code edits a .docx in place and audits .xlsx formulas and revisions in a folder on this host |
-| [Work out a refund path](guides/travel-refund.md) | Guide | Two agents on Claude Code: one reads a booking and current policy pages and cannot write, one writes the approved request and nothing else |
-| [Build a sourced chronology from records](guides/records-research.md) | Guide | An agent on Claude Code reads a folder of records, cites and quotes each dated event, lists unknowns, and opens current official pages |
-| [Reconcile account exports](guides/finance-exports.md) | Guide | An agent on Claude Code runs a shipped script over authorized exports, reports what does not reconcile, and drafts a plan whose amounts are all sourced |
+| [Work out a refund path](guides/travel-refund.md) | Guide | Two native agents on one conversation's booking records: one reads them and current policy pages and cannot write, one writes the approved request |
+| [Build a sourced chronology from records](guides/records-research.md) | Guide | A native agent reads the records in a conversation, cites and quotes each dated event, lists unknowns, and opens current official pages |
+| [Reconcile account exports](guides/finance-exports.md) | Guide | A native agent runs a shipped script over authorized exports in a sandbox, reports what does not reconcile, and drafts a plan whose amounts are all sourced |
+| [Research current public sources](guides/public-web.md) | Guide | A native agent with `web_search` and `web_fetch` cites the pages it opened |
 | [Connect a Mac desktop](guides/desktop.md) | Guide | Pinned native MCP tools, permissions, targeting instructions, and an opt-in fixture check |
 | [Connect a browser](guides/browser.md) | Guide | Pinned Playwright MCP configuration, existing-tab connection, and real browser acceptance |
-| [Read selected mail and approve a calendar change](guides/mail-calendar.md) | Guide | Native account-tool profile, exact-target approval, and the limits of the checked read-only preflight |
-| [Read mixed evidence and transcribe local media](guides/media-evidence.md) | Guide | Inspect original pages and frames, preserve ASR source timestamps and report uncertainty |
-| [Compare cloud document revisions and approve an edit](guides/cloud-documents.md) | Guide | Existing Codex history and native Docs guarded-write connectors, with real private-fixture checks and missing-history limits |
+| [Read selected mail and approve a calendar change](guides/mail-calendar.md) | Guide | A native agent on the person's own Gmail and Google Calendar connections, with each write approved in Humagen |
+| [Read mixed evidence](guides/media-evidence.md) | Guide | What a native agent reads of attached PDFs, images and audio, and the transcription path left after #383 |
+| [Read a cloud document and approve an edit](guides/cloud-documents.md) | Guide | A native agent on the person's own Google Docs and Drive connections, and what revision history depends on |
 | [Email notifications](guides/email-notifications.md) | Guide | Configure the outbound email notification relay |
 | [Upgrading from the old name](guides/upgrading-from-warp.md) | Guide | What changed in the rename and how an operator moves to the new names |
 | [Upgrading to saige v0.45.0](guides/upgrading-to-saige.md) | Guide | What changes for operators and Go programs now that orchagent is folded into saige |
@@ -55,7 +54,11 @@
 | [RFC 0004: Isolated runs and person context](rfcs/0004-isolated-runs-and-person-context.md) | RFC, Mostly built | One agent for many people in parallel: pinned person context, isolated sandboxes, and the path to a million people in one room |
 | [RFC 0005: Federated retrieval and the catalog](rfcs/0005-federated-retrieval-and-catalog.md) | RFC, Mostly built | Live search in external systems, a metadata catalog, and hybrid search for what Humagen owns |
 | [RFC 0006: Multiple replicas, fiber folded in, and a durable event bus](rfcs/0006-replicas-fiber-and-durable-bus.md) | RFC, Partly built | fiber's fold completed, the standalone repository deprecated, and the Postgres bus with an outbox and consumer groups for many replicas |
+| [RFC 0007: Agent marketplace and credits](rfcs/0007-agent-marketplace-and-credits.md) | RFC, Not planned | A hosted Humagen with credits and a paid agent marketplace, kept as a record |
 | [RFC 0008: Feedback, run signals and training export](rfcs/0008-feedback-run-signals-and-training-export.md) | RFC, Partly built | Asking for ratings at the right moment, per-run signals and reward analytics, and consented, redacted KTO and DPO export |
+| [RFC 0009: One entry point](rfcs/0009-one-entry-point.md) | RFC, Proposed | One agent, named for the platform, routes each ask to the specialists and answers once |
+| [RFC 0010: Corpora and the workspace graph](rfcs/0010-corpora.md) | RFC, Proposed | Managed knowledge, search, tools and ownership; supersedes the corpus model of RFC 0003 |
+| [RFC 0011: Handoffs and threads](rfcs/0011-handoffs-and-threads.md) | RFC, Proposed | Who answers, how agents reach each other by tool call, and where their work shows |
 | [Roadmap](plans/roadmap.md) | Plan | Product direction by area and the next delivery boundary |
 | [Task queue](plans/2026-10-ui-task-queue.md) | Plan | Current UI delivery and follow-on platform work, in order |
 | [Workspace implementation plan](plans/2026-10-workspace-implementation.md) | Plan | Tasks and requirement traceability for the workspace and control plane |

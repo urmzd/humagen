@@ -3,7 +3,6 @@ import { useEffect, useState } from "react";
 import type { AgentEvaluationHealth } from "../../../packages/client/src/generated/types.ts";
 import { BuilderButton } from "./AgentBuilder.tsx";
 import { healthLabel } from "./AgentHealth.tsx";
-import { AgentStore } from "./AgentStore.tsx";
 import type { Run } from "./adapter.ts";
 import {
   type AgentControl,
@@ -38,10 +37,7 @@ export function Agents({
   onBuild,
   onBuilderSession,
   operational = false,
-  onStoreChanged,
 }: {
-  /** Shows the agent store under the list; called after an install or removal, to read the agents again. */
-  onStoreChanged?: () => void;
   /** Describe an agent to the built-in builder instead of writing it by hand, when the workspace has it. */
   onBuild?: () => void;
   onBuilderSession?: (id: string) => void;
@@ -293,7 +289,6 @@ export function Agents({
           </table>
         </div>
       )}
-      {onStoreChanged && <AgentStore canWrite={canWrite} onChanged={onStoreChanged} />}
     </Page>
   );
 }

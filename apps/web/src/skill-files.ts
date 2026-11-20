@@ -41,7 +41,7 @@ export function skillFiles(definition: LibrarySkillDefinition): LibrarySkillFile
   return [
     textSkillFile(
       "SKILL.md",
-      `---\nname: ${definition.name}\ndescription: ${JSON.stringify(definition.description)}\n${definition.tools.length ? `allowed-tools: ${JSON.stringify(definition.tools.join(" "))}\n` : ""}---\n\n${definition.instructions ?? ""}\n`,
+      `---\nname: ${definition.name}\ndescription: ${JSON.stringify(definition.description)}\n${definition.tools?.length ? `allowed-tools: ${JSON.stringify(definition.tools.join(" "))}\n` : ""}---\n\n${definition.instructions ?? ""}\n`,
     ),
   ];
 }

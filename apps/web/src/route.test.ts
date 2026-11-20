@@ -69,6 +69,12 @@ test("canonical session selections survive copied links", () => {
       workspaceTab: "changes",
     },
     { page: "conversation", id: "t-1", panel: "deliverables", artifact: "art-1" },
+    { page: "conversation", id: "t-1", panel: "details" },
+    { page: "conversation", id: "t-1", panel: "details", bench: "browser" },
+    { page: "conversation", id: "t-1", panel: "details", bench: "terminal", expanded: true },
+    { page: "conversation", id: "t-1", panel: "details", bench: "changes", benchRef: "src/a b.ts" },
+    { page: "conversation", id: "t-1", panel: "details", bench: "sidechat" },
+    { page: "conversation", id: "t-1", panel: "details", bench: "search", benchRef: "pull #42" },
     {
       page: "conversation",
       id: "t-1",
@@ -395,6 +401,17 @@ test("consolidated hubs preserve addressed handoffs and filtered assignments", (
   assert.deepEqual(at("/assignments"), { page: "sessions" });
 });
 
+test("the store and each of its packages has an address", () => {
+  assert.equal(href({ page: "agent-store" }), "/agent-store");
+  assert.deepEqual(at("/agent-store"), { page: "agent-store" });
+  // A package's name keeps its slash in the path.
+  const review = { page: "agent-store", package: "humagen/review" } as const;
+  assert.equal(href(review), "/agent-store/humagen/review");
+  assert.deepEqual(at(href(review)), review);
+  assert.deepEqual(at(`/agent-store/${"a".repeat(201)}`), { page: "agent-store" });
+  assert.equal(documentTitle(review), "Store - Humagen");
+});
+
 test("models are chosen per agent: old shared-chain addresses land on the agents", () => {
   assert.deepEqual(parse("/agent-models"), { page: "agents" });
   assert.deepEqual(parse("/settings/models"), { page: "agents" });
@@ -505,4 +522,51 @@ test("Knowledge and each corpus have addresses, with tabs as paths, and old link
     screenOf({ page: "corpus", name: "a", tab: "sources" }),
     screenOf({ page: "corpus", name: "a", tab: "access" }),
   );
+});
+
+test("a workbench tab is an address of Details, and Details is its default", () => {
+  assert.equal(
+    href({ page: "conversation", id: "t-1", panel: "details", bench: "terminal" }),
+    "/messages/t-1?panel=details&bench=terminal",
+  );
+  // Details itself keeps the address it had before the pane had tabs.
+  assert.equal(
+    href({ page: "conversation", id: "t-1", panel: "details", bench: "details" }),
+    "/messages/t-1?panel=details",
+  );
+  // A tab is not carried by another panel, nor a selection without its tab.
+  assert.equal(
+    href({ page: "conversation", id: "t-1", panel: "context", bench: "terminal" }),
+    "/messages/t-1?panel=sources",
+  );
+  assert.deepEqual(at("/messages/t-1?panel=sources&bench=terminal"), {
+    page: "conversation",
+    id: "t-1",
+    panel: "context",
+  });
+  assert.deepEqual(at("/messages/t-1?panel=details&benchRef=x"), {
+    page: "conversation",
+    id: "t-1",
+    panel: "details",
+  });
+  // A tab that does not exist opens Details, and an overlong selection is dropped.
+  assert.deepEqual(at("/messages/t-1?panel=details&bench=nope"), {
+    page: "conversation",
+    id: "t-1",
+    panel: "details",
+  });
+  assert.deepEqual(at(`/messages/t-1?panel=details&bench=search&benchRef=${"q".repeat(513)}`), {
+    page: "conversation",
+    id: "t-1",
+    panel: "details",
+    bench: "search",
+  });
+  // The path form of the panel reads the same tab.
+  assert.deepEqual(at("/conversations/t-1/details?bench=browser&full=1"), {
+    page: "conversation",
+    id: "t-1",
+    panel: "details",
+    bench: "browser",
+    expanded: true,
+  });
 });

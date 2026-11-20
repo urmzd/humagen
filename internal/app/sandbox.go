@@ -43,6 +43,15 @@ func addSandboxFlags(fs *flag.FlagSet, runtime string, insecure bool) sandboxFla
 	}
 }
 
+// contained reports whether the sandbox the flags name keeps a command away
+// from this host: the docker sandbox, on any runtime. The local sandbox's
+// instances are host processes, and a kind a downstream program adds has
+// made no such promise, so neither lets a person run a command of their own.
+func (f sandboxFlags) contained() bool {
+	kind := strings.TrimSpace(*f.kind)
+	return kind == "" || kind == "docker"
+}
+
 // openSandbox builds the sandbox the flags name, and what to close on
 // shutdown. A docker sandbox that cannot reach its CLI does not stop the
 // server: every run's tools fail closed with the reason instead, and the

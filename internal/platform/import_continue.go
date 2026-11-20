@@ -29,9 +29,10 @@ type ContinueImportInput struct {
 	Source   string `json:"source"`
 	Document string `json:"document"`
 	// DocumentDigest is the revision the person read (knowledge.Document's
-	// Digest), and StructureDigest its structure's
-	// (knowledge.Origin.StructureDigest), "" for a document whose
-	// structure is not kept. Both must still be the document's.
+	// Digest), and StructureDigest its structure's as the document records
+	// it (knowledge.Document's StructureDigest), "" for a document whose
+	// structure is not kept or that records none. Both must still be the
+	// document's.
 	DocumentDigest  string `json:"document_digest"`
 	StructureDigest string `json:"structure_digest,omitempty"`
 	// Project is the project the person saw the source filed in, "~" or ""
@@ -117,7 +118,7 @@ var sessionURIs = []string{threads.ImportClaude + ":", threads.ImportCodex + ":"
 // second read. Any difference between the two (the source made again, the
 // structure's importer or time, the project) refuses it.
 func (p *Platform) ContinueImport(ctx context.Context, who auth.Principal, in ContinueImportInput) (threads.Thread, error) {
-	// The route that will start one checks runs:write; it is checked here
+	// The route that starts one checks runs:write; it is checked here
 	// too, as ImportDocument checks knowledge:write beside its route's
 	// permission, and reading the source takes knowledge:read (SourceAs).
 	if !who.Can(auth.RunsWrite) {
@@ -249,7 +250,15 @@ func (p *Platform) pinnedOrigin(who auth.Principal, in ContinueImportInput) (pin
 	}
 	switch {
 	case origin.Session != nil:
-		if in.StructureDigest != origin.StructureDigest {
+		// A document whose structure an earlier release kept records no
+		// digest of it, so its reader names none, and what is pinned is the
+		// digest of the trusted structure read here. A restore or an import
+		// that writes a structure records its digest, so once one is
+		// recorded it must be named: a structure written since the person
+		// read the document refuses it.
+		named := in.StructureDigest == origin.StructureDigest
+		unrecorded := in.StructureDigest == "" && origin.Document.StructureDigest == ""
+		if !named && !unrecorded {
 			return pinned{}, ErrImportChanged
 		}
 	case origin.Unknown == knowledge.NotKept:

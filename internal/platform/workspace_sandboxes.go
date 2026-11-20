@@ -23,6 +23,10 @@ type SessionSandbox struct {
 	RetentionDays int    `json:"retention_days"`
 	Writable      bool   `json:"writable"`
 	Reason        string `json:"reason,omitempty"`
+	// Commands says a person may run a command of their own here: the
+	// deployment's sandbox is contained. Writable still decides whether
+	// they may now.
+	Commands bool `json:"commands"`
 }
 
 // SandboxMount is a directory a run's instance is given: its work directory
@@ -66,7 +70,7 @@ func (p *Platform) Sandboxes(ctx context.Context, who auth.Principal, id string)
 	}
 	isolated := p.cfg.Sandbox.Isolated()
 	out := ConversationSandboxes{
-		Session: SessionSandbox{Isolated: isolated, Files: len(list.Files), RetentionDays: list.RetentionDays, Writable: list.Writable, Reason: list.Reason},
+		Session: SessionSandbox{Isolated: isolated, Files: len(list.Files), RetentionDays: list.RetentionDays, Writable: list.Writable, Reason: list.Reason, Commands: p.PersonCommands()},
 		Runs:    []RunSandbox{},
 	}
 	for _, f := range list.Files {

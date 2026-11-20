@@ -196,3 +196,43 @@ func TestDynamicallyPrivateResultsCannotBeCopiedByForkOrBringBack(t *testing.T) 
 		t.Fatalf("private context bring-back: %v", err)
 	}
 }
+
+func TestForksOfListsOnlyTheReadersOwnLiveForksNewestFirst(t *testing.T) {
+	p := start(t, call.Limits{})
+	field(t, p)
+	first := startThread(t, p, operator, platform.ThreadInput{Project: "Field", Text: "original context", PostOnly: true})
+	other := startThread(t, p, operator, platform.ThreadInput{Project: "Field", Text: "another conversation", PostOnly: true})
+	older, err := p.ForkThread(t.Context(), operator, first.Thread.ID, platform.ForkInput{Through: first.Message.ID, Title: "Older"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	newer, err := p.ForkThread(t.Context(), operator, first.Thread.ID, platform.ForkInput{Through: first.Message.ID, Title: "Newer"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = p.ForkThread(t.Context(), operator, other.Thread.ID, platform.ForkInput{Through: other.Message.ID, Title: "Elsewhere"}); err != nil {
+		t.Fatal(err)
+	}
+	// Something said in the older fork makes it the most recently active.
+	post(t, p, operator, older.ID, platform.MessageInput{Text: "a question on the side", PostOnly: true})
+	got, err := p.ForksOf(operator, first.Thread.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0].ID != older.ID || got[1].ID != newer.ID || got[0].Title != "Older" || got[0].Through != first.Message.ID {
+		t.Fatalf("forks of the source: %+v", got)
+	}
+	// The source stays as it was: listing and forking post nothing in it.
+	if page, _, _ := p.Threads.Messages(tenant, first.Thread.ID, "", 10); len(page) != 1 {
+		t.Fatalf("the source gained messages: %+v", page)
+	}
+	// A fork is private: another member of the project is shown none of them.
+	reader := auth.Principal{Subject: "other", Tenant: tenant, Kind: auth.User, Roles: []auth.Role{auth.Operator}}
+	workIn(t, p, "Field", reader)
+	if got, err = p.ForksOf(reader, first.Thread.ID); err != nil || len(got) != 0 {
+		t.Fatalf("another reader's forks: %+v, %v", got, err)
+	}
+	if _, err = p.ForksOf(operator, "th-0000000000000000"); !errors.Is(err, threads.ErrNotFound) {
+		t.Fatalf("a conversation that does not exist: %v", err)
+	}
+}

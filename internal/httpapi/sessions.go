@@ -23,6 +23,7 @@ func (s *Server) sessionRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/sessions/{id}/messages", s.authed(auth.RunsWrite, s.seenSession(s.postSession)))
 	mux.HandleFunc("GET /api/sessions/{id}/stream", s.authed(auth.RunsRead, s.seenSession(s.sessionEvents)))
 	mux.HandleFunc("POST /api/sessions/{id}/stop", s.authed(auth.RunsWrite, s.seenSession(s.stopSession)))
+	mux.HandleFunc("POST /api/sessions/{id}/browser", s.authed(auth.RunsWrite, s.seenSession(s.sessionBrowser)))
 	mux.HandleFunc("POST /api/sessions/{id}/people", s.authed(auth.RunsWrite, s.seenSession(s.inviteSession)))
 	mux.HandleFunc("POST /api/sessions/{id}/links", s.authed(auth.RunsWrite, s.seenSession(s.linkSession)))
 	mux.HandleFunc("PUT /api/sessions/{id}/messages/{mid}/feedback", s.authed(auth.RunsRead, s.seenSession(s.sessionFeedback)))
