@@ -1,5 +1,10 @@
 import type { AgentActivity, Turn, TurnStatus } from "@humagen/core";
-import { BotAvatar, type BotAvatarType } from "bot-avatars";
+import {
+  BotAvatar,
+  type BotAvatarGlasses,
+  type BotAvatarHat,
+  type BotAvatarType,
+} from "bot-avatars";
 import { type CSSProperties, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { type OrbState as Motion, ThinkingOrb } from "thinking-orbs";
 
@@ -256,6 +261,62 @@ const BOTS: readonly BotAvatarType[] = [
   "puddle",
 ];
 
+/** Every shape an agent may be drawn as, in the order a picker shows them. */
+export const botShapes: readonly BotAvatarType[] = BOTS;
+
+/**
+ * How an agent chose to look: its bot's shape, its face, its finish and what
+ * it wears, and the name its initials are taken from. Every field is
+ * optional; one left out is the default, so an agent nobody styled is drawn
+ * as it always was.
+ */
+export interface BotLook {
+  shape?: BotAvatarType;
+  face?: "eyes" | "mouth";
+  finish?: "fabric" | "plastic" | "smooth" | "flat";
+  hat?: BotAvatarHat;
+  glasses?: BotAvatarGlasses;
+  headphones?: boolean;
+  bowTie?: boolean;
+  /** The name people see, which initials are taken from. */
+  label?: string;
+}
+
+/**
+ * Where marks read each agent's look. The surface host configures it once
+ * (the console from the looks the API serves), so a mark drawn anywhere, in a
+ * shared component or a page, shows the same bot. Unconfigured, every agent
+ * has the default look.
+ */
+let looks: {
+  get: (name: string) => BotLook | undefined;
+  subscribe: (changed: () => void) => () => void;
+} = {
+  get: () => undefined,
+  subscribe: () => () => {},
+};
+const lookListeners = new Set<() => void>();
+
+export function configureBotLooks(next: typeof looks | undefined): void {
+  looks = next ?? { get: () => undefined, subscribe: () => () => {} };
+  for (const l of lookListeners) l();
+}
+
+function useBotLook(name: string): BotLook | undefined {
+  return useSyncExternalStore(
+    (changed) => {
+      lookListeners.add(changed);
+      const off = looks.subscribe(changed);
+      return () => {
+        lookListeners.delete(changed);
+        off();
+      };
+    },
+    () => looks.get(name),
+    () => looks.get(name),
+  );
+}
+
 /** The shape an agent's name always draws: the same agent is the same bot everywhere. */
 export function agentBot(name: string): BotAvatarType {
   let h = 2166136261;
@@ -275,14 +336,23 @@ export function AgentInitials({
   state = "idle",
   size = 28,
   className,
+  look: given,
+  lookOf,
 }: {
+  /** The agent's handle, or the name its default shape is drawn from. */
   name: string;
   state?: OrbState;
   size?: number;
   className?: string;
+  /** A look to draw instead of the agent's own, as a picker previews one. */
+  look?: BotLook;
+  /** The handle its look is kept under, when `name` is a name shown instead. */
+  lookOf?: string;
 }) {
   const live = !["idle", "done", "error", "stopped", "waiting"].includes(state);
   const { ref, ink, dark } = useInk<HTMLSpanElement>();
+  const kept = useBotLook(lookOf ?? name);
+  const look = given ?? kept;
   if (ink)
     return (
       <span
@@ -293,12 +363,17 @@ export function AgentInitials({
         style={{ "--initials-size": `${size}px` } as CSSProperties}
       >
         <BotAvatar
-          type={agentBot(name)}
+          type={look?.shape ?? agentBot(name)}
+          face={look?.face}
+          hat={look?.hat ?? "none"}
+          glasses={look?.glasses ?? "none"}
+          headphones={look?.headphones ?? false}
+          bowTie={look?.bowTie ?? false}
           state={live ? "working" : "default"}
           size={size}
           color={ink}
           theme={dark ? "dark" : "light"}
-          shading={size < 24 ? "flat" : "fabric"}
+          shading={size < 24 ? "flat" : (look?.finish ?? "fabric")}
           interactive={size >= 32}
           // Small marks hold still unless they work: a list of agents does not fidget.
           paused={!live && size < 32}
@@ -321,7 +396,7 @@ export function AgentInitials({
       data-live={live || undefined}
       style={{ "--initials-size": `${size}px` } as CSSProperties}
     >
-      {agentInitials(name)}
+      {agentInitials(look?.label || name)}
       {live && size >= 20 && (
         <AgentOrb
           state={state}

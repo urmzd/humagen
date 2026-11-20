@@ -130,6 +130,8 @@ test("an unknown page stays visible as not found while legacy tabs fall back saf
   assert.equal(href(at("/nowhere")), "/nowhere");
   assert.equal(documentTitle(at("/nowhere")), "Page not found - Humagen");
   assert.deepEqual(at("/agents/lead/bogus"), { page: "agent", name: "lead", tab: "prompt" });
+  assert.deepEqual(at("/agents/lead/look"), { page: "agent", name: "lead", tab: "look" });
+  assert.equal(href({ page: "agent", name: "lead", tab: "look" }), "/agents/lead/look");
   assert.deepEqual(at("/settings/bogus"), { page: "settings", section: "profile" });
 });
 

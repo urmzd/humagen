@@ -9,7 +9,8 @@ import (
 	"github.com/urmzd/humagen/pkg/auth"
 )
 
-// agentHues resolves only explicitly requested names, never enumerating agents.
+// agentHues resolves only explicitly requested names, never enumerating
+// agents: each one's hue, and the look of each that has one.
 func (s *Server) agentHues(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	raw := r.URL.Query().Get("names")
 	if raw == "" {
@@ -45,5 +46,10 @@ func (s *Server) agentHues(w http.ResponseWriter, r *http.Request, who auth.Prin
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusOK, map[string]any{"hues": hues})
+	looks, err := s.P.AgentLooks.Get(who.Tenant, visible)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, map[string]any{"hues": hues, "looks": looks})
 }

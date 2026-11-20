@@ -2853,6 +2853,33 @@ export interface AgentPlace {
   enabled_in: string[];
 }
 
+/** How an agent is drawn and what people call it. Every field is
+optional, and an empty one is the default: the shape its handle
+hashes to, eyes, a fabric finish, nothing worn, and its handle as its
+name.
+ */
+export interface AgentLook {
+  /** What people call the agent. Its handle, which people tag, does not change. */
+  display_name?: string;
+  shape?: "clover" | "flower" | "triangle" | "square" | "blob" | "ghost" | "circle" | "drop" | "star" | "droid" | "mech" | "alien" | "hexagon" | "cat" | "cloud" | "pill" | "pebble" | "puddle";
+  face?: "eyes" | "mouth";
+  finish?: "fabric" | "plastic" | "smooth" | "flat";
+  hat?: "none" | "beret" | "beanie" | "party" | "crown";
+  glasses?: "none" | "round" | "square" | "shades";
+  headphones?: boolean;
+  bow_tie?: boolean;
+}
+
+/** An agent's look, its hue, and what a picker offers. */
+export interface AgentLookView {
+  agent: string;
+  look: AgentLook;
+  hue: number;
+  /** The hues other agents in the workspace hold, sorted, without their names. */
+  taken: number[];
+  choices: AgentLookViewChoices;
+}
+
 /** Who now sees an agent, as its home. */
 export type AgentHome = { agent: string } & AgentPlace;
 
@@ -6261,6 +6288,14 @@ export interface ProjectChangeChannel {
   after?: Channel;
 }
 
+export interface AgentLookViewChoices {
+  shapes: string[];
+  faces: string[];
+  finishes: string[];
+  hats: string[];
+  glasses: string[];
+}
+
 export interface InboxPartSource {
   name: string;
   cause: string;
@@ -6414,10 +6449,12 @@ export interface ListReadAuditResponse {
 
 export interface GetAgentHuesResponse {
   hues: Record<string, number>;
+  looks?: Record<string, AgentLook>;
 }
 
 export interface GetProjectAgentHuesResponse {
   hues: Record<string, number>;
+  looks?: Record<string, AgentLook>;
 }
 
 export interface AmendAgentSetupBody {
@@ -6450,6 +6487,7 @@ export interface ListAgentsResponse {
   agents: Revision[];
   builtin: string[];
   hues: Record<string, number>;
+  looks?: Record<string, AgentLook>;
   homes: Record<string, string>;
   enabled_in: Record<string, string[]>;
 }
@@ -6469,6 +6507,11 @@ export interface ListStorePackagesResponse {
 
 export interface SetAgentHomeBody {
   project?: string;
+}
+
+export interface SetAgentLookBody {
+  look: AgentLook;
+  hue?: number;
 }
 
 export interface ListAgentRevisionsResponse {

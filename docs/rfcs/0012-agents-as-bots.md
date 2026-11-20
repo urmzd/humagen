@@ -1,6 +1,6 @@
 # Agents as bots: one identity on every surface
 
-Status: proposed. Nothing here is built.
+Status: proposed. Looks (decision 1) are built; the rest is not.
 
 ## Goal
 
@@ -102,24 +102,33 @@ What this says for Humagen:
 
 ## Decisions
 
-### 1. An agent's identity is part of its definition
+### 1. An agent's look is kept beside its definition
 
-Add `identity` to `AgentSpec`. Every field is optional and has today's
-behaviour as its default, so no stored agent changes.
+Built (`pkg/agentlooks`, the Look tab). A look is presentation, so it is not
+part of `AgentSpec`: changing it makes no revision, pins nothing on a run and
+never changes what the agent does. Every field is optional, and an empty one
+is what the console has always drawn, so no agent changed when this landed.
 
 | Field | Meaning | Default |
 |-------|---------|---------|
-| `display_name` | What people call it in prose and in Slack: "Barbara". The handle stays `name`. | `name` |
-| `mark.seed` | What the bot's shape is drawn from. Regenerate picks a new seed. | `name` |
-| `mark.hue` | One of the workspace palette's hues, reserved like today's. Choosing one already reserved is refused. | the reserved hue |
-| `mark.glyph` | An icon drawn on the bot's screen (a bug, a chart, a gear), from a fixed set. | none |
-| `greeting` | One or two sentences in the agent's voice, shown on its home and in Slack's App Home. | its `description` |
-| `starters` | Up to three jobs: a title, one line, and the message it sends. Optionally a project or repository. | none |
+| `display_name` | What people call it: "Barbara". People still tag its handle. Unique in a workspace, ignoring case, and never another agent's handle. | its handle |
+| `shape` | One of the eighteen bots `bot-avatars` draws. | the shape its handle hashes to, so naming an agent never changes its face |
+| `face` | Eyes, or eyes and a mouth. | eyes |
+| `finish` | Fabric, plastic, smooth or flat. | fabric |
+| `hat`, `glasses` | Beret, beanie, party or crown; round, square or shades. | none |
+| `headphones`, `bow_tie` | Worn or not. | not worn |
+
+The color stays a hue reserved in `pkg/agentcolors`; the Look tab moves an
+agent to any free one (`agentcolors.Choose`), never one another agent holds.
 
 No uploaded image. The console's rule holds: an agent is a small bot in its
 color, so no person's mark looks like an agent and no agent looks like a
-person. Glyph and color give the range people want (the screenshot's
-"Icons" tab) without breaking that.
+person. Shape, color, finish and what it wears give the range people want
+without breaking that.
+
+Still proposed: `greeting` and `starters` (one or two sentences in the
+agent's voice, and up to three jobs), for the agent's Home tab and Slack's
+App Home.
 
 The mark is drawn once, by `bot-avatars`, on every surface. Slack and GitHub
 need an image, so the server renders one:
@@ -234,7 +243,7 @@ with the agent's identity in place of the workspace's:
 
 | Manifest field | From |
 |----------------|------|
-| `display_information.name`, `bot_user.display_name` | `identity.display_name` |
+| `display_information.name`, `bot_user.display_name` | its look's `display_name` |
 | `description`, `long_description` | the agent's `description` and `greeting` |
 | `background_color` | its hue |
 | `agent_view.agent_description`, `suggested_prompts` | its `greeting` and `starters` |
@@ -333,9 +342,9 @@ Small changes that make each agent read as itself:
 
 ## Phasing
 
-1. **Identity.** `identity` on `AgentSpec` and `api/openapi.yaml`, the mark
-   renderer and its route, display name and glyph in `AgentMark`. Nothing
-   visible changes for agents that set none.
+1. **Looks.** Built: `pkg/agentlooks`, `GET`/`PUT /api/agents/{name}/look`,
+   looks in every mark, display names through `agentShown`, the Look tab.
+   Still to do: the mark renderer and its route, for Slack and GitHub.
 2. **Console.** The Home tab, the regrouped tabs, the new setup steps.
 3. **Slack.** `chat:write.customize` and the agent's identity on every post,
    stream and status line, threads that stay with the agent they

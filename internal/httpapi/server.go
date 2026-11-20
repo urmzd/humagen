@@ -184,6 +184,8 @@ func (s *Server) Handler() http.Handler {
 	s.storeRoutes(mux)
 	mux.HandleFunc("PUT /api/agents/{name}", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.reviseAgent))))
 	mux.HandleFunc("PUT /api/agents/{name}/home", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.putAgentHome))))
+	mux.HandleFunc("GET /api/agents/{name}/look", s.authed(auth.AgentsRead, agentNamed(s.seenAgent(s.getAgentLook))))
+	mux.HandleFunc("PUT /api/agents/{name}/look", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.putAgentLook))))
 	mux.HandleFunc("GET /api/agents/{name}/history", s.authed(auth.AgentsRead, agentNamed(s.seenAgent(s.agentHistory))))
 	mux.HandleFunc("GET /api/agents/{name}/skills", s.authed(auth.AgentsRead, agentNamed(s.seenAgent(s.getAgentSkillDefaults))))
 	mux.HandleFunc("PUT /api/agents/{name}/skills", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.putAgentSkillDefaults))))
@@ -515,6 +517,11 @@ func (s *Server) listAgents(w http.ResponseWriter, r *http.Request, who auth.Pri
 		s.problem(w, err)
 		return
 	}
+	looks, err := s.P.AgentLooks.Get(who.Tenant, names)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
 	homes, enabled := map[string]string{}, map[string][]string{}
 	for name, place := range s.P.AgentPlaces(who.Tenant, names) {
 		if place.Home != "" {
@@ -522,7 +529,7 @@ func (s *Server) listAgents(w http.ResponseWriter, r *http.Request, who auth.Pri
 		}
 		enabled[name] = slices.DeleteFunc(place.EnabledIn, func(p string) bool { return !seer.Project(projects.NameOf(p)) })
 	}
-	ok(w, http.StatusOK, map[string]any{"agents": s.viewRevisions(s.P.Names(who.Tenant), seer.Revisions(all)), "builtin": platform.Builtins(), "homes": homes, "enabled_in": enabled, "hues": hues})
+	ok(w, http.StatusOK, map[string]any{"agents": s.viewRevisions(s.P.Names(who.Tenant), seer.Revisions(all)), "builtin": platform.Builtins(), "homes": homes, "enabled_in": enabled, "hues": hues, "looks": looks})
 }
 
 // revisionView is an agent's revision and what the person who saved it is

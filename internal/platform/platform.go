@@ -54,6 +54,7 @@ import (
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/internal/wire/sessionstate"
 	"github.com/urmzd/humagen/pkg/agentcolors"
+	"github.com/urmzd/humagen/pkg/agentlooks"
 	"github.com/urmzd/humagen/pkg/alerts"
 	"github.com/urmzd/humagen/pkg/artifacts"
 	"github.com/urmzd/humagen/pkg/audit"
@@ -417,6 +418,8 @@ type Platform struct {
 	emailPreferenceLocks [64]sync.Mutex
 	// AgentColors reserves each workspace's stable agent hues.
 	AgentColors *agentcolors.Store
+	// AgentLooks keeps how each agent is drawn and the name people see.
+	AgentLooks *agentlooks.Store
 	// Scratchpads keeps each conversation's named scratchpads.
 	Scratchpads *scratchpads.Store
 	// Projects is each tenant's tree of projects.

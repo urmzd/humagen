@@ -10,6 +10,7 @@ import type {
   AgentControlInput,
   AgentEvaluationHealth,
   AgentHome,
+  AgentLookView,
   AgentNetwork,
   AgentSession,
   AgentSetup,
@@ -248,6 +249,7 @@ import type {
   SessionInput,
   SessionPostInput,
   SetAgentHomeBody,
+  SetAgentLookBody,
   SetApprovalModeBody,
   SetKnowledgeDocumentExcludedBody,
   SetKnowledgeSyncSettingsBody,
@@ -2397,6 +2399,54 @@ are the workspace's (400).
     let path = "/api/agents/{name}/home";
     path = path.replace("{name}", encodeURIComponent(String(name)));
     return this.rawRequest<AgentHome>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** The agent's look (its display name and the bot it is drawn as), its
+hue, the hues other agents hold, and every choice a picker offers. An
+empty field of the look is the default the platform draws.
+ */
+  async getAgentLook(name: string, options?: RequestOptions): Promise<AgentLookView> {
+    let path = "/api/agents/{name}/look";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<AgentLookView>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getAgentLookRaw(name: string, options?: RequestOptions): Promise<ApiResponse<AgentLookView>> {
+    let path = "/api/agents/{name}/look";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<AgentLookView>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Replaces the agent's look, and with `hue` moves it to that color. A
+look is presentation: it makes no revision and changes nothing a run
+does. An empty look returns the agent to the default. A display name
+is unique in the workspace, ignoring case, and is never another
+agent's handle; a hue is never another agent's. Either taken is 409.
+Takes the ownership changing the agent takes. The platform's own
+agents take a look too.
+ */
+  async setAgentLook(name: string, body: SetAgentLookBody, options?: RequestOptions): Promise<AgentLookView> {
+    let path = "/api/agents/{name}/look";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<AgentLookView>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async setAgentLookRaw(name: string, body: SetAgentLookBody, options?: RequestOptions): Promise<ApiResponse<AgentLookView>> {
+    let path = "/api/agents/{name}/look";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<AgentLookView>("PUT", path, {
       body,
       contentType: "application/json",
       ...options,

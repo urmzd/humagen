@@ -13,7 +13,7 @@ import {
 import { AgentInitials, AgentOrb, type OrbState, usePresence } from "@humagen/web";
 import { createPortal } from "react-dom";
 import { agentHue, requestAgentHue, subscribeHues } from "./agentHues.ts";
-import { agentShown } from "./branding.ts";
+import { agentShown, brandShown } from "./branding.ts";
 import { builtinAgentKey } from "./legacy.ts";
 
 export { Presence, usePresence } from "@humagen/web";
@@ -731,7 +731,7 @@ export function AgentMark({
       style={{ "--aui-accent-h": hueOf(name) } as CSSProperties}
     >
       {size >= 16 ? (
-        <AgentInitials name={agentShown(name)} state={state} size={size} />
+        <AgentInitials name={brandShown(name)} lookOf={name} state={state} size={size} />
       ) : (
         <AgentOrb state={state} size={size} label="" />
       )}
