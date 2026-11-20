@@ -273,7 +273,7 @@ func (p *Platform) mayPost(person auth.Principal, at Place, need projects.Role) 
 		return keeps, nil
 	}
 	th, err := p.Threads.Get(person.Tenant, at.Thread)
-	if err == nil && (th.Fork != nil || th.Session != nil) && !p.SeesThread(person, at.Thread) {
+	if err == nil && (th.Fork != nil || th.Import != nil || th.Session != nil) && !p.SeesThread(person, at.Thread) {
 		return false, threads.ErrNotFound
 	}
 	if err == nil && th.ReadOnly {
@@ -879,6 +879,11 @@ func (p *Platform) PostMessage(ctx context.Context, who auth.Principal, id strin
 	if err != nil {
 		return Posted{}, err
 	}
+	// A continuation is posted in only while the workspace sends agents
+	// what it carries; its runs are checked again as they start.
+	if importHistoryCut(th, p.Settings(who.Tenant)) {
+		return Posted{}, ErrImportNoHistory
+	}
 	on, err := p.surfaceOfPost(who, th, in)
 	if err != nil {
 		return Posted{}, err
@@ -1104,7 +1109,7 @@ func (p *Platform) carryOut(ctx context.Context, poster auth.Principal, tenant s
 		}
 		th = cur
 	}
-	if (th.Fork != nil || th.Session != nil) && !p.SeesThread(poster, th.ID) {
+	if (th.Fork != nil || th.Import != nil || th.Session != nil) && !p.SeesThread(poster, th.ID) {
 		return Posted{}, threads.ErrNotFound
 	}
 	def, unavailable := p.defaultOf(tenant, th, sees)
@@ -1308,6 +1313,9 @@ func (p *Platform) mentionRefusal(tenant string, tree *projects.Tree, project, a
 // refusalOf is why a run was not started, as a person reads it: the error's
 // words, without the name of the error they wrap.
 func refusalOf(err error) string {
+	if errors.Is(err, ErrImportNoHistory) {
+		return noHistoryWords
+	}
 	msg := err.Error()
 	for _, known := range []error{ErrNotAvailable, ErrNoDefault} {
 		msg = strings.TrimPrefix(msg, known.Error()+": ")
@@ -1363,6 +1371,13 @@ func (p *Platform) answerMessage(ctx context.Context, tenant string, th threads.
 // answerDirect is answerMessage once who answers is settled: agent itself,
 // or for Open each agent that joins.
 func (p *Platform) answerDirect(ctx context.Context, tenant string, th threads.Thread, m threads.Message, via, agent string, among []string, routed string, actor event.Actor, tagID string, keeps bool, sees func(string) bool) ([]runs.Run, error) {
+	// What a continuation carries is sent in its history: with none sent,
+	// its turns are refused. The settings read here are the ones that decide
+	// each body below, so a change since the post does not slip through.
+	cfg := p.Settings(tenant)
+	if importHistoryCut(th, cfg) {
+		return nil, ErrImportNoHistory
+	}
 	surface, surfaced := deliveryOf(ctx)
 	if !surfaced && th.Session != nil {
 		surface, surfaced = p.keptDelivery(tenant, th)
@@ -1414,7 +1429,6 @@ func (p *Platform) answerDirect(ctx context.Context, tenant string, th threads.T
 		}
 		who = []answer{{agent: agent, tag: tagID}}
 	}
-	cfg := p.Settings(tenant)
 	// A session's agent carries its own transcript. Another agent answering
 	// in the session (the one a message mentions, a search match standing in
 	// for the entry agent) has none there, so it is sent the conversation up

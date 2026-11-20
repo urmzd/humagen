@@ -634,6 +634,7 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		"ThreadSummary": {typ: platform.ThreadSummary{}},
 		"WorkspaceFile": {typ: platform.WorkspaceFile{}}, "WorkspaceFileContent": {typ: platform.WorkspaceFileContent{}}, "WorkspaceFileList": {typ: platform.WorkspaceFileList{}}, "WorkspaceFileWrite": {typ: platform.WorkspaceFileWrite{}, written: true}, "WorkspaceFilePublish": {typ: platform.WorkspaceFilePublish{}, written: true},
 		"Thread": {typ: threads.Thread{}}, "ThreadParticipant": {typ: threads.Participant{}}, "ThreadMention": {typ: threads.Mention{}},
+		"ThreadImport": {typ: threads.Import{}}, "ThreadImportTurn": {typ: threads.ImportTurn{}}, "ThreadImportOmitted": {typ: threads.ImportOmitted{}}, "ThreadImportCut": {typ: threads.ImportCut{}},
 		"ThreadAnswerRef": {typ: threads.AnswerRef{}}, "ThreadFollowup": {typ: threads.Followup{}}, "ThreadMessage": {typ: threads.Message{}}, "ThreadTurn": {typ: platform.ThreadTurn{}}, "ThreadAnnouncement": {typ: threads.Announcement{}}, "ThreadAsk": {typ: platform.Ask{}},
 		"ThreadAnswers": {typ: answers{}}, "ThreadPosted": {typ: platform.Posted{}}, "ThreadNotice": {typ: threads.Notice{}}, "RoomPage": {typ: rooms.Page{}},
 		"ThreadInput": {typ: platform.ThreadInput{}, written: true}, "ThreadMessageInput": {typ: platform.MessageInput{}, written: true},
@@ -2015,7 +2016,23 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	imported := c.call(acme, "POST", "/api/knowledge/{name}/imports", "/api/knowledge/handbook/imports", `{"title":"A chat","uri":"codex:generated-contract","text":"generated","session":`+session+`}`, http.StatusCreated)
 	c.call(acme, "POST", "/api/knowledge/{name}/imports", "/api/knowledge/handbook/imports", `{"title":"A chat","uri":"codex:generated-contract","text":"generated"}`, http.StatusBadRequest)
 	importPath := "/api/knowledge/handbook/imports/" + imported.str("id")
-	c.call(acme, "PUT", "/api/knowledge/{name}/imports/{id}", importPath, `{"title":"A chat","text":"generated, grown","digest":"`+imported.str("digest")+`","session":`+session+`}`, http.StatusOK)
+	grown := c.call(acme, "PUT", "/api/knowledge/{name}/imports/{id}", importPath, `{"title":"A chat","text":"generated, grown","digest":"`+imported.str("digest")+`","session":`+session+`}`, http.StatusOK)
+	// A conversation continued from it, which no route starts yet, is read
+	// through the threads route with its imported origin as the contract
+	// says, and another workspace does not find it.
+	structure, err := knowledge.ParseImported([]byte(session))
+	if err != nil {
+		t.Fatal(err)
+	}
+	continued, err := f.p.ContinueImport(t.Context(), auth.Principal{Subject: "ana", Tenant: "acme", Kind: auth.User, Roles: []auth.Role{auth.Admin}}, platform.ContinueImportInput{Source: "handbook", Document: grown.str("id"), DocumentDigest: grown.str("digest"), StructureDigest: knowledge.StructureDigest(structure)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	room = c.call(ana, "GET", "/api/threads/{id}", "/api/threads/"+continued.ID, "", http.StatusOK)
+	if origin := obj(obj(room.field("thread"))["import"]); origin["document_digest"] != grown.str("digest") || origin["tool"] != "codex" || origin["by"] != "ana" {
+		t.Fatalf("the continuation reads %s", room.raw)
+	}
+	c.call(globex, "GET", "/api/threads/{id}", "/api/threads/"+continued.ID, "", http.StatusNotFound)
 	c.call(acme, "PUT", "/api/knowledge/{name}/imports/{id}", importPath, `{"title":"A chat","text":"stale","digest":"`+imported.str("digest")+`","session":`+session+`}`, http.StatusConflict)
 	c.call(globex, "POST", "/api/knowledge/{name}/imports", "/api/knowledge/handbook/imports", `{"title":"A chat","uri":"codex:generated-contract","text":"generated","session":`+session+`}`, http.StatusNotFound)
 	c.call(globex, "PUT", "/api/knowledge/{name}/documents/{id}/text", docPath+"/text", `{"title":"Refunds","text":"Theirs.","digest":"`+replaced.str("digest")+`"}`, http.StatusNotFound)
