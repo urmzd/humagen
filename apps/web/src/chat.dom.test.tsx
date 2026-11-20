@@ -925,6 +925,10 @@ test("starters for store agents the workspace has not installed are not offered"
     .getAllByRole("button")
     .map((b) => b.textContent);
   assert.deepEqual(offered, ["Build an agent"]);
+  // Build an Agent runs the built-in agent-creator skill with the entry agent.
+  fireEvent.click(within(list).getByRole("button", { name: "Build an agent" }));
+  const box = screen.getByRole("textbox", { name: "Message" }) as HTMLTextAreaElement;
+  await waitFor(() => assert.equal(box.value, "@humagen /agent-creator "));
 });
 
 test("a suggestion @mentions its agent, and the + menu mentions as many agents as are picked", async () => {

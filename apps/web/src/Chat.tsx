@@ -134,7 +134,7 @@ export const STARTERS: Starter[] = [
     label: "How are my agents doing?",
     text: "How did my agents do today?",
   },
-  { agent: "humagen", label: "Build an agent", text: "Help me build an agent that " },
+  { agent: "humagen", label: "Build an agent", text: "/agent-creator " },
   { agent: "humagen-writer", label: "Write a report", text: "Write a one-page report on " },
   { agent: "code-reviewer", label: "Review a pull request", text: "Review the pull request " },
 ];

@@ -22,9 +22,14 @@ const builtinSkillTest = "builtin"
 //go:embed builtin_skills/skill-creator.md
 var skillCreatorInstructions string
 
+//go:embed builtin_skills/agent-creator.md
+var agentCreatorInstructions string
+
 // builtinSkills are the skills every workspace starts with, in its workspace
 // scope, so the chat bar's / menu is never empty: skill-creator drafts a
-// skill from a description of a task, for the person to save.
+// skill from a description of a task, for the person to save, and
+// agent-creator designs an agent with the person and saves it through the
+// reviewed change flow where the agent running it may (Home's Build an Agent).
 func builtinSkills() []library.Definition {
 	return []library.Definition{{
 		Skill: projects.Skill{
@@ -32,6 +37,13 @@ func builtinSkills() []library.Definition {
 			Description:  "Turns a task you do the same way every time into a skill. Use it when someone wants to create, draft or write a new skill, or asks how to teach the assistant a way of working.",
 			ArgumentHint: "the task to turn into a skill",
 			Instructions: strings.TrimSpace(skillCreatorInstructions),
+		},
+	}, {
+		Skill: projects.Skill{
+			Name:         "agent-creator",
+			Description:  "Designs a new agent with you: its job, instructions, tools and tests, then saves it once you approve. Use it when someone wants to create, build or set up an agent, or asks how to get an assistant for a job.",
+			ArgumentHint: "what the agent should do",
+			Instructions: strings.TrimSpace(agentCreatorInstructions),
 		},
 	}}
 }

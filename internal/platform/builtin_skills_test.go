@@ -1,13 +1,14 @@
 package platform
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/urmzd/humagen/pkg/library"
 )
 
-// Every workspace starts with skill-creator, published, so the chat bar's /
-// menu has a command before anyone writes a skill. It follows the shipped
+// Every workspace starts with skill-creator and agent-creator, published, so
+// the chat bar's / menu has commands before anyone writes a skill. It follows the shipped
 // text until a person revises it, and a platform that ships nothing adds none.
 func TestBuiltinSkillsShipOnceAndYieldToAPersonsRevision(t *testing.T) {
 	p, _ := configured(t, Config{ShipBuiltins: true})
@@ -27,8 +28,13 @@ func TestBuiltinSkillsShipOnceAndYieldToAPersonsRevision(t *testing.T) {
 		t.Fatalf("revision = by %q, published %v; want the platform's, published", got.By, got.PublishedAt)
 	}
 	published, _, err := p.SkillLibrary.ListPublished("acme", scope)
-	if err != nil || len(published) != 1 || published[0].Name != "skill-creator" {
-		t.Fatalf("published = %v, %v; want skill-creator alone", published, err)
+	var names []string
+	for _, d := range published {
+		names = append(names, d.Name)
+	}
+	slices.Sort(names)
+	if err != nil || !slices.Equal(names, []string{"agent-creator", "skill-creator"}) {
+		t.Fatalf("published = %v, %v; want agent-creator and skill-creator", names, err)
 	}
 
 	// A person's revision is theirs: the next start leaves it as they wrote it.

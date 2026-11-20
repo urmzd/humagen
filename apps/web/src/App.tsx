@@ -1536,7 +1536,7 @@ function Console({
                               go({
                                 page: "new",
                                 agent: BUILTIN_BUILDER,
-                                ask: "Help me build an agent that ",
+                                ask: "/agent-creator ",
                               })
                           : undefined
                       }
