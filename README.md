@@ -95,7 +95,7 @@ Set `ANTHROPIC_API_KEY` before starting and configure an agent with provider `an
 
 ### Connect Slack and GitHub
 
-A workspace answers through one or more [clients](docs/reference/clients.md): a Slack app or a GitHub installation, each with its own identity, secrets, agents and limits. Follow the [integration guide](docs/guides/integrations.md), then [Slack](docs/reference/slack.md) or [GitHub](docs/reference/github.md).
+A workspace answers through one or more [clients](docs/reference/clients.md): a Slack app or a GitHub installation, each with its own identity, secrets, agents and limits. Run `humagen install slack` or `humagen install github` and follow the [Slack](docs/guides/slack.md) or [GitHub](docs/guides/github.md) guide. The references are [Slack](docs/reference/slack.md) and [GitHub](docs/reference/github.md).
 
 ### Manage the workspace from an MCP client
 

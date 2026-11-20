@@ -1,5 +1,9 @@
 # GitHub and Slack trial
 
+To install either app, use `humagen install`: see the [Slack](slack.md) and
+[GitHub](github.md) guides. This page covers a manual trial with environment
+variables and one credential item.
+
 Humagen owns [clients](../reference/clients.md) (which Slack apps and GitHub installations a
 workspace answers through), agent definitions, review and command policy, and
 the run history shown in its console. Fiber supplies signed

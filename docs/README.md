@@ -28,7 +28,7 @@ go run ./cmd/humagen start
 2. In **Settings → Model providers**, enable a provider and configure a model the entry agent can use. This step needs access to the chosen model.
 3. Open a new session and send `@humagen What can you help me do in this workspace?`. Open **Activity** in the session to inspect the run.
 
-The default local workspace keeps conversations in memory. To retain work across restarts, use the [deployment guide](guides/deploy.md). To connect a real review agent to a pull request, follow the [GitHub and Slack trial](guides/integrations.md).
+The default local workspace keeps conversations in memory. To retain work across restarts, use the [deployment guide](guides/deploy.md). To use your agents where you work, follow the [Slack](guides/slack.md) and [GitHub](guides/github.md) guides.
 
 ## Work with other agents
 
