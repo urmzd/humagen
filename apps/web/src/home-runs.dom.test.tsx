@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
-import { act, cleanup, render, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { App } from "./App.tsx";
 import { stubFetch } from "./dom.ts";
 
@@ -142,4 +142,33 @@ test("a run event the list does not show yet, and a reconnect, each read the lis
     stream.onopen?.();
   });
   await waitFor(() => assert.equal(runsRead(), 3));
+});
+
+test("Home retries the agent directory and links a manager with an empty list to Agents", async () => {
+  window.history.replaceState(null, "", "/");
+  sources = handSources();
+  let reply!: (response: Response) => void;
+  const firstRead = new Promise<Response>((resolve) => {
+    reply = resolve;
+  });
+  let reads = 0;
+  net = stubFetch({
+    "GET /api/me": () => ({
+      principal: { subject: "ada", tenant: "acme", kind: "user", name: "Ada", roles: ["manager"] },
+      permissions: ["agents:read", "agents:write", "runs:write"],
+    }),
+    "GET /api/branding": () => ({ name: "Humagen", title: "Humagen" }),
+    "GET /api/agents": () => (++reads === 1 ? firstRead : { agents: [] }),
+  });
+  render(<App />);
+  await screen.findByRole("status", { name: "Loading agents" });
+  await act(async () => reply(new Response("Unavailable", { status: 503 })));
+  await screen.findByText("Agents could not be loaded.");
+  assert.equal(screen.queryByRole("link", { name: "Manage Agents" }), null);
+  const settingsReads = net.seen.filter((r) => r.path === "/api/settings").length;
+  fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+  const manage = await screen.findByRole("link", { name: "Manage Agents" });
+  assert.equal(manage.getAttribute("href"), "/agents");
+  assert.equal(reads, 2);
+  assert.equal(net.seen.filter((r) => r.path === "/api/settings").length, settingsReads);
 });
