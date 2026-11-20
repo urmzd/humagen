@@ -59,6 +59,7 @@ import (
 	"github.com/urmzd/humagen/pkg/audit"
 	"github.com/urmzd/humagen/pkg/auditrefs"
 	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/background"
 	"github.com/urmzd/humagen/pkg/blob"
 	"github.com/urmzd/humagen/pkg/call"
 	"github.com/urmzd/humagen/pkg/callpolicy"
@@ -100,7 +101,6 @@ import (
 	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/humagen/pkg/threads"
 	"github.com/urmzd/humagen/pkg/usage"
-	"github.com/urmzd/humagen/pkg/watches"
 	"github.com/urmzd/humagen/pkg/webtools"
 )
 
@@ -405,8 +405,9 @@ type Platform struct {
 	AgentSkillDefaults *library.DefaultsStore
 	skillDefaultsMu    sync.Mutex
 	Notifications      *notifications.Store
-	// Watches keeps what people asked agents to watch for (watches.go).
-	Watches              *watches.Store
+	// Background keeps the work agents do for people while nobody watches
+	// (background.go).
+	Background           *background.Store
 	ContextFlags         *contextflags.Store
 	SourceSuggestions    *sourcelinks.Suggestions
 	SourceEvidence       *knowledge.EvidenceStore
@@ -1543,7 +1544,7 @@ func (p *Platform) Run(ctx context.Context) error {
 	singletons := map[string]func(context.Context) error{
 		"scheduled evals":     p.runEvalSchedule,
 		"email notifications": p.runEmailNotifications,
-		"watches":             p.runWatches,
+		"background work":     p.runBackground,
 		"source refresh":      p.refreshSources,
 		"catalog crawl":       p.crawlCatalog,
 		"knowledge graph":     p.refreshGraphs,

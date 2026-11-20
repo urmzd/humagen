@@ -102,7 +102,7 @@ func (p *Platform) ended(ctx context.Context, run runs.Run) {
 		{"spoken", func() error { return p.speakToSurface(ctx, run) }},
 		{"questions", func() error { return p.settleQuestionsOf(run) }},
 		{"session_alerts", func() error { return p.settleSessionAlerts(run.Tenant, run.Thread) }},
-		{"watch", func() error { return p.settleWatchRun(run) }},
+		{"background", func() error { return p.settleBackgroundRun(ctx, run) }},
 		{"cascade", func() error { return p.cascade(ctx, run) }},
 		{"answer", func() error { return p.deliverAnswer(ctx, run) }},
 		{"followups", func() error {
@@ -118,7 +118,7 @@ func (p *Platform) ended(ctx context.Context, run runs.Run) {
 			switch {
 			case run.Origin == runs.OriginSystem:
 				return p.fileHook(run)
-			case run.Origin == runs.OriginAPI && run.Parent == "" && run.Status == runs.Completed && wire.Meta(run.Tag())[metaWatch] == "":
+			case run.Origin == runs.OriginAPI && run.Parent == "" && run.Status == runs.Completed && wire.Meta(run.Tag())[metaBackground] == "":
 				return p.afterTurn(ctx, run)
 			}
 			return nil

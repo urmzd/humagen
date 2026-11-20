@@ -153,12 +153,14 @@ func (p *Platform) registerRunTools() error {
 		{Name: ToolAlertResolve, Category: other, Idempotent: true, Run: of(p.sessionAlertResolveTool)},
 		reads(SystemTool{Name: ToolMemorySearch, Category: other, Run: of(p.memorySearchTool)}),
 
-		// Telling the person the run acts for something: now, or when it
-		// happens (watches.go).
+		// Telling the person the run acts for something now, and work that
+		// goes on without them (background.go).
 		{Name: ToolNotify, Category: other, Run: of(p.notifyTool)},
 		{Name: ToolWatchStart, Category: other, Run: of(p.watchStartTool)},
-		reads(SystemTool{Name: ToolWatchList, Category: other, Run: of(p.watchListTool)}),
-		{Name: ToolWatchStop, Category: other, Idempotent: true, Run: of(p.watchStopTool)},
+		{Name: ToolGoalStart, Category: other, Run: of(p.goalStartTool)},
+		{Name: ToolTaskStart, Category: other, Run: of(p.taskStartTool)},
+		reads(SystemTool{Name: ToolBackgroundList, Category: other, Run: of(p.backgroundListTool)}),
+		{Name: ToolBackgroundStop, Category: other, Idempotent: true, Run: of(p.backgroundStopTool)},
 
 		// Knowledge. The ones that use the reader's own access act for
 		// that person.

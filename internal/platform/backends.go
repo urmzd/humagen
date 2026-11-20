@@ -22,6 +22,7 @@ import (
 	"github.com/urmzd/humagen/pkg/artifacts"
 	"github.com/urmzd/humagen/pkg/audit"
 	"github.com/urmzd/humagen/pkg/auditrefs"
+	"github.com/urmzd/humagen/pkg/background"
 	"github.com/urmzd/humagen/pkg/blob"
 	"github.com/urmzd/humagen/pkg/callpolicy"
 	"github.com/urmzd/humagen/pkg/catalog"
@@ -57,7 +58,6 @@ import (
 	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/humagen/pkg/threads"
 	"github.com/urmzd/humagen/pkg/usage"
-	"github.com/urmzd/humagen/pkg/watches"
 )
 
 // Ledger is the run ledger the runtime executes from and the platform reads
@@ -257,8 +257,8 @@ func (p *Platform) openStores(cfg Config) error {
 	keep("private context flags", err)
 	p.Notifications, err = notifications.Open(perRequest)
 	keep("native notifications", err)
-	p.Watches, err = watches.Open(perRequest)
-	keep("watches", err)
+	p.Background, err = background.Open(perRequest)
+	keep("background work", err)
 	p.AgentSkillDefaults, err = library.OpenDefaults(perRequest)
 	keep("agent skill defaults", err)
 	p.EmailNotifications, err = notifications.OpenEmail(perRequest)

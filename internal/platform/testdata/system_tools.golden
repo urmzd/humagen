@@ -86,8 +86,10 @@ alert_resolve | runs | other | idempotent | policy
 memory_search | runs | other | idempotent,parallel,read-only | policy
 notify | runs | other |  | policy
 watch_start | runs | other |  | policy
-watch_list | runs | other | idempotent,parallel,read-only | policy
-watch_stop | runs | other | idempotent | policy
+goal_start | runs | other |  | policy
+task_start | runs | other |  | policy
+background_list | runs | other | idempotent,parallel,read-only | policy
+background_stop | runs | other | idempotent | policy
 source_search | runs | read_context | acts-for-person,idempotent,parallel,read-only | policy
 catalog_search | runs | read_context | idempotent,parallel,read-only | policy
 catalog_query | runs | read_context | acts-for-person,idempotent,parallel,read-only | policy
