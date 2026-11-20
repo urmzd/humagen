@@ -1,10 +1,11 @@
 ---
+import type { ImageMetadata } from "astro";
+import { Image } from "astro:assets";
+
 // A console screen in its glass bezel, in the reader's theme: the light and
 // the dark take are both given, and CSS shows the one that matches
 // (global.css, .theme-light and .theme-dark). Both are lazy, so the hidden
 // one is never fetched.
-import type { ImageMetadata } from "astro";
-import { Image } from "astro:assets";
 
 type Props = {
   light: ImageMetadata;
