@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.144.1 (2026-11-20)
+
+### Bug Fixes
+
+- **examples**: run every example profile on a native provider (#396) ([b8ff84c](https://github.com/urmzd/humagen/commit/b8ff84c49ffe9aef663075761f3b86acc6ce5c6b))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.144.0...v0.144.1)
+
+
 ## 0.144.0 (2026-11-20)
 
 ### Breaking
