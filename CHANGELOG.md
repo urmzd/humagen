@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.151.0 (2026-11-20)
+
+### Features
+
+- **cli**: humagen install registers the GitHub or Slack app in the browser and connects it (#440) ([8e0d8ec](https://github.com/urmzd/humagen/commit/8e0d8eca1c58262e283f30109ff1c2c606f92c2e))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.150.0...v0.151.0)
+
+
 ## 0.150.0 (2026-11-20)
 
 ### Features
