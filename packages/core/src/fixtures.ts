@@ -17,6 +17,8 @@ import {
   timeToken,
 } from "./types";
 
+export * from "./fixtures/changes";
+
 /**
  * Canonical fixtures. Stories and snapshot tests render these on every surface.
  * Copy follows Slack's agent guidance: task titles name the action (present

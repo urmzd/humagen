@@ -45,11 +45,9 @@ export const pages = {
   },
 } satisfies Record<string, Page>;
 
-export const contact = {
-  label: "Talk to the Founder",
-  email: "founder@withhumagen.com",
-  href: "mailto:founder@withhumagen.com",
-};
+/** The published guides, and where questions go. */
+export const docs = { label: "Docs", href: "https://docs.urmzd.com/humagen/" };
+export const help = { label: "Ask on GitHub", href: `${site.repo}/issues` };
 
 /** Button labels are Title Case, as in the console. */
 export const actions = {
@@ -168,6 +166,11 @@ export const why = {
   ],
 };
 
+export const closing = {
+  heading: "Run your team's agents on your own terms",
+  body: "Humagen is free and open source. Deploy it in your cloud, name the models each agent uses, and keep every run on record.",
+};
+
 export const selfHost = {
   heading: "Self-host it, private by default",
   intro:
@@ -194,7 +197,7 @@ export const selfHost = {
 
 export const deployIntro = [
   "One private VM per team on Google Cloud, reachable only over Tailscale. Docker Compose runs Humagen, Postgres and Caddy. Gemini answers through Vertex AI with the VM's service account, so there is no model key to keep. Terraform describes all of it and GitHub Actions applies it.",
-  "This is the setup Humagen's author runs in production. The steps show the parts that matter; adapt names, regions and sizes to your project.",
+  "This setup runs in production. The steps show the parts that matter; adapt names, regions and sizes to your project.",
 ];
 
 export const prerequisites = [

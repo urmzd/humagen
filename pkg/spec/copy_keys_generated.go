@@ -2092,6 +2092,7 @@ var copyKeyList = []string{
 	"pullRequests.status",
 	"pullRequests.title",
 	"pullRequests.waiting",
+	"questionExpired",
 	"raiseLimit",
 	"raiseLimitTitle",
 	"rated.down",

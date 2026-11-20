@@ -61,6 +61,7 @@ import { AgentChangeCards } from "./agent-change";
 import { type Copy, defaultCopy } from "./copy";
 import { AnswerText, reviewCountLine } from "./review";
 import { toolsLine } from "./timeline";
+import { ChangedFiles, turnSettled } from "./turn-changes";
 
 interface WithCopy {
   copy?: Copy;
@@ -121,6 +122,19 @@ function JudgementView({ judgement: j, copy }: { judgement: Judgement; copy: Cop
   const words = copy.judgement;
   const fields = (j.fields ?? []).map((f) => `**${untrusted(f.label)}:** ${untrusted(f.value)}`);
   const references = j.references ?? [];
+  // Slack reads it as one line under the call: the workspace's fields first
+  // (a risk level), then the decision and its reason, then what it rests on.
+  if (useSurface().surface === "slack") {
+    return (
+      <Context
+        items={[
+          ...fields,
+          withReason(`**${words.by}:** ${words.decision[j.decision]}`, untrusted(j.reason)),
+          ...(references.length > 0 ? [words.basedOn(references.map(untrusted))] : []),
+        ]}
+      />
+    );
+  }
   return (
     <>
       <Context
@@ -382,6 +396,19 @@ export function ClarificationCard({
         <Context
           items={[withReason(copy.declinedBy(answer.by, timeToken(answer.at)), answer.reason)]}
         />
+      </>
+    );
+  }
+  if (answer.kind === "expired" || answer.kind === "cancelled") {
+    // Nobody answered: say what happened instead, with no way left to answer.
+    const line =
+      answer.kind === "expired"
+        ? (answer.note ?? copy.questionExpired)
+        : copy.questionCancelled(answer.note);
+    return (
+      <>
+        <Text text={clarification.question} />
+        <Context items={[`${line} | ${timeToken(answer.at)}`]} />
       </>
     );
   }
@@ -864,6 +891,12 @@ export function TurnView({
       {turn.attachments?.map((a) => (
         <AttachmentView key={a.id} attachment={a} />
       ))}
+      {/* The web shows what a turn changed as its own card (`TurnChanges` in `@humagen/web`). */}
+      {turnSettled(turn.status) && (
+        <Only surface="slack">
+          <ChangedFiles tasks={turn.tasks} copy={copy} />
+        </Only>
+      )}
       <Only surface="slack">
         <AgentChangeCards tasks={turn.tasks} />
       </Only>

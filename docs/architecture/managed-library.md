@@ -190,8 +190,8 @@ files `SKILL.md`'s instructions name by their exact path come first, then the
 rest by path; a listed file over 128 KiB is marked as above. Past 63 the text
 says how many are listed and how many are not, and tells a native model that
 `skill_file_read` reads any path the instructions name. It reads any file
-of the pinned package, listed or not, and a coding agent's directory holds
-every file.
+of the pinned package, listed or not, and the directory placed for a provider
+whose program reads host files (below) holds every file.
 
 A skill's test passes when its run completed, called no tool the run did
 not have and had no read of the skill's own files refused. A call of a tool
