@@ -242,8 +242,9 @@ cannot remove or replace its original conversation boundary.
 
 The console creates a canonical session with `humagen`, the entry agent, for
 New Agent. It took over from `humagen-builder`, which still reads as it.
-Home's Build an Agent starter and the Agents page's builder entry write
-`@humagen /agent-creator ` into the chat bar: `agent-creator` is a built-in
+The Agents page's builder entry writes `@humagen /agent-creator ` into the
+chat bar, and anyone can pick it from the `/` menu; Home offers no Build an
+Agent chip of its own: `agent-creator` is a built-in
 workspace skill (`internal/platform/builtin_skills/agent-creator.md`), shipped
 and kept current as `skill-creator` is, that interviews the person and saves
 through `preview_agent_change` and `apply_agent_change`. Run by an agent

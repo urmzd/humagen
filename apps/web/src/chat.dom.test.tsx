@@ -910,25 +910,20 @@ test("all starter suggestions stay in one centered row that scrolls past its wid
   openChat(workspace("lead"), { agents: builtin });
   const list = await screen.findByRole("list", { name: chat.suggestions });
   assert.ok(list.className.split(/\s+/).includes("overflow-x-auto"));
-  assert.equal(within(list).getAllByRole("button").length, 3);
+  assert.equal(within(list).getAllByRole("button").length, 2);
   assert.ok(
     [...list.querySelectorAll("li")].every((row) => !row.className.split(/\s+/).includes("hidden")),
   );
 });
 
 // A workspace that has not installed Core or Review from the store is
-// offered no way into their agents: only the entry agent's starter shows.
+// offered no way into their agents, and Home offers no Build an Agent chip:
+// that is /agent-creator in the / menu and the Agents page's own button.
 test("starters for store agents the workspace has not installed are not offered", async () => {
   openChat(workspace("lead"), { agents: [...agents, agent("humagen")] });
-  const list = await screen.findByRole("list", { name: chat.suggestions });
-  const offered = within(list)
-    .getAllByRole("button")
-    .map((b) => b.textContent);
-  assert.deepEqual(offered, ["Build an agent"]);
-  // Build an Agent runs the built-in agent-creator skill with the entry agent.
-  fireEvent.click(within(list).getByRole("button", { name: "Build an agent" }));
-  const box = screen.getByRole("textbox", { name: "Message" }) as HTMLTextAreaElement;
-  await waitFor(() => assert.equal(box.value, "@humagen /agent-creator "));
+  await screen.findByRole("textbox", { name: "Message" });
+  assert.equal(screen.queryByRole("list", { name: chat.suggestions }), null);
+  assert.equal(screen.queryByRole("button", { name: "Build an agent" }), null);
 });
 
 test("a suggestion @mentions its agent, and the + menu mentions as many agents as are picked", async () => {
