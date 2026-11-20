@@ -67,8 +67,17 @@ export const MAX_MESSAGE_TEXT = 8000;
 
 const ELLIPSIS = "…";
 
+/**
+ * At most `max` characters of a text, the last an ellipsis when it was cut.
+ * The cut never falls between the two halves of one character (a surrogate
+ * pair), which would leave half a character in the message.
+ */
 function clip(text: string, max: number): string {
-  return text.length > max ? `${text.slice(0, max - 1)}${ELLIPSIS}` : text;
+  if (text.length <= max) return text;
+  let end = max - 1;
+  const last = text.charCodeAt(end - 1);
+  if (last >= 0xd800 && last <= 0xdbff) end -= 1;
+  return `${text.slice(0, end)}${ELLIPSIS}`;
 }
 
 /**
@@ -98,6 +107,12 @@ export interface HumanActivityStore {
   list(conversation: string): readonly HumanActivityRecord[];
   /** Records something, and returns the record, or undefined when it says nothing. */
   add(conversation: string, input: HumanActivityInput): HumanActivityRecord | undefined;
+  /**
+   * How many of a conversation's records were dropped to keep it within
+   * `MAX_HUMAN_ACTIVITY` since it was last cleared. Those are gone: no message
+   * carries them. Clearing, as a posted message does, starts the count again.
+   */
+  dropped(conversation: string): number;
   remove(conversation: string, id: string): void;
   /** Removes the records named, or every record of the conversation. */
   clear(conversation: string, ids?: readonly string[]): void;
@@ -112,6 +127,7 @@ export function createHumanActivityStore(now: () => Date = () => new Date()): Hu
   const records = new Map<string, readonly HumanActivityRecord[]>();
   const keys = new Map<string, string>();
   const watchers = new Map<string, Set<() => void>>();
+  const dropped = new Map<string, number>();
   let seq = 0;
   const set = (conversation: string, next: readonly HumanActivityRecord[]) => {
     if (next.length) records.set(conversation, next);
@@ -120,6 +136,7 @@ export function createHumanActivityStore(now: () => Date = () => new Date()): Hu
   };
   return {
     list: (conversation) => records.get(conversation) ?? NONE,
+    dropped: (conversation) => dropped.get(conversation) ?? 0,
     add(conversation, input) {
       const summary = clip(oneLine(input.summary), MAX_HUMAN_SUMMARY);
       if (!conversation || !summary) return undefined;
@@ -139,7 +156,10 @@ export function createHumanActivityStore(now: () => Date = () => new Date()): Hu
         if (earlier) rest = rest.filter((r) => r.id !== earlier);
         keys.set(slot, record.id);
       }
-      set(conversation, [...rest, record].slice(-MAX_HUMAN_ACTIVITY));
+      const next = [...rest, record];
+      const over = next.length - MAX_HUMAN_ACTIVITY;
+      if (over > 0) dropped.set(conversation, (dropped.get(conversation) ?? 0) + over);
+      set(conversation, over > 0 ? next.slice(over) : next);
       return record;
     },
     remove(conversation, id) {
@@ -153,6 +173,7 @@ export function createHumanActivityStore(now: () => Date = () => new Date()): Hu
     clear(conversation, ids) {
       const rest = records.get(conversation) ?? NONE;
       if (!rest.length) return;
+      dropped.delete(conversation);
       set(conversation, ids ? rest.filter((r) => !ids.includes(r.id)) : NONE);
     },
     subscribe(conversation, changed) {
@@ -179,6 +200,11 @@ const MORE = /^\((\d+) more did not fit in this message\)$/;
 const moreLine = (n: number) => `(${n} more did not fit in this message)`;
 const ENTRY = /^(\d+)\. (Terminal|Browser|Files|Changes|Other) (\S+): (.*)$/;
 const INDENT = "    ";
+/**
+ * Written in a detail's place when the message had no room for it, so the
+ * agent knows there was more to read and does not take the entry as whole.
+ */
+export const HUMAN_DETAIL_LEFT_OUT = "(detail left out: no room in this message)";
 const FENCE = /^`{3,}$/;
 
 /**
@@ -209,7 +235,8 @@ function stamp(at: string): string {
 
 function entry(n: number, r: HumanActivityRecord, withDetail: boolean): string {
   const head = `${n}. ${LABEL[r.source]} ${stamp(r.at)}: ${oneLine(r.summary)}`;
-  if (!withDetail || !r.detail) return head;
+  if (!r.detail) return head;
+  if (!withDetail) return `${head}\n${INDENT}${HUMAN_DETAIL_LEFT_OUT}`;
   // Every line of a detail is indented, so none can read as one of the section's own lines.
   const lines = plain(r.detail)
     .split("\n")
@@ -226,6 +253,11 @@ export interface FoldedHumanActivity {
   omitted: number;
   /** How many records were written without their detail to make room. */
   trimmed: number;
+  /**
+   * Those records: each had a detail and the section holds a line saying it
+   * was left out in its place. Their details are not sent with any message.
+   */
+  bare: string[];
 }
 
 /**
@@ -235,7 +267,8 @@ export interface FoldedHumanActivity {
  * The section never makes a message longer than the API takes: it has
  * `MAX_HUMAN_SECTION` characters, or what the person's own words leave of
  * `max` when that is less. Records are written oldest first. One that does
- * not fit with its detail is written without it; one that does not fit at
+ * not fit with its detail is written without it, with a line in its place
+ * that says a detail was left out; one that does not fit at
  * all is left out with every record after it, and a last line says how many
  * were. Those stay recorded, so they go with the message after. A message
  * already at the limit is sent as typed, with nothing folded in and
@@ -246,7 +279,7 @@ export function foldHumanActivity(
   records: readonly HumanActivityRecord[],
   max: number = MAX_MESSAGE_TEXT,
 ): FoldedHumanActivity {
-  if (!records.length) return { text, included: [], omitted: 0, trimmed: 0 };
+  if (!records.length) return { text, included: [], omitted: 0, trimmed: 0, bare: [] };
   const total = records.length;
   const fence = fenceFor(text);
   const frame = `\n\n${openLine(total)}\n${fence}\n${fence}\n${CLOSE}`.length;
@@ -256,25 +289,25 @@ export function foldHumanActivity(
   const lines: string[] = [];
   const included: string[] = [];
   let used = 0;
-  let trimmed = 0;
+  const bare: string[] = [];
   for (const [index, record] of records.entries()) {
     const full = entry(index + 1, record, true);
-    const bare = entry(index + 1, record, false);
-    const pick = used + full.length + 1 <= budget ? full : bare;
+    const pick = used + full.length + 1 <= budget ? full : entry(index + 1, record, false);
     if (used + pick.length + 1 > budget) break;
-    if (pick !== full) trimmed += 1;
+    if (pick !== full) bare.push(record.id);
     lines.push(pick);
     included.push(record.id);
     used += pick.length + 1;
   }
-  if (!included.length) return { text, included: [], omitted: total, trimmed: 0 };
+  if (!included.length) return { text, included: [], omitted: total, trimmed: 0, bare: [] };
   const omitted = total - included.length;
   if (omitted) lines.push(moreLine(omitted));
   return {
     text: `${text}\n\n${openLine(included.length)}\n${fence}\n${lines.join("\n")}\n${fence}\n${CLOSE}`,
     included,
     omitted,
-    trimmed,
+    trimmed: bare.length,
+    bare,
   };
 }
 

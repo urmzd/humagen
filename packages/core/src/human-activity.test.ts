@@ -2,6 +2,7 @@ import { assert, test } from "vitest";
 import {
   createHumanActivityStore,
   foldHumanActivity,
+  HUMAN_DETAIL_LEFT_OUT,
   type HumanActivityRecord,
   MAX_HUMAN_ACTIVITY,
   MAX_HUMAN_DETAIL,
@@ -77,6 +78,56 @@ test("a keyed record replaces the one before it, and the oldest go when a conver
   assert.equal(s.list("b")[0]?.summary, "n5");
 });
 
+const LONE_SURROGATE = /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/;
+
+test("a cut never leaves half a character", () => {
+  const s = store();
+  // An emoji is two code units; the cut would fall between them.
+  const r = s.add("a", {
+    source: "terminal",
+    summary: `${"s".repeat(MAX_HUMAN_SUMMARY - 2)}\u{1F600}tail`,
+    detail: `${"d".repeat(MAX_HUMAN_DETAIL - 2)}\u{1F600}tail`,
+  });
+  for (const text of [r?.summary as string, r?.detail as string]) {
+    assert.ok(!LONE_SURROGATE.test(text), "no lone surrogate");
+    assert.ok(text.endsWith("…"));
+    assert.ok(!text.includes("\u{1F600}"));
+  }
+  assert.equal(r?.summary.length, MAX_HUMAN_SUMMARY - 1);
+  assert.equal(r?.detail?.length, MAX_HUMAN_DETAIL - 1);
+  // One that ends before the cut is kept whole.
+  const whole = s.add("a", {
+    source: "terminal",
+    summary: "x",
+    detail: `${"d".repeat(MAX_HUMAN_DETAIL - 3)}\u{1F600}tail`,
+  });
+  assert.ok(whole?.detail?.endsWith("\u{1F600}…"));
+  assert.equal(whole?.detail?.length, MAX_HUMAN_DETAIL);
+});
+
+test("a full conversation says how many of its oldest were dropped, until it is cleared", () => {
+  const s = store();
+  for (let i = 0; i < MAX_HUMAN_ACTIVITY; i++) s.add("a", { source: "other", summary: `n${i}` });
+  assert.equal(s.dropped("a"), 0);
+  s.add("a", { source: "other", summary: "one more" });
+  s.add("a", { source: "other", summary: "and another" });
+  assert.equal(s.dropped("a"), 2);
+  assert.equal(s.dropped("b"), 0);
+  // Taking one line out does not bring the dropped back, so it is still said.
+  s.remove("a", s.list("a")[0]?.id as string);
+  assert.equal(s.dropped("a"), 2);
+  // A posted message clears what it carried, and the count starts again.
+  s.clear("a", [s.list("a")[0]?.id as string]);
+  assert.equal(s.dropped("a"), 0);
+  // A keyed record that replaces its earlier one drops nothing.
+  const k = store();
+  for (let i = 0; i < MAX_HUMAN_ACTIVITY; i++) k.add("a", { source: "files", summary: `f${i}` });
+  k.remove("a", k.list("a")[0]?.id as string);
+  k.add("a", { source: "files", summary: "saved", key: "a.ts" });
+  k.add("a", { source: "files", summary: "saved again", key: "a.ts" });
+  assert.equal(k.dropped("a"), 0);
+});
+
 test("clearing the records a message carried leaves what was done since", () => {
   const s = store();
   const sent = s.add("a", { source: "terminal", summary: "one" });
@@ -105,6 +156,7 @@ test("a message with nothing done by hand is sent as typed", () => {
     included: [],
     omitted: 0,
     trimmed: 0,
+    bare: [],
   });
   assert.deepEqual(splitHumanActivity("hello"), { text: "hello" });
 });
@@ -222,7 +274,45 @@ test("the section never makes a message longer than the API takes", () => {
     included: [],
     omitted: many.length,
     trimmed: 0,
+    bare: [],
   });
+});
+
+test("a record sent without its detail says so to the agent, and is named to the caller", () => {
+  // One thing with no detail, then ten commands with long output: more than the section holds in full.
+  const many: HumanActivityRecord[] = [
+    { id: "plain", source: "changes", summary: "Kept the change to route.ts", at },
+    ...Array.from({ length: 10 }, (_, i) => ({
+      id: `h${i}`,
+      source: "terminal" as const,
+      summary: `Ran step ${i}`,
+      detail: "x".repeat(400),
+      at,
+    })),
+  ];
+  const folded = foldHumanActivity("Go on", many);
+  assert.equal(folded.omitted, 0);
+  assert.ok(folded.bare.length > 0 && folded.bare.length < 10);
+  assert.equal(folded.trimmed, folded.bare.length);
+  // The first ones went whole; the ones after them went bare. One with no detail lost nothing.
+  assert.deepEqual(
+    folded.bare,
+    many.slice(-folded.bare.length).map((r) => r.id),
+  );
+  assert.ok(folded.text.length - "Go on".length <= MAX_HUMAN_SECTION);
+  const entries = splitHumanActivity(folded.text).activity?.entries ?? [];
+  assert.equal(entries.length, many.length);
+  assert.deepEqual(
+    entries.map((e) => e.detail),
+    many.map((r) => (folded.bare.includes(r.id) ? HUMAN_DETAIL_LEFT_OUT : r.detail)),
+  );
+  // The line is in the text the agent reads, once for each.
+  assert.equal(folded.text.split(HUMAN_DETAIL_LEFT_OUT).length - 1, folded.bare.length);
+
+  // With room for all of it, nothing is said to be left out.
+  const few = foldHumanActivity("Go on", many.slice(0, 2));
+  assert.deepEqual(few.bare, []);
+  assert.ok(!few.text.includes(HUMAN_DETAIL_LEFT_OUT));
 });
 
 test("a posted message carries what was done and clears it; a failed post keeps it", async () => {
