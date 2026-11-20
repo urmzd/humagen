@@ -2,6 +2,7 @@ package platform_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/urmzd/humagen/internal/platform"
@@ -207,6 +208,9 @@ func TestTheMessagesRouteStartsASlackThreadsSessionOnItsFirstMessage(t *testing.
 	if err != nil || !first.Created || first.Root == "" || first.ID == "" || len(first.Posted.Runs) != 1 {
 		t.Fatalf("the thread's first message = %+v, %v", first, err)
 	}
+	if first.Posted.Message.ID != first.ID || !strings.HasPrefix(first.ID, first.Root+":") {
+		t.Fatalf("the message's id = %q, and %q in what it did; want one id, under the root", first.ID, first.Posted.Message.ID)
+	}
 	root, err := p.ReadSession(t.Context(), machine, first.Root, "", "", false)
 	if err != nil || root.Parent != "slack://T0TEAM/C01RENEW/1700000000.000100" {
 		t.Fatalf("the root's place = %q, %v", root.Parent, err)
@@ -244,7 +248,10 @@ func TestOnlyTheClientsMachinePostsForAPersonOnTheMessagesRoute(t *testing.T) {
 		"a github ref": func(in *platform.MessagesInput) {
 			in.Ref = &platform.ExternalRef{Type: platform.RefGitHub, Repo: "acme/web", Kind: "pull", Number: 9}
 		},
-		"two messages":     func(in *platform.MessagesInput) { in.Messages = append(in.Messages, in.Messages[0]) },
+		"two messages": func(in *platform.MessagesInput) { in.Messages = append(in.Messages, in.Messages[0]) },
+		"a reply with no ts of its own": func(in *platform.MessagesInput) {
+			in.Ref.ThreadTS, in.Ref.TS = "1700000000.000100", ""
+		},
 		"a ref of its own": func(in *platform.MessagesInput) { in.Messages[0].Ref = slackRef("C01RENEW", "1700000000.000100", "") },
 	} {
 		in := machineSays("C01RENEW", "1700000000.000100", "", "hello")

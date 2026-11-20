@@ -403,6 +403,11 @@ func (p *Platform) sendForSurfacePerson(ctx context.Context, who auth.Principal,
 	if _, err := ref.Place(); err != nil {
 		return MessageView{}, err
 	}
+	if !slackTS(ref.TS) {
+		// A reply named only by its thread would be taken for the thread's
+		// first message, and so for one already posted.
+		return bad("a message posted for a person (act_as) names its own ts in ref, beside the thread's for a reply")
+	}
 	m := in.Messages[0]
 	text, err := m.Content.text()
 	if err != nil {
@@ -425,6 +430,8 @@ func (p *Platform) sendForSurfacePerson(ctx context.Context, who auth.Principal,
 	if v.Posted != nil {
 		out.Posted = *v.Posted
 		out.ID = messageID(v.ID, v.Posted.Message.ID)
+		// As every other path answers: the message's id across the platform.
+		out.Posted.Message.ID = out.ID
 	}
 	out.Posted.Runs, out.Posted.Notified, out.Posted.Refused = nonNil(out.Posted.Runs), nonNil(out.Posted.Notified), nonNil(out.Posted.Refused)
 	return out, nil
