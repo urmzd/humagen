@@ -759,8 +759,16 @@ export class FakeHumagen implements Humagen {
     });
   }
 
-  /** Put a message in a person's own inbox, and tell the app's machine for whom. */
-  tellFor(subject: string, actAs: ActAs, message: Record<string, unknown>) {
+  /**
+   * Put a message in a person's own inbox, and tell the app's machine for
+   * whom, and for a background result asked in its Slack thread, where.
+   */
+  tellFor(
+    subject: string,
+    actAs: ActAs,
+    message: Record<string, unknown>,
+    replyIn?: InboxNotice["reply_in"],
+  ) {
     const mine = this.personal.get(subject) ?? [];
     this.personal.set(subject, [...mine.filter((m) => m.id !== message.id), message]);
     this.notes.push({
@@ -769,6 +777,7 @@ export class FakeHumagen implements Humagen {
       state: String(message.state),
       updated_at: this.at(),
       for: actAs,
+      ...(replyIn ? { reply_in: replyIn } : {}),
     });
   }
 

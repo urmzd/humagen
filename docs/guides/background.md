@@ -53,6 +53,25 @@ session its runs are in. Choose **Stop** from its menu to end one that is still
 running. The API is `GET /api/me/background` and
 `POST /api/me/background/{id}/stop`; nobody sees or stops another person's.
 
+## How it reaches people
+
+The inbox message is the record. Your notification settings decide whether it
+also reaches the console or email. When a Slack app's client maps you
+(`slack.people`), it also reaches you in Slack:
+
+| Where the work was asked | What a watch that fired or ran out, a goal or task that ended, or `notify` does in Slack |
+|---|---|
+| A Slack thread of that app's | A reply in that thread naming you, with the result's one line (the inbox subject, such as `Stopped watching: the status page is green`) and Open Session, a link to the watch's checks or the task's run (the conversation itself for a goal or `notify`). The details stay in your inbox |
+| The same thread, when a run behind the result read private context (a person's own credentials, personal sources, or anything a schedule's answer would be kept for its creator for), or you can no longer read the conversation | A direct message from that app, with the whole message, to you alone. Nothing is posted in the thread |
+| Anywhere else (the console, the API, a Slack thread of another app) | A direct message from each app whose client maps you; work asked in another Slack app's thread is reported by that app alone |
+| Work someone stopped | Nothing, anywhere |
+
+The result is posted once, never edited, and pings nobody else: what the agent
+wrote shows as written, without links or mentions. `notify` from a watch's
+check or a task's run reports where the work was asked, and from a turn
+reports in that turn's conversation. Only results that background work or
+`notify` sent are forwarded this way; other results stay in the inbox.
+
 ## Limits
 
 | Limit | Value |

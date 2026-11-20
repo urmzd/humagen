@@ -279,6 +279,14 @@ export function echoed(text: string): string {
 }
 
 /**
+ * A line an agent wrote, as Slack mrkdwn that shows it as written: a mention
+ * is its name (escapeMentions first) and no `<…>` is a link or a ping.
+ */
+export function plainMrkdwn(text: string): string {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+/**
  * An announcement's words, which an agent may have written, made unable to
  * ping anyone: its subject and every part's text go through escapeMentions
  * before rendering, so no `<@U…>`, `<!here>`, `<!channel>`, `<!everyone>` or
@@ -484,6 +492,8 @@ export class App {
    * is one message sent to each person who holds it.
    */
   private readonly told = new Recent<{ channel: string; ts: string }>(2_000);
+  /** The background results replied in a Slack thread, by person and message: each once. */
+  private readonly reported = new Recent<true>(2_000);
   private readonly flushMs: number;
   private readonly pollMs: number;
   private readonly stallMs: number;
@@ -2424,6 +2434,7 @@ export class App {
     if (!as || as.client !== this.opts.clientId) return;
     const raw = await this.humagen.inboxMessageFor(notice.id, as).catch(() => null);
     if (!raw) return;
+    if (notice.reply_in) return this.report(notice.reply_in, as, raw);
     const view = this.personalView(raw);
     const key = toldKey(as, raw.id);
     const told = this.told.get(key);
@@ -2432,7 +2443,9 @@ export class App {
       return;
     }
     if (raw.state !== "open") return;
-    const thread = raw.source?.thread;
+    // A background result pinged nobody where it was asked, so it is told
+    // here whichever thread it is about.
+    const thread = raw.kind === "result" ? undefined : raw.source?.thread;
     const surface = thread ? await this.humagen.threadSurface(thread).catch(() => null) : null;
     if (surface?.client === this.opts.clientId && (await this.isIn(surface, as.user))) return;
     const sent = await this.slack.call<{ ts: string; channel?: string }>("chat.postMessage", {
@@ -2440,6 +2453,45 @@ export class App {
       ...view,
     });
     this.told.set(key, { channel: sent.channel ?? as.user, ts: sent.ts });
+  }
+
+  /**
+   * A background result for a person the client maps, whose work they asked
+   * for in this app's Slack thread, is a reply there, once: its one line,
+   * naming them so Slack tells them, and a link to the session to open. The
+   * platform sends the thread only for a result it may post there; the
+   * details stay in the inbox, read by that person alone, and are never
+   * edited into the thread.
+   */
+  private async report(
+    at: NonNullable<InboxNotice["reply_in"]>,
+    as: ActAs,
+    raw: WireMessage,
+  ): Promise<void> {
+    const key = toldKey(as, raw.id);
+    if (this.reported.has(key) || raw.state !== "open") return;
+    this.reported.set(key, true);
+    const line = plainMrkdwn(escapeMentions(raw.subject)).slice(0, LIMITS.fallbackText);
+    const text = `<@${as.user}> ${line}`;
+    const session = at.session ?? raw.source?.thread;
+    const url = session ? this.href(`/tasks/${encodeURIComponent(session)}`) : undefined;
+    const blocks: unknown[] = [{ type: "section", text: { type: "mrkdwn", text } }];
+    if (url)
+      blocks.push({
+        type: "context",
+        elements: [{ type: "mrkdwn", text: `<${url}|${this.words.openSession}>` }],
+      });
+    try {
+      await this.slack.call("chat.postMessage", {
+        channel: at.channel,
+        thread_ts: at.ts,
+        text,
+        blocks,
+      });
+    } catch (e) {
+      this.reported.delete(key);
+      throw e;
+    }
   }
 
   /**

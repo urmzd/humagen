@@ -139,10 +139,12 @@ func (s *Server) seenSuite(h handler) handler {
 }
 
 // inboxNotice is an inbox notice on the event stream: to a client's machine,
-// about a message addressed to a person it maps, it says for whom.
+// about a message addressed to a person it maps, it says for whom, and for a
+// background result asked in its own Slack thread, where to reply.
 type inboxNotice struct {
 	inbox.Notice
-	For *platform.ActAs `json:"for,omitempty"`
+	For     *platform.ActAs        `json:"for,omitempty"`
+	ReplyIn *platform.SurfaceReply `json:"reply_in,omitempty"`
 }
 
 // runGate rechecks the current audience for every event in a subscription.

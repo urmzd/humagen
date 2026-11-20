@@ -15,6 +15,7 @@
 | Several apps per workspace, as [clients](clients.md) | Yes: tenant, limits and allow-list come from the client | Reads one client's default agent and allow-list, in full as the client's `slack.machine`, though they name an agent that lives in a project the machine may not read. A mapped person's messages are the client's (threads with a surface, below); anyone else's runs are not yet recorded as the client's |
 | Channels bound to projects | Yes: a run in a bound Slack channel is filed in the channel it is bound to, and an untagged one answered by that channel's chain, else in the client's home | Yes: a mapped person's Slack thread is a Humagen thread filed by the binding, someone the client maps to nobody is refused in a bound channel, and announcements reach a bound general channel, caught up on after a restart or a reconnect, where a reply that mentions the app starts a thread seeded with the announcement |
 | Mentions of a person | No | In their direct messages with the app, with Open Thread and Reply, unless they are in the Slack thread already (they wrote there or were mentioned there with `<@U…>`). Experts named by a role are each told |
+| Background work and `notify` | No | A reply in the app's Slack thread the work was asked from, naming the person, with its one line and Open Session; else in their direct messages. See [background results](#background-results) |
 | Who asked | Recorded on the run, and the run acts for the person the team's clients map the Slack user to | Recorded as the person, and acts for them, when the app's client maps them (`act_as`): their message is theirs in the Humagen thread, and so are the runs it starts. Else as the app, acting for nobody. Tools that act as a person use the person's own credential |
 | Questions a run waits on | No | In the run's thread, answered for the person the client maps. See below |
 | Tokens and cost | No | Never on a turn. A finished turn offers **Run Details** to a person the client maps, answered to them alone. See [steps, command output and run details](#steps-command-output-and-run-details) |
@@ -283,6 +284,26 @@ Slack thread of the app's own, where Slack told them already. Reply opens a
 modal; sending it posts in the thread as the person (`act_as` on
 `POST /api/threads/{id}/messages`), which settles their mention, or answers
 the question.
+
+### Background results
+
+A result that [background work](../guides/background.md) sent when it ended
+on its own (a watch that fired or ran out, a goal or a task), or that `notify`
+sent, reaches the event stream of a client's machine with `for {client,
+user}` when the client maps the person it is for. No other result does. When
+the work was asked in a Slack thread of a Slack client, only that client hears
+of it, and the notice also carries `reply_in {channel, ts, session}`: the app
+reads the message for the person, as above, and replies once in that thread
+with `<@user>`, the message's subject made unable to ping or link, and Open
+Session, which opens `session` (the watch's checks or the task's run) or else
+the conversation. The details are never posted there, and the reply is never
+edited. The server leaves `reply_in` out, and the app sends the whole message
+to the person's direct messages instead, when the work was asked anywhere
+else, when the person may no longer read that conversation, or when a run
+behind it (the one that asked, or the last check or turn) read private
+context, as [a schedule's answer is kept for its creator](schedules.md). A
+background result is sent to their direct messages even about a Slack thread
+they are in: nothing there pinged them. Work a person stopped tells nobody.
 
 The Home tab of a mapped person is the shared Home, everything on it read for
 them the same way: their open inbox and announcements (`GET /api/inbox`) and

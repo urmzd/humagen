@@ -3232,8 +3232,28 @@ question is addressed to, by subject or by a role they hold, so it
 reads the message for them (`act_as_client`, `act_as_user`) and
 tells them in Slack. A message to several people it maps, such as
 experts named by a role, is one notice for each, at most 20.
+A `result` is forwarded only when background work (a watch, a
+goal or a task ending on its own) or `notify` sent it, for the
+person the work is for. Work asked in a Slack thread of one of
+the workspace's Slack clients is forwarded to that client alone.
  */
   for?: ActAs;
+  /** With `for`, on a background result only: the client's own Slack
+thread the work was asked from, to post the result in as a
+reply. Absent when the work was asked anywhere else, or when its
+runs read private context or the person may no longer read that
+conversation; the client then tells the person in a direct
+message.
+ */
+  reply_in?: InboxNoticeReply;
+}
+
+/** A Slack thread of a client's to reply in with a background result. */
+export interface InboxNoticeReply {
+  channel: string;
+  ts: string;
+  /** The private session to open for the details, a watch's checks or a task's run. Absent when the work ran in the conversation that asked. */
+  session?: string;
 }
 
 export interface InboxFrom {

@@ -41,6 +41,8 @@ export const words = {
   askNotYet: "Asking about a call is not available yet. You can approve or decline it.",
   /** Under a mention or a question sent to a person's direct messages: where it was said. */
   openThread: "Open Thread",
+  /** Under a background result replied in the Slack thread that asked: its session in the console. */
+  openSession: "Open Session",
   // humagen: belongs in copy.ts, as copy.interrupted.
   interrupted: "This answer was cut off when the app restarted. Please ask again.",
   // What the agent is told about a thread's messages that were not addressed to it.
