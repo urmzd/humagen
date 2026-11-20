@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.159.0 (2026-11-20)
+
+### Features
+
+- **slack**: ask about a call, show the approval agent's reason, and set a thread's approvals (stack 5/6) (#456) ([e2378a1](https://github.com/urmzd/humagen/commit/e2378a18d5765ca6359b41a699d67ed53c19a506))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.158.0...v0.159.0)
+
+
 ## 0.156.0 (2026-11-20)
 
 ### Features
