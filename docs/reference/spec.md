@@ -880,8 +880,9 @@ started with.
 client of its API, restarting it when it exits. It needs Node.js on `PATH` and
 `apps/slack` with its dependencies installed (`pnpm install`), found under the
 working directory, beside the binary, or at `HUMAGEN_SLACK_APP_DIR`. The Humagen image
-carries neither, so there the surface is logged as off and the server runs
-without it.
+carries both: Node.js, and the app with its dependencies at
+`/usr/share/warp/slack`, which the image's `HUMAGEN_SLACK_APP_DIR` names. Where
+either is missing, the surface is logged as off and the server runs without it.
 
 The app is given its tokens, its workspace and Humagen's address, plus `PATH`,
 `HOME`, `TMPDIR`, `TZ`, `XDG_STATE_HOME`, the `NODE_OPTIONS`,

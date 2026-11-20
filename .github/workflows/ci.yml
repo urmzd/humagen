@@ -121,8 +121,18 @@ jobs:
         with:
           context: .
           push: false
+          load: true
+          tags: humagen:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - name: The image runs the binary and can load the Slack app
+        if: steps.changed.outputs.image == 'true'
+        # Loads every module the Slack app imports, as the image's own user,
+        # without starting it: the app's sources, its dependencies and Node
+        # are all in the image, or this fails.
+        run: |
+          docker run --rm humagen:ci version
+          docker run --rm --entrypoint sh humagen:ci -c 'cd "$HUMAGEN_SLACK_APP_DIR" && node --import tsx -e "await import(\"./src/app.tsx\"); console.log(\"slack app loads\")"'
 
   helm:
     name: Helm chart
