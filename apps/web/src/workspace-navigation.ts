@@ -12,7 +12,6 @@ export interface HubTab {
 export function settingsPageLabel(route: Route): string | undefined {
   if (route.page === "directory" && route.tab === "people") return "People";
   if (route.page === "projects") return "Projects";
-  if (route.page === "automations" || route.page === "schedules") return "Schedules";
   if (route.page === "usage") return "Usage";
   if (route.page === "monitor" && route.tab === "health") return "Health";
   if (route.page === "action-policy") return "Policies";
@@ -32,9 +31,15 @@ export function workspaceHub(route: Route): WorkspaceHub | null {
   )
     return "library";
   if (
-    ["agents", "agent", "agent-setup", "agent-network", "assignments", "agent-control"].includes(
-      route.page,
-    )
+    [
+      "agents",
+      "agent",
+      "agent-setup",
+      "agent-network",
+      "assignments",
+      "agent-control",
+      "models",
+    ].includes(route.page)
   )
     return "agents";
   if (["operations", "action-policy", "usage", "monitor", "audit"].includes(route.page))
@@ -116,6 +121,12 @@ export function hubTabs(
                 label: nav.controls,
                 route: { page: "agent-control" },
                 active: route.page === "agent-control",
+                visible: can("agents:read"),
+              },
+              {
+                label: "Models",
+                route: { page: "models" },
+                active: route.page === "models",
                 visible: can("agents:read"),
               },
             ]

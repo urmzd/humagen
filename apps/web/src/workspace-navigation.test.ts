@@ -7,7 +7,6 @@ test("Settings pages have one navigation frame without a legacy Operations tab s
   for (const [path, label] of [
     ["/settings/people", "People"],
     ["/projects", "Projects"],
-    ["/scheduled", "Schedules"],
     ["/settings/usage", "Usage"],
     ["/settings/health", "Health"],
     ["/operations/policies", "Policies"],
@@ -19,6 +18,22 @@ test("Settings pages have one navigation frame without a legacy Operations tab s
   }
   assert.equal(workspaceHub({ page: "operations", section: "context" }), "operations");
   assert.equal(settingsPageLabel({ page: "operations", section: "context" }), undefined);
+});
+
+test("Schedules is its own page and model policies live in the Agents hub", () => {
+  const schedules = parse("/scheduled", "");
+  assert.equal(settingsPageLabel(schedules), undefined);
+  assert.equal(workspaceHub(schedules), null);
+
+  for (const path of ["/models", "/settings/models"]) {
+    const route = parse(path, "");
+    assert.deepEqual(route, { page: "models" }, path);
+    assert.equal(workspaceHub(route), "agents", path);
+  }
+  assert.equal(href({ page: "models" }), "/models");
+  const tabs = hubTabs("agents", { page: "models" }, () => true);
+  assert.equal(tabs.find((t) => t.active)?.label, "Models");
+  assert.equal(hubTabs("agents", { page: "models" }, () => false).length, 0);
 });
 
 test("Library has one hub and preserves selected files in its tabs", () => {

@@ -78,7 +78,6 @@ export type SettingsSection =
   | "appearance"
   | "workspace"
   | "routing"
-  | "models"
   | "limits"
   | "connections"
   | "access"
@@ -90,7 +89,6 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
   "appearance",
   "workspace",
   "routing",
-  "models",
   "limits",
   "connections",
   "access",
@@ -217,6 +215,7 @@ export type Route =
     }
   | { page: "assignments"; id?: string; agent?: string }
   | { page: "agent-network"; handoff?: string }
+  | { page: "models" }
   | { page: "agent-control"; agent?: string }
   | { page: "action-policy"; scope?: "workspace" | "agent" | "project" | "personal"; name?: string }
   | {
@@ -295,6 +294,7 @@ const PAGE_TITLES: Record<Page, string> = {
   operations: "Operations",
   assignments: "Assignments",
   "agent-network": "Agent Network",
+  models: "Models",
   "agent-control": "Agent Controls",
   "action-policy": "Action Policies",
   audit: "Audit",
@@ -410,6 +410,8 @@ export function href(r: Route): string {
       return `${r.id ? `/assignments/${enc(r.id)}` : "/assignments"}${r.agent ? `?agent=${enc(r.agent)}` : ""}`;
     case "agent-network":
       return r.handoff ? `/agent-network/handoffs/${enc(r.handoff)}` : "/agent-network";
+    case "models":
+      return "/models";
     case "agent-control":
       return r.agent ? `/agents/${enc(r.agent)}/control` : "/agent-controls";
     case "agent-setup":
@@ -763,6 +765,8 @@ function read(pathname: string, search: string): Route {
       return { page: "assignments", id: a, agent: q.get("agent") || undefined };
     case "agent-network":
       return { page: "agent-network", handoff: a === "handoffs" ? b : undefined };
+    case "models":
+      return { page: "models" };
     case "agent-controls":
       return { page: "agent-control" };
     case "you":
@@ -920,6 +924,8 @@ function read(pathname: string, search: string): Route {
       return { page: "directory", tab: pick(a, DIRECTORY_TABS, "people") };
     case "settings":
       if (a === "people") return { page: "directory", tab: "people" };
+      // Model policies moved to the Agents hub; old links still land on them.
+      if (a === "models") return { page: "models" };
       if (a === "health") return { page: "monitor", tab: "health" };
       if (a === "audit") return { page: "audit" };
       if (a === "usage") return read("/operations/usage", search);

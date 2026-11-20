@@ -44,6 +44,7 @@ import { Health } from "./Health.tsx";
 import { Integrations } from "./Integrations.tsx";
 import { Knowledge } from "./Knowledge.tsx";
 import { MemoryLibrary } from "./MemoryLibrary.tsx";
+import { Models } from "./ModelPolicies.tsx";
 import { Monitor } from "./Monitor.tsx";
 import type { Source as About } from "./mail.ts";
 import { NotificationsPage, useNotifications } from "./Notifications.tsx";
@@ -824,6 +825,19 @@ function Console({
                         <Problem message={defaultCopy.noPermission} />
                       </Page>
                     ))}
+                  {route.page === "models" &&
+                    (can("agents:read") ? (
+                      <Models
+                        workspace={workspace}
+                        agents={agents}
+                        canEdit={can("agents:write")}
+                        onWorkspace={setWorkspace}
+                      />
+                    ) : (
+                      <Page title="Models">
+                        <Problem message={defaultCopy.noPermission} />
+                      </Page>
+                    ))}
                   {route.page === "agent-control" &&
                     (can("agents:read") ? (
                       <AgentControls
@@ -1423,7 +1437,7 @@ function Console({
                         onHomed={loadAgents}
                         onOpenProject={openProject}
                         policies={workspace?.model_policies ?? []}
-                        onManagePolicies={() => openSettings("models")}
+                        onManagePolicies={() => go({ page: "models" })}
                         viewer={me.principal.subject}
                       />
                     ))}

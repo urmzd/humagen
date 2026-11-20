@@ -14,14 +14,55 @@ export const defaultModel: Record<string, string> = {
 };
 
 export const providers = [
-  { value: "anthropic", label: "anthropic" },
+  { value: "anthropic", label: "Anthropic" },
   {
     value: "openai",
-    label: "openai",
+    label: "OpenAI",
     hint: "OpenAI, or a server that speaks its API, such as Ollama or vLLM.",
   },
-  { value: "offline", label: "offline", hint: "Calls no model. For trying the platform out." },
+  { value: "offline", label: "Offline", hint: "Calls no model. For trying the platform out." },
 ];
+
+/** Names for providers a server commonly registers under these keys. */
+const knownNames: Record<string, string> = {
+  gemini: "Gemini",
+  google: "Google",
+  vertex: "Vertex AI",
+  ollama: "Ollama",
+};
+
+/** A provider's name as people read it. A provider the console does not know keeps its own. */
+export const providerLabel = (provider: string): string =>
+  providers.find((p) => p.value === provider)?.label ?? knownNames[provider] ?? provider;
+
+/** Models offered under each provider before anyone types one. Any other model can be typed. */
+export const knownModels: Record<string, string[]> = {
+  anthropic: ["claude-fable-5-1", "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"],
+  openai: ["gpt-5.1"],
+  offline: ["offline"],
+};
+
+/**
+ * The models to offer, grouped by provider: the known ones, then any the
+ * workspace already uses, so a typed model stays one click away.
+ */
+export function modelGroups(
+  names: string[],
+  used: ModelRef[] = [],
+): { provider: string; models: string[] }[] {
+  const all = [...new Set([...names, ...used.map((m) => m.provider)])].filter(
+    (p) => p && p !== POLICY,
+  );
+  return all.map((provider) => ({
+    provider,
+    models: [
+      ...new Set([
+        ...(knownModels[provider] ?? []),
+        ...used.filter((m) => m.provider === provider && m.model.trim()).map((m) => m.model.trim()),
+      ]),
+    ],
+  }));
+}
 
 /** When a call moves to the next model, in words. `any` is the default and stands alone. */
 export const conditions: { value: string; label: string; hint: string }[] = [

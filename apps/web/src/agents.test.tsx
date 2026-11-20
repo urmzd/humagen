@@ -121,12 +121,14 @@ test("someone who may not write sees no save, with or without the lock", () => {
 
 const text = (s: string) => s.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
 // The controls, by what they hold: the model on the Model tab, where it lives on the Access tab.
-const model = (html: string) => /<input[^>]*value="offline"[^>]*>/.exec(html)?.[0] ?? "";
+// The model's picker. A spec that cannot change shows its models as text, with no picker.
+const model = (html: string) =>
+  /<button[^>]*aria-label="Model, primary: offline[^"]*"[^>]*>/.exec(html)?.[0] ?? "";
 const livesIn = (html: string) =>
   /<button[^>]*aria-label="Lives in: [^"]*"[^>]*>/.exec(html)?.[0] ?? "";
 
 test("A built-in's spec is locked, and it lives in no project", () => {
-  assert.match(model(render(true, true, "model")), /disabled=""/);
+  assert.equal(model(render(true, true, "model")), "");
   // Every switch of the spec's own is locked.
   const access = render(true, true, "access");
   const specSwitches = access.match(/<input type="checkbox" class="humagen-switch[^>]*>/g) ?? [];
@@ -135,10 +137,10 @@ test("A built-in's spec is locked, and it lives in no project", () => {
     "the spec's switches are locked",
   );
   assert.match(livesIn(access), /disabled=""/, "the platform's own agents live nowhere");
-  assert.doesNotMatch(model(render(false, true, "model")), /\sdisabled(?:=|\s|>)/);
+  assert.notEqual(model(render(false, true, "model")), "");
   assert.doesNotMatch(livesIn(render(false, true, "access")), /disabled=""/);
   // Without the right to write, neither changes.
-  assert.match(model(render(false, false, "model")), /disabled=""/);
+  assert.equal(model(render(false, false, "model")), "");
   assert.match(livesIn(render(false, false, "access")), /disabled=""/);
 });
 

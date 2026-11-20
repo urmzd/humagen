@@ -816,6 +816,13 @@ export function Sidebar({
       badge: inboxCount,
     },
     {
+      to: { page: "automations" } as Route,
+      label: "Schedules",
+      icon: <CalendarIcon />,
+      show: can("schedules:read"),
+      active: here("automations", "schedules"),
+    },
+    {
       to: { page: "agents" } as Route,
       label: "Agents",
       icon: <BotIcon />,
@@ -852,8 +859,6 @@ export function Sidebar({
         "you",
         "projects",
         "project",
-        "automations",
-        "schedules",
         "monitor",
         "action-policy",
       ),

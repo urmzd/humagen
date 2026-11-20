@@ -3,7 +3,6 @@ import {
   BellIcon,
   BotIcon,
   BrainIcon,
-  CalendarIcon,
   CheckCircleIcon,
   ClipboardListIcon,
   GaugeIcon,
@@ -38,7 +37,6 @@ import {
   ApiError,
   api,
   type Me,
-  type ModelPolicy,
   type Preferences,
   type Revision,
   type RouterSettings,
@@ -48,7 +46,6 @@ import { BillingSettings } from "./Billing.tsx";
 import { accentAttribute } from "./branding.ts";
 import { ClientSettings } from "./Clients.tsx";
 import { DeletionQueue } from "./DeletionQueue.tsx";
-import { chainProblem, ModelChain, POLICY, starterPolicy } from "./ModelChain.tsx";
 import { PersonalPreferences } from "./PersonalPreferences.tsx";
 import type { PrefsRead } from "./preferences.ts";
 import { ReadAudit } from "./ReadAudit.tsx";
@@ -481,29 +478,6 @@ export function Settings({
             </>
           )}
 
-          {section === "models" && (
-            <>
-              <header className="pb-2">
-                <h1 className={pageTitle}>Models</h1>
-                <p className={pageLede}>
-                  Policies say which models agents run on, in order, and which errors move a call to
-                  the next. An agent that follows a policy picks up a change at its next call, so
-                  one edit moves every agent on it off a failing provider.{" "}
-                  {canAdmin ? "" : "Only an admin can change these."}
-                </p>
-              </header>
-              {workspace && (
-                <ModelPolicies
-                  key={JSON.stringify(workspace.model_policies ?? [])}
-                  saved={workspace.model_policies ?? []}
-                  agents={agents}
-                  canEdit={canAdmin}
-                  onSave={(model_policies) => saveWorkspace({ model_policies })}
-                />
-              )}
-            </>
-          )}
-
           {section === "workspace" && (
             <>
               <header className="pb-2">
@@ -840,133 +814,6 @@ function RouterControl({
   );
 }
 
-/** Every model policy in the workspace, edited together and saved at once. */
-function ModelPolicies({
-  saved,
-  agents,
-  canEdit,
-  onSave,
-}: {
-  saved: ModelPolicy[];
-  agents: Revision[];
-  canEdit: boolean;
-  onSave: (next: ModelPolicy[]) => void;
-}) {
-  const [draft, setDraft] = useState<ModelPolicy[]>(saved);
-  const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
-  const users = (name: string) =>
-    agents
-      .filter((a) => a.spec.provider === POLICY && a.spec.model === name)
-      .map((a) => a.spec.name);
-  const edit = (i: number, patch: Partial<ModelPolicy>) =>
-    setDraft((d) => d.map((p, j) => (j === i ? { ...p, ...patch } : p)));
-  const problem =
-    draft
-      .map((p) =>
-        !/^[a-z0-9][a-z0-9-]{0,62}$/.test(p.name)
-          ? `"${p.name}" is not a valid name: lowercase letters, digits and dashes.`
-          : chainProblem(p.models, p.fallback_on ?? []),
-      )
-      .find(Boolean) ??
-    (new Set(draft.map((p) => p.name)).size !== draft.length ? "Two policies share a name." : null);
-
-  return (
-    <div className="flex flex-col gap-6">
-      {draft.length === 0 && (
-        <p className={`${card} text-aui-sm text-aui-muted`}>
-          No policies yet. Agents each name their own models.
-        </p>
-      )}
-      {draft.map((p, i) => {
-        const by = users(saved[i]?.name ?? p.name);
-        return (
-          <section
-            key={i}
-            className="flex flex-col gap-3 border-aui-border border-t pt-5 first:border-t-0 first:pt-0"
-          >
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-[14rem_1fr_auto] sm:items-end">
-              <Label
-                text="Name"
-                hint={
-                  by.length > 0
-                    ? "Agents follow it by name, so it cannot change while they do."
-                    : undefined
-                }
-              >
-                <input
-                  className={field}
-                  value={p.name}
-                  disabled={!canEdit || by.length > 0}
-                  onChange={(e) => edit(i, { name: e.target.value })}
-                />
-              </Label>
-              <Label text="Description">
-                <input
-                  className={field}
-                  maxLength={300}
-                  value={p.description ?? ""}
-                  disabled={!canEdit}
-                  onChange={(e) => edit(i, { description: e.target.value })}
-                />
-              </Label>
-              {canEdit && (
-                <button
-                  type="button"
-                  className={button}
-                  disabled={by.length > 0}
-                  title={by.length > 0 ? `Used by ${by.join(", ")}` : undefined}
-                  onClick={() => setDraft((d) => d.filter((_, j) => j !== i))}
-                >
-                  Remove
-                </button>
-              )}
-            </div>
-            <p className="text-aui-xs text-aui-muted">
-              {by.length === 0 ? "No agent follows it yet." : `Followed by ${by.join(", ")}.`}
-            </p>
-            <ModelChain
-              label={`Models of ${p.name}`}
-              models={p.models}
-              fallbackOn={p.fallback_on ?? []}
-              editable={canEdit}
-              onChange={(models, fallback_on) =>
-                edit(i, { models, fallback_on: fallback_on.length > 0 ? fallback_on : undefined })
-              }
-            />
-          </section>
-        );
-      })}
-      {canEdit && (
-        <div className="flex flex-wrap items-center justify-between gap-2 border-aui-border border-t pt-4">
-          <button
-            type="button"
-            className={button}
-            onClick={() => setDraft((d) => [...d, starterPolicy(d.map((p) => p.name))])}
-          >
-            Add Policy
-          </button>
-          <span className="flex items-center gap-2">
-            {problem && <span className="text-aui-xs text-aui-bad">{problem}</span>}
-            {dirty && (
-              <button type="button" className={button} onClick={() => setDraft(saved)}>
-                Discard
-              </button>
-            )}
-            <button
-              type="button"
-              className={primary}
-              disabled={!dirty || problem !== null}
-              onClick={() => onSave(draft)}
-            >
-              Save Policies
-            </button>
-          </span>
-        </div>
-      )}
-    </div>
-  );
-}
-
 /** The settings sections, and the workspace pages that live inside settings. */
 export function SettingsNav({
   me,
@@ -985,19 +832,25 @@ export function SettingsNav({
   const canReadAudit =
     me.principal.roles?.includes("admin") && me.permissions.includes("projects:govern");
   const canGovern = me.permissions.includes("projects:govern");
-  const sections: { id: Section; label: string; icon: ReactNode }[] = [
-    { id: "profile", label: "Profile", icon: <UserIcon size={16} /> },
-    { id: "notifications", label: "Notifications", icon: <BellIcon size={16} /> },
-    { id: "appearance", label: "Appearance", icon: <PaletteIcon size={16} /> },
-    { id: "workspace", label: "Workspace", icon: <ServerIcon size={16} /> },
-    { id: "routing", label: "Agent routing", icon: <BotIcon size={16} /> },
-    { id: "models", label: "Models", icon: <BrainIcon size={16} /> },
-    { id: "limits", label: "Limits", icon: <GaugeIcon size={16} /> },
-    { id: "access", label: "Access", icon: <ShieldIcon size={16} /> },
+  type Item = { label: string; icon: ReactNode } & (
+    | { section: Section }
+    | { route: Route; permission: string }
+  );
+  // Your own settings first; everything after them changes the workspace for everyone.
+  const yours: Item[] = [
+    { section: "profile", label: "Profile", icon: <UserIcon size={16} /> },
+    { section: "notifications", label: "Notifications", icon: <BellIcon size={16} /> },
+    { section: "appearance", label: "Appearance", icon: <PaletteIcon size={16} /> },
+  ];
+  const admin: Item[] = [
+    { section: "workspace", label: "Workspace", icon: <ServerIcon size={16} /> },
+    { section: "routing", label: "Agent routing", icon: <BotIcon size={16} /> },
+    { section: "limits", label: "Limits", icon: <GaugeIcon size={16} /> },
+    { section: "access", label: "Access", icon: <ShieldIcon size={16} /> },
     ...(canReadAudit
       ? [
           {
-            id: "read-audit" as const,
+            section: "read-audit" as const,
             label: defaultCopy.readAudit.label,
             icon: <ScrollTextIcon size={16} />,
           },
@@ -1006,13 +859,61 @@ export function SettingsNav({
     ...(canGovern
       ? [
           {
-            id: "deletions" as const,
+            section: "deletions" as const,
             label: defaultCopy.deletions.title,
             icon: <TrashIcon size={16} />,
           },
         ]
       : []),
+    ...(onNavigate
+      ? (
+          [
+            {
+              label: "People",
+              icon: <UsersIcon size={16} />,
+              route: { page: "directory", tab: "people" },
+              permission: "people:read",
+            },
+            {
+              label: "Projects",
+              icon: <ProjectIcon size={16} />,
+              route: { page: "projects" },
+              permission: "projects:read",
+            },
+            {
+              label: "Usage",
+              icon: <ClipboardListIcon size={16} />,
+              route: { page: "usage" },
+              permission: "runs:read",
+            },
+            {
+              label: "Health",
+              icon: <CheckCircleIcon size={16} />,
+              route: { page: "monitor", tab: "health" },
+              permission: "alerts:read",
+            },
+            {
+              label: "Policies",
+              icon: <SlidersIcon size={16} />,
+              route: { page: "action-policy" },
+              permission: "agents:read",
+            },
+            {
+              label: "Audit",
+              icon: <ListChecksIcon size={16} />,
+              route: { page: "audit" },
+              permission: "projects:govern",
+            },
+          ] satisfies Item[]
+        ).filter((item) => me.permissions.includes(item.permission))
+      : []),
   ];
+  const groups = [
+    { label: "You", items: yours },
+    { label: "Admin", items: admin },
+  ];
+  const look =
+    "inline-flex min-h-9 pointer-coarse:min-h-11 shrink-0 items-center gap-2.5 whitespace-nowrap rounded-aui px-2.5 text-left text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-hover aria-[current=page]:text-aui-fg";
   // On a phone the sections are a row that scrolls inside itself, kept on the open one.
   const strip = useStrip<HTMLElement>(active ?? section ?? "");
   return (
@@ -1023,78 +924,52 @@ export function SettingsNav({
         <nav
           ref={strip}
           aria-label="Settings sections"
-          className="humagen-strip flex gap-0.5 overflow-x-auto py-2 md:flex-col md:p-3"
+          className="humagen-strip flex gap-0.5 overflow-x-auto py-2 md:flex-col md:gap-4 md:p-3"
         >
-          {sections.map((s) => (
-            <button
-              key={s.id}
-              type="button"
-              aria-current={!active && section === s.id ? "page" : undefined}
-              onClick={() => onSection(s.id)}
-              className="inline-flex min-h-9 pointer-coarse:min-h-11 shrink-0 items-center gap-2.5 whitespace-nowrap rounded-aui px-2.5 text-left text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-hover aria-[current=page]:text-aui-fg"
+          {groups.map((g, gi) => (
+            <div
+              key={g.label}
+              role="group"
+              aria-label={g.label}
+              className="flex shrink-0 items-center gap-0.5 md:flex-col md:items-stretch"
             >
-              {s.icon}
-              {s.label}
-            </button>
+              {/* On a phone the groups sit in one row, so a rule parts them instead of a heading. */}
+              {gi > 0 && <span aria-hidden className="mx-1.5 h-5 w-px bg-aui-border md:hidden" />}
+              <span
+                aria-hidden
+                className="hidden px-2.5 pb-1 text-aui-2xs font-medium text-aui-muted md:block"
+              >
+                {g.label}
+              </span>
+              {g.items.map((item) =>
+                "section" in item ? (
+                  <button
+                    key={item.label}
+                    type="button"
+                    aria-current={!active && section === item.section ? "page" : undefined}
+                    onClick={() => onSection(item.section)}
+                    className={look}
+                  >
+                    {item.icon}
+                    {item.label}
+                  </button>
+                ) : (
+                  onNavigate && (
+                    <a
+                      key={item.label}
+                      href={href(item.route)}
+                      onClick={follow(() => onNavigate(item.route))}
+                      aria-current={active === item.label ? "page" : undefined}
+                      className={look}
+                    >
+                      {item.icon}
+                      {item.label}
+                    </a>
+                  )
+                ),
+              )}
+            </div>
           ))}
-          {onNavigate &&
-            [
-              {
-                label: "People",
-                icon: <UsersIcon size={16} />,
-                route: { page: "directory", tab: "people" } as Route,
-                permission: "people:read",
-              },
-              {
-                label: "Projects",
-                icon: <ProjectIcon size={16} />,
-                route: { page: "projects" } as Route,
-                permission: "projects:read",
-              },
-              {
-                label: "Schedules",
-                icon: <CalendarIcon size={16} />,
-                route: { page: "automations" } as Route,
-                permission: "schedules:read",
-              },
-              {
-                label: "Usage",
-                icon: <ClipboardListIcon size={16} />,
-                route: { page: "usage" } as Route,
-                permission: "runs:read",
-              },
-              {
-                label: "Health",
-                icon: <CheckCircleIcon size={16} />,
-                route: { page: "monitor", tab: "health" } as Route,
-                permission: "alerts:read",
-              },
-              {
-                label: "Policies",
-                icon: <SlidersIcon size={16} />,
-                route: { page: "action-policy" } as Route,
-                permission: "agents:read",
-              },
-              {
-                label: "Audit",
-                icon: <ListChecksIcon size={16} />,
-                route: { page: "audit" } as Route,
-                permission: "projects:govern",
-              },
-            ]
-              .filter((item) => me.permissions.includes(item.permission))
-              .map((item) => (
-                <a
-                  key={item.label}
-                  href={href(item.route)}
-                  onClick={follow(() => onNavigate(item.route))}
-                  aria-current={active === item.label ? "page" : undefined}
-                  className="inline-flex min-h-9 pointer-coarse:min-h-11 shrink-0 items-center gap-2.5 whitespace-nowrap rounded-aui px-2.5 text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-hover aria-[current=page]:text-aui-fg"
-                >
-                  {item.icon}
-                  {item.label}
-                </a>
-              ))}
         </nav>
       </div>
     </>
