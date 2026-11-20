@@ -621,7 +621,7 @@ export function AlertsPage({
               <div
                 className={`${alertRow} min-h-11 border-aui-border border-b py-2 text-aui-2xs text-aui-muted`}
               >
-                <span className={alertCheck}>
+                <label className={alertCheck}>
                   {canWrite && (
                     <input
                       type="checkbox"
@@ -636,7 +636,7 @@ export function AlertsPage({
                       }
                     />
                   )}
-                </span>
+                </label>
                 {picked.length > 0 ? (
                   <span className="col-span-full col-start-2 flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1">
                     <span className="text-aui-fg">{words.table.selected(picked.length)}</span>
@@ -681,7 +681,7 @@ export function AlertsPage({
                       key={a.id}
                       className={`${alertRow} border-aui-border border-b py-3 last:border-b-0 ${selected.has(a.id) ? "bg-aui-hover" : ""}`}
                     >
-                      <span className={alertCheck}>
+                      <label className={alertCheck}>
                         {canWrite && (
                           <input
                             type="checkbox"
@@ -697,14 +697,15 @@ export function AlertsPage({
                             }
                           />
                         )}
-                      </span>
+                      </label>
                       <span className="flex min-w-0 flex-col items-start gap-1">
                         {to ? (
                           // An alert with no session (maintenance before a workspace has a model) opens its page.
                           <a
                             href={href(to)}
                             onClick={(event) => follow(event, () => go(to))}
-                            className={`${title} rounded-aui-sm underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent`}
+                            // On a touch screen the title is as tall as a finger needs.
+                            className={`${title} rounded-aui-sm underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent pointer-coarse:inline-flex pointer-coarse:min-h-11 pointer-coarse:items-center`}
                           >
                             {a.title}
                           </a>

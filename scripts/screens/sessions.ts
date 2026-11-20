@@ -267,7 +267,7 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
       name: "connections",
       path: "/settings/apps",
       act: async (page) => {
-        await page.getByRole("heading", { name: "Apps", exact: true }).waitFor();
+        await page.getByRole("heading", { name: "Apps", exact: true, level: 1 }).waitFor();
         await page.getByRole("list", { name: "Apps", exact: true }).waitFor();
       },
     },
@@ -276,7 +276,8 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
       path: "/settings/plugins",
       act: async (page) => {
         await page.getByRole("heading", { name: "Plugins", exact: true }).waitFor();
-        await page.getByRole("list", { name: "MCPs", exact: true }).waitFor();
+        // The catalog is one region of shelves, each its own list.
+        await page.getByRole("region", { name: "MCPs", exact: true }).waitFor();
       },
     },
     {
