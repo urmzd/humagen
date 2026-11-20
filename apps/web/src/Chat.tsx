@@ -32,7 +32,6 @@ import { topicsOf } from "./topics.ts";
 import { readFromStart } from "./turns.ts";
 import { AgentMark, isWorking, Page, Problem } from "./ui.tsx";
 import { useVoiceNotes } from "./useVoiceNotes.ts";
-import { WorkingStrip } from "./WorkingStrip.tsx";
 import { useWide } from "./wide.ts";
 
 const words = defaultCopy.threads;
@@ -676,15 +675,6 @@ export function Chat({
     >
       <Problem message={problem} />
       <ChatBar
-        status={
-          path.some((r) => isWorking(r.status)) ? (
-            <WorkingStrip
-              runs={path.filter((r) => isWorking(r.status))}
-              me={me}
-              onOpen={(run) => openPanel("activity", { run })}
-            />
-          ) : undefined
-        }
         project={where}
         agents={agents}
         homes={homes}

@@ -55,7 +55,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-022 | Conversation actions support rename, archive and admin-reviewed deletion | Included in the consolidated branch; bounded API, durable lifecycle and review UI checks |
 | DES-023 | A deployment and each workspace brand the console from the spec, without a fork or a rebuild | Implemented; spec, server, API and console tests pass; browser check of a branded build pending |
 | DES-024 | An agent calling another agent reads as a message, nested under its caller | Implemented in `AgentMessage` (`AgentCall`); checked live: `@lead` called researcher, then writer, with real providers |
-| DES-025 | Stop lives on the working agent's mark; the composer sends and queues | Implemented: `StoppableMark`, `useRunStop`, queue `adopt`, Esc; room, core queue and web tests pass; live stop not yet tried on a long run |
+| DES-025 | Stop lives on the working agent's mark; the composer sends and queues | Implemented: `StoppableMark`, `useRunStop`, queue `adopt`, Esc; the bar stays still while agents work (`slash-commands.dom.test.tsx`); room, core queue and web tests pass; live stop not yet tried on a long run |
 | DES-026 | Activity lists every agent run in time order, each opening a replayable conversation | Implemented; `activity.dom.test.tsx` and `ui.test.tsx` pass; checked in the browser |
 | DES-027 | Drawer headers align with the page header | Implemented with `--humagen-header-h`; measured equal in the browser at desktop width |
 | DES-028 | Share and People & Access are one panel | Implemented: the Share drawer is People & Access; room tests pass |
@@ -901,6 +901,10 @@ approval, disabled early approval, restoration, refusal and the combined menu.
 - The composer only sends. While the reply to the last message works, a new
   message queues behind it and the queue shows above the composer. Esc in an
   empty composer stops the agents the last message started.
+- Nothing else about the composer changes while agents work: no list of
+  threads at work in the box, no Stop button in the bar, no moving border.
+  (A working strip, a bar Stop and a border beam had crept back in; they are
+  gone. Each answer's mark is where its agent is seen working and stopped.)
 - There is no separate Stop Turn button on an answer.
 - Acceptance: a working run's mark stops it with the pointer, the keyboard and
   touch; the composer queues a message sent while a reply works and sends it

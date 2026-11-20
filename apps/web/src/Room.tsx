@@ -99,7 +99,6 @@ import {
 import { useVoiceNotes } from "./useVoiceNotes.ts";
 import { SessionWorkbench } from "./Workbench.tsx";
 import { BrowserCard } from "./WorkbenchBrowserCard.tsx";
-import { WorkingStrip } from "./WorkingStrip.tsx";
 import { Workspace } from "./Workspace.tsx";
 import { openBench, WorkbenchOpen } from "./workbench.ts";
 
@@ -219,16 +218,9 @@ function RoomComposer({
   onDraft,
   onPost,
   runs = [],
-  working = [],
-  me,
-  onOpenRun,
   sessionAgents,
 }: {
   runs?: Run[];
-  /** Every thread at work in the session, whoever asked: the prompt lists them. */
-  working?: Run[];
-  me?: string;
-  onOpenRun?: (run: string) => void;
   sessionAgents?: string[];
   /** Text controls in the bar, before Send: the conversation's approval mode. */
   trailing?: ReactNode;
@@ -320,11 +312,6 @@ function RoomComposer({
         plus={plus}
         voice={voice}
         trailing={trailing}
-        status={
-          working.length > 0 ? (
-            <WorkingStrip runs={working} me={me} onOpen={onOpenRun} />
-          ) : undefined
-        }
       />
     </div>
   );
@@ -1275,11 +1262,6 @@ export function ThreadRoom({
                     runs={turns.flatMap((turn) =>
                       turn.run && actedFor(turn.run) === me ? [turn.run] : [],
                     )}
-                    working={turns.flatMap((turn) =>
-                      turn.run && isWorking(turn.run.status) ? [turn.run] : [],
-                    )}
-                    me={me}
-                    onOpenRun={(run) => openPanel("activity", { run })}
                     thread={id}
                     trailing={<ApprovalToggle thread={th} me={handle || me} />}
                     seed={seed}

@@ -1,13 +1,12 @@
-import { BorderBeam } from "border-beam";
 import { MetalFx } from "metal-fx";
 import type { ReactNode } from "react";
 import { VoiceBeam } from "voice-glow";
 
 /*
- * The composer's light: the working beam, the voice level and the metal ring
- * round Send. None of it shows on an idle bar, so the composer reads this
- * file once it sits idle on screen, or the moment one of them is due
- * (pages.ts), and is usable before.
+ * The composer's light: the voice level and the metal ring round Send. None
+ * of it shows on an idle bar, so the composer reads this file once it sits
+ * idle on screen, or the moment one of them is due (pages.ts), and is usable
+ * before. Agents at work are shown on their own marks, never on the bar.
  */
 
 /** The light is laid over the bar, to its border's edge and corners, and never in the way of a click. */
@@ -15,28 +14,6 @@ const over = { position: "absolute", inset: -1, pointerEvents: "none" } as const
 const radiusOf = (host: HTMLElement | null) =>
   (host ? Number.parseFloat(getComputedStyle(host).borderTopLeftRadius) : 0) || 16;
 const theme = () => (document.documentElement.dataset.theme === "dark" ? "dark" : "light");
-
-/**
- * The bar's border while a reply is in flight: a beam of the brand's warm
- * colors travels round it, so the system reads as working. It fades in and
- * out with `working`, and holds still under reduced motion (border-beam).
- */
-export function WorkingBeam({ working, host }: { working: boolean; host: HTMLElement | null }) {
-  return (
-    <BorderBeam
-      aria-hidden
-      data-working-beam
-      size="md"
-      colorVariant="sunset"
-      active={working}
-      theme={theme()}
-      borderRadius={radiusOf(host)}
-      style={over}
-    >
-      <span className="block h-full" />
-    </BorderBeam>
-  );
-}
 
 /**
  * The microphone's level along the bottom edge of the bar while a voice note

@@ -164,7 +164,7 @@ test("the settings pages, the conversation and the page-only views stay out of H
 });
 
 test("the composer's light and the date picker are not dependencies of Home", () => {
-  for (const dependency of ["metal-fx", "border-beam", "voice-glow", "react-day-picker"])
+  for (const dependency of ["metal-fx", "voice-glow", "react-day-picker"])
     assert.ok(
       !home.has(`npm:${dependency}`),
       `Home loads ${dependency}: ${chain(home, `npm:${dependency}`)}`,
