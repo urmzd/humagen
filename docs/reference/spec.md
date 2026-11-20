@@ -57,7 +57,7 @@ metadata:
 spec:
   server:
     addr: 127.0.0.1:8080
-    public_url: http://localhost:8080
+    public_url: http://localhost:8080   # where browsers reach the server. Unset, $HUMAGEN_PUBLIC_URL, then this default
     webhook_addr: ""        # a second listener that serves only signed webhooks
     console: {enabled: true, dir: auto}      # auto finds a built apps/web
     drain_grace: 25s        # after SIGTERM, how long runs in flight may finish before they are handed back

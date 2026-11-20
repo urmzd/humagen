@@ -7647,6 +7647,88 @@ paths:
         "409": {$ref: "#/components/responses/Conflict"}
         "413": {$ref: "#/components/responses/TooLarge"}
         "500": {$ref: "#/components/responses/ServerError"}
+  /api/knowledge/{name}/documents/{id}/continue:
+    post:
+      operationId: continueImportedDocument
+      tags: [threads]
+      summary: Continue an imported conversation as a new private conversation
+      description: |
+        Starts a private conversation of the caller's that continues a
+        document an import wrote from a session of another tool. The
+        conversation is a plain thread in the source's project (the one it
+        is scoped to, else the one it is attached to, else the workspace
+        itself), and its `import` holds the pinned revision and the passive
+        turns its agent is sent ahead of the conversation's own: the newest
+        turns of the main path that fit half the workspace's history limit,
+        counted with their labels and marks as the transcript is written,
+        and at most 200 turns and 128 KiB. Nothing is summarized. No branch
+        is continued, and no attachment is imported. The agent keeps its
+        own knowledge sources: continuing grants and limits none. No agent
+        is started: the caller posts the first message.
+
+        The caller must also read knowledge and see the source: a source of
+        a project they do not see, another workspace's, an excluded or
+        missing document answer 404. A document that is not an imported
+        session's, one whose kept structure was edited since its import or
+        is malformed, and a workspace whose history setting is none answer
+        400. A document no import kept a structure with, whose `uri` names
+        a session, is continued as one block whose speakers are not known
+        (`import.structure` is `not_kept`). The document and structure
+        digests, and the project, must still be the ones the caller read:
+        409 otherwise, and no conversation is started. Posting in the
+        project is required (403). Audited as
+        `conversation.continue_import`.
+
+        From the answer a client shows: how many turns were sent
+        (`import.context` length) of how many the import kept (that plus
+        `import.omitted.turns` and `import.omitted.results`), the branches
+        not continued (`import.branches`), how many turns carried files
+        that were not imported (`import.import_cut.attachments`) and the
+        pinned revision (`import.document_digest`).
+      x-permission: runs:write
+      parameters:
+        - {$ref: "#/components/parameters/SourceName"}
+        - {$ref: "#/components/parameters/DocumentID"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [document_digest, project]
+              additionalProperties: false
+              properties:
+                document_digest:
+                  description: The document's `digest` as the caller read it.
+                  type: string
+                  pattern: "^[0-9a-f]{64}$"
+                structure_digest:
+                  description: The document's `structure_digest` as the caller read it, absent when the document had none. A document whose structure an earlier release kept has `structure_bytes` and no `structure_digest`; it is continued without one, and the conversation pins the digest of the structure read when it is started. Once a document records a digest, it must be named.
+                  type: string
+                  pattern: "^[0-9a-f]{64}$"
+                project:
+                  description: The project the caller saw the source filed in, or `~` (or the empty string) for the workspace itself. A source attached to more than one project is continued in the one named.
+                  type: string
+                title:
+                  description: The conversation's title. Absent takes the document's.
+                  type: string
+                  maxLength: 200
+                agents: {type: array, maxItems: 5, items: {type: string}}
+                mode: {$ref: "#/components/schemas/ThreadMode"}
+      responses:
+        "201":
+          description: The new private conversation, with its imported origin.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Thread"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "429": {$ref: "#/components/responses/TooMany"}
+        "500": {$ref: "#/components/responses/ServerError"}
   /api/knowledge/{name}/imports:
     post:
       operationId: importKnowledgeDocument
@@ -13813,7 +13895,8 @@ components:
         While the workspace's history setting is none, nothing is posted,
         run or forked in it.
         A kept structure is what its importer stated (`imported_by`), not a
-        verified record. No route starts a continuation yet.
+        verified record. One is started by
+        `POST /api/knowledge/{name}/documents/{id}/continue`.
       type: object
       additionalProperties: false
       required: [source, source_id, document, uri, title, structure, document_digest, by, at, context, omitted]
@@ -17562,6 +17645,10 @@ components:
           type: integer
           minimum: 0
           description: The size, as JSON, of the imported session's structure kept with this revision. Absent for a document no import wrote, or one edited since.
+        structure_digest:
+          type: string
+          pattern: "^[0-9a-f]{64}$"
+          description: The digest of the imported session's structure, recorded by the write that kept the structure with this revision and removed by an ordinary edit. Absent when `structure_bytes` is, and also on a document whose structure an earlier release kept, until it is imported again. With `digest`, it is what `POST /api/knowledge/{name}/documents/{id}/continue` pins. A recorded digest does not by itself make the structure trusted; the continuation checks it again.
     ImportedSession:
       type: object
       description: "The structure of a session `humagen import sessions` wrote a document from: its main path as data. It is the importer's assertion, kept with who sent it and when; the server cannot verify that the session came from the tool it names. It is trusted only for the revision of the document it was written with, and an ordinary edit leaves it untrusted. A structure past a bound is refused with the document (400): the importer cuts and counts what it cut."

@@ -2804,8 +2804,14 @@ export const defaultCopy = {
   },
   resume: "Resume",
   handoff: (to: string) => `Switched to ${to}`,
-  /** Where a row can't look different, the words say another agent did it. */
-  delegated: (name: string, title: string) => `${name}: ${title}`,
+  /**
+   * Where a row can't look different, the words say another agent did it: its
+   * name, then the step's own title when it has one that is not just the name.
+   */
+  delegated: (name: string, title: string) =>
+    !title.trim() || title.trim().toLowerCase() === name.trim().toLowerCase()
+      ? name
+      : `${name}: ${title}`,
   subagent: (name: string, steps?: number, tokens?: number) =>
     [name, steps ? `${steps} steps` : null, tokens ? `${Math.round(tokens / 1000)}k tokens` : null]
       .filter(Boolean)

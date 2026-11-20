@@ -57,6 +57,7 @@ import type {
   ConnectionHealth,
   ConnectionPreset,
   ContextResult,
+  ContinueImportedDocumentBody,
   ConversationMemory,
   ConversationSandboxes,
   Corpus,
@@ -6737,6 +6738,61 @@ grounds nothing until a source of that name is made again.
     path = path.replace("{name}", encodeURIComponent(String(name)));
     path = path.replace("{id}", encodeURIComponent(String(id)));
     return this.rawRequest<KnowledgeDocument>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Starts a private conversation of the caller's that continues a
+document an import wrote from a session of another tool. The
+conversation is a plain thread in the source's project (the one it
+is scoped to, else the one it is attached to, else the workspace
+itself), and its `import` holds the pinned revision and the passive
+turns its agent is sent ahead of the conversation's own: the newest
+turns of the main path that fit half the workspace's history limit,
+counted with their labels and marks as the transcript is written,
+and at most 200 turns and 128 KiB. Nothing is summarized. No branch
+is continued, and no attachment is imported. The agent keeps its
+own knowledge sources: continuing grants and limits none. No agent
+is started: the caller posts the first message.
+
+The caller must also read knowledge and see the source: a source of
+a project they do not see, another workspace's, an excluded or
+missing document answer 404. A document that is not an imported
+session's, one whose kept structure was edited since its import or
+is malformed, and a workspace whose history setting is none answer
+400. A document no import kept a structure with, whose `uri` names
+a session, is continued as one block whose speakers are not known
+(`import.structure` is `not_kept`). The document and structure
+digests, and the project, must still be the ones the caller read:
+409 otherwise, and no conversation is started. Posting in the
+project is required (403). Audited as
+`conversation.continue_import`.
+
+From the answer a client shows: how many turns were sent
+(`import.context` length) of how many the import kept (that plus
+`import.omitted.turns` and `import.omitted.results`), the branches
+not continued (`import.branches`), how many turns carried files
+that were not imported (`import.import_cut.attachments`) and the
+pinned revision (`import.document_digest`).
+ */
+  async continueImportedDocument(name: string, id: string, body: ContinueImportedDocumentBody, options?: RequestOptions): Promise<Thread> {
+    let path = "/api/knowledge/{name}/documents/{id}/continue";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<Thread>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async continueImportedDocumentRaw(name: string, id: string, body: ContinueImportedDocumentBody, options?: RequestOptions): Promise<ApiResponse<Thread>> {
+    let path = "/api/knowledge/{name}/documents/{id}/continue";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<Thread>("POST", path, {
       body,
       contentType: "application/json",
       ...options,

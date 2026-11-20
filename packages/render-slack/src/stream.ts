@@ -1,4 +1,11 @@
-import { type PromptConfig, readReview, type Task, type Turn } from "@humagen/core";
+import { defaultCopy } from "@humagen/components";
+import {
+  type PromptConfig,
+  paragraphsAtSteps,
+  readReview,
+  type Task,
+  type Turn,
+} from "@humagen/core";
 import type { Block } from "./blocks";
 import { toMrkdwn, toPlain } from "./mrkdwn";
 import { nextBreak } from "./split";
@@ -44,7 +51,7 @@ function taskChunk(task: Task, prev: Task | undefined): StreamChunk {
     type: "task_update",
     id: task.id,
     // Another agent's step says so in its title; a task card has no other way to show it.
-    title: clip(task.subagent ? `${task.subagent.name}: ${task.title}` : task.title),
+    title: clip(task.subagent ? defaultCopy.delegated(task.subagent.name, task.title) : task.title),
     status: slackTaskStatus(task.status, false) as Task["status"],
     // Slack appends details on every update with the same id, so send each field once.
     ...(task.details && task.details !== prev?.details ? { details: clip(task.details) } : {}),
@@ -94,46 +101,92 @@ function streamText(text: string, citations: Turn["citations"]): string {
  * held words stream then.
  */
 function streamable(text: string): string {
-  const start = text.trimStart();
-  if (/^```[^\n`]*(\n\s*)?$/.test(start)) return "";
+  if (opener(text)) return "";
   return readReview(text, true).kind === "text" ? text : "";
 }
 
+/** The words so far are only an opening fence, held until what follows shows whether it is a review. */
+const opener = (text: string) => /^```[^\n`]*(\n\s*)?$/.test(text.trimStart());
+
 /**
- * Chunks that move Slack from `prev` to `next`. Progress first, then text, so
- * a task never finishes after the words that depend on it. Text that was
- * rewritten (not appended) can't be streamed; the result says so and the host
- * should fall back to chat.update.
+ * A new card whose step came after words held back as a bare opening fence
+ * waits with them, while the turn goes on, so it is not shown above them.
+ */
+const waits = (turn: Turn, task: Task) =>
+  (turn.status === "working" || turn.status === "queued") &&
+  opener(turn.text) &&
+  (task.at ?? 0) > 0;
+
+/**
+ * Chunks that move Slack from `prev` to `next`. Updates to cards already shown
+ * go first, so a task never finishes after the words that depend on it. A new
+ * card goes where its step came in the words (`Task.at`), not where the stream
+ * had got to: the words said before it are sent above it, and what follows
+ * starts a paragraph below it (`paragraphsAtSteps`). That needs no waiting, since
+ * a step is only known once the words before it are. Text that was rewritten
+ * (not appended) can't be streamed; the result says so and the host should
+ * fall back to chat.update.
  */
 export function streamUpdate(
   prev: Turn | null,
   next: Turn,
 ): { chunks: StreamChunk[]; rewritten: boolean } {
   const chunks: StreamChunk[] = [];
-  const before = new Map((prev?.tasks ?? []).map((t) => [t.id, t]));
+  const sent = streamable(prev?.text ?? "");
+  const text = streamable(next.text);
+  const rewritten = !text.startsWith(sent);
+  // A card that waited on held words was not sent: it is still new.
+  const before = new Map(
+    (prev?.tasks ?? []).filter((t) => !waits(prev as Turn, t)).map((t) => [t.id, t]),
+  );
+  // New cards whose step came after the words Slack already has, by where.
+  const placed: Task[] = [];
   for (const task of next.tasks) {
     const old = before.get(task.id);
-    if (!sameTask(task, old)) chunks.push(taskChunk(task, old));
+    if (sameTask(task, old)) continue;
+    if (!old && waits(next, task)) continue;
+    if (
+      !old &&
+      !rewritten &&
+      task.at !== undefined &&
+      task.at > sent.length &&
+      task.at <= text.length
+    ) {
+      placed.push(task);
+    } else {
+      chunks.push(taskChunk(task, old));
+    }
   }
+  placed.sort((a, b) => (a.at ?? 0) - (b.at ?? 0));
 
   if (next.planTitle && next.planTitle !== prev?.planTitle) {
     chunks.push({ type: "plan_update", title: clip(next.planTitle) });
   }
 
-  const sent = streamable(prev?.text ?? "");
-  const text = streamable(next.text);
-  const rewritten = !text.startsWith(sent);
-  if (!rewritten && text.length > sent.length) {
-    const before = streamText(sent, prev?.citations ?? []);
-    const after = streamText(text, next.citations);
+  if (rewritten) return { chunks, rewritten };
+  // The words as Slack shows them up to `end`, with a break where a step came.
+  const shown = (upTo: string, t: Turn) =>
+    streamText(paragraphsAtSteps(upTo, t.tasks), t.citations);
+  let has = shown(sent, prev ?? next);
+  let from = sent.length;
+  const words = (end: number) => {
+    if (end <= from) return;
+    const after = shown(text.slice(0, end), next);
     // A citation that arrived after its marker was sent changes text Slack already has.
-    const delta = after.startsWith(before)
-      ? after.slice(before.length)
-      : streamText(text.slice(sent.length), next.citations);
+    const delta = after.startsWith(has)
+      ? after.slice(has.length)
+      : streamText(text.slice(from, end), next.citations);
     for (let i = 0; i < delta.length; i += MARKDOWN_CHUNK) {
       chunks.push({ type: "markdown_text", text: delta.slice(i, i + MARKDOWN_CHUNK) });
     }
+    has = after;
+    from = end;
+  };
+  for (const task of placed) {
+    words(task.at as number);
+    chunks.push(taskChunk(task, undefined));
   }
+  words(text.length);
   return { chunks, rewritten };
 }
 

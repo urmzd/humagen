@@ -2020,22 +2020,28 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "POST", "/api/knowledge/{name}/imports", "/api/knowledge/handbook/imports", `{"title":"A chat","uri":"codex:generated-contract","text":"generated"}`, http.StatusBadRequest)
 	importPath := "/api/knowledge/handbook/imports/" + imported.str("id")
 	grown := c.call(acme, "PUT", "/api/knowledge/{name}/imports/{id}", importPath, `{"title":"A chat","text":"generated, grown","digest":"`+imported.str("digest")+`","session":`+session+`}`, http.StatusOK)
-	// A conversation continued from it, which no route starts yet, is read
-	// through the threads route with its imported origin as the contract
-	// says, and another workspace does not find it.
-	structure, err := knowledge.ParseImported([]byte(session))
-	if err != nil {
-		t.Fatal(err)
+	// A conversation continued from it, through its route, is read through
+	// the threads route with its imported origin as the contract says, and
+	// another workspace does not find it. The source is filed nowhere, so
+	// the project is the workspace itself.
+	// The digests are the ones the import answered with, as a client reads
+	// them.
+	if grown.str("structure_digest") == "" {
+		t.Fatalf("the import answered no structure digest: %s", grown.raw)
 	}
-	continued, err := f.p.ContinueImport(t.Context(), auth.Principal{Subject: "ana", Tenant: "acme", Kind: auth.User, Roles: []auth.Role{auth.Admin}}, platform.ContinueImportInput{Source: "handbook", Document: grown.str("id"), DocumentDigest: grown.str("digest"), StructureDigest: knowledge.StructureDigest(structure)})
-	if err != nil {
-		t.Fatal(err)
+	continuePath := "/api/knowledge/handbook/documents/" + grown.str("id") + "/continue"
+	pins := `"document_digest":"` + grown.str("digest") + `","structure_digest":"` + grown.str("structure_digest") + `"`
+	continued := c.call(ana, "POST", "/api/knowledge/{name}/documents/{id}/continue", continuePath, `{`+pins+`,"project":"~"}`, http.StatusCreated)
+	if origin := obj(continued.field("import")); origin["document_digest"] != grown.str("digest") || origin["tool"] != "codex" || origin["by"] != "ana" || continued.str("visibility") != "private" {
+		t.Fatalf("the continuation answers %s", continued.raw)
 	}
-	room = c.call(ana, "GET", "/api/threads/{id}", "/api/threads/"+continued.ID, "", http.StatusOK)
+	c.call(ana, "POST", "/api/knowledge/{name}/documents/{id}/continue", continuePath, `{`+pins+`}`, http.StatusBadRequest)
+	c.call(ana, "POST", "/api/knowledge/{name}/documents/{id}/continue", continuePath, `{"document_digest":"`+imported.str("digest")+`","project":"~"}`, http.StatusConflict)
+	room = c.call(ana, "GET", "/api/threads/{id}", "/api/threads/"+continued.str("id"), "", http.StatusOK)
 	if origin := obj(obj(room.field("thread"))["import"]); origin["document_digest"] != grown.str("digest") || origin["tool"] != "codex" || origin["by"] != "ana" {
 		t.Fatalf("the continuation reads %s", room.raw)
 	}
-	c.call(globex, "GET", "/api/threads/{id}", "/api/threads/"+continued.ID, "", http.StatusNotFound)
+	c.call(globex, "GET", "/api/threads/{id}", "/api/threads/"+continued.str("id"), "", http.StatusNotFound)
 	c.call(acme, "PUT", "/api/knowledge/{name}/imports/{id}", importPath, `{"title":"A chat","text":"stale","digest":"`+imported.str("digest")+`","session":`+session+`}`, http.StatusConflict)
 	c.call(globex, "POST", "/api/knowledge/{name}/imports", "/api/knowledge/handbook/imports", `{"title":"A chat","uri":"codex:generated-contract","text":"generated","session":`+session+`}`, http.StatusNotFound)
 	c.call(globex, "PUT", "/api/knowledge/{name}/documents/{id}/text", docPath+"/text", `{"title":"Refunds","text":"Theirs.","digest":"`+replaced.str("digest")+`"}`, http.StatusNotFound)
@@ -2808,7 +2814,8 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/knowledge/{name}/documents": {"name": "handbook"}, "/api/knowledge/{name}/documents/{id}": {"name": "handbook", "id": doc.str("id")},
 		"/api/knowledge/{name}/documents/{id}/text": {"name": "handbook", "id": doc.str("id")},
 		"/api/knowledge/{name}/imports":             {"name": "handbook"}, "/api/knowledge/{name}/imports/{id}": {"name": "handbook", "id": imported.str("id")},
-		"/api/knowledge/{name}/variants": {"name": "handbook"}, "/api/knowledge/{name}/variants/{variant}": {"name": "handbook"},
+		"/api/knowledge/{name}/documents/{id}/continue": {"name": "handbook", "id": grown.str("id")},
+		"/api/knowledge/{name}/variants":                {"name": "handbook"}, "/api/knowledge/{name}/variants/{variant}": {"name": "handbook"},
 		"/api/project-forks/{name}": {"name": "Forked"}, "/api/projects/{name}/fork": {"name": "Field"},
 		"/api/projects/{name}": {"name": "Launch"}, "/api/projects/{name}/memory": {"name": "Launch"}, "/api/projects/{name}/history": {"name": "Launch"},
 		"/api/projects/{name}/agents":         {"name": "Launch"},
@@ -2846,10 +2853,11 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/inbox/{id}/read": `{}`, "/api/inbox/{id}/snooze": `{"until":"2999-01-01T00:00:00Z"}`,
 		"/api/inbox/{id}/parts/{part}/resolve": `{"action":"acknowledge"}`, "/api/knowledge/{name}/documents": `{"title":"t","text":"words here"}`,
 		"/api/knowledge/{name}/documents/{id}": `{"excluded":false}`, "/api/knowledge/{name}/variants": `{"name":"other"}`,
-		"/api/knowledge/{name}/documents/{id}/text": `{"title":"t","text":"words here","digest":""}`,
-		"/api/knowledge/{name}/imports":             `{"title":"t","uri":"codex:generated-contract","text":"words here","session":` + session + `}`,
-		"/api/knowledge/{name}/imports/{id}":        `{"title":"t","text":"words here","digest":"","session":` + session + `}`,
-		"/api/projects/{name}":                      `{"version":1}`, "/api/projects/{name}/memory": `{"text":"x"}`, "/api/projects/{name}/memory/approve": `{"ids":[]}`,
+		"/api/knowledge/{name}/documents/{id}/text":     `{"title":"t","text":"words here","digest":""}`,
+		"/api/knowledge/{name}/imports":                 `{"title":"t","uri":"codex:generated-contract","text":"words here","session":` + session + `}`,
+		"/api/knowledge/{name}/imports/{id}":            `{"title":"t","text":"words here","digest":"","session":` + session + `}`,
+		"/api/knowledge/{name}/documents/{id}/continue": `{"document_digest":"` + grown.str("digest") + `","structure_digest":"` + grown.str("structure_digest") + `","project":"~"}`,
+		"/api/projects/{name}":                          `{"version":1}`, "/api/projects/{name}/memory": `{"text":"x"}`, "/api/projects/{name}/memory/approve": `{"ids":[]}`,
 		"/api/inbox/{id}/deliveries/{client}": `{"channel":"C0123ABC","ts":"1700000000.000100"}`, "/api/inbox/{id}/dismiss": ``, "/api/inbox/{id}/unhide": ``,
 		"/api/inbox/marks": `{"ids":["m-1"],"mark":"read"}`, "/api/inbox/read-all": `{"view":"inbox"}`,
 		"/api/projects/{name}/agents": `{"version":1}`, "/api/agents/{name}/home": `{"project":""}`,
@@ -3034,13 +3042,14 @@ var unexercised = map[string]string{
 	"PUT /api/graph/nodes/{id}/owner 429":           "MaxDecisions owner decisions per workspace, a bound in pkg/graph",
 	"POST /api/corpora 429":                         "MaxCorpora per workspace, covered by TestTwoProcessesAgreeOnCorpora in pkg/corpora",
 	// The atomic source configuration race is covered by TestPromotionGuardAndProvenanceSurviveRestart.
-	"POST /api/artifacts/{id}/promote-knowledge 409": "source audience changed concurrently",
-	"POST /api/projects/{name}/fork 429":             "bounded private operation-plan capacity, covered by projectforks store tests",
-	"POST /api/threads/{id}/fork 429":                "bounded workspace or project thread cap, covered by thread store tests",
-	"POST /api/threads/{id}/bring-back 429":          "bounded per-person posting rate and thread message cap, covered by platform and thread store tests",
-	"POST /api/source-link-rules 409":                "opaque random ID collision is rejected by store CAS; platform never accepts a caller ID",
-	"PUT /api/source-link-rules/{id} 409":            "authorization snapshot CAS or immutable disabled fork copy; exercised in source-link store tests",
-	"DELETE /api/source-link-rules/{id} 409":         "concurrent rule change is rejected by store snapshot test",
+	"POST /api/artifacts/{id}/promote-knowledge 409":         "source audience changed concurrently",
+	"POST /api/projects/{name}/fork 429":                     "bounded private operation-plan capacity, covered by projectforks store tests",
+	"POST /api/threads/{id}/fork 429":                        "bounded workspace or project thread cap, covered by thread store tests",
+	"POST /api/knowledge/{name}/documents/{id}/continue 429": "bounded workspace or project thread cap, the same Threads.Create the fork route reaches",
+	"POST /api/threads/{id}/bring-back 429":                  "bounded per-person posting rate and thread message cap, covered by platform and thread store tests",
+	"POST /api/source-link-rules 409":                        "opaque random ID collision is rejected by store CAS; platform never accepts a caller ID",
+	"PUT /api/source-link-rules/{id} 409":                    "authorization snapshot CAS or immutable disabled fork copy; exercised in source-link store tests",
+	"DELETE /api/source-link-rules/{id} 409":                 "concurrent rule change is rejected by store snapshot test",
 
 	"PUT /api/knowledge/{name}/attachment 429": "bounded relation store refuses new attachments at10000 records; cap exercised in source-link suggestion store tests",
 

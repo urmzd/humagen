@@ -1708,7 +1708,8 @@ conversation, and it is published only through a reviewed summary.
 While the workspace's history setting is none, nothing is posted,
 run or forked in it.
 A kept structure is what its importer stated (`imported_by`), not a
-verified record. No route starts a continuation yet.
+verified record. One is started by
+`POST /api/knowledge/{name}/documents/{id}/continue`.
  */
 export interface ThreadImport {
   /** The knowledge source the document is in. */
@@ -4233,6 +4234,8 @@ export interface KnowledgeDocument {
   updated_at?: string;
   /** The size, as JSON, of the imported session's structure kept with this revision. Absent for a document no import wrote, or one edited since. */
   structure_bytes?: number;
+  /** The digest of the imported session's structure, recorded by the write that kept the structure with this revision and removed by an ordinary edit. Absent when `structure_bytes` is, and also on a document whose structure an earlier release kept, until it is imported again. With `digest`, it is what `POST /api/knowledge/{name}/documents/{id}/continue` pins. A recorded digest does not by itself make the structure trusted; the continuation checks it again. */
+  structure_digest?: string;
 }
 
 /** The structure of a session `humagen import sessions` wrote a document from: its main path as data. It is the importer's assertion, kept with who sent it and when; the server cannot verify that the session came from the tool it names. It is trusted only for the revision of the document it was written with, and an ordinary edit leaves it untrusted. A structure past a bound is refused with the document (400): the importer cuts and counts what it cut. */
@@ -6703,6 +6706,15 @@ export interface ReplaceKnowledgeDocumentTextBody {
   title: string;
   text: string;
   digest: string;
+}
+
+export interface ContinueImportedDocumentBody {
+  document_digest: string;
+  structure_digest?: string;
+  project: string;
+  title?: string;
+  agents?: string[];
+  mode?: ThreadMode;
 }
 
 export interface ImportKnowledgeDocumentBody {

@@ -18,6 +18,7 @@ import {
   isRetryable,
   type Judgement,
   type Notice,
+  paragraphsAtSteps,
   readAgentChange,
   readReview,
   SERVICE_TONE,
@@ -843,6 +844,10 @@ export function TurnView({
     />
   ) : null;
   const disclaimer = turn.disclaimer ?? copy.disclaimer(turn.agent.name);
+  // Slack shows the answer as one text with its steps above it: words said
+  // before a call and after it are kept apart as paragraphs, as a stream does.
+  const words =
+    useSurface().surface === "slack" ? paragraphsAtSteps(turn.text, turn.tasks) : turn.text;
 
   return (
     <>
@@ -906,7 +911,7 @@ export function TurnView({
             turnId={turn.id}
             agent={turn.agent.name}
             text={turn.text}
-            markdown={linkCitations(turn.text, turn.citations)}
+            markdown={linkCitations(words, turn.citations)}
             streaming={turn.status === "working" && !turn.detached}
             pullRequestHint={turn.source?.url}
             followUp={capabilities?.followUp !== false}

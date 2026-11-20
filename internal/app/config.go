@@ -137,6 +137,9 @@ func loadFiles(ctx context.Context, o Options, paths []string, keys credref.Reso
 	// own, and a run's events would reach only the process that ran it.
 	declaredStores := cfg.System.Spec.Stores.Kind
 	declaredBus := cfg.System.Spec.Bus.Kind
+	// The same for -public-url, whose default comes from $HUMAGEN_PUBLIC_URL:
+	// the file's own default would hide the variable behind localhost.
+	declaredPublicURL := cfg.System.Spec.Server.PublicURL
 	sys := cfg.System
 	sys.Defaults()
 	sp := sys.Spec
@@ -157,7 +160,7 @@ func loadFiles(ctx context.Context, o Options, paths []string, keys credref.Reso
 		return nil
 	}
 	set("addr", sp.Server.Addr)
-	set("public-url", sp.Server.PublicURL)
+	set("public-url", declaredPublicURL)
 	set("webhook-addr", sp.Server.WebhookAddr)
 	set("drain-grace", sp.Server.DrainGrace)
 	set("shutdown-timeout", sp.Server.ShutdownTimeout)
@@ -303,6 +306,10 @@ func loadFiles(ctx context.Context, o Options, paths []string, keys credref.Reso
 // envPostgres is the variable the server reads for its database, which a
 // System document's reference fills. The stores and the bus share it.
 const envPostgres = "HUMAGEN_POSTGRES_URL"
+
+// publicURLEnv names where browsers reach the server when neither
+// -public-url nor the file's server.public_url says.
+const publicURLEnv = "HUMAGEN_PUBLIC_URL"
 
 // overlay reads vars first, then the process environment.
 func overlay(vars map[string]string, next func(string) string) func(string) string {
