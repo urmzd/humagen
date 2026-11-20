@@ -202,7 +202,7 @@ test("an agent's session under a listed one is shown as that row, not as a secon
     />,
   );
   const list = within(await screen.findByRole("list", { name: defaultCopy.sidebar.recents }));
-  const row = await list.findByRole("button", { current: "page" });
+  const row = await list.findByRole("link", { current: "page" });
   assert.match(row.textContent ?? "", /Is MD5 fine for passwords\?/);
   assert.equal(list.getAllByText("Is MD5 fine for passwords?").length, 1, "listed once");
 });
