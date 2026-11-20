@@ -21,7 +21,8 @@ development:
 # request, delivery and the observer share work through consumer groups, and
 # the work done once per deployment runs on one elected leader, so more than
 # one is safe. With more than one, keep blobs off the ReadWriteOnce disk (s3 or
-# gcs). To run turns on more pods, use `worker` below.
+# gcs), and keep the bus on Postgres: the chart refuses more than one replica
+# with bus.kind: memory. To run turns on more pods, use `worker` below.
 replicaCount: 1
 
 image:

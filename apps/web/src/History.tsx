@@ -10,6 +10,7 @@ import { type ReactNode, useEffect, useMemo, useState } from "react";
 import type { ReviewedPull } from "../../../packages/client/src/generated/types.ts";
 import { api, type ThreadSummary } from "./api.ts";
 import { age } from "./conversationList.ts";
+import { daysAgo } from "./format.ts";
 import { type HistorySource, type HistoryStatus, href, type Route } from "./route.ts";
 import {
   AgentMark,
@@ -88,8 +89,7 @@ export function keeps(
 /** Today, Yesterday, This week, or the month, for the heading a row sits under. */
 export function dayOf(iso: string, now: Date): string {
   const d = new Date(iso);
-  const start = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
-  const days = Math.round((start(now) - start(d)) / 86_400_000);
+  const days = daysAgo(iso, now.getTime());
   if (days <= 0) return words.today;
   if (days === 1) return words.yesterday;
   if (days < 7) return words.thisWeek;

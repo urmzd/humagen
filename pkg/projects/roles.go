@@ -538,3 +538,30 @@ func (t *Tree) Named(r Reader) []string {
 // MembersOnly reports a project with no entry for everyone: read by its
 // members alone.
 func MembersOnly(p Project) bool { return everyoneOf(p.Members) == None }
+
+// Visibility is how widely a project is read, as its page says it.
+type Visibility string
+
+const (
+	// Private is a Personal project, or one whose only entry is one person.
+	Private Visibility = "private"
+	// Shared is named people or roles, and not everyone.
+	Shared Visibility = "shared"
+	// Workspace is everyone in the workspace, through an entry for everyone.
+	Workspace Visibility = "workspace"
+)
+
+// VisibilityOf says how widely a project is read by its own entries. Owners
+// above a members-only project read it too, as they read everything below;
+// they are not counted here.
+func VisibilityOf(p Project) Visibility {
+	switch {
+	case p.PersonalOwner != "":
+		return Private
+	case everyoneOf(p.Members) != None:
+		return Workspace
+	case len(p.Members) == 1 && !strings.HasPrefix(p.Members[0].Who, RolePrefix):
+		return Private
+	}
+	return Shared
+}

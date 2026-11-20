@@ -36,6 +36,7 @@ import {
   FailureAlert,
   RaiseLimit,
   SystemAlertView,
+  untrusted,
 } from "./components";
 import { type Copy, defaultCopy } from "./copy";
 
@@ -292,16 +293,6 @@ export function MessagePartView({
         </>
       );
   }
-}
-
-/**
- * Words a model wrote, made inert for the Text primitive: a link's markup and a
- * time token are broken with a zero-width space, so they show as typed and
- * nothing in them becomes a link. Each renderer already escapes what would
- * ping on its surface.
- */
-export function untrusted(text: string): string {
-  return text.replaceAll("](", "]\u200B(").replaceAll("{{", "{\u200B{");
 }
 
 /** What kind of message it is, and how urgent, in words: "Alert · Urgent". */

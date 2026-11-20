@@ -8,9 +8,9 @@ import (
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/operations"
-	"github.com/urmzd/orchagent/flow/address"
-	"github.com/urmzd/orchagent/flow/connector"
-	"github.com/urmzd/orchagent/flow/runtime"
+	"github.com/urmzd/saige/flow/address"
+	"github.com/urmzd/saige/flow/connector"
+	"github.com/urmzd/saige/flow/runtime"
 )
 
 type capabilityActor struct {
@@ -74,7 +74,7 @@ func (a capabilityActor) Actions() []connector.Action {
 				return connector.Result{}, operations.ErrDenied
 			}
 
-			if categoryOf(name) != operations.ReadContext {
+			if a.p.categoryOf(name) != operations.ReadContext {
 				if run, err := a.p.Runs.Get(a.req.Tenant, a.req.RunID); err == nil && (a.p.privateThread(a.req.Tenant, run.Thread) || a.p.RunRequiresReviewedSummary(ctx, run, a.p.RunPlace(a.req.Tenant, run).Project)) {
 					return connector.Result{}, operations.ErrDenied
 				}

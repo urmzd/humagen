@@ -5,9 +5,10 @@ import {
   BotIcon,
   CalendarIcon,
   CheckIcon,
+  ChevronDownIcon,
   ChevronRightIcon,
   CodeIcon,
-  EllipsisVerticalIcon,
+  EllipsisIcon,
   FolderIcon,
   FolderOpenIcon,
   HistoryIcon,
@@ -18,7 +19,6 @@ import {
   PanelLeftOpenIcon,
   PencilIcon,
   PinIcon,
-  PlugIcon,
   PlusIcon,
   ProjectIcon,
   SearchIcon,
@@ -38,7 +38,7 @@ import {
   type ProjectView,
   type ThreadSummary,
 } from "./api.ts";
-import { type Branding, servedBranding } from "./branding.ts";
+import { agentShown, type Branding, servedBranding } from "./branding.ts";
 import {
   age,
   GROUP_ROWS,
@@ -48,13 +48,14 @@ import {
   type RowStanding,
   standingOf,
 } from "./conversationList.ts";
-import { dayOf, sourceOf } from "./History.tsx";
+import { daysAgo } from "./format.ts";
+import { sourceOf } from "./History.tsx";
 import { useMarks } from "./marks.ts";
 import { ConversationPeek, PeekCard, usePeek } from "./RowPreview.tsx";
-import { type Standing, useRecents } from "./recents.ts";
+import { type Standing, useRecents, useRecentsRow } from "./recents.ts";
 import { href, type Route, type Page as RoutePage } from "./route.ts";
-import { Avatar, workspaceSettingsRoute } from "./Settings.tsx";
-import { type Alert, openAlert, orderAlerts, priorityRank } from "./sessionCenter.ts";
+import { type Alert, holdsAnAlertOnly, openAlert, orderAlerts } from "./sessionCenter.ts";
+import { Avatar, workspaceSettingsRoute } from "./settingsLinks.tsx";
 import { AgentMark, type Flash, FlashNote, Popover, SkeletonRows, useFlash } from "./ui.tsx";
 import { workspaceHub } from "./workspace-navigation.ts";
 
@@ -89,8 +90,12 @@ export function SidebarItem({
       href={href}
       onClick={go}
       aria-current={active ? "page" : undefined}
-      aria-label={count ? (badgeLabel ?? `${label}, ${count} need you`) : open ? undefined : label}
-      className={`relative flex h-9 pointer-coarse:h-11 items-center gap-2.5 [&>svg]:size-[18px] rounded-aui text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-hover aria-[current=page]:font-medium aria-[current=page]:text-aui-fg ${
+      // Open, the link is named by what it shows: its label, then its count.
+      // An aria-label here would have to repeat those words exactly.
+      aria-label={
+        open ? undefined : count ? (badgeLabel ?? defaultCopy.sidebar.needYou(label, count)) : label
+      }
+      className={`relative flex h-9 pointer-coarse:h-11 items-center gap-2.5 [&>svg]:size-[18px] [&>svg]:[stroke-width:1.75] rounded-aui text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover/60 hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-hover aria-[current=page]:font-medium aria-[current=page]:text-aui-fg ${
         open ? "px-2.5" : "w-9 justify-center"
       }`}
     >
@@ -98,12 +103,13 @@ export function SidebarItem({
       {open && <span className="humagen-sidebar-reveal flex-1 truncate text-left">{label}</span>}
       {count > 0 &&
         (open ? (
-          <span
-            aria-hidden
-            className="humagen-sidebar-reveal rounded-full bg-aui-hover px-1.5 text-aui-2xs font-medium text-aui-fg"
-          >
-            {count}
-          </span>
+          <>
+            {" "}
+            <span className="humagen-sidebar-reveal rounded-full bg-aui-hover px-1.5 text-aui-2xs font-medium text-aui-fg">
+              {count}
+            </span>
+            <span className="sr-only"> {badgeLabel ?? defaultCopy.sidebar.needYouSuffix}</span>
+          </>
         ) : (
           <span aria-hidden className="absolute top-1 right-1 size-1.5 rounded-full bg-aui-muted" />
         ))}
@@ -286,16 +292,42 @@ function sourceGlyph(origin: string): ReactNode {
   ) : undefined;
 }
 
-/** Conversations under Today, Yesterday, This week and each month, newest first. */
-function byDay(rows: ThreadSummary[], now: Date): { day: string; items: ThreadSummary[] }[] {
-  const out: { day: string; items: ThreadSummary[] }[] = [];
+/** Today, Yesterday or Earlier, by the reader's own calendar day. */
+export function recentDay(iso: string, now: Date): "today" | "yesterday" | "earlier" {
+  const days = daysAgo(iso, now.getTime());
+  return days <= 0 ? "today" : days === 1 ? "yesterday" : "earlier";
+}
+
+const DAY_ORDER = ["today", "yesterday", "earlier"] as const;
+const dayLabel = {
+  today: defaultCopy.history.today,
+  yesterday: defaultCopy.history.yesterday,
+  earlier: defaultCopy.sidebar.earlier,
+};
+
+/**
+ * Recents as one list: each session once, under Today, Yesterday and
+ * Earlier in the reader's local time, in that order, newest first in each.
+ */
+export function recentGroups(
+  rows: ThreadSummary[],
+  now: Date,
+): { day: (typeof DAY_ORDER)[number]; label: string; items: ThreadSummary[] }[] {
+  const seen = new Set<string>();
+  const buckets = { today: [], yesterday: [], earlier: [] } as Record<
+    (typeof DAY_ORDER)[number],
+    ThreadSummary[]
+  >;
   for (const t of rows) {
-    const day = dayOf(t.updated_at, now);
-    const last = out.at(-1);
-    if (last?.day === day) last.items.push(t);
-    else out.push({ day, items: [t] });
+    if (seen.has(t.id)) continue;
+    seen.add(t.id);
+    buckets[recentDay(t.updated_at, now)].push(t);
   }
-  return out;
+  return DAY_ORDER.filter((d) => buckets[d].length).map((d) => ({
+    day: d,
+    label: dayLabel[d],
+    items: buckets[d].sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at)),
+  }));
 }
 
 function TaskRow({
@@ -309,6 +341,7 @@ function TaskRow({
   standing = "",
   ageText = "",
   glyph,
+  to,
   onSelect,
   onPin,
   onRename,
@@ -329,6 +362,8 @@ function TaskRow({
   ageText?: string;
   /** Where it came from, when not the chat itself: a small mark on the right. */
   glyph?: ReactNode;
+  /** Its address, so it opens in a new tab as a link does. */
+  to: string;
   onSelect: () => void;
   onPin?: (button: HTMLButtonElement) => void;
   onRename?: (title: string) => void;
@@ -376,29 +411,38 @@ function TaskRow({
               setRenaming(false);
             }
           }}
-          className="h-12 w-full rounded-aui border border-aui-accent bg-transparent px-2.5 text-aui-sm text-aui-fg outline-none"
+          className="h-9 w-full rounded-aui border border-aui-accent bg-transparent px-2.5 text-aui-sm text-aui-fg outline-none"
         />
       ) : (
-        <button
-          type="button"
-          onClick={onSelect}
+        <a
+          href={to}
+          onClick={(e) => {
+            // A modified click opens it in a new tab, as any link does.
+            if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+            e.preventDefault();
+            onSelect();
+          }}
           {...peek.bind}
           aria-describedby={peek.at ? peekId : undefined}
           data-thread-row={task.id}
           aria-current={current ? "page" : undefined}
-          className={`flex min-h-8 pointer-coarse:min-h-11 w-full items-center gap-2 rounded-aui py-1 pr-2 pl-2.5 text-left text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-subtle aria-[current=page]:font-medium aria-[current=page]:text-aui-fg ${current || peek.at ? "[@media(pointer:coarse)]:pr-12" : ""} ${hasMenu ? "[@media(pointer:fine)]:group-focus-within/task:pr-10 [@media(pointer:fine)]:group-hover/task:pr-10" : ""}`}
+          // The age keeps the width the menu button takes, so a title is cut at the same place at rest and under the pointer.
+          className={`relative flex min-h-9 pointer-coarse:min-h-11 w-full items-center gap-2 rounded-aui py-1 pr-2 pl-2.5 text-left text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover/60 hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-hover aria-[current=page]:font-medium aria-[current=page]:text-aui-fg ${current || peek.at ? "[@media(pointer:coarse)]:pr-12" : ""}`}
         >
           {priority && (
             <span
               title={`${priority} alert`}
               aria-label={`${priority} alert`}
-              className={`mt-0.5 text-aui-xs ${priority === "urgent" ? "text-aui-bad" : "text-aui-muted"}`}
+              className={`text-aui-xs ${priority === "urgent" ? "text-aui-bad" : "text-aui-muted"}`}
             >
               {priority === "urgent" ? "!" : priority === "normal" ? "•" : "|"}
             </span>
           )}
           {!priority && dot && (
-            <span aria-hidden data-standing={standing} className="humagen-row-dot mt-[7px]" />
+            // In the gutter, so a title starts on the same line whether or not its row has a dot.
+            <span aria-hidden className="absolute inset-y-0 left-0.5 flex items-center">
+              <span data-standing={standing} className="humagen-row-dot" />
+            </span>
           )}
           <span className="flex min-w-0 flex-1 flex-col">
             <span className="flex min-w-0 items-center gap-1.5">
@@ -417,10 +461,11 @@ function TaskRow({
           </span>
           <span
             data-row-age
-            className={`mt-0.5 shrink-0 text-aui-2xs font-normal text-aui-muted tabular-nums ${hasMenu ? "[@media(pointer:fine)]:group-focus-within/task:invisible [@media(pointer:fine)]:group-hover/task:invisible" : ""}`}
+            // One line: where it came from, then its age, so every row is the same height.
+            className={`inline-flex min-w-6 shrink-0 items-center justify-end gap-1 text-aui-2xs font-normal text-aui-muted tabular-nums ${standing === "unread" ? "" : "mt-0.5"} ${hasMenu ? "[@media(pointer:fine)]:group-focus-within/task:invisible [@media(pointer:fine)]:group-hover/task:invisible" : ""}`}
           >
             {standing === "unread" ? (
-              <span aria-hidden data-standing="unread" className="humagen-row-dot mt-1 block" />
+              <span aria-hidden data-standing="unread" className="humagen-row-dot block" />
             ) : (
               <>
                 {glyph}
@@ -429,21 +474,22 @@ function TaskRow({
             )}
           </span>
           {said && <span className="sr-only">, {said}</span>}
-        </button>
+        </a>
       )}
       {hasMenu && !renaming && (
         <div
           ref={actions}
           data-pin-thread={task.id}
-          className="absolute top-1 right-1 flex items-center [@media(pointer:coarse)]:top-0.5"
+          className="absolute inset-y-0 right-0 flex items-center"
         >
           <div data-row-menu onPointerDown={peek.close} onFocus={peek.close}>
             <Popover
               narrow
               align="right"
               label={`Manage ${title}`}
+              popup="menu"
               className={`${rowAction} opacity-0 group-hover/task:opacity-100 group-focus-within/task:opacity-100 focus-visible:opacity-100 aria-expanded:opacity-100 aria-expanded:bg-aui-hover aria-expanded:text-aui-fg [@media(pointer:coarse)]:size-11 ${current || peek.at ? "[@media(pointer:coarse)]:opacity-100" : "[@media(pointer:coarse)]:pointer-events-none [@media(pointer:coarse)]:group-focus-within/task:pointer-events-auto"}`}
-              button={<EllipsisVerticalIcon size={15} />}
+              button={<EllipsisIcon size={16} />}
             >
               {(close) => (
                 <RowMenu
@@ -602,13 +648,59 @@ function RowMenu({
 }
 
 /** A small section label, as Claude's sidebar draws Pinned and Recents. */
-function Label({ children, action }: { children: ReactNode; action?: ReactNode }) {
+function Label({
+  children,
+  action,
+  fold,
+}: {
+  children: ReactNode;
+  action?: ReactNode;
+  /** Makes the heading a button that folds its section away and brings it back. */
+  fold?: { open: boolean; onToggle: () => void };
+}) {
   return (
-    <div className="aui-chrome sticky top-0 z-10 flex h-8 items-center justify-between gap-1 pr-2 pl-2 shadow-none">
-      <p className="px-2 text-aui-xs text-aui-muted">{children}</p>
+    // Solid on a desktop, in the sidebar's own color, so rows pass under it without showing through.
+    <div className="humagen-sidebar-label sticky top-0 z-10 flex h-8 items-center justify-between gap-1 pr-2 pl-2">
+      {fold ? (
+        <button
+          type="button"
+          data-fold
+          aria-expanded={fold.open}
+          onClick={fold.onToggle}
+          className="inline-flex min-h-7 min-w-0 items-center gap-1 rounded-aui px-2.5 text-aui-xs text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent pointer-coarse:min-h-11"
+        >
+          <span className="min-w-0 truncate">{children}</span>
+          {fold.open ? <ChevronDownIcon size={12} /> : <ChevronRightIcon size={12} />}
+        </button>
+      ) : (
+        <p className="px-2.5 text-aui-xs text-aui-muted">{children}</p>
+      )}
       {action}
     </div>
   );
+}
+
+/** Whether a section of the sidebar is folded, as this browser left it. It must never throw. */
+function useFold(key: string): { open: boolean; onToggle: () => void } {
+  const [open, setOpen] = useState(() => {
+    try {
+      return window.localStorage.getItem(key) !== "0";
+    } catch {
+      return true;
+    }
+  });
+  return {
+    open,
+    onToggle: () =>
+      setOpen((was) => {
+        try {
+          window.localStorage.setItem(key, was ? "0" : "1");
+        } catch {
+          // The fold still works for this visit.
+        }
+        return !was;
+      }),
+  };
 }
 
 /**
@@ -725,6 +817,11 @@ export function Sidebar({
     more,
   } = useRecents(agent, standing, threads, sessionMode);
   const filters = (agent ? 1 : 0) + (standing ? 1 : 0);
+  // The row the open session is shown as: its own, or its root's when it is an agent's session under one.
+  const openRow = useRecentsRow(
+    route.page === "conversation" ? route.id : null,
+    route.page === "conversation" && recents.some((t) => t.id === route.id),
+  );
   // A pin that did not take is said beside the conversation it was for, in whichever
   // list the conversation is in by then.
   const { flash, say, clear: unsay } = useFlash();
@@ -783,7 +880,9 @@ export function Sidebar({
       ? sidebar.current?.querySelector<HTMLElement>(
           'nav[aria-label="Sections"] a[href="/projects"]',
         )
-      : sidebar.current?.querySelector<HTMLButtonElement>('section[aria-label="Sessions"] button');
+      : sidebar.current?.querySelector<HTMLButtonElement>(
+          'section[aria-label="Sessions"] button:not([data-fold])',
+        );
     (control ?? fallback)?.focus();
     pinFocus.current = null;
   }, [pinned, prefs?.pinned_projects]);
@@ -819,6 +918,8 @@ export function Sidebar({
   // menu answers with a refusal. Work comes first, then what watches it, then
   // what it is built from. A task keeps its own runs, evals live on what they
   // test, and trends live with alerts, so none of those needs a page here.
+  const pinnedFold = useFold("humagen.sidebar.pinned");
+  const recentsFold = useFold("humagen.sidebar.recents");
   const selected = route.page === "conversation" ? route.id : null;
   const here = (...pages: RoutePage[]) => pages.includes(route.page);
   const nav = defaultCopy.navigation;
@@ -854,15 +955,6 @@ export function Sidebar({
       active: hub === "agents" || hub === "customize",
     },
     {
-      to: { page: "connections" } as Route,
-      label: "Connections",
-      icon: <PlugIcon />,
-      show: can("runs:read") || can("clients:read"),
-      active:
-        here("connections") ||
-        (route.page === "library" && ["sources", "catalog"].includes(route.section)),
-    },
-    {
       to: { page: "automations" } as Route,
       label: "Scheduled",
       icon: <CalendarIcon />,
@@ -871,7 +963,7 @@ export function Sidebar({
     },
     {
       to: { page: "artifacts" } as Route,
-      label: "Artifacts",
+      label: nav.artifacts,
       icon: <LayersIcon />,
       show: can("artifacts:read"),
       active:
@@ -883,7 +975,9 @@ export function Sidebar({
   // Archived here is the reader's own: the conversation leaves their lists
   // and stays for everyone else. Delete still asks an admin.
   const { marks, archive: setArchivedMark, read: markRead } = useMarks(can("runs:read"));
-  const [view, setView] = useState<ListView>("recents");
+  // Sessions are filed under the project they belong to, each a group that folds;
+  // the plain list by day is one choice away in the filter.
+  const [view, setView] = useState<ListView>("projects");
   const [note, setNote] = useState<{ id: string; archived: boolean } | null>(null);
   const [gone, setGone] = useState<Set<string>>(() => new Set());
   const [titles, setTitles] = useState<Record<string, string>>({});
@@ -899,7 +993,7 @@ export function Sidebar({
   const toggleArchive = (t: ThreadSummary, on: boolean) => {
     unsay();
     setNote({ id: t.id, archived: on });
-    if (on && selected === t.id) go({ page: "new" });
+    if (on && (selected === t.id || openRow === t.id)) go({ page: "new" });
     setArchivedMark(t.id, on).catch(() => {
       setNote(null);
       setFlashed(t.id);
@@ -916,7 +1010,7 @@ export function Sidebar({
     unsay();
     setGone((g) => new Set(g).add(t.id));
     if (pinned.includes(t.id)) onPin(t.id, false).catch(() => {});
-    if (selected === t.id) go({ page: "new" });
+    if (selected === t.id || openRow === t.id) go({ page: "new" });
     coworking.archive(t.id, true).catch(() => {
       setGone((g) => {
         const n = new Set(g);
@@ -962,16 +1056,22 @@ export function Sidebar({
   for (const alert of orderAlerts(sessionAlerts.filter(openAlert)))
     if (alert.session && !priorityBySession.has(alert.session))
       priorityBySession.set(alert.session, alert.priority ?? "normal");
-  const unpinned = recents
-    .filter((t) => !pinnedSet.has(t.id) && !gone.has(t.id) && !archivedSet.has(t.id))
-    .map(shown)
-    .sort(
-      (a, b) =>
-        (priorityBySession.has(a.id) ? priorityRank(priorityBySession.get(a.id)) : 3) -
-          (priorityBySession.has(b.id) ? priorityRank(priorityBySession.get(b.id)) : 3) ||
-        b.updated_at.localeCompare(a.updated_at),
-    );
-  const currentThread = selected ? known.get(selected) : undefined;
+  // Recents is newest first. An alert marks its session's row; it does not move
+  // it, and a session that only holds an alert is in Alerts, not here.
+  const unpinned = [
+    ...new Map(
+      recents
+        .filter(
+          (t) =>
+            !pinnedSet.has(t.id) &&
+            !gone.has(t.id) &&
+            !archivedSet.has(t.id) &&
+            (t.id === openRow || !holdsAnAlertOnly(t)),
+        )
+        .map((t) => [t.id, shown(t)] as const),
+    ).values(),
+  ].sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at));
+  const currentThread = openRow ? known.get(openRow) : undefined;
   if (
     currentThread &&
     !pinnedSet.has(currentThread.id) &&
@@ -981,13 +1081,13 @@ export function Sidebar({
     unpinned.push(currentThread);
   }
   // Opening a conversation reads it, and so does staying in it while it moves.
-  const selectedUpdated = currentThread?.updated_at;
+  const selectedUpdated = (selected ? known.get(selected) : undefined)?.updated_at;
   // biome-ignore lint/correctness/useExhaustiveDependencies: a newer update is the reason to mark it read again
   useEffect(() => {
     if (selected && can("runs:read")) markRead(selected);
   }, [selected, selectedUpdated, markRead, can]);
   const noConversations = recents.length === 0 && unpinned.length === 0;
-  const isCurrent = (t: ThreadSummary) => t.id === selected;
+  const isCurrent = (t: ThreadSummary) => t.id === openRow;
   const canPin = can("runs:read");
   const pinnedProjects = new Set(prefs?.pinned_projects ?? []);
   const readableProjectPins = [...pinnedProjects].filter(
@@ -1014,6 +1114,7 @@ export function Sidebar({
       archived={archivedSet.has(t.id)}
       standing={standingOf(t, marks)}
       ageText={sessionMode ? age(t.updated_at, now) : ""}
+      to={href({ page: "conversation", id: t.id })}
       onSelect={() => go({ page: "conversation", id: t.id })}
       onPin={
         canPin && !archivedSet.has(t.id)
@@ -1027,13 +1128,11 @@ export function Sidebar({
     />
   );
   const viewTitle =
-    view === "recents" && unpinned.length > 0
-      ? (byDay(unpinned, new Date(now))[0]?.day ?? defaultCopy.sidebar.recents)
-      : view === "projects"
-        ? defaultCopy.sidebar.projects
-        : view === "archived"
-          ? defaultCopy.sidebar.archived
-          : defaultCopy.sidebar.recents;
+    view === "projects"
+      ? defaultCopy.sidebar.projects
+      : view === "archived"
+        ? defaultCopy.sidebar.archived
+        : defaultCopy.sidebar.recents;
 
   const clear = () => {
     setStanding("");
@@ -1081,7 +1180,7 @@ export function Sidebar({
         }`}
       >
         <div
-          className={`flex h-12 shrink-0 items-center ${open ? "justify-between pr-2 pl-3.5" : "justify-center"}`}
+          className={`flex h-12 shrink-0 items-center ${open ? "justify-between pr-2 pl-4.5" : "justify-center"}`}
         >
           {open && (
             <span className="humagen-display humagen-sidebar-reveal flex min-w-0 items-center gap-2 truncate text-aui-base font-semibold text-aui-fg">
@@ -1097,7 +1196,11 @@ export function Sidebar({
             aria-label={open ? "Close sidebar" : "Open sidebar"}
             className="inline-flex size-8 pointer-coarse:size-11 items-center justify-center rounded-aui text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
           >
-            {open ? <PanelLeftCloseIcon size={18} /> : <PanelLeftOpenIcon size={18} />}
+            {open ? (
+              <PanelLeftCloseIcon size={18} strokeWidth={1.75} />
+            ) : (
+              <PanelLeftOpenIcon size={18} strokeWidth={1.75} />
+            )}
           </button>
         </div>
 
@@ -1122,7 +1225,7 @@ export function Sidebar({
                 type="button"
                 onClick={onSearch}
                 aria-label={nav.search}
-                className={`group/search flex h-9 pointer-coarse:h-11 items-center gap-2.5 rounded-aui text-aui-sm text-aui-muted hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent ${open ? "px-2.5" : "w-9 justify-center"}`}
+                className={`group/search flex h-9 pointer-coarse:h-11 items-center gap-2.5 [&>svg]:[stroke-width:1.75] rounded-aui text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover/60 hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent ${open ? "px-2.5" : "w-9 justify-center"}`}
               >
                 <SearchIcon size={18} />
                 {open && (
@@ -1160,10 +1263,10 @@ export function Sidebar({
             {open && (pinnedRows.length > 0 || readableProjectPins.length > 0) && (
               <section
                 aria-label="Pinned"
-                className="humagen-sidebar-reveal flex shrink-0 flex-col pt-4"
+                className="humagen-sidebar-reveal flex shrink-0 flex-col pt-6"
               >
-                <Label>{defaultCopy.sidebar.pinned}</Label>
-                <ul className="px-2">
+                <Label fold={pinnedFold}>{defaultCopy.sidebar.pinned}</Label>
+                <ul className="px-2" hidden={!pinnedFold.open}>
                   {readableProjectPins.map((project) => (
                     <li
                       key={`project:${project}`}
@@ -1173,22 +1276,14 @@ export function Sidebar({
                         <Item
                           icon={<ProjectIcon />}
                           label={projectTitle(project)}
-                          href={href({
-                            page: "project",
-                            name: project === "~" ? "" : project,
-                            tab: "inbox",
-                          })}
+                          href={href({ page: "project", name: project === "~" ? "" : project })}
                           active={
                             route.page === "project" &&
                             route.name === (project === "~" ? "" : project)
                           }
                           open
                           onClick={() =>
-                            go({
-                              page: "project",
-                              name: project === "~" ? "" : project,
-                              tab: "inbox",
-                            })
+                            go({ page: "project", name: project === "~" ? "" : project })
                           }
                         />
                       </div>
@@ -1216,23 +1311,24 @@ export function Sidebar({
               <section
                 aria-label="Sessions"
                 data-view={view}
-                className="humagen-sidebar-reveal flex shrink-0 flex-col pt-4"
+                className="humagen-sidebar-reveal flex shrink-0 flex-col pt-6"
               >
                 {/* The label stays in reach while the list scrolls under it. */}
                 <Label
+                  fold={recentsFold}
                   action={
                     <Popover
                       narrow
                       align="right"
                       label={defaultCopy.chat.filter(filters)}
-                      className="relative inline-flex size-6 pointer-coarse:size-11 items-center justify-center rounded-aui text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-expanded:bg-aui-hover aria-expanded:text-aui-fg"
+                      className="relative inline-flex size-8 pointer-coarse:size-11 items-center justify-center rounded-aui text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-expanded:bg-aui-hover aria-expanded:text-aui-fg"
                       button={
                         <>
                           <SlidersIcon size={14} />
-                          {(filters > 0 || view !== "recents") && (
+                          {(filters > 0 || view !== "projects") && (
                             <span
                               aria-hidden
-                              className="absolute top-0.5 right-0.5 size-1.5 rounded-full bg-aui-accent"
+                              className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-aui-accent"
                             />
                           )}
                         </>
@@ -1244,8 +1340,8 @@ export function Sidebar({
                             title="View"
                             value={view}
                             options={[
-                              { value: "recents", label: defaultCopy.sidebar.recents },
                               { value: "projects", label: "By project" },
+                              { value: "recents", label: "By day" },
                               {
                                 value: "archived",
                                 label: `${defaultCopy.sidebar.archived}${marks.archived.length ? ` (${marks.archived.length})` : ""}`,
@@ -1271,19 +1367,19 @@ export function Sidebar({
                                 { value: "", label: "Any" },
                                 ...answering.map((a) => ({
                                   value: a,
-                                  label: a,
+                                  label: agentShown(a),
                                   mark: <AgentMark name={a} size={12} />,
                                 })),
                               ]}
                               onChange={setAgent}
                             />
                           )}
-                          {(filters > 0 || view !== "recents") && (
+                          {(filters > 0 || view !== "projects") && (
                             <button
                               type="button"
                               onClick={() => {
                                 clear();
-                                setView("recents");
+                                setView("projects");
                               }}
                               className="mt-1 rounded-aui border-[var(--humagen-rule)] border-t px-2.5 py-2 text-left text-aui-sm text-aui-fg hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
                             >
@@ -1296,11 +1392,9 @@ export function Sidebar({
                   }
                 >
                   <span className="py-1 text-aui-xs">
-                    {view === "recents"
-                      ? defaultCopy.sidebar.recents
-                      : view === "projects"
-                        ? defaultCopy.sidebar.projects
-                        : defaultCopy.sidebar.archived}
+                    {view === "archived"
+                      ? defaultCopy.sidebar.archived
+                      : defaultCopy.sidebar.recents}
                   </span>
                 </Label>
                 {note && (
@@ -1332,6 +1426,7 @@ export function Sidebar({
                 )}
                 <ul
                   className="px-2 pb-3"
+                  hidden={!recentsFold.open}
                   aria-label={view === "recents" ? defaultCopy.sidebar.recents : viewTitle}
                   aria-busy={loading !== null}
                 >
@@ -1360,9 +1455,17 @@ export function Sidebar({
                     </li>
                   )}
                   {view === "recents" &&
-                    byDay(unpinned, new Date(now)).map((g, i) => (
-                      <li key={g.day} className={i === 0 ? "" : "pt-3"}>
-                        {i > 0 && <p className="px-2.5 pb-1 text-aui-xs text-aui-muted">{g.day}</p>}
+                    recentGroups(unpinned, new Date(now)).map((g, i) => (
+                      <li
+                        key={g.day}
+                        className={i === 0 ? "" : "pt-3"}
+                        data-testid="recents-group"
+                        data-day={g.day}
+                      >
+                        {/* Recents already says these are the newest, so today's sessions take no heading. */}
+                        {g.day !== "today" && (
+                          <p className="px-2.5 pb-1 text-aui-xs text-aui-muted">{g.label}</p>
+                        )}
                         <ul>{g.items.map((t) => row(t, { label: true }))}</ul>
                       </li>
                     ))}
@@ -1473,14 +1576,15 @@ export function Sidebar({
           </p>
         )}
         <div
-          className={`flex shrink-0 items-center gap-1 border-aui-border border-t p-1.5 ${open ? "" : "flex-col"}`}
+          className={`flex shrink-0 items-center gap-1 border-aui-border border-t py-1.5 ${open ? "pr-1.5 pl-3.5" : "flex-col px-1.5"}`}
         >
           <div className={open ? "min-w-0 flex-1" : ""}>
             <Popover
               narrow
               up
               side={open ? undefined : "right"}
-              label={defaultCopy.preferences.openFor(name)}
+              // Open, the button is named by the name it shows, then what it opens.
+              label={open ? undefined : defaultCopy.preferences.openFor(name)}
               tooltip={open ? undefined : name}
               className={`flex w-full min-w-0 items-center gap-2 rounded-aui p-1 text-left transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent aria-expanded:bg-aui-hover ${
                 open ? "" : "size-9 justify-center"
@@ -1494,6 +1598,7 @@ export function Sidebar({
                       {subtitle && (
                         <span className="truncate text-aui-xs text-aui-muted">| {subtitle}</span>
                       )}
+                      <span className="sr-only">, {defaultCopy.preferences.open}</span>
                     </span>
                   )}
                 </>

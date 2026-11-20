@@ -1,6 +1,7 @@
 package platform
 
 import (
+	"context"
 	"fmt"
 	"maps"
 	"slices"
@@ -173,9 +174,17 @@ func (p *Platform) ProjectInbox(who auth.Principal, project string, children boo
 // for each of them (act_as) and tells them in a direct message. Nothing
 // reaches the machine about anyone it does not map, and one notice names at
 // most MaxNotified people, as one message notifies at most that many.
-func (p *Platform) SurfaceNoticesFor(who auth.Principal, n inbox.Notice) []ActAs {
+//
+// A result reaches it only when background work or notify raised it
+// (backgroundReportOf), for the person the work is for. Work asked in a
+// Slack thread of one of the tenant's Slack clients is reported by that
+// client alone, as a reply in the thread when it may be posted there
+// (mayReplyIn) and else in the person's direct messages; work asked
+// anywhere else is reported in their direct messages by every client that
+// maps them.
+func (p *Platform) SurfaceNoticesFor(ctx context.Context, who auth.Principal, n inbox.Notice) []SurfaceNotice {
 	switch n.Kind {
-	case inbox.KindMention, inbox.KindClarification, inbox.KindApproval:
+	case inbox.KindMention, inbox.KindClarification, inbox.KindApproval, inbox.KindResult:
 	default:
 		return nil
 	}
@@ -183,7 +192,7 @@ func (p *Platform) SurfaceNoticesFor(who auth.Principal, n inbox.Notice) []ActAs
 		return nil
 	}
 	var tree *projects.Tree
-	var out []ActAs
+	var out []SurfaceNotice
 	all, err := p.Clients.List(who.Tenant)
 	if err != nil {
 		p.log.Error("platform: clients could not be read", "tenant", who.Tenant, "error", err)
@@ -201,6 +210,13 @@ func (p *Platform) SurfaceNoticesFor(who auth.Principal, n inbox.Notice) []ActAs
 			if err != nil || !addressedTo(m, named) {
 				continue
 			}
+			var report backgroundReport
+			if n.Kind == inbox.KindResult {
+				var ok bool
+				if report, ok = p.backgroundReportOf(who.Tenant, m); !ok {
+					continue
+				}
+			}
 			person := principalOf(who, named)
 			if !InboxSees(person, n.Kind) {
 				continue
@@ -211,7 +227,18 @@ func (p *Platform) SurfaceNoticesFor(who auth.Principal, n inbox.Notice) []ActAs
 			if m, err = p.Inbox.GetAs(who.Tenant, n.ID, p.inboxReader(tree, person)); err != nil || !p.Seer(person).Message(m) {
 				continue
 			}
-			out = append(out, ActAs{Client: c.ID, User: user})
+			one := SurfaceNotice{For: ActAs{Client: c.ID, User: user}}
+			if n.Kind == inbox.KindResult {
+				client, at := p.reportsTo(who.Tenant, report)
+				if client != "" && client != c.ID {
+					// The client whose Slack thread asked reports it.
+					continue
+				}
+				if client != "" && p.outcomesAllowedIn(c, at.Channel) && p.mayReplyIn(ctx, person, report) {
+					one.Reply = &at
+				}
+			}
+			out = append(out, one)
 			if len(out) == MaxNotified {
 				return out
 			}

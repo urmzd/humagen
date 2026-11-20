@@ -7,12 +7,12 @@ import (
 	"log/slog"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/urmzd/orchagent/durable/ledger"
-	dqueue "github.com/urmzd/orchagent/durable/queue"
-	"github.com/urmzd/orchagent/flow/bus"
-	"github.com/urmzd/orchagent/flow/deliverystate"
-	"github.com/urmzd/orchagent/flow/runschema"
-	"github.com/urmzd/orchagent/flow/runtime"
+	"github.com/urmzd/humagen/internal/runschema"
+	"github.com/urmzd/saige/durable/ledger"
+	dqueue "github.com/urmzd/saige/durable/queue"
+	"github.com/urmzd/saige/flow/bus"
+	"github.com/urmzd/saige/flow/deliverystate"
+	"github.com/urmzd/saige/flow/runtime"
 
 	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/wire"
@@ -22,14 +22,17 @@ import (
 	"github.com/urmzd/humagen/pkg/artifacts"
 	"github.com/urmzd/humagen/pkg/audit"
 	"github.com/urmzd/humagen/pkg/auditrefs"
+	"github.com/urmzd/humagen/pkg/background"
 	"github.com/urmzd/humagen/pkg/blob"
 	"github.com/urmzd/humagen/pkg/callpolicy"
 	"github.com/urmzd/humagen/pkg/catalog"
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/connectionauth"
 	"github.com/urmzd/humagen/pkg/contextflags"
+	"github.com/urmzd/humagen/pkg/corpora"
 	"github.com/urmzd/humagen/pkg/credentials"
 	"github.com/urmzd/humagen/pkg/drive"
+	"github.com/urmzd/humagen/pkg/egressguard"
 	"github.com/urmzd/humagen/pkg/evals"
 	"github.com/urmzd/humagen/pkg/feedback"
 	"github.com/urmzd/humagen/pkg/inbox"
@@ -142,7 +145,7 @@ func OpenPostgres(ctx context.Context, pool *pgxpool.Pool, providerNames ...stri
 		return Backends{}, nil, err
 	}
 	names := append(providers(), providerNames...)
-	defs, err := wire.OpenAgents(shared, names...)
+	defs, err := wire.OpenAgentsAccepting(shared, acceptProviderName, names...)
 	if err != nil {
 		return Backends{}, nil, err
 	}
@@ -228,12 +231,22 @@ func (p *Platform) openStores(cfg Config) error {
 	keep("knowledge", err)
 	p.CatalogStore, err = catalog.Open(perRequest)
 	keep("catalog", err)
+	p.Corpora, err = corpora.Open(perRequest)
+	keep("corpora", err)
+	p.Graph, err = openGraph(perRequest)
+	keep("knowledge graph", err)
 	p.SourceEvidence, err = knowledge.OpenEvidenceStore(perRequest)
 	keep("source citation evidence", err)
 	p.Evals, err = evals.Open(perRequest)
 	keep("evals", err)
 	p.Feedback, err = feedback.Open(perRequest)
 	keep("feedback", err)
+	p.GoodAsks = openGoodAsks(perRequest)
+	p.picks = pickStore(perRequest)
+	p.audiences = audienceStore(perRequest)
+	p.deliveries = deliveryStore(perRequest)
+	// A conversation that came from a corpus item pulls that item.
+	p.RegisterContextResolver("corpus", p.corpusContext)
 	p.Prefs, err = prefs.Open(perRequest)
 	keep("prefs", err)
 	p.Marks, err = marks.Open(perRequest)
@@ -244,6 +257,8 @@ func (p *Platform) openStores(cfg Config) error {
 	keep("private context flags", err)
 	p.Notifications, err = notifications.Open(perRequest)
 	keep("native notifications", err)
+	p.Background, err = background.Open(perRequest)
+	keep("background work", err)
 	p.AgentSkillDefaults, err = library.OpenDefaults(perRequest)
 	keep("agent skill defaults", err)
 	p.EmailNotifications, err = notifications.OpenEmail(perRequest)
@@ -331,6 +346,15 @@ func (p *Platform) openStores(cfg Config) error {
 	p.Credentials, err = credentials.Open(perRequest, p.secrets)
 	keep("credentials", err)
 	p.connectionHealth = state.NewTable[connectionObservation](perRequest, "connection_health")
+	p.deliveryFailures = state.NewTable[deliveryFailure](perRequest, "delivery_failures")
+	p.memoryFailures = egressguard.NewMemoryFailures()
+	// A nil table counts nothing, so automatic review would never pause:
+	// without a store, the count is kept in memory.
+	reviews := perRequest
+	if reviews == nil {
+		reviews = state.NewMemory()
+	}
+	p.pullReviews = state.NewTable[PullReview](reviews, "pull_reviews")
 	if cfg.ConnectionAuth != nil {
 		connectionConfig := *cfg.ConnectionAuth
 		connectionConfig.OnAuthFailure = p.RecordConnectionAuthFailure

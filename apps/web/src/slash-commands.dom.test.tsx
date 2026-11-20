@@ -29,20 +29,28 @@ function setup() {
   function Compose() {
     const queue = useQueue({ onStart: (m) => sent.push(m.text), onInterrupt: () => {} });
     return (
-      <Composer
-        placeholder="Message"
-        queue={queue}
-        tags={{ label: words.typeahead, options }}
-        disclaimer={null}
-      />
+      <Composer placeholder="Message" queue={queue} tags={{ label: words.typeahead, options }} />
     );
   }
   render(<Compose />);
-  const box = screen.getByRole("combobox") as HTMLTextAreaElement;
+  const box = screen.getByRole("textbox", { name: "Message" }) as HTMLTextAreaElement;
   const type = (value: string) => fireEvent.change(box, { target: { value } });
   const menu = () => screen.queryByRole("listbox", { name: words.commands });
   return { box, type, menu, sent };
 }
+
+test("while an agent works the bar stays as it is: no Stop, no working line, no beam", async () => {
+  const { type, box, sent } = setup();
+  type("Draft the plan");
+  fireEvent.submit(box.closest("form") as HTMLFormElement);
+  await waitFor(() => assert.deepEqual(sent, ["Draft the plan"]));
+  const form = box.closest("form") as HTMLFormElement;
+  // The agent's own mark is where it is stopped (StoppableMark), not the bar.
+  assert.equal(screen.queryByRole("button", { name: /^Stop/ }), null);
+  assert.equal(form.hasAttribute("data-working"), false);
+  assert.equal(form.querySelector("[data-working-beam]"), null);
+  assert.equal(screen.queryByTestId("working-thread"), null);
+});
 
 test("/ opens the command menu of skills, each with its description and kind, the match highlighted", () => {
   const { type, menu } = setup();
@@ -68,6 +76,38 @@ test("/ opens the command menu of skills, each with its description and kind, th
   // A slash inside a word or a path opens nothing.
   type("and/rev");
   assert.equal(menu(), null);
+});
+
+test("the composer is a multiline text box named Message that completes from a list", () => {
+  const { box, type, menu } = setup();
+  assert.equal(box.tagName, "TEXTAREA", "a textarea is multiline");
+  // A textarea may not be a combobox, and aria-expanded is not a text box's.
+  assert.equal(box.hasAttribute("role"), false);
+  assert.equal(box.hasAttribute("aria-expanded"), false);
+  assert.equal(screen.queryByRole("combobox"), null);
+  assert.equal(box.getAttribute("aria-autocomplete"), "list");
+  assert.equal(box.getAttribute("aria-haspopup"), "listbox");
+  assert.equal(box.hasAttribute("aria-controls"), false, "nothing is controlled while closed");
+  assert.equal(box.hasAttribute("aria-activedescendant"), false);
+  type("/rev");
+  const list = menu();
+  assert.ok(list, "the command menu opens");
+  assert.equal(box.getAttribute("aria-controls"), list.id);
+  const active = box.getAttribute("aria-activedescendant");
+  assert.equal(active, within(list).getAllByRole("option")[0]?.id);
+  fireEvent.keyDown(box, { key: "ArrowDown" });
+  assert.equal(
+    box.getAttribute("aria-activedescendant"),
+    within(list).getAllByRole("option")[1]?.id,
+    "the arrow keys move the active option",
+  );
+  fireEvent.keyDown(box, { key: "Escape" });
+  assert.equal(menu(), null);
+  assert.equal(box.hasAttribute("aria-controls"), false);
+  // Shift+Enter is a new line, never a send: the text box keeps its text.
+  type("one");
+  fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
+  assert.equal(box.value, "one");
 });
 
 test("arrow keys and Enter pick a command, written /name as a token, and sending posts the text", async () => {

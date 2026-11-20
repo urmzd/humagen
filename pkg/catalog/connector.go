@@ -23,6 +23,14 @@ type Querier interface {
 	Query(ctx context.Context, sql string) (Result, error)
 }
 
+// ReaderQuerier is the live capability run as one reader: token supplies
+// that reader's own bearer token on each call, so the system's own grants,
+// row access and masking policies decide what they read. A corpus answers a
+// data question this way and never with a shared credential.
+type ReaderQuerier interface {
+	QueryAs(ctx context.Context, token func(context.Context) (string, error), sql string) (Result, error)
+}
+
 // Result is a live query's answer, bounded by the connector's limits.
 type Result struct {
 	Columns []string `json:"columns"`

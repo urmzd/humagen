@@ -89,7 +89,7 @@ metadata: {name: default}
 		t.Fatal(err)
 	}
 	create := func(addr string) {
-		body := strings.NewReader(`{"name":"kept","provider":"offline","model":"offline","system_prompt":"Stay."}`)
+		body := strings.NewReader(`{"name":"kept","provider":"anthropic","model":"claude-sonnet-5-5","system_prompt":"Stay."}`)
 		resp, err := http.Post("http://"+addr+"/api/agents", "application/json", body)
 		if err != nil {
 			t.Fatal(err)

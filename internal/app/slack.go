@@ -16,24 +16,26 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/credref"
 	"github.com/urmzd/humagen/pkg/leader"
 	"github.com/urmzd/humagen/pkg/spec"
 
+	"github.com/urmzd/humagen/internal/httpapi"
 	"github.com/urmzd/humagen/internal/legacy"
+	"github.com/urmzd/humagen/internal/platform"
 )
 
 // SlackManifest is a Slack app manifest: what the Slack app asks Slack for.
 // humagen writes it, so the scopes and events always match what the app it runs
-// uses, and apps/slack/manifest.json is this output, checked by a test.
+// uses. apps/slack/manifest.json is this output, checked by a test, and the Slack
+// CLI project in deploy/slack generates it from here when it pushes the app.
 type SlackManifest struct {
-	Metadata struct {
-		Major int `json:"major_version"`
-		Minor int `json:"minor_version"`
-	} `json:"_metadata"`
 	DisplayInformation struct {
 		Name            string `json:"name"`
 		Description     string `json:"description"`
+		LongDescription string `json:"long_description"`
 		BackgroundColor string `json:"background_color"`
 	} `json:"display_information"`
 	Features struct {
@@ -41,21 +43,27 @@ type SlackManifest struct {
 			HomeTab             bool `json:"home_tab_enabled"`
 			MessagesTab         bool `json:"messages_tab_enabled"`
 			MessagesTabReadOnly bool `json:"messages_tab_read_only_enabled"`
+			AgentTasks          bool `json:"agent_tasks_enabled"`
 		} `json:"app_home"`
 		BotUser struct {
 			DisplayName  string `json:"display_name"`
 			AlwaysOnline bool   `json:"always_online"`
 		} `json:"bot_user"`
 		Shortcuts     []slackShortcut `json:"shortcuts"`
-		SlashCommands []slackCommand  `json:"slash_commands"`
+		SlashCommands []slackCommand  `json:"slash_commands,omitempty"`
 		AgentView     struct {
-			Description string `json:"agent_description"`
+			Description      string   `json:"agent_description"`
+			SuggestedPrompts []string `json:"suggested_prompts"`
 		} `json:"agent_view"`
+		// CodeChannels is present only when the Slack surface turns code
+		// channels on, so the default manifest asks for nothing new.
+		CodeChannels *slackCodeChannels `json:"code_channels,omitempty"`
 	} `json:"features"`
 	OAuth struct {
 		Scopes struct {
 			Bot []string `json:"bot"`
 		} `json:"scopes"`
+		PKCE bool `json:"pkce_enabled"`
 	} `json:"oauth_config"`
 	Settings struct {
 		Events struct {
@@ -64,9 +72,11 @@ type SlackManifest struct {
 		Interactivity struct {
 			Enabled bool `json:"is_enabled"`
 		} `json:"interactivity"`
-		OrgDeploy     bool `json:"org_deploy_enabled"`
-		SocketMode    bool `json:"socket_mode_enabled"`
-		TokenRotation bool `json:"token_rotation_enabled"`
+		OrgDeploy        bool `json:"org_deploy_enabled"`
+		SocketMode       bool `json:"socket_mode_enabled"`
+		MCP              bool `json:"is_mcp_enabled"`
+		TokenRotation    bool `json:"token_rotation_enabled"`
+		AppTokenRotation bool `json:"app_level_token_rotation_enabled"`
 	} `json:"settings"`
 }
 
@@ -77,6 +87,15 @@ type slackShortcut struct {
 	Description string `json:"description"`
 }
 
+type slackCodeChannels struct {
+	Enabled bool `json:"enabled"`
+}
+
+// slackCodeChannelScopes are what opening a code channel adds to the bot's
+// scopes: creating one, and reading a channel's record to tell a code channel
+// and where it was opened from (apps/slack/src/codechannel-open.ts).
+var slackCodeChannelScopes = []string{"code_channels:manage", "channels:read", "groups:read"}
+
 type slackCommand struct {
 	Command      string `json:"command"`
 	Description  string `json:"description"`
@@ -86,48 +105,52 @@ type slackCommand struct {
 
 // slackManifest builds the manifest for an app called name. Socket Mode is
 // always on: the app dials out, so the platform needs no public endpoint.
-// slackCopy is what the manifest says about the app beyond its name and
-// command: the Slack surface's own fields, each Humagen's when empty.
+// People mention the app (or DM it) and the entry agent brings in the agents
+// that fit, so the manifest offers no slash commands and one message shortcut.
+// slackCopy is what the manifest says about the app beyond its name: the Slack
+// surface's own fields, each Humagen's when empty.
 type slackCopy struct {
-	Description        string
-	BackgroundColor    spec.Color
-	CommandDescription string
-	CommandUsageHint   string
+	Description     string
+	BackgroundColor spec.Color
+	// CodeChannels adds the code channels feature and its scopes. Off, the
+	// manifest is the one every install already has.
+	CodeChannels bool
 }
 
-func slackManifest(name, command string, c slackCopy) SlackManifest {
+func slackManifest(name string, c slackCopy) SlackManifest {
 	var m SlackManifest
-	m.Metadata.Major, m.Metadata.Minor = 2, 1
 	m.DisplayInformation.Name = name
-	m.DisplayInformation.Description = "Your workspace's agents in Slack. Ask a question, or review what one is waiting on."
+	m.DisplayInformation.Description = "Mention @" + name + " in any channel, thread or DM. It brings in the right agents and answers where you asked."
 	if c.Description != "" {
 		m.DisplayInformation.Description = c.Description
 	}
+	// Slack shows the long description on the app's About page, and its App
+	// Directory asks for 175 to 4,000 characters. It names only what the manifest
+	// offers.
+	m.DisplayInformation.LongDescription = name + " puts your workspace's agents in Slack. " +
+		"Mention @" + name + " in a channel, a thread or a direct message. It brings in the agents that fit the question and answers in the thread where you asked.\n\n" +
+		"Answers stream in as the agents work, and a Stop button ends a run early. Attach files, images or a voice clip and the agents read them. " +
+		"Use the \"Ask about this\" shortcut on any message to get an answer in that message's thread.\n\n" +
+		"The Home tab shows what is waiting on you and what is new in your projects. Like or dislike an answer to say how it did."
 	m.DisplayInformation.BackgroundColor = "#2b50c8"
 	if c.BackgroundColor != "" {
 		m.DisplayInformation.BackgroundColor = c.BackgroundColor.Hex()
 	}
-	commandDescription, usageHint := "Ask "+name+" in this channel", "[question], skills, connections or canvas RUN_ID"
-	if c.CommandDescription != "" {
-		commandDescription = c.CommandDescription
-	}
-	if c.CommandUsageHint != "" {
-		usageHint = c.CommandUsageHint
-	}
-	m.Features.AppHome.HomeTab, m.Features.AppHome.MessagesTab = true, true
-	m.Features.BotUser.DisplayName, m.Features.BotUser.AlwaysOnline = strings.ToLower(name), true
+	m.Features.AppHome.HomeTab, m.Features.AppHome.MessagesTab, m.Features.AppHome.AgentTasks = true, true, true
+	m.Features.BotUser.DisplayName, m.Features.BotUser.AlwaysOnline = name, true
 	m.Features.Shortcuts = []slackShortcut{
-		{Name: "Ask " + name, Type: "global", CallbackID: "aui_ask", Description: "Ask from anywhere. The answer arrives in the app's messages."},
-		{Name: "Ask " + name + " about this", Type: "message", CallbackID: "aui_ask_about", Description: "Answer in this message's thread, using the message as the question."},
+		{Name: "Ask about this", Type: "message", CallbackID: "aui_ask_about", Description: "Answers in this message's thread, with the message as the question."},
 	}
-	m.Features.SlashCommands = []slackCommand{{Command: command, Description: commandDescription, UsageHint: usageHint}, {Command: "/skill", Description: "Run a configured agent skill", UsageHint: "[name] [arguments]"}}
-	// Slack delivers a channel message to the app only when it mentions the
-	// app, so the agent is named after it.
-	m.Features.AgentView.Description = "Your workspace's agents in Slack. Mention @" + name + " and the agent you want, such as @" + name + " @analyst, or message it."
+	m.Features.AgentView.Description = "Ask anything. " + name + " brings in the right agents and answers here."
+	m.Features.AgentView.SuggestedPrompts = []string{}
 	m.OAuth.Scopes.Bot = []string{
 		"app_mentions:read", "assistant:write", "channels:history", "chat:write", "commands",
 		"groups:history", "im:history", "mpim:history", "reactions:write", "users:read",
-		"files:read", "canvases:write",
+		"files:read", "files:write", "canvases:write",
+	}
+	if c.CodeChannels {
+		m.Features.CodeChannels = &slackCodeChannels{Enabled: true}
+		m.OAuth.Scopes.Bot = append(m.OAuth.Scopes.Bot, slackCodeChannelScopes...)
 	}
 	m.Settings.Events.Bot = []string{"agent_session_stopped", "app_home_opened", "app_mention", "assistant_thread_started", "message.im"}
 	m.Settings.Interactivity.Enabled = true
@@ -135,23 +158,22 @@ func slackManifest(name, command string, c slackCopy) SlackManifest {
 	return m
 }
 
-// slackCmd is `humagen slack manifest`. With -f, the name and command come from
+// slackCmd is `humagen slack manifest`. With -f, the name and copy come from
 // the spec: the workspace's Slack surface, else its display name, else the
 // deployment's. Flags win.
 func slackCmd(args []string, out io.Writer) error {
 	if len(args) == 0 || args[0] != "manifest" {
-		return errors.New("usage: humagen slack manifest [-f PATH] [-workspace NAME] [-name NAME] [-command /agent]")
+		return errors.New("usage: humagen slack manifest [-f PATH] [-workspace NAME] [-name NAME]")
 	}
 	fs := flag.NewFlagSet("slack manifest", flag.ContinueOnError)
 	var paths files
-	fs.Var(&paths, "f", "a spec file or directory to take the name and command from")
+	fs.Var(&paths, "f", "a spec file or directory to take the name and copy from")
 	workspace := fs.String("workspace", "", "with -f, which Platform document. Empty means the first with Slack")
 	name := fs.String("name", "", `the app's name in Slack. Empty means the spec's, else "Humagen"`)
-	command := fs.String("command", "", `the slash command. Empty means the spec's, else "/agent"`)
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
 	}
-	n, c := "Humagen", "/agent"
+	n := "Humagen"
 	var said slackCopy
 	if len(paths) > 0 {
 		cfg, err := spec.Load(paths...)
@@ -171,11 +193,8 @@ func slackCmd(args []string, out io.Writer) error {
 			if sl != nil && sl.AppName != "" {
 				n = sl.AppName
 			}
-			if sl != nil && sl.Command != "" {
-				c = sl.Command
-			}
 			if sl != nil {
-				said = slackCopy{Description: sl.Description, BackgroundColor: sl.BackgroundColor, CommandDescription: sl.CommandDescription, CommandUsageHint: sl.CommandUsageHint}
+				said = slackCopy{Description: sl.Description, BackgroundColor: sl.BackgroundColor, CodeChannels: sl.CodeChannels}
 			}
 			break
 		}
@@ -183,13 +202,7 @@ func slackCmd(args []string, out io.Writer) error {
 	if *name == "" {
 		*name = n
 	}
-	if *command == "" {
-		*command = c
-	}
-	if !strings.HasPrefix(*command, "/") {
-		return errors.New("-command starts with /")
-	}
-	b, err := json.MarshalIndent(slackManifest(*name, *command, said), "", "  ")
+	b, err := json.MarshalIndent(slackManifest(*name, said), "", "  ")
 	if err != nil {
 		return err
 	}
@@ -208,6 +221,78 @@ type slackApp struct {
 	keys   credref.Resolver
 	// dir is apps/slack. Empty means not found.
 	dir string
+	// token is the credential the server made for this app at start, under
+	// tailscale sign-in (httpapi.Authn.MintMachine). It lives in memory and in
+	// the app's environment only: never in a file, a log line or an error.
+	token string
+	// client is the id of the client record the server keeps for this app,
+	// set once that record is in place (applySlackClients). Empty, the app is
+	// told of no client and acts for nobody.
+	client string
+}
+
+// slackMachine is the subject the app's credential signs in as: the one the
+// server makes under tailscale sign-in, else the one the file names.
+func slackMachine(mode string, s spec.Slack) string {
+	if mode == "tailscale" {
+		return slackMachineSubject(s.Team)
+	}
+	return s.Machine
+}
+
+// applySlackClients keeps, for each Slack app the Platform documents turn on
+// and map people for, the client record that makes it act for them, and
+// returns each workspace's record id. A workspace whose file maps nobody gets
+// no record, and one an earlier start kept loses its machine and its people.
+// A record that cannot be kept because another client holds its id is said
+// and left out: that app acts for nobody.
+func applySlackClients(ctx context.Context, p *platform.Platform, cfg spec.Config, mode string, log *slog.Logger) (map[string]string, error) {
+	kept := map[string]string{}
+	for _, doc := range cfg.Platforms {
+		tenant := doc.Metadata.Name
+		if s := doc.Spec.Surfaces.Slack; s != nil && s.Enabled && len(s.People) > 0 {
+			c, err := p.ApplySlackApp(ctx, tenant, "file", platform.SlackApp{Team: s.Team, Machine: slackMachine(mode, *s), People: s.People})
+			switch {
+			case errors.Is(err, clients.ErrExists):
+				log.Warn("slack app's client from the file not applied, so the app acts for nobody: another client has its id", "tenant", tenant, "error", err)
+			case err != nil:
+				return nil, fmt.Errorf("platform %q: surfaces.slack.people: %w", tenant, err)
+			default:
+				kept[tenant] = c.ID
+			}
+		}
+		if err := p.ClearSlackApps(ctx, tenant, "file", kept[tenant]); err != nil {
+			return nil, fmt.Errorf("platform %q: surfaces.slack: %w", tenant, err)
+		}
+	}
+	return kept, nil
+}
+
+// slackMachineSubject is who the Slack app the server starts is under
+// tailscale sign-in, where the server makes its credential. It is the same at
+// every start, so a client can name it as its slack.machine.
+func slackMachineSubject(team string) string { return "slack-app:" + team }
+
+// slackMachineScopes are what that credential may do: the least the app's
+// README asks an identity provider for, and no role.
+var slackMachineScopes = []auth.Permission{
+	auth.RunsRead, auth.RunsWrite, auth.AgentsRead, auth.ClientsRead, auth.ProjectsRead,
+}
+
+// mintSlackCredentials gives each Slack app the server will start a credential
+// of its own, under the one sign-in that has no other way to give it one.
+func mintSlackCredentials(mode string, authn *httpapi.Authn, apps []*slackApp) error {
+	if mode != "tailscale" || authn == nil {
+		return nil
+	}
+	for _, app := range apps {
+		token, err := authn.MintMachine(app.tenant, slackMachineSubject(app.choice.Team), "Slack app", slackMachineScopes)
+		if err != nil {
+			return fmt.Errorf("platform %q: surfaces.slack: %w", app.tenant, err)
+		}
+		app.token = token
+	}
+	return nil
 }
 
 // slackDir finds apps/slack: HUMAGEN_SLACK_APP_DIR, else under the working
@@ -260,6 +345,14 @@ func (s *slackApp) env(ctx context.Context, url, publicURL string, lookup func(s
 		"SLACK_OPERATORS="+strings.Join(s.choice.Operators, ","),
 		"HUMAGEN_URL="+url, "HUMAGEN_TENANT="+s.tenant, "HUMAGEN_PUBLIC_URL="+publicURL,
 	)
+	// Off, the name is not set at all, so the app starts exactly as it did.
+	if s.choice.CodeChannels {
+		env = append(env, "SLACK_CODE_CHANNELS=1")
+	}
+	// Which client record the app is, only once the server keeps one for it.
+	if s.client != "" {
+		env = append(env, "HUMAGEN_CLIENT="+s.client)
+	}
 	// How the app signs in to humagen's API (apps/slack/src/config.ts).
 	if c := s.choice.HumagenClient; c != nil {
 		secret, err := s.keys.Resolve(ctx, c.ClientSecret.Ref)
@@ -278,6 +371,8 @@ func (s *slackApp) env(ctx context.Context, url, publicURL string, lookup func(s
 			return nil, fmt.Errorf("humagen_token: %w", err)
 		}
 		env = append(env, "HUMAGEN_TOKEN="+token)
+	} else if s.token != "" {
+		env = append(env, "HUMAGEN_TOKEN="+s.token)
 	}
 	// An app directory from before the rename reads only the old names, so
 	// they are passed too; HUMAGEN_OLD_NAMES_COPIED tells the new app they are

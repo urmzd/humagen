@@ -3,8 +3,8 @@ package github
 import (
 	"strconv"
 
-	"github.com/urmzd/orchagent/flow/address"
-	transport "github.com/urmzd/orchagent/flow/connectors/github"
+	"github.com/urmzd/saige/flow/address"
+	transport "github.com/urmzd/saige/flow/connectors/github"
 )
 
 type API = transport.API

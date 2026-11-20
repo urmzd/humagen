@@ -17,6 +17,7 @@ import (
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/catalog"
 	"github.com/urmzd/humagen/pkg/catalog/bigquery"
+	"github.com/urmzd/humagen/pkg/catalog/snowflake"
 )
 
 type BigQuerySetupCredential struct {
@@ -345,12 +346,15 @@ func (m managedBigQuery) Query(ctx context.Context, query string) (catalog.Resul
 }
 
 func (p *Platform) managedCatalogConnector(tenant, name string) (CatalogConnector, bool) {
+	if c, err := p.CatalogStore.Connector(tenant, name); err == nil && c.System == snowflake.System {
+		return p.managedSnowflakeConnector(tenant, name)
+	}
 	c, def, err := p.managedBigQueryDefinition(tenant, name)
 	if err != nil {
 		return CatalogConnector{}, false
 	}
 	impl := managedBigQuery{p: p, tenant: tenant, name: name}
-	out := CatalogConnector{Tenant: tenant, Connector: c, Refresh: time.Duration(def.Input.RefreshHours) * time.Hour, Crawler: impl}
+	out := CatalogConnector{Tenant: tenant, Connector: c, Refresh: time.Duration(def.Input.RefreshHours) * time.Hour, Crawler: impl, Reader: impl}
 	if def.Input.Credential.Kind != "oauth" {
 		out.Querier = impl
 	}

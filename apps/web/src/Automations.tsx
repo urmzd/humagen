@@ -2,11 +2,12 @@ import { defaultCopy } from "@humagen/components";
 import { CalendarIcon, GitHubIcon, SlackIcon } from "@humagen/render-web";
 import { useState } from "react";
 import type { Revision, ScheduleView } from "./api.ts";
-import { AgentTag, ItemCard, Pill, Tag } from "./cards.tsx";
+import { Background } from "./Background.tsx";
+import { AgentTag, ItemCard, itemGrid, Pill, Tag } from "./cards.tsx";
 import { inWords } from "./cron.ts";
 import type { ProjectRef } from "./projects.ts";
 import { ScheduleForm } from "./Schedules.tsx";
-import { ago, Empty, Page, primary } from "./ui.tsx";
+import { ago, Empty, Page, primary, Tabs } from "./ui.tsx";
 
 const words = defaultCopy.automations;
 const sends = defaultCopy.schedules;
@@ -14,7 +15,8 @@ const sends = defaultCopy.schedules;
 /**
  * Scheduled work: what runs at set times, and where each answer goes. Each run
  * is a session. A GitHub request is not scheduled: it starts its own session,
- * which answers where it was asked.
+ * which answers where it was asked. Its Background tab is the work agents keep
+ * at for you without a clock: watches, goals and tasks.
  */
 export function Automations({
   schedules,
@@ -23,6 +25,10 @@ export function Automations({
   can,
   onChanged,
   onSchedule,
+  tab = "schedules",
+  onTab,
+  onConversation,
+  tick,
 }: {
   schedules: ScheduleView[];
   agents: Revision[];
@@ -30,13 +36,36 @@ export function Automations({
   can: (permission: string) => boolean;
   onChanged: () => void;
   onSchedule: (name: string) => void;
+  tab?: "schedules" | "background";
+  onTab?: (tab: "schedules" | "background") => void;
+  onConversation?: (id: string) => void;
+  /** Bumped whenever a run starts or ends, so Background reads again. */
+  tick?: number;
 }) {
   const [making, setMaking] = useState(false);
   const canSchedule = can("schedules:write");
+  const tabs = onTab && (
+    <Tabs
+      label={words.tabs}
+      value={tab}
+      tabs={[
+        { id: "schedules", label: words.schedulesTab },
+        { id: "background", label: words.backgroundTab },
+      ]}
+      onChange={onTab}
+    />
+  );
+  if (tab === "background") {
+    return (
+      <Page title={words.title} tabs={tabs}>
+        <Background onConversation={onConversation ?? (() => {})} tick={tick} />
+      </Page>
+    );
+  }
   return (
     <Page
       title={words.title}
-      lede={words.lede}
+      tabs={tabs}
       actions={
         !making &&
         canSchedule && (
@@ -60,10 +89,7 @@ export function Automations({
       {schedules.length === 0 && !making ? (
         <Empty title={words.empty} />
       ) : (
-        <ul
-          className="grid min-w-0 grid-cols-[repeat(auto-fill,minmax(min(100%,20rem),1fr))] gap-3"
-          aria-label={words.title}
-        >
+        <ul className={itemGrid} aria-label={words.title}>
           {schedules.map((s) => (
             <li key={s.name} className="min-w-0">
               <ItemCard

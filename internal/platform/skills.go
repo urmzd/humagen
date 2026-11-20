@@ -1,14 +1,17 @@
 package platform
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"maps"
+	"path/filepath"
 	"slices"
 	"strings"
+	"unicode"
 
-	"github.com/urmzd/orchagent/flow/runtime"
 	saigeskills "github.com/urmzd/saige/agent/skills"
+	"github.com/urmzd/saige/flow/runtime"
 
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/operations"
@@ -37,6 +40,10 @@ import (
 //     of the request's copy of the tag's meta and puts their instructions
 //     ahead of the turn's text, under a line that says they rank below the
 //     agent's own instructions.
+//   - a skill's supporting files are named after its instructions: as
+//     skill_file_read paths, a tool the turn is then always offered, or for
+//     a model whose program reads this host's files itself, as paths to a
+//     copy placed for the turn (hostSkillFiles).
 //
 // A Slack client's command whose name is a skill's on the chain uses that
 // skill too: the client posts "/<name> ..." as the message, and the runs it
@@ -141,6 +148,34 @@ func (p *Platform) skillsOfMessage(tenant string, th threads.Thread, m threads.M
 	return out
 }
 
+// skillsNamed is the skills a turn sent straight to an agent is told to
+// use: the ones its text names, read by the grammar a message's are
+// (threads.ParseSkills) and found where a message posted in the project
+// would find them, for the person the turn is for (librarySkill): their own
+// published skills, then the published ones on the project's chain. One
+// nobody declares there refuses the turn before anything starts, as it
+// refuses a message typed in the console (threads.UnknownSkill): the turn
+// never runs without a skill it asked for.
+func (p *Platform) skillsNamed(tenant, project, person, text string) ([]pinnedSkill, error) {
+	mentions, err := threads.ParseSkills(text, tagLookup{p: p, tenant: tenant, tree: p.Projects.Tree(tenant), project: project, person: person, console: true})
+	if err != nil {
+		return nil, err
+	}
+	if err := threads.UnknownSkill(mentions); err != nil {
+		return nil, err
+	}
+	var out []pinnedSkill
+	for _, mn := range mentions {
+		skill, ok := p.librarySkill(tenant, project, person, mn.Name)
+		if !ok {
+			// Unpublished or deleted between the two reads.
+			return nil, fmt.Errorf("%w: there is no skill called %s", threads.ErrInvalid, mn.Name)
+		}
+		out = append(out, skill)
+	}
+	return out, nil
+}
+
 // commandSkill is the skill a message posted through a Slack client names
 // with one of the client's commands: text that starts with "/<name>", where
 // the client offers the command <name>. The client is the one whose
@@ -220,7 +255,19 @@ const skillsPrecedence = "The person asked you to use these skills for this turn
 // the meta, so nothing past this seam carries them twice. The run's tag keeps
 // them, so a later attempt reads them again. A pinned value that does not
 // read is refused: only the platform writes it.
-func withSkills(req runtime.Request) (runtime.Request, error) {
+//
+// Supporting files are named after each skill's instructions. A model that
+// is offered the platform's tools reads them with skill_file_read, which a
+// turn whose text lists skill: paths is always offered: it is added to the
+// turn's tools here, after a skill's tool list and the agent's grants have
+// narrowed them (resolveOperations), so the text never names a tool the
+// turn lacks (ToolSkillFileRead). One whose program reads this host's files
+// itself is offered no platform tool, so host places the pinned files where
+// it can read them and they are named by their paths there
+// (hostSkillFiles); a turn they cannot be placed for is refused rather than
+// run without them. A turn whose chain holds both kinds of model is told
+// both ways. A nil host places nothing.
+func withSkills(req runtime.Request, host func(runtime.Request, []pinnedSkill) (hostFiles, error)) (runtime.Request, error) {
 	raw, ok := req.Meta[runs.MetaSkills]
 	if !ok {
 		return req, nil
@@ -235,23 +282,160 @@ func withSkills(req runtime.Request) (runtime.Request, error) {
 	if len(skills) == 0 {
 		return req, nil
 	}
-	parts := []string{skillsPrecedence}
 	for _, s := range skills {
 		if s.PackageID != "" && s.PackageHash == "" {
 			return req, fmt.Errorf("platform: skill package %q has no snapshot hash", s.Name)
 		}
+	}
+	files := hostFiles{tool: true}
+	if host != nil && slices.ContainsFunc(skills, func(s pinnedSkill) bool { return len(s.Resources) > 0 }) {
+		var err error
+		if files, err = host(req, skills); err != nil {
+			return req, err
+		}
+	}
+	parts := []string{skillsPrecedence}
+	for _, s := range skills {
 		parts = append(parts, fmt.Sprintf("Skill $%s:\n%s", s.Name, strings.TrimSpace(s.Instructions)))
-		if len(s.Resources) > 0 {
-			manifest := []string{"Supporting files are read on demand with file_read using these exact paths. Reading a script does not execute it:"}
-			for _, resource := range s.Resources {
-				manifest = append(manifest, fmt.Sprintf("skill:%s/%s (%d bytes)", s.Name, resource.Path, resource.Size))
+		if len(s.Resources) == 0 {
+			continue
+		}
+		if files.tool {
+			manifest := []string{"Supporting files are read on demand with " + ToolSkillFileRead + " using these exact paths. Reading a script does not execute it:"}
+			for _, resource := range listedSkillFiles(s.Instructions, s.Resources) {
+				line := fmt.Sprintf("skill:%s/%s (%d bytes)", s.Name, resource.Path, resource.Size)
+				if resource.Size > maxSkillFileRead {
+					line += fmt.Sprintf(", over the %d bytes %s returns", maxSkillFileRead, ToolSkillFileRead)
+				}
+				manifest = append(manifest, line)
+			}
+			if more := len(s.Resources) - maxListedSkillFiles; more > 0 {
+				manifest = append(manifest, fmt.Sprintf("%d of %d supporting files are listed: those the instructions name first, then by path. %d more are not listed; %s reads any path the instructions name, as skill:%s/<path>.", maxListedSkillFiles, len(s.Resources), more, ToolSkillFileRead, s.Name))
+			}
+			parts = append(parts, strings.Join(manifest, "\n"))
+		}
+		if files.dir != "" {
+			opening := "Supporting files are on this host for this turn only, read only. Read them on demand with your own file tools at these exact paths. Reading a script does not execute it:"
+			if files.tool {
+				// The turn may run on either kind of model, and each is
+				// told which of the two ways is its own.
+				opening = "If you are not offered " + ToolSkillFileRead + ", the same files are on this host for this turn only, read only. Read them on demand with your own file tools at these exact paths. Reading a script does not execute it:"
+			}
+			manifest := []string{opening}
+			for _, resource := range listedSkillFiles(s.Instructions, s.Resources) {
+				manifest = append(manifest, fmt.Sprintf("%s (%d bytes)", filepath.Join(files.dir, s.Name, filepath.FromSlash(resource.Path)), resource.Size))
+			}
+			if more := len(s.Resources) - maxListedSkillFiles; more > 0 {
+				manifest = append(manifest, fmt.Sprintf("%d of %d supporting files are listed: those the instructions name first, then by path. %d more are not listed; every file is under %s.", maxListedSkillFiles, len(s.Resources), more, filepath.Join(files.dir, s.Name)+string(filepath.Separator)))
 			}
 			parts = append(parts, strings.Join(manifest, "\n"))
 		}
 	}
+	if files.tool && slices.ContainsFunc(skills, func(s pinnedSkill) bool { return len(s.Resources) > 0 }) {
+		req = withSkillFileRead(req)
+	}
 	req.Text = strings.Join(append(parts, req.Text), "\n\n")
 	return req, nil
 }
+
+// withSkillFileRead offers the turn skill_file_read, on the request's copy of
+// the revision: the pinned definition itself is never changed.
+func withSkillFileRead(req runtime.Request) runtime.Request {
+	if slices.Contains(req.Definition.Spec.Tools, ToolSkillFileRead) {
+		return req
+	}
+	req.Definition.Spec.Tools = append(slices.Clone(req.Definition.Spec.Tools), ToolSkillFileRead)
+	return req
+}
+
+// maxListedSkillFiles is how many supporting files of one skill a turn's
+// text lists: as many as a package could hold before it took more than 64
+// files, so the list costs a model no more than it did then. The rest are
+// counted, not named; skill_file_read reads any file of the pinned package,
+// listed or not, and a coding agent is given every file on the host.
+const maxListedSkillFiles = 63
+
+// listedSkillFiles is the supporting files a turn's text names: first those
+// the instructions name by their exact path, in the order they are first
+// named, then the rest in package (path) order, at most maxListedSkillFiles.
+//
+// The instructions are read once, word by word: a word is what lies between
+// spaces, quotes, brackets and the like, less a leading "./" and trailing
+// sentence punctuation, and it names a file when it is that file's path. A
+// path the words cannot hold (one with such a character, or ending in
+// sentence punctuation) is then looked for once as an exact substring. So
+// the work is one pass over the instructions, a map lookup a word, and at
+// most one search a file, for at most MaxPackageFiles files over at most
+// MaxPackageInstructions characters. Files named at the same place are
+// ordered by path.
+func listedSkillFiles(instructions string, resources []saigeskills.SkillResource) []saigeskills.SkillResource {
+	if len(resources) <= maxListedSkillFiles {
+		return resources
+	}
+	index := make(map[string]int, len(resources))
+	for i, r := range resources {
+		index[r.Path] = i
+	}
+	type mention struct{ at, i int }
+	var named []mention
+	taken := make([]bool, len(resources))
+	name := func(at, i int) {
+		if !taken[i] {
+			taken[i] = true
+			named = append(named, mention{at, i})
+		}
+	}
+	word := func(from, to int) {
+		w := strings.TrimRight(strings.TrimPrefix(instructions[from:to], "./"), skillPathEnd)
+		if i, ok := index[w]; ok {
+			name(from, i)
+		}
+	}
+	from := -1
+	for at, r := range instructions {
+		switch {
+		case !skillPathBreak(r) && from < 0:
+			from = at
+		case skillPathBreak(r) && from >= 0:
+			word(from, at)
+			from = -1
+		}
+	}
+	if from >= 0 {
+		word(from, len(instructions))
+	}
+	for i, r := range resources {
+		if taken[i] || !strings.ContainsFunc(r.Path, skillPathBreak) && !strings.ContainsAny(r.Path[len(r.Path)-1:], skillPathEnd) {
+			continue
+		}
+		if at := strings.Index(instructions, r.Path); at >= 0 {
+			name(at, i)
+		}
+	}
+	slices.SortStableFunc(named, func(a, b mention) int { return cmp.Or(cmp.Compare(a.at, b.at), cmp.Compare(a.i, b.i)) })
+	out := make([]saigeskills.SkillResource, 0, maxListedSkillFiles)
+	for _, m := range named[:min(len(named), maxListedSkillFiles)] {
+		out = append(out, resources[m.i])
+	}
+	for i, r := range resources {
+		if len(out) == maxListedSkillFiles {
+			break
+		}
+		if !taken[i] {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// skillPathBreak reports a character that ends a word of a skill's
+// instructions, and skillPathEnd is the punctuation a word may end with that
+// is not part of a path named in a sentence.
+func skillPathBreak(r rune) bool {
+	return unicode.IsSpace(r) || strings.ContainsRune("\"'`()[]{}<>,;|*", r)
+}
+
+const skillPathEnd = ".:!?"
 
 // ProjectSkills is the skills a project declares, at the project's version,
 // and what a message posted in it can name.

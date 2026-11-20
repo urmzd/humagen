@@ -1,13 +1,17 @@
 ---
-import { Image } from "astro:assets";
-import agentsShot from "../assets/console/agents.png";
-import homeShot from "../assets/console/home.png";
-import turnShot from "../assets/console/ui-agent-turn.png";
+import agentsDark from "../assets/console/agents-dark.png";
+import agentsLight from "../assets/console/agents-light.png";
+import answerDark from "../assets/console/answer-dark.png";
+import answerLight from "../assets/console/answer-light.png";
+import usageDark from "../assets/console/usage-dark.png";
+import usageLight from "../assets/console/usage-light.png";
 import Agent from "../components/Agent.astro";
 import Icon from "../components/Icon.astro";
+import Shot from "../components/Shot.astro";
 import {
   actions,
-  contact,
+  closing,
+  docs,
   hero,
   pages,
   points,
@@ -34,8 +38,8 @@ const jsonLd = {
   image: (await ogImage("home")).url,
   sameAs: site.repo,
 };
-const widths = [640, 960, 1280];
 const shot = "glass site-shot m-0";
+const side = "(min-width: 64rem) 36rem, calc(100vw - 2.5rem)";
 const caption = "px-1 pt-3 text-aui-xs text-aui-muted";
 const section = "border-t border-aui-border px-5 py-14 md:px-10 md:py-20";
 const h2 = "humagen-display text-aui-xl font-semibold text-aui-fg";
@@ -43,37 +47,49 @@ const body = "site-text text-aui-base text-aui-muted";
 ---
 <Base page={pages.home} jsonLd={jsonLd}>
   <div class="site-frame">
-    <section aria-labelledby="hero-title" data-reveal-group class="flex flex-col gap-4 px-5 pt-14 pb-14 md:px-10 md:pt-20 md:pb-20">
+    <section
+      aria-labelledby="hero-title"
+      data-reveal-group
+      class="flex flex-col items-center gap-5 px-5 pt-16 pb-14 text-center md:px-10 md:pt-24 md:pb-20"
+    >
       <h1
         id="hero-title"
         data-reveal
-        class="humagen-display max-w-[20ch] text-[1.875rem] leading-[1.15] font-semibold text-aui-fg md:text-[2.75rem]"
+        class="humagen-display max-w-[16ch] text-balance text-[2.25rem] leading-[1.08] font-semibold tracking-[-0.025em] text-aui-fg sm:text-[3rem] lg:text-[4.25rem]"
       >
         {hero.title}
       </h1>
-      <p data-reveal class="max-w-[62ch] text-aui-lg text-aui-muted">{hero.lede}</p>
-      <div data-reveal class="flex flex-wrap items-center gap-2 pt-2">
+      <p data-reveal class="max-w-[58ch] text-balance text-aui-lg text-aui-muted">{hero.lede}</p>
+      <div data-reveal class="flex flex-wrap items-center justify-center gap-x-5 gap-y-3 pt-2">
         <a class={primaryButton} href={pages.deploy.path}>{actions.deploy}</a>
-        <a class={outlineButton} href={site.repo}>
+        <a class="site-link inline-flex min-h-9 items-center gap-1.5 text-aui-base text-aui-fg" href={site.repo}>
           {actions.github}
           <Icon name="external" />
         </a>
-        <a class={outlineButton} href={contact.href}>{contact.label}</a>
       </div>
       <p data-reveal class="text-aui-xs text-aui-muted">{hero.status}</p>
-      <figure data-reveal class="m-0 pt-8">
+      <figure data-reveal class="m-0 w-full pt-8 text-left">
         <div class={`${shot} shadow-aui-md`}>
-          <Image
-            src={homeShot}
-            alt={screens.home.alt}
-            widths={widths}
-            sizes="(min-width: 68rem) 63rem, calc(100vw - 2.5rem)"
-            format="webp"
-            loading="eager"
-            fetchpriority="high"
-          />
+          {
+            (["light", "dark"] as const).map((t) => (
+              <video
+                class={`theme-${t}`}
+                data-demo
+                width="1600"
+                height="1000"
+                muted
+                loop
+                playsinline
+                preload="none"
+                poster={`/demo/demo-${t}.jpg`}
+                aria-label={screens.demo.label}
+              >
+                <source src={`/demo/demo-${t}.mp4`} type="video/mp4" />
+              </video>
+            ))
+          }
         </div>
-        <figcaption class={caption}>{screens.home.caption}</figcaption>
+        <figcaption class={caption}>{screens.demo.caption}</figcaption>
       </figure>
     </section>
 
@@ -103,10 +119,8 @@ const body = "site-text text-aui-base text-aui-muted";
         <p class="text-aui-xs text-aui-muted">{roster.caption}</p>
       </div>
       <figure data-reveal class="m-0">
-        <div class={shot}>
-          <Image src={turnShot} alt={screens.turn.alt} widths={widths} sizes="(min-width: 64rem) 36rem, calc(100vw - 2.5rem)" format="webp" />
-        </div>
-        <figcaption class={caption}>{screens.turn.caption}</figcaption>
+        <Shot light={answerLight} dark={answerDark} alt={screens.answer.alt} sizes={side} />
+        <figcaption class={caption}>{screens.answer.caption}</figcaption>
       </figure>
     </section>
 
@@ -120,10 +134,23 @@ const body = "site-text text-aui-base text-aui-muted";
         <p class={body} set:html={inline(points.operate.body)} />
       </div>
       <figure data-reveal class="m-0">
-        <div class={shot}>
-          <Image src={agentsShot} alt={screens.agents.alt} widths={widths} sizes="(min-width: 64rem) 36rem, calc(100vw - 2.5rem)" format="webp" />
-        </div>
+        <Shot light={agentsLight} dark={agentsDark} alt={screens.agents.alt} sizes={side} />
         <figcaption class={caption}>{screens.agents.caption}</figcaption>
+      </figure>
+    </section>
+
+    <section
+      aria-labelledby="govern-title"
+      data-reveal-group
+      class={`${section} grid items-center gap-8 lg:grid-cols-[1fr_1.35fr] lg:gap-12`}
+    >
+      <div data-reveal class="flex flex-col gap-3">
+        <h2 id="govern-title" class={h2}>{points.govern.title}</h2>
+        <p class={body} set:html={inline(points.govern.body)} />
+      </div>
+      <figure data-reveal class="m-0">
+        <Shot light={usageLight} dark={usageDark} alt={screens.usage.alt} sizes={side} />
+        <figcaption class={caption}>{screens.usage.caption}</figcaption>
       </figure>
     </section>
 
@@ -210,14 +237,48 @@ const body = "site-text text-aui-base text-aui-muted";
       </div>
     </section>
 
-    <section aria-labelledby="closing-title" data-reveal-group class={section}>
+    <section aria-labelledby="closing-title" data-reveal-group class={`${section} text-center`}>
       <div data-reveal>
-        <h2 id="closing-title" class={h2}>Questions before you run it?</h2>
-        <p class={`${body} mt-3`}>
-          Write to the founder at <a href={contact.href}>{contact.email}</a>, or open an issue on{" "}
-          <a href={`${site.repo}/issues`}>GitHub</a>.
-        </p>
+        <h2 id="closing-title" class="humagen-display mx-auto max-w-[22ch] text-[1.75rem] leading-[1.15] font-semibold tracking-[-0.02em] text-aui-fg md:text-[2.5rem]">
+          {closing.heading}
+        </h2>
+        <p class={`${body} mx-auto mt-4 max-w-[56ch]`}>{closing.body}</p>
+        <div class="mt-7 flex flex-wrap items-center justify-center gap-x-5 gap-y-3">
+          <a class={outlineButton} href={site.repo}>
+            {actions.github}
+            <Icon name="external" />
+          </a>
+          <a class="site-link inline-flex min-h-9 items-center text-aui-base text-aui-fg" href={docs.href}>Read the docs</a>
+        </div>
       </div>
     </section>
   </div>
+  <script>
+    // The hero recording plays in the reader's theme, and only with motion
+    // allowed; otherwise it rests on its last frame with controls to play it.
+    const videos = [...document.querySelectorAll<HTMLVideoElement>("video[data-demo]")];
+    const still = matchMedia("(prefers-reduced-motion: reduce)");
+    const dark = matchMedia("(prefers-color-scheme: dark)");
+    const show = () => {
+      for (const v of videos) {
+        const visible = v.offsetParent !== null;
+        if (!visible) {
+          v.pause();
+          continue;
+        }
+        v.controls = still.matches;
+        if (still.matches) {
+          v.pause();
+          continue;
+        }
+        v.preload = "auto";
+        v.play().catch(() => {
+          v.controls = true;
+        });
+      }
+    };
+    show();
+    still.addEventListener("change", show);
+    dark.addEventListener("change", show);
+  </script>
 </Base>

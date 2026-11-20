@@ -18,27 +18,27 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/orchagent/durable"
-	"github.com/urmzd/orchagent/durable/ledger"
-	dqueue "github.com/urmzd/orchagent/durable/queue"
-	"github.com/urmzd/orchagent/durable/worker"
-	"github.com/urmzd/orchagent/sandbox/controlplane"
-	"github.com/urmzd/orchagent/sandbox/metrics"
-	"github.com/urmzd/orchagent/sandbox/node/inproc"
-	"github.com/urmzd/orchagent/sandbox/tool"
-	"github.com/urmzd/orchagent/sandbox/workspace"
 	"github.com/urmzd/saige/agent/agenttest"
 	saigetypes "github.com/urmzd/saige/agent/types"
+	"github.com/urmzd/saige/durable"
+	"github.com/urmzd/saige/durable/ledger"
+	dqueue "github.com/urmzd/saige/durable/queue"
+	"github.com/urmzd/saige/durable/worker"
+	"github.com/urmzd/saige/sandbox/controlplane"
+	"github.com/urmzd/saige/sandbox/metrics"
+	"github.com/urmzd/saige/sandbox/node/inproc"
+	"github.com/urmzd/saige/sandbox/tool"
+	"github.com/urmzd/saige/sandbox/workspace"
 
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/integrations/github"
-	"github.com/urmzd/orchagent/flow/bus"
-	"github.com/urmzd/orchagent/flow/connector"
-	"github.com/urmzd/orchagent/flow/egress"
-	"github.com/urmzd/orchagent/flow/event"
-	"github.com/urmzd/orchagent/flow/runtime"
-	"github.com/urmzd/orchagent/flow/signature"
-	"github.com/urmzd/orchagent/flow/turn/native"
+	"github.com/urmzd/saige/flow/bus"
+	"github.com/urmzd/saige/flow/connector"
+	"github.com/urmzd/saige/flow/egress"
+	"github.com/urmzd/saige/flow/event"
+	"github.com/urmzd/saige/flow/runtime"
+	"github.com/urmzd/saige/flow/signature"
+	"github.com/urmzd/saige/flow/turn/native"
 )
 
 // githubIntegrationBus preserves the real bus and records the runtime's output.
@@ -92,7 +92,7 @@ func TestGitHubCollaborationFlowsThroughDurableSandboxAndEgress(t *testing.T) {
 	}
 	seed(firstSHA)
 	api.SetWritePermission(ref, "maintainer", true)
-	gh, err := github.New(github.Config{API: api, Verifier: signature.NewGitHub(secret), Owners: []string{"acme"}, Bots: map[string]string{"github-agent[bot]": "github-agent"}, AutoLabels: map[string]map[string]string{"acme/service": {"agent:auto": "github-agent"}}, Checks: true, Guides: true, Mutations: true, MutationSecret: []byte(secret), Tenant: "acme", Interval: -1})
+	gh, err := github.New(github.Config{API: api, Verifier: signature.NewGitHub(secret), Owners: []string{"acme"}, Bots: map[string]string{"github-agent[bot]": "github-agent"}, Checks: true, Guides: true, Mutations: true, MutationSecret: []byte(secret), Tenant: "acme", Interval: -1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -202,7 +202,10 @@ func TestGitHubCollaborationFlowsThroughDurableSandboxAndEgress(t *testing.T) {
 	wait(gh.Ingesting)
 	webhook := func(kind, id, action, sha, body string) event.Envelope {
 		t.Helper()
-		data := map[string]any{"action": action, "repository": map[string]any{"name": "service", "owner": map[string]string{"login": "acme"}}, "sender": map[string]string{"login": "maintainer", "type": "User"}, "pull_request": map[string]any{"number": 42, "state": "open", "head": map[string]string{"sha": sha}, "labels": []map[string]string{{"name": "agent:auto"}}}, "label": map[string]string{"name": "agent:auto"}}
+		data := map[string]any{"action": action, "repository": map[string]any{"name": "service", "owner": map[string]string{"login": "acme"}}, "sender": map[string]string{"login": "maintainer", "type": "User"}, "pull_request": map[string]any{"number": 42, "state": "open", "head": map[string]string{"sha": sha}}}
+		if action == "review_requested" {
+			data["requested_reviewer"] = map[string]string{"login": "github-agent[bot]"}
+		}
 		if kind == "pull_request_review_comment" {
 			data["comment"] = map[string]any{"id": 92, "in_reply_to_id": 91, "body": body}
 		}
@@ -275,7 +278,7 @@ func TestGitHubCollaborationFlowsThroughDurableSandboxAndEgress(t *testing.T) {
 		}
 		t.Fatalf("no %s action in %s", name, runID)
 	}
-	first := webhook("pull_request", "initial-label", "labeled", firstSHA, "")
+	first := webhook("pull_request", "initial-review", "review_requested", firstSHA, "")
 	firstRun := run(first)
 	assertAction(firstRun, "github_read_file", "package service")
 	if len(api.Comments()) != 2 {
@@ -285,14 +288,14 @@ func TestGitHubCollaborationFlowsThroughDurableSandboxAndEgress(t *testing.T) {
 		t.Fatalf("unformatted review %s", body)
 	}
 	// Signed webhook redelivery joins the same durable run and does not rerun the model.
-	if duplicate := run(webhook("pull_request", "initial-label", "labeled", firstSHA, "")); duplicate != firstRun {
+	if duplicate := run(webhook("pull_request", "initial-review", "review_requested", firstSHA, "")); duplicate != firstRun {
 		t.Fatal("duplicate run identity")
 	}
 	if len(api.Comments()) != 2 || len(api.Checks()) != 1 {
 		t.Fatal("duplicate delivery created new output")
 	}
 	seed(secondSHA)
-	secondRun := run(webhook("pull_request", "commit-change", "synchronize", secondSHA, ""))
+	secondRun := run(webhook("pull_request", "commit-change", "review_requested", secondSHA, ""))
 	assertAction(secondRun, "github_read_context", secondSHA)
 	if len(api.Comments()) != 3 || !strings.Contains(api.Comments()[0].Body, secondSHA) {
 		t.Fatal("guide was not updated separately from new review")

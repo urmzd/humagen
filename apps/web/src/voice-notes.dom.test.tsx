@@ -58,7 +58,7 @@ function setup(voice?: VoiceNotes) {
   const sent: string[] = [];
   function Compose() {
     const queue = useQueue({ onStart: (m) => sent.push(m.text), onInterrupt: () => {} });
-    return <Composer placeholder="Message" queue={queue} disclaimer={null} voice={voice} />;
+    return <Composer placeholder="Message" queue={queue} voice={voice} />;
   }
   render(<Compose />);
   return { sent, box: screen.getByRole("textbox") as HTMLTextAreaElement };
@@ -78,8 +78,13 @@ test("a voice note is recorded, transcribed, and put in the draft marked, to rea
   const stop = await screen.findByRole("button", { name: words.stop });
   assert.equal(stop.getAttribute("aria-pressed"), "true");
   assert.ok(screen.getByText(words.recording), "the person is told the microphone is on");
+  const level = () => document.querySelector("[data-voice-level]");
+  // The level is part of the composer's light, read when it is first due.
+  await waitFor(() => assert.ok(level(), "the bar shows the microphone's level while it records"));
+  assert.equal(level()?.getAttribute("aria-hidden"), "true");
   await act(async () => fireEvent.click(stop));
   await waitFor(() => assert.equal(box.value, "[Voice note, english] Move standup to ten."));
+  assert.equal(level(), null, "and the level leaves with the recording");
   assert.equal(heard.length, 1);
   assert.equal(heard[0]?.type, "audio/webm;codecs=opus");
   assert.deepEqual(stopped, ["track"], "the microphone is let go");

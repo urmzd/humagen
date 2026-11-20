@@ -10,7 +10,9 @@
 //
 // The credential is a reference (pkg/credref) to a service account key,
 // read on every call. With none, the client uses Application Default
-// Credentials: on GCP, the VM's service account.
+// Credentials: on GCP, the VM's service account. With a TokenSource, such
+// as the reader's own OAuth token, queries go through the REST jobs.query
+// method, which the bigquery.readonly scope authorizes.
 package bigquery
 
 import (
@@ -64,8 +66,9 @@ type Config struct {
 	// Credential is a reference to a service account key in JSON. Empty is
 	// Application Default Credentials.
 	Credential string
-	// TokenSource supplies a freshly authorized token for every Google API request.
-	// When set, credentials and ADC are not used as a fallback.
+	// TokenSource supplies a freshly authorized token for every Google API
+	// request, called with the request's context. When set, credentials and
+	// ADC are not used as a fallback, and queries run through jobs.query.
 	TokenSource func(context.Context) (string, error)
 	// MaxBytesBilled caps what one query may read. Zero is
 	// DefaultMaxBytesBilled.
@@ -111,7 +114,9 @@ type api interface {
 	Tables(ctx context.Context, dataset string) ([]string, error)
 	Table(ctx context.Context, dataset, table string) (table, error)
 	DryRun(ctx context.Context, sql string) (plan, error)
-	Run(ctx context.Context, sql string, maxBytes int64, maxRows int) (answer, error)
+	// Run runs sql under the caps. Before it reads any row it passes the
+	// tables the job read to admit, and returns admit's error.
+	Run(ctx context.Context, sql string, maxBytes int64, maxRows int, admit func(tables []string) error) (answer, error)
 	Close() error
 }
 
@@ -151,6 +156,7 @@ const maxListedTables = 50
 type Connector struct {
 	cfg  Config
 	open func(ctx context.Context) (api, error)
+	dial func(ctx context.Context, cfg Config) (api, error)
 }
 
 // New returns a connector. Nothing is read until it is used.
@@ -161,15 +167,32 @@ func newWith(cfg Config, open func(ctx context.Context, cfg Config) (api, error)
 	if err != nil {
 		return nil, err
 	}
-	return &Connector{cfg: cfg, open: func(ctx context.Context) (api, error) { return open(ctx, cfg) }}, nil
+	return &Connector{cfg: cfg, dial: open, open: func(ctx context.Context) (api, error) { return open(ctx, cfg) }}, nil
+}
+
+// QueryAs runs Query as one reader with their own OAuth token, read per
+// call, so their IAM grants and row-level security apply. The connector's
+// own credential is never used; its datasets, byte cap and row bound are.
+func (c *Connector) QueryAs(ctx context.Context, token func(context.Context) (string, error), sql string) (catalog.Result, error) {
+	if token == nil {
+		return catalog.Result{}, fmt.Errorf("%w: no reader token", ErrInvalid)
+	}
+	cfg := c.cfg
+	cfg.Credential, cfg.TokenSource = "", token
+	reader, err := newWith(cfg, c.dial)
+	if err != nil {
+		return catalog.Result{}, err
+	}
+	return reader.Query(ctx, sql)
 }
 
 // Config returns the connector's settings with their defaults.
 func (c *Connector) Config() Config { return c.cfg }
 
 var (
-	_ catalog.Crawler = (*Connector)(nil)
-	_ catalog.Querier = (*Connector)(nil)
+	_ catalog.Crawler       = (*Connector)(nil)
+	_ catalog.Querier       = (*Connector)(nil)
+	_ catalog.ReaderQuerier = (*Connector)(nil)
 )
 
 // Crawl lists the connector's datasets and their tables with schemas. It
@@ -260,13 +283,15 @@ func (c *Connector) Query(ctx context.Context, sql string) (catalog.Result, erro
 	if p.StatementType != "SELECT" {
 		return catalog.Result{}, fmt.Errorf("%w: this is a %s statement", ErrNotReadOnly, strings.ToUpper(p.StatementType))
 	}
+	// A dry run through jobs.query lists no tables; Run checks the tables
+	// the job read before it reads any row.
 	if err := c.inScope(p.Tables); err != nil {
 		return catalog.Result{}, err
 	}
 	if p.Bytes > c.cfg.MaxBytesBilled {
 		return catalog.Result{EstimatedBytes: p.Bytes}, fmt.Errorf("%w: it would read %d bytes, and the cap is %d; select fewer columns or filter on the partition", ErrTooCostly, p.Bytes, c.cfg.MaxBytesBilled)
 	}
-	a, err := bq.Run(ctx, sql, c.cfg.MaxBytesBilled, c.cfg.MaxRows)
+	a, err := bq.Run(ctx, sql, c.cfg.MaxBytesBilled, c.cfg.MaxRows, c.inScope)
 	if err != nil {
 		return catalog.Result{EstimatedBytes: p.Bytes}, fmt.Errorf("bigquery: query: %w", err)
 	}

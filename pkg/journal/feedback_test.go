@@ -2,7 +2,7 @@ package journal_test
 
 import (
 	"github.com/urmzd/humagen/pkg/journal"
-	"github.com/urmzd/orchagent/flow/event"
+	"github.com/urmzd/saige/flow/event"
 	"testing"
 	"time"
 )

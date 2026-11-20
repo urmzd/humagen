@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/urmzd/humagen/internal/toolprovider"
 	"github.com/urmzd/humagen/internal/wire"
-	"github.com/urmzd/orchagent/flow/toolprovider"
 )
 
 // The reference's own examples load, so docs/reference/spec.md cannot drift from the
@@ -56,6 +56,9 @@ func TestTheReferenceExamplesLoad(t *testing.T) {
 	if err := cfg.Check(Kinds{}); err != nil {
 		t.Fatalf("strict check: %v", err)
 	}
+	if sl := cfg.Platforms[0].Spec.Surfaces.Slack; sl.Machine != "humagen-slack" || len(sl.People) != 1 || sl.People["U0123456"] != "issuer|person-subject" {
+		t.Fatalf("the example's Slack app acts for %v as %q", sl.People, sl.Machine)
+	}
 	if sb, err := Block[DockerSandbox](cfg.System.Spec.Sandbox); err != nil || cfg.System.Spec.Sandbox.Kind != "docker" || sb.Runtime != RuntimeGVisor || sb.Image != DefaultSandboxImage || sb.Max != 64 {
 		t.Fatalf("the example's sandbox = %+v %+v %v", cfg.System.Spec.Sandbox, sb, err)
 	}
@@ -72,7 +75,7 @@ func TestTheReferenceExamplesLoad(t *testing.T) {
 	if g := w.Projects[2]; g.Parent != "Field" || g.Kind != ProjectAccount || g.Account == nil || g.Account.URL != "https://crm.example.com/globex" {
 		t.Fatalf("the example's account project = %+v", g)
 	}
-	if g := w.Projects[2]; len(w.Channels) != 1 || len(w.Experts) != 1 || len(g.Channels) != 2 || g.Channels[0].Default != "*" || g.Channels[1].Slack == nil || len(g.Experts) != 1 {
+	if g := w.Projects[2]; len(w.Channels) != 1 || len(w.Experts) != 1 || len(g.Channels) != 2 || g.Channels[0].Purpose != "Renewal work" || g.Channels[1].Slack == nil || len(g.Experts) != 1 {
 		t.Fatalf("the example's channels and experts = %+v %+v %+v", w.Channels, w.Experts, g)
 	}
 	if f := w.Projects[1]; len(w.Knowledge) != 1 || len(f.Knowledge) != 1 || f.Knowledge[0] != "field-playbook" {
@@ -393,6 +396,42 @@ func TestAServerRoleIsCheckedAgainstTheStores(t *testing.T) {
 		if want == "" && err != nil || want != "" && (err == nil || !strings.Contains(err.Error(), want)) {
 			t.Errorf("%q: err = %v, want %q", body, err, want)
 		}
+	}
+}
+
+// Each process has its own in-memory bus, so more than one replica on it is
+// refused, and the message says what to set. A bus left out follows the
+// stores the file declares. One replica, and any number on the Postgres bus,
+// pass.
+func TestMoreThanOneReplicaOnTheMemoryBusIsRefused(t *testing.T) {
+	sys := "api_version: humagen/v1\nkind: System\nspec:\n"
+	pgStores := "  stores: {kind: postgres, postgres: {url: {ref: env:HUMAGEN_POSTGRES_URL}}}\n"
+	refused := "bus: the in-memory bus reaches one process only, so 2 replicas would each miss the other's events; set stores.kind: postgres and bus.kind: postgres (or leave bus out), or set server.replicas: 1"
+	for body, want := range map[string]string{
+		sys + "  server: {replicas: 2}\n  bus: {kind: memory}\n":              refused,
+		sys + "  server: {replicas: 2}\n  stores: {kind: memory}\n":           refused,
+		sys + pgStores + "  server: {replicas: 2}\n  bus: {kind: memory}\n":   refused,
+		sys + "  server: {replicas: -1}\n":                                    "replicas -1 is negative",
+		sys + "  server: {replicas: 1}\n  bus: {kind: memory}\n":              "",
+		sys + "  bus: {kind: memory}\n":                                       "",
+		sys + "  server: {replicas: 2}\n":                                     refused,
+		sys + pgStores + "  server: {replicas: 2}\n":                          "",
+		sys + pgStores + "  server: {replicas: 4}\n  bus: {kind: postgres}\n": "",
+	} {
+		path := filepath.Join(t.TempDir(), "humagen.yaml")
+		writeFile(t, path, body)
+		cfg, err := Load(path)
+		if err == nil {
+			err = cfg.Check(Kinds{})
+		}
+		if want == "" && err != nil || want != "" && (err == nil || !strings.Contains(err.Error(), want)) {
+			t.Errorf("%q: err = %v, want %q", body, err, want)
+		}
+	}
+	var s System
+	s.Defaults()
+	if s.Spec.Server.Replicas != 1 {
+		t.Errorf("server.replicas defaults to %d, want 1", s.Spec.Server.Replicas)
 	}
 }
 

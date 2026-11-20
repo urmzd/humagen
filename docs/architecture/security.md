@@ -1,7 +1,7 @@
 # Security
 
 How the platform decides who is calling, what they may do, and what it refuses.
-Report vulnerabilities as described in [SECURITY.md](../../SECURITY.md).
+Report vulnerabilities as described in [SECURITY.md](https://github.com/urmzd/humagen/blob/main/SECURITY.md).
 
 ## Callers
 
@@ -11,6 +11,7 @@ Report vulnerabilities as described in [SECURITY.md](../../SECURITY.md).
 | A person through Tailscale Serve | Serve identity headers from a loopback peer at the configured HTTPS host | Roles, from subject or anyone grants |
 | A person in a CLI | An access token as `Authorization: Bearer` | Roles, from the policy's grants |
 | A machine | A client-credentials access token as `Authorization: Bearer` | Exactly the scopes on the token |
+| The Slack app the server starts, under Tailscale sign-in | A token the server made for it at start, as `Authorization: Bearer`, from a loopback peer at the loopback address | Exactly the scopes the server gives it |
 
 Every caller becomes a `Principal`, and every route asks it one question:
 `Can(permission)`.
@@ -24,7 +25,7 @@ The built-in one declares these four, and the group flags grant them:
 |------|-------------|
 | `viewer` | `agents:read`, `runs:read`, `schedules:read`, `alerts:read`, `knowledge:read`, `evals:read`, `billing:read`, `artifacts:read`, `clients:read`, `projects:read`, `people:read` |
 | `operator` | viewer, plus `runs:write`, `schedules:write`, `alerts:write`, `evals:write`, `artifacts:write`, `projects:write`, `speech:write` |
-| `manager` | operator, plus `agents:write`, `knowledge:write`. Writing agents covers their call policies, so a manager is the natural approver of calls between agents |
+| `manager` | operator, plus `agents:write`, `knowledge:write`, `knowledge:import`. Writing agents covers their call policies, so a manager is the natural approver of calls between agents. `knowledge:import` is writing an imported session's document with its structure (`humagen import sessions`); it went with `knowledge:write` before it had a permission of its own, and an import needs both: the import routes check `knowledge:import`, and the platform also requires `knowledge:write` |
 | `admin` | manager, plus `billing:write`, `clients:write`, `projects:govern` |
 
 Recording a voice note in the console (`speech:write`) is an operator's,
@@ -544,13 +545,48 @@ also needs an explicit policy grant unless you grant a role to `anyone`.
 Trust all local processes on the Serve host: they can forge loopback identity
 headers. Never expose the backend through another proxy. Requests from remote
 peers, to another host, with bearer credentials, or without a user identity
-are refused. Funnel traffic and tagged devices carry no Serve user identity
-and cannot sign in. Display names support Serve's RFC 2047 encoding.
+are refused. The one bearer credential taken is the Slack app's, below. Funnel
+traffic and tagged devices carry no Serve user identity and cannot sign in.
+Display names support Serve's RFC 2047 encoding.
 
 Signing out clears Humagen cookies but cannot end the device's Tailscale
 identity. Reloading the console signs the user in again. Remove the policy
 grant or tailnet access to revoke access. This mode does not accept OIDC
 machine tokens; use OIDC mode for those deployments.
+
+### The Slack app under Tailscale
+
+The Slack app is a process, and a process cannot sign in through Serve. So
+under Tailscale sign-in the server makes a credential for each Slack app it
+starts (`surfaces.slack`):
+
+- **What it is.** 32 random bytes, made when the server starts and handed to
+  the app in its environment (`HUMAGEN_TOKEN`). The server keeps only its
+  hash, in memory. It is in no file, log line or error, and a restart makes a
+  new one. Each workspace's app has its own, and so does each replica.
+- **When it is taken.** Only from a loopback peer, at the loopback address the
+  server listens on, with one `Authorization: Bearer` header and no
+  `Tailscale-` header. A request that came through Serve names the Serve host
+  and is refused, so the token is of no use from the tailnet. A token together
+  with an identity header is refused. Tokens are compared in constant time.
+- **Who it is.** A machine in the surface's workspace, with the subject
+  `slack-app:<team id>` and no role. It holds `runs:read`, `runs:write`,
+  `agents:read`, `clients:read` and `projects:read`, the least the app asks an
+  identity provider for, and nothing else: no policy grant widens it. It
+  acts for nobody until the Platform document maps people
+  (`surfaces.slack.people`): the server then keeps a Slack client that names
+  that subject as its `slack.machine`, and the token acts for exactly the
+  people mapped, each with what the policy grants their subject
+  ([the spec](../reference/spec.md#whom-the-slack-app-acts-for),
+  [clients](../reference/clients.md#people-a-slack-app-answers-for)). A
+  `machine` in the file is refused in this mode.
+- **What is refused.** `humagen_client` or `humagen_token` on the surface:
+  nothing could verify them in this mode. An app run by hand has no
+  credential; only the one the server starts does.
+
+The token is as safe as the app's environment. Another process of the same
+user on the host can read it there, which gives it less than the identity
+headers it could already forge.
 
 ## Files agents make
 
@@ -780,6 +816,6 @@ that kind.
 
 ## Recorded break-glass reads
 
-The ordinary project role and private-thread participation rule is evaluated before `projects:govern` bypasses it. Every exceptional read writes who read which project or thread, when, and by which server route. A failed audit write refuses access. Internal reads carry route `platform`. HTTP writes do not create read records.
+The ordinary project role and private-thread participation rule is evaluated before `projects:govern` bypasses it. Every exceptional read writes who read which project or thread, when, and by which server route. A failed audit write refuses access. A read is what a response shows its reader: a row it returns, or a fact of one it states, such as a count that includes it. A list of sessions records the sessions it returns that the reader sees only by exception, each with the session above it when that one is also seen only by exception, and records nothing for a session the platform examined to order, filter or page the list and did not return. The records of everything one response shows are written together, in one write that is applied whole or not at all, before the first byte of the response is sent. When they cannot be written, or would pass the tenant's cap, none is kept and the response is refused whole, as something that is not there is (404): a list returns no rows and no cursor, and the read history holds nothing for a response nobody was sent. A HEAD is a read as its GET is, recorded before its headers. A stream whose opening read cannot be recorded is told 404 at once and ends; once open, it records each later read as it is granted, before the event that shows it. Internal reads carry route `platform`. HTTP writes do not create read records.
 
 The state store keeps records across restart on memory and Postgres backends. Records follow `workspace.inbox_retention` and are removed at startup and hourly. Each tenant holds at most 100,000 records; saturation refuses exceptional reads until retention makes room. Workspace administrators alone list the records through `GET /api/read-audit`, bounded to 500 rows and a 31-day window. Settings shows at most 100 of the last day's records. Audit records deliberately disclose confidential project and thread identifiers to administrators.

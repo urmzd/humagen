@@ -7,7 +7,7 @@ import (
 
 	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/wire"
-	"github.com/urmzd/orchagent/flow/connectors/cron"
+	"github.com/urmzd/saige/flow/connectors/cron"
 )
 
 // What becomes of what a scheduled agent posts in a project.
@@ -96,7 +96,7 @@ func checkSchedules(sp PlatformSpec) error {
 			if err := checkAgentName(sc.Agent, known, blind); err != nil {
 				return fmt.Errorf("%s.agent: %w", at, err)
 			}
-			if why := unavailable(sc.Agent, p.Name, parents, lists, homes); why != "" {
+			if why := unavailable(sc.Agent, p.Name, parents, lists); why != "" {
 				return fmt.Errorf("%s.agent: %s is not available in %s: %s", at, sc.Agent, display(p.Name), why)
 			}
 		}

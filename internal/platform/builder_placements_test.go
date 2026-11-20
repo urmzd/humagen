@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/urmzd/humagen/internal/toolprovider"
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/clients"
@@ -16,10 +17,9 @@ import (
 	"github.com/urmzd/humagen/pkg/runs"
 	runsettings "github.com/urmzd/humagen/pkg/settings"
 	"github.com/urmzd/humagen/pkg/threads"
-	"github.com/urmzd/orchagent/flow/event"
-	"github.com/urmzd/orchagent/flow/runtime"
-	"github.com/urmzd/orchagent/flow/toolprovider"
-	flowturn "github.com/urmzd/orchagent/flow/turn"
+	"github.com/urmzd/saige/flow/event"
+	"github.com/urmzd/saige/flow/runtime"
+	flowturn "github.com/urmzd/saige/flow/turn"
 )
 
 func placementFixture(t *testing.T) (*Platform, runtime.Request, wire.AgentSpec) {
@@ -28,7 +28,7 @@ func placementFixture(t *testing.T) (*Platform, runtime.Request, wire.AgentSpec)
 	if err != nil {
 		t.Fatal(err)
 	}
-	p, err := New(Config{Workspace: t.TempDir(), Policy: policy, BuiltinProvider: "offline", BuiltinModel: "offline"})
+	p, err := New(Config{Workspace: t.TempDir(), Policy: policy, TestBuiltinProvider: "offline", TestBuiltinModel: "offline"})
 	if err != nil {
 		t.Fatal(err)
 	}

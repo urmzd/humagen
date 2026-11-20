@@ -9,11 +9,11 @@ import (
 
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/evals"
-	"github.com/urmzd/orchagent/flow/event"
-	"github.com/urmzd/orchagent/flow/runtime"
-	flowturn "github.com/urmzd/orchagent/flow/turn"
-	"github.com/urmzd/orchagent/flow/turn/native"
 	types "github.com/urmzd/saige/agent/types"
+	"github.com/urmzd/saige/flow/event"
+	"github.com/urmzd/saige/flow/runtime"
+	flowturn "github.com/urmzd/saige/flow/turn"
+	"github.com/urmzd/saige/flow/turn/native"
 )
 
 func TestBuilderPersonalToolsRequireExplicitReviewedChange(t *testing.T) {
@@ -23,7 +23,7 @@ func TestBuilderPersonalToolsRequireExplicitReviewedChange(t *testing.T) {
 		}
 		return flowturn.Result{Text: "safe"}, nil
 	})
-	p, err := New(Config{Workspace: t.TempDir(), Runtime: engine, BuiltinProvider: "offline", BuiltinModel: "offline"})
+	p, err := New(Config{Workspace: t.TempDir(), Runtime: engine, TestBuiltinProvider: "offline", TestBuiltinModel: "offline"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,8 +67,8 @@ func TestBuilderPersonalToolsRequireExplicitReviewedChange(t *testing.T) {
 		t.Fatal("preview granted personal tools")
 	}
 	apply := p.builderApplyChangeTool(req)
-	approval, ok := apply.(native.Approving)
-	if !ok {
+	approval := p.operationTool(req, apply, p.toolDeclaration(ToolApplyChange)).(native.Approving)
+	if _, needed := declaredApproval(req, p.toolDeclaration(ToolApplyChange), types.ToolCallPart{}); !needed {
 		t.Fatal("grant bypasses person approval")
 	}
 	args := map[string]any{"name": before.Name, "change": card.ID}

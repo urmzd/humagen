@@ -161,8 +161,16 @@ export interface InboxNotice {
   kind: string;
   state: string;
   updated_at: string;
-  /** To this app's machine only: the person it maps a mention or a question is addressed to. */
+  /**
+   * To this app's machine only: the person it maps a mention, a question or
+   * a background result is addressed to.
+   */
   for?: ActAs;
+  /**
+   * With `for`, on a background result only: this app's Slack thread the
+   * work was asked from, to reply in, and the session to open for details.
+   */
+  reply_in?: { channel: string; ts: string; session?: string };
 }
 
 export type StreamItem =
@@ -253,6 +261,17 @@ export interface Humagen {
    * found by its surface or started where the platform files it.
    */
   postThread(body: ThreadPostRequest, options?: CallOptions): Promise<ThreadPosted>;
+  /**
+   * Set how a humagen thread's gated actions are approved, for a person the
+   * client maps: `auto`, the approval agent decides as them, or `ask`. The
+   * console's toggle, with the same checks, made as that person.
+   */
+  setApprovalMode(
+    thread: string,
+    mode: "ask" | "auto",
+    actAs: ActAs,
+    options?: CallOptions,
+  ): Promise<unknown>;
   /** One inbox message as the platform sends it, or null when it does not exist for this caller. */
   getInboxMessage(id: string, options?: CallOptions): Promise<WireMessage | null>;
   /** Where a humagen thread is on a client's surface, or null when it is on none or does not exist here. */
@@ -270,6 +289,8 @@ export interface Humagen {
     actAs: ActAs,
     options?: CallOptions,
   ): Promise<WireMessage>;
+  /** The title a conversation has, or null while it has none. */
+  threadTitle(id: string, options?: CallOptions): Promise<string | null>;
   /** The Slack channels a client is bound to. */
   bindings(client: string, options?: CallOptions): Promise<Binding[]>;
   /** Record where the app posted an inbox message, so it edits that post later. */
@@ -430,8 +451,10 @@ const sleep = (ms: number, signal: AbortSignal) =>
  * | stopRun | `POST /api/runs/{id}/stop` |
  * | answerQuestion | `POST /api/runs/{id}/questions/{question}/answer` |
  * | postThread | `POST /api/threads` with a surface |
+ * | setApprovalMode | `PUT /api/threads/{id}/approval` with `act_as` |
  * | getInboxMessage, inboxMessageFor | `GET /api/inbox/{id}`, for a person with `act_as_client` and `act_as_user` |
  * | resolveFor | `POST /api/inbox/{id}/parts/{part}/resolve` with `act_as` |
+ * | threadTitle | `GET /api/threads/{id}?limit=1` |
  * | bindings | `GET /api/clients/{id}/bindings` |
  * | recordDelivery | `PUT /api/inbox/{id}/deliveries/{client}` |
  * | announcements | `GET /api/projects/{name}/inbox?kind=announcement&state=all` |
@@ -621,6 +644,8 @@ export function httpHumagen(cfg: {
       }
     },
     postThread: (body) => http<ThreadPosted>("POST", "/api/threads", body),
+    setApprovalMode: (thread, mode, actAs) =>
+      http<unknown>("PUT", `/api/threads/${enc(thread)}/approval`, { mode, act_as: actAs }),
     threadSurface: (id) =>
       orNull(
         http<{ thread: { surface?: { client: string; channel: string; ts: string } } }>(
@@ -628,6 +653,10 @@ export function httpHumagen(cfg: {
           `/api/threads/${enc(id)}?limit=1`,
         ),
       ).then((page) => page?.thread.surface ?? null),
+    threadTitle: (id) =>
+      orNull(http<{ thread: { title?: string } }>("GET", `/api/threads/${enc(id)}?limit=1`)).then(
+        (page) => page?.thread.title || null,
+      ),
     inboxMessageFor: (id, actAs) =>
       orNull(
         http<{ message: WireMessage }>(

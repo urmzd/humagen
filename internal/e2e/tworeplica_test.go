@@ -27,6 +27,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"syscall"
@@ -348,6 +349,8 @@ type replica struct {
 	log                 *lockedBuffer
 	cmd                 *exec.Cmd
 	exited              chan error
+	// env is added to the process's environment.
+	env []string
 }
 
 func newReplica(t *testing.T, name, bin, dir, db, modelURL string) *replica {
@@ -387,7 +390,7 @@ func (r *replica) start() {
 		// Blobs on one directory, as replicas share one bucket.
 		"-storage", "disk", "-storage-dir", filepath.Join(r.dir, "blobs"),
 		"-workspace", ws, "-drain-grace", "3s")
-	cmd.Env = append(os.Environ(), "HUMAGEN_POSTGRES_URL="+r.db, "E2E_FAKE_KEY=fake")
+	cmd.Env = append(append(os.Environ(), "HUMAGEN_POSTGRES_URL="+r.db, "E2E_FAKE_KEY=fake"), r.env...)
 	fmt.Fprintf(r.log, "--- start %s\n", time.Now().Format(time.RFC3339Nano))
 	cmd.Stdout, cmd.Stderr = r.log, r.log
 	if err := cmd.Start(); err != nil {
@@ -460,6 +463,27 @@ func (r *replica) do(method, path, body string, want int, out any) {
 	}
 }
 
+// raw writes the body of a 200 response to out.
+func (r *replica) raw(method, path string, out io.Writer) {
+	r.t.Helper()
+	req, err := http.NewRequest(method, r.url+path, nil)
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	req.Header = r.header.Clone()
+	req.Host = r.host
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		r.t.Fatalf("%s %s on %s: %v", method, path, r.name, err)
+	}
+	defer res.Body.Close()
+	body, _ := io.ReadAll(res.Body)
+	if res.StatusCode != http.StatusOK {
+		r.t.Fatalf("%s %s on %s = %d: %s", method, path, r.name, res.StatusCode, body)
+	}
+	_, _ = out.Write(body)
+}
+
 // stream is a reader's /api/events connection on one replica.
 type stream struct {
 	mu     sync.Mutex
@@ -515,6 +539,13 @@ func (r *replica) stream(t *testing.T) *stream {
 		}
 	}()
 	return s
+}
+
+// all returns every event the stream has delivered.
+func (s *stream) all() []ev {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slices.Clone(s.events)
 }
 
 func (s *stream) named(name string) int {

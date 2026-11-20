@@ -20,10 +20,10 @@ import (
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/state"
-	anchorrun "github.com/urmzd/orchagent/durable/run"
-	"github.com/urmzd/orchagent/flow/connectors/cron"
-	"github.com/urmzd/orchagent/flow/event"
-	"github.com/urmzd/orchagent/flow/runtime"
+	anchorrun "github.com/urmzd/saige/durable/run"
+	"github.com/urmzd/saige/flow/connectors/cron"
+	"github.com/urmzd/saige/flow/event"
+	"github.com/urmzd/saige/flow/runtime"
 )
 
 const maxAgentSetups = 200
@@ -268,7 +268,7 @@ func (p *Platform) validateSetupPlan(ctx context.Context, who auth.Principal, pl
 	if err != nil {
 		return AgentSetupPlan{}, err
 	}
-	canonical, err := wire.NewRevisionWith(spec, 1, who.Subject, p.now(), p.agentProviders())
+	canonical, err := wire.NewRevisionWith(spec, 1, who.Subject, p.now(), p.agentProviders(who.Tenant))
 	if err != nil {
 		return AgentSetupPlan{}, err
 	}

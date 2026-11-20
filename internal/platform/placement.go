@@ -10,6 +10,7 @@ import (
 	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/humagen/pkg/threads"
 )
 
 // CurrentPlace resolves the authoritative current audience of a conversation.
@@ -32,7 +33,13 @@ func (p *Platform) RunPlace(tenant string, run runs.Run) Place {
 // ShownRun projects current conversation placement for operational reads. The
 // execution record, accounting ancestry and replay input remain untouched.
 func (p *Platform) ShownRun(tenant string, run runs.Run) runs.Run {
-	if th, err := p.Threads.Get(tenant, run.Thread); err == nil && (th.Project != run.Project || th.Channel != cmp.Or(run.Channel, projects.General)) {
+	th, err := p.Threads.Get(tenant, run.Thread)
+	return shownRun(run, th, err)
+}
+
+// shownRun is ShownRun given the read of the run's thread record.
+func shownRun(run runs.Run, th threads.Thread, err error) runs.Run {
+	if err == nil && (th.Project != run.Project || th.Channel != cmp.Or(run.Channel, projects.General)) {
 		if run.Outcome != nil {
 			outcome := *run.Outcome
 			outcome.Decisions = slices.Clone(outcome.Decisions)

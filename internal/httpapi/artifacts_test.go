@@ -12,7 +12,7 @@ import (
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/nativefiles"
 	"github.com/urmzd/humagen/pkg/policy"
-	"github.com/urmzd/orchagent/flow/event"
+	"github.com/urmzd/saige/flow/event"
 )
 
 func (f *fixture) raw(t *testing.T, path, bearer string) (*http.Response, string) {

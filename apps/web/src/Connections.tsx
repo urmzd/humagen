@@ -1,13 +1,5 @@
 import { defaultCopy } from "@humagen/components";
-import { EllipsisIcon } from "@humagen/render-web";
-import { Alert, AlertDescription, AlertTitle } from "@humagen/render-web/ui/alert";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@humagen/render-web/ui/dropdown-menu";
+import { PlusIcon, SearchIcon } from "@humagen/render-web";
 import {
   Sheet,
   SheetContent,
@@ -17,14 +9,22 @@ import {
 } from "@humagen/render-web/ui/sheet";
 import { toast } from "@humagen/render-web/ui/sonner";
 import { type FormEvent, type MouseEvent, useCallback, useEffect, useRef, useState } from "react";
-import { ApiError, api, type ToolCredential, type ToolCredentials } from "./api.ts";
-import { BigQueryConnection } from "./BigQueryConnection.tsx";
+import type { LibrarySkill } from "../../../packages/client/src/generated/types.ts";
+import {
+  ApiError,
+  api,
+  type Client,
+  type PersonContext,
+  type PersonToolServer,
+  type ToolCredential,
+  type ToolCredentials,
+} from "./api.ts";
 import { ClientConnect } from "./ClientConnect.tsx";
 import { ConnectionDetail } from "./ConnectionDetail.tsx";
 import { ConnectionHealth } from "./ConnectionHealth.tsx";
 import { ConnectionLogo } from "./ConnectionLogo.tsx";
 import { ConnectionSection } from "./ConnectionSection.tsx";
-import { Pill } from "./cards.tsx";
+import { ItemCard, Pill, type Tone } from "./cards.tsx";
 import { type ConnectionPreset, connectionApi } from "./connectionApi.ts";
 import {
   CONNECT_PERMISSION,
@@ -37,15 +37,18 @@ import {
   ways,
   whereReferences,
 } from "./connections.ts";
-import { ConnectSource, Integrations } from "./Integrations.tsx";
-import { href } from "./route.ts";
-import { ToolList, YourToolServers } from "./ToolServers.tsx";
+import { GitHubRules } from "./GitHubRules.tsx";
+import { InstalledClientSetup } from "./InstalledClientSetup.tsx";
+import { href, type Route } from "./route.ts";
+import { AddToolServer, ToolList, YourToolServers } from "./ToolServers.tsx";
+import { credentialWords, hostOf, withoutToolServer } from "./toolServers.ts";
 import {
   button,
   card,
   Empty,
   field,
   Label,
+  MoreMenu,
   Page,
   Problem,
   primary,
@@ -61,7 +64,7 @@ const follow = (go: () => void) => (e: MouseEvent<HTMLAnchorElement>) => {
 };
 
 /**
- * Your connections: the tools in this workspace that act as you, reached with
+ * MCPs that take your own key: those the workspace offers, reached with
  * your own credential, and whether you have given one. Everything here is
  * yours alone; nobody else's credential is shown or used for you.
  */
@@ -89,7 +92,7 @@ export function YourConnections({
   const fail = (fallback: string) => (e: unknown) =>
     setProblem(e instanceof ApiError ? e.message : fallback);
   const reload = useCallback(() => {
-    api.toolCredentials().then(setState).catch(fail("Your connections could not be loaded."));
+    api.toolCredentials().then(setState).catch(fail("MCPs could not be loaded."));
   }, []);
   useEffect(reload, [reload]);
 
@@ -111,12 +114,7 @@ export function YourConnections({
   };
 
   return (
-    <ConnectionSection
-      embedded={embedded}
-      title={section === "tools" ? "Your tool servers" : "Your connections"}
-      lede="Some tools act as you: they reach their service with your own credential. Without one, an agent cannot use them for you, and nobody else's is used instead."
-      narrow
-    >
+    <ConnectionSection embedded={embedded} title="MCPs" narrow>
       <Problem message={problem} />
       {section !== "tools" && !canConnect && state && state.providers.length > 0 && (
         <p className="text-aui-sm text-aui-muted">
@@ -134,11 +132,6 @@ export function YourConnections({
             </>
           )}
         </p>
-      )}
-      {section !== "tools" && state && state.providers.length === 0 && (
-        <Empty title="No tools here act as you">
-          Connect a service below to give agents access through your own account.
-        </Empty>
       )}
       {section !== "tools" &&
         state?.providers.map((c) => (
@@ -193,7 +186,7 @@ export function ConnectionCard({
   onRemove: () => void;
 }) {
   return (
-    <section className={`${card} flex flex-col gap-3`} aria-label={c.provider}>
+    <section className={`${card} flex flex-col gap-2`} aria-label={c.provider}>
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="text-aui-sm font-medium text-aui-fg">
           {c.provider} <span className="font-normal text-aui-muted">{offers(c)}</span>
@@ -341,35 +334,91 @@ export function ConnectForm({
   );
 }
 
-/** One address for systems, personal accounts, and approved tool connections. */
+/** The groups a connection belongs to, in the order the page shows them. */
+type Group = "apps" | "mcps" | "skills";
+const words = defaultCopy.plugins;
+
+/** Apps are the workspace's and have a page of their own; the rest are a person's plugins. */
+const groups: { id: Group; title: string; lede?: string; scope?: "apps" }[] = [
+  { id: "apps", title: words.apps.title, scope: "apps" },
+  { id: "mcps", title: words.mcps },
+  { id: "skills", title: words.skills, lede: words.skillsLede },
+];
+
+/** The shelves of the catalog, in the order the page shows them. */
+type Family = "google" | "work" | "yours";
+const GOOGLE = new Set([
+  "gmail",
+  "google-calendar",
+  "google-drive",
+  "google-docs",
+  "google-sheets",
+  "google-slides",
+]);
+/** Verbs that add something, which a row shows as a plus rather than a word. */
+const ADDS = new Set(["Connect", "Enable", "Install"]);
+
+/** One item on the page: a logo, one status, one action, and the rest in a menu and the sheet. */
+type Item = {
+  id: string;
+  group: Group;
+  name: string;
+  logo: string;
+  /** One short fact under the name, such as the host a tool reaches. */
+  note?: string;
+  pill?: { text: string; tone: Tone };
+  action?: { label: string; run: () => void; disabled?: boolean };
+  /** Where the card goes instead of opening the sheet: a skill opens in the skill library. */
+  go?: () => void;
+  /** Already yours: connected, added or written by you. The Installed tab lists these. */
+  installed?: boolean;
+  /** Which shelf of the catalog it sits on. */
+  family?: Family;
+  menu: { label: string; run: () => void; destructive?: boolean }[];
+};
+
+/** Why an item is not available, as one pill. */
+function unavailable(reason?: string): { text: string; tone: Tone } {
+  return reason?.includes("MCP hosts")
+    ? { text: "Host not allowed", tone: "neutral" }
+    : { text: "Not enabled", tone: "neutral" };
+}
+
+/**
+ * Connections: apps installed for the workspace and MCPs, each item once. A
+ * card shows where it stands and the one thing to do next; its menu and side
+ * sheet hold the rest. Data sources are added inside a corpus, not here.
+ */
 export function Connections({
   provider,
+  scope,
   canConnect = true,
   canWrite = false,
-  canKnowledgeWrite = false,
   onOpen,
+  onNavigate,
 }: {
   provider?: string;
+  /** "apps" is the workspace's Apps page; without it this is a person's Plugins. */
+  scope?: "apps";
   canConnect?: boolean;
   canWrite?: boolean;
-  canKnowledgeWrite?: boolean;
-  onOpen?: (id?: string) => void;
+  onOpen?: (id?: string, scope?: "apps") => void;
+  /** Goes to another page of the console, for links in the sheet. */
+  onNavigate?: (route: Route) => void;
 }) {
   const [presets, setPresets] = useState<ConnectionPreset[]>([]);
+  const [creds, setCreds] = useState<ToolCredentials | null>(null);
+  const [context, setContext] = useState<PersonContext | null>(null);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [skills, setSkills] = useState<LibrarySkill[]>([]);
+  const [tab, setTab] = useState<"catalog" | "installed">("catalog");
+  const [query, setQuery] = useState("");
+  const [kind, setKind] = useState<"mcps" | "skills">("mcps");
   const [problem, setProblem] = useState<string | null>(null);
-  // Configured credentials have their own inline selection, separate from OAuth setup.
-  const [credentialProvider, setCredentialProvider] = useState<string | undefined>(
-    provider === "callback" ? undefined : provider,
-  );
   const [selected, setSelected] = useState<string | undefined>(
     provider === "callback" ? undefined : provider,
   );
-  // Every connection belongs to one person; the workspace only decides which services are allowed.
-  const scope = "person" as "person" | "workspace";
-  const [tab, setTab] = useState<ConnectionTab>(() => tabFor(provider));
-  useEffect(() => {
-    if (provider && provider !== "callback") setTab(tabFor(provider));
-  }, [provider]);
+  const [addWay, setAddWay] = useState<"address" | "oauth">("address");
   const [endpoint, setEndpoint] = useState("");
   const [registered, setRegistered] = useState(false);
   const [issuer, setIssuer] = useState("");
@@ -377,20 +426,22 @@ export function Connections({
   const [clientSecret, setClientSecret] = useState("");
   const [busy, setBusy] = useState(false);
   const [revision, setRevision] = useState(0);
-  const [review, setReview] = useState<{
-    provider: string;
-    server: Awaited<ReturnType<typeof api.reviewPersonTools>>;
-  } | null>(null);
+  const [review, setReview] = useState<{ id: string; server: PersonToolServer } | null>(null);
   const selectedRef = useRef(selected);
   const reviewRequest = useRef(0);
-  const openers = useRef(new Map<string, HTMLButtonElement>());
   const sheetOpener = useRef<HTMLElement | null>(null);
   const selectConnection = useCallback((id?: string) => {
     if (selectedRef.current === id) return;
     if (id) {
+      // Focus goes back to what opened the sheet: the card's button, or its ⋯
+      // button when a menu item did (the menu hands focus back to it first).
+      const active = document.activeElement;
       sheetOpener.current =
-        openers.current.get(id) ??
-        (document.activeElement instanceof HTMLElement ? document.activeElement : null);
+        active instanceof HTMLElement &&
+        active !== document.body &&
+        !active.closest('[role="menu"]')
+          ? active
+          : null;
     }
     selectedRef.current = id;
     reviewRequest.current++;
@@ -398,12 +449,6 @@ export function Connections({
     setProblem(null);
     setSelected(id);
   }, []);
-  useEffect(() => {
-    setCredentialProvider(provider === "callback" ? undefined : provider);
-    if (provider !== "callback") selectConnection(provider);
-  }, [provider, selectConnection]);
-  const sheetOpen = !!selected && presets.some((p) => p.id === selected);
-  const callbackStarted = useRef(false);
   const reload = useCallback(() => {
     connectionApi
       .presets()
@@ -411,8 +456,45 @@ export function Connections({
       .catch((e: unknown) =>
         setProblem(e instanceof Error ? e.message : "Connections could not be loaded."),
       );
-  }, []);
+    api
+      .toolCredentials()
+      .then(setCreds)
+      .catch(() => setCreds(null));
+    api
+      .personContext()
+      .then(setContext)
+      .catch(() => setContext(null));
+    // What the workspace installed; a person who may not read it sees the cards alone.
+    api
+      .clients()
+      .then((r) => setClients(r.clients))
+      .catch(() => setClients([]));
+    // A person's own skills, which are theirs alone: an agent's are set on the agent.
+    if (scope !== "apps")
+      api
+        .librarySkills({ kind: "personal" })
+        .then(setSkills)
+        .catch(() => setSkills([]));
+  }, [scope]);
   useEffect(reload, [reload]);
+  // An old address named a credential tool by its provider alone.
+  const resolve = useCallback(
+    (id?: string) =>
+      id && !presets.some((p) => p.id === id) && creds?.providers.some((c) => c.provider === id)
+        ? `cred:${id}`
+        : id,
+    [presets, creds],
+  );
+  // The address decides the sheet when it changes, not every time the data reloads.
+  const routed = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (provider === "callback") return;
+    const target = resolve(provider);
+    if (routed.current === target) return;
+    routed.current = target;
+    selectConnection(target);
+  }, [provider, resolve, selectConnection]);
+  const callbackStarted = useRef(false);
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (!params.has("state") || callbackStarted.current) return;
@@ -443,7 +525,11 @@ export function Connections({
   }, [reload, selectConnection]);
   const open = (id: string) => {
     selectConnection(id);
-    onOpen?.(id);
+    onOpen?.(id, scope);
+  };
+  const close = () => {
+    selectConnection(undefined);
+    onOpen?.(undefined, scope);
   };
   const act = async (fn: () => Promise<unknown>) => {
     if (busy) return;
@@ -454,51 +540,54 @@ export function Connections({
       await fn();
     } catch (e) {
       const message = e instanceof Error ? e.message : "The connection could not be changed.";
-      // In an open setup form the error belongs beside the form; elsewhere it is a toast.
+      // In an open sheet the error belongs beside its form; elsewhere it is a toast.
       if (target && selectedRef.current === target) setProblem(message);
       else toast.error(message);
     } finally {
       setBusy(false);
     }
   };
-  const connect = (
-    preset: ConnectionPreset,
-    requestedScope: "person" | "workspace" = preset.connected
-      ? preset.scope === "workspace"
-        ? "workspace"
-        : "person"
-      : scope,
-  ) =>
+  const changed = () => {
+    reload();
+    setRevision((v) => v + 1);
+  };
+  const connect = (preset: ConnectionPreset, scope: "person" | "workspace") =>
     void act(async () => {
       const auth = await connectionApi.authorize(preset.id, {
-        scope: requestedScope,
+        scope,
         ...(preset.endpoint ? { endpoint: preset.endpoint } : {}),
       });
       sessionStorage.setItem("humagen.connection.provider", auth.provider ?? preset.id);
       window.location.assign(auth.url);
     });
-  const reviewTools = (preset: ConnectionPreset) => {
-    const endpoint = preset.endpoint;
-    if (busy || !endpoint) return;
-    open(preset.id);
+  const disconnect = (preset: ConnectionPreset) =>
+    void act(async () => {
+      await connectionApi.disconnect(preset.id);
+      changed();
+      toast.success(
+        preset.kind === "github_install"
+          ? `${preset.name} installations disabled`
+          : `${preset.name} disconnected`,
+      );
+    });
+  /** Asks a server for its tools, to approve before an agent may use them. */
+  const startReview = (id: string, server: PersonToolServer) => {
+    if (busy) return;
+    open(id);
     setReview(null);
     const request = ++reviewRequest.current;
     void act(async () => {
-      const server = await api.reviewPersonTools({
-        name: preset.id,
-        url: endpoint,
-        oauth: preset.id,
-      });
-      if (request === reviewRequest.current && selectedRef.current === preset.id) {
-        setReview({ provider: preset.id, server });
+      const listed = await api.reviewPersonTools({ ...server, tools: undefined });
+      if (request === reviewRequest.current && selectedRef.current === id) {
+        setReview({ id, server: listed });
       }
     });
   };
   const approve = () =>
     void act(async () => {
-      if (!review || review.provider !== selectedRef.current) return;
+      if (!review || review.id !== selectedRef.current) return;
       const current = await api.personContext();
-      await api.setPersonContext({
+      const next = await api.setPersonContext({
         run: current.run,
         version: current.version,
         tool_servers: [
@@ -506,181 +595,536 @@ export function Connections({
           review.server,
         ],
       });
+      setContext(next);
       setReview(null);
       setRevision((v) => v + 1);
+      toast.success(`${review.server.name} tools approved`);
     });
+  const removeServer = (name: string) =>
+    void act(async () => {
+      if (!context) return;
+      setContext(await api.setPersonContext(withoutToolServer(context, name)));
+      if (selectedRef.current === `server:${name}`) close();
+    });
+
+  const presetIds = new Set(presets.map((p) => p.id));
+  const credentialWays = creds ? ways(creds) : [];
+  const items: Item[] = [];
+  for (const preset of presets) {
+    const off = !preset.available;
+    const live = preset.connected && !preset.reconnect_required;
+    const enable = canWrite && off ? { label: "Enable", run: () => open(preset.id) } : undefined;
+    if (preset.kind === "client_oauth" || preset.kind === "github_install") {
+      const installed =
+        preset.connected || clients.some((c) => c.surface === preset.id && c.enabled);
+      items.push({
+        id: preset.id,
+        group: "apps",
+        name: preset.name,
+        logo: preset.id,
+        pill: installed ? { text: "Installed", tone: "ok" } : off ? unavailable() : undefined,
+        action: !canWrite
+          ? undefined
+          : installed
+            ? { label: "Manage", run: () => open(preset.id) }
+            : (enable ?? {
+                label: "Install",
+                disabled: busy,
+                run: () => connect(preset, "workspace"),
+              }),
+        menu: [
+          ...(installed && canWrite && preset.connected
+            ? [
+                {
+                  label: preset.kind === "github_install" ? "Disable Installations" : "Disconnect",
+                  run: () => disconnect(preset),
+                  destructive: true,
+                },
+              ]
+            : []),
+        ],
+      });
+    } else if (preset.kind === "oauth") {
+      items.push({
+        id: preset.id,
+        group: "mcps",
+        name: preset.name,
+        logo: preset.id,
+        note: words.about[preset.id] ?? (preset.endpoint ? hostOf(preset.endpoint) : undefined),
+        installed: preset.connected,
+        family: GOOGLE.has(preset.id) ? "google" : "work",
+        pill: preset.reconnect_required
+          ? { text: "Reconnect", tone: "warn" }
+          : live
+            ? { text: "Connected", tone: "ok" }
+            : off
+              ? unavailable(preset.reason)
+              : undefined,
+        action: !canConnect
+          ? undefined
+          : preset.reconnect_required
+            ? { label: "Reconnect", disabled: busy, run: () => connect(preset, "person") }
+            : live
+              ? {
+                  label: "Review Tools",
+                  disabled: busy || !preset.endpoint,
+                  run: () =>
+                    startReview(preset.id, {
+                      name: preset.id,
+                      url: preset.endpoint ?? "",
+                      oauth: preset.id,
+                    } as PersonToolServer),
+                }
+              : (enable ??
+                (off
+                  ? undefined
+                  : {
+                      label: "Connect",
+                      disabled: busy,
+                      run: () => connect(preset, "person"),
+                    })),
+        menu: [
+          ...(preset.connected && canConnect
+            ? [{ label: "Disconnect", run: () => disconnect(preset), destructive: true }]
+            : []),
+        ],
+      });
+    }
+    // Data sources (Drive, BigQuery and the rest) are added inside a corpus, not here.
+  }
+  // MCPs the workspace offers that take a key you give, rather than a sign-in.
+  for (const c of creds?.providers ?? []) {
+    if (presetIds.has(c.provider)) continue;
+    const id = `cred:${c.provider}`;
+    const none = credentialWays.length === 0;
+    items.push({
+      id,
+      group: "mcps",
+      name: c.provider,
+      logo: c.provider,
+      note: c.endpoint ? hostOf(c.endpoint) : undefined,
+      installed: c.connected,
+      family: "yours",
+      pill: c.connected
+        ? { text: "Connected", tone: "ok" }
+        : none
+          ? { text: "Not enabled", tone: "neutral" }
+          : undefined,
+      action:
+        canConnect && !none
+          ? { label: c.connected ? "Replace" : "Connect", run: () => open(id) }
+          : canWrite && none
+            ? { label: "Enable", run: () => open(id) }
+            : undefined,
+      menu: [
+        ...(c.connected && canConnect
+          ? [
+              {
+                label: "Remove",
+                destructive: true,
+                run: () =>
+                  void act(async () => {
+                    await api.disconnectTool(c.provider);
+                    changed();
+                  }),
+              },
+            ]
+          : []),
+      ],
+    });
+  }
+  // MCPs you added by URL. One you approved through a sign-in card is that card.
+  for (const server of context?.tool_servers ?? []) {
+    if (presetIds.has(server.name)) continue;
+    const id = `server:${server.name}`;
+    items.push({
+      id,
+      group: "mcps",
+      name: server.name,
+      logo: server.name,
+      note: hostOf(server.url),
+      installed: true,
+      family: "yours",
+      pill: { text: "Added", tone: "ok" },
+      action: canConnect
+        ? { label: "Review Tools", disabled: busy, run: () => startReview(id, server) }
+        : undefined,
+      menu: [
+        ...(canConnect
+          ? [{ label: "Remove", destructive: true, run: () => removeServer(server.name) }]
+          : []),
+      ],
+    });
+  }
+  const other = presets.find((p) => p.id === "other");
+  if (scope !== "apps")
+    for (const skill of skills)
+      items.push({
+        id: `skill:${skill.id}`,
+        group: "skills",
+        name: skill.name,
+        logo: "skill",
+        note: skill.description,
+        installed: true,
+        pill: skill.published_at
+          ? { text: defaultCopy.skillsLibrary.published, tone: "ok" }
+          : { text: defaultCopy.skillsLibrary.draft, tone: "neutral" },
+        go: () =>
+          onNavigate?.({
+            page: "customize",
+            section: "skills",
+            scope: "personal",
+            skill: skill.id,
+          }),
+        menu: [],
+      });
+  const mayAdd = canConnect && context !== null;
+
+  const current = items.find((it) => it.id === selected);
+  const currentPreset = presets.find((p) => p.id === selected);
+  const adding = selected === "other";
+  // An old address may name an app under Plugins, or a plugin under Apps: it moves to its own page.
+  const home = current ? (current.group === "apps" ? "apps" : undefined) : scope;
+  useEffect(() => {
+    if (current && home !== scope) onOpen?.(current.id, home);
+  }, [current, home, scope, onOpen]);
+  const sheetOpen = !!current || adding;
+  const link = (route: Route, label: string) => (
+    <a
+      href={href(route)}
+      onClick={onNavigate ? follow(() => onNavigate(route)) : undefined}
+      className="rounded-aui text-aui-sm text-aui-fg underline focus-visible:outline-2 focus-visible:outline-aui-accent"
+    >
+      {label}
+    </a>
+  );
+  /** What an administrator does to enable an item that is off. */
+  const enableNote = (reason?: string) => {
+    if (!reason) return null;
+    // An administrator reads how to turn it on; anyone else, why it is off.
+    if (canWrite && reason.includes("MCP hosts"))
+      return (
+        <p className="text-aui-sm text-aui-muted">
+          Its host is not allowed yet.{" "}
+          {link({ page: "settings", section: "limits" }, "Allow it in Limits")}
+        </p>
+      );
+    if (canWrite && reason.includes("secure account connections"))
+      return (
+        <p className="text-aui-sm text-aui-muted">
+          Sign-in is off. Turn it on in the server's spec, under service connection authorization.
+        </p>
+      );
+    return <p className="text-aui-sm text-aui-muted">{reason}</p>;
+  };
+
   return (
     <Page
-      title="Connections"
-      lede="Connect your own accounts. Agents act as you with them, nobody else uses your credentials, and you can revoke one at any time."
+      title={scope === "apps" ? words.apps.title : words.title}
+      lede={scope === "apps" ? words.apps.lede : words.lede}
+      tabs={
+        scope === "apps" ? undefined : (
+          <Tabs
+            label={words.kinds}
+            value={kind}
+            tabs={[
+              { id: "mcps", label: words.mcps },
+              { id: "skills", label: words.skills },
+            ]}
+            onChange={(next) => setKind(next === "skills" ? "skills" : "mcps")}
+          />
+        )
+      }
     >
       <Problem message={sheetOpen ? null : problem} />
-      <Tabs
-        label="Connection kinds"
-        value={tab}
-        onChange={(next) => {
-          setTab(next);
-          selectConnection(undefined);
-        }}
-        tabs={[
-          { id: "tools", label: "Agent tools" },
-          { id: "knowledge", label: "Data sources" },
-          ...(canWrite ? [{ id: "workspace" as const, label: "Workspace apps" }] : []),
-        ]}
-      />
-      <p className="text-aui-sm text-aui-muted">{tabLede[tab]}</p>
       {busy && <output>Connecting…</output>}
-      {presets.some((p) => tabFor(p.id, p.kind) === tab && adminOff(p)) && (
-        <Alert>
-          <AlertTitle>Account connections are not enabled yet</AlertTitle>
-          <AlertDescription>
-            A workspace administrator turns on secure account connections, then each person connects
-            their own account here.
-          </AlertDescription>
-        </Alert>
-      )}
-      <ul
-        className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(min(100%,18rem),1fr))] gap-3"
-        aria-label="Connect a service"
-      >
-        {presets
-          .filter((preset) => tabFor(preset.id, preset.kind) === tab)
-          .map((preset) => (
-            <li key={preset.id} className={`${card} flex h-full min-w-0 flex-col gap-3`}>
-              <div className="flex min-w-0 items-center gap-3">
-                <ConnectionLogo id={preset.id} name={preset.name} />
-                <h2 className="min-w-0 flex-1 truncate font-medium">{preset.name}</h2>
-                {preset.reconnect_required ? (
-                  <Pill tone="warn">Reconnect</Pill>
-                ) : preset.connected ? (
-                  <Pill tone="ok">
-                    {preset.kind === "github_install" ? "Installed" : "Connected"}
-                  </Pill>
-                ) : adminOff(preset) ? (
-                  <Pill>Not enabled</Pill>
-                ) : null}
-                {preset.id !== "other" && (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger
-                      ref={(node) => {
-                        if (node) openers.current.set(preset.id, node);
-                        else openers.current.delete(preset.id);
-                      }}
-                      aria-label={`More for ${preset.name}`}
-                      className="-mr-1 inline-flex size-8 shrink-0 items-center justify-center rounded-aui text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent pointer-coarse:size-11"
+      {scope === "apps" &&
+        groups
+          .filter((g) => g.scope === "apps")
+          .map((g) => {
+            const shown = items.filter((it) => it.group === g.id);
+            const add = g.id === "mcps" && mayAdd;
+            const manage = g.id === "skills" && !!onNavigate;
+            // A group with nothing in it and nothing to do is left out.
+            if (shown.length === 0 && !add && !manage) return null;
+            return (
+              <section
+                key={g.id}
+                aria-labelledby={`connections-${g.id}`}
+                className="flex min-w-0 flex-col gap-3"
+              >
+                <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                  <div className="min-w-0">
+                    {/* Apps is the page's own title, so its one group is named for a screen reader only. */}
+                    <h2
+                      id={`connections-${g.id}`}
+                      className={
+                        g.scope === "apps" ? "sr-only" : "text-aui-base font-medium text-aui-fg"
+                      }
                     >
-                      <EllipsisIcon size={16} />
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent
-                      align="end"
-                      onCloseAutoFocus={(event) => {
-                        if (selectedRef.current === preset.id) event.preventDefault();
-                      }}
+                      {g.title}
+                    </h2>
+                    {g.lede && <p className="text-aui-sm text-aui-muted">{g.lede}</p>}
+                  </div>
+                  {add && (
+                    <button type="button" className={button} onClick={() => open("other")}>
+                      Add MCP
+                    </button>
+                  )}
+                  {manage && (
+                    <button
+                      type="button"
+                      className={button}
+                      onClick={() =>
+                        onNavigate?.({ page: "customize", section: "skills", scope: "personal" })
+                      }
                     >
-                      <DropdownMenuItem onSelect={() => open(preset.id)}>Details</DropdownMenuItem>
-                      {(preset.connected || preset.reconnect_required) && canConnect && (
-                        <>
-                          {preset.kind === "oauth" && (
-                            <DropdownMenuItem disabled={busy} onSelect={() => reviewTools(preset)}>
-                              Review tools
-                            </DropdownMenuItem>
-                          )}
-                          {preset.kind === "catalog_oauth" && (
-                            <DropdownMenuItem onSelect={() => open(preset.id)}>
-                              Choose datasets
-                            </DropdownMenuItem>
-                          )}
-                          {preset.kind === "source_oauth" && (
-                            <DropdownMenuItem onSelect={() => open(preset.id)}>
-                              Choose a source
-                            </DropdownMenuItem>
-                          )}
-                          {(preset.scope !== "workspace" || canWrite) && (
-                            <>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                variant="destructive"
-                                disabled={busy}
-                                onSelect={() =>
-                                  void act(async () => {
-                                    await connectionApi.disconnect(preset.id);
-                                    reload();
-                                    setRevision((v) => v + 1);
-                                    toast.success(
-                                      preset.kind === "github_install"
-                                        ? `${preset.name} installations disabled`
-                                        : `${preset.name} disconnected`,
-                                    );
-                                  })
-                                }
-                              >
-                                {preset.kind === "github_install"
-                                  ? "Disable installations"
-                                  : "Disconnect"}
-                              </DropdownMenuItem>
-                            </>
-                          )}
-                        </>
-                      )}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                      {words.manageSkills}
+                    </button>
+                  )}
+                </div>
+                {shown.length === 0 && manage && (
+                  <p className="text-aui-sm text-aui-muted">{words.noSkills}</p>
                 )}
-              </div>
-              {preset.endpoint && (
-                <p className="truncate text-aui-xs text-aui-muted" title={preset.endpoint}>
-                  {preset.endpoint}
-                </p>
-              )}
-              {preset.reason && !adminOff(preset) && (
-                <p className="text-aui-sm text-aui-muted">{preset.reason}</p>
-              )}
-              {(preset.connected || preset.reconnect_required) && (
-                <ConnectionHealth
-                  key={`${preset.id}:${revision}`}
-                  provider={preset.id}
-                  initial={preset.health}
-                  canCheck={canConnect && (preset.scope !== "workspace" || canWrite)}
-                />
-              )}
-              <div className="mt-auto pt-1">
-                {preset.kind === "oauth" ||
-                preset.kind === "source_oauth" ||
-                preset.kind === "catalog_oauth" ||
-                preset.kind === "client_oauth" ||
-                preset.kind === "github_install"
-                  ? canConnect &&
-                    (preset.scope !== "workspace" || canWrite) && (
-                      <button
-                        type="button"
-                        className={button}
-                        disabled={busy || !preset.available}
-                        onClick={() =>
-                          connect(
-                            preset,
-                            preset.kind === "source_oauth" || preset.kind === "catalog_oauth"
-                              ? "person"
-                              : preset.kind === "client_oauth" || preset.kind === "github_install"
-                                ? "workspace"
-                                : undefined,
-                          )
-                        }
-                      >
-                        {preset.connected || preset.reconnect_required ? "Reconnect" : "Connect"}
-                      </button>
-                    )
-                  : canConnect && (
-                      <button type="button" className={button} onClick={() => open(preset.id)}>
-                        Connect with OAuth
-                      </button>
+                {shown.length > 0 && (
+                  <ul
+                    aria-label={g.title}
+                    className="grid min-w-0 grid-cols-[repeat(auto-fill,minmax(min(100%,16rem),1fr))] gap-3"
+                  >
+                    {shown.map((it) => (
+                      <li key={it.id} aria-label={it.name} className="min-w-0">
+                        <ItemCard
+                          mark={<ConnectionLogo id={it.logo} name={it.name} />}
+                          title={it.name}
+                          status={it.pill && <Pill tone={it.pill.tone}>{it.pill.text}</Pill>}
+                          description={it.note}
+                          menu={it.menu.map((m) => ({
+                            label: m.label,
+                            onSelect: m.run,
+                            destructive: m.destructive,
+                            disabled: busy && m.destructive,
+                          }))}
+                          menuLabel={`More for ${it.name}`}
+                          // The whole card opens its details, so the menu holds only what else it can do.
+                          onOpen={() => (it.go ? it.go() : open(it.id))}
+                          actions={
+                            it.action && (
+                              <button
+                                type="button"
+                                className={button}
+                                disabled={it.action.disabled}
+                                onClick={it.action.run}
+                              >
+                                {it.action.label}
+                              </button>
+                            )
+                          }
+                        />
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+            );
+          })}
+      {scope !== "apps" && (
+        <>
+          <div className={kind === "mcps" ? "flex min-w-0 flex-wrap items-center gap-3" : "hidden"}>
+            <label className="flex h-9 min-w-0 flex-1 basis-56 items-center gap-2 rounded-aui border border-aui-border bg-aui-bg px-3 text-aui-muted transition-colors focus-within:border-aui-fg pointer-coarse:h-11">
+              <SearchIcon size={14} />
+              <input
+                type="search"
+                aria-label={words.search}
+                placeholder={words.search}
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                className="min-w-0 flex-1 bg-transparent text-aui-sm text-aui-fg outline-none placeholder:text-aui-muted"
+              />
+            </label>
+            <Segmented<"catalog" | "installed">
+              label={words.view}
+              value={tab}
+              options={[
+                { id: "catalog", label: words.catalog },
+                { id: "installed", label: words.installed },
+              ]}
+              onChange={setTab}
+            />
+          </div>
+          {(() => {
+            const q = query.trim().toLowerCase();
+            const fits = (it: Item) =>
+              (tab === "catalog" || it.installed) &&
+              (!q || `${it.name} ${it.note ?? ""}`.toLowerCase().includes(q));
+            const mcps =
+              kind === "mcps" ? items.filter((it) => it.group === "mcps" && fits(it)) : [];
+            // Skills are all yours already, so their tab has no catalog to search.
+            const mine = kind === "skills" ? items.filter((it) => it.group === "skills") : [];
+            const manage = !!onNavigate;
+            const rows = (label: string, shown: Item[]) => (
+              <ul aria-label={label} className="grid min-w-0 grid-cols-1 gap-x-8 @3xl:grid-cols-2">
+                {shown.map((it) => (
+                  <li
+                    key={it.id}
+                    aria-label={it.name}
+                    // In a narrow column the status and the action drop under the name rather than squeeze it out.
+                    className="group/row relative isolate flex min-h-16 min-w-0 flex-wrap items-center gap-x-3 gap-y-1 border-aui-border border-b py-3 hover:bg-aui-hover"
+                  >
+                    <span className="flex size-9 shrink-0 items-center justify-center rounded-aui-lg border border-aui-border bg-aui-surface">
+                      <ConnectionLogo id={it.logo} name={it.name} />
+                    </span>
+                    {/*
+                      The whole row opens its details, so its other controls sit above it. The
+                      button holds the name and the note, so it is itself as wide as its column
+                      and as tall as a finger needs.
+                    */}
+                    <button
+                      type="button"
+                      aria-label={it.name}
+                      onClick={() => (it.go ? it.go() : open(it.id))}
+                      className="flex min-h-6 min-w-28 flex-1 flex-col justify-center text-left outline-none after:absolute after:inset-0 focus-visible:after:outline-2 focus-visible:after:outline-aui-accent pointer-coarse:min-h-11"
+                    >
+                      <span className="w-full min-w-0 truncate font-medium text-aui-sm text-aui-fg">
+                        {it.name}
+                      </span>
+                      {it.note && (
+                        <span className="w-full min-w-0 truncate text-aui-muted text-aui-xs">
+                          {it.note}
+                        </span>
+                      )}
+                    </button>
+                    {it.pill && (
+                      <span className="relative z-10 shrink-0">
+                        <Pill tone={it.pill.tone}>{it.pill.text}</Pill>
+                      </span>
                     )}
-              </div>
-            </li>
-          ))}
-      </ul>
+                    {it.action &&
+                      (ADDS.has(it.action.label) ? (
+                        <button
+                          type="button"
+                          aria-label={it.action.label}
+                          title={`${it.action.label} ${it.name}`}
+                          disabled={it.action.disabled}
+                          onClick={it.action.run}
+                          className="relative z-10 inline-flex size-8 shrink-0 items-center justify-center rounded-aui text-aui-muted transition-colors hover:bg-aui-bg hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent disabled:opacity-50 pointer-coarse:size-11"
+                        >
+                          <PlusIcon size={16} />
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          className={`${button} relative z-10 shrink-0`}
+                          disabled={it.action.disabled}
+                          onClick={it.action.run}
+                        >
+                          {it.action.label}
+                        </button>
+                      ))}
+                    {it.menu.length > 0 && (
+                      <span className="relative z-10 shrink-0">
+                        <MoreMenu
+                          items={it.menu.map((m) => ({
+                            label: m.label,
+                            onSelect: m.run,
+                            destructive: m.destructive,
+                            disabled: busy && m.destructive,
+                          }))}
+                          label={`More for ${it.name}`}
+                        />
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            );
+            return (
+              <>
+                {kind === "mcps" && (mcps.length > 0 || (mayAdd && !q && tab === "catalog")) && (
+                  <section
+                    aria-labelledby="connections-mcps"
+                    className="@container flex min-w-0 flex-col gap-5"
+                  >
+                    <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                      <h2 id="connections-mcps" className="text-aui-base font-medium text-aui-fg">
+                        {words.mcps}
+                      </h2>
+                      {mayAdd && (
+                        <button type="button" className={button} onClick={() => open("other")}>
+                          Add MCP
+                        </button>
+                      )}
+                    </div>
+                    {(["google", "work", "yours"] as const).map((family) => {
+                      const shown = mcps.filter((it) => it.family === family);
+                      if (shown.length === 0) return null;
+                      return (
+                        <div key={family} className="flex min-w-0 flex-col gap-1">
+                          <h3 className="font-medium text-aui-sm text-aui-fg">
+                            {words.families[family].title}
+                          </h3>
+                          <span className="pb-1 text-aui-muted text-aui-xs">
+                            {words.families[family].lede}
+                          </span>
+                          {rows(words.families[family].title, shown)}
+                        </div>
+                      );
+                    })}
+                  </section>
+                )}
+                {kind === "skills" && (
+                  <section
+                    aria-labelledby="connections-skills"
+                    className="@container flex min-w-0 flex-col gap-3"
+                  >
+                    <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                      <div className="min-w-0">
+                        <h2
+                          id="connections-skills"
+                          className="text-aui-base font-medium text-aui-fg"
+                        >
+                          {words.skills}
+                        </h2>
+                        <span className="text-aui-muted text-aui-xs">{words.skillsLede}</span>
+                      </div>
+                      {manage && (
+                        <button
+                          type="button"
+                          className={button}
+                          onClick={() =>
+                            onNavigate?.({
+                              page: "customize",
+                              section: "skills",
+                              scope: "personal",
+                            })
+                          }
+                        >
+                          {words.manageSkills}
+                        </button>
+                      )}
+                    </div>
+                    {mine.length === 0 ? (
+                      <div className="humagen-glass rounded-aui-lg px-5">
+                        <Empty title={words.noSkills}>{words.noSkillsHint}</Empty>
+                      </div>
+                    ) : (
+                      rows(words.skills, mine)
+                    )}
+                  </section>
+                )}
+                {kind === "mcps" && mcps.length === 0 && (q || tab === "installed") && (
+                  <span role="status" className="text-aui-muted text-aui-sm">
+                    {q ? words.noMatch : words.noneInstalled}
+                  </span>
+                )}
+              </>
+            );
+          })()}
+        </>
+      )}
       <Sheet
         open={sheetOpen}
         onOpenChange={(next) => {
-          if (!next) selectConnection(undefined);
+          if (!next) close();
         }}
       >
         <SheetContent
@@ -692,207 +1136,285 @@ export function Connections({
           }}
         >
           <SheetHeader>
-            <SheetTitle>{presets.find((p) => p.id === selected)?.name ?? "Connection"}</SheetTitle>
-            <SheetDescription>Status, access and setup for this connection.</SheetDescription>
+            <SheetTitle>{adding ? "Add MCP" : (current?.name ?? "Connection")}</SheetTitle>
+            <SheetDescription>
+              {adding
+                ? other?.available
+                  ? "By URL, or by signing in to it."
+                  : "By URL."
+                : current?.group === "apps"
+                  ? "Installed once for the workspace."
+                  : (current?.note ?? "MCP")}
+            </SheetDescription>
           </SheetHeader>
-          {selected !== "other" && <Problem message={problem} />}
-          {selected && selected !== "other" && presets.some((p) => p.id === selected) && (
-            <ConnectionDetail key={`${selected}:${revision}`} provider={selected} />
-          )}
-          {review?.provider === selected && review && (
-            <section className={card} aria-label="Review connection tools">
-              <ToolList server={review.server} />
-              <div className="mt-3 flex gap-2">
-                <button className={button} type="button" onClick={() => setReview(null)}>
-                  Cancel
-                </button>
-                <button className={primary} type="button" disabled={busy} onClick={approve}>
-                  Approve Tool List
-                </button>
-              </div>
-            </section>
-          )}
-          {(selected === "slack" || selected === "github") &&
-            (canWrite ? (
-              <ClientConnect
-                key={selected}
-                initialSurface={selected}
-                onCancel={() => selectConnection(undefined)}
-                onCreated={() => {
-                  selectConnection(undefined);
-                  setRevision((v) => v + 1);
-                }}
+          <div className="flex min-w-0 flex-col gap-4">
+            <Problem message={problem} />
+            {/* Add MCP offers sign-in only when it is on, and says nothing about it otherwise. */}
+            {currentPreset &&
+              !adding &&
+              !currentPreset.available &&
+              enableNote(currentPreset.reason)}
+            {currentPreset && currentPreset.id !== "other" && currentPreset.connected && (
+              <ConnectionDetail
+                key={`${currentPreset.id}:${revision}`}
+                provider={currentPreset.id}
               />
-            ) : (
-              <p>A workspace administrator can connect messaging services.</p>
-            ))}
-          {selected === "drive" &&
-            (canKnowledgeWrite ? (
-              <ConnectSource
-                initialProvider="drive"
-                onCancel={() => selectConnection(undefined)}
-                onCreated={() => {
-                  selectConnection(undefined);
-                  setRevision((v) => v + 1);
-                }}
+            )}
+            {currentPreset && (currentPreset.connected || currentPreset.reconnect_required) && (
+              <ConnectionHealth
+                key={`${currentPreset.id}:health:${revision}`}
+                provider={currentPreset.id}
+                initial={currentPreset.health}
+                canCheck={canConnect && (currentPreset.scope !== "workspace" || canWrite)}
               />
-            ) : (
-              <p>A workspace administrator can connect knowledge sources.</p>
-            ))}
-          {selected === "bigquery" && (
-            <BigQueryConnection
-              canWrite={canKnowledgeWrite}
-              onCancel={() => selectConnection(undefined)}
-              onVerified={() => setRevision((v) => v + 1)}
-              onAuthorize={() => {
-                const preset = presets.find((p) => p.id === "bigquery");
-                if (preset) connect(preset, "person");
-              }}
-            />
-          )}
-          {selected === "other" && (
-            <form
-              aria-label="Connect tool server with OAuth"
-              className={`${card} flex flex-col gap-3`}
-              onSubmit={(e) => {
-                e.preventDefault();
-                void act(async () => {
-                  const auth = await connectionApi.authorize("other", {
-                    endpoint: endpoint.trim(),
-                    scope,
-                    ...(registered
-                      ? {
-                          registration: {
-                            issuer: issuer.trim(),
-                            client_id: clientID.trim(),
-                            ...(clientSecret ? { client_secret: clientSecret } : {}),
-                          },
-                        }
-                      : {}),
-                  });
-                  sessionStorage.setItem("humagen.connection.provider", auth.provider ?? "other");
-                  window.location.assign(auth.url);
-                });
-              }}
-            >
-              <label className="flex flex-col gap-1 text-aui-sm">
-                Tool server URL
-                <input
-                  className={field}
-                  type="url"
-                  required
-                  value={endpoint}
-                  onChange={(e) => setEndpoint(e.target.value)}
-                  placeholder="https://tools.example.com/mcp"
-                />
-              </label>
-              <p className="text-aui-xs text-aui-muted">
-                {scope === "workspace"
-                  ? "Your workspace will be able to use this account. Each person still approves the tools they use."
-                  : "Only agents acting for you can use this account."}{" "}
-                The service must be in your allowed tool hosts.
-              </p>
-              <label className="flex items-center gap-2 text-aui-sm">
-                <input
-                  type="checkbox"
-                  checked={registered}
-                  onChange={(e) => setRegistered(e.target.checked)}
-                />
-                Use a registered application
-              </label>
-              {registered && (
-                <div className="flex flex-col gap-3">
-                  <p className="text-aui-xs text-aui-muted">
-                    Use the application registered with this service when it does not register
-                    clients automatically. The issuer must match the service's authorization server.
-                  </p>
-                  <Label text="Authorization issuer">
-                    <input
-                      className={field}
-                      type="url"
-                      required
-                      value={issuer}
-                      onChange={(e) => setIssuer(e.target.value)}
-                      autoComplete="off"
-                    />
-                  </Label>
-                  <Label text="Client ID">
-                    <input
-                      className={field}
-                      required
-                      value={clientID}
-                      onChange={(e) => setClientID(e.target.value)}
-                      autoComplete="off"
-                    />
-                  </Label>
-                  <Label text="Client secret (if required)">
-                    <input
-                      className={field}
-                      type="password"
-                      value={clientSecret}
-                      onChange={(e) => setClientSecret(e.target.value)}
-                      autoComplete="off"
-                    />
-                  </Label>
+            )}
+            {review?.id === selected && review && (
+              <section className={card} aria-label="Review connection tools">
+                <ToolList server={review.server} />
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button className={button} type="button" onClick={() => setReview(null)}>
+                    Cancel
+                  </button>
+                  <button className={primary} type="button" disabled={busy} onClick={approve}>
+                    Approve Tool List
+                  </button>
                 </div>
-              )}
-              <Problem message={problem} />
-              <button
-                className={primary}
-                type="submit"
-                disabled={busy || !canConnect || !presets.find((p) => p.id === "other")?.available}
-              >
-                {busy ? "Connecting…" : "Connect with OAuth"}
-              </button>
-            </form>
-          )}
+              </section>
+            )}
+            {current?.group === "apps" &&
+              (canWrite ? (
+                <>
+                  {clients
+                    .filter((c) => c.surface === selected)
+                    .map((c) => (
+                      <section
+                        key={c.id}
+                        className={`${card} flex flex-col gap-2`}
+                        aria-label={c.name}
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <h3 className="font-medium">{c.name}</h3>
+                          <Pill tone={c.enabled ? "ok" : "neutral"}>
+                            {c.enabled ? "Enabled" : "Disabled"}
+                          </Pill>
+                        </div>
+                        {c.managed === "installation" && (
+                          <InstalledClientSetup
+                            key={`${c.id}:${c.version}`}
+                            client={c}
+                            onChanged={changed}
+                          />
+                        )}
+                        {c.surface === "github" && (
+                          <GitHubRules
+                            key={`${c.id}:rules:${c.version}`}
+                            client={c}
+                            canWrite={c.managed !== "file"}
+                            onChanged={changed}
+                          />
+                        )}
+                        {link(
+                          {
+                            page: "operations",
+                            section: "integrations",
+                            selected: `client:${c.id}`,
+                          },
+                          "Events, links and actions",
+                        )}
+                      </section>
+                    ))}
+                  {(selected === "slack" || selected === "github") && (
+                    <details className="text-aui-sm">
+                      <summary className="cursor-pointer text-aui-muted">Set up by hand</summary>
+                      <div className="pt-3">
+                        <ClientConnect
+                          key={selected}
+                          initialSurface={selected}
+                          onCancel={close}
+                          onCreated={() => {
+                            close();
+                            changed();
+                          }}
+                        />
+                      </div>
+                    </details>
+                  )}
+                </>
+              ) : (
+                <p className="text-aui-sm">A workspace administrator installs workspace apps.</p>
+              ))}
+            {selected?.startsWith("cred:") && !canConnect && (
+              <p className="text-aui-sm text-aui-muted">{cannotConnect}</p>
+            )}
+            {selected?.startsWith("cred:") &&
+              creds &&
+              (() => {
+                const c = creds.providers.find((p) => `cred:${p.provider}` === selected);
+                return c ? (
+                  <ConnectionCard
+                    connection={c}
+                    ways={credentialWays}
+                    references={creds.references}
+                    canConnect={canConnect}
+                    open={canConnect && credentialWays.length > 0}
+                    busy={busy}
+                    onOpen={() => {}}
+                    onCancel={close}
+                    onSave={(way, text) =>
+                      void act(async () => {
+                        await api.connectTool(
+                          c.provider,
+                          way === "value" ? { value: text } : { ref: text.trim() },
+                        );
+                        changed();
+                        close();
+                      })
+                    }
+                    onRemove={() =>
+                      void act(async () => {
+                        await api.disconnectTool(c.provider);
+                        changed();
+                      })
+                    }
+                  />
+                ) : null;
+              })()}
+            {selected?.startsWith("server:") &&
+              (() => {
+                const s = context?.tool_servers.find((t) => `server:${t.name}` === selected);
+                return s ? (
+                  <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-aui-sm">
+                    <dt className="text-aui-muted">Address</dt>
+                    <dd className="break-all">{s.url}</dd>
+                    <dt className="text-aui-muted">Credential</dt>
+                    <dd className="break-words">{credentialWords(s)}</dd>
+                    <dt className="text-aui-muted">Approved tools</dt>
+                    <dd>{s.tools?.length ?? 0}</dd>
+                  </dl>
+                ) : null;
+              })()}
+            {selected === "other" && (
+              <>
+                {other?.available && (
+                  <Segmented<"address" | "oauth">
+                    label="How to add it"
+                    value={addWay}
+                    options={[
+                      { id: "address", label: "URL" },
+                      { id: "oauth", label: "Sign In" },
+                    ]}
+                    onChange={setAddWay}
+                  />
+                )}
+                {(addWay === "address" || !other?.available) && context && (
+                  <AddToolServer
+                    context={context}
+                    references={creds?.references ?? []}
+                    allowedHosts={creds?.allowed_hosts}
+                    onCancel={close}
+                    onAdded={(next) => {
+                      setContext(next);
+                      close();
+                      toast.success("MCP added");
+                    }}
+                  />
+                )}
+                {addWay === "oauth" && other?.available && (
+                  <form
+                    aria-label="Connect MCP with OAuth"
+                    className="flex flex-col gap-3"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      void act(async () => {
+                        const auth = await connectionApi.authorize("other", {
+                          endpoint: endpoint.trim(),
+                          scope: "person",
+                          ...(registered
+                            ? {
+                                registration: {
+                                  issuer: issuer.trim(),
+                                  client_id: clientID.trim(),
+                                  ...(clientSecret ? { client_secret: clientSecret } : {}),
+                                },
+                              }
+                            : {}),
+                        });
+                        sessionStorage.setItem(
+                          "humagen.connection.provider",
+                          auth.provider ?? "other",
+                        );
+                        window.location.assign(auth.url);
+                      });
+                    }}
+                  >
+                    <Label text="URL">
+                      <input
+                        className={field}
+                        type="url"
+                        required
+                        value={endpoint}
+                        onChange={(e) => setEndpoint(e.target.value)}
+                        placeholder="https://tools.example.com/mcp"
+                      />
+                    </Label>
+                    <label className="flex items-center gap-2 text-aui-sm">
+                      <input
+                        type="checkbox"
+                        checked={registered}
+                        onChange={(e) => setRegistered(e.target.checked)}
+                      />
+                      Use a registered application
+                    </label>
+                    {registered && (
+                      <div className="flex flex-col gap-3">
+                        <p className="text-aui-xs text-aui-muted">
+                          For a service that does not register clients itself. The issuer must match
+                          its authorization server.
+                        </p>
+                        <Label text="Authorization issuer">
+                          <input
+                            className={field}
+                            type="url"
+                            required
+                            value={issuer}
+                            onChange={(e) => setIssuer(e.target.value)}
+                            autoComplete="off"
+                          />
+                        </Label>
+                        <Label text="Client ID">
+                          <input
+                            className={field}
+                            required
+                            value={clientID}
+                            onChange={(e) => setClientID(e.target.value)}
+                            autoComplete="off"
+                          />
+                        </Label>
+                        <Label text="Client secret (if required)">
+                          <input
+                            className={field}
+                            type="password"
+                            value={clientSecret}
+                            onChange={(e) => setClientSecret(e.target.value)}
+                            autoComplete="off"
+                          />
+                        </Label>
+                      </div>
+                    )}
+                    <button
+                      className={`${primary} self-start`}
+                      type="submit"
+                      disabled={busy || !canConnect}
+                    >
+                      {busy ? "Connecting…" : "Connect with OAuth"}
+                    </button>
+                  </form>
+                )}
+              </>
+            )}
+          </div>
         </SheetContent>
       </Sheet>
-      {tab === "tools" && (
-        <YourConnections
-          key={`personal-${revision}`}
-          embedded
-          canConnect={canConnect}
-          open={credentialProvider}
-          onOpen={setCredentialProvider}
-        />
-      )}
-      {tab !== "tools" && (
-        <div id="workspace-connections">
-          <Integrations
-            key={`${tab}-${revision}`}
-            embedded
-            only={tab === "workspace" ? "client" : "source"}
-            canWrite={canWrite}
-            canKnowledgeWrite={canKnowledgeWrite}
-          />
-        </div>
-      )}
     </Page>
   );
-}
-
-type ConnectionTab = "tools" | "knowledge" | "workspace";
-
-const tabLede: Record<ConnectionTab, string> = {
-  tools:
-    "Accounts and MCP tool servers agents act through for you. Each is yours alone; the workspace decides which services are allowed.",
-  knowledge:
-    "Documents and data indexed for search. Agents read and cite them; they never act through them.",
-  workspace:
-    "Apps installed once for the whole workspace, so agents can answer in Slack and on GitHub. Only administrators manage these.",
-};
-
-/** Which tab a service belongs on: agent tools, knowledge, or workspace apps. */
-function tabFor(id?: string, kind?: string): ConnectionTab {
-  if (kind === "client_oauth" || kind === "github_install" || id === "slack" || id === "github")
-    return "workspace";
-  if (kind === "source_oauth" || kind === "catalog_oauth" || id === "drive" || id === "bigquery")
-    return "knowledge";
-  return "tools";
-}
-
-/** The workspace has not turned on account connections: said once above the cards, not on each. */
-function adminOff(preset: ConnectionPreset): boolean {
-  return !!preset.reason?.startsWith("An administrator must enable secure account connections");
 }

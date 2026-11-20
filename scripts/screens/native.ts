@@ -5,6 +5,8 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { REVIEW_ANSWER, REVIEW_ASK } from "./review.ts";
 import {
+  INLINE_CODE_ANSWER,
+  INLINE_CODE_ASK,
   REVIEW_CONTEXT,
   REVIEW_STEP,
   REVIEW_ANSWER as SESSION_REVIEW_ANSWER,
@@ -99,6 +101,8 @@ function multiStepReply(request: ModelRequest, lastUser: number): Reply {
 
 export function fixtureResponse(request: ModelRequest) {
   const lastUser = request.messages.findLastIndex((message) => message.role === "user");
+  if (plain(request.messages[lastUser]?.content).includes(INLINE_CODE_ASK))
+    return { delta: { role: "assistant", content: INLINE_CODE_ANSWER }, finish: "stop" };
   if (/multi-step plan/i.test(plain(request.messages[lastUser]?.content))) {
     const reply = multiStepReply(request, lastUser);
     const step = request.messages.slice(lastUser + 1).filter((m) => m.role === "assistant").length;

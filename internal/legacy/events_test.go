@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/urmzd/humagen/internal/legacy"
-	"github.com/urmzd/orchagent/flow/event"
+	"github.com/urmzd/saige/flow/event"
 )
 
 // The journal stored the old envelope.Event with json.Marshal, so its

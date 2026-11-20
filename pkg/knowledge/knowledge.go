@@ -18,6 +18,7 @@ package knowledge
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -35,10 +36,17 @@ import (
 
 // Errors.
 var (
-	ErrInvalid      = errors.New("knowledge: invalid")
-	ErrExists       = errors.New("knowledge: source already exists")
-	ErrNotFound     = errors.New("knowledge: not found")
-	ErrUpstreamRead = fmt.Errorf("%w: current upstream file access is required before reading retained external data", ErrInvalid)
+	ErrInvalid  = errors.New("knowledge: invalid")
+	ErrExists   = errors.New("knowledge: source already exists")
+	ErrNotFound = errors.New("knowledge: not found")
+	// ErrChanged is a replacement of a document whose title or text is no
+	// longer what the caller last saw.
+	ErrChanged = errors.New("knowledge: the document changed")
+	// ErrStructureKept is an import with the title and text a document
+	// already has, over a trusted structure: a structure kept for a
+	// revision changes only with the session's text, never in place.
+	ErrStructureKept = errors.New("knowledge: a structure is already kept for this revision of the document; it changes only with the session's text")
+	ErrUpstreamRead  = fmt.Errorf("%w: current upstream file access is required before reading retained external data", ErrInvalid)
 )
 
 // passageSize is the target length of a passage in bytes.
@@ -52,6 +60,12 @@ func ValidName(name string) bool { return validName.MatchString(name) }
 
 // Source is a named collection of documents.
 type Source struct {
+	// ID tells this source apart from any earlier or later source of the
+	// same name: set when it is created, never changed, and never given to
+	// another source. A source created before ids were kept has none ("")
+	// until it is given one (GiveID), and an empty id stands for no source,
+	// so a source of that name made again is never taken for it.
+	ID             string     `json:"id,omitempty"`
 	ContentVersion uint64     `json:"content_version,omitempty"`
 	Lifecycle      *Lifecycle `json:"lifecycle,omitempty"`
 	Name           string     `json:"name"`
@@ -95,6 +109,34 @@ type Document struct {
 	Excluded bool      `json:"excluded"`
 	AddedBy  string    `json:"added_by,omitempty"`
 	AddedAt  time.Time `json:"added_at"`
+	// Digest names the document's title and text together (Digest), which
+	// are what a replacement replaces: a writer can tell whether what it
+	// holds is what is kept, and replace it only if nobody has changed
+	// either since. A document kept before digests were has none.
+	Digest string `json:"digest,omitempty"`
+	// UpdatedAt is when its text was last replaced. Nil is never.
+	UpdatedAt *time.Time `json:"updated_at,omitempty"`
+	// StructureBytes is the size, as JSON, of the imported session's
+	// structure kept with this revision (imported.go): zero for a document
+	// no import wrote, or one edited since. A source's are bounded together
+	// by MaxImportedSourceBytes.
+	StructureBytes int `json:"structure_bytes,omitempty"`
+	// StructureDigest is that structure's own digest (StructureDigest),
+	// written with StructureBytes by every write that keeps a structure and
+	// cleared with it by an ordinary edit: what a reader pins, with Digest,
+	// to continue the conversation the document was imported from. A
+	// document whose structure an earlier release kept has StructureBytes
+	// and no StructureDigest until it is imported again; listing documents
+	// never reads a structure to fill it in (Origin.StructureDigest does).
+	StructureDigest string `json:"structure_digest,omitempty"`
+}
+
+// Digest is the digest a document of this title and text is kept with: the
+// SHA-256, in hex, of the title, a zero byte and the text, each without the
+// space around it. It changes when either does.
+func Digest(title, text string) string {
+	sum := sha256.Sum256([]byte(strings.TrimSpace(title) + "\x00" + strings.TrimSpace(text)))
+	return hex.EncodeToString(sum[:])
 }
 
 // Hit is one passage that matched a query.
@@ -146,16 +188,18 @@ type Store struct {
 }
 
 // stored is one record: a source, a document, a document's passages or
-// vectors, a name's content clock, or the stamp every new source moves. A
-// document's passages are written once, when it is added, and its record
+// vectors, the structure of the session it was imported from, a name's
+// content clock, or the stamp every new source moves. A document's passages
+// are written when it is added and when its text is replaced, and its record
 // again whenever it changes.
 type stored struct {
-	Clock    *contentClock `json:"clock,omitempty"`
-	Source   *Source       `json:"source,omitempty"`
-	Vectors  *vectorRecord `json:"vectors,omitempty"`
-	Document *Document     `json:"document,omitempty"`
-	Passages []string      `json:"passages,omitempty"`
-	Stamp    int64         `json:"stamp,omitempty"`
+	Clock    *contentClock   `json:"clock,omitempty"`
+	Imported *importedRecord `json:"imported,omitempty"`
+	Source   *Source         `json:"source,omitempty"`
+	Vectors  *vectorRecord   `json:"vectors,omitempty"`
+	Document *Document       `json:"document,omitempty"`
+	Passages []string        `json:"passages,omitempty"`
+	Stamp    int64           `json:"stamp,omitempty"`
 }
 
 // namespace is where sources are kept. The tenant is the shard key; within
@@ -165,6 +209,8 @@ type stored struct {
 //	doc/<name>/<seq>       a document, numbered in the order it was added
 //	text/<name>/<seq>      its passages
 //	vec/<name>/<seq>       their vectors
+//	imported/<name>/<seq>  the structure of the session it was imported
+//	                       from, for a document an import wrote (imported.go)
 //	version/<name>         the name's content clock, kept after a delete
 //	head                   a stamp every new source moves, so two processes
 //	                       creating sources at once cannot both count under
@@ -461,8 +507,12 @@ func (s *Store) CreateWithConfig(tenant, name, description, by string, at time.T
 	if err := s.dir.Mark(tenant); err != nil {
 		return Source{}, err
 	}
+	id, err := newSourceID()
+	if err != nil {
+		return Source{}, err
+	}
 	var out Source
-	err := state.Retry(func() error {
+	err = state.Retry(func() error {
 		all, head, err := s.sources(tenant)
 		if err != nil {
 			return err
@@ -490,7 +540,7 @@ func (s *Store) CreateWithConfig(tenant, name, description, by string, at time.T
 			}
 			putClock(b, tenant, clk, 0)
 		}
-		src := Source{Name: name, Description: description, Variants: []Variant{}, CreatedBy: by, UpdatedAt: at}
+		src := Source{ID: id, Name: name, Description: description, Variants: []Variant{}, CreatedBy: by, UpdatedAt: at}
 		src.Lifecycle = configured
 		src.ContentVersion = clk.Value
 		b.Create(tenant, sourceKey(name), stored{Source: &src})
@@ -505,6 +555,43 @@ func (s *Store) CreateWithConfig(tenant, name, description, by string, at time.T
 		return Source{}, writeErr(err)
 	}
 	return cloneSource(out), nil
+}
+
+// GiveID gives a source kept before sources had ids one (Source.ID), in a
+// write guarded by the record's version, and returns the source as kept. A
+// source that has an id keeps it and is not written, so callers racing to
+// give one end with the same id.
+func (s *Store) GiveID(tenant, name string) (Source, error) {
+	id, err := newSourceID()
+	if err != nil {
+		return Source{}, err
+	}
+	src, err := s.update(tenant, name, func(src *Source) error {
+		if src.ID != "" {
+			return errHasID
+		}
+		src.ID = id
+		return nil
+	})
+	if errors.Is(err, errHasID) {
+		return s.Get(tenant, name)
+	}
+	if err != nil {
+		return Source{}, writeErr(err)
+	}
+	return src, nil
+}
+
+// errHasID stops GiveID's write for a source that has an id.
+var errHasID = errors.New("knowledge: the source has an id")
+
+// newSourceID is a new source's id (Source.ID): 128 random bits, in hex.
+func newSourceID() (string, error) {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b[:]), nil
 }
 
 // bumpHead moves the head stamp read at version, 0 when there is none.
@@ -549,6 +636,7 @@ func (s *Store) deleteWithScope(tenant, name string, expected *SourceConfig, gua
 			b.Delete(tenant, docKey(name, d.seq))
 			b.Delete(tenant, textKey(name, d.seq))
 			b.Delete(tenant, vecKey(name, d.seq))
+			b.Delete(tenant, importedKey(name, d.seq))
 		}
 		b.DeleteAt(tenant, sourceKey(name), at)
 		putClock(b, tenant, contentClock{Name: name, Value: version, Seq: nextSeq(clk, docs) - 1}, clkAt)
@@ -559,7 +647,7 @@ func (s *Store) deleteWithScope(tenant, name string, expected *SourceConfig, gua
 // writeErr marks an error from the state store as a failed write, leaving
 // the store's own errors as they are.
 func writeErr(err error) error {
-	if err == nil || errors.Is(err, ErrInvalid) || errors.Is(err, ErrNotFound) || errors.Is(err, ErrExists) {
+	if err == nil || errors.Is(err, ErrInvalid) || errors.Is(err, ErrNotFound) || errors.Is(err, ErrExists) || errors.Is(err, ErrChanged) {
 		return err
 	}
 	return fmt.Errorf("knowledge: write: %w", err)
@@ -586,6 +674,50 @@ func (s *Store) Documents(tenant, name string) ([]Document, error) {
 func (s *Store) DocumentsForScope(tenant, name string, expected *SourceConfig) ([]Document, error) {
 	return s.documents(tenant, name, expected, true)
 }
+
+// DocumentTextForScope reads one document and its passages, in order, from
+// a source whose configuration is still expected. A provider's retained
+// copy is not read here: its text needs the reader's own access
+// (ErrUpstreamRead), and an excluded document reads as missing.
+func (s *Store) DocumentTextForScope(tenant, name, id string, expected *SourceConfig) (Document, []string, error) {
+	for range state.MaxTries {
+		meta, _, err := s.meta(tenant, name)
+		if err != nil {
+			return Document{}, nil, err
+		}
+		if !sameConfiguration(meta, expected) {
+			return Document{}, nil, ErrNotFound
+		}
+		if meta.RequiresUpstreamRead() {
+			return Document{}, nil, ErrUpstreamRead
+		}
+		src, _, err := s.load(tenant, name)
+		if errors.Is(err, state.ErrConflict) {
+			continue
+		}
+		if err != nil {
+			return Document{}, nil, err
+		}
+		for _, d := range src.docs {
+			if d.ID != id {
+				continue
+			}
+			if d.Excluded {
+				return Document{}, nil, ErrNotFound
+			}
+			var texts []string
+			for _, p := range src.passages {
+				if p.doc.ID == id {
+					texts = append(texts, p.text)
+				}
+			}
+			return *d, texts, nil
+		}
+		return Document{}, nil, ErrNotFound
+	}
+	return Document{}, nil, state.ErrBusy
+}
+
 func (s *Store) documents(tenant, name string, expected *SourceConfig, guard bool) ([]Document, error) {
 	for range state.MaxTries {
 		src, at, err := s.meta(tenant, name)
@@ -620,7 +752,7 @@ func (s *Store) documents(tenant, name string, expected *SourceConfig, guard boo
 
 // Add cuts a document into passages and stores it.
 func (s *Store) Add(tenant, name, title, uri, text, by string, at time.Time) (Document, error) {
-	return s.add(tenant, name, title, uri, text, by, at, nil, false)
+	return s.add(tenant, name, title, uri, text, by, at, nil, false, nil)
 }
 
 // AddForScope inserts only while the source retains the exact expected public
@@ -629,10 +761,12 @@ func (s *Store) Add(tenant, name, title, uri, text, by string, at time.Time) (Do
 // so a concurrent Configure cannot broaden the audience or replace the source
 // authority between them.
 func (s *Store) AddForScope(tenant, name, title, uri, text, by string, at time.Time, expected *SourceConfig) (Document, error) {
-	return s.add(tenant, name, title, uri, text, by, at, expected, true)
+	return s.add(tenant, name, title, uri, text, by, at, expected, true, nil)
 }
 
-func (s *Store) add(tenant, name, title, uri, text, by string, at time.Time, expected *SourceConfig, guard bool) (Document, error) {
+// add stores a document, and with it the structure of the session it was
+// imported from when session is given.
+func (s *Store) add(tenant, name, title, uri, text, by string, at time.Time, expected *SourceConfig, guard bool, session *Imported) (Document, error) {
 	title, text = strings.TrimSpace(title), strings.TrimSpace(text)
 	switch {
 	case title == "":
@@ -644,9 +778,12 @@ func (s *Store) add(tenant, name, title, uri, text, by string, at time.Time, exp
 	if _, err := rand.Read(id); err != nil {
 		return Document{}, err
 	}
-	doc := &Document{ID: hex.EncodeToString(id), Title: title, URI: uri, Bytes: len(text), AddedBy: by, AddedAt: at}
+	doc := &Document{ID: hex.EncodeToString(id), Title: title, URI: uri, Bytes: len(text), AddedBy: by, AddedAt: at, Digest: Digest(title, text)}
 	texts := split(text)
 	doc.Passages = len(texts)
+	if session != nil {
+		doc.StructureBytes, doc.StructureDigest = importedSize(*session), StructureDigest(*session)
+	}
 
 	err := state.Retry(func() error {
 		src, srcAt, err := s.meta(tenant, name)
@@ -665,6 +802,9 @@ func (s *Store) add(tenant, name, title, uri, text, by string, at time.Time, exp
 		}
 		if len(docs) >= MaxImportDocuments || totalBytes > MaxImportBytes {
 			return fmt.Errorf("%w: source document or byte limit reached", ErrInvalid)
+		}
+		if session != nil && structureBytes(docs, -1, doc.StructureBytes) > MaxImportedSourceBytes {
+			return sourceStructuresFull()
 		}
 		if guard {
 			if expected == nil {
@@ -696,6 +836,9 @@ func (s *Store) add(tenant, name, title, uri, text, by string, at time.Time, exp
 		b := s.kept.Batch()
 		b.Put(tenant, textKey(name, seq), stored{Passages: texts})
 		b.Create(tenant, docKey(name, seq), stored{Document: doc})
+		if session != nil {
+			b.Put(tenant, importedKey(name, seq), stored{Imported: newImportedRecord(*session, doc.Digest, by, at)})
+		}
 		b.PutAt(tenant, sourceKey(name), stored{Source: &meta}, srcAt)
 		putClock(b, tenant, contentClock{Name: name, Value: version, Seq: seq}, clkAt)
 		return b.Commit()
@@ -705,6 +848,174 @@ func (s *Store) add(tenant, name, title, uri, text, by string, at time.Time, exp
 	}
 	s.nudge()
 	return *doc, nil
+}
+
+// ReplaceForScope replaces one document's title and text in place, if they
+// are still the title and text digest names ("" for a document kept with
+// no digest, which is so replaced once: the replacement gives it one). The document keeps its id, its place in the source, its URI,
+// who added it and when, and whether it is left out of search. A document
+// whose title or text is another's by now is ErrChanged, and nothing is
+// written.
+//
+// The condition, the new passages and the document's record are one write
+// at the version of the source read, as an insertion is: a failed
+// replacement leaves the document as it was, and of two made at once from
+// the same digest one is refused. The old vectors go with the old text. The
+// structure of a session the document was imported from, if one is kept, is
+// marked edited in the same write and is never trusted again: only another
+// import writes a trusted one (Store.OriginForScope says Changed). Putting
+// the old title and text back does not undo that.
+func (s *Store) ReplaceForScope(tenant, name, id, title, text, digest string, at time.Time, expected *SourceConfig) (Document, error) {
+	return s.replace(tenant, name, id, title, text, digest, at, expected, nil, "")
+}
+
+// replace replaces a document's title and text, and in the same write its
+// structure: with session as by asserts it when one is given, and otherwise
+// by marking the one kept edited.
+func (s *Store) replace(tenant, name, id, title, text, digest string, at time.Time, expected *SourceConfig, session *Imported, by string) (Document, error) {
+	title, text = strings.TrimSpace(title), strings.TrimSpace(text)
+	switch {
+	case title == "":
+		return Document{}, fmt.Errorf("%w: a document needs a title", ErrInvalid)
+	case text == "":
+		return Document{}, fmt.Errorf("%w: a document needs text", ErrInvalid)
+	}
+	texts := split(text)
+	var out Document
+	restored := false
+	err := state.Retry(func() error {
+		restored = false
+		src, srcAt, err := s.meta(tenant, name)
+		if err != nil {
+			return err
+		}
+		if expected == nil {
+			if src.Lifecycle != nil {
+				return fmt.Errorf("%w: the source configuration changed; review its audience again", ErrExists)
+			}
+		} else if src.Lifecycle == nil || !src.Lifecycle.Equal(*expected) || src.Lifecycle.Mode != Indexed || src.Lifecycle.Provider != "manual" {
+			return fmt.Errorf("%w: the source configuration changed; review its audience again", ErrExists)
+		}
+		docs, err := s.docs(tenant, name)
+		if err != nil {
+			return err
+		}
+		i := slices.IndexFunc(docs, func(d docRow) bool { return d.doc.ID == id })
+		if i < 0 {
+			return fmt.Errorf("%w: document %q", ErrNotFound, id)
+		}
+		row := docs[i]
+		if row.doc.Digest != digest {
+			return ErrChanged
+		}
+		if session != nil {
+			if err := CheckImported(*session, row.doc.URI); err != nil {
+				return err
+			}
+		}
+		if session != nil && Digest(title, text) == row.doc.Digest {
+			// A restore: the title and text are the ones kept, and only
+			// the structure is written, with its size on the document. It
+			// is taken only when no trusted structure is kept: one that is
+			// changes only with the session's text, so another import of
+			// the same revision cannot swap it under an unchanged digest.
+			kept, err := s.kept.Lookup(tenant, importedKey(name, row.seq))
+			switch {
+			case errors.Is(err, state.ErrNotFound):
+			case err != nil:
+				return err
+			case originOf(row.doc, kept.Value.Imported, false).Session != nil:
+				return ErrStructureKept
+			}
+			// The passages, vectors, updated time and content version are
+			// left as they are, so nothing is embedded again and the
+			// source does not read as changed. The source's record is put
+			// back as it was, at the version read, so writes to the
+			// source stay one at a time and the bound holds.
+			doc := row.doc
+			doc.StructureBytes, doc.StructureDigest = importedSize(*session), StructureDigest(*session)
+			if structureBytes(docs, row.seq, doc.StructureBytes) > MaxImportedSourceBytes {
+				return sourceStructuresFull()
+			}
+			meta := cloneSource(src)
+			b := s.kept.Batch()
+			b.PutAt(tenant, docKey(name, row.seq), stored{Document: &doc}, row.version)
+			b.Put(tenant, importedKey(name, row.seq), stored{Imported: newImportedRecord(*session, doc.Digest, by, at)})
+			b.PutAt(tenant, sourceKey(name), stored{Source: &meta}, srcAt)
+			if err := b.Commit(); err != nil {
+				return err
+			}
+			out, restored = doc, true
+			return nil
+		}
+		doc := row.doc
+		stamp := at
+		doc.Title, doc.Bytes, doc.Passages, doc.Digest, doc.UpdatedAt = title, len(text), len(texts), Digest(title, text), &stamp
+		var structure *importedRecord
+		if session != nil {
+			doc.StructureBytes, doc.StructureDigest = importedSize(*session), StructureDigest(*session)
+			if structureBytes(docs, row.seq, doc.StructureBytes) > MaxImportedSourceBytes {
+				return sourceStructuresFull()
+			}
+			structure = newImportedRecord(*session, doc.Digest, by, at)
+		} else {
+			doc.StructureBytes, doc.StructureDigest = 0, ""
+			kept, err := s.kept.Lookup(tenant, importedKey(name, row.seq))
+			switch {
+			case errors.Is(err, state.ErrNotFound):
+			case err != nil:
+				return err
+			case kept.Value.Imported != nil && !kept.Value.Imported.Edited:
+				was := kept.Value.Imported
+				structure = &importedRecord{Document: was.Document, By: was.By, At: was.At, Structure: was.Structure, Edited: true}
+			}
+		}
+		docs[i].doc = doc
+		totalBytes := 0
+		for _, d := range docs {
+			totalBytes += d.doc.Bytes
+		}
+		if totalBytes > MaxImportBytes {
+			return fmt.Errorf("%w: source document or byte limit reached", ErrInvalid)
+		}
+		clk, clkAt, err := s.clock(tenant, name)
+		if err != nil {
+			return err
+		}
+		version, err := nextVersion(src, clk)
+		if err != nil {
+			return err
+		}
+		meta := cloneSource(src)
+		if meta.Lifecycle != nil {
+			meta.Lifecycle.Status = Available
+			meta.Lifecycle.LastGoodAt = &stamp
+			meta.Lifecycle.Cause = ""
+		}
+		recount(&meta, docs)
+		meta.ContentVersion, meta.UpdatedAt = version, at
+		b := s.kept.Batch()
+		b.Put(tenant, textKey(name, row.seq), stored{Passages: texts})
+		b.Delete(tenant, vecKey(name, row.seq))
+		b.PutAt(tenant, docKey(name, row.seq), stored{Document: &doc}, row.version)
+		if structure != nil {
+			b.Put(tenant, importedKey(name, row.seq), stored{Imported: structure})
+		}
+		b.PutAt(tenant, sourceKey(name), stored{Source: &meta}, srcAt)
+		putClock(b, tenant, contentClock{Name: name, Value: version, Seq: max(clk.Seq, nextSeq(clk, docs)-1)}, clkAt)
+		if err := b.Commit(); err != nil {
+			return err
+		}
+		out = doc
+		return nil
+	})
+	if err != nil {
+		return Document{}, writeErr(err)
+	}
+	if !restored {
+		s.nudge()
+	}
+	return out, nil
 }
 
 // Remove deletes one document from a source.
@@ -754,6 +1065,7 @@ func (s *Store) removeWithScope(tenant, name, id string, at time.Time, expected 
 		b.DeleteAt(tenant, docKey(name, gone.seq), gone.version)
 		b.Delete(tenant, textKey(name, gone.seq))
 		b.Delete(tenant, vecKey(name, gone.seq))
+		b.Delete(tenant, importedKey(name, gone.seq))
 		b.PutAt(tenant, sourceKey(name), stored{Source: &next}, srcAt)
 		putClock(b, tenant, contentClock{Name: name, Value: version, Seq: max(clk.Seq, nextSeq(clk, docs)-1, gone.seq)}, clkAt)
 		return b.Commit()

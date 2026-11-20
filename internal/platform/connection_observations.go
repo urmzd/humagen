@@ -34,10 +34,19 @@ func (p *Platform) connectionHealthRevision(who auth.Principal, name string, cli
 	if !client && name != "slack" && name != "workspace-slack" && name != "github" {
 		return p.ConnectionAuth.Revision(who.Tenant, connectionOwner(who, name), name)
 	}
-	if p.Clients == nil || !who.Can(auth.ClientsRead) {
+	if !who.Can(auth.ClientsRead) {
 		return ""
 	}
-	all, err := p.Clients.List(who.Tenant)
+	return p.clientsHealthRevision(who.Tenant, name, client)
+}
+
+// clientsHealthRevision is the revision of a client's record, or of every
+// installed client of a surface, that a health observation is good for.
+func (p *Platform) clientsHealthRevision(tenant, name string, client bool) string {
+	if p.Clients == nil {
+		return ""
+	}
+	all, err := p.Clients.List(tenant)
 	if err != nil {
 		return ""
 	}
@@ -48,11 +57,11 @@ func (p *Platform) connectionHealthRevision(who auth.Principal, name string, cli
 		}
 		part := []any{held.ID, held.Version}
 		if held.Credentials.Token.Ref == slackOAuthRef {
-			provider, marker, err := p.ConnectionAuth.Binding(who.Tenant, connectionauth.WorkspaceOwner, "client:"+held.ID)
+			provider, marker, err := p.ConnectionAuth.Binding(tenant, connectionauth.WorkspaceOwner, "client:"+held.ID)
 			if err != nil || marker == "" {
 				return ""
 			}
-			part = append(part, p.ConnectionAuth.Revision(who.Tenant, connectionauth.WorkspaceOwner, provider))
+			part = append(part, p.ConnectionAuth.Revision(tenant, connectionauth.WorkspaceOwner, provider))
 		}
 		parts = append(parts, part)
 	}
@@ -70,20 +79,24 @@ func (p *Platform) saveConnectionHealth(who auth.Principal, name string, client 
 	if !p.connectionHealth.Enabled() {
 		return nil
 	}
-	key := connectionObservationKey(who, name, client)
-	observation := connectionObservation{Revision: revision, Health: result}
+	return p.putConnectionHealth(who.Tenant, connectionObservationKey(who, name, client), connectionObservation{Revision: revision, Health: result})
+}
+
+// putConnectionHealth keeps an observation unless a newer one of the same
+// revision is kept already.
+func (p *Platform) putConnectionHealth(tenant, key string, observation connectionObservation) error {
 	for range 4 {
-		row, err := p.connectionHealth.Lookup(who.Tenant, key)
+		row, err := p.connectionHealth.Lookup(tenant, key)
 		batch := p.connectionHealth.Batch()
 		if errors.Is(err, state.ErrNotFound) {
-			batch.Create(who.Tenant, key, observation)
+			batch.Create(tenant, key, observation)
 		} else if err != nil {
 			return err
 		} else {
-			if row.Value.Revision == revision && row.Value.Health.CheckedAt.After(result.CheckedAt) {
+			if row.Value.Revision == observation.Revision && row.Value.Health.CheckedAt.After(observation.Health.CheckedAt) {
 				return nil
 			}
-			batch.PutAt(who.Tenant, key, observation, row.Version)
+			batch.PutAt(tenant, key, observation, row.Version)
 		}
 		if err = batch.Commit(); !errors.Is(err, state.ErrConflict) {
 			return err

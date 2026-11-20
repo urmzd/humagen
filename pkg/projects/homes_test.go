@@ -178,7 +178,10 @@ func TestAFailedAgentsOrHomeWriteChangesNothing(t *testing.T) {
 	}
 }
 
-func TestReadRefusesAHomeThatIsNoProject(t *testing.T) {
+// A stored home says only who sees an agent, so one that names no project,
+// or cannot be read, never refuses the workspace. It fails closed: the agent
+// reads as homed where nobody but projects:govern sees it.
+func TestReadKeepsTheWorkspaceWhenAHomeNamesNothing(t *testing.T) {
 	put := func(t *testing.T, st state.Store, key string, v any) {
 		t.Helper()
 		raw, _ := json.Marshal(v)
@@ -187,46 +190,62 @@ func TestReadRefusesAHomeThatIsNoProject(t *testing.T) {
 		}
 	}
 	field := projects.Project{Name: "Field", Kind: projects.Team, Version: 1}
-	for name, write := range map[string]func(*testing.T, state.Store){
-		"a project that is not there": func(t *testing.T, st state.Store) {
+	for name, c := range map[string]struct {
+		write func(*testing.T, state.Store)
+		agent string
+		home  string
+		homed bool
+	}{
+		"a project that is not there": {func(t *testing.T, st state.Store) {
 			put(t, st, "a:helper", map[string]string{"agent": "helper", "project": "Gone"})
-		},
-		"kept under another agent": func(t *testing.T, st state.Store) {
+		}, "helper", "Gone", true},
+		"kept under another agent": {func(t *testing.T, st state.Store) {
 			put(t, st, "p:Field", field)
 			put(t, st, "a:helper", map[string]string{"agent": "other", "project": "Field"})
-		},
-		"auto": func(t *testing.T, st state.Store) {
+		}, "helper", projects.Unreadable, true},
+		"auto": {func(t *testing.T, st state.Store) {
 			put(t, st, "p:Field", field)
 			put(t, st, "a:auto", map[string]string{"agent": "auto", "project": "Field"})
-		},
-		"an invalid agent list": func(t *testing.T, st state.Store) {
-			put(t, st, "p:Field", projects.Project{Name: "Field", Kind: projects.Team, Version: 1, Agents: projects.Agents{Enable: []string{"auto"}}})
-		},
+		}, "auto", "", false},
 	} {
 		t.Run(name, func(t *testing.T) {
 			st := state.NewMemory()
-			write(t, st)
+			c.write(t, st)
 			s, err := projects.Open(st)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err := s.Read("acme"); !errors.Is(err, projects.ErrInvalid) {
-				t.Fatalf("Read = %v, want ErrInvalid", err)
+			tree, err := s.Read("acme")
+			if err != nil {
+				t.Fatalf("Read = %v", err)
 			}
-			if _, err := s.Create("acme", projects.Project{Name: "New", Kind: projects.Team}, projects.Writer{By: "ada", Govern: true}, t0); !errors.Is(err, projects.ErrInvalid) {
-				t.Fatalf("a write = %v, want ErrInvalid", err)
+			if home, homed := tree.Home(c.agent); home != c.home || homed != c.homed {
+				t.Fatalf("home of %s = %q %v, want %q %v", c.agent, home, homed, c.home, c.homed)
+			}
+			if _, err := s.Create("acme", projects.Project{Name: "New", Kind: projects.Team}, projects.Writer{By: "ada", Govern: true}, t0); err != nil {
+				t.Fatalf("a write = %v", err)
 			}
 		})
 	}
-	// A record from before projects had agents loads, and adds nothing.
+	// An invalid agent list on a project is still refused.
 	st := state.NewMemory()
-	put(t, st, "p:Field", map[string]any{"name": "Field", "kind": "team", "version": 1})
-	put(t, st, "p:", map[string]any{"name": "", "kind": "company", "version": 1})
+	put(t, st, "p:Field", projects.Project{Name: "Field", Kind: projects.Team, Version: 1, Agents: projects.Agents{Enable: []string{"auto"}}})
 	s, err := projects.Open(st)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if root := s.Tree("acme").Root(); root.Agents.Enable != nil || s.Tree("acme").IsAvailable("Field", "lead") {
+	if _, err := s.Read("acme"); !errors.Is(err, projects.ErrInvalid) {
+		t.Fatalf("an invalid agent list = %v, want ErrInvalid", err)
+	}
+	// A record from before projects had agents loads, and any agent answers.
+	st = state.NewMemory()
+	put(t, st, "p:Field", map[string]any{"name": "Field", "kind": "team", "version": 1})
+	put(t, st, "p:", map[string]any{"name": "", "kind": "company", "version": 1})
+	s, err = projects.Open(st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if root := s.Tree("acme").Root(); root.Agents.Enable != nil || !s.Tree("acme").IsAvailable("Field", "lead") {
 		t.Fatalf("a record from before agents = %+v", root.Agents)
 	}
 }

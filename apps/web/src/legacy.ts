@@ -50,7 +50,8 @@ export function builtinAgentKey(name: string): string {
   const keys: Record<string, string> = {
     "humagen-writer": "warp-writer",
     "humagen-analyst": "warp-analyst",
-    "humagen-builder": "warp-builder",
+    // The builder became the entry agent, which keeps the builder's color.
+    humagen: "warp-builder",
   };
   return keys[name] ?? name;
 }

@@ -9,9 +9,9 @@ import (
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/evals"
 	"github.com/urmzd/humagen/pkg/prompts"
-	"github.com/urmzd/orchagent/flow/event"
-	"github.com/urmzd/orchagent/flow/runtime"
-	"github.com/urmzd/orchagent/flow/turn"
+	"github.com/urmzd/saige/flow/event"
+	"github.com/urmzd/saige/flow/runtime"
+	"github.com/urmzd/saige/flow/turn"
 )
 
 func TestRunUsesItsPinnedPromptAfterWorkspaceChanges(t *testing.T) {
@@ -53,7 +53,7 @@ func TestBuilderRevisionGateChecksCandidateBeforePublishing(t *testing.T) {
 		}
 		return turn.Result{Text: "Verified evidence"}, nil
 	})
-	p, err := New(Config{Workspace: t.TempDir(), Runtime: engine, BuiltinProvider: "offline", BuiltinModel: "offline"})
+	p, err := New(Config{Workspace: t.TempDir(), Runtime: engine, TestBuiltinProvider: "offline", TestBuiltinModel: "offline"})
 	if err != nil {
 		t.Fatal(err)
 	}

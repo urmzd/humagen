@@ -72,7 +72,7 @@ func TestValidateRefusesWhatASurfaceCannotBe(t *testing.T) {
 		}
 	}
 	gh := githubOf("gh", "acme")
-	gh.GitHub = &GitHubOptions{AutoLabels: map[string]map[string]string{"acme/handbook": {"agent:auto": "lead"}}, Login: "humagen-app[bot]"}
+	gh.GitHub = &GitHubOptions{AutoReview: &AutoReview{Repositories: map[string]bool{"acme/handbook": false}}, Login: "humagen-app[bot]"}
 	if err := gh.Validate(); err != nil {
 		t.Fatal(err)
 	}
@@ -80,8 +80,9 @@ func TestValidateRefusesWhatASurfaceCannotBe(t *testing.T) {
 		"no owners":                     func(c *Client) { c.Identity.Owners = nil },
 		"team on github":                func(c *Client) { c.Identity.Team = "T01ABCDEF" },
 		"installation not a number":     func(c *Client) { c.Identity.Installation = "abc" },
-		"label for a foreign agent":     func(c *Client) { c.GitHub.AutoLabels["acme/handbook"]["x"] = "billing" },
-		"label outside the accounts":    func(c *Client) { c.GitHub.AutoLabels["globex/site"] = map[string]string{"x": "lead"} },
+		"review outside the accounts":   func(c *Client) { c.GitHub.AutoReview.Repositories["globex/site"] = true },
+		"review of a non-repository":    func(c *Client) { c.GitHub.AutoReview.Repositories["acme"] = true },
+		"review of one repo twice":      func(c *Client) { c.GitHub.AutoReview.Repositories["ACME/Handbook"] = true },
 		"guides with no bot":            func(c *Client) { c.GitHub.Guides = true },
 		"read repository not a repo":    func(c *Client) { c.GitHub.ReadRepositories = []string{"acme"} },
 		"the same account twice":        func(c *Client) { c.Identity.Owners = []string{"acme", "ACME"} },
@@ -372,6 +373,27 @@ func TestAnEnvReferenceNamesEitherPrefix(t *testing.T) {
 	} {
 		if _, err := EnvRef(ref); (err == nil) != ok {
 			t.Errorf("EnvRef(%s) = %v", ref, err)
+		}
+	}
+}
+
+// The Slack app a server starts is offered no request, so it shares a team
+// with a client that answers webhooks, whichever is made first. Two clients
+// that do answer them still may not.
+func TestTheSlackAppAServerStartsSharesItsTeam(t *testing.T) {
+	app := Client{ID: "slack-app-t01", Name: "Slack app", Surface: Slack, Enabled: true, Managed: ManagedApp, Identity: Identity{Team: "T01"}}
+	hook := Client{ID: "hook", Name: "hook", Surface: Slack, Enabled: true, Identity: Identity{Team: "T01"}}
+	for name, order := range map[string][]Client{"the app first": {app, hook}, "the app second": {hook, app}} {
+		m := NewMemory()
+		for _, c := range order {
+			if _, err := m.Create("acme", c, DefaultCaps(), time.Now()); err != nil {
+				t.Fatalf("%s: %s: %v", name, c.ID, err)
+			}
+		}
+		twin := hook
+		twin.ID = "twin"
+		if _, err := m.Create("acme", twin, DefaultCaps(), time.Now()); !errors.Is(err, ErrExists) {
+			t.Fatalf("%s: a second webhook client in the team = %v, want ErrExists", name, err)
 		}
 	}
 }

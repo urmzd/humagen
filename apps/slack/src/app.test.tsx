@@ -32,7 +32,6 @@ import {
   type World,
   world,
 } from "./harness.ts";
-import { words } from "./host.ts";
 import { type ClientRecord, HumagenError } from "./humagen.ts";
 import { runId, tagId } from "./keys.ts";
 import { validateBlocks } from "./validate.ts";
@@ -80,12 +79,18 @@ test("a mention becomes one run, streamed natively, with the session kept in ste
   assert.equal(w.humagen.last.id, runId("acme", SUBJECT, KEY));
   assert.equal(w.humagen.last.tag_id, tagId(SUBJECT, KEY));
 
-  // Before any event: seen, processing, and a stream opened in the mention's thread.
+  // Before any event: seen, processing, a status line, and a stream opened in the mention's thread.
   assert.deepEqual(w.slack.methods, [
     "reactions.add",
     "agents.sessions.setStatus",
+    "assistant.threads.setStatus",
     "chat.startStream",
   ]);
+  assert.deepEqual(w.slack.of("assistant.threads.setStatus")[0], {
+    channel_id: CHANNEL,
+    thread_ts: TS,
+    status: "Thinking",
+  });
   assert.equal(w.slack.of("reactions.add")[0]?.name, "eyes");
   assert.equal(w.slack.of("reactions.add")[0]?.timestamp, TS);
   assert.deepEqual(w.slack.of("agents.sessions.setStatus")[0], {
@@ -130,13 +135,19 @@ test("a mention becomes one run, streamed natively, with the session kept in ste
   assert.deepEqual(order, [
     "reactions.add",
     "agents.sessions.setStatus",
+    "assistant.threads.setStatus",
     "chat.startStream",
+    "assistant.threads.setStatus",
+    "assistant.threads.setStatus",
     "chat.stopStream",
+    "assistant.threads.setStatus",
     "reactions.remove",
     "reactions.add",
     "agents.sessions.setStatus",
   ]);
   assert.deepEqual(w.slack.statuses, ["processing", "active"]);
+  // The status line follows the work, and is cleared before the session settles.
+  assert.deepEqual(w.slack.lines, ["Thinking", "Github search", "Thinking", ""]);
   assert.equal(w.slack.of("reactions.add").at(-1)?.name, "white_check_mark");
   assert.equal(
     w.slack.streamed,
@@ -1875,7 +1886,7 @@ test("an approval waits in the run's thread with live buttons, and a mapped pers
   collect("question in thread", w.slack);
 });
 
-test("a choice is answered with the option clicked, and a reply is sent to the console", async () => {
+test("a choice is answered with the option clicked, and a reply opens a form for the words", async () => {
   const w = mapped();
   const { run, shown, ts } = await parkOn(w, "choice");
   await deliver(w, click(blocksOf(shown), "eu-west", { ts, threadTs: TS, user: OTHER_USER }));
@@ -1892,6 +1903,7 @@ test("a choice is answered with the option clicked, and a reply is sent to the c
   await emit(w, "run.completed.v1", { text: "Done." });
   await w.app.idle();
 
+  // Words are typed in a modal (questions.test.tsx follows it through).
   const r = mapped();
   const reply = await parkOn(r, "reply");
   await deliver(
@@ -1902,8 +1914,10 @@ test("a choice is answered with the option clicked, and a reply is sent to the c
       user: OTHER_USER,
     }),
   );
-  assert.equal(r.humagen.answered.length, 0);
-  assert.equal(r.slack.of("chat.postEphemeral").at(-1)?.text, words.replyInConsole);
+  assert.equal(r.humagen.answered.length, 0, "nothing is answered until the words are sent");
+  assert.equal(r.slack.of("views.open").length, 1);
+  assert.equal(r.slack.of("chat.postEphemeral").length, 0);
+  collect("reply to a question", r.slack);
   await deliver(r, stopPressed(TS));
   await r.app.idle();
 });

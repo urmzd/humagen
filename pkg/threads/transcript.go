@@ -3,23 +3,28 @@ package threads
 import (
 	"cmp"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
-	"github.com/urmzd/orchagent/flow/event"
-	"github.com/urmzd/orchagent/flow/runtime"
+	"github.com/urmzd/saige/flow/event"
+	"github.com/urmzd/saige/flow/runtime"
 
 	"github.com/urmzd/humagen/pkg/runs"
 
 	"github.com/urmzd/humagen/internal/legacy"
 )
 
-// Turn is one turn of a thread: a person's message, an agent's run, or the
-// announcement the thread was started from. Exactly one is set.
+// Turn is one turn of a thread: a person's message, an agent's run, the
+// announcement the thread was started from, or a turn of the imported
+// conversation it continues. Exactly one is set.
 type Turn struct {
 	Message      *Message      `json:"message,omitempty"`
 	Run          *runs.Run     `json:"run,omitempty"`
 	Announcement *Announcement `json:"announcement,omitempty"`
+	// Imported is passive context from another tool (Thread.Import): never
+	// words said here.
+	Imported *Imported `json:"imported,omitempty"`
 }
 
 // MessageTurn and RunTurn make a turn of each kind.
@@ -99,6 +104,10 @@ func askerOfRun(r runs.Run) Asker {
 // write a line that reads as someone else's, and display names, which are
 // not unique and can be an agent's, never decide who said what. A person
 // with no handle is told apart by a number, the same for them throughout.
+// A turn of an imported conversation (Turn.Imported) is labelled with its
+// tool and its speaker there, from fixed lists, and what it says is marked
+// "(imported, not said here)"; the opening line then says what that mark
+// means.
 // The newest turns that fit in limit bytes are kept, at least the newest one,
 // and it says how many earlier turns were left out. Nothing is summarized.
 // With no turn before it, it is the words alone.
@@ -131,6 +140,9 @@ func Ask(before []Turn, limit int, names Names, by Asker, text string) string {
 	}
 	var b strings.Builder
 	b.WriteString(transcriptOpen)
+	if slices.ContainsFunc(before, func(t Turn) bool { return t.Imported != nil }) {
+		b.WriteString(importedNote)
+	}
 	b.WriteString("\n")
 	if omitted := countTurns(before) - len(kept); omitted > 0 {
 		fmt.Fprintf(&b, "(%d earlier turns omitted)\n", omitted)
@@ -205,6 +217,8 @@ func (s *speakers) lines(t Turn) []string {
 		return []string{agentLabel(t.Run.Agent) + ": " + flat(reply(*t.Run))}
 	case t.Run != nil:
 		return []string{s.asker(askers(t)[0]) + ": " + flat(t.Run.Text), agentLabel(t.Run.Agent) + ": " + flat(reply(*t.Run))}
+	case t.Imported != nil:
+		return []string{importedLine(*t.Imported)}
 	}
 	return nil
 }
@@ -286,7 +300,7 @@ func reply(r runs.Run) string {
 func countTurns(turns []Turn) int {
 	n := 0
 	for _, t := range turns {
-		if t.Message != nil || t.Run != nil || t.Announcement != nil {
+		if t.Message != nil || t.Run != nil || t.Announcement != nil || t.Imported != nil {
 			n++
 		}
 	}

@@ -20,7 +20,7 @@ test("a thread names its conversation, and the name leads back to the thread", (
   assert.match(key, /^[A-Za-z0-9_-]+$/, "a run id is a bus topic segment");
   assert.deepEqual(sessionOf("svc-slack", tagId("svc-slack", key)), session);
   // The run id is the runtime's: the workspace and the trigger id, hashed as
-  // `RunID` in `orchagent/flow/runtime` does. These match the Go implementation.
+  // `RunID` in `saige/flow/runtime` does. These match the Go implementation.
   assert.equal(runId("acme", "svc-slack", key), "rdd6a9402cbeb5e28153f6bf63050792c");
   assert.match(runId("acme", "svc-slack", key), /^r[0-9a-f]{32}$/);
   assert.notEqual(runId("acme", "svc-slack", key), runId("globex", "svc-slack", key));
@@ -163,6 +163,29 @@ test("config: every missing name is reported at once, and no value is echoed", (
   assert.equal(cfg.humagen.url, "http://127.0.0.1:8080");
   assert.equal(cfg.humagen.publicUrl, "https://humagen.example.com");
   assert.deepEqual(cfg.slack.operators, ["U01ABCDEF", "U02ABCDEF"]);
+});
+
+test("a console address on this machine is never linked from Slack", () => {
+  const base = {
+    SLACK_BOT_TOKEN: "b",
+    SLACK_APP_TOKEN: "a",
+    SLACK_TEAM_ID: "T01ABCDEF",
+    HUMAGEN_TENANT: "acme",
+  };
+  for (const address of [
+    "http://127.0.0.1:8095",
+    "http://localhost:8080/",
+    "http://console.localhost:8080",
+    "http://[::1]:8080",
+    "http://0.0.0.0:8080",
+  ]) {
+    const cfg = readConfig({ ...base, HUMAGEN_PUBLIC_URL: address });
+    assert.equal(cfg.humagen.publicUrl, undefined, address);
+    assert.equal(cfg.notes.filter((n) => n.includes("HUMAGEN_PUBLIC_URL")).length, 1, address);
+  }
+  const cfg = readConfig({ ...base, HUMAGEN_PUBLIC_URL: "https://localhost.example.com" });
+  assert.equal(cfg.humagen.publicUrl, "https://localhost.example.com");
+  assert.deepEqual(cfg.notes, []);
 });
 
 // A deployment configured before the rename sets WARP_ names: each still

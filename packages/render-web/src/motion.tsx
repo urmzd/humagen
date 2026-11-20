@@ -6,30 +6,53 @@ export function Shimmer({ children, className }: { children: string; className?:
   return <span className={`aui-shimmer ${className ?? ""}`}>{children}</span>;
 }
 
+/**
+ * The words that turn while an agent thinks. Each says only that it is
+ * thinking: none claims a tool, a search or a draft that may not be happening.
+ */
 export const THINKING_VERBS = [
   "Thinking…",
-  "Checking context…",
-  "Running tools…",
-  "Drafting a response…",
+  "Pondering…",
+  "Mulling it over…",
+  "Working it out…",
+  "Connecting the dots…",
+  "Weighing options…",
+  "Sketching a plan…",
+  "Untangling…",
+  "Considering…",
+  "Piecing it together…",
+  "Noodling…",
+  "Chewing on it…",
+  "Lining things up…",
+  "Figuring…",
+  "Brewing…",
+  "Turning it over…",
 ] as const;
 
-/** Rotate short progress verbs while work is in flight, so a wait reads as progress. */
+/**
+ * Turn through short progress verbs while work is in flight, so a wait reads
+ * as progress. The first verb always shows first; the rest follow in an order
+ * drawn afresh each time, and the turn never stops while the work goes on.
+ */
 export function useVerbSequence(
   active: boolean,
   verbs: readonly string[] = THINKING_VERBS,
-  intervalMs = 1800,
+  intervalMs = 2400,
 ): string {
-  const [index, setIndex] = useState(0);
+  const [verb, setVerb] = useState(verbs[0] ?? "");
   useEffect(() => {
-    if (!active) {
-      setIndex(0);
-      return;
-    }
-    if (verbs.length <= 1) return;
-    const timer = setInterval(() => setIndex((i) => Math.min(i + 1, verbs.length - 1)), intervalMs);
+    setVerb(verbs[0] ?? "");
+    if (!active || verbs.length <= 1) return;
+    let last = 0;
+    const timer = setInterval(() => {
+      // Any verb but the one showing, so every tick is a change.
+      const next = (last + 1 + Math.floor(Math.random() * (verbs.length - 1))) % verbs.length;
+      last = next;
+      setVerb(verbs[next] ?? "");
+    }, intervalMs);
     return () => clearInterval(timer);
   }, [active, verbs, intervalMs]);
-  return verbs[index] ?? verbs[0] ?? "";
+  return verb;
 }
 
 /**

@@ -387,3 +387,20 @@ func TestADeletedProjectIsReadByWhoReadItThen(t *testing.T) {
 		t.Errorf("govern reads an old tombstone as %+v", got)
 	}
 }
+
+func TestVisibilitySaysHowWidelyAProjectIsRead(t *testing.T) {
+	for _, c := range []struct {
+		p    projects.Project
+		want projects.Visibility
+	}{
+		{projects.Project{Name: "Me", PersonalOwner: "ada", Members: []projects.Entry{{Who: "ada", Role: projects.Owner}}}, projects.Private},
+		{projects.Project{Name: "Solo", Members: []projects.Entry{{Who: "ada", Role: projects.Owner}}}, projects.Private},
+		{projects.Project{Name: "Pair", Members: []projects.Entry{{Who: "ada", Role: projects.Owner}, {Who: "bo", Role: projects.Member}}}, projects.Shared},
+		{projects.Project{Name: "Leads", Members: []projects.Entry{{Who: projects.RolePrefix + "leads", Role: projects.Owner}}}, projects.Shared},
+		{projects.Project{Name: "Open", Members: []projects.Entry{{Who: projects.Everyone, Role: projects.Viewer}, {Who: "ada", Role: projects.Owner}}}, projects.Workspace},
+	} {
+		if got := projects.VisibilityOf(c.p); got != c.want {
+			t.Errorf("%s = %s, want %s", c.p.Name, got, c.want)
+		}
+	}
+}

@@ -5,7 +5,7 @@ produce. Conversations remain the place to ask, clarify intent, review an
 action and use a result. The web console now brings those interactions into
 one page instead of sending people between run history and file downloads.
 
-The [interactive design and visual review](../assets/workspace-prototype/README.md)
+The [interactive design and visual review](https://github.com/urmzd/humagen/blob/main/docs/assets/workspace-prototype/README.md)
 describe the broader direction. The implementation in this change uses the
 platform's existing threads, calls, questions, approvals and artifact storage.
 It does not introduce another agent execution path.

@@ -8,8 +8,8 @@ import (
 
 	presentation "github.com/urmzd/humagen/internal/presentation/github"
 	"github.com/urmzd/humagen/internal/wire"
-	transport "github.com/urmzd/orchagent/flow/connectors/github"
-	"github.com/urmzd/orchagent/flow/event"
+	transport "github.com/urmzd/saige/flow/connectors/github"
+	"github.com/urmzd/saige/flow/event"
 )
 
 func (c *Connector) guideLogin(agent string) string {

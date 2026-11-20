@@ -148,15 +148,19 @@ test("the Notifications badge counts unread work without switching destinations"
   const visited: Route[] = [];
   const onGo = (route: Route) => visited.push(route);
   const { rerender } = render(<Navigation inboxCount={3} route={{ page: "inbox" }} onGo={onGo} />);
-  let link = screen.getByRole("link", { name: "Alerts, 3 need you" });
+  // Open, the link is named by the label and count it shows, then what the count means.
+  let link = screen.getByRole("link", { name: "Alerts 3 need you" });
+  assert.equal(link.hasAttribute("aria-label"), false, "the visible words are the name");
+  assert.equal(link.querySelector("[aria-hidden]:not(svg)"), null, "the count is not hidden");
   assert.equal(link.getAttribute("href"), "/alerts");
   assert.equal(link.getAttribute("aria-current"), "page");
   fireEvent.click(link, { metaKey: true });
   assert.deepEqual(visited, [], "modified clicks keep the native link destination");
   fireEvent.click(link);
   assert.deepEqual(visited, [{ page: "alerts" }]);
+  // On the icon rail nothing is shown as text, so the label says all of it.
   rerender(<Navigation inboxCount={3} open={false} onGo={onGo} />);
-  link = screen.getByRole("link", { name: "Alerts, 3 need you" });
+  link = screen.getByRole("link", { name: defaultCopy.sidebar.needYou("Alerts", 3) });
   assert.equal(link.getAttribute("href"), "/alerts");
   rerender(<Navigation inboxCount={0} onGo={onGo} />);
   link = screen.getByRole("link", { name: "Alerts" });
@@ -530,4 +534,22 @@ test("notification detail offers the source as a primary next step", async () =>
     assert.deepEqual(opened, [source]);
     mounted.unmount();
   }
+});
+
+test("the account button is named by the name it shows, then what it opens", () => {
+  net = stubFetch({ "GET /api/threads": () => ({ threads: [], next: null }) });
+  const { rerender } = render(<Navigation />);
+  let account = screen.getByRole("button", { name: /^ada\b.*preferences$/ });
+  assert.equal(account.hasAttribute("aria-label"), false, "the visible words are the name");
+  assert.equal(account.getAttribute("aria-haspopup"), "dialog");
+  const shown = Array.from(account.querySelectorAll("span:not(.sr-only):not([aria-hidden])"))
+    .filter((el) => el.children.length === 0)
+    .map((el) => el.textContent ?? "");
+  assert.ok(shown.length > 0 && shown[0] === "ada", "the name is shown");
+  const name = (account.textContent ?? "").replace(/\s+/g, " ");
+  for (const text of shown) assert.ok(name.includes(text), `the name contains "${text}"`);
+  // On the icon rail only the avatar shows, so the label says all of it.
+  rerender(<Navigation open={false} />);
+  account = screen.getByRole("button", { name: defaultCopy.preferences.openFor("ada") });
+  assert.equal(account.getAttribute("aria-haspopup"), "dialog");
 });

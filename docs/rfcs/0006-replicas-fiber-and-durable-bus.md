@@ -1,17 +1,40 @@
 # Multiple replicas, fiber folded in, and a durable event bus
 
-Status: proposed. This document changes no behavior. It describes the target
-design and the order of the changes that reach it.
+Status: partly built, in saige. Checked against `main` on 2026-11-19. The bus
+changes (2 to 4 and 6 to 8) have landed. The fold of fiber into Humagen
+(changes 9 and 10) is superseded.
 
-> **Superseded in part (2026-11):** fiber was not kept in Humagen. It moved,
-> with anchor and playscape, into one module,
-> [github.com/urmzd/orchagent](https://github.com/urmzd/orchagent), as
-> `orchagent/flow` (`fiber/pkg/durable` became `flow/runschema`). Humagen now
-> depends on orchagent and has no `fiber/` directory. The decisions below on
-> the bus, consumer groups and replicas still stand; they now land in
-> `orchagent/flow` where they touch the layer. "fiber is folded in fully"
-> describes the plan before that move. Stored names (`fiber_*` tables,
-> `fiber://` URIs, `fiber.*` event kinds) are unchanged.
+> **Superseded in part (2026-11, corrected 2026-11-19):** fiber was not kept
+> in Humagen. It moved, with anchor and playscape, into one module: first
+> orchagent (#181), then [github.com/urmzd/saige](https://github.com/urmzd/saige)
+> (#324), as `saige/flow`, `saige/durable` and `saige/sandbox`. `go.mod` on
+> main requires saige only. Humagen does not depend on orchagent and has no
+> `fiber/` directory. `fiber/pkg/durable` is now `internal/runschema` in
+> Humagen. The decisions below on the bus, consumer groups and replicas still
+> stand; the bus is `saige/flow/bus`, and they land in `saige/flow` where they
+> touch the layer. "fiber is folded in fully" describes the plan before that
+> move. Stored names (`fiber_*` tables, `fiber://` URIs, `fiber.*` event
+> kinds) are unchanged. An earlier version of this note named orchagent as
+> the module Humagen depends on.
+
+## What is built
+
+Numbers are the rows of [Changes](#changes). Each was read in code, on `main`
+or in saige v0.45.1. Nothing was run for this list.
+
+| # | Change | State | Evidence |
+|---|--------|-------|----------|
+| 1 | This document; the storage section of the overview corrected | Built | `docs/architecture/overview.md` names `fiber_events` and the tenant payload |
+| 1 | A publish and fan-out benchmark for `bus.Postgres` | Not confirmed | No benchmark found in `saige/flow/bus` or on main |
+| 2 | A cursor and a lock per tenant, with the `tseq` migration | Built, in saige | #162; `saige/flow/bus/postgres.go` (`fiber_event_tenants`, `tseq`) |
+| 3 | Consumer groups: `fiber_consumers`, the group API on both backends, `bustest` failover cases | Built, in saige | #162; `Consume` in `saige/flow/bus/memory.go` and `postgres.go`, `bustest.Groups` |
+| 4 | Egress reads through a group and commits after the sink accepts | Built, in saige | #162; `saige/flow/egress/egress.go`. The age skip remains for a group seen for the first time |
+| 5 | Dispatch reads through a group | Not confirmed | #162 names dispatch, but no `Consume` caller was found in `saige/flow` outside egress |
+| 6 | The observer reads through a group and folds idempotently by `(run, seq)` | Built | #162, #215; `ObserverGroup` in `internal/platform/platform.go`, `internal/platform/redelivery_test.go` |
+| 7 | `PublishTx` | Built | #215; `saige/flow/bus/bus.go`, used in `internal/runschema/outbox.go` |
+| 8 | Refuse more than one replica on `bus.Memory` | Built | #326; `internal/app/config.go` (`checkReplicas`), `deploy/helm/check.sh` |
+| 9, 10 | fiber folded into Humagen | Superseded | No `fiber/` directory on main; the layer is `saige/flow` |
+| 11 | The final `urmzd/fiber` release, v0.27.0 | Not built | The latest release is v0.26.2, and the repository is archived |
 
 ## Goal
 

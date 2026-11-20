@@ -75,7 +75,8 @@ export function Checkboxes({ name, options, selected }: PrimitiveProps["Checkbox
     <fieldset
       data-aui="checkboxes"
       aria-labelledby={labelId}
-      className="m-0 flex min-w-0 flex-col border-0 p-0"
+      // Its box is reset in theme.css, where the batch card's rules can still give it one.
+      className="flex min-w-0 flex-col"
     >
       <div className="flex items-center gap-2 pb-1 text-aui-2xs text-aui-muted">
         <span id={labelId} className="tabular-nums">

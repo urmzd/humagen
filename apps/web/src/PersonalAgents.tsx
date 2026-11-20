@@ -5,6 +5,7 @@ import { AgentMark, card, field, Problem, SkeletonRows } from "./ui.tsx";
 
 export function PersonalAgents() {
   const copy = defaultCopy.personalAgents;
+  const access = defaultCopy.agentAccess;
   const [agents, setAgents] = useState<Revision[] | null>(null);
   const [projects, setProjects] = useState<ProjectView[]>([]);
   const [controls, setControls] = useState<Record<string, AgentControl>>({});
@@ -126,10 +127,10 @@ export function PersonalAgents() {
                       setDestination({ ...destination, [row.spec.name]: event.target.value })
                     }
                   >
-                    <option value="">{copy.project}</option>
+                    <option value="">{access.private}</option>
                     {projects.map((project) => (
                       <option key={project.name} value={project.name}>
-                        {project.title || project.name}
+                        {access.membersOf(project.title || project.name)}
                       </option>
                     ))}
                   </select>

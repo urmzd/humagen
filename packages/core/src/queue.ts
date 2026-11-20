@@ -8,12 +8,19 @@
  * - turnEnded: release the next message (auto), or hold it (manual / after a failure).
  */
 
+export interface QueuedUpload {
+  name: string;
+  data: string;
+  kind?: string;
+}
+
 export interface QueuedMessage {
+  uploads?: QueuedUpload[];
   id: string;
   text: string;
   queuedAt: string;
-  /** The choices for this message, retained through editing and retry. */
-  pick?: { model?: string; effort?: string; agent?: string; fresh?: boolean; label?: string };
+  /** The agent this message goes to in a session, retained through editing and retry. */
+  pick?: { agent?: string; fresh?: boolean; label?: string };
 }
 
 /** When a turn ends, send the next queued message automatically or wait for the user. */

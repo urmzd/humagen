@@ -2,17 +2,7 @@ import { defaultCopy } from "@humagen/components";
 import { BellIcon, BotIcon, PlugIcon, ShieldIcon, UserIcon } from "@humagen/render-web";
 import { Toaster } from "@humagen/render-web/ui/sonner";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActionPolicies } from "./ActionPolicies.tsx";
-import { AgentBuilderStart } from "./AgentBuilder.tsx";
-import { AgentControls } from "./AgentControls.tsx";
-import { AgentDetail } from "./AgentDetail.tsx";
-import { AgentNetwork } from "./AgentNetwork.tsx";
-import { AgentOperations } from "./AgentOperations.tsx";
-import { Agents } from "./Agents.tsx";
-import { Assignments } from "./Assignments.tsx";
-import { Audit } from "./Audit.tsx";
-import { Automations } from "./Automations.tsx";
-import type { Run } from "./adapter.ts";
+import type { Run, RunEvent } from "./adapter.ts";
 import { agentHuePath, configureAgentHues } from "./agentHues.ts";
 import {
   type Alert,
@@ -34,49 +24,75 @@ import {
   type Settings as Workspace,
 } from "./api.ts";
 import { accentAttribute, brandCopy, servedBranding } from "./branding.ts";
-import { Catalog } from "./Catalog.tsx";
 import { Chat } from "./Chat.tsx";
-import { Connections, YourConnections } from "./Connections.tsx";
-import { ContextHealth } from "./ContextHealth.tsx";
 import { CONNECT_PERMISSION } from "./connections.ts";
-import { DirectoryPage } from "./Directory.tsx";
-import { ForkProject } from "./ForkProject.tsx";
-import { Health } from "./Health.tsx";
-import { Integrations } from "./Integrations.tsx";
-import { Knowledge } from "./Knowledge.tsx";
-import { MemoryLibrary } from "./MemoryLibrary.tsx";
-import { Monitor } from "./Monitor.tsx";
 import type { Source as About } from "./mail.ts";
-import { NotificationsPage, useNotifications } from "./Notifications.tsx";
-import { PersonalPreferences } from "./PersonalPreferences.tsx";
-import { ProjectPage, ProjectsPage } from "./Projects.tsx";
+import { useNotifications } from "./notificationDelivery.ts";
+import {
+  ActionPolicies,
+  AgentBuilderStart,
+  AgentControls,
+  AgentDetail,
+  AgentNetwork,
+  AgentOperations,
+  AgentStore,
+  Agents,
+  Assignments,
+  Audit,
+  Automations,
+  Catalog,
+  Connections,
+  ContextHealth,
+  CorpusPage,
+  DirectoryPage,
+  ForkProject,
+  Health,
+  Integrations,
+  ItemPage,
+  Knowledge,
+  KnowledgePage,
+  MemoryLibrary,
+  MessageFocus,
+  Monitor,
+  NotificationsPage,
+  PersonalPreferences,
+  ProjectPage,
+  ProjectsPage,
+  preloadLink,
+  preloadRoute,
+  preloadWhenIdle,
+  QuickSwitcher,
+  Schedules,
+  Settings,
+  SettingsFrame,
+  SkillsLibrary,
+  Storage,
+  Usage,
+  WorkspaceGraph,
+  YourConnections,
+} from "./pages.ts";
 import { usePreferences } from "./preferences.ts";
-import { QuickSwitcher } from "./QuickSwitcher.tsx";
 import {
   type AgentTab,
   documentTitle,
   href,
   kindParam,
-  type ProjectTab,
+  parse,
   type Route,
   type SettingsSection,
   useRoute,
 } from "./route.ts";
-import { Schedules } from "./Schedules.tsx";
+import { reflects } from "./runsRead.ts";
 import {
   AlertsPage,
   HomeSessionGlance,
   SessionsPage,
   useSessionAttention,
 } from "./SessionCenter.tsx";
-import { Settings, SettingsFrame } from "./Settings.tsx";
 import { DrawerButton, Sidebar, useEdgeSwipe } from "./Sidebar.tsx";
-import { SkillsLibrary } from "./SkillsLibrary.tsx";
-import { Storage } from "./Storage.tsx";
 import { DRAWER_BELOW, SIDEBAR_KEY, sidebarStartsOpen } from "./sidebarState.ts";
 import { syncThemeColor } from "./standalone.ts";
 import { arrive, FIRST_HOLD_MS, settled } from "./transition.ts";
-import { defaultUsageView, Usage } from "./Usage.tsx";
 import {
   type AgentProfile,
   AgentProfiles,
@@ -89,6 +105,7 @@ import {
   SkeletonRows,
   setAgentHues,
 } from "./ui.tsx";
+import { defaultUsageView } from "./usage.ts";
 import { WorkspaceTabs } from "./WorkspaceTabs.tsx";
 import { hubTabs, settingsPageLabel, workspaceHub } from "./workspace-navigation.ts";
 import { useBrandingStyle } from "./workspaceBranding.ts";
@@ -209,7 +226,8 @@ function Centered({ children }: { children: React.ReactNode }) {
 
 /** The platform's own agents the console offers ways into. */
 export const BUILTIN_ANALYST = "humagen-analyst";
-export const BUILTIN_BUILDER = "humagen-builder";
+/** The helper that builds agents with you: the entry agent, which took over from the builder. */
+export const BUILTIN_BUILDER = "humagen";
 
 function greeting(name: string): string {
   const h = new Date().getHours();
@@ -239,13 +257,14 @@ function useAppearance(prefs: Preferences | null) {
     const apply = () => {
       const theme = prefs?.theme ?? "system";
       root.dataset.theme = theme === "system" ? (media.matches ? "dark" : "light") : theme;
-      root.dataset.accent = accentAttribute(prefs?.accent);
+      // One accent, the workspace's brand: there are no personal accent presets.
+      root.dataset.accent = accentAttribute();
       syncThemeColor(document, root.dataset.theme === "dark" ? "dark" : "light");
     };
     apply();
     media.addEventListener("change", apply);
     return () => media.removeEventListener("change", apply);
-  }, [prefs?.theme, prefs?.accent]);
+  }, [prefs?.theme]);
 }
 
 function Console({
@@ -312,7 +331,7 @@ function Console({
   );
   // The agents the platform provides. They run like any other and cannot be edited.
   const [builtin, setBuiltin] = useState<string[]>([]);
-  // Where each agent that lives in a project lives, and which projects enable each.
+  // The project each agent is homed in, which says who sees it.
   const [homes, setHomes] = useState<Record<string, string>>({});
   const [enabledIn, setEnabledIn] = useState<Record<string, string[]>>({});
   // Who answers a message that tags no agent in the workspace itself: the Workspace Default.
@@ -325,9 +344,11 @@ function Console({
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   // Until the saved preferences are read, defaults only draw the page: a save
   // sends every field, so nothing is saved over values not read yet.
-  const { prefs, prefsRead, setPrefs, pin, pinProject, mute } = usePreferences();
+  const { prefs, prefsRead, setPrefs, pin, pinProject } = usePreferences();
   const [day, setDay] = useState<Summary | null>(null);
-  const [live, setLive] = useState(false);
+  // Whether the workspace's stream is connected. It starts true: a stream that
+  // has not opened yet has lost nothing, so nothing is said until one fails.
+  const [live, setLive] = useState(true);
   // Bumped whenever a run starts or ends, so pages that aggregate refetch.
   const [tick, setTick] = useState(0);
   // The first screen is drawn hidden until its reads land (or FIRST_HOLD_MS
@@ -344,6 +365,25 @@ function Console({
     });
     return () => {
       live = false;
+    };
+  }, []);
+
+  // Pages are read when opened (pages.ts). The one at this address is read at
+  // once, beside its data; the sidebar's are read once Home is on screen and
+  // the browser idle; and any other when a link to it is pointed at or focused.
+  useEffect(() => preloadRoute(route), [route]);
+  useEffect(() => (arrived ? preloadWhenIdle() : undefined), [arrived]);
+  useEffect(() => {
+    const ahead = (event: Event) => {
+      const link = event.target instanceof Element ? event.target.closest("a[href]") : null;
+      if (link instanceof HTMLAnchorElement && link.origin === window.location.origin)
+        preloadLink(parse(link.pathname, link.search));
+    };
+    document.addEventListener("pointerover", ahead, { passive: true });
+    document.addEventListener("focusin", ahead);
+    return () => {
+      document.removeEventListener("pointerover", ahead);
+      document.removeEventListener("focusin", ahead);
     };
   }, []);
 
@@ -369,6 +409,25 @@ function Console({
     });
   const narrow = useNarrow();
   const drawer = open && narrow;
+
+  // With no model provider at all, nothing can answer: an administrator's first stop is
+  // enabling one. Asked once per load; a person who cannot set one up is not moved, and
+  // later navigation is the person's own.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: on arrival only, not on every route
+  useEffect(() => {
+    if (!can("clients:write")) return;
+    let live = true;
+    api
+      .modelProviders()
+      .then((all) => {
+        if (live && !all.some((p) => p.declared) && route.page !== "settings")
+          go({ page: "settings", section: "providers" }, { replace: true });
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [can]);
 
   const loadAgents = useCallback(() => {
     if (!can("agents:read")) return;
@@ -421,6 +480,17 @@ function Console({
         .then(setSources)
         .catch(() => {});
   }, [can]);
+  // An old `/knowledge/{source}` link that names no corpus opens the source it named.
+  const corpusTab = route.page === "corpus" ? route.tab : undefined;
+  const openOldSource = useCallback(
+    (source: string) =>
+      go(
+        // `/knowledge/{source}/search` was the source's own search.
+        { page: "context", source, tab: corpusTab === "search" ? "search" : undefined },
+        { replace: true },
+      ),
+    [go, corpusTab],
+  );
   const loadSuites = useCallback(() => {
     if (can("evals:read"))
       api
@@ -446,13 +516,37 @@ function Console({
         .then(setSchedules)
         .catch(() => {});
   }, [can]);
+  // The list of runs last read, how many reads are in flight, and the run
+  // events that arrived during one. The stream replays the bus each time it
+  // connects, and what the list already shows is not read again (runsRead.ts).
+  const runsRead = useRef<{
+    held: Run[] | null;
+    flying: number;
+    waiting: RunEvent[];
+    again: () => void;
+  }>({ held: null, flying: 0, waiting: [], again: () => {} });
   // Everything a run starting or ending can change.
   const loadRuns = useCallback(() => {
     if (!can("runs:read")) return;
+    const read = runsRead.current;
+    read.flying++;
     api
       .runs()
-      .then(setRuns)
-      .catch(() => {});
+      .then((list) => {
+        read.held = list;
+        setRuns(list);
+      })
+      .catch(() => {
+        // A read that failed holds nothing, so whatever arrives next is news.
+        read.held = null;
+      })
+      .finally(() => {
+        read.flying--;
+        if (read.flying > 0) return;
+        // Events that arrived during the read are judged against what it returned.
+        const news = read.waiting.splice(0).some((e) => !reflects(read.held, e));
+        if (news) read.again();
+      });
     api
       .threads()
       .then(setThreads)
@@ -482,11 +576,20 @@ function Console({
   const pending = useRef<number | undefined>(undefined);
   useEffect(() => {
     if (!can("runs:read")) return;
+    const read = runsRead.current;
+    const soon = () => {
+      window.clearTimeout(pending.current);
+      pending.current = window.setTimeout(loadRuns, 150);
+    };
+    read.again = soon;
     const close = subscribe(
       { type: runStateTypes },
       {
-        onOpen: () => {
-          loadRuns();
+        onOpen: (resumed) => {
+          // The first connection follows the read made on arrival, and its
+          // replay says what changed since. A later one missed what was sent
+          // while it was away, so everything is read again.
+          if (resumed || (read.held === null && read.flying === 0)) loadRuns();
           loadAgents();
         },
         onState: setLive,
@@ -495,18 +598,16 @@ function Console({
           loadProjects();
         },
         // A person's message starts no run, so the stream says so by name.
-        onThread: () => {
-          window.clearTimeout(pending.current);
-          pending.current = window.setTimeout(loadRuns, 150);
-        },
-        onEvent: () => {
-          window.clearTimeout(pending.current);
-          pending.current = window.setTimeout(loadRuns, 150);
+        onThread: soon,
+        onEvent: (e) => {
+          if (read.flying > 0) read.waiting.push(e);
+          else if (!reflects(read.held, e)) soon();
         },
       },
     );
     return () => {
       window.clearTimeout(pending.current);
+      read.again = () => {};
       close();
     };
   }, [can, loadRuns, loadAgents, loadInbox, loadProjects]);
@@ -551,12 +652,9 @@ function Console({
       .then((r) => openThread(r.thread ?? id))
       .catch(() => openThread(id));
   };
-  // A new conversation is home: the same empty composer, at the bare address.
-  const newChat = (inProject?: string) => go({ page: "new", project: inProject });
   // "~" is how an address or a message names the workspace, which is the project "".
-  // A project opens on its inbox.
-  const openProject = (name: string, tab: ProjectTab = "inbox") =>
-    go({ page: "project", name: name === "~" ? "" : name, tab });
+  // A project is one page, with no tabs.
+  const openProject = (name: string) => go({ page: "project", name: name === "~" ? "" : name });
   const projectNames = useMemo(() => (projects ?? []).map((p) => p.name), [projects]);
   const workspaceName = workspace?.workspace_name || defaultCopy.projects.companyName;
   const policyScope =
@@ -653,6 +751,7 @@ function Console({
               workspaceName={workspaceName}
               open={!leaving}
               onClose={() => setSearchOpen(false)}
+              onUnavailable={() => setSearchOpen(false)}
               onGo={(next) => {
                 setSearchOpen(false);
                 navigate(next);
@@ -763,6 +862,28 @@ function Console({
                         <Problem message={defaultCopy.noPermission} />
                       </Page>
                     ))}
+                  {route.page === "message" &&
+                    (can("runs:read") ? (
+                      <MessageFocus key={route.id} id={route.id} go={go} />
+                    ) : (
+                      <Page title="Message">
+                        <Problem message={defaultCopy.noPermission} />
+                      </Page>
+                    ))}
+                  {route.page === "item" &&
+                    (can("runs:read") ? (
+                      <ItemPage
+                        key={route.address}
+                        address={route.address}
+                        go={go}
+                        alerts={attention.alerts}
+                        tick={tick}
+                      />
+                    ) : (
+                      <Page title="Item">
+                        <Problem message={defaultCopy.noPermission} />
+                      </Page>
+                    ))}
                   {route.page === "alerts" &&
                     (can("alerts:read") ? (
                       <AlertsPage
@@ -809,6 +930,7 @@ function Console({
                         subject={me.principal.subject}
                         canWrite={can("runs:write")}
                         onRun={openRun}
+                        onMessage={(id) => go({ page: "message", id })}
                         onConversation={openThread}
                       />
                     ) : (
@@ -816,6 +938,14 @@ function Console({
                         <Problem message={defaultCopy.noPermission} />
                       </Page>
                     ))}
+                  {route.page === "agent-store" && (
+                    <AgentStore
+                      canWrite={can("agents:write")}
+                      selected={route.package}
+                      onOpen={(name) => go({ page: "agent-store", package: name })}
+                      onChanged={loadAgents}
+                    />
+                  )}
                   {route.page === "agent-network" &&
                     (can("runs:read") ? (
                       <AgentNetwork
@@ -1054,13 +1184,9 @@ function Console({
                       findHelp={can("projects:read") ? api.findHelp : undefined}
                       home={
                         <HomeSessionGlance
-                          projects={projects ?? []}
-                          workspaceName={workspaceName}
                           onHasSessions={setHasSessions}
-                          alerts={attention.alerts}
                           go={go}
-                          canWrite={can("alerts:write")}
-                          onChanged={attention.refresh}
+                          canArtifacts={can("artifacts:read")}
                           tick={tick}
                         />
                       }
@@ -1081,17 +1207,20 @@ function Console({
                     <ProjectsPage
                       projects={projects}
                       root={root}
-                      workspaceName={workspaceName}
                       q={route.q ?? ""}
                       kind={route.kind}
-                      onFilter={(q, kind) =>
+                      sort={route.sort}
+                      onFilter={({ q, kind, sort }) =>
                         go(
-                          { page: "projects", q: q || undefined, kind: kindParam(kind) },
+                          { page: "projects", q: q || undefined, kind: kindParam(kind), sort },
                           { replace: true },
                         )
                       }
                       canCreate={can("projects:write")}
                       canGovern={can("projects:govern")}
+                      me={me.principal.subject}
+                      pinned={prefs.pinned_projects ?? []}
+                      onPin={pinProject}
                       onOpen={openProject}
                       onCreated={(project) => {
                         loadProjects();
@@ -1102,56 +1231,56 @@ function Console({
                   {route.page === "project" && (
                     <ProjectPage
                       key={route.name}
+                      self={me.handle ?? ""}
+                      composer={(placeholder) => (
+                        // Home's own composer, filing what it starts in this project.
+                        <Chat
+                          key={`project:${route.name}`}
+                          composerOnly
+                          placeholder={placeholder}
+                          threadId={null}
+                          me={me.principal.subject}
+                          handle={me.handle ?? ""}
+                          startIn={route.name}
+                          root={root}
+                          workspaceName={workspaceName}
+                          summary={undefined}
+                          tick={tick}
+                          agents={agents}
+                          agentsRead={agentRead !== "loading"}
+                          homes={homes}
+                          projects={can("projects:read") ? projects : []}
+                          canRun={can("runs:write")}
+                          canCreateProject={can("projects:write")}
+                          personalProject={me.personal_project}
+                          findHelp={can("projects:read") ? api.findHelp : undefined}
+                          greeting=""
+                          onProjectCreated={() => loadProjects()}
+                          onThread={(id) => go({ page: "conversation", id })}
+                          onChanged={loadRuns}
+                        />
+                      )}
                       name={route.name}
-                      tab={route.tab}
-                      onTab={(tab) =>
-                        go({ page: "project", name: route.name, tab }, { replace: true })
-                      }
-                      message={route.message}
-                      onMessage={(id) =>
-                        go(
-                          {
-                            page: "project",
-                            name: route.name,
-                            tab: "inbox",
-                            message: id ?? undefined,
-                          },
-                          { replace: true },
-                        )
-                      }
-                      me={me.principal.subject}
-                      inboxTick={inboxTick}
-                      muted={prefs.muted}
-                      onMute={mute}
                       pinned={prefs.pinned_projects?.includes(route.name || "~") ?? false}
                       onPin={pinProject}
-                      onOpenSource={openSource}
                       workspaceName={workspaceName}
                       projects={projects ?? []}
-                      schedules={schedules}
                       agents={agents}
-                      homes={homes}
-                      enabledIn={enabledIn}
                       can={can}
                       tick={tick}
                       onOpen={openProject}
                       onFork={() => go({ ...route, fork: true })}
                       onOpenAll={() => go({ page: "projects" })}
-                      onNewChat={() => newChat(route.name)}
                       onOpenThread={openThread}
                       onChanged={() => {
                         loadProjects();
                         loadInbox();
                       }}
                       onSchedulesChanged={loadSchedules}
-                      onAgentsChanged={loadAgents}
                       onDeleted={() => {
                         loadProjects();
                         go({ page: "projects" }, { replace: true });
                       }}
-                      onOpenChannel={(channel) =>
-                        go({ page: "channel", project: route.name, channel })
-                      }
                     />
                   )}
                   {route.page === "project" && (
@@ -1162,6 +1291,7 @@ function Console({
                           source={route.name}
                           projects={projects ?? []}
                           onClose={() => go({ ...route, fork: undefined })}
+                          onUnavailable={() => go({ ...route, fork: undefined }, { replace: true })}
                           onReady={(name) => {
                             loadProjects();
                             openProject(name);
@@ -1178,6 +1308,16 @@ function Console({
                       can={can}
                       onChanged={loadSchedules}
                       onSchedule={(name) => go({ page: "schedules", name })}
+                      tab={route.tab ?? "schedules"}
+                      onTab={(tab) =>
+                        go(
+                          tab === "background"
+                            ? { page: "automations", tab }
+                            : { page: "automations" },
+                        )
+                      }
+                      onConversation={(id) => go({ page: "conversation", id })}
+                      tick={tick}
                     />
                   )}
                   {route.page === "schedules" && (
@@ -1291,6 +1431,56 @@ function Console({
                         }
                       />
                     )}
+                  {(route.page === "knowledge" || route.page === "corpus") &&
+                    (can("knowledge:read") ? (
+                      route.page === "knowledge" ? (
+                        <KnowledgePage
+                          sources={sources}
+                          canWrite={can("knowledge:write")}
+                          onOpen={(name) => go({ page: "corpus", name, tab: "sources" })}
+                        />
+                      ) : (
+                        <CorpusPage
+                          key={route.name}
+                          name={route.name}
+                          tab={route.tab}
+                          q={route.q}
+                          sources={sources}
+                          agents={agents.map((agent) => agent.spec.name)}
+                          viewer={me.principal.subject}
+                          canWrite={can("knowledge:write")}
+                          onTab={(tab) => go({ page: "corpus", name: route.name, tab })}
+                          onSearch={(q) =>
+                            go(
+                              { page: "corpus", name: route.name, tab: "search", q },
+                              { replace: true },
+                            )
+                          }
+                          onBack={() => go({ page: "knowledge" })}
+                          onOpenSource={(source) =>
+                            go({ page: "context", source, corpus: route.name })
+                          }
+                          onMissing={openOldSource}
+                          onSourcesChanged={loadSources}
+                        />
+                      )
+                    ) : (
+                      <Page title={defaultCopy.corpora.title}>
+                        <Problem message={defaultCopy.noPermission} />
+                      </Page>
+                    ))}
+                  {route.page === "knowledge-graph" &&
+                    (can("knowledge:read") ? (
+                      <WorkspaceGraph
+                        viewer={me.principal.subject}
+                        onBack={() => go({ page: "knowledge" })}
+                        onOpenCorpus={(name) => go({ page: "corpus", name, tab: "graph" })}
+                      />
+                    ) : (
+                      <Page title={defaultCopy.corpora.graph.workspaceTitle}>
+                        <Problem message={defaultCopy.noPermission} />
+                      </Page>
+                    ))}
                   {(route.page === "context" ||
                     (route.page === "library" && route.section === "sources")) && (
                     <Knowledge
@@ -1299,8 +1489,24 @@ function Console({
                       suites={suites}
                       selected={route.page === "context" ? (route.source ?? null) : null}
                       tab={route.page === "context" ? (route.tab ?? "documents") : "documents"}
-                      onSelect={(source, tab) =>
-                        go({ page: "context", source: source ?? undefined, tab })
+                      onSelect={(source, tab) => {
+                        const corpus = route.page === "context" ? route.corpus : undefined;
+                        go(
+                          source
+                            ? { page: "context", source, tab, corpus }
+                            : corpus
+                              ? { page: "corpus", name: corpus, tab: "sources" }
+                              : { page: "knowledge" },
+                        );
+                      }}
+                      back={
+                        route.page === "context" && route.corpus
+                          ? {
+                              label: route.corpus,
+                              onClick: () =>
+                                go({ page: "corpus", name: route.corpus ?? "", tab: "sources" }),
+                            }
+                          : undefined
                       }
                       canWrite={can("knowledge:write")}
                       canEval={can("evals:write")}
@@ -1318,6 +1524,8 @@ function Console({
                       stats={stats}
                       workspaceDefault={workspaceDefault}
                       homes={homes}
+                      tree={projects ?? []}
+                      personalProject={me.personal_project}
                       canWrite={can("agents:write")}
                       onOpen={(name) => openAgent(name)}
                       onNew={() => openAgent(null)}
@@ -1328,7 +1536,7 @@ function Console({
                               go({
                                 page: "new",
                                 agent: BUILTIN_BUILDER,
-                                ask: "Help me build an agent that ",
+                                ask: "/agent-creator ",
                               })
                           : undefined
                       }
@@ -1393,12 +1601,8 @@ function Console({
                         alerts={alerts}
                         projects={projectNames}
                         tree={projects ?? []}
-                        place={
-                          route.name
-                            ? { home: homes[route.name], enabled_in: enabledIn[route.name] ?? [] }
-                            : undefined
-                        }
-                        workspaceName={workspaceName}
+                        home={route.name ? homes[route.name] : undefined}
+                        personalProject={me.personal_project}
                         stats={route.name ? stats.get(route.name) : undefined}
                         workspaceDefault={workspaceDefault}
                         canWrite={can("agents:write")}
@@ -1421,7 +1625,6 @@ function Console({
                         onOpenAlerts={() => go({ page: "monitor", tab: "rules" })}
                         onOpenTask={openThread}
                         onHomed={loadAgents}
-                        onOpenProject={openProject}
                         policies={workspace?.model_policies ?? []}
                         viewer={me.principal.subject}
                       />
@@ -1434,6 +1637,7 @@ function Console({
                       agents={agents.map((a) => a.spec.name)}
                       projects={projectNames}
                       canDelete={can("artifacts:write")}
+                      onStart={can("runs:write") ? (ask) => go({ page: "new", ask }) : undefined}
                       onOpenRun={openRun}
                       onOpenThread={openThread}
                       selectedId={route.artifact ?? null}
@@ -1459,12 +1663,13 @@ function Console({
                       ["connections", "tools"].includes(route.section))) && (
                     <Connections
                       provider={route.provider}
+                      scope={route.page === "connections" ? route.scope : undefined}
                       canConnect={can(CONNECT_PERMISSION)}
                       canWrite={can("clients:write")}
-                      canKnowledgeWrite={can("knowledge:write")}
-                      onOpen={(provider) =>
-                        go({ page: "connections", provider }, { replace: true })
+                      onOpen={(provider, scope) =>
+                        go({ page: "connections", provider, scope }, { replace: true })
                       }
+                      onNavigate={go}
                     />
                   )}
                   {route.page === "settings" && (
@@ -1487,8 +1692,6 @@ function Console({
                       projects={projectNames}
                       onOpenProjects={() => go({ page: "projects" })}
                       onOpenWorkspace={() => openProject("")}
-                      onConnections={() => go({ page: "connections" })}
-                      onOpenWorkspaceAgents={() => go({ page: "project", name: "", tab: "agents" })}
                     />
                   )}
                 </>

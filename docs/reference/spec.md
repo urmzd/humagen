@@ -57,12 +57,13 @@ metadata:
 spec:
   server:
     addr: 127.0.0.1:8080
-    public_url: http://localhost:8080
+    public_url: http://localhost:8080   # where browsers reach the server. Unset, $HUMAGEN_PUBLIC_URL, then this default
     webhook_addr: ""        # a second listener that serves only signed webhooks
     console: {enabled: true, dir: auto}      # auto finds a built apps/web
     drain_grace: 25s        # after SIGTERM, how long runs in flight may finish before they are handed back
     shutdown_timeout: 10s   # then how long open requests and event streams may take to end
     role: all               # all | api | worker: which parts this process runs (Process roles)
+    replicas: 1             # how many server processes the deployment runs; more than 1 is refused on the memory bus (Process roles)
 
   auth:                     # slot: dev | tailscale | oidc | mock
     kind: oidc
@@ -120,7 +121,7 @@ spec:
       # kind: hashing
       # hashing: {dimensions: 256}   # no model: matches words and word stems, not meaning
 
-  speech:                   # slot: none | groq. Left out: none, a voice note stays an attachment no agent hears
+  speech:                   # slot: none | groq | openai. Left out: none, a voice note stays an attachment no agent hears
     kind: groq              # transcribes voice notes before a run starts (Voice notes)
     groq:
       key: {ref: env:GROQ_API_KEY}           # the default; left out, the same
@@ -133,7 +134,11 @@ spec:
     concurrency: 4          # a run that calls another agent waits in one place while it runs in another
     max_depth: 4            # 1 to 7: a deeper call would pass the bus's hop limit of 8
     max_fan_out: 16
-    builtin: {provider: "", model: ""}       # the platform's own agents
+    # There is no built-in model or offline stand-in. The platform's own agents
+    # (writer, analyst, builder, reviewers) ship with a chain, anthropic then
+    # openai then google, and run on the first one a declared or
+    # administrator-enabled provider answers. execution.builtin is no longer
+    # read: a file that sets it still starts, with a load note.
 
   sandbox:                  # slot: docker | local | unisolated. Where a run's tools execute
     kind: docker            # the default: an instance per run, destroyed when the run ends
@@ -171,6 +176,7 @@ spec:
 
   branding:                 # the console's look and name; see Branding below
     name: Acme              # the product's name. Left out: metadata.display_name
+    entry_agent: humagen    # the default: the agent people talk to the deployment through, owning each root session that names nobody. System document only
     logo: {path: ./brand/logo.svg, dark: ./brand/logo-dark.svg, alt: Acme}
     icons: ./brand/icons    # favicon.svg, icon-192.png and the rest, by the console's own names
     manifest: {short_name: Acme, theme_color: "#1a1a2e", background_color: "#fafafa"}
@@ -232,6 +238,11 @@ follow-up turn sees what the last one wrote.
 | `local` | Host processes, with the server's privileges, in a directory laid out like an instance. The shell works | Development without Docker |
 | `unisolated` | This host, as before the sandbox: files in the conversation's directory, stdio servers as host processes. The shell is refused | Development and tests |
 
+A person's own command, from a session's Terminal tab, runs only on the
+`docker` kind, in an instance started for that one command. `local` and
+`unisolated` would run it on this host, so they refuse it and the console
+shows no command line.
+
 The server says at start which one it runs. `local` and `unisolated` are
 never chosen for you: name them in the spec or with `-sandbox`. The Docker
 daemon must have `runsc` registered for the default. `runc` shares the host's
@@ -267,7 +278,7 @@ Flags override the block: `-sandbox`, `-sandbox-runtime`,
 `-sandbox-connectors-image`, `-sandbox-work-root`, `-sandbox-host` and
 `-sandbox-tls-dir`. A binary can register
 another kind with `humagen.WithKind(humagen.Sandbox, name, factory)`, whose
-factory returns an `isolation.Leaser` (`orchagent/flow/isolation`).
+factory returns an `isolation.Leaser` (`saige/flow/isolation`).
 
 ### Egress
 
@@ -300,6 +311,32 @@ denied request is a failed record.
 Credential injection, where the sandbox holds a placeholder and the gate
 swaps in the real value for an allowed host, is playscape's and not wired
 here yet.
+
+### Web search and fetch
+
+An agent whose `tools` name `web_search` or `web_fetch` reads the public web.
+Neither needs an account, a key or a setting. The built-in writer and analyst
+have both.
+
+| Tool | What it does | Bounds |
+|------|--------------|--------|
+| `web_search` | Searches the web and returns titles, addresses and snippets | 10 results, a query of at most 400 characters |
+| `web_fetch` | Reads one `http` or `https` address as text: HTML as a reader sees it, plain text and JSON as they are | 2 MiB read, 40,000 characters returned, 5 redirects, 20 seconds. Content that is not text, such as a PDF or an image, is refused |
+
+Both go out from the server, not from the run's sandbox, which has no
+network, so the [egress](#egress) allowlist does not apply to them. They
+reach only addresses on the public internet: a loopback, private or
+link-local address is refused when the connection is made, after the name is
+resolved, so a name or a redirect that points inward is refused too. No proxy
+is used. Both are `read_context` actions, held by the same action policy as
+other reads.
+
+The search is DuckDuckGo's page for clients without scripts. It may refuse a
+server it takes for a program; the tool then says so and returns nothing. A
+page is evidence, not an instruction: every result says so, and an agent
+that reads a page can still be misled by it, including into fetching an
+address that carries what it knows. Give these tools to agents whose other
+reads you would accept on the public web.
 
 ### Knowledge search
 
@@ -339,6 +376,7 @@ marked the same way, for the person to read and send
 |------|-------|-------------|
 | `none` | none | Nothing is transcribed, the default |
 | `groq` | `base_url`, `key`, `model`, `speech_model`, `voice`, `max_bytes`, `timeout`, every one optional | `key`, a reference, `env:GROQ_API_KEY` when left out |
+| `openai` | The same block as `groq` | `key`, a reference, `env:OPENAI_API_KEY` when left out |
 
 `groq` sends each recording to `POST /audio/transcriptions` on Groq's
 OpenAI-compatible API, with `whisper-large-v3-turbo` unless `model` says
@@ -348,8 +386,15 @@ otherwise. A recording over `max_bytes` (25 MiB when left out, at most
 long, has no words or reaches a provider that fails is said to be so in the
 message, which still posts. `speech_model` and `voice` (Groq's
 `canopylabs/orpheus-v1-english` and `autumn` when left out) are for speaking
-replies, which nothing uses yet. A binary adds a kind with
+replies. `openai` is the same API on OpenAI's, with `whisper-1`, `tts-1` and
+`alloy` when left out. A binary adds a kind with
 `humagen.WithKind(humagen.Speech, ...)`, building a `speech.Transcriber`.
+
+This slot is the deployment's, and the deployment pays for it. A workspace
+admin can set up a voice provider of the workspace's own in Workspace
+settings, which is used before this slot, turns voice mode on, and counts
+what each call costs in the workspace's usage
+([docs/guides/voice.md](../guides/voice.md#a-workspace-voice-provider)).
 
 A model can be Groq too: `kind: groq` under `models` is `openai` with Groq's
 base URL and `env:GROQ_API_KEY` filled in, and an agent names it as its
@@ -377,7 +422,7 @@ Entries are searched like knowledge, with `knowledge.embedder` when one is set.
 | `s3` | `bucket` (required), `prefix`, `region` (`us-east-1`) | `credential`, a required reference to JSON with `access_key_id`, `secret_access_key`, and optional `session_token` |
 | `bigquery` | `project` (required), `datasets`, `location`, `max_bytes_billed` (1 GiB), `max_rows` (200, at most 10000), `timeout` (60s, at most 10m) | `credential`, a reference to a service account key in JSON; left out, Application Default Credentials: the VM's service account on GCE |
 
-Two tools use the catalog, granted to an agent by name like any tool:
+Five tools use the catalog and corpora, granted to an agent by name like any tool:
 
 - `catalog_search` finds entries: a published connector's when everyone the
   answer reaches reads its project, and the owner's own only in the owner's
@@ -387,6 +432,22 @@ Two tools use the catalog, granted to an agent by name like any tool:
   first and refuses it before it runs when it is not a single `SELECT`, reads a
   dataset outside `datasets`, or would read more than `max_bytes_billed`. The
   query that runs carries the same cap as BigQuery's maximum bytes billed.
+- `corpus_query` runs one SQL `SELECT` on a Snowflake or BigQuery connector a
+  corpus holds, with the login of the person the run acts for, never the
+  connector's credential, so the warehouse's own grants, row access and masking
+  apply. It runs only in a direct conversation (the person's own private one,
+  or their DM with the app), for a reader of the corpus, and only for an
+  agent the corpus is granted to
+  ([sources.md](../architecture/sources.md#corpora)). Snowflake leaves the
+  connector's role out, so each reader's default role applies.
+- `corpus_search` searches the corpora granted to the agent: files by words
+  and meaning, references live, warehouse tables by what they hold. It uses
+  only what everyone the answer reaches may read, checked when it runs, and
+  says what it held back
+  ([sources.md](../architecture/sources.md#sensitivity)).
+- `corpus_graph` reads the workspace graph of the corpora granted to the agent:
+  documents, tables and systems, who owns each and how stale each is, by the
+  same rules as `corpus_search`.
 
 The credential needs `roles/bigquery.metadataViewer` (or `dataViewer`) on the
 datasets to crawl them, `roles/bigquery.dataViewer` to read them, and
@@ -458,6 +519,15 @@ refused. `api` and `worker` hand runs to each other through the run ledger
 and queue, so both need `stores.kind: postgres`, and a split role on memory
 stores is refused at start.
 
+`server.replicas` (or `-replicas`) declares how many server processes the
+deployment runs, 1 when left out. Humagen does not count its replicas; the
+number is what the operator says. More than one on the in-memory bus is
+refused, by `humagen config check` and at start, because each process has
+its own in-memory bus and would miss the other's events: set
+`stores.kind: postgres` and leave `bus` out (or `bus.kind: postgres`), or
+set `server.replicas: 1`. The Helm chart refuses the same combination from
+`replicaCount` and `autoscaling.maxReplicas`.
+
 ```bash
 humagen serve -f humagen.yaml -role api     # behind the load balancer
 humagen worker -f humagen.yaml              # as many as the queue needs
@@ -491,7 +561,7 @@ metadata:
 spec:
   workspace:                # a field left out is left to the console
     history: {mode: recent, limit: 8000}
-    agents: {enable: ["*"], default: "*"}   # the workspace's own: every platform agent, and each decides on untagged messages
+    agents: {default: "*"}  # the workspace's own: each agent decides on untagged messages, anywhere
     instructions: Acme sells warehouse robots. Answer plainly.   # the workspace's own, sent first
     channels: [{name: announcements, purpose: Company news}]      # the workspace's own; every project has general
     experts: [{who: "role:security", topics: [security]}]         # answer anywhere a nearer project names nobody
@@ -512,7 +582,6 @@ spec:
         title: Field engineering
         kind: team          # company | team | account | a project_kinds name. Left out: team
         instructions: Customer accounts. Never promise dates.
-        agents: {default: lead}             # answers untagged messages here and below
         knowledge: [field-playbook]         # runs filed here and below are grounded in it too, nearest first
         skills:                             # $review here and below; a nearer project's of the same name wins
           - {name: review, description: Review a renewal., argument_hint: "[account]", instructions: Check the renewal terms against the contract and list what changed.}
@@ -528,10 +597,10 @@ spec:
         kind: account
         account: {customer: Globex Inc, external_id: "sf:0015g00000ABC", url: "https://crm.example.com/globex"}
         channels:
-          - {name: renewals, purpose: Renewal work, default: "*"}   # everyone decides: each agent available asks itself whether to answer
+          - {name: renewals, purpose: Renewal work}
           - {name: general, slack: {client: slack-acme, channel: C0123GLOBEX}}  # a Slack thread there is a shared thread here
         experts: [{who: "okta|00u1ana", topics: [billing, renewals]}]
-        agents: {allow: [globex-helper, lead], default: globex-helper}  # narrows: only these run here and below
+        agents: {allow: [globex-helper, lead]}  # narrows: only these run here and below
         members: [{who: "okta|00u1ana", role: owner}]   # no "*": members only, read by its members alone
     person_credentials: {values: false}   # true lets people store a tool credential's value with humagen
     release_notes: true     # each release's breaking changes and features, posted once in the workspace's inbox from humagen
@@ -593,12 +662,13 @@ spec:
   agents:
     - spec:
         name: lead
-        provider: policy
-        model: default
+        provider: anthropic     # a model, never a nickname: the chain is the agent's own
+        model: claude-sonnet-5-5
+        fallbacks: [{provider: openai, model: gpt-5.1}]
         system_prompt: You coordinate work.
         access: {spawn: [helper]}
     - spec: {name: helper, provider: local, model: YOUR_LOCAL_MODEL, system_prompt: Do one task well.}
-    - project: Globex       # lives in Globex: available there and below, and nowhere else
+    - project: Globex       # its home: only Globex's readers see it, and it answers only where they alone read
       spec: {name: globex-helper, provider: local, model: YOUR_LOCAL_MODEL, system_prompt: You know the Globex account.}
     - file: agents/reviewer.agent.md   # saige's own format; a .json or .yaml file holds a spec instead
       policy: {answerers: ["role:field-leads"], tagged_only: true}   # what the .agent.md does not say
@@ -615,13 +685,17 @@ spec:
       background_color: "#1a1a2e"
       command_description: Ask Acme's agents
       command_usage_hint: "[question]"
+      code_channels: false  # true offers Continue in a Code Channel; needs the manifest pushed and the app reinstalled
       humagen_client:          # how the app signs in to humagen's API. Dev sign-in needs none
         token_url: https://login.example.com/oauth2/v1/token
         client_id: humagen-slack
         client_secret: {ref: env:HUMAGEN_SLACK_CLIENT_SECRET}
-        scopes: [humagen:agents:read, humagen:runs:read, humagen:runs:write, humagen:billing:read, humagen:projects:read]
+        scopes: [humagen:agents:read, humagen:runs:read, humagen:runs:write, humagen:billing:read, humagen:projects:read, humagen:clients:read]
         audience: ""        # set when the provider needs one named
       # humagen_token: {ref: env:HUMAGEN_SLACK_API_TOKEN}   # instead: a bearer token that does not expire
+      machine: humagen-slack   # the subject that credential signs in as. Under tailscale leave it out
+      people:               # whom the app acts for: a Slack user id to their subject here. None is nobody
+        U0123456: "issuer|person-subject"
     github:
       enabled: false
       owners: [acme]
@@ -657,6 +731,7 @@ the workspace signs in.
 | `manifest` | The installable app's `name`, `short_name`, `description`, `theme_color` and `background_color` | System |
 | `palette` | `accent`, `surface` (the page), `plane` (the sidebar and panels), `text` and `rule` (lines), each `{light, dark}` or one color for both themes | both |
 | `fonts` | CSS font-family lists for `ui`, `heading` and `mono` text, and `files`: up to 12 `{family, path, weight, style}` faces (`.woff2`, `.woff`, `.ttf` or `.otf`, at most 2 MiB each) the server serves for those lists to name. A face named without a file must be installed on the device. A workspace's files replace the deployment's | both |
+| `entry_agent` | The agent people talk to the deployment through, `humagen` when left out: lowercase kebab case. It owns each root session that names nobody, answers simple asks and calls specialists as child sessions (docs/architecture/projects.md#the-entry-agent). The GitHub check run is named for it by `name` | System |
 | `welcome` | `{title, text}` of the announcement a workspace's people find first in its inbox. Left out, Humagen's, with the product's name in place of Humagen. It is posted once, so a change reaches only a workspace not yet welcomed | both |
 | `starters` | Up to 6 `{agent, label, text}` suggestions on an empty conversation, each shown only where its agent can answer. `[]` shows none | both |
 | `copy` | The console's own text by key, such as `navigation.agents: Assistants`. `humagen config copy-keys` lists the keys; an unknown one is an error. A workspace's keys are merged over the deployment's | both |
@@ -712,23 +787,26 @@ builds on:
   the console made one by that name, filed in the project; the console can
   pause, resume and run one, not change or delete it (409), and one that
   leaves the file stays, the console's again. Schedules are applied last,
-  once the agents and where they live are in.
-- **Agents in projects.** `workspace.agents` and a project's `agents` are
-  what it turns on: `enable` adds platform agents here and below (`*` alone
-  is every one), `allow`, when set, is the only agents that may run here and
-  below, and `default` answers a message that tags no agent (an agent, or
-  `*` for everyone decides: each agent available there that is not
-  `tagged_only` is asked whether to join, see
-  [the dynamic router](../architecture/projects.md#the-dynamic-router)). `auto` still works
-  and reads as `*`, with a load note asking to write `"*"`. Each list names agents in the file or the platform's
-  own. Set, the three are the file's as a whole, and the console cannot
-  change them. An agent's `project` is where it lives: available there and
-  below, and nowhere else, so `*` never reaches it and enabling it adds
-  nothing. A named default must be available where it is set. They are
-  applied in this order: the workspace, the projects, the agents, then
-  where each agent lives. A home that leaves the file stays.
-  `workspace.baseline` is gone: a file that still sets it fails with
-  "baseline is now workspace.agents.default".
+  once the agents and their homes are in.
+- **Agents are independent of projects.** Any agent answers in any
+  project, unless an `allow` list leaves it out: `allow`, set on the
+  workspace or a project, is the only agents that may run there and below,
+  and a project below can only narrow it. `workspace.agents.default`
+  answers a message that tags no agent anywhere (an agent, or `*` for
+  everyone decides: each agent that is not `tagged_only` is asked whether to
+  join, see [the dynamic router](../architecture/projects.md#the-dynamic-router)).
+  `auto` still works and reads as `*`, with a load note asking to write
+  `"*"`. Each list names agents in the file or the platform's own. Set,
+  they are the file's as a whole, and the console cannot change them. An
+  agent's `project` is its home, which says only who sees it: an agent homed
+  in a project everyone reads answers anywhere, and one homed in a project
+  kept to its members answers only where its readers alone read. The
+  workspace default must be allowed at the workspace. `enable`, a project's
+  `default` and a channel's `default` are no longer read; a file that sets
+  them still starts, with a load note for each. They are applied in this
+  order: the workspace, the projects, the agents, then each agent's home. A
+  home that leaves the file stays. `workspace.baseline` is gone: a file
+  that still sets it fails with "baseline is now workspace.agents.default".
 - **Models and tools** exist only while the file declares them. A tool's
   pinned schemas are its acceptance; anything else stays pending. A tool's
   `credential_scope` says whose credential reaches it: see
@@ -765,20 +843,44 @@ Review the change and list what is risky.
 `policy` goes beside an `.agent.md` file, and only there. It holds what
 saige's format does not: `approvers`, `self_approval`, `answerers`,
 `tagged_only`, `workspace_areas`, `mcp_write` (the MCP servers whose write
-tools it may call), `knowledge`, `fallback_on` and `choices`. Left out, it grants
+tools it may call), `knowledge` and `fallback_on`. Left out, it grants
 nothing beyond the file.
 
-The console edits an agent's `choices` on its Model tab and saves them as a new
-revision. Empty lists remove the choices.
+People pick agents, not models: an agent's model chain and reasoning effort
+are its definition's, and nothing overrides them per message. saige's format
+has no effort field, so an `.agent.md` file sets it in its metadata,
+`metadata: {humagen_effort: high}`, and the API as the agent's `effort`. It
+is sent only to the chain's first model, and only when that model takes it;
+a run moved to a fallback answers at the model's default.
 
-`choices` (in a spec or a policy) is what a person may pick for one message
-in place of the agent's model and reasoning effort: `models`, each
-`provider/model`, and `efforts`, such as `low` and `high`. Left out, nothing
-is offered and every message runs on the agent's own model at its default
-effort. A pick the agent does not offer is passed over, the run's model
-ceilings still apply, and an effort the model does not take fails the run
-before any model call. For example
-`choices: {models: [anthropic/YOUR_LARGER_MODEL], efforts: [low, high]}`. `subscriptions` is refused: the platform decides
+An agent's answer can have a shape: `output: {schema: <JSON Schema>}`, for an
+object. Its model is asked for structured output under the schema, and a model
+that cannot give it fails the run instead of answering in free text. The
+answer, checked against the whole schema, is kept on the run as `output`. An
+`.agent.md` file sets it in metadata, `humagen_output_schema`, as the schema in
+a JSON string.
+
+The approval agent ships with a schema of `decision` (allow, ask or deny),
+`reason` and `references`. A workspace may give it its own, which must keep
+`decision`, a required string whose enum is drawn from allow, ask and deny, and
+`reason`, a required string. Any other field, such as `risk`, `conditions` or
+`notify`, is recorded with each judgement in the audit as `field.<name>` and
+shown on the approval card. `humagen config check` refuses a schema without
+that core. An answer that is missing or does not hold to the schema leaves the
+call for a person.
+
+The schema as it ships also has an optional `answer`: in a session set to Run
+and Answer (approval mode `decide`), the approval agent is shown a question an
+agent asks a person, and answers it with `decision: allow` and `answer` (one of
+the options for a choice, words for a reply) only when the session already
+settles it. A workspace schema without `answer` keeps working and decides calls
+only: every question goes to a person. Run and Answer is a person's choice for
+one session, made in the console, not a spec field; a session asks until
+someone chooses it.
+
+A `choices` block
+from an older policy or agent spec is not read: a file that has one still
+starts, with a load note. `subscriptions` is refused: the platform decides
 what wakes an agent. saige checks the file at start, then the platform's
 own rules apply as to any spec. The file's `version` is not kept: the store
 numbers each change, and a run pins the version, digest and policy it
@@ -790,8 +892,9 @@ started with.
 client of its API, restarting it when it exits. It needs Node.js on `PATH` and
 `apps/slack` with its dependencies installed (`pnpm install`), found under the
 working directory, beside the binary, or at `HUMAGEN_SLACK_APP_DIR`. The Humagen image
-carries neither, so there the surface is logged as off and the server runs
-without it.
+carries both: Node.js, and the app with its dependencies at
+`/usr/share/warp/slack`, which the image's `HUMAGEN_SLACK_APP_DIR` names. Where
+either is missing, the surface is logged as off and the server runs without it.
 
 The app is given its tokens, its workspace and Humagen's address, plus `PATH`,
 `HOME`, `TMPDIR`, `TZ`, `XDG_STATE_HOME`, the `NODE_OPTIONS`,
@@ -803,6 +906,13 @@ Humagen's environment reaches it.
 surface: its name (`app_name`, else the workspace's or deployment's
 `display_name`), `command`, `description`, `background_color`,
 `command_description` and `command_usage_hint`, each Humagen's when left out.
+`code_channels: true` adds the code channels feature and the
+`code_channels:manage`, `channels:read` and `groups:read` scopes to that
+manifest, and starts the app with `SLACK_CODE_CHANNELS=1`. It is off unless
+set, and the manifest is then the one every install already has. Turning it on
+changes the manifest, so push it and reinstall the app before the setting does
+anything: until then Slack refuses the call and conversations stay in their
+threads. See [the Slack app](https://github.com/urmzd/humagen/blob/main/apps/slack/README.md#code-channels).
 What the app says in Slack itself (its tagline, disclaimer and suggested
 prompts) is the `SLACK_BRANDING` file's. The app's icon and its bot's
 picture are set on the app's page at api.slack.com.
@@ -812,10 +922,62 @@ needs none. Under `oidc` or `mock` it needs `humagen_client`: a machine client o
 the identity provider, whose access tokens the app gets with client credentials
 and renews as they expire, with the scopes [the API](api.md#authenticating-a-machine)
 lists for a Slack surface. `humagen_token` is a bearer token given as it is, for a
-token that does not expire; set one or the other. A process cannot sign in
-through Tailscale Serve, so `tailscale` sign-in refuses a Slack surface. A spec
-that needs a credential and has none is refused when it is checked, and so is a
-start whose `-auth` flag needs one the file does not give.
+token that does not expire; set one or the other. Under `tailscale` it needs
+none and takes none: a process cannot sign in through Tailscale Serve, so the
+server makes a credential for the app it starts, new at every start and kept
+in memory only (see [security](../architecture/security.md#the-slack-app-under-tailscale)).
+A `humagen_client` or `humagen_token` under `tailscale` is refused, since
+nothing could verify it. A spec that needs a credential and has none is
+refused when it is checked, and so is a start whose `-auth` flag needs one the
+file does not give.
+
+#### Whom the Slack app acts for
+
+By default the app acts for nobody: it answers, and every run it asks for is
+the app's own. `people` names who is who, a Slack user id (`U...` or `W...`)
+in `team` to the subject that person signs in to Humagen with. With it the
+server keeps a [client](clients.md#people-a-slack-app-answers-for) for the app
+and starts the app with `HUMAGEN_CLIENT` set to that client's id, so a mapped
+person's message, runs, Home tab and answers to a run's questions are theirs.
+A Slack user the map does not name stays nobody.
+
+| Field | Default | Meaning |
+|-------|---------|---------|
+| `people` | none: the app acts for nobody, with no client record and no `HUMAGEN_CLIENT` | At most 500 Slack user ids, each mapped to a subject of 1 to 200 characters. `team` must then be a team id of at most 30 characters |
+| `machine` | under `tailscale`, `slack-app:<team>`, the subject of the credential the server makes | The subject the app's own credential signs in as, the only credential that may act for `people`. Under `tailscale` it is refused, since the server knows it. Under every other sign-in it is required with `people`: the subject is the identity provider's to choose, so the server cannot know it |
+
+The record is `slack-app-<team id in lowercase>`, such as `slack-app-t0123456`,
+in the workspace the document names. It holds no secret and has no connector:
+Slack reaches the app over Socket Mode, never through the server, so the
+record is offered no webhook and `bot_token` is not on it. A client's secrets
+are `env:HUMAGEN_*` references given to its workspace, with a signing secret
+beside the token, and a Socket Mode app has neither to give. So files a person
+attaches in Slack are still not read: the server reads them through a client's
+own connector, which this record does not have, and a message with a file is
+refused as it is with no client.
+
+The file owns three things on that record: `team`, `machine` and `people`. At
+every start they are made what the file says, people added and removed, and a
+change to them through the API is not kept. Everything else is an
+administrator's, set through [the clients API](clients.md#api) and left alone
+at a start: `default_agent`, `agents`, `home`, `enabled` and the options under
+`slack`. The record starts with `agents: ["*"]` and no default agent, which is
+what the app does with no client: a message that names no agent is answered by
+the default where it lands (the workspace's entry agent, unless a project or a
+channel sets another), and a person may name any agent they may use. The record
+cannot be deleted through the API.
+
+A file that stops mapping people, or turns the surface off, takes the machine
+and the people off the record at the next start and starts the app with no
+`HUMAGEN_CLIENT`. When another client already has the record's id, the server
+says so in its log, leaves that client alone and starts the app acting for
+nobody.
+
+Under `oidc` or `mock` the app's credential also needs `humagen:clients:read`
+once `people` is set, to read its own record; without it the app refuses to
+start. The credential the server makes under `tailscale` has it. The credential
+named as `machine` can raise runs as every person mapped, so treat it as their
+sign-ins (see [clients](clients.md#people-a-slack-app-answers-for)).
 
 Model names are shared across the workspaces in one process: two workspaces
 may declare the same model, but not two different ones under one name.
@@ -910,7 +1072,7 @@ below may do, and what it prefers. A person adds their own level through
 
 | Setting | Kind | Left out everywhere | Rule |
 |---------|------|---------------------|------|
-| `ceilings.tools` | ceiling | narrows nothing | at most 64 tool names, as an agent's `tools` writes them (`mcp:<name>` for a provider's tools). A tool the agent grants that is not listed is taken away for the run. `[]` allows none |
+| `ceilings.tools` | ceiling | narrows nothing | at most 64 tool names, as an agent's `tools` writes them (`mcp:<name>` for a provider's tools). A tool the agent grants that is not listed is taken away for the run. `[]` allows none of them. It does not take away `skill_file_read`, which a run whose skills have supporting files is always offered: it reads only those files, which the run was given ([managed library](../architecture/managed-library.md#skills-are-immutable-packages)). An administrator who wants a run to read no file at all must also keep supporting files out of the skills its runs use. An agent's `tools` may not name `skill_file_read`. It does take away the background tools every agent's turn for a person is offered (`notify`, `watch_start`, `goal_start`, `task_start`, `background_list`, `background_stop`): list them to keep them ([background work](../guides/background.md)) |
 | `ceilings.models` | ceiling | narrows nothing | at most 64 `provider/model`, or `provider/*` for all of a provider's. The run's model and fallbacks outside it are dropped, and a run with none left is refused |
 | `ceilings.call_depth` | ceiling | the deployment's depth | 0 to 16: how deep a run's calls to other agents may go. 0 calls none. It never deepens the deployment's own limit |
 | `ceilings.tool_servers` | ceiling | none | at most 64 hosts, in lower case, a person's own tool servers may be on. Default deny: only `workspace.run` opens it, and a project or a person only narrows it |
@@ -950,7 +1112,7 @@ or declares `general` to set its purpose:
 | `name` | required | lower case letters, digits and dashes, starting with a letter or digit, at most 40, once per project, never changed |
 | `title` | the name | one line, at most 80 characters |
 | `purpose` | none | one line, at most 200 characters, sent to every agent answering in the channel |
-| `default` | the project's | the agent that answers a message that tags none, or `"*"` for everyone decides (`auto` reads as `*`). One that cannot answer in the project answers nothing, and the message says why |
+| `default` | none | no longer read: the workspace default answers a message that tags no agent. A file that sets it still starts, with a load note |
 | `slack` | unbound | `{client, channel}`: a Slack client's id and a Slack channel's (`C...` or `G...`, never a direct message) whose threads are shared threads here. One Slack channel is bound once in the file. The client need not exist yet: until it does the binding binds nothing. The app's bot must already be in the channel |
 
 `experts` names who answers for some topics, here and below: at most 50, each
@@ -1074,7 +1236,10 @@ project's instructions and notes:
 | `deliver` | the run | `project` posts each answer in the project as an announcement from the agent, its first line the subject, or as a draft for the project's owners under `agent_posts: review`. An answer of NONE posts nothing. A file has nobody to send an answer to, so `inbox` is refused |
 
 A recap is such a schedule: `humagen-analyst`, a Monday morning, "What changed in
-Field this week?", `deliver: project`. Its `project_changes` tool reads only
+Field this week?", `deliver: project`. A file may name the store's agents
+without declaring them; a schedule of one the workspace has not installed is
+refused when it fires, with an alert saying which package to install (Core for
+`humagen-analyst`). Its `project_changes` tool reads only
 the project and the projects below it.
 
 ### Release notes
@@ -1216,7 +1381,7 @@ unknown-field errors as the built-ins'. Sign-in and stores are built in only,
 for now.
 
 `humagen.WithRuntime(rt)` runs every turn on your own `turn.Runtime`
-(`github.com/urmzd/orchagent/flow/turn`) in place of the native saige
+(`github.com/urmzd/saige/flow/turn`) in place of the native saige
 turn. It is handed the pinned definition and the triggering event and streams
 back catalog event bodies. It runs inside the same sandbox and on
 the same durable runs; it brings its own models and tools, so the spec's
@@ -1249,6 +1414,36 @@ recorded before keeps its trigger, and a schedule keeps its context
 ([upgrading-from-warp.md](../guides/upgrading-from-warp.md)). The API sends a run's
 events as the union too: each has a `type` and its `data` inline
 ([API contract](api.md#events)).
+
+### Since orchagent moved into saige
+
+orchagent has since been folded into saige. Humagen requires only
+`github.com/urmzd/saige` v0.45.0 and Go 1.26.11 or later, and a program built
+on the `humagen` package drops `github.com/urmzd/orchagent` from its `go.mod`.
+`flow`, `durable` and `sandbox` keep their package paths under saige; a few
+packages moved into Humagen instead, and a few were not carried over. Stored
+and wire names are unchanged: the `fiber_*` tables, the event type names and
+the envelope fields. This is a breaking change for such a program, not for a
+file:
+
+| Before | Now |
+|--------|-----|
+| `github.com/urmzd/orchagent/flow/...` | `github.com/urmzd/saige/flow/...` (`flow/event`, `flow/bus`, `flow/turn/native`, `flow/isolation` and the rest) |
+| `github.com/urmzd/orchagent/durable/...` | `github.com/urmzd/saige/durable/...` |
+| `github.com/urmzd/orchagent/sandbox/...` | `github.com/urmzd/saige/sandbox/...` |
+| `flow/turn/native/saigetypes`, `ragtypes`, `agenttest` | `github.com/urmzd/saige/agent/types`, `rag/types`, `agent/agenttest` |
+| `flow/runschema` | Humagen's `internal/runschema` |
+| `flow/toolprovider`, `flow/mcptools` | Humagen's `internal/toolprovider`, `internal/mcptools` |
+| the embedders of `flow/knowledge` | `github.com/urmzd/humagen/pkg/dense` |
+| orchagent's `flow` root package (`flow.New`, `flow.App`) | gone: compose `runtime.New(durable.New(ledger, queue), resolver, bus, ...)` from `saige/flow/runtime`, as `internal/platform/platform.go` does |
+| `flow/dispatch`, the Jira, webhook and author connectors, the knowledge store | not carried into saige, and not used by Humagen |
+| `github.PrepareReview(r, files, false)` | `github.PrepareReview(r, files)`: an `APPROVE` review is refused with `github.ErrNoApproval` |
+| one question per park | `event.Parked.Questions` and `event.Resumed.Answers` for a batch of waiting tool calls |
+
+`scripts/rewrite-orchagent-imports.sh` rewrites the imports that map one to
+one and lists what it left. See
+[upgrading-to-saige.md](../guides/upgrading-to-saige.md) for what changes at
+runtime.
 
 
 ## Managed source records

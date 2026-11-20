@@ -88,7 +88,7 @@ const view = async (name: "Recents" | "Projects" | RegExp) => {
   fireEvent.click(disclosure);
   fireEvent.click(
     within(panel.getByRole("group", { name: "View" })).getByRole("button", {
-      name: name === "Projects" ? "By project" : name,
+      name: name === "Projects" ? "By project" : name === "Recents" ? "By day" : name,
     }),
   );
   fireEvent.keyDown(disclosure, { key: "Escape" });
@@ -120,10 +120,12 @@ test("Recents lists every project newest first, each row one line with one dot",
   assert.ok(screen.getByRole("button", { name: "Filter conversations" }));
   assert.equal(
     screen.getByRole("region", { name: "Sessions" }).getAttribute("data-view"),
-    "recents",
+    "projects",
+    "sessions open filed under their projects",
   );
+  await view("Recents");
   const list = within(await screen.findByRole("list", { name: "Recents" }));
-  const waiting = await list.findByRole("button", { name: /^Waiting on me/ });
+  const waiting = await list.findByRole("link", { name: /^Waiting on me/ });
   assert.doesNotMatch(waiting.textContent ?? "", /Spring launch/);
   assert.match(waiting.textContent ?? "", /Needs you/);
   assert.equal(
@@ -133,19 +135,19 @@ test("Recents lists every project newest first, each row one line with one dot",
   );
   assert.equal(
     list
-      .getByRole("button", { name: /^Still going/ })
+      .getByRole("link", { name: /^Still going/ })
       .querySelector("[data-standing]")
       ?.getAttribute("data-standing"),
     "running",
   );
-  const answered = list.getByRole("button", { name: /^Answered/ });
+  const answered = list.getByRole("link", { name: /^Answered/ });
   await waitFor(() =>
     assert.equal(
       answered.querySelector("[data-row-age] [data-standing]")?.getAttribute("data-standing"),
       "unread",
     ),
   );
-  const quiet = list.getByRole("button", { name: /^Quiet/ });
+  const quiet = list.getByRole("link", { name: /^Quiet/ });
   assert.equal(quiet.querySelector("[data-row-age]")?.textContent, "");
   assert.equal(quiet.querySelector("[data-standing]"), null);
 });
@@ -172,10 +174,11 @@ test("session rows show relative ages while unread replies retain their dot", as
     }),
   });
   render(<Bar sessionMode />);
+  await view("Recents");
   const list = within(await screen.findByRole("list", { name: "Recents" }));
-  const read = await list.findByRole("button", { name: /^Read session/ });
+  const read = await list.findByRole("link", { name: /^Read session/ });
   assert.equal(read.querySelector("[data-row-age]")?.textContent, "3h");
-  const unread = list.getByRole("button", { name: /^Unread reply/ });
+  const unread = list.getByRole("link", { name: /^Unread reply/ });
   await waitFor(() => assert.ok(unread.querySelector('[data-row-age] [data-standing="unread"]')));
   assert.equal(unread.querySelector("[data-row-age]")?.textContent, "");
 });
@@ -200,7 +203,7 @@ test("the row menu archives a session, and Archived brings it back", async () =>
     ),
   );
   fireEvent.click(await screen.findByRole("menuitem", { name: "Archive" }));
-  await waitFor(() => assert.ok(!screen.queryByRole("button", { name: /^Put me away/ })));
+  await waitFor(() => assert.ok(!screen.queryByRole("link", { name: /^Put me away/ })));
   assert.ok(screen.getByText("Archived for you. Others still see it."));
   await view(/^Archived/);
   const archived = within(await screen.findByRole("list", { name: "Archived" }));
@@ -208,7 +211,7 @@ test("the row menu archives a session, and Archived brings it back", async () =>
   fireEvent.click(await screen.findByRole("menuitem", { name: "Unarchive" }));
   await waitFor(() => assert.deepEqual(marks.archived, []));
   await view("Recents");
-  await screen.findByRole("button", { name: /^Put me away/ });
+  await screen.findByRole("link", { name: /^Put me away/ });
 });
 
 test("Projects groups by project, folds an empty one to No conversations, and caps a long one at See All", async () => {
@@ -229,9 +232,9 @@ test("Projects groups by project, folds an empty one to No conversations, and ca
   );
   await view("Projects");
   const list = within(await screen.findByRole("list", { name: "Projects" }));
-  assert.equal(list.getAllByRole("button", { name: /^Launch task/ }).length, 5);
+  assert.equal(list.getAllByRole("link", { name: /^Launch task/ }).length, 5);
   fireEvent.click(list.getByRole("button", { name: "See All (7)" }));
-  assert.equal(list.getAllByRole("button", { name: /^Launch task/ }).length, 7);
+  assert.equal(list.getAllByRole("link", { name: /^Launch task/ }).length, 7);
   const ops = list.getByText("Ops").closest("details");
   assert.equal(ops?.open, false, "an empty project starts folded");
   assert.match(ops?.textContent ?? "", /No conversations/);
@@ -290,7 +293,7 @@ test("search has one way in: the Search row, with no tip card repeating it", asy
     />
   );
   render(bar());
-  await screen.findByRole("list", { name: "Recents" });
+  await screen.findByRole("list", { name: "Projects" });
   await new Promise((r) => setTimeout(r, 20));
   assert.equal(screen.queryByRole("complementary", { name: "Search across conversations" }), null);
   assert.ok(screen.getByRole("button", { name: "Search" }));

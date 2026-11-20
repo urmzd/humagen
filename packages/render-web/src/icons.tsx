@@ -102,6 +102,10 @@ export const ThumbsDownIcon = icon(
   </>,
   "ThumbsDownIcon",
 );
+export const CloudIcon = icon(
+  <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" />,
+  "CloudIcon",
+);
 export const FileIcon = icon(
   <>
     <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z" />
@@ -167,6 +171,22 @@ export const HourglassIcon = icon(
 );
 export const PauseIcon = icon(<path d="M9 5v14M15 5v14" />, "PauseIcon");
 export const PlayIcon = icon(<path d="M7 4.5v15l12-7.5z" />, "PlayIcon");
+export const FastForwardIcon = icon(
+  <>
+    <path d="M3 6v12l9-6z" />
+    <path d="M12 6v12l9-6z" />
+  </>,
+  "FastForwardIcon",
+);
+export const HandIcon = icon(
+  <>
+    <path d="M18 11V6a2 2 0 0 0-4 0" />
+    <path d="M14 10V4a2 2 0 0 0-4 0v2" />
+    <path d="M10 10.5V6a2 2 0 0 0-4 0v8" />
+    <path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15" />
+  </>,
+  "HandIcon",
+);
 export const BanIcon = icon(
   <>
     <circle cx="12" cy="12" r="9" />
@@ -178,6 +198,17 @@ export const DownloadIcon = icon(<path d="M12 3v12M7 10l5 5 5-5M5 21h14" />, "Do
 export const GripIcon = icon(
   <path d="M9 6h.01M9 12h.01M9 18h.01M15 6h.01M15 12h.01M15 18h.01" strokeWidth={3} />,
   "GripIcon",
+);
+export const MicIcon = icon(
+  <>
+    <rect x="9" y="2" width="6" height="13" rx="3" />
+    <path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3" />
+  </>,
+  "MicIcon",
+);
+export const AudioLinesIcon = icon(
+  <path d="M2 10v3M6 6v11M10 3v18M14 8v7M18 5v13M22 10v3" />,
+  "AudioLinesIcon",
 );
 export const BotIcon = icon(
   <>

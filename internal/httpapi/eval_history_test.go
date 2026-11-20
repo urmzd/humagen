@@ -11,7 +11,7 @@ import (
 	"github.com/urmzd/humagen/pkg/evals"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/threads"
-	"github.com/urmzd/orchagent/flow/event"
+	"github.com/urmzd/saige/flow/event"
 )
 
 func TestEvalHistoryRoutesDoNotDeclassifyRemovedPrivateReplay(t *testing.T) {

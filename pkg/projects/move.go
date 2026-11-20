@@ -3,7 +3,6 @@ package projects
 import (
 	"fmt"
 	"slices"
-	"strings"
 	"time"
 )
 
@@ -182,53 +181,10 @@ func (s *Store) move(tenantName, name string, version int, parent string, w Writ
 	then := tx.t.copy()
 	then.projects[name] = next
 	after := then.tree()
-	if lost := lostByMove(tx.t, before, after, before.Subtree(name)); len(lost) > 0 {
-		return Project{}, fmt.Errorf("%w: under %s, %s", ErrInUse, display(parent), strings.Join(lost, ", "))
-	}
 	if leaving != nil {
 		if err := leaving(before, after, before.leftBehind(name, parent)); err != nil {
 			return Project{}, err
 		}
 	}
 	return s.replace(tx, cur, next, w.By, at, Moved)
-}
-
-// lostByMove names what in the projects moved, names, would lose an agent
-// that is available there before the move and not after it: a project's
-// default, a channel's default, and an agent that lives in one of them,
-// which would be available nowhere. A default that stopped being available
-// is refused rather than passed over, so every untagged message there would
-// be answered by no one, and an agent unavailable in its own home answers
-// nothing at all. An archived channel takes no new threads and its default
-// cannot change, so it holds no move back.
-func lostByMove(t *tenant, before, after *Tree, names []string) []string {
-	lost := func(project, agent string) bool {
-		return agent != "" && agent != OpenDefault && before.IsAvailable(project, agent) && !after.IsAvailable(project, agent)
-	}
-	var out []string
-	moved := make(map[string]bool, len(names))
-	for _, n := range names {
-		moved[n] = true
-		if d := before.nodes[n].p.Agents.Default; lost(n, d) {
-			out = append(out, fmt.Sprintf("the default of %s, %s, would not be available", display(n), d))
-		}
-		for _, a := range before.Homes(n) {
-			if lost(n, a) {
-				out = append(out, fmt.Sprintf("%s, which lives in %s, would not be available there", a, display(n)))
-			}
-		}
-	}
-	var channels []Channel
-	for _, c := range t.channels {
-		if moved[c.Project] && !c.Archived && lost(c.Project, c.Default) {
-			channels = append(channels, c)
-		}
-	}
-	slices.SortFunc(channels, func(a, b Channel) int {
-		return strings.Compare(channelKey(a.Project, a.Name), channelKey(b.Project, b.Name))
-	})
-	for _, c := range channels {
-		out = append(out, fmt.Sprintf("the default of #%s in %s, %s, would not be available", c.Name, display(c.Project), c.Default))
-	}
-	return out
 }

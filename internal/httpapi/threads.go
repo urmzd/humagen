@@ -25,6 +25,7 @@ func (s *Server) threadRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/projects/{name}/experts", s.authed(auth.ProjectsRead, s.seenProject(s.getExperts)))
 	mux.HandleFunc("PUT /api/projects/{name}/experts", s.authed(auth.ProjectsWrite, s.seenProject(s.putExperts)))
 	mux.HandleFunc("POST /api/threads/{id}/fork", s.authed(auth.RunsWrite, s.seenThread(s.forkThread)))
+	mux.HandleFunc("GET /api/threads/{id}/forks", s.authed(auth.RunsRead, s.seenThread(s.listForks)))
 	mux.HandleFunc("POST /api/threads/{id}/bring-back", s.authed(auth.RunsWrite, s.seenThread(s.bringBackResult)))
 	mux.HandleFunc("POST /api/threads", s.authed(auth.RunsWrite, s.startThread))
 	mux.HandleFunc("PUT /api/threads/{id}", s.authed(auth.RunsWrite, s.seenThread(s.updateThread)))
@@ -218,13 +219,25 @@ func (s *Server) updateThread(w http.ResponseWriter, r *http.Request, who auth.P
 }
 
 // putApprovalMode sets how the conversation's gated tool actions are
-// approved: ask, or auto for the caller (DES-057).
+// approved: ask, or auto or decide for the caller (DES-057, DES-079). A
+// surface that authenticated a person itself sets it for them with act_as:
+// every check is then the person's, as on the console, and the conversation
+// approves as them.
 func (s *Server) putApprovalMode(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	var in struct {
-		Mode string `json:"mode"`
+		Mode  string          `json:"mode"`
+		ActAs *platform.ActAs `json:"act_as"`
 	}
 	if !decode(w, r, &in) {
 		return
+	}
+	if in.ActAs != nil {
+		person, err := s.P.Acting(who, *in.ActAs)
+		if err != nil {
+			s.problem(w, err)
+			return
+		}
+		who = person
 	}
 	got, err := s.P.SetApprovalMode(who, r.PathValue("id"), in.Mode)
 	if err != nil {
@@ -316,6 +329,8 @@ func threadProblem(w http.ResponseWriter, err error) bool {
 	switch {
 	case errors.Is(err, threads.ErrNotFound):
 		fail(w, http.StatusNotFound, "not found")
+	case errors.Is(err, platform.ErrSurfaceThreadBeforeSessions):
+		fail(w, http.StatusConflict, detail(err, threads.ErrExists))
 	case errors.Is(err, threads.ErrExists):
 		fail(w, http.StatusConflict, "already exists")
 	case errors.Is(err, threads.ErrFull):

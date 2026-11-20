@@ -16,7 +16,7 @@ import (
 	"github.com/urmzd/humagen/pkg/credentials"
 	"github.com/urmzd/humagen/pkg/rooms"
 	"github.com/urmzd/humagen/pkg/speech"
-	"github.com/urmzd/orchagent/flow/bus"
+	"github.com/urmzd/saige/flow/bus"
 )
 
 // Slot names, for a binary registering a kind.
@@ -51,7 +51,7 @@ var Builtin = map[string][]string{
 	SlotModels:     {"anthropic", "openai", "google", "groq"},
 	SlotTools:      {"mcp"},
 	SlotConnectors: {"bigquery", "snowflake", "gcs", "s3"},
-	SlotSpeech:     {"none", "groq"},
+	SlotSpeech:     {"none", "groq", "openai"},
 }
 
 // System is how and where humagen runs.
@@ -160,6 +160,10 @@ type Server struct {
 	// worker (the turns on the run queue, serving nothing). api and worker
 	// share the run queue, so they need stores on Postgres.
 	Role string `json:"role,omitempty"`
+	// Replicas is how many server processes the deployment runs on these
+	// stores and this bus. Left out, 1. More than one needs a bus they
+	// share: the in-memory bus reaches one process only, so it is refused.
+	Replicas int `json:"replicas,omitempty"`
 }
 
 // Defaults for Server's durations.
@@ -178,7 +182,21 @@ func (s Server) check() error {
 			return fmt.Errorf("server: %s %q is not a duration, such as 25s", f.name, f.v)
 		}
 	}
+	if s.Replicas < 0 {
+		return fmt.Errorf("server: replicas %d is negative; give the number of server processes, 1 or more, or leave it out for 1", s.Replicas)
+	}
 	return nil
+}
+
+// MemoryBusReplicas refuses more than one replica on the in-memory bus.
+// Each process has its own in-memory bus, so with two replicas a run's
+// events reach only the process that ran it: streams, delivery and the
+// run index on the other replica miss them, with no error anywhere.
+func MemoryBusReplicas(replicas int) error {
+	if replicas <= 1 {
+		return nil
+	}
+	return fmt.Errorf("bus: the in-memory bus reaches one process only, so %d replicas would each miss the other's events; set stores.kind: postgres and bus.kind: postgres (or leave bus out), or set server.replicas: 1", replicas)
 }
 
 // Roles are the values server.role takes.
@@ -358,21 +376,23 @@ type Knowledge struct {
 	Embedder Slot `json:"embedder,omitzero"`
 }
 
-// GroqSpeech is the groq speech kind's block: Groq's OpenAI-compatible
-// audio API. Every field has a default, so `kind: groq` alone is enough
-// with GROQ_API_KEY set.
+// GroqSpeech is the block of the groq and openai speech kinds: an
+// OpenAI-compatible audio API, Groq's or OpenAI's. Every field has a
+// default, so `kind: groq` alone is enough with GROQ_API_KEY set, and
+// `kind: openai` with OPENAI_API_KEY.
 type GroqSpeech struct {
-	// BaseURL is where the API is. Empty is GroqBaseURL.
+	// BaseURL is where the API is. Empty is the kind's own.
 	BaseURL string `json:"base_url,omitempty"`
-	// Key is the API key's reference. Left out: env:GROQ_API_KEY.
+	// Key is the API key's reference. Left out: env:GROQ_API_KEY, or
+	// env:OPENAI_API_KEY for openai.
 	Key *Ref `json:"key,omitempty"`
-	// Model transcribes. Empty is whisper-large-v3-turbo.
+	// Model transcribes. Empty is whisper-large-v3-turbo, or whisper-1.
 	Model string `json:"model,omitempty"`
 	// SpeechModel and Voice speak. Empty are canopylabs/orpheus-v1-english
-	// and autumn.
+	// and autumn, or tts-1 and alloy.
 	SpeechModel string `json:"speech_model,omitempty"`
 	Voice       string `json:"voice,omitempty"`
-	// MaxBytes caps one voice note. Empty is 25 MiB, Groq's own cap.
+	// MaxBytes caps one voice note. Empty is 25 MiB, each provider's cap.
 	MaxBytes int64 `json:"max_bytes,omitempty"`
 	// Timeout bounds one request. Empty is 60s.
 	Timeout string `json:"timeout,omitempty"`
@@ -382,6 +402,8 @@ type GroqSpeech struct {
 const (
 	GroqBaseURL = speech.GroqBaseURL
 	GroqKey     = "env:GROQ_API_KEY"
+	// OpenAISpeechKey is the openai speech kind's key when left out.
+	OpenAISpeechKey = "env:OPENAI_API_KEY"
 	// MaxSpeechBytes bounds max_bytes.
 	MaxSpeechBytes int64 = 100 << 20
 	// MaxSpeechTimeout bounds timeout.
@@ -397,31 +419,37 @@ func (g GroqSpeech) TimeoutOr(def time.Duration) time.Duration {
 }
 
 // KeyRef is the block's key reference, or env:GROQ_API_KEY.
-func (g GroqSpeech) KeyRef() string {
-	if g.Key.Set() {
+func (g GroqSpeech) KeyRef() string { return g.KeyRefFor("groq") }
+
+// KeyRefFor is the block's key reference, or the kind's default.
+func (g GroqSpeech) KeyRefFor(kind string) string {
+	switch {
+	case g.Key.Set():
 		return g.Key.Ref
+	case kind == "openai":
+		return OpenAISpeechKey
 	}
 	return GroqKey
 }
 
 // checkSpeech refuses a speech kind that could not be built at start.
 func checkSpeech(s Slot) error {
-	if s.Kind != "groq" {
+	if s.Kind != "groq" && s.Kind != "openai" {
 		return nil
 	}
 	b, err := Block[GroqSpeech](s)
 	if err != nil {
-		return fmt.Errorf("system: speech: groq: %w", err)
+		return fmt.Errorf("system: speech: %s: %w", s.Kind, err)
 	}
 	if err := checkBaseURL(b.BaseURL); err != nil {
-		return fmt.Errorf("system: speech: groq: %w", err)
+		return fmt.Errorf("system: speech: %s: %w", s.Kind, err)
 	}
 	if b.MaxBytes < 0 || b.MaxBytes > MaxSpeechBytes {
-		return fmt.Errorf("system: speech: groq: max_bytes is at most %d", MaxSpeechBytes)
+		return fmt.Errorf("system: speech: %s: max_bytes is at most %d", s.Kind, MaxSpeechBytes)
 	}
 	if b.Timeout != "" {
 		if d, err := time.ParseDuration(b.Timeout); err != nil || d <= 0 || d > MaxSpeechTimeout {
-			return fmt.Errorf("system: speech: groq: timeout is a duration up to %s, such as 60s", MaxSpeechTimeout)
+			return fmt.Errorf("system: speech: %s: timeout is a duration up to %s, such as 60s", s.Kind, MaxSpeechTimeout)
 		}
 	}
 	return nil
@@ -465,11 +493,14 @@ type S3 struct {
 
 // Execution bounds what runs.
 type Execution struct {
-	Workspace   string       `json:"workspace,omitempty"`
-	Concurrency int          `json:"concurrency,omitempty"`
-	MaxDepth    int          `json:"max_depth,omitempty"`
-	MaxFanOut   int          `json:"max_fan_out,omitempty"`
-	Builtin     BuiltinModel `json:"builtin,omitzero"`
+	Workspace   string `json:"workspace,omitempty"`
+	Concurrency int    `json:"concurrency,omitempty"`
+	MaxDepth    int    `json:"max_depth,omitempty"`
+	MaxFanOut   int    `json:"max_fan_out,omitempty"`
+	// RetiredBuiltin is what execution.builtin held: the model the
+	// platform's agents once ran on. It is no longer read. A config that
+	// still has it loads with a note (Parse), and it is never written.
+	RetiredBuiltin json.RawMessage `json:"builtin,omitempty"`
 }
 
 // Rooms is how a conversation with many readers is read, and how fast runs
@@ -507,12 +538,6 @@ func (r Rooms) Config() (rooms.Config, error) {
 	return c.Defaults(), nil
 }
 
-// BuiltinModel is the model the platform's own agents run on.
-type BuiltinModel struct {
-	Provider string `json:"provider,omitempty"`
-	Model    string `json:"model,omitempty"`
-}
-
 var (
 	identifier = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}$`)
 	envVar     = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
@@ -535,6 +560,9 @@ func (s *System) Defaults() {
 	}
 	if sp.Server.Role == "" {
 		sp.Server.Role = "all"
+	}
+	if sp.Server.Replicas == 0 {
+		sp.Server.Replicas = 1
 	}
 	if sp.Auth.Kind == "" {
 		sp.Auth.Kind = "dev"
@@ -669,6 +697,14 @@ func (s System) check(kinds Kinds) error {
 	if sp.Bus.Kind == "postgres" && sp.Stores.Kind != "postgres" {
 		return errors.New("system: bus: kind postgres shares the stores' database; set stores.kind: postgres")
 	}
+	// A bus left out follows the stores the file declares, as server.role
+	// does: a file with more than one replica says stores.kind: postgres.
+	// The start checks again, on the bus it opens.
+	if sp.Bus.Kind == "memory" || (sp.Bus.Kind == "" && sp.Stores.Kind != "postgres") {
+		if err := MemoryBusReplicas(sp.Server.Replicas); err != nil {
+			return fmt.Errorf("system: %w", err)
+		}
+	}
 	for _, x := range slots {
 		if err := kinds.check(x.name, x.slot); err != nil {
 			return fmt.Errorf("system: %s: %w", x.name, err)
@@ -732,7 +768,7 @@ func builtinBlock(slot, kind string) (any, bool) {
 		return &VertexEmbedder{}, true
 	case "models.anthropic", "models.openai", "models.google", "models.groq":
 		return &ModelBlock{}, true
-	case "speech.groq":
+	case "speech.groq", "speech.openai":
 		return &GroqSpeech{}, true
 	case "connectors.snowflake":
 		return &SnowflakeConnector{}, true

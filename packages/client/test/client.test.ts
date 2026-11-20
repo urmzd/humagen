@@ -68,6 +68,16 @@ function last(): Seen {
   return got;
 }
 
+// sent is the latest request for a path. A stream test stays open long enough
+// for a request that is not its own to reach this port, such as a late one
+// from another package's tests on a port the system handed out again, so it
+// names the request it means rather than taking the last one.
+function sent(path: string): Seen {
+  const got = seen.findLast((r) => r.url.split("?")[0] === path);
+  assert.ok(got, `the server saw no request for ${path}, only ${seen.map((r) => r.url).join(", ") || "none"}`);
+  return got;
+}
+
 const run: Run = {
   citations: [],
   id: "r31d24839ddee5733b221391dfb156ce0",
@@ -276,7 +286,7 @@ test("the event stream yields run events with inline data, and inbox notices", a
   const items: StreamItem[] = [];
   for await (const item of client.events({ run: "r1", type: ["run."], from: 7 })) items.push(item);
 
-  const req = last();
+  const req = sent("/api/events");
   assert.equal(req.url, "/api/events?type=run.&run=r1&from=7");
   assert.equal(req.headers.accept, "text/event-stream");
   assert.equal(req.headers.authorization, "Bearer machine-token");
@@ -303,7 +313,7 @@ test("a conversation's stream names its thread and yields its pages", async () =
   const client = createClient({ baseUrl: base });
   const items: StreamItem[] = [];
   for await (const item of client.events({ thread: "th-1", type: ["run.accepted"] })) items.push(item);
-  assert.equal(last().url, "/api/events?type=run.accepted&thread=th-1");
+  assert.equal(sent("/api/events").url, "/api/events?type=run.accepted&thread=th-1");
   assert.deepEqual(items.map((i) => i.item), ["event", "page"]);
   assert.deepEqual(items[1]?.item === "page" && items[1].page, page);
 });
@@ -322,7 +332,7 @@ test("a run's events end at the event that completes it", async () => {
   for await (const event of client.runEvents({ agent: "helper", id: "r1" })) kinds.push(event.type);
 
   assert.deepEqual(kinds, ["run.failed.v1", "run.completed.v1"]);
-  assert.equal(last().url, "/api/events?run=r1");
+  assert.equal(sent("/api/events").url, "/api/events?run=r1");
 });
 
 test("a run's events end at the event that stops it, with its partial answer", async () => {
