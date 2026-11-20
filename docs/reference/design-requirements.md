@@ -1296,6 +1296,14 @@ handover to the keyboard (`pwa.test.ts`). `make screens` passes with
 
 Needs a real device: the installed app's height on an iPhone.
 
+Found on a device afterwards: the installed app still showed a blank strip
+under the composer, the status bar's 59pt, with the disclaimer's second line
+cut off. `#root` took the screen's height, but `html` and `body` stayed
+`height: 100%` with `overflow: hidden`, so they kept Safari's short viewport
+and clipped the console. All three now take `--humagen-app-height`
+(`styles.css`). Checked in Chromium at 430x873 with the height set to 932px:
+`html`, `body` and `#root` each measure 932, where before `body` stopped at 873.
+
 ### DES-043: The brand's glow
 
 Owner request: the colored streak along the top had rough ends at the

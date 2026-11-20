@@ -12,10 +12,18 @@ html[data-theme="dark"] {
   color-scheme: dark;
 }
 
+/*
+ * The page, the body and the console are all the app's height. Sized 100%,
+ * html and body would follow Safari's short viewport on an iPhone home
+ * screen and clip the console viewport.ts makes taller: the bottom of the
+ * screen would show a blank strip and the end of the composer cut off.
+ */
 html,
-body,
+body {
+  height: var(--humagen-app-height, 100%);
+  overflow: hidden;
+}
 #root {
-  height: 100%;
   overflow: hidden;
 }
 
