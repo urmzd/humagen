@@ -48,6 +48,10 @@ tags:
     description: Browser sign-in and sign-out.
   - name: session
     description: Who the caller is.
+  - name: background
+    description: |
+      The caller's own background work: watches, goals and tasks an agent keeps
+      at for them, started by the agent's tools (docs/guides/background.md).
   - name: credentials
     description: |
       The caller's own credentials for the tools that act as them: MCP tool
@@ -1648,6 +1652,50 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "409": {$ref: "#/components/responses/Conflict"}
         "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/me/background:
+    get:
+      operationId: listBackground
+      tags: [background]
+      summary: The caller's background work
+      description: >-
+        Lists the caller's own watches, goals and tasks: what is still running,
+        newest first, then what ended in the last 30 days, most recent first,
+        at most 100 in all. A machine has none.
+      x-permission: runs:read
+      responses:
+        "200":
+          description: The caller's background work.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BackgroundList"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/me/background/{id}/stop:
+    post:
+      operationId: stopBackground
+      tags: [background]
+      summary: Stop one of the caller's background tasks
+      description: >-
+        Stops a watch, goal or task the caller owns. A run in flight finishes,
+        and what it finds is not sent. Stopping one that already ended answers
+        it as it is. Another person's is not found.
+      x-permission: runs:write
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: string, maxLength: 64}
+      responses:
+        "200":
+          description: The task as it now is.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BackgroundTask"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
         "500": {$ref: "#/components/responses/ServerError"}
   /api/me/credentials:
     get:
@@ -12968,6 +13016,68 @@ components:
             that act as a person use this person's own credentials. Absent
             when the run acts for nobody.
           type: string
+    BackgroundList:
+      description: The caller's background work.
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items: {$ref: "#/components/schemas/BackgroundTask"}
+    BackgroundTask:
+      description: >-
+        One watch, goal or task an agent keeps at for a person: a loop of runs
+        of the same agent, acting for them, until it ends.
+      type: object
+      required: [id, kind, text, state, agent, until, working, runs, limit, session, created_at]
+      properties:
+        id: {type: string}
+        kind:
+          type: string
+          enum: [watch, goal, task]
+        text:
+          description: What to watch for, the goal, or the task's ask.
+          type: string
+        how:
+          description: How a watch is checked, or when a goal is met.
+          type: string
+        state:
+          type: string
+          enum: [active, done, expired, stopped, failed]
+        agent: {type: string}
+        project: {type: string}
+        every:
+          description: How long after one check of a watch the next starts, as a Go duration.
+          type: string
+        until:
+          description: When it stops if it has not ended.
+          type: string
+          format: date-time
+        next:
+          description: When the next run starts, while one is waited for.
+          type: string
+          format: date-time
+        working:
+          description: Whether a run is working now.
+          type: boolean
+        runs:
+          description: Runs started.
+          type: integer
+        limit:
+          description: The most runs it makes.
+          type: integer
+        session:
+          description: The conversation that asked.
+          type: string
+        thread:
+          description: The conversation its runs are in.
+          type: string
+        result:
+          description: What the last run said, and once ended, what the person was told.
+          type: string
+        created_at: {type: string, format: date-time}
+        ended_at: {type: string, format: date-time}
     ToolCredentials:
       description: The workspace's tools that act as the caller, how the caller stands
         with each, and what the workspace lets people give.

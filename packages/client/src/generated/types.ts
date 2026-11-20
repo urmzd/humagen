@@ -1137,6 +1137,44 @@ export interface Actor {
   user?: string;
 }
 
+/** The caller's background work. */
+export interface BackgroundList {
+  items: BackgroundTask[];
+}
+
+/** One watch, goal or task an agent keeps at for a person: a loop of runs of the same agent, acting for them, until it ends. */
+export interface BackgroundTask {
+  id: string;
+  kind: "watch" | "goal" | "task";
+  /** What to watch for, the goal, or the task's ask. */
+  text: string;
+  /** How a watch is checked, or when a goal is met. */
+  how?: string;
+  state: "active" | "done" | "expired" | "stopped" | "failed";
+  agent: string;
+  project?: string;
+  /** How long after one check of a watch the next starts, as a Go duration. */
+  every?: string;
+  /** When it stops if it has not ended. */
+  until: string;
+  /** When the next run starts, while one is waited for. */
+  next?: string;
+  /** Whether a run is working now. */
+  working: boolean;
+  /** Runs started. */
+  runs: number;
+  /** The most runs it makes. */
+  limit: number;
+  /** The conversation that asked. */
+  session: string;
+  /** The conversation its runs are in. */
+  thread?: string;
+  /** What the last run said, and once ended, what the person was told. */
+  result?: string;
+  created_at: string;
+  ended_at?: string;
+}
+
 /** The workspace's tools that act as the caller, how the caller stands with each, and what the workspace lets people give. */
 export interface ToolCredentials {
   providers: ToolCredential[];

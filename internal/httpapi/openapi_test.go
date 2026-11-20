@@ -1070,6 +1070,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	exerciseEvaluationPolicyContract(t, c)
 	exerciseConnectionContract(t, c)
 	exerciseConnectionHealthContract(t, c)
+	exerciseBackgroundContract(t, c)
 	exerciseBigQueryContract(t, c)
 	sessionContract := exerciseSessionContract(t, c)
 	exerciseBrowserContract(t, c, sessionContract["token"])

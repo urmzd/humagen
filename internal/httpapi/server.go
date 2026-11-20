@@ -109,6 +109,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /api/agents/{name}/action-policy", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.putActionPolicy))))
 	mux.HandleFunc("GET /api/projects/{name}/action-policy", s.authed(auth.ProjectsRead, s.seenProject(s.getActionPolicy)))
 	mux.HandleFunc("PUT /api/projects/{name}/action-policy", s.authed(auth.ProjectsWrite, s.seenProject(s.putActionPolicy)))
+	mux.HandleFunc("GET /api/me/background", s.authed(auth.RunsRead, s.listBackground))
+	mux.HandleFunc("POST /api/me/background/{id}/stop", s.authed(auth.RunsWrite, s.stopBackground))
 	mux.HandleFunc("GET /api/me/action-policy", s.authed("", s.getActionPolicy))
 	mux.HandleFunc("PUT /api/me/action-policy", s.authed("", s.putActionPolicy))
 	mux.HandleFunc("GET /api/pull-requests", s.authed(auth.RunsRead, s.listReviewedPulls))
