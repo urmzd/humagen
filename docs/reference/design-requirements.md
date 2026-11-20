@@ -386,14 +386,18 @@ checks all three names at phone and desktop widths.
 A Slack answer links to its conversation when the host has configured
 `HUMAGEN_PUBLIC_URL`. The link is one arrow (↗, `copy.conversationLink`, held
 to text so Slack does not draw an emoji) on no line of its own: it ends the
-last line of a finished answer, streamed or posted. When the answer ends in
-code, a table or a rule, when a task card came after its words, or when the
-turn failed, stopped or is still working, it ends the disclaimer instead, and
-only a queued turn, which has no disclaimer yet, shows it as a line. It points
-to the run's conversation, including a later run in an existing conversation.
-The fallback text never carries it. Slack gives a link no label, so a screen
-reader reads the arrow itself. Adapter and Slack rendering regressions cover
-the link.
+last line of a finished answer, streamed or posted, after any trailing blank
+lines are dropped. It ends the disclaimer instead when the answer ends in
+code, a table (with or without edge pipes), a rule, a heading's underline or
+a link reference definition, when a task card came after its words, when the
+turn failed, stopped or is still working, or when the arrow would push the
+answer into another message (past 12,000 characters of markdown). Only a
+queued turn, which has no disclaimer yet, shows it as a line. It points to
+the run's conversation, including a later run in an existing conversation.
+The fallback text never carries it. Slack gives a link no accessible label
+of its own, so a screen reader reads the arrow itself; whether Slack keeps a
+markdown link title (`[text](url "title")`) is not verified, so none is
+sent. Adapter and Slack rendering regressions cover the link.
 
 ### DES-007: Agent badge containment
 

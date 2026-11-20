@@ -91,10 +91,22 @@ describe("renderToSlack", () => {
       "| a | b |\n| --- | --- |\n| 1 | 2 |",
       "Above\n\n---",
       "Indented:\n\n    code",
+      // Found in review: endings a trailing link would change.
+      "Summary\n=======",
+      "Summary\n--",
+      "See [docs][1].\n\n[1]: https://example.test/d",
+      "a | b\n--|--\n1 | 2",
+      "| a | b\n|---|---\n| 1 | 2",
+      "~~~\n```\nstill code",
+      "````\n```\nstill code\n```",
     ]) {
       const { markdown, footer } = last(text);
       expect(markdown?.text, text).toBe(text);
       expect(footer, text).toContain(`<${session}|\u2197\uFE0E>`);
+    }
+    // Trailing blank lines or spaces never leave the arrow on a line of its own.
+    for (const text of ["Answer.\n", "Answer.\n\n", "Answer.   ", "Answer.\n  \n"]) {
+      expect(last(text).markdown?.text, JSON.stringify(text)).toBe(`Answer. ${arrow}`);
     }
     // An answer cut short by a failure or a stop is not ended with it: the disclaimer is.
     for (const status of ["failed", "stopped", "working"] as const) {
@@ -245,20 +257,41 @@ describe("renderToSlack", () => {
     expect(renderToSlack(many.slice(0, 50)).pages).toHaveLength(1);
   });
 
+  it("never lets the arrow push a posted answer into another message", () => {
+    const session = "https://example.com/sessions/turn-1";
+    const answer = (text: string) =>
+      renderToSlack(<TurnView turn={{ ...fx.doneTurn, citations: [], text }} />);
+    const markdown = (out: ReturnType<typeof answer>) =>
+      out.pages.flat().filter((b) => b.type === "markdown") as { text: string }[];
+    // One paragraph just under the limit: alone it is one message, and so it stays.
+    const near = "abcdefghi ".repeat(1200).slice(0, 11_998).trimEnd().replace(/ $/, "x");
+    const full = answer(near);
+    expect(full.pages).toHaveLength(1);
+    expect(markdown(full).map((b) => b.text)).toEqual([near]);
+    expect(JSON.stringify(full.blocks.at(-1))).toContain(`<${session}|\u2197\uFE0E>`);
+    // An answer with room for it still ends with it.
+    const roomy = answer(near.slice(0, 11_000));
+    expect(roomy.pages).toHaveLength(1);
+    expect(markdown(roomy).at(-1)?.text.endsWith(`[\u2197\uFE0E](${session})`)).toBe(true);
+    // No markdown block is ever over the limit.
+    for (const b of [...markdown(full), ...markdown(roomy)]) {
+      expect(b.text.length).toBeLessThanOrEqual(LIMITS.markdownTotal);
+    }
+  });
+
   it("ends a reply split over messages once, on its last page, with the disclaimer last", () => {
     const { pages, warnings } = renderToSlack(<TurnView turn={fx.longTurn} />);
     expect(pages.length).toBeGreaterThan(1);
     expect(warnings).toHaveLength(1);
-    // longTurn ends in a paragraph: the arrow ends it, and nothing earlier links the session.
-    const arrow = "[\u2197\uFE0E](https://example.com/sessions/turn-1)";
-    expect(JSON.stringify(pages).split(arrow)).toHaveLength(2);
+    // longTurn outgrows one message: the arrow ends the disclaimer, once, on the last page.
+    const footer = "<https://example.com/sessions/turn-1|\u2197\uFE0E>";
     expect(JSON.stringify(pages).match(/sessions\/turn-1/g)).toHaveLength(1);
     expect(pages.at(-1)?.at(-1)).toEqual({
       type: "context",
       elements: [
         {
           type: "mrkdwn",
-          text: "Assistant is AI and can make mistakes. Double-check its answers before you rely on them.",
+          text: `Assistant is AI and can make mistakes. Double-check its answers before you rely on them. ${footer}`,
         },
       ],
     });

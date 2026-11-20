@@ -724,24 +724,44 @@ export function linkCitations(text: string, citations: Citation[]): string {
   });
 }
 
-const FENCE_LINE = /^\s*(`{3,}|~{3,})/;
+const FENCE_LINE = /^ {0,3}(`{3,}|~{3,})(.*)$/;
+/** A table's delimiter row, with or without pipes at its edges. */
+const TABLE_DELIMITER = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)+\|?\s*$/;
+
+/**
+ * Room for markdown in one Slack message, as render-slack counts it
+ * (`LIMITS.markdownTotal`): the arrow never makes an answer need another.
+ */
+const SLACK_MARKDOWN = 12_000;
 
 /**
  * Whether markdown can end with a link on its last line, as Slack ends an
  * answer with the arrow to its conversation: not when it ends in code (a
- * fence, or a line indented as code), a table row or a rule, where a link
- * would be swallowed or would break what is drawn.
+ * fence, or a line indented as code), a table (with or without pipes at its
+ * edges), a rule, a heading's underline or a link reference definition, where
+ * a link would be swallowed or would change what is drawn.
  */
 export function answerTakesLink(markdown: string): boolean {
   const lines = markdown.trimEnd().split("\n");
   const last = lines.at(-1) ?? "";
   if (!last.trim()) return false;
-  let fenced = false;
-  for (const line of lines) if (FENCE_LINE.test(line)) fenced = !fenced;
-  if (fenced || FENCE_LINE.test(last)) return false;
+  let open: { ch: string; len: number } | null = null;
+  for (const line of lines) {
+    const m = FENCE_LINE.exec(line);
+    if (!m) continue;
+    const mark = m[1] as string;
+    if (!open) open = { ch: mark[0] as string, len: mark.length };
+    else if (mark[0] === open.ch && mark.length >= open.len && !(m[2] ?? "").trim()) open = null;
+  }
+  if (open || FENCE_LINE.test(last)) return false;
   if (/^( {4}|\t)/.test(last)) return false;
-  if (/^\s*\|.*\|\s*$/.test(last)) return false;
-  return !/^\s*([-*_])(\s*\1){2,}\s*$/.test(last);
+  // The last block is a table when any of its lines is a delimiter row.
+  const block = lines.slice(lines.findLastIndex((l) => !l.trim()) + 1);
+  if (block.some((l) => TABLE_DELIMITER.test(l)) || /^\s*\|.*\|\s*$/.test(last)) return false;
+  // A setext underline (and a rule, which three or more dashes also are).
+  if (/^ {0,3}(=+|-+)[ \t]*$/.test(last) && block.length > 1) return false;
+  if (/^\s*([-*_])(\s*\1){2,}\s*$/.test(last)) return false;
+  return !/^ {0,3}\[[^\]]+\]:\s*\S/.test(last);
 }
 
 /** The point of the turn in one line, for notifications and screen readers. */
@@ -822,13 +842,22 @@ export function TurnView({
     !!turn.text.trim() &&
     turn.text.trim() !== turn.outcome?.summary.trim() &&
     readReview(turn.text, turn.status === "working" && !turn.detached).kind === "text";
+  const answer = linkCitations(turn.text, turn.citations).trimEnd();
+  // Markdown the message holds before the answer (the outcome), counted toward Slack's room.
+  const before = turn.outcome
+    ? turn.outcome.summary.length +
+      (turn.outcome.decisions ?? []).reduce((n, d) => n + d.length + 3, 0) +
+      (turn.outcome.nextAction?.length ?? 0)
+    : 0;
   const inAnswer =
     !!arrow &&
     (streamed
       ? linked
       : answerDrawn &&
         (turn.status === "done" || turn.status === "waiting") &&
-        answerTakesLink(linkCitations(turn.text, turn.citations)));
+        answerTakesLink(answer) &&
+        // Where the arrow would push the answer into another message, the disclaimer has it.
+        before + answer.length + arrow.length + 1 <= SLACK_MARKDOWN);
   const inFooter = !!arrow && !inAnswer && !!footer;
   const session = arrow ? (
     !inAnswer && !inFooter ? (
@@ -902,7 +931,11 @@ export function TurnView({
             turnId={turn.id}
             agent={turn.agent.name}
             text={turn.text}
-            markdown={`${linkCitations(turn.text, turn.citations)}${inAnswer && !streamed ? ` ${arrow}` : ""}`}
+            markdown={
+              inAnswer && !streamed
+                ? `${answer} ${arrow}`
+                : linkCitations(turn.text, turn.citations)
+            }
             streaming={turn.status === "working" && !turn.detached}
             pullRequestHint={turn.source?.url}
             followUp={capabilities?.followUp !== false}
