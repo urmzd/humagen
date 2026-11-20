@@ -3500,8 +3500,6 @@ export const defaultCopy = {
       `${agents.join(", ")} can't answer in this project. Pick another project, or mention another agent.`,
     /** The chat bar's prompt. */
     placeholder: "Ask anything",
-    /** The same prompt where there is room to say what else the bar takes. */
-    placeholderHint: "Ask anything, @ to mention, / for commands",
     /** Under an answer that went to an agent because it was selected, not tagged. */
     routedAll: (agent: string) => `Routed to ${agent}, with every agent selected`,
     routed: (agent: string) => `Routed to ${agent}`,
@@ -4618,16 +4616,6 @@ export const defaultCopy = {
     working: "Jump to latest, answer in progress",
     /** Something arrived out of view and has not been seen. */
     unseen: "Jump to latest, new content",
-  },
-  /** The prompt's lines for the threads at work in a session. */
-  working: {
-    label: (n: number) => (n === 1 ? "1 thread working" : `${n} threads working`),
-    open: (agent: string) => `Open ${agent}'s activity`,
-    for: (who: string) => `for ${who}`,
-    stop: "Stop",
-    stopping: "Stopping…",
-    more: (n: number) => `+${n} working`,
-    fewer: "Show fewer",
   },
   /** A message's references and the work under it: its origin, what it read and touched, what it delegated. */
   trace: {

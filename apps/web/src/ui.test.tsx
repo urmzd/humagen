@@ -27,7 +27,6 @@ import { DrawerButton, Sidebar } from "./Sidebar.tsx";
 import { StorageUsed, StoredDetail, StoredList } from "./Storage.tsx";
 import { memoryStorage, sampleFiles, sampleUse } from "./storage.fixtures.ts";
 import { bytes, contentUrl, matches, showsInline } from "./storage.ts";
-import { WorkingStrip } from "./WorkingStrip.tsx";
 
 const sidebarMe: Me = {
   principal: { subject: "ada", tenant: "acme", name: "Ada", roles: ["member"] },
@@ -2162,28 +2161,4 @@ test("under a hub's tabs, a page whose title repeats the open tab says it once",
   );
   assert.doesNotMatch(detail, /class="sr-only">lead/);
   assert.match(detail, />lead<\/h1>/);
-});
-
-test("the prompt lists every thread at work: agent, for whom when not the reader, Stop, and folds past three", () => {
-  const runs = ["lead", "researcher", "writer", "qa-reviewer"].map((agent, i) =>
-    runOf({
-      id: `w${i}`,
-      agent,
-      status: "running",
-      actor:
-        i === 1 ? { id: "u2", user: "ada@example.com", display: "Ada" } : { id: "u1", user: "me" },
-    }),
-  );
-  const out = html(<WorkingStrip runs={runs.slice(0, 2)} me="me" onOpen={() => {}} />);
-  assert.equal(out.match(/data-testid="working-thread"/g)?.length, 2);
-  assert.match(out, /aria-label="2 threads working"/);
-  assert.match(out, />lead</);
-  assert.match(out, /Open researcher&#x27;s activity/);
-  assert.equal(out.match(/>for Ada</g)?.length, 1, "only another person's thread says for whom");
-  assert.doesNotMatch(out, /ada@example\.com/, "by name, never by the subject");
-  assert.equal(out.match(/>Stop</g)?.length, 2, "each thread has its own Stop");
-  const many = html(<WorkingStrip runs={runs} me="me" />);
-  assert.equal(many.match(/data-testid="working-thread"/g)?.length, 3);
-  assert.match(many, />\+1 working</);
-  assert.equal(html(<WorkingStrip runs={[]} />), "", "nothing at work, nothing said");
 });

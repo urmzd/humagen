@@ -21,7 +21,7 @@ import {
   skillsIn,
 } from "./commands.ts";
 import { LazyFrame, sparing, whenIdle } from "./lazy.tsx";
-import { SendRing, VoiceLevel, WorkingBeam } from "./pages.ts";
+import { SendRing, VoiceLevel } from "./pages.ts";
 import {
   insertTag,
   matching,
@@ -143,22 +143,13 @@ export function Composer({
   sessionAgents,
   plus,
   voice,
-  status,
-  disclaimer = defaultCopy.disclaimer(defaultCopy.product),
 }: {
-  /**
-   * What is at work here, said at the top of the box: one line for each
-   * thread, each with its own Stop, which stands in for the bar's.
-   */
-  status?: ReactNode;
   /**
    * Voice notes, when the deployment transcribes them: the microphone
    * records, and the words come back into the draft, marked, to read and
    * send. Without it the microphone dictates with the browser's recognizer.
    */
   voice?: VoiceNotes;
-  /** The AI disclaimer, said once under the prompt bar. null leaves it out. */
-  disclaimer?: string | null;
   /** Text to start from, such as a question picked from a list. Each new object replaces what is typed. */
   seed?: ComposerSeed;
   placeholder: string;
@@ -437,7 +428,7 @@ export function Composer({
   // The bar's light (ComposerLight.tsx) shows only on a bar in use, so it is
   // read once the bar sits idle on screen, or the moment it is due.
   const [light, setLight] = useState(false);
-  const due = ready || queue.running || !!mic;
+  const due = ready || !!mic;
   // Each time the light comes due it is asked for afresh: a read that failed
   // is not held against the bar, which works as plainly without it.
   const [asked, setAsked] = useState(0);
@@ -679,14 +670,8 @@ export function Composer({
           e.preventDefault();
           send(false);
         }}
-        data-working={queue.running ? "" : undefined}
         className="humagen-composer relative flex flex-col gap-1 rounded-[1.25rem] border border-aui-border bg-aui-surface p-2 transition-colors focus-within:border-aui-fg motion-reduce:transition-none"
       >
-        {light && (
-          <LazyFrame fallback={null} instead={null} resetKey={lit}>
-            <WorkingBeam working={queue.running} host={form.current} />
-          </LazyFrame>
-        )}
         {mic && (
           <LazyFrame fallback={null} instead={null} resetKey={lit}>
             <VoiceLevel stream={mic} host={form.current} />
@@ -799,7 +784,6 @@ export function Composer({
             )}
           </Presence>
         )}
-        {status}
         <QueueStrip queue={queue} />
         {sessionPick && mentionsIn(value, [sessionPick.agent]).length > 0 && (
           <div className="flex items-center gap-2 px-2 text-aui-xs text-aui-muted">
@@ -996,16 +980,6 @@ export function Composer({
           {/* What the + menu picked sits in the bar, beside +, so nothing under it moves. */}
           <div className="humagen-composer-chips min-w-0 flex-1">{plus?.chips}</div>
           {trailing}
-          {queue.running && !status && (
-            <button
-              type="button"
-              onClick={() => queue.stop()}
-              disabled={queue.state.status === "stopping"}
-              className="inline-flex min-h-9 shrink-0 items-center gap-1 rounded-aui px-2 text-aui-xs text-aui-fg hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
-            >
-              {queue.state.status === "stopping" ? "Stopping…" : "Stop"}
-            </button>
-          )}
           {/*
           One button in one place. With nothing to send it records a voice
           note (or dictates, where the deployment does not transcribe), and
@@ -1063,12 +1037,6 @@ export function Composer({
           )}
         </div>
       </form>
-      {/* One line under the prompt bar, the same before and after the first message. */}
-      {disclaimer && (
-        <p className="humagen-disclaimer px-1 text-center text-aui-2xs text-aui-muted">
-          {disclaimer}
-        </p>
-      )}
     </div>
   );
 }

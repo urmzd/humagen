@@ -216,10 +216,6 @@ export const WorkspaceGraph = lazyPage(
 );
 
 // The composer's light, which an idle bar does not show (ComposerLight.tsx).
-export const WorkingBeam = lazyView(
-  () => import("./ComposerLight.tsx"),
-  (m) => m.WorkingBeam,
-);
 export const VoiceLevel = lazyView(
   () => import("./ComposerLight.tsx"),
   (m) => m.VoiceLevel,

@@ -55,12 +55,12 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-022 | Conversation actions support rename, archive and admin-reviewed deletion | Included in the consolidated branch; bounded API, durable lifecycle and review UI checks |
 | DES-023 | A deployment and each workspace brand the console from the spec, without a fork or a rebuild | Implemented; spec, server, API and console tests pass; browser check of a branded build pending |
 | DES-024 | An agent calling another agent reads as a message, nested under its caller | Implemented in `AgentMessage` (`AgentCall`); checked live: `@lead` called researcher, then writer, with real providers |
-| DES-025 | Stop lives on the working agent's mark; the composer sends and queues | Implemented: `StoppableMark`, `useRunStop`, queue `adopt`, Esc; room, core queue and web tests pass; live stop not yet tried on a long run |
+| DES-025 | Stop lives on the working agent's mark; the composer sends and queues | Implemented: `StoppableMark`, `useRunStop`, queue `adopt`, Esc; the bar stays still while agents work (`slash-commands.dom.test.tsx`); room, core queue and web tests pass; live stop not yet tried on a long run |
 | DES-026 | Activity lists every agent run in time order, each opening a replayable conversation | Implemented; `activity.dom.test.tsx` and `ui.test.tsx` pass; checked in the browser |
 | DES-027 | Drawer headers align with the page header | Implemented with `--humagen-header-h`; measured equal in the browser at desktop width |
 | DES-028 | Share and People & Access are one panel | Implemented: the Share drawer is People & Access; room tests pass |
 | DES-029 | A turn shows a status only when it adds information | Implemented; checked in the browser |
-| DES-030 | One AI disclaimer, centered under the prompt bar | Implemented in `Composer`; checked in the browser |
+| DES-030 | No AI disclaimer in the console; the terms of service say it | Implemented: `Composer` and `HomePage` draw none; `home.test.tsx` |
 | DES-031 | A message names no agent under it; a router's pick is a checkpoint | Implemented: `Checkpoint` in Chat and Room for a run the dynamic router joined. In a root session a message gets one answer, and why it came from where it did (a mentioned agent, a search match) is in the answer's activity, never a line of the conversation (`traceEvents` in `responseSource.ts`, `session-answers.dom.test.tsx`, `message-refs.dom.test.tsx`); not rechecked in the browser since |
 | DES-032 | The conversation header shows which agents took part, not a count | Implemented: `Involved` in `ConversationShell.tsx`; `ui.test.tsx` passes; checked in the browser |
 | DES-033 | A turn shows its thinking and steps inline, where they happened, with what each was given and returned | Implemented in `WorkSteps.tsx` and render-web `StepIO`; web and core tests pass; checked live |
@@ -901,6 +901,10 @@ approval, disabled early approval, restoration, refusal and the combined menu.
 - The composer only sends. While the reply to the last message works, a new
   message queues behind it and the queue shows above the composer. Esc in an
   empty composer stops the agents the last message started.
+- Nothing else about the composer changes while agents work: no list of
+  threads at work in the box, no Stop button in the bar, no moving border.
+  (A working strip, a bar Stop and a border beam had crept back in; they are
+  gone. Each answer's mark is where its agent is seen working and stopped.)
 - There is no separate Stop Turn button on an answer.
 - Acceptance: a working run's mark stops it with the pointer, the keyboard and
   touch; the composer queues a message sent while a reply works and sends it
@@ -948,13 +952,18 @@ approval, disabled early approval, restoration, refusal and the combined menu.
   and stopped.
 - Acceptance: a completed turn has no Done label; the other states still read.
 
-### DES-030: One disclaimer under the prompt bar
+### DES-030: No AI disclaimer in the console
 
-- The AI disclaimer is one centered line under the prompt bar, the same before
-  and after the first message. It names the product, from the spec's branding.
-- An agent's answer does not repeat it.
-- Acceptance: a conversation shows the disclaimer once, under the composer, on
-  a new conversation and on one with answers.
+Owner request: drop the "can make mistakes" line, as the Claude app does. The
+terms of service carry it, and the console is plainly a place to talk to
+agents, so a line under the prompt bar only cost a phone its height.
+
+- Neither Home nor a conversation shows a disclaimer under the prompt bar, and
+  an agent's answer in the console does not add one (`disclaimer={false}` on
+  `AgentMessage`).
+- The Slack app keeps the disclaimer its branding file sets; that is the
+  deployment's choice in a shared channel.
+- Acceptance: Home and a conversation with answers render no disclaimer.
 
 ### DES-031: Checkpoints, not agent lines
 
@@ -1011,7 +1020,7 @@ approval, disabled early approval, restoration, refusal and the combined menu.
 ### DES-036: The composer holds the pick; the first message goes first
 
 - A project picked from the plus menu shows inside the prompt bar, not under
-  it, so the bar keeps its height. Only the disclaimer is below it. An agent
+  it, so the bar keeps its height. Nothing is below it. An agent
   picked there is a mention in the box (DES-041).
 - Starter suggestions are centered. When they overflow, they scroll sideways
   with fades and chevrons at the ends.
@@ -1296,6 +1305,14 @@ handover to the keyboard (`pwa.test.ts`). `make screens` passes with
 
 Needs a real device: the installed app's height on an iPhone.
 
+Found on a device afterwards: the installed app still showed a blank strip
+under the composer, the status bar's 59pt, with the disclaimer's second line
+cut off. `#root` took the screen's height, but `html` and `body` stayed
+`height: 100%` with `overflow: hidden`, so they kept Safari's short viewport
+and clipped the console. All three now take `--humagen-app-height`
+(`styles.css`). Checked in Chromium at 430x873 with the height set to 932px:
+`html`, `body` and `#root` each measure 932, where before `body` stopped at 873.
+
 ### DES-043: The brand's glow
 
 Owner request: the colored streak along the top had rough ends at the
@@ -1343,8 +1360,7 @@ Rules:
 - Whenever the keyboard opens or closes, the page's pan is undone, and the
   height is checked again once focus settles. The list keeps the latest
   message in view as it shrinks. While the keyboard is up the chat bar sits
-  right on it and the disclaimer is hidden; it returns when the keyboard
-  closes.
+  right on it.
 
 ### DES-045: A phone that reads like a native chat app
 
@@ -1819,8 +1835,8 @@ Removed 2026-11-07 with DES-067: agents no longer offer per-message choices.
 DES-017 and DES-062 retain page h1 headings across Customize, Library and
 Operations; the current hub link is visually hidden until focused, retaining
 its accessible name and destination. Agent metrics have one shared header.
-DES-013 and DES-057 keep starters immediately after the composer, with the
-disclaimer at Home's bottom and the project picker inside the toolbar.
+DES-013 and DES-057 keep starters immediately after the composer, with
+the project picker inside the toolbar.
 DES-069 groups sandbox workspace links under each agent without raw IDs and
 shows context percentage once. Thread content reserves space beneath the
 jump control and its gradient scrim. Evidence: console DOM and usage tests,
@@ -1891,8 +1907,8 @@ a terminal run without an answer does not. Connection authentication failures
 join a private owner session with sanitized reconnect attention. See
 [session alerts](../guides/session-alerts.md).
 Watching lists standing rules with Pause/Resume and confirmed Delete. The shared badge
-counts only the person's open Urgent and Normal alerts. Home puts its disclaimer
-directly under the composer; what it shows beneath is DES-075. Sidebar hover controls contain one menu.
+counts only the person's open Urgent and Normal alerts. What Home shows beneath
+the composer is DES-075. Sidebar hover controls contain one menu.
 
 Evidence: `session-center.dom.test.tsx` checks the seven destinations, attention
 priority and three-row cap, resolve/undo, and nested child reads. `route.test.ts`

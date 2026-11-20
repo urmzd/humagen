@@ -12,10 +12,18 @@ html[data-theme="dark"] {
   color-scheme: dark;
 }
 
+/*
+ * The page, the body and the console are all the app's height. Sized 100%,
+ * html and body would follow Safari's short viewport on an iPhone home
+ * screen and clip the console viewport.ts makes taller: the bottom of the
+ * screen would show a blank strip and the end of the composer cut off.
+ */
 html,
-body,
+body {
+  height: var(--humagen-app-height, 100%);
+  overflow: hidden;
+}
 #root {
-  height: 100%;
   overflow: hidden;
 }
 
@@ -688,7 +696,7 @@ button.humagen-tick:focus-visible {
 
 /* One header height for a page and every drawer beside it, so their dividers meet. */
 :root { --humagen-header-h: 4.5rem; }
-/* The composer's height under a conversation, held while the conversation is read (Chat.tsx). Its disclaimer wraps on a phone. */
+/* The composer's height under a conversation, held while the conversation is read (Chat.tsx). */
 :root { --humagen-composer-h: 7.5rem; }
 @media (max-width: 47.99rem) { :root { --humagen-composer-h: 6rem; } }
 .humagen-conversation-header {
@@ -865,8 +873,6 @@ html[data-gallery], html[data-gallery] body, html[data-gallery] #root {
   /* The page ends above the home indicator, except while the keyboard covers it. */
   .humagen-content { padding-bottom: env(safe-area-inset-bottom); }
   :root[data-keyboard] .humagen-content { padding-bottom: 0; }
-  /* While the keyboard is up the chat bar sits right on it; the disclaimer comes back when it closes. */
-  :root[data-keyboard] .humagen-disclaimer { display: none; }
   /* The drawer runs the full height and keeps its rows clear of the notch and the indicator. */
   .humagen-sidebar {
     padding-top: env(safe-area-inset-top);
@@ -994,9 +1000,6 @@ body {
   .humagen-update { left: max(1rem, env(safe-area-inset-left)); }
 }
 
-/* While a reply is in flight the beam is the bar's border (ComposerLight.tsx). */
-.humagen-composer[data-working],
-.humagen-composer[data-working]:focus-within { border-color: transparent; }
 
 /* Composer controls adapt to their own column, including beside Details. */
 .humagen-composer-container { container: composer / inline-size; }

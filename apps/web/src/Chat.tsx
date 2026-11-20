@@ -32,8 +32,6 @@ import { topicsOf } from "./topics.ts";
 import { readFromStart } from "./turns.ts";
 import { AgentMark, isWorking, Page, Problem } from "./ui.tsx";
 import { useVoiceNotes } from "./useVoiceNotes.ts";
-import { WorkingStrip } from "./WorkingStrip.tsx";
-import { useWide } from "./wide.ts";
 
 const words = defaultCopy.threads;
 
@@ -135,7 +133,6 @@ export const STARTERS: Starter[] = [
     label: "How are my agents doing?",
     text: "How did my agents do today?",
   },
-  { agent: "humagen", label: "Build an agent", text: "Help me build an agent that " },
   { agent: "humagen-writer", label: "Write a report", text: "Write a one-page report on " },
   { agent: "code-reviewer", label: "Review a pull request", text: "Review the pull request " },
 ];
@@ -297,7 +294,6 @@ export function Chat({
   const [turns, setTurns] = useState<Run[]>([]);
   // The thread as the platform reads it: its record, and its people's messages besides its runs.
   const [room, setRoom] = useState<ThreadPage | null>(null);
-  const wide = useWide();
   // The + selection of a conversation of runs, saved on its thread as a room's is.
   const runs = useThreadSelection(threadId ?? "", room?.thread ?? noThread, {
     saved: (t) => {
@@ -676,15 +672,6 @@ export function Chat({
     >
       <Problem message={problem} />
       <ChatBar
-        status={
-          path.some((r) => isWorking(r.status)) ? (
-            <WorkingStrip
-              runs={path.filter((r) => isWorking(r.status))}
-              me={me}
-              onOpen={(run) => openPanel("activity", { run })}
-            />
-          ) : undefined
-        }
         project={where}
         agents={agents}
         homes={homes}
@@ -697,13 +684,10 @@ export function Chat({
           (!threadId
             ? startChannel
               ? words.startThread
-              : wide
-                ? defaultCopy.chat.placeholderHint
-                : defaultCopy.chat.placeholder
+              : defaultCopy.chat.placeholder
             : words.message)
         }
         emptyText={placeholderFor}
-        disclaimer={!threadId || path.length === 0 ? null : undefined}
         queue={sending}
         autoFocus={!threadId}
         seed={seed}

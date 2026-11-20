@@ -62,9 +62,6 @@ export function HomePage({
             className="flex flex-col max-md:sticky max-md:bg-aui-bg max-md:gap-2 max-md:bottom-0 max-md:z-10 max-md:order-last max-md:pt-2"
           >
             {children}
-            <p className="humagen-disclaimer px-4 pt-2 text-center text-aui-2xs text-aui-muted">
-              {defaultCopy.disclaimer(defaultCopy.product)}
-            </p>
           </div>
         )}
         {below && <div className="max-md:pb-6">{below}</div>}

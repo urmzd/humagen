@@ -29,12 +29,7 @@ function setup() {
   function Compose() {
     const queue = useQueue({ onStart: (m) => sent.push(m.text), onInterrupt: () => {} });
     return (
-      <Composer
-        placeholder="Message"
-        queue={queue}
-        tags={{ label: words.typeahead, options }}
-        disclaimer={null}
-      />
+      <Composer placeholder="Message" queue={queue} tags={{ label: words.typeahead, options }} />
     );
   }
   render(<Compose />);
@@ -43,6 +38,19 @@ function setup() {
   const menu = () => screen.queryByRole("listbox", { name: words.commands });
   return { box, type, menu, sent };
 }
+
+test("while an agent works the bar stays as it is: no Stop, no working line, no beam", async () => {
+  const { type, box, sent } = setup();
+  type("Draft the plan");
+  fireEvent.submit(box.closest("form") as HTMLFormElement);
+  await waitFor(() => assert.deepEqual(sent, ["Draft the plan"]));
+  const form = box.closest("form") as HTMLFormElement;
+  // The agent's own mark is where it is stopped (StoppableMark), not the bar.
+  assert.equal(screen.queryByRole("button", { name: /^Stop/ }), null);
+  assert.equal(form.hasAttribute("data-working"), false);
+  assert.equal(form.querySelector("[data-working-beam]"), null);
+  assert.equal(screen.queryByTestId("working-thread"), null);
+});
 
 test("/ opens the command menu of skills, each with its description and kind, the match highlighted", () => {
   const { type, menu } = setup();
