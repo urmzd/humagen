@@ -972,21 +972,26 @@ export function Connections({
                     <span className="flex size-9 shrink-0 items-center justify-center rounded-aui-lg border border-aui-border bg-aui-surface">
                       <ConnectionLogo id={it.logo} name={it.name} />
                     </span>
-                    <span className="flex min-w-0 flex-1 flex-col">
-                      {/* The whole row opens its details, so its other controls sit above it. */}
-                      <button
-                        type="button"
-                        onClick={() => (it.go ? it.go() : open(it.id))}
-                        className="min-w-0 truncate text-left font-medium text-aui-sm text-aui-fg outline-none after:absolute after:inset-0 focus-visible:after:outline-2 focus-visible:after:outline-aui-accent"
-                      >
+                    {/*
+                      The whole row opens its details, so its other controls sit above it. The
+                      button holds the name and the note, so it is itself as wide as its column
+                      and as tall as a finger needs.
+                    */}
+                    <button
+                      type="button"
+                      aria-label={it.name}
+                      onClick={() => (it.go ? it.go() : open(it.id))}
+                      className="flex min-h-6 min-w-0 flex-1 flex-col justify-center text-left outline-none after:absolute after:inset-0 focus-visible:after:outline-2 focus-visible:after:outline-aui-accent pointer-coarse:min-h-11"
+                    >
+                      <span className="w-full min-w-0 truncate font-medium text-aui-sm text-aui-fg">
                         {it.name}
-                      </button>
+                      </span>
                       {it.note && (
-                        <span className="min-w-0 truncate text-aui-muted text-aui-xs">
+                        <span className="w-full min-w-0 truncate text-aui-muted text-aui-xs">
                           {it.note}
                         </span>
                       )}
-                    </span>
+                    </button>
                     {it.pill && (
                       <span className="relative z-10 shrink-0">
                         <Pill tone={it.pill.tone}>{it.pill.text}</Pill>

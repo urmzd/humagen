@@ -704,8 +704,8 @@ export function AlertsPage({
                           <a
                             href={href(to)}
                             onClick={(event) => follow(event, () => go(to))}
-                            // On a touch screen the title is as tall as a finger needs.
-                            className={`${title} rounded-aui-sm underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent pointer-coarse:inline-flex pointer-coarse:min-h-11 pointer-coarse:items-center`}
+                            // The title is as tall as a pointer needs, and on a touch screen as a finger does.
+                            className={`${title} rounded-aui-sm underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent inline-flex min-h-6 items-center pointer-coarse:min-h-11`}
                           >
                             {a.title}
                           </a>
