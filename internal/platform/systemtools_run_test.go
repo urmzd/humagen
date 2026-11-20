@@ -35,6 +35,7 @@ var namedCategories = map[string]operations.Category{
 	"publish_artifact": operations.PublishArtifacts, "read_agent": operations.ReadContext, "read_agent_evals": operations.Other, "record_outcome": operations.Other,
 	"retire_agent": operations.Other, "run_eval_suite": operations.Other, "runs_summary": operations.ReadContext, "save_agent": operations.WriteFiles,
 	"web_fetch": operations.ReadContext, "web_search": operations.ReadContext,
+	"notify": operations.Other, "watch_list": operations.Other, "watch_start": operations.Other, "watch_stop": operations.Other,
 	"session_call": operations.Other, "session_link": operations.Other, "session_listen": operations.Other, "session_read": operations.Other,
 	"session_status": operations.Other, "set_workspace_prompt": operations.Other, "shell": operations.WriteFiles, "slack_add_reaction": operations.ExternalMessages,
 	"slack_post_message": operations.ExternalMessages, "source_search": operations.ReadContext, "tag_writer": operations.CallAgents, "write_eval_suite": operations.Other,
@@ -205,8 +206,8 @@ func TestATurnsToolsAreBuiltFromTheRegistry(t *testing.T) {
 		}
 		built++
 	}
-	if built != 38 {
-		t.Errorf("built %d tools, want 38", built)
+	if built != 42 {
+		t.Errorf("built %d tools, want 42", built)
 	}
 	for _, name := range []string{"no_such_tool", "list_schedules", "session_call", "delegate_task"} {
 		if _, err := tools.Lookup(name); !errors.Is(err, native.ErrNoSuchTool) {

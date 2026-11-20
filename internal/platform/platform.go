@@ -100,6 +100,7 @@ import (
 	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/humagen/pkg/threads"
 	"github.com/urmzd/humagen/pkg/usage"
+	"github.com/urmzd/humagen/pkg/watches"
 	"github.com/urmzd/humagen/pkg/webtools"
 )
 
@@ -399,11 +400,13 @@ type Platform struct {
 	Drive          *drive.Store // the versioned file trees memory is kept in
 	// Web reads the public web for the web_search and web_fetch tools. Nil
 	// uses the default client (pkg/webtools).
-	Web                  *webtools.Client
-	SkillLibrary         *library.Store
-	AgentSkillDefaults   *library.DefaultsStore
-	skillDefaultsMu      sync.Mutex
-	Notifications        *notifications.Store
+	Web                *webtools.Client
+	SkillLibrary       *library.Store
+	AgentSkillDefaults *library.DefaultsStore
+	skillDefaultsMu    sync.Mutex
+	Notifications      *notifications.Store
+	// Watches keeps what people asked agents to watch for (watches.go).
+	Watches              *watches.Store
 	ContextFlags         *contextflags.Store
 	SourceSuggestions    *sourcelinks.Suggestions
 	SourceEvidence       *knowledge.EvidenceStore
@@ -1540,6 +1543,7 @@ func (p *Platform) Run(ctx context.Context) error {
 	singletons := map[string]func(context.Context) error{
 		"scheduled evals":     p.runEvalSchedule,
 		"email notifications": p.runEmailNotifications,
+		"watches":             p.runWatches,
 		"source refresh":      p.refreshSources,
 		"catalog crawl":       p.crawlCatalog,
 		"knowledge graph":     p.refreshGraphs,
