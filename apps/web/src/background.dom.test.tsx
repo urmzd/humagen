@@ -81,7 +81,8 @@ test("Background lists watches, goals and tasks under the Scheduled tabs, and op
     assert.ok(screen.getByRole("tab", { name: "Schedules", selected: false }));
     assert.equal(screen.queryByRole("button", { name: "New Schedule" }), null);
     await waitFor(() => assert.ok(screen.getByText("the release workflow on main passes")));
-    assert.ok(screen.getByText("Every 15m0s"));
+    assert.ok(screen.getByText("Every 15m"));
+    assert.equal(screen.getAllByText(/^Stops in (19|20) hours$/).length, 2);
     assert.ok(screen.getByText(/^Next in 1[12] minutes$/));
     assert.ok(screen.getByText("Turn 2 of 10"));
     assert.ok(screen.getByText("Working"));
@@ -136,4 +137,12 @@ test("Background says when there is none, and offers Retry when it cannot be rea
   } finally {
     restore();
   }
+});
+
+test("durations read as a person writes them", async () => {
+  const { span } = await import("./Background.tsx");
+  assert.equal(span("15m0s"), "15m");
+  assert.equal(span("1h0m0s"), "1h");
+  assert.equal(span("1h30m0s"), "1h30m");
+  assert.equal(span("24h0m0s"), "24h");
 });

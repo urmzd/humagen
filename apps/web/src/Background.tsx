@@ -2,7 +2,7 @@ import { defaultCopy } from "@humagen/components";
 import { useCallback, useEffect, useState } from "react";
 import { api, type BackgroundTask } from "./api.ts";
 import { AgentTag, ItemCard, itemGrid, Pill, Tag, type Tone } from "./cards.tsx";
-import { ago } from "./format.ts";
+import { age, ago } from "./format.ts";
 import { Empty, Problem, SkeletonRows } from "./ui.tsx";
 
 const words = defaultCopy.background;
@@ -26,11 +26,16 @@ function nextIn(iso: string): string {
   return when === "just now" ? words.nextSoon : words.next(when);
 }
 
+/** A Go duration as a person reads it: "15m0s" is 15m, "1h30m0s" is 1h30m. */
+export function span(d: string): string {
+  return d.replace(/([hm])0s$/, "$1").replace(/h0m$/, "h");
+}
+
 /** What a card says about how far along a task is. */
 function progress(t: BackgroundTask): string | undefined {
   if (t.kind === "goal") return words.turns(t.runs, t.limit);
   if (t.kind === "watch")
-    return t.state === "active" && t.every ? words.every(t.every) : words.checks(t.runs);
+    return t.state === "active" && t.every ? words.every(span(t.every)) : words.checks(t.runs);
   return undefined;
 }
 
@@ -107,11 +112,10 @@ export function Background({ onConversation }: { onConversation: (id: string) =>
                     <AgentTag name={t.agent} />
                     {progress(t) && <Tag>{progress(t)}</Tag>}
                     {running && !t.working && t.next && <Tag>{nextIn(t.next)}</Tag>}
+                    {running && <Tag>{words.stopsIn(ago(t.until))}</Tag>}
                   </>
                 }
-                time={
-                  running ? words.stopsIn(ago(t.until)) : t.ended_at ? ago(t.ended_at) : undefined
-                }
+                time={age(running ? t.created_at : (t.ended_at ?? t.created_at))}
                 menuLabel={`More for ${t.text}`}
                 menu={
                   running
