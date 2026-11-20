@@ -5,6 +5,7 @@ import {
   BotIcon,
   CalendarIcon,
   CheckIcon,
+  ChevronDownIcon,
   ChevronRightIcon,
   CodeIcon,
   EllipsisIcon,
@@ -647,14 +648,59 @@ function RowMenu({
 }
 
 /** A small section label, as Claude's sidebar draws Pinned and Recents. */
-function Label({ children, action }: { children: ReactNode; action?: ReactNode }) {
+function Label({
+  children,
+  action,
+  fold,
+}: {
+  children: ReactNode;
+  action?: ReactNode;
+  /** Makes the heading a button that folds its section away and brings it back. */
+  fold?: { open: boolean; onToggle: () => void };
+}) {
   return (
     // Solid on a desktop, in the sidebar's own color, so rows pass under it without showing through.
     <div className="humagen-sidebar-label sticky top-0 z-10 flex h-8 items-center justify-between gap-1 pr-2 pl-2">
-      <p className="px-2.5 text-aui-xs text-aui-muted">{children}</p>
+      {fold ? (
+        <button
+          type="button"
+          data-fold
+          aria-expanded={fold.open}
+          onClick={fold.onToggle}
+          className="inline-flex min-h-7 min-w-0 items-center gap-1 rounded-aui px-2.5 text-aui-xs text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent pointer-coarse:min-h-11"
+        >
+          <span className="min-w-0 truncate">{children}</span>
+          {fold.open ? <ChevronDownIcon size={12} /> : <ChevronRightIcon size={12} />}
+        </button>
+      ) : (
+        <p className="px-2.5 text-aui-xs text-aui-muted">{children}</p>
+      )}
       {action}
     </div>
   );
+}
+
+/** Whether a section of the sidebar is folded, as this browser left it. It must never throw. */
+function useFold(key: string): { open: boolean; onToggle: () => void } {
+  const [open, setOpen] = useState(() => {
+    try {
+      return window.localStorage.getItem(key) !== "0";
+    } catch {
+      return true;
+    }
+  });
+  return {
+    open,
+    onToggle: () =>
+      setOpen((was) => {
+        try {
+          window.localStorage.setItem(key, was ? "0" : "1");
+        } catch {
+          // The fold still works for this visit.
+        }
+        return !was;
+      }),
+  };
 }
 
 /**
@@ -834,7 +880,9 @@ export function Sidebar({
       ? sidebar.current?.querySelector<HTMLElement>(
           'nav[aria-label="Sections"] a[href="/projects"]',
         )
-      : sidebar.current?.querySelector<HTMLButtonElement>('section[aria-label="Sessions"] button');
+      : sidebar.current?.querySelector<HTMLButtonElement>(
+          'section[aria-label="Sessions"] button:not([data-fold])',
+        );
     (control ?? fallback)?.focus();
     pinFocus.current = null;
   }, [pinned, prefs?.pinned_projects]);
@@ -870,6 +918,8 @@ export function Sidebar({
   // menu answers with a refusal. Work comes first, then what watches it, then
   // what it is built from. A task keeps its own runs, evals live on what they
   // test, and trends live with alerts, so none of those needs a page here.
+  const pinnedFold = useFold("humagen.sidebar.pinned");
+  const recentsFold = useFold("humagen.sidebar.recents");
   const selected = route.page === "conversation" ? route.id : null;
   const here = (...pages: RoutePage[]) => pages.includes(route.page);
   const nav = defaultCopy.navigation;
@@ -1213,10 +1263,10 @@ export function Sidebar({
             {open && (pinnedRows.length > 0 || readableProjectPins.length > 0) && (
               <section
                 aria-label="Pinned"
-                className="humagen-sidebar-reveal flex shrink-0 flex-col pt-4"
+                className="humagen-sidebar-reveal flex shrink-0 flex-col pt-6"
               >
-                <Label>{defaultCopy.sidebar.pinned}</Label>
-                <ul className="px-2">
+                <Label fold={pinnedFold}>{defaultCopy.sidebar.pinned}</Label>
+                <ul className="px-2" hidden={!pinnedFold.open}>
                   {readableProjectPins.map((project) => (
                     <li
                       key={`project:${project}`}
@@ -1261,10 +1311,11 @@ export function Sidebar({
               <section
                 aria-label="Sessions"
                 data-view={view}
-                className="humagen-sidebar-reveal flex shrink-0 flex-col pt-4"
+                className="humagen-sidebar-reveal flex shrink-0 flex-col pt-6"
               >
                 {/* The label stays in reach while the list scrolls under it. */}
                 <Label
+                  fold={recentsFold}
                   action={
                     <Popover
                       narrow
@@ -1375,6 +1426,7 @@ export function Sidebar({
                 )}
                 <ul
                   className="px-2 pb-3"
+                  hidden={!recentsFold.open}
                   aria-label={view === "recents" ? defaultCopy.sidebar.recents : viewTitle}
                   aria-busy={loading !== null}
                 >
@@ -1410,7 +1462,10 @@ export function Sidebar({
                         data-testid="recents-group"
                         data-day={g.day}
                       >
-                        <p className="px-2.5 pb-1 text-aui-xs text-aui-muted">{g.label}</p>
+                        {/* Recents already says these are the newest, so today's sessions take no heading. */}
+                        {g.day !== "today" && (
+                          <p className="px-2.5 pb-1 text-aui-xs text-aui-muted">{g.label}</p>
+                        )}
                         <ul>{g.items.map((t) => row(t, { label: true }))}</ul>
                       </li>
                     ))}

@@ -1,5 +1,6 @@
 import { defaultCopy } from "@humagen/components";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { CheckIcon, ClockIcon } from "@humagen/render-web";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { type AlertRuleConfig, api, type ProjectView } from "./api.ts";
 import { agentShown } from "./branding.ts";
 import {
@@ -73,7 +74,44 @@ export function placeOfSession(s: AgentSessionSummary): SessionPlaceFilter | und
 const HOME_MADE = 3;
 /** One alert row's tracks: a box to tick, the alert, then priority, age and actions once there is room. */
 const alertRow =
-  "grid grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-x-3 gap-y-2 px-4 @3xl:grid-cols-[1.5rem_minmax(0,1fr)_6.5rem_5rem_7.5rem_17rem]";
+  "grid grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-x-3 gap-y-2 px-4 @3xl:grid-cols-[1.5rem_minmax(0,1fr)_6.5rem_5rem_7.5rem_11rem]";
+/**
+ * A row's lesser action. In the table it is its icon, named by a label that
+ * shows on hover and on keyboard focus; in a stacked row, and on touch where
+ * nothing hovers, the label is written beside the icon.
+ */
+function RowAction({
+  label,
+  icon,
+  disabled,
+  onClick,
+}: {
+  label: string;
+  icon: ReactNode;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      disabled={disabled}
+      onClick={onClick}
+      className="group/action relative inline-flex min-h-8 min-w-8 items-center justify-center gap-1.5 rounded-aui px-2 text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent disabled:opacity-50 pointer-coarse:min-h-11 pointer-coarse:min-w-11"
+    >
+      {icon}
+      <span aria-hidden className="@3xl:hidden pointer-coarse:inline">
+        {label}
+      </span>
+      <span
+        aria-hidden
+        className="humagen-glass-pop pointer-events-none absolute right-0 bottom-full z-20 mb-1 hidden whitespace-nowrap rounded-aui px-2 py-1 text-aui-2xs text-aui-fg @3xl:group-hover/action:block @3xl:group-focus-visible/action:block pointer-coarse:!hidden"
+      >
+        {label}
+      </span>
+    </button>
+  );
+}
 const alertCheck =
   "inline-flex size-6 items-center justify-center self-start pointer-coarse:size-11 @3xl:self-center";
 
@@ -673,7 +711,6 @@ export function AlertsPage({
                         ) : (
                           <span className={title}>{a.title}</span>
                         )}
-                        {a.agent && <AgentTag name={a.agent} />}
                       </span>
                       <span className="col-start-2 flex min-w-0 items-center gap-3 @3xl:contents">
                         <span className="text-aui-xs text-aui-muted">
@@ -698,22 +735,18 @@ export function AlertsPage({
                         </button>
                         {canWrite && (
                           <>
-                            <button
-                              type="button"
+                            <RowAction
+                              label={words.markDone}
+                              icon={<CheckIcon size={16} />}
                               disabled={busy}
-                              className={textAction}
                               onClick={() => void change([a], "resolved")}
-                            >
-                              {words.markDone}
-                            </button>
-                            <button
-                              type="button"
+                            />
+                            <RowAction
+                              label={words.snooze}
+                              icon={<ClockIcon size={16} />}
                               disabled={busy}
-                              className={textAction}
                               onClick={() => void change([a], "snoozed")}
-                            >
-                              {words.snooze}
-                            </button>
+                            />
                           </>
                         )}
                       </span>

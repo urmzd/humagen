@@ -75,7 +75,7 @@ const byDay = async () => {
   fireEvent.keyDown(disclosure, { key: "Escape" });
 };
 
-test("Recents is one list: Today, Yesterday, Earlier, newest first, each session once, no alert-only sessions", async () => {
+test("Recents is one list by day, today under no heading, then Yesterday and Earlier, newest first, each session once, no alert-only sessions", async () => {
   const research = session("s_research", "@lead Have your researcher check", newest);
   const smoke = session("s_smoke", "Say hello for the smoke test.", earlierToday);
   const deploy = session("s_deploy", "Why did the deploy fail", yesterday);
@@ -153,7 +153,8 @@ test("Recents is one list: Today, Yesterday, Earlier, newest first, each session
     [
       [
         "today",
-        defaultCopy.history.today,
+        // Recents already says these are the newest, so today takes no heading.
+        undefined,
         ["@lead Have your researcher check", "Say hello for the smoke test."],
       ],
       ["yesterday", defaultCopy.history.yesterday, ["Why did the deploy fail"]],
