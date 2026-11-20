@@ -135,7 +135,15 @@ export function sidebarViews(): Scene[] {
       }
       const card = page.locator("[data-peek]");
       await card.waitFor();
-      assert.match((await card.textContent()) ?? "", /Updated/);
+      assert.match((await card.textContent()) ?? "", /(ago|Just now)$/);
+      if ((page.viewportSize()?.width ?? 0) >= 768) {
+        const [r, c] = await Promise.all([row.boundingBox(), card.boundingBox()]);
+        assert.ok(r && c);
+        assert.ok(
+          Math.abs(r.y + r.height / 2 - (c.y + c.height / 2)) <= 1,
+          "the card is centred on its row",
+        );
+      }
     }),
     scene("sidebar-recents", async (page) => {
       const nav = await openSidebar(page);

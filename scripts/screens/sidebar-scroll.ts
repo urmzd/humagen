@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import type { Page } from "playwright-core";
 
-/** Stress the real shell with long content, then wheel each column separately. */
+/**
+ * Stress the real shell with long content, then wheel each column separately.
+ * In the sidebar only the conversation lists scroll: the top row, the
+ * navigation and the account stay put. On a window too short for that, the
+ * navigation scrolls with the lists instead (checked last).
+ */
 export async function sidebarScroll(page: Page): Promise<void> {
   const phone = (page.viewportSize()?.width ?? 0) < 768;
   const content = page.locator("main .aui-scroll");
@@ -14,7 +19,7 @@ export async function sidebarScroll(page: Page): Promise<void> {
   });
   if (phone) await page.getByRole("button", { name: /^Open sidebar/ }).click();
   const sidebar = page.getByRole("complementary", { name: "Navigation", includeHidden: true });
-  const list = sidebar.locator(".aui-scroll").first();
+  const list = sidebar.locator("[data-sidebar-lists]");
   await list.evaluate((element) => {
     const fixture = document.createElement("ul");
     fixture.setAttribute("data-scroll-fixture", "");
@@ -32,7 +37,14 @@ export async function sidebarScroll(page: Page): Promise<void> {
       const box = element.getBoundingClientRect();
       const header = element.firstElementChild?.getBoundingClientRect();
       const footer = element.lastElementChild?.getBoundingClientRect();
-      return { top: box.top, bottom: box.bottom, header: header?.height, footer: footer?.bottom };
+      const nav = element.querySelector("nav")?.getBoundingClientRect();
+      return {
+        top: box.top,
+        bottom: box.bottom,
+        header: header?.height,
+        footer: footer?.bottom,
+        nav: nav?.top,
+      };
     });
   const initial = await geometry();
   assert.equal(initial.top, 0, "sidebar starts at the viewport top");
@@ -42,14 +54,14 @@ export async function sidebarScroll(page: Page): Promise<void> {
   await list.hover();
   await page.mouse.wheel(0, 600);
   await page.waitForFunction(
-    () => (document.querySelector("aside > .aui-scroll")?.scrollTop ?? 0) > 0,
+    () => (document.querySelector("[data-sidebar-lists]")?.scrollTop ?? 0) > 0,
   );
   assert.equal(
     await content.evaluate((element) => element.scrollTop),
     0,
     "sidebar scroll leaves content still",
   );
-  assert.deepEqual(await geometry(), initial, "sidebar chrome stays fixed");
+  assert.deepEqual(await geometry(), initial, "sidebar chrome and navigation stay fixed");
   await list.evaluate((element) => {
     element.scrollTop = element.scrollHeight;
   });
@@ -92,5 +104,24 @@ export async function sidebarScroll(page: Page): Promise<void> {
   await content.evaluate((element) => {
     element.scrollTop = 0;
   });
+  // A short window: the navigation scrolls with the lists, so they keep room.
+  const size = page.viewportSize();
+  if (size) {
+    await page.setViewportSize({ width: size.width, height: 560 });
+    const short = await sidebar.evaluate((element) => {
+      const outer = element.querySelector<HTMLElement>(":scope > .aui-scroll");
+      const lists = element.querySelector<HTMLElement>("[data-sidebar-lists]");
+      return {
+        outer: outer ? getComputedStyle(outer).overflowY : "",
+        lists: lists ? getComputedStyle(lists).overflowY : "",
+      };
+    });
+    assert.deepEqual(
+      short,
+      { outer: "auto", lists: "visible" },
+      "a short window scrolls navigation and lists together",
+    );
+    await page.setViewportSize(size);
+  }
   if (phone) await page.getByRole("button", { name: "Close sidebar", exact: true }).click();
 }

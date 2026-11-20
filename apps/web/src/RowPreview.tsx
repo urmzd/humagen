@@ -1,10 +1,9 @@
 import { defaultCopy } from "@humagen/components";
-import { AgentInitials } from "@humagen/web";
-import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { ThreadSummary } from "./api.ts";
-import { PersonMark } from "./PersonMark.tsx";
-import { placePeek, updatedWhen } from "./peek.ts";
+import { age } from "./conversationList.ts";
+import { PEEK_WIDTH, placePeek } from "./peek.ts";
 
 /** How long a pointer rests on a row before its preview opens, and a finger holds for one. */
 export const PEEK_MS = 450;
@@ -70,7 +69,11 @@ export function usePeek() {
   return { at, bind, close };
 }
 
-/** A card over the page, beside what it previews; drawn into the body so no list clips it. */
+/**
+ * A card over the page, beside what it previews and centred on it; drawn into
+ * the body so no list clips it. It is measured before it paints, so a title
+ * that wraps stays centred.
+ */
 export function PeekCard({
   at,
   id,
@@ -82,14 +85,25 @@ export function PeekCard({
   onClose: () => void;
   children: ReactNode;
 }) {
-  const place = placePeek(at, { width: window.innerWidth, height: window.innerHeight });
+  const card = useRef<HTMLDivElement>(null);
+  const [height, setHeight] = useState<number>();
+  // Every render: React skips the update when the height has not changed.
+  useLayoutEffect(() => {
+    setHeight(card.current?.offsetHeight);
+  });
+  const place = placePeek(
+    at,
+    { width: window.innerWidth, height: window.innerHeight },
+    { width: PEEK_WIDTH, height: height ?? 64 },
+  );
   return createPortal(
     <div
+      ref={card}
       id={id}
       role="tooltip"
       data-peek
       onPointerDown={onClose}
-      className="humagen-pop fixed z-[60] flex flex-col gap-1 rounded-aui border border-[var(--humagen-rule)] bg-aui-bg px-3 py-2.5 text-aui-xs shadow-lg"
+      className="humagen-glass-pop humagen-pop fixed z-[60] flex flex-col gap-1 rounded-aui-lg px-3.5 py-3"
       style={{ top: place.top, left: place.left, width: place.width }}
     >
       {children}
@@ -98,35 +112,16 @@ export function PeekCard({
   );
 }
 
-/** What a sidebar row's preview says: title, project, when it moved, and its last line by whom. */
-export function ConversationPeek({
-  task,
-  project,
-}: {
-  task: ThreadSummary;
-  /** The project's title, or none when it is in no project. */
-  project?: string;
-}) {
+/** What a sidebar row's preview says: its whole title and how long ago it moved. */
+export function ConversationPeek({ task }: { task: ThreadSummary }) {
   const words = defaultCopy.sidebar;
+  const when = age(task.updated_at, Date.now());
   return (
     <>
-      <span className="line-clamp-2 text-aui-sm font-medium text-aui-fg">
+      <span className="line-clamp-3 break-words text-aui-sm text-aui-fg">
         {task.title || "Untitled conversation"}
       </span>
-      <span className="truncate text-aui-2xs text-aui-muted">
-        {project || words.outsideProject} · {words.updated(updatedWhen(task.updated_at))}
-      </span>
-      {task.last && (
-        <span className="mt-1 flex items-start gap-1.5 text-aui-muted">
-          {task.last_by &&
-            (task.last_agent ? (
-              <AgentInitials name={task.last_by} size={16} />
-            ) : (
-              <PersonMark name={task.last_by} size={16} />
-            ))}
-          <span className="line-clamp-2 min-w-0 flex-1 text-aui-fg">{task.last}</span>
-        </span>
-      )}
+      <span className="text-aui-xs text-aui-muted tabular-nums">{words.movedAgo(when)}</span>
     </>
   );
 }
