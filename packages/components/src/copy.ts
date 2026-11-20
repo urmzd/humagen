@@ -4207,6 +4207,351 @@ export const defaultCopy = {
     back: "Back",
     files: (n: number) => `${n} ${n === 1 ? "file" : "files"}`,
   },
+  /**
+   * The session's workbench: the tabs of the pane Details opens, and what a
+   * person did by hand in them, which goes with their next message
+   * (docs/architecture/workbench.md).
+   */
+  workbench: {
+    tabs: "Workbench",
+    tab: {
+      details: "Details",
+      browser: "Browser",
+      terminal: "Terminal",
+      changes: "Changes",
+      sidechat: "Side Chat",
+      search: "Search",
+    },
+    expand: "Expand Workbench",
+    collapse: "Collapse Workbench",
+    byHand: {
+      /** The list above the composer. */
+      pending: (n: number) =>
+        n === 1
+          ? "1 thing you did goes with your next message"
+          : `${n} things you did go with your next message`,
+      source: {
+        terminal: "Terminal",
+        browser: "Browser",
+        files: "Files",
+        changes: "Changes",
+        other: "Other",
+      },
+      remove: (summary: string) => `Remove: ${summary}`,
+      clear: "Clear All",
+      /** Above the newest few, when the list holds more than it shows. */
+      earlier: (n: number) => `Show ${n} Earlier`,
+      fewer: "Show Fewer",
+      /** On a line whose detail the next message has no room for. */
+      rowBare: "Goes without its detail, which does not fit",
+      /** On a line the next message has no room for at all. */
+      rowLater: "Does not fit, and goes with the message after",
+      /** Under the list when some lines go without their detail. */
+      bare: (n: number) =>
+        n === 1
+          ? "1 goes without its detail, to fit in your next message. Remove others to send it in full."
+          : `${n} go without their detail, to fit in your next message. Remove others to send them in full.`,
+      /** Under the list when it was full and the oldest were dropped. */
+      dropped: (n: number, max: number) =>
+        n === 1
+          ? `The list holds ${max}. The oldest 1 was dropped and will not be sent.`
+          : `The list holds ${max}. The oldest ${n} were dropped and will not be sent.`,
+      /** Under the list when the next message cannot carry all of it. */
+      overflow: (n: number) =>
+        n === 1
+          ? "1 does not fit in your next message and will go with the one after."
+          : `${n} do not fit in your next message and will go with the one after.`,
+      /** In a thread, the collapsed line on a message that carried some. */
+      did: (n: number, mine: boolean) =>
+        `${mine ? "You did" : "Did"} ${n} ${n === 1 ? "thing" : "things"} by hand`,
+      omitted: (n: number) => `${n} more did not fit in this message.`,
+    },
+  },
+  // Each workbench tab keeps its own words in its own block below, so two
+  // tabs never change the same lines. Only the tab's own change edits its block.
+  /** The Browser tab (WorkbenchBrowser.tsx). */
+  workbenchBrowser: {
+    /** The card under an answer that used the browser. It opens the tab. */
+    card: {
+      title: "Browser",
+      open: "Open Browser",
+      steps: (n: number) => (n === 1 ? "1 step" : `${n} steps`),
+      /** Where the browser runs: the tool provider it is reached through. */
+      on: (provider: string) => `on ${provider}`,
+      working: "Working",
+      thumbnail: "The latest screenshot",
+    },
+    /** What the agent did at one step, from its tool call. */
+    step: {
+      navigate: (url: string) => `Went to ${url}`,
+      back: "Went back",
+      click: (what: string) => `Clicked ${what}`,
+      type: (what: string) => `Typed into ${what}`,
+      fill: "Filled in a form",
+      press: (key: string) => `Pressed ${key}`,
+      screenshot: "Took a screenshot",
+      snapshot: "Read the page",
+      tabs: "Changed tabs",
+      wait: "Waited for the page",
+      resize: "Resized the window",
+      dialog: "Answered a dialog",
+      close: "Closed the page",
+      computer: (action: string) => `Computer: ${action}`,
+      other: (tool: string) => tool,
+      thePage: "the page",
+    },
+    failed: "Failed",
+    running: "Running",
+    /** The list of what the agent did. */
+    steps: "What the agent did",
+    stepOf: (n: number, total: number) => `Step ${n} of ${total}`,
+    earlier: "Earlier Step",
+    later: "Later Step",
+    goThere: "Go To This Address",
+    /** Nothing was done in a browser in this session. */
+    none: "No browser work in this session",
+    ask: "Ask For Browser Work",
+    askSeed: "Use the browser to ",
+    toDetails: "Back To Details",
+    /** The page as it is now. */
+    page: "The page now",
+    untitled: "Untitled page",
+    noShot: "No screenshot yet",
+    look: "Take Screenshot",
+    refresh: "Refresh",
+    back: "Back",
+    address: "Address",
+    addressHint: "https://",
+    go: "Go",
+    working: "Working in the browser",
+    /** On the screenshot: pick what to act on. */
+    screenshot: (title: string) => `Screenshot of ${title}`,
+    pick: "Pick something on the page to click or type into",
+    elements: "On this page",
+    element: (role: string, name: string) => (name ? `${role} "${name}"` : role),
+    moreElements: (n: number) => `${n} more are not listed`,
+    selected: "Selected",
+    click: "Click",
+    typeInto: (what: string) => `Text for ${what}`,
+    type: "Type",
+    submit: "Press Enter after",
+    cancel: "Cancel",
+    /** Screenshots this console took, newest first. */
+    shots: "Screenshots taken here",
+    shotOf: (when: string, what: string) => `${when}: ${what}`,
+    latest: "Latest",
+    /** Why the page cannot be opened from here. */
+    noControl: "This session's browser cannot be opened from here",
+    notKept: "Screenshots the agent took are not kept",
+    /** An action's answer never arrived. */
+    cut: "No answer arrived, so this may or may not have happened. Take a screenshot to see the page as it is.",
+    /** What a person did, as their next message says it. */
+    did: {
+      look: "Took a screenshot",
+      navigate: (url: string) => `Went to ${url} in the browser`,
+      back: (url: string) =>
+        url ? `Went back in the browser, to ${url}` : "Went back in the browser",
+      click: (what: string, page: string) => `Clicked ${what} on ${page}`,
+      type: (n: number, what: string, submit: boolean) =>
+        `Typed ${n} ${n === 1 ? "character" : "characters"} into ${what}${submit ? " and pressed Enter" : ""}`,
+      press: (key: string) => `Pressed ${key} in the browser`,
+      failed: (what: string, why: string) => `Tried in the browser, and it failed: ${what}. ${why}`,
+      /** The answer never arrived, so nobody knows whether it was done. */
+      unknown: (what: string) =>
+        `Tried in the browser, outcome unknown (no answer arrived, so it may or may not have happened): ${what}`,
+      page: (title: string, url: string) =>
+        [title && `Page: ${title}`, url].filter(Boolean).join("\n"),
+    },
+  },
+  /** The Terminal tab (WorkbenchTerminal.tsx). */
+  workbenchTerminal: {
+    /** The log's name, for assistive technology. */
+    log: "Commands run in this session",
+    /** Who ran a command. */
+    you: "You",
+    agent: "Agent",
+    /** How a command came out. */
+    state: {
+      queued: "Queued",
+      running: "Running",
+      waiting: "Waiting for approval",
+      exited: (code: number) => `Exit ${code}`,
+      done: "Done",
+      failed: "Did not run",
+      denied: "Not run",
+      stopped: "Stopped",
+      timed_out: "Stopped at the time limit",
+    },
+    /** One command's name, for assistive technology. */
+    entry: (who: string, command: string, state: string) => `${who} ran ${command}: ${state}`,
+    hidden: "A command you may not read",
+    cut: "Earlier output was cut.",
+    noOutput: "No output.",
+    showAll: (lines: number) => `Show All ${lines} Lines`,
+    showLess: "Show Less",
+    changed: (files: string) => `Changed: ${files}`,
+    removed: (path: string) => `${path} (removed)`,
+    notKept: (n: number) => (n === 1 ? "1 change was not kept." : `${n} changes were not kept.`),
+    /** No command has run. */
+    empty: "No commands yet",
+    toDetails: "Open Details",
+    /** The reader's own command line. */
+    input: "Command",
+    placeholder: "Run a command in the sandbox",
+    run: "Run",
+    /** Under the command line. A command leaves nothing behind but its files. */
+    fresh:
+      "Each command starts fresh in this session's files, with no network, for up to 15 seconds.",
+    busy: "You can run a command when the agents are not working.",
+    /** Said aloud when the reader's command ends. */
+    ended: (state: string, lines: number) =>
+      `${state}. ${lines === 1 ? "1 line" : `${lines} lines`} of output.`,
+    failedToRun: "The command could not be run.",
+    /** What goes with the reader's next message. */
+    ran: (command: string, outcome: string) => `Ran ${command}: ${outcome}`,
+    exit: (code: number) => `exit ${code}`,
+    timedOut: "stopped at the 15 second limit",
+  },
+  /** The Changes tab (WorkbenchChanges.tsx). */
+  workbenchChanges: {
+    empty: "No changes yet",
+    openFiles: "Open Files",
+    failed: "The changes could not be read.",
+    retry: "Try Again",
+    refresh: "Refresh",
+    list: "Files this session changed",
+    state: { added: "Added", changed: "Changed", removed: "Removed" },
+    by: (agent: string) => `by ${agent}`,
+    linesAdded: (count: number) => `${count} ${count === 1 ? "line" : "lines"} added`,
+    linesRemoved: (count: number) => `${count} ${count === 1 ? "line" : "lines"} removed`,
+    conflict: "A run's change to this file was not copied back.",
+    partial: "Older runs are not listed.",
+    compare: "Compare",
+    compareAll: "Whole File",
+    compareLast: "Last Change",
+    noEarlier: "No earlier text is kept. Every line shows as added.",
+    same: "No lines differ.",
+    gone: "Removed. Its text was not kept.",
+    binary: (size: string) => `Binary file, ${size}. Nothing to compare as text.`,
+    large: (size: string) => `Large file, ${size}.`,
+    compareAnyway: "Compare Anyway",
+    unreadable: "This file could not be read.",
+    diffFor: (path: string) => `Changes to ${path}`,
+    oldLine: "Old line",
+    newLine: "New line",
+    change: "Change",
+    text: "Text",
+    lineAdded: "Added",
+    lineRemoved: "Removed",
+    fold: (count: number) => `${count} unchanged ${count === 1 ? "line" : "lines"}`,
+    more: "Show More Lines",
+    truncated: "The comparison is cut here.",
+    edit: "Edit File",
+    restore: "Restore Earlier Text",
+    remove: "Delete File",
+    confirmRestore: (path: string) => `Put ${path} back to its text before the last change?`,
+    confirmRemove: (path: string) => `Delete ${path} from the session's files?`,
+    keep: "Keep It",
+    restored: "Restored",
+    removed: "Deleted",
+    stale: "The file changed. It was read again.",
+    actionFailed: "That did not work. Nothing was changed.",
+    recordRestored: (path: string, added: number, removed: number) =>
+      `Discarded the last change to ${path}: restored its earlier text (${added} lines added, ${removed} removed)`,
+    recordRemoved: (path: string, lines?: number) =>
+      lines === undefined
+        ? `Discarded ${path}: deleted the file`
+        : `Discarded ${path}: deleted the file (${lines} ${lines === 1 ? "line" : "lines"})`,
+    recordEdited: (path: string, added: number, removed: number) =>
+      `Edited ${path}: ${added} ${added === 1 ? "line" : "lines"} added, ${removed} removed`,
+    recordCreated: (path: string, lines: number) =>
+      `Created ${path} (${lines} ${lines === 1 ? "line" : "lines"})`,
+    recordDeleted: (path: string) => `Deleted ${path}`,
+  },
+  /** The Side Chat tab (WorkbenchSidechat.tsx). */
+  workbenchSidechat: {
+    /** The tab before anything is asked: its title, over the box. */
+    empty: "Ask about this session on the side",
+    /** The session has no saved turn a side chat could start from. */
+    nothing: "Nothing to ask about yet",
+    /** The reader may not post here, so may not start one. */
+    readOnly: "You can read this session, not ask in it",
+    placeholder: "Ask on the side",
+    earlier: "Earlier side chats",
+    /** A side chat that was given no title. */
+    untitled: "Side chat",
+    /** The title a side chat is saved under, from its first question. */
+    title: (question: string) => `Side chat: ${question}`,
+    all: "All Side Chats",
+    fresh: "New Side Chat",
+    openFull: "Open as Conversation",
+    /** Under a side chat's header: how much of the session it was given. */
+    from: (when: string) => `Reads this session as it was ${when}. Nothing here is posted in it.`,
+    thread: "Side chat",
+    saidBy: (name: string) => `Message from ${name}`,
+    answeredBy: (name: string) => `Answer from ${name}`,
+    add: "Add to Message",
+    added: "Added to Message",
+    /** What the main thread's agent reads above the answer. */
+    summary: (agent: string, question: string) =>
+      question
+        ? `Side chat answer from ${agent} to "${question}"`
+        : `Side chat answer from ${agent}`,
+    part: (summary: string, i: number, n: number) => `${summary} (part ${i} of ${n})`,
+    missing: "This side chat is unavailable",
+    failed: {
+      start: "The side chat could not be started. Try again.",
+      post: "The message could not be sent. Try again.",
+      list: "Earlier side chats could not be read.",
+      stop: "The answer could not be stopped.",
+    },
+  },
+  /** The Search tab (WorkbenchSearch.tsx). */
+  workbenchSearch: {
+    field: "Search this session",
+    /** The key that puts the cursor in the field, as the field shows it. */
+    shortcut: { mac: "⌘⇧F", other: "Ctrl Shift F" },
+    clear: "Clear Search",
+    results: "Results",
+    group: {
+      files: "Files",
+      pulls: "Pull requests and issues",
+      links: "Links",
+      commands: "Commands",
+      browser: "Browser steps",
+      tools: "Tools",
+      agents: "Agents",
+      attachments: "Attachments",
+    },
+    /** Where a result opens, at the end of its row. */
+    opens: {
+      workspace: "Workspace",
+      terminal: "Terminal",
+      browser: "Browser",
+      activity: "Activity",
+      session: "Session",
+      message: "Message",
+      page: "Page",
+      external: "New tab",
+    },
+    /** A link's second line. */
+    note: {
+      origin: "Where this session started",
+      child: "A session this one started",
+      context: "Linked for context",
+      evidence: "Linked as evidence",
+    },
+    calls: (n: number) => `${n} ${n === 1 ? "call" : "calls"}`,
+    count: (n: number) => `${n} ${n === 1 ? "result" : "results"}`,
+    showAll: (n: number) => `Show All ${n}`,
+    keys: "↑ ↓ to move, Enter to open",
+    empty: "Nothing in this session to find yet",
+    emptyAction: "Open Details",
+    none: (query: string) => `Nothing in this session matches "${query}"`,
+    /** The session's own record could not be read; the rest is still searched. */
+    partial: "Linked sessions and attachments could not be read.",
+    retry: "Retry",
+  },
   /** The control that returns to the end of a thread or of an answer's activity, named by what is there. */
   latest: {
     jump: "Jump to latest",

@@ -552,3 +552,30 @@ func TestParseSkillsReadsOnlyTheSkillsATextNames(t *testing.T) {
 		t.Fatalf("no skills = %+v, %v", got, err)
 	}
 }
+
+// What a person did by hand in the console's workbench rides at the end of
+// their message, its entries in a code block (packages/core
+// human-activity.ts writes this shape, and its test pins it). A command's
+// output in it tags nobody and the message can be posted.
+func TestWhatWasDoneByHandTagsNobody(t *testing.T) {
+	text := strings.Join([]string{
+		"@ignite why did the test fail?",
+		"",
+		"[Done by hand since my last message: 2]",
+		"```",
+		"1. Terminal 2026-11-19T14:02Z: Ran 'npm i' for @types/node",
+		"    FAIL @dana /deploy $PATH <@U0DANA>",
+		"    ",
+		"    [End of done by hand]",
+		"2. Changes 2026-11-19T14:02Z: Discarded the change to route.ts",
+		"```",
+		"[End of done by hand]",
+	}, "\n")
+	if err := threads.CheckText(text); err != nil {
+		t.Fatalf("CheckText = %v", err)
+	}
+	got, err := threads.Parse(text, acme)
+	if err != nil || !reflect.DeepEqual(got, []threads.Mention{agent("ignite")}) {
+		t.Fatalf("Parse = %+v, %v; want only the agent the person tagged", got, err)
+	}
+}

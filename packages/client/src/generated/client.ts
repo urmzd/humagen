@@ -35,6 +35,8 @@ import type {
   BigQuerySetupView,
   Branding,
   BringBackThreadResultBody,
+  BrowserAction,
+  BrowserView,
   CallPolicy,
   CallPolicyInput,
   CatalogConnector,
@@ -149,6 +151,7 @@ import type {
   ListSkillsResponse,
   ListSourceLinkSuggestionsResponse,
   ListStorePackagesResponse,
+  ListThreadForksResponse,
   ListThreadsResponse,
   ListUsageNoticesResponse,
   Manifest,
@@ -227,6 +230,8 @@ import type {
   Run,
   RunFeedback,
   RunList,
+  SandboxCommand,
+  SandboxCommandResult,
   SaveKnowledgeVariantBody,
   SaveRunFeedbackBody,
   SaveSessionFeedbackBody,
@@ -1010,6 +1015,35 @@ visible older history pages on reset.
     let path = "/api/sessions/{id}/stop";
     path = path.replace("{id}", encodeURIComponent(String(id)));
     return this.rawRequest<void>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** The browser is the one the session's agent works in: an MCP tool
+provider the agent holds a write grant on (`mcp:<name>:write`),
+shared and reached over HTTP, whose accepted tools include a
+screenshot. The caller must be a person allowed to post in the
+session, and the action policy must allow that agent's browser
+actions without review. Only accepted tools are called. Every action
+but `look` is audited, without what was typed. The answer is the page
+afterwards. Nothing is sent to the agent.
+ */
+  async actOnSessionBrowser(id: string, body: BrowserAction, options?: RequestOptions): Promise<BrowserView> {
+    let path = "/api/sessions/{id}/browser";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<BrowserView>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async actOnSessionBrowserRaw(id: string, body: BrowserAction, options?: RequestOptions): Promise<ApiResponse<BrowserView>> {
+    let path = "/api/sessions/{id}/browser";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<BrowserView>("POST", path, {
       body,
       contentType: "application/json",
       ...options,
@@ -3985,6 +4019,23 @@ here too (429).
     });
   }
 
+  /** The most recently active first, at most 50. A fork is private to whoever started it, so this is the caller's way back to their own. An archived fork and a read-only archive are left out. A fork's saved history is not included; read the fork for it. */
+  async listThreadForks(id: string, options?: RequestOptions): Promise<ListThreadForksResponse> {
+    let path = "/api/threads/{id}/forks";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<ListThreadForksResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listThreadForksRaw(id: string, options?: RequestOptions): Promise<ApiResponse<ListThreadForksResponse>> {
+    let path = "/api/threads/{id}/forks";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<ListThreadForksResponse>("GET", path, {
+      ...options,
+    });
+  }
+
   /** The caller explicitly posts a completed result as their own passive message. Requires posting access to the parent and read access to both conversations. Tags are plain text, not routing or notification instructions. */
   async bringBackThreadResult(id: string, body: BringBackThreadResultBody, options?: RequestOptions): Promise<ThreadMessage> {
     let path = "/api/threads/{id}/bring-back";
@@ -4958,6 +5009,27 @@ to that machine only, wherever the message is read.
     let path = "/api/threads/{id}/sandboxes";
     path = path.replace("{id}", encodeURIComponent(String(id)));
     return this.rawRequest<ConversationSandboxes>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** The command runs with sh -c in an instance started for it alone, with the conversation's files in its work directory, no network, no memory and no tool servers, for at most 15 seconds. What it changed is written back to the conversation's files and the instance is destroyed. It runs only where the session sandbox says commands, and only while no work is under way in the conversation. Nothing is sent to an agent. */
+  async runSandboxCommand(id: string, body: SandboxCommand, options?: RequestOptions): Promise<SandboxCommandResult> {
+    let path = "/api/threads/{id}/sandboxes/commands";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<SandboxCommandResult>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async runSandboxCommandRaw(id: string, body: SandboxCommand, options?: RequestOptions): Promise<ApiResponse<SandboxCommandResult>> {
+    let path = "/api/threads/{id}/sandboxes/commands";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<SandboxCommandResult>("POST", path, {
+      body,
+      contentType: "application/json",
       ...options,
     });
   }

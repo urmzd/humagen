@@ -69,6 +69,12 @@ test("canonical session selections survive copied links", () => {
       workspaceTab: "changes",
     },
     { page: "conversation", id: "t-1", panel: "deliverables", artifact: "art-1" },
+    { page: "conversation", id: "t-1", panel: "details" },
+    { page: "conversation", id: "t-1", panel: "details", bench: "browser" },
+    { page: "conversation", id: "t-1", panel: "details", bench: "terminal", expanded: true },
+    { page: "conversation", id: "t-1", panel: "details", bench: "changes", benchRef: "src/a b.ts" },
+    { page: "conversation", id: "t-1", panel: "details", bench: "sidechat" },
+    { page: "conversation", id: "t-1", panel: "details", bench: "search", benchRef: "pull #42" },
     {
       page: "conversation",
       id: "t-1",
@@ -526,4 +532,51 @@ test("Knowledge and each corpus have addresses, with tabs as paths, and old link
     screenOf({ page: "corpus", name: "a", tab: "sources" }),
     screenOf({ page: "corpus", name: "a", tab: "access" }),
   );
+});
+
+test("a workbench tab is an address of Details, and Details is its default", () => {
+  assert.equal(
+    href({ page: "conversation", id: "t-1", panel: "details", bench: "terminal" }),
+    "/messages/t-1?panel=details&bench=terminal",
+  );
+  // Details itself keeps the address it had before the pane had tabs.
+  assert.equal(
+    href({ page: "conversation", id: "t-1", panel: "details", bench: "details" }),
+    "/messages/t-1?panel=details",
+  );
+  // A tab is not carried by another panel, nor a selection without its tab.
+  assert.equal(
+    href({ page: "conversation", id: "t-1", panel: "context", bench: "terminal" }),
+    "/messages/t-1?panel=sources",
+  );
+  assert.deepEqual(at("/messages/t-1?panel=sources&bench=terminal"), {
+    page: "conversation",
+    id: "t-1",
+    panel: "context",
+  });
+  assert.deepEqual(at("/messages/t-1?panel=details&benchRef=x"), {
+    page: "conversation",
+    id: "t-1",
+    panel: "details",
+  });
+  // A tab that does not exist opens Details, and an overlong selection is dropped.
+  assert.deepEqual(at("/messages/t-1?panel=details&bench=nope"), {
+    page: "conversation",
+    id: "t-1",
+    panel: "details",
+  });
+  assert.deepEqual(at(`/messages/t-1?panel=details&bench=search&benchRef=${"q".repeat(513)}`), {
+    page: "conversation",
+    id: "t-1",
+    panel: "details",
+    bench: "search",
+  });
+  // The path form of the panel reads the same tab.
+  assert.deepEqual(at("/conversations/t-1/details?bench=browser&full=1"), {
+    page: "conversation",
+    id: "t-1",
+    panel: "details",
+    bench: "browser",
+    expanded: true,
+  });
 });

@@ -1028,6 +1028,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		}
 		return time.Now()
 	}
+	contractBrowser := newBrowserFake(t)
 	f := newFixtureWith(t, platform.Config{Now: now, TestBuiltinProvider: "offline", TestBuiltinModel: "offline", PersonalHTTP: notesServer.Client(), AgentOptions: []native.Option{
 		native.WithProvider(native.ProviderOpenAI, func(native.Spec) (saigetypes.Provider, error) {
 			return &agenttest.ScriptedProvider{Responses: [][]saigetypes.Delta{agenttest.TextResponse("Completed the configured setup check.")}}, nil
@@ -1046,6 +1047,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		}), ToolProviders: []platform.ToolProviderSeed{
 			{Provider: toolprovider.Provider{Tenant: "acme", Name: "issues", Transport: toolprovider.TransportHTTP, Endpoint: "https://issues.example.com/mcp", CredentialScope: toolprovider.ScopePerson}},
 			{Provider: toolprovider.Provider{Tenant: "acme", Name: "wiki", Transport: toolprovider.TransportHTTP, Endpoint: "https://wiki.example.com/mcp", CredentialRef: "env:WIKI_TOKEN"}},
+			contractBrowser.seed("session-contract", "browser"),
 		}},
 		CredentialRefs:   map[string][]string{"acme": {"op://People/{subject}/"}},
 		CredentialValues: map[string]bool{"acme": true},
@@ -1070,6 +1072,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	exerciseConnectionHealthContract(t, c)
 	exerciseBigQueryContract(t, c)
 	sessionContract := exerciseSessionContract(t, c)
+	exerciseBrowserContract(t, c, sessionContract["token"])
 	contractSource(t, f, c, sourceFake)
 	contractGitHubItems(t, f, c, sourceFake)
 	pullToken := f.machine(t, "pull-contract", "humagen:runs:read")
@@ -2318,6 +2321,11 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	forkPath := "/api/threads/" + obj(draft.field("thread"))["id"].(string) + "/fork"
 	forked := c.call(ana, "POST", "/api/threads/{id}/fork", forkPath, `{"through":"m-1","title":"Alternative"}`, http.StatusCreated)
 	c.call(ana, "POST", "/api/threads/{id}/fork", forkPath, `{"through":"m-999"}`, http.StatusNotFound)
+	listed := c.call(ana, "GET", "/api/threads/{id}/forks", forkPath+"s", "", http.StatusOK)
+	if forks := sliceOf(listed.field("forks")); len(forks) != 1 || obj(forks[0])["id"] != forked.str("id") || obj(forks[0])["title"] != "Alternative" {
+		t.Fatalf("forks of the draft: %s", listed.raw)
+	}
+	c.call(ana, "GET", "/api/threads/{id}/forks", "/api/threads/th-0000000000000000/forks", "", http.StatusNotFound)
 	c.call(ana, "POST", "/api/threads/{id}/bring-back", "/api/threads/"+forked.str("id")+"/bring-back", `{"run":"r00000000000000000000000000000000"}`, http.StatusNotFound)
 	forkAnswer := c.call(ana, "POST", "/api/threads/{id}/messages", "/api/threads/"+forked.str("id")+"/messages", `{"text":"@helper alternative"}`, http.StatusCreated)
 	forkRun := obj(sliceOf(forkAnswer.field("runs"))[0])["id"].(string)
@@ -2717,6 +2725,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "GET", "/api/agent-network", "/api/agent-network", "", http.StatusOK)
 
 	workspaceID := exerciseWorkspaceFileContract(t, c, auditAdmin, globex)
+	exerciseSandboxCommandContract(t, c)
 	padID := exerciseScratchpadContract(t, c, auditAdmin, globex, workspaceID)
 	exerciseSaveContract(t, c, auditAdmin, globex, workspaceID, padID)
 	// Two rules hold for every route that takes something: another
@@ -2747,6 +2756,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/sessions/{id}/voice/speech":            {"id": sessionContract["id"]},
 		"/api/sessions/{id}/messages/{mid}":          {"id": sessionContract["id"], "mid": "m-1"},
 		"/api/sessions/{id}/stop":                    {"id": sessionContract["id"]},
+		"/api/sessions/{id}/browser":                 {"id": sessionContract["id"]},
 		"/api/sessions/{id}/people":                  {"id": sessionContract["id"]},
 		"/api/sessions/{id}/links":                   {"id": sessionContract["id"]},
 		"/api/sessions/{id}/alerts":                  {"id": sessionContract["id"]},
@@ -2757,6 +2767,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/threads/{id}/files/content":                     {"id": workspaceID},
 		"/api/threads/{id}/files/publish":                     {"id": workspaceID},
 		"/api/threads/{id}/sandboxes":                         {"id": workspaceID},
+		"/api/threads/{id}/sandboxes/commands":                {"id": workspaceID},
 		"/api/threads/{id}/memory":                            {"id": workspaceID},
 		"/api/threads/{id}/artifacts":                         {"id": workspaceID},
 		"/api/threads/{id}/scratchpads":                       {"id": workspaceID},
@@ -2820,6 +2831,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/threads/{id}/share":       {"id": tid},
 		"/api/threads/{id}/publication": {"id": draftID},
 		"/api/threads/{id}/fork":        {"id": tid}, "/api/threads/{id}/bring-back": {"id": tid},
+		"/api/threads/{id}/forks": {"id": tid},
 	}
 	valid := map[string]string{
 		"/api/connections/{provider}/callback":  `{"state":"unknown","code":"code"}`,
