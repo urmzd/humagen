@@ -79,7 +79,6 @@ export function SessionWorkbench({
   const session: WorkbenchSession = { thread, runs, responses, summary, canPost };
   const shown = workbenchTabs(session, view.bench, tabs);
   const active = activeBench(view, shown);
-  const strip = useStrip<HTMLDivElement>(active?.id);
   if (!active) return null;
   const expanded = !!view.expanded;
   const View = active.view;
@@ -127,27 +126,12 @@ export function SessionWorkbench({
       }
       tabs={
         shown.length > 1 ? (
-          <div className="relative" data-testid="workbench-tabs">
-            <span aria-hidden className={tabRule} />
-            <div ref={strip} role="tablist" aria-label={words.tabs} className={tabStrip}>
-              {shown.map((tab) => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  role="tab"
-                  id={`${panel}-${tab.id}`}
-                  aria-selected={tab.id === active.id}
-                  aria-controls={panel}
-                  data-bench={tab.id}
-                  onClick={() => onView(openBench(view, tab.id))}
-                  className={benchTab}
-                >
-                  <tab.icon size={16} />
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-          </div>
+          <BenchStrip
+            panel={panel}
+            shown={shown}
+            active={active.id}
+            onOpen={(id) => onView(openBench(view, id))}
+          />
         ) : undefined
       }
     >
@@ -168,5 +152,48 @@ export function SessionWorkbench({
         </div>
       )}
     </Inspector>
+  );
+}
+
+/**
+ * The tab strip. It is a component of its own so that `useStrip` starts when
+ * the strip is on the page, which is later than the workbench: the pane
+ * draws its tabs once it has opened, and a strip that was not there when the
+ * hook started would never bring the open tab into view after a reload.
+ */
+function BenchStrip({
+  panel,
+  shown,
+  active,
+  onOpen,
+}: {
+  panel: string;
+  shown: readonly WorkbenchTab[];
+  active: WorkbenchTab["id"];
+  onOpen: (id: WorkbenchTab["id"]) => void;
+}) {
+  const strip = useStrip<HTMLDivElement>(active);
+  return (
+    <div className="relative" data-testid="workbench-tabs">
+      <span aria-hidden className={tabRule} />
+      <div ref={strip} role="tablist" aria-label={words.tabs} className={tabStrip}>
+        {shown.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            role="tab"
+            id={`${panel}-${tab.id}`}
+            aria-selected={tab.id === active}
+            aria-controls={panel}
+            data-bench={tab.id}
+            onClick={() => onOpen(tab.id)}
+            className={benchTab}
+          >
+            <tab.icon size={16} />
+            {tab.label}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
