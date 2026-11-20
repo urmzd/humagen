@@ -35,6 +35,7 @@ import {
   AgentDetail,
   AgentNetwork,
   AgentOperations,
+  AgentStore,
   Agents,
   Assignments,
   Audit,
@@ -937,6 +938,14 @@ function Console({
                         <Problem message={defaultCopy.noPermission} />
                       </Page>
                     ))}
+                  {route.page === "agent-store" && (
+                    <AgentStore
+                      canWrite={can("agents:write")}
+                      selected={route.package}
+                      onOpen={(name) => go({ page: "agent-store", package: name })}
+                      onChanged={loadAgents}
+                    />
+                  )}
                   {route.page === "agent-network" &&
                     (can("runs:read") ? (
                       <AgentNetwork
@@ -1512,7 +1521,6 @@ function Console({
                       canWrite={can("agents:write")}
                       onOpen={(name) => openAgent(name)}
                       onNew={() => openAgent(null)}
-                      onStoreChanged={loadAgents}
                       onBuilderSession={canAsk(BUILTIN_BUILDER) ? openThread : undefined}
                       onBuild={
                         canAsk(BUILTIN_BUILDER)

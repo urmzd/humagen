@@ -158,7 +158,7 @@ export const defaultCopy = {
     thisWeek: "This week",
     untitled: "Untitled conversation",
     empty: "Nothing matches these filters.",
-    emptyHint: "Start a conversation, or add agents from the Store on the Agents page.",
+    emptyHint: "Start a conversation, or add agents from the Store, under Agents.",
     loading: "Loading…",
     more: "Show More",
   },
@@ -537,7 +537,6 @@ export const defaultCopy = {
     installing: "Installing…",
     remove: "Remove",
     removing: "Removing…",
-    loading: "Reading the store",
     failed: "The store could not be read. Reload to try again.",
     empty: "This server ships no agents of its own, so the store is empty.",
     version: (version: string) => `Version ${version.replace(/^sha256:/, "").slice(0, 7)}`,
@@ -551,25 +550,24 @@ export const defaultCopy = {
     installedNote: (names: string[]) => `Added ${names.join(", ")}.`,
     removedNote: (names: string[]) => `Retired ${names.join(", ")}. Their history stays.`,
     uses: "What each agent is granted",
-    model: "Model",
     needs: "Needs",
-    calls: "May call",
-    tools: "Tools",
     modelName: (provider: string, model: string) => `${provider} / ${model}`,
-    fallback: (provider: string, model: string) => `Then ${provider} / ${model}`,
     connector: (surface: string) =>
       ({ github: "GitHub connection", slack: "Slack connection" })[surface] ??
       `${surface} connection`,
     toolServer: (name: string) => `${name} tool server`,
-    page: "Page",
-    openAgent: "Open Agent",
-    // One line on a closed agent: "anthropic / claude-sonnet-5-5 · 4 tools, GitHub connection, calls 3 agents".
-    summary: (model: string, tools: number, needs: string[], calls: number) =>
-      `${model} · ${[
-        tools === 0 ? "no tools" : `${tools} ${tools === 1 ? "tool" : "tools"}`,
-        ...needs,
-        ...(calls > 0 ? [`calls ${calls} ${calls === 1 ? "agent" : "agents"}`] : []),
-      ].join(", ")}`,
+    // The catalog and a package's own page.
+    notFound: (name: string) => `The store has no package named ${name}.`,
+    incomplete: "Incomplete",
+    changed: "Changed Here",
+    nameTaken: "Name Taken",
+    agentCount: (n: number) => `${n} ${n === 1 ? "agent" : "agents"}`,
+    agents: "Agents",
+    runsOn: "Runs on",
+    // One line for a model and the ones tried after it, in order.
+    modelChain: (names: string[]) => names.join(", then "),
+    everyAgentTools: "Every agent may use",
+    callsNamed: (names: string[]) => `Hands work to ${names.map((n) => `@${n}`).join(", ")}`,
   },
   agentSetup: {
     title: "New Agent",

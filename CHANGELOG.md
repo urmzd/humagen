@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.142.0 (2026-11-20)
+
+### Features
+
+- **threads**: imported origin and seed (#387) ([a310a33](https://github.com/urmzd/humagen/commit/a310a33c8df384a0596c9416df0cc768bfb29056))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.141.2...v0.142.0)
+
+
 ## 0.141.1 (2026-11-19)
 
 ### Bug Fixes

@@ -38,7 +38,7 @@ test("Agents holds skills and knowledge in its tabs (memory is each agent's own)
   const tabs = hubTabs("agents", route, () => true);
   assert.deepEqual(
     tabs.map((tab) => tab.label),
-    ["Agents", "Skills", "Knowledge"],
+    ["Agents", "Skills", "Knowledge", "Store"],
   );
   assert.deepEqual(
     tabs.filter((tab) => tab.active).map((tab) => tab.label),
