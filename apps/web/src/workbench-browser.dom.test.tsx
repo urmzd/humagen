@@ -324,6 +324,29 @@ test("an action the browser refused is said, and recorded as tried", async () =>
   assert.ok(screen.getByTestId("browser-shot"));
 });
 
+test("an action whose answer never arrived is recorded as outcome unknown, not as failed", async () => {
+  // The connection was cut (fetch rejects), or a gateway gave up waiting: the click may have been done.
+  for (const cut of [new TypeError("Failed to fetch"), new ApiError(504, "Request failed (504)")]) {
+    const { records, unmount } = tab({
+      answer: (action) => (action.action === "look" ? view() : cut),
+    });
+    fireEvent.click(screen.getByRole("button", { name: tabWords.look }));
+    await screen.findByTestId("browser-shot");
+    fireEvent.click(
+      within(screen.getByTestId("browser-elements")).getByRole("button", { name: /Domains/ }),
+    );
+    fireEvent.click(
+      within(screen.getByTestId("browser-chosen")).getByRole("button", { name: tabWords.click }),
+    );
+    const alert = await screen.findByRole("alert");
+    assert.equal(alert.textContent, tabWords.cut);
+    const what = tabWords.did.click(tabWords.element("link", "Domains"), "IANA help");
+    assert.deepEqual(records, [{ source: "browser", summary: tabWords.did.unknown(what) }]);
+    assert.ok(!records[0]?.summary.includes("failed"));
+    unmount();
+  }
+});
+
 test("a session with no browser to act on says so, takes the controls away and records nothing", async () => {
   const { records, asked } = tab({
     answer: () => new ApiError(404, "this session has no browser to act on"),

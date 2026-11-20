@@ -2836,6 +2836,7 @@ var copyKeyList = []string{
 	"workbenchBrowser.card.title",
 	"workbenchBrowser.card.working",
 	"workbenchBrowser.click",
+	"workbenchBrowser.cut",
 	"workbenchBrowser.did.look",
 	"workbenchBrowser.earlier",
 	"workbenchBrowser.elements",

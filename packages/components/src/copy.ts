@@ -4228,6 +4228,8 @@ export const defaultCopy = {
     /** Why the page cannot be opened from here. */
     noControl: "This session's browser cannot be opened from here",
     notKept: "Screenshots the agent took are not kept",
+    /** An action's answer never arrived. */
+    cut: "No answer arrived, so this may or may not have happened. Take a screenshot to see the page as it is.",
     /** What a person did, as their next message says it. */
     did: {
       look: "Took a screenshot",
@@ -4239,6 +4241,9 @@ export const defaultCopy = {
         `Typed ${n} ${n === 1 ? "character" : "characters"} into ${what}${submit ? " and pressed Enter" : ""}`,
       press: (key: string) => `Pressed ${key} in the browser`,
       failed: (what: string, why: string) => `Tried in the browser, and it failed: ${what}. ${why}`,
+      /** The answer never arrived, so nobody knows whether it was done. */
+      unknown: (what: string) =>
+        `Tried in the browser, outcome unknown (no answer arrived, so it may or may not have happened): ${what}`,
       page: (title: string, url: string) =>
         [title && `Page: ${title}`, url].filter(Boolean).join("\n"),
     },

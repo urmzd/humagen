@@ -112,9 +112,18 @@ export function WorkbenchBrowser({
       const why = e instanceof Error ? e.message : defaultCopy.failure.internal();
       // No browser to act on is not a failure of what was asked.
       const none = e instanceof ApiError && e.status === 404;
-      if (did && !none) record({ source: "browser", summary: words.did.failed(what, why) });
+      // No answer at all (the connection was cut, or a gateway gave up waiting)
+      // is not the browser saying no: what was asked may have been done. The
+      // agent is told that, not that it failed.
+      const cut = !(e instanceof ApiError) || e.status === 408 || e.status === 504;
+      if (did && !none)
+        record({
+          source: "browser",
+          summary: cut ? words.did.unknown(what) : words.did.failed(what, why),
+        });
       if (!live.current) return;
       if (none) setReachable(false);
+      else if (cut && did) setProblem(words.cut);
       else
         setProblem(
           e instanceof ApiError && e.status === 403 ? why || defaultCopy.noPermission : why,
