@@ -1377,10 +1377,13 @@ export function Popover({
   narrow = false,
   side,
   tooltip,
+  popup = "dialog",
   children,
   onOpen,
 }: {
   onOpen?: () => void;
+  /** What the panel holds, said on the trigger: a menu of actions, or anything else. */
+  popup?: "dialog" | "menu";
   /** The trigger's name. Leave it out when the button's own text names it. */
   label?: string;
   button: ReactNode;
@@ -1461,7 +1464,7 @@ export function Popover({
     <button
       type="button"
       aria-label={label}
-      aria-haspopup="dialog"
+      aria-haspopup={popup}
       aria-expanded={open}
       aria-controls={open ? id : undefined}
       onClick={() => {
@@ -1478,8 +1481,9 @@ export function Popover({
       ref={panel}
       data-floating-popover
       id={id}
-      role="dialog"
-      aria-label={label}
+      // A menu's panel is named by the menu inside it.
+      role={popup === "menu" ? undefined : "dialog"}
+      aria-label={popup === "menu" ? undefined : label}
       data-leaving={present.leaving}
       style={
         {
