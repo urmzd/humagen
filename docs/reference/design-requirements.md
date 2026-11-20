@@ -26,7 +26,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 
 | ID | Requirement | Status |
 | --- | --- | --- |
-| DES-076 | A session's Details pane is a workbench of tabs, and what a person does by hand in one goes with their next message | Foundation implemented: the tab registry (`workbench.ts`), the pane (`Workbench.tsx`), six tab addresses (`?panel=details&bench=`), and the record, list and fold of what was done by hand (`human-activity.ts`, `humanActivity.tsx`). Only Details is built; Browser, Terminal, Changes, Side Chat and Search are reserved slots and draw nothing yet. Evidence: `workbench.dom.test.tsx`, `room.dom.test.tsx`, `route.test.ts`, core `human-activity.test.ts`, `TestWhatWasDoneByHandTagsNobody`; seen in a browser at 1440x900 and 390x844, light and dark, with a stand-in tab that was not committed. |
+| DES-076 | A session's Details pane is a workbench of tabs, and what a person does by hand in one goes with their next message | Foundation implemented: the tab registry (`workbench.ts`), the pane (`Workbench.tsx`), six tab addresses (`?panel=details&bench=`), and the record, list and fold of what was done by hand (`human-activity.ts`, `humanActivity.tsx`). Details and Terminal are built (Terminal: `WorkbenchTerminal.tsx`, the agents' commands live from their answers and, on a docker sandbox, a command line whose commands go with the next message through `POST /api/threads/{id}/sandboxes/commands`); Browser, Changes, Side Chat and Search are reserved slots and draw nothing yet. Evidence: `workbench.dom.test.tsx`, `room.dom.test.tsx`, `route.test.ts`, core `human-activity.test.ts`, `TestWhatWasDoneByHandTagsNobody`; seen in a browser at 1440x900 and 390x844, light and dark, with a stand-in tab that was not committed. |
 | DES-069 | Conversation overview and visible work controls | Implemented: Overview, Workspace, Context and Activity header controls collapse into the menu below the conversation's 3xl breakpoint. The addressed overview folds environment, latest context, agents and run changes from existing APIs; delegated transcript calls share one collapsed disclosure. Evidence: `conversation-overview.dom.test.tsx`, `timeline.dom.test.tsx` and route round-trip tests. Live browser verification unavailable in this session. |
 | DES-059 | PR review evidence in two panes, with GitHub issue and pull request Workspace tabs | Implemented: `GitHubTab.tsx`, `github-ref.ts`, tenant-scoped `GET /api/github/pull` and `/api/github/issue`, bounded repository/SHA patch cache, workflow status, labels and comments; unit, DOM and endpoint regressions added; `conversation-review-workspace` screen registered for CI. |
 | DES-061 | Automations gather schedules and signed GitHub event rules with agent instructions | Implemented; focused Go/DOM tests and phone/desktop screen definitions; CI screens pending |
@@ -2031,6 +2031,38 @@ does not fit is said before sending and goes with the message after.
 
 Text in the workbench and in both lists is 14px or larger, and secondary text
 is `text-aui-muted`. Details' own rows keep the sizes they had.
+
+#### Terminal tab
+
+The Terminal tab is a log of every shell command the session's agents ran:
+who ran it, the command, its output and how it ended, read from each answer's
+own stream (the `shell` tool's call and result, at every depth) and live while
+an answer works. Output longer than 40 lines is folded to its last 24 and
+opens. The log opens on its last line and follows it; it is one focusable
+scrolling region that Tab leaves, named for assistive technology, and it is
+not a live region: only the outcome of the reader's own command is announced.
+It is dark in both schemes, as the console's terminal tokens are, with every
+line 14px or larger and secondary text above 7:1.
+
+Where the deployment's sandbox is contained (the `docker` kind) and the reader
+may post, the tab has a command line. A command runs with `sh -c` in an
+instance started for it alone, with the session's files, no network, no
+memory and no tool servers, for at most 15 seconds, and only while no agent
+is working; what it changed is written back under the rules a run's copyback
+follows. Each command is recorded once it ends (the command, its exit status,
+the files it changed and the end of its output) and goes with the reader's
+next message. Nothing is sent to an agent before that. A `local` or
+`unisolated` deployment, whose commands would run on the server, has no
+command line and its route refuses. The tab is in the strip once a session
+has run a command or has a sandbox. A reader's commands are kept in the page
+and are gone on reload; the message that carried them keeps them.
+
+Evidence: `workbench-terminal.dom.test.tsx`, `TestAPersonsCommand*`
+(`internal/platform`), `TestSandboxCommandRouteRunsForItsPosterAndNobodyElse`
+and the contract test (`internal/httpapi`), `TestOnlyTheDockerSandboxIsContained`;
+seen in a browser against a docker sandbox at 1280x800 and 390x844, light and
+dark: empty, the agents' log, a reader's command running and ended, the list
+above the composer, the sent message, and an agent's command running.
 
 Evidence: `workbench.dom.test.tsx` covers the registry, the strip, addresses,
 lazy tabs, the list and the collapsed note; `room.dom.test.tsx` posts a message

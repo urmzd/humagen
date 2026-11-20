@@ -141,6 +141,31 @@ export interface SessionSandbox {
   retention_days: 7;
   writable: boolean;
   reason?: string;
+  /** A person may run a command of their own here (POST sandboxes/commands): the deployment's sandbox is contained. Writable still decides whether they may now. */
+  commands: boolean;
+}
+
+export interface SandboxCommand {
+  /** Run with sh -c, starting in the conversation's files. */
+  command: string;
+}
+
+export interface SandboxCommandResult {
+  command: string;
+  /** The command's exit status, or -1 when it was stopped at the time limit. */
+  exit_code: number;
+  timed_out: boolean;
+  /** The end of stdout and stderr, as one stream: at most 16384 bytes. */
+  output: string;
+  /** Earlier output was cut. */
+  truncated: boolean;
+  duration_ms: number;
+  /** The conversation's files the command changed or removed. */
+  files: SandboxFile[];
+  /** Changed files past the ones named. */
+  more?: number;
+  /** Changes that were not kept, and why. */
+  conflicts: string[];
 }
 
 export interface RunSandbox {

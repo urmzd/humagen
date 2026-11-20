@@ -5618,6 +5618,40 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
         "413": {$ref: "#/components/responses/TooLarge"}
         "500": {$ref: "#/components/responses/ServerError"}
+  /api/threads/{id}/sandboxes/commands:
+    post:
+      operationId: runSandboxCommand
+      tags: [threads]
+      summary: Run one command a person typed in the conversation's sandbox
+      description: >-
+        The command runs with sh -c in an instance started for it alone, with
+        the conversation's files in its work directory, no network, no memory
+        and no tool servers, for at most 15 seconds. What it changed is written
+        back to the conversation's files and the instance is destroyed. It
+        runs only where the session sandbox says commands, and only while no
+        work is under way in the conversation. Nothing is sent to an agent.
+      x-permission: runs:write
+      parameters:
+        - {$ref: "#/components/parameters/ThreadID"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/SandboxCommand"}
+      responses:
+        "200":
+          description: The command ended, or was stopped at the time limit.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/SandboxCommandResult"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
+        "503": {$ref: "#/components/responses/Unavailable"}
   /api/threads/{id}/scratchpads:
     get:
       operationId: listScratchpads
@@ -11199,7 +11233,7 @@ components:
         read_only: {type: boolean}
     SessionSandbox:
       type: object
-      required: [isolated, files, bytes, retention_days, writable]
+      required: [isolated, files, bytes, retention_days, writable, commands]
       properties:
         isolated: {type: boolean, description: "Runs lease an instance of their own; false means tools work in the session directory on the host."}
         files: {type: integer, minimum: 0, maximum: 200}
@@ -11207,6 +11241,25 @@ components:
         retention_days: {type: integer, const: 7}
         writable: {type: boolean}
         reason: {type: string}
+        commands: {type: boolean, description: "A person may run a command of their own here (POST sandboxes/commands): the deployment's sandbox is contained. Writable still decides whether they may now."}
+    SandboxCommand:
+      type: object
+      required: [command]
+      properties:
+        command: {type: string, minLength: 1, maxLength: 2000, description: "Run with sh -c, starting in the conversation's files."}
+    SandboxCommandResult:
+      type: object
+      required: [command, exit_code, timed_out, output, truncated, duration_ms, files, conflicts]
+      properties:
+        command: {type: string, maxLength: 2000}
+        exit_code: {type: integer, description: "The command's exit status, or -1 when it was stopped at the time limit."}
+        timed_out: {type: boolean}
+        output: {type: string, maxLength: 65536, description: "The end of stdout and stderr, as one stream: at most 16384 bytes."}
+        truncated: {type: boolean, description: "Earlier output was cut."}
+        duration_ms: {type: integer, minimum: 0}
+        files: {type: array, maxItems: 50, items: {$ref: "#/components/schemas/SandboxFile"}, description: "The conversation's files the command changed or removed."}
+        more: {type: integer, minimum: 0, description: "Changed files past the ones named."}
+        conflicts: {type: array, maxItems: 200, items: {type: string}, description: "Changes that were not kept, and why."}
     RunSandbox:
       type: object
       required: [run, agent, depth, status, created_at, isolated, mounts, files]

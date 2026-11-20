@@ -4242,7 +4242,54 @@ export const defaultCopy = {
     },
   },
   /** The Terminal tab (WorkbenchTerminal.tsx). */
-  workbenchTerminal: {},
+  workbenchTerminal: {
+    /** The log's name, for assistive technology. */
+    log: "Commands run in this session",
+    /** Who ran a command. */
+    you: "You",
+    agent: "Agent",
+    /** How a command came out. */
+    state: {
+      queued: "Queued",
+      running: "Running",
+      waiting: "Waiting for approval",
+      exited: (code: number) => `Exit ${code}`,
+      done: "Done",
+      failed: "Did not run",
+      denied: "Not run",
+      stopped: "Stopped",
+      timed_out: "Stopped at the time limit",
+    },
+    /** One command's name, for assistive technology. */
+    entry: (who: string, command: string, state: string) => `${who} ran ${command}: ${state}`,
+    hidden: "A command you may not read",
+    cut: "Earlier output was cut.",
+    noOutput: "No output.",
+    showAll: (lines: number) => `Show All ${lines} Lines`,
+    showLess: "Show Less",
+    changed: (files: string) => `Changed: ${files}`,
+    removed: (path: string) => `${path} (removed)`,
+    notKept: (n: number) => (n === 1 ? "1 change was not kept." : `${n} changes were not kept.`),
+    /** No command has run. */
+    empty: "No commands yet",
+    toDetails: "Open Details",
+    /** The reader's own command line. */
+    input: "Command",
+    placeholder: "Run a command in the sandbox",
+    run: "Run",
+    /** Under the command line. A command leaves nothing behind but its files. */
+    fresh:
+      "Each command starts fresh in this session's files, with no network, for up to 15 seconds.",
+    busy: "You can run a command when the agents are not working.",
+    /** Said aloud when the reader's command ends. */
+    ended: (state: string, lines: number) =>
+      `${state}. ${lines === 1 ? "1 line" : `${lines} lines`} of output.`,
+    failedToRun: "The command could not be run.",
+    /** What goes with the reader's next message. */
+    ran: (command: string, outcome: string) => `Ran ${command}: ${outcome}`,
+    exit: (code: number) => `exit ${code}`,
+    timedOut: "stopped at the 15 second limit",
+  },
   /** The Changes tab (WorkbenchChanges.tsx). */
   workbenchChanges: {},
   /** The Side Chat tab (WorkbenchSidechat.tsx). */

@@ -229,6 +229,8 @@ import type {
   Run,
   RunFeedback,
   RunList,
+  SandboxCommand,
+  SandboxCommandResult,
   SaveKnowledgeVariantBody,
   SaveRunFeedbackBody,
   SaveSessionFeedbackBody,
@@ -4989,6 +4991,27 @@ to that machine only, wherever the message is read.
     let path = "/api/threads/{id}/sandboxes";
     path = path.replace("{id}", encodeURIComponent(String(id)));
     return this.rawRequest<ConversationSandboxes>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** The command runs with sh -c in an instance started for it alone, with the conversation's files in its work directory, no network, no memory and no tool servers, for at most 15 seconds. What it changed is written back to the conversation's files and the instance is destroyed. It runs only where the session sandbox says commands, and only while no work is under way in the conversation. Nothing is sent to an agent. */
+  async runSandboxCommand(id: string, body: SandboxCommand, options?: RequestOptions): Promise<SandboxCommandResult> {
+    let path = "/api/threads/{id}/sandboxes/commands";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<SandboxCommandResult>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async runSandboxCommandRaw(id: string, body: SandboxCommand, options?: RequestOptions): Promise<ApiResponse<SandboxCommandResult>> {
+    let path = "/api/threads/{id}/sandboxes/commands";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<SandboxCommandResult>("POST", path, {
+      body,
+      contentType: "application/json",
       ...options,
     });
   }

@@ -160,3 +160,13 @@ func TestARemoteDockerSandbox(t *testing.T) {
 		t.Fatalf("plain tcp lease = %v", err)
 	}
 }
+
+// Only the docker sandbox keeps a command away from this host, so only it
+// lets a person run a command of their own. Nothing else is assumed to.
+func TestOnlyTheDockerSandboxIsContained(t *testing.T) {
+	for kind, want := range map[string]bool{"": true, "docker": true, " docker ": true, "local": false, "unisolated": false, "firecracker": false} {
+		if got := (sandboxFlags{kind: &kind}).contained(); got != want {
+			t.Errorf("-sandbox=%q contained = %v, want %v", kind, got, want)
+		}
+	}
+}
