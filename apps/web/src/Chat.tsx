@@ -703,7 +703,6 @@ export function Chat({
             : words.message)
         }
         emptyText={placeholderFor}
-        disclaimer={!threadId || path.length === 0 ? null : undefined}
         queue={sending}
         autoFocus={!threadId}
         seed={seed}

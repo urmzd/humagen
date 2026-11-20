@@ -144,7 +144,6 @@ export function Composer({
   plus,
   voice,
   status,
-  disclaimer = defaultCopy.disclaimer(defaultCopy.product),
 }: {
   /**
    * What is at work here, said at the top of the box: one line for each
@@ -157,8 +156,6 @@ export function Composer({
    * send. Without it the microphone dictates with the browser's recognizer.
    */
   voice?: VoiceNotes;
-  /** The AI disclaimer, said once under the prompt bar. null leaves it out. */
-  disclaimer?: string | null;
   /** Text to start from, such as a question picked from a list. Each new object replaces what is typed. */
   seed?: ComposerSeed;
   placeholder: string;
@@ -1063,12 +1060,6 @@ export function Composer({
           )}
         </div>
       </form>
-      {/* One line under the prompt bar, the same before and after the first message. */}
-      {disclaimer && (
-        <p className="humagen-disclaimer px-1 text-center text-aui-2xs text-aui-muted">
-          {disclaimer}
-        </p>
-      )}
     </div>
   );
 }

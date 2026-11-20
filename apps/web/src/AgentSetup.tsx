@@ -70,6 +70,7 @@ function TestResult({ run, onRefresh }: { run: Run; onRefresh: () => void }) {
           timestamp={<MessageTime at={shown.created_at} />}
           stop={stop}
           capabilities={{ regenerate: false }}
+          disclaimer={false}
         />
       </WebSurface>
       <Problem message={problem} />

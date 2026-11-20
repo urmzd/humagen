@@ -29,12 +29,7 @@ function setup() {
   function Compose() {
     const queue = useQueue({ onStart: (m) => sent.push(m.text), onInterrupt: () => {} });
     return (
-      <Composer
-        placeholder="Message"
-        queue={queue}
-        tags={{ label: words.typeahead, options }}
-        disclaimer={null}
-      />
+      <Composer placeholder="Message" queue={queue} tags={{ label: words.typeahead, options }} />
     );
   }
   render(<Compose />);

@@ -273,12 +273,7 @@ export function WorkbenchSidechat({
   const box = canPost && !chat?.missing && (chat || through) && (
     <div className="flex flex-col gap-2 px-4 pb-4" data-testid="sidechat-composer">
       <Problem message={problem} />
-      <Composer
-        placeholder={words.placeholder}
-        emptyText={words.placeholder}
-        queue={queue}
-        disclaimer={null}
-      />
+      <Composer placeholder={words.placeholder} emptyText={words.placeholder} queue={queue} />
     </div>
   );
 
