@@ -158,7 +158,7 @@ humagen import agents --provider anthropic --model claude-sonnet-5-5
 | --- | --- | --- |
 | `sessions` | Claude Code sessions (`~/.claude/projects/*/*.jsonl`), Codex sessions (`~/.codex/sessions` and `~/.codex/archived_sessions`, plain or `.zst`), and with `--export` a `conversations.json` from a ChatGPT or claude.ai data export | One knowledge document per session, in sources named `sessions-TOOL-YYYY-MM` by the month the session started. `POST /api/knowledge`, then `POST /api/knowledge/{name}/documents` |
 | `skills [DIR]` | Each folder under `DIR` that holds a `SKILL.md`. `DIR` defaults to `~/.agents/skills`, the store [agentspec](https://github.com/urmzd/agentspec) keeps | One draft per skill the library lacks, with the folder's files, and one new draft revision per skill whose folder changed since it was imported. `GET /api/library/skills`, then `POST /api/library/skills` |
-| `agents [DIR]` | Each Markdown agent file in `DIR` with YAML frontmatter, as Claude Code, Copilot and agentspec write them. `DIR` defaults to `~/.agents/agents` | One agent per file: its `name` and `description` from the frontmatter, its text as the system prompt. `POST /api/agents` |
+| `agents [DIR]` | Each Markdown agent file in `DIR` with YAML frontmatter, as Claude Code, Copilot and agentspec write them. `DIR` defaults to `~/.agents/agents` | One agent per file: its `name` and `description` from the frontmatter, its text as the system prompt. Every other field is named as not carried. `POST /api/agents` |
 
 A session's document holds what was asked, what was answered, one line per
 tool call (the tool and what it ran or read) and the start of each tool's
@@ -457,8 +457,16 @@ library reads the frontmatter the skill standard names (`name`, `description`,
 `license`, `compatibility`, `metadata`, `allowed-tools`). A `SKILL.md` it cannot
 read because of other fields, such as one assistant's `arguments` list, is
 drafted with only those, and the command names each field it left out. Hidden files are left out. A skill is
-drafted with no tools permitted; choose its tools, test it and publish it under
-Library, Skills. A scope holds at most 256 skills: past that the command names
+drafted with no tool list, so it does not limit the tools of a run that uses
+it: the agent's own grants apply. A `SKILL.md` that declares `allowed-tools`
+limits them to the tools it names that the agent holds, and `allowed-tools: ""`
+allows none. A `SKILL.md` that declares more than 128 tools, or a name over
+128 characters, is not drafted: it is named under `failed` with the bound, by
+a dry run too. Whatever its tools, a run that uses the skill reads its
+supporting files with `skill_file_read`, which needs no grant and no approval.
+Skills imported since v0.138.1 change what they limit; see the
+[upgrade notes](../guides/deploy.md#upgrading-what-an-imported-skill-limits).
+Test it and publish it under Library, Skills. A scope holds at most 256 skills: past that the command names
 the ones it left out.
 
 A second import compares each folder with the newest revision the library
@@ -533,6 +541,66 @@ and neither names anything on this server. So `agents` needs `--provider` and
 no tools: grant what it needs under Agents. The file's `model` and `tools` are
 not sent.
 
+An agent carries its `name`, its `description` (on one line) and its text as
+the system prompt. Every other frontmatter field, and a `name` or
+`description` that is not text, is not carried. The command names those
+fields, by name and never by value, for each file it creates an agent from or
+finds the agent of already there, in one line a file, and a second line for
+the hooks and permission rules among them (`hooks`, `permissions`,
+`permissionMode`, `disallowedTools`, in any case or with `-` or `_`). It
+explains each kind once, at the end of the run:
+
+```text
+Created 3 agents on anthropic claude-sonnet-5-5; 0 already there, 0 failed.
+  guarded.md: not carried: color, effort, hooks, model, permissionMode,
+    permissions, tools
+  guarded.md: not enforced: hooks.PreToolUse, permissionMode,
+    permissions.allow, permissions.deny
+  reviewer.md: not carried: model, tools
+Hooks are not enforced: Humagen does not run a file's hook commands. A check
+  before a tool call is set with the agent's approvals, under Agents, and with
+  Ask or Never under Operations, Action Policies. Nothing stands in for a hook
+  that runs after a call or when a turn stops.
+Permission rules are not enforced: no rule of a file is applied. An agent has
+  only the tools granted to it under Agents, where its approvals are set, and
+  Ask or Never for a kind of action is set under Operations, Action Policies.
+  A rule on one command or path has no equivalent.
+Next: each agent has no tools. Grant what it needs under Agents.
+```
+
+(The command prints each file's line whole; it is wrapped here.) Under
+`hooks` and `permissions` only the known names are shown: the hook events,
+such as `PreToolUse`, and `allow`, `deny`, `ask`, `defaultMode` and
+`additionalDirectories`. Any other key is counted, as `1 other permissions
+entry`, since a rule or a command may be written as a key. A name that is not
+plain printable text, such as one holding an escape sequence or a line break,
+is printed quoted (`"\x1b[8mhidden"`); an empty one is `(empty)`; one longer
+than 64 characters is cut, with `...` after it; and a line names at most 40
+fields, then `and N more`. The skills import prints the names in its lines
+the same way. A dry run prints the same lines. A second import prints them
+again for each agent already there, since whether that agent was made from
+the file as it now is is not known.
+
+Two files that name one agent are not merged: the first, by file name, is
+the one imported, as for skills, and the other is reported as `skipped
+b.md: it names the agent same, which a.md gives`, with nothing sent for it.
+
+A file whose frontmatter cannot be read fails with the reason, which quotes
+nothing of the file:
+
+| Reason | When |
+| --- | --- |
+| `does not start with YAML frontmatter` | The first line is not `---` |
+| `has frontmatter with no closing --- line` | No later line is `---` alone, trailing spaces aside. A line such as `---x` does not close it |
+| `has empty frontmatter` | Nothing between the two lines |
+| `has more than one YAML document in its frontmatter` | A document end (`...`) followed by more |
+| `has frontmatter that repeats a key` | A key given twice |
+| `has frontmatter that is not a YAML mapping` | A list or a single value |
+| `has more than 1000 frontmatter fields` | |
+| `has frontmatter that is not valid YAML` | Anything else the parser refuses |
+
+Fields not carried and skipped files do not change the exit code.
+
 `sessions` needs `knowledge:read` and `knowledge:write`, and
 `knowledge:import` as well to keep each session's structure: an import
 needs both `knowledge:import` and `knowledge:write` (the built-in `manager`
@@ -552,5 +620,12 @@ it. In a dry run that could not read the library it is every valid skill
 folder, as a dry run printed before it read the library: it equals
 `unknown`, `added` is empty, and `library_unread` holds the reason. New
 programs read `added` and `unknown`.
+
+With `--json`, `agents` prints `created`, `present`, `skipped` (each with its
+`file`, the agent's `name` and the file it is `from`), `failed`, and by file:
+`reduced` (every field not carried), `not_enforced` (the hook and permission
+fields among them, as `hooks.PreToolUse` or `permissions.deny`) and
+`not_enforced_other` (the count of other entries under each such field). JSON
+holds each name as it is, with no cut and no cap.
 
 # CLI

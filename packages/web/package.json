@@ -1,6 +1,6 @@
 {
   "name": "@humagen/web",
-  "version": "0.143.0",
+  "version": "0.144.0",
   "private": true,
   "type": "module",
   "description": "Web-only agent chat: message frame, reasoning, conversation, prompt bar, live turn hooks. Slack has native equivalents.",

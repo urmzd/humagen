@@ -248,19 +248,19 @@ test("pin and unpin move one active conversation and retain focus on its action"
   );
   assert.ok(
     within(pinned)
-      .getByRole("button", { name: /^Quarterly report/ })
+      .getByRole("link", { name: /^Quarterly report/ })
       .getAttribute("aria-current") === "page",
   );
-  assert.equal(screen.getAllByRole("button", { name: /^Quarterly report/ }).length, 1);
+  assert.equal(screen.getAllByRole("link", { name: /^Quarterly report/ }).length, 1);
   assert.equal(visited.length, 0, "pinning does not navigate away from the active conversation");
   await choose("Quarterly report", "Unpin");
   await waitFor(() => assert.ok(!pinnedRegion(), "Pinned is still shown"));
   const restored = await manage("Quarterly report");
   await waitFor(() => assert.equal(document.activeElement === restored, true));
   assert.equal(screen.queryByRole("region", { name: "Pinned" }), null);
-  assert.equal(screen.getAllByRole("button", { name: /^Quarterly report/ }).length, 1);
+  assert.equal(screen.getAllByRole("link", { name: /^Quarterly report/ }).length, 1);
   assert.equal(
-    screen.getByRole("button", { name: /^Quarterly report/ }).getAttribute("aria-current"),
+    screen.getByRole("link", { name: /^Quarterly report/ }).getAttribute("aria-current"),
     "page",
   );
   assert.deepEqual(
@@ -282,7 +282,7 @@ test("unpinning the active conversation keeps it visible when it is older than t
   const pin = await manage("Older active conversation");
   await waitFor(() => assert.equal(document.activeElement === pin, true));
   assert.equal(screen.queryByRole("region", { name: "Pinned" }), null);
-  assert.equal(screen.getAllByRole("button", { name: /^Older active conversation/ }).length, 1);
+  assert.equal(screen.getAllByRole("link", { name: /^Older active conversation/ }).length, 1);
 });
 
 test("keyboard unpin returns to the conversation filter when an older unselected row leaves the page", async () => {
@@ -440,7 +440,7 @@ test("a conversation row is its title alone: who took part, its project and its 
     "GET /api/threads": () => ({ threads: [conversation], next: null }),
   });
   render(<Pins />);
-  const row = await screen.findByRole("button", { name: /^Launch checklist/ });
+  const row = await screen.findByRole("link", { name: /^Launch checklist/ });
   assert.match(row.textContent ?? "", /^Launch checklist/);
   assert.doesNotMatch(row.textContent ?? "", /lead|helper|ada|mira/);
   assert.equal(
@@ -466,7 +466,7 @@ test("Archive hides a conversation for the reader at once, and Delete asks once 
   fireEvent.click(await screen.findByRole("menuitem", { name: /^Archive/ }));
   await waitFor(() =>
     assert.ok(
-      !screen.queryByRole("button", { name: /^Quarterly report/ }),
+      !screen.queryByRole("link", { name: /^Quarterly report/ }),
       "the archived row is still listed",
     ),
   );
@@ -476,11 +476,11 @@ test("Archive hides a conversation for the reader at once, and Delete asks once 
   fireEvent.click(await screen.findByRole("menuitem", { name: /^Delete/ }));
   assert.ok(screen.getByText(/removed once an admin approves/));
   assert.ok(
-    screen.queryByRole("button", { name: /^Old draft/ }),
+    screen.queryByRole("link", { name: /^Old draft/ }),
     "nothing happens before the second Delete",
   );
   fireEvent.click(screen.getByRole("button", { name: "Delete" }));
-  await waitFor(() => assert.ok(!screen.queryByRole("button", { name: /^Old draft/ })));
+  await waitFor(() => assert.ok(!screen.queryByRole("link", { name: /^Old draft/ })));
   const archives = net.seen.filter((r) => r.method === "POST" && r.path.endsWith("/archive"));
   assert.deepEqual(
     archives.map((r) => [r.path, (r.body as { delete_now: boolean }).delete_now]),

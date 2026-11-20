@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/library"
 	"github.com/urmzd/humagen/pkg/projects"
@@ -29,6 +30,10 @@ type skillView struct {
 	// hashes the same holds the same package. Empty for a revision from
 	// before packages, which holds instructions only.
 	PackageHash string `json:"package_hash,omitempty"`
+	// TestResults are the verdicts of an unpublished revision's finished
+	// tests, among those its reader may see (platform.SkillTestResults).
+	// Only a skill's history carries them.
+	TestResults []platform.SkillTestResult `json:"test_results,omitempty"`
 }
 
 // skillView hashes the package before a caller drops its files.
@@ -116,6 +121,10 @@ func (s *Server) getLibrarySkill(w http.ResponseWriter, r *http.Request, who aut
 	views := make([]skillView, len(rows))
 	for i := range rows {
 		views[i] = s.skillView(who, rows[i])
+		if views[i].TestResults, err = s.P.SkillTestResults(who, rows[i]); err != nil {
+			s.problem(w, err)
+			return
+		}
 	}
 	ok(w, 200, map[string]any{"revisions": views})
 }

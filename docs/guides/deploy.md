@@ -147,6 +147,35 @@ Rolling forward again reads every record as before. This release, and every
 one after it, lists the rest of a scope when one record cannot be read, and
 names that record under `unreadable`.
 
+### Upgrading: what an imported skill limits
+
+From this release a skill drafted by `humagen import skills` limits the tools
+of a run that uses it only as its `SKILL.md` declares in `allowed-tools`
+([managed library](../architecture/managed-library.md#skills-are-immutable-packages)).
+Before, the import wrote an empty tool list whatever the folder said, which
+gave a run no tools at all, `file_read` included, so a skill could not read
+its own supporting files.
+
+- **Skills that change**: every revision an import wrote since v0.138.1, the
+  first release that marks an import (`via: import`). Such a revision whose
+  `SKILL.md` declares no `allowed-tools`, published and named in a message or
+  bound as an agent's default, now leaves a run the agent's own tools where
+  it left none; one that declares `allowed-tools` limits a run to those of
+  them the agent holds. The library answers each with that limit, and the
+  next write of its record stores it.
+- **Skills that do not change**: a revision imported before v0.138.1 carries
+  no import mark, keeps its empty list, and still gives a run no tool. A
+  revision saved in the editor, or promoted from one, keeps its list.
+
+Every run whose skills have supporting files is now offered
+`skill_file_read`, which reads only those files. To give a skill imported
+before v0.138.1 the agent's tools, open it under Library, Skills, clear
+"Limit the tools of a run that uses this skill" under Allowed Tools, save,
+test and publish the new revision. An import now refuses a `SKILL.md` that
+declares more than 128 tools, or a name over 128 characters, and names the
+bound. A release before this one reads a revision with more than 32 tools as
+`unreadable` ([library skills past the earlier bounds](#upgrading-library-skills-past-the-earlier-bounds)).
+
 ### Upgrading: knowledge source ids
 
 From this release each knowledge source has an id
