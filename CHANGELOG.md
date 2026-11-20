@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.154.0 (2026-11-20)
+
+### Features
+
+- **slack**: the app the server starts acts for the people the spec maps (#450) ([ae777b0](https://github.com/urmzd/humagen/commit/ae777b012f12f4d5cd02db50ad6305837490642e))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.153.0...v0.154.0)
+
+
 ## 0.153.0 (2026-11-20)
 
 ### Features
