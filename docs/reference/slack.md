@@ -290,7 +290,9 @@ above it. A project they see only through `*`, or only through
 recently first and then in the tree's order, archived ones left out, and the
 rest counted in "N more in Projects", which links the console's Projects. Each
 opens its page in the console when the app has the console's address
-(`HUMAGEN_PUBLIC_URL`). Without one, what needs them has Review, which sends the
+(`HUMAGEN_PUBLIC_URL`). An address on the app's own machine, such as
+`localhost` or `127.0.0.1`, counts as none: nobody else in Slack can open it,
+so the app says so at start and posts no console links. Without one, what needs them has Review, which sends the
 message to their direct messages with the app, where it can be answered, and
 What's new and Your projects are shown to read. A press on what Review sent is
 the person's own, done for them through the client even where the app may read
