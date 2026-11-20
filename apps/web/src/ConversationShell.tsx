@@ -18,7 +18,7 @@ import {
   type Thread,
 } from "./api.ts";
 import { ConversationAccess } from "./ConversationAccess.tsx";
-import { ForkContext } from "./ForkConversation.tsx";
+import { ForkContext, ImportContext } from "./ForkConversation.tsx";
 import { SessionReferences } from "./MessageRefs.tsx";
 import { PersonMark } from "./PersonMark.tsx";
 import { ProjectContextPreview } from "./ProjectContextPreview.tsx";
@@ -387,6 +387,7 @@ export function ConversationInfo({
       ) : panel === "context" ? (
         <div className="flex flex-col gap-6">
           <ForkContext thread={thread} />
+          <ImportContext thread={thread} />
           <Tabs
             label={words.contextSections}
             value={selected}

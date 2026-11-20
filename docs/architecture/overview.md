@@ -634,7 +634,13 @@ no digest until it is imported again: a client continues it naming no
 structure digest, and the conversation pins the digest of the trusted
 structure it reads. Once a document records a digest, a continuation must
 name it, so a structure written after the person read the document refuses
-it. The console's Continue Conversation is still to come.
+it. The console offers this as Continue Conversation in the menu of an
+imported session's document on its source's page (`apps/web/src/Knowledge.tsx`):
+it sends both digests from the listing and the project the source is filed in,
+and opens the new conversation, which names its source and document, says what
+was sent and what was left out, when the conversation ran in its tool, and
+whether the document has changed since (`ImportContext` in
+`apps/web/src/ForkConversation.tsx`, the counts in `packages/adapter/src/imported.ts`).
 It starts a private plain thread of the caller's, in the source's project
 (the one it is scoped to, else the one it is attached to, else the workspace
 itself), holding the conversation's origin (`Thread.import`, read only in the
@@ -709,7 +715,10 @@ imported included, an untrusted structure of such a document is refused, and
 a reader who cannot see the source is given neither digest; the store
 records the digest with every write, and a listing reads no structure (the
 reads are counted), on memory and Postgres (`pkg/knowledge`). The console's
-Continue Conversation is not built.
+Continue Conversation: which documents offer it, the request it sends, each
+refusal's words and the conversation's origin and counts, in
+`apps/web/src/continue-import.dom.test.tsx` and
+`packages/adapter/src/imported.test.ts` (DES-076).
 
 `humagen import agents` carries an agent file's `name`, `description` and
 text, and nothing else: the agent runs on `--provider` and `--model`, with no
