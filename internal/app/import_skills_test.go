@@ -1,6 +1,7 @@
 package app
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -76,6 +77,21 @@ func skillsJSON(t *testing.T, args ...string) (skillsResult, error) {
 	var res skillsResult
 	if jerr := json.Unmarshal([]byte(out), &res); jerr != nil {
 		t.Fatalf("json = %v, err = %v\n%s", jerr, err, out)
+	}
+	return res, err
+}
+
+// skillsJSONAside is skillsJSON for a goroutine the test started. It touches
+// no testing.T: T.Setenv and T.Fatalf belong to the test's own goroutine, and
+// two imports calling them at once is a data race in the test. The caller
+// clears HUMAGEN_TOKEN first, on the test's goroutine. Output that is not the
+// JSON result comes back as the error.
+func skillsJSONAside(args ...string) (skillsResult, error) {
+	var out bytes.Buffer
+	err := importCmd(append([]string{"skills", "--json"}, args...), &out)
+	var res skillsResult
+	if jerr := json.Unmarshal(out.Bytes(), &res); jerr != nil {
+		return res, fmt.Errorf("output is not the JSON result: %v (import error %v)\n%s", jerr, err, out.String())
 	}
 	return res, err
 }
@@ -289,6 +305,7 @@ func TestTwoSkillImportsAtOnceLeaveOneDraft(t *testing.T) {
 			api.mu.Lock()
 			api.skillGate = 2
 			api.mu.Unlock()
+			t.Setenv("HUMAGEN_TOKEN", "")
 			results := make([]skillsResult, 2)
 			errs := make([]error, 2)
 			var wg sync.WaitGroup
@@ -297,7 +314,7 @@ func TestTwoSkillImportsAtOnceLeaveOneDraft(t *testing.T) {
 				wg.Add(1)
 				go func() {
 					defer wg.Done()
-					results[i], errs[i] = skillsJSON(t, dir, "--server", server.URL)
+					results[i], errs[i] = skillsJSONAside(dir, "--server", server.URL)
 				}()
 			}
 			wg.Wait()
@@ -427,9 +444,10 @@ func TestAnImportHeldAfterItsListNeverDraftsOverAnotherImportsDraft(t *testing.T
 			var heldErr error
 			done := make(chan struct{})
 			heldDir, winnerDir := depot(t, "The code word is "+tc.held+"."), depot(t, "The code word is "+tc.winner+".")
+			t.Setenv("HUMAGEN_TOKEN", "")
 			go func() {
 				defer close(done)
-				held, heldErr = skillsJSON(t, heldDir, "--server", server.URL)
+				held, heldErr = skillsJSONAside(heldDir, "--server", server.URL)
 			}()
 			<-api.listReached
 			// The held import has read the library. Another drafts.

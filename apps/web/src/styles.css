@@ -552,7 +552,16 @@ button.humagen-tick:focus-visible {
 .humagen-sidebar-reveal {
   animation: humagen-fade var(--humagen-dur) var(--humagen-ease-out) 60ms backwards;
 }
+/* A section's sticky label. The drawer on a phone is glass over the dimmed page, so there the label is glass too. */
+.humagen-sidebar-label {
+  background: var(--humagen-plane);
+}
 @media (max-width: 47.99rem) {
+  .humagen-sidebar-label {
+    background: var(--aui-chrome-bg);
+    -webkit-backdrop-filter: blur(var(--aui-chrome-blur)) saturate(var(--aui-chrome-saturate));
+    backdrop-filter: blur(var(--aui-chrome-blur)) saturate(var(--aui-chrome-saturate));
+  }
   .humagen-sidebar {
     animation: humagen-drawer-left var(--humagen-dur-slow) var(--humagen-ease-out) backwards;
   }
