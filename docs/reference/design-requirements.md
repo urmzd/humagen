@@ -26,6 +26,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 
 | ID | Requirement | Status |
 | --- | --- | --- |
+| DES-076 | A session's Details pane is a workbench of tabs, and what a person does by hand in one goes with their next message | Foundation implemented: the tab registry (`workbench.ts`), the pane (`Workbench.tsx`), six tab addresses (`?panel=details&bench=`), and the record, list and fold of what was done by hand (`human-activity.ts`, `humanActivity.tsx`). Only Details is built; Browser, Terminal, Changes, Side Chat and Search are reserved slots and draw nothing yet. Evidence: `workbench.dom.test.tsx`, `room.dom.test.tsx`, `route.test.ts`, core `human-activity.test.ts`, `TestWhatWasDoneByHandTagsNobody`; seen in a browser at 1440x900 and 390x844, light and dark, with a stand-in tab that was not committed. |
 | DES-069 | Conversation overview and visible work controls | Implemented: Overview, Workspace, Context and Activity header controls collapse into the menu below the conversation's 3xl breakpoint. The addressed overview folds environment, latest context, agents and run changes from existing APIs; delegated transcript calls share one collapsed disclosure. Evidence: `conversation-overview.dom.test.tsx`, `timeline.dom.test.tsx` and route round-trip tests. Live browser verification unavailable in this session. |
 | DES-059 | PR review evidence in two panes, with GitHub issue and pull request Workspace tabs | Implemented: `GitHubTab.tsx`, `github-ref.ts`, tenant-scoped `GET /api/github/pull` and `/api/github/issue`, bounded repository/SHA patch cache, workflow status, labels and comments; unit, DOM and endpoint regressions added; `conversation-review-workspace` screen registered for CI. |
 | DES-061 | Automations gather schedules and signed GitHub event rules with agent instructions | Implemented; focused Go/DOM tests and phone/desktop screen definitions; CI screens pending |
@@ -2004,3 +2005,43 @@ when there is nothing to show or no permission; `session-ux.dom.test.tsx` and
 and `home-made` pass at 1280x800 and 390x844 in light and dark. Artifact
 cards show no preview of their content. A strip that cannot be read says so in
 one line.
+
+### DES-076: The session workbench and what a person did by hand
+
+The pane a session's Details control opens is a workbench. Details (progress,
+agents, outputs, environment, what was used) is its first tab and keeps the
+pane's address; every other tab is `?bench=` with its own selection in
+`?benchRef=`. A tab is declared once in `apps/web/src/workbench.ts`: its view,
+read on first use, whether the session has anything for it, and whether it lays
+out its own height. A tab with nothing to show is left out of the strip, and
+with only Details to show there is no strip. Details is narrow; any other tab is
+wide, and the pane can fill the page. On a phone it is the Inspector's sheet with
+the same tabs. Files stay in the Workspace pane, which Details opens them in.
+
+Anything a person does by hand in a tab is recorded for the conversation, listed
+above the composer where each line can be removed, and folded into the next
+message they send as a section at its end, so the agent reads one message that
+covers it. Nothing is sent before they submit; the list is cleared once the
+message is posted and kept when the post fails. The API has no field for it, so
+it rides in the text, its entries in a code block that the platform never reads
+for tags. A thread draws the section closed under the person's words. At most
+50 records are kept per conversation; a summary is 200 characters, a detail 600,
+and the section 4000 or what the person's words leave of the API's 8000. What
+does not fit is said before sending and goes with the message after.
+
+Text in the workbench and in both lists is 14px or larger, and secondary text
+is `text-aui-muted`. Details' own rows keep the sizes they had.
+
+Evidence: `workbench.dom.test.tsx` covers the registry, the strip, addresses,
+lazy tabs, the list and the collapsed note; `room.dom.test.tsx` posts a message
+that carries what was done, checks a failed post keeps it and that the posted
+message shows it closed; `route.test.ts` round-trips the addresses; core
+`human-activity.test.ts` covers the store, the fold, the limits and the reader;
+`TestWhatWasDoneByHandTagsNobody` checks the platform reads no tag from the
+section. Seen in Chrome against a local server at 1440x900 and 390x844, light
+and dark: Details with no strip as shipped, and with a stand-in second tab (not
+committed) the strip, the wide and filled pane, the list above the composer, and
+the posted message closed and open. Not seen: a tab's failure to load, the
+overflow line, and Details before this change at the same size. The five tabs
+are separate changes. The contract for them is
+[workbench.md](../architecture/workbench.md).

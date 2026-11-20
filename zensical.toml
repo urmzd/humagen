@@ -10,6 +10,7 @@ nav = [
   { "Use the workspace" = [
     { "Projects and people" = "architecture/company-workspace.md" },
     { "Conversations" = "architecture/conversation-workspace.md" },
+    { "Session workbench" = "architecture/workbench.md" },
     { "How agents call each other" = "architecture/agent-calls.md" },
     { "GitHub and Slack" = "guides/integrations.md" },
   ] },

@@ -8,6 +8,7 @@
 | [Projects](architecture/projects.md) | Architecture | Design of record for nested projects, policies, agents, inboxes and shared threads |
 | [Company, personal work and finding help](architecture/company-workspace.md) | Architecture | The Company root project, personal projects, publishing work and Find Help |
 | [Conversation workspace](architecture/conversation-workspace.md) | Architecture | The conversation page, activity and deliverables in the console |
+| [Session workbench](architecture/workbench.md) | Architecture | The tabbed pane beside a session, how to add a tab, and how what a person did by hand reaches the agent |
 | [Agent calls](architecture/agent-calls.md) | Architecture | How an answering agent calls other agents with the `agent` tool |
 | [Agent operations](architecture/agent-operations.md) | Architecture | Agent controls, action policies, assignments and handoff contracts |
 | [Security](architecture/security.md) | Architecture | Callers, roles, rules the code holds, credentials, inbox and break-glass reads |
