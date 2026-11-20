@@ -7,6 +7,7 @@ import {
   type Judgement,
   type UiAction,
 } from "@humagen/core";
+import { schedulePreview } from "./schedule.ts";
 
 /**
  * A question a run is parked on, as one shape for every surface: on the run
@@ -246,12 +247,15 @@ export function interruptOf(q: WireQuestion, settled?: Settled): Interrupt | nul
     case "approval": {
       const args = argsOf(q);
       const judgement = q.judgement ? judgementOf(q.judgement) : undefined;
+      // A schedule an agent proposes reads in words: what it checks, how often, where it posts, when it runs next.
+      const preview = schedulePreview(q.tool?.name ?? "", args, q.agent);
       return {
         type: "approval",
         id: q.id,
         summary: q.prompt,
         tool: q.tool?.name ?? "",
         ...(args ? { args } : {}),
+        ...(preview ? { preview } : {}),
         ...(q.expires_at ? { expiresAt: q.expires_at } : {}),
         // Every surface says a call that acts as the person does, and none offers an edit of it.
         ...(q.tool?.acts_for_person === true ? { actsForPerson: true } : {}),

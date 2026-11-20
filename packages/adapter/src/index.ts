@@ -9,4 +9,5 @@ export * from "./home.ts";
 export * from "./mail.ts";
 export * from "./question.ts";
 export * from "./run.ts";
+export * from "./schedule.ts";
 export * from "./usage.ts";
