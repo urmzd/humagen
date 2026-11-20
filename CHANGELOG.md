@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.162.0 (2026-11-20)
+
+### Features
+
+- **console**: approvals are one control that opens a menu of the modes (#459) ([ea6ace9](https://github.com/urmzd/humagen/commit/ea6ace98edb091e2cf406126f16d6d1710e57750))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.161.0...v0.162.0)
+
+
 ## 0.161.0 (2026-11-20)
 
 ### Features
