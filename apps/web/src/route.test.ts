@@ -395,6 +395,17 @@ test("consolidated hubs preserve addressed handoffs and filtered assignments", (
   assert.deepEqual(at("/assignments"), { page: "sessions" });
 });
 
+test("the store and each of its packages has an address", () => {
+  assert.equal(href({ page: "agent-store" }), "/agent-store");
+  assert.deepEqual(at("/agent-store"), { page: "agent-store" });
+  // A package's name keeps its slash in the path.
+  const review = { page: "agent-store", package: "humagen/review" } as const;
+  assert.equal(href(review), "/agent-store/humagen/review");
+  assert.deepEqual(at(href(review)), review);
+  assert.deepEqual(at(`/agent-store/${"a".repeat(201)}`), { page: "agent-store" });
+  assert.equal(documentTitle(review), "Store - Humagen");
+});
+
 test("models are chosen per agent: old shared-chain addresses land on the agents", () => {
   assert.deepEqual(parse("/agent-models"), { page: "agents" });
   assert.deepEqual(parse("/settings/models"), { page: "agents" });

@@ -239,6 +239,8 @@ export type Route =
     }
   | { page: "assignments"; id?: string; agent?: string }
   | { page: "agent-network"; handoff?: string }
+  /** Agents › Store: the catalog of packages, or one package's page by its name (`humagen/review`). */
+  | { page: "agent-store"; package?: string }
   | { page: "agent-control"; agent?: string }
   | { page: "action-policy"; scope?: "workspace" | "agent" | "project" | "personal"; name?: string }
   | {
@@ -335,6 +337,7 @@ const PAGE_TITLES: Record<Page, string> = {
   operations: "Operations",
   assignments: "Assignments",
   "agent-network": "Agent Network",
+  "agent-store": defaultCopy.agentStore.title,
   "agent-control": "Agent Controls",
   "action-policy": "Action Policies",
   audit: "Audit",
@@ -460,6 +463,9 @@ export function href(r: Route): string {
       return `${r.id ? `/assignments/${enc(r.id)}` : "/assignments"}${r.agent ? `?agent=${enc(r.agent)}` : ""}`;
     case "agent-network":
       return r.handoff ? `/agent-network/handoffs/${enc(r.handoff)}` : "/agent-network";
+    case "agent-store":
+      // A package's name has a slash of its own, kept as one in the path.
+      return r.package ? `/agent-store/${r.package.split("/").map(enc).join("/")}` : "/agent-store";
     case "agent-control":
       return r.agent ? `/agents/${enc(r.agent)}/control` : "/agent-controls";
     case "agent-setup":
@@ -845,6 +851,10 @@ function read(pathname: string, search: string): Route {
         : { page: "sessions" };
     case "agent-network":
       return a === "handoffs" && b ? { page: "agent-network", handoff: b } : { page: "agents" };
+    case "agent-store": {
+      const name = parts.slice(1).join("/");
+      return { page: "agent-store", package: name && name.length <= 200 ? name : undefined };
+    }
     case "agent-controls":
       return { page: "agent-control" };
     case "agent-models":
