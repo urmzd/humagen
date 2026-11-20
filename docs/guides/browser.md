@@ -90,7 +90,7 @@ prove that the model saw the screenshot. In this pinned version, specifying
 
 ## Compare an uploaded screenshot with a changed page
 
-With the Claude Code profile below, first attach the original PNG to a message
+With `examples/browser/humagen.yaml`, first attach the original PNG to a message
 for the browser agent and ask it to inspect only that image. For example:
 
 ```text
@@ -112,8 +112,8 @@ original image and report what is outside the captured viewport.
 ```
 
 Replace the tab address and action with the actual authorized target. The
-profile's image-only instruction avoids opening the browser for the first
-answer. Browser/tab access still has the authorization limits described above.
+first message's own instruction keeps the agent from opening the browser for
+its first answer; the helper below checks that it made no tool call. Browser/tab access still has the authorization limits described above.
 Color names are visual estimates; this is not a pixel-diff regression service.
 
 ### Check the comparison
@@ -126,13 +126,14 @@ follow-up to that same session. The approved fixture action really changes
 yellow/purple panels to green/orange. The forwarding observer must see PNG
 image blocks both before and after that action at the requested dimensions.
 Each case retains the upload hash, first answer, follow-up answer and events
-alongside the before/after page captures. It also retains the existing tab,
-download-byte and outside-directory refusal checks.
+alongside the before/after page captures. It also retains the existing tab and
+download-byte checks.
 
-The real model and connector passed all four size/theme cases on a generated
-local fixture. This does not cover a real user's screenshot, every pixel of a
-long page, a third-party portal or this two-step workflow through the console.
-The checked path uses the message API and the signed-in local program.
+A real model and connector passed all four size/theme cases on a generated
+local fixture before #383, through the removed Claude Code profile. The helper
+now runs the native profile and has not been rerun since. This does not cover
+a real user's screenshot, every pixel of a long page, a third-party portal or
+this two-step workflow through the console.
 
 ## Run acceptance against the real connector
 
@@ -162,42 +163,21 @@ appearance. Open both images in every pair before approval. These are synthetic
 fixture pages, not evidence of a signed-in portal.
 
 
-## Use an existing Claude Code account
-
-`examples/browser/claude-code.yaml` uses the signed-in Claude Code account and
-connects its browser MCP client to the same loopback worker. Set its
-`claude-code.dir` to an existing dedicated download directory, then start it with:
-
-```sh
-humagen start -f examples/browser/claude-code.yaml
-```
-
-No separate model API key is required. This profile allows twelve named browser
-tools and built-in Read/Glob for that directory, and supplies one strict MCP
-configuration. It requires a Claude Code version with `--restricted` (tested
-with 2.1.326). That mode confines built-in file tools to the working directories
-and ignores user, project and local settings; managed settings still apply.
-The acceptance actually attempts an outside-directory Read and verifies refusal.
-This does not establish that every other customization is disabled. External
-program permissions govern these tools, not Humagen's native sandbox or MCP
-grants. The connected browser's tabs and origins are not confined by this file
-control. Use real workspace sign-in for an authenticated browser, as above.
+## Downloads
 
 For an existing CDP browser, downloads follow Chrome's own download settings,
-not the MCP output directory. Explicitly select the download folder and provide
-that folder to the agent. For this example, configure the owned browser to save
-into `<claude-code.dir>`. Put only authorized downloads in that dedicated folder:
-all files inside it are readable, and selection among them remains an instruction.
-Keep browser profiles, MCP capture output and unrelated files outside it.
-The CLI must run on the same host or have an
-explicit shared mount; a remote path alone cannot be read. Do not silently change
-someone's personal browser preferences. Only authorize the selected download.
+not the MCP output directory. The native agent has no tool that reads the
+host's download folder: open a downloaded file yourself, or attach it to a
+message for the agent. Do not silently change someone's personal browser
+preferences. Only authorize the selected download.
 
 ## Test the signed-in fixture end to end
 
-The opt-in helper runs a real Humagen server, the pinned MCP worker, an independent
-headless Chrome process, and the signed-in Claude Code model. Install the worker
-in a separate prefix and build Humagen, then run from the repository root:
+The opt-in helper runs a real Humagen server on `examples/browser/humagen.yaml`,
+the pinned MCP worker, an independent headless Chrome process, and the model
+that profile names. Install the worker in a separate prefix, build Humagen and
+set the profile's provider key (`ANTHROPIC_API_KEY`), then run from the
+repository root:
 
 ```sh
 npm install --prefix /tmp/humagen-browser-tools @playwright/mcp@0.0.85
@@ -210,31 +190,34 @@ node examples/browser/connected-acceptance.mjs
 ```
 
 Set `HUMAGEN_BROWSER_CHROME` if Chrome is not at the standard macOS path or the
-Linux `chromium` command. The helper requires Node.js, installed Chrome, and a
-working Claude Code sign-in supporting `--restricted`. It creates only owned local fixture processes and
-state, and stops those processes when finished; it does not touch a personal
-profile. It uses a unique fixture workspace and verifies its identity before
-submitting any work.
+Linux `chromium` command. The helper requires Node.js and installed Chrome. It
+creates only owned local fixture processes and state, and stops those
+processes when finished; it does not touch a personal profile. It writes its
+own copy of the profile with a unique fixture workspace, its own ports and a
+forwarding observer in front of the worker, and verifies the workspace's
+identity before submitting any work. The worker starts before Humagen, since
+the server accepts the profile's pinned tools when it starts.
 
-The actual acceptance passed at 390x844 and 1280x800 in light and dark. It logs
-into a local fixture once, retains the same authenticated Chrome target across
-all four model runs, and verifies the requested viewport and theme. Each run
-reads two unlabelled panel colours from returned screenshot pixels, performs the
-authorized button action, downloads the selected CSV, and reads it through the
-CLI. Independent checks verify the changed heading, exactly one download,
-record identity and exact file bytes. A loopback forwarding observer also checks
-the actual MCP response delivered to the CLI: a nonempty PNG image block at the
-requested pixel dimensions, with retained byte count and SHA256. A saved-file
-link in the CLI's text journal is not used as proof of inline image delivery.
-The helper keeps MCP images/snapshots in a separate artifacts directory and
-archives each verified CSV outside the CLI directory before the next case; that
-directory must be empty at each case's start. A separate harmless outside-file
-Read must be refused by the real program. Paired PNGs, retained run/tool events
-and wire image receipts are written to the capture directory. Open every before/after pair before
-approval. Disconnecting the fixture's CDP client resets its display emulation,
-so the helper keeps that connection attached while the MCP worker operates.
+The helper logs into a local fixture once, keeps the same authenticated Chrome
+target across all four runs (390x844 and 1280x800, light and dark), and checks
+the requested viewport and theme. Each run must read two unlabelled panel
+colours from returned screenshot pixels, perform the authorized button action
+and download the selected CSV; the run's events must show
+`browser__browser_tabs` and `browser__browser_take_screenshot`. The helper
+itself checks the changed heading, exactly one download and its exact bytes:
+the native agent has no tool that reads the download folder, so it no longer
+reads the CSV. The forwarding observer checks the actual MCP response: a
+nonempty PNG image block at the requested pixel dimensions, with its byte
+count and SHA256. MCP images and snapshots go to a separate artifacts
+directory, and each verified CSV is moved out of the download directory before
+the next case. Paired PNGs, run and tool events and wire image receipts are
+written to the capture directory. Open every before/after pair before approval.
+Disconnecting the fixture's CDP client resets its display emulation, so the
+helper keeps that connection attached while the MCP worker operates.
 
-This is real connector and model evidence on a controlled local authenticated
-fixture. It does not establish a third-party portal login, SSO/MFA, extension
-handoff, cross-host download mount, or an authorization boundary around a tab.
-Those remain separate checks with the person and target service.
+Before #383 the helper ran the removed Claude Code profile, also had the
+agent read the CSV through that program's file tools, and checked that a
+read outside its download directory was refused. It passed all four cases
+then. The native version has not been run yet. Neither version establishes a
+third-party portal login, SSO/MFA, extension handoff, cross-host download
+mount, or an authorization boundary around a tab.

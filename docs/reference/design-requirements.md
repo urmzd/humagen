@@ -100,12 +100,13 @@ planned collections, browser, protocol and improvement work from this UI pass.
 
 ### DES-001: Working integrations
 
-The public-web profile in `examples/public-web/claude-code.yaml` enables the
-program's built-in WebSearch and WebFetch only; user hooks and plugins still
-load. Supporting URLs are model-reported answer text, not verified citations. Actual HTTP tool events and a separate
-official-source retrieval validate search/open/version agreement. See
-[public-source research](../guides/public-web.md) for identity, permissions and
-unsupported browser operations. No console connection control is implied.
+The public-web profile in `examples/public-web/humagen.yaml` grants a native
+agent `web_search` and `web_fetch` only. Supporting URLs are model-reported
+answer text, not verified citations. The earlier search/open/version check
+ran on the Claude Code profile removed with #383; the native profile has not
+been run with a live model. See [public-source research](../guides/public-web.md)
+for identity, permissions and unsupported browser operations. No console
+connection control is implied.
 
 - Build on the existing client, connector, credentials, project-binding, and
   generated API client paths. Keep API calls and identity in surface hosts and
@@ -1740,14 +1741,15 @@ is a connection blocker, not a successful desktop-control result.
 The browser worker configuration and connection instructions are in
 `examples/browser/` and `docs/guides/browser.md`. Browser tool schemas are pinned;
 navigation and interaction require a write grant. The real connector acceptance
-is opt-in (`TestBrowserLive`). The separate Claude Code/CDP helper verifies an
-actual model using the same signed-in local fixture tab, screenshot pixels, an
-authorized action and selected CSV read at both widths and themes. Actual wire
-receipts check PNG blocks; restricted file-tool refusal and separated artifact
-and download directories are exercised. Existing tabs
-require an explicit extension or CDP connection; third-party SSO/MFA and extension
-handoff remain unverified. The CLI profile uses its own tool permissions, not
-native grants. No console control implies an authenticated browser connection.
+is opt-in (`TestBrowserLive`). The separate CDP helper,
+`examples/browser/connected-acceptance.mjs`, runs an actual model on the native
+profile against the same signed-in local fixture tab: screenshot pixels, an
+authorized action and an exact-byte download at both widths and themes, with
+wire receipts for PNG blocks and separated artifact and download directories.
+It passed on the Claude Code profile before #383 and has not been rerun on the
+native one. Existing tabs require an explicit extension or CDP connection;
+third-party SSO/MFA and extension handoff remain unverified. No console
+control implies an authenticated browser connection.
 
 - Customize groups the existing Agents, Skills, Connected Accounts and Your tool
   servers sections at `/customize/{section}`, with permission-filtered tabs.

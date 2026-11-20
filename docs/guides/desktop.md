@@ -37,27 +37,6 @@ and have a working provider credential. The standalone example reads
 humagen start -f examples/desktop/humagen.yaml
 ```
 
-### Use an existing Claude Code subscription
-
-`examples/desktop/claude-code.yaml` connects the same pinned worker through the
-program's own MCP configuration. Set its `dir` to an existing absolute work
-directory, sign in to Claude Code on this Mac, then run:
-
-```sh
-humagen start -f examples/desktop/claude-code.yaml
-```
-
-This profile needs Node/npx and Claude Code on the server's PATH. It disables
-built-in CLI tools, ignores other MCP configurations, and preauthorizes only the
-listed desktop tool names. The program's own permissions govern this host path;
-Humagen's accepted-tool hashes govern the native profile above. An API key is
-not required for the subscription profile.
-
-On the review Mac, the permission tool was actually called through a Humagen
-HTTP run on this path: Screen Recording, Accessibility and Event Synthesizing
-reported Granted. Native capture and interaction remain blocked while the Mac
-reports `CGSSessionScreenIsLocked: true`; no successful app interaction is claimed.
-
 The standalone example uses development sign-in and memory state for trusted
 local fixtures. Every client reaching a dev API is an administrator. For real
 work, use the authenticated workspace instead. A screen or document can contain
@@ -88,14 +67,13 @@ not weakened or silently accepted. Text entry uses the supported `type` tool.
 
 ## Dotfiles, processes and printers
 
-For host commands, use the configured Claude Code or Codex runtime
-in an explicit work directory. See the [local folder example](local-files.md) for Claude Code setup. Grant only the commands needed,
-for example `Bash(dotfiles doctor:*)`, `Bash(lpstat:*)`, and `Bash(ps:*)`. Use the
-machine's `dotfiles` CLI for managed configuration instead of editing deployed
-files by hand. A diagnosis does not authorize applying every proposed fix.
-Printer commands still need an installed, reachable printer; a missing device
-is not successful printer coverage. Humagen's model/tool grants do not gate
-the external program's tools; its own permissions and allow rules do.
+Humagen has no tool that runs a command on this host for an agent. The shell
+runs in a run's isolated sandbox, which cannot see the host's dotfiles,
+processes or printers; the `local` sandbox kind runs it on this host for
+development only, with an empty environment and no `PATH`. Before #383 this
+section pointed to the Claude Code and Codex programs for host commands; that
+path is gone and has no replacement here. A diagnosis of the host is yours to
+run.
 
 ## Real native acceptance
 

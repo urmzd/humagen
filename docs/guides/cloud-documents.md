@@ -1,114 +1,80 @@
-# Compare provider revisions and approve a guarded document edit
+# Read a cloud document and approve an edit
 
-`examples/cloud-documents/humagen.yaml` uses existing signed-in account
-connections on this host. The `history` agent runs on Codex apps to read actual
-Drive revision text. The `documents` agent runs on Claude Code's native Google
-Docs tools to apply an approved edit with the expected Docs revision. No new
-API key is needed when those two programs already have the intended account
-connections. No existing document is selected by the example.
+`examples/cloud-documents/humagen.yaml` runs a native agent, `documents`, on
+the person's own Google Docs and Google Drive connections. These are Google's
+Workspace tool servers, which a person connects in **Settings › Connections**
+with the `google-docs` and `google-drive` presets
+([connections](../reference/connections.md)). The agent is granted
+`person_tools`: the tools of the connections that person approved, and
+nothing else.
 
-## Connect and start
+Before #383 this example read Drive revision text through the Codex program's
+connected apps and applied an edit guarded by the expected Docs revision
+through the Claude Code program's Docs tools. Both are gone. Whether Google's
+servers offer revision history, or a write that fails when the document
+changed since a given revision, is what their tool lists say when the person
+connects. The agent is told to list its tools, say whether either exists, and
+report a revision it cannot read as unknown instead of substituting the
+current text.
 
-Sign in to Codex and Claude Code on this host and connect the intended Drive
-and Docs accounts in those programs. Set both model directories to one existing
-absolute work folder, then start:
+## Configure and start
+
+Set up the Google OAuth client as in
+[the mail guide](mail-calendar.md#configure-and-start), with the Docs and
+Drive MCP APIs enabled, and put its client ID in the profile. The server does
+not start without `HUMAGEN_CONNECTION_KEY` and `HUMAGEN_GOOGLE_CLIENT_SECRET`,
+besides a provider key (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY` or
+`GOOGLE_API_KEY`):
 
 ```sh
 humagen config check -f examples/cloud-documents/humagen.yaml
 humagen start -f examples/cloud-documents/humagen.yaml
 ```
 
-The example enables Codex's `apps` feature and ignores its user config; its
-local filesystem sandbox is read-only. Claude Code exposes only ToolSearch as
-a built-in tool and allows the exact native Docs read/update names in the
-file. Its user settings, hooks and account connections still load. Existing
-account tools and connected apps are not confined to one document by this
-configuration: exact resource selection and approval remain necessary. Opened
-content enters the programs' model providers and consumes their account usage.
+The workspace's `run.ceilings.tool_servers` lists `docsmcp.googleapis.com`
+and `drivemcp.googleapis.com`, so only those two presets can be connected.
+Connect Google Docs and Google Drive in **Settings › Connections**, sign in,
+review the tools each server offers, and approve the list. Each person
+consents to `documents` with `drive.readonly` for Docs, and to `drive` for
+Drive. Every tool its server does not mark read-only waits for the person's
+approval in Humagen before it runs.
 
-## Read the requested history
+## Read, then approve one edit
 
-Select `history` and provide the exact Google Doc ID and requested provider
-revision IDs. For example:
-
-```text
-For Google Doc EXACT_DOCUMENT_ID, list every page of provider revisions and
-fetch actual text of requested revisions REVISION_IDS. Compare the text with
-the current native document and give its Docs write revision token. Report
-missing revisions and unread content. Do not change anything or read another
-resource.
-```
-
-It uses the app tools `list_file_revisions`, `fetch_file_revision` and
-`get_document`. Drive history IDs and Docs write tokens are different values.
-A list of revision metadata, a cached local copy or the current document is
-not historical content. Provider history can coalesce: an ID seen earlier
-may later return 404, and the workflow must report that content as unknown.
-It cannot reconstruct a missing provider revision.
-
-## Approve an edit to the same document
-
-Read the comparison, then select `documents`. Supply the exact document ID,
-change and expected current Docs write token. The agents do not hand off
-automatically; the person passes the selected comparison and approves the
-scoped change. For example:
+Select the exact document by its identifier, and ask first for what the tools
+can and cannot do:
 
 ```text
-Approved for EXACT_DOCUMENT_ID: replace only OLD_TEXT with NEW_TEXT, using
-writeControl.requiredRevisionId EXACT_DOCS_WRITE_TOKEN. Preserve the original
-ID, tabs, formatting and all unrelated content. Stop on a stale token or
-permission error; do not retry with a fresh token. Read back the changed area
-and retained controls once.
+For Google Doc EXACT_DOCUMENT_ID, list the tools you have and say whether any
+reads revision history or makes a write fail when the document changed. Read
+the current document. If a revision tool exists, read revisions REVISION_IDS
+and compare them; report any you cannot read as unknown. Do not change
+anything.
 ```
 
-The exact native tool names are `mcp__claude_ai_Google_Docs__read_doc` and
-`mcp__claude_ai_Google_Docs__update_doc`. Discover those names explicitly.
-The update takes top-level `writeControl.requiredRevisionId` and native
-`requests`. Use the required token to fail on a concurrent change;
-`targetRevisionId` allows a merge and is a different operation. Read all
-requested tabs before editing their structure. Native range indexes are
-UTF-16 code units and requests in a batch execute in order.
+Then approve one scoped change in a follow-up:
 
-## Checked on an approved private fixture
+```text
+Approved for EXACT_DOCUMENT_ID: replace only OLD_TEXT with NEW_TEXT. If a
+revision-guarded write exists, use it with revision EXACT_REVISION and stop on
+a mismatch; if none exists, tell me before writing. Preserve the identifier
+and all unrelated content. Read back the changed range once.
+```
 
-On 17 November 2026, the person explicitly approved one new private folder and
-one non-personal native Google Doc. It had four plain-text control lines; no
-existing document, sharing permission or other account object was changed.
+Humagen asks for approval of the write call with its arguments before it
+runs. A list of revision metadata, a cached copy or the current document is
+not historical content, and provider history can coalesce revisions.
 
-- Humagen's Claude Code path read the native tab and write token, changed one
-  exact marker with that required token, then read it back at the same ID.
-- The final combined profile changed only Value: baseline to Value: approved
-  with the exact required token, preserving the marker, control line, ID and tab.
-  Its history agent then fetched all currently listed revisions 1 and 4.
-- An actual stale-token write returned a provider revision-mismatch error.
-  It was not retried, and the control text remained unchanged.
-- Humagen's Codex-apps path listed the actual provider history and fetched
-  revisions 1 and 3: the former was empty apart from a byte-order mark, and
-  the latter contained the four current lines. Revision 2 had appeared in
-  an earlier list, then was coalesced out; its fetch returned 404. Its old
-  contents were reported as unknown, rather than replaced with a snapshot.
+## What was checked, and what was not
 
-The supplied document is a generated fixture in a real connected account.
-Paired provider-exported PDF pages were opened around the final Value edit;
-the earlier marker edit was not captured as a rendered before/after pair, and
-the native Google Docs web interface was not opened.
+The profile passes `humagen config check` with no variables set, and starts
+and stops with throwaway values for the two variables above and no provider
+key. On that server, `GET /api/connections/presets` listed `google-docs` and
+`google-drive` as available and the other Google presets as blocked by the
+host ceiling.
 
-This does not establish a real user's document, complex formatting, every
-historical revision or OneDrive support. Preserve snapshots separately if
-exhaustive history is required. A new account still needs its own connection
-and consent.
-
-## Connector limits observed
-
-Claude Code's native Drive `download_file_content` exposed a revisionId
-argument but actually refused historical downloads with "not yet supported."
-The working history path therefore uses Codex's connected Drive app.
-Codex's noninteractive cloud write attempt was refused by the installed
-program's default approval policy. Only its local filesystem mode is pinned
-by this profile; cloud-tool approvals follow the program and app settings on
-the host. The history instruction requests reads, and the existing permitted
-native Docs path handles approved guarded writes. Recheck those runtime
-settings when using this path. The example does not disable approval review
-or broaden local permissions. A similarly named Claude Docs connector was not
-in the allow list and was refused; the explicit Google_Docs tool names avoid
-that ambiguous discovery path.
+The presets were checked against Google's published server metadata only.
+Signing in to a real Google account through them, which tools those servers
+offer, reading a revision and any edit have not been exercised. The earlier
+private-fixture checks of 17 November 2026 ran on the removed Codex and Claude
+Code paths and say nothing about this one. OneDrive is not covered.
