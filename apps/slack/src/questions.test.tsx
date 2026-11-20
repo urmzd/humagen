@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { defaultCopy } from "@humagen/components";
 import { type decodeReplyModal, REPLY_MODAL } from "@humagen/render-slack";
+import type { AppOptions } from "./app.tsx";
+import { parseBranding } from "./branding.ts";
 import {
   CHANNEL,
   click,
@@ -40,8 +42,8 @@ function collect(name: string, slack: FakeSlack) {
 }
 
 /** A world whose app is a client that maps USER to ana and OTHER_USER to olu. */
-function mapped(): World {
-  const w = world({ clientId: CLIENT });
+function mapped(opts: Partial<AppOptions> = {}): World {
+  const w = world({ clientId: CLIENT, ...opts });
   w.humagen.clients.set(CLIENT, {
     id: CLIENT,
     surface: "slack",
@@ -201,7 +203,8 @@ test("an empty form answers nothing", async () => {
 });
 
 test("an option pressed after someone answered elsewhere changes nothing: the person is told and the card shows what was recorded", async () => {
-  const w = mapped();
+  // A branded disclaimer, so the message holds a line besides the card.
+  const w = mapped({ branding: parseBranding({ disclaimer: "{name} drafts answers." }) });
   const { run, blocks, ts } = await parkOn(w, "choice");
   // Ana answered in the console. Humagen answers a later press with the record.
   w.humagen.recorded = questionMail(run, "choice", {
