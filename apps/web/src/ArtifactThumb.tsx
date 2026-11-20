@@ -31,7 +31,9 @@ export function ArtifactThumb({ file }: { file: Stored }) {
   if (text)
     return (
       <div className={frame} aria-hidden="true" data-thumb="text">
-        <div className="absolute inset-x-5 top-4 bottom-0 overflow-hidden whitespace-pre-wrap break-words rounded-t-aui border border-[var(--humagen-rule)] border-b-0 bg-aui-bg px-3 pt-2.5 text-aui-muted text-aui-xs">
+        <div
+          className={`${file.kind === "code" || file.kind === "data" ? "font-aui-mono " : ""}absolute inset-x-5 top-4 bottom-0 overflow-hidden whitespace-pre-wrap break-words rounded-t-aui border border-[var(--humagen-rule)] border-b-0 bg-aui-bg px-3 pt-2.5 text-aui-muted text-aui-xs [mask-image:linear-gradient(to_bottom,black_65%,transparent)]`}
+        >
           {text}
         </div>
       </div>
