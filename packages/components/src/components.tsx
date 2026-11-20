@@ -340,8 +340,14 @@ export function ApprovalCard({
 export function ApprovalBatch({
   turnId,
   approvals,
+  offerAgent = false,
   copy = defaultCopy,
-}: { turnId: string; approvals: ApprovalT[] } & WithCopy) {
+}: {
+  turnId: string;
+  approvals: ApprovalT[];
+  /** Offer letting the approval agent decide from here on, as one approval's card does. */
+  offerAgent?: boolean;
+} & WithCopy) {
   const name = `batch:${turnId}`;
   const acting = approvals.filter((a) => a.actsForPerson).map((a) => a.summary);
   return (
@@ -373,6 +379,15 @@ export function ApprovalBatch({
               label: copy.approveAll(approvals.length),
               action: { id: ActionId.approveAll, payload: { turnId, target: name } },
             },
+            // The conversation's mode, not these calls. A run held at a limit is the person's to decide.
+            ...(offerAgent && !approvals.some((a) => a.budget)
+              ? [
+                  {
+                    label: copy.approvals.letAgentDecide,
+                    action: { id: ActionId.approvalMode, payload: { turnId, target: "auto" } },
+                  },
+                ]
+              : []),
             {
               label: copy.denyAll,
               action: { id: ActionId.denyAll, payload: { turnId, target: name } },
@@ -1050,11 +1065,21 @@ export function TurnView({
       {/* Gated tool rows hold their own controls on the web; Slack gets the cards. */}
       {pendingApprovals.length > 1 && owned.size > 0 ? (
         <Only surface="slack">
-          <ApprovalBatch turnId={turn.id} approvals={pendingApprovals} copy={copy} />
+          <ApprovalBatch
+            turnId={turn.id}
+            approvals={pendingApprovals}
+            offerAgent={offerAgent}
+            copy={copy}
+          />
         </Only>
       ) : pendingApprovals.length > 1 ? (
         <>
-          <ApprovalBatch turnId={turn.id} approvals={pendingApprovals} copy={copy} />
+          <ApprovalBatch
+            turnId={turn.id}
+            approvals={pendingApprovals}
+            offerAgent={offerAgent}
+            copy={copy}
+          />
           {open
             .filter((i) => !pendingApprovals.includes(i as ApprovalT))
             .map((i) => (

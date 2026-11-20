@@ -1,4 +1,10 @@
-import { ApprovalCard, ClarificationCard, defaultCopy, TurnView } from "@humagen/components";
+import {
+  ApprovalBatch,
+  ApprovalCard,
+  ClarificationCard,
+  defaultCopy,
+  TurnView,
+} from "@humagen/components";
 import { ActionId, type Answer, type Approval, type Clarification } from "@humagen/core";
 import * as fx from "@humagen/core/fixtures";
 import { describe, expect, it } from "vitest";
@@ -145,6 +151,44 @@ describe("an approval's menu", () => {
     expect(buttons(blocksOf(<ApprovalCard turnId="r1" approval={approval} offerAgent />))).toEqual(
       buttons(blocksOf(<ApprovalCard turnId="r1" approval={approval} />)),
     );
+  });
+
+  it("offers the approval agent on several approvals at once too, beside approve all and deny all", () => {
+    const several = [approval, { ...approval, id: "a2", summary: "Send the second one" }];
+    const texts = (el: React.ReactNode) =>
+      overflows(blocksOf(el)).flatMap((m) => m.options.map((o) => o.text.text));
+    expect(texts(<ApprovalBatch turnId="r1" approvals={several} />)).toEqual([
+      defaultCopy.approveAll(2),
+      defaultCopy.denyAll,
+    ]);
+    const [menu] = overflows(
+      blocksOf(<ApprovalBatch turnId="r1" approvals={several} offerAgent />),
+    );
+    expect(menu?.options.map((o) => o.text.text)).toEqual([
+      defaultCopy.approveAll(2),
+      defaultCopy.approvals.letAgentDecide,
+      defaultCopy.denyAll,
+    ]);
+    expect(JSON.parse(menu?.options[1]?.value ?? "{}")).toEqual({
+      id: ActionId.approvalMode,
+      p: { turnId: "r1", target: "auto" },
+    });
+    // A run held at a limit is the person's to decide.
+    const held = {
+      ...approval,
+      id: "a3",
+      budget: {
+        scope: "the workspace",
+        limit: "spend" as const,
+        used: "$1",
+        max: "$1",
+        grant: "$1",
+      },
+    };
+    expect(texts(<ApprovalBatch turnId="r1" approvals={[approval, held]} offerAgent />)).toEqual([
+      defaultCopy.approveAll(2),
+      defaultCopy.denyAll,
+    ]);
   });
 
   it("is not offered once decided, on a run held at a limit, or to someone who may not decide", () => {
