@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test src/*.test.ts src/*.test.tsx",
     "test:server": "HUMAGEN_SERVER_TEST=1 node --import tsx --test src/humagen.server.test.ts",
-    "validate": "SLACK_VALIDATE=1 node --import tsx --test src/app.test.tsx"
+    "validate": "SLACK_VALIDATE=1 node --import tsx --test src/app.test.tsx src/questions.test.tsx"
   },
   "dependencies": {
     "@humagen/adapter": "workspace:*",
