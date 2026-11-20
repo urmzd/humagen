@@ -4232,13 +4232,15 @@ export const defaultCopy = {
     did: {
       look: "Took a screenshot",
       navigate: (url: string) => `Went to ${url} in the browser`,
-      back: (url: string) => (url ? `Went back in the browser, to ${url}` : "Went back in the browser"),
+      back: (url: string) =>
+        url ? `Went back in the browser, to ${url}` : "Went back in the browser",
       click: (what: string, page: string) => `Clicked ${what} on ${page}`,
       type: (n: number, what: string, submit: boolean) =>
         `Typed ${n} ${n === 1 ? "character" : "characters"} into ${what}${submit ? " and pressed Enter" : ""}`,
       press: (key: string) => `Pressed ${key} in the browser`,
       failed: (what: string, why: string) => `Tried in the browser, and it failed: ${what}. ${why}`,
-      page: (title: string, url: string) => [title && `Page: ${title}`, url].filter(Boolean).join("\n"),
+      page: (title: string, url: string) =>
+        [title && `Page: ${title}`, url].filter(Boolean).join("\n"),
     },
   },
   /** The Terminal tab (WorkbenchTerminal.tsx). */

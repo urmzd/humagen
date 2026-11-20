@@ -20,8 +20,8 @@ import {
 import { DetailsTab } from "./SessionPanel.tsx";
 import type { SessionSummary } from "./sessionSummary.ts";
 import type { Reference as Ref } from "./trace.ts";
-import { ranCommands } from "./workbenchTerminal.ts";
 import { changesAvailable } from "./workbenchChanges.ts";
+import { ranCommands } from "./workbenchTerminal.ts";
 
 /*
  * The session's workbench: the pane Details opens, as tabs. The thread stays
