@@ -95,6 +95,11 @@ when the client:
 | `slack.machine` | The subject of the credential the app signs in with. No other credential may act for the client's people. |
 | `slack.people` | Slack user ids in the client's team, each mapped to the principal it is in this workspace, by subject. At most 500. |
 
+For the app a server starts itself, both come from the Platform document
+(`surfaces.slack.people` and `machine`, see
+[the spec](spec.md#whom-the-slack-app-acts-for)), and the server tells the app
+which client it is.
+
 Anyone the map does not name is refused with 403, and the app does not ask on
 their behalf. To ask for a run or to answer, the person's own grant must include `runs:write`. A Slack click
 carries no groups, so someone who holds a role only through a group (`grant
@@ -243,6 +248,16 @@ options, its secrets left in the environment. It is marked `managed: env` and
 is changed in the environment, not through the API. `HUMAGEN_SLACK_APP`,
 `HUMAGEN_GITHUB_APP` and `HUMAGEN_GITHUB_INSTALLATION` state its identity
 more exactly and are optional.
+
+A Platform document whose `surfaces.slack` maps `people` has one more:
+`slack-app-<team id in lowercase>`, the record of the Slack app the server
+starts, marked `managed: app`. The file owns its `identity.team`,
+`slack.machine` and `slack.people`, which the API does not change; its
+`default_agent`, `agents`, `home`, `enabled` and other options are changed
+through the API and kept at every start. It holds no secret, has no connector,
+is offered no webhook, and so shares its team with a webhook client without
+either stating an `app_id`. It cannot be deleted through the API. See
+[the spec](spec.md#whom-the-slack-app-acts-for).
 
 ## Limits
 

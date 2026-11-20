@@ -558,6 +558,15 @@ func serve(o Options, args []string, d serveDefaults) error {
 	if err := applyPlatforms(ctx, p, file.cfg, log); err != nil {
 		return err
 	}
+	// A Slack app is told which client it is only once the record that
+	// makes it act for the people the file maps is in place.
+	slackClients, err := applySlackClients(ctx, p, file.cfg, *authMode, log)
+	if err != nil {
+		return err
+	}
+	for _, app := range slack {
+		app.client = slackClients[app.tenant]
+	}
 	postReleaseNotes(p, file.cfg, release.Running(o.Version.Version), o.Changelog, log)
 	// After the agents, so an agent the file or the seed names keeps its
 	// name and a person whose handle would be it gets a suffix.

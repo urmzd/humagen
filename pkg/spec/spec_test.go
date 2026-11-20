@@ -56,6 +56,9 @@ func TestTheReferenceExamplesLoad(t *testing.T) {
 	if err := cfg.Check(Kinds{}); err != nil {
 		t.Fatalf("strict check: %v", err)
 	}
+	if sl := cfg.Platforms[0].Spec.Surfaces.Slack; sl.Machine != "humagen-slack" || len(sl.People) != 1 || sl.People["U0123456"] != "issuer|person-subject" {
+		t.Fatalf("the example's Slack app acts for %v as %q", sl.People, sl.Machine)
+	}
 	if sb, err := Block[DockerSandbox](cfg.System.Spec.Sandbox); err != nil || cfg.System.Spec.Sandbox.Kind != "docker" || sb.Runtime != RuntimeGVisor || sb.Image != DefaultSandboxImage || sb.Max != 64 {
 		t.Fatalf("the example's sandbox = %+v %+v %v", cfg.System.Spec.Sandbox, sb, err)
 	}

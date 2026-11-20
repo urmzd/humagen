@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/urmzd/humagen/internal/toolprovider"
 
@@ -624,6 +625,16 @@ type Slack struct {
 	// as HUMAGEN_TOKEN. It is not renewed, so it suits a token that does not
 	// expire; an identity provider's access tokens do, so use HumagenClient.
 	HumagenToken *Ref `json:"humagen_token,omitempty"`
+	// People maps a Slack user id in Team to the principal it is in this
+	// workspace, by subject. The server keeps a client record for the app
+	// with this map and tells the app which client it is, so the app acts
+	// for these people and for nobody else. Empty, the app acts for nobody.
+	People map[string]string `json:"people,omitempty"`
+	// Machine is the subject the app's own credential signs in as, the only
+	// credential that may act for People. Under tailscale sign-in the server
+	// makes that credential and knows its subject, so it is left empty. Under
+	// any other sign-in it is required with People.
+	Machine string `json:"machine,omitempty"`
 
 	// OldClient and OldToken are humagen_client and humagen_token under the
 	// names they had before the rename. A file that uses them still reads:
@@ -678,6 +689,51 @@ func (s *Slack) checkCopy() error {
 	return nil
 }
 
+// Bounds on who a Slack app acts for, the same as a client record's
+// (pkg/clients). A team id is short enough that the client's id, made from
+// it, is an id.
+const (
+	maxSlackPeople  = 500
+	maxSlackSubject = 200
+)
+
+var (
+	slackPerson = regexp.MustCompile(`^[UW][A-Z0-9]{2,31}$`)
+	slackTeam   = regexp.MustCompile(`^[A-Z][A-Z0-9]{2,29}$`)
+)
+
+// checkPeople checks who the app acts for: Slack user ids mapped to
+// subjects, for a team whose id is one.
+func (s *Slack) checkPeople() error {
+	if s == nil {
+		return nil
+	}
+	subject := func(v string) bool {
+		return strings.TrimSpace(v) != "" && len(v) <= maxSlackSubject && !strings.ContainsFunc(v, unicode.IsControl)
+	}
+	if s.Machine != "" && !subject(s.Machine) {
+		return fmt.Errorf("machine is a credential's subject of at most %d characters", maxSlackSubject)
+	}
+	if len(s.People) == 0 {
+		return nil
+	}
+	if len(s.People) > maxSlackPeople {
+		return fmt.Errorf("people maps at most %d Slack users", maxSlackPeople)
+	}
+	if !slackTeam.MatchString(s.Team) {
+		return fmt.Errorf("people are mapped in a Slack team: team %q is not a team id, such as T0123ABCD", s.Team)
+	}
+	for user, who := range s.People {
+		if !slackPerson.MatchString(user) {
+			return fmt.Errorf("people: %q is not a Slack user id, such as U0123ABCD", user)
+		}
+		if !subject(who) {
+			return fmt.Errorf("people: Slack user %s maps to a subject of 1 to %d characters", user, maxSlackSubject)
+		}
+	}
+	return nil
+}
+
 // ClientCredentials is a machine client of an identity provider: where it
 // gets a token, and its id and secret.
 type ClientCredentials struct {
@@ -689,22 +745,35 @@ type ClientCredentials struct {
 }
 
 // CheckSignIn reports whether the app can call humagen's API under the sign-in
-// kind auth, where empty is dev, the default. Dev needs no credential. Under
-// tailscale the server gives the app it starts a credential of its own, new at
-// every start, so one in the file is refused: nothing could verify it. Every
-// other kind needs humagen_client or humagen_token.
+// kind auth, where empty is dev, the default, and whether the server can know
+// which credential acts for People. Dev needs no credential. Under tailscale
+// the server gives the app it starts a credential of its own, new at every
+// start, so one in the file is refused: nothing could verify it. Every other
+// kind needs humagen_client or humagen_token.
+//
+// The machine follows the credential. Under tailscale the server made it and
+// knows its subject, so a machine in the file is refused. Under every other
+// kind the subject is the identity provider's to choose, so people need a
+// machine written beside them.
 func (s Slack) CheckSignIn(auth string) error {
-	switch auth {
-	case "", "dev":
-		return nil
-	case "tailscale":
+	if auth == "tailscale" {
 		if s.HumagenClient != nil || s.HumagenToken.Set() {
 			return errors.New("under tailscale sign-in the server gives the Slack app it starts its own credential, and nothing could verify another; remove humagen_client and humagen_token")
 		}
+		if s.Machine != "" {
+			return errors.New("under tailscale sign-in the server makes the Slack app's credential and knows its subject, slack-app:<team>; remove machine")
+		}
 		return nil
 	}
-	if s.HumagenClient == nil && !s.HumagenToken.Set() {
+	if auth != "" && auth != "dev" && s.HumagenClient == nil && !s.HumagenToken.Set() {
 		return fmt.Errorf("under %s sign-in the Slack app needs a credential for humagen's API: humagen_client (client credentials) or humagen_token", auth)
+	}
+	if len(s.People) > 0 && s.Machine == "" {
+		kind := auth
+		if kind == "" {
+			kind = "dev"
+		}
+		return fmt.Errorf("people need machine: under %s sign-in the server cannot know the subject the Slack app's credential signs in as, so write it", kind)
 	}
 	return nil
 }
@@ -866,6 +935,9 @@ func (p Platform) check(kinds Kinds) error {
 		}
 		if s.HumagenClient != nil && s.HumagenToken.Set() {
 			return fmt.Errorf("%s: surfaces.slack: humagen_client or humagen_token, not both", where)
+		}
+		if err := s.checkPeople(); err != nil {
+			return fmt.Errorf("%s: surfaces.slack: %w", where, err)
 		}
 		if c := s.HumagenClient; c != nil {
 			u, err := url.Parse(c.TokenURL)

@@ -79,7 +79,9 @@ modal preserves an existing comment. The store uses the configured state backend
 so use Postgres to keep feedback across server restarts.
 
 File intake requires a configured Slack client whose bot token can read the
-message, and `files:read`. Bytes live in the server workspace's `attachments`
+message, and `files:read`. The record the server keeps for an app it starts
+(`slack-app-<team>`) has no bot token, so an app run that way reads no files:
+a message with a file is refused. Bytes live in the server workspace's `attachments`
 directory as tenant-scoped, content-addressed blobs. `saige/flow/attachment` bounds file count,
 bytes and fetch time, checks content types, and resolves the references for the
 model. The app supplies only a message location, never a download URL or digest.
@@ -239,6 +241,15 @@ events.
    and the default the workspace's projects set answers. With none set, Humagen
    answers 409 and the app asks the person to tag an agent, naming one it may
    reach.
+
+`HUMAGEN_CLIENT` is the id of the client record this app is. An app that
+`humagen serve` starts is given it by the server, and only when the Platform
+document maps people (`surfaces.slack.people`): the server keeps the record
+`slack-app-<team id in lowercase>` with that map and its own machine, routing
+to any agent with no default, so who answers is as it is with no client. With
+nobody mapped it is not set. An app run by hand sets it itself, to a client
+made through the API. See
+[the spec](../../docs/reference/spec.md#whom-the-slack-app-acts-for).
 
 Nothing is picked in the app. With `HUMAGEN_CLIENT` set, the client record's
 default agent and `agents` list apply, read again every 30 seconds. A client

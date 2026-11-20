@@ -33,6 +33,9 @@ type ClientInput struct {
 	// Set only by verified native installation callbacks, never decoded from JSON.
 	nativeSlack  bool
 	nativeGitHub bool
+	// Set only by ApplySlackApp, for the app a Platform document has the
+	// server start.
+	slackApp bool
 }
 
 // ClientCaps is how many clients a tenant may have: the defaults, or what its
@@ -77,6 +80,9 @@ func (p *Platform) create(tenant, by string, in ClientInput) (clients.Client, er
 	if c.Managed == clients.ManagedInstall && !in.nativeGitHub && !in.nativeSlack {
 		return clients.Client{}, clients.ErrManaged
 	}
+	if (c.Managed == clients.ManagedApp) != in.slackApp {
+		return clients.Client{}, clients.ErrManaged
+	}
 	if err := c.Validate(); err != nil {
 		return clients.Client{}, err
 	}
@@ -86,12 +92,7 @@ func (p *Platform) create(tenant, by string, in ClientInput) (clients.Client, er
 	if s := p.surfaces[string(c.Surface)]; s.seat(tenant, c.ID) != nil {
 		return clients.Client{}, fmt.Errorf("%w: %q", clients.ErrExists, c.ID)
 	}
-	creds, secrets, err := p.credentials(tenant, c.ID, clients.Credentials{}, in)
-	if err != nil {
-		return clients.Client{}, err
-	}
-	c.Credentials = creds
-	st, err := p.dial(c, secrets)
+	st, err := p.connect(&c, clients.Credentials{}, in)
 	if err != nil {
 		return clients.Client{}, err
 	}
@@ -129,11 +130,17 @@ func (p *Platform) UpdateClient(_ context.Context, tenant, id, by string, in Cli
 	if err != nil {
 		return clients.Client{}, err
 	}
-	if old.Managed != "" && old.Managed != clients.ManagedInstall {
+	if old.Managed != "" && old.Managed != clients.ManagedInstall && old.Managed != clients.ManagedApp {
 		return clients.Client{}, clients.ErrManaged
 	}
 	c := in.Client
 	c.ID, c.Tenant, c.Managed = id, tenant, ""
+	if old.Managed == clients.ManagedApp {
+		if !in.Token.Empty() || !in.SigningSecret.Empty() {
+			return clients.Client{}, clients.ErrManaged
+		}
+		c = slackAppKeeps(old, c)
+	}
 	if old.Managed == clients.ManagedInstall {
 		if !in.Token.Empty() || !in.SigningSecret.Empty() {
 			return clients.Client{}, clients.ErrManaged
@@ -218,6 +225,22 @@ func (p *Platform) TurnOffClient(_ context.Context, tenant, id, by string) error
 	return nil
 }
 
+// connect settles a client's secrets onto its record and builds its
+// connector. The Slack app a server starts has neither: it holds no secret
+// and nothing reaches it here.
+func (p *Platform) connect(c *clients.Client, had clients.Credentials, in ClientInput) (*seat, error) {
+	if c.Managed == clients.ManagedApp {
+		c.Credentials = clients.Credentials{}
+		return nil, nil
+	}
+	creds, secrets, err := p.credentials(c.Tenant, c.ID, had, in)
+	if err != nil {
+		return nil, err
+	}
+	c.Credentials = creds
+	return p.dial(*c, secrets)
+}
+
 // sameRecord reports two client records that read the same once written.
 func sameRecord(a, b clients.Client) bool {
 	ja, err := json.Marshal(a)
@@ -244,12 +267,8 @@ func (p *Platform) replace(old, c clients.Client, by string, in ClientInput) (cl
 	if err := p.checkHome(tenant, c); err != nil {
 		return clients.Client{}, err
 	}
-	creds, secrets, err := p.credentials(tenant, id, old.Credentials, in)
-	if err != nil {
-		return clients.Client{}, err
-	}
-	c.Credentials = creds
-	st, err := p.dial(c, secrets)
+	c.Tenant, c.ID = tenant, id
+	st, err := p.connect(&c, old.Credentials, in)
 	if err != nil {
 		return clients.Client{}, err
 	}
@@ -421,7 +440,7 @@ func (p *Platform) keep(c clients.Client, in ClientInput) error {
 func (p *Platform) seat(c clients.Client, st *seat) {
 	p.seeMapped(c)
 	s := p.surfaces[string(c.Surface)]
-	if !c.Enabled {
+	if !c.Enabled || c.Managed == clients.ManagedApp {
 		s.remove(c.Tenant, c.ID)
 		return
 	}
@@ -592,6 +611,9 @@ func (p *Platform) restore() {
 			continue
 		}
 		for _, c := range on {
+			if c.Managed == clients.ManagedApp {
+				continue
+			}
 			_, secrets, err := p.credentials(c.Tenant, c.ID, c.Credentials, ClientInput{})
 			var st *seat
 			if err == nil {

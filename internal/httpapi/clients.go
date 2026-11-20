@@ -192,7 +192,7 @@ func (s *Server) updateClient(w http.ResponseWriter, r *http.Request, who auth.P
 		return
 	}
 	seer := s.P.Seer(who)
-	if old, err := s.P.Clients.Get(who.Tenant, r.PathValue("id")); err == nil && old.Managed == "" {
+	if old, err := s.P.Clients.Get(who.Tenant, r.PathValue("id")); err == nil && (old.Managed == "" || old.Managed == clients.ManagedApp) {
 		if in.Home == nil && old.Home != nil && !seer.Project(old.HomeOf().Project) {
 			in.Home = old.Home
 		}

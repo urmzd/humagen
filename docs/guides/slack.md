@@ -43,6 +43,27 @@ humagen start
 In Slack, open a direct message with the app, or invite it to a channel with
 `/invite @Humagen` and mention it. It answers in the thread.
 
+## Say who is who
+
+Out of the box the app answers everyone and acts for nobody: a run asked for
+in Slack is the app's, not yours. To make your Slack messages yours in
+Humagen (your runs, your Home tab, your answers to an agent's questions), map
+each Slack user id to the subject that person signs in to Humagen with, under
+`surfaces.slack` in `humagen.yaml`:
+
+```yaml
+people:
+  U0123ABCD: "tailscale:you@github"
+```
+
+A Slack user id is in a person's Slack profile, under **More**, then **Copy
+member ID**. A subject under `tailscale` sign-in is `tailscale:` followed by
+the person's Tailscale login. Under `tailscale` sign-in that is all: run
+`humagen start` again. Under any other
+sign-in also write `machine`, the subject the app's own credential signs in
+as, and give that credential `humagen:clients:read`. Anyone you do not map
+stays nobody. See [the spec](../reference/spec.md#whom-the-slack-app-acts-for).
+
 ## Options
 
 | Flag | Use |
@@ -67,6 +88,9 @@ before you install, as `surfaces.slack.background_color` in the spec.
 | `the app-level token was refused by Slack` | Generate a new one with the scope `connections:write`. It starts with `xapp-`. |
 | `the keychain could not be written` | Run again with `--store env`. |
 | `under tailscale sign-in the server gives the Slack app it starts its own credential` | Remove `humagen_client` and `humagen_token` from `surfaces.slack`. Under `tailscale` sign-in Humagen makes the app's credential itself. |
+| `under tailscale sign-in the server makes the Slack app's credential and knows its subject` | Remove `machine` from `surfaces.slack`. |
+| `people need machine` | Under a sign-in other than `tailscale`, write `machine` beside `people`: the subject the app's credential signs in as. |
+| `slack app's client from the file not applied, so the app acts for nobody` in the log | Another client already has the id `slack-app-<team>`. Remove or rename that client, then start again. |
 | The app does not answer | Check that `humagen start` is running and that the app is in the channel. |
 
 To remove the app, delete it at <https://api.slack.com/apps> and set
