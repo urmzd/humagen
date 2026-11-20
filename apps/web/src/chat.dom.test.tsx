@@ -266,6 +266,11 @@ test("Home's composer shows no project control, and Run chosen there is applied 
   const bar = screen.getByRole("form", { name: "Message" });
   assert.deepEqual(within(bar).queryAllByRole("button", { name: /project/i }), []);
   fireEvent.click(within(bar).getByRole("button", { name: "Approvals: Ask Me" }));
+  // The control opens a menu of the modes; Run is picked from it.
+  await screen.findByRole("menu", { name: "Approvals" });
+  const run = document.querySelector<HTMLElement>('[data-approval-option="auto"]');
+  assert.ok(run, "the menu has no Run row");
+  fireEvent.click(run);
   assert.ok(within(bar).getByRole("button", { name: "Approvals: Run" }));
   assert.ok(!net?.seen.some((s) => s.method === "PUT"), "nothing is saved before the session");
   fireEvent.change(box(), { target: { value: "Plan the launch" } });

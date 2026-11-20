@@ -2342,9 +2342,11 @@ Rules:
   under the answer, or **Approval agent: Asked a person** with the reason
   above the options. The answer is recorded as the person's, so they see it
   and can correct the agent in the session.
-- The composer shows **Answer Questions** beside Run, a text control that is
-  pressed while Run and Answer is on, and absent in Ask Me. Someone else's
-  choice reads "Run and Answer, chosen by <name>".
+- The composer shows one approvals control, named for the mode. It opens a
+  menu of **Ask Me**, **Run** and **Run and Answer**, each with one line on
+  what the approval agent does in that mode and a check on the one in use.
+  Someone else's choice reads "Run and Answer, chosen by <name>", and the menu
+  says so; it also says when the approval agent has no model to run on.
 - A workspace's own output schema for the approval agent keeps working: the
   `answer` field is optional, and a schema without it decides calls only, so
   every question goes to a person.

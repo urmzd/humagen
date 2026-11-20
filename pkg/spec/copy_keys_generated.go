@@ -243,7 +243,6 @@ var copyKeyList = []string{
 	"app.reload",
 	"app.updateHint",
 	"app.updateReady",
-	"approvals.answers",
 	"approvals.ask",
 	"approvals.askHint",
 	"approvals.askMeAgain",
