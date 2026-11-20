@@ -2047,13 +2047,14 @@ conversation is starting while it waits, and opens the new conversation.
 A narrow row puts its controls under the title rather than cutting the title
 short.
 
-Each refusal has its own words, shown as an alert under the Documents
-heading: the document changed since the list was loaded (409, with Reload
-Documents), the source is no longer filed in that project (409), the
-imported structure cannot be trusted (400), the document is not an imported
-conversation (400), the workspace sends agents no earlier conversation (400),
-not allowed in the project (403), gone (404, with Reload Documents) and too
-large (413). Another cause is told as the server says it.
+A refusal is shown as an alert under the Documents heading. The route
+answers a status and a sentence with no stable reason, and 409 and 400 each
+have several causes, so for those the server's sentence is shown as given,
+and a 409 (something changed since the page was read) offers Reload
+Documents, which reads the documents and the source's projects again. A
+status with one meaning has the console's own words: not allowed (403), gone
+or no longer visible (404, with Reload Documents) and too large (413). No
+copy depends on the server's wording.
 
 The conversation shows, above its own turns and in Details, a heading naming
 the tool ("Imported from ChatGPT"), a `Reference` to the source and one to the
@@ -2073,7 +2074,9 @@ its own yet takes focus at its heading when it opens.
 Evidence: `continue-import.dom.test.tsx` covers the row shown and hidden, the
 keyboard path, the request's digests and project, the omitted structure
 digest, a source filed nowhere, scoped or in two projects, the starting and
-disabled states, each refusal's words, the origin's references and facts, a
+disabled states, refusals mapped by status only (an unknown 409 or 400
+sentence is shown as given, with the reload only for a 409), the origin's
+references and facts, a
 structure not kept, the changed and removed document lines and the focus;
 `packages/adapter/src/imported.test.ts` covers the uri schemes, the body and
 the arithmetic. Captures of the source page with the menu open, the new

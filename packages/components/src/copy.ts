@@ -1769,15 +1769,8 @@ export const defaultCopy = {
     menu: (title: string) => `Actions for ${title}`,
     starting: (title: string) => `Starting a conversation from ${title}…`,
     reload: "Reload Documents",
-    changed: "This document changed after the list was loaded. Reload the documents and try again.",
-    detached: "This source is no longer filed in that project. Reload the page to see where it is.",
-    untrusted:
-      "This conversation's imported structure was changed or is damaged, so it cannot be continued. Import it again to continue it.",
-    notSession: "This document is not an imported conversation, so it cannot be continued.",
-    noHistory:
-      "This workspace sends agents no earlier conversation, so a continuation would carry nothing.",
-    forbidden: "You cannot start conversations in this source's project.",
-    gone: "This document or its source is no longer here. Reload the documents.",
+    forbidden: "You are not allowed to start a conversation from this document.",
+    gone: "This document or its source is no longer here, or you can no longer see it.",
     tooLarge: "This conversation is too large to continue.",
     failed: "The conversation could not be started.",
     tools: {

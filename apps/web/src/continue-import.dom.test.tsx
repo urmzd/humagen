@@ -284,40 +284,55 @@ test("an excluded document's row is shown but cannot be chosen", async () => {
   assert.equal((row as HTMLButtonElement).disabled, true);
 });
 
-test("a document changed since it was listed says so and offers to reload", async () => {
+test("a 409 shows the server's words as given and offers to read the documents again", async () => {
   let lists = 0;
+  let attachments = 0;
+  const said = "the imported document changed since it was read; read it again";
   sourcePage({
     "GET /api/knowledge/sessions-chatgpt-2026-11/documents": () => {
       lists += 1;
       return { documents: docs };
     },
-    "POST /api/knowledge/sessions-chatgpt-2026-11/documents/d-1/continue": refuse(
-      409,
-      "the imported document changed since it was read; read it again",
-    ),
+    "GET /api/knowledge/sessions-chatgpt-2026-11/attachments": () => {
+      attachments += 1;
+      return { attachments: [{ source: "sessions-chatgpt-2026-11", project: "research" }] };
+    },
+    "POST /api/knowledge/sessions-chatgpt-2026-11/documents/d-1/continue": refuse(409, said),
   });
   await choose("Generated plan");
   const alert = await screen.findByRole("alert");
-  assert.equal(alert.textContent, words.changed);
-  const before = lists;
+  assert.equal(alert.textContent, said);
+  const before = { lists, attachments };
   fireEvent.click(screen.getByRole("button", { name: words.reload }));
-  await waitFor(() => assert.ok(lists > before));
+  // Both what the documents are and where the source is filed are read again.
+  await waitFor(() => assert.ok(lists > before.lists && attachments > before.attachments));
   assert.equal(screen.queryByRole("alert"), null);
 });
 
-test("each refusal has its own words", () => {
+test("refusals are mapped by status only, never by the server's wording", () => {
   const cases: [number, string, string, boolean][] = [
-    [409, "the imported document changed since it was read; read it again", words.changed, true],
-    [409, "the source is no longer filed in that project", words.detached, false],
-    [400, "the imported conversation's structure cannot be trusted", words.untrusted, false],
-    [400, "the document is not an imported conversation", words.notSession, false],
+    // One status, several causes: the server's sentence as given, and a reload for a 409.
+    [
+      409,
+      "the imported document changed since it was read; read it again",
+      "the imported document changed since it was read; read it again",
+      true,
+    ],
+    [
+      409,
+      "the source is no longer filed in that project",
+      "the source is no longer filed in that project",
+      true,
+    ],
     [
       400,
-      "this workspace sends no earlier conversation to agents, so there is nothing a continuation could carry",
-      words.noHistory,
+      "the imported conversation's structure cannot be trusted",
+      "the imported conversation's structure cannot be trusted",
       false,
     ],
+    // A status with one meaning has the console's words, whatever the server said.
     [403, "you need to be a member of research", words.forbidden, false],
+    [403, "you need runs:write", words.forbidden, false],
     [404, "not found", words.gone, true],
     [413, "request is too large", words.tooLarge, false],
   ];
@@ -326,24 +341,31 @@ test("each refusal has its own words", () => {
     assert.equal(refusal.message, message, `${status} ${said}`);
     assert.equal(!!refusal.reload, reload, `${status} ${said}`);
   }
-  // A cause with no words of its own is told as the server said it.
-  assert.equal(
-    continueRefusal(new ApiError(400, "the source is attached to more than one project")).message,
-    "the source is attached to more than one project",
-  );
+  // Wording the console has never seen changes nothing: still the server's text, still the action.
+  const unknown409 = continueRefusal(new ApiError(409, "a wording no release has used yet"));
+  assert.deepEqual(unknown409, { message: "a wording no release has used yet", reload: true });
+  const unknown400 = continueRefusal(new ApiError(400, "another new sentence"));
+  assert.deepEqual(unknown400, { message: "another new sentence" });
+  // With no sentence, or no answer at all, the console's own fallback.
+  assert.equal(continueRefusal(new ApiError(409, "")).message, words.failed);
   assert.equal(continueRefusal(new Error("offline")).message, words.failed);
 });
 
-test("a refusal is announced in the page", async () => {
-  sourcePage({
-    "POST /api/knowledge/sessions-chatgpt-2026-11/documents/d-1/continue": refuse(
-      400,
-      "the imported conversation's structure cannot be trusted",
-    ),
-  });
-  await choose("Generated plan");
-  assert.equal((await screen.findByRole("alert")).textContent, words.untrusted);
-  assert.equal(screen.queryByRole("button", { name: words.reload }), null);
+test("an unknown 409 or 400 sentence is shown as given, with the reload only for the 409", async () => {
+  for (const [status, said, reload] of [
+    [409, "something new changed upstream", true],
+    [400, "something new is wrong with it", false],
+  ] as const) {
+    sourcePage({
+      "POST /api/knowledge/sessions-chatgpt-2026-11/documents/d-1/continue": refuse(status, said),
+    });
+    await choose("Generated plan");
+    assert.equal((await screen.findByRole("alert")).textContent, said);
+    assert.equal(!!screen.queryByRole("button", { name: words.reload }), reload, String(status));
+    cleanup();
+    net?.restore();
+    net = undefined;
+  }
 });
 
 const continued = (over: Partial<NonNullable<Thread["import"]>> = {}): Thread =>

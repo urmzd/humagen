@@ -49,25 +49,19 @@ export interface Refusal {
 }
 
 /**
- * What the reader is told when continuing a document is refused, by the
- * route's status and, where one status has several causes, its words.
+ * What the reader is told when continuing a document is refused. The route
+ * answers only a status and a sentence, with no stable reason: 409 and 400
+ * each have several causes, so for them the server's sentence is shown as it
+ * is, never a guess at which cause it was, and a 409 (something changed since
+ * the page was read) offers to read the documents again. A status with one
+ * meaning has the console's own words.
  */
 export function continueRefusal(error: unknown): Refusal {
   if (!(error instanceof ApiError)) return { message: continueWords.failed };
-  const said = error.message;
+  const said = error.message.trim() || continueWords.failed;
   switch (error.status) {
     case 409:
-      return said.includes("no longer filed")
-        ? { message: continueWords.detached }
-        : said.includes("changed since")
-          ? { message: continueWords.changed, reload: true }
-          : { message: said || continueWords.failed };
-    case 400:
-      if (said.includes("cannot be trusted")) return { message: continueWords.untrusted };
-      if (said.includes("not an imported conversation"))
-        return { message: continueWords.notSession };
-      if (said.includes("no earlier conversation")) return { message: continueWords.noHistory };
-      return { message: said || continueWords.failed };
+      return { message: said, reload: true };
     case 403:
       return { message: continueWords.forbidden };
     case 404:
@@ -75,7 +69,7 @@ export function continueRefusal(error: unknown): Refusal {
     case 413:
       return { message: continueWords.tooLarge };
     default:
-      return { message: said || continueWords.failed };
+      return { message: said };
   }
 }
 
@@ -84,10 +78,10 @@ export function continueRefusal(error: unknown): Refusal {
  * belongs to, else those it is attached to, else the workspace itself (`~`).
  * Read only when wanted; null while it is read or when it cannot be.
  */
-function useFiledIn(source: Source, wanted: boolean): string[] | null {
+function useFiledIn(source: Source, wanted: boolean, reads: number): string[] | null {
   const scope = source.lifecycle?.project;
   const [attached, setAttached] = useState<string[] | null>(null);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: a source changed since is read again
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a source changed since, or a reload, is read again
   useEffect(() => {
     if (!wanted || scope) return;
     let live = true;
@@ -103,7 +97,7 @@ function useFiledIn(source: Source, wanted: boolean): string[] | null {
     return () => {
       live = false;
     };
-  }, [source.name, source.updated_at, scope, wanted]);
+  }, [source.name, source.updated_at, scope, wanted, reads]);
   return scope ? [scope] : attached;
 }
 
@@ -395,7 +389,7 @@ function SourceDetail({
   // Continuing an imported conversation: which documents offer it, the
   // projects the source is filed in, and the one being started.
   const offers = canRun && docs.some(continuable);
-  const places = useFiledIn(source, offers);
+  const places = useFiledIn(source, offers, reads);
   const [continuing, setContinuing] = useState<Doc | null>(null);
   const [refusal, setRefusal] = useState<Refusal | null>(null);
   const proceed = (doc: Doc, project: string) => {

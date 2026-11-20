@@ -715,8 +715,8 @@ imported included, an untrusted structure of such a document is refused, and
 a reader who cannot see the source is given neither digest; the store
 records the digest with every write, and a listing reads no structure (the
 reads are counted), on memory and Postgres (`pkg/knowledge`). The console's
-Continue Conversation: which documents offer it, the request it sends, each
-refusal's words and the conversation's origin and counts, in
+Continue Conversation: which documents offer it, the request it sends, how
+a refusal is shown by its status, and the conversation's origin and counts, in
 `apps/web/src/continue-import.dom.test.tsx` and
 `packages/adapter/src/imported.test.ts` (DES-076).
 
