@@ -32,7 +32,6 @@ import { topicsOf } from "./topics.ts";
 import { readFromStart } from "./turns.ts";
 import { AgentMark, isWorking, Page, Problem } from "./ui.tsx";
 import { useVoiceNotes } from "./useVoiceNotes.ts";
-import { useWide } from "./wide.ts";
 
 const words = defaultCopy.threads;
 
@@ -295,7 +294,6 @@ export function Chat({
   const [turns, setTurns] = useState<Run[]>([]);
   // The thread as the platform reads it: its record, and its people's messages besides its runs.
   const [room, setRoom] = useState<ThreadPage | null>(null);
-  const wide = useWide();
   // The + selection of a conversation of runs, saved on its thread as a room's is.
   const runs = useThreadSelection(threadId ?? "", room?.thread ?? noThread, {
     saved: (t) => {
@@ -686,9 +684,7 @@ export function Chat({
           (!threadId
             ? startChannel
               ? words.startThread
-              : wide
-                ? defaultCopy.chat.placeholderHint
-                : defaultCopy.chat.placeholder
+              : defaultCopy.chat.placeholder
             : words.message)
         }
         emptyText={placeholderFor}

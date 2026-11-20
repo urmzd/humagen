@@ -3500,8 +3500,6 @@ export const defaultCopy = {
       `${agents.join(", ")} can't answer in this project. Pick another project, or mention another agent.`,
     /** The chat bar's prompt. */
     placeholder: "Ask anything",
-    /** The same prompt where there is room to say what else the bar takes. */
-    placeholderHint: "Ask anything, @ to mention, / for commands",
     /** Under an answer that went to an agent because it was selected, not tagged. */
     routedAll: (agent: string) => `Routed to ${agent}, with every agent selected`,
     routed: (agent: string) => `Routed to ${agent}`,
