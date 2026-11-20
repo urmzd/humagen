@@ -10,12 +10,14 @@ const contexts = (turn: Turn) =>
     .filter((b) => b.type === "context")
     .map((b) => b.elements?.map((e) => e.text).join(" ") ?? "");
 
+const going = (turn: Turn): Turn => ({ ...turn, status: "working" });
+
 describe("a turn's steps in Slack", () => {
-  it("are one context line per run of tool calls, in order, and no task cards", () => {
-    const out = renderToSlack(<TurnView turn={multiStepTurn} />);
+  it("are one context line per run of tool calls while it is going, in order, and no task cards", () => {
+    const out = renderToSlack(<TurnView turn={going(multiStepTurn)} />);
     expect(out.warnings).toEqual([]);
     expect((out.blocks as Ctx[]).some((b) => b.type === "task_card")).toBe(false);
-    const lines = contexts(multiStepTurn);
+    const lines = contexts(going(multiStepTurn));
     const runs = [
       lines.findIndex((l) => l.includes("Checked urmzd/playscape#21")),
       lines.findIndex((l) =>
@@ -25,6 +27,14 @@ describe("a turn's steps in Slack", () => {
     ];
     expect(runs.every((i) => i >= 0)).toBe(true);
     expect([...runs].sort((a, b) => a - b)).toEqual(runs);
+  });
+
+  it("are one line counted by kind once it has ended", () => {
+    const lines = contexts(multiStepTurn);
+    expect(lines[0]).toBe(
+      "Checked 2 sources (1 failed), read 2 files, ran a command, wrote scratchpads/review-notes.md (+4)",
+    );
+    expect(lines.some((l) => l.includes("Checked urmzd/playscape#21"))).toBe(false);
   });
 
   it("stay within the block limit for a long turn", () => {
@@ -37,9 +47,12 @@ describe("a turn's steps in Slack", () => {
       at: i * 2,
     }));
     const turn: Turn = { ...multiStepTurn, text: "x".repeat(400), tasks };
-    const out = renderToSlack(<TurnView turn={turn} />);
-    expect(out.warnings).toEqual([]);
-    for (const page of out.pages) expect(page.length).toBeLessThanOrEqual(LIMITS.blocks.message);
-    expect(contexts(turn).some((l) => /^Used \d+ tools$/.test(l))).toBe(true);
+    for (const t of [going(turn), turn]) {
+      const out = renderToSlack(<TurnView turn={t} />);
+      expect(out.warnings).toEqual([]);
+      for (const page of out.pages) expect(page.length).toBeLessThanOrEqual(LIMITS.blocks.message);
+    }
+    expect(contexts(going(turn)).some((l) => /^Used \d+ tools$/.test(l))).toBe(true);
+    expect(contexts(turn)[0]).toBe("Ran 200 commands");
   });
 });
