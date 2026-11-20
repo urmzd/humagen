@@ -61,6 +61,7 @@ import { AgentChangeCards } from "./agent-change";
 import { type Copy, defaultCopy } from "./copy";
 import { AnswerText, reviewCountLine } from "./review";
 import { toolsLine } from "./timeline";
+import { ChangedFiles, turnSettled } from "./turn-changes";
 
 interface WithCopy {
   copy?: Copy;
@@ -864,6 +865,12 @@ export function TurnView({
       {turn.attachments?.map((a) => (
         <AttachmentView key={a.id} attachment={a} />
       ))}
+      {/* The web shows what a turn changed as its own card (`TurnChanges` in `@humagen/web`). */}
+      {turnSettled(turn.status) && (
+        <Only surface="slack">
+          <ChangedFiles tasks={turn.tasks} copy={copy} />
+        </Only>
+      )}
       <Only surface="slack">
         <AgentChangeCards tasks={turn.tasks} />
       </Only>

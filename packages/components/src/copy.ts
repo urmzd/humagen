@@ -2081,6 +2081,8 @@ export const defaultCopy = {
         `Review the ${n === 1 ? "change" : `${n} changed files`} in the Workspace`,
       show: "Show changed files",
       hide: "Hide changed files",
+      /** Files a summary with a cap leaves out, as its last line. */
+      more: (n: number) => `and ${n} more`,
     },
     askAgent: (agent: string) => `Ask ${agent}`,
     reply: "Reply",
