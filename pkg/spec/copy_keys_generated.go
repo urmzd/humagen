@@ -696,6 +696,7 @@ var copyKeyList = []string{
 	"corpora.deleteAction",
 	"corpora.edit",
 	"corpora.empty",
+	"corpora.emptyHint",
 	"corpora.evals.addCase",
 	"corpora.evals.added",
 	"corpora.evals.cancel",

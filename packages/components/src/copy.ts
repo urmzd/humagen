@@ -827,6 +827,8 @@ export const defaultCopy = {
     title: "Knowledge",
     newCorpus: "New Corpus",
     empty: "No corpora yet",
+    emptyHint:
+      "A corpus is a named body of knowledge. Add sources to it, then give it to an agent.",
     loadFailed: "Knowledge could not be loaded.",
     edit: "Edit",
     delete: "Delete",
