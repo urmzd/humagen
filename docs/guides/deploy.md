@@ -147,6 +147,23 @@ Rolling forward again reads every record as before. This release, and every
 one after it, lists the rest of a scope when one record cannot be read, and
 names that record under `unreadable`.
 
+### Upgrading: knowledge source ids
+
+From this release each knowledge source has an id
+([status](../architecture/overview.md#status)), and a conversation continued
+from an imported one pins it. A source kept before this release has none
+until a conversation imported into it is continued, which gives it one.
+
+A replica still on an earlier release does not know the id. During a rolling
+update, when it writes a source (a document added, replaced, excluded or
+removed, a variant, a configuration, a sync), the record it writes has no id.
+That fails closed: the source's continuations are seen by no one, an admin
+included, and nothing is posted in them, from then on. A source it deletes
+and makes again has no id either, and an empty id matches no continuation,
+so none is revived. To avoid losing continuations, keep knowledge writes off
+older replicas until every replica runs this release. No route starts a
+continuation yet, so a deployment has none to lose today.
+
 ## The image
 
 The [`Dockerfile`](https://github.com/urmzd/humagen/blob/main/Dockerfile) at the root builds the console (`pnpm

@@ -40,6 +40,11 @@ func (p *Platform) ForkThread(ctx context.Context, who auth.Principal, id string
 	if err = p.MayPost(person, Place{Project: source.Project, Thread: id}); err != nil {
 		return threads.Thread{}, err
 	}
+	// A fork of a continuation keeps what it carries, so it is started only
+	// as a continuation is (ContinueImport).
+	if importHistoryCut(source, p.Settings(who.Tenant)) {
+		return threads.Thread{}, ErrImportNoHistory
+	}
 	agents, mode, err := p.checkRouting(ctx, who.Tenant, source.Project, in.Agents, in.Mode, p.Seer(who).Agent)
 	if err != nil {
 		return threads.Thread{}, err
@@ -75,7 +80,10 @@ func (p *Platform) ForkThread(ctx context.Context, who auth.Principal, id string
 	if err != nil {
 		return threads.Thread{}, err
 	}
-	result, err := p.Threads.Create(who.Tenant, threads.Thread{Project: source.Project, Channel: source.Channel, Title: in.Title, Visibility: threads.Private, CreatedBy: person.Subject, Agents: agents, Mode: mode, Fork: &threads.Fork{Sources: in.Sources, SourceThread: id, Through: in.Through, By: person.Subject, At: now, Context: history}}, now)
+	// A fork of a conversation continued from an imported one keeps its
+	// imported origin: its context, ahead of the fork's own history, and
+	// the rule that its readers still see the origin source.
+	result, err := p.Threads.Create(who.Tenant, threads.Thread{Project: source.Project, Channel: source.Channel, Title: in.Title, Visibility: threads.Private, CreatedBy: person.Subject, Agents: agents, Mode: mode, Fork: &threads.Fork{Sources: in.Sources, SourceThread: id, Through: in.Through, By: person.Subject, At: now, Context: history}, Import: source.Import}, now)
 	_ = attempt.Finish(err)
 	return result, err
 }
@@ -146,6 +154,9 @@ func (p *Platform) BringBackResult(ctx context.Context, who auth.Principal, id s
 
 // forkSourcesVisible checks every source without recursive Place calls. The
 // callback grants ordinary access or records each governed read as usual.
+// A conversation continued from an imported one, and each fork above it,
+// is seen only by a reader who still sees the source it was imported from
+// (importSourceVisible).
 func (s *Seer) forkSourcesVisible(at Place, direct func(Place) bool) bool {
 	seen := map[string]bool{}
 	for depth := 0; at.Thread != ""; depth++ {
@@ -159,6 +170,9 @@ func (s *Seer) forkSourcesVisible(at Place, direct func(Place) bool) bool {
 			// threads can carry fork history; retain the ordinary read rule
 			// for unrecorded conversations and their early events.
 			return true
+		}
+		if th.Import != nil && !s.importSourceVisible(th.Import) {
+			return false
 		}
 		if th.Fork == nil {
 			return true
@@ -283,11 +297,12 @@ func (p *Platform) checkForkDepth(tenant string, source threads.Thread) error {
 	return nil
 }
 
-// Passive inherited context cannot be published as an independent raw history.
-// A reviewed summary deliberately copies only the person's selected text.
+// Passive inherited context cannot be published as an independent raw history:
+// a fork's, and an imported conversation's a continuation holds. A reviewed
+// summary deliberately copies only the person's selected text.
 type forkPublicationGuard struct{ p *Platform }
 
 func (g forkPublicationGuard) ConversationOperationsSettled(tenant, thread string) bool {
 	th, err := g.p.Threads.Get(tenant, thread)
-	return err == nil && !th.ReadOnly && (th.Fork == nil || len(th.Fork.Context) == 0)
+	return err == nil && !th.ReadOnly && (th.Fork == nil || len(th.Fork.Context) == 0) && th.Import == nil
 }
