@@ -1670,7 +1670,8 @@ conversation, and it is published only through a reviewed summary.
 While the workspace's history setting is none, nothing is posted,
 run or forked in it.
 A kept structure is what its importer stated (`imported_by`), not a
-verified record. No route starts a continuation yet.
+verified record. One is started by
+`POST /api/knowledge/{name}/documents/{id}/continue`.
  */
 export interface ThreadImport {
   /** The knowledge source the document is in. */
@@ -6609,6 +6610,15 @@ export interface ReplaceKnowledgeDocumentTextBody {
   title: string;
   text: string;
   digest: string;
+}
+
+export interface ContinueImportedDocumentBody {
+  document_digest: string;
+  structure_digest?: string;
+  project: string;
+  title?: string;
+  agents?: string[];
+  mode?: ThreadMode;
 }
 
 export interface ImportKnowledgeDocumentBody {

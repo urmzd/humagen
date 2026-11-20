@@ -117,7 +117,7 @@ var sessionURIs = []string{threads.ImportClaude + ":", threads.ImportCodex + ":"
 // second read. Any difference between the two (the source made again, the
 // structure's importer or time, the project) refuses it.
 func (p *Platform) ContinueImport(ctx context.Context, who auth.Principal, in ContinueImportInput) (threads.Thread, error) {
-	// The route that will start one checks runs:write; it is checked here
+	// The route that starts one checks runs:write; it is checked here
 	// too, as ImportDocument checks knowledge:write beside its route's
 	// permission, and reading the source takes knowledge:read (SourceAs).
 	if !who.Can(auth.RunsWrite) {

@@ -611,8 +611,21 @@ and Postgres, the four formats' generated records included
 server and a stub older server on memory only (`internal/httpapi`,
 `internal/platform`, `internal/app`).
 
-Continuing an imported conversation is built in the platform, with no route
-and no console yet (`ContinueImport` in `internal/platform/import_continue.go`).
+Continuing an imported conversation is built in the platform
+(`ContinueImport` in `internal/platform/import_continue.go`) and has a route,
+`POST /api/knowledge/{name}/documents/{id}/continue`
+(`internal/httpapi/import_continue.go`). The route checks `runs:write`, as a
+fork does; reading the source also takes `knowledge:read`, and a source the
+caller cannot see, or another workspace's, is not found (404). Its body names
+the document digest the caller read, the structure digest when a structure is
+kept, and the project the caller saw the source filed in (`~` for the
+workspace itself), which is required so that a source detached since is
+refused (409) rather than continued elsewhere. It answers the new thread
+(201), whose `import` says how many turns were sent of how many the import
+kept, the branches not continued, the turns whose files were not imported and
+the pinned digest. No agent is started: the caller posts the first message.
+The console's Continue Conversation is still to come. No route yet returns a
+kept structure's digest, so a client can name it only once one does.
 It starts a private plain thread of the caller's, in the source's project
 (the one it is scoped to, else the one it is attached to, else the workspace
 itself), holding the conversation's origin (`Thread.import`, read only in the
@@ -677,8 +690,12 @@ Tested: the thread record and the source's id on memory and Postgres
 no id and an earlier release's rewrite of one (`internal/platform`); the
 platform's other continuation tests, its seed, its refusals and who sees it,
 on memory only (`internal/platform`); the contract's
-fields against the Go types (`internal/httpapi`). The route that starts one
-and the console's Continue Conversation are not built.
+fields against the Go types, and the route on memory and Postgres
+(`internal/httpapi`): who may call it, each refusal, the audit record, the
+listing, a second continuation of the same document, the seed's bound, and a
+scripted model that answers a fact from the imported lines on the first turn
+and is sent only that conversation's turns on the second. The console's
+Continue Conversation is not built.
 
 `humagen import agents` carries an agent file's `name`, `description` and
 text, and nothing else: the agent runs on `--provider` and `--model`, with no
