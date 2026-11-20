@@ -101,10 +101,21 @@ function streamText(text: string, citations: Turn["citations"]): string {
  * held words stream then.
  */
 function streamable(text: string): string {
-  const start = text.trimStart();
-  if (/^```[^\n`]*(\n\s*)?$/.test(start)) return "";
+  if (opener(text)) return "";
   return readReview(text, true).kind === "text" ? text : "";
 }
+
+/** The words so far are only an opening fence, held until what follows shows whether it is a review. */
+const opener = (text: string) => /^```[^\n`]*(\n\s*)?$/.test(text.trimStart());
+
+/**
+ * A new card whose step came after words held back as a bare opening fence
+ * waits with them, while the turn goes on, so it is not shown above them.
+ */
+const waits = (turn: Turn, task: Task) =>
+  (turn.status === "working" || turn.status === "queued") &&
+  opener(turn.text) &&
+  (task.at ?? 0) > 0;
 
 /**
  * Chunks that move Slack from `prev` to `next`. Updates to cards already shown
@@ -124,12 +135,16 @@ export function streamUpdate(
   const sent = streamable(prev?.text ?? "");
   const text = streamable(next.text);
   const rewritten = !text.startsWith(sent);
-  const before = new Map((prev?.tasks ?? []).map((t) => [t.id, t]));
+  // A card that waited on held words was not sent: it is still new.
+  const before = new Map(
+    (prev?.tasks ?? []).filter((t) => !waits(prev as Turn, t)).map((t) => [t.id, t]),
+  );
   // New cards whose step came after the words Slack already has, by where.
   const placed: Task[] = [];
   for (const task of next.tasks) {
     const old = before.get(task.id);
     if (sameTask(task, old)) continue;
+    if (!old && waits(next, task)) continue;
     if (
       !old &&
       !rewritten &&

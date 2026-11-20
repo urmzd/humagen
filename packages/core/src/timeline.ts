@@ -346,17 +346,44 @@ export function turnChanges(tasks: readonly Task[]): FileChange[] {
   );
 }
 
-const FENCE = /^\s*(`{3,}|~{3,})/;
+const FENCE = /^ {0,3}(`{3,}|~{3,})(.*)$/;
+
+/** Whether `text` ends inside a code fence. A fence closes only on its own character, at least as long, with nothing after it. */
+function inFence(text: string): boolean {
+  let open: { ch: string; len: number } | null = null;
+  for (const line of text.split("\n")) {
+    const m = FENCE.exec(line);
+    if (!m) continue;
+    const mark = m[1] as string;
+    if (!open) open = { ch: mark[0] as string, len: mark.length };
+    else if (mark[0] === open.ch && mark.length >= open.len && !(m[2] ?? "").trim()) open = null;
+  }
+  return open !== null;
+}
+
+/** A line that a following line of the same kind continues: a list item, a quote or a table row. */
+const CONTINUED = /^\s*([-*+]\s|\d+[.)]\s|>|\|)/;
+/** What a continuing line may start with. */
+const CONTINUES = /^[-*+>|0-9]/;
+
+/** Whether a step inside this (unfinished) line would cut a link or an inline code span. */
+function midConstruct(line: string): boolean {
+  if ((line.match(/`/g) ?? []).length % 2 === 1) return true;
+  return /\[[^\]]*$/.test(line) || /\]\([^)]*$/.test(line);
+}
 
 /**
  * An answer's words with a paragraph break wherever a step came between them
  * (`Task.at`), for a surface that shows the words as one text, such as Slack:
  * what an agent said before a call and what it said after it read as two
- * paragraphs, not one run-on line ("on the web.Here are"). A break is added
- * only where the words do not already break, never inside a code fence, and
- * only once words follow the step, so the result for a prefix of the text is a
- * prefix of the result for all of it, apart from trailing spaces: a stream can
- * keep appending to it.
+ * paragraphs, not one run-on line ("on the web.Here are"). The break is
+ * exactly one blank line. None is added where the words already break, inside
+ * a code fence, inside a table row, or where a list, a quote or a table goes
+ * on after the step; a step inside a link, an inline code span or a word
+ * moves its break to the end of that line. Each choice depends only on the
+ * words before the step and the first character after it, so the result for a
+ * prefix of the text is a prefix of the result for all of it, apart from
+ * trailing whitespace: a stream can keep appending to it.
  */
 export function paragraphsAtSteps(text: string, tasks: readonly Pick<Task, "at">[]): string {
   const cuts = [
@@ -368,19 +395,33 @@ export function paragraphsAtSteps(text: string, tasks: readonly Pick<Task, "at">
   ].sort((a, b) => a - b);
   let out = "";
   let from = 0;
-  for (const at of cuts) {
+  for (let i = 0; i < cuts.length; i++) {
+    const at = cuts[i] as number;
     if (at < from) continue;
     out += text.slice(from, at);
     from = at;
     const rest = text.slice(at);
     if (!out.trim() || /\n[ \t]*\n[ \t]*$/.test(out) || /^[ \t]*\n[ \t]*\n/.test(rest)) continue;
-    let fenced = false;
-    for (const line of out.split("\n")) if (FENCE.test(line)) fenced = !fenced;
-    if (fenced) continue;
-    out = out.replace(/[ \t]+$/, "");
-    const lead = /^[ \t]*\n?[ \t]*/.exec(rest)?.[0] ?? "";
-    out += "\n\n";
-    from = at + lead.length;
+    if (inFence(out)) continue;
+    const line = out.slice(out.lastIndexOf("\n") + 1);
+    const next = rest.trimStart();
+    if (!out.endsWith("\n") && !rest.startsWith("\n")) {
+      // Inside a line: never in a table row; in a link, code or a word, at the line's end.
+      if (/^\s*\|/.test(line)) continue;
+      const word = /\w$/.test(out) && /^\w/.test(rest);
+      if (midConstruct(line) || word) {
+        const end = text.indexOf("\n", at);
+        if (end > at && !cuts.includes(end)) {
+          cuts.splice(i + 1, 0, end);
+          cuts.sort((a, b) => a - b);
+        }
+        continue;
+      }
+    }
+    const last = out.trimEnd().split("\n").at(-1) ?? "";
+    if (next && CONTINUED.test(last) && CONTINUES.test(next)) continue;
+    out = `${out.replace(/\s+$/, "")}\n\n`;
+    from = at + (/^\s*/.exec(rest)?.[0].length ?? 0);
   }
   return out + text.slice(from);
 }
