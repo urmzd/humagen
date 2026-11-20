@@ -252,6 +252,7 @@ var copyKeyList = []string{
 	"approvals.waiting",
 	"approve",
 	"approveSelected",
+	"artifactsPage.makeNew",
 	"ask",
 	"askApproval",
 	"askForm.cancel",

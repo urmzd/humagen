@@ -1627,6 +1627,7 @@ function Console({
                       agents={agents.map((a) => a.spec.name)}
                       projects={projectNames}
                       canDelete={can("artifacts:write")}
+                      onStart={can("runs:write") ? (ask) => go({ page: "new", ask }) : undefined}
                       onOpenRun={openRun}
                       onOpenThread={openThread}
                       selectedId={route.artifact ?? null}

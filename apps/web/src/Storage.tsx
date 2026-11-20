@@ -1,4 +1,5 @@
 import { defaultCopy } from "@humagen/components";
+import { ColumnsIcon, FileIcon, LayersIcon, ScrollTextIcon } from "@humagen/render-web";
 import { useEffect, useState } from "react";
 import { ArtifactThumb } from "./ArtifactThumb.tsx";
 import { AgentTag, ItemCard, itemGrid, Tag } from "./cards.tsx";
@@ -34,6 +35,10 @@ import {
   textLink,
   UsageMeter,
 } from "./ui.tsx";
+
+const words = defaultCopy.artifactsPage;
+/** The tiles' marks, in the order of the starters in the copy. */
+const starterIcons = [FileIcon, LayersIcon, ColumnsIcon, ScrollTextIcon];
 
 /** How much is stored, against the limit when there is one, and where it is. */
 export function StorageUsed({ use }: { use: StorageUse }) {
@@ -292,10 +297,12 @@ export function StoredList({
     return narrowed ? (
       <Empty title="No artifacts match">Change the filters or the search to see the rest.</Empty>
     ) : (
-      <Empty title="No artifacts yet">
-        When an agent publishes a file from its sandbox, it is kept here as an artifact, with every
-        later version. Each one also arrives in your inbox.
-      </Empty>
+      <div className="humagen-glass rounded-aui-lg px-5">
+        <Empty title="No artifacts yet">
+          When an agent publishes a file from its sandbox, it is kept here as an artifact, with
+          every later version. Each one also arrives in your inbox.
+        </Empty>
+      </div>
     );
   }
   return (
@@ -338,10 +345,13 @@ export function Storage({
   onOpenRun,
   onOpenThread,
   onOpenArtifact,
+  onStart,
   selectedId,
   onSelect,
   via = platform,
 }: {
+  /** Starts a new session with a request already written, for the tiles that make something new. */
+  onStart?: (ask: string) => void;
   /** The artifact that is open, when the address names one. Leave out to let the page keep its own. */
   selectedId?: string | null;
   onSelect?: (id: string | null) => void;
@@ -415,6 +425,39 @@ export function Storage({
       {over && <Problem message={OVER_LIMIT} />}
       <Problem message={problem} />
 
+      {onStart && (
+        <section aria-labelledby="artifacts-new" className="flex min-w-0 flex-col gap-2">
+          <h2 id="artifacts-new" className="font-medium text-aui-muted text-aui-xs">
+            {words.makeNew}
+          </h2>
+          {/* One tile per file an agent writes natively, so what is asked for is what can be made. */}
+          <ul className="grid min-w-0 grid-cols-2 gap-3 @2xl:grid-cols-4">
+            {words.starters.map((starter, i) => {
+              const Icon = starterIcons[i] ?? FileIcon;
+              return (
+                <li key={starter.label} className="min-w-0">
+                  <button
+                    type="button"
+                    onClick={() => onStart(starter.ask)}
+                    className="humagen-glass flex min-h-16 w-full min-w-0 items-center gap-3 rounded-aui-lg px-4 py-3 text-left transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
+                  >
+                    <span className="flex size-9 shrink-0 items-center justify-center rounded-aui border border-aui-border text-aui-muted">
+                      <Icon size={18} />
+                    </span>
+                    <span className="flex min-w-0 flex-col">
+                      <span className="truncate font-medium text-aui-fg text-aui-sm">
+                        {starter.label}
+                      </span>
+                      <span className="truncate text-aui-muted text-aui-xs">{starter.format}</span>
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
+
       <div className="flex flex-wrap items-center gap-2">
         <SearchField
           label="Search artifacts"
@@ -480,7 +523,10 @@ export function Storage({
         onMore={store.more}
       />
 
-      {store.use && <StorageUsed use={store.use} />}
+      {/* With nothing stored and no limit there is nothing to measure. */}
+      {store.use && (store.use.count > 0 || !!store.use.limit_bytes) && (
+        <StorageUsed use={store.use} />
+      )}
     </Page>
   );
 }

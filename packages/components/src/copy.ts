@@ -2955,6 +2955,17 @@ export const defaultCopy = {
     doneWhen: (condition: string) => `Done when: ${condition}`,
     updated: (n: number) => `Updated ${n} ${n === 1 ? "alert" : "alerts"}.`,
   },
+  /** The Artifacts page: what agents published, and tiles that start a new one. */
+  artifactsPage: {
+    makeNew: "Make something new",
+    /** One per file an agent writes natively. `ask` is the request the chat bar starts with. */
+    starters: [
+      { label: "Document", format: "Word, .docx", ask: "Create a document (.docx) about " },
+      { label: "Slides", format: "PowerPoint, .pptx", ask: "Create a slide deck (.pptx) about " },
+      { label: "Sheet", format: "Excel, .xlsx", ask: "Create a spreadsheet (.xlsx) of " },
+      { label: "Report", format: "PDF", ask: "Create a PDF report about " },
+    ],
+  },
   /** Plugins, in your settings: what you add for your own work. Apps are the workspace's, on a page of their own. */
   plugins: {
     title: "Plugins",
