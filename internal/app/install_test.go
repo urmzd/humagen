@@ -41,7 +41,9 @@ func browse(t *testing.T, target string) (*http.Response, string) {
 	t.Helper()
 	resp, err := noFollow.Get(target)
 	if err != nil {
-		t.Fatal(err)
+		// Called beside the test, where only Error may be: an empty answer fails what reads it.
+		t.Error(err)
+		return &http.Response{Header: http.Header{}}, ""
 	}
 	defer resp.Body.Close()
 	b, _ := io.ReadAll(resp.Body)
@@ -79,12 +81,15 @@ func TestInstallGitHubRegistersInstallsAndConnects(t *testing.T) {
 
 	var out bytes.Buffer
 	var manifest map[string]any
+	// The browser's part runs beside the command, and is over before the test is.
+	browsed := make(chan struct{})
 	i := installer{
 		in: bufio.NewReader(strings.NewReader("")), out: &out, http: github.Client(),
 		githubWeb: github.URL, githubAPI: github.URL, wait: 20 * time.Second,
 		// The person's part: the form goes to GitHub, GitHub sends them back twice.
 		open: func(start string) error {
 			go func() {
+				defer close(browsed)
 				_, form := browse(t, start)
 				action := regexp.MustCompile(`action="([^"]+)"`).FindStringSubmatch(form)
 				value := regexp.MustCompile(`name="manifest" value="([^"]*)"`).FindStringSubmatch(form)
@@ -115,6 +120,7 @@ func TestInstallGitHubRegistersInstallsAndConnects(t *testing.T) {
 		},
 	}
 	err := i.github([]string{"--server", api.URL, "--token", "", "--webhook-url", "https://hooks.example/connectors/github", "--app-name", "Humagen Acme", "--repo", "acme/one"})
+	<-browsed
 	if err != nil {
 		t.Fatal(err)
 	}
