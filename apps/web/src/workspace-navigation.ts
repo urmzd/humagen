@@ -37,9 +37,15 @@ export function workspaceHub(route: Route): WorkspaceHub | null {
   )
     return "agents";
   if (
-    ["agents", "agent", "agent-setup", "agent-network", "assignments", "agent-control"].includes(
-      route.page,
-    )
+    [
+      "agents",
+      "agent",
+      "agent-setup",
+      "agent-network",
+      "agent-store",
+      "assignments",
+      "agent-control",
+    ].includes(route.page)
   )
     return "agents";
   if (["operations", "action-policy", "usage", "monitor", "audit"].includes(route.page))
@@ -129,6 +135,12 @@ export function hubTabs(
                   route.page === "context" ||
                   route.page === "knowledge-graph",
                 visible: can("knowledge:read"),
+              },
+              {
+                label: defaultCopy.agentStore.title,
+                route: { page: "agent-store" },
+                active: route.page === "agent-store",
+                visible: can("agents:read"),
               },
             ]
           : [

@@ -41,6 +41,11 @@ export const AgentOperations = lazyPage(
   (m) => m.AgentOperations,
   { frame: "rows" },
 );
+export const AgentStore = lazyPage(
+  () => import("./AgentStore.tsx"),
+  (m) => m.AgentStore,
+  { title: () => defaultCopy.agentStore.title },
+);
 export const Agents = lazyPage(
   () => import("./Agents.tsx"),
   (m) => m.Agents,
@@ -247,6 +252,8 @@ function viewsOf(route: Route): Preloads {
       return [ProjectPage];
     case "agents":
       return [Agents];
+    case "agent-store":
+      return [AgentStore];
     case "agent":
       return [AgentDetail, AgentOperations];
     case "agent-setup":
