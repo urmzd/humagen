@@ -103,7 +103,7 @@ export interface TurnCapabilities {
 }
 
 /** Fallback preview when a tool supplies none: scalar args as fields, never a JSON dump. */
-function previewFields(approval: Approval, copy: Copy = defaultCopy): Field[] {
+export function previewFields(approval: Approval, copy: Copy = defaultCopy): Field[] {
   if (approval.budget) {
     const b = approval.budget;
     return [

@@ -2798,6 +2798,27 @@ export const defaultCopy = {
   batchTitle: (n: number) => `${n} actions need your approval`,
   approveSelected: "Approve Selected",
   denyAll: "Cancel All",
+  /**
+   * Slack's own blocks for what waits on a person (render-slack `native.tsx`):
+   * an approval as a card, several as a carousel, an alert as a card and a
+   * question as a container.
+   */
+  slackBlocks: {
+    /** The line above a carousel of approvals. */
+    batch: (agent: string, n: number) =>
+      `${agent} wants to run ${n} ${n === 1 ? "action" : "actions"}`,
+    /** An approval agent that handed the decision to a person, and why. */
+    handedOver: (agent: string, reason: string) => `${agent} asked a person: ${reason}`,
+    openSession: "Open Session",
+    open: "Open",
+    resolve: "Resolve",
+    /** An alert's priority, in words, beside its level. */
+    priority: { urgent: "Urgent", normal: "Normal priority", resolved: "Resolved" },
+    resolvedBy: (by: string, time: string) => `Resolved by ${by} | ${time}`,
+    /** The field under a question's options for an answer of the reader's own. */
+    other: "Something else",
+    otherPlaceholder: "Type an answer, then press Enter",
+  },
   unsure: "I'm Not Sure",
   unsureBy: (by: string, time: string) => `${by} wasn't sure | ${time}`,
   stopPhase: {
