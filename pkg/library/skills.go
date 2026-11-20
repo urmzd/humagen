@@ -119,8 +119,9 @@ type Revision struct {
 	PublishedBy string    `json:"published_by,omitempty"`
 	Tests       []string  `json:"tests"`
 	// Results are the recorded results of its test runs, at most one a
-	// run and as many as Tests holds.
-	Results []TestResult `json:"results,omitempty"`
+	// run and as many as Tests holds. The store keeps them (records); a
+	// revision is never answered with them.
+	Results []TestResult `json:"-"`
 	From    *Provenance  `json:"from,omitempty"`
 }
 
@@ -192,6 +193,37 @@ func (r Revision) ResultOf(run string) (TestResult, bool) {
 		}
 	}
 	return TestResult{}, false
+}
+
+// records is a skill's revisions as the store keeps them: each with its
+// recorded test results, which a revision's own JSON leaves out.
+type records []Revision
+
+type storedRevision struct {
+	Revision
+	Results []TestResult `json:"results,omitempty"`
+}
+
+func (rs records) MarshalJSON() ([]byte, error) {
+	out := make([]storedRevision, len(rs))
+	for i, r := range rs {
+		out[i] = storedRevision{Revision: r, Results: r.Results}
+	}
+	return json.Marshal(out)
+}
+
+func (rs *records) UnmarshalJSON(data []byte) error {
+	var in []storedRevision
+	if err := json.Unmarshal(data, &in); err != nil {
+		return err
+	}
+	out := make(records, len(in))
+	for i, r := range in {
+		r.Revision.Results = r.Results
+		out[i] = r.Revision
+	}
+	*rs = out
+	return nil
 }
 
 func clone(r Revision) Revision {
@@ -313,7 +345,7 @@ func (s *Store) convert(recs []state.Record) error {
 		if len(r.Key) > 0 && r.Key[0] == '#' {
 			continue
 		}
-		var revisions []Revision
+		var revisions records
 		if err := json.Unmarshal(r.Value, &revisions); err != nil {
 			return fmt.Errorf("%q/%q: %w", r.Tenant, r.Key, err)
 		}
@@ -335,7 +367,7 @@ func (s *Store) convert(recs []state.Record) error {
 // record.
 func (s *Store) read(tenant string, scope Scope, name string) ([]Revision, int64, error) {
 	key := skillKey(scope, name)
-	var rows []Revision
+	var rows records
 	ver, err := s.kv.lookupMaybe(tenant, key, &rows)
 	if err != nil || ver == 0 {
 		return nil, 0, err
@@ -398,7 +430,7 @@ func (s *Store) draft(tenant, by string, scope Scope, d Definition, expected int
 		r := clone(Revision{OriginRun: outcomeOrigin(previous, from, trustedOrigin), ID: ID(scope, d.Name), Via: via, Definition: d, Scope: scope, Version: len(previous) + 1, By: by, At: at, Tests: []string{}, From: from})
 		next := append(slices.Clone(previous), r)
 		o := &ops{}
-		o.put(tenant, skillKey(scope, d.Name), next, ver)
+		o.put(tenant, skillKey(scope, d.Name), records(next), ver)
 		if ver == 0 {
 			// A new skill is counted in its scope, and a new scope in the
 			// tenant, in the same write.
@@ -458,7 +490,7 @@ func (s *Store) change(tenant string, scope Scope, name string, version int, fn 
 		next := slices.Clone(rows)
 		next[version-1] = r
 		o := &ops{}
-		o.put(tenant, skillKey(scope, name), next, ver)
+		o.put(tenant, skillKey(scope, name), records(next), ver)
 		if err := o.commit(s.kv); err != nil {
 			return err
 		}
@@ -496,7 +528,7 @@ func (s *Store) scan(tenant string, scope Scope, fn func([]Revision)) ([]string,
 	}
 	unreadable := []string{}
 	for _, it := range items {
-		var rows []Revision
+		var rows records
 		if json.Unmarshal(it.Value, &rows) != nil {
 			unreadable = append(unreadable, strings.TrimPrefix(it.Key, prefix))
 			continue
@@ -652,7 +684,7 @@ func (s *Store) Find(tenant, id string) (Revision, error) {
 	} else if err != nil {
 		return Revision{}, err
 	}
-	var rows []Revision
+	var rows records
 	if _, err := s.kv.lookup(tenant, key, &rows); errors.Is(err, state.ErrNotFound) {
 		return Revision{}, ErrNotFound
 	} else if err != nil {
