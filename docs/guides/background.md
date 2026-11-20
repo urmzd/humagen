@@ -44,6 +44,15 @@ tools: [github_workflow_status, shell, notify, watch_start, goal_start, task_sta
 4. When it ends, the person gets one inbox message. A watch or a goal links to
    the conversation that asked; a task links to its own session.
 
+## See and stop yours
+
+Open **Scheduled**, then **Background** (`/scheduled/background`). Each card is
+one watch, goal or task, still running first. It shows its agent, how often it
+checks or which turn it is on, and its last result. Open a card to read the
+session its runs are in. Choose **Stop** from its menu to end one that is still
+running. The API is `GET /api/me/background` and
+`POST /api/me/background/{id}/stop`; nobody sees or stops another person's.
+
 ## Limits
 
 | Limit | Value |

@@ -308,7 +308,8 @@ export type Route =
   /** One of a project's channels, with its shared threads. */
   | { page: "channel"; project: string; channel: string }
   | { page: "schedules"; name?: string }
-  | { page: "automations" }
+  /** Scheduled work: schedules, and with `tab` the background work agents keep at for you. */
+  | { page: "automations"; tab?: "background" }
   | { page: "monitor"; tab: MonitorTab }
   /** The inbox, at a message, at the message an alert raised, or narrowed to one kind. */
   | { page: "inbox"; message?: string; alert?: string; kind?: string; view?: NotificationView }
@@ -592,7 +593,7 @@ export function href(r: Route): string {
     case "channel":
       return href({ page: "sessions", project: r.project });
     case "automations":
-      return "/scheduled";
+      return r.tab === "background" ? "/scheduled/background" : "/scheduled";
     case "schedules":
       return r.name ? `/schedules/${enc(r.name)}` : "/schedules";
     case "monitor":
@@ -1006,7 +1007,9 @@ function read(pathname: string, search: string): Route {
     // Scheduled was called Automations; a schedule without a name is the list.
     case "scheduled":
     case "automations":
-      return { page: "automations" };
+      return a === "background"
+        ? { page: "automations", tab: "background" }
+        : { page: "automations" };
     case "schedules":
       return a ? { page: "schedules", name: a } : { page: "automations" };
     case "monitor":

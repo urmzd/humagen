@@ -767,6 +767,31 @@ export interface ToolCredential {
 }
 
 /** The tools that act as you, and what this workspace lets people give for them. */
+/** One watch, goal or task an agent keeps at for you (`GET /api/me/background`). */
+export interface BackgroundTask {
+  id: string;
+  kind: "watch" | "goal" | "task";
+  /** What to watch for, the goal, or the task's ask. */
+  text: string;
+  how?: string;
+  state: "active" | "done" | "expired" | "stopped" | "failed";
+  agent: string;
+  project?: string;
+  every?: string;
+  until: string;
+  next?: string;
+  working: boolean;
+  runs: number;
+  limit: number;
+  /** The conversation that asked. */
+  session: string;
+  /** The conversation its runs are in. */
+  thread?: string;
+  result?: string;
+  created_at: string;
+  ended_at?: string;
+}
+
 export interface ToolCredentials {
   allowed_hosts?: string[];
   oauth_available?: boolean;
@@ -1360,6 +1385,11 @@ export const api = {
       enabled,
     }),
   deleteClient: (id: string) => call<void>("DELETE", `/api/clients/${encodeURIComponent(id)}`),
+  /** Your own background work: watches, goals and tasks, running first. */
+  background: () =>
+    call<{ items: BackgroundTask[] }>("GET", "/api/me/background").then((r) => r.items ?? []),
+  stopBackground: (id: string) =>
+    call<BackgroundTask>("POST", `/api/me/background/${encodeURIComponent(id)}/stop`),
   /** Your own credentials for the tools that act as you. Nobody else's can be named. */
   toolCredentials: () => call<ToolCredentials>("GET", "/api/me/credentials"),
   connectTool: (provider: string, input: ToolCredentialInput) =>

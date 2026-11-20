@@ -31,6 +31,8 @@ import type {
   Assignment,
   AssignmentInput,
   AttachKnowledgeSourceBody,
+  BackgroundList,
+  BackgroundTask,
   BigQuerySetupInput,
   BigQuerySetupView,
   Branding,
@@ -1808,6 +1810,38 @@ address with the caller's bearer token.
     return this.rawRequest<PersonContext>("PUT", path, {
       body,
       contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Lists the caller's own watches, goals and tasks: what is still running, newest first, then what ended in the last 30 days, most recent first, at most 100 in all. A machine has none. */
+  async listBackground(options?: RequestOptions): Promise<BackgroundList> {
+    const path = "/api/me/background";
+    return this.request<BackgroundList>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listBackgroundRaw(options?: RequestOptions): Promise<ApiResponse<BackgroundList>> {
+    const path = "/api/me/background";
+    return this.rawRequest<BackgroundList>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Stops a watch, goal or task the caller owns. A run in flight finishes, and what it finds is not sent. Stopping one that already ended answers it as it is. Another person's is not found. */
+  async stopBackground(id: string, options?: RequestOptions): Promise<BackgroundTask> {
+    let path = "/api/me/background/{id}/stop";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<BackgroundTask>("POST", path, {
+      ...options,
+    });
+  }
+
+  async stopBackgroundRaw(id: string, options?: RequestOptions): Promise<ApiResponse<BackgroundTask>> {
+    let path = "/api/me/background/{id}/stop";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<BackgroundTask>("POST", path, {
       ...options,
     });
   }
