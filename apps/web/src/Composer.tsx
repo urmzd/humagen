@@ -653,7 +653,7 @@ export function Composer({
           send(false);
         }}
         data-working={queue.running ? "" : undefined}
-        className="humagen-composer relative flex flex-col gap-1 rounded-[1.25rem] border bg-aui-surface p-2"
+        className="humagen-composer relative flex flex-col gap-1 rounded-[1.25rem] border border-aui-border bg-aui-surface p-2 transition-colors focus-within:border-aui-fg motion-reduce:transition-none"
       >
         {light && (
           <LazyFrame fallback={null} instead={null} resetKey={lit}>

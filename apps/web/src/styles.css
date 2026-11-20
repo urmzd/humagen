@@ -993,7 +993,8 @@ body {
 }
 
 /* While a reply is in flight the beam is the bar's border (ComposerLight.tsx). */
-.humagen-composer[data-working] { border-color: transparent; }
+.humagen-composer[data-working],
+.humagen-composer[data-working]:focus-within { border-color: transparent; }
 
 /* Composer controls adapt to their own column, including beside Details. */
 .humagen-composer-container { container: composer / inline-size; }
