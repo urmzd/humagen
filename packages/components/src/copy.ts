@@ -1757,6 +1757,61 @@ export const defaultCopy = {
     all: "All Selected Agents",
     mode: "Who answers",
   },
+  /**
+   * Continuing a conversation imported from another tool: the action on a
+   * document's row, its failures, and what the new conversation says of its
+   * origin. A tool is named as its import names it ("imported from TOOL").
+   */
+  continueImport: {
+    action: "Continue Conversation",
+    /** The row for one project, when the source is filed in more than one. */
+    actionIn: (project: string) => `Continue in ${project}`,
+    /** The workspace itself, as a place to continue in. */
+    workspace: "Workspace",
+    menu: (title: string) => `Actions for ${title}`,
+    starting: (title: string) => `Starting a conversation from ${title}…`,
+    reload: "Reload Documents",
+    forbidden: "You are not allowed to start a conversation from this document.",
+    gone: "This document or its source is no longer here, or you can no longer see it.",
+    tooLarge: "This conversation is too large to continue.",
+    failed: "The conversation could not be started.",
+    tools: {
+      claude: "Claude Code",
+      codex: "Codex",
+      chatgpt: "ChatGPT",
+      "claude-ai": "claude.ai",
+    },
+    heading: (tool: string) => `Imported from ${tool}`,
+    headingUnknown: "Imported document",
+    speakers: {
+      user: "User",
+      assistant: "Assistant",
+      tool: "Tool call",
+      result: "Tool result",
+      document: "Document",
+    },
+    /** How a turn is named: its speaker there, and the tool it is from. */
+    speaker: (speaker: string, tool: string) => `${speaker}, imported from ${tool}`,
+    turnCut: "Shortened",
+    facts: "What was carried over",
+    sent: (sent: number, kept: number) =>
+      `${sent} of ${kept} ${kept === 1 ? "turn" : "turns"} sent`,
+    mainPath: "Main path",
+    oneBlock: "Sent as one block",
+    speakersUnknown: "Speakers not known",
+    shortened: (n: number) => `${n} shortened to fit`,
+    branches: (n: number) => `${n} ${n === 1 ? "branch" : "branches"} not continued`,
+    noBranches: "No other branches",
+    files: (n: number) => `Files on ${n} ${n === 1 ? "turn" : "turns"} not imported`,
+    importLeftOut: (n: number) => `Import left out ${n} ${n === 1 ? "turn" : "turns"}`,
+    importShortened: (n: number) => `Import shortened ${n} ${n === 1 ? "turn" : "turns"}`,
+    importUnknown: "What the import left out is not known",
+    started: "Started",
+    ended: "Last turn",
+    revision: (short: string) => `Revision ${short}`,
+    changedSince: "The document has changed in its source since this conversation was started.",
+    goneSince: "The document is no longer in its source.",
+  },
   conversationAccess: {
     title: "People & Access",
     add: "Add Participant",

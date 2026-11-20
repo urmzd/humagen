@@ -1510,9 +1510,11 @@ function Console({
                       }
                       canWrite={can("knowledge:write")}
                       canEval={can("evals:write")}
+                      canRun={can("runs:write")}
                       onChanged={loadSources}
                       onSuitesChanged={loadSuites}
                       onOpenAgent={(name) => openAgent(name, "context")}
+                      onOpenThread={openThread}
                     />
                   )}
                   {(route.page === "agents" ||

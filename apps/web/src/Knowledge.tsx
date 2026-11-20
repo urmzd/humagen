@@ -1,3 +1,4 @@
+import { continuable, continueBody } from "@humagen/adapter/imported";
 import { defaultCopy } from "@humagen/components";
 import { Inspector } from "@humagen/web";
 import { type FormEvent, useEffect, useRef, useState } from "react";
@@ -31,12 +32,74 @@ import {
   field,
   Label,
   Menu,
+  MoreMenu,
   Page,
   Problem,
   primary,
   rows,
   Tabs,
 } from "./ui.tsx";
+
+const continueWords = defaultCopy.continueImport;
+
+/** Why a continuation was not started, as the reader is told, and whether reading the list again helps. */
+export interface Refusal {
+  message: string;
+  reload?: boolean;
+}
+
+/**
+ * What the reader is told when continuing a document is refused. The route
+ * answers only a status and a sentence, with no stable reason: 409 and 400
+ * each have several causes, so for them the server's sentence is shown as it
+ * is, never a guess at which cause it was, and a 409 (something changed since
+ * the page was read) offers to read the documents again. A status with one
+ * meaning has the console's own words.
+ */
+export function continueRefusal(error: unknown): Refusal {
+  if (!(error instanceof ApiError)) return { message: continueWords.failed };
+  const said = error.message.trim() || continueWords.failed;
+  switch (error.status) {
+    case 409:
+      return { message: said, reload: true };
+    case 403:
+      return { message: continueWords.forbidden };
+    case 404:
+      return { message: continueWords.gone, reload: true };
+    case 413:
+      return { message: continueWords.tooLarge };
+    default:
+      return { message: said };
+  }
+}
+
+/**
+ * The projects a source is filed in, as the reader sees them: the one it
+ * belongs to, else those it is attached to, else the workspace itself (`~`).
+ * Read only when wanted; null while it is read or when it cannot be.
+ */
+function useFiledIn(source: Source, wanted: boolean, reads: number): string[] | null {
+  const scope = source.lifecycle?.project;
+  const [attached, setAttached] = useState<string[] | null>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a source changed since, or a reload, is read again
+  useEffect(() => {
+    if (!wanted || scope) return;
+    let live = true;
+    setAttached(null);
+    api
+      .sourceAttachments(source.name)
+      .then((list) => {
+        if (!live) return;
+        const names = [...new Set(list.map((a) => a.project || "~"))];
+        setAttached(names.length === 0 ? ["~"] : names);
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [source.name, source.updated_at, scope, wanted, reads]);
+  return scope ? [scope] : attached;
+}
 
 /**
  * Every knowledge source, and one source at a time. A source is shared by the
@@ -52,9 +115,11 @@ export function Knowledge({
   onSelect,
   canWrite,
   canEval,
+  canRun = false,
   onChanged,
   onSuitesChanged,
   onOpenAgent,
+  onOpenThread,
   back,
 }: {
   sources: Source[];
@@ -66,9 +131,13 @@ export function Knowledge({
   onSelect: (source: string | null, tab?: SourceTab) => void;
   canWrite: boolean;
   canEval: boolean;
+  /** The reader may start runs, so may continue an imported conversation. */
+  canRun?: boolean;
   onChanged: () => void;
   onSuitesChanged: () => void;
   onOpenAgent?: (name: string) => void;
+  /** Opens a conversation, such as one just continued from a document. */
+  onOpenThread?: (id: string) => void;
   /** Where a source's page leads back to: the corpus it was opened from, or Knowledge. */
   back?: { label: string; onClick: () => void };
 }) {
@@ -96,7 +165,9 @@ export function Knowledge({
         suites={suites}
         canWrite={canWrite}
         canEval={canEval}
+        canRun={canRun && !!onOpenThread}
         onChanged={onChanged}
+        onOpenThread={onOpenThread}
         onDeleted={() => {
           onChanged();
           onSelect(null);
@@ -258,7 +329,9 @@ function SourceDetail({
   suites,
   canWrite,
   canEval,
+  canRun,
   onChanged,
+  onOpenThread,
   onDeleted,
   onSuitesChanged,
   onOpenAgent,
@@ -271,7 +344,9 @@ function SourceDetail({
   suites: SuiteView[];
   canWrite: boolean;
   canEval: boolean;
+  canRun: boolean;
   onChanged: () => void;
+  onOpenThread?: (id: string) => void;
   onDeleted: () => void;
   onSuitesChanged: () => void;
   onOpenAgent?: (name: string) => void;
@@ -293,7 +368,9 @@ function SourceDetail({
   const [saveAs, setSaveAs] = useState("");
   const [pasting, setPasting] = useState(false);
   const picker = useRef<HTMLInputElement>(null);
+  const [reads, setReads] = useState(0);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reads asks for the list again
   useEffect(() => {
     if (upstream) {
       setDocs([]);
@@ -307,7 +384,24 @@ function SourceDetail({
     return () => {
       live = false;
     };
-  }, [source.name, source.documents, source.excluded, upstream]);
+  }, [source.name, source.documents, source.excluded, upstream, reads]);
+
+  // Continuing an imported conversation: which documents offer it, the
+  // projects the source is filed in, and the one being started.
+  const offers = canRun && docs.some(continuable);
+  const places = useFiledIn(source, offers, reads);
+  const [continuing, setContinuing] = useState<Doc | null>(null);
+  const [refusal, setRefusal] = useState<Refusal | null>(null);
+  const proceed = (doc: Doc, project: string) => {
+    if (continuing || !onOpenThread) return;
+    setContinuing(doc);
+    setRefusal(null);
+    api
+      .continueImport(source.name, doc.id, continueBody(doc, project))
+      .then((thread) => onOpenThread(thread.id))
+      .catch((error: unknown) => setRefusal(continueRefusal(error)))
+      .finally(() => setContinuing(null));
+  };
 
   const fail = (fallback: string) => (e: unknown) =>
     setProblem(e instanceof ApiError ? e.message : fallback);
@@ -586,6 +680,29 @@ function SourceDetail({
               </div>
             </form>
           )}
+          {continuing && (
+            <output className="text-aui-sm text-aui-muted">
+              {continueWords.starting(continuing.title)}
+            </output>
+          )}
+          {refusal && (
+            <div className="flex flex-col items-start gap-2">
+              <Problem message={refusal.message} />
+              {refusal.reload && (
+                <button
+                  type="button"
+                  className={button}
+                  onClick={() => {
+                    setRefusal(null);
+                    setReads((n) => n + 1);
+                    onChanged();
+                  }}
+                >
+                  {continueWords.reload}
+                </button>
+              )}
+            </div>
+          )}
           {docs.length === 0 ? (
             <p className="text-aui-sm text-aui-muted">Empty. Upload text files or paste text.</p>
           ) : (
@@ -593,9 +710,10 @@ function SourceDetail({
               {docs.map((d) => (
                 <li
                   key={d.id}
-                  className="flex items-center gap-3 border-aui-border border-t py-2 first:border-t-0"
+                  className="flex flex-wrap items-center gap-x-3 gap-y-1 border-aui-border border-t py-2 first:border-t-0"
                 >
-                  <div className={`min-w-0 flex-1 ${d.excluded ? "opacity-55" : ""}`}>
+                  {/* A narrow row puts its controls under the title rather than cutting it short. */}
+                  <div className={`min-w-0 flex-1 basis-48 ${d.excluded ? "opacity-55" : ""}`}>
                     <p className="truncate text-aui-sm text-aui-fg">{d.title}</p>
                     <p className="truncate text-aui-xs text-aui-muted">
                       {d.excluded ? "Excluded from search. " : ""}
@@ -603,36 +721,55 @@ function SourceDetail({
                       {ago(d.added_at)}
                     </p>
                   </div>
-                  {canWrite && (
-                    <>
-                      <label className="inline-flex min-h-8 shrink-0 items-center gap-1.5 text-aui-xs text-aui-muted">
-                        Searchable
-                        <input
-                          type="checkbox"
-                          className="humagen-switch"
-                          checked={!d.excluded}
-                          onChange={(e) =>
+                  <div className="ml-auto flex shrink-0 items-center gap-3">
+                    {canWrite && (
+                      <>
+                        <label className="inline-flex min-h-8 shrink-0 items-center gap-1.5 text-aui-xs text-aui-muted">
+                          Searchable
+                          <input
+                            type="checkbox"
+                            className="humagen-switch"
+                            checked={!d.excluded}
+                            onChange={(e) =>
+                              api
+                                .excludeDocument(source.name, d.id, !e.target.checked)
+                                .then(onChanged)
+                                .catch(fail("The document could not be changed."))
+                            }
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          className={button}
+                          onClick={() =>
                             api
-                              .excludeDocument(source.name, d.id, !e.target.checked)
+                              .removeDocument(source.name, d.id)
                               .then(onChanged)
-                              .catch(fail("The document could not be changed."))
+                              .catch(fail("The document could not be removed."))
                           }
-                        />
-                      </label>
-                      <button
-                        type="button"
-                        className={button}
-                        onClick={() =>
-                          api
-                            .removeDocument(source.name, d.id)
-                            .then(onChanged)
-                            .catch(fail("The document could not be removed."))
-                        }
-                      >
-                        Remove
-                      </button>
-                    </>
-                  )}
+                        >
+                          Remove
+                        </button>
+                      </>
+                    )}
+                    {canRun && continuable(d) && (
+                      <MoreMenu
+                        label={continueWords.menu(d.title)}
+                        items={(places ?? [""]).map((project) => ({
+                          label:
+                            places && places.length > 1
+                              ? continueWords.actionIn(
+                                  project === "~" ? continueWords.workspace : project,
+                                )
+                              : continueWords.action,
+                          // Not while the projects are read or another is starting; an
+                          // excluded document is not found by the server.
+                          disabled: !places || !!continuing || d.excluded,
+                          onSelect: () => proceed(d, project),
+                        }))}
+                      />
+                    )}
+                  </div>
                 </li>
               ))}
             </ul>
