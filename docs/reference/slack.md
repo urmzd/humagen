@@ -301,7 +301,7 @@ edited. The server leaves `reply_in` out, and the app sends the whole message
 to the person's direct messages instead, when the work was asked anywhere
 else, when the person may no longer read that conversation, or when a run
 behind it (the one that asked, or the last check or turn) read private
-context, as [a schedule's answer is kept for its creator](schedules.md). A
+context, as [a schedule's answer is kept for its creator](spec.md). A
 background result is sent to their direct messages even about a Slack thread
 they are in: nothing there pinged them. Work a person stopped tells nobody.
 
