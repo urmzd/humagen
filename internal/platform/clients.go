@@ -9,9 +9,12 @@ import (
 	"net/http"
 	"slices"
 
-	"github.com/urmzd/orchagent/flow/connectors"
-	"github.com/urmzd/orchagent/flow/connectors/mention"
-	"github.com/urmzd/orchagent/flow/signature"
+	"github.com/urmzd/saige/flow/address"
+	"github.com/urmzd/saige/flow/connectors"
+	ghtransport "github.com/urmzd/saige/flow/connectors/github"
+	"github.com/urmzd/saige/flow/connectors/mention"
+	slacktransport "github.com/urmzd/saige/flow/connectors/slack"
+	"github.com/urmzd/saige/flow/signature"
 
 	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/wire"
@@ -27,6 +30,12 @@ type ClientInput struct {
 	clients.Client
 	Token         clients.SecretInput
 	SigningSecret clients.SecretInput
+	// Set only by verified native installation callbacks, never decoded from JSON.
+	nativeSlack  bool
+	nativeGitHub bool
+	// Set only by ApplySlackApp, for the app a Platform document has the
+	// server start.
+	slackApp bool
 }
 
 // ClientCaps is how many clients a tenant may have: the defaults, or what its
@@ -68,6 +77,12 @@ func (p *Platform) create(tenant, by string, in ClientInput) (clients.Client, er
 	if c.Managed == clients.ManagedStatic {
 		return clients.Client{}, fmt.Errorf("%w: a static client is not created", clients.ErrInvalid)
 	}
+	if c.Managed == clients.ManagedInstall && !in.nativeGitHub && !in.nativeSlack {
+		return clients.Client{}, clients.ErrManaged
+	}
+	if (c.Managed == clients.ManagedApp) != in.slackApp {
+		return clients.Client{}, clients.ErrManaged
+	}
 	if err := c.Validate(); err != nil {
 		return clients.Client{}, err
 	}
@@ -77,12 +92,7 @@ func (p *Platform) create(tenant, by string, in ClientInput) (clients.Client, er
 	if s := p.surfaces[string(c.Surface)]; s.seat(tenant, c.ID) != nil {
 		return clients.Client{}, fmt.Errorf("%w: %q", clients.ErrExists, c.ID)
 	}
-	creds, secrets, err := p.credentials(tenant, c.ID, clients.Credentials{}, in)
-	if err != nil {
-		return clients.Client{}, err
-	}
-	c.Credentials = creds
-	st, err := p.dial(c, secrets)
+	st, err := p.connect(&c, clients.Credentials{}, in)
 	if err != nil {
 		return clients.Client{}, err
 	}
@@ -120,11 +130,23 @@ func (p *Platform) UpdateClient(_ context.Context, tenant, id, by string, in Cli
 	if err != nil {
 		return clients.Client{}, err
 	}
-	if old.Managed != "" {
+	if old.Managed != "" && old.Managed != clients.ManagedInstall && old.Managed != clients.ManagedApp {
 		return clients.Client{}, clients.ErrManaged
 	}
 	c := in.Client
 	c.ID, c.Tenant, c.Managed = id, tenant, ""
+	if old.Managed == clients.ManagedApp {
+		if !in.Token.Empty() || !in.SigningSecret.Empty() {
+			return clients.Client{}, clients.ErrManaged
+		}
+		c = slackAppKeeps(old, c)
+	}
+	if old.Managed == clients.ManagedInstall {
+		if !in.Token.Empty() || !in.SigningSecret.Empty() {
+			return clients.Client{}, clients.ErrManaged
+		}
+		c.Identity, c.Surface, c.Managed = old.Identity, old.Surface, old.Managed
+	}
 	return p.replace(old, c, by, in)
 }
 
@@ -203,6 +225,22 @@ func (p *Platform) TurnOffClient(_ context.Context, tenant, id, by string) error
 	return nil
 }
 
+// connect settles a client's secrets onto its record and builds its
+// connector. The Slack app a server starts has neither: it holds no secret
+// and nothing reaches it here.
+func (p *Platform) connect(c *clients.Client, had clients.Credentials, in ClientInput) (*seat, error) {
+	if c.Managed == clients.ManagedApp {
+		c.Credentials = clients.Credentials{}
+		return nil, nil
+	}
+	creds, secrets, err := p.credentials(c.Tenant, c.ID, had, in)
+	if err != nil {
+		return nil, err
+	}
+	c.Credentials = creds
+	return p.dial(*c, secrets)
+}
+
 // sameRecord reports two client records that read the same once written.
 func sameRecord(a, b clients.Client) bool {
 	ja, err := json.Marshal(a)
@@ -229,12 +267,8 @@ func (p *Platform) replace(old, c clients.Client, by string, in ClientInput) (cl
 	if err := p.checkHome(tenant, c); err != nil {
 		return clients.Client{}, err
 	}
-	creds, secrets, err := p.credentials(tenant, id, old.Credentials, in)
-	if err != nil {
-		return clients.Client{}, err
-	}
-	c.Credentials = creds
-	st, err := p.dial(c, secrets)
+	c.Tenant, c.ID = tenant, id
+	st, err := p.connect(&c, old.Credentials, in)
 	if err != nil {
 		return clients.Client{}, err
 	}
@@ -312,6 +346,12 @@ type resolved struct{ token, signing string }
 // credentials settles where a client's secrets are and reads them. An empty
 // input keeps what the client had.
 func (p *Platform) credentials(tenant, id string, had clients.Credentials, in ClientInput) (clients.Credentials, resolved, error) {
+	trustedGitHub := in.nativeGitHub
+	if !trustedGitHub && p.Clients != nil {
+		if held, err := p.Clients.Get(tenant, id); err == nil && held.Managed == clients.ManagedInstall && held.Surface == clients.GitHub && p.cfg.GitHubInstall != nil && held.Identity.AppID == p.cfg.GitHubInstall.AppID {
+			trustedGitHub = true
+		}
+	}
 	one := func(name, what string, had clients.SecretRef, in clients.SecretInput) (clients.SecretRef, string, error) {
 		switch {
 		case in.Value != "" && in.Ref != "":
@@ -322,6 +362,14 @@ func (p *Platform) credentials(tenant, id string, had clients.Credentials, in Cl
 			had = clients.SecretRef{Set: true, Ref: in.Ref}
 		case !had.Set:
 			return clients.SecretRef{}, "", fmt.Errorf("%w: a client needs a %s", clients.ErrInvalid, what)
+		}
+		if cfg := p.cfg.GitHubInstall; cfg != nil && trustedGitHub && (in.Ref == "" || (name == clients.SecretToken && in.Ref == cfg.PrivateKeyRef) || (name == clients.SecretSigning && in.Ref == cfg.SigningSecretRef)) {
+			if name == clients.SecretToken && had.Ref == cfg.PrivateKeyRef && had.Ref != "" {
+				return had, cfg.PrivateKey, nil
+			}
+			if name == clients.SecretSigning && had.Ref == cfg.SigningSecretRef && had.Ref != "" {
+				return had, cfg.SigningSecret, nil
+			}
 		}
 		if had.Ref == "" {
 			v, ok := p.secrets.Get(tenant, id, name)
@@ -342,10 +390,22 @@ func (p *Platform) credentials(tenant, id string, had clients.Credentials, in Cl
 	var creds clients.Credentials
 	var secrets resolved
 	var err error
-	if creds.Token, secrets.token, err = one(clients.SecretToken, "token", had.Token, in.Token); err != nil {
+	if in.Token.Ref == slackOAuthRef || in.SigningSecret.Ref == slackSigningRef {
+		return clients.Credentials{}, resolved{}, clients.ErrInvalid
+	}
+	if in.nativeSlack || (had.Token.Ref == slackOAuthRef && in.Token.Empty()) {
+		creds.Token = clients.SecretRef{Set: true, Ref: slackOAuthRef}
+		secrets.token = slackOAuthRef
+	} else if creds.Token, secrets.token, err = one(clients.SecretToken, "token", had.Token, in.Token); err != nil {
 		return clients.Credentials{}, resolved{}, err
 	}
-	if creds.SigningSecret, secrets.signing, err = one(clients.SecretSigning, "signing secret", had.SigningSecret, in.SigningSecret); err != nil {
+	if in.nativeSlack || (had.SigningSecret.Ref == slackSigningRef && in.SigningSecret.Empty()) {
+		secrets.signing = p.ConnectionAuth.SigningSecret("slack")
+		if secrets.signing == "" {
+			return clients.Credentials{}, resolved{}, clients.ErrInvalid
+		}
+		creds.SigningSecret = clients.SecretRef{Set: true, Ref: slackSigningRef}
+	} else if creds.SigningSecret, secrets.signing, err = one(clients.SecretSigning, "signing secret", had.SigningSecret, in.SigningSecret); err != nil {
 		return clients.Credentials{}, resolved{}, err
 	}
 	return creds, secrets, nil
@@ -380,7 +440,7 @@ func (p *Platform) keep(c clients.Client, in ClientInput) error {
 func (p *Platform) seat(c clients.Client, st *seat) {
 	p.seeMapped(c)
 	s := p.surfaces[string(c.Surface)]
-	if !c.Enabled {
+	if !c.Enabled || c.Managed == clients.ManagedApp {
 		s.remove(c.Tenant, c.ID)
 		return
 	}
@@ -408,19 +468,40 @@ func (p *Platform) dial(c clients.Client, secrets resolved) (*seat, error) {
 	refused := func(err error) error { return fmt.Errorf("%w: %v", clients.ErrInvalid, err) }
 	switch c.Surface {
 	case clients.Slack:
-		var api slack.API = slack.NewHTTPAPI(secrets.token, http.DefaultClient)
+		guard := p.guardFor(c)
+		var api slack.API = slack.NewHTTPAPI(secrets.token, guarded(p.clientHTTP(), guard, slack.Classifier{}))
+		var tokenSource func(context.Context) (string, error)
+		if c.Credentials.Token.Ref == slackOAuthRef {
+			var err error
+			tokenSource, err = p.slackClientToken(c)
+			if err != nil {
+				return nil, refused(err)
+			}
+			api = slack.NewHTTPAPI("", guarded(p.slackOAuthClient(c, tokenSource), guard, slack.Classifier{}))
+		}
 		if p.cfg.SlackAPI != nil {
-			api = p.cfg.SlackAPI(secrets.token)
+			api, guard = p.cfg.SlackAPI(secrets.token), nil
+		}
+		deliveryState := p.cfg.Backends.DeliveryState
+		if guard != nil {
+			deliveryState = guard.Store(deliveryState)
 		}
 		cfg := slack.Config{
 			API: api, Verifier: signature.NewSlack(secrets.signing), Team: c.Identity.Team,
 			Tenant: c.Tenant, Files: connectors.Files{Store: p.files, Log: p.log}, FileToken: secrets.token,
 			Bots: c.Bots, Agents: agents,
 			Interval: p.cfg.ClientInterval, Log: p.log,
-			DeliveryState: p.cfg.Backends.DeliveryState, DeliveryScope: clientDeliveryScope(c),
+			DeliveryState: deliveryState, DeliveryScope: clientDeliveryScope(c),
 		}
+		cfg.Feedback, cfg.ObserveDelivery = p.feedbackFor(c), p.deliveredFor(c)
+		cfg.ContinueThread = func(team, channel, thread string) bool {
+			return p.continueSurface(c, address.Address{Connector: "slack", Workspace: team, Path: []string{channel}}.WithParam("thread", thread))
+		}
+		_, cfg.StatusReactions = api.(slacktransport.ReactionAPI)
+		cfg.FileTokenSource = tokenSource
 		if c.Slack != nil {
 			cfg.Sessions = c.Slack.Sessions
+			cfg.ActionChannels = c.Slack.ActionChannels
 			for _, cmd := range c.Slack.Commands {
 				cfg.Commands = append(cfg.Commands, slack.Command{Name: cmd.Name, Description: cmd.Description, ArgumentHint: cmd.ArgumentHint})
 			}
@@ -429,26 +510,34 @@ func (p *Platform) dial(c clients.Client, secrets resolved) (*seat, error) {
 		if err != nil {
 			return nil, refused(err)
 		}
-		return &seat{client: c, peer: peer, verifier: cfg.Verifier}, nil
+		return &seat{client: c, peer: peer, verifier: cfg.Verifier, guard: guard}, nil
 	case clients.GitHub:
+		guard := p.guardFor(c)
 		var api github.API
 		if github.IsPrivateKeyPEM(secrets.token) {
-			appAPI, err := github.NewAppHTTPAPI(github.AppConfig{
+			appAPI, err := github.NewAppHTTPAPI(p.observeGitHubAppAuth(c, github.AppConfig{
 				AppID:          c.Identity.AppID,
 				InstallationID: c.Identity.Installation,
 				PrivateKey:     secrets.token,
-				HTTPClient:     http.DefaultClient,
+				HTTPClient:     p.clientHTTP(),
 				Clock:          p.now,
-			})
+				Wrap: func(authenticated http.RoundTripper) http.RoundTripper {
+					return guard.Transport(authenticated, github.Classifier{})
+				},
+			}))
 			if err != nil {
 				return nil, refused(err)
 			}
 			api = appAPI
 		} else {
-			api = github.NewHTTPAPI(secrets.token, http.DefaultClient)
+			api = github.NewHTTPAPI(secrets.token, guarded(p.clientHTTP(), guard, github.Classifier{}))
 		}
 		if p.cfg.GitHubAPI != nil {
-			api = p.cfg.GitHubAPI(secrets.token)
+			api, guard = p.cfg.GitHubAPI(secrets.token), nil
+		}
+		deliveryState := p.cfg.Backends.DeliveryState
+		if guard != nil {
+			deliveryState = guard.Store(deliveryState)
 		}
 		cfg := github.Config{
 			API: api, Verifier: signature.NewGitHub(secrets.signing), Owners: c.Identity.Owners,
@@ -457,19 +546,28 @@ func (p *Platform) dial(c clients.Client, secrets resolved) (*seat, error) {
 			// webhook secret, so one client's grant is worth nothing to another.
 			MutationSecret: []byte(secrets.signing),
 			Tenant:         c.Tenant,
-			DeliveryState:  p.cfg.Backends.DeliveryState, DeliveryScope: clientDeliveryScope(c),
+			DeliveryState:  deliveryState, DeliveryScope: clientDeliveryScope(c),
 		}
 		// A comment that mentions the app and names no agent is raised
 		// naming none, and stamp decides who answers it where it is filed.
 		if g := c.GitHub; g != nil {
-			cfg.AutoLabels, cfg.Checks, cfg.Guides, cfg.Mutations, cfg.ReadRepositories = g.AutoLabels, g.Checks, g.Guides, g.Mutations, g.ReadRepositories
+			cfg.Checks, cfg.Guides, cfg.Mutations, cfg.ReadRepositories = g.Checks, g.Guides, g.Mutations, g.ReadRepositories
 			cfg.Login = g.Login
+			cfg.ActionRepositories = g.ActionRepositories
+			cfg.FixPullRequests = g.FixPullRequests
 		}
+		cfg.Feedback, cfg.ObserveDelivery = p.feedbackFor(c), p.deliveredFor(c)
+		cfg.AuthorizeFixPull = p.authorizeFixPull(c, api)
+		cfg.FixPullContext = p.fixPullContext(c)
+		cfg.ContinueThread = func(a address.Address) bool { return p.continueSurface(c, a) }
+		_, cfg.StatusReactions = api.(ghtransport.ReactionAPI)
+		cfg.StatusReactions = cfg.StatusReactions && cfg.Login != ""
+		cfg.ReviewText = func(v ghtransport.View) (string, error) { return p.reviewView(c, v) }
 		peer, err := github.New(cfg)
 		if err != nil {
 			return nil, refused(err)
 		}
-		st := &seat{client: c, peer: peer, verifier: cfg.Verifier}
+		st := &seat{client: c, peer: peer, verifier: cfg.Verifier, guard: guard}
 		if files, ok := api.(github.FileAPI); ok {
 			st.files = files
 		}
@@ -513,6 +611,9 @@ func (p *Platform) restore() {
 			continue
 		}
 		for _, c := range on {
+			if c.Managed == clients.ManagedApp {
+				continue
+			}
 			_, secrets, err := p.credentials(c.Tenant, c.ID, c.Credentials, ClientInput{})
 			var st *seat
 			if err == nil {

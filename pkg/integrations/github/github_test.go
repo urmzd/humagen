@@ -15,11 +15,11 @@ import (
 	"github.com/urmzd/humagen/internal/wire"
 
 	"github.com/urmzd/humagen/pkg/integrations/github"
-	"github.com/urmzd/orchagent/flow/address"
-	"github.com/urmzd/orchagent/flow/connector"
-	"github.com/urmzd/orchagent/flow/connectors/mention"
-	"github.com/urmzd/orchagent/flow/event"
-	"github.com/urmzd/orchagent/flow/signature"
+	"github.com/urmzd/saige/flow/address"
+	"github.com/urmzd/saige/flow/connector"
+	"github.com/urmzd/saige/flow/connectors/mention"
+	"github.com/urmzd/saige/flow/event"
+	"github.com/urmzd/saige/flow/signature"
 )
 
 const secret = "It's a Secret to Everybody"
@@ -525,8 +525,8 @@ func TestActionsChangeGitHubAndReportWhatTheyChanged(t *testing.T) {
 	for _, a := range c.Actions() {
 		actions[a.Name] = a
 	}
-	if len(actions) != 6 {
-		t.Fatalf("actions = %v, want six", actions)
+	if len(actions) != 7 || actions["github_create_review"].Invoke == nil {
+		t.Fatalf("actions = %v, want seven including native reviews", actions)
 	}
 
 	res, err := actions["github_comment"].Invoke(ctx, target, json.RawMessage(`{"body":"looked into it"}`))

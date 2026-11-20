@@ -35,6 +35,8 @@ export const ActionId = {
   report: "aui.report",
   /** Open a delegated run. `turnId` is the turn it was called from; `target` the child run id. */
   openRun: "aui.run.open",
+  /** What a finished run used, for the person who asks alone. `turnId` is the run. */
+  runDetails: "aui.run.details",
   openAssignment: "aui.assignment.open",
   openHandoff: "aui.handoff.open",
   // Mailbox parts (see mailbox.ts). `turnId` carries the message id, `target` the part id.
@@ -66,6 +68,19 @@ export const ActionId = {
    */
   openReview: "aui.review.open",
   reviewFollowUp: "aui.review.follow_up",
+  /**
+   * Move a conversation into a place of its own, where a surface has one: on
+   * Slack, a code channel. `turnId` is the answered run. Offered only where
+   * the host says it can (`TurnCapabilities.codeChannel`).
+   */
+  codeChannel: "aui.code_channel.open",
+  /**
+   * Set how the conversation a run belongs to approves its gated actions.
+   * `turnId` is the run; `target` is "auto" (the approval agent decides) or
+   * "ask" (a person decides). Offered only where the host says it can
+   * (`TurnCapabilities.approvalAgent`); the console has its own toggle.
+   */
+  approvalMode: "aui.approval.mode",
 } as const;
 
 export type ActionId = (typeof ActionId)[keyof typeof ActionId];
@@ -79,6 +94,8 @@ export type FeedbackReason = (typeof FEEDBACK_REASONS)[number];
 
 export interface ActionPayload {
   turnId: string;
+  /** Stable finding id for feedback on a structured review finding. */
+  findingId?: string;
   /** Interrupt id, option id, or rating, depending on the action. */
   target: string;
   /** Present for clarification picks. */

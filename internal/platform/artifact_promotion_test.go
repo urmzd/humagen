@@ -55,6 +55,21 @@ func TestAcceptedArtifactPromotionKeepsItsExactVersionAudienceAndProvenance(t *t
 	if note.Text != "Accepted original decision" || note.Status != memory.Pending || note.Source != memory.Artifact || !strings.Contains(note.By, file.ID+"?version=1") {
 		t.Fatalf("proposal=%+v", note)
 	}
+	// Once approved, the note is sent with the version it was drawn from,
+	// so an agent asked for its source can name it.
+	var owner string
+	for _, pending := range pendingOf(t, p.Memory, admin.Tenant) {
+		if pending.Note.ID == note.ID {
+			owner = pending.Agent
+		}
+	}
+	if n, err := p.ApproveMemory(admin.Tenant, owner, []string{note.ID}); err != nil || n != 1 {
+		t.Fatalf("approved %d notes: %v", n, err)
+	}
+	want := "\n- Accepted original decision (source: humagen://artifacts/" + file.ID + "?version=1)"
+	if got := promptAtOf(t, p.Memory, admin.Tenant, owner, "Known:", time.Now()); !strings.Contains(got, want) {
+		t.Fatalf("the note is sent as %q, without %q", got, want)
+	}
 	if _, err := p.PromoteArtifactMemory(t.Context(), admin, file.ID, 2); !errors.Is(err, artifacts.ErrInvalid) {
 		t.Fatalf("wrong memory version=%v", err)
 	}

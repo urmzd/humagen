@@ -3,6 +3,7 @@ import {
   BanIcon,
   CheckIcon,
   ChevronDownIcon,
+  EllipsisIcon,
   EllipsisVerticalIcon,
   SearchIcon,
   ShieldIcon,
@@ -12,6 +13,7 @@ import {
 import { AgentInitials, AgentOrb, type OrbState, usePresence } from "@humagen/web";
 import { createPortal } from "react-dom";
 import { agentHue, requestAgentHue, subscribeHues } from "./agentHues.ts";
+import { agentShown } from "./branding.ts";
 import { builtinAgentKey } from "./legacy.ts";
 
 export { Presence, usePresence } from "@humagen/web";
@@ -21,6 +23,7 @@ import { inputClass } from "@humagen/render-web/ui/input";
 import {
   type CSSProperties,
   createContext,
+  Fragment,
   type ReactNode,
   type RefObject,
   useContext,
@@ -33,7 +36,7 @@ import {
 } from "react";
 import type { Run } from "./adapter.ts";
 import { skillRefs } from "./commands.ts";
-import { dollars, elapsed, took } from "./format.ts";
+import { ago, dollars, elapsed, took } from "./format.ts";
 import { moreOf, nudgeInto, revealAt } from "./layout.ts";
 import { href } from "./route.ts";
 
@@ -120,23 +123,8 @@ export function Chip({ children }: { children: ReactNode }) {
   );
 }
 
-const units: [Intl.RelativeTimeFormatUnit, number][] = [
-  ["day", 86_400],
-  ["hour", 3_600],
-  ["minute", 60],
-];
-const relative = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
-
-export function ago(iso: string): string {
-  const seconds = Math.round((Date.parse(iso) - Date.now()) / 1000);
-  for (const [unit, size] of units) {
-    if (Math.abs(seconds) >= size) return relative.format(Math.round(seconds / size), unit);
-  }
-  return "just now";
-}
-
 // Formatting with no React in it lives in format.ts, so plain modules and their tests can use it too.
-export { cause, elapsed, isEnded, took, usd } from "./format.ts";
+export { ago, cause, elapsed, isEnded, took, usd } from "./format.ts";
 
 /**
  * Every page sits in the same left-aligned column, so the title and the first
@@ -274,6 +262,18 @@ export const pageTitle =
   "humagen-display truncate text-[1.875rem] leading-[1.15] font-semibold text-aui-fg";
 export const pageLede = "max-w-[62ch] pt-1.5 text-aui-sm text-aui-muted";
 
+/**
+ * The one look of a tab strip, for a page's own tabs (Tabs) and a hub's
+ * (WorkspaceTabs): the strip sits at the top of the page's column on a rule
+ * as wide as the column, and the open tab is underlined in the accent.
+ */
+export const tabStrip = "humagen-strip aui-scroll relative flex gap-1 overflow-x-auto";
+export const tabRule = "pointer-events-none absolute inset-x-0 bottom-0 border-aui-border border-b";
+export const tabItem =
+  "inline-flex h-10 pointer-coarse:h-11 shrink-0 items-center gap-1.5 whitespace-nowrap border-transparent border-b-2 px-3 text-aui-sm text-aui-muted transition-colors hover:text-aui-fg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-accent aria-selected:border-aui-accent aria-selected:text-aui-fg aria-[current=page]:border-aui-accent aria-[current=page]:text-aui-fg";
+/** The page column a hub's tab strip shares with the page under it. */
+export const pageColumn = "mx-auto w-full max-w-[68rem] px-5 md:px-10";
+
 /** The label of the hub tab that is open, when a hub's tabs head the page. */
 export const HubTabLabel = createContext<string | undefined>(undefined);
 
@@ -346,13 +346,24 @@ export function Page({
     );
   }
   const width = narrow ? "max-w-3xl" : wide ? "max-w-[82rem]" : "max-w-[68rem]";
+  const underHub = title === hubLabel;
+  const tabbed = !!tabs || underHub;
+  // A page headed by its tabs has nothing else in its header: the title is
+  // kept for assistive technology, and the actions join the tab row.
+  const bare = tabbed && !back && !icon && !meta && !crumbs;
   return (
     <div className="humagen-page aui-scroll min-h-0 flex-1 overflow-y-auto">
       {/* Every page is one centered column, so a wide window never strands the content against the sidebar. */}
       <div
-        className={`humagen-page-column @container humagen-fade mx-auto flex w-full ${width} flex-col gap-6 px-5 pt-8 pb-12 md:px-10`}
+        className={`humagen-page-column @container humagen-fade mx-auto flex w-full ${width} flex-col gap-6 px-5 ${underHub ? "pt-6" : "pt-8"} pb-12 md:px-10`}
       >
-        <header className="flex flex-col gap-3">
+        {bare && <h1 className="sr-only">{title}</h1>}
+        {bare && !tabs && actions && (
+          <div className="flex min-w-0 max-w-full flex-wrap items-center justify-end gap-2">
+            {actions}
+          </div>
+        )}
+        <header className={bare ? "hidden" : "flex flex-col gap-3"}>
           {back && (
             <button
               type="button"
@@ -368,14 +379,16 @@ export function Page({
               <div className="min-w-0">
                 {/* Under a hub's tabs the active tab already names the page: the heading stays for
                     assistive technology and leaves the screen, so the title is said once. */}
-                <h1 className={title === hubLabel ? "sr-only" : pageTitle}>{title}</h1>
+                {/* A page with tabs is headed by its tabs: the title stays for assistive
+                    technology only, and there is no lede under it. */}
+                {!bare && <h1 className={tabbed ? "sr-only" : pageTitle}>{title}</h1>}
                 {meta && (
                   <div className="flex flex-wrap items-center gap-x-3 pt-1 text-aui-xs text-aui-muted">
                     {meta}
                   </div>
                 )}
                 {crumbs && <div className="pt-1.5">{crumbs}</div>}
-                {lede && <p className={pageLede}>{lede}</p>}
+                {lede && !tabbed && <p className={pageLede}>{lede}</p>}
               </div>
             </div>
             {/* The actions may shrink to the column, so on a narrow screen they wrap onto more lines instead of running off it. */}
@@ -389,7 +402,16 @@ export function Page({
             data-layer="sticky"
             className="aui-chrome humagen-sticky sticky top-0 z-10 -mx-1 px-1"
           >
-            {tabs}
+            {bare && actions ? (
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                <div className="min-w-0 flex-1">{tabs}</div>
+                <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
+                  {actions}
+                </div>
+              </div>
+            ) : (
+              tabs
+            )}
           </div>
         )}
         {/*
@@ -685,7 +707,8 @@ export function AgentTint({
  * tells an agent from a person. The same mark sits beside its answers, where
  * the glow breathes and the orb moves while the agent works, so the mark in a
  * list and the presence in a conversation are one thing. Below 16px there is
- * no room for letters, and the mark is the orb alone.
+ * no room for letters, and the mark is the orb alone. The entry agent's
+ * letters are the workspace's name's, in its own color.
  */
 export function AgentMark({
   name,
@@ -708,7 +731,7 @@ export function AgentMark({
       style={{ "--aui-accent-h": hueOf(name) } as CSSProperties}
     >
       {size >= 16 ? (
-        <AgentInitials name={name} state={state} size={size} />
+        <AgentInitials name={agentShown(name)} state={state} size={size} />
       ) : (
         <AgentOrb state={state} size={size} label="" />
       )}
@@ -1041,16 +1064,8 @@ export function Tabs<T extends string>({
   // full width while the strip's ends fade, and the chosen tab's line sits on it.
   return (
     <div className="relative">
-      <span
-        aria-hidden
-        className="pointer-events-none absolute inset-x-0 bottom-0 border-aui-border border-b"
-      />
-      <div
-        ref={strip}
-        role="tablist"
-        aria-label={label}
-        className="humagen-strip aui-scroll relative flex gap-1 overflow-x-auto"
-      >
+      <span aria-hidden className={tabRule} />
+      <div ref={strip} role="tablist" aria-label={label} className={tabStrip}>
         {tabs.map((t) => (
           <button
             key={t.id}
@@ -1058,7 +1073,7 @@ export function Tabs<T extends string>({
             role="tab"
             aria-selected={value === t.id}
             onClick={() => onChange(t.id)}
-            className="inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap border-transparent border-b-2 px-3 text-aui-sm text-aui-muted transition-colors hover:text-aui-fg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-accent aria-selected:border-aui-accent aria-selected:text-aui-fg"
+            className={tabItem}
           >
             {t.label}
             {t.count !== undefined && t.count > 0 && <Count n={t.count} />}
@@ -1162,9 +1177,13 @@ export function Confirm({
 /** One of a page's own actions, for `PageActions`. */
 export interface PageAction {
   label: string;
+  /** A leading icon in a menu row. */
+  icon?: ReactNode;
   onSelect: () => void;
   /** Archive, Delete: last in the menu, after a rule. What it does is the same in the menu as on a button. */
   destructive?: boolean;
+  /** Shown but not pressable, such as while the page is busy. */
+  disabled?: boolean;
 }
 
 /**
@@ -1207,6 +1226,20 @@ export function PageActions({
 /** The More control: a square icon button with three vertical dots, after a page's other actions. */
 const moreControl =
   "inline-flex size-9 pointer-coarse:size-11 items-center justify-center rounded-aui text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-expanded:bg-aui-hover aria-expanded:text-aui-fg";
+
+/**
+ * One row of a menu: plain and left-aligned, with an optional leading icon, a
+ * hover background and no border. A destructive row is in the danger colour,
+ * last, after a `MenuSeparator`.
+ */
+export function menuRow(danger = false): string {
+  return `flex min-h-9 pointer-coarse:min-h-11 w-full items-center gap-2 rounded-aui px-2.5 text-left text-aui-sm outline-none hover:bg-aui-hover focus-visible:bg-aui-hover disabled:pointer-events-none disabled:opacity-50 ${danger ? "text-aui-bad" : "text-aui-fg"}`;
+}
+
+/** The rule before a menu's destructive rows. */
+export function MenuSeparator() {
+  return <hr className="my-1 border-0 border-[var(--humagen-rule)] border-t" />;
+}
 
 /**
  * The More menu: a three-dot control that opens a list of actions. Arrow keys,
@@ -1257,12 +1290,14 @@ export function MoreMenu({
       type="button"
       role="menuitem"
       tabIndex={-1}
+      disabled={item.disabled}
       onClick={() => {
         close();
         item.onSelect();
       }}
-      className={`flex min-h-9 pointer-coarse:min-h-11 w-full items-center rounded-aui px-2.5 text-left text-aui-sm outline-none hover:bg-aui-hover focus-visible:bg-aui-hover ${item.destructive ? "text-aui-bad" : "text-aui-fg"}`}
+      className={menuRow(item.destructive)}
     >
+      {item.icon}
       {item.label}
     </button>
   );
@@ -1288,7 +1323,7 @@ export function MoreMenu({
           }
         }}
       >
-        <EllipsisVerticalIcon size={18} />
+        <EllipsisIcon size={18} />
       </button>
       {open && (
         <div
@@ -1321,9 +1356,7 @@ export function MoreMenu({
           className="humagen-glass-pop absolute top-full right-0 z-40 mt-2 flex w-56 max-w-[calc(100vw-2rem)] flex-col rounded-aui-lg p-1.5"
         >
           {everyday.map(entry)}
-          {everyday.length > 0 && destructive.length > 0 && (
-            <div role="separator" className="my-1 border-[var(--humagen-rule)] border-t" />
-          )}
+          {everyday.length > 0 && destructive.length > 0 && <MenuSeparator />}
           {destructive.map(entry)}
         </div>
       )}
@@ -1344,9 +1377,15 @@ export function Popover({
   narrow = false,
   side,
   tooltip,
+  popup = "dialog",
   children,
+  onOpen,
 }: {
-  label: string;
+  onOpen?: () => void;
+  /** What the panel holds, said on the trigger: a menu of actions, or anything else. */
+  popup?: "dialog" | "menu";
+  /** The trigger's name. Leave it out when the button's own text names it. */
+  label?: string;
   button: ReactNode;
   className?: string;
   align?: "left" | "right";
@@ -1364,7 +1403,51 @@ export function Popover({
   const panel = useRef<HTMLDivElement>(null);
   const id = useId();
   // A flyout is placed by hand beside its trigger; anything else hangs from it and is kept inside the gutter.
-  const shift = useInsideGutter(panel, root, open && side !== "right");
+  const [position, setPosition] = useState({ left: 16, top: 16, maxHeight: 320 });
+  useLayoutEffect(() => {
+    if (!open || !present.mounted) return;
+    const place = () => {
+      const anchor = root.current?.getBoundingClientRect();
+      const menu = panel.current?.getBoundingClientRect();
+      if (!anchor || !menu) return;
+      const gutter = 12;
+      const viewport = document.documentElement.clientWidth || window.innerWidth;
+      const preferredLeft =
+        side === "right"
+          ? anchor.right + 8
+          : align === "right"
+            ? anchor.right - menu.width
+            : anchor.left;
+      const left = Math.max(gutter, Math.min(preferredLeft, viewport - menu.width - gutter));
+      const below = window.innerHeight - anchor.bottom - gutter - 8;
+      const above = anchor.top - gutter - 8;
+      const useAbove =
+        side !== "right" &&
+        (up ? above >= Math.min(menu.height, below) : below < menu.height && above > below);
+      const maxHeight = Math.max(
+        80,
+        side === "right" ? window.innerHeight - 2 * gutter : useAbove ? above : below,
+      );
+      const desiredTop =
+        side === "right"
+          ? anchor.top
+          : useAbove
+            ? anchor.top - Math.min(menu.height, maxHeight) - 8
+            : anchor.bottom + 8;
+      const top = Math.max(
+        gutter,
+        Math.min(desiredTop, window.innerHeight - Math.min(menu.height, maxHeight) - gutter),
+      );
+      setPosition({ left, top, maxHeight });
+    };
+    place();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [open, present.mounted, align, up, side]);
 
   useEffect(() => {
     if (!open) return;
@@ -1377,31 +1460,15 @@ export function Popover({
     return () => document.removeEventListener("mousedown", away);
   }, [open]);
 
-  const [flyout, setFlyout] = useState<{ left: number; top: number }>();
-  useEffect(() => {
-    if (side === "right" && open && present.mounted) {
-      root.current
-        ?.querySelector<HTMLElement>('[role="dialog"] button, [role="dialog"] input')
-        ?.focus();
-    }
-  }, [side, open, present.mounted]);
-
   const triggerButton = (
     <button
       type="button"
       aria-label={label}
-      aria-haspopup="dialog"
+      aria-haspopup={popup}
       aria-expanded={open}
       aria-controls={open ? id : undefined}
       onClick={() => {
-        if (side === "right") {
-          const rect = root.current?.getBoundingClientRect();
-          if (rect)
-            setFlyout({
-              left: rect.right + 8,
-              top: Math.max(16, Math.min(rect.top, window.innerHeight - 320)),
-            });
-        }
+        if (!open) onOpen?.();
         setOpen(!open);
       }}
       className={className}
@@ -1412,21 +1479,20 @@ export function Popover({
   const flyoutPanel = (
     <div
       ref={panel}
+      data-floating-popover
       id={id}
-      role="dialog"
-      aria-label={label}
+      // A menu's panel is named by the menu inside it.
+      role={popup === "menu" ? undefined : "dialog"}
+      aria-label={popup === "menu" ? undefined : label}
       data-leaving={present.leaving}
       style={
         {
-          ...(side === "right" ? flyout : {}),
-          ...(shift ? { translate: `${shift}px 0` } : {}),
+          ...position,
           "--humagen-pop-origin":
             side === "right" ? "top left" : `${up ? "bottom" : "top"} ${align}`,
         } as CSSProperties
       }
-      className={`humagen-glass-pop humagen-pop ${side === "right" ? "fixed" : "absolute"} z-40 max-w-[calc(100vw-2rem)] rounded-aui-lg p-1.5 ${narrow ? "w-56" : "w-80"} ${
-        side === "right" ? "" : align === "right" ? "right-0" : "left-0"
-      } ${side === "right" ? "" : up ? "bottom-full mb-2" : "top-full mt-2"}`}
+      className={`humagen-glass-pop humagen-pop fixed z-[80] max-w-[calc(100vw-1.5rem)] overflow-y-auto rounded-aui-lg p-1.5 ${narrow ? "w-56" : "w-80"}`}
     >
       {children(() => {
         setOpen(false);
@@ -1449,7 +1515,7 @@ export function Popover({
       {tooltip ? <Tooltip label={tooltip}>{triggerButton}</Tooltip> : triggerButton}
       {present.mounted &&
         // A flyout leaves its column: a scrolling or blurred ancestor would clip it.
-        (side === "right" ? createPortal(flyoutPanel, document.body) : flyoutPanel)}
+        createPortal(flyoutPanel, document.body)}
     </div>
   );
 }
@@ -1589,6 +1655,36 @@ export function FlashNote({
  * reader. They show only after a beat (aui-skeleton-delay), so a fast load
  * never flashes them. The shimmer stops when motion is reduced.
  */
+/**
+ * The control at the end of a paged list. While the next page is read it
+ * says so in place, the same way on every list: its label gives way to
+ * "Loading", shimmering, and it cannot be pressed twice. A list's first
+ * read is SkeletonRows; this is only for more of a list already on view.
+ */
+export function LoadMore({
+  busy,
+  onMore,
+  label = "Load More",
+  className = "self-center",
+}: {
+  busy: boolean;
+  onMore: () => void;
+  label?: string;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      className={`${button} ${className}`}
+      disabled={busy}
+      aria-busy={busy || undefined}
+      onClick={onMore}
+    >
+      {busy ? <span className="aui-shimmer">Loading</span> : label}
+    </button>
+  );
+}
+
 export function SkeletonRows({
   count = 4,
   height = "2rem",
@@ -1624,6 +1720,8 @@ export type Option<T extends string = string> = {
   hint?: string;
   /** Drawn before the label, such as an agent's mark. */
   mark?: ReactNode;
+  /** A heading the option sits under; consecutive options with the same group share one. */
+  group?: string;
 };
 
 /**
@@ -1823,26 +1921,35 @@ export function Menu<T extends string>({
               <li className="px-2.5 py-2 text-aui-sm text-aui-muted">Nothing matches.</li>
             )}
             {shown.map((o, i) => (
-              // biome-ignore lint/a11y/useKeyWithClickEvents: the listbox handles keys for its options
-              <li
-                key={o.value}
-                id={`${id}-${i}`}
-                role="option"
-                aria-selected={o.value === value}
-                data-active={i === active}
-                onMouseMove={() => setActive(i)}
-                onClick={() => pick(o)}
-                className="flex cursor-pointer items-center gap-2.5 rounded-aui px-2.5 py-1.5 text-aui-sm text-aui-fg data-[active=true]:bg-aui-hover"
-              >
-                {o.mark}
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate">{o.label}</span>
-                  {o.hint && <span className="block text-aui-xs text-aui-muted">{o.hint}</span>}
-                </span>
-                {o.value === value && shows === undefined && (
-                  <CheckIcon size={14} className="text-aui-fg" />
+              <Fragment key={o.value}>
+                {o.group && o.group !== shown[i - 1]?.group && (
+                  <li
+                    role="presentation"
+                    className="px-2.5 pt-2 pb-1 text-aui-xs font-medium text-aui-muted first:pt-1"
+                  >
+                    {o.group}
+                  </li>
                 )}
-              </li>
+                {/* biome-ignore lint/a11y/useKeyWithClickEvents: the listbox handles keys for its options */}
+                <li
+                  id={`${id}-${i}`}
+                  role="option"
+                  aria-selected={o.value === value}
+                  data-active={i === active}
+                  onMouseMove={() => setActive(i)}
+                  onClick={() => pick(o)}
+                  className="flex cursor-pointer items-center gap-2.5 rounded-aui px-2.5 py-1.5 text-aui-sm text-aui-fg data-[active=true]:bg-aui-hover"
+                >
+                  {o.mark}
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate">{o.label}</span>
+                    {o.hint && <span className="block text-aui-xs text-aui-muted">{o.hint}</span>}
+                  </span>
+                  {o.value === value && shows === undefined && (
+                    <CheckIcon size={14} className="text-aui-fg" />
+                  )}
+                </li>
+              </Fragment>
             ))}
           </ul>
         </div>

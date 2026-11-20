@@ -1,9 +1,17 @@
 import { answerOfAction, answers as isAnswer } from "@humagen/adapter/question";
 import { defaultCopy } from "@humagen/components";
-import { ActionId, type UiAction } from "@humagen/core";
-import { BringBackIcon, ForkIcon, WebSurface } from "@humagen/render-web";
+import {
+  ActionId,
+  postWithHumanActivity,
+  type QueuedMessage,
+  splitHumanActivity,
+  type UiAction,
+} from "@humagen/core";
+import { ForkIcon, WebSurface } from "@humagen/render-web";
 import {
   AgentMessage,
+  FileLinkContext,
+  type FileLinks,
   MessageActionRow,
   messageActionButton,
   railEntry,
@@ -11,9 +19,8 @@ import {
   type TurnRailEntry,
   useQueue,
 } from "@humagen/web";
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import { Activity } from "./Activity.tsx";
-import { ApprovalModePicker } from "./ApprovalModePicker.tsx";
+import { Fragment, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { ApprovalToggle } from "./ApprovalToggle.tsx";
 import { actedFor, citationOf, type Run, turnOf } from "./adapter.ts";
 import {
   ApiError,
@@ -32,32 +39,47 @@ import {
   type ThreadSummary,
   type ThreadTurn,
 } from "./api.ts";
-import { askedOf, copyFor, type Refusal, stillAsks } from "./asks.ts";
+import { askedOf, asksOf, copyFor, type Refusal, stillAsks } from "./asks.ts";
 import { answersLine } from "./availability.ts";
+import { agentShown } from "./branding.ts";
 import { Composer, type ComposerSeed } from "./Composer.tsx";
 import { type ConversationForkActions, ConversationForkPanels } from "./ConversationForkPanels.tsx";
 import { ConversationInfo, ConversationPage } from "./ConversationShell.tsx";
+import { Reference } from "./cards.tsx";
 import { type Completion, useCompletion } from "./completion.ts";
 import { deriveTitle } from "./conversationList.ts";
 import { Deliverables, revisionPrompt } from "./Deliverables.tsx";
 import { ForkContext } from "./ForkConversation.tsx";
 import { GitHubTab, reviewText, reviewView } from "./GitHubTab.tsx";
+import { HumanActivityList, HumanActivityNote } from "./humanActivity.tsx";
 import { itemActions } from "./itemActions.tsx";
 import { OLD_SYSTEM_SENDER } from "./legacy.ts";
+import { AnswerRefs, OriginRef } from "./MessageRefs.tsx";
 import { MessageTime } from "./MessageTime.tsx";
 import { OutcomeActions } from "./OutcomeActions.tsx";
 import { PersonMark } from "./PersonMark.tsx";
-import { mentionPicks, PlusMenu, SelectionChips } from "./Plus.tsx";
-import { ProjectPicker } from "./ProjectPicker.tsx";
+import { mentionPicks, PlusMenu } from "./Plus.tsx";
 import { openPane } from "./pane.ts";
-import { ReplayMenu } from "./ReplayMenu.tsx";
+import { ConversationActivity, ResponseActivityPanel } from "./ResponseActivity.tsx";
+import { RunFeedbackHost } from "./RunFeedback.tsx";
 import { useRunStop } from "./RunStop.tsx";
 import { useRunTurn } from "./Runs.tsx";
+import { traceSource } from "./responseSource.ts";
 import { followRoom } from "./roomFollow.ts";
-import { type ConversationPanel, type ConversationView, href } from "./route.ts";
-import { SaveAsArtifact } from "./SaveAsArtifact.tsx";
+import {
+  type ConversationPanel,
+  type ConversationView,
+  href,
+  type WorkbenchTabId,
+} from "./route.ts";
+import { SessionActions } from "./SessionActions.tsx";
+import { alertAnchor, SessionAlerts, useSessionAlerts } from "./SessionAlerts.tsx";
+import { SessionDetailsProvider } from "./SessionDetails.tsx";
+import { sessionFiles, sessionProgress } from "./SessionPanel.tsx";
+import { OriginButton, referenceOfPlace, SessionPlace, usePlace } from "./SessionPlace.tsx";
 import { ShareDialog } from "./Share.tsx";
 import { useThreadSelection } from "./selection.ts";
+import { topicsOf } from "./topics.ts";
 import { mergeTurns } from "./turns.ts";
 import {
   AgentMark,
@@ -75,7 +97,10 @@ import {
   primary,
 } from "./ui.tsx";
 import { useVoiceNotes } from "./useVoiceNotes.ts";
+import { SessionWorkbench } from "./Workbench.tsx";
+import { BrowserCard } from "./WorkbenchBrowserCard.tsx";
 import { Workspace } from "./Workspace.tsx";
+import { openBench, WorkbenchOpen } from "./workbench.ts";
 
 /**
  * Conversations, channels and shared threads: where people and agents work
@@ -101,7 +126,7 @@ const words = defaultCopy.threads;
 export function waveOf(turns: ThreadTurn[]): TurnRailEntry[] {
   return turns.flatMap((t): TurnRailEntry[] => {
     if (t.message) {
-      const text = t.message.text.replace(/\s+/g, " ").trim();
+      const text = splitHumanActivity(t.message.text).text.replace(/\s+/g, " ").trim();
       return [
         {
           id: t.message.id,
@@ -178,29 +203,6 @@ export function postedLine(p: ThreadPosted): string {
 }
 
 /**
- * The topics someone answers for in a project, along its chain: the
- * project's, then each project's above it, then the workspace's.
- */
-export function topicsOf(
-  projects: ProjectView[],
-  root: ProjectView | null,
-  name: string,
-): string[] {
-  const seen = new Set<string>();
-  const add = (p: ProjectView | null | undefined) => {
-    for (const e of p?.experts ?? []) for (const t of e.topics) seen.add(t);
-  };
-  let at = projects.find((p) => p.name === name);
-  for (let steps = 0; at && steps < 5; steps++) {
-    add(at);
-    const parent = at.parent ?? "";
-    at = parent === "" ? undefined : projects.find((p) => p.name === parent);
-  }
-  add(root);
-  return [...seen].sort().slice(0, 16);
-}
-
-/**
  * The chat bar of a conversation or a channel: the box, with completion of
  * `@` and `$`, and once a message is posted, what it did. Nothing under it
  * says who answers: nobody does until a message tags an agent.
@@ -215,7 +217,11 @@ function RoomComposer({
   trailing,
   onDraft,
   onPost,
+  runs = [],
+  sessionAgents,
 }: {
+  runs?: Run[];
+  sessionAgents?: string[];
   /** Text controls in the bar, before Send: the conversation's approval mode. */
   trailing?: ReactNode;
   /** The conversation it posts in, whose first message, posted where it started, may have said something. */
@@ -227,35 +233,82 @@ function RoomComposer({
   /** Called as the text changes, so the + menu shows the agents it mentions. */
   onDraft?: (text: string) => void;
   plus?: Parameters<typeof Composer>[0]["plus"];
-  onPost: (text: string) => Promise<ThreadPosted>;
+  onPost: (
+    text: string,
+    pick?: QueuedMessage["pick"],
+    uploads?: QueuedMessage["uploads"],
+  ) => Promise<ThreadPosted>;
 }) {
   const [problem, setProblem] = useState<string | null>(null);
+  const [waiting, setWaiting] = useState<string[]>([]);
+  const waitingNow = useRef<string[]>([]);
+  // What is typed so far, for the room it leaves what the person did by hand.
+  const [draft, setDraft] = useState("");
   // People's messages never wait for an agent: each is posted as it is sent.
   const voice = useVoiceNotes();
   const queue = useQueue({
     onStart: (m) => {
       setProblem(null);
-      onPost(m.text)
+      // What the person did by hand in the workbench since their last message
+      // goes with this one, and is cleared once it is posted.
+      const post = (text: string) => onPost(text, m.pick, m.uploads);
+      (thread ? postWithHumanActivity(thread, m.text, post) : post(m.text))
         .then((p) => {
-          queue.turnEnded("done");
+          setProblem(postedLine(p) || null);
+          const ids = p.runs.filter((run) => isWorking(run.status)).map((run) => run.id);
+          waitingNow.current = ids;
+          setWaiting(ids);
+          if (!ids.length) queue.turnEnded("done");
         })
         .catch((e) => {
           setProblem(e instanceof ApiError ? e.message : words.failed.post);
           queue.reject();
         });
     },
-    onInterrupt: () => {},
+    onInterrupt: () => {
+      void Promise.all(waitingNow.current.map((id) => api.stopRun(id))).catch((error) =>
+        setProblem(error instanceof Error ? error.message : "Stop failed."),
+      );
+    },
   });
+  useEffect(() => {
+    if (waiting.length) {
+      const current = waiting.map((id) => runs.find((run) => run.id === id));
+      if (current.every((run) => run && !isWorking(run.status))) {
+        waitingNow.current = [];
+        setWaiting([]);
+        queue.turnEnded(
+          current.some((run) => run?.status === "failed")
+            ? "failed"
+            : current.some((run) => run?.status === "stopped")
+              ? "stopped"
+              : "done",
+        );
+      }
+    } else if (!queue.running) {
+      const active = runs.filter((run) => isWorking(run.status));
+      if (active.length) {
+        waitingNow.current = active.map((run) => run.id);
+        setWaiting(waitingNow.current);
+        queue.adopt(active[0]?.text || "Agent reply");
+      }
+    }
+  }, [runs, waiting, queue.running, queue.adopt, queue.turnEnded]);
   return (
     <div className="flex flex-col gap-2">
       <Problem message={problem} />
+      {thread && <HumanActivityList conversation={thread} draft={draft} />}
       <Composer
         placeholder={placeholder}
         queue={queue}
         autoFocus={autoFocus}
         seed={seed}
-        onDraft={onDraft}
+        onDraft={(text) => {
+          setDraft(text);
+          onDraft?.(text);
+        }}
         tags={tags}
+        sessionAgents={sessionAgents}
         plus={plus}
         voice={voice}
         trailing={trailing}
@@ -265,21 +318,41 @@ function RoomComposer({
 }
 
 /**
+ * What a message posted while an agent worked did to that work, in a few
+ * words: queued until it ran, replacing the answer, or stopping it with its
+ * reason. A queued message that has run says nothing more.
+ */
+export function followupNote(m: ThreadMessage): string {
+  const f = m.followup;
+  if (!f) return "";
+  if (f.outcome === "stop") return words.followup.stopped(f.reason);
+  if (f.outcome === "replace") return words.followup.replaced;
+  return f.handled ? "" : words.followup.queued;
+}
+
+/**
  * A person's message: who posted it, when, and what it says. The reader's own
  * sit on the right as a compact bubble with no mark, as in any chat; everyone
  * else's sit on the left under their mark and name. A message that follows
- * one from the same person leaves the mark and name out.
+ * one from the same person leaves the mark and name out, but still says what
+ * it did to work going on (followupNote).
  */
 function MessageView({
   m,
   focused,
   mine = false,
   continued = false,
+  fromWeb = false,
+  refs,
   onReply,
   actions,
 }: {
   m: ThreadMessage;
   focused: boolean;
+  /** Its references, as chips under it: the root message's origin. */
+  refs?: ReactNode;
+  /** Posted from the console in a session that started in Slack or GitHub, so the record says it did not come from there. */
+  fromWeb?: boolean;
   /** Posted by the reader. */
   mine?: boolean;
   /** Follows a message from the same person. */
@@ -287,15 +360,31 @@ function MessageView({
   onReply?: () => void;
   actions?: ReactNode;
 }) {
-  const ref = useRef<HTMLElement>(null);
-  useEffect(() => {
-    if (focused) ref.current?.scrollIntoView({ block: "center" });
-  }, [focused]);
   const who = m.name || m.by;
+  const followup = followupNote(m);
+  // What the person did by hand before sending is drawn closed, apart from their words.
+  const { text: said, activity } = splitHumanActivity(m.text);
+  const byHand = activity ? <HumanActivityNote activity={activity} mine={mine} /> : null;
+  const uploads = m.attachments?.length ? (
+    <ul className="flex max-w-full flex-wrap gap-1" aria-label={defaultCopy.details.used.uploads}>
+      {m.attachments.map((file, index) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: A retained message's files are immutable and may share both name and bytes.
+        <li key={index} className="min-w-0 max-w-full">
+          <Reference
+            kind="file"
+            label={file.name || file.alt || file.media_type}
+            title={file.unread || file.media_type}
+          />
+        </li>
+      ))}
+    </ul>
+  ) : null;
   const notes = (
     <>
       {m.surface_id && <span>{words.fromSlack}</span>}
+      {fromWeb && <span>{defaultCopy.trace.postedFromWeb}</span>}
       {m.answers && <span>{words.answered}</span>}
+      {followup && <span data-followup={m.followup?.outcome}>{followup}</span>}
     </>
   );
   const row = (
@@ -310,7 +399,6 @@ function MessageView({
   if (mine)
     return (
       <article
-        ref={ref}
         id={`message-${m.id}`}
         data-turn-id={m.id}
         data-side="mine"
@@ -319,18 +407,24 @@ function MessageView({
         className={`group/message flex flex-col items-end gap-0.5 rounded-aui ${continued ? "-mt-2" : ""} ${focused ? "outline-2 outline-offset-4 outline-aui-accent" : ""}`}
       >
         <p className="humagen-glass max-w-[85%] whitespace-pre-wrap break-words rounded-aui-lg px-3.5 py-2 text-aui-sm text-aui-fg sm:max-w-[70%]">
-          <Mentioned text={m.text} />
+          <Mentioned text={said} />
         </p>
-        <p className="flex flex-wrap items-baseline justify-end gap-x-2 text-aui-2xs text-aui-muted">
-          {notes}
-          <MessageTime at={m.at} />
-        </p>
-        <div className="flex justify-end">{row}</div>
+        {byHand}
+        {uploads}
+        {/* Its actions show on hover and keep their place when hidden. They share the
+            time's line, so a hidden row leaves no empty band under the message. */}
+        <div className="flex max-w-full flex-wrap items-center justify-end gap-x-2">
+          {row}
+          <p className="flex flex-wrap items-baseline justify-end gap-x-2 text-aui-2xs text-aui-muted">
+            {notes}
+            <MessageTime at={m.at} />
+          </p>
+        </div>
+        {refs && <div className="flex justify-end">{refs}</div>}
       </article>
     );
   return (
     <article
-      ref={ref}
       id={`message-${m.id}`}
       data-turn-id={m.id}
       data-side="theirs"
@@ -341,19 +435,28 @@ function MessageView({
     >
       {continued ? <span aria-hidden className="w-7 shrink-0" /> : <PersonMark name={who} />}
       <div className="min-w-0 flex-1">
-        {!continued && (
+        {!continued ? (
           <p className="flex flex-wrap items-baseline gap-x-2 text-aui-xs text-aui-muted">
             <span className="font-medium text-aui-fg">{who}</span>
             <MessageTime at={m.at} />
             {notes}
           </p>
+        ) : (
+          followup && (
+            <p className="flex flex-wrap items-baseline gap-x-2 text-aui-xs text-aui-muted">
+              {notes}
+            </p>
+          )
         )}
         <p className="whitespace-pre-wrap text-aui-sm text-aui-fg">
           <Mentioned
-            text={m.text}
+            text={said}
             skills={m.mentions.filter((t) => t.kind === "skill" && !t.refused).map((t) => t.name)}
           />
         </p>
+        {byHand}
+        {uploads}
+        {refs}
         {row}
       </div>
     </article>
@@ -418,7 +521,7 @@ function AnnouncementView({ a }: { a: ThreadAnnouncement }) {
 function retryInRoom(run: Run, me: string): string {
   const person = actedFor(run);
   if (!person) return words.retryNobodyFromInbox;
-  return person === me ? words.retryFromInbox : defaultCopy.retryOnlyTheirs;
+  return person === me ? "" : defaultCopy.retryOnlyTheirs;
 }
 
 /**
@@ -436,14 +539,22 @@ function AnswerView({
   onAsk,
   onReply,
   onRedirect,
+  onActivity,
+  activityOpen,
   actions,
   canStop = false,
+  focused = false,
 }: {
   run: Run;
   canStop?: boolean;
+  focused?: boolean;
+  /** Open or close this answer's activity in Details. */
+  onActivity?: (run: string) => void;
+  /** This answer's activity is open in Details. */
+  activityOpen?: boolean;
   me: string;
   live: boolean;
-  ask?: ThreadAsk;
+  ask?: ThreadAsk[];
   refused?: Refusal;
   /** That it answers because the conversation routes to it, not because it was tagged. */
   routed?: string;
@@ -454,12 +565,15 @@ function AnswerView({
 }) {
   const { run, stop } = useRunStop(originalRun, canStop);
   const turn = useRunTurn(run);
+  const name = agentShown(run.agent);
   const drawn = useMemo(() => {
-    const base = turn ?? turnOf(run);
+    const read = turn ?? turnOf(run);
+    // The entry agent answers under the workspace's name.
+    const base = read.agent.name === name ? read : { ...read, agent: { ...read.agent, name } };
     return run.citations !== undefined
       ? { ...base, citations: run.citations.map(citationOf) }
       : base;
-  }, [turn, run]);
+  }, [turn, run, name]);
   const shown = useMemo(() => {
     const asked = askedOf(drawn, ask);
     return asked.failure
@@ -470,8 +584,8 @@ function AnswerView({
     <article
       id={`turn-${run.id}`}
       data-turn-id={run.id}
-      className="flex flex-col gap-2"
-      aria-label={`Answered by ${run.agent}`}
+      className={`flex flex-col gap-2 ${focused ? "rounded-aui outline-2 outline-offset-4 outline-aui-accent" : ""}`}
+      aria-label={words.answeredBy(name)}
     >
       {/* A run from before threads carries what was asked; one that answers a message does not repeat it. */}
       {!run.message && (
@@ -484,20 +598,27 @@ function AnswerView({
         <Checkpoint agent={run.agent}>{[routed, run.picked].filter(Boolean).join(". ")}</Checkpoint>
       )}
       <AgentTint name={run.agent}>
-        <AgentMessage
-          actions={actions}
-          stop={stop}
-          disclaimer={false}
-          timestamp={<MessageTime at={run.created_at} />}
-          turn={shown}
-          copy={copyFor(ask)}
-          itemActions={itemActions(run)}
-          capabilities={{ regenerate: false }}
-          onAskAgent={onAsk}
-          onReply={onReply}
-          onRedirect={onRedirect}
-        />
+        <RunFeedbackHost turn={shown}>
+          {(rated) => (
+            <AgentMessage
+              actions={actions}
+              stop={stop}
+              disclaimer={false}
+              activity={false}
+              timestamp={<MessageTime at={run.created_at} />}
+              turn={rated}
+              copy={copyFor(ask)}
+              itemActions={itemActions(run)}
+              capabilities={{ regenerate: false }}
+              onAskAgent={onAsk}
+              onReply={onReply}
+              onRedirect={onRedirect}
+            />
+          )}
+        </RunFeedbackHost>
       </AgentTint>
+      <AnswerRefs run={run} open={activityOpen} onActivity={onActivity} />
+      <BrowserCard thread={run.thread} tasks={drawn.tasks} />
       {refused && stillAsks(shown, refused.question) && (
         <div className="pl-11">
           <Problem message={refused.why} />
@@ -528,6 +649,7 @@ export function ThreadRoom({
   canRun,
   artifactActions,
   canLearn = false,
+  alertAccess,
   forkActions,
   personalProject,
   focus,
@@ -555,6 +677,7 @@ export function ThreadRoom({
   workspaceName: string;
   canRun: boolean;
   canLearn?: boolean;
+  alertAccess?: { write: boolean };
   artifactActions?: { knowledge: boolean; memory: boolean };
   forkActions?: ConversationForkActions;
   personalProject?: string;
@@ -571,6 +694,7 @@ export function ThreadRoom({
   onChanged: () => void;
 }) {
   const [page, setPage] = useState<ThreadPage>(initial);
+  const attention = useSessionAlerts(id, !!alertAccess, tick, onChanged);
   // Every turn read so far, oldest first. A refresh reads the newest page,
   // which moves on as the thread grows; the turns it no longer holds stay.
   const [turns, setTurns] = useState<ThreadTurn[]>(initial.turns);
@@ -581,8 +705,6 @@ export function ThreadRoom({
   const [problem, setProblem] = useState<string | null>(null);
   const [localView, setLocalView] = useState<ConversationView>({});
   const [seed, setSeed] = useState<ComposerSeed>();
-  // The draft, whose mentions are the + menu's agents.
-  const [draft, setDraft] = useState("");
   const shownView = onView ? (view ?? {}) : localView;
   const openPanel = (
     panel?: ConversationPanel,
@@ -594,6 +716,21 @@ export function ThreadRoom({
     };
     if (onView) onView(next);
     else setLocalView(next);
+  };
+  // Opens a workbench tab, as a card in the thread does for the work it shows.
+  const openWorkbench = (tab: WorkbenchTabId, ref?: string) =>
+    openPanel("details", openBench(shownView, tab, ref));
+  // A file named in the thread opens at its changes in the workbench beside it,
+  // so a changed file can be opened without leaving the session.
+  const fileLinks: FileLinks = {
+    href: (path) =>
+      href({
+        page: "conversation",
+        id,
+        ...openBench(shownView, "changes", path),
+        panel: "details",
+      }),
+    open: (path) => openWorkbench("changes", path),
   };
   // Why an answer to a run's question was not taken, by run: said under it
   // while that question still waits, and gone once anyone settles it.
@@ -631,7 +768,38 @@ export function ThreadRoom({
       .catch(() => setProblem(defaultCopy.failure.internal()));
   };
 
+  useEffect(() => {
+    if (
+      !id.startsWith("s_") ||
+      !focus ||
+      turns.some((turn) => (turn.message?.id ?? turn.run?.id) === focus)
+    )
+      return;
+    let live = true;
+    coworking.thread(id, undefined, focus).then(
+      (page) => {
+        if (!live) return;
+        setTurns((current) => mergeTurns(page.turns, current));
+        setBefore(page.next);
+      },
+      (error) => {
+        if (live)
+          setProblem(
+            error instanceof ApiError && error.status === 404
+              ? "That message is unavailable."
+              : "The linked message could not be loaded.",
+          );
+      },
+    );
+    return () => {
+      live = false;
+    };
+  }, [id, focus]);
+
   const th = page.thread;
+  const place = usePlace(th);
+  // The root message: the first a person posted. Its sender and origin head the session.
+  const rootMessage = turns.find((t) => t.message)?.message;
   const tags = useCompletion(
     th.project,
     agents,
@@ -680,9 +848,10 @@ export function ThreadRoom({
     const alone = run.message
       ? turns.filter((t) => t.run?.message === run.message && t.run?.routed).length <= 1
       : false;
-    if (run.routed === "all") return alone ? c.routed(run.agent) : c.routedAll(run.agent);
+    const name = agentShown(run.agent);
+    if (run.routed === "all") return alone ? c.routed(name) : c.routedAll(name);
     // Among the selected agents, one that joined says where it went; `picked` says why it joined.
-    if (run.routed === "join" || run.routed === "best_fit") return c.routed(run.agent);
+    if (run.routed === "join" || run.routed === "best_fit") return c.routed(name);
     return undefined;
   };
   const shareButton = useRef<HTMLButtonElement>(null);
@@ -705,9 +874,9 @@ export function ThreadRoom({
   const asked = new Set(turns.flatMap((t) => (t.message?.answers ? [t.message.answers.run] : [])));
   // A run waiting on a person, such as an expert's answer, is shown still.
   const busy = turns.some((t) => t.run && isWorking(t.run.status));
-
   const onAction = (a: UiAction) => {
-    if (a.id === ActionId.openRun) return openPanel("activity", { run: a.payload.target });
+    if (a.id === ActionId.openRun)
+      return openPanel("activity", { run: a.payload.target, step: a.payload.option });
     if (a.id === ActionId.openReview && a.payload.target) {
       openPanel("workspace", reviewView(shownView, a.payload.target));
       return;
@@ -715,6 +884,18 @@ export function ThreadRoom({
     // A review's Ask Follow-up puts its words, tagging the agent, in the box. Nothing is sent.
     if (a.id === ActionId.reviewFollowUp) {
       if (posts && a.payload.text) setSeed({ text: `${a.payload.text} `, mode: "prepend" });
+      return;
+    }
+    if (a.id === ActionId.retry) {
+      const run = turns.find((turn) => turn.run?.id === a.payload.turnId)?.run;
+      if (!run || !posts) return;
+      const denied = retryInRoom(run, me);
+      if (denied) return setProblem(denied);
+      setProblem(null);
+      coworking
+        .post(id, { text: run.text })
+        .then(() => onChanged())
+        .catch((error) => setProblem(error instanceof Error ? error.message : "Retry failed."));
       return;
     }
     if (!isAnswer(a)) return;
@@ -752,449 +933,512 @@ export function ThreadRoom({
   };
 
   return (
-    <section className="flex min-h-0 min-w-0 flex-1">
-      <ConversationPage
-        title={title}
-        project={projectTitle(projects, th.project, workspaceName, personalProject)}
-        private={th.visibility === "private"}
-        agents={answering}
-        people={th.participants.filter((p) => p.kind === "person").map((p) => p.name)}
-        location={
-          <>
-            {th.visibility !== "private" && (
-              <button
-                type="button"
-                aria-label={words.sharedIn(
-                  projectTitle(projects, th.project, workspaceName, personalProject),
-                  th.channel,
-                )}
-                onClick={() => onOpenChannel(th.project, th.channel)}
-                className="min-h-6 rounded-aui hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
-              >
-                {words.channel(th.channel)}
-              </button>
-            )}
-            {th.surface && <span className="ml-3">{words.inSlack}</span>}
-          </>
-        }
-        projectRef={shareButton}
-        onProject={
-          shareable
-            ? () => onSharing?.(!sharing)
-            : th.visibility === "shared"
-              ? () => onOpenChannel(th.project, th.channel)
-              : undefined
-        }
-        onPanel={(next) => openPanel(next)}
-        panel={shownView.panel}
-        onClosePanel={() => openPanel()}
-        onArtifact={(id) =>
-          openPanel("workspace", openPane(shownView, { kind: "artifact", ref: id }))
-        }
-      >
-        <Presence when={!!shareable && !!sharing} ms={220}>
-          {(leaving) => (
-            <div data-layer="share" className="relative z-10 px-4 pb-2">
-              <ShareDialog
-                open={!leaving}
-                thread={th}
-                hasRuns={hasRuns}
-                onPublished={
-                  onOpenThread
-                    ? (next) => {
+    <SessionDetailsProvider panel={shownView.panel} onPanel={(panel) => openPanel(panel)}>
+      <WorkbenchOpen.Provider value={openWorkbench}>
+        <FileLinkContext.Provider value={fileLinks}>
+          <section className="flex min-h-0 min-w-0 flex-1">
+            <ConversationPage
+              actions={
+                <SessionActions
+                  thread={th}
+                  canManage={
+                    posts &&
+                    (started ||
+                      owner ||
+                      th.participants.some(
+                        (p) => p.kind === "person" && p.owner && [me, handle].includes(p.name),
+                      ))
+                  }
+                  onChanged={onChanged}
+                  onUpdated={(next) => setPage((p) => ({ ...p, thread: next }))}
+                  onShare={shareable ? () => onSharing?.(!sharing) : undefined}
+                  projects={projects}
+                  personalProject={personalProject}
+                />
+              }
+              title={title}
+              project={projectTitle(projects, th.project, workspaceName, personalProject)}
+              private={th.visibility === "private"}
+              agents={answering}
+              people={th.participants.filter((p) => p.kind === "person").map((p) => p.name)}
+              origin={<OriginButton place={place} />}
+              progress={sessionProgress(turns.flatMap((t) => (t.run ? [t.run] : [])))}
+              location={
+                <>
+                  {th.visibility !== "private" && !id.startsWith("s_") && (
+                    <button
+                      type="button"
+                      aria-label={words.sharedIn(
+                        projectTitle(projects, th.project, workspaceName, personalProject),
+                        th.channel,
+                      )}
+                      onClick={() => onOpenChannel(th.project, th.channel)}
+                      className="min-h-6 rounded-aui hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
+                    >
+                      {words.channel(th.channel)}
+                    </button>
+                  )}
+                  {place && (
+                    <SessionPlace place={place} sender={rootMessage?.name || rootMessage?.by} />
+                  )}
+                </>
+              }
+              projectRef={shareButton}
+              onPanel={(next) => openPanel(next)}
+              panel={shownView.panel}
+              onClosePanel={() => openPanel()}
+              onArtifact={(id) =>
+                openPanel("workspace", openPane(shownView, { kind: "artifact", ref: id }))
+              }
+            >
+              <Presence when={!!shareable && !!sharing} ms={220}>
+                {(leaving) => (
+                  <div data-layer="share" className="relative z-10 px-4 pb-2">
+                    <ShareDialog
+                      open={!leaving}
+                      thread={th}
+                      hasRuns={hasRuns}
+                      onPublished={
+                        onOpenThread
+                          ? (next) => {
+                              onSharing?.(false);
+                              onChanged();
+                              onOpenThread(next.id);
+                            }
+                          : undefined
+                      }
+                      projects={projects.filter((p) => postsIn(projects, p.name))}
+                      workspaceName={workspaceName}
+                      me={me}
+                      handle={handle}
+                      onClose={() => {
+                        onSharing?.(false);
+                        shareButton.current?.focus();
+                      }}
+                      onShared={(p, asked) => {
+                        // Say who was told, and who was not added and why, as the platform decided.
+                        const missed = new Set((p.not_added ?? []).map((n) => n.handle));
+                        const told = asked.filter((h) => !missed.has(h));
+                        // Why someone was not added, in the console's own words, never the server's.
+                        const cannot = (p.not_added ?? [])
+                          .filter((n) => /cannot read this project/.test(n.reason))
+                          .map((n) => n.handle);
+                        const other = (p.not_added ?? [])
+                          .filter((n) => !cannot.includes(n.handle))
+                          .map((n) => n.handle);
+                        const lines = [
+                          words.sharedTold(told),
+                          words.notAdded(cannot, other),
+                        ].filter(Boolean);
+                        setShareNote(lines.join(" "));
+                        setPage(p);
+                        setTurns((t) => mergeTurns(t, p.turns));
                         onSharing?.(false);
                         onChanged();
-                        onOpenThread(next.id);
-                      }
-                    : undefined
-                }
-                projects={projects.filter((p) => postsIn(projects, p.name))}
-                workspaceName={workspaceName}
-                me={me}
-                handle={handle}
-                onClose={() => {
-                  onSharing?.(false);
-                  shareButton.current?.focus();
-                }}
-                onShared={(p, asked) => {
-                  // Say who was told, and who was not added and why, as the platform decided.
-                  const missed = new Set((p.not_added ?? []).map((n) => n.handle));
-                  const told = asked.filter((h) => !missed.has(h));
-                  // Why someone was not added, in the console's own words, never the server's.
-                  const cannot = (p.not_added ?? [])
-                    .filter((n) => /cannot read this project/.test(n.reason))
-                    .map((n) => n.handle);
-                  const other = (p.not_added ?? [])
-                    .filter((n) => !cannot.includes(n.handle))
-                    .map((n) => n.handle);
-                  const lines = [words.sharedTold(told), words.notAdded(cannot, other)].filter(
-                    Boolean,
-                  );
-                  setShareNote(lines.join(" "));
-                  setPage(p);
-                  setTurns((t) => mergeTurns(t, p.turns));
-                  onSharing?.(false);
-                  onChanged();
-                }}
-              />
-            </div>
-          )}
-        </Presence>
-        {shareNote && (
-          <p
-            role="status"
-            className="mx-auto w-full max-w-4xl px-4 pb-2 text-aui-xs text-aui-muted"
-          >
-            {shareNote}
-          </p>
-        )}
-        {th.fork && (
-          <div className="mx-auto w-full max-w-4xl px-4 py-4">
-            <ForkContext thread={th} />
-          </div>
-        )}
-        {posts && (
-          <ConversationForkPanels
-            thread={th}
-            runs={turns.flatMap((turn) => (turn.run ? [turn.run] : []))}
-            actions={forkActions}
-          />
-        )}
-        <WebSurface onAction={onAction} className="flex min-h-0 flex-1 flex-col">
-          <ThreadList
-            className="w-full flex-1"
-            column="mx-auto w-full max-w-4xl px-4"
-            busy={busy}
-            label="Thread"
-            turns={wave}
-          >
-            {before && (
-              <button type="button" className={`${button} self-center`} onClick={loadEarlier}>
-                {words.olderTurns}
-              </button>
-            )}
-            {turns.map((t, i) =>
-              t.announcement ? (
-                <AnnouncementView key={`a:${t.announcement.id}`} a={t.announcement} />
-              ) : t.message ? (
-                <MessageView
-                  key={t.message.id}
-                  m={t.message}
-                  mine={t.message.by === me || (!!handle && t.message.by === handle)}
-                  continued={turns[i - 1]?.message?.by === t.message.by}
-                  focused={focus === t.message.id}
-                  actions={
-                    posts ? (
-                      <>
-                        <SaveAsArtifact
-                          thread={id}
-                          what={{ source: "message", id: t.message.id }}
-                          className={messageActionButton}
-                          onSaved={(artifact) =>
-                            openPanel(
-                              "workspace",
-                              openPane(shownView, { kind: "artifact", ref: artifact.id }),
-                            )
+                      }}
+                    />
+                  </div>
+                )}
+              </Presence>
+              {shareNote && (
+                <p
+                  role="status"
+                  className="mx-auto w-full max-w-4xl px-4 pb-2 text-aui-xs text-aui-muted"
+                >
+                  {shareNote}
+                </p>
+              )}
+              {th.fork && (
+                <div className="mx-auto w-full max-w-4xl px-4 py-4">
+                  <ForkContext thread={th} />
+                </div>
+              )}
+              {posts && (
+                <ConversationForkPanels
+                  thread={th}
+                  runs={turns.flatMap((turn) => (turn.run ? [turn.run] : []))}
+                  actions={forkActions}
+                />
+              )}
+              <WebSurface onAction={onAction} className="flex min-h-0 flex-1 flex-col">
+                <ThreadList
+                  className="w-full flex-1"
+                  column="mx-auto w-full max-w-4xl px-4"
+                  busy={busy}
+                  label="Thread"
+                  turns={wave}
+                  focus={focus}
+                >
+                  <Problem message={attention.problem ?? null} />
+                  {attention.problem && (
+                    <button type="button" className={button} onClick={attention.refresh}>
+                      Reload alerts
+                    </button>
+                  )}
+                  {attention.undo && (
+                    <p role="status" className="text-aui-xs">
+                      Alert updated.{" "}
+                      <button
+                        type="button"
+                        className="underline"
+                        disabled={attention.busy}
+                        onClick={() => void attention.change(attention.undo!, "open")}
+                      >
+                        Undo
+                      </button>
+                    </p>
+                  )}
+                  <SessionAlerts
+                    alerts={attention.rows.filter(
+                      (a) =>
+                        !alertAnchor(a) ||
+                        !turns.some((t) => (t.message?.id ?? t.run?.id) === alertAnchor(a)),
+                    )}
+                    attention={attention}
+                    canWrite={!!alertAccess?.write}
+                    agents={posts ? agents.map((a) => a.spec.name) : []}
+                    onOpen={onOpenThread}
+                  />
+                  {before && (
+                    <button type="button" className={`${button} self-center`} onClick={loadEarlier}>
+                      {words.olderTurns}
+                    </button>
+                  )}
+                  {turns.map((t, i) => (
+                    <Fragment key={t.announcement?.id ?? t.message?.id ?? t.run?.id}>
+                      <SessionAlerts
+                        alerts={attention.rows.filter(
+                          (a) =>
+                            !!alertAnchor(a) && alertAnchor(a) === (t.message?.id ?? t.run?.id),
+                        )}
+                        attention={attention}
+                        canWrite={!!alertAccess?.write}
+                        agents={posts ? agents.map((a) => a.spec.name) : []}
+                        onOpen={onOpenThread}
+                      />
+                      {t.announcement ? (
+                        <AnnouncementView key={`a:${t.announcement.id}`} a={t.announcement} />
+                      ) : t.message ? (
+                        <MessageView
+                          key={t.message.id}
+                          m={t.message}
+                          mine={t.message.by === me || (!!handle && t.message.by === handle)}
+                          continued={turns[i - 1]?.message?.by === t.message.by}
+                          focused={focus === t.message.id}
+                          fromWeb={place?.kind !== "console" && t.message.via === "console"}
+                          refs={
+                            t.message.id === rootMessage?.id ? (
+                              <OriginRef origin={referenceOfPlace(place)} />
+                            ) : undefined
+                          }
+                          actions={
+                            posts ? (
+                              <>
+                                {forkActions?.onFork && (
+                                  <button
+                                    type="button"
+                                    className={messageActionButton}
+                                    aria-label={defaultCopy.forking.fromHere}
+                                    title={defaultCopy.forking.fromHere}
+                                    onClick={() => forkActions.onFork?.(t.message!.id)}
+                                  >
+                                    <ForkIcon size={16} />
+                                  </button>
+                                )}
+                              </>
+                            ) : undefined
+                          }
+                          onReply={
+                            posts
+                              ? () =>
+                                  setSeed({
+                                    quote: {
+                                      label: "this message",
+                                      text: t.message?.text,
+                                      url: href({
+                                        page: "conversation",
+                                        id,
+                                        message: t.message?.id,
+                                      }),
+                                    },
+                                  })
+                              : undefined
                           }
                         />
-                        {forkActions?.onFork && (
-                          <button
-                            type="button"
-                            className={messageActionButton}
-                            aria-label={defaultCopy.forking.fromHere}
-                            title={defaultCopy.forking.fromHere}
-                            onClick={() => forkActions.onFork?.(t.message!.id)}
-                          >
-                            <ForkIcon size={16} />
-                          </button>
-                        )}
-                      </>
-                    ) : undefined
-                  }
-                  onReply={
-                    posts
-                      ? () =>
-                          setSeed({
-                            text: `Replying to [this message](${href({ page: "conversation", id, message: t.message?.id })}): `,
-                            mode: "prepend",
-                          })
-                      : undefined
-                  }
-                />
-              ) : t.run ? (
-                <AnswerView
-                  key={t.run.id}
-                  run={t.run}
-                  canStop={posts}
-                  actions={
-                    !th.read_only && t.run.status === "completed" ? (
-                      <>
-                        <OutcomeActions run={t.run} canWrite={canLearn} />
-                        {posts && (
-                          <SaveAsArtifact
-                            thread={id}
-                            what={{ source: "run", id: t.run.id }}
-                            className={messageActionButton}
-                            onSaved={(artifact) =>
-                              openPanel(
-                                "workspace",
-                                openPane(shownView, { kind: "artifact", ref: artifact.id }),
-                              )
-                            }
-                          />
-                        )}
-                        {posts && forkActions?.onFork && (
-                          <button
-                            type="button"
-                            className={messageActionButton}
-                            aria-label={defaultCopy.forking.fromHere}
-                            title={defaultCopy.forking.fromHere}
-                            onClick={() => forkActions.onFork?.(t.run!.id)}
-                          >
-                            <ForkIcon size={16} />
-                          </button>
-                        )}
-                        {posts && onOpenThread && t.run.status === "completed" && !th.read_only && (
-                          <ReplayMenu
-                            agents={agents.map((a) => a.spec.name)}
-                            answered={t.run.agent}
-                            prompt={
-                              turns.find((x) => x.message?.id === t.run!.message)?.message?.text ??
-                              t.run.text
-                            }
-                            thread={id}
-                            point={t.run.id}
-                            onOpen={onOpenThread}
-                          />
-                        )}
-                        {posts && th.fork && forkActions?.onBringBack && (
-                          <button
-                            type="button"
-                            className={messageActionButton}
-                            aria-label={defaultCopy.forking.bringBack}
-                            title={defaultCopy.forking.bringBack}
-                            onClick={() => forkActions.onBringBack?.(t.run!.id)}
-                          >
-                            <BringBackIcon size={16} />
-                          </button>
-                        )}
-                      </>
-                    ) : undefined
-                  }
-                  routed={routedOf(t.run)}
-                  onAsk={
-                    posts
-                      ? () => setSeed({ text: `@${t.run?.agent} `, mode: "prepend" })
-                      : undefined
-                  }
-                  onReply={
-                    posts
-                      ? () =>
-                          setSeed({
-                            text: `@${t.run?.agent} following up on [this answer](${href({ page: "conversation", id, panel: "activity", run: t.run?.id })}): `,
-                            mode: "prepend",
-                          })
-                      : undefined
-                  }
-                  onRedirect={
-                    posts
-                      ? () =>
-                          setSeed({
-                            text: defaultCopy.conversation.redirectPrompt(
-                              t.run!.agent,
-                              href({ page: "conversation", id, panel: "activity", run: t.run!.id }),
-                            ),
-                            mode: "prepend",
-                          })
-                      : undefined
-                  }
-                  me={me}
-                  ask={t.ask}
-                  refused={refusals[t.run.id]}
-                  live={
-                    t === last ||
-                    asked.has(t.run.id) ||
-                    (t.run.status !== "completed" && t.run.status !== "failed")
-                  }
-                />
-              ) : null,
-            )}
-          </ThreadList>
-        </WebSurface>
-        <div className="mx-auto flex w-full max-w-4xl flex-col gap-2 px-4 pb-4">
-          <Problem message={problem} />
-          {canRun && !posts && <p className="text-aui-xs text-aui-muted">{words.viewerOnly}</p>}
-          {posts && (
-            <RoomComposer
-              thread={id}
-              trailing={<ApprovalModePicker thread={th} me={handle || me} />}
-              seed={seed}
-              placeholder={th.visibility === "private" ? words.message : words.channel(th.channel)}
-              tags={tags}
-              onDraft={setDraft}
-              plus={{
-                menu: (close, attach, leave) => (
-                  <PlusMenu
-                    onLeave={leave}
-                    agents={tags.agents}
-                    {...mentionPicks(draft, tags.agents, setSeed)}
-                    skills={tags.skills}
-                    skillsFailed={tags.skillsFailed}
-                    onSkill={(name) => {
-                      setSeed({ text: `/${name} `, mode: "prepend" });
+                      ) : t.run ? (
+                        <AnswerView
+                          focused={focus === t.run.id}
+                          key={t.run.id}
+                          run={t.run}
+                          canStop={posts}
+                          actions={
+                            !th.read_only && t.run.status === "completed" ? (
+                              <>
+                                <OutcomeActions run={t.run} canWrite={canLearn} />
+                                {posts && forkActions?.onFork && (
+                                  <button
+                                    type="button"
+                                    className={messageActionButton}
+                                    aria-label={defaultCopy.forking.fromHere}
+                                    title={defaultCopy.forking.fromHere}
+                                    onClick={() => forkActions.onFork?.(t.run!.id)}
+                                  >
+                                    <ForkIcon size={16} />
+                                  </button>
+                                )}
+                              </>
+                            ) : undefined
+                          }
+                          routed={routedOf(t.run)}
+                          activityOpen={
+                            shownView.panel === "response" && shownView.run === t.run.id
+                          }
+                          onActivity={(run) =>
+                            shownView.panel === "response" && shownView.run === run
+                              ? openPanel()
+                              : openPanel("response", { run })
+                          }
+                          onAsk={
+                            posts
+                              ? () => setSeed({ text: `@${t.run?.agent} `, mode: "prepend" })
+                              : undefined
+                          }
+                          onReply={
+                            posts
+                              ? () =>
+                                  setSeed({
+                                    quote: {
+                                      label: `${agentShown(t.run?.agent ?? "")}'s answer`,
+                                      agent: t.run?.agent,
+                                      url: href({
+                                        page: "conversation",
+                                        id,
+                                        panel: "activity",
+                                        run: t.run?.id,
+                                      }),
+                                    },
+                                  })
+                              : undefined
+                          }
+                          onRedirect={
+                            posts
+                              ? () =>
+                                  setSeed({
+                                    text: defaultCopy.conversation.redirectPrompt(
+                                      t.run!.agent,
+                                      href({
+                                        page: "conversation",
+                                        id,
+                                        panel: "activity",
+                                        run: t.run!.id,
+                                      }),
+                                    ),
+                                    mode: "prepend",
+                                  })
+                              : undefined
+                          }
+                          me={me}
+                          ask={asksOf(t)}
+                          refused={refusals[t.run.id]}
+                          live={
+                            t === last ||
+                            asked.has(t.run.id) ||
+                            (t.run.status !== "completed" && t.run.status !== "failed")
+                          }
+                        />
+                      ) : null}
+                    </Fragment>
+                  ))}
+                </ThreadList>
+              </WebSurface>
+              <div className="mx-auto flex w-full max-w-4xl flex-col gap-2 px-4 pb-4">
+                <Problem message={problem} />
+                {canRun && !posts && (
+                  <p className="text-aui-xs text-aui-muted">{words.viewerOnly}</p>
+                )}
+                {posts && (
+                  <RoomComposer
+                    sessionAgents={page.sessionAgents}
+                    runs={turns.flatMap((turn) =>
+                      turn.run && actedFor(turn.run) === me ? [turn.run] : [],
+                    )}
+                    thread={id}
+                    trailing={<ApprovalToggle thread={th} me={handle || me} />}
+                    seed={seed}
+                    placeholder={words.message}
+                    tags={tags}
+                    plus={{
+                      // The draft's mentions are the + menu's agents.
+                      menu: (close, attach, leave, draft) => (
+                        <PlusMenu
+                          onLeave={leave}
+                          agents={tags.agents}
+                          {...mentionPicks(draft, tags.agents, setSeed)}
+                          skills={tags.skills}
+                          skillsFailed={tags.skillsFailed}
+                          onSkill={(name) => {
+                            setSeed({ text: `/${name} `, mode: "prepend" });
+                          }}
+                          selection={selection}
+                          onChange={select}
+                          onAttach={attach}
+                          onClose={close}
+                        />
+                      ),
                     }}
-                    selection={selection}
-                    onChange={select}
-                    onAttach={attach}
-                    onClose={close}
-                    projects={projects.filter((p) => postsIn(projects, p.name))}
-                    personalProject={personalProject}
-                    kinds={root?.kinds}
-                    projectFixed={fixedWhy}
-                  />
-                ),
-                chips: (
-                  <SelectionChips
-                    personalProject={personalProject}
-                    selection={selection}
-                    projects={projects}
-                    workspace={workspaceName}
-                    onChange={select}
-                    projectFixed
-                    // The prompt bar is where a conversation's project is chosen and changed.
-                    projectControl={
-                      <ProjectPicker
-                        projects={projects}
-                        kinds={root?.kinds}
-                        value={th.project}
-                        personalProject={personalProject}
-                        channel={th.channel}
-                        onCreated={() => onChanged()}
-                        onChange={(next) => {
-                          if (next === th.project) return;
-                          coworking.move(th.id, next).then(
-                            (t) => {
-                              setPage((p) => ({ ...p, thread: t }));
-                              onChanged();
-                            },
-                            (e) => setProblem(e instanceof Error ? e.message : String(e)),
+                    autoFocus={sharing ? false : undefined}
+                    onPost={(text, pick, uploads) =>
+                      // It follows the newest message, so a run it starts reads the conversation so far.
+                      coworking
+                        .post(id, { text, ...pick, uploads })
+                        .then((p) => {
+                          // What was posted shows at once: the message, and any run its tags started.
+                          setTurns((t) =>
+                            mergeTurns(t, [
+                              { kind: "message", message: p.message },
+                              ...p.runs.map((run) => ({ kind: "run" as const, run })),
+                            ]),
                           );
-                        }}
-                      />
+                          onChanged();
+                          return p;
+                        })
                     }
                   />
-                ),
-              }}
-              autoFocus={sharing ? false : undefined}
-              onPost={(text) =>
-                // It follows the newest message, so a run it starts reads the conversation so far.
-                coworking
-                  .post(id, { text })
-                  .then((p) => {
-                    // What was posted shows at once: the message, and any run its tags started.
-                    setTurns((t) =>
-                      mergeTurns(t, [
-                        { kind: "message", message: p.message },
-                        ...p.runs.map((run) => ({ kind: "run" as const, run })),
-                      ]),
-                    );
-                    onChanged();
-                    return p;
-                  })
-              }
+                )}
+              </div>
+            </ConversationPage>
+            <ConversationInfo
+              origin={referenceOfPlace(place)}
+              canWrite={canRun}
+              runs={turns.flatMap((turn) => (turn.run ? [turn.run] : []))}
+              view={shownView}
+              panel={shownView.panel}
+              contextTab={shownView.contextTab}
+              onContextTab={(contextTab) => openPanel("context", { contextTab })}
+              thread={th}
+              project={projectTitle(projects, th.project, workspaceName, personalProject)}
+              onClose={() => openPanel()}
             />
-          )}
-        </div>
-      </ConversationPage>
-      <ConversationInfo
-        runs={turns.flatMap((turn) => (turn.run ? [turn.run] : []))}
-        view={shownView}
-        panel={shownView.panel}
-        contextTab={shownView.contextTab}
-        onContextTab={(contextTab) => openPanel("context", { contextTab })}
-        thread={th}
-        project={projectTitle(projects, th.project, workspaceName, personalProject)}
-        onClose={() => openPanel()}
-      />
-      <Workspace
-        extraTab={(tab) =>
-          ["review", "pull", "issue"].includes(tab.kind) ? (
-            <GitHubTab
-              tab={tab}
-              review={reviewText(
-                turns.flatMap((t) => (t.run ? [t.run] : [])),
-                tab.ref,
-              )}
+            <Workspace
+              extraTab={(tab) =>
+                ["review", "pull", "issue"].includes(tab.kind) ? (
+                  <GitHubTab
+                    tab={tab}
+                    review={reviewText(
+                      turns.flatMap((t) => (t.run ? [t.run] : [])),
+                      tab.ref,
+                    )}
+                  />
+                ) : undefined
+              }
+              key={id}
+              thread={id}
+              open={shownView.panel === "workspace"}
+              view={shownView}
+              onView={(next) => openPanel("workspace", next)}
+              onClose={() => openPanel()}
+              onRequest={
+                posts
+                  ? (text) => {
+                      setSeed({ text, mode: "prepend" });
+                      openPanel();
+                    }
+                  : undefined
+              }
+              promotion={
+                artifactActions
+                  ? { project: th.project, shared: th.visibility === "shared", ...artifactActions }
+                  : undefined
+              }
+              onRevise={
+                posts
+                  ? (file, slide) => {
+                      setSeed({ text: revisionPrompt(file, slide), mode: "prepend" });
+                      openPanel();
+                    }
+                  : undefined
+              }
+              onRun={(run) => openPanel("activity", { run })}
             />
-          ) : undefined
-        }
-        key={id}
-        thread={id}
-        open={shownView.panel === "workspace"}
-        view={shownView}
-        onView={(next) => openPanel("workspace", next)}
-        onClose={() => openPanel()}
-        onRequest={
-          posts
-            ? (text) => {
-                setSeed({ text, mode: "prepend" });
-                openPanel();
-              }
-            : undefined
-        }
-        promotion={
-          artifactActions
-            ? { project: th.project, shared: th.visibility === "shared", ...artifactActions }
-            : undefined
-        }
-        onRevise={
-          posts
-            ? (file, slide) => {
-                setSeed({ text: revisionPrompt(file, slide), mode: "prepend" });
-                openPanel();
-              }
-            : undefined
-        }
-        onRun={(run) => openPanel("activity", { run })}
-      />
-      <Presence when={shownView.panel === "deliverables"} ms={220}>
-        {(leaving) => (
-          <Deliverables
-            open={!leaving}
-            promotion={
-              artifactActions
-                ? { project: th.project, shared: th.visibility === "shared", ...artifactActions }
-                : undefined
-            }
-            thread={id}
-            view={shownView}
-            onView={(next) => openPanel("deliverables", next)}
-            onEditCopy={(file) => openPanel("workspace", { file, workspaceTab: "edit" })}
-            onClose={() => openPanel()}
-            onRevise={
-              posts
-                ? (file, slide) => {
-                    setSeed({ text: revisionPrompt(file, slide), mode: "prepend" });
-                    openPanel();
+            <Presence when={shownView.panel === "deliverables"} ms={220}>
+              {(leaving) => (
+                <Deliverables
+                  open={!leaving}
+                  promotion={
+                    artifactActions
+                      ? {
+                          project: th.project,
+                          shared: th.visibility === "shared",
+                          ...artifactActions,
+                        }
+                      : undefined
                   }
-                : undefined
-            }
-          />
-        )}
-      </Presence>
-      <Presence when={shownView.panel === "activity"} ms={220}>
-        {(leaving) => (
-          <Activity
-            leaving={leaving}
-            turns={turns.flatMap((turn) => (turn.run ? [turn.run] : []))}
-            stamp={turns.map((turn) => `${turn.run?.id}:${turn.run?.status}`).join("|")}
-            focus={shownView.run ?? null}
-            onFocus={(run) => openPanel("activity", run ? { run } : {})}
-            onClose={() => openPanel()}
-          />
-        )}
-      </Presence>
-    </section>
+                  thread={id}
+                  view={shownView}
+                  onView={(next) => openPanel("deliverables", next)}
+                  onEditCopy={(file) => openPanel("workspace", { file, workspaceTab: "edit" })}
+                  onClose={() => openPanel()}
+                  onRevise={
+                    posts
+                      ? (file, slide) => {
+                          setSeed({ text: revisionPrompt(file, slide), mode: "prepend" });
+                          openPanel();
+                        }
+                      : undefined
+                  }
+                />
+              )}
+            </Presence>
+            <Presence when={shownView.panel === "details"} ms={220}>
+              {(leaving) => (
+                <SessionWorkbench
+                  runs={turns.flatMap((t) => (t.run ? [t.run] : []))}
+                  thread={th.id}
+                  uploads={turns.flatMap((t) =>
+                    (t.message?.attachments ?? []).map((a) => a.name || a.alt || a.media_type),
+                  )}
+                  origin={referenceOfPlace(place)}
+                  canPost={posts}
+                  view={shownView}
+                  onView={(next) => openPanel("details", next)}
+                  files={sessionFiles}
+                  leaving={leaving}
+                  onClose={() => openPanel()}
+                  onOpenFile={(id) =>
+                    openPanel("workspace", openPane(shownView, { kind: "artifact", ref: id }))
+                  }
+                  onAsk={posts ? (text) => setSeed({ text, mode: "prepend" }) : undefined}
+                />
+              )}
+            </Presence>
+            <Presence when={shownView.panel === "response" && !!shownView.run} ms={220}>
+              {(leaving) => {
+                const run = turns.find((t) => t.run?.id === shownView.run)?.run;
+                return run ? (
+                  <ResponseActivityPanel
+                    source={traceSource(run)}
+                    leaving={leaving}
+                    onClose={() => openPanel()}
+                  />
+                ) : null;
+              }}
+            </Presence>
+            <Presence when={shownView.panel === "activity"} ms={220}>
+              {(leaving) => (
+                <ConversationActivity
+                  step={shownView.step}
+                  leaving={leaving}
+                  turns={turns.flatMap((turn) => (turn.run ? [turn.run] : []))}
+                  focus={shownView.run ?? null}
+                  onClose={() => openPanel()}
+                  onFocus={(run) => openPanel("activity", run ? { run } : {})}
+                />
+              )}
+            </Presence>
+          </section>
+        </FileLinkContext.Provider>
+      </WorkbenchOpen.Provider>
+    </SessionDetailsProvider>
   );
 }
 
@@ -1276,8 +1520,6 @@ export function ChannelPage({
   // see answers as one that does not exist), or the channel in it.
   const [missing, setMissing] = useState<"project" | "channel" | null>(null);
   const tags = useCompletion(project, agents, homes, topicsOf(projects, root, project), me, handle);
-  // The draft of the thread this channel's chat bar starts, whose mentions are the + menu's agents.
-  const [draft, setDraft] = useState("");
   const [seed, setSeed] = useState<ComposerSeed>();
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: tick is the refresh signal
@@ -1387,9 +1629,9 @@ export function ChannelPage({
           seed={seed}
           placeholder={words.startThread}
           tags={tags}
-          onDraft={setDraft}
           plus={{
-            menu: (close, attach, leave) => (
+            // The draft's mentions are the + menu's agents.
+            menu: (close, attach, leave, draft) => (
               <PlusMenu
                 agents={tags.agents}
                 {...mentionPicks(draft, tags.agents, setSeed)}
@@ -1406,13 +1648,14 @@ export function ChannelPage({
               />
             ),
           }}
-          onPost={(text) =>
+          onPost={(text, _pick, uploads) =>
             // Started in a channel, a thread is shared there: the channel is where it was posted.
             coworking
               .start({
                 project,
                 channel,
                 text,
+                uploads,
                 visibility: "shared",
               })
               .then((p) => {

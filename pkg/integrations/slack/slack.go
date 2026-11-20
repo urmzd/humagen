@@ -4,32 +4,39 @@ package slack
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/urmzd/orchagent/flow/address"
-	"github.com/urmzd/orchagent/flow/connector"
-	"github.com/urmzd/orchagent/flow/connectors"
-	"github.com/urmzd/orchagent/flow/connectors/mention"
-	transport "github.com/urmzd/orchagent/flow/connectors/slack"
-	"github.com/urmzd/orchagent/flow/deliverystate"
-	"github.com/urmzd/orchagent/flow/event"
+	"github.com/urmzd/saige/flow/address"
+	"github.com/urmzd/saige/flow/connector"
+	"github.com/urmzd/saige/flow/connectors"
+	"github.com/urmzd/saige/flow/connectors/mention"
+	transport "github.com/urmzd/saige/flow/connectors/slack"
+	"github.com/urmzd/saige/flow/deliverystate"
+	"github.com/urmzd/saige/flow/event"
 
 	"github.com/urmzd/humagen/internal/wire"
 )
 
 type Config struct {
-	Tenant    string
-	Files     connectors.Files
-	FileToken string
-	AppID     string
-	API       transport.API
-	Verifier  transport.Verifier
-	Team      string
-	Bots      map[string]string
+	Feedback        connectors.FeedbackHandler
+	ObserveDelivery connectors.DeliveryObserver
+	ContinueThread  func(string, string, string) bool
+	StatusReactions bool
+	ActionChannels  []string
+	Tenant          string
+	Files           connectors.Files
+	FileToken       string
+	FileTokenSource func(context.Context) (string, error)
+	AppID           string
+	API             transport.API
+	Verifier        transport.Verifier
+	Team            string
+	Bots            map[string]string
 	// Agents is the set of names a plain "@name" in a message may name. A
 	// message no bot mention addressed names the first of them it mentions.
 	// Nil reads no plain names.
@@ -67,7 +74,9 @@ func New(cfg Config) (*Connector, error) {
 	c := &Connector{cfg: cfg, offered: offered{seen: map[string]bool{}}, statusSeq: map[string]uint64{}}
 	c.live.open, c.live.asked = map[string]session{}, map[string]bool{}
 	base := transport.Config{Tenant: cfg.Tenant, Files: cfg.Files, FileToken: cfg.FileToken, AppID: cfg.AppID, API: cfg.API, Verifier: cfg.Verifier, Team: cfg.Team, Bots: cfg.Bots, Interval: cfg.Interval, Clock: cfg.Clock, MaxBody: cfg.MaxBody}
+	base.FileTokenSource = cfg.FileTokenSource
 	base.DeliveryState, base.DeliveryScope = cfg.DeliveryState, cfg.DeliveryScope
+	base.Feedback, base.ObserveDelivery, base.ContinueThread, base.StatusReactions, base.ActionChannels = cfg.Feedback, cfg.ObserveDelivery, cfg.ContinueThread, cfg.StatusReactions, cfg.ActionChannels
 	base.Prepare = func(_ context.Context, tag *event.Envelope) error {
 		if cfg.Agents != nil && wire.AgentOf(*tag) == "" {
 			if agent, stripped, ok := mention.Find(wire.TextOf(*tag), cfg.Agents); ok {
@@ -109,18 +118,16 @@ func (c *Connector) Deliver(ctx context.Context, to address.Address, e event.Env
 	if to.Connector == transport.Name && len(to.Path) == 1 {
 		stopping = c.live.track(to, e)
 	}
-	if err := c.Connector.Deliver(ctx, to, e); err != nil {
-		return err
-	}
+	deliveryErr := c.Connector.Deliver(ctx, to, e)
 	status, ok := statusFor(e.Type)
 	if !ok {
-		return nil
+		return deliveryErr
 	}
 	// A run someone stopped from Slack has had its session set to active.
 	// Until it ends, a lifecycle event it was still publishing does not set
 	// the session back to working.
 	if stopping && status != StatusActive {
-		return nil
+		return deliveryErr
 	}
 	// Keep replayed lifecycle events from regressing a completed session.
 	// A failed API call does not advance the cursor, so a retry still runs.
@@ -128,16 +135,16 @@ func (c *Connector) Deliver(ctx context.Context, to address.Address, e event.Env
 	defer c.statusMu.Unlock()
 	key := e.Run + "\x00" + to.String()
 	if seq, ok := c.statusSeq[key]; ok && e.Seq <= seq {
-		return nil
+		return deliveryErr
 	}
 	if err := c.session(ctx, to, e); err != nil {
-		return err
+		return errors.Join(deliveryErr, err)
 	}
 	if len(c.statusSeq) >= maxChannels {
 		clear(c.statusSeq)
 	}
 	c.statusSeq[key] = e.Seq
-	return nil
+	return deliveryErr
 }
 
 type API = transport.API

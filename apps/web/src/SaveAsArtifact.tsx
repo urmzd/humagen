@@ -1,6 +1,6 @@
 import { defaultCopy } from "@humagen/components";
-import { ArchiveIcon } from "@humagen/render-web";
-import { useState } from "react";
+import { SaveIcon } from "@humagen/render-web";
+import { useRef, useState } from "react";
 import type { Stored } from "./storage.ts";
 import { type ArtifactSave, workspaceFiles } from "./workspace-files.ts";
 
@@ -28,18 +28,28 @@ export function SaveAsArtifact({
   onSaved?: (artifact: Stored) => void;
 }) {
   const [busy, setBusy] = useState(false);
+  const saved = useRef<{ key: string; artifact: Stored } | undefined>(undefined);
+  const saving = useRef(false);
   const [said, setSaid] = useState("");
   const save = async () => {
-    if (busy || disabled) return;
+    if (saving.current || disabled) return;
+    const key = JSON.stringify([thread, what]);
+    if (what.source !== "scratchpad" && saved.current?.key === key) {
+      onSaved?.(saved.current.artifact);
+      return;
+    }
+    saving.current = true;
     setBusy(true);
     setSaid("");
     try {
       const artifact = await workspaceFiles.save(thread, what);
+      saved.current = { key, artifact };
       setSaid(words.saved(artifact.version));
       onSaved?.(artifact);
     } catch (error) {
       setSaid(error instanceof Error && error.message ? error.message : words.failed);
     } finally {
+      saving.current = false;
       setBusy(false);
     }
   };
@@ -53,7 +63,7 @@ export function SaveAsArtifact({
         disabled={busy || disabled}
         onClick={() => void save()}
       >
-        <ArchiveIcon size={label ? 14 : 16} />
+        <SaveIcon size={label ? 14 : 16} />
         {label && (busy ? words.saving : words.action)}
       </button>
       <output className="sr-only">{said}</output>

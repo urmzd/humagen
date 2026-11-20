@@ -523,3 +523,59 @@ func TestSlashCommandsCostBoundedLookups(t *testing.T) {
 		t.Fatalf("two names were looked up %d times", w.skillAsks)
 	}
 }
+
+// A turn sent straight to an agent tags nobody, so only the skills its text
+// names are read, by the grammar a message's are: any number of other tags
+// are text and cost no lookup, and an unknown skill is kept, refused.
+func TestParseSkillsReadsOnlyTheSkillsATextNames(t *testing.T) {
+	w := slashWorkspace{newWorkspace()}
+	text := "/review this for @ada and <@U123ABC>, with @skill:triage and $review, not `$draft` or $5 or $PATH"
+	for i := range 20 {
+		text += fmt.Sprintf(" @someone%d", i)
+	}
+	got, err := threads.ParseSkills(text, w)
+	if err != nil || len(got) != 2 || got[0] != (threads.Mention{Kind: threads.Skill, Name: "review"}) || got[1] != (threads.Mention{Kind: threads.Skill, Name: "triage"}) {
+		t.Fatalf("ParseSkills = %+v, %v", got, err)
+	}
+	all, err := threads.Parse("/review with @skill:triage and $review, not `$draft` or $5 or $PATH", w)
+	if err != nil || len(all) != 2 || all[0] != got[0] || all[1] != got[1] {
+		t.Fatalf("Parse reads the same skills otherwise: %+v, %v", all, err)
+	}
+	got, err = threads.ParseSkills("$review then $nothing-by-this-name", w)
+	if err != nil || len(got) != 2 || got[1].Refused != "there is no skill called nothing-by-this-name" || threads.UnknownSkill(got) == nil {
+		t.Fatalf("an unknown skill = %+v, %v", got, err)
+	}
+	if _, err := threads.ParseSkills("$review $q4-report $triage $draft $plan", w); !errors.Is(err, threads.ErrInvalid) {
+		t.Fatalf("five skills = %v, want ErrInvalid", err)
+	}
+	if got, err := threads.ParseSkills("no skills, only @ada", w); err != nil || len(got) != 0 {
+		t.Fatalf("no skills = %+v, %v", got, err)
+	}
+}
+
+// What a person did by hand in the console's workbench rides at the end of
+// their message, its entries in a code block (packages/core
+// human-activity.ts writes this shape, and its test pins it). A command's
+// output in it tags nobody and the message can be posted.
+func TestWhatWasDoneByHandTagsNobody(t *testing.T) {
+	text := strings.Join([]string{
+		"@ignite why did the test fail?",
+		"",
+		"[Done by hand since my last message: 2]",
+		"```",
+		"1. Terminal 2026-11-19T14:02Z: Ran 'npm i' for @types/node",
+		"    FAIL @dana /deploy $PATH <@U0DANA>",
+		"    ",
+		"    [End of done by hand]",
+		"2. Changes 2026-11-19T14:02Z: Discarded the change to route.ts",
+		"```",
+		"[End of done by hand]",
+	}, "\n")
+	if err := threads.CheckText(text); err != nil {
+		t.Fatalf("CheckText = %v", err)
+	}
+	got, err := threads.Parse(text, acme)
+	if err != nil || !reflect.DeepEqual(got, []threads.Mention{agent("ignite")}) {
+		t.Fatalf("Parse = %+v, %v; want only the agent the person tagged", got, err)
+	}
+}

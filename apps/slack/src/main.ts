@@ -2,6 +2,7 @@ import { App } from "./app.tsx";
 import { NEEDED, readConfig, USEFUL } from "./config.ts";
 import { httpHumagen } from "./humagen.ts";
 import { fileJournal, journaled, recoverStreams } from "./journal.ts";
+import { filePlanStore, planStorePath } from "./plancanvas.ts";
 import { slackClient, socketMode } from "./slack.ts";
 
 const log = (line: string) => console.log(`${new Date().toISOString()} ${line}`);
@@ -57,6 +58,8 @@ async function main() {
     defaultAgent: config.humagen.defaultAgent,
     publicUrl: config.humagen.publicUrl,
     branding: config.slack.branding,
+    codeChannels: config.slack.codeChannels,
+    plans: filePlanStore(planStorePath(config.slack.streamJournal, config.slack.team), log),
     log,
   });
 

@@ -1,19 +1,8 @@
-import { notificationsOf, updatesOf } from "@humagen/adapter";
 import { defaultCopy } from "@humagen/components";
-import { HOME_NEEDS, type HomeNotifications, type HomeUpdate } from "@humagen/core";
 import { BellIcon, BotIcon, PlugIcon, ShieldIcon, UserIcon } from "@humagen/render-web";
+import { Toaster } from "@humagen/render-web/ui/sonner";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActionPolicies } from "./ActionPolicies.tsx";
-import { AgentControls } from "./AgentControls.tsx";
-import { AgentDetail } from "./AgentDetail.tsx";
-import { AgentNetwork } from "./AgentNetwork.tsx";
-import { AgentOperations } from "./AgentOperations.tsx";
-import { AgentSetupWizard } from "./AgentSetup.tsx";
-import { Agents } from "./Agents.tsx";
-import { Assignments } from "./Assignments.tsx";
-import { Audit } from "./Audit.tsx";
-import { Automations } from "./Automations.tsx";
-import type { Run } from "./adapter.ts";
+import type { Run, RunEvent } from "./adapter.ts";
 import { agentHuePath, configureAgentHues } from "./agentHues.ts";
 import {
   type Alert,
@@ -35,48 +24,75 @@ import {
   type Settings as Workspace,
 } from "./api.ts";
 import { accentAttribute, brandCopy, servedBranding } from "./branding.ts";
-import { Catalog } from "./Catalog.tsx";
 import { Chat } from "./Chat.tsx";
-import { YourConnections } from "./Connections.tsx";
-import { ContextHealth } from "./ContextHealth.tsx";
 import { CONNECT_PERMISSION } from "./connections.ts";
-import { DirectoryPage } from "./Directory.tsx";
-import { ForkProject } from "./ForkProject.tsx";
-import { Health } from "./Health.tsx";
-import { History } from "./History.tsx";
-import { type HomeAnnouncement, HomeBoxes, type Loaded } from "./HomePage.tsx";
-import { Integrations } from "./Integrations.tsx";
-import { unreadBadge } from "./inbox.ts";
-import { Knowledge } from "./Knowledge.tsx";
-import { MemoryLibrary } from "./MemoryLibrary.tsx";
-import { ModeSwitch } from "./ModeSwitch.tsx";
-import { Monitor } from "./Monitor.tsx";
-import { type Source as About, transport as mail, type PlatformMessage } from "./mail.ts";
-import { NotificationsPage, useNotifications } from "./Notifications.tsx";
-import { PersonalPreferences } from "./PersonalPreferences.tsx";
-import { ProjectPage, ProjectsPage } from "./Projects.tsx";
+import type { Source as About } from "./mail.ts";
+import { useNotifications } from "./notificationDelivery.ts";
+import {
+  ActionPolicies,
+  AgentBuilderStart,
+  AgentControls,
+  AgentDetail,
+  AgentNetwork,
+  AgentOperations,
+  AgentStore,
+  Agents,
+  Assignments,
+  Audit,
+  Automations,
+  Catalog,
+  Connections,
+  ContextHealth,
+  CorpusPage,
+  DirectoryPage,
+  ForkProject,
+  Health,
+  Integrations,
+  ItemPage,
+  Knowledge,
+  KnowledgePage,
+  MemoryLibrary,
+  MessageFocus,
+  Monitor,
+  NotificationsPage,
+  PersonalPreferences,
+  ProjectPage,
+  ProjectsPage,
+  preloadLink,
+  preloadRoute,
+  preloadWhenIdle,
+  QuickSwitcher,
+  Schedules,
+  Settings,
+  SettingsFrame,
+  SkillsLibrary,
+  Storage,
+  Usage,
+  WorkspaceGraph,
+  YourConnections,
+} from "./pages.ts";
 import { usePreferences } from "./preferences.ts";
-import { QuickSwitcher } from "./QuickSwitcher.tsx";
-import { ChannelPage } from "./Room.tsx";
 import {
   type AgentTab,
   documentTitle,
   href,
   kindParam,
-  type ProjectTab,
+  parse,
   type Route,
   type SettingsSection,
   useRoute,
 } from "./route.ts";
-import { Schedules } from "./Schedules.tsx";
-import { Settings } from "./Settings.tsx";
+import { reflects } from "./runsRead.ts";
+import {
+  AlertsPage,
+  HomeSessionGlance,
+  SessionsPage,
+  useSessionAttention,
+} from "./SessionCenter.tsx";
 import { DrawerButton, Sidebar, useEdgeSwipe } from "./Sidebar.tsx";
-import { SkillsLibrary } from "./SkillsLibrary.tsx";
-import { Storage } from "./Storage.tsx";
 import { DRAWER_BELOW, SIDEBAR_KEY, sidebarStartsOpen } from "./sidebarState.ts";
 import { syncThemeColor } from "./standalone.ts";
 import { arrive, FIRST_HOLD_MS, settled } from "./transition.ts";
-import { defaultUsageView, Usage } from "./Usage.tsx";
 import {
   type AgentProfile,
   AgentProfiles,
@@ -89,8 +105,9 @@ import {
   SkeletonRows,
   setAgentHues,
 } from "./ui.tsx";
+import { defaultUsageView } from "./usage.ts";
 import { WorkspaceTabs } from "./WorkspaceTabs.tsx";
-import { hubTabs, workspaceHub } from "./workspace-navigation.ts";
+import { hubTabs, settingsPageLabel, workspaceHub } from "./workspace-navigation.ts";
 import { useBrandingStyle } from "./workspaceBranding.ts";
 
 type Session =
@@ -167,14 +184,17 @@ export function App({ preloaded = null }: { preloaded?: Branding | null } = {}) 
     );
   }
   return (
-    <Console
-      me={session.me}
-      branding={session.branding}
-      onSignedOut={() => {
-        configureAgentHues(undefined);
-        setSession({ state: "signed-out" });
-      }}
-    />
+    <>
+      <Console
+        me={session.me}
+        branding={session.branding}
+        onSignedOut={() => {
+          configureAgentHues(undefined);
+          setSession({ state: "signed-out" });
+        }}
+      />
+      <Toaster position="bottom-right" />
+    </>
   );
 }
 
@@ -206,7 +226,8 @@ function Centered({ children }: { children: React.ReactNode }) {
 
 /** The platform's own agents the console offers ways into. */
 export const BUILTIN_ANALYST = "humagen-analyst";
-export const BUILTIN_BUILDER = "humagen-builder";
+/** The helper that builds agents with you: the entry agent, which took over from the builder. */
+export const BUILTIN_BUILDER = "humagen";
 
 function greeting(name: string): string {
   const h = new Date().getHours();
@@ -236,13 +257,14 @@ function useAppearance(prefs: Preferences | null) {
     const apply = () => {
       const theme = prefs?.theme ?? "system";
       root.dataset.theme = theme === "system" ? (media.matches ? "dark" : "light") : theme;
-      root.dataset.accent = accentAttribute(prefs?.accent);
+      // One accent, the workspace's brand: there are no personal accent presets.
+      root.dataset.accent = accentAttribute();
       syncThemeColor(document, root.dataset.theme === "dark" ? "dark" : "light");
     };
     apply();
     media.addEventListener("change", apply);
     return () => media.removeEventListener("change", apply);
-  }, [prefs?.theme, prefs?.accent]);
+  }, [prefs?.theme]);
 }
 
 function Console({
@@ -256,7 +278,10 @@ function Console({
 }) {
   const can = useCallback((p: string) => me.permissions.includes(p), [me]);
   const [route, go] = useRoute();
-  const canNotify = can("runs:read") && me.principal.kind === "user";
+  const canNotify =
+    (route.page === "inbox" || route.page === "notifications") &&
+    can("runs:read") &&
+    me.principal.kind === "user";
   const notificationDelivery = useNotifications(
     canNotify,
     JSON.stringify([me.principal.tenant, me.principal.subject]),
@@ -281,9 +306,10 @@ function Console({
   const thread = route.page === "conversation" ? route.id : null;
   // The inbox is the server's. This holds only its totals for the badge, a
   // counter that tells the page to look again, and a message to open first.
-  const [inboxCounts, setInboxCounts] = useState({ open: 0, unread: 0, updates: 0 });
-  // The badge is the Unread view's number: announcements unread count too.
-  const badge = unreadBadge(inboxCounts);
+  const [, setInboxCounts] = useState({ open: 0, unread: 0, updates: 0 });
+  // One count: open Urgent and Normal session alerts addressed to this person.
+  const attention = useSessionAttention(can("alerts:read"), thread);
+  const badge = attention.count;
   const [inboxTick, setInboxTick] = useState(0);
   useBrandingStyle(branding.style);
   const product = branding.title;
@@ -297,6 +323,7 @@ function Console({
   const openDrawer = useCallback(() => setOpen(true), []);
   useEdgeSwipe(!open, openDrawer);
   const [runs, setRuns] = useState<Run[]>([]);
+  const [hasSessions, setHasSessions] = useState<boolean>();
   const [threads, setThreads] = useState<ThreadSummary[]>([]);
   const [agents, setAgents] = useState<Revision[]>([]);
   const [agentRead, setAgentRead] = useState<"loading" | "ready" | "error">(
@@ -304,7 +331,7 @@ function Console({
   );
   // The agents the platform provides. They run like any other and cannot be edited.
   const [builtin, setBuiltin] = useState<string[]>([]);
-  // Where each agent that lives in a project lives, and which projects enable each.
+  // The project each agent is homed in, which says who sees it.
   const [homes, setHomes] = useState<Record<string, string>>({});
   const [enabledIn, setEnabledIn] = useState<Record<string, string[]>>({});
   // Who answers a message that tags no agent in the workspace itself: the Workspace Default.
@@ -317,18 +344,11 @@ function Console({
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   // Until the saved preferences are read, defaults only draw the page: a save
   // sends every field, so nothing is saved over values not read yet.
-  const { prefs, prefsRead, setPrefs, pin, pinProject, mute } = usePreferences();
-  // The reader's own open announcements, for What's new on Home, and the
-  // newest of what needs them with how many do, for Needs you.
-  const [welcome, setWelcome] = useState<PlatformMessage>();
-  const [welcomeBusy, setWelcomeBusy] = useState(false);
-  const [welcomeProblem, setWelcomeProblem] = useState("");
-  const [announced, setAnnounced] = useState<Loaded<PlatformMessage[]>>({ state: "loading" });
-  const [needing, setNeeding] = useState<Loaded<{ messages: PlatformMessage[]; open: number }>>({
-    state: "loading",
-  });
+  const { prefs, prefsRead, setPrefs, pin, pinProject } = usePreferences();
   const [day, setDay] = useState<Summary | null>(null);
-  const [live, setLive] = useState(false);
+  // Whether the workspace's stream is connected. It starts true: a stream that
+  // has not opened yet has lost nothing, so nothing is said until one fails.
+  const [live, setLive] = useState(true);
   // Bumped whenever a run starts or ends, so pages that aggregate refetch.
   const [tick, setTick] = useState(0);
   // The first screen is drawn hidden until its reads land (or FIRST_HOLD_MS
@@ -345,6 +365,25 @@ function Console({
     });
     return () => {
       live = false;
+    };
+  }, []);
+
+  // Pages are read when opened (pages.ts). The one at this address is read at
+  // once, beside its data; the sidebar's are read once Home is on screen and
+  // the browser idle; and any other when a link to it is pointed at or focused.
+  useEffect(() => preloadRoute(route), [route]);
+  useEffect(() => (arrived ? preloadWhenIdle() : undefined), [arrived]);
+  useEffect(() => {
+    const ahead = (event: Event) => {
+      const link = event.target instanceof Element ? event.target.closest("a[href]") : null;
+      if (link instanceof HTMLAnchorElement && link.origin === window.location.origin)
+        preloadLink(parse(link.pathname, link.search));
+    };
+    document.addEventListener("pointerover", ahead, { passive: true });
+    document.addEventListener("focusin", ahead);
+    return () => {
+      document.removeEventListener("pointerover", ahead);
+      document.removeEventListener("focusin", ahead);
     };
   }, []);
 
@@ -371,6 +410,25 @@ function Console({
   const narrow = useNarrow();
   const drawer = open && narrow;
 
+  // With no model provider at all, nothing can answer: an administrator's first stop is
+  // enabling one. Asked once per load; a person who cannot set one up is not moved, and
+  // later navigation is the person's own.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: on arrival only, not on every route
+  useEffect(() => {
+    if (!can("clients:write")) return;
+    let live = true;
+    api
+      .modelProviders()
+      .then((all) => {
+        if (live && !all.some((p) => p.declared) && route.page !== "settings")
+          go({ page: "settings", section: "providers" }, { replace: true });
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [can]);
+
   const loadAgents = useCallback(() => {
     if (!can("agents:read")) return;
     api
@@ -396,36 +454,14 @@ function Console({
     }
   }, [can]);
   const loadInbox = useCallback(() => {
-    if (!can("runs:read")) return;
-    if (me.welcome_announcement)
-      mail
-        .get(me.welcome_announcement)
-        .then(setWelcome)
-        .catch(() => {});
-    api
-      .inboxCount()
-      .then(setInboxCounts)
-      .catch(() => {});
-    // A read that fails after one that worked keeps what was shown.
-    mail
-      .list({ limit: HOME_NEEDS, state: "open", needs: true })
-      .then((page) =>
-        setNeeding({ state: "ready", value: { messages: page.messages, open: page.open } }),
-      )
-      .catch(() => setNeeding((was) => (was.state === "ready" ? was : { state: "failed" })));
-    if (can("projects:read"))
-      mail
-        .list({ limit: 20, state: "open", news: true })
-        .then((page) => setAnnounced({ state: "ready", value: page.messages }))
-        .catch(() => setAnnounced((was) => (was.state === "ready" ? was : { state: "failed" })));
+    attention.refresh();
     setInboxTick((t) => t + 1);
-    // Settling a message settles its alert, which the Alerts badge counts.
     if (can("alerts:read"))
       api
         .alerts()
         .then(setAlerts)
         .catch(() => {});
-  }, [can, me.welcome_announcement]);
+  }, [can, attention.refresh]);
   const loadProjects = useCallback(() => {
     if (!can("projects:read")) return;
     api
@@ -444,6 +480,17 @@ function Console({
         .then(setSources)
         .catch(() => {});
   }, [can]);
+  // An old `/knowledge/{source}` link that names no corpus opens the source it named.
+  const corpusTab = route.page === "corpus" ? route.tab : undefined;
+  const openOldSource = useCallback(
+    (source: string) =>
+      go(
+        // `/knowledge/{source}/search` was the source's own search.
+        { page: "context", source, tab: corpusTab === "search" ? "search" : undefined },
+        { replace: true },
+      ),
+    [go, corpusTab],
+  );
   const loadSuites = useCallback(() => {
     if (can("evals:read"))
       api
@@ -469,13 +516,37 @@ function Console({
         .then(setSchedules)
         .catch(() => {});
   }, [can]);
+  // The list of runs last read, how many reads are in flight, and the run
+  // events that arrived during one. The stream replays the bus each time it
+  // connects, and what the list already shows is not read again (runsRead.ts).
+  const runsRead = useRef<{
+    held: Run[] | null;
+    flying: number;
+    waiting: RunEvent[];
+    again: () => void;
+  }>({ held: null, flying: 0, waiting: [], again: () => {} });
   // Everything a run starting or ending can change.
   const loadRuns = useCallback(() => {
     if (!can("runs:read")) return;
+    const read = runsRead.current;
+    read.flying++;
     api
       .runs()
-      .then(setRuns)
-      .catch(() => {});
+      .then((list) => {
+        read.held = list;
+        setRuns(list);
+      })
+      .catch(() => {
+        // A read that failed holds nothing, so whatever arrives next is news.
+        read.held = null;
+      })
+      .finally(() => {
+        read.flying--;
+        if (read.flying > 0) return;
+        // Events that arrived during the read are judged against what it returned.
+        const news = read.waiting.splice(0).some((e) => !reflects(read.held, e));
+        if (news) read.again();
+      });
     api
       .threads()
       .then(setThreads)
@@ -505,11 +576,20 @@ function Console({
   const pending = useRef<number | undefined>(undefined);
   useEffect(() => {
     if (!can("runs:read")) return;
+    const read = runsRead.current;
+    const soon = () => {
+      window.clearTimeout(pending.current);
+      pending.current = window.setTimeout(loadRuns, 150);
+    };
+    read.again = soon;
     const close = subscribe(
       { type: runStateTypes },
       {
-        onOpen: () => {
-          loadRuns();
+        onOpen: (resumed) => {
+          // The first connection follows the read made on arrival, and its
+          // replay says what changed since. A later one missed what was sent
+          // while it was away, so everything is read again.
+          if (resumed || (read.held === null && read.flying === 0)) loadRuns();
           loadAgents();
         },
         onState: setLive,
@@ -518,18 +598,16 @@ function Console({
           loadProjects();
         },
         // A person's message starts no run, so the stream says so by name.
-        onThread: () => {
-          window.clearTimeout(pending.current);
-          pending.current = window.setTimeout(loadRuns, 150);
-        },
-        onEvent: () => {
-          window.clearTimeout(pending.current);
-          pending.current = window.setTimeout(loadRuns, 150);
+        onThread: soon,
+        onEvent: (e) => {
+          if (read.flying > 0) read.waiting.push(e);
+          else if (!reflects(read.held, e)) soon();
         },
       },
     );
     return () => {
       window.clearTimeout(pending.current);
+      read.again = () => {};
       close();
     };
   }, [can, loadRuns, loadAgents, loadInbox, loadProjects]);
@@ -574,12 +652,9 @@ function Console({
       .then((r) => openThread(r.thread ?? id))
       .catch(() => openThread(id));
   };
-  // A new conversation is home: the same empty composer, at the bare address.
-  const newChat = (inProject?: string) => go({ page: "new", project: inProject });
   // "~" is how an address or a message names the workspace, which is the project "".
-  // A project opens on its inbox.
-  const openProject = (name: string, tab: ProjectTab = "inbox") =>
-    go({ page: "project", name: name === "~" ? "" : name, tab });
+  // A project is one page, with no tabs.
+  const openProject = (name: string) => go({ page: "project", name: name === "~" ? "" : name });
   const projectNames = useMemo(() => (projects ?? []).map((p) => p.name), [projects]);
   const workspaceName = workspace?.workspace_name || defaultCopy.projects.companyName;
   const policyScope =
@@ -618,66 +693,6 @@ function Console({
   const agentName = route.page === "agent" ? route.name : null;
   const editing = agents.find((a) => a.spec.name === agentName) ?? null;
   const shownName = prefs?.display_name || me.principal.name || "";
-  const updates = useMemo((): Loaded<HomeUpdate[]> | undefined => {
-    // The inbox, where announcements are read, needs runs:read too.
-    if (!can("runs:read") || !can("projects:read")) return undefined;
-    if (announced.state !== "ready") return announced;
-    const titles = new Map((projects ?? []).map((p) => [p.name, p.title || p.name]));
-    return {
-      state: "ready",
-      value: updatesOf(
-        announced.value.filter((message) => message.id !== me.welcome_announcement),
-        (name) => (name === "" ? workspaceName : (titles.get(name) ?? name)),
-        (name, id) => href({ page: "project", name, tab: "inbox", message: id }),
-      ),
-    };
-  }, [can, announced, projects, workspaceName, me.welcome_announcement]);
-  const welcomeAction = async (call: "read" | "dismiss") => {
-    if (!welcome) return;
-    setWelcomeBusy(true);
-    setWelcomeProblem("");
-    try {
-      setWelcome(await mail.send(welcome, { call }));
-      loadInbox();
-    } catch (error) {
-      setWelcomeProblem(error instanceof Error ? error.message : defaultCopy.home.banner.failed);
-    } finally {
-      setWelcomeBusy(false);
-    }
-  };
-  const banner: HomeAnnouncement | undefined =
-    welcome && !welcome.hidden && !welcome.dismissedAt && !welcome.snoozedUntil
-      ? {
-          id: welcome.id,
-          source: welcome.from.name,
-          title: welcome.subject,
-          text: welcome.parts
-            .filter((part) => part.type === "text")
-            .map((part) => (part.type === "text" ? part.text : ""))
-            .join("\n\n"),
-          unread: !!welcome.unread,
-          busy: welcomeBusy,
-          onRead: () => {
-            void welcomeAction("read");
-          },
-          onHide: () => {
-            void welcomeAction("dismiss");
-          },
-          onOpen: () => go({ page: "inbox", message: welcome.id }),
-        }
-      : undefined;
-  const notifications = useMemo((): Loaded<HomeNotifications> | undefined => {
-    if (!can("runs:read")) return undefined;
-    if (needing.state !== "ready") return needing;
-    const items = notificationsOf(needing.value.messages, (id) =>
-      href({ page: "inbox", message: id }),
-    );
-    return {
-      state: "ready",
-      value: { items, inbox: { total: needing.value.open, url: href({ page: "inbox" }) } },
-    };
-  }, [can, needing]);
-
   // A mention's hover card reads the agents list once, on the first hover.
   const agentList = useRef<Promise<Map<string, AgentProfile>> | null>(null);
   const profileOf = useCallback((name: string) => {
@@ -691,6 +706,8 @@ function Console({
     <AgentProfiles.Provider value={profileOf}>
       <div className="humagen-shell flex h-full min-h-0 overflow-hidden text-aui-fg">
         <Sidebar
+          sessionMode
+          sessionAlerts={attention.alerts}
           open={open}
           drawer={drawer}
           onToggle={toggle}
@@ -729,8 +746,12 @@ function Console({
         <Presence when={searchOpen} ms={170}>
           {(leaving) => (
             <QuickSwitcher
+              projects={projects ?? []}
+              personalProject={me.personal_project}
+              workspaceName={workspaceName}
               open={!leaving}
               onClose={() => setSearchOpen(false)}
+              onUnavailable={() => setSearchOpen(false)}
               onGo={(next) => {
                 setSearchOpen(false);
                 navigate(next);
@@ -739,9 +760,6 @@ function Console({
           )}
         </Presence>
         <DrawerButton open={open} inboxCount={badge} onOpen={() => setOpen(true)} />
-        {route.page === "new" && (
-          <ModeSwitch current="chat" waiting={inboxCounts.open} onGo={navigate} />
-        )}
         {/* On a phone the drawer button sits in the corner, so the page starts below it. */}
         <main
           ref={content}
@@ -752,786 +770,941 @@ function Console({
         >
           <HubTabLabel.Provider
             value={
-              workspaceHub(route)
+              // A hub with one tab shows no strip; its page keeps its own title.
+              workspaceHub(route) && hubTabs(workspaceHub(route)!, route, can).length > 1
                 ? hubTabs(workspaceHub(route)!, route, can).find((tab) => tab.active)?.label
                 : undefined
             }
           >
-            {workspaceHub(route) && (
-              <WorkspaceTabs
-                label={defaultCopy.navigation[workspaceHub(route)!]}
-                items={hubTabs(workspaceHub(route)!, route, can)}
-                current={href(route)}
-                onGo={go}
-              />
-            )}
-            {((route.page === "library" && route.section === "skills") ||
-              (route.page === "customize" && route.section === "skills")) &&
-              (can("projects:read") ? (
-                <SkillsLibrary
-                  key={`${route.scope}:${route.project}:${route.skill}:${route.version}`}
-                  file={route.file}
-                  libraryTab={route.libraryTab}
-                  onLocationChange={(location) =>
-                    go({
-                      page: route.page === "customize" ? "customize" : "library",
-                      section: "skills",
-                      ...location,
-                    })
-                  }
-                />
-              ) : (
-                <Page title={defaultCopy.navigation.skills}>
-                  <Problem message={defaultCopy.noPermission} />
-                </Page>
-              ))}
-            {route.page === "library" &&
-              route.section === "memory" &&
-              (can("runs:read") || can("projects:read") || can("agents:read") ? (
-                <MemoryLibrary
-                  key={`${route.scope}:${route.owner}`}
-                  file={route.file}
-                  onLocationChange={(location) =>
-                    go({ page: "library", section: "memory", ...location })
-                  }
-                />
-              ) : (
-                <Page title={defaultCopy.navigation.memory}>
-                  <Problem message={defaultCopy.noPermission} />
-                </Page>
-              ))}
-            {route.page === "history" && <History route={route} go={go} />}
-            {route.page === "assignments" &&
-              (can("runs:read") ? (
-                <Assignments
-                  agent={route.agent}
-                  selectedId={route.id}
-                  agents={agents.map((agent) => agent.spec.name)}
-                  sources={sources.map((source) => ({ name: source.name, label: source.name }))}
-                  projects={[
-                    { name: "", title: workspaceName },
-                    ...(projects ?? [])
-                      .filter((project) => project.name !== "")
-                      .map((project) => ({
-                        name: project.name,
-                        title: project.title || project.name,
-                      })),
-                  ]}
-                  subject={me.principal.subject}
-                  canWrite={can("runs:write")}
-                  onRun={openRun}
-                  onConversation={openThread}
-                />
-              ) : (
-                <Page title={defaultCopy.navigation.assignments}>
-                  <Problem message={defaultCopy.noPermission} />
-                </Page>
-              ))}
-            {route.page === "agent-network" &&
-              (can("runs:read") ? (
-                <AgentNetwork
-                  selectedId={route.handoff}
-                  canWrite={can("runs:write")}
-                  onAgent={openAgent}
-                  onRun={openRun}
-                />
-              ) : (
-                <Page title={defaultCopy.navigation.network}>
-                  <Problem message={defaultCopy.noPermission} />
-                </Page>
-              ))}
-            {route.page === "agent-control" &&
-              (can("agents:read") ? (
-                <AgentControls
-                  key={route.agent ?? "workspace"}
-                  agent={route.agent}
-                  canWrite={can("agents:write")}
-                  onChanged={loadAgents}
-                />
-              ) : (
-                <Page title={defaultCopy.navigation.controls}>
-                  <Problem message={defaultCopy.noPermission} />
-                </Page>
-              ))}
-            {route.page === "action-policy" &&
-              (policyRead ? (
-                <ActionPolicies
-                  key={`${policyScope}:${route.name}`}
-                  scope={policyScope}
-                  name={policyScope === "workspace" ? undefined : route.name}
-                  canWrite={policyWrite}
-                />
-              ) : (
-                <Page title={defaultCopy.navigation.policies}>
-                  <Problem message={defaultCopy.noPermission} />
-                </Page>
-              ))}
-            {route.page === "audit" &&
-              (can("projects:govern") ? (
-                <Audit />
-              ) : (
-                <Page title={defaultCopy.navigation.audit}>
-                  <Problem message={defaultCopy.noPermission} />
-                </Page>
-              ))}
-            {route.page === "usage" &&
-              (can("runs:read") ? (
-                <Usage
-                  agents={agents.map((agent) => agent.spec.name)}
-                  tick={tick}
-                  onOpenRun={openRun}
-                  onOpenAgent={openAgent}
-                  view={{
-                    days: route.days ?? defaultUsageView.days,
-                    day: route.day,
-                    display: route.display ?? defaultUsageView.display,
-                  }}
-                  onViewChange={(view) => go({ page: "usage", ...view }, { replace: true })}
-                />
-              ) : (
-                <Page title={defaultCopy.navigation.usage}>
-                  <Problem message={defaultCopy.noPermission} />
-                </Page>
-              ))}
-            {route.page === "operations" &&
-              route.section === "integrations" &&
-              (can("clients:read") || can("knowledge:read") ? (
-                <Integrations
-                  selected={route.selected}
-                  tab={route.tab}
-                  onSelect={(selected, tab) =>
-                    go({ page: "operations", section: "integrations", selected, tab })
-                  }
-                  canWrite={can("clients:write")}
-                  canKnowledgeWrite={can("knowledge:write")}
-                  onOpenSource={(source) => go({ page: "context", source })}
-                  onOpenProject={openProject}
-                />
-              ) : (
-                <Page title={defaultCopy.navigation.integrations}>
-                  <Problem message={defaultCopy.noPermission} />
-                </Page>
-              ))}
-            {route.page === "operations" &&
-              route.section === "context" &&
-              (can("knowledge:read") ? (
-                <ContextHealth
-                  selected={route.selected}
-                  onSelect={(selected) => go({ page: "operations", section: "context", selected })}
-                  canWrite={can("knowledge:write")}
-                  onOpenSource={(source) => go({ page: "context", source })}
-                  onOpenAgent={openAgent}
-                  onOpenProject={openProject}
-                />
-              ) : (
-                <Page title={defaultCopy.sourceOperations.health}>
-                  <Problem message={defaultCopy.noPermission} />
-                </Page>
-              ))}
-            {route.page === "you" && (
-              <>
-                <WorkspaceTabs
-                  label={defaultCopy.navigation.you}
-                  items={(
-                    ["profile", "notifications", "agents", "connections", "privacy"] as const
-                  ).map((section) => ({
-                    icon:
-                      section === "profile" ? (
-                        <UserIcon size={16} />
-                      ) : section === "notifications" ? (
-                        <BellIcon size={16} />
-                      ) : section === "agents" ? (
-                        <BotIcon size={16} />
-                      ) : section === "connections" ? (
-                        <PlugIcon size={16} />
-                      ) : (
-                        <ShieldIcon size={16} />
-                      ),
-                    label:
-                      defaultCopy.navigation[section === "agents" ? "personalAgents" : section],
-                    route: { page: "you", section },
-                  }))}
-                  current={href(route)}
-                  onGo={go}
-                />
-                {route.section === "connections" ? (
-                  <YourConnections
-                    open={route.provider}
-                    onOpen={(provider) =>
-                      go({ page: "you", section: "connections", provider }, { replace: true })
-                    }
-                    canConnect={can(CONNECT_PERMISSION)}
-                    onWhy={() =>
-                      go({ page: "settings", section: "access", permission: CONNECT_PERMISSION })
-                    }
-                  />
-                ) : (
-                  <PersonalPreferences
-                    key={route.section}
-                    section={route.section}
-                    onSaved={setPrefs}
-                  />
-                )}
-              </>
-            )}
-
-            {(page === "new" || page === "conversation") && (
-              <Chat
-                key={
-                  thread ??
-                  `new:${route.page === "new" ? JSON.stringify([route.project, route.channel, route.agent, route.ask]) : ""}`
-                }
-                threadId={thread}
-                starters={branding.starters}
-                me={me.principal.subject}
-                handle={me.handle ?? ""}
-                startIn={route.page === "new" ? route.project : undefined}
-                startAgent={route.page === "new" ? route.agent : undefined}
-                startAsk={route.page === "new" ? route.ask : undefined}
-                startChannel={route.page === "new" ? route.channel : undefined}
-                focus={route.page === "conversation" ? route.message : undefined}
-                sharing={route.page === "conversation" && !!route.share}
-                forkActions={
-                  route.page === "conversation"
-                    ? {
-                        point: route.fork,
-                        bringBack: route.bringBack,
-                        onFork: (point) => go({ page: "conversation", id: route.id, fork: point }),
-                        onBringBack: (run) =>
-                          go({ page: "conversation", id: route.id, bringBack: run }),
-                        onClose: () => go({ page: "conversation", id: route.id }),
-                        onOpenThread: openThread,
-                      }
-                    : undefined
-                }
-                view={route.page === "conversation" ? route : undefined}
-                onView={(view) => {
-                  if (thread)
-                    go(
-                      { page: "conversation", id: thread, ...view },
-                      {
-                        replace:
-                          route.page === "conversation" &&
-                          route.panel === view.panel &&
-                          route.artifact === view.artifact,
-                      },
-                    );
-                }}
-                onSharing={(open) => {
-                  if (!thread) return;
-                  // Closing a dialog opened here goes back, so Back does not open it again.
-                  if (!open && sharedHere.current) {
-                    sharedHere.current = false;
-                    window.history.back();
-                    return;
-                  }
-                  sharedHere.current = open;
-                  go(
-                    { page: "conversation", id: thread, ...(open ? { share: true } : {}) },
-                    { replace: !open },
-                  );
-                }}
-                root={root}
-                workspaceName={workspaceName}
-                onOpenChannel={(project, channel) => go({ page: "channel", project, channel })}
-                summary={threads.find((t) => t.id === thread)}
-                tick={tick}
-                agents={agents}
-                agentsRead={agentRead !== "loading"}
-                homes={homes}
-                projects={can("projects:read") ? projects : []}
-                canRun={can("runs:write")}
-                canLearn={me.principal.kind === "user" && can("projects:write")}
-                artifactActions={{
-                  knowledge:
-                    can("artifacts:read") && can("knowledge:read") && can("knowledge:write"),
-                  memory: can("artifacts:read") && can("runs:write"),
-                }}
-                canCreateProject={can("projects:write")}
-                greeting={greeting(shownName)}
-                personalProject={me.personal_project}
-                banner={banner}
-                findHelp={can("projects:read") ? api.findHelp : undefined}
-                home={
-                  <>
-                    <Problem message={welcomeProblem} />
-                    <HomeBoxes
-                      notifications={notifications}
-                      updates={updates}
-                      canStart={can("runs:write") && agents.length > 0}
-                      onOpen={(n) => go({ page: "inbox", message: n.id })}
-                      onInbox={() => go({ page: "inbox" })}
-                      onUpdate={(u) =>
-                        go({ page: "project", name: u.project, tab: "inbox", message: u.id })
-                      }
-                      onUpdates={() => go({ page: "inbox", kind: "announcement" })}
+            {(() => {
+              const pages = (
+                <>
+                  {route.page === "not-found" && (
+                    <Page
+                      title="Page not found"
+                      lede="This address does not match a page in this workspace."
+                    >
+                      <a
+                        href="/"
+                        onClick={(event) => {
+                          if (
+                            event.button !== 0 ||
+                            event.metaKey ||
+                            event.ctrlKey ||
+                            event.shiftKey ||
+                            event.altKey
+                          )
+                            return;
+                          event.preventDefault();
+                          go({ page: "new" });
+                        }}
+                        className="self-start underline"
+                      >
+                        Go Home
+                      </a>
+                    </Page>
+                  )}
+                  {workspaceHub(route) && hubTabs(workspaceHub(route)!, route, can).length > 1 && (
+                    <WorkspaceTabs
+                      label={defaultCopy.navigation[workspaceHub(route)!]}
+                      items={hubTabs(workspaceHub(route)!, route, can)}
+                      current={href(route)}
+                      onGo={go}
                     />
-                  </>
-                }
-                onProjectCreated={(project) => {
-                  setProjects((current) => [
-                    ...(current ?? []).filter((p) => p.name !== project.name),
-                    project,
-                  ]);
-                  loadProjects();
-                }}
-                onThread={(id) =>
-                  go({ page: "conversation", id }, { replace: route.page === "new" })
-                }
-                onChanged={loadRuns}
-              />
-            )}
-            {route.page === "projects" && (
-              <ProjectsPage
-                projects={projects}
-                root={root}
-                workspaceName={workspaceName}
-                q={route.q ?? ""}
-                kind={route.kind}
-                onFilter={(q, kind) =>
-                  go(
-                    { page: "projects", q: q || undefined, kind: kindParam(kind) },
-                    { replace: true },
-                  )
-                }
-                canCreate={can("projects:write")}
-                canGovern={can("projects:govern")}
-                onOpen={openProject}
-                onCreated={(project) => {
-                  loadProjects();
-                  openProject(project.name);
-                }}
-              />
-            )}
-            {route.page === "project" && (
-              <ProjectPage
-                key={route.name}
-                name={route.name}
-                tab={route.tab}
-                onTab={(tab) => go({ page: "project", name: route.name, tab }, { replace: true })}
-                message={route.message}
-                onMessage={(id) =>
-                  go(
-                    { page: "project", name: route.name, tab: "inbox", message: id ?? undefined },
-                    { replace: true },
-                  )
-                }
-                me={me.principal.subject}
-                inboxTick={inboxTick}
-                muted={prefs.muted}
-                onMute={mute}
-                pinned={prefs.pinned_projects?.includes(route.name || "~") ?? false}
-                onPin={pinProject}
-                onOpenSource={openSource}
-                workspaceName={workspaceName}
-                projects={projects ?? []}
-                schedules={schedules}
-                agents={agents}
-                homes={homes}
-                enabledIn={enabledIn}
-                can={can}
-                tick={tick}
-                onOpen={openProject}
-                onFork={() => go({ ...route, fork: true })}
-                onOpenAll={() => go({ page: "projects" })}
-                onNewChat={() => newChat(route.name)}
-                onOpenThread={openThread}
-                onChanged={() => {
-                  loadProjects();
-                  loadInbox();
-                }}
-                onSchedulesChanged={loadSchedules}
-                onAgentsChanged={loadAgents}
-                onDeleted={() => {
-                  loadProjects();
-                  go({ page: "projects" }, { replace: true });
-                }}
-                onOpenChannel={(channel) => go({ page: "channel", project: route.name, channel })}
-              />
-            )}
-            {route.page === "project" && (
-              <Presence when={!!route.fork} ms={220}>
-                {(leaving) => (
-                  <ForkProject
-                    open={!leaving}
-                    source={route.name}
-                    projects={projects ?? []}
-                    onClose={() => go({ ...route, fork: undefined })}
-                    onReady={(name) => {
-                      loadProjects();
-                      openProject(name);
-                    }}
-                  />
-                )}
-              </Presence>
-            )}
-            {route.page === "channel" && (
-              <ChannelPage
-                key={`${route.project}/${route.channel}`}
-                project={route.project}
-                channel={route.channel}
-                me={me.principal.subject}
-                handle={me.handle ?? ""}
-                tick={tick}
-                agents={agents}
-                homes={homes}
-                projects={projects ?? []}
-                root={root}
-                workspaceName={workspaceName}
-                canRun={can("runs:write")}
-                onOpenProject={() => go({ page: "project", name: route.project, tab: "channels" })}
-                onOpenProjects={() => go({ page: "projects" })}
-                onOpenThread={openThread}
-              />
-            )}
-            {route.page === "automations" && (
-              <Automations
-                schedules={schedules}
-                agents={agents}
-                projects={projects ?? []}
-                can={can}
-                onChanged={loadSchedules}
-                onSchedule={(name) => go({ page: "schedules", name })}
-              />
-            )}
-            {route.page === "schedules" && (
-              <Schedules
-                schedules={schedules}
-                agents={agents}
-                projects={projects ?? []}
-                selected={route.name ?? null}
-                onSelect={(name) =>
-                  go(name ? { page: "schedules", name } : { page: "automations" })
-                }
-                canWrite={can("schedules:write")}
-                onChanged={loadSchedules}
-                onOpenRun={openRun}
-                onOpenAgent={(name) => openAgent(name)}
-              />
-            )}
-            {route.page === "monitor" && route.tab === "health" && (
-              <Page title={defaultCopy.health.title} lede={defaultCopy.health.lede}>
-                <Health />
-              </Page>
-            )}
-            {route.page === "monitor" && route.tab !== "health" && (
-              <Monitor
-                tab={route.tab}
-                embeddedRules={route.tab === "rules"}
-                onTab={(tab) => go({ page: "monitor", tab })}
-                alerts={alerts}
-                rules={rules}
-                agents={agents}
-                projects={projects ?? []}
-                canWrite={can("alerts:write")}
-                canAnalytics={can("runs:read")}
-                tick={tick}
-                onChanged={loadAlerts}
-                onOpenRun={openRun}
-                onOpenFired={
-                  can("runs:read") ? () => go({ page: "inbox", kind: "alert" }) : undefined
-                }
-                onOpenAlert={
-                  can("runs:read") ? (alert) => go({ page: "inbox", alert: alert.id }) : undefined
-                }
-                onAsk={
-                  canAsk(BUILTIN_ANALYST)
-                    ? (ask) => go({ page: "new", agent: BUILTIN_ANALYST, ask })
-                    : undefined
-                }
-              />
-            )}
-            {(route.page === "inbox" || route.page === "notifications") &&
-              (can("runs:read") ? (
-                <NotificationsPage
-                  notifications={canNotify ? notificationDelivery : undefined}
-                  onGo={navigate}
-                  signal={inboxTick}
-                  viewer={shownName}
-                  openId={route.message ?? null}
-                  onSelection={(message) =>
-                    go(
-                      {
-                        page: "notifications",
-                        message: message ?? undefined,
-                        kind: route.kind,
-                        view: route.view,
-                      },
-                      { replace: true },
-                    )
-                  }
-                  kind={route.kind ?? ""}
-                  onKind={(kind) =>
-                    go(
-                      {
-                        page: "notifications",
-                        message: route.message,
-                        kind: kind || undefined,
-                        view: route.view,
-                      },
-                      { replace: true },
-                    )
-                  }
-                  view={route.view ?? "inbox"}
-                  onView={(view) =>
-                    go({
-                      page: "notifications",
-                      kind: route.kind,
-                      view: view === "inbox" ? undefined : view,
-                    })
-                  }
-                  onCounts={setInboxCounts}
-                  onOpen={openSource}
-                />
-              ) : (
-                <Page title={defaultCopy.notifications.title}>
-                  <Problem message={defaultCopy.noPermission} />
-                </Page>
-              ))}
-            {route.page === "library" && route.section === "catalog" && can("knowledge:read") && (
-              <Catalog
-                canWrite={can("knowledge:write")}
-                query={route.catalogQuery}
-                onFilter={(catalogQuery) =>
-                  go({
-                    page: "library",
-                    section: "catalog",
-                    catalogQuery: catalogQuery || undefined,
-                  })
-                }
-              />
-            )}
-            {(route.page === "context" ||
-              (route.page === "library" && route.section === "sources")) && (
-              <Knowledge
-                sources={sources}
-                agents={agents}
-                suites={suites}
-                selected={route.page === "context" ? (route.source ?? null) : null}
-                tab={route.page === "context" ? (route.tab ?? "documents") : "documents"}
-                onSelect={(source, tab) =>
-                  go({ page: "context", source: source ?? undefined, tab })
-                }
-                canWrite={can("knowledge:write")}
-                canEval={can("evals:write")}
-                onChanged={loadSources}
-                onSuitesChanged={loadSuites}
-                onOpenAgent={(name) => openAgent(name, "context")}
-              />
-            )}
-            {(route.page === "agents" ||
-              (route.page === "customize" && route.section === "agents")) && (
-              <Agents
-                operational
-                builtin={builtin}
-                agents={agents}
-                runs={runs}
-                stats={stats}
-                workspaceDefault={workspaceDefault}
-                homes={homes}
-                canWrite={can("agents:write")}
-                onOpen={(name) => openAgent(name)}
-                onNew={() => openAgent(null)}
-                onBuild={
-                  canAsk(BUILTIN_BUILDER)
-                    ? () =>
-                        go({
-                          page: "new",
-                          agent: BUILTIN_BUILDER,
-                          ask: "Help me build an agent that ",
-                        })
-                    : undefined
-                }
-              />
-            )}
-            {(route.page === "agent-setup" || (route.page === "agent" && route.name === null)) &&
-              (can("agents:write") ? (
-                <AgentSetupWizard
-                  key={route.page === "agent-setup" ? (route.name ?? "new") : "new"}
-                  name={route.page === "agent-setup" ? route.name : undefined}
-                  me={me}
-                  agents={agents}
-                  projects={projects ?? []}
-                  sources={sources}
-                  policies={workspace?.model_policies ?? []}
-                  canBill={can("billing:write")}
-                  onSaved={(name) => {
-                    loadAgents();
-                    if (route.page !== "agent-setup" || route.name !== name)
-                      go({ page: "agent-setup", name }, { replace: true });
-                  }}
-                  onActivated={(name) => {
-                    loadAgents();
-                    openAgent(name);
-                  }}
-                  onBack={() => go({ page: "agents" })}
-                  onModels={() => openSettings("models")}
-                />
-              ) : (
-                <Page title={defaultCopy.agentSetup.title}>
-                  <Problem message={defaultCopy.noPermission} />
-                </Page>
-              ))}
-            {route.page === "agent" &&
-              route.name !== null &&
-              (!editing ? (
-                agentRead === "loading" ? (
-                  <Page title={route.name}>
-                    <SkeletonRows count={3} />
-                  </Page>
-                ) : agentRead === "error" ? (
-                  <Page title={defaultCopy.navigation.agents}>
-                    <Problem message={defaultCopy.agentOperations.failed} />
-                    <button type="button" className={button} onClick={loadAgents}>
-                      {defaultCopy.retry}
-                    </button>
-                  </Page>
-                ) : (
-                  <Missing what="agent" name={route.name} onBack={() => go({ page: "agents" })} />
-                )
-              ) : (
-                <AgentDetail
-                  operations={
-                    route.name ? (
-                      <AgentOperations
-                        revision={editing?.rev ?? 0}
-                        onRun={openRun}
-                        name={route.name}
-                        canReadRuns={can("runs:read")}
-                        canWrite={can("agents:write")}
+                  )}
+                  {((route.page === "library" && route.section === "skills") ||
+                    (route.page === "customize" && route.section === "skills")) &&
+                    (can("projects:read") ? (
+                      <SkillsLibrary
+                        key={`${route.scope}:${route.project}:${route.skill}:${route.version}`}
+                        file={route.file}
+                        libraryTab={route.libraryTab}
+                        onLocationChange={(location) =>
+                          go({
+                            page: route.page === "customize" ? "customize" : "library",
+                            section: "skills",
+                            ...location,
+                          })
+                        }
                       />
-                    ) : undefined
-                  }
-                  key={route.name ?? "new"}
-                  revision={editing}
-                  tab={route.tab}
-                  onTab={(tab) => go({ page: "agent", name: route.name, tab }, { replace: true })}
-                  agents={agents}
-                  sources={sources}
-                  suites={suites}
-                  rules={rules}
-                  alerts={alerts}
-                  projects={projectNames}
-                  tree={projects ?? []}
-                  place={
-                    route.name
-                      ? { home: homes[route.name], enabled_in: enabledIn[route.name] ?? [] }
-                      : undefined
-                  }
-                  workspaceName={workspaceName}
-                  stats={route.name ? stats.get(route.name) : undefined}
-                  workspaceDefault={workspaceDefault}
-                  canWrite={can("agents:write")}
-                  canGovern={can("projects:govern")}
-                  builtin={route.name ? builtin.includes(route.name) : false}
-                  canEval={can("evals:write")}
-                  canAlert={can("alerts:write")}
-                  canKnowledge={can("knowledge:write")}
-                  onBack={() => go({ page: "agents" })}
-                  onChanged={(name) => {
-                    loadAgents();
-                    go({ page: "agent", name, tab: route.tab }, { replace: true });
-                  }}
-                  onRulesChanged={loadAlerts}
-                  onSuitesChanged={loadSuites}
-                  onSourcesChanged={loadSources}
-                  onOpenRun={openRun}
-                  onOpenSource={(source) => go({ page: "context", source })}
-                  onOpenAlerts={() => go({ page: "monitor", tab: "rules" })}
-                  onOpenTask={openThread}
-                  onHomed={loadAgents}
-                  onOpenProject={openProject}
-                  policies={workspace?.model_policies ?? []}
-                  onManagePolicies={() => openSettings("models")}
-                  viewer={me.principal.subject}
-                />
-              ))}
-            {route.page === "directory" && (
-              <DirectoryPage
-                tab={route.tab}
-                onTab={(tab) => go({ page: "directory", tab }, { replace: true })}
-                can={can}
-                agents={agents}
-                homes={homes}
-                enabledIn={enabledIn}
-                projects={projects}
-                kinds={root?.kinds ?? []}
-                workspaceName={workspaceName}
-                onOpenAgent={(name) => openAgent(name, "access")}
-                onOpenProject={openProject}
-              />
-            )}
-            {(route.page === "artifacts" ||
-              (route.page === "library" && route.section === "deliverables")) && (
-              <Storage
-                signal={tick}
-                agents={agents.map((a) => a.spec.name)}
-                projects={projectNames}
-                canDelete={can("artifacts:write")}
-                onOpenRun={openRun}
-                onOpenThread={openThread}
-                selectedId={route.artifact ?? null}
-                onOpenArtifact={(file) =>
-                  go({
-                    page: "conversation",
-                    id: file.thread,
-                    panel: "deliverables",
-                    artifact: file.id,
-                  })
-                }
-                onSelect={(artifact) =>
-                  go({ page: "library", section: "deliverables", artifact: artifact ?? undefined })
-                }
-              />
-            )}
-            {(route.page === "connections" ||
-              (route.page === "customize" && ["connections", "tools"].includes(route.section))) && (
-              <YourConnections
-                open={route.provider}
-                section={
-                  route.page === "customize"
-                    ? route.section === "tools"
-                      ? "tools"
-                      : "connections"
-                    : undefined
-                }
-                onOpen={(provider) =>
-                  go(
-                    route.page === "customize"
-                      ? { ...route, provider }
-                      : { page: "connections", provider },
-                    { replace: true },
-                  )
-                }
-                canConnect={can(CONNECT_PERMISSION)}
-                onWhy={() =>
-                  go({ page: "settings", section: "access", permission: CONNECT_PERMISSION })
-                }
-              />
-            )}
-            {route.page === "settings" && (
-              <Settings
-                me={me}
-                prefs={prefs}
-                prefsRead={prefsRead}
-                workspace={workspace}
-                agents={agents}
-                canAdmin={can("agents:write")}
-                section={route.section}
-                onSection={openSettings}
-                explain={route.permission ?? "runs:read"}
-                onExplain={(permission) =>
-                  go({ page: "settings", section: "access", permission }, { replace: true })
-                }
-                onPrefs={setPrefs}
-                onWorkspace={setWorkspace}
-                projects={projectNames}
-                onOpenProjects={() => go({ page: "projects" })}
-                onOpenWorkspace={() => openProject("")}
-                onConnections={() => go({ page: "connections" })}
-                onOpenWorkspaceAgents={() => go({ page: "project", name: "", tab: "agents" })}
-              />
-            )}
+                    ) : (
+                      <Page title={defaultCopy.navigation.skills}>
+                        <Problem message={defaultCopy.noPermission} />
+                      </Page>
+                    ))}
+                  {route.page === "library" &&
+                    route.section === "memory" &&
+                    (can("runs:read") || can("projects:read") || can("agents:read") ? (
+                      <MemoryLibrary
+                        key={`${route.scope}:${route.owner}`}
+                        file={route.file}
+                        onLocationChange={(location) =>
+                          go({ page: "library", section: "memory", ...location })
+                        }
+                      />
+                    ) : (
+                      <Page title={defaultCopy.navigation.memory}>
+                        <Problem message={defaultCopy.noPermission} />
+                      </Page>
+                    ))}
+                  {route.page === "sessions" &&
+                    (can("runs:read") ? (
+                      <SessionsPage
+                        route={route}
+                        go={go}
+                        projects={projects ?? []}
+                        workspaceName={workspaceName}
+                        alerts={attention.alerts}
+                        tick={tick}
+                      />
+                    ) : (
+                      <Page title="Sessions">
+                        <Problem message={defaultCopy.noPermission} />
+                      </Page>
+                    ))}
+                  {route.page === "message" &&
+                    (can("runs:read") ? (
+                      <MessageFocus key={route.id} id={route.id} go={go} />
+                    ) : (
+                      <Page title="Message">
+                        <Problem message={defaultCopy.noPermission} />
+                      </Page>
+                    ))}
+                  {route.page === "item" &&
+                    (can("runs:read") ? (
+                      <ItemPage
+                        key={route.address}
+                        address={route.address}
+                        go={go}
+                        alerts={attention.alerts}
+                        tick={tick}
+                      />
+                    ) : (
+                      <Page title="Item">
+                        <Problem message={defaultCopy.noPermission} />
+                      </Page>
+                    ))}
+                  {route.page === "alerts" &&
+                    (can("alerts:read") ? (
+                      <AlertsPage
+                        route={route}
+                        go={go}
+                        canWrite={can("alerts:write")}
+                        onChanged={attention.refresh}
+                        tick={tick}
+                      />
+                    ) : (
+                      <Page title="Alerts">
+                        <Problem message={defaultCopy.noPermission} />
+                      </Page>
+                    ))}
+                  {route.page === "history" && (
+                    <SessionsPage
+                      route={{ page: "sessions", q: route.q }}
+                      go={go}
+                      projects={projects ?? []}
+                      workspaceName={workspaceName}
+                      alerts={attention.alerts}
+                      tick={tick}
+                    />
+                  )}
+                  {route.page === "assignments" &&
+                    (can("runs:read") ? (
+                      <Assignments
+                        agent={route.agent}
+                        selectedId={route.id}
+                        agents={agents.map((agent) => agent.spec.name)}
+                        sources={sources.map((source) => ({
+                          name: source.name,
+                          label: source.name,
+                        }))}
+                        projects={[
+                          { name: "", title: workspaceName },
+                          ...(projects ?? [])
+                            .filter((project) => project.name !== "")
+                            .map((project) => ({
+                              name: project.name,
+                              title: project.title || project.name,
+                            })),
+                        ]}
+                        subject={me.principal.subject}
+                        canWrite={can("runs:write")}
+                        onRun={openRun}
+                        onMessage={(id) => go({ page: "message", id })}
+                        onConversation={openThread}
+                      />
+                    ) : (
+                      <Page title={defaultCopy.navigation.assignments}>
+                        <Problem message={defaultCopy.noPermission} />
+                      </Page>
+                    ))}
+                  {route.page === "agent-store" && (
+                    <AgentStore
+                      canWrite={can("agents:write")}
+                      selected={route.package}
+                      onOpen={(name) => go({ page: "agent-store", package: name })}
+                      onChanged={loadAgents}
+                    />
+                  )}
+                  {route.page === "agent-network" &&
+                    (can("runs:read") ? (
+                      <AgentNetwork
+                        selectedId={route.handoff}
+                        canWrite={can("runs:write")}
+                        onAgent={openAgent}
+                        onRun={openRun}
+                      />
+                    ) : (
+                      <Page title={defaultCopy.navigation.network}>
+                        <Problem message={defaultCopy.noPermission} />
+                      </Page>
+                    ))}
+                  {route.page === "agent-control" &&
+                    (can("agents:read") ? (
+                      <AgentControls
+                        key={route.agent ?? "workspace"}
+                        agent={route.agent}
+                        canWrite={can("agents:write")}
+                        onChanged={loadAgents}
+                      />
+                    ) : (
+                      <Page title={defaultCopy.navigation.controls}>
+                        <Problem message={defaultCopy.noPermission} />
+                      </Page>
+                    ))}
+                  {route.page === "action-policy" &&
+                    (policyRead ? (
+                      <ActionPolicies
+                        key={`${policyScope}:${route.name}`}
+                        scope={policyScope}
+                        name={policyScope === "workspace" ? undefined : route.name}
+                        canWrite={policyWrite}
+                      />
+                    ) : (
+                      <Page title={defaultCopy.navigation.policies}>
+                        <Problem message={defaultCopy.noPermission} />
+                      </Page>
+                    ))}
+                  {route.page === "audit" &&
+                    (can("projects:govern") ? (
+                      <Audit />
+                    ) : (
+                      <Page title={defaultCopy.navigation.audit}>
+                        <Problem message={defaultCopy.noPermission} />
+                      </Page>
+                    ))}
+                  {route.page === "usage" &&
+                    (can("runs:read") ? (
+                      <Usage
+                        agents={agents.map((agent) => agent.spec.name)}
+                        tick={tick}
+                        onOpenRun={openRun}
+                        onOpenAgent={openAgent}
+                        view={{
+                          days: route.days ?? defaultUsageView.days,
+                          day: route.day,
+                          display: route.display ?? defaultUsageView.display,
+                        }}
+                        onViewChange={(view) => go({ page: "usage", ...view }, { replace: true })}
+                      />
+                    ) : (
+                      <Page title={defaultCopy.navigation.usage}>
+                        <Problem message={defaultCopy.noPermission} />
+                      </Page>
+                    ))}
+                  {route.page === "operations" &&
+                    route.section === "integrations" &&
+                    (can("clients:read") || can("knowledge:read") ? (
+                      <Integrations
+                        selected={route.selected}
+                        tab={route.tab}
+                        onSelect={(selected, tab) =>
+                          go({ page: "operations", section: "integrations", selected, tab })
+                        }
+                        canWrite={can("clients:write")}
+                        canKnowledgeWrite={can("knowledge:write")}
+                        onOpenSource={(source) => go({ page: "context", source })}
+                        onOpenProject={openProject}
+                      />
+                    ) : (
+                      <Page title={defaultCopy.navigation.integrations}>
+                        <Problem message={defaultCopy.noPermission} />
+                      </Page>
+                    ))}
+                  {route.page === "operations" &&
+                    route.section === "context" &&
+                    (can("knowledge:read") ? (
+                      <ContextHealth
+                        selected={route.selected}
+                        onSelect={(selected) =>
+                          go({ page: "operations", section: "context", selected })
+                        }
+                        canWrite={can("knowledge:write")}
+                        onOpenSource={(source) => go({ page: "context", source })}
+                        onOpenAgent={openAgent}
+                        onOpenProject={openProject}
+                      />
+                    ) : (
+                      <Page title={defaultCopy.sourceOperations.health}>
+                        <Problem message={defaultCopy.noPermission} />
+                      </Page>
+                    ))}
+                  {route.page === "you" && (
+                    <>
+                      <WorkspaceTabs
+                        label={defaultCopy.navigation.you}
+                        items={(
+                          ["profile", "notifications", "agents", "connections", "privacy"] as const
+                        ).map((section) => ({
+                          icon:
+                            section === "profile" ? (
+                              <UserIcon size={16} />
+                            ) : section === "notifications" ? (
+                              <BellIcon size={16} />
+                            ) : section === "agents" ? (
+                              <BotIcon size={16} />
+                            ) : section === "connections" ? (
+                              <PlugIcon size={16} />
+                            ) : (
+                              <ShieldIcon size={16} />
+                            ),
+                          label:
+                            defaultCopy.navigation[
+                              section === "agents" ? "personalAgents" : section
+                            ],
+                          route: { page: "you", section },
+                        }))}
+                        current={href(route)}
+                        onGo={go}
+                      />
+                      {route.section === "connections" ? (
+                        <YourConnections
+                          open={route.provider}
+                          onOpen={(provider) =>
+                            go({ page: "you", section: "connections", provider }, { replace: true })
+                          }
+                          canConnect={can(CONNECT_PERMISSION)}
+                          onWhy={() =>
+                            go({
+                              page: "settings",
+                              section: "access",
+                              permission: CONNECT_PERMISSION,
+                            })
+                          }
+                        />
+                      ) : (
+                        <PersonalPreferences
+                          key={route.section}
+                          section={route.section}
+                          onSaved={setPrefs}
+                        />
+                      )}
+                    </>
+                  )}
+
+                  {(page === "new" || page === "conversation") && (
+                    <Chat
+                      alertAccess={can("alerts:read") ? { write: can("alerts:write") } : undefined}
+                      key={
+                        thread ??
+                        `new:${route.page === "new" ? JSON.stringify([route.project, route.channel, route.agent, route.ask]) : ""}`
+                      }
+                      threadId={thread}
+                      starters={hasSessions === false ? branding.starters : []}
+                      me={me.principal.subject}
+                      handle={me.handle ?? ""}
+                      startIn={route.page === "new" ? route.project : undefined}
+                      startAgent={route.page === "new" ? route.agent : undefined}
+                      startAsk={route.page === "new" ? route.ask : undefined}
+                      startChannel={route.page === "new" ? route.channel : undefined}
+                      focus={route.page === "conversation" ? route.message : undefined}
+                      sharing={route.page === "conversation" && !!route.share}
+                      forkActions={
+                        route.page === "conversation"
+                          ? {
+                              point: route.fork,
+                              bringBack: route.bringBack,
+                              onFork: (point) =>
+                                go({ page: "conversation", id: route.id, fork: point }),
+                              onBringBack: (run) =>
+                                go({ page: "conversation", id: route.id, bringBack: run }),
+                              onClose: () => go({ page: "conversation", id: route.id }),
+                              onOpenThread: openThread,
+                            }
+                          : undefined
+                      }
+                      view={route.page === "conversation" ? route : undefined}
+                      onView={(view) => {
+                        if (thread)
+                          go(
+                            { page: "conversation", id: thread, ...view },
+                            {
+                              replace:
+                                route.page === "conversation" &&
+                                route.panel === view.panel &&
+                                route.artifact === view.artifact,
+                            },
+                          );
+                      }}
+                      onSharing={(open) => {
+                        if (!thread) return;
+                        // Closing a dialog opened here goes back, so Back does not open it again.
+                        if (!open && sharedHere.current) {
+                          sharedHere.current = false;
+                          window.history.back();
+                          return;
+                        }
+                        sharedHere.current = open;
+                        go(
+                          { page: "conversation", id: thread, ...(open ? { share: true } : {}) },
+                          { replace: !open },
+                        );
+                      }}
+                      root={root}
+                      workspaceName={workspaceName}
+                      onOpenChannel={(project, channel) =>
+                        go({ page: "channel", project, channel })
+                      }
+                      summary={threads.find((t) => t.id === thread)}
+                      tick={tick}
+                      agents={agents}
+                      agentsRead={agentRead !== "loading"}
+                      homes={homes}
+                      projects={can("projects:read") ? projects : []}
+                      canRun={can("runs:write")}
+                      canLearn={me.principal.kind === "user" && can("projects:write")}
+                      artifactActions={{
+                        knowledge:
+                          can("artifacts:read") && can("knowledge:read") && can("knowledge:write"),
+                        memory: can("artifacts:read") && can("runs:write"),
+                      }}
+                      canCreateProject={can("projects:write")}
+                      greeting={greeting(shownName)}
+                      personalProject={me.personal_project}
+                      findHelp={can("projects:read") ? api.findHelp : undefined}
+                      home={
+                        <HomeSessionGlance
+                          onHasSessions={setHasSessions}
+                          go={go}
+                          canArtifacts={can("artifacts:read")}
+                          tick={tick}
+                        />
+                      }
+                      onProjectCreated={(project) => {
+                        setProjects((current) => [
+                          ...(current ?? []).filter((p) => p.name !== project.name),
+                          project,
+                        ]);
+                        loadProjects();
+                      }}
+                      onThread={(id) =>
+                        go({ page: "conversation", id }, { replace: route.page === "new" })
+                      }
+                      onChanged={loadRuns}
+                    />
+                  )}
+                  {route.page === "projects" && (
+                    <ProjectsPage
+                      projects={projects}
+                      root={root}
+                      q={route.q ?? ""}
+                      kind={route.kind}
+                      sort={route.sort}
+                      onFilter={({ q, kind, sort }) =>
+                        go(
+                          { page: "projects", q: q || undefined, kind: kindParam(kind), sort },
+                          { replace: true },
+                        )
+                      }
+                      canCreate={can("projects:write")}
+                      canGovern={can("projects:govern")}
+                      me={me.principal.subject}
+                      pinned={prefs.pinned_projects ?? []}
+                      onPin={pinProject}
+                      onOpen={openProject}
+                      onCreated={(project) => {
+                        loadProjects();
+                        openProject(project.name);
+                      }}
+                    />
+                  )}
+                  {route.page === "project" && (
+                    <ProjectPage
+                      key={route.name}
+                      self={me.handle ?? ""}
+                      composer={(placeholder) => (
+                        // Home's own composer, filing what it starts in this project.
+                        <Chat
+                          key={`project:${route.name}`}
+                          composerOnly
+                          placeholder={placeholder}
+                          threadId={null}
+                          me={me.principal.subject}
+                          handle={me.handle ?? ""}
+                          startIn={route.name}
+                          root={root}
+                          workspaceName={workspaceName}
+                          summary={undefined}
+                          tick={tick}
+                          agents={agents}
+                          agentsRead={agentRead !== "loading"}
+                          homes={homes}
+                          projects={can("projects:read") ? projects : []}
+                          canRun={can("runs:write")}
+                          canCreateProject={can("projects:write")}
+                          personalProject={me.personal_project}
+                          findHelp={can("projects:read") ? api.findHelp : undefined}
+                          greeting=""
+                          onProjectCreated={() => loadProjects()}
+                          onThread={(id) => go({ page: "conversation", id })}
+                          onChanged={loadRuns}
+                        />
+                      )}
+                      name={route.name}
+                      pinned={prefs.pinned_projects?.includes(route.name || "~") ?? false}
+                      onPin={pinProject}
+                      workspaceName={workspaceName}
+                      projects={projects ?? []}
+                      agents={agents}
+                      can={can}
+                      tick={tick}
+                      onOpen={openProject}
+                      onFork={() => go({ ...route, fork: true })}
+                      onOpenAll={() => go({ page: "projects" })}
+                      onOpenThread={openThread}
+                      onChanged={() => {
+                        loadProjects();
+                        loadInbox();
+                      }}
+                      onSchedulesChanged={loadSchedules}
+                      onDeleted={() => {
+                        loadProjects();
+                        go({ page: "projects" }, { replace: true });
+                      }}
+                    />
+                  )}
+                  {route.page === "project" && (
+                    <Presence when={!!route.fork} ms={220}>
+                      {(leaving) => (
+                        <ForkProject
+                          open={!leaving}
+                          source={route.name}
+                          projects={projects ?? []}
+                          onClose={() => go({ ...route, fork: undefined })}
+                          onUnavailable={() => go({ ...route, fork: undefined }, { replace: true })}
+                          onReady={(name) => {
+                            loadProjects();
+                            openProject(name);
+                          }}
+                        />
+                      )}
+                    </Presence>
+                  )}
+                  {route.page === "automations" && (
+                    <Automations
+                      schedules={schedules}
+                      agents={agents}
+                      projects={projects ?? []}
+                      can={can}
+                      onChanged={loadSchedules}
+                      onSchedule={(name) => go({ page: "schedules", name })}
+                      tab={route.tab ?? "schedules"}
+                      onTab={(tab) =>
+                        go(
+                          tab === "background"
+                            ? { page: "automations", tab }
+                            : { page: "automations" },
+                        )
+                      }
+                      onConversation={(id) => go({ page: "conversation", id })}
+                      tick={tick}
+                    />
+                  )}
+                  {route.page === "schedules" && (
+                    <Schedules
+                      schedules={schedules}
+                      agents={agents}
+                      projects={projects ?? []}
+                      selected={route.name ?? null}
+                      onSelect={(name) =>
+                        go(name ? { page: "schedules", name } : { page: "automations" })
+                      }
+                      canWrite={can("schedules:write")}
+                      onChanged={loadSchedules}
+                      onOpenRun={openRun}
+                      onOpenAgent={(name) => openAgent(name)}
+                    />
+                  )}
+                  {route.page === "monitor" && route.tab === "health" && (
+                    <Page title={defaultCopy.health.title} lede={defaultCopy.health.lede}>
+                      <Health />
+                    </Page>
+                  )}
+                  {route.page === "monitor" && route.tab !== "health" && (
+                    <Monitor
+                      tab={route.tab}
+                      embeddedRules={route.tab === "rules"}
+                      onTab={(tab) => go({ page: "monitor", tab })}
+                      alerts={alerts}
+                      rules={rules}
+                      agents={agents}
+                      projects={projects ?? []}
+                      canWrite={can("alerts:write")}
+                      canAnalytics={can("runs:read")}
+                      tick={tick}
+                      onChanged={loadAlerts}
+                      onOpenRun={openRun}
+                      onOpenFired={
+                        can("runs:read") ? () => go({ page: "inbox", kind: "alert" }) : undefined
+                      }
+                      onOpenAlert={
+                        can("runs:read")
+                          ? (alert) => go({ page: "inbox", alert: alert.id })
+                          : undefined
+                      }
+                      onAsk={
+                        canAsk(BUILTIN_ANALYST)
+                          ? (ask) => go({ page: "new", agent: BUILTIN_ANALYST, ask })
+                          : undefined
+                      }
+                    />
+                  )}
+                  {(route.page === "inbox" || route.page === "notifications") &&
+                    (can("runs:read") ? (
+                      <NotificationsPage
+                        notifications={canNotify ? notificationDelivery : undefined}
+                        onGo={navigate}
+                        signal={inboxTick}
+                        viewer={shownName}
+                        openId={route.message ?? null}
+                        onSelection={(message) =>
+                          go(
+                            {
+                              page: "notifications",
+                              message: message ?? undefined,
+                              kind: route.kind,
+                              view: route.view,
+                            },
+                            { replace: true },
+                          )
+                        }
+                        kind={route.kind ?? ""}
+                        onKind={(kind) =>
+                          go(
+                            {
+                              page: "notifications",
+                              message: route.message,
+                              kind: kind || undefined,
+                              view: route.view,
+                            },
+                            { replace: true },
+                          )
+                        }
+                        view={route.view ?? "inbox"}
+                        onView={(view) =>
+                          go({
+                            page: "notifications",
+                            kind: route.kind,
+                            view: view === "inbox" ? undefined : view,
+                          })
+                        }
+                        onCounts={setInboxCounts}
+                        onOpen={openSource}
+                      />
+                    ) : (
+                      <Page title={defaultCopy.notifications.title}>
+                        <Problem message={defaultCopy.noPermission} />
+                      </Page>
+                    ))}
+                  {route.page === "library" &&
+                    route.section === "catalog" &&
+                    can("knowledge:read") && (
+                      <Catalog
+                        canWrite={can("knowledge:write")}
+                        query={route.catalogQuery}
+                        onFilter={(catalogQuery) =>
+                          go({
+                            page: "library",
+                            section: "catalog",
+                            catalogQuery: catalogQuery || undefined,
+                          })
+                        }
+                      />
+                    )}
+                  {(route.page === "knowledge" || route.page === "corpus") &&
+                    (can("knowledge:read") ? (
+                      route.page === "knowledge" ? (
+                        <KnowledgePage
+                          sources={sources}
+                          canWrite={can("knowledge:write")}
+                          onOpen={(name) => go({ page: "corpus", name, tab: "sources" })}
+                        />
+                      ) : (
+                        <CorpusPage
+                          key={route.name}
+                          name={route.name}
+                          tab={route.tab}
+                          q={route.q}
+                          sources={sources}
+                          agents={agents.map((agent) => agent.spec.name)}
+                          viewer={me.principal.subject}
+                          canWrite={can("knowledge:write")}
+                          onTab={(tab) => go({ page: "corpus", name: route.name, tab })}
+                          onSearch={(q) =>
+                            go(
+                              { page: "corpus", name: route.name, tab: "search", q },
+                              { replace: true },
+                            )
+                          }
+                          onBack={() => go({ page: "knowledge" })}
+                          onOpenSource={(source) =>
+                            go({ page: "context", source, corpus: route.name })
+                          }
+                          onMissing={openOldSource}
+                          onSourcesChanged={loadSources}
+                        />
+                      )
+                    ) : (
+                      <Page title={defaultCopy.corpora.title}>
+                        <Problem message={defaultCopy.noPermission} />
+                      </Page>
+                    ))}
+                  {route.page === "knowledge-graph" &&
+                    (can("knowledge:read") ? (
+                      <WorkspaceGraph
+                        viewer={me.principal.subject}
+                        onBack={() => go({ page: "knowledge" })}
+                        onOpenCorpus={(name) => go({ page: "corpus", name, tab: "graph" })}
+                      />
+                    ) : (
+                      <Page title={defaultCopy.corpora.graph.workspaceTitle}>
+                        <Problem message={defaultCopy.noPermission} />
+                      </Page>
+                    ))}
+                  {(route.page === "context" ||
+                    (route.page === "library" && route.section === "sources")) && (
+                    <Knowledge
+                      sources={sources}
+                      agents={agents}
+                      suites={suites}
+                      selected={route.page === "context" ? (route.source ?? null) : null}
+                      tab={route.page === "context" ? (route.tab ?? "documents") : "documents"}
+                      onSelect={(source, tab) => {
+                        const corpus = route.page === "context" ? route.corpus : undefined;
+                        go(
+                          source
+                            ? { page: "context", source, tab, corpus }
+                            : corpus
+                              ? { page: "corpus", name: corpus, tab: "sources" }
+                              : { page: "knowledge" },
+                        );
+                      }}
+                      back={
+                        route.page === "context" && route.corpus
+                          ? {
+                              label: route.corpus,
+                              onClick: () =>
+                                go({ page: "corpus", name: route.corpus ?? "", tab: "sources" }),
+                            }
+                          : undefined
+                      }
+                      canWrite={can("knowledge:write")}
+                      canEval={can("evals:write")}
+                      onChanged={loadSources}
+                      onSuitesChanged={loadSuites}
+                      onOpenAgent={(name) => openAgent(name, "context")}
+                    />
+                  )}
+                  {(route.page === "agents" ||
+                    (route.page === "customize" && route.section === "agents")) && (
+                    <Agents
+                      operational
+                      agents={agents}
+                      runs={runs}
+                      stats={stats}
+                      workspaceDefault={workspaceDefault}
+                      homes={homes}
+                      tree={projects ?? []}
+                      personalProject={me.personal_project}
+                      canWrite={can("agents:write")}
+                      onOpen={(name) => openAgent(name)}
+                      onNew={() => openAgent(null)}
+                      onBuilderSession={canAsk(BUILTIN_BUILDER) ? openThread : undefined}
+                      onBuild={
+                        canAsk(BUILTIN_BUILDER)
+                          ? () =>
+                              go({
+                                page: "new",
+                                agent: BUILTIN_BUILDER,
+                                ask: "/agent-creator ",
+                              })
+                          : undefined
+                      }
+                    />
+                  )}
+                  {(route.page === "agent-setup" ||
+                    (route.page === "agent" && route.name === null)) &&
+                    (canAsk(BUILTIN_BUILDER) ? (
+                      <AgentBuilderStart
+                        name={route.page === "agent-setup" ? route.name : undefined}
+                        onOpen={openThread}
+                      />
+                    ) : (
+                      <Page title={defaultCopy.agentSetup.title}>
+                        <Problem message={defaultCopy.noPermission} />
+                      </Page>
+                    ))}
+                  {route.page === "agent" &&
+                    route.name !== null &&
+                    (!editing ? (
+                      agentRead === "loading" ? (
+                        <Page title={route.name}>
+                          <SkeletonRows count={3} />
+                        </Page>
+                      ) : agentRead === "error" ? (
+                        <Page title={defaultCopy.navigation.agents}>
+                          <Problem message={defaultCopy.agentOperations.failed} />
+                          <button type="button" className={button} onClick={loadAgents}>
+                            {defaultCopy.retry}
+                          </button>
+                        </Page>
+                      ) : (
+                        <Missing
+                          what="agent"
+                          name={route.name}
+                          onBack={() => go({ page: "agents" })}
+                        />
+                      )
+                    ) : (
+                      <AgentDetail
+                        operations={
+                          route.name ? (
+                            <AgentOperations
+                              revision={editing?.rev ?? 0}
+                              onRun={openRun}
+                              name={route.name}
+                              canReadRuns={can("runs:read")}
+                              canWrite={can("agents:write")}
+                            />
+                          ) : undefined
+                        }
+                        key={route.name ?? "new"}
+                        revision={editing}
+                        tab={route.tab}
+                        onTab={(tab) =>
+                          go({ page: "agent", name: route.name, tab }, { replace: true })
+                        }
+                        agents={agents}
+                        sources={sources}
+                        suites={suites}
+                        rules={rules}
+                        alerts={alerts}
+                        projects={projectNames}
+                        tree={projects ?? []}
+                        home={route.name ? homes[route.name] : undefined}
+                        personalProject={me.personal_project}
+                        stats={route.name ? stats.get(route.name) : undefined}
+                        workspaceDefault={workspaceDefault}
+                        canWrite={can("agents:write")}
+                        canGovern={can("projects:govern")}
+                        builtin={route.name ? builtin.includes(route.name) : false}
+                        canEval={can("evals:write")}
+                        canAlert={can("alerts:write")}
+                        canKnowledge={can("knowledge:write")}
+                        onBack={() => go({ page: "agents" })}
+                        onBuilderSession={canAsk(BUILTIN_BUILDER) ? openThread : undefined}
+                        onChanged={(name) => {
+                          loadAgents();
+                          go({ page: "agent", name, tab: route.tab }, { replace: true });
+                        }}
+                        onRulesChanged={loadAlerts}
+                        onSuitesChanged={loadSuites}
+                        onSourcesChanged={loadSources}
+                        onOpenRun={openRun}
+                        onOpenSource={(source) => go({ page: "context", source })}
+                        onOpenAlerts={() => go({ page: "monitor", tab: "rules" })}
+                        onOpenTask={openThread}
+                        onHomed={loadAgents}
+                        policies={workspace?.model_policies ?? []}
+                        viewer={me.principal.subject}
+                      />
+                    ))}
+                  {route.page === "directory" && <DirectoryPage can={can} />}
+                  {(route.page === "artifacts" ||
+                    (route.page === "library" && route.section === "deliverables")) && (
+                    <Storage
+                      signal={tick}
+                      agents={agents.map((a) => a.spec.name)}
+                      projects={projectNames}
+                      canDelete={can("artifacts:write")}
+                      onStart={can("runs:write") ? (ask) => go({ page: "new", ask }) : undefined}
+                      onOpenRun={openRun}
+                      onOpenThread={openThread}
+                      selectedId={route.artifact ?? null}
+                      onOpenArtifact={(file) =>
+                        go({
+                          page: "conversation",
+                          id: file.thread,
+                          panel: "deliverables",
+                          artifact: file.id,
+                        })
+                      }
+                      onSelect={(artifact) =>
+                        go({
+                          page: "library",
+                          section: "deliverables",
+                          artifact: artifact ?? undefined,
+                        })
+                      }
+                    />
+                  )}
+                  {(route.page === "connections" ||
+                    (route.page === "customize" &&
+                      ["connections", "tools"].includes(route.section))) && (
+                    <Connections
+                      provider={route.provider}
+                      scope={route.page === "connections" ? route.scope : undefined}
+                      canConnect={can(CONNECT_PERMISSION)}
+                      canWrite={can("clients:write")}
+                      onOpen={(provider, scope) =>
+                        go({ page: "connections", provider, scope }, { replace: true })
+                      }
+                      onNavigate={go}
+                    />
+                  )}
+                  {route.page === "settings" && (
+                    <Settings
+                      onNavigate={go}
+                      me={me}
+                      prefs={prefs}
+                      prefsRead={prefsRead}
+                      workspace={workspace}
+                      agents={agents}
+                      canAdmin={can("agents:write")}
+                      section={route.section}
+                      onSection={openSettings}
+                      explain={route.permission ?? "runs:read"}
+                      onExplain={(permission) =>
+                        go({ page: "settings", section: "access", permission }, { replace: true })
+                      }
+                      onPrefs={setPrefs}
+                      onWorkspace={setWorkspace}
+                      projects={projectNames}
+                      onOpenProjects={() => go({ page: "projects" })}
+                      onOpenWorkspace={() => openProject("")}
+                    />
+                  )}
+                </>
+              );
+              const label = settingsPageLabel(route);
+              return label ? (
+                <SettingsFrame me={me} active={label} onSection={openSettings} onNavigate={go}>
+                  {pages}
+                </SettingsFrame>
+              ) : (
+                pages
+              );
+            })()}
           </HubTabLabel.Provider>
         </main>
         <div id="humagen-inspector-dock" className="humagen-inspector-dock" />

@@ -7,6 +7,7 @@ import {
   reviewCounts,
   reviewFollowUp,
   reviewJSON,
+  reviewMarkdown,
   reviewPullRequest,
   reviewSource,
 } from "./review";
@@ -191,4 +192,82 @@ describe("reviewSource", () => {
   ])("is text with no link: $name", ({ source, label }) => {
     expect(reviewSource(source)).toEqual({ label });
   });
+});
+
+it("reads v2 provenance and preserves a pinned commit, location and empty replacement", () => {
+  const text = JSON.stringify({
+    format: "humagen.review.v2",
+    title: "Fix boundary",
+    verdict: "comment",
+    scope: { commit: "a".repeat(40) },
+    summary: "One issue",
+    findings: [
+      {
+        id: "boundary",
+        severity: "error",
+        title: "Boundary",
+        suggestion: "Remove the line",
+        prompt: "Recheck",
+        location: { path: "a.ts", line: 4 },
+        change: "",
+        evidence: [{ observation: "Test fails", step: "test-1", session: "s_child" }],
+      },
+    ],
+  });
+  const result = readReview(text);
+  expect(result.kind).toBe("review");
+  if (result.kind !== "review") return;
+  expect(result.report.scope?.commit).toBe("a".repeat(40));
+  expect(result.report.findings[0]?.change).toBe("");
+  expect(result.report.findings[0]?.evidence[0]?.session).toBe("s_child");
+  expect(readReview(text.replace("a".repeat(40), "main")).kind).toBe("text");
+});
+
+it("keeps who found a finding, and drops a name the server would refuse", () => {
+  const report = (foundBy: string) =>
+    JSON.stringify({
+      format: "humagen.review.v2",
+      title: "Auth",
+      verdict: "request_changes",
+      scope: { commit: "a".repeat(40) },
+      summary: "One issue",
+      findings: [
+        {
+          id: "token",
+          severity: "error",
+          title: "Token logged",
+          suggestion: "Redact it",
+          prompt: "Recheck",
+          found_by: foundBy,
+          evidence: [{ observation: "Logged in plain text", step: "read-1" }],
+        },
+      ],
+    });
+  const read = readReview(report("security-reviewer#a"));
+  expect(read.kind).toBe("review");
+  if (read.kind !== "review") return;
+  expect(read.report.findings[0]?.found_by).toBe("security-reviewer#a");
+  const words = {
+    count: {
+      error: (n: number) => `${n} errors`,
+      warning: (n: number) => `${n} warnings`,
+      info: (n: number) => `${n} info`,
+    },
+    group: { error: "Errors", warning: "Warnings", info: "Info" },
+    summary: "Summary",
+    comments: "Notes",
+    findings: "Findings",
+    suggestion: "Suggestion",
+    evidence: "Evidence",
+    related: "Related",
+    noFindings: "None",
+    foundBy: (agent: string) => `Found by ${agent}`,
+  };
+  expect(reviewMarkdown(read.report, words)).toContain(
+    "Token logged<br>Found by security-reviewer#a",
+  );
+  const odd = readReview(report("@everyone"));
+  expect(odd.kind).toBe("review");
+  if (odd.kind !== "review") return;
+  expect(odd.report.findings[0]?.found_by).toBeUndefined();
 });

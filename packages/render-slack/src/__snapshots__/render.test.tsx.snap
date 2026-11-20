@@ -115,7 +115,7 @@ The runbook says to roll back before paging the on-call [[1]](https://example.co
 
 1. Roll back \`#4812\`.
 2. Watch the 5xx rate for 10 minutes.
-3. If it holds, open a ticket against the deploy owner.",
+3. If it holds, open a ticket against the deploy owner. [↗︎](https://example.com/sessions/turn-1)",
       "type": "markdown",
     },
     {
@@ -152,15 +152,6 @@ The runbook says to roll back before paging the on-call [[1]](https://example.co
         },
         {
           "text": "[2] <https://example.com/deploys/4812|Deploy #4812> · Deploys",
-          "type": "mrkdwn",
-        },
-      ],
-      "type": "context",
-    },
-    {
-      "elements": [
-        {
-          "text": "<https://example.com/sessions/turn-1|Open Conversation>",
           "type": "mrkdwn",
         },
       ],
@@ -305,6 +296,7 @@ The deploys service didn't answer within 30s.",
       "elements": [
         {
           "action_id": "aui.retry#0",
+          "style": "primary",
           "text": {
             "emoji": true,
             "text": "Retry",
@@ -319,16 +311,7 @@ The deploys service didn't answer within 30s.",
     {
       "elements": [
         {
-          "text": "<https://example.com/sessions/turn-1|Open Conversation>",
-          "type": "mrkdwn",
-        },
-      ],
-      "type": "context",
-    },
-    {
-      "elements": [
-        {
-          "text": "Assistant is AI and can make mistakes. Double-check its answers before you rely on them.",
+          "text": "Assistant is AI and can make mistakes. Double-check its answers before you rely on them. <https://example.com/sessions/turn-1|↗︎>",
           "type": "mrkdwn",
         },
       ],
@@ -434,16 +417,7 @@ exports[`renderToSlack > renders the streaming turn 1`] = `
     {
       "elements": [
         {
-          "text": "<https://example.com/sessions/turn-1|Open Conversation>",
-          "type": "mrkdwn",
-        },
-      ],
-      "type": "context",
-    },
-    {
-      "elements": [
-        {
-          "text": "Assistant is AI and can make mistakes. Double-check its answers before you rely on them.",
+          "text": "Assistant is AI and can make mistakes. Double-check its answers before you rely on them. <https://example.com/sessions/turn-1|↗︎>",
           "type": "mrkdwn",
         },
       ],
@@ -564,7 +538,7 @@ exports[`renderToSlack > renders the waiting turn 1`] = `
       "type": "plan",
     },
     {
-      "text": "Deploy \`#4812\` is the likely cause [[2]](https://example.com/deploys/4812). I can roll it back.",
+      "text": "Deploy \`#4812\` is the likely cause [[2]](https://example.com/deploys/4812). I can roll it back. [↗︎](https://example.com/sessions/turn-1)",
       "type": "markdown",
     },
     {
@@ -651,18 +625,18 @@ production",
           "action_id": "aui.ask#2",
           "text": {
             "emoji": true,
-            "text": "Ask",
+            "text": "Ask a question",
             "type": "plain_text",
           },
           "type": "button",
           "value": "{"turnId":"turn-1","target":"a1"}",
         },
         {
-          "accessibility_label": "Cancel: Roll back payments-api in production to deploy #4811?",
+          "accessibility_label": "Decline action: Roll back payments-api in production to deploy #4811?",
           "action_id": "aui.deny#3",
           "text": {
             "emoji": true,
-            "text": "Cancel",
+            "text": "Decline action",
             "type": "plain_text",
           },
           "type": "button",
@@ -692,15 +666,6 @@ production",
         },
         {
           "text": "[2] <https://example.com/deploys/4812|Deploy #4812> · Deploys",
-          "type": "mrkdwn",
-        },
-      ],
-      "type": "context",
-    },
-    {
-      "elements": [
-        {
-          "text": "<https://example.com/sessions/turn-1|Open Conversation>",
           "type": "mrkdwn",
         },
       ],

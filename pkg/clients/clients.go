@@ -33,8 +33,10 @@
 package clients
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"regexp"
 	"slices"
 	"strings"
@@ -85,7 +87,6 @@ const (
 	maxOwners   = 32
 	maxRepos    = 64
 	maxCommands = 10
-	maxLabels   = 32
 	maxPeople   = 500
 	maxSubject  = 200
 )
@@ -98,6 +99,15 @@ const (
 	ManagedStatic = "static"
 	// ManagedFile is a client a Platform document declares.
 	ManagedFile = "file"
+	// ManagedApp is the Slack app a server starts itself, as a Platform
+	// document's surfaces.slack says (apps/slack). The file owns its team,
+	// its machine and its people; an administrator chooses the rest. Slack
+	// reaches that app over Socket Mode and never through this server, so the
+	// record holds no secret, has no connector and is offered no request.
+	ManagedApp = "app"
+	// ManagedInstall pins credentials and identity verified by native consent.
+	// Administrators may still choose its routes and connector capabilities.
+	ManagedInstall = "installation"
 )
 
 // Identity is the external identity a client answers for. An inbound request
@@ -189,6 +199,8 @@ type Command struct {
 
 // SlackOptions are the options of a Slack client.
 type SlackOptions struct {
+	// ActionChannels explicitly grant writes from another surface to exact channel IDs.
+	ActionChannels []string `json:"action_channels,omitempty"`
 	// Sessions reports run lifecycle as agent-session status.
 	Sessions bool      `json:"sessions,omitempty"`
 	Commands []Command `json:"commands,omitempty"`
@@ -213,27 +225,102 @@ func (c Client) ActsFor(machine, user string) (string, bool) {
 	return who, ok && who != ""
 }
 
-// GitHubOptions are the options of a GitHub client.
+// GitHubAutomation starts a session when GitHub sends a matching event. The
+// session answers on the pull request or issue that triggered it; a push, or
+// a check run with no pull request, has no thread and stays in its session.
 type GitHubAutomation struct {
 	Name         string `json:"name"`
 	Repository   string `json:"repository"`
 	Event        string `json:"event"`
 	Action       string `json:"action"`
 	Conclusion   string `json:"conclusion,omitempty"`
-	Label        string `json:"label,omitempty"`
 	Agent        string `json:"agent"`
 	Instructions string `json:"instructions"`
 	Paused       bool   `json:"paused"`
+	// Note is read-only: what of a rule stored earlier is ignored now. It is
+	// dropped when the rule is saved.
+	Note string `json:"note,omitempty"`
+}
+
+// labelAction reports an action that a label change sends. Labels start
+// nothing, so no rule fires on one.
+func labelAction(action string) bool { return action == "labeled" || action == "unlabeled" }
+
+// UnmarshalJSON reads a rule. Labels start nothing: a label a rule
+// stored before then still carries is dropped, and a rule on a label change
+// is paused for good; a note says which.
+func (a *GitHubAutomation) UnmarshalJSON(b []byte) error {
+	type plain GitHubAutomation
+	var v struct {
+		plain
+		Label string `json:"label"`
+	}
+	if err := json.Unmarshal(b, &v); err != nil {
+		return err
+	}
+	*a = GitHubAutomation(v.plain)
+	switch {
+	case labelAction(a.Action):
+		a.Paused = true
+		a.Note = fmt.Sprintf("This rule never fires: labels start nothing, and it waits for %q.", a.Action)
+	case v.Label != "":
+		a.Note = fmt.Sprintf("The label %q is ignored: labels start nothing.", v.Label)
+	}
+	return nil
+}
+
+// dropNotes clears what reading a client noted, before it is saved.
+func (c *Client) dropNotes() {
+	if c.GitHub == nil {
+		return
+	}
+	for i := range c.GitHub.Automations {
+		c.GitHub.Automations[i].Note = ""
+	}
+}
+
+// AutoReview is a GitHub connection's automatic review switch, with an
+// override per repository.
+type AutoReview struct {
+	// Enabled is the connection's switch. Left out, it is on.
+	Enabled *bool `json:"enabled,omitempty"`
+	// Repositories turn it on or off for exact "owner/repo" names, whatever
+	// Enabled says.
+	Repositories map[string]bool `json:"repositories,omitempty"`
+}
+
+// Reviews reports whether a pull request in repo is reviewed automatically:
+// the repository's override, else the connection's switch, else on.
+func (a *AutoReview) Reviews(repo string) bool {
+	if a == nil {
+		return true
+	}
+	for name, on := range a.Repositories {
+		if strings.EqualFold(name, repo) {
+			return on
+		}
+	}
+	return a.Enabled == nil || *a.Enabled
 }
 
 type GitHubOptions struct {
-	Automations []GitHubAutomation `json:"automations,omitempty"`
-	People      map[string]string  `json:"people,omitempty"`
-	// AutoLabels maps "owner/repo" to label to agent.
-	AutoLabels map[string]map[string]string `json:"auto_labels,omitempty"`
-	Checks     bool                         `json:"checks,omitempty"`
-	Guides     bool                         `json:"guides,omitempty"`
-	Mutations  bool                         `json:"mutations,omitempty"`
+	// FixPullRequests permits separately approved draft fix PRs; existing /fix is unchanged.
+	FixPullRequests bool `json:"fix_pull_requests,omitempty"`
+	// ActionRepositories explicitly grant writes from another surface to exact repositories.
+	ActionRepositories []string           `json:"action_repositories,omitempty"`
+	Automations        []GitHubAutomation `json:"automations,omitempty"`
+	People             map[string]string  `json:"people,omitempty"`
+	// Askers, when set, are the only GitHub logins whose mentions, reviews
+	// and pull requests the client acts on, among those it would otherwise:
+	// people with write access to the repository and people it maps.
+	Askers []string `json:"askers,omitempty"`
+	// AutoReview reviews a pull request when it opens ready for review, leaves
+	// draft, or gets a push. Left out, it is on. Labels start
+	// nothing.
+	AutoReview *AutoReview `json:"auto_review,omitempty"`
+	Checks     bool        `json:"checks,omitempty"`
+	Guides     bool        `json:"guides,omitempty"`
+	Mutations  bool        `json:"mutations,omitempty"`
 	// ReadRepositories are "owner/repo" names a run from another surface may
 	// read through this client.
 	ReadRepositories []string `json:"read_repositories,omitempty"`
@@ -330,6 +417,11 @@ func (c Client) Claims(claim Claim) bool {
 // app they are.
 func (c Client) overlaps(o Client) bool {
 	either := func(a, b string) bool { return a == "" || b == "" || a == b }
+	// The app a server starts is offered no request, so none could be both
+	// its and another client's.
+	if c.Managed == ManagedApp || o.Managed == ManagedApp {
+		return false
+	}
 	if c.Surface != o.Surface || !either(c.Identity.AppID, o.Identity.AppID) {
 		return false
 	}
@@ -470,6 +562,14 @@ func (c Client) validateSlack() error {
 		}
 		seen[cmd.Name] = true
 	}
+	if len(c.Slack.ActionChannels) > maxRepos {
+		return bad("a client grants at most %d action channels", maxRepos)
+	}
+	for i, ch := range c.Slack.ActionChannels {
+		if !slackID.MatchString(ch) || (ch[0] != 'C' && ch[0] != 'G' && ch[0] != 'D') || slices.Contains(c.Slack.ActionChannels[:i], ch) {
+			return bad("action channels must be unique Slack channel IDs")
+		}
+	}
 	if len(c.Slack.People) > maxPeople {
 		return bad("a client maps at most %d people", maxPeople)
 	}
@@ -536,12 +636,24 @@ func (c Client) validateGitHub() error {
 		if a.Action == "" && a.Event != "push" {
 			return bad("an automation needs an action")
 		}
-		if len(a.Action) > 64 || len(a.Conclusion) > 64 || len(a.Label) > 128 {
+		if labelAction(a.Action) && !a.Paused {
+			return bad("labels start nothing: a rule cannot fire on %q", a.Action)
+		}
+		if len(a.Action) > 64 || len(a.Conclusion) > 64 {
 			return bad("automation conditions are too long")
 		}
 	}
-	if len(g.ReadRepositories) > maxRepos || len(g.AutoLabels) > maxRepos {
+	if len(g.ReadRepositories) > maxRepos || g.AutoReview != nil && len(g.AutoReview.Repositories) > maxRepos {
 		return bad("a client names at most %d repositories", maxRepos)
+	}
+	if len(g.ActionRepositories) > maxRepos {
+		return bad("a client grants at most %d action repositories", maxRepos)
+	}
+	for i, repo := range g.ActionRepositories {
+		owner, _, _ := strings.Cut(repo, "/")
+		if !repoPattern.MatchString(repo) || !c.Serves(owner) || slices.ContainsFunc(g.ActionRepositories[:i], func(prior string) bool { return strings.EqualFold(prior, repo) }) {
+			return bad("action repositories must be unique owner/repo names served by this client")
+		}
 	}
 	for _, repo := range g.ReadRepositories {
 		if !repoPattern.MatchString(repo) {
@@ -556,26 +668,25 @@ func (c Client) validateGitHub() error {
 			return bad("GitHub people map exact logins to bounded workspace subjects")
 		}
 	}
+	if len(g.Askers) > maxPeople {
+		return bad("a client names at most %d askers", maxPeople)
+	}
+	for _, login := range g.Askers {
+		if !githubLogin.MatchString(login) {
+			return bad("%q is not a GitHub login", login)
+		}
+	}
 	if g.Login != "" && !githubLogin.MatchString(g.Login) {
 		return bad("%q is not a GitHub login", g.Login)
 	}
-	for repo, labels := range g.AutoLabels {
-		if !repoPattern.MatchString(repo) {
-			return bad("%q is not an owner/repo name", repo)
-		}
-		if owner, _, _ := strings.Cut(repo, "/"); !c.Serves(owner) {
-			return bad("auto-labels name %q, which is outside the accounts this client serves", repo)
-		}
-		if len(labels) > maxLabels {
-			return bad("a repository maps at most %d labels", maxLabels)
-		}
-		for label, agent := range labels {
-			if strings.TrimSpace(label) == "" {
-				return bad("an auto-label has a name")
+	if a := g.AutoReview; a != nil {
+		seen := map[string]bool{}
+		for repo := range a.Repositories {
+			owner, _, _ := strings.Cut(repo, "/")
+			if !repoPattern.MatchString(repo) || !c.Serves(owner) || seen[strings.ToLower(repo)] {
+				return bad("automatic review names %q, which is not one owner/repo this client serves", repo)
 			}
-			if !c.Routes(agent) {
-				return bad("label %q starts %q, which this client may not route to", label, agent)
-			}
+			seen[strings.ToLower(repo)] = true
 		}
 	}
 	if g.Guides && len(c.Bots) == 0 {
@@ -604,6 +715,7 @@ func (c Client) clone() Client {
 	if c.Slack != nil {
 		s := *c.Slack
 		s.Commands = slices.Clone(s.Commands)
+		s.ActionChannels = slices.Clone(s.ActionChannels)
 		if s.People != nil {
 			people := make(map[string]string, len(s.People))
 			for k, v := range s.People {
@@ -623,16 +735,16 @@ func (c Client) clone() Client {
 			}
 		}
 		g.ReadRepositories = slices.Clone(g.ReadRepositories)
-		if g.AutoLabels != nil {
-			labels := make(map[string]map[string]string, len(g.AutoLabels))
-			for repo, m := range g.AutoLabels {
-				inner := make(map[string]string, len(m))
-				for k, v := range m {
-					inner[k] = v
-				}
-				labels[repo] = inner
+		g.Askers = slices.Clone(g.Askers)
+		g.ActionRepositories = slices.Clone(g.ActionRepositories)
+		if g.AutoReview != nil {
+			a := *g.AutoReview
+			if a.Enabled != nil {
+				on := *a.Enabled
+				a.Enabled = &on
 			}
-			g.AutoLabels = labels
+			a.Repositories = maps.Clone(a.Repositories)
+			g.AutoReview = &a
 		}
 		c.GitHub = &g
 	}

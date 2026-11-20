@@ -27,7 +27,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/urmzd/orchagent/flow/event"
+	"github.com/urmzd/saige/flow/event"
 
 	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/wire"
@@ -144,6 +144,9 @@ func keys(e event.Envelope, raw []byte) (byTime, byRun string) {
 	id := ""
 	if e.Run != "" {
 		id = hash(e.Run) + ":" + state.Seq(int64(e.Seq))
+		if e.Type == event.TypeFeedback {
+			id = hash(e.Run) + ":feedback:" + hash(e.ID)
+		}
 		byRun = runPrefix + id
 	} else {
 		id = "-:" + hash(cmp.Or(e.ID, string(raw)))

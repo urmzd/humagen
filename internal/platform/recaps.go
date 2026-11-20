@@ -44,10 +44,22 @@ const (
 	// DeliverProject posts it to the schedule's project as an announcement
 	// from the agent.
 	DeliverProject = "project"
+	// DeliverSlack posts it in a Slack channel through the Slack connection
+	// the schedule names (MetaDeliverClient, MetaDeliverTo).
+	DeliverSlack = "slack"
+	// DeliverGitHub comments it on a GitHub issue through the GitHub
+	// connection the schedule names.
+	DeliverGitHub = "github"
 )
 
 // ValidDeliver reports whether a value names a place an answer can go.
-func ValidDeliver(v string) bool { return v == DeliverNone || v == DeliverInbox || v == DeliverProject }
+func ValidDeliver(v string) bool {
+	switch v {
+	case DeliverNone, DeliverInbox, DeliverProject, DeliverSlack, DeliverGitHub:
+		return true
+	}
+	return false
+}
 
 // Bounds on what a scheduled agent's answer becomes.
 const (
@@ -83,7 +95,8 @@ func (p *Platform) deliverAnswer(ctx context.Context, run runs.Run) error {
 	if where == DeliverNone {
 		return nil
 	}
-	if person := personOf(run.Actor); person != "" && (where == DeliverProject || wire.Meta(run.Tag())[metaCreatedBy] != person) {
+	public := where == DeliverProject || where == DeliverSlack || where == DeliverGitHub
+	if person := personOf(run.Actor); person != "" && (public || wire.Meta(run.Tag())[metaCreatedBy] != person) {
 		sensitive, err := p.completionPersonData(ctx, run)
 		if err != nil {
 			return err
@@ -97,6 +110,8 @@ func (p *Platform) deliverAnswer(ctx context.Context, run runs.Run) error {
 		return p.deliverToInbox(run)
 	case DeliverProject:
 		return p.deliverToProject(run)
+	case DeliverSlack, DeliverGitHub:
+		return p.deliverToConnection(ctx, run, where)
 	}
 	return nil
 }
@@ -112,8 +127,13 @@ func (p *Platform) keptFor(run runs.Run, person, where string) error {
 		text = subject
 	}
 	why := "Not sent to whoever created the schedule"
-	if where == DeliverProject {
+	switch where {
+	case DeliverProject:
 		why = "Not posted in " + p.whereOf(run.Tenant, p.Projects.Tree(run.Tenant), run.Project)
+	case DeliverSlack:
+		why = "Not posted in Slack"
+	case DeliverGitHub:
+		why = "Not posted on GitHub"
 	}
 	return p.sendTo(run, person, subject, why+": it may hold what your own credentials reached, so it is yours alone.\n\n"+text)
 }

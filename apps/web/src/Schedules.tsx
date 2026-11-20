@@ -1,10 +1,17 @@
 import { defaultCopy } from "@humagen/components";
-import { type FormEvent, useState } from "react";
+import { GitHubIcon, SlackIcon } from "@humagen/render-web";
+import { type FormEvent, useEffect, useState } from "react";
 import type { Run } from "./adapter.ts";
-import { ApiError, api, type Revision, type Schedule, type ScheduleView } from "./api.ts";
+import {
+  ApiError,
+  api,
+  type Client,
+  type Revision,
+  type Schedule,
+  type ScheduleView,
+} from "./api.ts";
 import { inWords, presets } from "./cron.ts";
 import { type ProjectRef, projectOptions, titleIn } from "./projects.ts";
-import { deliverFor, deliverOptions } from "./recap.ts";
 import {
   AgentMark,
   agentOptions,
@@ -115,11 +122,24 @@ export function ScheduleForm({
           project: editing.project,
           description: editing.description,
           deliver: editing.deliver,
+          deliver_client: editing.deliver_client,
+          deliver_to: editing.deliver_to,
         }
       : { name: "", expression: "0 9 * * 1-5", agent: "", text: "" },
   );
   const [problem, setProblem] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [connections, setConnections] = useState<Client[]>([]);
+  useEffect(() => {
+    let live = true;
+    api
+      .clients()
+      .then((r) => live && setConnections(r.clients.filter((c) => c.enabled)))
+      .catch(() => live && setConnections([]));
+    return () => {
+      live = false;
+    };
+  }, []);
   const set = (patch: Partial<Schedule>) => setDraft((d) => ({ ...d, ...patch }));
   const agent = draft.agent || agents[0]?.spec.name || "";
 
@@ -147,10 +167,7 @@ export function ScheduleForm({
         {editing ? `Change ${editing.name}` : "New schedule"}
       </h2>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <Label
-          text="Name"
-          hint={editing ? "A schedule's name cannot change." : "Letters, digits, dashes."}
-        >
+        <Label text="Name">
           <input
             className={field}
             value={draft.name}
@@ -159,7 +176,7 @@ export function ScheduleForm({
             onChange={(e) => set({ name: e.target.value })}
           />
         </Label>
-        <Label text="Agent" hint="Who gets the request.">
+        <Label text="Agent">
           <Menu
             label="Agent"
             value={agent}
@@ -167,27 +184,16 @@ export function ScheduleForm({
             onChange={(next) => set({ agent: next })}
           />
         </Label>
-        <Label
-          text="Project"
-          hint="Where its conversations are filed. A project's shared memory is sent with each one."
-        >
+        <Label text="Project">
           <Menu
             label="Project"
             value={draft.project ?? ""}
             options={[{ value: "", label: "No project" }, ...projectOptions(projects)]}
-            onChange={(next) =>
-              set({
-                project: next || undefined,
-                deliver: deliverFor(next || undefined, draft.deliver),
-              })
-            }
+            onChange={(next) => set({ project: next || undefined })}
           />
         </Label>
       </div>
-      <Label
-        text="When"
-        hint={`${inWords(draft.expression)}. Fields: minute hour day month weekday, in UTC.`}
-      >
+      <Label text="When" hint={`${inWords(draft.expression)} (UTC)`}>
         <input
           className={`${field} font-aui-mono`}
           value={draft.expression}
@@ -208,10 +214,7 @@ export function ScheduleForm({
           </button>
         ))}
       </div>
-      <Label
-        text="What to ask"
-        hint="Nobody is typing when a schedule fires, so this is the whole message the agent gets."
-      >
+      <Label text="What to ask">
         <textarea
           className={`${field} min-h-20`}
           value={draft.text}
@@ -219,10 +222,7 @@ export function ScheduleForm({
           onChange={(e) => set({ text: e.target.value })}
         />
       </Label>
-      <Label
-        text="Description"
-        hint="Why it exists, for the people reading this page. The agent is not shown it."
-      >
+      <Label text="Description">
         <input
           className={field}
           maxLength={500}
@@ -230,16 +230,7 @@ export function ScheduleForm({
           onChange={(e) => set({ description: e.target.value })}
         />
       </Label>
-      <Label text={copy.deliver} hint={copy.deliverHint}>
-        <Menu
-          label={copy.deliver}
-          value={draft.deliver ?? ""}
-          options={deliverOptions(draft.project, copy, !editing)}
-          onChange={(next) =>
-            set({ deliver: next === "inbox" || next === "project" ? next : undefined })
-          }
-        />
-      </Label>
+      <SendTo draft={draft} connections={connections} legacy={editing?.deliver} set={set} />
       <Problem message={problem} />
       <div className="flex justify-end gap-2">
         <button type="button" className={button} onClick={onClose}>
@@ -553,5 +544,112 @@ export function Schedules({
         </ul>
       )}
     </Page>
+  );
+}
+
+/**
+ * A schedule always makes a session. Picking Slack or GitHub also posts its
+ * answer there, through one connection; picking neither keeps it in the
+ * session. Older schedules that still say inbox or project show that choice
+ * until it is turned off.
+ */
+function SendTo({
+  draft,
+  connections,
+  legacy,
+  set,
+}: {
+  draft: Schedule;
+  connections: Client[];
+  legacy?: Schedule["deliver"];
+  set: (patch: Partial<Schedule>) => void;
+}) {
+  const slack = connections.filter((c) => c.surface === "slack");
+  const github = connections.filter((c) => c.surface === "github");
+  const older = legacy === "inbox" || legacy === "project" ? legacy : undefined;
+  if (!slack.length && !github.length && !older) return null;
+  const pool = draft.deliver === "slack" ? slack : draft.deliver === "github" ? github : [];
+  const toggle = (kind: NonNullable<Schedule["deliver"]>, from: Client[]) =>
+    set(
+      draft.deliver === kind
+        ? { deliver: undefined, deliver_client: undefined, deliver_to: undefined }
+        : { deliver: kind, deliver_client: from[0]?.id, deliver_to: undefined },
+    );
+  const choice = `${button} gap-1.5 aria-pressed:border-aui-fg aria-pressed:text-aui-fg`;
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-aui-sm text-aui-muted">{copy.alsoPost}</span>
+        {slack.length > 0 && (
+          <button
+            type="button"
+            className={choice}
+            aria-pressed={draft.deliver === "slack"}
+            onClick={() => toggle("slack", slack)}
+          >
+            <SlackIcon size={14} />
+            Slack
+          </button>
+        )}
+        {github.length > 0 && (
+          <button
+            type="button"
+            className={choice}
+            aria-pressed={draft.deliver === "github"}
+            onClick={() => toggle("github", github)}
+          >
+            <GitHubIcon size={14} />
+            GitHub
+          </button>
+        )}
+        {older && (
+          <button
+            type="button"
+            className={choice}
+            aria-pressed={draft.deliver === older}
+            onClick={() => toggle(older, [])}
+          >
+            {older === "project" ? copy.sendProject : copy.sendInbox}
+          </button>
+        )}
+      </div>
+      {(draft.deliver === "slack" || draft.deliver === "github") && (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {pool.length > 1 && (
+            <Label text={copy.connection}>
+              <Menu
+                label={copy.connection}
+                value={draft.deliver_client ?? ""}
+                options={pool.map((c) => ({ value: c.id, label: c.name }))}
+                onChange={(deliver_client) => set({ deliver_client })}
+              />
+            </Label>
+          )}
+          {draft.deliver === "slack" ? (
+            <Label text={copy.slackChannel}>
+              <input
+                className={field}
+                required
+                pattern="[CG][A-Z0-9]{2,31}"
+                placeholder="C0123ABC"
+                value={draft.deliver_to ?? ""}
+                onChange={(e) => set({ deliver_to: e.target.value.trim().toUpperCase() })}
+              />
+            </Label>
+          ) : (
+            <Label text={copy.githubIssue}>
+              <input
+                className={field}
+                required
+                pattern="[A-Za-z0-9-]+/[A-Za-z0-9._-]+#[1-9][0-9]*"
+                placeholder="owner/repo#12"
+                value={draft.deliver_to ?? ""}
+                onChange={(e) => set({ deliver_to: e.target.value.trim() })}
+              />
+            </Label>
+          )}
+        </div>
+      )}
+    </div>
   );
 }

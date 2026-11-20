@@ -131,13 +131,14 @@ func TestASkillGoesToTheSelectedAgents(t *testing.T) {
 // A selected agent the poster may not read is no oracle: naming it answers
 // as naming an agent that does not exist, whether or not the thread selects
 // it, and a default they were not shown is changed only by its owners.
-// Rewriting the selection drops it once it cannot answer there, and a skill
-// goes to the agents the poster may read.
+// Rewriting the selection drops it once an allow list leaves it out there,
+// and a skill goes to the agents the poster may read.
 func TestAHiddenSelectedAgentIsNoOracle(t *testing.T) {
 	p := start(t, call.Limits{})
 	ctx := t.Context()
 	// Vault is read by its members alone. helper is selected in a Field
-	// conversation and then homed in Vault, which bo cannot read.
+	// conversation, then homed in Vault, which bo cannot read, and left out
+	// of Field's allow list.
 	field(t, p)
 	workIn(t, p, "Field", operator, bo)
 	if _, err := p.CreateProject(ctx, tenant, ada, platform.ProjectInput{Name: "Vault"}); err != nil {
@@ -158,6 +159,7 @@ func TestAHiddenSelectedAgentIsNoOracle(t *testing.T) {
 	if err := p.SetAgentHome(ctx, tenant, "helper", "Vault", govern); err != nil {
 		t.Fatal(err)
 	}
+	setAgents(t, p, "Field", platform.AgentsInput{Enable: []string{}, Allow: []string{"lead"}})
 	if p.Seer(bo).Agent("helper") || !p.Seer(bo).Project("Field") {
 		t.Fatal("the test needs bo to read Field and not helper")
 	}
@@ -304,9 +306,10 @@ func TestAGovernorWhoTakesNoPartDoesNotMoveAPrivateConversation(t *testing.T) {
 	}
 }
 
-// When no selected agent takes a message, nothing starts, and it says it
-// waits; no agent is fallen back on.
-func TestAMessageNoSelectedAgentTakesWaits(t *testing.T) {
+// When no selected agent takes a message, it still lands, on one of them,
+// saying why: it never waits for a person, and no agent outside the
+// selection answers.
+func TestAMessageNoSelectedAgentTakesLandsOnOne(t *testing.T) {
 	p := start(t, call.Limits{})
 	field(t, p)
 	workIn(t, p, "Initech", operator)
@@ -314,7 +317,7 @@ func TestAMessageNoSelectedAgentTakesWaits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got.Runs) != 0 || !strings.Contains(got.Reason, "waits for a person") {
+	if len(got.Runs) != 1 || !slices.Contains([]string{"helper", "lead"}, got.Runs[0].Agent) || got.Runs[0].Picked == "" || got.Reason != "" {
 		t.Fatalf("a message no selected agent took = %+v (%s)", got.Runs, got.Reason)
 	}
 }

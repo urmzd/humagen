@@ -46,6 +46,24 @@ type SurfaceRef struct {
 	// AppUser is the app's own bot user id, whose mention is how a channel
 	// message reaches the app and is not a tag.
 	AppUser string `json:"app_user,omitempty"`
+	// Audience is who is in the conversation the message was asked in, which
+	// a root session's audience follows. Nil is a direct message for a D
+	// channel, and otherwise private to the person asking.
+	Audience *SurfaceAudience `json:"audience,omitempty"`
+	// ActionToken is Slack's short-lived token for acting on the person's
+	// behalf in this turn. It is accepted and never kept or passed on.
+	ActionToken string `json:"action_token,omitempty"`
+}
+
+// SurfaceAudience is a Slack conversation's kind and, for a private channel
+// or a group direct message, its members now.
+type SurfaceAudience struct {
+	// Type is public_channel, private_channel, mpim (a group direct message)
+	// or im (a direct message).
+	Type string `json:"type"`
+	// Members are the conversation's members by Slack user id, at most 500,
+	// sent for a private channel or a group direct message.
+	Members []string `json:"members,omitempty"`
 }
 
 func (r SurfaceRef) surface(client string) threads.Surface {
@@ -282,13 +300,15 @@ func (p *Platform) seedOf(tenant string, th threads.Thread) (threads.Announcemen
 	return a, true
 }
 
-// seedTurns is the turn a thread's room starts with: its announcement, when
-// it was started from one.
+// seedTurns is the turns a thread's room starts with: the imported
+// conversation it continues, when it continues one, then the history it was
+// forked with, then its announcement, when it was started from one.
 func (p *Platform) seedTurns(tenant string, th threads.Thread) []threads.Turn {
+	seed := append(threads.ImportSeed(th.Import), forkSeed(th)...)
 	if a, ok := p.seedOf(tenant, th); ok {
-		return append(forkSeed(th), threads.AnnouncementTurn(a))
+		return append(seed, threads.AnnouncementTurn(a))
 	}
-	return forkSeed(th)
+	return seed
 }
 
 // surfaceOfPost checks a message posted with its surface into a thread: the

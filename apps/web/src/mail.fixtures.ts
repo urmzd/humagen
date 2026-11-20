@@ -190,6 +190,22 @@ export function wireMail(): Record<string, unknown>[] {
             agent: "releaser",
             prompt: "Push tag v2.4.1 to origin",
             tool: { name: "git_push_tag", arguments: { tag: "v2.4.1", remote: "origin" } },
+            // The approval agent left it for a person, with the workspace's own fields.
+            judgement: {
+              decision: "ask",
+              reason:
+                "A tag starts the release pipeline, and nobody in the session asked for a release.",
+              references: [
+                "Policy: releases need a person",
+                "git_push_tag pushes v2.4.1 to origin",
+              ],
+              fields: [
+                { name: "risk", label: "Risk", value: "high" },
+                { name: "conditions", label: "Conditions", value: "only on main" },
+                { name: "expires_in", label: "Expires in", value: "3600" },
+              ],
+              run: "api-9f0d",
+            },
           },
         },
       ],

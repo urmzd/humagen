@@ -8,6 +8,7 @@ import {
   type CallPolicy,
   type CallPolicyInput,
   callGovernance,
+  type Judgement,
   type QueuedApproval,
   type Reach,
   type Revision,
@@ -391,6 +392,32 @@ export function useReach(agent: string | null, signal?: unknown): Reach[] | null
  * in one place settles it everywhere. Only what the reader may answer is listed.
  */
 /**
+ * What the approval agent said about a call: its decision and reason, each
+ * field the workspace's schema adds as a label and value, and what it rests on.
+ */
+function JudgementNote({ judgement: j }: { judgement: Judgement }) {
+  const words = defaultCopy.judgement;
+  const label = "font-medium text-aui-fg";
+  return (
+    <div className="flex flex-col gap-1 text-aui-xs text-aui-muted">
+      <p>
+        <span className={label}>{words.by}:</span> {words.decision[j.decision]}: "{j.reason}"
+      </p>
+      {j.fields?.length ? (
+        <p className="flex flex-wrap gap-x-3 gap-y-1">
+          {j.fields.map((f) => (
+            <span key={f.name} className="min-w-0 break-words">
+              <span className={label}>{f.label}:</span> {f.value}
+            </span>
+          ))}
+        </p>
+      ) : null}
+      {j.references?.length ? <p className="break-words">{words.basedOn(j.references)}</p> : null}
+    </div>
+  );
+}
+
+/**
  * An agent's approvals waiting on a person. viewer is the signed-in person's
  * subject: a run whose answers may reach someone's own credentials takes a
  * note only from them (`steered_for`, by subject), so nobody else is offered
@@ -490,6 +517,7 @@ export function ApprovalQueue({
                 <p className="whitespace-pre-wrap text-aui-sm text-aui-muted">
                   {q?.prompt ?? m.subject}
                 </p>
+                {q?.judgement && <JudgementNote judgement={q.judgement} />}
                 <div className="flex flex-wrap items-center gap-2">
                   {m.source.thread && onOpenTask && (
                     <button

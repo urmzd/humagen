@@ -31,7 +31,7 @@ func TestSaveAsArtifactKeepsAnswersMessagesAndScratchpadsAsVersions(t *testing.T
 		t.Fatalf("saved answer = %+v", saved)
 	}
 	again, err := p.SaveArtifact(ctx, operator, run.Thread, platform.ArtifactSave{Source: "run", ID: run.ID})
-	if err != nil || again.Version != 2 || again.Title != saved.Title {
+	if err != nil || again.ID != saved.ID || again.Version != 1 || again.Title != saved.Title {
 		t.Fatalf("saved again = %+v %v", again, err)
 	}
 	pad, err := p.CreateScratchpad(ctx, operator, run.Thread, platform.ScratchpadInput{Name: "Plan", Content: "# Plan"})
@@ -41,6 +41,17 @@ func TestSaveAsArtifactKeepsAnswersMessagesAndScratchpadsAsVersions(t *testing.T
 	fromPad, err := p.SaveArtifact(ctx, operator, run.Thread, platform.ArtifactSave{Source: "scratchpad", ID: pad.ID, Title: "Launch plan"})
 	if err != nil || fromPad.Title != "Launch plan.md" || fromPad.Preview != "# Plan" {
 		t.Fatalf("saved scratchpad = %+v %v", fromPad, err)
+	}
+	repeated, err := p.SaveArtifact(ctx, operator, run.Thread, platform.ArtifactSave{Source: "scratchpad", ID: pad.ID, Title: "Launch plan"})
+	if err != nil || repeated.ID != fromPad.ID {
+		t.Fatalf("unchanged scratchpad = %+v %v", repeated, err)
+	}
+	if _, err := p.UpdateScratchpad(ctx, operator, run.Thread, pad.ID, platform.ScratchpadInput{Name: pad.Name, Content: "# Revised plan", Version: pad.Version}); err != nil {
+		t.Fatal(err)
+	}
+	changed, err := p.SaveArtifact(ctx, operator, run.Thread, platform.ArtifactSave{Source: "scratchpad", ID: pad.ID, Title: "Launch plan"})
+	if err != nil || changed.ID == fromPad.ID || changed.Version != 2 || changed.Preview != "# Revised plan" {
+		t.Fatalf("changed scratchpad = %+v %v", changed, err)
 	}
 	// Another conversation's run, an unknown source and a reader without
 	// artifacts:write are refused.

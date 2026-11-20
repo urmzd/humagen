@@ -19,53 +19,61 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/urmzd/orchagent/durable"
-	"github.com/urmzd/orchagent/durable/ledger"
-	dqueue "github.com/urmzd/orchagent/durable/queue"
-	drun "github.com/urmzd/orchagent/durable/run"
-	"github.com/urmzd/orchagent/durable/worker"
-	"github.com/urmzd/orchagent/flow/attachment/resolve"
-	filesblob "github.com/urmzd/orchagent/flow/blob"
-	"github.com/urmzd/orchagent/flow/bus"
-	"github.com/urmzd/orchagent/flow/connector"
-	"github.com/urmzd/orchagent/flow/connectors/cron"
-	"github.com/urmzd/orchagent/flow/egress"
-	"github.com/urmzd/orchagent/flow/event"
-	"github.com/urmzd/orchagent/flow/isolation"
-	"github.com/urmzd/orchagent/flow/runtime"
-	"github.com/urmzd/orchagent/flow/toolprovider"
-	"github.com/urmzd/orchagent/flow/turn"
-	"github.com/urmzd/orchagent/flow/turn/native"
-	"github.com/urmzd/orchagent/flow/turn/sandbox"
-	"github.com/urmzd/orchagent/sandbox/controlplane"
-	"github.com/urmzd/orchagent/sandbox/metrics"
-	"github.com/urmzd/orchagent/sandbox/node/inproc"
-	"github.com/urmzd/orchagent/sandbox/tool"
-	"github.com/urmzd/orchagent/sandbox/workspace"
+	"github.com/urmzd/humagen/internal/toolprovider"
+	"github.com/urmzd/saige/durable"
+	"github.com/urmzd/saige/durable/ledger"
+	dqueue "github.com/urmzd/saige/durable/queue"
+	drun "github.com/urmzd/saige/durable/run"
+	"github.com/urmzd/saige/durable/worker"
+	"github.com/urmzd/saige/flow/attachment/resolve"
+	filesblob "github.com/urmzd/saige/flow/blob"
+	"github.com/urmzd/saige/flow/bus"
+	"github.com/urmzd/saige/flow/connector"
+	"github.com/urmzd/saige/flow/connectors/cron"
+	"github.com/urmzd/saige/flow/egress"
+	"github.com/urmzd/saige/flow/event"
+	"github.com/urmzd/saige/flow/isolation"
+	"github.com/urmzd/saige/flow/runtime"
+	"github.com/urmzd/saige/flow/session"
+	"github.com/urmzd/saige/flow/turn"
+	"github.com/urmzd/saige/flow/turn/native"
+	"github.com/urmzd/saige/flow/turn/sandbox"
+	"github.com/urmzd/saige/sandbox/controlplane"
+	"github.com/urmzd/saige/sandbox/metrics"
+	"github.com/urmzd/saige/sandbox/node/inproc"
+	"github.com/urmzd/saige/sandbox/tool"
+	"github.com/urmzd/saige/sandbox/workspace"
 
 	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/wire"
+	"github.com/urmzd/humagen/internal/wire/sessionstate"
 	"github.com/urmzd/humagen/pkg/agentcolors"
 	"github.com/urmzd/humagen/pkg/alerts"
 	"github.com/urmzd/humagen/pkg/artifacts"
 	"github.com/urmzd/humagen/pkg/audit"
 	"github.com/urmzd/humagen/pkg/auditrefs"
 	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/background"
 	"github.com/urmzd/humagen/pkg/blob"
 	"github.com/urmzd/humagen/pkg/call"
 	"github.com/urmzd/humagen/pkg/callpolicy"
 	"github.com/urmzd/humagen/pkg/catalog"
 	"github.com/urmzd/humagen/pkg/clients"
+	"github.com/urmzd/humagen/pkg/connectionauth"
 	"github.com/urmzd/humagen/pkg/contextflags"
+	"github.com/urmzd/humagen/pkg/corpora"
 	"github.com/urmzd/humagen/pkg/credentials"
 	"github.com/urmzd/humagen/pkg/drive"
+	"github.com/urmzd/humagen/pkg/egressguard"
 	"github.com/urmzd/humagen/pkg/evals"
 	"github.com/urmzd/humagen/pkg/feedback"
+	"github.com/urmzd/humagen/pkg/githubinstall"
 	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/integrations/github"
 	"github.com/urmzd/humagen/pkg/integrations/slack"
@@ -90,8 +98,10 @@ import (
 	"github.com/urmzd/humagen/pkg/scratchpads"
 	"github.com/urmzd/humagen/pkg/sourcelinks"
 	"github.com/urmzd/humagen/pkg/speech"
+	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/humagen/pkg/threads"
 	"github.com/urmzd/humagen/pkg/usage"
+	"github.com/urmzd/humagen/pkg/webtools"
 )
 
 // ErrForbidden reports a call the caller's agent spec does not allow.
@@ -100,6 +110,9 @@ var ErrForbidden = errors.New("platform: forbidden")
 // Config is what a running platform needs. Nothing here reads the environment,
 // so a test can build a second platform in the same process.
 type Config struct {
+	// PublicURL is the configured canonical console URL for trusted backlinks.
+	// It is not an input accepted from an agent or webhook.
+	PublicURL string
 	// Rooms is how conversations with many viewers are read and how fast
 	// runs are admitted into them (pkg/rooms). Zero fields are its defaults.
 	Rooms rooms.Config
@@ -113,6 +126,9 @@ type Config struct {
 	// Wording is each workspace's product name and the welcome and email
 	// text its branding replaces. Nil is Humagen's own.
 	Wording func(tenant string) Wording
+	// EntryAgent names the workspace's entry agent, which owns each root
+	// session that names nobody (entry.go). Empty is BuiltinEntry.
+	EntryAgent string
 
 	// AssignmentSources overrides the native resident source cursor for an embedding boundary. Nil uses this platform.
 	AssignmentSources operations.SourceChanges
@@ -131,6 +147,12 @@ type Config struct {
 	// clients already in the store are started by New.
 	Clients clients.Store
 	Secrets clients.Secrets
+	// ConnectionAuth configures encrypted, person-scoped service authorizations.
+	ConnectionAuth *connectionauth.Config
+	GitHubInstall  *githubinstall.Config
+	// ConnectionCheckHTTP overrides native credential verification transport.
+	// Nil uses public HTTPS with redirects refused; supplied clients are trusted.
+	ConnectionCheckHTTP *http.Client
 	// Env reads the process's environment for an "env:NAME" secret reference.
 	// Nil resolves none.
 	Env func(name string) (string, bool)
@@ -176,6 +198,14 @@ type Config struct {
 	// ClientInterval coalesces a client's edits to its surface. Zero means
 	// the connector's default.
 	ClientInterval time.Duration
+	// ClientHTTP is the HTTP client a client's connector reaches Slack or
+	// GitHub through, under its credentials and its egress guard. Nil means
+	// the default client.
+	ClientHTTP *http.Client
+	// EgressPolicy bounds what a client does after its surface refuses a
+	// write: backoff, rate-limit pauses and the circuit breaker
+	// (pkg/egressguard). Zero fields take the package's defaults.
+	EgressPolicy egressguard.Policy
 	// Workspace is the directory agents write artifacts under. Empty takes a
 	// directory under the user's cache.
 	Workspace string
@@ -184,6 +214,11 @@ type Config struct {
 	// that run (RFC 0004). The zero value is unisolated: tools run on this
 	// host as they always did, the shell is refused, and New says so.
 	Sandbox isolation.Sandbox
+	// SandboxContained says a command in one of Sandbox's instances cannot
+	// reach this host, as with the docker sandbox. Only then may a person
+	// run a command of their own in a conversation's sandbox
+	// (person_command.go). The zero value refuses.
+	SandboxContained bool
 	// Blobs holds the bytes of published files. Nil means a disk store in
 	// the workspace directory.
 	Blobs blob.Store
@@ -193,6 +228,9 @@ type Config struct {
 	// Speech transcribes voice notes when a message arrives, before the run
 	// it starts (TranscribeVoiceNotes). Nil transcribes nothing.
 	Speech speech.Transcriber
+	// VoiceBuild builds a workspace's voice provider from its kind. Nil is
+	// speech.New: groq or openai.
+	VoiceBuild VoiceBuild
 	// Connectors are the catalog connectors the Platform documents declare.
 	// The store's connectors become exactly these at start.
 	Connectors []CatalogConnector
@@ -229,10 +267,26 @@ type Config struct {
 	// OfflineHooks lets housekeeping run on the offline provider. It exists
 	// for tests: an offline answer is a notice, not a title or a fact.
 	OfflineHooks bool
-	// BuiltinProvider and BuiltinModel are what the platform's own agents
-	// run on. With either empty there are no built-in agents.
-	BuiltinProvider string
-	BuiltinModel    string
+	// ConfiguredModelsOnly holds agents to the providers someone set up:
+	// those the deployment declares (Ext.Providers) and each workspace's
+	// own (ModelProviders). The runtime's own offline, anthropic and openai
+	// are refused, so nothing runs on a stand-in or on a key nobody chose
+	// for it. The server sets it; a test that scripts the offline provider
+	// leaves it off.
+	ConfiguredModelsOnly bool
+	// ModelKinds builds the providers workspaces set up. With Build nil no
+	// workspace provider can run.
+	ModelKinds ModelKinds
+	// ShipBuiltins gives every workspace the platform's agents, each on the
+	// model chain it ships with (BuiltinChain). The server sets it.
+	ShipBuiltins bool
+	// TestBuiltinProvider and TestBuiltinModel ship the platform's agents on
+	// one model instead, such as the offline one a test scripts. For tests
+	// only: nothing in the server sets them.
+	TestBuiltinProvider, TestBuiltinModel string
+	// DeclaredKinds is the kind of each provider the deployment declares,
+	// by name, so the console can show its logo. A name with none is plain.
+	DeclaredKinds map[string]string
 	// AgentOptions are passed to every agent the sandbox builds. A test
 	// uses them to script a model.
 	AgentOptions []native.Option
@@ -261,15 +315,51 @@ type Config struct {
 
 // Platform is the assembled system.
 type Platform struct {
+	// systemTools is the registry's own tools and how its API operations
+	// reach the routes (systemtools.go).
+	systemTools systemRegistry
+	// renamedProviders notes, once per workspace and name, a stored model
+	// provider name read as the name it was renamed to (readProvider).
+	renamedProviders sync.Map
+	surfaceRecords   *surfaceRecords
+	ConnectionAuth   *connectionauth.Manager
+	GitHubInstall    *githubinstall.Manager
+	connectionHealth *state.Table[connectionObservation]
+	// deliveryFailures keeps the run messages a surface refused for good
+	// (egress_guard.go).
+	deliveryFailures *state.Table[deliveryFailure]
+	memoryFailures   *egressguard.MemoryFailures
+	// pullReviews keeps automatic review's count and pause per pull request.
+	pullReviews *state.Table[PullReview]
+	Sessions    session.Store
 	// Rooms holds the conversations followed on this server (pkg/rooms).
 	Rooms    *rooms.Hub
 	roomGate *rooms.Gate
 	files    filesblob.Store
+	// GoodAsks are the asks each agent answered well, which routing
+	// searches beside its prompt (pkg/goodasks).
+	GoodAsks goodAsksStore
+	// entry is the entry agent's spawn list per workspace, and picks what
+	// each of its picks came to (entry.go).
+	entry entrySpawns
+	picks *state.Table[pickRecord]
+	// storeMu holds one store install or removal at a time, and storeNames
+	// is each store agent's package, worked out once (agent_store.go).
+	storeMu    sync.Mutex
+	storeOnce  sync.Once
+	storeNames map[string]storeListing
+	// audiences is the latest audience of each surface root (surface_sessions.go).
+	audiences *state.Table[SessionAudience]
+	// contexts are get_context's resolvers by place scheme (context.go).
+	contexts contextResolvers
+	// deliveries is where each surface root answers (messages.go).
+	deliveries *state.Table[rootDelivery]
 	// health is the last health report and each component's recent checks.
 	health healthBook
 
 	cfg                    Config
 	log                    *slog.Logger
+	unreadSkills           unreadSkills
 	role                   ProcessRole
 	lead                   leadership
 	now                    func() time.Time
@@ -287,23 +377,37 @@ type Platform struct {
 	// CatalogStore is the catalog: what exists in connected systems.
 	CatalogStore *catalog.Store
 	catalog      catalogState
-	SourceLinks  *sourcelinks.Store
-	Evals        *evals.Store
-	Feedback     *feedback.Store
-	Prefs        *prefs.Store
+	// Corpora are named bodies of knowledge, each holding sources and
+	// connectors (docs/architecture/sources.md#corpora).
+	Corpora *corpora.Store
+	// Graph is each workspace's knowledge graph, one slice per corpus.
+	Graph *GraphStore
+	// audienceSource is who a surfaced session reaches, as its surface
+	// last reported; the session API sets it. Nil reads as unknown.
+	audienceSource func(tenant, session string) (ReportedAudience, bool)
+	SourceLinks    *sourcelinks.Store
+	Evals          *evals.Store
+	Feedback       *feedback.Store
+	Prefs          *prefs.Store
 	// Marks is what each person marked on the conversations they read:
 	// archived for them, when last read, and the tips they dismissed.
 	Marks *marks.Store
 	// PersonContexts is what each person brings to the runs that act for
 	// them: their run settings, tool servers and memory volume.
-	PersonContexts       *personctx.Store
-	runSettings          runSettings
-	Memory               *memory.Store
-	Drive                *drive.Store // the versioned file trees memory is kept in
-	SkillLibrary         *library.Store
-	AgentSkillDefaults   *library.DefaultsStore
-	skillDefaultsMu      sync.Mutex
-	Notifications        *notifications.Store
+	PersonContexts *personctx.Store
+	runSettings    runSettings
+	Memory         *memory.Store
+	Drive          *drive.Store // the versioned file trees memory is kept in
+	// Web reads the public web for the web_search and web_fetch tools. Nil
+	// uses the default client (pkg/webtools).
+	Web                *webtools.Client
+	SkillLibrary       *library.Store
+	AgentSkillDefaults *library.DefaultsStore
+	skillDefaultsMu    sync.Mutex
+	Notifications      *notifications.Store
+	// Background keeps the work agents do for people while nobody watches
+	// (background.go).
+	Background           *background.Store
 	ContextFlags         *contextflags.Store
 	SourceSuggestions    *sourcelinks.Suggestions
 	SourceEvidence       *knowledge.EvidenceStore
@@ -352,6 +456,9 @@ type Platform struct {
 	// ToolProviders is the MCP servers agents reach through "mcp:<name>"
 	// grants, and the tools accepted from each.
 	ToolProviders toolprovider.Store
+	// toolGrants expands a provider grant into its accepted tools, for a
+	// run and for a person acting on a session's browser (browser_view.go).
+	toolGrants browserGrants
 	// closers release what New opened, in reverse, on Close.
 	closers []func() error
 
@@ -363,6 +470,8 @@ type Platform struct {
 	publishing sync.Mutex
 	// workspaceMu serializes host scratch writes with isolated-run copyback.
 	workspaceMu sync.Mutex
+	// personCommands counts the commands people are running by hand.
+	personCommands personCommands
 
 	broker  bus.Bus
 	sinks   *connector.Registry
@@ -402,6 +511,10 @@ type Platform struct {
 	// afterAccept, when set, runs between a run's acceptance and its record.
 	// Only tests set it, to stand for a loaded machine.
 	afterAccept func(event.Envelope)
+	// beforeMentionCalls, when set, runs before the platform decides which
+	// of a message's mentioned agents it may call. Only tests set it, to
+	// change where an agent lives in that moment.
+	beforeMentionCalls func()
 	// beforeCarryOut, when set, runs after a message is posted and before
 	// what it starts is decided. Only tests set it, to move a thread then.
 	beforeCarryOut func()
@@ -448,6 +561,12 @@ type Platform struct {
 
 // New assembles a platform. Nothing runs until Run is called.
 func New(cfg Config) (*Platform, error) {
+	if cfg.EntryAgent == "" {
+		cfg.EntryAgent = BuiltinEntry
+	}
+	if !projects.ValidAgent(cfg.EntryAgent) {
+		return nil, fmt.Errorf("platform: the entry agent's name %q is not an agent name", cfg.EntryAgent)
+	}
 	if cfg.ProjectTemplates == nil {
 		cfg.ProjectTemplates = projects.DefaultTemplates()
 	}
@@ -496,7 +615,7 @@ func New(cfg Config) (*Platform, error) {
 		queue:  cfg.Backends.Queue,
 	}
 	if p.Agents == nil {
-		p.Agents = wire.NewMemoryAgents(append(providers(), cfg.Ext.ProviderNames()...)...)
+		p.Agents = wire.NewMemoryAgentsAccepting(acceptProviderName, append(providers(), cfg.Ext.ProviderNames()...)...)
 	}
 	if p.ledger == nil {
 		p.ledger, p.queue = ledger.NewMemory(), dqueue.NewMemory()
@@ -611,33 +730,39 @@ func New(cfg Config) (*Platform, error) {
 	if o := cfg.Backends.Outbox; o != nil && p.broker == cfg.Backends.Bus && p.ledger == cfg.Backends.Ledger {
 		opts = append(opts, runtime.WithOutbox(o))
 	}
-	rt, err := runtime.New(
-		durable.New(p.ledger, p.queue),
-		p.Agents.Resolver(),
-		p.broker,
-		append(opts,
-			runtime.WithRuntime(exec),
-			runtime.WithLogger(log),
-			runtime.WithStopGrace(cfg.StopGrace),
-			// The ledger is where a stop is recorded, so a request made while a
-			// run waits in the queue or between attempts is honoured however long
-			// it waits. It is the same ledger the runs execute from.
-			runtime.WithStopLedger(p.ledger),
-			// A run parked on a person is woken through the queue as soon as
-			// it is answered or stopped, not at the worker's next poll.
-			runtime.WithWaker(p.queue),
-			// A spec's approvers and answerers may name this workspace's roles.
-			runtime.WithRoles(p.rolesOf),
-			runtime.WithQuestionTTL(cfg.QuestionTTL),
-		)...,
+	// The durable turn, composed on the flow runtime: the turn runtime, the
+	// thread journal, child runs, and the surface message id that is kept on
+	// the journal entry for a run's request.
+	opts = append([]runtime.Option{
+		runtime.WithRuntime(exec),
+		runtime.WithThreads(sessionstate.NewJournal(p.sharedState())),
+		runtime.WithChildRuns(),
+		runtime.WithMessageID(surfaceMessageID),
+	}, opts...)
+	// Model providers are not named here: the executor above was built with
+	// the extension's providers and with resolveProvider, which finds a
+	// workspace's own providers when a turn runs.
+	opts = append(opts,
+		runtime.WithSessions(p.Sessions), runtime.WithChildStarter(p.startSessionChild),
+		runtime.WithChildRunID(func(parent runtime.Input, c runtime.SessionCall) string {
+			return runtime.RunID(parent.Trigger.Tenant, call.TagID(parent.Trigger.ID, c.ID))
+		}), runtime.WithLogger(log),
+		runtime.WithStopGrace(cfg.StopGrace), runtime.WithStopLedger(p.ledger),
+		runtime.WithWaker(p.queue), runtime.WithRoles(p.rolesOf),
+		runtime.WithQuestionTTL(cfg.QuestionTTL),
 	)
+	rt, err := runtime.New(durable.New(p.ledger, p.queue), p.Agents.Resolver(), p.broker, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("platform: runtime: %w", err)
 	}
 	p.rt, p.stops = rt, rt
-	p.asked = rt.StopRequested
+	p.asked = p.rt.StopRequested
 	if cfg.Stops != nil {
 		p.stops = stopFunc(cfg.Stops)
+	}
+	p.SetAgentCaller(p.runAgentCall)
+	if err := p.registerOwnSystemTools(); err != nil {
+		return nil, err
 	}
 	return p, nil
 }
@@ -666,28 +791,33 @@ func (p *Platform) executor(groups runtime.ToolGroupSource) (turn.Runtime, error
 	if p.cfg.Runtime != nil {
 		inner := sandbox.Sandboxed(p.cfg.Runtime, sandbox.Plane{Control: plane, Tools: tools},
 			sandbox.WithReplicas(p.slots()), sandbox.WithLogger(p.log))
-		return callExecutor{inner: inner, resolve: p.resolveRevision, bind: p.bindOperationContext, release: p.releaseSourceGrounding}, nil
+		return callExecutor{inner: inner, resolve: p.resolveRevision, bind: p.bindOperationContext, release: p.releaseTurn, mentioned: p.callMentioned, entry: p.entryTurn, hear: p.hearTurn}, nil
 	}
 	exec, err := runtime.NewSandbox(plane, tools, p.Agents.Resolver(),
-		runtime.WithCatalog(p.operationsCatalog(p.cfg.Ext.catalog(p.fileTools(p.connectorTools)), groups)),
+		runtime.WithCatalog(p.operationsCatalog(p.cfg.Ext.catalog(p.registryTools()), groups)),
 
 		runtime.WithDelegator(p.attach),
+		runtime.WithSessionRuntime(func() *runtime.Runtime { return p.rt }),
+		// The agent tool is the one way a run calls an agent, so the
+		// runtime's own calling verbs are not offered. Reading and citing
+		// another session stays the runtime's.
+		runtime.WithSessionTools(sessionReadTools...),
 		// An agent's declared sources ground its turns, searched in the
 		// run's tenant.
 		runtime.WithKnowledge(p.knowledgeFor),
-		runtime.WithCallTool(ToolCallAgent),
+		runtime.WithCallTool(ToolAgent),
 		// Each turn claims the instance its tools execute in.
 		runtime.WithRunInstances(p.runInstances),
 		// A run waiting on an attached run of the same agent holds one of
 		// that agent's nodes, so there are as many as there are places.
 		runtime.WithReplicas(p.slots()),
-		runtime.WithAgentOptions(slices.Concat(p.cfg.Ext.agentOptions(), p.cfg.AgentOptions, []native.Option{native.WithAttachments(resolve.New(p.files))})...),
+		runtime.WithAgentOptions(slices.Concat(p.nativeOptions(), p.cfg.AgentOptions, []native.Option{native.WithAttachments(resolve.New(p.files))})...),
 		runtime.WithSandboxLogger(p.log),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("platform: sandbox: %w", err)
 	}
-	return callExecutor{inner: exec, resolve: p.resolveRevision, bind: p.bindOperationContext, release: p.releaseSourceGrounding}, nil
+	return callExecutor{inner: exec, resolve: p.resolveRevision, bind: p.bindOperationContext, release: p.releaseTurn, mentioned: p.callMentioned, entry: p.entryTurn, hear: p.hearTurn}, nil
 }
 
 // Invoke accepts an event for the one agent it names and starts its run. The
@@ -696,6 +826,11 @@ func (p *Platform) executor(groups runtime.ToolGroupSource) (turn.Runtime, error
 func (p *Platform) Invoke(ctx context.Context, tag event.Envelope) (runs.Run, error) {
 	if tag.Time.IsZero() {
 		tag.Time = p.now()
+	}
+	wire.DeleteMeta(&tag, wire.MetaSession)
+	wire.DeleteMeta(&tag, wire.MetaSourceAlert)
+	if err := p.pinSessionSourceAlert(ctx, &tag); err != nil {
+		return runs.Run{}, err
 	}
 	agent := wire.AgentOf(tag)
 	if agent == "" {
@@ -743,6 +878,11 @@ func (p *Platform) Invoke(ctx context.Context, tag event.Envelope) (runs.Run, er
 	if err := p.admit(tag, edge, project, within, client); err != nil {
 		return runs.Run{}, err
 	}
+	// A schedule's run is a session in the schedule's project, made once
+	// the run is admitted.
+	if edge.Parent == "" && scheduledOrigin(tag) {
+		tag = p.fileInScheduleSession(ctx, tag, project)
+	}
 	if wire.Meta(tag)[MetaPersonalMemoryContext] == "true" || wire.Meta(tag)[MetaPrivateLibraryContext] == "true" {
 		if err := p.ContextFlags.Mark(tag.Tenant, runID); err != nil {
 			p.appendUsage(usage.Entry{Kind: usage.Ended, Tenant: tag.Tenant, RunID: runID, At: p.now()})
@@ -759,7 +899,35 @@ func (p *Platform) Invoke(ctx context.Context, tag event.Envelope) (runs.Run, er
 	// A run a held run calls may still be claimed while this process
 	// drains, so the caller can finish.
 	p.drain.called(edge.Parent, runID)
-	acc, err := p.rt.AcceptOwn(ctx, tag, agent)
+	var acc runtime.Acceptance
+	if child, ok := ctx.Value(sessionCallKey{}).(admittedSessionCall); ok {
+		meta := wire.Meta(tag)
+		meta[wire.MetaSession] = child.call.Session.ID
+		wire.SetContext(&tag, meta)
+		acc, err = p.rt.AcceptOwnSessionChild(ctx, tag, agent, child.call.Session, child.parent, child.call.QuestionID)
+	} else if edge.Parent != "" {
+		// Legacy edges name trigger tags; the durable parent is tenant-bound.
+		acc, err = p.rt.AcceptOwnChild(ctx, tag, agent, runtime.RunID(tag.Tenant, edge.Parent))
+	} else if wire.Origin(tag) == OriginEval && wire.Meta(tag)[metaEvalRevision] != "" {
+		acc, err = p.rt.AcceptOwnVersion(ctx, tag, agent, wire.Meta(tag)[metaEvalRevision])
+	} else if th, thErr := p.Threads.Get(tag.Tenant, wire.Meta(tag)[runs.MetaThread]); thErr == nil && th.Session != nil {
+		rec, lookupErr := p.Sessions.Get(ctx, tag.Tenant, th.ID)
+		if lookupErr != nil {
+			err = lookupErr
+		} else if rec.Key.Agent != strings.ToLower(strings.TrimSpace(agent)) {
+			// Another agent answering in the session's conversation (the one a
+			// message mentions, or the entry agent for several): the session's
+			// transcript stays its owner's, and this run keeps one of its own.
+			acc, err = p.rt.AcceptOwn(ctx, tag, agent)
+		} else {
+			meta := wire.Meta(tag)
+			meta[wire.MetaSession] = rec.ID
+			wire.SetContext(&tag, meta)
+			acc, err = p.rt.AcceptOwnSession(ctx, tag, agent, rec)
+		}
+	} else {
+		acc, err = p.rt.AcceptOwn(ctx, tag, agent)
+	}
 	if err != nil {
 		// It never started, so it holds no place.
 		p.appendUsage(usage.Entry{Kind: usage.Ended, Tenant: tag.Tenant, RunID: runID, At: p.now()})
@@ -827,6 +995,7 @@ func (p *Platform) pin(tag event.Envelope, edge call.Edge, project string, withi
 	// any other tag that carries the key is not believed.
 	if wire.Origin(tag) != runs.OriginAPI || edge.Parent != "" {
 		delete(meta, runs.MetaSkills)
+		delete(meta, metaSkillTest)
 	}
 	scheduled := (wire.Origin(tag) == cron.Name || wire.Origin(tag) == runs.OriginManual || wire.Origin(tag) == runs.OriginAssignment) && edge.Parent == ""
 	if scheduled {
@@ -863,7 +1032,7 @@ func (p *Platform) CallAs(ctx context.Context, who auth.Principal, runID string,
 // has left is read from the calls already counted, and the model call that
 // asked for this one may not be counted yet: the other half holds room for
 // it, and for anything else still in flight. Everything is trued up when the
-// call settles. That is how an agent's own calls (tagging, delegate_task)
+// call settles. That is how an agent's own calls, waited on or in the background,
 // lease budget, since a model never names an amount. A caller with nothing
 // left is refused. sees, when set, is the agents whoever asks may read (see
 // CallAs).
@@ -879,8 +1048,16 @@ func (p *Platform) call(ctx context.Context, tenant, runID string, req call.Requ
 	if err != nil {
 		return runs.Run{}, fmt.Errorf("platform: caller's spec: %w", err)
 	}
+	// One of the store's agents the workspace has not installed is refused
+	// saying which package to install.
+	if why := p.NotInstalled(ctx, tenant, req.Agent); why != "" {
+		return runs.Run{}, fmt.Errorf("%w: %s", ErrNotAvailable, why)
+	}
 	if !slices.Contains(rev.Spec.Access.Spawn, req.Agent) || sees != nil && !sees(req.Agent) {
 		return runs.Run{}, fmt.Errorf("%w: refused by the caller: %q may not call %q, which its spec's spawn allowlist does not name", ErrForbidden, parent.Agent, req.Agent)
+	}
+	if err := p.entryMayCall(tenant, rev, parent, req.Agent); err != nil {
+		return runs.Run{}, err
 	}
 	if err := p.checkOperationCall(ctx, parent, req); err != nil {
 		return runs.Run{}, err
@@ -1037,6 +1214,27 @@ func (p *Platform) settleFromLedger(ctx context.Context, tenant, id string) bool
 	if !rec.CompletedAt.IsZero() {
 		at = rec.CompletedAt
 	}
+	// What the runtime recorded the run used goes on the run in the write
+	// that ends it, as its final event's would: whoever sees the run ended,
+	// a caller rolling it up into its own usage among them, reads the whole
+	// of it and never the part tallied from the events observed so far.
+	//
+	// A record that cannot be read is not the same as a run that has none
+	// (one that made no model call): ending the run now would show it ended
+	// with that partial tally, which a caller rolls up once and never again.
+	// So the run is left as it is, nothing is acted on, and the next pass
+	// reads again. Its own final event, if it arrives first, ends it with
+	// the same record. While the ledger cannot be read the run stays open in
+	// the index and each pass says so.
+	var used *event.RunUsage
+	u, ok, err := p.recordedUsage(ctx, runs.Run{ID: id})
+	if err != nil {
+		p.log.Warn("platform: a run the ledger says is over is not ended yet: what it used could not be read; the next pass reads again", "tenant", tenant, "run", id, "error", err)
+		return true
+	}
+	if ok {
+		used = &u
+	}
 	answer := ""
 	if status == runs.Completed {
 		if out, err := p.rt.Result(ctx, id); err == nil {
@@ -1044,7 +1242,9 @@ func (p *Platform) settleFromLedger(ctx context.Context, tenant, id string) bool
 			// A stopped run succeeds in the ledger: it ended and did not
 			// fail. Its output says it was stopped, and what it had said.
 			if out.Stopped != nil {
-				if run, ended := p.over(func() (runs.Run, bool) { return p.Runs.Stop(tenant, id, out.Text, out.Stopped.Reason, at) }); ended {
+				if run, ended := p.over(func() (runs.Run, bool) {
+					return p.Runs.StopRecorded(tenant, id, out.Text, out.Stopped.Reason, used, at)
+				}); ended {
 					p.log.Info("platform: run ended stopped in the ledger before its final event was seen", "run", id)
 					p.ended(ctx, run)
 				}
@@ -1052,7 +1252,7 @@ func (p *Platform) settleFromLedger(ctx context.Context, tenant, id string) bool
 			}
 		}
 	}
-	if run, ended := p.over(func() (runs.Run, bool) { return p.Runs.End(tenant, id, status, answer, rec.Error, at) }); ended {
+	if run, ended := p.over(func() (runs.Run, bool) { return p.Runs.EndRecorded(tenant, id, status, answer, rec.Error, used, at) }); ended {
 		p.log.Info("platform: run ended in the ledger before its final event was seen", "run", id, "status", status)
 		p.ended(ctx, run)
 	}
@@ -1096,6 +1296,9 @@ func (p *Platform) observe(ctx context.Context, e event.Envelope) {
 
 // raise checks a run that has just ended against its tenant's alert rules.
 func (p *Platform) raise(run runs.Run) error {
+	if IsEvaluation(run) {
+		return nil
+	}
 	spoken := false
 	raised, err := p.Alerts.EvaluateOnce(run, p.Runs.Recent)
 	if err != nil {
@@ -1117,7 +1320,7 @@ func (p *Platform) raise(run runs.Run) error {
 
 // RunTypes are the type prefixes the platform observes: every run event,
 // the opt-in usage and compaction families among them.
-var RunTypes = []string{"run", "run.usage", "run.context"}
+var RunTypes = []string{"run", "run.usage", "run.context", "run.feedback"}
 
 // channels are the channel roots every run publishes under: one per
 // registered connector's scheme, and the channel of a run Humagen raises
@@ -1339,9 +1542,12 @@ func (p *Platform) Run(ctx context.Context) error {
 	// The work done once per deployment runs on the elected leader only,
 	// and moves to another process when this one stops leading.
 	singletons := map[string]func(context.Context) error{
+		"scheduled evals":     p.runEvalSchedule,
 		"email notifications": p.runEmailNotifications,
+		"background work":     p.runBackground,
 		"source refresh":      p.refreshSources,
 		"catalog crawl":       p.crawlCatalog,
+		"knowledge graph":     p.refreshGraphs,
 		"inbox retention": func(ctx context.Context) error {
 			tick := time.NewTicker(retainEvery)
 			defer tick.Stop()
@@ -1424,9 +1630,22 @@ func (p *Platform) ingest(ctx context.Context, tag event.Envelope) {
 	}
 	// A tick names no agent: the schedule it fires does.
 	if tick, ok := tag.Data.(event.CronTick); ok && wire.AgentOf(tag) == "" {
-		if sc, found, err := p.Schedules.Get(tag.Tenant, tick.Schedule); err == nil && found {
-			wire.SetAgent(&tag, sc.Agent)
+		// Get's second result is whether the schedule is paused, not whether
+		// it exists: a schedule that is gone is an error.
+		sc, paused, err := p.Schedules.Get(tag.Tenant, tick.Schedule)
+		if err != nil {
+			p.log.Error("platform: accept event", "event", tag.ID, "type", tag.Type, "schedule", tick.Schedule, "error", err)
+			return
 		}
+		// A paused schedule runs nothing on the clock. The connector is not
+		// shown one (Schedules.Schedules), so its ticks normally stop at the
+		// source: this catches the tick published just before the pause.
+		// Run now does not come through here, and works while paused.
+		if paused {
+			p.log.Info("platform: a paused schedule's tick was not run", "event", tag.ID, "schedule", tick.Schedule)
+			return
+		}
+		wire.SetAgent(&tag, sc.Agent)
 	}
 	if r, err := p.Invoke(ctx, tag); err != nil {
 		p.log.Error("platform: accept event", "event", tag.ID, "type", tag.Type, "agent", wire.AgentOf(tag), "error", err)
@@ -1568,4 +1787,31 @@ func defaultWorkspace() string {
 		base = os.TempDir()
 	}
 	return legacy.WorkspaceDir(base)
+}
+
+// surfaceMessageID names the surface message that raised a run, from the
+// fields the triggers set. It is kept on the journal entry for the run's
+// request, so a thread that is later reconciled with its surface recognises
+// the message instead of journaling it a second time.
+func surfaceMessageID(e event.Envelope) string {
+	switch b := e.Data.(type) {
+	case event.MessagePosted:
+		if b.Slack != nil {
+			return b.Slack.TS
+		}
+	case event.GitHubIssueCommentCreated:
+		return commentID(b.CommentID)
+	case event.GitHubReviewCommentCreated:
+		return commentID(b.CommentID)
+	case event.GitHubReviewSubmitted:
+		return commentID(b.CommentID)
+	}
+	return ""
+}
+
+func commentID(id int64) string {
+	if id == 0 {
+		return ""
+	}
+	return strconv.FormatInt(id, 10)
 }

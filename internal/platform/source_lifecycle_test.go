@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/urmzd/humagen/internal/mcptools"
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/audit"
 	"github.com/urmzd/humagen/pkg/auth"
@@ -16,7 +17,6 @@ import (
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/humagen/pkg/state/statetest"
-	"github.com/urmzd/orchagent/flow/mcptools"
 )
 
 type sourceBoundary struct {

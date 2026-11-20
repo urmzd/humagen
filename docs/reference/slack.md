@@ -6,26 +6,37 @@
 |---|---|---|
 | Where | Go, in `humagen serve` (`pkg/integrations/slack`) | TypeScript, `apps/slack`, a separate process |
 | How Slack reaches it | Signed webhooks to a public URL | Socket Mode, no public URL |
-| How it reaches Humagen | In process | The HTTP API, as a machine |
-| A run looks like | One plain message per run, edited with `chat.update` | Humagen components: native streaming, plans, tool steps, failures with Retry, files |
+| How it reaches Humagen | In process | The HTTP API, as a machine. Under `tailscale` sign-in the server that starts it makes its credential ([security](../architecture/security.md#the-slack-app-under-tailscale)) |
+| A run looks like | One plain message per run, edited with `chat.update` | Humagen components: native streaming, plans, tool steps, failures with Retry, files. See [steps, command output and run details](#steps-command-output-and-run-details) |
 | Agent session status and the stop button | Yes | Yes |
-| Code channel slash commands | Yes | No |
+| Code channel slash commands | Yes | Yes: each command in the client's `slack.commands`, registered with `agents.conversations.setCommands` when a message is accepted in the channel. Ordinary channels use `/skill` |
 | `/agent`, shortcuts, Home tab | No | Yes, from Humagen's sandbox manifest |
 | Inbox items about a run | No | In the run's thread, and on Home |
 | Several apps per workspace, as [clients](clients.md) | Yes: tenant, limits and allow-list come from the client | Reads one client's default agent and allow-list, in full as the client's `slack.machine`, though they name an agent that lives in a project the machine may not read. A mapped person's messages are the client's (threads with a surface, below); anyone else's runs are not yet recorded as the client's |
 | Channels bound to projects | Yes: a run in a bound Slack channel is filed in the channel it is bound to, and an untagged one answered by that channel's chain, else in the client's home | Yes: a mapped person's Slack thread is a Humagen thread filed by the binding, someone the client maps to nobody is refused in a bound channel, and announcements reach a bound general channel, caught up on after a restart or a reconnect, where a reply that mentions the app starts a thread seeded with the announcement |
 | Mentions of a person | No | In their direct messages with the app, with Open Thread and Reply, unless they are in the Slack thread already (they wrote there or were mentioned there with `<@U…>`). Experts named by a role are each told |
+| Background work and `notify` | No | A reply in the app's Slack thread the work was asked from, naming the person, with its one line and Open Session; else in their direct messages. See [background results](#background-results) |
 | Who asked | Recorded on the run, and the run acts for the person the team's clients map the Slack user to | Recorded as the person, and acts for them, when the app's client maps them (`act_as`): their message is theirs in the Humagen thread, and so are the runs it starts. Else as the app, acting for nobody. Tools that act as a person use the person's own credential |
 | Questions a run waits on | No | In the run's thread, answered for the person the client maps. See below |
-| Tokens and cost | No | No. See [usage on a turn](clients.md#usage-on-a-turn) |
+| Tokens and cost | No | Never on a turn. A finished turn offers **Run Details** to a person the client maps, answered to them alone. See [steps, command output and run details](#steps-command-output-and-run-details) |
 
-Use the connector for code channels, for several apps per workspace, and where
-a public URL is fine. Use the Slack app for the console's experience in Slack,
+Use the connector for several apps per workspace, and where a public URL is
+fine. Use the Slack app for the console's experience in Slack,
 or where nothing may listen on a public address. Do not point both at the same
 Slack app: both would answer.
 
+The app acts for a person only as a client whose `slack.machine` is its
+credential and whose `slack.people` maps them. An app the server starts
+(`surfaces.slack`) gets that client from the Platform document: `people`, and
+under a sign-in other than `tailscale` also `machine`, make the server keep
+the record `slack-app-<team>` and start the app with `HUMAGEN_CLIENT` naming
+it. With no `people` there is no record and no `HUMAGEN_CLIENT`, and the app
+acts for nobody. That record has no bot token, so files attached in Slack are
+not read through it. See
+[the spec](spec.md#whom-the-slack-app-acts-for).
+
 The rest of this page describes the connector. The app is described in its
-[README](../../apps/slack/README.md).
+[README](https://github.com/urmzd/humagen/blob/main/apps/slack/README.md).
 
 ## What the API lacks for the Slack app
 
@@ -39,7 +50,67 @@ The app works around each of these and says where in its README.
 | A router preview that knows a client's allow-list | A client with a list and no default answers nothing, and a default of `*` is not sent for a client with a list: the platform would ask agents past it | `GET /api/join?client=` and the same rule in `POST /api/runs` |
 | The run a retry started, in the resolve response | Retry from Slack starts its own run and acknowledges the inbox part | Return `{message, run}` from `POST /api/inbox/{id}/parts/{part}/resolve` |
 | Feedback with comments | Built: like and dislike open a comment modal and save the rating even when skipped | `PUT /api/runs/{id}/feedback` stores a run reference, rating, reason and comment; the run provides context; `GET` collects paginated records |
-| A modal to type a reply to a question | Built for a question in the inbox and a mention in a person's direct messages. Something Else on a run's own card still points to the console | Open the reply modal from the run's card too |
+| A modal to type a reply to a question | Built for a question in the inbox, a mention in a person's direct messages, and Something Else on a run's own card in its thread | None |
+| A consequence and a recommended mark on a question's options | Not shown: `Question.options` is a list of labels | Options as objects with a label, an optional one-line consequence and an optional recommended flag |
+| The approval agent's fields and references on the run's question | The card in the run's thread says what the agent decided and why: an allow or deny from the run's answer, and any judgement from the inbox while the app follows the run. A card the app no longer follows (after a restart, or a run that went quiet) shows only the reason from the answer | Carry `judgement` on the run's question as the inbox part does |
+
+### Steps, command output and run details
+
+What a turn's work looks like in Slack depends on how the turn was written.
+
+| | While the turn is going | Once it has ended |
+|---|---|---|
+| Streamed natively | Slack's own task cards, one per tool call, from `chat.appendStream` | The same cards stay. The final blocks add what is below |
+| Posted and edited (streaming refused, a bridged outcome, a run that ended while the app was away) | One line per run of tool calls, in order. The last says what is running now | One line that counts the work by kind: `Ran 3 commands (1 failed), read 2 files, updated 4 files (+120 -18), ran 2 searches` |
+
+The count uses the kinds every tool line uses (`lineKind` in
+`packages/components/src/timeline.ts`, and `fileEdits` for files written), in
+the order each kind first came. A turn that made one call still says what it
+was pointed at (`Read docker.go`). A call to another agent keeps its own row
+either way, and a turn with a plan keeps its plan.
+
+**Command output.** The platform's `shell` tool answers with `exit <code>` and
+then the end of the command's output, for a command that failed as for one that
+passed, so a non-zero exit arrives as a completed call
+(`run.delta.tool.done.v1`). The app reads the command from the call's arguments
+and the exit code from that first line (`commandResult` in
+`packages/core/src/command.ts`):
+
+- A command that passed stays a count. Its output is not shown.
+- A command that failed, and that no later call ran again with success, is
+  shown under the answer with its command, `exit <code>`, how long it took and
+  the last 40 lines of its output. This holds for a streamed turn too.
+- The newest three are shown. Earlier ones are counted in a line above them.
+- The exit code is shown only for a failure. A command tool that reports no
+  exit line is shown as failed only when the call itself failed, with no code.
+- The working directory is not shown: the stream does not carry it.
+
+A bridged outcome carries no steps, so it shows none of this.
+
+**Run details.** A turn never shows tokens or cost, since a whole channel reads
+it. A finished, failed or stopped turn offers **Run Details** instead, when the
+app's client names the app as its `slack.machine` and maps at least one person.
+A click answers the person who clicked, alone, in an ephemeral message in the
+thread:
+
+| Shown | From `GET /api/runs/{id}` |
+|-------|---------------------------|
+| Agent | `agent` |
+| Model | `usage.context.model`, the model of the run's latest call |
+| Input tokens, and how many came from cache | `usage.total.prompt_tokens`, `usage.total.cached_prompt_tokens` |
+| Output tokens | `usage.total.completion_tokens` |
+| Cost | `usage.total.cost`, in its own currency. "At least" when `unpriced_calls` is not zero or some calls were priced in another currency. "Not priced" when there are tokens and no cost, never zero |
+| Elapsed | `updated_at` less `created_at`, for a run that has ended. It includes time the run waited on a person |
+
+`total` counts the run's own model calls and the attached runs it waited on. A
+figure the run did not record has no row.
+
+The run is read as the person who clicked (`act_as_client` and `act_as_user`),
+never as the app's machine, so Humagen decides: a person sees a run's usage in
+Slack only where they may read the run. A person who may not is told they have
+no access, with no figures. A Slack user the client maps to nobody is told to
+ask an admin to connect their account, and Humagen is not asked. A bridged
+outcome does not offer the button.
 
 ### Questions a run waits on
 
@@ -57,6 +128,39 @@ credential and the people it answers for:
 ```json
 "slack": {"machine": "<subject of the app's machine credential>", "people": {"U01ANA": "ana@example.com"}}
 ```
+
+Under `tailscale` sign-in the app's subject is `slack-app:<team id>`, such as
+`slack-app:T0123ABCD`, and a mapped person is `tailscale:<login>`.
+
+**Ask a Question** on an approval opens a form for one question. Sent, the
+question is said in the thread (who asked, about which action, and what)
+and asked of the agent that made the call, as a message typed in the
+console while a run waits is: by a mapped person as their own message in the
+conversation (`POST /api/threads` with `act_as`), by anyone else through the
+app, as a mention there would be. It is answered beside the call, not behind
+it: the call's card keeps waiting with its buttons, and the answer streams
+below it. Deciding stays with Approve and Decline. In a bound channel only a
+mapped person may ask.
+
+**The approval agent.** A conversation set to Run in the console has the
+approval agent decide its gated actions. In Slack, an approval waiting in a
+run's thread has a menu after its buttons with one row, **Let the approval
+agent decide in this thread**, where the app's client maps people. It sets
+the conversation the thread is (`PUT /api/threads/{id}/approval` with
+`act_as`), with the same checks as the console's toggle, made as the person
+who pressed: Humagen decides whether they may, and its refusal is said to
+them alone. A Slack user the client maps to nobody is told they cannot, and
+Humagen is not asked. The change is said in the thread, naming who made it:
+the agent decides from the next action on, as that person could, and an
+action already waiting still waits for a person. Under it, **Ask Me Again**
+sets the conversation back, and that change is said the same way, with
+**Let the Approval Agent Decide** under it.
+
+A call the approval agent decided settles its card with what it decided and
+why, as the inbox shows it (`Approval agent: Allowed: "<reason>"` beside who
+set the conversation to Run). What it said about a call it handed to a
+person is put on the card while it waits, from the inbox, when the app is
+following the run.
 
 The webhook connector shows a parked run as a suspended session and does not
 take answers.
@@ -210,6 +314,26 @@ modal; sending it posts in the thread as the person (`act_as` on
 `POST /api/threads/{id}/messages`), which settles their mention, or answers
 the question.
 
+### Background results
+
+A result that [background work](../guides/background.md) sent when it ended
+on its own (a watch that fired or ran out, a goal or a task), or that `notify`
+sent, reaches the event stream of a client's machine with `for {client,
+user}` when the client maps the person it is for. No other result does. When
+the work was asked in a Slack thread of a Slack client, only that client hears
+of it, and the notice also carries `reply_in {channel, ts, session}`: the app
+reads the message for the person, as above, and replies once in that thread
+with `<@user>`, the message's subject made unable to ping or link, and Open
+Session, which opens `session` (the watch's checks or the task's run) or else
+the conversation. The details are never posted there, and the reply is never
+edited. The server leaves `reply_in` out, and the app sends the whole message
+to the person's direct messages instead, when the work was asked anywhere
+else, when the person may no longer read that conversation, or when a run
+behind it (the one that asked, or the last check or turn) read private
+context, as [a schedule's answer is kept for its creator](spec.md). A
+background result is sent to their direct messages even about a Slack thread
+they are in: nothing there pinged them. Work a person stopped tells nobody.
+
 The Home tab of a mapped person is the shared Home, everything on it read for
 them the same way: their open inbox and announcements (`GET /api/inbox`) and
 their projects (`GET /api/projects`, both with `act_as_client` and
@@ -229,7 +353,9 @@ above it. A project they see only through `*`, or only through
 recently first and then in the tree's order, archived ones left out, and the
 rest counted in "N more in Projects", which links the console's Projects. Each
 opens its page in the console when the app has the console's address
-(`HUMAGEN_PUBLIC_URL`). Without one, what needs them has Review, which sends the
+(`HUMAGEN_PUBLIC_URL`). An address on the app's own machine, such as
+`localhost` or `127.0.0.1`, counts as none: nobody else in Slack can open it,
+so the app says so at start and posts no console links. Without one, what needs them has Review, which sends the
 message to their direct messages with the app, where it can be answered, and
 What's new and Your projects are shown to read. A press on what Review sent is
 the person's own, done for them through the client even where the app may read
@@ -237,7 +363,7 @@ the message too, and Retry asks the run again in its own thread. Neither it
 nor a mention's message offers Snooze or Dismiss: Humagen does those only as the
 caller, so in Slack they would be the app's. Ask a Question and Build an Agent
 open a form, and the words are posted as the person in their direct messages
-with the app, as the shortcut's are; Build an Agent tags `@humagen-builder`, and
+with the app, as the shortcut's are; Build an Agent tags `@humagen`, and
 is offered only where the client may reach it. Search Context opens the
 console. The tab shows no access or connections, which the app cannot know for
 the person. Their projects are left out when they cannot be read: the app's
@@ -257,7 +383,7 @@ slash commands. Responses use one message per run, edited as events arrive.
 
 ## App definition
 
-[`examples/slack/manifest.json`](../../examples/slack/manifest.json) declares
+[`examples/slack/manifest.json`](https://github.com/urmzd/humagen/blob/main/examples/slack/manifest.json) declares
 the app: an agent view, a bot user, code channels, and the scopes and events the
 connector uses. Replace `YOUR_HOST` with the public address of `humagen serve`,
 then create the app from the manifest at <https://api.slack.com/apps>.
@@ -333,6 +459,32 @@ remains usable. The connector never reports `closed`.
 A session is a thread in an ordinary channel and the whole channel in a code
 channel. The trigger cannot tell the two apart, so the sink sends the thread
 first and repeats without it when Slack answers `thread_ts_not_allowed`.
+
+### The Slack app's status line
+
+The [Slack app](https://github.com/urmzd/humagen/blob/main/apps/slack/README.md)
+also shows one line above the reply box while a run works, as other Slack
+agents do: "Checking recent deploys", "Testing Plaud alerts". It is the title
+of the step running now, else the plan's title, else "Thinking"
+(`lifecycle` in `packages/render-slack/src/lifecycle.ts`), on one line of at
+most 50 characters, cut with an ellipsis. Slack documents no length of its
+own for it.
+
+`agents.sessions.setStatus` takes only the session state, so the line is set
+with `assistant.threads.setStatus` (`channel_id`, `thread_ts`, `status`),
+which needs the `assistant:write` scope the app's manifest already has
+(`statusLine` in the sandbox's capabilities):
+
+| When | Call |
+|------|------|
+| The run starts, or resumes after a question | The line, at once, after the session is set to `processing`. |
+| The step changes | The new line, only when it differs, and no sooner than 2.5 seconds after the last one. The latest line waiting is sent when the time is up, whether or not anything else happens. |
+| The run waits on a person, completes, fails or stops | `status: ""`, at once and before the session status, so no held line follows it. |
+
+A code channel's session has no thread, so it gets no line. A thread that
+refuses one (for example where Slack keeps the status to assistant threads)
+is logged and not asked again during that turn; the answer never depends on
+it. The connector sets no line.
 
 ## Stopping a run
 
@@ -420,7 +572,7 @@ are returned, so the router retries them with its bounded backoff.
   runs there; `message.session` is not handled.
 - **Session titles and renames** are left to Slack and its users.
 - **Native streaming.** The connector edits answers with `chat.update`. The
-  [Slack app](../../apps/slack/README.md) streams them.
+  [Slack app](https://github.com/urmzd/humagen/blob/main/apps/slack/README.md) streams them.
 - Command registration, lifecycle replay cursors and the runs a session holds
   are bounded, in memory and per client, like the sink's message handles. A
   restart forgets them, and so does changing the client.
@@ -428,3 +580,27 @@ are returned, so the router retries them with its bounded backoff.
 Code channels and agent sessions are new Slack surfaces. This connector is
 tested against the documented contract through the in-memory fake and has not
 yet been exercised against a live workspace.
+
+## Durable native session feedback
+
+Managed webhook installations show lifecycle with reactions on the original
+thread message: eyes while working, a check on success, x on failure, raising
+hand when waiting and raised hand when stopped. The app needs reactions write
+permission. A reaction failure is retried independently of delivering the answer.
+The answer retains native user/channel mentions and HTTPS permalinks.
+
+A plain reply in a thread with a persisted agent answer continues its agent's
+session. A standalone thanks in that known thread receives a heart reaction
+without starting a model turn. Bot messages and unknown unmentioned channel
+threads do not start work.
+
+Signed thumbs-up/down reactions on delivered agent answers save the same
+`run.feedback.v1` assessment as console feedback, including reaction removal.
+A raised-hand reaction stops the known run through the installation's existing
+stop policy. Subscribe to `reaction_added` and `reaction_removed`, and include
+them in an installation's explicit event capabilities when those are configured.
+Delivery handles and native event IDs persist across connector rebuilds.
+
+Cross-surface `slack_post_message` actions require an explicit destination channel
+in `slack.action_channels`. This is an exact channel-ID list; project bindings,
+installation capabilities and runtime action policy still constrain the write.

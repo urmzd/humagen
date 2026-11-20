@@ -584,7 +584,7 @@ func (p *Platform) noteLayers(tenant string, chain []projects.Project, workspace
 		var notes []string
 		for _, n := range p.notesOf(tenant, memory.ProjectOwner(pr.Name)) {
 			if n.Status == memory.Approved && (n.ExpiresAt.IsZero() || n.ExpiresAt.After(p.now())) {
-				notes = append(notes, n.Text)
+				notes = append(notes, memory.Line(n))
 			}
 		}
 		if len(notes) == 0 {

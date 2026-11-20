@@ -9,12 +9,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/urmzd/orchagent/flow/event"
+	"github.com/urmzd/saige/flow/event"
 
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/alerts"
 	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/corpora"
 	"github.com/urmzd/humagen/pkg/evals"
 	"github.com/urmzd/humagen/pkg/journal"
 	"github.com/urmzd/humagen/pkg/knowledge"
@@ -36,6 +37,7 @@ func (s *Server) observeRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/runs/{id}/manifest", s.authed(auth.RunsRead, s.seenRun(s.manifest)))
 
 	mux.HandleFunc("GET /api/alerts", s.authed(auth.AlertsRead, s.listAlerts))
+	mux.HandleFunc("GET /api/alerts/count", s.authed(auth.AlertsRead, s.countAlerts))
 	mux.HandleFunc("POST /api/alerts/{id}/ack", s.authed(auth.AlertsWrite, s.seenAlert(s.ackAlert)))
 	mux.HandleFunc("GET /api/alert-rules", s.authed(auth.AlertsRead, s.listRules))
 	mux.HandleFunc("POST /api/alert-rules", s.authed(auth.AlertsWrite, s.createRule))
@@ -48,6 +50,9 @@ func (s *Server) observeRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/evals/{name}", s.authed(auth.EvalsWrite, s.seenSuite(s.deleteSuite)))
 	mux.HandleFunc("POST /api/evals/{name}/run", s.authed(auth.EvalsWrite, s.seenSuite(s.runSuite)))
 	mux.HandleFunc("GET /api/evals/{name}/runs", s.authed(auth.EvalsRead, s.seenSuite(s.suiteRuns)))
+	mux.HandleFunc("GET /api/eval-candidates", s.authed(auth.EvalsRead, s.listEvalCandidates))
+	mux.HandleFunc("POST /api/eval-candidates/{id}/accept", s.authed(auth.EvalsWrite, s.acceptEvalCandidate))
+	mux.HandleFunc("DELETE /api/eval-candidates/{id}", s.authed(auth.EvalsWrite, s.dismissEvalCandidate))
 
 	mux.HandleFunc("GET /api/knowledge/{name}/dependencies", s.authed(auth.KnowledgeRead, s.seenSource(s.sourceDependencies)))
 	mux.HandleFunc("GET /api/knowledge", s.authed(auth.KnowledgeRead, s.listSources))
@@ -57,6 +62,17 @@ func (s *Server) observeRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/knowledge/{name}/documents", s.authed(auth.KnowledgeRead, s.seenSource(s.listDocuments)))
 	mux.HandleFunc("POST /api/knowledge/{name}/documents", s.authed(auth.KnowledgeWrite, s.seenSource(s.auditedSource("source.document.add", s.addDocument))))
 	mux.HandleFunc("DELETE /api/knowledge/{name}/documents/{id}", s.authed(auth.KnowledgeWrite, s.seenSource(s.auditedSource("source.document.remove", s.removeDocument))))
+	mux.HandleFunc("PUT /api/knowledge/{name}/documents/{id}/text", s.authed(auth.KnowledgeWrite, s.seenSource(s.auditedSource("source.document.replace", s.replaceDocument))))
+	// An import writes a session's document with the session's structure,
+	// under its own permission (import_documents.go).
+	mux.HandleFunc("POST /api/knowledge/{name}/imports", s.authed(auth.KnowledgeImport, s.seenSource(s.auditedSourceUnder("source.document.import", auth.KnowledgeImport, s.importDocument))))
+	// Its audit record is written by the handler, which names a restore
+	// of a structure apart from a reimport of the text.
+	mux.HandleFunc("PUT /api/knowledge/{name}/imports/{id}", s.authed(auth.KnowledgeImport, s.seenSource(s.reimportDocument)))
+	// Continuing an imported document starts a conversation, so it takes
+	// runs:write, as a fork does; reading the source also takes
+	// knowledge:read, which seenSource checks (import_continue.go).
+	mux.HandleFunc("POST /api/knowledge/{name}/documents/{id}/continue", s.authed(auth.RunsWrite, s.seenSource(s.continueImport)))
 	mux.HandleFunc("PUT /api/knowledge/{name}/documents/{id}", s.authed(auth.KnowledgeWrite, s.seenSource(s.auditedSource("source.document.exclude", s.excludeDocument))))
 	mux.HandleFunc("POST /api/knowledge/{name}/variants", s.authed(auth.KnowledgeWrite, s.seenSource(s.auditedSource("source.variant.save", s.saveVariant))))
 	mux.HandleFunc("DELETE /api/knowledge/{name}/variants/{variant}", s.authed(auth.KnowledgeWrite, s.seenSource(s.auditedSource("source.variant.delete", s.deleteVariant))))
@@ -337,8 +353,27 @@ func viewRule(names platform.Names, r alerts.Rule) ruleView {
 	return ruleView{Rule: r, CreatedByName: names.Of(r.CreatedBy)}
 }
 
-func (s *Server) listAlerts(w http.ResponseWriter, _ *http.Request, who auth.Principal) {
-	seer := s.P.Seer(who)
+func (s *Server) listAlerts(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	q := r.URL.Query()
+	if v := q.Get("state"); v != "" && v != "open" && v != "snoozed" && v != "resolved" {
+		fail(w, http.StatusBadRequest, "unknown alert state")
+		return
+	}
+	if v := q.Get("priority"); v != "" && v != "urgent" && v != "normal" && v != "low" {
+		fail(w, http.StatusBadRequest, "unknown alert priority")
+		return
+	}
+	if v := q.Get("source"); len(v) > 64 || strings.ContainsAny(v, "\x00\r\n") {
+		fail(w, http.StatusBadRequest, "invalid alert source")
+		return
+	}
+	if v := q.Get("mine"); v != "" && v != "true" && v != "false" {
+		fail(w, http.StatusBadRequest, "mine must be true or false")
+		return
+	}
+	// One snapshot answers for every alert: a session's record is read
+	// once, not once an alert in it.
+	seer := s.P.Seer(who).Snapshot()
 	names := s.P.Names(who.Tenant)
 	out := []alertView{}
 	all, err := s.P.Alerts.Alerts(who.Tenant)
@@ -346,12 +381,81 @@ func (s *Server) listAlerts(w http.ResponseWriter, _ *http.Request, who auth.Pri
 		s.problem(w, err)
 		return
 	}
+	sessions, raised := make([]string, 0, len(all)), make([]string, 0, len(all))
 	for _, a := range all {
+		sessions, raised = append(sessions, a.Session), append(raised, a.RunID)
+	}
+	seer.Read(sessions...)
+	seer.ReadRuns(raised...)
+	for _, a := range all {
+		a = a.View(time.Now().UTC())
+		if v := q.Get("state"); v != "" && string(a.State) != v {
+			continue
+		}
+		if v := q.Get("priority"); v != "" && string(a.Priority) != v {
+			continue
+		}
+		if v := q.Get("source"); v != "" && string(a.Kind) != v {
+			continue
+		}
+		if v := q.Get("session"); v != "" && a.Session != v {
+			continue
+		}
+		if q.Get("mine") == "true" && !alertFor(a, who) {
+			continue
+		}
 		if seer.Alert(a) {
-			out = append(out, alertView{Alert: a, AckedByName: names.Of(a.AckedBy)})
+			out = append(out, viewAlert(names, a))
 		}
 	}
+	rank := func(p alerts.Priority) int {
+		switch p {
+		case alerts.Urgent:
+			return 0
+		case alerts.Normal:
+			return 1
+		default:
+			return 2
+		}
+	}
+	slices.SortStableFunc(out, func(a, b alertView) int { return rank(a.Priority) - rank(b.Priority) })
 	ok(w, http.StatusOK, map[string]any{"alerts": out})
+}
+
+// countAlerts counts what waits on the caller: the open session alerts
+// addressed to them, urgent or normal, that they may read. It is the number
+// Home's line and the console's badge show, without the alerts themselves:
+// one read of the tenant's alerts, which hold at most a thousand, and one of
+// the sessions the open ones name.
+func (s *Server) countAlerts(w http.ResponseWriter, _ *http.Request, who auth.Principal) {
+	all, err := s.P.Alerts.Alerts(who.Tenant)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	now := time.Now().UTC()
+	open := all[:0]
+	var sessions, raised []string
+	for _, a := range all {
+		a = a.View(now)
+		if a.Session == "" || a.State != alerts.OpenState || a.Priority == alerts.Low || !alertFor(a, who) {
+			continue
+		}
+		open = append(open, a)
+		sessions, raised = append(sessions, a.Session), append(raised, a.RunID)
+	}
+	// A count states a fact of every alert in it, so a reader who reads one
+	// by exception is recorded for it as it is counted.
+	seer := s.P.Seer(who).Snapshot()
+	seer.Read(sessions...)
+	seer.ReadRuns(raised...)
+	waiting := 0
+	for _, a := range open {
+		if seer.Alert(a) {
+			waiting++
+		}
+	}
+	ok(w, http.StatusOK, map[string]any{"waiting": waiting})
 }
 
 func (s *Server) ackAlert(w http.ResponseWriter, r *http.Request, who auth.Principal) {
@@ -360,7 +464,7 @@ func (s *Server) ackAlert(w http.ResponseWriter, r *http.Request, who auth.Princ
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusOK, alertView{Alert: a, AckedByName: s.P.NameOf(who.Tenant, a.AckedBy)})
+	ok(w, http.StatusOK, viewAlert(s.P.Names(who.Tenant), a.View(time.Now().UTC())))
 }
 
 func (s *Server) listRules(w http.ResponseWriter, _ *http.Request, who auth.Principal) {
@@ -570,6 +674,43 @@ func (s *Server) removeDocument(w http.ResponseWriter, r *http.Request, who auth
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// replaceDocument replaces a document's title and text in place, if they are
+// still the title and text the caller names by digest. The store checks the digest
+// and writes in one step, so the document keeps its id and whether it is
+// left out of search, and a refused replacement changes nothing. It takes
+// no session structure: one an import kept with the document is marked
+// edited in the same write and is not trusted again until an import writes
+// the document (import_documents.go).
+func (s *Server) replaceDocument(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	var body struct {
+		Title  string  `json:"title"`
+		Text   string  `json:"text"`
+		Digest *string `json:"digest"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	if body.Digest == nil {
+		s.problem(w, fmt.Errorf("%w: digest is required: the digest the document was last read with, or \"\" for a document that has none", knowledge.ErrInvalid))
+		return
+	}
+	src, err := s.sourceSnapshot(who, r)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	if src.Lifecycle != nil && (src.Lifecycle.Provider != "manual" || src.Lifecycle.Mode != knowledge.Indexed) {
+		s.problem(w, fmt.Errorf("%w: managed copies are changed by Refresh Copy", knowledge.ErrInvalid))
+		return
+	}
+	doc, err := s.P.Knowledge.ReplaceForScope(who.Tenant, r.PathValue("name"), r.PathValue("id"), body.Title, body.Text, *body.Digest, time.Now(), sourceConfigOf(src))
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, doc)
+}
+
 func (s *Server) excludeDocument(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	var body struct {
 		Excluded bool `json:"excluded"`
@@ -656,7 +797,7 @@ func (s *Server) listSuites(w http.ResponseWriter, _ *http.Request, who auth.Pri
 		if !seer.Suite(suite) {
 			continue
 		}
-		runs, _ := s.P.Evals.Runs(who.Tenant, suite.Name)
+		runs, _ := s.P.EvalRunsView(who, suite.Name)
 		if len(runs) > 20 {
 			runs = runs[:20]
 		}
@@ -665,7 +806,7 @@ func (s *Server) listSuites(w http.ResponseWriter, _ *http.Request, who auth.Pri
 				runs[i].Results = []evals.Result{}
 			}
 		}
-		out = append(out, suiteView{Suite: suite, Runs: orEmpty(runs)})
+		out = append(out, suiteView{Suite: s.P.EvalSuiteView(suite), Runs: orEmpty(runs)})
 	}
 	ok(w, http.StatusOK, map[string]any{"suites": out})
 }
@@ -705,7 +846,17 @@ func (s *Server) putSuite(replace bool) handler {
 				return
 			}
 			_, err = s.P.Knowledge.Documents(who.Tenant, suite.Subject)
+		case evals.Corpus:
+			if !s.P.CorpusReadable(who, suite.Subject) {
+				s.problem(w, corpora.ErrNotFound)
+				return
+			}
 		}
+		if err != nil {
+			s.problem(w, err)
+			return
+		}
+		suite, err = s.P.MergeEvalSuiteReplay(who, suite, replace)
 		if err != nil {
 			s.problem(w, err)
 			return
@@ -719,7 +870,7 @@ func (s *Server) putSuite(replace bool) handler {
 		if replace {
 			status = http.StatusOK
 		}
-		ok(w, status, suite)
+		ok(w, status, s.P.EvalSuiteView(suite))
 	}
 }
 
@@ -749,7 +900,7 @@ func (s *Server) runSuite(w http.ResponseWriter, r *http.Request, who auth.Princ
 }
 
 func (s *Server) suiteRuns(w http.ResponseWriter, r *http.Request, who auth.Principal) {
-	runs, err := s.P.Evals.Runs(who.Tenant, r.PathValue("name"))
+	runs, err := s.P.EvalRunsView(who, r.PathValue("name"))
 	if err != nil {
 		s.problem(w, err)
 		return
@@ -783,13 +934,24 @@ func (s *Server) configureSource(w http.ResponseWriter, r *http.Request, who aut
 }
 func (s *Server) connectSource(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	var body struct {
-		Ref string `json:"ref"`
+		Ref   string `json:"ref"`
+		OAuth string `json:"oauth"`
 	}
 	if !decode(w, r, &body) {
 		return
 	}
-	if err := s.P.ConnectSource(who, r.PathValue("name"), body.Ref); err != nil {
-		s.problem(w, err)
+	var connectErr error
+	if body.OAuth != "" {
+		if body.Ref != "" {
+			s.problem(w, knowledge.ErrInvalid)
+			return
+		}
+		connectErr = s.P.ConnectSourceOAuth(who, r.PathValue("name"), body.OAuth)
+	} else {
+		connectErr = s.P.ConnectSource(who, r.PathValue("name"), body.Ref)
+	}
+	if connectErr != nil {
+		s.problem(w, connectErr)
 		return
 	}
 	src, err := s.P.SourceAs(who, r.PathValue("name"))
@@ -799,6 +961,7 @@ func (s *Server) connectSource(w http.ResponseWriter, r *http.Request, who auth.
 	}
 	ok(w, http.StatusOK, platform.ShownSource(src))
 }
+
 func (s *Server) syncSource(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	src, err := s.P.SyncSource(r.Context(), who, r.PathValue("name"))
 	if err != nil {
@@ -823,4 +986,8 @@ func sourceConfigOf(src knowledge.Source) *knowledge.SourceConfig {
 	}
 	cfg := src.Lifecycle.SourceConfig
 	return &cfg
+}
+
+func viewAlert(names platform.Names, a alerts.Alert) alertView {
+	return alertView{Alert: names.Alert(a), AckedByName: names.Of(a.AckedBy)}
 }

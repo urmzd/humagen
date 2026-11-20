@@ -12,7 +12,7 @@ import (
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/threads"
-	"github.com/urmzd/orchagent/flow/runtime"
+	"github.com/urmzd/saige/flow/runtime"
 )
 
 func TestBridgeDeliveryRechecksPolicyDirectionAndPrivateContext(t *testing.T) {

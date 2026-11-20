@@ -50,3 +50,56 @@ export function bytes(n: number): string {
   if (n < 1024 ** 3) return `${(n / 1024 ** 2).toFixed(1)} MB`;
   return `${(n / 1024 ** 3).toFixed(1)} GB`;
 }
+
+/*
+ * How long ago something happened, counted one way everywhere: a row's age,
+ * a message's time and the day a list files it under must never disagree.
+ *
+ * - Under a day, whole minutes and hours that have passed (never rounded up).
+ * - From a day on, calendar days in the reader's own time zone: anything
+ *   dated yesterday is one day old, whatever the hour, so it reads "1d" or
+ *   "yesterday" under the heading Yesterday.
+ */
+
+const startOfDay = (ms: number) => {
+  const d = new Date(ms);
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+};
+
+/** Whole calendar days from `iso` to `now` in local time: 0 today, 1 yesterday, negative ahead. */
+export function daysAgo(iso: string, now: number = Date.now()): number {
+  return Math.round((startOfDay(now) - startOfDay(Date.parse(iso))) / 86_400_000);
+}
+
+type Span = { n: number; unit: "minute" | "hour" | "day" };
+
+/** The distance between `iso` and `now`, by the rule above. Null under a minute, or when `iso` is no date. */
+function span(iso: string, now: number): Span | null {
+  const seconds = Math.abs(now - Date.parse(iso)) / 1000;
+  if (!Number.isFinite(seconds) || seconds < 60) return null;
+  if (seconds < 3600) return { n: Math.floor(seconds / 60), unit: "minute" };
+  if (seconds < 86_400) return { n: Math.floor(seconds / 3600), unit: "hour" };
+  // A full day apart is at least one calendar day apart.
+  return { n: Math.max(1, Math.abs(daysAgo(iso, now))), unit: "day" };
+}
+
+/** How long ago, in the fewest characters: now, 5m, 3h, 2d, 3w, 9mo, 2y. */
+export function age(iso: string, now: number = Date.now()): string {
+  const s = Date.parse(iso) > now ? null : span(iso, now);
+  if (!s) return "now";
+  if (s.unit === "minute") return `${s.n}m`;
+  if (s.unit === "hour") return `${s.n}h`;
+  if (s.n < 7) return `${s.n}d`;
+  if (s.n < 30) return `${Math.floor(s.n / 7)}w`;
+  if (s.n < 365) return `${Math.floor(s.n / 30)}mo`;
+  return `${Math.floor(s.n / 365)}y`;
+}
+
+const relative = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+
+/** How long ago, or how far ahead, in words: just now, 5 minutes ago, yesterday, in 3 days. */
+export function ago(iso: string, now: number = Date.now()): string {
+  const s = span(iso, now);
+  if (!s) return "just now";
+  return relative.format(Date.parse(iso) > now ? s.n : -s.n, s.unit);
+}

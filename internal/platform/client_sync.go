@@ -155,6 +155,10 @@ func (p *Platform) syncClients() {
 			}
 		}
 		for _, c := range on {
+			// The Slack app a server starts has no connector to seat.
+			if c.Managed == clients.ManagedApp {
+				continue
+			}
 			if st := s.seat(c.Tenant, c.ID); st != nil && st.client.Version == c.Version {
 				continue
 			}

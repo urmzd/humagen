@@ -100,7 +100,7 @@ export function ArtifactPreview({
             <h2 id={titleId} className="truncate font-medium text-aui-fg text-aui-sm">
               {file.title}
             </h2>
-            <span className="text-aui-2xs text-aui-muted tabular-nums">{meta.join(" · ")}</span>
+            <span className="text-aui-2xs text-aui-muted tabular-nums">{meta.join(" | ")}</span>
           </span>
           {file.url && (
             <a

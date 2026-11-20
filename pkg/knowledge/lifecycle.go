@@ -15,6 +15,18 @@ import (
 
 var resourceID = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,128}$`)
 
+// oneDriveID admits the "!" that personal OneDrive item IDs carry, such as
+// "D4648F06C91D9D3D!54927". Work and school item IDs are letters and digits.
+var oneDriveID = regexp.MustCompile(`^[a-zA-Z0-9_!-]{1,128}$`)
+
+// validResourceID reports whether id can name a resource of the provider.
+func validResourceID(provider, id string) bool {
+	if provider == "onedrive" {
+		return oneDriveID.MatchString(id)
+	}
+	return resourceID.MatchString(id)
+}
+
 // Mode determines whether a source supplies a retained copy or reader-scoped live results.
 type Mode string
 
@@ -325,13 +337,14 @@ func (s *Store) CompleteSync(tenant, name, id string, docs []ImportDocument, by 
 			b.Delete(tenant, docKey(name, seq))
 			b.Delete(tenant, textKey(name, seq))
 			b.Delete(tenant, vecKey(name, seq))
+			b.Delete(tenant, importedKey(name, seq))
 			last = max(last, seq)
 		}
 		seq := last
 		for _, d := range docs {
 			seq++
 			texts := split(d.Text)
-			doc := &Document{ID: d.ID, Title: strings.TrimSpace(d.Title), URI: d.URI, Bytes: len(d.Text), Passages: len(texts), AddedBy: by, AddedAt: at}
+			doc := &Document{ID: d.ID, Title: strings.TrimSpace(d.Title), URI: d.URI, Bytes: len(d.Text), Passages: len(texts), AddedBy: by, AddedAt: at, Digest: Digest(d.Title, d.Text)}
 			next.docs = append(next.docs, doc)
 			next.passages = append(next.passages, passagesOf(doc, texts)...)
 			next.seqs[doc.ID] = seq
@@ -422,7 +435,7 @@ func normalizeSourceConfig(cfg SourceConfig) (SourceConfig, error) {
 		return SourceConfig{}, fmt.Errorf("%w: resource selection", ErrInvalid)
 	}
 	for _, id := range cfg.Resources {
-		if !resourceID.MatchString(id) {
+		if !validResourceID(cfg.Provider, id) {
 			return SourceConfig{}, fmt.Errorf("%w: selected resource ID", ErrInvalid)
 		}
 	}
@@ -456,7 +469,7 @@ func normalizeSourceConfig(cfg SourceConfig) (SourceConfig, error) {
 			return SourceConfig{}, fmt.Errorf("%w: storage sources require indexed mode and a bucket URI", ErrInvalid)
 		}
 	}
-	if cfg.Provider != "manual" && !storageOrigin && !resourceID.MatchString(cfg.Origin) {
+	if cfg.Provider != "manual" && !storageOrigin && !validResourceID(cfg.Provider, cfg.Origin) {
 		return SourceConfig{}, fmt.Errorf("%w: provider resource ID", ErrInvalid)
 	}
 	if cfg.StopAfterSeconds == 0 {

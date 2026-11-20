@@ -454,8 +454,14 @@ test("publishing waits for a completed readable test of the selected exact revis
       ],
     }),
     "GET /api/library/skills": () => ({ skills: [second] }),
+    // The server judges a finished test, and answers its verdict.
     "GET /api/library/skills/sk-tested": () => ({
-      revisions: [first, second],
+      revisions: [
+        first,
+        status === "completed"
+          ? { ...second, test_results: [{ run: "native-test", verdict: "passed" }] }
+          : second,
+      ],
     }),
     "GET /api/projects/personal/agents": () => ({ available: { all: false, names: ["reviewer"] } }),
     "GET /api/library/skills/sk-tested/versions/1/agents": () => ({ agents: [], more: false }),
@@ -532,6 +538,140 @@ test("an unreadable recorded test cannot enable skill publication", async () => 
     (screen.getByRole("button", { name: "Publish Version" }) as HTMLButtonElement).disabled,
     true,
   );
+});
+
+test("a finished test that failed does not enable publication and says why", async () => {
+  const skill = {
+    id: "sk-tool-failed",
+    scope: { kind: "workspace" },
+    name: "tool-failed",
+    description: "Tested skill",
+    instructions: "Read references/guide.md",
+    version: 1,
+    by: "ada",
+    at: "2026-10-26T12:00:00Z",
+    via: "import",
+    tests: ["failed-test"],
+    test_results: [
+      {
+        run: "failed-test",
+        verdict: "failed",
+        reason: "it called file_read, a tool the run did not have",
+      },
+    ],
+  };
+  net = stubFetch({
+    "GET /api/me": () => me,
+    "GET /api/projects": () => ({ projects: [], next: null }),
+    "GET /api/agents": () => ({ agents: [] }),
+    "GET /api/library/skills": () => ({ skills: [skill] }),
+    "GET /api/library/skills/sk-tool-failed": () => ({ revisions: [skill] }),
+    "GET /api/library/skills/sk-tool-failed/versions/1/agents": () => ({ agents: [], more: false }),
+    "GET /api/runs/failed-test": () => ({
+      id: "failed-test",
+      agent: "reader",
+      thread: "failed-thread",
+      status: "completed",
+    }),
+  });
+  render(<SkillsLibrary />);
+  fireEvent.click(await screen.findByRole("button", { name: /tool-failed.*Version 1/s }));
+  await skillTab("Versions");
+  await screen.findByText(defaultCopy.skillsLibrary.publishNeedsCleanTest);
+  await screen.findByText(defaultCopy.skillsLibrary.testFailed);
+  await screen.findByText("it called file_read, a tool the run did not have");
+  assert.equal(
+    (screen.getByRole("button", { name: "Publish Version" }) as HTMLButtonElement).disabled,
+    true,
+  );
+});
+
+test("a test that passed with warnings enables publication and shows them", async () => {
+  const skill = {
+    id: "sk-warned",
+    scope: { kind: "workspace" },
+    name: "warned",
+    description: "Tested skill",
+    instructions: "Read references/guide.md",
+    version: 1,
+    by: "ada",
+    at: "2026-10-26T12:00:00Z",
+    tests: ["warned-test"],
+    test_results: [
+      {
+        run: "warned-test",
+        verdict: "passed",
+        warnings: ["file_read: operations: action denied: a person must approve this action"],
+      },
+    ],
+  };
+  net = stubFetch({
+    "GET /api/me": () => me,
+    "GET /api/projects": () => ({ projects: [], next: null }),
+    "GET /api/agents": () => ({ agents: [] }),
+    "GET /api/library/skills": () => ({ skills: [skill] }),
+    "GET /api/library/skills/sk-warned": () => ({ revisions: [skill] }),
+    "GET /api/library/skills/sk-warned/versions/1/agents": () => ({ agents: [], more: false }),
+    "GET /api/runs/warned-test": () => ({
+      id: "warned-test",
+      agent: "reader",
+      thread: "warned-thread",
+      status: "completed",
+    }),
+  });
+  render(<SkillsLibrary />);
+  fireEvent.click(await screen.findByRole("button", { name: /warned.*Version 1/s }));
+  await skillTab("Versions");
+  await screen.findByText(defaultCopy.skillsLibrary.testWarned);
+  await screen.findByText(
+    "file_read: operations: action denied: a person must approve this action",
+  );
+  await waitFor(() =>
+    assert.equal(
+      (screen.getByRole("button", { name: "Publish Version" }) as HTMLButtonElement).disabled,
+      false,
+    ),
+  );
+});
+
+test("a skill that does not limit tools says so and saves without a tool list", async () => {
+  const first = {
+    id: "sk-unlimited",
+    scope: { kind: "personal", subject: "ada" },
+    name: "unlimited",
+    description: "Imported",
+    instructions: "Before",
+    version: 1,
+    by: "ada",
+    at: "2026-10-26T12:00:00Z",
+    via: "import",
+    tests: [],
+  };
+  let sent: { tools?: string[] } | undefined;
+  net = stubFetch({
+    "GET /api/me": () => me,
+    "GET /api/projects": () => ({ projects: [], next: null }),
+    "GET /api/agents": () => ({ agents: [] }),
+    "GET /api/library/skills": () => ({ skills: [first] }),
+    "GET /api/library/skills/sk-unlimited": () => ({ revisions: [first] }),
+    "POST /api/library/skills": (body) => {
+      sent = (body as { definition: { tools?: string[] } }).definition;
+      return { ...first, version: 2, via: undefined };
+    },
+  });
+  render(<SkillsLibrary />);
+  fireEvent.click(await screen.findByRole("button", { name: /unlimited.*Version 1/s }));
+  await skillTab("Contents");
+  await screen.findByText(defaultCopy.skillsLibrary.toolsUnlimited);
+  await screen.findByText(defaultCopy.skillsLibrary.toolsFromSkillFile);
+  const limit = screen.getByLabelText(defaultCopy.skillsLibrary.limitTools) as HTMLInputElement;
+  assert.equal(limit.checked, false);
+  fireEvent.click(screen.getByRole("button", { name: "Source" }));
+  const editor = (await screen.findByLabelText("File Contents")) as HTMLTextAreaElement;
+  fireEvent.change(editor, { target: { value: editor.value.replace("Before", "After") } });
+  fireEvent.click(screen.getByRole("button", { name: "Save Draft" }));
+  await waitFor(() => assert.ok(sent));
+  assert.equal("tools" in sent!, false);
 });
 
 test("a newly saved personal draft tests with an eligible personal agent in the canonical personal project", async () => {
@@ -746,7 +886,7 @@ test("a dirty skill package keeps its scope until it is explicitly saved or disc
   fireEvent.change(editor, {
     target: { value: editor.value.replace("Original instructions", "Unsaved instructions") },
   });
-  const company = screen.getByRole("button", { name: "Company" }) as HTMLButtonElement;
+  const company = screen.getByRole("button", { name: "Workspace" }) as HTMLButtonElement;
   assert.equal(company.disabled, true);
   fireEvent.click(company);
   assert.match(editor.value, /Unsaved instructions/);

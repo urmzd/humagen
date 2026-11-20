@@ -56,7 +56,8 @@ func (reader outcomeSourceDependencies) ReadSourceDependencies(ctx context.Conte
 		if err := ctx.Err(); err != nil {
 			return out, err
 		}
-		listed, err := p.SkillLibrary.List(who.Tenant, scope)
+		// A skill this release cannot read has no origin run to link.
+		listed, _, err := p.SkillLibrary.List(who.Tenant, scope)
 		if err != nil {
 			return out, err
 		}

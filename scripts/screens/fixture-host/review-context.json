@@ -1,0 +1,26 @@
+{
+  "owner": "screens",
+  "repo": "launch",
+  "number": 1,
+  "context": {
+    "subject": {
+      "number": 1,
+      "title": "Launch plan",
+      "body": "Confirm the owner before publishing the launch briefing.",
+      "state": "open",
+      "html_url": "https://github.com/screens/launch/pull/1",
+      "pull_request": { "url": "https://api.github.com/repos/screens/launch/pulls/1" },
+      "head": { "sha": "316c56f81540c3eaca02184173df322a48aebdd9", "ref": "launch-plan" }
+    },
+    "comments": [],
+    "files": [
+      {
+        "filename": "plan.md",
+        "status": "modified",
+        "patch": "@@ -1,3 +1,4 @@\n # Launch plan\n \n - Keep November 12\n+- Confirm the owner\n",
+        "blob_url": "https://github.com/screens/launch/blob/316c56f81540c3eaca02184173df322a48aebdd9/plan.md"
+      }
+    ],
+    "page": 1
+  }
+}

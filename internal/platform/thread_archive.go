@@ -178,13 +178,3 @@ func (p *Platform) queued(who auth.Principal, id string) (threads.Thread, error)
 	}
 	return th, nil
 }
-
-// threadGone reports whether a conversation was deleted: no one sees it, or
-// anything in it, again.
-func (p *Platform) threadGone(tenant, id string) bool {
-	if id == "" {
-		return false
-	}
-	th, err := p.Threads.Get(tenant, id)
-	return err == nil && th.Archive != nil && th.Archive.Deleted != nil
-}

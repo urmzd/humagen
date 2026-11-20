@@ -36,11 +36,10 @@ platforms:
       name: default
     spec: {}
 
-# Example agents that need no model key, as `make dev` seeds.
+# An example project, as `make dev` seeds. Agents wait for an administrator
+# to set up a model provider in Settings.
 extraArgs:
   - -seed
-  - -builtin-provider=offline
-  - -builtin-model=offline
 
 # State is in memory, so the workspace volume need not outlive the pod.
 persistence:

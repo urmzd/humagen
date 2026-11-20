@@ -2,19 +2,24 @@ package platform
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
-	"github.com/urmzd/orchagent/flow/event"
+	"github.com/urmzd/saige/flow/event"
 
 	"github.com/urmzd/humagen/internal/wire"
+	"github.com/urmzd/humagen/pkg/corpora"
 	"github.com/urmzd/humagen/pkg/evals"
+	"github.com/urmzd/humagen/pkg/prompts"
 	"github.com/urmzd/humagen/pkg/runs"
 )
 
 // OriginEval marks a run raised by an eval, so it can be told apart from work
 // a person or a schedule asked for.
 const OriginEval = runs.OriginEval
+const metaEvalRevision = "_humagen.eval_revision"
+const metaEvalPrefix = "_humagen.eval_prefix"
 
 // caseTimeout bounds one agent case. A case that outlives it fails, which is a
 // result, rather than holding the suite open.
@@ -27,19 +32,38 @@ func (p *Platform) StartEval(ctx context.Context, tenant, name, by string) (eval
 	if err != nil {
 		return evals.Run{}, err
 	}
+	if err := p.checkEvalReplayAccess(tenant, suite, by); err != nil {
+		return evals.Run{}, err
+	}
 	rev := 0
+	var definition wire.Revision
+	var prefix prompts.Snapshot
 	switch suite.Target {
 	case evals.Agent:
 		// Pin the revision now, so the run records what it actually tested
 		// even if the agent is revised while the cases are in flight.
 		r, err := p.Catalog().Get(ctx, tenant, suite.Subject, 0)
 		if err != nil {
+			// One of the store's agents says which package to install.
+			if why := p.NotInstalled(ctx, tenant, suite.Subject); why != "" {
+				return evals.Run{}, fmt.Errorf("the suite's agent: %w (%s)", err, why)
+			}
 			return evals.Run{}, fmt.Errorf("the suite's agent: %w", err)
 		}
 		rev = r.Rev
+		definition = r
+		project, _ := p.ProjectTree(tenant).Home(suite.Subject)
+		prefix, err = p.promptLayers(tenant, project)
+		if err != nil {
+			return evals.Run{}, err
+		}
 	case evals.Knowledge:
 		if _, err := p.Knowledge.Documents(tenant, suite.Subject); err != nil {
 			return evals.Run{}, fmt.Errorf("the suite's source: %w", err)
+		}
+	case evals.Corpus:
+		if !p.CorpusReadable(p.invitationReader(tenant, by), suite.Subject) {
+			return evals.Run{}, fmt.Errorf("the suite's corpus: %w", corpora.ErrNotFound)
 		}
 	}
 	run, err := p.Evals.Begin(tenant, suite, rev, by, p.now())
@@ -55,9 +79,12 @@ func (p *Platform) StartEval(ctx context.Context, tenant, name, by string) (eval
 		bg := context.WithoutCancel(ctx)
 		var results []evals.Result
 		var metrics map[string]float64
-		if suite.Target == evals.Agent {
-			results = p.evalAgent(bg, tenant, suite, &run)
-		} else {
+		switch suite.Target {
+		case evals.Agent:
+			results = p.evalAgent(bg, tenant, suite, &run, definition, prefix)
+		case evals.Corpus:
+			results, metrics = p.evalCorpus(bg, tenant, suite, by)
+		default:
 			results, metrics = p.evalKnowledge(tenant, suite)
 		}
 		run.Finish(results, metrics, p.now())
@@ -79,10 +106,34 @@ func (p *Platform) StartEval(ctx context.Context, tenant, name, by string) (eval
 
 // evalAgent sends each case to the agent as a real run and checks its answer.
 // Cases run one after another, so a suite cannot flood the agent it measures.
-func (p *Platform) evalAgent(ctx context.Context, tenant string, suite evals.Suite, run *evals.Run) []evals.Result {
+func (p *Platform) evalAgent(ctx context.Context, tenant string, suite evals.Suite, run *evals.Run, definition wire.Revision, prefix prompts.Snapshot) []evals.Result {
 	results := make([]evals.Result, 0, len(suite.Cases))
 	for _, c := range suite.Cases {
-		res := p.evalCase(ctx, tenant, suite, run.ID, c)
+		var res evals.Result
+		if c.Trace != nil {
+			began := p.now()
+			current := suite
+			current.Cases = []evals.Case{c}
+			var text string
+			err := p.checkEvalReplayAccess(tenant, current, run.StartedBy)
+			if err == nil {
+				text, err = p.evaluateCandidate(ctx, tenant, definition.Spec, prefix)(ctx, c)
+			}
+			if err == nil {
+				err = p.checkEvalReplayAccess(tenant, current, run.StartedBy)
+			}
+			if err != nil {
+				res = evals.Result{CaseID: c.ID, Input: c.Input, RunID: c.Trace.Run, Error: err.Error()}
+			} else {
+				res, err = evals.ScoreAnswer(ctx, c, text, p.now().Sub(began))
+				res.RunID = c.Trace.Run
+				if err != nil {
+					res.Error = err.Error()
+				}
+			}
+		} else {
+			res = p.evalCase(ctx, tenant, suite, run.ID, c, definition.Rev, prefix)
+		}
 		results = append(results, res)
 		// Publish progress, so the console can show cases as they land.
 		run.Results = results
@@ -93,14 +144,15 @@ func (p *Platform) evalAgent(ctx context.Context, tenant string, suite evals.Sui
 	return results
 }
 
-func (p *Platform) evalCase(ctx context.Context, tenant string, suite evals.Suite, evalID string, c evals.Case) evals.Result {
+func (p *Platform) evalCase(ctx context.Context, tenant string, suite evals.Suite, evalID string, c evals.Case, rev int, prefix prompts.Snapshot) evals.Result {
 	failed := func(msg string, r runs.Run) evals.Result {
 		return evals.Result{
 			CaseID: c.ID, Input: c.Input, RunID: r.ID, Error: msg,
 			DurationMs: r.UpdatedAt.Sub(r.CreatedAt).Milliseconds(),
 		}
 	}
-	meta := map[string]string{"eval_suite": suite.Name, "eval_case": c.ID}
+	rawPrefix, _ := json.Marshal(prefix)
+	meta := map[string]string{"eval_suite": suite.Name, "eval_case": c.ID, metaEvalRevision: wire.VersionOf(rev), metaEvalPrefix: string(rawPrefix)}
 	// An eval tries an agent where it lives, as any run of it would be: a
 	// project agent's case is filed in its home, under the home's limits
 	// and allow lists, and so are the runs it calls. A platform agent's is
@@ -154,6 +206,42 @@ func (p *Platform) evalCase(ctx context.Context, tenant string, suite evals.Suit
 
 // evalKnowledge asks the source each query and scores what comes back.
 func (p *Platform) evalKnowledge(tenant string, suite evals.Suite) ([]evals.Result, map[string]float64) {
+	return evalRetrieval(suite, func(q string) ([]evals.Retrieved, error) {
+		// Ask for more passages than k: several can come from one document,
+		// and a case is judged on k distinct documents.
+		hits, err := p.Knowledge.Search(tenant, []string{suite.Subject}, q, 50, "")
+		if err != nil {
+			return nil, err
+		}
+		got := make([]evals.Retrieved, len(hits))
+		for i, h := range hits {
+			got[i] = evals.Retrieved{Title: h.Title, Score: h.Score}
+		}
+		return got, nil
+	})
+}
+
+// evalCorpus scores a corpus's search, as an agent runs it, with the access
+// of who started the run: the same fan-out, fusion and deduplication, and
+// no live member, so a suite never spends anyone's credential.
+func (p *Platform) evalCorpus(ctx context.Context, tenant string, suite evals.Suite, by string) ([]evals.Result, map[string]float64) {
+	reader := p.invitationReader(tenant, by)
+	return evalRetrieval(suite, func(q string) ([]evals.Retrieved, error) {
+		c, err := p.Corpora.Get(tenant, suite.Subject)
+		if err != nil || !p.corpusVisible(reader, c) {
+			return nil, fmt.Errorf("the suite's corpus: %w", corpora.ErrNotFound)
+		}
+		hits, _ := p.searchCorpus(ctx, reader, c, q, MaxCorpusHits, false)
+		got := make([]evals.Retrieved, len(hits))
+		for i, h := range hits {
+			got[i] = evals.Retrieved{Title: h.Title, Score: h.Score}
+		}
+		return got, nil
+	})
+}
+
+// evalRetrieval scores each case against what search returned for it.
+func evalRetrieval(suite evals.Suite, search func(q string) ([]evals.Retrieved, error)) ([]evals.Result, map[string]float64) {
 	k := suite.K
 	if k <= 0 {
 		k = evals.DefaultK
@@ -162,16 +250,10 @@ func (p *Platform) evalKnowledge(tenant string, suite evals.Suite) ([]evals.Resu
 	sums := map[string]float64{}
 	for _, c := range suite.Cases {
 		began := time.Now()
-		// Ask for more passages than k: several can come from one document,
-		// and a case is judged on k distinct documents.
-		hits, err := p.Knowledge.Search(tenant, []string{suite.Subject}, c.Input, 50, "")
+		got, err := search(c.Input)
 		if err != nil {
 			results = append(results, evals.Result{CaseID: c.ID, Input: c.Input, Error: err.Error()})
 			continue
-		}
-		got := make([]evals.Retrieved, len(hits))
-		for i, h := range hits {
-			got[i] = evals.Retrieved{Title: h.Title, Score: h.Score}
 		}
 		res, scores := evals.ScoreRetrieval(c, got, k, time.Since(began))
 		results = append(results, res)

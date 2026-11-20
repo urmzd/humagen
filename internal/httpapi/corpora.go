@@ -1,0 +1,199 @@
+package httpapi
+
+import (
+	"net/http"
+	"strconv"
+
+	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/corpora"
+)
+
+// corpusRoutes are corpora: named bodies of knowledge, each holding sources
+// and catalog connectors (docs/architecture/sources.md#corpora). A corpus another reader cannot read
+// answers 404; only its owner changes it.
+func (s *Server) corpusRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("GET /api/corpora", s.authed(auth.KnowledgeRead, s.listCorpora))
+	mux.HandleFunc("POST /api/corpora", s.authed(auth.KnowledgeWrite, s.createCorpus))
+	mux.HandleFunc("GET /api/corpora/{name}", s.authed(auth.KnowledgeRead, s.getCorpus))
+	mux.HandleFunc("PATCH /api/corpora/{name}", s.authed(auth.KnowledgeWrite, s.patchCorpus))
+	mux.HandleFunc("DELETE /api/corpora/{name}", s.authed(auth.KnowledgeWrite, s.deleteCorpus))
+	mux.HandleFunc("POST /api/corpora/{name}/members", s.authed(auth.KnowledgeWrite, s.addCorpusMember))
+	mux.HandleFunc("DELETE /api/corpora/{name}/members/{kind}/{member}", s.authed(auth.KnowledgeWrite, s.removeCorpusMember))
+	mux.HandleFunc("GET /api/corpora/{name}/search", s.authed(auth.KnowledgeRead, s.searchCorpus))
+	mux.HandleFunc("GET /api/corpora/{name}/graph", s.authed(auth.KnowledgeRead, s.corpusGraph))
+	mux.HandleFunc("POST /api/corpora/{name}/graph/build", s.authed(auth.KnowledgeWrite, s.buildCorpusGraph))
+	mux.HandleFunc("GET /api/graph", s.authed(auth.KnowledgeRead, s.workspaceGraph))
+	mux.HandleFunc("PUT /api/graph/nodes/{id}/owner", s.authed(auth.KnowledgeRead, s.decideOwner))
+	mux.HandleFunc("POST /api/corpora/{name}/ontology/infer", s.authed(auth.KnowledgeWrite, s.inferOntology))
+	mux.HandleFunc("POST /api/corpora/{name}/ontology/accept", s.authed(auth.KnowledgeWrite, s.acceptOntology))
+	mux.HandleFunc("POST /api/corpora/{name}/ontology/discard", s.authed(auth.KnowledgeWrite, s.discardOntology))
+}
+
+func (s *Server) inferOntology(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	c, err := s.P.InferOntology(who, r.PathValue("name"))
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, c)
+}
+
+func (s *Server) acceptOntology(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	var body struct {
+		Types []string `json:"types"`
+	}
+	if r.ContentLength != 0 && !decode(w, r, &body) {
+		return
+	}
+	c, err := s.P.AcceptOntology(who, r.PathValue("name"), body.Types)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, c)
+}
+
+func (s *Server) discardOntology(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	c, err := s.P.DiscardOntology(who, r.PathValue("name"))
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, c)
+}
+
+func (s *Server) corpusGraph(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	view, err := s.P.CorpusGraphAs(who, r.PathValue("name"), r.URL.Query().Get("limit"))
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, view)
+}
+
+func (s *Server) buildCorpusGraph(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	view, err := s.P.RebuildCorpusGraph(who, r.PathValue("name"))
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, view)
+}
+
+func (s *Server) workspaceGraph(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	q := r.URL.Query()
+	view, err := s.P.WorkspaceGraphAs(who, q.Get("q"), q.Get("limit"))
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, view)
+}
+
+func (s *Server) decideOwner(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	var body platform.OwnerAction
+	if !decode(w, r, &body) {
+		return
+	}
+	node, err := s.P.DecideOwner(who, r.PathValue("id"), body)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, node)
+}
+
+func (s *Server) searchCorpus(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	q := r.URL.Query()
+	out, err := s.P.SearchCorpusAs(r.Context(), who, r.PathValue("name"), q.Get("q"), q.Get("limit"))
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, out)
+}
+
+func (s *Server) listCorpora(w http.ResponseWriter, _ *http.Request, who auth.Principal) {
+	list, err := s.P.CorporaAs(who)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, map[string]any{"corpora": list})
+}
+
+func (s *Server) createCorpus(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	var body platform.CorpusCreate
+	if !decode(w, r, &body) {
+		return
+	}
+	c, err := s.P.CreateCorpus(who, body)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusCreated, c)
+}
+
+func (s *Server) getCorpus(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	c, err := s.P.CorpusAs(who, r.PathValue("name"))
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, c)
+}
+
+func (s *Server) patchCorpus(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	var body platform.CorpusChange
+	if !decode(w, r, &body) {
+		return
+	}
+	c, err := s.P.UpdateCorpus(who, r.PathValue("name"), body)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, c)
+}
+
+func (s *Server) deleteCorpus(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	var version int64
+	if v := r.URL.Query().Get("version"); v != "" {
+		n, err := strconv.ParseInt(v, 10, 64)
+		if err != nil || n < 1 {
+			fail(w, http.StatusBadRequest, "version is a positive integer")
+			return
+		}
+		version = n
+	}
+	if err := s.P.DeleteCorpus(who, r.PathValue("name"), version); err != nil {
+		s.problem(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) addCorpusMember(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	var body corpora.Member
+	if !decode(w, r, &body) {
+		return
+	}
+	c, err := s.P.AddCorpusMember(who, r.PathValue("name"), body)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, c)
+}
+
+func (s *Server) removeCorpusMember(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	m := corpora.Member{Kind: corpora.MemberKind(r.PathValue("kind")), Name: r.PathValue("member")}
+	c, err := s.P.RemoveCorpusMember(who, r.PathValue("name"), m)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, c)
+}

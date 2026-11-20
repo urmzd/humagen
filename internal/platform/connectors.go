@@ -13,18 +13,20 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
-	"github.com/urmzd/orchagent/flow/address"
-	"github.com/urmzd/orchagent/flow/connector"
-	"github.com/urmzd/orchagent/flow/event"
-	"github.com/urmzd/orchagent/flow/runtime"
-	"github.com/urmzd/orchagent/flow/turn/native"
+	"github.com/urmzd/saige/flow/address"
+	"github.com/urmzd/saige/flow/connector"
+	"github.com/urmzd/saige/flow/event"
+	"github.com/urmzd/saige/flow/runtime"
+	"github.com/urmzd/saige/flow/turn/native"
 
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/authz"
 	"github.com/urmzd/humagen/pkg/clients"
+	"github.com/urmzd/humagen/pkg/egressguard"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/threads"
@@ -91,9 +93,16 @@ type seat struct {
 	// files reads source at a commit for the console (GitHubSource). Nil
 	// for a surface with no files.
 	files sourceReader
+	// guard holds the client's writes to its surface to the egress policy
+	// (egress_guard.go). Nil for a Connection, and for a client whose API
+	// the embedding program supplied: their calls are not the platform's.
+	guard *egressguard.Guard
 
 	cancel context.CancelFunc
 	done   chan struct{}
+	// raised counts the requests this seat's connector raised, so a delivery
+	// can say whether it became one (logDelivery).
+	raised atomic.Int64
 }
 
 // surface is every client of one address scheme, in every tenant. It is the
@@ -168,6 +177,7 @@ func (st *seat) stop() {
 func (s *surface) pump(ctx context.Context, st *seat, publish connector.Publish) {
 	defer close(st.done)
 	err := st.peer.Ingest(ctx, func(ctx context.Context, e event.Envelope) error {
+		st.raised.Add(1)
 		for _, t := range s.stamp(ctx, st, e) {
 			if err := publish(ctx, t); err != nil {
 				return err
@@ -193,12 +203,11 @@ func (s *surface) pump(ctx context.Context, st *seat, publish connector.Publish)
 // in the client's home, written over whatever the connector said.
 //
 // A message that named no agent is untagged, and the place it is filed in
-// decides who answers it (untaggedFor). That default may be open: then every
-// agent available where the run is filed that the client may route to is
-// asked whether it takes the message, and each that does gets an event of its
-// own, so they answer in the same thread side by side, each posted and
-// streamed on its own. With none that takes it, or no default anywhere,
-// nothing goes further and the message waits for a person.
+// decides who answers it (untaggedFor). With no default there, or an open
+// one, it lands (land): on the entry agent, which answers or calls whoever
+// fits, and without one on the agents that take it, each with an event of
+// its own, so they answer in the same thread side by side, else on the best
+// match. It never waits for a person because no agent took it.
 //
 // The run acts for the person the client's team maps the surface's user to,
 // so it is held to what that person may do where it is filed (mayRaise),
@@ -246,22 +255,32 @@ func (s *surface) stamp(ctx context.Context, st *seat, tag event.Envelope) []eve
 	}
 	agent := wire.AgentOf(tag)
 	if agent == "" {
-		if agent = s.p.untaggedFor(c, project, channel, from.SlackChannel); agent == "" {
-			s.p.log.Warn("platform: no default answers an untagged message where a client's run is filed", "surface", s.name, "tenant", c.Tenant, "client", c.ID, "project", project, "channel", channel, "event", tag.ID)
-			return nil
+		if place, err := address.Parse(tag.Channel); err == nil {
+			if prior, ok, err := s.p.resolveSurface(c, place); err == nil && ok {
+				if run, err := s.p.Runs.Get(c.Tenant, prior.Run); err == nil && run.Client == c.ID {
+					agent = run.Agent
+				}
+			}
 		}
+	}
+	if agent == "" {
+		agent = s.p.untaggedFor(c, project, channel, from.SlackChannel)
 	}
 	type answer struct{ agent, id, picked string }
 	who := []answer{{agent: agent, id: tag.ID}}
-	if agent == Open {
-		joined, err := s.p.joinFor(ctx, c, s.p.clientPlace(c, project, channel, from.SlackChannel), wire.TextOf(tag))
+	if agent == "" || agent == Open {
+		landed, err := s.p.landFor(ctx, c, s.p.clientPlace(c, project, channel, from.SlackChannel), wire.TextOf(tag))
 		if err != nil {
-			s.p.log.Info("platform: no agent took a client's message", "surface", s.name, "tenant", c.Tenant, "client", c.ID, "event", tag.ID, "why", err.Error())
+			s.p.log.Warn("platform: no agent may answer a client's message where its run is filed", "surface", s.name, "tenant", c.Tenant, "client", c.ID, "project", project, "channel", channel, "event", tag.ID, "why", err.Error())
 			return nil
 		}
 		who = who[:0]
-		for _, d := range joined {
-			who = append(who, answer{agent: d.Agent, id: joinedTagID(tag.ID, d.Agent), picked: joinedReason(d)})
+		for _, d := range landed {
+			id := tag.ID
+			if d.Picked != "" {
+				id = joinedTagID(tag.ID, d.Agent)
+			}
+			who = append(who, answer{agent: d.Agent, id: id, picked: d.Picked})
 		}
 	}
 	var out []event.Envelope
@@ -436,7 +455,7 @@ func (s *surface) retire(st *seat) {
 	st.stop()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if err := st.peer.Flush(ctx); err != nil {
+	if err := st.flush(ctx); err != nil {
 		s.p.log.Warn("platform: client flush", "surface", s.name, "tenant", st.client.Tenant, "client", st.client.ID, "error", err)
 	}
 }
@@ -538,33 +557,92 @@ func (s *surface) route(w http.ResponseWriter, r *http.Request, body []byte, ref
 	case offered == 0 && refresh && s.p.refreshClients(true):
 		s.route(w, r, body, false)
 	case offered == 0:
+		s.logIgnored(r, body, nil, http.StatusNotFound, fmt.Sprintf("no client claims it (app %q, installation %q, account %q)", claim.AppID, claim.Installation, claim.Owner))
 		http.NotFound(w, r)
 	default:
+		s.logIgnored(r, body, nil, http.StatusUnauthorized, fmt.Sprintf("its signature matches the secret of none of the %d clients that claim it", offered))
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 	}
+}
+
+// automationChannel is where an automation's run answers: the pull request or
+// issue that triggered it. An event with neither has no thread, and its answer
+// stays in its session.
+func automationChannel(rule clients.GitHubAutomation, kind string, body []byte) string {
+	if thread, ok := clients.AutomationThread(kind, body); ok {
+		return "github://" + rule.Repository + "/" + thread
+	}
+	return ""
+}
+
+// autoReviewTag asks the connection's default agent to review a pull request
+// at one commit: the commits after from, or the whole pull request when from
+// is empty. Its id names the commit, so the pull request opening and a
+// redelivery of it start one review, and each push starts its own. The text
+// holds only identifiers: the reviewer reads the pull request with its tools.
+func autoReviewTag(c clients.Client, kind string, req clients.AutoReviewRequest, from string) event.Envelope {
+	owner, repo, _ := strings.Cut(req.Repository, "/")
+	number := strconv.Itoa(req.Number)
+	channel := address.Address{Connector: "github", Workspace: owner, Path: []string{repo, "pull", number}}.WithParam("head_sha", req.SHA)
+	return wire.NewEvent(wire.Raise{
+		ID:     "autoreview/" + url.PathEscape(c.ID) + "/" + url.PathEscape(strings.ToLower(req.Repository)) + "/" + number + "/" + req.SHA,
+		Tenant: c.Tenant, Origin: "github", Agent: c.DefaultAgent,
+		Channel: channel.String(),
+		Text:    autoReviewText(req, from),
+		At:      time.Now().UTC(),
+		Context: map[string]string{wire.MetaGitHubEvent: kind, wire.MetaGitHubOwner: owner, wire.MetaGitHubRepo: repo},
+	})
+}
+
+func autoReviewText(req clients.AutoReviewRequest, from string) string {
+	number := strconv.Itoa(req.Number)
+	if from == "" {
+		return "Review pull request #" + number + " in " + req.Repository + " at commit " + req.SHA + "."
+	}
+	return "Review the commits pushed to pull request #" + number + " in " + req.Repository + " after " + from + ", up to " + req.SHA + ". Earlier commits were reviewed already."
 }
 
 // hand passes a request to one client's connector, which verifies it again
 // with the same secret before it parses anything.
 func (s *surface) hand(st *seat, w http.ResponseWriter, r *http.Request, body []byte) {
+	// refused is why someone who may not ask an agent wrote this delivery.
+	refused := ""
+	// started counts the runs event rules and automatic review start here,
+	// beside what the connector raises, for the delivery's log line.
+	var started int64
 	if st.verifier != nil {
 		current, enabled := s.p.currentInstallation(st.client)
 		if !enabled {
+			s.logIgnored(r, body, &current, http.StatusNotFound, "its client is disabled")
 			http.NotFound(w, r)
 			return
 		}
 		if event := webhookEvent(current.Surface, r, body); event != "" && !current.AllowsEvent(event) {
+			s.logIgnored(r, body, &current, http.StatusOK, "its client's capabilities do not take "+event)
 			w.WriteHeader(http.StatusOK)
 			return
 		}
 		if current.Surface == clients.GitHub {
+			kind := r.Header.Get("X-GitHub-Event")
+			// Only people who may ask are acted on (GitHubAsker). A comment,
+			// a review or a pull request from anyone else starts nothing at
+			// all; an issue from them still meets the client's own rules,
+			// which are written to read issues, but asks no agent.
+			if _, allowed, why := current.GitHubAsker(kind, body); !allowed {
+				if kind != "issues" {
+					s.logIgnored(r, body, &current, http.StatusOK, why)
+					w.WriteHeader(http.StatusOK)
+					return
+				}
+				refused = why
+			}
 			delivery := r.Header.Get("X-GitHub-Delivery")
 			if delivery != "" && len(delivery) <= 128 {
-				kind := r.Header.Get("X-GitHub-Event")
 				for _, rule := range current.MatchAutomations(kind, body) {
 					tag := wire.NewEvent(wire.Raise{
 						ID:     "automation/" + url.PathEscape(current.ID) + "/" + url.PathEscape(delivery) + "/" + url.PathEscape(rule.Name),
 						Tenant: current.Tenant, Origin: "github", Agent: rule.Agent,
+						Channel: automationChannel(rule, kind, body),
 						Text:    rule.Instructions + "\n\nRepository: " + rule.Repository + "\nEvent: " + kind + clients.AutomationContext(body),
 						At:      time.Now().UTC(),
 						Context: map[string]string{wire.MetaGitHubEvent: kind, wire.MetaGitHubOwner: strings.SplitN(rule.Repository, "/", 2)[0], wire.MetaGitHubRepo: strings.SplitN(rule.Repository, "/", 2)[1]},
@@ -574,15 +652,58 @@ func (s *surface) hand(st *seat, w http.ResponseWriter, r *http.Request, body []
 							http.Error(w, "automation admission failed", http.StatusServiceUnavailable)
 							return
 						}
+						started++
+					}
+				}
+				if repo, number, ok := current.MentionOnPullRequest(kind, body); ok {
+					if err := s.p.resumeAutoReview(current, repo, number); err != nil {
+						http.Error(w, "automatic review could not resume", http.StatusServiceUnavailable)
+						return
+					}
+				}
+				// A reviewer from the store that the workspace has not
+				// installed reviews nothing; the delivery is still taken.
+				req, ok := current.MatchAutoReview(kind, body)
+				if ok {
+					if why := s.p.NotInstalled(r.Context(), current.Tenant, current.DefaultAgent); why != "" {
+						s.p.log.Info("platform: automatic review skipped", "tenant", current.Tenant, "client", current.ID, "repository", req.Repository, "pull", req.Number, "why", why)
+						ok = false
+					}
+				}
+				if ok {
+					from, review, paused, err := s.p.planAutoReview(current, req)
+					if err != nil {
+						http.Error(w, "automatic review could not be planned", http.StatusServiceUnavailable)
+						return
+					}
+					if paused {
+						s.p.log.Info("automatic review paused", "client", current.ID, "repository", req.Repository, "pull", req.Number, "pushes", AutoReviewPushes)
+					}
+					if review {
+						for _, raised := range s.stamp(r.Context(), st, autoReviewTag(current, kind, req, from)) {
+							if _, err := s.p.Invoke(r.Context(), raised); err != nil {
+								http.Error(w, "automatic review admission failed", http.StatusServiceUnavailable)
+								return
+							}
+							started++
+						}
 					}
 				}
 			}
 		}
 	}
+	if refused != "" {
+		s.logIgnored(r, body, &st.client, http.StatusOK, refused)
+		w.WriteHeader(http.StatusOK)
+		return
+	}
 	r = r.Clone(r.Context())
 	r.Body = io.NopCloser(bytes.NewReader(body))
 	r.ContentLength = int64(len(body))
-	st.peer.ServeHTTP(w, r)
+	before := st.raised.Load()
+	rec := &statusWriter{ResponseWriter: w, status: http.StatusOK}
+	st.peer.ServeHTTP(rec, r)
+	s.logDelivery(r, body, st.client, rec.status, st.raised.Load()-before+started)
 }
 
 // Deliver gives a run's event to the client that carries it.
@@ -615,7 +736,11 @@ func (s *surface) Deliver(ctx context.Context, to address.Address, e event.Envel
 		}
 	}
 
-	return st.peer.Deliver(ctx, to, e)
+	e, err = s.p.reviewPublication(ctx, e)
+	if err != nil {
+		return err
+	}
+	return st.deliver(ctx, to, e)
 }
 
 // carrier picks the client an event goes out through. It is the client that
@@ -772,11 +897,21 @@ func (p *Platform) flushConnections(ctx context.Context) error {
 		case <-tick.C:
 			for name, s := range p.surfaces {
 				for _, st := range s.all() {
+					// A client whose writes are held (a rate limit, an open
+					// circuit, a backoff) is left alone until they resume:
+					// this loop is what turned one refused write into one a
+					// second.
+					if _, held := st.held(); held {
+						continue
+					}
 					// Durable delivery holds a database row lock through the
 					// surface request. Bound each flush so a stalled API releases
 					// its connection and lets the next client make progress.
 					flushCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-					err := st.peer.Flush(flushCtx)
+					err := st.flush(flushCtx)
+					if err == nil {
+						err = p.pollSurfaceFeedback(flushCtx, st)
+					}
 					cancel()
 					if err != nil && !errors.Is(err, context.Canceled) {
 						p.log.Warn("connector flush", "connector", name, "client", st.client.ID, "error", err)

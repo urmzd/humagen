@@ -20,10 +20,12 @@ import {
   SourceResources,
   SourceSyncSettings,
 } from "./SourceLifecycle.tsx";
+import { addTextFiles } from "./sourceUpload.ts";
 import {
   ago,
   button,
   Chip,
+  Confirm,
   card,
   Empty,
   field,
@@ -53,6 +55,7 @@ export function Knowledge({
   onChanged,
   onSuitesChanged,
   onOpenAgent,
+  back,
 }: {
   sources: Source[];
   agents: Revision[];
@@ -66,8 +69,11 @@ export function Knowledge({
   onChanged: () => void;
   onSuitesChanged: () => void;
   onOpenAgent?: (name: string) => void;
+  /** Where a source's page leads back to: the corpus it was opened from, or Knowledge. */
+  back?: { label: string; onClick: () => void };
 }) {
   const setSelected = (name: string) => onSelect(name);
+  const backTo = back ?? { label: defaultCopy.corpora.back, onClick: () => onSelect(null) };
   const [creating, setCreating] = useState(false);
   const [sourceKind, setSourceKind] = useState<SourceChoice>();
   const [draft, setDraft] = useState({ name: "", description: "" });
@@ -85,7 +91,7 @@ export function Knowledge({
         source={current}
         tab={tab}
         onTab={(next) => onSelect(current.name, next)}
-        onBack={() => onSelect(null)}
+        back={backTo}
         usedBy={readers(current.name)}
         suites={suites}
         canWrite={canWrite}
@@ -99,11 +105,7 @@ export function Knowledge({
         onOpenAgent={onOpenAgent}
       />
     ) : (
-      <Page
-        title={`No source named ${selected}`}
-        lede="It may have been deleted."
-        back={{ label: "All sources", onClick: () => onSelect(null) }}
-      >
+      <Page title={`No source named ${selected}`} lede="It may have been deleted." back={backTo}>
         {null}
       </Page>
     );
@@ -251,7 +253,7 @@ function SourceDetail({
   source,
   tab,
   onTab,
-  onBack,
+  back,
   usedBy,
   suites,
   canWrite,
@@ -264,7 +266,7 @@ function SourceDetail({
   source: Source;
   tab: SourceTab;
   onTab: (next: SourceTab) => void;
-  onBack: () => void;
+  back: { label: string; onClick: () => void };
   usedBy: string[];
   suites: SuiteView[];
   canWrite: boolean;
@@ -280,6 +282,7 @@ function SourceDetail({
       (source.lifecycle.provider === "manual" && source.lifecycle.mode === "indexed"));
   const upstream = Boolean(source.lifecycle && source.lifecycle.provider !== "manual");
   const frozen = upstream && source.lifecycle?.snapshot;
+  const [deleting, setDeleting] = useState(false);
   const [docs, setDocs] = useState<Doc[]>([]);
   const [draft, setDraft] = useState({ title: "", uri: "", text: "" });
   const [query, setQuery] = useState("");
@@ -334,27 +337,10 @@ function SourceDetail({
       .catch(fail("The search failed."));
   };
 
-  // Files are read here and sent as text, so only text files can be added.
   const upload = async (picked: FileList | null) => {
     if (!picked) return;
     setProblem(null);
-    const skipped: string[] = [];
-    for (const file of Array.from(picked)) {
-      const text = await file.text();
-      if (file.size > 900 * 1024) skipped.push(`${file.name} is larger than 900 KB`);
-      else if (text.includes("\u0000")) skipped.push(`${file.name} is not a text file`);
-      else {
-        try {
-          await api.addDocument(source.name, {
-            title: file.name.replace(/\.[^.]+$/, ""),
-            uri: "",
-            text,
-          });
-        } catch (e) {
-          skipped.push(`${file.name}: ${e instanceof ApiError ? e.message : "could not be added"}`);
-        }
-      }
-    }
+    const skipped = await addTextFiles(source.name, Array.from(picked));
     onChanged();
     if (skipped.length > 0) setProblem(skipped.join(". "));
   };
@@ -362,7 +348,7 @@ function SourceDetail({
   const mine = suites.filter((x) => x.target === "knowledge" && x.subject === source.name);
   return (
     <Page
-      back={{ label: "All sources", onClick: onBack }}
+      back={back}
       title={source.name}
       lede={source.description || undefined}
       meta={
@@ -394,18 +380,24 @@ function SourceDetail({
       }
       actions={
         canWrite ? (
-          <button
-            type="button"
-            className={button}
-            onClick={() =>
-              api
-                .deleteSource(source.name)
-                .then(onDeleted)
-                .catch(fail("The source could not be deleted."))
-            }
-          >
-            Delete Source
-          </button>
+          deleting ? (
+            <Confirm
+              question={`Delete ${source.name} and its indexed documents?`}
+              action="Delete Source"
+              onKeep={() => setDeleting(false)}
+              onConfirm={() => {
+                setDeleting(false);
+                api
+                  .deleteSource(source.name)
+                  .then(onDeleted)
+                  .catch(fail("The source could not be deleted."));
+              }}
+            />
+          ) : (
+            <button type="button" className={button} onClick={() => setDeleting(true)}>
+              Delete Source
+            </button>
+          )
         ) : undefined
       }
     >

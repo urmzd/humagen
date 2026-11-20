@@ -1,6 +1,6 @@
 import { defaultCopy } from "@humagen/components";
 import { ArrowUpIcon, FileIcon, XIcon } from "@humagen/render-web";
-import { type QueueControls, QueueStrip } from "@humagen/web";
+import { Modal, type QueueControls, QueueStrip } from "@humagen/web";
 import {
   type KeyboardEvent,
   type ReactNode,
@@ -15,11 +15,18 @@ import {
   commandTokens,
   type Hit,
   nextEnabled,
+  recentCommands,
+  rememberCommands,
   segments,
+  skillsIn,
 } from "./commands.ts";
+import { LazyFrame, sparing, whenIdle } from "./lazy.tsx";
+import { SendRing, VoiceLevel } from "./pages.ts";
 import {
   insertTag,
   matching,
+  mentionsIn,
+  mentionTokens,
   sigilOf,
   type TagOption,
   type Typing,
@@ -27,7 +34,7 @@ import {
   withMention,
   withoutMention,
 } from "./tags.ts";
-import { AgentMark, Presence } from "./ui.tsx";
+import { AgentMark, button, Presence, primary } from "./ui.tsx";
 import {
   canRecord,
   MAX_RECORDING_MS,
@@ -37,54 +44,10 @@ import {
 } from "./voice.ts";
 
 const MAX_HEIGHT = 200;
-const MAX_FILES = 5;
-const MAX_FILE_BYTES = 200 * 1024;
 
-// Files are read in the browser and sent as part of the message, so only text
-// can be attached. These are the extensions treated as text when the browser
-// does not say.
-const TEXT_EXT =
-  /\.(txt|md|markdown|csv|tsv|json|ya?ml|toml|xml|html?|css|log|sql|sh|py|go|rs|ts|tsx|js|jsx|java|rb|c|h|cpp)$/i;
+export { readAttached, withAttached } from "./attachments.ts";
 
-export interface Attached {
-  id: string;
-  name: string;
-  text: string;
-}
-
-/** Read picked files as text to send with a message, and say why any were left out. */
-export async function readAttached(
-  picked: FileList | File[],
-  already: Attached[],
-): Promise<{ files: Attached[]; skipped: string[] }> {
-  const skipped: string[] = [];
-  const next = [...already];
-  for (const file of Array.from(picked)) {
-    const textual =
-      file.type.startsWith("text/") ||
-      /json|xml|yaml|javascript/.test(file.type) ||
-      TEXT_EXT.test(file.name);
-    if (next.length >= MAX_FILES) skipped.push(`${file.name}: at most ${MAX_FILES} files`);
-    else if (!textual) skipped.push(`${file.name}: only text files can be attached`);
-    else if (file.size > MAX_FILE_BYTES)
-      skipped.push(`${file.name}: larger than ${MAX_FILE_BYTES / 1024} KB`);
-    else {
-      const text = await file.text();
-      // A NUL byte means the file is not text, whatever its name says.
-      if (text.includes("\u0000")) skipped.push(`${file.name}: only text files can be attached`);
-      else
-        next.push({ id: `${file.name}:${file.size}:${file.lastModified}`, name: file.name, text });
-    }
-  }
-  return { files: next, skipped };
-}
-
-/** A message with its attached files after it. */
-export function withAttached(text: string, files: Attached[]): string {
-  return [text.trim(), ...files.map((f) => `Attached file: ${f.name}\n\`\`\`\n${f.text}\n\`\`\``)]
-    .filter(Boolean)
-    .join("\n\n");
-}
+import { type Attached, readAttached, uploadsOf, withAttached } from "./attachments.ts";
 
 // The browser's speech recognizer, where it exists. It has no standard type yet.
 interface Recognizer {
@@ -98,7 +61,7 @@ interface Recognizer {
       }) => void)
     | null;
   onend: (() => void) | null;
-  onerror: (() => void) | null;
+  onerror: ((event: { error?: string }) => void) | null;
   start: () => void;
   stop: () => void;
 }
@@ -147,28 +110,39 @@ const tool =
  * as the `@` completion writes it, or taken out.
  */
 export type ComposerSeed =
-  | { text: string; mode?: "prepend" }
+  | { text: string; mode?: "prepend" | "append"; files?: Attached[] }
+  | { quote: { label: string; url: string; text?: string; agent?: string } }
   | { mention: string; remove?: boolean };
 
 /**
- * The message box. Type, attach text files, record a voice note (where the
+ * The message box. Type, attach files, record a voice note (where the
  * deployment transcribes them) or dictate. Enter sends and
  * Shift+Enter adds a line. While a reply is in flight, sending queues the
  * message behind it, Cmd+Enter (Ctrl+Enter) stops the reply and sends it
  * now, and Esc with nothing typed stops the reply.
  */
+/**
+ * A line the bar says while a person types (no match, no skills yet, a refusal).
+ * It floats where the completion list would, so the bar keeps its size and
+ * nothing around it moves.
+ */
+const floatNote =
+  // Over the bar where it sits at the foot of a page; under it on Home's wide layout, where the greeting is above.
+  "absolute right-2 bottom-full left-2 z-20 mb-1 rounded-aui border border-aui-border bg-aui-surface px-3 py-2 text-aui-xs text-aui-muted shadow-lg md:[.humagen-home_&]:top-full md:[.humagen-home_&]:bottom-auto md:[.humagen-home_&]:mt-1 md:[.humagen-home_&]:mb-0";
+
 export function Composer({
-  placeholder,
   queue,
+  placeholder,
+  emptyText,
   autoFocus,
   onDraft,
   leading,
   trailing,
   seed,
   tags,
+  sessionAgents,
   plus,
   voice,
-  disclaimer = defaultCopy.disclaimer(defaultCopy.product),
 }: {
   /**
    * Voice notes, when the deployment transcribes them: the microphone
@@ -176,11 +150,11 @@ export function Composer({
    * send. Without it the microphone dictates with the browser's recognizer.
    */
   voice?: VoiceNotes;
-  /** The AI disclaimer, said once under the prompt bar. null leaves it out. */
-  disclaimer?: string | null;
   /** Text to start from, such as a question picked from a list. Each new object replaces what is typed. */
   seed?: ComposerSeed;
   placeholder: string;
+  /** What the empty box says when nobody is mentioned. Left out, Home's words. */
+  emptyText?: string;
   queue: QueueControls;
   autoFocus?: boolean;
   /** Called as the text changes, for anything that previews it. */
@@ -194,25 +168,39 @@ export function Composer({
    * each time the tag being typed changes, for options looked up as it is
    * typed.
    */
-  tags?: { label: string; options: TagOption[]; onQuery?: (typing: Typing) => void };
+  tags?: {
+    label: string;
+    defaultAgent?: string;
+    options: TagOption[];
+    onQuery?: (typing: Typing) => void;
+  };
+  /** Agents with an existing session that can be continued or started afresh. */
+  sessionAgents?: string[];
   /**
    * The + menu, in place of + attaching files at once: what it shows, given
    * a way to close it and to attach files, and where the conversation is
-   * filed, shown as a text control in the bar. Ctrl+/ (Cmd+/) opens it.
+   * filed, shown as a text control in the bar. Ctrl+/ (Cmd+/) opens it. The
+   * menu is given the draft as it stands, so a host that marks the draft's
+   * mentions need not keep the draft itself and render again on every key.
    */
   plus?: {
-    menu: (close: () => void, attach: () => void, leave: () => void) => ReactNode;
+    menu: (close: () => void, attach: () => void, leave: () => void, draft: string) => ReactNode;
     chips?: ReactNode;
   };
 }) {
   const [value, setValue] = useState("");
   const [files, setFiles] = useState<Attached[]>([]);
+  const [quote, setQuote] = useState<Extract<ComposerSeed, { quote: unknown }>["quote"]>();
+  const [chooseSession, setChooseSession] = useState<string>();
+  const [sessionPick, setSessionPick] = useState<{ agent: string; fresh: boolean }>();
   const [notice, setNotice] = useState<string | null>(null);
   const [listening, setListening] = useState(false);
   const input = useRef<HTMLTextAreaElement>(null);
   const picker = useRef<HTMLInputElement>(null);
   const speech = useRef<Recognizer | null>(null);
   const [recording, setRecording] = useState(false);
+  // The microphone while a voice note records, for the level along the bar.
+  const [mic, setMic] = useState<MediaStream | null>(null);
   const [transcribing, setTranscribing] = useState(false);
   const recorder = useRef<MediaRecorder | null>(null);
   const form = useRef<HTMLFormElement>(null);
@@ -249,10 +237,17 @@ export function Composer({
   // `/` opens the command menu (commands.ts); `@` the tag list.
   const commands: Command[] =
     tags && typing?.sigil === "/"
-      ? commandsFor(tags.options, value, typing, {
-          named: defaultCopy.threads.commandNamed,
-          limit: defaultCopy.threads.commandLimit,
-        })
+      ? commandsFor(
+          tags.options,
+          value,
+          typing,
+          {
+            named: defaultCopy.threads.commandNamed,
+            limit: defaultCopy.threads.commandLimit,
+          },
+          undefined,
+          recentCommands(),
+        )
       : [];
   const shown =
     tags && typing && typing.sigil !== "/"
@@ -267,7 +262,14 @@ export function Composer({
   const open = count > 0;
   // The skills a message here can name, drawn as tokens where it names them.
   const skillNames = tags?.options.filter((o) => o.kind === "skill").map((o) => o.token) ?? [];
-  const tokens = commandTokens(value, skillNames);
+  const tokens = [
+    ...commandTokens(value, skillNames),
+    ...mentionTokens(value, tags?.options ?? []),
+  ].sort((a, b) => a.start - b.start);
+  const mentioned = mentionsIn(
+    value,
+    (tags?.options ?? []).filter((option) => option.kind === "agent").map((option) => option.token),
+  );
   const backdrop = useRef<HTMLDivElement>(null);
   const [listAt, setListAt] = useState<{ up: boolean; max: number }>({ up: true, max: 256 });
   useLayoutEffect(() => {
@@ -302,6 +304,8 @@ export function Composer({
     // can land where it was.
     input.current?.focus();
     caretAfter.current = next.caret;
+    if (option.kind === "agent" && sessionAgents?.includes(option.token))
+      setChooseSession(option.token);
   };
 
   const change = (next: string) => {
@@ -315,19 +319,36 @@ export function Composer({
   // biome-ignore lint/correctness/useExhaustiveDependencies: once per seed
   useEffect(() => {
     if (!seed) return;
+    if ("files" in seed && seed.files) setFiles(seed.files);
     const el = input.current;
     let next: string;
     let caret: number;
+    if ("quote" in seed) {
+      setQuote(seed.quote);
+      el?.focus();
+      return;
+    }
     if ("mention" in seed) {
       if (seed.remove) {
         next = withoutMention(value, seed.mention);
         caret = next.length;
+        if (sessionPick?.agent === seed.mention) setSessionPick(undefined);
       } else {
         const at = value.trim() ? (el?.selectionStart ?? value.length) : 0;
         ({ text: next, caret } = withMention(value.trim() ? value : "", at, seed.mention));
+        if (sessionAgents?.includes(seed.mention)) {
+          setMenu(false);
+          el?.focus();
+          setChooseSession(seed.mention);
+        }
       }
     } else {
-      next = seed.mode === "prepend" ? seed.text + value : seed.text;
+      next =
+        seed.mode === "prepend"
+          ? seed.text + value
+          : seed.mode === "append" && value.trim()
+            ? `${value}\n\n${seed.text}`
+            : seed.text;
       caret = next.length;
     }
     // A mention picked in the + menu leaves focus there, for the next pick;
@@ -404,14 +425,50 @@ export function Composer({
   );
 
   const ready = value.trim().length > 0 || files.length > 0;
+  // The bar's light (ComposerLight.tsx) shows only on a bar in use, so it is
+  // read once the bar sits idle on screen, or the moment it is due.
+  const [light, setLight] = useState(false);
+  const due = ready || !!mic;
+  // Each time the light comes due it is asked for afresh: a read that failed
+  // is not held against the bar, which works as plainly without it.
+  const [asked, setAsked] = useState(0);
+  useEffect(() => {
+    if (due) {
+      setLight(true);
+      setAsked((n) => n + 1);
+      return;
+    }
+    // Nothing is read ahead for a person saving data: the light waits until it is due.
+    if (light || sparing()) return;
+    return whenIdle(() => setLight(true));
+  }, [light, due]);
+  const lit = String(asked);
 
   const send = (now: boolean) => {
     if (!ready) return;
-    const text = withAttached(value, files);
-    if (now) queue.sendNow(text);
-    else queue.send(text);
+    const text =
+      withAttached(
+        quote
+          ? `${quote.agent ? `@${quote.agent} ` : ""}Replying to [${quote.label}](${quote.url}):\n\n${value}`
+          : value,
+        files,
+      ) || "Please inspect the attached files.";
+    const pick =
+      sessionPick && mentionsIn(text, [sessionPick.agent]).length ? sessionPick : undefined;
+    // The commands this message names lead the / menu next time.
+    if (tags)
+      rememberCommands(
+        skillsIn(
+          value,
+          tags.options.filter((o) => o.kind === "skill").map((o) => o.token),
+        ),
+      );
+    if (now) queue.sendNow(text, pick, uploadsOf(files));
+    else queue.send(text, pick, uploadsOf(files));
     change("");
     setFiles([]);
+    setQuote(undefined);
+    setSessionPick(undefined);
     setNotice(null);
     input.current?.focus();
   };
@@ -497,6 +554,7 @@ export function Composer({
       for (const track of stream.getTracks()) track.stop();
       recorder.current = null;
       setRecording(false);
+      setMic(null);
       const audio = new Blob(chunks, { type: r.mimeType || type || "audio/webm" });
       if (audio.size === 0) return;
       if (audio.size > voice.maxBytes) {
@@ -520,6 +578,7 @@ export function Composer({
     recorder.current = r;
     setNotice(defaultCopy.voice.recording);
     setRecording(true);
+    setMic(stream);
     // A chunk a second, so the size is known while it records.
     r.start(1000);
   };
@@ -546,9 +605,15 @@ export function Composer({
       }
     };
     r.onend = () => setListening(false);
-    r.onerror = () => {
+    r.onerror = (event) => {
       setListening(false);
-      setNotice("Dictation stopped. Check that the microphone is allowed for this page.");
+      setNotice(
+        event.error === "not-allowed" || event.error === "service-not-allowed"
+          ? "Dictation is not allowed. Check microphone permissions for this page."
+          : event.error === "no-speech"
+            ? "No speech was detected. Try again."
+            : "The speech service is unavailable. You can keep typing your message.",
+      );
     };
     speech.current = r;
     setListening(true);
@@ -564,7 +629,40 @@ export function Composer({
       : "Dictate";
 
   return (
-    <div className="relative z-10 flex min-w-0 flex-col gap-1.5">
+    <div className="humagen-composer-container relative z-10 flex min-w-0 flex-col gap-1.5">
+      {chooseSession && (
+        <Modal title={`Session for @${chooseSession}`} onClose={() => setChooseSession(undefined)}>
+          <div className="flex flex-col gap-4 p-5">
+            <h3 className="text-aui-lg font-medium">Session for @{chooseSession}</h3>
+            <p className="text-aui-sm text-aui-muted">
+              Continue with this agent’s earlier context, or start a separate session. Your message
+              stays in the draft until you send it.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                className={primary}
+                onClick={() => {
+                  setSessionPick({ agent: chooseSession, fresh: false });
+                  setChooseSession(undefined);
+                }}
+              >
+                Continue
+              </button>
+              <button
+                type="button"
+                className={button}
+                onClick={() => {
+                  setSessionPick({ agent: chooseSession, fresh: true });
+                  setChooseSession(undefined);
+                }}
+              >
+                Start fresh
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
       <form
         ref={form}
         aria-label="Message"
@@ -572,16 +670,13 @@ export function Composer({
           e.preventDefault();
           send(false);
         }}
-        data-working={queue.running ? "" : undefined}
-        className="humagen-glow humagen-composer relative flex flex-col gap-1 rounded-[1.25rem] border bg-aui-surface p-2"
+        className="humagen-composer relative flex flex-col gap-1 rounded-[1.25rem] border border-aui-border bg-aui-surface p-2 transition-colors focus-within:border-aui-fg motion-reduce:transition-none"
       >
-        {/* The brand's glow round the bar (styles.css). */}
-        <span aria-hidden className="humagen-glow-halo">
-          <span className="humagen-glow-sweep" />
-        </span>
-        <span aria-hidden className="humagen-glow-ring">
-          <span className="humagen-glow-sweep" />
-        </span>
+        {mic && (
+          <LazyFrame fallback={null} instead={null} resetKey={lit}>
+            <VoiceLevel stream={mic} host={form.current} />
+          </LazyFrame>
+        )}
         {tags && commands.length > 0 && (
           // Still: a list waiting on a person does not animate.
           <ul
@@ -591,7 +686,7 @@ export function Composer({
             role="listbox"
             aria-label={defaultCopy.threads.commands}
             style={{ maxHeight: listAt.max }}
-            className={`absolute right-2 left-2 z-20 overflow-y-auto rounded-aui border border-aui-border bg-aui-surface p-1 shadow-lg ${listAt.up ? "bottom-full mb-1" : "top-full mt-1"}`}
+            className={`absolute right-2 left-2 z-20 overflow-y-auto rounded-aui border border-aui-border bg-aui-surface p-1 shadow-lg ${listAt.up ? "bottom-full mb-1 md:[.humagen-home_&]:top-full md:[.humagen-home_&]:bottom-auto md:[.humagen-home_&]:mt-1 md:[.humagen-home_&]:mb-0" : "top-full mt-1"}`}
           >
             {commands.map((c, i) => (
               <li
@@ -629,7 +724,7 @@ export function Composer({
             role="listbox"
             aria-label={tags.label}
             style={{ maxHeight: listAt.max }}
-            className={`absolute right-2 left-2 z-20 overflow-y-auto rounded-aui border border-aui-border bg-aui-surface p-1 shadow-lg ${listAt.up ? "bottom-full mb-1" : "top-full mt-1"}`}
+            className={`absolute right-2 left-2 z-20 overflow-y-auto rounded-aui border border-aui-border bg-aui-surface p-1 shadow-lg ${listAt.up ? "bottom-full mb-1 md:[.humagen-home_&]:top-full md:[.humagen-home_&]:bottom-auto md:[.humagen-home_&]:mt-1 md:[.humagen-home_&]:mb-0" : "top-full mt-1"}`}
           >
             {shown.map((o, i) => (
               <li
@@ -649,7 +744,7 @@ export function Composer({
                 ) : (
                   <span
                     aria-hidden
-                    className="inline-flex size-4 shrink-0 items-center justify-center rounded-full bg-aui-hover text-[0.6rem] font-medium"
+                    className="inline-flex size-4 shrink-0 items-center justify-center rounded-full bg-aui-hover text-aui-2xs leading-none font-medium"
                   >
                     {o.kind === "person" ? (o.hint ?? o.label).trim().charAt(0).toUpperCase() : "@"}
                   </span>
@@ -683,12 +778,52 @@ export function Composer({
                     picker.current?.click();
                   },
                   () => setMenu(false),
+                  value,
                 )}
               </div>
             )}
           </Presence>
         )}
         <QueueStrip queue={queue} />
+        {sessionPick && mentionsIn(value, [sessionPick.agent]).length > 0 && (
+          <div className="flex items-center gap-2 px-2 text-aui-xs text-aui-muted">
+            <span>
+              {sessionPick.fresh ? "Start fresh" : "Continue"} @{sessionPick.agent}
+            </span>
+            <button
+              type="button"
+              className={tool}
+              aria-label="Clear session choice"
+              onClick={() => {
+                setSessionPick(undefined);
+                input.current?.focus();
+              }}
+            >
+              <XIcon size={14} />
+            </button>
+          </div>
+        )}
+        {quote && (
+          <div
+            className="flex min-w-0 items-center gap-2 rounded-aui bg-aui-hover px-3 py-2 text-aui-xs"
+            data-reply-quote
+          >
+            <a href={quote.url} className="min-w-0 flex-1 truncate" title={quote.text}>
+              Replying to {quote.label}
+            </a>
+            <button
+              type="button"
+              aria-label="Remove reply"
+              className={tool}
+              onClick={() => {
+                setQuote(undefined);
+                input.current?.focus();
+              }}
+            >
+              <XIcon size={14} />
+            </button>
+          </div>
+        )}
         {files.length > 0 && (
           <ul className="flex flex-wrap gap-1.5 px-2 pt-1" aria-label="Attached files">
             {files.map((f) => (
@@ -701,7 +836,11 @@ export function Composer({
                 <button
                   type="button"
                   aria-label={`Remove ${f.name}`}
-                  onClick={() => setFiles(files.filter((x) => x.id !== f.id))}
+                  onClick={() => {
+                    setFiles(files.filter((x) => x.id !== f.id));
+                    setNotice(null);
+                    input.current?.focus();
+                  }}
                   className="inline-flex size-8 pointer-coarse:size-11 shrink-0 items-center justify-center rounded-full text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
                 >
                   <XIcon size={12} />
@@ -740,7 +879,12 @@ export function Composer({
           ref={input}
           rows={1}
           value={value}
-          placeholder={placeholder}
+          // Who a mention asks, else the caller's own words: never the default agent's token.
+          placeholder={
+            mentioned.length > 0
+              ? `Message ${mentioned.map((name) => `@${name}`).join(", ")}`
+              : emptyText || placeholder || defaultCopy.chat.placeholder
+          }
           onChange={(e) => {
             change(e.target.value);
             follow(e.target.value);
@@ -760,8 +904,10 @@ export function Composer({
           onScroll={(e) => {
             if (backdrop.current) backdrop.current.scrollTop = e.currentTarget.scrollTop;
           }}
-          role={tags ? "combobox" : undefined}
-          aria-expanded={tags ? open : undefined}
+          // A multiline text box that completes from a list, not a combobox:
+          // a textarea may not take that role, and a combobox is one line.
+          // The open list is said by aria-controls and the active option.
+          aria-haspopup={tags ? "listbox" : undefined}
           aria-controls={tags && open ? "composer-tags" : undefined}
           aria-autocomplete={tags ? "list" : undefined}
           aria-activedescendant={
@@ -769,8 +915,27 @@ export function Composer({
           }
           className="humagen-composer-input relative max-h-[200px] min-h-10 pointer-coarse:min-h-11 w-full resize-none bg-transparent px-3 pt-2 text-aui-base text-aui-fg outline-none placeholder:text-aui-muted"
         />
+        {tags && typing?.query && typing.sigil === "@" && !shown.length && (
+          <p role="status" className={floatNote}>
+            No matching people or agents for @{typing.query}
+          </p>
+        )}
+        {tags && typing?.sigil === "/" && !commands.length && (
+          <p role="status" className={floatNote}>
+            {tags.options.some((o) => o.kind === "skill") ? (
+              <>No skill matches /{typing.query}.</>
+            ) : (
+              <>
+                No skills yet. Skills become / commands here.{" "}
+                <a href="/library/skills" className="underline hover:text-aui-fg">
+                  Create a skill
+                </a>
+              </>
+            )}
+          </p>
+        )}
         {notice && (
-          <p role="status" className="px-3 text-aui-xs text-aui-muted">
+          <p role="status" className={floatNote}>
             {notice}
           </p>
         )}
@@ -839,24 +1004,39 @@ export function Composer({
               )}
             </button>
           ) : (
-            <button
-              type="submit"
-              disabled={!ready}
-              aria-label={queue.running ? "Queue message" : "Send message"}
-              title={queue.running ? "Queue behind the reply in flight" : "Send"}
-              className={`${action} humagen-composer-send bg-aui-primary text-aui-primary-fg hover:opacity-90 disabled:opacity-40`}
-            >
-              <ArrowUpIcon size={16} strokeWidth={2.5} />
-            </button>
+            // The ring round Send is drawn once the composer's light is read; until
+            // then, and if it cannot be read, Send is the plain button in the same box.
+            (() => {
+              const send = (
+                <button
+                  type="submit"
+                  disabled={!ready}
+                  aria-label={queue.running ? "Queue message" : "Send message"}
+                  title={queue.running ? "Queue behind the reply in flight" : "Send"}
+                  className={`${action} bg-aui-hover text-aui-fg hover:opacity-90 disabled:opacity-40`}
+                >
+                  <ArrowUpIcon size={16} strokeWidth={2.5} />
+                </button>
+              );
+              const plain = (
+                <div
+                  className="metal-fx-fallback humagen-composer-send shrink-0"
+                  style={{ display: "inline-flex" }}
+                >
+                  {send}
+                </div>
+              );
+              return light ? (
+                <LazyFrame fallback={plain} instead={plain} resetKey={lit}>
+                  <SendRing ready={ready}>{send}</SendRing>
+                </LazyFrame>
+              ) : (
+                plain
+              );
+            })()
           )}
         </div>
       </form>
-      {/* One line under the prompt bar, the same before and after the first message. */}
-      {disclaimer && (
-        <p className="humagen-disclaimer px-1 text-center text-aui-2xs text-aui-muted">
-          {disclaimer}
-        </p>
-      )}
     </div>
   );
 }

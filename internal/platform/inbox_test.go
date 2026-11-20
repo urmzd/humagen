@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/urmzd/humagen/internal/wire"
-	"github.com/urmzd/orchagent/flow/turn/native"
 	saigetypes "github.com/urmzd/saige/agent/types"
+	"github.com/urmzd/saige/flow/turn/native"
 
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/alerts"
@@ -435,7 +435,9 @@ func TestInboxHoldsFailures(t *testing.T) {
 		t.Fatalf("with a rule the inbox is %+v", page)
 	}
 	raised := kept(p.Alerts.Alerts(tenant))
-	if len(raised) != 1 || !raised[0].Open() {
+	// The bare failure also has a session alert, resolved with its inbox
+	// action. Only the new rule alert remains open, with no duplicate for it.
+	if len(raised) != 2 || !raised[0].Open() || raised[1].Open() || raised[1].RunID != bare.ID || raised[1].Session == "" || raised[1].ResolvedBy != "opal" {
 		t.Fatalf("alerts = %+v", raised)
 	}
 	// Acknowledged from the alert's side: the message is resolved, by the

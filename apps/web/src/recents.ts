@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, type ThreadSummary } from "./api.ts";
+import { api, call, type ThreadSummary } from "./api.ts";
+import { sessionCenter, sessionThread } from "./sessionCenter.ts";
 import { within } from "./timeout.ts";
 
 export type Standing = "" | "running" | "failed";
@@ -8,9 +9,20 @@ export type Standing = "" | "running" | "failed";
 const PAGE = 30;
 
 const keep = (t: ThreadSummary, agent: string, standing: Standing) =>
-  t.origin === "api" &&
   (!agent || t.agents.includes(agent)) &&
   (standing === "" || (standing === "running" ? t.active > 0 : t.failed > 0));
+
+async function sessionPage(agent: string, standing: Standing, after?: string) {
+  const page = await sessionCenter.sessions({
+    roots: "true",
+    mine: "true",
+    limit: String(PAGE),
+    ...(agent ? { agent } : {}),
+    ...(standing ? { status: standing === "running" ? "working" : "failed" } : {}),
+    ...(after ? { after } : {}),
+  });
+  return { threads: page.sessions.map(sessionThread), next: page.next || null };
+}
 
 /**
  * The Recents list, a page at a time.
@@ -27,7 +39,12 @@ const keep = (t: ThreadSummary, agent: string, standing: Standing) =>
  * A server that does not page yet answers with everything and no cursor. The
  * same list is then paged here instead, so the screen behaves the same.
  */
-export function useRecents(agent: string, standing: Standing, signal: unknown) {
+export function useRecents(
+  agent: string,
+  standing: Standing,
+  signal: unknown,
+  sessionMode = false,
+) {
   const [rows, setRows] = useState<ThreadSummary[]>([]);
   // A cursor for the next page, null when there is none.
   const [next, setNext] = useState<string | null>(null);
@@ -56,7 +73,11 @@ export function useRecents(agent: string, standing: Standing, signal: unknown) {
       setFailed(false);
       setLoading("first");
     }
-    within(api.threadsPage({ limit: PAGE, origin: "api", agent, standing }))
+    within(
+      sessionMode
+        ? sessionPage(agent, standing)
+        : api.threadsPage({ limit: PAGE, origin: "api", agent, standing }),
+    )
       .then((page) => {
         if (current.current !== key) return;
         setStalled(false);
@@ -89,7 +110,7 @@ export function useRecents(agent: string, standing: Standing, signal: unknown) {
       .finally(() => {
         if (current.current === key) setLoading((l) => (l === "first" ? null : l));
       });
-  }, [key, signal, again]);
+  }, [key, signal, again, sessionMode]);
 
   const more = useCallback(() => {
     if (local !== null) {
@@ -99,7 +120,11 @@ export function useRecents(agent: string, standing: Standing, signal: unknown) {
     if (!next || loading) return;
     setLoading("more");
     setFailed(false);
-    within(api.threadsPage({ limit: PAGE, origin: "api", agent, standing, before: next }))
+    within(
+      sessionMode
+        ? sessionPage(agent, standing, next)
+        : api.threadsPage({ limit: PAGE, origin: "api", agent, standing, before: next }),
+    )
       .then((page) => {
         if (current.current !== key) return;
         setRows((old) => {
@@ -115,7 +140,7 @@ export function useRecents(agent: string, standing: Standing, signal: unknown) {
       .finally(() => {
         if (current.current === key) setLoading(null);
       });
-  }, [agent, standing, key, next, local, loading]);
+  }, [agent, standing, key, next, local, loading, sessionMode]);
 
   return {
     threads: local === null ? rows : rows.slice(0, local),
@@ -130,4 +155,50 @@ export function useRecents(agent: string, standing: Standing, signal: unknown) {
     },
     more,
   };
+}
+
+const roots = new Map<string, string>();
+
+/** The root of a session: the one a person started, which Recents lists. */
+async function rootOf(id: string): Promise<string> {
+  let at = id;
+  // An agent's session names the session that called it as its parent.
+  for (let depth = 0; depth < 8 && at.startsWith("s_"); depth++) {
+    const session = await call<{ parent?: string }>(
+      "GET",
+      `/api/sessions/${encodeURIComponent(at)}`,
+    );
+    if (!session.parent?.startsWith("s_")) break;
+    at = session.parent;
+  }
+  return at;
+}
+
+/**
+ * The Recents row the open session belongs to. Recents lists the sessions
+ * people started; an agent's own session under one is part of it, so it is
+ * shown as its root's row rather than as a second row with the same title.
+ * Null while that is being found out, when no row is marked.
+ */
+export function useRecentsRow(open: string | null, listed: boolean): string | null {
+  const direct = !open || listed || !open.startsWith("s_") || roots.has(open);
+  const [found, setFound] = useState<{ of: string; root: string } | null>(null);
+  useEffect(() => {
+    if (direct || !open) return;
+    let live = true;
+    rootOf(open)
+      .catch(() => open)
+      .then((root) => {
+        roots.set(open, root);
+        if (live) setFound({ of: open, root });
+      });
+    return () => {
+      live = false;
+    };
+  }, [open, direct]);
+  if (!open) return null;
+  if (listed) return open;
+  if (roots.has(open)) return roots.get(open) ?? open;
+  if (!open.startsWith("s_")) return open;
+  return found?.of === open ? found.root : null;
 }

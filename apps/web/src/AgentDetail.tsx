@@ -1,9 +1,9 @@
 import { defaultCopy } from "@humagen/components";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
-import { AgentChoicesEditor, choicesProblem, cleanChoices } from "./AgentChoicesEditor.tsx";
+import { BuilderButton } from "./AgentBuilder.tsx";
 import { AgentDefaultSkills } from "./AgentDefaultSkills.tsx";
+import { AgentHealth } from "./AgentHealth.tsx";
 import {
-  type AgentPlace,
   type AgentSpec,
   type Alert,
   type AlertRule,
@@ -19,12 +19,11 @@ import {
   type Source,
   type SuiteView,
 } from "./api.ts";
-import { losing, nameOfAddress } from "./availability.ts";
 import { Evals } from "./Evals.tsx";
 import { ApprovalQueue, CallPolicyEditor, useReach } from "./Governance.tsx";
 import { chainProblem, chainWords, defaultModel, ModelChain, POLICY } from "./ModelChain.tsx";
 import { ASK_PERSON, approvable, withApproval, withAsking, withNames } from "./people.ts";
-import { titleOf } from "./projects.ts";
+import { accessLabel, accessOf, homeName } from "./projects.ts";
 import type { AgentTab } from "./route.ts";
 import {
   AgentMark,
@@ -35,6 +34,7 @@ import {
   field,
   Label,
   Menu,
+  type Option,
   Page,
   PickMany,
   Problem,
@@ -48,7 +48,7 @@ import {
 
 export type Tab = AgentTab;
 
-/** Approvals on calls to other agents. Calls go through one host tool, so these name a tool the agent never holds, and the agent cannot start. */
+/** Approvals on calls to single agents: each holds the agent tool's calls to the agent it names. */
 const callApprovals = (spec: AgentSpec) =>
   (spec.approvals ?? []).filter((t) => t.startsWith("tag_"));
 
@@ -183,9 +183,9 @@ const presets: { label: string; rule: (agent: string) => AlertRule }[] = [
 ];
 
 /**
- * Which models an agent runs on, and when it moves to the next. It either
- * follows one of the workspace's policies, so the workspace can move every
- * such agent off a failing provider at once, or sets its own chain.
+ * Which models an agent runs on, in order, and when it moves to the next. Each
+ * agent owns its chain. An agent saved while following an old workspace policy
+ * shows that policy's models here, and saving makes them its own.
  */
 function ModelTab({
   spec,
@@ -193,7 +193,6 @@ function ModelTab({
   policies,
   others,
   onChange,
-  onManage,
 }: {
   spec: AgentSpec;
   editable: boolean;
@@ -203,139 +202,83 @@ function ModelTab({
   onManage?: () => void;
 }) {
   const onPolicy = spec.provider === POLICY;
-  const current = onPolicy ? policies.find((p) => p.name === spec.model) : undefined;
+  const followed = onPolicy ? policies.find((p) => p.name === spec.model) : undefined;
   const chain: ModelRef[] = onPolicy
-    ? []
+    ? (followed?.models ?? [{ provider: "anthropic", model: defaultModel.anthropic ?? "" }])
     : [{ provider: spec.provider, model: spec.model }, ...(spec.fallbacks ?? [])];
-  const writeChain = (models: ModelRef[], fallbackOn: string[]) => {
+  const fallbackOn = onPolicy ? (followed?.fallback_on ?? []) : (spec.fallback_on ?? []);
+  const writeChain = (models: ModelRef[], when: string[]) => {
     const [primary, ...rest] = models;
     if (!primary) return;
     onChange({
       provider: primary.provider,
       model: primary.model,
       fallbacks: rest.length > 0 ? rest : undefined,
-      fallback_on: rest.length > 0 && fallbackOn.length > 0 ? fallbackOn : undefined,
+      fallback_on: rest.length > 0 && when.length > 0 ? when : undefined,
     });
-  };
-  const choosePolicy = (name: string) =>
-    onChange({ provider: POLICY, model: name, fallbacks: undefined, fallback_on: undefined });
-  const useOwn = () => {
-    const from = current?.models ?? [
-      { provider: "anthropic", model: defaultModel.anthropic ?? "" },
-    ];
-    writeChain(from, current?.fallback_on ?? []);
   };
   const copyable = others.filter((a) => a.spec.provider !== POLICY);
 
   return (
     <div className="flex flex-col gap-6">
       <Section
-        title="Model policy"
+        title="Models"
         hint="Which models answer, in order, and which errors move a call to the next. A run keeps answering when one provider does not."
         actions={
-          onManage ? (
-            <button type="button" className={button} onClick={onManage}>
-              Workspace Policies
-            </button>
+          editable && copyable.length > 0 ? (
+            <Menu
+              label="Copy from an agent"
+              className="w-56"
+              value=""
+              options={[
+                { value: "", label: "Copy from an agent" },
+                ...copyable.map((a) => ({
+                  value: a.spec.name,
+                  label: a.spec.name,
+                  hint: chainWords([a.spec, ...(a.spec.fallbacks ?? [])], a.spec.fallback_on),
+                })),
+              ]}
+              onChange={(name) => {
+                const from = others.find((a) => a.spec.name === name)?.spec;
+                if (from) writeChain([from, ...(from.fallbacks ?? [])], from.fallback_on ?? []);
+              }}
+            />
           ) : undefined
         }
       >
-        <fieldset className={`${card} flex flex-col gap-3`}>
-          <legend className="sr-only">Where the models come from</legend>
-          <label className="flex items-start gap-2.5 text-aui-sm text-aui-fg">
-            <input
-              type="radio"
-              className="mt-1"
-              disabled={!editable || policies.length === 0}
-              checked={onPolicy}
-              onChange={() => policies[0] && choosePolicy(policies[0].name)}
-            />
-            <span className="min-w-0 flex-1">
-              Follow a workspace policy
-              <span className="block text-aui-xs text-aui-muted">
-                {policies.length === 0
-                  ? "The workspace has no policies yet. An admin adds them under Settings, Models."
-                  : "Changes to the policy apply from each agent's next call, so one change moves every agent on it."}
-              </span>
-              {onPolicy && (
-                <span className="flex flex-col gap-1 pt-2">
-                  <Menu
-                    label="Workspace policy"
-                    className="max-w-sm"
-                    value={spec.model}
-                    disabled={!editable}
-                    options={policies.map((p) => ({
-                      value: p.name,
-                      label: p.name,
-                      hint: chainWords(p.models, p.fallback_on),
-                    }))}
-                    onChange={choosePolicy}
-                  />
-                  {current ? (
-                    <span className="text-aui-xs text-aui-muted">
-                      {current.description || chainWords(current.models, current.fallback_on)}
-                    </span>
-                  ) : (
-                    <span role="alert" className="text-aui-xs text-aui-bad">
-                      The workspace has no policy named {spec.model}.
-                    </span>
-                  )}
-                </span>
-              )}
-            </span>
-          </label>
-          <label className="flex items-start gap-2.5 text-aui-sm text-aui-fg">
-            <input
-              type="radio"
-              className="mt-1"
-              disabled={!editable}
-              checked={!onPolicy}
-              onChange={useOwn}
-            />
-            <span>
-              Set its own models
-              <span className="block text-aui-xs text-aui-muted">
-                For an agent that needs something the workspace policies do not give it.
-              </span>
-            </span>
-          </label>
-        </fieldset>
-
-        {!onPolicy && (
-          <>
-            {editable && copyable.length > 0 && (
-              <Menu
-                label="Copy from an agent"
-                className="w-64"
-                value=""
-                options={[
-                  { value: "", label: "Copy from an agent" },
-                  ...copyable.map((a) => ({
-                    value: a.spec.name,
-                    label: a.spec.name,
-                    hint: chainWords([a.spec, ...(a.spec.fallbacks ?? [])], a.spec.fallback_on),
-                  })),
-                ]}
-                onChange={(name) => {
-                  const from = others.find((a) => a.spec.name === name)?.spec;
-                  if (from) writeChain([from, ...(from.fallbacks ?? [])], from.fallback_on ?? []);
-                }}
-              />
-            )}
-            <ModelChain
-              models={chain}
-              fallbackOn={spec.fallback_on ?? []}
-              editable={editable}
-              onChange={writeChain}
-            />
-          </>
+        {onPolicy && (
+          <p className="text-aui-xs text-aui-muted">
+            {followed
+              ? `These models come from the shared chain "${spec.model}" this agent used to follow. Saving keeps them as its own.`
+              : `This agent followed a shared chain named "${spec.model}" that no longer exists. Pick its models below.`}
+          </p>
         )}
+        <ModelChain
+          models={chain}
+          fallbackOn={fallbackOn}
+          editable={editable}
+          onChange={writeChain}
+        />
+        <Label
+          text="Reasoning effort"
+          hint="How hard the first model thinks. Sent only when that model takes it; a fallback answers at its default."
+        >
+          <select
+            className={`${field} sm:w-56`}
+            aria-label="Reasoning effort"
+            value={spec.effort ?? ""}
+            disabled={!editable}
+            onChange={(e) => onChange({ effort: e.target.value || undefined })}
+          >
+            <option value="">Model's default</option>
+            {[...new Set([...EFFORTS, ...(spec.effort ? [spec.effort] : [])])].map((e) => (
+              <option key={e} value={e}>
+                {e.charAt(0).toUpperCase() + e.slice(1)}
+              </option>
+            ))}
+          </select>
+        </Label>
       </Section>
-      <AgentChoicesEditor
-        choices={spec.choices}
-        editable={editable}
-        onChange={(choices) => onChange({ choices })}
-      />
       <p className="text-aui-xs text-aui-muted">
         Each call is billed at the price of the model that answered it. Temperature, token limits
         and step limits are not settings yet: the agent spec this platform runs on has no fields for
@@ -344,6 +287,9 @@ function ModelTab({
     </div>
   );
 }
+
+/** The reasoning efforts an agent's editor offers; a saved one outside them stays listed. */
+const EFFORTS = ["low", "medium", "high"];
 
 /** What is wrong with an agent's models, before the server says so. */
 export function policyProblem(spec: AgentSpec, policies: ModelPolicy[] = []): string | null {
@@ -364,6 +310,7 @@ export const BUILTIN_LOCKED =
 /** One agent: its prompt, its setup, how it is measured, and its history. */
 export function AgentDetail({
   operations,
+  onBuilderSession,
   revision,
   tab: wanted = "prompt",
   onTab,
@@ -375,8 +322,8 @@ export function AgentDetail({
   stats,
   workspaceDefault = "",
   tree = [],
-  place,
-  workspaceName = "",
+  home,
+  personalProject,
   canWrite,
   canGovern = false,
   builtin = false,
@@ -393,13 +340,13 @@ export function AgentDetail({
   onOpenAlerts,
   onOpenTask,
   onHomed,
-  onOpenProject,
   policies = [],
   onManagePolicies,
   seed,
   viewer,
 }: {
   operations?: ReactNode;
+  onBuilderSession?: (id: string) => void;
   /** null creates a new agent. */
   revision: Revision | null;
   /** The tab on screen. The address holds it, so a link can open any tab. */
@@ -413,13 +360,14 @@ export function AgentDetail({
   stats: Group | undefined;
   /** Who answers a message that tags no agent in the workspace itself. */
   workspaceDefault?: string;
-  /** The project tree, for where the agent may live and the titles of where it is enabled. */
+  /** The project tree, for the title of the project whose members see the agent. */
   tree?: ProjectView[];
-  /** Where it lives and which projects enable it, for a saved agent. */
-  place?: AgentPlace;
-  workspaceName?: string;
+  /** The project a saved agent is homed in, which says who sees it. None, or "~", is the workspace. */
+  home?: string;
+  /** The signed-in person's Personal project: an agent homed there is private to them. */
+  personalProject?: string;
   canWrite: boolean;
-  /** Holds projects:govern, which homing into or out of a company project needs. */
+  /** Holds projects:govern, which homing out of a company project needs. */
   canGovern?: boolean;
   /** Provided by the platform. It can be read and run, and its memory kept, but its spec is not saved here. */
   builtin?: boolean;
@@ -439,9 +387,8 @@ export function AgentDetail({
   onOpenAlerts?: () => void;
   /** Open a task, from an approval waiting in it. */
   onOpenTask?: (thread: string) => void;
-  /** Where the agent lives changed. */
+  /** Who sees the agent changed. */
   onHomed?: () => void;
-  onOpenProject?: (name: string) => void;
   /** The workspace's model policies an agent can follow. */
   policies?: ModelPolicy[];
   onManagePolicies?: () => void;
@@ -453,8 +400,9 @@ export function AgentDetail({
   const saved: AgentSpec = revision?.spec ?? {
     name: "",
     description: "",
-    provider: "offline",
-    model: "offline",
+    // No model until one is picked: an agent runs only on a provider someone set up.
+    provider: "",
+    model: "",
     system_prompt: "",
     access: { spawn: [] },
   };
@@ -542,13 +490,15 @@ export function AgentDetail({
       live = false;
     };
   }, [name]);
-  const broken = callApprovals(spec);
+  const heldCalls = callApprovals(spec);
 
   const save = async () => {
     setSaving(true);
     setProblem(null);
     try {
-      const draft = { ...spec, choices: cleanChoices(spec.choices) };
+      // Message choices are the workspace's now (Settings, Model providers); an agent's
+      // own, from before, are kept as they are for one release.
+      const draft = spec;
       const next = revision
         ? await api.reviseAgent(draft, revision.rev)
         : await api.createAgent(draft);
@@ -623,6 +573,9 @@ export function AgentDetail({
       actions={
         editable ? (
           <>
+            {revision && onBuilderSession && (
+              <BuilderButton name={name} onOpen={onBuilderSession} />
+            )}
             {dirty && <span className="text-aui-xs text-aui-muted">Unsaved changes</span>}
             {dirty && revision && (
               <button type="button" className={button} onClick={() => setSpec(saved)}>
@@ -632,12 +585,7 @@ export function AgentDetail({
             <button
               type="button"
               className={primary}
-              disabled={
-                !dirty ||
-                saving ||
-                policyProblem(spec, policies) !== null ||
-                choicesProblem(spec.choices) !== null
-              }
+              disabled={!dirty || saving || policyProblem(spec, policies) !== null}
               onClick={save}
             >
               {revision ? `Save as Revision ${revision.rev + 1}` : "Create Agent"}
@@ -648,6 +596,7 @@ export function AgentDetail({
       tabs={<Tabs label="Agent sections" value={tab} onChange={setTab} tabs={tabs} />}
     >
       {operations}
+      {revision && (tab === "prompt" || tab === "evals") && <AgentHealth name={name} />}
       {revision && tab === "prompt" && (
         <dl className="grid grid-cols-2 gap-3 sm:grid-cols-5">
           {[
@@ -674,15 +623,15 @@ export function AgentDetail({
         </p>
       )}
 
-      {broken.length > 0 && (
+      {heldCalls.length > 0 && (
         <div
-          role="alert"
-          className={`${card} flex flex-wrap items-center justify-between gap-3 border-aui-bad/40`}
+          data-testid="agent-held-calls"
+          className={`${card} flex flex-wrap items-center justify-between gap-3`}
         >
           <p className="min-w-0 flex-1 text-aui-sm text-aui-fg">
-            This agent asks for approval before calling {broken.map((t) => t.slice(4)).join(", ")}.
-            Agents call each other through one shared tool, so that setting names a tool it never
-            holds, and the agent cannot start.
+            This agent asks for approval before calling{" "}
+            {heldCalls.map((t) => t.slice(4)).join(", ")}. Each of those calls waits until a person
+            approves it.
           </p>
           {editable && (
             <button
@@ -737,7 +686,8 @@ export function AgentDetail({
                 System prompt
               </label>
               <span className="text-aui-2xs tabular-nums text-aui-muted">
-                {spec.system_prompt.split("\n").length} lines,{" "}
+                {spec.system_prompt.split("\n").length}{" "}
+                {spec.system_prompt.includes("\n") ? "lines" : "line"},{" "}
                 {spec.system_prompt.length.toLocaleString()} characters, about{" "}
                 {approxTokens(spec.system_prompt).toLocaleString()} tokens
               </span>
@@ -784,17 +734,21 @@ export function AgentDetail({
 
       {tab === "access" && (
         <div className="flex flex-col gap-8">
-          {revision && place && (
-            <WhereItAnswers
+          <p className="text-aui-xs text-aui-muted">
+            Agent calls and approval settings below are saved with{" "}
+            {revision ? `Save as Revision ${revision.rev + 1}` : "Create Agent"}. Who sees it and
+            Who may call it have their own save controls and take effect immediately.
+          </p>
+          {revision && (
+            <WhoSeesIt
               name={name}
-              place={place}
+              home={home}
+              personalProject={personalProject}
               tree={tree}
-              workspaceName={workspaceName}
-              // The platform's own agents live nowhere.
-              canMove={canWrite && !builtin}
+              builtin={builtin}
+              canChange={canWrite && !builtin}
               canGovern={canGovern}
-              onMoved={() => onHomed?.()}
-              onOpenProject={onOpenProject}
+              onChanged={() => onHomed?.()}
             />
           )}
           <Section
@@ -840,6 +794,41 @@ export function AgentDetail({
           )}
 
           <Section
+            title="Personal connections"
+            hint="Use only the tools that the person starting the work has connected and approved. This does not share their credentials or give this agent access to another person's connections."
+          >
+            <Switch
+              label="Use the requester's approved connection tools"
+              hint="Saved with this agent's next revision. Workspace policy and the person's current tool approval still apply to every call."
+              checked={(spec.tools ?? []).some(
+                (tool) => tool === "person_tools" || tool === "mcp:person_tools:write",
+              )}
+              disabled={!editable}
+              onChange={(on) =>
+                setSpec((current) => ({
+                  ...current,
+                  tools: [
+                    ...(current.tools ?? []).filter(
+                      (tool) => tool !== "person_tools" && tool !== "mcp:person_tools:write",
+                    ),
+                    ...(on ? ["person_tools"] : []),
+                  ],
+                  ...(!on
+                    ? {
+                        approvals: current.approvals?.filter(
+                          (tool) => tool !== "person_tools" && tool !== "mcp:person_tools:write",
+                        ),
+                      }
+                    : {}),
+                }))
+              }
+            />
+            <a href="/connections" className={textLink}>
+              Review Plugins
+            </a>
+          </Section>
+
+          <Section
             title="People in the loop"
             hint="A question or an approval reaches the inboxes of the people who may answer it. Runs started before you save keep the rules they started with."
           >
@@ -852,7 +841,10 @@ export function AgentDetail({
                 onChange={(on) => setSpec((s) => withAsking(s, on))}
               />
               {approvable(spec)
-                .filter((t) => !t.startsWith("tag_"))
+                .filter(
+                  (t) =>
+                    !t.startsWith("tag_") && t !== "person_tools" && t !== "mcp:person_tools:write",
+                )
                 .map((tool) => (
                   <Switch
                     key={tool}
@@ -904,7 +896,7 @@ export function AgentDetail({
       {tab === "context" && revision && (
         <AgentDefaultSkills
           agent={revision.spec.name}
-          home={place?.home ?? ""}
+          home={home ?? ""}
           agentRevision={revision.rev}
           canWrite={canWrite}
         />
@@ -1287,95 +1279,82 @@ export function AgentDetail({
   );
 }
 
-const placeWords = defaultCopy.agentPlace;
+const accessWords = defaultCopy.agentAccess;
 
 /**
- * Where an agent answers: the project it lives in, if any, and the projects
- * that enable it. A platform agent answers wherever a project enables it; an
- * agent that lives in a project answers there and below, and nowhere else.
+ * Who sees an agent: Private (homed in the person's Personal project), the
+ * workspace, or the members of the project it is homed in. Where it answers is
+ * the allow lists' business, so a change here strands nothing.
  */
-function WhereItAnswers({
+function WhoSeesIt({
   name,
-  place,
+  home,
+  personalProject,
   tree,
-  workspaceName,
-  canMove,
+  builtin,
+  canChange,
   canGovern,
-  onMoved,
-  onOpenProject,
+  onChanged,
 }: {
   name: string;
-  place: AgentPlace;
+  home?: string;
+  personalProject?: string;
   tree: ProjectView[];
-  workspaceName: string;
-  canMove: boolean;
+  builtin: boolean;
+  canChange: boolean;
   canGovern: boolean;
-  onMoved: () => void;
-  onOpenProject?: (name: string) => void;
+  onChanged: () => void;
 }) {
   const [problem, setProblem] = useState<string | null>(null);
-  const title = (n: string) => {
-    if (n === "") return workspaceName || defaultCopy.projects.workspace;
-    const p = tree.find((x) => x.name === n);
-    return p ? titleOf(p) : n;
-  };
-  const enabled = place.enabled_in.map(nameOfAddress);
-  const home = place.home ? nameOfAddress(place.home) : "";
-  const everywhere = !home && enabled.includes("");
-  const move = (to: string) => {
+  // A pick shows at once, until the agent list says where the agent is now.
+  const [pending, setPending] = useState<{ from: string; to: string } | null>(null);
+  // The platform's own agents are the workspace's.
+  const access = accessOf(builtin ? undefined : home, personalProject, tree);
+  const current = access.kind === "workspace" ? "" : access.project;
+  const mine = homeName(personalProject);
+  const options: Option[] = [];
+  if (mine && !builtin) {
+    options.push({ value: mine, label: accessWords.private, hint: accessWords.privateHint });
+  }
+  options.push({ value: "~", label: accessWords.workspace, hint: accessWords.workspaceHint });
+  // Another project's members, or someone else's Personal project, is kept as it is.
+  if (access.kind !== "workspace" && access.project !== mine) {
+    options.push({
+      value: access.project,
+      label: accessLabel(access),
+      hint:
+        access.kind === "members" ? accessWords.membersHint(access.title) : accessWords.privateHint,
+    });
+  }
+  const value = pending?.from === current ? pending.to : current || "~";
+  const change = (to: string) => {
+    if (to === value) return;
     setProblem(null);
+    setPending({ from: current, to });
     api
       .setAgentHome(name, to)
-      .then(onMoved)
-      .catch((e) => setProblem(e instanceof ApiError ? e.message : placeWords.failed));
+      .then(onChanged)
+      .catch((e) => {
+        setPending(null);
+        setProblem(e instanceof ApiError ? e.message : accessWords.failed);
+      });
   };
   return (
-    <Section title={placeWords.title} hint={placeWords.hint}>
+    <Section title={accessWords.title}>
       <Problem message={problem} />
-      <Label text={placeWords.home}>
-        <Menu
-          label={placeWords.home}
-          value={home}
-          disabled={!canMove}
-          options={[
-            { value: "", label: placeWords.noHome },
-            ...tree
-              .filter((p) => canGovern || p.kind !== "company")
-              .map((p) => {
-                const n = losing(p.name, place.enabled_in, tree);
-                return {
-                  value: p.name,
-                  label: titleOf(p),
-                  hint: n > 0 && p.name !== home ? placeWords.loses(n) : undefined,
-                };
-              }),
-          ]}
-          onChange={move}
-        />
-      </Label>
-      <div className="flex flex-col gap-1">
-        <p className="text-aui-xs font-medium text-aui-muted">{placeWords.availableIn}</p>
-        {home ? (
-          <p className="text-aui-sm text-aui-fg">{placeWords.homeAndBelow(title(home))}</p>
-        ) : everywhere ? (
-          <p className="text-aui-sm text-aui-fg">{placeWords.everywhere}</p>
-        ) : enabled.length === 0 ? (
-          <p className="text-aui-sm text-aui-muted">{placeWords.nowhere}</p>
-        ) : (
-          <ul className="flex flex-wrap gap-x-3 gap-y-1">
-            {enabled.map((e) => (
-              <li key={e}>
-                <button
-                  type="button"
-                  className={`${textLink} text-aui-sm`}
-                  onClick={() => onOpenProject?.(e)}
-                >
-                  {title(e)}
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
+      <div className="max-w-sm">
+        <Label text={accessWords.label}>
+          <Menu
+            label={accessWords.label}
+            value={value}
+            // Taking an agent out of a company project needs projects:govern.
+            disabled={
+              !canChange || (!canGovern && tree.find((p) => p.name === current)?.kind === "company")
+            }
+            options={options}
+            onChange={change}
+          />
+        </Label>
       </div>
     </Section>
   );

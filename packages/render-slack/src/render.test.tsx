@@ -27,38 +27,106 @@ describe("renderToSlack", () => {
     expect(message).toMatchSnapshot();
   });
 
-  it("ends every turn with references, the one link, then the disclaimer", () => {
+  it("links the conversation once, with an arrow at the end of the answer or the disclaimer", () => {
     const isTurn = (v: unknown): v is Turn =>
       typeof v === "object" && v !== null && "tasks" in v && "agent" in v;
     const turns = Object.entries(fx).filter((e): e is [string, Turn] => isTurn(e[1]));
     expect(turns.length).toBeGreaterThan(20);
     for (const [name, turn] of turns) {
       for (const streamed of [false, true]) {
-        const blocks =
-          renderToSlack(<TurnView turn={turn} streamed={streamed} />).pages.at(-1) ?? [];
-        const [link, disclaimer] = blocks.slice(-2) as {
-          type: string;
-          elements: { text: string }[];
-        }[];
+        const out = renderToSlack(<TurnView turn={turn} streamed={streamed} />);
+        const blocks = out.pages.at(-1) ?? [];
+        const all = JSON.stringify(out.pages);
         const where = `${name}${streamed ? " (streamed)" : ""}`;
-        expect(disclaimer, where).toEqual({
-          type: "context",
-          elements: [{ type: "mrkdwn", text: expect.stringContaining("is AI") }],
-        });
-        expect(link?.type, where).toBe("context");
-        expect(link?.elements, where).toHaveLength(1);
-        // The link has a descriptive label and points to the session.
-        expect(link?.elements[0]?.text, where).toBe(`<${turn.sessionUrl}|Open Conversation>`);
-        // The link appears nowhere else in the message.
+        // The old line is gone, and the arrow, as text, links the session exactly once.
+        expect(all, where).not.toContain("Open Conversation");
         expect(
-          JSON.stringify(blocks).split(`<${turn.sessionUrl}|Open Conversation>`),
+          all.split(`<${turn.sessionUrl}|\u2197\uFE0E>`).length - 1,
           where,
-        ).toHaveLength(2);
+        ).toBeLessThanOrEqual(1);
+        const inAnswer = all.split(`[\u2197\uFE0E](${turn.sessionUrl})`).length - 1;
+        const inFooter = all.split(`<${turn.sessionUrl}|\u2197\uFE0E>`).length - 1;
+        expect(inAnswer + inFooter, where).toBe(1);
+        // The message still ends with the disclaimer, and no block holds the link alone.
+        const disclaimer = blocks.at(-1) as { type: string; elements: { text: string }[] };
+        expect(disclaimer.type, where).toBe("context");
+        expect(disclaimer.elements, where).toHaveLength(1);
+        expect(disclaimer.elements[0]?.text, where).toContain("is AI");
+        if (inFooter) {
+          expect(disclaimer.elements[0]?.text, where).toMatch(/them\. <[^|]+\|\u2197\uFE0E>$/);
+        }
+        // Notifications read the fallback text: never a stray arrow.
+        expect(out.text, where).not.toContain("\u2197");
         if (turn.citations.length > 0) {
-          expect(JSON.stringify(blocks.at(-3)), where).toMatch(/"\[\d+\] /);
+          expect(JSON.stringify(blocks.at(-2)), where).toMatch(/"\[\d+\] /);
         }
       }
     }
+  });
+
+  it("ends a finished answer's last line with the arrow, unless it ends in code, a table or a rule", () => {
+    const session = "https://example.com/sessions/turn-1";
+    const arrow = `[\u2197\uFE0E](${session})`;
+    const answer = (text: string, status: Turn["status"] = "done") =>
+      renderToSlack(<TurnView turn={{ ...fx.doneTurn, citations: [], status, text }} />);
+    const last = (text: string, status?: Turn["status"]) => {
+      const { blocks } = answer(text, status);
+      return {
+        markdown: blocks.find((b) => b.type === "markdown") as { text: string } | undefined,
+        footer: JSON.stringify(blocks.at(-1)),
+      };
+    };
+    for (const text of [
+      "One line.",
+      "Three:\n\n- a\n- b\n- c",
+      "# Title\n\nWords [x](https://x.test).",
+    ]) {
+      const { markdown, footer } = last(text);
+      expect(markdown?.text, text).toBe(`${text} ${arrow}`);
+      expect(footer, text).not.toContain("\u2197");
+    }
+    for (const text of [
+      "Run:\n\n```bash\nmake\n```",
+      "Open fence:\n\n```\nstill code",
+      "| a | b |\n| --- | --- |\n| 1 | 2 |",
+      "Above\n\n---",
+      "Indented:\n\n    code",
+      // Found in review: endings a trailing link would change.
+      "Summary\n=======",
+      "Summary\n--",
+      "See [docs][1].\n\n[1]: https://example.test/d",
+      "a | b\n--|--\n1 | 2",
+      "| a | b\n|---|---\n| 1 | 2",
+      "~~~\n```\nstill code",
+      "````\n```\nstill code\n```",
+    ]) {
+      const { markdown, footer } = last(text);
+      expect(markdown?.text, text).toBe(text);
+      expect(footer, text).toContain(`<${session}|\u2197\uFE0E>`);
+    }
+    // Trailing blank lines or spaces never leave the arrow on a line of its own.
+    for (const text of ["Answer.\n", "Answer.\n\n", "Answer.   ", "Answer.\n  \n"]) {
+      expect(last(text).markdown?.text, JSON.stringify(text)).toBe(`Answer. ${arrow}`);
+    }
+    // An answer cut short by a failure or a stop is not ended with it: the disclaimer is.
+    for (const status of ["failed", "stopped", "working"] as const) {
+      const { markdown, footer } = last("Cut short", status);
+      expect(markdown?.text ?? "", status).not.toContain("\u2197");
+      expect(footer, status).toContain(`<${session}|\u2197\uFE0E>`);
+    }
+    // Streamed, the host decides: it ended the stream with the arrow, or the disclaimer has it.
+    const linked = renderToSlack(<TurnView turn={fx.doneTurn} streamed linked />);
+    expect(JSON.stringify(linked.blocks)).not.toContain("\u2197");
+    const unlinked = renderToSlack(<TurnView turn={fx.doneTurn} streamed />);
+    expect(JSON.stringify(unlinked.blocks.at(-1))).toContain(`<${session}|\u2197\uFE0E>`);
+    // A queued turn has no disclaimer yet: the arrow is its line.
+    const queued = renderToSlack(
+      <TurnView turn={{ ...fx.doneTurn, status: "queued", text: "" }} />,
+    );
+    expect(queued.blocks.at(-1)).toEqual({
+      type: "context",
+      elements: [{ type: "mrkdwn", text: `<${session}|\u2197\uFE0E>` }],
+    });
   });
 
   it("falls back to the source's page when there is no session, and to nothing when there is neither", () => {
@@ -189,41 +257,71 @@ describe("renderToSlack", () => {
     expect(renderToSlack(many.slice(0, 50)).pages).toHaveLength(1);
   });
 
-  it("closes with the source and session once, then the disclaimer", () => {
+  it("never lets the arrow push a posted answer into another message", () => {
     const session = "https://example.com/sessions/turn-1";
+    const answer = (text: string) =>
+      renderToSlack(<TurnView turn={{ ...fx.doneTurn, citations: [], text }} />);
+    const markdown = (out: ReturnType<typeof answer>) =>
+      out.pages.flat().filter((b) => b.type === "markdown") as unknown as { text: string }[];
+    // One paragraph just under the limit: alone it is one message, and so it stays.
+    const near = "abcdefghi ".repeat(1200).slice(0, 11_998).trimEnd().replace(/ $/, "x");
+    const full = answer(near);
+    expect(full.pages).toHaveLength(1);
+    expect(markdown(full).map((b) => b.text)).toEqual([near]);
+    expect(JSON.stringify(full.blocks.at(-1))).toContain(`<${session}|\u2197\uFE0E>`);
+    // An answer with room for it still ends with it.
+    const roomy = answer(near.slice(0, 11_000));
+    expect(roomy.pages).toHaveLength(1);
+    expect(markdown(roomy).at(-1)?.text.endsWith(`[\u2197\uFE0E](${session})`)).toBe(true);
+    // No markdown block is ever over the limit.
+    for (const b of [...markdown(full), ...markdown(roomy)]) {
+      expect(b.text.length).toBeLessThanOrEqual(LIMITS.markdownTotal);
+    }
+  });
+
+  it("ends a reply split over messages once, on its last page, with the disclaimer last", () => {
     const { pages, warnings } = renderToSlack(<TurnView turn={fx.longTurn} />);
     expect(pages.length).toBeGreaterThan(1);
     expect(warnings).toHaveLength(1);
-    // Once, on the last page only, directly above the disclaimer.
-    const link = `<${session}|Open Conversation>`;
-    expect(JSON.stringify(pages).split(link)).toHaveLength(2);
-    expect(JSON.stringify(pages.slice(0, -1))).not.toContain(link);
-    expect(pages.at(-1)?.at(-2)).toEqual({
-      type: "context",
-      elements: [{ type: "mrkdwn", text: link }],
-    });
+    // longTurn outgrows one message: the arrow ends the disclaimer, once, on the last page.
+    const footer = "<https://example.com/sessions/turn-1|\u2197\uFE0E>";
+    expect(JSON.stringify(pages).match(/sessions\/turn-1/g)).toHaveLength(1);
     expect(pages.at(-1)?.at(-1)).toEqual({
       type: "context",
       elements: [
         {
           type: "mrkdwn",
-          text: "Assistant is AI and can make mistakes. Double-check its answers before you rely on them.",
+          text: `Assistant is AI and can make mistakes. Double-check its answers before you rely on them. ${footer}`,
         },
       ],
     });
-    // Streamed or not, finished or failed: the link is there, after everything but the disclaimer.
-    const streamed = renderToSlack(<TurnView turn={fx.doneTurn} streamed />).blocks;
-    expect(JSON.stringify(streamed.at(-2))).toContain(link);
-    for (const turn of [fx.failedTurn, fx.stoppedTurn, fx.waitingTurn]) {
-      const { blocks } = renderToSlack(<TurnView turn={turn} streamed />);
-      const at = blocks.findIndex((b) => JSON.stringify(b).includes(link));
-      expect(at).toBeGreaterThanOrEqual(blocks.length - 2);
-      expect(JSON.stringify(blocks).split(link)).toHaveLength(2);
-    }
-    expect(JSON.stringify(streamed.at(-1))).toContain("Assistant is AI");
     // A host's own wording replaces the default.
     const custom = renderToSlack(<TurnView turn={{ ...fx.doneTurn, disclaimer: "Beta." }} />);
     expect(JSON.stringify(custom.blocks.at(-1))).toContain("Beta.");
+  });
+
+  it("posts the words said before a call and after it as two paragraphs", () => {
+    const turn: Turn = {
+      ...fx.doneTurn,
+      citations: [],
+      text: "I'll ask the researcher.Here is what it found.",
+      tasks: [
+        {
+          id: "c",
+          title: "researcher",
+          status: "complete",
+          at: 24,
+          subagent: { name: "researcher" },
+        },
+      ],
+    };
+    const md = renderToSlack(<TurnView turn={turn} />).blocks.find((b) => b.type === "markdown") as
+      | { text: string }
+      | undefined;
+    // With the conversation link (#394), the finished answer also ends with its arrow.
+    expect(md?.text).toBe(
+      "I'll ask the researcher.\n\nHere is what it found. [\u2197\uFE0E](https://example.com/sessions/turn-1)",
+    );
   });
 
   it("shares the markdown budget across blocks", () => {

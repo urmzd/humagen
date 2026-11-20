@@ -207,13 +207,27 @@ func countOp(tenant string, n int, version int64) state.Op {
 }
 
 // Add writes before permitting the read. Invalid or unrecordable reads fail closed.
-func (s *Store) Add(tenant string, r Record) error {
-	if !valid(tenant, r) {
-		return errors.New("read audit: invalid record")
+func (s *Store) Add(tenant string, r Record) error { return s.AddAll(tenant, []Record{r}) }
+
+// AddAll writes the records of the reads one response shows, together: all
+// of them and the tenant's count in one write, which the store applies
+// whole or not at all, on memory and on Postgres (one transaction). When any
+// is invalid, when they would take the tenant past MaxRecords, or when the
+// write fails, none is written. No records is no write.
+func (s *Store) AddAll(tenant string, records []Record) error {
+	if len(records) == 0 {
+		return nil
 	}
-	b, err := json.Marshal(r)
-	if err != nil {
-		return err
+	values := make([][]byte, len(records))
+	for i, r := range records {
+		if !valid(tenant, r) {
+			return errors.New("read audit: invalid record")
+		}
+		b, err := json.Marshal(r)
+		if err != nil {
+			return err
+		}
+		values[i] = b
 	}
 	if err := s.tenants.Mark(tenant); err != nil {
 		return err
@@ -223,16 +237,21 @@ func (s *Store) Add(tenant string, r Record) error {
 		if err != nil {
 			return err
 		}
-		if n >= MaxRecords {
+		if n+len(records) > MaxRecords {
 			return errors.New("read audit: capacity reached")
 		}
-		id, err := unique()
-		if err != nil {
-			return err
+		ops := make([]state.Op, 0, len(records)+1)
+		ops = append(ops, countOp(tenant, n+len(records), version))
+		for i, r := range records {
+			id, err := unique()
+			if err != nil {
+				return err
+			}
+			ops = append(ops, state.Create(tenant, recordKey(r.At, id), values[i]))
 		}
 		c, cancel := ctx()
 		defer cancel()
-		return s.st.Write(c, namespace, countOp(tenant, n+1, version), state.Create(tenant, recordKey(r.At, id), b))
+		return s.st.Write(c, namespace, ops...)
 	})
 }
 

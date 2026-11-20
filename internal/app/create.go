@@ -23,7 +23,7 @@ import (
 const createUsage = `usage: humagen create KIND [flags]
 
 Kinds:
-  github  Connect a GitHub App installation (default agent: code-reviewer)
+  github  Connect a GitHub App installation (default agent: code-reviewer, from the Review package)
   slack   Connect a Slack Events API app (default agent: workspace default)
 
 Common flags: --server URL, --token REF, --name NAME, --agent NAME, --force, --json
@@ -212,22 +212,20 @@ func (c createOptions) secretRefHint(tenant string) error {
 	return fmt.Errorf("the server does not let this workspace read %s; start it with -secret-refs \"%s=%s\" (or set spec.secret_env in the System document); ensure these variables are set on the server", strings.Join(names, ", "), tenant, strings.Join(names, ","))
 }
 
-func createCmd(args []string, out io.Writer) error {
-	c, err := parseCreate(args, out)
-	if err != nil {
-		return err
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
+// apiCaller is how a command calls the API at server as the bearer tokenRef
+// names: one JSON request, its answer, and an error for anything but success.
+// A redirect is not followed, so a token is sent to the server named and no other.
+func apiCaller(ctx context.Context, server, tokenRef string, explicit bool) (func(method, path string, body any) (json.RawMessage, error), error) {
+	var err error
 	token := ""
-	if c.token != "" {
+	if tokenRef != "" {
 		// An unset default token is the dev-mode path. An explicit reference
 		// must resolve, so a typo cannot silently become an anonymous request.
 		_, present := os.LookupEnv("HUMAGEN_TOKEN")
-		if c.explicitToken || c.token != "env:HUMAGEN_TOKEN" || (present && strings.TrimSpace(os.Getenv("HUMAGEN_TOKEN")) != "") {
-			token, err = credref.Default.Resolve(ctx, c.token)
+		if explicit || tokenRef != "env:HUMAGEN_TOKEN" || (present && strings.TrimSpace(os.Getenv("HUMAGEN_TOKEN")) != "") {
+			token, err = credref.Default.Resolve(ctx, tokenRef)
 			if err != nil {
-				return fmt.Errorf("resolve --token: %w", err)
+				return nil, fmt.Errorf("resolve --token: %w", err)
 			}
 		}
 	}
@@ -240,7 +238,7 @@ func createCmd(args []string, out io.Writer) error {
 				return nil, err
 			}
 		}
-		req, err := http.NewRequestWithContext(ctx, method, c.server+path, bytes.NewReader(data))
+		req, err := http.NewRequestWithContext(ctx, method, server+path, bytes.NewReader(data))
 		if err != nil {
 			return nil, err
 		}
@@ -270,6 +268,20 @@ func createCmd(args []string, out io.Writer) error {
 			return nil, errors.New("client API returned invalid JSON")
 		}
 		return json.RawMessage(data), nil
+	}
+	return request, nil
+}
+
+func createCmd(args []string, out io.Writer) error {
+	c, err := parseCreate(args, out)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	request, err := apiCaller(ctx, c.server, c.token, c.explicitToken)
+	if err != nil {
+		return err
 	}
 	raw, err := request(http.MethodGet, "/api/clients", nil)
 	if err != nil {
@@ -341,6 +353,44 @@ func createCmd(args []string, out io.Writer) error {
 	if c.kind == "github" {
 		next = "mention " + answer + " on a pull request"
 	}
+	if title := storePackageFor(request, created.DefaultAgent); title != "" {
+		next = "install the " + title + " package from the Store, then " + next
+	}
 	_, err = fmt.Fprintf(out, "%s %s client %s (id %s), answered by %s\nNext: %s\n", verb, c.kind, created.Name, created.ID, answer, next)
 	return err
+}
+
+// storePackageFor is the title of the store package that holds agent when
+// the workspace has not installed it, such as Review for code-reviewer, the
+// GitHub default. It is "" for any other agent, and when the server cannot
+// say: one with no store answers as it always did.
+func storePackageFor(request func(method, path string, body any) (json.RawMessage, error), agent string) string {
+	if agent == "" {
+		return ""
+	}
+	raw, err := request(http.MethodGet, "/api/store/packages", nil)
+	if err != nil {
+		return ""
+	}
+	var store struct {
+		Packages []struct {
+			Title  string `json:"title"`
+			Agents []struct {
+				Name      string `json:"name"`
+				Installed bool   `json:"installed"`
+				Taken     bool   `json:"taken"`
+			} `json:"agents"`
+		} `json:"packages"`
+	}
+	if json.Unmarshal(raw, &store) != nil {
+		return ""
+	}
+	for _, pkg := range store.Packages {
+		for _, a := range pkg.Agents {
+			if a.Name == agent && !a.Installed && !a.Taken {
+				return pkg.Title
+			}
+		}
+	}
+	return ""
 }

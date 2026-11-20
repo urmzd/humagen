@@ -1,14 +1,15 @@
-import { type OrbState, orbLabel } from "@humagen/web";
-import { StrictMode, useState } from "react";
+import { type OrbState, orbLabel, useQueue } from "@humagen/web";
+import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "@humagen/render-web/fonts.css";
 import "./styles.css";
-import { ActivityPanel } from "./Activity.tsx";
 import { sampleTrees } from "./activity.fixtures.ts";
+import { Composer } from "./Composer.tsx";
 import { InboxPage } from "./InboxPage.tsx";
 import { LimitsPanel } from "./Limits.tsx";
 import { overLimit, parentBound, sessionBound, unlimited } from "./limits.fixtures.ts";
 import { memoryTransport } from "./mail.fixtures.ts";
+import { ResponseGallery, SessionPanelGallery } from "./ResponseGallery.tsx";
 import { RunItem } from "./RunItem.tsx";
 import { SessionGauge } from "./SessionGauge.tsx";
 import { Storage, StorageUsed, StoredList } from "./Storage.tsx";
@@ -22,6 +23,7 @@ import {
   Segmented,
   Stroke,
   type StrokeState,
+  setAgentHues,
   UsageMeter,
 } from "./ui.tsx";
 
@@ -32,6 +34,8 @@ import {
  */
 const states: StrokeState[] = ["idle", "working", "waiting", "failed", "done"];
 const agents = ["lead", "oncall", "releaser", "helper", "billing", "triage"];
+// The page calls nothing, so the hues the server would give are given here.
+setAgentHues(Object.fromEntries(agents.map((a, i) => [a, (25 + i * 58) % 360])));
 const M = 1_000_000;
 // One inbox for the page's life, so what is resolved in it stays resolved.
 const inbox = memoryTransport();
@@ -44,6 +48,22 @@ function Section({ title, children }: { title: string; children: React.ReactNode
       <h2 className="humagen-display text-aui-lg font-semibold text-aui-fg">{title}</h2>
       {children}
     </section>
+  );
+}
+
+/** The composer at rest, or with a reply in flight (Send starts one; Stop ends it). */
+function ComposerSample({ working }: { working: boolean }) {
+  const queue = useQueue({ onStart: () => {}, onInterrupt: () => queue.turnEnded("stopped") });
+  const begun = useRef(false);
+  useEffect(() => {
+    if (!working || begun.current) return;
+    begun.current = true;
+    queue.adopt("A reply in flight");
+  }, [working, queue]);
+  return (
+    <div className="w-full max-w-xl">
+      <Composer placeholder="Message" queue={queue} />
+    </div>
   );
 }
 
@@ -101,12 +121,17 @@ function Gallery() {
                   style={{ height: size }}
                 >
                   <AgentMark name="oncall" size={size} state={state} />
-                  <span>oncall · {size}px</span>
+                  <span>oncall | {size}px</span>
                 </div>
               ))}
             </div>
           ))}
         </div>
+      </Section>
+
+      <Section title="Composer: at rest, then with a reply in flight">
+        <ComposerSample working={false} />
+        <ComposerSample working />
       </Section>
 
       <Section title="Stroke, by state">
@@ -285,27 +310,12 @@ function Gallery() {
         </div>
       </Section>
 
-      <Section title="Activity: a conversation's runs, then one run's whole conversation">
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          {/* The panel is a full sheet below the lg width. A transform keeps each one inside its box here. */}
-          <div
-            data-testid="gallery-activity"
-            className="relative flex h-[40rem] overflow-hidden rounded-aui-lg border border-[var(--humagen-rule)] [transform:translateZ(0)] [&>aside]:w-full"
-          >
-            <ActivityPanel
-              trees={trees}
-              selected={run}
-              onSelect={setRun}
-              onClose={() => setRun(null)}
-            />
-          </div>
-          <div className="relative flex h-[40rem] overflow-hidden rounded-aui-lg border border-[var(--humagen-rule)] [transform:translateZ(0)] [&>aside]:w-full">
-            <ActivityPanel trees={trees} selected="r2a" onSelect={() => {}} onClose={() => {}} />
-          </div>
-          <div className="relative flex h-[40rem] overflow-hidden rounded-aui-lg border border-[var(--humagen-rule)] [transform:translateZ(0)] [&>aside]:w-full">
-            <ActivityPanel trees={[]} selected={null} onSelect={() => {}} onClose={() => {}} />
-          </div>
-        </div>
+      <Section title="A response's activity, from four recorded streams: one agent, two in parallel, two deep waiting on an approval, stopped">
+        <ResponseGallery />
+      </Section>
+
+      <Section title="A session's Details: running, waiting for you, done">
+        <SessionPanelGallery />
       </Section>
 
       <Section title="Inbox, held in memory with one message of every kind">

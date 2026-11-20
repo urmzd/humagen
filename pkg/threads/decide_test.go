@@ -6,7 +6,6 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/threads"
 )
 
@@ -78,14 +77,13 @@ func TestADefaultThatIsNoLongerAvailableFailsClosed(t *testing.T) {
 	}
 }
 
-func TestTheNearerDefaultsAreTheThreadsThenTheClientsThenTheChannels(t *testing.T) {
-	renewals := projects.Channel{Project: "Globex", Name: "renewals", Default: "globex-helper"}
-	got := threads.Nearer(threads.Thread{Default: "scribe"}, "slack-helper", renewals)
-	want := []threads.Default{{Agent: "scribe", From: threads.FromThread}, {Agent: "slack-helper", From: threads.FromClient}, {Agent: "globex-helper", From: threads.FromChannel}}
+func TestTheNearerDefaultsAreTheThreadsThenTheClients(t *testing.T) {
+	got := threads.Nearer(threads.Thread{Default: "scribe"}, "slack-helper")
+	want := []threads.Default{{Agent: "scribe", From: threads.FromThread}, {Agent: "slack-helper", From: threads.FromClient}}
 	if !slices.Equal(got, want) {
 		t.Fatalf("Nearer = %+v, want %+v", got, want)
 	}
-	if got := threads.Nearer(threads.Thread{}, "", projects.Channel{Name: projects.General}); slices.ContainsFunc(got, func(d threads.Default) bool { return d.Agent != "" }) {
+	if got := threads.Nearer(threads.Thread{}, ""); slices.ContainsFunc(got, func(d threads.Default) bool { return d.Agent != "" }) {
 		t.Fatalf("Nearer with none set = %+v", got)
 	}
 }

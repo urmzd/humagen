@@ -138,7 +138,7 @@ test("a person the client maps sees the shared Home, every part of it read as th
   assert.match(mention?.text?.text ?? "", /https:\/\/humagen\.test\/inbox\?message=m-mention/);
 
   const [news] = under(blocks, defaultCopy.home.whatsNew);
-  assert.match(news?.text?.text ?? "", /^\*Field offsite\*\nUnread · Posted in Field engineering/);
+  assert.match(news?.text?.text ?? "", /^\*Field offsite\*\nUnread \| Posted in Field engineering/);
   assert.equal(news?.accessory?.url, "https://humagen.test/projects/Field?message=m-news");
 
   // The projects that name her: News, everyone's and the busiest, is not one.
@@ -147,7 +147,7 @@ test("a person the client maps sees the shared Home, every part of it read as th
     projects.map((b) => b.text?.text.split("\n")[0]),
     ["*Field engineering*", "*Globex*"],
   );
-  assert.match(projects[1]?.text?.text ?? "", /Account · in Field engineering/);
+  assert.match(projects[1]?.text?.text ?? "", /Account \| in Field engineering/);
   assert.equal(projects[1]?.accessory?.url, "https://humagen.test/projects/Globex");
 
   // It cannot know their access or what they connected, so it says neither.
@@ -161,7 +161,7 @@ test("Home starts a question or an agent as the person, and searches in the cons
   const w = mapping();
   w.humagen.agentList = [
     ...w.humagen.agentList,
-    { name: "humagen-builder", description: "Builds agents." },
+    { name: "humagen", description: "Builds agents." },
   ];
   await w.app.handle(homeOpened(USER));
   await settle();
@@ -209,13 +209,13 @@ test("Home starts a question or an agent as the person, and searches in the cons
     }),
   );
   await answered(w);
-  assert.equal(w.humagen.posts.at(-1)?.text, "@humagen-builder one that triages support tickets");
+  assert.equal(w.humagen.posts.at(-1)?.text, "@humagen one that triages support tickets");
   assert.deepEqual(w.humagen.posts.at(-1)?.act_as, { client: "app", user: USER });
 });
 
 test("Build an Agent is offered only where this app may reach the builder", async () => {
   const w = mapping();
-  w.humagen.agentList = [...w.humagen.agentList, { name: "humagen-builder" }];
+  w.humagen.agentList = [...w.humagen.agentList, { name: "humagen" }];
   w.humagen.clients.set("app", {
     ...(w.humagen.clients.get("app") as NonNullable<ReturnType<typeof w.humagen.clients.get>>),
     agents: ["lead"],
@@ -431,7 +431,7 @@ test("What's new names where it was posted by its title, in a project that is no
   const [news] = under(blocks, defaultCopy.home.whatsNew);
   assert.match(
     news?.text?.text ?? "",
-    /^\*Office closed Friday\*\nUnread · Posted in Company news/,
+    /^\*Office closed Friday\*\nUnread \| Posted in Company news/,
   );
   assert.ok(
     !under(blocks, defaultCopy.home.yourProjects).some((b) =>

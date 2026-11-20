@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { accentAttribute, applyCopy, brandCopy, servedBranding } from "./branding.ts";
+import {
+  accentAttribute,
+  agentShown,
+  applyCopy,
+  brandCopy,
+  servedBranding,
+  setEntryAgent,
+} from "./branding.ts";
 import { documentTitle } from "./route.ts";
 
 test("the workspace accent, and no choice yet, draw with the branded accent", () => {
@@ -21,6 +28,7 @@ test("before the workspace's branding is read, the served name brands the consol
     style: null,
     starters: null,
     copy: {},
+    entry_agent: "humagen",
   });
   const acme = servedBranding("Acme");
   assert.equal(acme.wordmark, "Acme");
@@ -28,8 +36,8 @@ test("before the workspace's branding is read, the served name brands the consol
 });
 
 test("the tab title ends with the branded product's name", () => {
-  assert.equal(documentTitle({ page: "inbox" }, 0, "Acme"), "Notifications · Acme");
-  assert.equal(documentTitle({ page: "inbox" }, 2, "Acme"), "(2) Notifications · Acme");
+  assert.equal(documentTitle({ page: "inbox" }, 0, "Acme"), "Notifications - Acme");
+  assert.equal(documentTitle({ page: "inbox" }, 2, "Acme"), "(2) Notifications - Acme");
 });
 
 test("the workspace's text replaces the console's by key, and nothing else", () => {
@@ -63,8 +71,19 @@ test("a tab title follows the workspace's words for the page", async () => {
   const was = defaultCopy.navigation.agents;
   defaultCopy.navigation.agents = "Assistants";
   try {
-    assert.equal(documentTitle({ page: "agents" }, 0, "Acme"), "Assistants · Acme");
+    assert.equal(documentTitle({ page: "agents" }, 0, "Acme"), "Assistants - Acme");
   } finally {
     defaultCopy.navigation.agents = was;
   }
+});
+
+test("the entry agent is shown by the workspace's name, every other agent by its own", () => {
+  setEntryAgent("", "");
+  assert.equal(agentShown("humagen"), "humagen");
+  brandCopy({}, { ...servedBranding("Acme"), entry_agent: "humagen" });
+  assert.equal(agentShown("humagen"), "Acme");
+  assert.equal(agentShown("billing"), "billing");
+  brandCopy({}, { ...servedBranding("Acme"), entry_agent: "front-desk" });
+  assert.equal(agentShown("front-desk"), "Acme");
+  assert.equal(agentShown("humagen"), "humagen");
 });

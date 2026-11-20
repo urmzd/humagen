@@ -122,6 +122,20 @@ var slackMention = regexp.MustCompile(`^<@([A-Z][A-Z0-9]{2,31})(?:\|[^<>]{0,100}
 // MaxMentions lookups of each kind. A / that names no skill holds no place,
 // and at most MaxMentions of them are looked up; any after are text.
 func Parse(text string, r Resolver) ([]Mention, error) {
+	return parse(text, r, false)
+}
+
+// ParseSkills finds only the skills a text names, by the grammar and the
+// lookups Parse reads them with: $<name>, /<name> and a tag of a kind that
+// resolves to skills (@skill:<name>). Every other tag is text. It is for a
+// turn sent straight to an agent, which tags nobody: the skills it names
+// are the ones the same words would name in a message, one nobody declares
+// is kept, refused, and more than MaxSkills are refused (ErrInvalid).
+func ParseSkills(text string, r Resolver) ([]Mention, error) {
+	return parse(text, r, true)
+}
+
+func parse(text string, r Resolver, skillsOnly bool) ([]Mention, error) {
 	var out []Mention
 	seen := map[[2]string]bool{}
 	asked := map[string]bool{}
@@ -154,7 +168,7 @@ func Parse(text string, r Resolver) ([]Mention, error) {
 		switch c := text[i]; {
 		case c == '`':
 			i = skipCode(text, i)
-		case c == '<' && strings.HasPrefix(text[i:], "<@"):
+		case c == '<' && strings.HasPrefix(text[i:], "<@") && !skillsOnly:
 			if m := slackMention.FindStringSubmatch(text[i:min(len(text), i+maxSlackMention)]); m != nil {
 				if err := add("<"+m[1], func() Mention { return slackTag(m[1], r) }); err != nil {
 					return nil, err
@@ -170,6 +184,16 @@ func Parse(text string, r Resolver) ([]Mention, error) {
 				continue
 			}
 			key, name, resolve := atTag(token, r, &kinds)
+			if skillsOnly {
+				// Only a tag of a kind that resolves to skills is read.
+				if strings.HasPrefix(key, "$") {
+					if err := add(key, resolve); err != nil {
+						return nil, err
+					}
+				}
+				i += 1 + len(token)
+				continue
+			}
 			switch known, complete := roster.has(name); {
 			case asked[key]:
 			case known:

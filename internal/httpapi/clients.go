@@ -73,6 +73,10 @@ type clientView struct {
 // one with no home of its own and without those agents.
 func (s *Server) view(seer *platform.Seer, tenant string, c clients.Client) (clientView, error) {
 	v := clientView{Client: seer.Client(c)}
+	if c.Managed == clients.ManagedInstall {
+		v.Credentials.Token.Ref = ""
+		v.Credentials.SigningSecret.Ref = ""
+	}
 	pols, err := s.P.Policies.For(tenant, nil, "", c.ID)
 	if err != nil {
 		return clientView{}, err
@@ -188,7 +192,7 @@ func (s *Server) updateClient(w http.ResponseWriter, r *http.Request, who auth.P
 		return
 	}
 	seer := s.P.Seer(who)
-	if old, err := s.P.Clients.Get(who.Tenant, r.PathValue("id")); err == nil && old.Managed == "" {
+	if old, err := s.P.Clients.Get(who.Tenant, r.PathValue("id")); err == nil && (old.Managed == "" || old.Managed == clients.ManagedApp) {
 		if in.Home == nil && old.Home != nil && !seer.Project(old.HomeOf().Project) {
 			in.Home = old.Home
 		}

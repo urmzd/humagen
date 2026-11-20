@@ -51,7 +51,7 @@ export function AccessExplain({
         <Menu
           label="Permission to explain"
           value={permission}
-          options={PERMISSIONS.map((p) => ({ value: p, label: `${doing[p]} (${p})` }))}
+          options={PERMISSIONS.map((p) => ({ value: p, label: doing[p] ?? p }))}
           onChange={onPermission}
         />
       </Label>

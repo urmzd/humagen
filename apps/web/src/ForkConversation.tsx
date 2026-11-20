@@ -13,6 +13,7 @@ export function ForkConversation({
   through,
   onClose,
   onForked,
+  onBringBack,
   open = true,
 }: {
   open?: boolean;
@@ -20,6 +21,7 @@ export function ForkConversation({
   through: string;
   onClose: () => void;
   onForked: (thread: Thread) => void;
+  onBringBack?: () => void;
 }) {
   const [title, setTitle] = useState(thread.title ? `${thread.title} (fork)` : "");
   const [available, setAvailable] = useState<string[] | null>(null);
@@ -77,10 +79,18 @@ export function ForkConversation({
   return (
     <Inspector open={open} title={words.title} onClose={onClose}>
       <form onSubmit={submit} className="flex min-w-0 flex-col gap-5">
+        {onBringBack && (
+          <div className="flex flex-col gap-2 border-b border-aui-border pb-4">
+            <p className="text-aui-sm text-aui-muted">
+              This answer belongs to a fork. You can review bringing it back to the parent session.
+            </p>
+            <button type="button" className={button} onClick={onBringBack}>
+              Bring result back to parent
+            </button>
+          </div>
+        )}
         <p className="text-aui-sm text-aui-muted">{words.hint}</p>
-        <p className="text-aui-xs text-aui-muted">
-          {words.through}: {through}
-        </p>
+        <p className="text-aui-xs text-aui-muted">Fork starts after the selected message.</p>
         <Label text={words.name}>
           <input
             className={field}
@@ -192,11 +202,14 @@ export function ForkContext({ thread }: { thread: Thread }) {
         {words.parent}
       </a>
       <p className="text-aui-xs text-aui-muted">
-        {words.through}: {thread.fork.through}
+        Saved context through the selected message. Replies continue here.
       </p>
       <ol className="divide-aui-border divide-y">
         {thread.fork.context.map((turn, index) => (
-          <li key={`${index}:${turn.at}`} className="min-w-0 py-3">
+          <li
+            key={`${index}:${turn.at}`}
+            className={`min-w-0 py-3 ${turn.kind === "person" ? "ml-auto w-fit max-w-[85%] rounded-aui-lg bg-aui-hover px-3" : ""}`}
+          >
             <div className="flex flex-wrap items-center gap-2 text-aui-xs text-aui-muted">
               {turn.kind === "agent" && <AgentMark name={turn.by} size={14} />}
               <span>{turn.name || turn.by}</span>

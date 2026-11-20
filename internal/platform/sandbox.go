@@ -20,11 +20,10 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/urmzd/orchagent/flow/event"
-	"github.com/urmzd/orchagent/flow/isolation"
-	"github.com/urmzd/orchagent/flow/runtime"
-	"github.com/urmzd/orchagent/flow/turn/native"
 	saigetypes "github.com/urmzd/saige/agent/types"
+	"github.com/urmzd/saige/flow/event"
+	"github.com/urmzd/saige/flow/isolation"
+	"github.com/urmzd/saige/flow/runtime"
 
 	"github.com/urmzd/humagen/internal/textindex"
 	"github.com/urmzd/humagen/pkg/alerts"
@@ -338,6 +337,8 @@ type Publication struct {
 	Title       string
 	Kind        string
 	Description string
+	// saveIdentity is set only by SaveArtifact after source authorization.
+	saveIdentity string
 }
 
 // Publish copies a file out of a conversation's sandbox into storage.
@@ -376,10 +377,17 @@ func (p *Platform) publishFrom(ctx context.Context, area fileArea, pub Publicati
 		return artifacts.Artifact{}, fmt.Errorf("%w: kind %q is not one of %v", artifacts.ErrInvalid, kind, artifacts.Kinds())
 	}
 
-	// The check and the write are one step, so two publishes cannot both fit
-	// under a limit only one of them fits under.
+	// Serialize the check and write in this process. Another replica can
+	// publish a saved identity while this process checks its storage limits.
 	p.publishing.Lock()
 	defer p.publishing.Unlock()
+	if pub.saveIdentity != "" {
+		if saved, err := p.Artifacts.Saved(pub.Tenant, pub.saveIdentity); err == nil {
+			return saved, nil
+		} else if !errors.Is(err, artifacts.ErrNotFound) {
+			return artifacts.Artifact{}, err
+		}
+	}
 	// A project the tree no longer holds has no ancestors to read, and a
 	// file filed there would count toward none of their limits.
 	tree := p.Projects.Tree(pub.Tenant)
@@ -387,8 +395,12 @@ func (p *Platform) publishFrom(ctx context.Context, area fileArea, pub Publicati
 		return artifacts.Artifact{}, projectDeleted(pub.Project)
 	}
 	within := tree.Ancestors(pub.Project)
-	if err := p.storageAllows(pub.Tenant, tree, pub.Project, within, pub.Agent, int64(len(b))); err != nil {
+	existing, err := p.storageAllows(pub.Tenant, tree, pub.Project, within, pub.Agent, int64(len(b)), pub.saveIdentity)
+	if err != nil {
 		return artifacts.Artifact{}, err
+	}
+	if existing != nil {
+		return *existing, nil
 	}
 	id := p.Artifacts.NextID(pub.Tenant)
 	key := "artifacts/" + id
@@ -410,10 +422,19 @@ func (p *Platform) publishFrom(ctx context.Context, area fileArea, pub Publicati
 			a.SearchText = clip(extracted, textindex.MaxText)
 		}
 	}
-	saved, err := p.Artifacts.Publish(pub.Tenant, a)
+	var saved artifacts.Artifact
+	if pub.saveIdentity != "" {
+		saved, err = p.Artifacts.PublishOnce(pub.Tenant, a, pub.saveIdentity)
+	} else {
+		saved, err = p.Artifacts.Publish(pub.Tenant, a)
+	}
 	if err != nil {
 		_ = p.Blobs.Delete(ctx, dirName(pub.Tenant), key)
 		return artifacts.Artifact{}, err
+	}
+	if saved.ID != a.ID {
+		_ = p.Blobs.Delete(ctx, dirName(pub.Tenant), key)
+		return saved, nil
 	}
 	p.log.Info("platform: artifact published", "tenant", pub.Tenant, "artifact", saved.ID, "title", saved.Title, "version", saved.Version,
 		"size", saved.Size, "sha256", saved.SHA256, "run", saved.Run, "agent", saved.Agent, "by", saved.CreatedBy)
@@ -422,13 +443,14 @@ func (p *Platform) publishFrom(ctx context.Context, area fileArea, pub Publicati
 }
 
 // storageAllows checks a publish against every storage limit that applies, and
-// says so in the inbox when one refuses it. A file filed in a project counts
+// returns an existing save if another replica published it before a limit
+// refused it. Only a new publication refusal raises an inbox alert. A file counts
 // toward the project's limit and every ancestor's (within, pinned with the
 // file), and a project's use is what its whole subtree holds.
-func (p *Platform) storageAllows(tenant string, tree *projects.Tree, project string, within []string, agent string, size int64) error {
+func (p *Platform) storageAllows(tenant string, tree *projects.Tree, project string, within []string, agent string, size int64, saveIdentity string) (*artifacts.Artifact, error) {
 	pols, err := p.Policies.For(tenant, chainOf(project, within), agent, "")
 	if err != nil {
-		return err
+		return nil, err
 	}
 	for _, pol := range pols {
 		if pol.MaxStorage <= 0 {
@@ -452,9 +474,21 @@ func (p *Platform) storageAllows(tenant string, tree *projects.Tree, project str
 		}
 		if err != nil {
 			// A limit that cannot be checked refuses the publish.
-			return err
+			return nil, err
 		}
 		if used+size > pol.MaxStorage {
+			// The usage read may include a concurrent save that the initial
+			// identity lookup missed. Returning it adds no bytes or version,
+			// and must happen before creating a storage refusal alert.
+			if saveIdentity != "" {
+				saved, err := p.Artifacts.Saved(tenant, saveIdentity)
+				if err == nil {
+					return &saved, nil
+				}
+				if !errors.Is(err, artifacts.ErrNotFound) {
+					return nil, err
+				}
+			}
 			reason := fmt.Sprintf("%s has reached its storage limit of %d bytes", pol.Scope, pol.MaxStorage)
 			a, ok, err := p.Alerts.Raise(tenant, "storage: "+pol.Scope.String(), alerts.Alert{
 				Kind: alerts.Budget, Severity: alerts.Critical, Title: "Files are not being published: " + reason, At: p.now(),
@@ -465,10 +499,10 @@ func (p *Platform) storageAllows(tenant string, tree *projects.Tree, project str
 			if ok {
 				p.inboxAlert(tenant, a)
 			}
-			return fmt.Errorf("%w: %s", ErrStorage, reason)
+			return nil, fmt.Errorf("%w: %s", ErrStorage, reason)
 		}
 	}
-	return nil
+	return nil, nil
 }
 
 // storageUsed is what a project and every project below it hold, in bytes:
@@ -551,41 +585,10 @@ func schema(required []string, props map[string]string) saigetypes.ParameterSche
 	return out
 }
 
-// fileTools is the catalog of file tools for one turn. An agent has a tool
-// only if its spec names it; this decides what the tool does, not who has it.
-func (p *Platform) fileTools(base runtime.Catalog) runtime.Catalog {
-	return func(req runtime.Request, action func(event.Action) error) (native.Tools, error) {
-		var inner native.Tools
-		if base != nil {
-			b, err := base(req, action)
-			if err != nil {
-				return nil, err
-			}
-			inner = b
-		}
-		tools := p.turnFileTools(req, action)
-		for name, t := range p.sourceTools(req) {
-			tools[name] = t
-		}
-		for name, t := range p.builtinTools(req) {
-			tools[name] = t
-		}
-		for name, t := range p.catalogTools(req) {
-			tools[name] = t
-		}
-		return native.ToolsFunc(func(name string) (saigetypes.Tool, error) {
-			if t, ok := tools[name]; ok {
-				return t, nil
-			}
-			if inner == nil {
-				return nil, fmt.Errorf("%w: %q", native.ErrNoSuchTool, name)
-			}
-			return inner.Lookup(name)
-		}), nil
-	}
-}
-
-func (p *Platform) turnFileTools(req runtime.Request, action func(event.Action) error) map[string]saigetypes.Tool {
+// fileTool is one of the file tools (FileTools) for one turn. An agent has a
+// tool only if its spec names it; this decides what the tool does, not who
+// has it.
+func (p *Platform) fileTool(name string, req runtime.Request, action func(event.Action) error) saigetypes.Tool {
 	// The conversation is looked up when a tool is used, not when the turn
 	// starts. A turn delegated by another agent inside its own turn has no
 	// run of its own, so it has no conversation and no files.
@@ -624,8 +627,9 @@ func (p *Platform) turnFileTools(req runtime.Request, action func(event.Action) 
 	tool := func(name, desc string, params saigetypes.ParameterSchema, fn func(ctx context.Context, args map[string]any) (string, error)) saigetypes.Tool {
 		return &saigetypes.ToolFunc{Def: saigetypes.ToolDef{Name: name, Description: desc, Parameters: params}, Fn: fn}
 	}
-	return map[string]saigetypes.Tool{
-		ToolOutcome: tool(ToolOutcome,
+	switch name {
+	case ToolOutcome:
+		return tool(ToolOutcome,
 			"Record the result's recommendation, decision or update as structured authored content. This never approves or executes an external action. Keep tool/call execution claims grounded in their actual results. The summary is required; decisions is a JSON array of strings; next_action describes what the person should do next.",
 			schema([]string{"kind", "summary"}, map[string]string{"kind": "recommendation, decision or update", "summary": "Result summary, up to 4000 bytes", "decisions": "JSON array of at most 20 decisions, each up to 1000 bytes", "next_action": "Next action, up to 2000 bytes"}),
 			func(_ context.Context, args map[string]any) (string, error) {
@@ -652,11 +656,9 @@ func (p *Platform) turnFileTools(req runtime.Request, action func(event.Action) 
 					return "", err
 				}
 				return "Recorded the authored outcome. This granted no approval and executed no external action.", nil
-			}),
-		ToolShell:     p.shellTool(req, action),
-		ToolDelegate:  p.delegateTool(req, action),
-		ToolCallAgent: p.callAgentTool(req, action),
-		ToolFileWrite: tool(ToolFileWrite,
+			})
+	case ToolFileWrite:
+		return tool(ToolFileWrite,
 			"Write a file in this conversation's working directory, replacing it if it exists. For editable Office output use format=native with a .docx, .pptx, .xlsx or .pdf path and JSON content: {title?, paragraphs?:string[], slides?:[{title,body:string[],notes?,sources?:string[]}], rows?:string[][], sources?:string[]}. DOCX supports title, paragraphs, rows and sources; PPTX supports title, slides and sources; XLSX supports rows only; PDF supports title and sources with either paragraphs/rows or slides. Unsupported meaningful fields are rejected. Wait for a successful file_write before dependent file_read or publish calls; do not batch dependent calls in parallel. Max 100 slides, 1000 rows, 100 columns, 500 paragraphs, 32000 bytes per text, 1 MB JSON. PDF uses Windows-1252 text and refuses unsupported characters instead of dropping them. Other formats use plain text. Publish with publish_artifact to give it to the person.",
 			schema([]string{"path", "content"}, map[string]string{"path": "Relative path, such as report.md or data/q3.csv", "content": "The whole file content; for format=native, the complete revision JSON", "format": "native for editable DOCX, PPTX, XLSX or PDF; omit for text"}),
 			func(ctx context.Context, args map[string]any) (string, error) {
@@ -687,13 +689,14 @@ func (p *Platform) turnFileTools(req runtime.Request, action func(event.Action) 
 					_ = p.Runs.RecordSandbox(req.Tenant, req.RunID, false, []runs.SandboxFile{{Path: f.Path, Size: f.Size, Revision: fileRevision([]byte(content))}}, nil)
 				}
 				return fmt.Sprintf("Wrote %s (%d bytes).", f.Path, f.Size), nil
-			}),
-		ToolFileRead: tool(ToolFileRead,
+			})
+	case ToolFileRead:
+		return tool(ToolFileRead,
 			"Read text or the editable revision JSON of a native Office file from this conversation. Read a scratchpad people keep in this conversation with path scratch:<name>. To revise an immutable published version, use path artifact:<id>@<version>. Read a pinned skill's supporting file with path skill:<name>/<path>. Other conversations and unselected skills are never read.",
 			schema([]string{"path"}, map[string]string{"path": "Relative path of the file"}),
 			func(ctx context.Context, args map[string]any) (string, error) {
 				if requested := arg(args, "path"); strings.HasPrefix(requested, "skill:") {
-					return p.readPinnedSkillFile(req, requested)
+					return p.readPinnedSkillFile(req, ToolFileRead, requested)
 				}
 				thread, _, area, err := where(ctx)
 				if err != nil {
@@ -734,8 +737,9 @@ func (p *Platform) turnFileTools(req runtime.Request, action func(event.Action) 
 					return "", fmt.Errorf("%w: that file is not text or a native revision model", ErrSandbox)
 				}
 				return string(b), nil
-			}),
-		ToolFileList: tool(ToolFileList,
+			})
+	case ToolFileList:
+		return tool(ToolFileList,
 			"List the files in this conversation's working directory, and the scratchpads people keep in it.",
 			schema(nil, nil),
 			func(ctx context.Context, _ map[string]any) (string, error) {
@@ -757,8 +761,9 @@ func (p *Platform) turnFileTools(req runtime.Request, action func(event.Action) 
 					fmt.Fprintf(&b, "%s (%d bytes)\n", f.Path, f.Size)
 				}
 				return b.String() + pads, nil
-			}),
-		ToolPublish: tool(ToolPublish,
+			})
+	case ToolPublish:
+		return tool(ToolPublish,
 			"Publish a file from the working directory so the person can open and download it. Publishing a title again in the same conversation makes a new version.",
 			schema([]string{"path"}, map[string]string{
 				"path":        "Relative path of the file to publish",
@@ -785,6 +790,7 @@ func (p *Platform) turnFileTools(req runtime.Request, action func(event.Action) 
 				data, _ := json.Marshal(a)
 				_ = action(event.Action{Name: ToolPublish, Summary: fmt.Sprintf("Published %s, version %d", a.Title, a.Version), Data: data})
 				return fmt.Sprintf("Published %s as version %d (%d bytes). The person can open it now.", a.Title, a.Version, a.Size), nil
-			}),
+			})
 	}
+	return nil
 }

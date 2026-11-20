@@ -654,9 +654,25 @@ func (s *Store) PromptAt(tenant, owner, heading string, at time.Time) (string, e
 			b.WriteString(heading)
 		}
 		b.WriteString("\n- ")
-		b.WriteString(n.Text)
+		b.WriteString(Line(n))
 	}
 	return b.String(), nil
+}
+
+// sourcePrefix begins the address of something kept in the workspace, as a
+// note drawn from an artifact names it.
+const sourcePrefix = "humagen://"
+
+// Line is a note as an agent is sent it: its text, and after it the source
+// it was drawn from when it names one kept in the workspace (an artifact's
+// version), so an agent asked where a note comes from can say. A note a
+// person wrote, or one drawn from a run, is its text alone: who wrote it is
+// not sent.
+func Line(n Note) string {
+	if !strings.HasPrefix(n.By, sourcePrefix) || strings.ContainsAny(n.By, " \t\r\n") {
+		return n.Text
+	}
+	return n.Text + " (source: " + n.By + ")"
 }
 
 // PersonalOwner is private to one human subject, never an agent or project name.

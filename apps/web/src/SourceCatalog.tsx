@@ -1,6 +1,7 @@
 import { defaultCopy } from "@humagen/components";
 import {
   ChevronRightIcon,
+  CloudIcon,
   DatabaseIcon,
   FileIcon,
   GoogleDriveIcon,
@@ -12,7 +13,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ApiError, api, type CatalogConnectorView, type CatalogEntry } from "./api.ts";
 import { ago, button, Chip, field, Problem } from "./ui.tsx";
 
-export type SourceChoice = "manual" | "drive" | "notion" | "gcs" | "s3";
+export type SourceChoice = "manual" | "drive" | "onedrive" | "notion" | "gcs" | "s3";
 
 /**
  * The catalog of connected systems from `/api/catalog`: connectors, their
@@ -197,6 +198,12 @@ export function SourceCatalog({ onSelect }: { onSelect: (provider: SourceChoice)
               title: copy.drive,
               description: copy.driveHint,
               icon: <GoogleDriveIcon size={20} className="text-[#4285F4]" />,
+            },
+            {
+              id: "onedrive",
+              title: copy.onedrive,
+              description: copy.onedriveHint,
+              icon: <CloudIcon size={20} />,
             },
             {
               id: "notion",

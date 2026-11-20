@@ -11,14 +11,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/urmzd/orchagent/flow/event"
-	"github.com/urmzd/orchagent/flow/runtime"
+	"github.com/urmzd/saige/flow/event"
+	"github.com/urmzd/saige/flow/runtime"
 
 	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/wire"
+	"github.com/urmzd/humagen/pkg/evals"
 	"github.com/urmzd/humagen/pkg/library"
 	"github.com/urmzd/humagen/pkg/operations"
 	"github.com/urmzd/humagen/pkg/projects"
+	"github.com/urmzd/humagen/pkg/prompts"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/humagen/pkg/threads"
@@ -56,6 +58,8 @@ const (
 
 // Settings is what a tenant has chosen for itself.
 type Settings struct {
+	EvalLimits evals.Limits   `json:"eval_limits,omitzero"`
+	Prompts    prompts.Config `json:"prompts,omitzero"`
 	// History and HistoryLimit decide how much of a conversation is replayed
 	// to the agent answering the next turn.
 	History      History `json:"history"`
@@ -75,9 +79,10 @@ type Settings struct {
 	// call moves from one to the next. An agent runs on one by naming the
 	// provider "policy" and the policy's name as its model.
 	ModelPolicies []ModelPolicy `json:"model_policies"`
-	// Router is whether, and on which model, each agent is asked about a
-	// message that names none: "should I be involved?".
-	Router RouterSettings `json:"router"`
+	// ModelProviders are the model providers the workspace's
+	// administrators set up. Only SetModelProvider and DeleteModelProvider
+	// change them; a settings write keeps them as they are.
+	ModelProviders []ModelProvider `json:"model_providers"`
 	// SetupAt and SetupBy record the first time an admin saved the
 	// workspace's settings. The server sets them once. A value sent by a
 	// client is ignored.
@@ -94,6 +99,9 @@ func (s Settings) withDefaults() Settings {
 	}
 	if s.ModelPolicies == nil {
 		s.ModelPolicies = []ModelPolicy{}
+	}
+	if s.ModelProviders == nil {
+		s.ModelProviders = []ModelProvider{}
 	}
 	return s
 }
@@ -255,7 +263,11 @@ func (p *Platform) Settings(tenant string) Settings {
 	if err != nil {
 		p.log.Error("platform: settings could not be read", "tenant", tenant, "error", err)
 	}
-	return v.withDefaults()
+	s := v.withDefaults()
+	// A policy stored with a provider name since renamed reads as the new one.
+	names := p.providersIn(s)
+	s.ModelPolicies = p.readPolicies(tenant, s.ModelPolicies, func(n string) bool { return slices.Contains(names, n) })
+	return s
 }
 
 // SetSettings replaces a tenant's settings.
@@ -267,12 +279,23 @@ func (p *Platform) SetSettings(ctx context.Context, tenant string, next Settings
 // reports, nil for every agent: a refusal names no other.
 func (p *Platform) setSettings(ctx context.Context, tenant string, next Settings, shown func(string) bool) error {
 	next = next.withDefaults()
+	if err := next.EvalLimits.Validate(); err != nil {
+		return err
+	}
+	if err := next.Prompts.Validate(); err != nil {
+		return fmt.Errorf("%w: %w", ErrSettings, err)
+	}
 	// Who set the workspace up, and when, is the server's to say.
 	raw, err := p.settings.get(tenant)
 	if err != nil {
 		return err
 	}
 	stored := raw.withDefaults()
+	if next.Prompts != stored.Prompts {
+		if err := p.checkSharedPromptEvals(ctx, tenant, next.Prompts, shown); err != nil {
+			return err
+		}
+	}
 	next.SetupAt, next.SetupBy = stored.SetupAt, stored.SetupBy
 	next.WorkspaceName = strings.TrimSpace(next.WorkspaceName)
 	if len(next.WorkspaceName) > 80 || strings.ContainsAny(next.WorkspaceName, "\r\n\t<>") {
@@ -296,10 +319,7 @@ func (p *Platform) setSettings(ctx context.Context, tenant string, next Settings
 	case next.HistoryLimit < MinHistory || next.HistoryLimit > MaxHistory:
 		return fmt.Errorf("%w: the history limit is from %d to %d characters", ErrSettings, MinHistory, MaxHistory)
 	}
-	if err := checkModelPolicies(next.ModelPolicies, p.cfg.Ext.ProviderNames()...); err != nil {
-		return err
-	}
-	if err := p.checkRouter(&next.Router); err != nil {
+	if err := checkPoliciesAgainst(next.ModelPolicies, p.modelNames(tenant), stored.ModelPolicies); err != nil {
 		return err
 	}
 	// A policy an agent still runs on cannot be removed, or that agent would
@@ -313,7 +333,11 @@ func (p *Platform) setSettings(ctx context.Context, tenant string, next Settings
 		}
 	}
 	return p.settings.update(tenant, func(v *storedSettings) error {
+		if next.Prompts != stored.Prompts && v.Prompts != stored.Prompts {
+			return wire.ErrConflict
+		}
 		next.SetupAt, next.SetupBy = v.SetupAt, v.SetupBy
+		next.ModelProviders = v.ModelProviders
 		v.Settings = next
 		return nil
 	})
@@ -357,6 +381,8 @@ func (p *Platform) MarkSetup(tenant, by string) (Settings, error) {
 
 // Turn is one message a person sends.
 type Turn struct {
+	// DryRun is set only by the server for setup validation.
+	DryRun bool
 	// TestSkill is a server-selected immutable draft. It grants no tools.
 	TestSkill *library.Revision
 	// ForceAsk tightens every action to require a recorded approval. It grants no tools.
@@ -389,6 +415,12 @@ type Turn struct {
 	// agent the turn names that they may not read is refused as one that
 	// does not exist, before anything is asked of it.
 	Sees func(agent string) bool
+	// NamesSkills says the text is a person's own words, so the skills it
+	// names ($<name>, /<name>, @skill:<name>) are pinned for the run as a
+	// message posted in the conversation's project pins them
+	// (skillsNamed). Unset, the text names none: a goal or a prompt the
+	// platform wrote is never read for skills.
+	NamesSkills bool
 }
 
 // NoProjectCalled is what a turn filed in a project that is not there is
@@ -403,14 +435,15 @@ func NoProjectCalled(name string) error {
 // The turn names it, or names Open, or names none and the default
 // the conversation's place inherits answers: the thread's, the client's, the
 // channel's, then the project chain's, as for a message posted in the thread
-// (a new conversation is in general of its project). With no default set it
-// is ErrNoDefault, and nothing starts. The agent that answers is sent the
-// branch so far, so a different agent picking up mid-conversation knows what
-// was said, and when the branch follows a message people posted, the room up
-// to it, each turn with who asked or said it, fenced off from the words it
-// answers, which follow with who asks them (threads.Ask); ahead of it is
-// what the conversation's project chain, its channel and the agent itself
-// bring (see contextIn).
+// (a new conversation is in general of its project). With no default set, or
+// an open one, it lands on the entry agent (land); only a place where no
+// agent may answer is ErrNoDefault, and nothing starts. The agent that
+// answers is sent the branch so far, so a different agent picking up
+// mid-conversation knows what was said, and when the branch follows a
+// message people posted, the room up to it, each turn with who asked or said
+// it, fenced off from the words it answers, which follow with who asks them
+// (threads.Ask); ahead of it is what the conversation's project chain, its
+// channel and the agent itself bring (see contextIn).
 func (p *Platform) Converse(ctx context.Context, tenant string, t Turn) (runs.Run, error) {
 	// Refused before anything is posted, so a refused turn leaves no
 	// message without a run behind it.
@@ -422,6 +455,7 @@ func (p *Platform) Converse(ctx context.Context, tenant string, t Turn) (runs.Ru
 	if t.TestSkill != nil {
 		t.ForceAsk = true
 		pinSkills(meta, []pinnedSkill{pinRevision(*t.TestSkill)})
+		meta[metaSkillTest] = skillTestRef(*t.TestSkill)
 	}
 	body := t.Text
 	th := threads.Thread{Channel: projects.General}
@@ -436,6 +470,9 @@ func (p *Platform) Converse(ctx context.Context, tenant string, t Turn) (runs.Ru
 		// after a retry of a turn already let in has joined it.
 		meta[runs.MetaProject] = path[0].Project
 		th = p.threadOf(tenant, path[0])
+		if importHistoryCut(th, cfg) {
+			return runs.Run{}, ErrImportNoHistory
+		}
 		if th.Channel != projects.General {
 			meta[runs.MetaChannel] = th.Channel
 		}
@@ -449,6 +486,13 @@ func (p *Platform) Converse(ctx context.Context, tenant string, t Turn) (runs.Ru
 		meta[runs.MetaProject] = project
 	}
 	th.Project = meta[runs.MetaProject]
+	if t.NamesSkills && t.TestSkill == nil {
+		skills, err := p.skillsNamed(tenant, th.Project, t.Actor.User, t.Text)
+		if err != nil {
+			return runs.Run{}, err
+		}
+		pinSkills(meta, skills)
+	}
 
 	if t.KeepsNotes && meta[runs.MetaProject] != "" {
 		meta[metaKeepsNotes] = meta[runs.MetaProject]
@@ -462,6 +506,9 @@ func (p *Platform) Converse(ctx context.Context, tenant string, t Turn) (runs.Ru
 			return runs.Run{}, fmt.Errorf("%w: this credential does not answer for people of that client", ErrForbidden)
 		}
 		routes, clientDefault = c.Routes, c.DefaultAgent
+		// The run is the client's, so its budget counts it and its calls are
+		// held to the agents the client may reach.
+		meta[runs.MetaClient] = c.ID
 	}
 	asked := legacy.Default(strings.TrimSpace(t.Agent))
 	if t.Sees != nil && asked != "" && asked != Open {
@@ -488,6 +535,9 @@ func (p *Platform) Converse(ctx context.Context, tenant string, t Turn) (runs.Ru
 	if t.AssignmentID != "" {
 		meta[metaAssignment] = t.AssignmentID
 	}
+	if t.DryRun {
+		meta[metaDryRun] = "true"
+	}
 	if t.ForceAsk {
 		meta[operations.MetaForceAsk] = "true"
 	}
@@ -507,9 +557,14 @@ func (p *Platform) Converse(ctx context.Context, tenant string, t Turn) (runs.Ru
 		}
 		run, err := p.Runs.Get(tenant, runtime.RunID(tenant, id))
 		if err != nil {
+			// The entry agent is told who may fit, as in a console root.
+			text := body
+			if hints := p.entryHintsFor(ctx, tenant, th.Project, a.Agent, t.Text, routes); hints != "" {
+				text = hints + "\n\n" + body
+			}
 			run, err = p.Invoke(ctx, wire.NewEvent(wire.Raise{
 				ID: id, Tenant: tenant, Agent: a.Agent, Origin: runs.OriginAPI, Actor: t.Actor, Context: m,
-				Text: p.turnContext(tenant, th.Project, th.Channel, a.Agent, t.Actor.User, body, m),
+				Text: p.turnContext(tenant, th.Project, th.Channel, a.Agent, t.Actor.User, text, m),
 			}))
 		}
 		if err != nil {

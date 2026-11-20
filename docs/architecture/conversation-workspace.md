@@ -5,7 +5,7 @@ produce. Conversations remain the place to ask, clarify intent, review an
 action and use a result. The web console now brings those interactions into
 one page instead of sending people between run history and file downloads.
 
-The [interactive design and visual review](../assets/workspace-prototype/README.md)
+The [interactive design and visual review](https://github.com/urmzd/humagen/blob/main/docs/assets/workspace-prototype/README.md)
 describe the broader direction. The implementation in this change uses the
 platform's existing threads, calls, questions, approvals and artifact storage.
 It does not introduce another agent execution path.
@@ -214,9 +214,11 @@ message actions), a scratchpad (from its tab) or a file (from Files) as a
 versioned artifact of the conversation, then opens it in a Workspace tab.
 `POST /api/threads/{id}/artifacts` (`artifacts:write`, the conversation's
 audience) takes `{source: run | message | scratchpad, id, title?}` and goes
-through the same publication files take: title versioning (saving the same
-title again makes the next version), storage limits, provenance and the inbox
-notice. A saved answer records its run; the person who saved it is its
+through the same publication files take: storage limits, provenance and the
+inbox notice. Repeating the same source, title and content returns the existing
+artifact, including after a restart or concurrent saves from different
+processes. Changing scratchpad content makes the next version under that title.
+Deleting a saved artifact permits a new save with a fresh identifier. A saved answer records its run; the person who saved it is its
 creator. A structured review (`humagen.github.review.v1`) is kept as its JSON,
 `<agent> review.review.json`, so its findings stay addressable by file and
 line.

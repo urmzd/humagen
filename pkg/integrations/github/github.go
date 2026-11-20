@@ -6,29 +6,39 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	presentation "github.com/urmzd/humagen/internal/presentation/github"
 	"github.com/urmzd/humagen/internal/wire"
-	"github.com/urmzd/orchagent/flow/address"
-	"github.com/urmzd/orchagent/flow/connector"
-	transport "github.com/urmzd/orchagent/flow/connectors/github"
-	"github.com/urmzd/orchagent/flow/connectors/mention"
-	"github.com/urmzd/orchagent/flow/deliverystate"
-	"github.com/urmzd/orchagent/flow/event"
+	"github.com/urmzd/saige/flow/address"
+	"github.com/urmzd/saige/flow/connector"
+	"github.com/urmzd/saige/flow/connectors"
+	transport "github.com/urmzd/saige/flow/connectors/github"
+	"github.com/urmzd/saige/flow/connectors/mention"
+	"github.com/urmzd/saige/flow/deliverystate"
+	"github.com/urmzd/saige/flow/event"
 )
 
 // Config combines transport configuration with explicit product policy.
 type Config struct {
-	API              transport.API
-	Verifier         transport.Verifier
-	Owners           []string
-	ReadRepositories []string
-	Bots             map[string]string
-	Agents           mention.Set
+	FixPullRequests  bool
+	AuthorizeFixPull func(context.Context, transport.Ref) error
+	FixPullContext   func(context.Context, transport.Ref) (transport.FixPullContext, error)
+	ObserveDelivery  connectors.DeliveryObserver
+	// ReviewText verifies host provenance before native and comment rendering.
+	ReviewText         func(transport.View) (string, error)
+	Feedback           connectors.FeedbackHandler
+	ContinueThread     func(address.Address) bool
+	StatusReactions    bool
+	ActionRepositories []string
+	API                transport.API
+	Verifier           transport.Verifier
+	Owners             []string
+	ReadRepositories   []string
+	Bots               map[string]string
+	Agents             mention.Set
 	// Login is the app's own login. A comment that mentions it and names
 	// no agent is raised naming none, and the host chooses who answers.
 	Login          string
@@ -36,7 +46,6 @@ type Config struct {
 	Interval       time.Duration
 	Clock          func() time.Time
 	MaxBody        int64
-	AutoLabels     map[string]map[string]string
 	Guides         bool
 	Mutations      bool
 	MutationSecret []byte
@@ -61,23 +70,6 @@ type Connector struct {
 func New(cfg Config) (*Connector, error) {
 	c := &Connector{cfg: cfg}
 	c.cfg.MutationSecret = append([]byte(nil), cfg.MutationSecret...)
-	c.cfg.AutoLabels = map[string]map[string]string{}
-	for repo, labels := range cfg.AutoLabels {
-		if len(strings.Split(repo, "/")) != 2 {
-			return nil, fmt.Errorf("github: invalid auto-label repository")
-		}
-		key := strings.ToLower(repo)
-		if _, ok := c.cfg.AutoLabels[key]; ok {
-			return nil, fmt.Errorf("github: duplicate repository")
-		}
-		c.cfg.AutoLabels[key] = map[string]string{}
-		for label, agent := range labels {
-			if strings.TrimSpace(label) == "" || !mention.Valid(agent) {
-				return nil, fmt.Errorf("github: invalid auto label or agent")
-			}
-			c.cfg.AutoLabels[key][label] = agent
-		}
-	}
 	if cfg.Guides || cfg.Mutations {
 		if _, ok := cfg.API.(transport.ContextAPI); !ok {
 			return nil, fmt.Errorf("github: policy needs ContextAPI")
@@ -98,33 +90,66 @@ func New(cfg Config) (*Connector, error) {
 	}
 	base := transport.Config{API: cfg.API, Verifier: cfg.Verifier, Owners: cfg.Owners, ReadRepositories: cfg.ReadRepositories, Bots: cfg.Bots, Agents: cfg.Agents, Login: cfg.Login, Checks: cfg.Checks, Tenant: cfg.Tenant, Interval: cfg.Interval, Clock: cfg.Clock, MaxBody: cfg.MaxBody}
 	base.DeliveryState, base.DeliveryScope = cfg.DeliveryState, cfg.DeliveryScope
-	base.Automation = func(h transport.Hook) (string, bool) {
-		_, text, ok := c.automatic(h)
-		return text, ok
-	}
-	base.AutomationFor = func(h transport.Hook) []string {
-		if agent, _, ok := c.automatic(h); ok {
-			return []string{agent}
-		}
-		return nil
-	}
+	base.FixPullRequests, base.AuthorizeFixPull = cfg.FixPullRequests, cfg.AuthorizeFixPull
+	base.FixPullContext = cfg.FixPullContext
+	base.Feedback, base.ContinueThread, base.StatusReactions, base.ActionRepositories = cfg.Feedback, cfg.ContinueThread, cfg.StatusReactions, cfg.ActionRepositories
+	base.ObserveDelivery = cfg.ObserveDelivery
 	base.Prepare = c.prepare
-	base.Render = presentation.RenderReview
+	base.Render = func(v transport.View) string {
+		if cfg.ReviewText != nil && v.Terminal() {
+			text, err := cfg.ReviewText(v)
+			if err != nil {
+				v.Text = "Review evidence is temporarily unavailable."
+			} else {
+				v.Text = text
+			}
+		}
+		return presentation.RenderReview(v)
+	}
+	if _, ok := cfg.API.(transport.ReviewAPI); ok && cfg.Login != "" {
+		if _, ok := cfg.API.(transport.ReviewHistoryAPI); ok {
+			if _, ok := cfg.API.(transport.ContextAPI); ok {
+				base.Review = func(v transport.View, files []transport.ContextFile) (transport.Review, bool, error) {
+					if cfg.ReviewText != nil {
+						text, err := cfg.ReviewText(v)
+						if err != nil {
+							return transport.Review{}, true, err
+						}
+						v.Text = text
+					}
+					var report presentation.ReviewReport
+					if err := json.Unmarshal([]byte(presentation.ReviewJSON(v.Text)), &report); err != nil || report.Format != presentation.ReviewFormatV2 {
+						return transport.Review{}, false, nil
+					}
+					review, err := presentation.NativeReview(report, files)
+					return review, true, err
+				}
+				// The transport calls this only after verifying an existing app-authored
+				// review's immutable payload digest. A historical approval reproduces its
+				// body; it grants no new submission and keeps current evidence checks.
+				base.RecoverReview = func(v transport.View, files []transport.ContextFile, disposition string) (transport.Review, bool, error) {
+					if cfg.ReviewText != nil {
+						text, err := cfg.ReviewText(v)
+						if err != nil {
+							return transport.Review{}, true, err
+						}
+						v.Text = text
+					}
+					var report presentation.ReviewReport
+					if err := json.Unmarshal([]byte(presentation.ReviewJSON(v.Text)), &report); err != nil || report.Format != presentation.ReviewFormatV2 {
+						return transport.Review{}, false, nil
+					}
+					review, err := presentation.RecoveredReview(report, files, disposition)
+					return review, true, err
+				}
+			}
+		}
+	}
 	base.Conclusion = conclusion
 	var err error
 	c.Connector, err = transport.New(base)
 	if err != nil {
 		return nil, err
-	}
-	validator, err := transport.New(transport.Config{API: cfg.API})
-	if err != nil {
-		return nil, err
-	}
-	for repo := range c.cfg.AutoLabels {
-		parts := strings.Split(repo, "/")
-		if _, err := validator.Reference(refAddress(Ref{Owner: parts[0], Repo: parts[1], Number: 1}, "pull")); err != nil {
-			return nil, err
-		}
 	}
 	return c, nil
 }
@@ -179,36 +204,6 @@ func sourceOf(tag event.Envelope) (address.Address, error) { return address.Pars
 // binds the run's tools to its source and answers on its channel.
 func setSource(tag *event.Envelope, a address.Address) {
 	tag.Source, tag.Channel = a.String(), a.String()
-}
-
-func (c *Connector) automatic(h transport.Hook) (string, string, bool) {
-	labels := c.cfg.AutoLabels[strings.ToLower(h.Repository.Owner.Login+"/"+h.Repository.Name)]
-	title, body, sha := "", "", ""
-	var names []string
-	if h.PullRequest != nil {
-		title, body, sha = h.PullRequest.Title, h.PullRequest.Body, h.PullRequest.Head.SHA
-		for _, l := range h.PullRequest.Labels {
-			names = append(names, l.Name)
-		}
-	} else if h.Issue != nil {
-		title, body = h.Issue.Title, h.Issue.Body
-	}
-	if h.Action == "labeled" && h.Label != nil {
-		names = []string{h.Label.Name}
-	} else if h.Action != "synchronize" {
-		return "", "", false
-	}
-	sort.Strings(names)
-	for _, name := range names {
-		if agent, ok := labels[name]; ok {
-			text := strings.TrimSpace(title + "\n\n" + body)
-			if h.Action == "synchronize" {
-				text = "Review commit " + sha + ".\n\n" + text
-			}
-			return agent, text, true
-		}
-	}
-	return "", "", false
 }
 
 func conclusion(v transport.View) string {

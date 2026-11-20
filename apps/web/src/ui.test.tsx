@@ -6,7 +6,6 @@ import { WebSurface } from "@humagen/render-web";
 import { AgentMessage, agentInitials } from "@humagen/web";
 import type { ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { ActivityPanel, ordered, ordinals, trailOf } from "./Activity.tsx";
 import { sampleTrees } from "./activity.fixtures.ts";
 import { type Run, turnOf } from "./adapter.ts";
 import type { Me, ProjectView, ScheduleView, ThreadSummary } from "./api.ts";
@@ -82,40 +81,29 @@ function sidebar(over: Partial<Parameters<typeof Sidebar>[0]> = {}) {
   );
 }
 
-test("the sidebar keeps daily work in view and the rest under More, each with its own icon", () => {
+test("the sidebar exposes seven canonical destinations, Projects and Scheduled among them, Settings and Connections in the account menu, with distinct icons and current-section state", () => {
   const out = sidebar();
-  for (const group of ["Work", "More"]) assert.match(out, new RegExp(`aria-label="${group}"`));
-  for (const route of ["/", "/history", "/scheduled", "/notifications", "/customize/agents"])
-    assert.ok(out.includes(`href="${route}"`), route);
-  // Projects, Library, People and Operations open from the More menu, not the list.
+  assert.match(out, /aria-label="Sections"/);
+  const nav = out.slice(out.indexOf('aria-label="Sections"'), out.indexOf("</nav>"));
   for (const route of [
+    "/",
+    "/sessions",
+    "/alerts",
     "/projects",
-    "/library/sources",
-    "/operations/context",
-    "/library/skills",
-    "/library/memory",
-    "/assignments",
-    "/agent-network",
-    "/operations/usage",
+    "/agents",
+    "/scheduled",
+    "/artifacts",
   ])
-    assert.ok(!out.includes(`href="${route}"`), route);
+    assert.ok(nav.includes(`href="${route}"`), route);
+  assert.ok(!nav.includes('href="/settings/profile"'), "Settings opens from the account row");
+  assert.equal([...nav.matchAll(/<a /g)].length, 7);
   assert.match(out, /href="\/" aria-current="page"/);
-  // No two places in the list share a glyph.
-  const nav = out.slice(
-    out.indexOf('aria-label="Sections"'),
-    out.indexOf('aria-label="Conversations"'),
-  );
-  const glyphs = [...nav.matchAll(/<a [^>]*>(<svg[\s\S]*?<\/svg>)/g)].map((m) => m[1]);
-  assert.ok(glyphs.length >= 5);
-  assert.equal(new Set(glyphs).size, glyphs.length, "two sidebar items share an icon");
-  // A page under More shows itself in the More row while it is open.
-  assert.match(
-    sidebar({ route: { page: "library", section: "sources" } }),
-    /aria-label="More"[^>]*>[\s\S]*?Library<\/span>/,
-  );
+  const glyphs = [...nav.matchAll(/<a [^>]*>(<svg[\s\S]*?<\/svg>)/g)].map((match) => match[1]);
+  assert.equal(glyphs.length, 7);
+  assert.equal(new Set(glyphs).size, 7);
   assert.match(
     sidebar({ route: { page: "agent", name: "lead", tab: "model" } }),
-    /href="\/customize\/agents" aria-current="page"/,
+    /href="\/agents" aria-current="page"/,
   );
 });
 
@@ -171,10 +159,10 @@ test("project pins work without recent conversations and omit unreadable project
   );
 });
 
-test("project selection: an empty directory offers the explicit Company home and project creation", () => {
+test("project selection: an empty directory offers the explicit Workspace home and project creation", () => {
   const actions = { onChange: () => {}, onCreated: () => {}, close: () => {} };
   const out = renderToStaticMarkup(<ProjectChoices projects={[]} value={null} {...actions} />);
-  assert.match(out, /Company/);
+  assert.match(out, /Workspace/);
   assert.match(out, /Create Project/);
   assert.match(out, /No projects yet/);
   assert.doesNotMatch(out, /<form/, "the picker must not nest a form inside the message form");
@@ -186,7 +174,7 @@ test("project selection: an empty directory offers the explicit Company home and
   const untouched = renderToStaticMarkup(<ProjectPicker projects={[]} value={null} {...actions} />);
   assert.match(untouched, /aria-label="Select project"/);
   const projectless = renderToStaticMarkup(<ProjectPicker projects={[]} value="" {...actions} />);
-  assert.match(projectless, /aria-label="Select project: Company"/);
+  assert.match(projectless, /aria-label="Select project: Workspace"/);
 });
 
 import { ActionId, messageState, messageTemplate, partTarget, type UiAction } from "@humagen/core";
@@ -620,6 +608,100 @@ test("an approval of a call that acts as the person says only they may change it
   assert.match(other, />Edit</, "an approval that does not act as the person is drawn as it was");
 });
 
+test("an approval the approval agent judged shows its decision, reason and the workspace's own fields", () => {
+  const [raw] = wireMail().filter((m) => m.id === "m-approval");
+  assert.ok(raw);
+  const withQuestion = (change: (q: Record<string, unknown>) => Record<string, unknown>) =>
+    fromServer({
+      ...raw,
+      parts: (raw.parts as Record<string, unknown>[]).map((p) =>
+        p.type === "approval"
+          ? { ...p, question: change(p.question as Record<string, unknown>) }
+          : p,
+      ),
+    });
+
+  // Left for a person: the agent's view sits above the buttons, which stay.
+  const asked = mailbox("m-approval");
+  assert.match(asked, /<strong>Approval agent:<\/strong> Asked a person: &quot;A tag starts/);
+  for (const [label, value] of [
+    ["Risk", "high"],
+    ["Conditions", "only on main"],
+    ["Expires in", "3600"],
+  ] as const)
+    assert.match(asked, new RegExp(`<strong>${label}:</strong> ${value}`), label);
+  assert.match(asked, /Based on: Policy: releases need a person; git_push_tag pushes v2\.4\.1/);
+  assert.ok(asked.indexOf("Approval agent:") < asked.indexOf(">Approve<"), "read before deciding");
+
+  // Allowed by the agent: the record says who and when, and the reason is said once.
+  const reason = "The person asked for the 2.4.1 release.";
+  const allowed = withQuestion(({ judgement, ...q }) => ({
+    ...q,
+    judgement: { ...(judgement as object), decision: "allow", reason },
+  }));
+  const settled = {
+    ...allowed,
+    parts: allowed.parts.map((p) =>
+      p.type === "approval"
+        ? {
+            ...p,
+            approval: {
+              ...p.approval,
+              decision: {
+                kind: "approved" as const,
+                by: "Ada",
+                at: "2026-11-08T10:00:00Z",
+                reason: `Allowed by the approval agent: ${reason}`,
+              },
+            },
+          }
+        : p,
+    ),
+  };
+  const done = mailbox(settled.id, [settled]);
+  assert.match(done, /Allowed: &quot;The person asked for the 2\.4\.1 release\.&quot;/);
+  assert.equal(done.split("The person asked for the 2.4.1 release.").length - 1, 1);
+  assert.match(done, /<strong>Risk:<\/strong> high/);
+
+  // Without a judgement the card is as it was.
+  const bare = withQuestion(({ judgement: _, ...q }) => q);
+  const plain = mailbox(bare.id, [bare]);
+  assert.match(plain, />Approve</);
+  assert.doesNotMatch(plain, /Approval agent|Asked a person|Risk|Expires in|Based on/);
+});
+
+test("a question the approval agent answered in Run and Answer says so, and one it left says why", () => {
+  const [raw] = wireMail().filter((m) => m.id === "m-question");
+  assert.ok(raw);
+  const withQuestion = (change: (part: Record<string, unknown>) => Record<string, unknown>) =>
+    fromServer({ ...raw, parts: (raw.parts as Record<string, unknown>[]).map(change) });
+  const judged = (decision: string, reason: string) => (p: Record<string, unknown>) => ({
+    ...p,
+    question: { ...(p.question as object), judgement: { decision, reason, run: "api-j" } },
+  });
+
+  // Answered as the person: the record says what was chosen, and that the approval agent chose it.
+  const answered = withQuestion((p) => ({
+    ...judged("allow", "Ada asked for #launch.")(p),
+    state: "resolved",
+    actions: [],
+    outcome: { action: "choose", by: "ada", at: "2026-11-08T10:00:00Z", note: "#launch" },
+  }));
+  const done = mailbox(answered.id, [answered]);
+  assert.match(done, /chose #launch/);
+  assert.match(done, /Answered by the approval agent: &quot;Ada asked for #launch\.&quot;/);
+
+  // Left for the person: why, above the options, which stay.
+  const left = withQuestion(judged("ask", "Ada has not said which channel."));
+  const open = mailbox(left.id, [left]);
+  assert.match(open, /<strong>Approval agent:<\/strong> Asked a person: &quot;Ada has not said/);
+  assert.match(open, />#general</);
+
+  // Without a judgement the card is as it was.
+  const plain = mailbox("m-question");
+  assert.doesNotMatch(plain, /approval agent|Approval agent/);
+});
+
 test("the run's own approval of a call that acts as the person says so too, from its events and from its record", () => {
   const question = (acts: boolean) => ({
     id: "q1",
@@ -926,7 +1008,7 @@ test("MailboxView: an alert with recovery keeps diagnostic text behind a closed 
 
 test("MailboxView: severity and failure recovery use spacing rather than decorative dot separators", () => {
   for (const id of ["m-alert", "m-failure"]) {
-    assert.doesNotMatch(mailbox(id), /<span[^>]*aria-hidden[^>]*>·<\/span>/);
+    assert.doesNotMatch(mailbox(id), /<span[^>]*aria-hidden[^>]*>\|<\/span>/);
   }
 });
 
@@ -1022,7 +1104,7 @@ test("MailboxView: an artifact shows the file, opens it in Artifacts, and offers
   const out = mailbox("m-artifact");
   assert.match(out, /data-template="artifact"/);
   assert.match(out, /data-testid="part-artifact"/);
-  assert.match(out, /Document · 97 B · Version 2/);
+  assert.match(out, /Document | 97 B | Version 2/);
   assert.match(out, />Open in Artifacts</);
   assert.match(out, /href="\/api\/artifacts\/art-2\/content" download="launch-checklist.md"/);
   assert.match(out, /This replaces version 1/);
@@ -1220,91 +1302,6 @@ test("on a phone, one small button opens the sidebar, and there is no bottom bar
     "",
     "hidden while the drawer is open",
   );
-});
-
-const activity = (
-  selected: string | null,
-  trees = sampleTrees(),
-  over: Partial<Parameters<typeof ActivityPanel>[0]> = {},
-) =>
-  html(
-    <ActivityPanel
-      trees={trees}
-      selected={selected}
-      onSelect={() => {}}
-      onClose={() => {}}
-      {...over}
-    />,
-  );
-
-test("activity: a tree is listed parent first, in the order things were called", () => {
-  const [, second] = sampleTrees();
-  assert.ok(second);
-  assert.deepEqual(
-    ordered({ ...second, runs: [...second.runs].reverse() }).map((r) => r.id),
-    ["r2", "r2a", "r2a1", "r2b"],
-  );
-});
-
-test("activity: an agent that runs again gets a number, and the trail leads from the turn to the run", () => {
-  const trees = sampleTrees();
-  const nth = ordinals(trees);
-  assert.equal(nth.get("r1"), 1);
-  assert.equal(nth.get("r2"), 2, "lead answers a second turn");
-  assert.equal(nth.get("r3"), 3);
-  assert.equal(nth.get("r2b"), 1);
-  assert.equal(nth.get("r3a"), 2, "oncall is called again");
-  const runs = new Map(trees.flatMap((t) => t.runs.map((r) => [r.id, r] as const)));
-  assert.deepEqual(
-    trailOf(runs, "r2a1").map((r) => r.agent),
-    ["lead", "releaser", "helper"],
-  );
-});
-
-test("ActivityPanel: with nothing run, it says so, and says Loading while it is finding out", () => {
-  assert.match(activity(null, []), /Nothing has run yet/);
-  assert.match(activity(null, [], { loading: true }), />Loading</);
-  assert.doesNotMatch(activity(null, []), /data-testid="activity-row"/);
-});
-
-test("ActivityPanel: every agent run, oldest first, with no filters", () => {
-  const out = activity(null);
-  const ids = [...out.matchAll(/data-testid="activity-row" data-run="([^"]+)"/g)].map((m) => m[1]);
-  const all = sampleTrees()
-    .flatMap((t) => t.runs)
-    .sort((a, b) => a.created_at.localeCompare(b.created_at))
-    .map((r) => r.id);
-  assert.deepEqual(ids, all);
-  assert.doesNotMatch(out, /Handoffs|Hide Tools|Show Tools|\d+ runs?,/);
-});
-
-test("ActivityPanel: a row says how its agent stands only when a still mark would not", () => {
-  const out = activity(null);
-  assert.match(out, />Failed</);
-  assert.doesNotMatch(out, />Done</);
-  assert.match(out, /aria-label="Stop oncall"/, "a working agent's mark stops it");
-});
-
-test("ActivityPanel: an agent opens to its conversation: what it was asked, by whom, and how it answered", () => {
-  const out = activity("r2a");
-  assert.match(out, /data-testid="activity-conversation"/);
-  assert.match(out, /lead asked/);
-  assert.match(out, /Tag 2\.4\.0 and write the changelog/, "what it was asked");
-  assert.match(out, /already exists/, "why it failed");
-});
-
-test("ActivityPanel: every call of an agent is one conversation, and the trail steps back out through each caller", () => {
-  assert.equal(activity("r2").match(/data-testid="activity-conversation"/g)?.length, 3);
-  const out = activity("r2a1");
-  const nav = out.match(/<nav aria-label="Called by".*?<\/nav>/s)?.[0] ?? "";
-  assert.match(nav, />All runs</);
-  assert.match(nav, /<button[^>]*>.*?lead<\/button>/s);
-  assert.match(nav, /<button[^>]*>.*?releaser<\/button>/s);
-  assert.match(nav, /aria-current="page"[^>]*>.*?helper</s);
-});
-
-test("ActivityPanel: a selection that no longer exists falls back to the list", () => {
-  assert.match(activity("gone"), /data-testid="activity-row"/);
 });
 
 const second = () => {
@@ -1569,7 +1566,7 @@ test("StorageUsed: a real meter in bytes, under, over and with no limit, and whe
   assert.match(under, /1\.7 MB of 5\.0 MB, 33%\. Under limit\./);
   assert.match(under, /Stored, 4 artifacts/);
   assert.match(under, /Launch/);
-  assert.match(under, /Company/);
+  assert.match(under, /Workspace/);
   const over = html(<StorageUsed use={sampleUse({ used_bytes: 6 * 1024 ** 2 })} />);
   assert.match(over, /data-usage="over"/);
   assert.match(over, /Over by 1\.0 MB/);
@@ -1770,24 +1767,6 @@ test("a stopped run is over, is not a failure, and says why when the platform do
   assert.match(md, /- Status: Stopped/);
   assert.match(md, /\*\*Stopped\*\*\n\nStopped by Ada/);
   assert.doesNotMatch(md, /\*\*Failed\*\*/);
-
-  const [tree] = sampleTrees().slice(1);
-  assert.ok(tree);
-  const trees = [
-    {
-      ...tree,
-      runs: tree.runs.map((r) => (r.id === "r2b" ? { ...r, status: "stopped" as const } : r)),
-    },
-  ];
-  const out = html(
-    <ActivityPanel trees={trees} selected={null} onSelect={() => {}} onClose={() => {}} />,
-  );
-  assert.doesNotMatch(
-    out,
-    /data-testid="activity-running"/,
-    "a stopped run does not count as running",
-  );
-  assert.match(out, /data-run="r2b"[^>]*data-status="stopped"/);
 });
 
 const panel = (
@@ -1910,32 +1889,6 @@ test("SessionGauge: the bottom edge follows the binding limit, and without one i
   assert.match(plain, /\$0\.50 of \$2\.00 spent or handed to calls, 25%/);
 });
 
-test("Activity: a selected run shows the limits it draws on, with only its own runs", () => {
-  const out = html(
-    <ActivityPanel
-      trees={sampleTrees()}
-      selected="r2a"
-      limits={sessionBound()}
-      onSelect={() => {}}
-      onClose={() => {}}
-    />,
-  );
-  assert.match(out, /data-testid="activity-limits"/);
-  assert.match(out, /Limits it draws on/);
-  const within = out.slice(out.indexOf('data-testid="activity-limits"'));
-  assert.equal(
-    within.slice(0, within.indexOf("</details>")).match(/data-testid="limits-agent"/g)?.length,
-    2,
-    "releaser and the helper it called",
-  );
-  assert.doesNotMatch(
-    html(
-      <ActivityPanel trees={sampleTrees()} selected="r2a" onSelect={() => {}} onClose={() => {}} />,
-    ),
-    /activity-limits/,
-  );
-});
-
 test("every custom property the console reads is one it defines", () => {
   const dir = new URL("./", import.meta.url);
   const css = readFileSync(new URL("./styles.css", import.meta.url), "utf8");
@@ -1961,35 +1914,6 @@ test("every custom property the console reads is one it defines", () => {
   );
   assert.deepEqual(missing, [], "read but never defined");
   assert.doesNotMatch(code, /\boap-/, "the old prefix is gone");
-});
-
-test("Activity preserves a helper's constructed examples and resolved input", () => {
-  const trees = sampleTrees();
-  const selected = trees.flatMap((tree) => tree.runs).find((run) => run.id === "r2a");
-  assert.ok(selected);
-  selected.input = {
-    input: {
-      messages: [
-        { role: "user", content: [{ type: "text", text: "Example question" }] },
-        { role: "assistant", content: [{ type: "text", text: "Example answer" }] },
-        { role: "user", content: [{ type: "artifact", id: "art-1", version: 2 }] },
-      ],
-      response_format: { type: "summary", max_words: 80 },
-    },
-    messages: [
-      { role: "user", text: "Example question" },
-      { role: "assistant", text: "Example answer" },
-      { role: "user", text: "Frozen artifact contents" },
-    ],
-  };
-  const out = html(
-    <ActivityPanel trees={trees} selected="r2a" onSelect={() => {}} onClose={() => {}} />,
-  );
-  assert.match(out, /Return format: summary/);
-  assert.match(out, /Example response/);
-  assert.match(out, /Example answer/);
-  assert.match(out, /Frozen artifact contents/);
-  assert.ok(out.indexOf("Example question") < out.indexOf("Example answer"));
 });
 
 test("a page's actions shrink to its column and wrap there, so none runs off a phone's edge", () => {
@@ -2081,7 +2005,7 @@ test("what floats above the page is opaque, so nothing under a menu shows throug
 });
 
 test("agents shown together are told apart by color: humagen's own and the seeded agents each take a hue of their own", () => {
-  const builtin = ["humagen-analyst", "humagen-builder", "humagen-writer"];
+  const builtin = ["humagen-analyst", "humagen", "humagen-writer"];
   const seeded = ["helper", "lead", "intake", "triage"];
   const hues = [...builtin, ...seeded].map(hueOf);
   assert.equal(new Set(hues).size, hues.length, JSON.stringify(hues));
@@ -2145,7 +2069,7 @@ test("operation notices use canonical links on every mailbox host", () => {
   }
 });
 
-test("credential failures give an actionable answer and reference without exposing configuration paths", () => {
+test("credential failures give an actionable answer without exposing debug references or configuration paths", () => {
   const turn: Turn = {
     ...emptyTurn("r-credential", { name: "helper" }),
     status: "failed",
@@ -2162,7 +2086,7 @@ test("credential failures give an actionable answer and reference without exposi
     </WebSurface>,
   );
   assert.match(markup, /The model credential is unavailable/);
-  assert.match(markup, /r-credential/);
+  assert.doesNotMatch(markup, /Reference: r-credential/);
   assert.doesNotMatch(markup, /op:\/\/|max attempts|Private\/provider/);
 });
 
@@ -2176,8 +2100,10 @@ test("Involved: the first three agents by mark and name, then how many more, eve
   assert.doesNotMatch(html(<Involved agents={["lead"]} />), /\+\d/);
 });
 
-test("an agent's initials: two words give two letters, one word adds A for agent", () => {
-  assert.equal(agentInitials("lead"), "LA");
+test("an agent's initials use two word initials or the first two letters of one word", () => {
+  assert.equal(agentInitials("lead"), "LE");
+  assert.equal(agentInitials("helper"), "HE");
+  assert.equal(agentInitials("humagen-analyst"), "HA");
   assert.equal(agentInitials("code-reviewer"), "CR");
   assert.equal(agentInitials("dataAnalyst"), "DA");
   assert.equal(agentInitials("research_writer"), "RW");

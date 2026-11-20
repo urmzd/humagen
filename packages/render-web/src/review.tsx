@@ -3,6 +3,7 @@ import type { PrimitiveProps } from "@humagen/primitives";
 import { createContext, useContext, useEffect, useId, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { Button, DenseContext } from "./buttons";
+import { Feedback } from "./feedback";
 import { highlight, type TokenKind } from "./highlight";
 import {
   AlertOctagonIcon,
@@ -230,7 +231,9 @@ function EvidenceItem({
         <span className="min-w-0 break-words">
           <Words text={e.observation} />
         </span>
-        {inPlace ? (
+        {e.source.action ? (
+          <Button label={e.source.label} action={e.source.action} />
+        ) : inPlace ? (
           <button
             type="button"
             aria-expanded={open}
@@ -296,11 +299,27 @@ function FindingItem({
           <Words text={finding.title} />
         </span>
       </p>
+      {finding.foundBy && (
+        <p className="pl-[1.375rem] text-aui-muted text-aui-xs">{finding.foundBy}</p>
+      )}
       <div className="flex min-w-0 flex-col gap-2 pl-[1.375rem] text-aui-sm">
-        <p className="max-w-[72ch] break-words text-aui-fg/90 leading-relaxed [&_code]:font-aui-mono [&_code]:text-[0.85em]">
+        <p className="max-w-[72ch] break-words text-aui-fg/90 leading-relaxed [&_code]:font-aui-mono [&_code]:text-[max(0.85em,var(--text-aui-2xs))]">
           <span className="sr-only">{labels.suggestion}: </span>
           <Words text={finding.suggestion} />
         </p>
+        {finding.location &&
+          (finding.location.url ? (
+            <a href={finding.location.url} target="_blank" rel="noreferrer" className={link}>
+              {finding.location.label}
+            </a>
+          ) : (
+            <span className="font-aui-mono text-aui-xs">{finding.location.label}</span>
+          ))}
+        {finding.change !== undefined && (
+          <pre className="overflow-x-auto rounded-aui bg-aui-code p-3 text-aui-xs">
+            <code>{finding.change}</code>
+          </pre>
+        )}
         <ul aria-label={labels.evidence} className="flex min-w-0 flex-col gap-1.5">
           {finding.evidence.map((e, i) => (
             <li
@@ -313,6 +332,7 @@ function FindingItem({
             </li>
           ))}
         </ul>
+        {finding.feedback && <Feedback {...finding.feedback} />}
         {finding.followUp ? (
           <div className="flex">
             <DenseContext.Provider value>
@@ -383,7 +403,7 @@ export function Review(p: PrimitiveProps["Review"]) {
           <p className="text-aui-muted text-aui-xs">{p.pendingLabel}</p>
         )}
         {p.summary && (
-          <p className="max-w-[72ch] break-words text-aui-fg text-aui-sm leading-relaxed [&_code]:font-aui-mono [&_code]:text-[0.85em]">
+          <p className="max-w-[72ch] break-words text-aui-fg text-aui-sm leading-relaxed [&_code]:font-aui-mono [&_code]:text-[max(0.85em,var(--text-aui-2xs))]">
             <Words text={p.summary} />
           </p>
         )}

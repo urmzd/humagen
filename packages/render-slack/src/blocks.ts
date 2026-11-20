@@ -294,7 +294,8 @@ class Serializer {
               : "Failed";
     const meta = [
       `*${state}*`,
-      exitCode !== undefined ? `exit ${exitCode}` : null,
+      // A passed command says so; only a failure needs its code.
+      exitCode !== undefined && exitCode !== 0 ? `exit ${exitCode}` : null,
       durationMs !== undefined ? `${(durationMs / 1000).toFixed(1)}s` : null,
       cwd ? `\`${escapeSlackText(cwd)}\`` : null,
     ].filter(Boolean);
@@ -741,8 +742,10 @@ class Serializer {
       for (const f of g.findings) {
         const prefix = TONE_PREFIX[g.tone];
         this.text({
-          text: `${prefix ? `${prefix} ` : ""}**${f.title}**\n${f.suggestion}`,
+          text: `${prefix ? `${prefix} ` : ""}**${f.title}**${f.foundBy ? `\n_${f.foundBy}_` : ""}\n${f.suggestion}`,
         });
+        if (f.location) this.context({ items: [link(f.location.label, f.location.url)] });
+        if (f.feedback) this.feedback(f.feedback);
         this.context({
           items: [
             ...f.evidence.map(

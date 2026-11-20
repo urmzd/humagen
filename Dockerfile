@@ -21,7 +21,7 @@
 
 # At least the go directive in go.mod: the golang image sets GOTOOLCHAIN=local,
 # so it cannot fetch a newer toolchain.
-ARG GO_VERSION=1.26.10
+ARG GO_VERSION=1.26.11
 ARG NODE_VERSION=24
 
 # 1. The web console: a Vite build inside the pnpm workspace.
@@ -36,6 +36,11 @@ COPY examples/ui ./examples/ui
 RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
     pnpm install --frozen-lockfile
 RUN pnpm exec turbo run build --filter=@humagen/console
+# The Slack app (surfaces.slack) runs from its sources under Node. This is
+# the app with its production dependencies and the workspace packages it
+# imports, in one directory with no links out of it.
+RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
+    pnpm --filter @humagen/slack deploy --prod --legacy /out/slack
 
 # 2. The Go binary, static, the way `make build` builds it.
 FROM golang:${GO_VERSION}-alpine AS go
@@ -61,8 +66,9 @@ RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache
       -o /out/humagen ./cmd/humagen
 
 # 3. The runtime: a small Alpine image, so the healthcheck has wget and an
-# operator has a shell. Nothing else is installed: stdio MCP servers that
-# need node or python must come from an image built on this one.
+# operator has a shell. Node is here for the one program the server starts
+# itself, the Slack app. Nothing else is installed: stdio MCP servers that
+# need npm packages or python must come from an image built on this one.
 FROM alpine:3.22
 # docker-cli drives a sandbox host's daemon (sandbox.docker.host). The image
 # has no daemon and no socket.
@@ -76,12 +82,19 @@ COPY --from=go /out/humagen /usr/local/bin/humagen
 # and `docker exec ... warp` written before the rename.
 RUN ln -s humagen /usr/local/bin/warp
 COPY --from=web /src/apps/web/dist /usr/share/warp/web
+# Node as the build used it, with the C++ runtime it links, and the Slack
+# app where the server looks for it (HUMAGEN_SLACK_APP_DIR). The app starts
+# only when a spec turns surfaces.slack on.
+RUN apk add --no-cache libstdc++
+COPY --from=web /usr/local/bin/node /usr/local/bin/node
+COPY --from=web /out/slack /usr/share/warp/slack
 
 # The workspace (agents' files and, with -storage=disk, published files'
 # bytes) lives under the user cache directory, which is pointed into the
 # volume. A disk store defaults to blobs/ inside the workspace.
 ENV HOME=/var/lib/warp \
-    XDG_CACHE_HOME=/var/lib/warp/cache
+    XDG_CACHE_HOME=/var/lib/warp/cache \
+    HUMAGEN_SLACK_APP_DIR=/usr/share/warp/slack
 VOLUME ["/var/lib/warp"]
 WORKDIR /var/lib/warp
 USER 10001:10001

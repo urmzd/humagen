@@ -11,7 +11,7 @@ records checks made at the time. The detailed [control-plane spec](../rfcs/0001-
 [board rules](board-design-rules.md), and
 [gap analysis](control-plane-gap-analysis.md) provide the
 larger design. The gap analysis records its own review revision; recheck code
-before treating it as current. Repository rules in [AGENTS.md](../../AGENTS.md) still
+before treating it as current. Repository rules in [AGENTS.md](https://github.com/urmzd/humagen/blob/main/AGENTS.md) still
 govern implementation, including shared presentation and agent identity.
 
 The [workspace principles](workspace-principles.md) apply the
@@ -26,6 +26,10 @@ planned collections, browser, protocol and improvement work from this UI pass.
 
 | ID | Requirement | Status |
 | --- | --- | --- |
+| DES-077 | Background work asked in Slack reports back where it was asked: a watch that fires or runs out, a goal or task that ends, and `notify` reply once in the app's Slack thread that asked, naming the person, with the result's one line and Open Session; anywhere else, or when a run behind it read private context, the person is told in their direct messages; work someone stopped tells nobody | Implemented: `SurfaceNoticesFor` forwards `result` notices only for background work and `notify` (`internal/platform/background_report.go`), with `reply_in` on the event stream (`InboxNotice.reply_in`, `InboxNoticeReply`); the Slack app's `report` in `app.tsx`. Evidence: `TestBackgroundWorkAskedInSlackRepliesInTheThread`, `TestABackgroundResultFromPrivateContextIsSentToThePersonAlone`, `TestBackgroundWorkAskedElsewhereIsSentToTheirDirectMessages`, and the three background tests in `apps/slack/src/dm.test.tsx`. Not yet seen in a live Slack workspace. |
+| DES-078 | An agent in a conversation, a Slack thread among them, proposes a schedule on a clear approval card ("Create a schedule: plaud-new, every 15 minutes, posts in this Slack channel (C0PLAUD) only when something fires", with what it checks, how often, the agent, where it posts and its next run), confirms the next run once approved, and Run once now is itself an approved action | Implemented: run tools `create_schedule`, `update_schedule`, `pause_schedule`, `resume_schedule` and `run_schedule` (`schedule_tools.go`) call the API's own routes as the person, every call asked of that person whatever the policy allows; the card's fields come from `schedulePreview` (`packages/adapter/src/schedule.ts`), words in `copy.schedules.proposal`. Evidence: `TestAnAgentSchedulesWorkForThePersonItWorksFor`, `TestEveryScheduleCallIsAskedOfThePerson`, `TestScheduleToolsRefuseRunsThatActForNoPerson`, adapter `schedule.test.ts`. Not checked: the card in a live Slack workspace or against Slack's validator (no network here), and a live model proposing one. See [schedules from a conversation](../guides/schedules-from-a-conversation.md) |
+| DES-079 | Run and Answer: in a session set to it, the approval agent also answers a question an agent asks a person when the session already settles it, as the person who chose it, and hands them the rest | Implemented: `threads.ApprovalDecide` (`pkg/threads/approval.go`), `internal/platform/approval_questions.go`, the `answer` field and `DescribeQuestion` in `pkg/approve`, `PUT /api/threads/{id}/approval` with `decide`, Answer Questions beside Run in `ApprovalToggle.tsx`, and the judgement on a question's card (`ClarificationCard`). Evidence: `TestRunAndAnswerAnswersAChoiceTheSessionSettles`, `TestRunAndAnswerAnswersAReply`, `TestWhatRunAndAnswerDoesNotSettleWaitsForAPerson`, `TestRunAndAnswerNeverAnswersForSomeoneElse`, `TestRunAndAnswerLeavesWhatSomeoneElseAskedFor`, `TestRunLeavesQuestionsForAPerson`, `TestRunAndAnswerIsAModeAPersonChooses`, `TestApprovalModeIsSetOnItsOwnAndKept`, `TestAQuestionsAnswerIsReadBesideTheDecision`; `approval-toggle.dom.test.tsx`, `ui.test.tsx`. Not run: `pnpm validate:slack` (needs the Slack bench) and a screen check in a running console. |
+| DES-076 | A session's Details pane is a workbench of tabs, and what a person does by hand in one goes with their next message | Implemented: the tab registry (`workbench.ts`), the pane (`Workbench.tsx`), six tab addresses (`?panel=details&bench=`), and the record, list and fold of what was done by hand (`human-activity.ts`, `humanActivity.tsx`). All six tabs are built: Details, Browser (`WorkbenchBrowser.tsx`, `POST /api/sessions/{id}/browser`), Terminal (`WorkbenchTerminal.tsx`, `POST /api/threads/{id}/sandboxes/commands` on a docker sandbox), Changes (`WorkbenchChanges.tsx`), Side Chat (`WorkbenchSidechat.tsx`, `GET /api/threads/{id}/forks`) and Search (`WorkbenchSearch.tsx`). Browser, Terminal, Changes, Side Chat and the Workspace file editor record what a person did; Search records nothing. Not built: the agent's own screenshots and live video in Browser, a persistent shell in Terminal, a baseline from before the session in Changes, and keeping the list of what was done by hand across a reload. The Details tab keeps its earlier 12px and 13px labels. Evidence: `workbench.dom.test.tsx`, `workbench-browser.dom.test.tsx`, `workbench-terminal.dom.test.tsx`, `workbench-changes.dom.test.tsx`, `workbench-sidechat.dom.test.tsx`, `workbench-search.dom.test.tsx`, `room.dom.test.tsx`, `route.test.ts`, core `human-activity.test.ts`, `TestWhatWasDoneByHandTagsNobody`, `TestAPersonActsOnTheSessionsBrowserByHand`, `TestAPersonsCommand*`, `TestSandboxCommandRouteRunsForItsPosterAndNobodyElse`; the six tabs seen together in a running console at 1280x800 and 390x844, light and dark, where five things done by hand in four tabs reached the agent in one message and the list then cleared. |
 | DES-069 | Conversation overview and visible work controls | Implemented: Overview, Workspace, Context and Activity header controls collapse into the menu below the conversation's 3xl breakpoint. The addressed overview folds environment, latest context, agents and run changes from existing APIs; delegated transcript calls share one collapsed disclosure. Evidence: `conversation-overview.dom.test.tsx`, `timeline.dom.test.tsx` and route round-trip tests. Live browser verification unavailable in this session. |
 | DES-059 | PR review evidence in two panes, with GitHub issue and pull request Workspace tabs | Implemented: `GitHubTab.tsx`, `github-ref.ts`, tenant-scoped `GET /api/github/pull` and `/api/github/issue`, bounded repository/SHA patch cache, workflow status, labels and comments; unit, DOM and endpoint regressions added; `conversation-review-workspace` screen registered for CI. |
 | DES-061 | Automations gather schedules and signed GitHub event rules with agent instructions | Implemented; focused Go/DOM tests and phone/desktop screen definitions; CI screens pending |
@@ -33,7 +37,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-002 | Use spacing instead of dots between words in UI metadata | All boards and touched console metadata implemented and checked; audit other console screens when changing them |
 | DES-003 | Reveal the message Fork action on hover and keyboard focus | Native saved-fork API, immutable lineage, source checks and inspector built; shared action wiring pending |
 | DES-004 | Reveal full message date and time on hover and keyboard focus | Human messages and announcements implemented, DOM-tested and browser-checked; agent-message timestamps pending |
-| OPS-001 | Durable assignments, scoped autonomy, agent pause and recorded coordination | Domain stores, admission/tool guards, OpenAPI routes and console components implemented. Restart tests cover memory and Postgres; UI DOM tests cover saved and refused actions, inherited policy provenance, effective pause, typed contract inputs and reviewed deadlines. Native reminders survive restart on the same confined inbox item. Global navigation, screenshots and source-health integration belong to the following stack layers. |
+| OPS-001 | Durable assignments, scoped autonomy, agent pause and recorded coordination | Domain stores, admission/tool guards, OpenAPI routes and console components implemented. Restart tests cover memory and Postgres; UI DOM tests cover saved and refused actions, inherited policy provenance, effective pause, typed contract inputs and reviewed deadlines. Native reminders survive restart on the same confined inbox item. Done checks and continuation are shown on the assignment's card, and its recorded run opens the message page of the run that answered, which shows the recorded answer when the run has no session trace: DOM tests cover a card with and without checks, and all eight light, dark, desktop and phone before and after captures of the card and the run page are in pull request 343. Not seen in a browser: a card without checks and a count above one. Global navigation, screenshots and source-health integration belong to the following stack layers. |
 | DES-005 | Keep this requirements record discoverable and accurate | Documented; AGENTS.md references this file |
 | DES-006 | Keep sidebar and main content scrolling independent; in the sidebar only the lists scroll | Implemented; Chromium wheel regression covers phone and desktop, pinned navigation and the short-window fallback |
 | DES-007 | Agent badge text remains contained at narrow widths and enlarged text sizes | Fixed; dark phone/desktop containment regression passes |
@@ -54,17 +58,17 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-022 | Conversation actions support rename, archive and admin-reviewed deletion | Included in the consolidated branch; bounded API, durable lifecycle and review UI checks |
 | DES-023 | A deployment and each workspace brand the console from the spec, without a fork or a rebuild | Implemented; spec, server, API and console tests pass; browser check of a branded build pending |
 | DES-024 | An agent calling another agent reads as a message, nested under its caller | Implemented in `AgentMessage` (`AgentCall`); checked live: `@lead` called researcher, then writer, with real providers |
-| DES-025 | Stop lives on the working agent's mark; the composer sends and queues | Implemented: `StoppableMark`, `useRunStop`, queue `adopt`, Esc; room, core queue and web tests pass; live stop not yet tried on a long run |
+| DES-025 | Stop lives on the working agent's mark; the composer sends and queues | Implemented: `StoppableMark`, `useRunStop`, queue `adopt`, Esc; the bar stays still while agents work (`slash-commands.dom.test.tsx`); room, core queue and web tests pass; live stop not yet tried on a long run |
 | DES-026 | Activity lists every agent run in time order, each opening a replayable conversation | Implemented; `activity.dom.test.tsx` and `ui.test.tsx` pass; checked in the browser |
 | DES-027 | Drawer headers align with the page header | Implemented with `--humagen-header-h`; measured equal in the browser at desktop width |
 | DES-028 | Share and People & Access are one panel | Implemented: the Share drawer is People & Access; room tests pass |
 | DES-029 | A turn shows a status only when it adds information | Implemented; checked in the browser |
-| DES-030 | One AI disclaimer, centered under the prompt bar | Implemented in `Composer`; checked in the browser |
-| DES-031 | A message names no agent under it; a router's pick is a checkpoint | Implemented: `Checkpoint` in Chat and Room; checked in the browser for a direct answer |
+| DES-030 | No AI disclaimer in the console; the terms of service say it | Implemented: `Composer` and `HomePage` draw none; `home.test.tsx` |
+| DES-031 | A message names no agent under it; a router's pick is a checkpoint | Implemented: `Checkpoint` in Chat and Room for a run the dynamic router joined. In a root session a message gets one answer, and why it came from where it did (a mentioned agent, a search match) is in the answer's activity, never a line of the conversation (`traceEvents` in `responseSource.ts`, `session-answers.dom.test.tsx`, `message-refs.dom.test.tsx`); not rechecked in the browser since |
 | DES-032 | The conversation header shows which agents took part, not a count | Implemented: `Involved` in `ConversationShell.tsx`; `ui.test.tsx` passes; checked in the browser |
 | DES-033 | A turn shows its thinking and steps inline, where they happened, with what each was given and returned | Implemented in `WorkSteps.tsx` and render-web `StepIO`; web and core tests pass; checked live |
 | DES-034 | A finished turn says how long it worked | Implemented: `turn.completed` carries `durationMs`, from the run's events or its record; adapter and core tests pass |
-| DES-035 | Agents are told apart by initials on their color; a mention opens a profile on hover | Implemented: `AgentInitials`, `MentionLink`; `ui.test.tsx` passes; checked in the browser |
+| DES-035 | Agents are told apart by a bot in their color; a mention opens a profile on hover | Implemented: `AgentInitials` (drawn by `bot-avatars`, initials where there is no canvas), `MentionLink`; `ui.test.tsx` passes; marks checked in the browser on `/gallery.html`, dark and light |
 | DES-036 | The composer holds what is picked, and the first message posts before anything else runs | Implemented in `Composer.tsx` and `Chat.tsx`; web tests and the `home` screens pass |
 | DES-037 | Health is a status page of each model provider and dependency | Implemented: `GET /api/health`, `Health.tsx`; `health_test.go` and `health.test.tsx` pass; checked live |
 | DES-038 | Screens open ready to read, filter once, and keep message actions quiet at rest | Implemented in #112; web, core and Slack tests pass; phone and desktop screens pass |
@@ -79,7 +83,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-047 | Skills are slash commands, the only way the console offers them: `/` opens a menu of the skills a message here can name, fuzzy filtered with the match highlighted; `@` offers no skill or `@skill:`, `$` opens nothing, and a posted `$name` or `@skill:name` shows as a `/name` chip | Implemented: `commands.ts`, `tags.ts`, `Composer.tsx`, `ui.tsx` (`Mentioned`), `pkg/threads/tags.go`; web, threads and platform tests pass; `chat-at`, `chat-slash`, `chat-slash-picked` and `composer-menu-skill-selection` screens at 390x844 and 1280x800 |
 | DES-048 | A turn reads as a transcript: words and runs of tool calls in the order they came, each run one line that names what it did, a file written opening in the Workspace, and the reader's messages on the right | Implemented: `packages/core/src/timeline.ts`, `packages/components/src/timeline.ts`, `WorkSteps.tsx`, `ToolLines` for Slack, `Room.tsx` message sides; core, components, adapter, render-slack and web DOM tests pass; `pnpm validate:slack` passes; screen `conversation-timeline` passes at 390x844 and 1280x800 |
 | DES-049 | The sidebar lists Recents newest first, Pinned on top, Projects and Archived as views; each row says its project, its age or an unread dot, and whether it waits on a person, runs or failed | Implemented: `conversationList.ts`, `marks.ts`, `Sidebar.tsx`, `pkg/marks`, `PATCH /api/threads/{id}/marks`, `waiting` and `last` on thread summaries; Go, web and DOM tests pass; `sidebar-recents`, `sidebar-row-actions`, `sidebar-projects` and `sidebar-archived` screens pass at 390x844 and 1280x800 |
-| DES-049 | A finished turn that changed files ends with a card of them: how many and their lines, a Review, and a row per file that opens its changes | Implemented: core `turnChanges`, web `TurnChanges`; core and web DOM tests pass; screen `conversation-timeline` passes at 390x844 and 1280x800 |
+| DES-049 | A finished turn that changed files ends with a card of them: how many and their lines, a Review, and a row per file that opens its changes | Implemented: core `turnChanges`, web `TurnChanges`, `ChangedFiles` for Slack (`packages/components/src/turn-changes.tsx`); core, web DOM, render-slack and Slack app tests pass; screen `conversation-timeline` passes at 390x844 and 1280x800; the Slack fixtures `changesTurn` and `manyChangesTurn` pass `blocks.validate` |
 | DES-050 | The Workspace is a pane of tabs beside the conversation: + opens items, tabs close, Expand and Show Two Tabs, tabs in the address, a full-screen sheet on a phone | Implemented: `Workspace.tsx`, `pane.ts`, `Inspector` `expanded`; web, pane and route tests pass; `workspace-pane-split`, `workspace-pane-expanded` and the other Workspace screens pass at 390x844 and 1280x800 |
 | DES-051 | Memories by scope: what a conversation, its session and each message used and wrote, read only | Implemented: `Memories.tsx`, `GET /api/threads/{id}/memory`, `Run.memory`; web, route and Go tests pass; `workspace-memories` screens pass at 390x844 and 1280x800 |
 | DES-052 | Conversation files, scratchpads, code editing, change review and artifact publication, in one Workspace panel opened from Conversation Settings beside a compact header | Implemented: `WorkspaceFiles.tsx`, `Workspace.tsx`, `ConversationShell.tsx`, `/api/threads/{id}/files`, `GET /api/threads/{id}/sandboxes`; web, route, Go race and confinement suites pass; `conversation-header`, `workspace-*` and `ide-*` screens pass at 390x844 and 1280x800 |
@@ -88,7 +92,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-054 | The sidebar lists Recents newest first, Pinned on top, Projects and Archived as views; each row says its project, its age or an unread dot, and whether it waits on a person, runs or failed | Implemented: `conversationList.ts`, `marks.ts`, `Sidebar.tsx`, `pkg/marks`, `PATCH /api/threads/{id}/marks`, `waiting` and `last` on thread summaries; Go, web and DOM tests pass; `sidebar-recents`, `sidebar-row-actions`, `sidebar-projects` and `sidebar-archived` screens pass at 390x844 and 1280x800 |
 | DES-055 | A sidebar row previews itself on hover or a long press, and the wave's preview carries its author's mark | Implemented: `RowPreview.tsx`, `peek.ts`, `TurnRail.tsx`; web, DOM and screens pass (`sidebar-preview` checks the card is centred on its row, `conversation-wave-preview`) at 390x844 and 1280x800 |
 | DES-056 | A one-time tip teaches search, dismissed once per person | Evidence: `sidebar-search` checks the replacement Search navigation button; the tip card was removed |
-| DES-057 | Home files a new conversation from over its chat bar; a conversation's approval mode is a text control under the composer, Default or Approve for Me, within policy and audited | Implemented: `ApprovalModePicker.tsx`, `HomePage.tsx`, `pkg/threads/approval.go`, `internal/platform/approval_mode.go`, `PUT /api/threads/{id}/approval`; Go, DOM and screens pass (`home-project-above`, `composer-approval-mode`). The model and effort picker is not built: no agent spec allows an override yet |
+| DES-057 | Home files a new conversation from over its chat bar; a conversation's approval mode is a text control under the composer, Default or Approve for Me, within policy and audited | Implemented: `ApprovalModePicker.tsx`, `HomePage.tsx`, `pkg/threads/approval.go`, `internal/platform/approval_mode.go`, `PUT /api/threads/{id}/approval`; Go, DOM and screens pass (`home-project-above`, `composer-approval-mode`). Per-message model and effort were removed (DES-067). In Slack: an approval's menu lets the approval agent decide the thread, set as the person through the same route with `act_as` and said in the thread with the way back; an agent-decided card shows its reason; Ask a Question asks the agent in the thread while the call waits. Go, adapter, render-slack and Slack app tests pass; live Slack not yet checked |
 | DES-053 | Notifications sort into the reader's own views: Inbox, Unread, Hidden and Done, with per-reader hide and delete | Implemented; per-reader marks and counters, bulk API with isolation tests, DOM and route tests, phone/desktop captures |
 | DES-050 | The Workspace is a pane of tabs beside the conversation: + opens items, tabs close, Expand and Show Two Tabs, tabs in the address, a full-screen sheet on a phone | Implemented: `Workspace.tsx`, `pane.ts`, `Inspector` `expanded`; web, pane and route tests pass; `workspace-pane-split`, `workspace-pane-expanded` and the other Workspace screens pass at 390x844 and 1280x800 |
 | DES-051 | Memories by scope: what a conversation, its session and each message used and wrote, read only | Implemented: `Memories.tsx`, `GET /api/threads/{id}/memory`, `Run.memory`; web, route and Go tests pass; `workspace-memories` screens pass at 390x844 and 1280x800 |
@@ -96,9 +100,17 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-064 | A connection maps its Slack members or GitHub logins to people, and a GitHub connection can be given its App's private key so the server mints installation tokens | Implemented: `ClientConnect.tsx`, `Clients.tsx`, `pkg/integrations/github/app_token.go`, `seeMapped` in `internal/platform/people.go`; web DOM, `pkg/integrations/github`, `pkg/people` and platform tests pass; live GitHub minting not yet tried |
 | DES-065 | Sources shows the data catalog a reader sees: connectors, tables and columns, never data, with Crawl, Publish and Withdraw for the owner | Implemented: `CatalogBrowser` in `SourceCatalog.tsx`, on `GET /api/catalog` and the connector routes; web DOM test passes; screens not yet captured |
 | DES-066 | A spend limit says what happens when it is reached, block or ask for approval with a grant cap, and the Directory names a person's projects | Implemented: `Billing.tsx` (`action`, `max_grant`, `max_grant_tokens`), `Directory.tsx` (`projects`, `projects_more`); web typecheck and tests pass; screens not yet captured |
-| DES-068 | The agent editor controls the models and reasoning efforts people may choose per message | Implemented: Model tab allowlists, versioned save, validation and read-only controls; six DOM regressions and console typecheck pass; native browser captures at 320, 390 and 1280 pixels |
+| DES-068 | The agent editor controls the models and reasoning efforts people may choose per message | Removed 2026-11-07: people pick agents, not models; see DES-067 |
 
 ### DES-001: Working integrations
+
+The public-web profile in `examples/public-web/humagen.yaml` grants a native
+agent `web_search` and `web_fetch` only. Supporting URLs are model-reported
+answer text, not verified citations. The earlier search/open/version check
+ran on the Claude Code profile removed with #383; the native profile has not
+been run with a live model. See [public-source research](../guides/public-web.md)
+for identity, permissions and unsupported browser operations. No console
+connection control is implied.
 
 - Build on the existing client, connector, credentials, project-binding, and
   generated API client paths. Keep API calls and identity in surface hosts and
@@ -318,25 +330,10 @@ planned collections, browser, protocol and improvement work from this UI pass.
 
 ### DES-067: Model and effort for one message
 
-- Under the composer, beside Approvals, a text control picks the model and
-  reasoning effort for the next message alone: "Agent's model · Default
-  effort" until something is picked. It offers what the agents the message
-  may start offer (`choices` on their spec): those the draft tags, else the
-  conversation's selected agents and default. With nothing offered it is
-  not shown.
-- Sending carries the pick with that message (`model`, `effort` on
-  `POST /api/threads` and `/api/threads/{id}/messages`) and resets the
-  control. A queued message keeps the pick it was sent with.
-- Each run applies only what its agent offers, after the run's preferred
-  model and before its model policy and ceilings. A ceiling that moves the
-  run off the picked model drops the effort. An effort the model does not
-  take fails the run before any model call.
-- Evidence: `model-picker.dom.test.tsx`, `modelPick.test.ts`,
-  `TestAMessagePicksItsRunsModelAndEffort`,
-  `TestAMessageChoiceAppliesWhereTheAgentOffersIt`,
-  `TestAgentChoicesRoundTrip`, and orchagent's `TestEffortReachesThePrimaryOnly`
-  and `TestAnthropicEffortIsSentOrRefused`. The agent editor does not yet edit
-  `choices`; a spec or the API sets them. Screens are not yet captured.
+Removed 2026-11-07: people pick agents, not models. Each
+agent's definition sets its model chain, and nothing overrides it per message.
+The picker, `model` and `effort` on posted messages, and `choices` on agent
+specs are gone.
 
 ## Review and implementation evidence
 
@@ -355,7 +352,7 @@ is supplied; naming an agent explicitly remains a separate routing path.
 
 | Requirement | Implementation and evidence | Remaining work |
 | --- | --- | --- |
-| DES-001 | `apps/web/src/ClientConnect.tsx`, `Clients.tsx`, and `api.ts` use the existing `POST /api/clients` contract, including `slack.people` and `github.people` maps (DES-064). Settings DOM tests cover Slack values, GitHub references and routing, server refusal, permission gating, secret clearing, and default-deny reach. Reproducible phone/desktop captures cover Slack and GitHub forms, pending requests and server refusal; new copy lives in `packages/components/src/copy.ts`. | Supply installed-app credentials and a reachable signed webhook listener, then observe real replies. Slack OAuth installation remains separate backend work; GitHub App token minting (DES-064) needs a live installation trial. |
+| DES-001 | `apps/web/src/ClientConnect.tsx`, `Clients.tsx`, and `api.ts` use the existing `POST /api/clients` contract, including `slack.people` and `github.people` maps (DES-064). Settings DOM tests cover Slack values, GitHub references and routing, server refusal, permission gating, secret clearing, and default-deny reach. Reproducible phone/desktop captures cover Slack and GitHub forms, pending requests and server refusal; new copy lives in `packages/components/src/copy.ts`. | Supply installed-app credentials and a reachable signed webhook listener, then observe real replies. Native Slack/GitHub installation backend and offline API tests now pass, with disabled clients and pinned credentials. Live registration, consent and delivery trials remain pending. |
 | DES-002 | All 26 board HTML files render in Chromium without separator dots. Main evidence fields wrap without horizontal overflow at 390px. `ConversationShell.tsx`, `Room.tsx`, `Clients.tsx`, and web `AgentMessage.tsx` use gaps or readable phrases. The `Mailbox.tsx` row says "N to decide" as its own label beside the preview (DES-038). | Older untouched console and shared presentation copy needs review as it changes. |
 | DES-003 | `boards/ForkConversation.html` and `assets/boards.css` reveal actions on hover/focus, retain touch availability, and navigate to the existing prototype panel. Chromium checked hover, focus, target focus, and stable message dimensions. | A native fork needs a saved conversation operation, lineage, permissions, routes, and isolation tests. The board action is a prototype. |
 | DES-004 | Human messages and announcements in `Room.tsx` use recorded timestamps with full local date, time, and timezone on hover, focus, and tap. Room DOM tests cover the recorded instant, accessible description, and dismissal. A Chromium phone regression reproduced tooltip overflow before the fix; phone and desktop captures verify placement through the existing panel-gutter helper. | Carry real recorded timestamps through agent-message presentation. |
@@ -385,16 +382,30 @@ DES-004 have been implemented or live-validated.
 ### Built-in handles and Slack conversation navigation
 
 New agent choices and starter actions use `humagen-analyst`, `humagen-writer`
-and `humagen-builder`. The directory also provides `code-reviewer`,
-`security-reviewer`, `architect-reviewer` and `qa-reviewer` for reviews in an
-ordinary conversation. Compatibility registry definitions preserve saved
+and `humagen`, the entry agent, which builds agents. `code-reviewer`,
+`security-reviewer`, `architect-reviewer` and `qa-reviewer` review in an
+ordinary conversation. Every workspace has `humagen` and `approver`; the
+writer and the analyst come with the Core package and the reviewers with the
+Review package, which a workspace installs from the Store tab under Agents.
+A starter is offered only for an agent the workspace has. Compatibility registry definitions preserve saved
 revisions, old schedules and existing grants. The `humagen-builtins` screen
 checks all three names at phone and desktop widths.
 
-A Slack task card exposes Open Conversation when the host has configured
-`HUMAGEN_PUBLIC_URL`. It points to the run's conversation, including a later
-run in an existing conversation, and remains attached throughout streaming
-and settlement. Adapter and Slack rendering regressions cover the link.
+A Slack answer links to its conversation when the host has configured
+`HUMAGEN_PUBLIC_URL`. The link is one arrow (↗, `copy.conversationLink`, held
+to text so Slack does not draw an emoji) on no line of its own: it ends the
+last line of a finished answer, streamed or posted, after any trailing blank
+lines are dropped. It ends the disclaimer instead when the answer ends in
+code, a table (with or without edge pipes), a rule, a heading's underline or
+a link reference definition, when a task card came after its words, when the
+turn failed, stopped or is still working, or when the arrow would push the
+answer into another message (past 12,000 characters of markdown). Only a
+queued turn, which has no disclaimer yet, shows it as a line. It points to
+the run's conversation, including a later run in an existing conversation.
+The fallback text never carries it. Slack gives a link no accessible label
+of its own, so a screen reader reads the arrow itself; whether Slack keeps a
+markdown link title (`[text](url "title")`) is not verified, so none is
+sent. Adapter and Slack rendering regressions cover the link.
 
 ### DES-007: Agent badge containment
 
@@ -620,6 +631,9 @@ remain valid. Gold attention, green success and agent identity colors retain
 their separate meanings. Glass and a thin static color streak belong to chrome;
 content and popovers keep opaque readable surfaces with restrained bevel/shadow.
 Existing button and field helpers share the same variants and sizing.
+Wrapped inline code repeats its padding and rounded background for each fragment,
+and long tokens stay inside the text column. The `session-inline-code` browser
+fixture replays the confirmed message and a long path, checking every fragment.
 Web-only resource browsers remain controlled presentation components;
 the shared surface-neutral contracts and Slack renderer remain intact.
 
@@ -893,6 +907,10 @@ approval, disabled early approval, restoration, refusal and the combined menu.
 - The composer only sends. While the reply to the last message works, a new
   message queues behind it and the queue shows above the composer. Esc in an
   empty composer stops the agents the last message started.
+- Nothing else about the composer changes while agents work: no list of
+  threads at work in the box, no Stop button in the bar, no moving border.
+  (A working strip, a bar Stop and a border beam had crept back in; they are
+  gone. Each answer's mark is where its agent is seen working and stopped.)
 - There is no separate Stop Turn button on an answer.
 - Acceptance: a working run's mark stops it with the pointer, the keyboard and
   touch; the composer queues a message sent while a reply works and sends it
@@ -940,13 +958,18 @@ approval, disabled early approval, restoration, refusal and the combined menu.
   and stopped.
 - Acceptance: a completed turn has no Done label; the other states still read.
 
-### DES-030: One disclaimer under the prompt bar
+### DES-030: No AI disclaimer in the console
 
-- The AI disclaimer is one centered line under the prompt bar, the same before
-  and after the first message. It names the product, from the spec's branding.
-- An agent's answer does not repeat it.
-- Acceptance: a conversation shows the disclaimer once, under the composer, on
-  a new conversation and on one with answers.
+Owner request: drop the "can make mistakes" line, as the Claude app does. The
+terms of service carry it, and the console is plainly a place to talk to
+agents, so a line under the prompt bar only cost a phone its height.
+
+- Neither Home nor a conversation shows a disclaimer under the prompt bar, and
+  an agent's answer in the console does not add one (`disclaimer={false}` on
+  `AgentMessage`).
+- The Slack app keeps the disclaimer its branding file sets; that is the
+  deployment's choice in a shared channel.
+- Acceptance: Home and a conversation with answers render no disclaimer.
 
 ### DES-031: Checkpoints, not agent lines
 
@@ -980,6 +1003,9 @@ approval, disabled early approval, restoration, refusal and the combined menu.
 
 ### DES-034: How long a turn worked
 
+- The Worked/tools control has a minimum 44px touch target on a coarse pointer.
+  The canonical `session` browser state scrolls it into view, measures it and
+  opens/closes Details before capture.
 - A finished turn's "Worked" line says how long it worked: "Worked for 32s".
   The time runs from the run's acceptance to its completion on the stream, or
   from the run record's creation to its last change when the stream is gone.
@@ -987,9 +1013,11 @@ approval, disabled early approval, restoration, refusal and the combined menu.
 
 ### DES-035: Initials and mention profiles
 
-- An agent's mark at 16px or more shows its initials on its color: two words
-  give two letters, one word adds A for agent ("LA" for lead). A working
-  agent's mark glows.
+- An agent's mark at 16px or more is a small bot in its color, its shape
+  drawn from its name. A working agent's bot hops, and from 24px the orb on
+  its corner moves with what it is doing. Where there is no canvas the mark is
+  its initials on its color: two words give two letters, one word adds A for
+  agent ("LA" for lead).
 - A mention of an agent is a link to its profile. Hover or focus shows a card
   with its initials, name, model or model policy and description.
 - Acceptance: `@lead` in a message links to lead, and hovering it shows lead's
@@ -998,14 +1026,28 @@ approval, disabled early approval, restoration, refusal and the combined menu.
 ### DES-036: The composer holds the pick; the first message goes first
 
 - A project picked from the plus menu shows inside the prompt bar, not under
-  it, so the bar keeps its height. Only the disclaimer is below it. An agent
+  it, so the bar keeps its height. Nothing is below it. An agent
   picked there is a mention in the box (DES-041).
 - Starter suggestions are centered. When they overflow, they scroll sideways
   with fades and chevrons at the ends.
 - A new conversation's first message posts before anything queued behind it.
   If it fails, its words return to the composer and nothing queued is sent.
-- Acceptance: a failed first message leaves its text in the composer and an
-  empty queue.
+- Binary image, PDF, Office, audio and video files travel as bounded uploads,
+  with original bytes and names retained through queue editing, waiting and retry.
+  A failed first send restores its files beside its text. MIME types are sniffed
+  on the server; metadata never grants a model a modality it cannot read.
+- Posted messages retain a file reference for each upload, for the author and
+  other readers, after reloading the conversation. A file without a name uses
+  its alternative text or media type. These references describe retained files;
+  they do not imply a preview or download is available.
+- Acceptance: a failed first message leaves its text and files in the composer
+  and an empty queue. Evidence: `attachments.test.ts`, queue regression tests,
+  `TestUploadedImageReachesModelAndLaterHistory`, and the phone/desktop
+  `composer-attachments` screen. Live model and connected browser acceptance are
+  tracked separately in the session audit ledger.
+- Retained upload references are checked for both message authors and other
+  readers in `room.dom.test.tsx`, and from actual session API records by the
+  `session-uploads` browser state at phone and desktop widths in both themes.
 
 ### DES-037: Health
 
@@ -1269,6 +1311,14 @@ handover to the keyboard (`pwa.test.ts`). `make screens` passes with
 
 Needs a real device: the installed app's height on an iPhone.
 
+Found on a device afterwards: the installed app still showed a blank strip
+under the composer, the status bar's 59pt, with the disclaimer's second line
+cut off. `#root` took the screen's height, but `html` and `body` stayed
+`height: 100%` with `overflow: hidden`, so they kept Safari's short viewport
+and clipped the console. All three now take `--humagen-app-height`
+(`styles.css`). Checked in Chromium at 430x873 with the height set to 932px:
+`html`, `body` and `#root` each measure 932, where before `body` stopped at 873.
+
 ### DES-043: The brand's glow
 
 Owner request: the colored streak along the top had rough ends at the
@@ -1316,8 +1366,7 @@ Rules:
 - Whenever the keyboard opens or closes, the page's pan is undone, and the
   height is checked again once focus settles. The list keeps the latest
   message in view as it shrinks. While the keyboard is up the chat bar sits
-  right on it and the disclaimer is hidden; it returns when the keyboard
-  closes.
+  right on it.
 
 ### DES-045: A phone that reads like a native chat app
 
@@ -1564,8 +1613,15 @@ sidebar destinations; the tip card was removed.
   <path> +a". It links to `/conversations/<id>/workspace?file=<path>&tab=changes`.
 - A connector action the runtime hands back to the model as "action failed:"
   text is a failed call.
-- Slack draws each run as one context line, in order, at most eight a
-  message, the rest counted in the last.
+- Slack draws each run as one context line while the turn is going, in
+  order, at most eight a message, the rest counted in the last. Once the
+  turn has ended the lines become one, counted by kind (`workSummary`):
+  "Ran 3 commands (1 failed), read 2 files, updated 4 files (+120 -18)". A
+  command that exited non-zero and was not run again with success is shown
+  under the answer with its exit code and the end of its output
+  (`FailedCommands`, from `commandResult` in `@humagen/core`); a command that
+  passed stays a count. See docs/reference/slack.md, Steps, command output
+  and run details.
 - In a conversation the reader's own messages sit on the right as a compact
   bubble without a mark, decided by comparing the author with the signed-in
   person, so another person's are on the left under their mark and name. A
@@ -1587,6 +1643,12 @@ sidebar destinations; the tip card was removed.
   (`fileEdits`), one row per path: a file written whole more than once counts
   from what the turn started with to what it left; edits add up.
 - No card while the turn runs, or when it changed no file.
+- Slack draws the same files as one muted block under the answer, in every
+  place a turn is shown: "N files changed +a -b", then a line per file with
+  its path as code and its own lines, at most eight lines of files, the rest
+  counted in the last as "and N more". One file is named without repeating
+  its counts. A turn that failed or was stopped after it wrote shows it too;
+  a bridge that carries outcomes only does not.
 - The chat bar's prompt is "Ask anything, @ to mention, / for actions".
 
 ### DES-057: The composer's chrome: project, approvals
@@ -1631,6 +1693,39 @@ Evidence: `go test -race ./pkg/threads ./internal/platform ./internal/httpapi`
 `TestOnlyAPersonChoosesApproveForMe`, the contract tests); `cd apps/web &&
 pnpm test` (`approval-mode.dom.test.tsx`, `chat.dom.test.tsx`); `make
 screens` with `home-project-above` and `composer-approval-mode`.
+
+In Slack (the Slack app, `apps/slack`):
+
+- An approval waiting in a run's thread has a menu (Slack's overflow, after
+  its buttons) with one row, "Let the approval agent decide in this thread".
+  It is offered only where the app's client maps people
+  (`TurnCapabilities.approvalAgent`), never on a run held at a limit, and
+  never as a button, so it never reads as a decision on the call. It sets
+  the conversation through `PUT /api/threads/{id}/approval` with `act_as`,
+  so every check is the console's, made as the person who pressed; a
+  person the client maps to nobody is told so and Humagen is not asked, and
+  a refusal is said to the presser alone in Humagen's words. The change is
+  said in the thread, naming who made it, that the agent decides from the
+  next action on and that the action already waiting still waits, with one
+  button back (Ask Me Again, or Let the Approval Agent Decide).
+- An approval the approval agent decided says so on its card in the
+  thread, with its reason, as the inbox does: the run's answer carries the
+  agent's note (`judgementOfNote` in `packages/adapter/src/question.ts`).
+  What it said about a call it handed to a person reaches the card from the
+  inbox, while the app follows the run, and stays once a person decides.
+- Ask a Question on an approval in the thread opens a form; the question
+  is said in the thread and asked of the agent that made the call, as the
+  person's message in the conversation (as a message typed in the console
+  while a run waits), beside the waiting run: the call's card keeps its
+  buttons and the answer streams below it.
+
+Evidence (Slack): `go test -race ./internal/httpapi`
+(`TestASurfaceSetsApprovalModeOnlyAsTheMappedPerson`); `cd apps/slack &&
+pnpm test` (`questions.test.tsx`: the form, the question asked as the
+person and beside the waiting call, the menu, the note and its way back,
+refusals, the judgement on a waiting card); `packages/render-slack`
+`question-cards.test.tsx`; `packages/adapter` `question.test.ts`. Not yet
+checked in a live Slack workspace.
 
 ### DES-059: Review GitHub changes in context
 
@@ -1719,6 +1814,24 @@ Evidence: `replay.test.ts`, `replay.dom.test.tsx`; the phone and desktop
 
 ### DES-062: Customize and personal tool servers
 
+The native Mac connection in `examples/desktop/` pins an explicit tool set with foreground authority for the
+named fixture. `docs/guides/desktop.md` documents worker placement, permissions, exact
+window/snapshot targeting, and an opt-in native fixture test. A locked session
+is a connection blocker, not a successful desktop-control result.
+
+The browser worker configuration and connection instructions are in
+`examples/browser/` and `docs/guides/browser.md`. Browser tool schemas are pinned;
+navigation and interaction require a write grant. The real connector acceptance
+is opt-in (`TestBrowserLive`). The separate CDP helper,
+`examples/browser/connected-acceptance.mjs`, runs an actual model on the native
+profile against the same signed-in local fixture tab: screenshot pixels, an
+authorized action and an exact-byte download at both widths and themes, with
+wire receipts for PNG blocks and separated artifact and download directories.
+It passed on the Claude Code profile before #383 and has not been rerun on the
+native one. Existing tabs require an explicit extension or CDP connection;
+third-party SSO/MFA and extension handoff remain unverified. No console
+control implies an authenticated browser connection.
+
 - Customize groups the existing Agents, Skills, Connected Accounts and Your tool
   servers sections at `/customize/{section}`, with permission-filtered tabs.
 - Personal MCP clients run in the trusted worker using the existing credential
@@ -1733,6 +1846,12 @@ Evidence: `replay.test.ts`, `replay.dom.test.tsx`; the phone and desktop
   `scripts/screens/library.ts`. Screens are judged in CI.
 
 ### DES-063: Connectors and catalog
+
+The managed BigQuery backend now saves private bounded definitions, verifies
+metadata through an explicit crawl, and binds renewed consent to the same owned
+configuration. API/platform race tests and actual PostgreSQL name-reservation
+and cross-process catalog tests pass. The dedicated OAuth mode exposes metadata
+only; connection-form browser validation belongs to the console layer.
 
 Browse and search warehouse and object metadata in Library > Catalog. Search
 text has an address. Show columns and descriptions without copying
@@ -1749,31 +1868,15 @@ fixture. The Catalog and New Source captures pass at phone and desktop widths
 
 ### DES-068: Agent message choices
 
-The Model tab offers labeled lists of allowed models and reasoning efforts.
-Each model is `provider/model`, one per line. Each effort is a word, one per
-line. Empty lists offer no override; the default model remains available.
-Model providers are validated by the server, and the editor explains that an
-unsupported effort fails before a model call.
-
-Saving uses the existing versioned agent revision API. It trims and deduplicates
-lists, sorts them and lowercases efforts. Clearing both removes `choices`.
-Malformed models and efforts disable Save across tabs. Discard restores the
-saved values, a failed save preserves the draft, and built-in agents and readers
-without write permission cannot change the lists.
-
-Evidence: `agent-choices.dom.test.tsx` covers saving, validation, discard,
-clearing, errors and read-only access. Console typecheck passes. Lightweight
-native browser checks of the actual editor with fixture data pass at 320, 390
-and 1280 pixels, including overflow, invalid save and discard. Live provider
-compatibility was not exercised.
+Removed 2026-11-07 with DES-067: agents no longer offer per-message choices.
 
 ### November 7 console design review
 
 DES-017 and DES-062 retain page h1 headings across Customize, Library and
 Operations; the current hub link is visually hidden until focused, retaining
 its accessible name and destination. Agent metrics have one shared header.
-DES-013 and DES-057 keep starters immediately after the composer, with the
-disclaimer at Home's bottom and the project picker inside the toolbar.
+DES-013 and DES-057 keep starters immediately after the composer, with
+the project picker inside the toolbar.
 DES-069 groups sandbox workspace links under each agent without raw IDs and
 shows context percentage once. Thread content reserves space beneath the
 jump control and its gradient scrim. Evidence: console DOM and usage tests,
@@ -1783,3 +1886,482 @@ pass at phone and desktop widths (14 captures): `customize-agents`,
 `home-project-picker`, `conversation-overview` and `conversation-jump-latest`.
 Overview captures Environment, Context and Agents with Changes collapsed;
 its existing small file-link target remains outside this review's fixes.
+
+### DES-070: One connections page with truthful authorization states
+
+The Connections page lists service presets and reuses the existing personal
+credential, tool-review and workspace-integration flows without nested page
+titles. OAuth accounts have Connect/Reconnect, explicit tool review and
+Disconnect. A preset explains why secure authorization or host access is
+unavailable. Saved messaging credentials remain visibly unverified. Refused
+forms keep their input and show errors next to the submit control. Tool forms
+show allowed hosts and report an empty submission.
+
+Implemented by `Connections.tsx`, `ConnectionSection.tsx`, `ToolServers.tsx`,
+`ClientConnect.tsx`, and `pkg/connectionauth`. OAuth unit/race evidence covers
+identity, replay, expiry, encryption, refresh and unsafe discovery metadata.
+Other supports an issuer-bound registered application when DCR is unavailable.
+The connection detail shows actual reported scopes and authorized configuration
+mappings. Check observations persist and are invalidated by renewed consent;
+confirmed credential rejection marks Reconnect required and targets a private
+owner alert. Five connection DOM checks cover input retention, explicit source
+consent, native setup, persisted observation display and actual scope mapping.
+Native failure regressions cover Slack HTTP 200 authentication errors, exact
+token/consent rejection fences and GitHub mint HTTP 401 attention to the current
+verified consenting person. Delayed failures after reconnect and ordinary
+permission/network failures do not raise reconnect attention.
+Real OAuth, browser layout and full end-to-end delivery remain unverified.
+
+The BigQuery preset obtains dedicated Google read-only consent, saves a bounded
+private connector, verifies metadata through owner-only crawl, and offers
+separate publication. Definitions survive restart without operator handoff.
+Failed verification retains the last successful count/time. Renewed Google
+consent is explicitly rebound to the existing connector. ADC/reference fallback
+is administrator-only and remains within deployment or personal reference
+grants. OAuth connectors expose metadata only, not unsupported live SQL.
+Evidence: `bigqueryConnection.test.ts`, `bigquery-connection.dom.test.tsx`,
+managed catalog and platform setup race tests; no live BigQuery or visual
+validation. See [the BigQuery guide](../guides/bigquery-connection.md).
+
+### DES-071: Sessions and a single alert center
+
+The primary navigation is New, Sessions, Alerts, Agents, Connections, Artifacts
+and Settings. Sessions reads `/api/sessions?mine=true&roots=true`, expands children
+under their parent, and keeps state, project and agent filters in the address.
+Canonical details use `/sessions/{id}?panel=files|sources|steps|sessions`; old
+conversation paths retain their selections. Project inbox, history and channel
+addresses migrate to project context or filtered Sessions.
+
+Agents groups the directory, Skills, Knowledge and Memory while retaining their
+existing addresses. Connections groups Agent tools, Data sources and permitted
+Workspace apps. Artifacts opens published work at `/artifacts`. Generic network
+and controls addresses open Agents; addressed handoffs and agent-filtered
+assignments retain their specific decisions and filters.
+
+The alert center reads session alerts, with Mine/Everyone, priority, state and
+source filters, bulk Resolve/Snooze, and Undo for successful changes.
+The backend filters source by alert kind and orders sessions using only visible
+open attention. Per-priority preferences govern delivery; an unset preference
+grants no delivery. Recorded answers settle question alerts, while reading or
+a terminal run without an answer does not. Connection authentication failures
+join a private owner session with sanitized reconnect attention. See
+[session alerts](../guides/session-alerts.md).
+Watching lists standing rules with Pause/Resume and confirmed Delete. The shared badge
+counts only the person's open Urgent and Normal alerts. What Home shows beneath
+the composer is DES-075. Sidebar hover controls contain one menu.
+
+Evidence: `session-center.dom.test.tsx` checks the seven destinations, attention
+priority and three-row cap, resolve/undo, and nested child reads. `route.test.ts`
+checks canonical paths, old panel aliases and project migration. The connection
+HTTP contract test uses an offline OAuth transport and passes with `-race`.
+Visual responsive checks and real provider authorizations remain unverified.
+Session summaries carry the retained conversation's origin, last-message author
+and last agent message. Sidebar unread dots use that metadata and do not infer
+an agent reply from a generic session update.
+
+### DES-072: Builder sessions and evaluation health
+
+New Agent opens a session with `humagen`, the entry agent, which took over
+from `humagen-builder`. An existing agent's Manage
+with builder action resumes its labeled management session, without sending
+another prompt merely to open it. Compatibility setup addresses provide the
+same explicit builder entry. The directory has one creation action, with no
+separate Pause All or Build With the Builder controls.
+
+The directory includes actual evaluation health and keeps its state filter in
+the URL. Needs review includes failed operational runs and eval regressions;
+inactive setup agents read as Draft. Agent detail shows recent failed checks,
+retained before/after suite scores and recorded override reasons. Missing health
+is not presented as healthy. The operational panel reads draft state from the
+roster instead of probing a setup endpoint that returns 404 for ordinary agents.
+
+A recorded `preview_agent_change` or `preview_workspace_prompt` result renders a shared change card: the web shows a prompt diff, while native surfaces show explicit before/after prompts. Both show proposed tools and per-suite scores. Incomplete evaluation is blocked;
+regression requires an authorized override reason. The card has no independent
+Apply operation: the runtime's governed approval remains authoritative.
+Optional authorized connection and listening summaries show current routing, not proposed installation or live health. Omitted metadata reads as not included; an empty authorized list means none. Configured or disabled status is preserved.
+
+Evidence: `agent-builder.dom.test.tsx` covers accepted session creation,
+management-session reuse without another message, refused health reads and
+refresh, actual eval regression filtering, and gated change previews.
+`agents.dom.test.tsx` covers the single creation action and existing permissions.
+`packages/render-slack/src/agent-change.test.tsx` checks both preview tools, prompt evidence, score regressions, placement status and the absence of an independent Apply action. Native preview JSON is replaced by the structured card. Live responsive acceptance remains unverified.
+
+### DES-073: Session continuation, attention and management
+
+Selecting an agent with an existing session offers Continue or Start fresh before
+sending. The choice stays attached to its queued message through wait/retry;
+removing its mention drops the draft choice. Canonical sessions use the generated
+post contract.
+
+Session alerts render beside their recorded message or above loaded history when
+the anchor is absent. Reading does not resolve them. Resolve and Snooze are
+permission-gated and offer Undo. Known actions lead to existing approval, answer,
+retry or connection controls; unknown actions open the session. A reviewed fix
+request carries `source_alert`, uses a permitted agent, and inherits its source
+audience. Alert-only sessions render before their first human message. An
+addressed older message uses a bounded `around` page read and scrolls only the
+transcript once, without pulling a reader back on later stream updates.
+
+The header has stable People and Details controls. Its action menu offers Share,
+Rename, personal Archive/Undo and governed deletion according to access. Rename
+preserves routing; Delete requests administrator review and does not remove the
+record directly. Canonical sharing uses project access without a channel picker.
+Bring Back is offered inside Fork for a completed fork result and retains the
+existing consent review. Approval controls say Ask a question and Decline action.
+Failure debug references are kept out of the everyday response and remain in the
+explicit issue-report draft.
+
+Evidence: `session-ux.dom.test.tsx` covers continuation metadata, header writes,
+archive synchronization, explicit deletion review, alert resolution/undo, fix
+review, canonical sharing and bounded old-anchor reads. `wave.dom.test.tsx` checks
+that addressed history scrolls only the transcript once. Existing fork, share,
+room and Slack interaction suites retain their governed approval checks. Browser
+host access was unavailable; real responsive layout, live OAuth and user-visible
+provider behavior are not claimed by these automated tests.
+
+### DES-074: Navigation recovery, readable context and priority preferences
+
+Unknown addresses stay on a Page not found screen with a Home link; compatibility
+routes retain their canonical destination. New and Search stay outside the
+sidebar's scrolling session list. Recents, Projects and Archived are directly
+selectable, and Failed has the same meaning in the sidebar and Sessions. A touch
+row reveals its menu when selected or previewed; keyboard focus keeps it usable.
+Appearance owns theme changes; the account menu links there. Normal navigation
+counts use neutral color, while Urgent alerts retain their priority mark.
+
+Session and alert cards retain native destination links, including opening in a
+new tab, with explicit touch targets. Sidebar filter choices return focus to
+their disclosure. Connection details return focus to the provider opener and
+show review or approval errors inside the active sheet. A pending tool review
+stays bound to its provider when the reader changes or closes that sheet.
+
+Search and session rows show project titles or Personal, preserving opaque IDs
+only in addresses. Sessions retains the age at narrow widths; Home Continue adds
+project and state. Schedules uses one label and links to Sessions. Empty Catalog
+links to Connections. Missing-provider health guidance names Models in Settings
+and the administrator who can configure it. Access shows human capabilities,
+with technical permission names in a disclosure. Workspace default appearance
+explains that it follows the workspace brand; fixed color choices do not.
+Agent Access distinguishes revision saves from independent immediate saves. Its
+Personal connections capability starts off and is saved only with the next
+agent revision, using requester-approved tools under existing workspace policy.
+Built-in agents and readers cannot grant it. Existing tools are preserved, and
+the grant is described as Personal connection tools in both preview renderers.
+
+Alert source filters are sent to the server. Delivery preferences use Urgent,
+Normal and Low keys; unset preferences remain off, and existing legacy keys are
+preserved during saves. Canonical pages no longer poll the dormant legacy
+notification feed.
+
+Evidence: route tests cover unknown-path retention and canonical aliases;
+workspace-search checks readable context with exact destinations; session-center
+checks server source filtering and context/age; sidebar/preferences tests cover
+visible view selection, independent scroll regions and keyboard pin/archive
+focus; catalog and automations tests cover next-step links; email-preferences
+checks priority defaults and saved quiet hours.
+Browser checks were unavailable during source validation. Phone, short-screen
+and split-pane visual acceptance, live provider behavior and measured browser
+request totals remain open.
+
+### DES-075: A calm Home and states that say whose move it is
+
+Home under the chat bar is one strip. Recently made shows the three newest
+artifacts the person may read from the existing `GET /api/artifacts`, each card
+opening it at `/artifacts/{id}`. Home does not say how many alerts are waiting:
+the Alerts entry in the menu carries that count as a badge, and the menu button
+carries a dot when the menu is closed. The strip has no link to all artifacts,
+because the Artifacts entry in the menu opens them. With nothing made, Home is the
+greeting and the chat bar. Home no longer lists alerts or recent sessions:
+sessions are in the sidebar's Recents and on Sessions.
+
+The alert center lists alerts as one table: a box to select, the alert and its
+agent, then its source, priority, age and actions in columns. The header holds
+one box that selects every row shown, and once a row is selected the header
+names how many and offers Mark Selected Done and Snooze Selected. Under 48rem a
+row stacks. The Skills list sits in the same column as the tabs above it, as a
+bordered list, and an empty scope says what to do next.
+
+An alert is named by whose move it is: Waiting, Snoozed or Done, with Mark Done
+in place of Resolve, in the alert center, on a session's alert card and in bulk
+actions. A project's inbox switch reads Waiting, Done and All. The API, the
+stored states and the addresses keep `open`, `snoozed` and `resolved`, so
+existing links hold. The words are in `copy.ts` (`attention`, `show`, `home`).
+
+Evidence: `session-center.dom.test.tsx` checks the single waiting link, the
+three-card strip and its destinations, and that nothing is drawn or asked for
+when there is nothing to show or no permission; `session-ux.dom.test.tsx` and
+`roles.dom.test.tsx` check the new words. Console screens `new` and `alerts`
+and `home-made` pass at 1280x800 and 390x844 in light and dark. Artifact
+cards show no preview of their content. A strip that cannot be read says so in
+one line.
+
+### DES-076: The session workbench and what a person did by hand
+
+The pane a session's Details control opens is a workbench. Details (progress,
+agents, outputs, environment, what was used) is its first tab and keeps the
+pane's address; every other tab is `?bench=` with its own selection in
+`?benchRef=`. A tab is declared once in `apps/web/src/workbench.ts`: its view,
+read on first use, whether the session has anything for it, and whether it lays
+out its own height. A tab with nothing to show is left out of the strip, and
+with only Details to show there is no strip. Details is narrow; any other tab is
+wide, and the pane can fill the page. On a phone it is the Inspector's sheet with
+the same tabs. Files stay in the Workspace pane, which Details opens them in.
+
+Anything a person does by hand in a tab is recorded for the conversation, listed
+above the composer where each line can be removed, and folded into the next
+message they send as a section at its end, so the agent reads one message that
+covers it. Nothing is sent before they submit; the list is cleared once the
+message is posted and kept when the post fails. The API has no field for it, so
+it rides in the text, its entries in a code block that the platform never reads
+for tags. A thread draws the section closed under the person's words. At most
+50 records are kept per conversation; a summary is 200 characters, a detail 600,
+and the section 4000 or what the person's words leave of the API's 8000. What
+does not fit is said before sending and goes with the message after. A line
+with a detail opens in place, by a press or from the keyboard, so all of what
+is sent can be read first. A record that goes without its detail is marked in
+the list and counted under it, and the section says in the detail's place that
+it was left out. The list shows its newest four lines and counts the earlier
+ones on a button that shows them, and says how many of the oldest were dropped
+when it was full. A browser action whose answer never arrived is recorded as
+outcome unknown, not as failed.
+
+Text in the workbench and in both lists is 14px or larger, and secondary text
+is `text-aui-muted`. Details' own rows keep the sizes they had.
+
+#### Terminal tab
+
+The Terminal tab is a log of every shell command the session's agents ran:
+who ran it, the command, its output and how it ended, read from each answer's
+own stream (the `shell` tool's call and result, at every depth) and live while
+an answer works. Output longer than 40 lines is folded to its last 24 and
+opens. The log opens on its last line and follows it; it is one focusable
+scrolling region that Tab leaves, named for assistive technology, and it is
+not a live region: only the outcome of the reader's own command is announced.
+It is dark in both schemes, as the console's terminal tokens are, with every
+line 14px or larger and secondary text above 7:1.
+
+Where the deployment's sandbox is contained (the `docker` kind) and the reader
+may post, the tab has a command line. A command runs with `sh -c` in an
+instance started for it alone, with the session's files, no network, no
+memory and no tool servers, for at most 15 seconds, and only while no agent
+is working; what it changed is written back under the rules a run's copyback
+follows. Each command is recorded once it ends (the command, its exit status,
+the files it changed and the end of its output) and goes with the reader's
+next message. Nothing is sent to an agent before that. A `local` or
+`unisolated` deployment, whose commands would run on the server, has no
+command line and its route refuses. The tab is in the strip once a session
+has run a command or has a sandbox. A reader's commands are kept in the page
+and are gone on reload; the message that carried them keeps them.
+
+Evidence: `workbench-terminal.dom.test.tsx`, `TestAPersonsCommand*`
+(`internal/platform`), `TestSandboxCommandRouteRunsForItsPosterAndNobodyElse`
+and the contract test (`internal/httpapi`), `TestOnlyTheDockerSandboxIsContained`;
+seen in a browser against a docker sandbox at 1280x800 and 390x844, light and
+dark: empty, the agents' log, a reader's command running and ended, the list
+above the composer, the sent message, and an agent's command running.
+
+Evidence: `workbench.dom.test.tsx` covers the registry, the strip, addresses,
+lazy tabs, the list and the collapsed note; `room.dom.test.tsx` posts a message
+that carries what was done, checks a failed post keeps it and that the posted
+message shows it closed; `route.test.ts` round-trips the addresses; core
+`human-activity.test.ts` covers the store, the fold, the limits and the reader;
+`TestWhatWasDoneByHandTagsNobody` checks the platform reads no tag from the
+section. Seen in Chrome against a local server at 1440x900 and 390x844, light
+and dark: Details with no strip as shipped, and with a stand-in second tab (not
+committed) the strip, the wide and filled pane, the list above the composer, and
+the posted message closed and open. Not seen: a tab's failure to load, the
+overflow line, and Details before this change at the same size. The five tabs
+are separate changes. The contract for them is
+[workbench.md](../architecture/workbench.md).
+
+**Browser tab.** Built (`WorkbenchBrowser.tsx`, `WorkbenchBrowserCard.tsx`,
+`browserSteps.ts`, `browserShots.ts`). An answer that used browser tools has
+one card under it: where the browser was left, how many steps, and the tool
+provider it runs on; it opens the tab on the answer's last step. The tab lists
+the agent's steps from its tool calls, each with the page it left the browser
+on, and steps back through them at `?benchRef=<step>`. A person who may post
+acts on the same browser by hand through `POST /api/sessions/{id}/browser`
+(`runs:write`, `internal/platform/browser_view.go`): a screenshot, an address,
+back, and a click or typed text on an element picked on the screenshot or from
+the list under it. Each action is recorded for their next message; typed text
+is recorded as a count. The agent's own screenshots are not kept by the
+platform, since a tool result reaches a run's events as text only, so the tab
+shows no picture of an earlier step and the card shows one only after the
+console has been given one. No live video. The empty state is a title and one
+action.
+
+Evidence: `workbench-browser.dom.test.tsx` (20 tests: steps, addresses,
+actions and what each records, refusals, the empty state, the card);
+`TestAPersonActsOnTheSessionsBrowserByHand`,
+`TestABrowserActionIsRefusedBeforeItReachesTheBrowser` and the contract test
+in `internal/httpapi`. Seen in Chrome against a local server, a stand-in model
+and the pinned Playwright MCP worker driving a real headless browser, at
+1280x800 and 390x844, light and dark: the card, the steps, a screenshot, an
+element picked, the page after typing and clicking, the earlier screenshots,
+the pane filling the page, the list above the composer, the posted message
+open, the empty state, and a session with no browser. Smallest text measured
+14px; lowest contrast measured 8.3:1 (dark) and 10.6:1 (light). Not seen: a
+step still running, a browser that cannot be reached (502), a policy refusal
+(403), and a reader who may not post.
+
+Changes tab (`WorkbenchChanges.tsx`, `workbenchChanges.ts`): implemented. It
+lists the files the session's runs wrote or removed in its working files, from
+what each run recorded (`GET /api/threads/{id}/sandboxes`) and the files as they
+are now (`GET /api/threads/{id}/files`); no route was added. A file opens at
+`?bench=changes&benchRef=<path>` on its comparison: old and new line numbers, a
+plus or minus sign and a tint on each changed line, three unchanged lines around
+a change and longer runs folded to one row, 300 rows at a time. The platform
+keeps no copy of a file from before a write, so the text before is the one an
+earlier `file_write` of the same session wrote (Last Change), and otherwise
+nothing, in which case the whole file is drawn as added and the tab says so. A
+file over 256 KB is read only on request, a binary file says so with its size,
+and a comparison past the bound of `compareText` says why. Where the files are
+writable the reader can delete a file, or put it back to its earlier text when
+that text's hash is one a run recorded leaving there; both ask first, write at
+the revision read, and are recorded as `changes`. Edit File opens the Workspace
+pane's editor, whose saves and deletes are recorded as `files`
+(`fileActivity.ts`), one record per file against its text before the first
+unsent save. Not built: keeping a change (nothing on the server would hold it),
+comparisons of edits made by fragments or patches, and restoring a file a run
+or a person removed. Evidence: `workbench-changes.dom.test.tsx`; seen in Chrome
+against a local server with a stand-in model at 1280x800 and 390x844, light and
+dark: the list, a comparison, the whole file, a large file before and after it
+is compared, a binary file, the empty state, both confirmations, a removed file,
+and the list above the composer after a restore, a delete and a save in the
+editor, and the pane filling the page. Not seen: a refused write and a file
+that cannot be read.
+
+#### Side Chat tab
+
+Side Chat (`WorkbenchSidechat.tsx`, `sidechat.ts`) asks a question about the
+session beside it. A side chat is a private fork of the session
+(`POST /api/threads/{id}/fork`) through its newest saved turn: a finished answer,
+or the message an answer still being written replies to, so a working agent is
+left alone. The fork carries the session's history as read-only context, is
+answered by the session's own agents, and posts nothing in the session. With
+nothing selected the tab is a title and the box, over the reader's earlier side
+chats of the session (`GET /api/threads/{id}/forks`, added for this, `runs:read`,
+at most 50 and without their saved history). The first message starts the fork
+and takes its address (`?bench=sidechat&benchRef=<its id>`), so it opens again
+after a reload, and it is a conversation like any other at `/messages/{id}`.
+The thread is drawn with the shared `Thread`, `AgentMessage` and `Composer`.
+
+Add to Message on a finished answer records it as done by hand (source
+`other`): one record of the question and up to 600 characters of the answer, or
+up to three for a longer answer, each with a key so adding it twice keeps one
+copy. It shows above the session's composer and goes with the reader's next
+message there; pressing it again, or removing the line, takes it back. Nothing
+is posted in the session for them.
+
+Not built: a side chat is not listed under the session's Linked sessions,
+because `POST /api/sessions/{id}/links` takes only a session as its target and
+a fork is a thread without a session identity. A child session was not used
+instead, since it is given none of its parent's history.
+
+Evidence: `workbench-sidechat.dom.test.tsx` covers the registry entry, the empty
+states, the first question (the fork's turn, title and agents, and that nothing
+is posted in the session), reopening from the address, a fork that is not this
+session's, a refused fork, and Add to Message with the list above the composer;
+`TestForksOfListsOnlyTheReadersOwnLiveForksNewestFirst` and
+`internal/httpapi/openapi_test.go` cover the listing. Seen in Chrome against a
+local server with a stand-in model at 1280x800 and 390x844, light and dark:
+empty, the list of earlier side chats, an answer, the same after a reload, the
+answer added and listed above the composer, the pane filling the page, an
+address that names no side chat, and a side chat answered while the session's
+agent worked. Not seen: a refused fork, an answer long enough for three
+records, and an agent's question card inside a side chat.
+
+**Search tab** (`WorkbenchSearch.tsx`, `workbenchSearch.ts`). One field finds
+what belongs to the session and opens each thing where it lives. Results are
+grouped: files (the Workspace pane), pull requests and issues (their own
+address, in a new browser tab), links (Slack posts, where the session started,
+pages it read, the sessions it started or is linked to), commands, browser
+steps, tools and agents (the answer's activity at that call), and attachments
+(the message they came with). A command opens in the Terminal tab and a browser
+step in the Browser tab, on the call's id as the tab's selection, once those
+tabs are built; until then they open in the answer's activity. It searches what
+the page already holds (the session's summary and each answer's calls) and one
+read of `GET /api/sessions/{id}` for links and attachments; it asks the server
+to search nothing and adds no route. Ranking is the composer's (`fuzzy` in
+`commands.ts`), with letters in order counted only when nothing holds the query
+whole. The query is the tab's `benchRef`, written when the field is left or
+Enter is pressed. Command or Control with Shift and F puts the cursor in the
+field while the tab is open, and the field shows the keys; the arrow keys, Home
+and End move through the results, Enter opens one, and Escape returns to the
+field. With nothing to find the tab offers Details; with no match it offers to
+clear. If the session cannot be read it says so with Retry and still searches
+the rest. All text is 14px and secondary text is `text-aui-muted`. Search
+records nothing as done by hand: opening a thing is not an outcome an agent
+needs to read.
+
+Evidence: `workbench-search.dom.test.tsx` (the index and where each thing
+opens, ranking, the shortcut, keyboard movement, the address, the long group,
+the empty, no-match, loading and failed-read states). Seen in Chrome at 1280x800
+and 390x844, light and dark: against a local server with a stand-in model, a
+session with one real tool call and one real attachment, an empty session, a
+result opening the answer's activity, and the pane filling the page; and with
+fixture data in a harness that was not committed, every group, a query, no
+match, the failed read, and Terminal and Browser standing in as built. Not seen:
+a real pull request, file or browser step from a live run, and the real
+Terminal and Browser tabs taking a result.
+
+### DES-079: Run and Answer
+
+Owner request: the approval agent that decides tool calls in a session set to
+Run can decide the questions an agent puts to a person too, as a secondary
+option: "anything that the agent's tool states it needs a human, or the agent
+thinks it does."
+
+Rules:
+
+- It is a third approval mode, `decide` (**Run and Answer**), beside `ask`
+  (the default) and `auto` (Run). It is a mode rather than a separate setting
+  because it delegates the same thing to the same person: it is chosen by a
+  person who may post in the session, keeps the roles they held then, answers
+  as them, and is audited as `conversation.approval_mode`, as Run is. It is
+  never on by default, and it is not a spec field: like Run, it is one
+  person's choice for one session, stored on the session.
+- Run and Answer does everything Run does with tool calls, and nothing more
+  with them: an action the agent always asks about, a budget request and an
+  action the policy refuses still go to a person.
+- It also hands the approval agent a choice or a reply an agent asks with
+  `ask_person`, in a run of its own, with the question, its options, whom it
+  asked and the session so far. The agent answers (`allow` with `answer`) only
+  when the session already settles it, and asks a person otherwise: always
+  for a preference not yet given, money, a credential or secret, consent to
+  anything that cannot be undone, and anything asked of someone else. A denial
+  of a question hands it to a person.
+- The platform hands a question over without asking the approval agent when
+  it is asked of anyone but the person who chose the mode (a named person, a
+  role or the experts), when someone else asked for the work, when that person
+  could not answer it themselves (the same `checkAnswer` their own answer
+  takes), or when a choice offers no options.
+- An answer goes through the path every answer takes, as that person. A choice
+  must be one of the options (a unique case-insensitive match is taken as it);
+  anything else, no answer, a run that failed and an answer that cannot be
+  read leave the question for a person. Each answer and each hand-off is
+  audited as `approval.judged` with `mode`, `kind`, `verdict`, `reason` and
+  `answer`.
+- The question's card says **Answered by the approval agent** with the reason
+  under the answer, or **Approval agent: Asked a person** with the reason
+  above the options. The answer is recorded as the person's, so they see it
+  and can correct the agent in the session.
+- The composer shows **Answer Questions** beside Run, a text control that is
+  pressed while Run and Answer is on, and absent in Ask Me. Someone else's
+  choice reads "Run and Answer, chosen by <name>".
+- A workspace's own output schema for the approval agent keeps working: the
+  `answer` field is optional, and a schema without it decides calls only, so
+  every question goes to a person.
+
+Evidence: `go test -race ./pkg/threads ./pkg/approve ./internal/platform
+./internal/httpapi` (`TestRunAndAnswerAnswersAChoiceTheSessionSettles`,
+`TestRunAndAnswerAnswersAReply`,
+`TestWhatRunAndAnswerDoesNotSettleWaitsForAPerson`,
+`TestRunAndAnswerNeverAnswersForSomeoneElse`,
+`TestRunAndAnswerLeavesWhatSomeoneElseAskedFor`,
+`TestRunLeavesQuestionsForAPerson`, `TestRunAndAnswerIsAModeAPersonChooses`,
+`TestApprovalModeIsSetOnItsOwnAndKept`,
+`TestAQuestionsAnswerIsReadBesideTheDecision`,
+`TestAQuestionIsDescribedWithItsOptionsAndWhoItIsFor`); `cd apps/web && pnpm
+test` (`approval-toggle.dom.test.tsx`, `ui.test.tsx`). Not run:
+`pnpm validate:slack`, which needs the Slack bench, and a screen check.

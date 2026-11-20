@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/urmzd/humagen/internal/wire"
-	"github.com/urmzd/orchagent/flow/event"
-	"github.com/urmzd/orchagent/flow/runtime"
+	"github.com/urmzd/saige/flow/event"
+	"github.com/urmzd/saige/flow/runtime"
 
 	"github.com/urmzd/humagen/pkg/call"
 	"github.com/urmzd/humagen/pkg/rooms"
@@ -43,8 +43,9 @@ const replaySlack = time.Second
 const roomCache = 4096
 
 // roomSource reads one conversation's run events and thread notices once,
-// for every viewer of its room, and says whom each involves.
-func (p *Platform) roomSource(ctx context.Context, tenant, thread string, publish func(rooms.Item)) error {
+// for every viewer of its room, and says whom each involves. It is ready
+// once it has subscribed to both.
+func (p *Platform) roomSource(ctx context.Context, tenant, thread string, ready func(), publish func(rooms.Item)) error {
 	opened := time.Now()
 	stream, err := p.Subscribe(ctx, tenant, EventFilter{})
 	if err != nil {
@@ -53,6 +54,7 @@ func (p *Platform) roomSource(ctx context.Context, tenant, thread string, publis
 	defer func() { _ = stream.Close() }()
 	notices, unwatch := p.WatchThreads(tenant)
 	defer unwatch()
+	ready()
 
 	events := make(chan event.Envelope)
 	failed := make(chan error, 1)
@@ -143,7 +145,7 @@ func (p *Platform) runInvolves(tenant string, e event.Envelope) []string {
 	if run, err := p.Runs.Get(tenant, e.Run); err == nil {
 		add(runs.AskedBy(run))
 		add(run.Requesters()...)
-		if q := run.Question; q != nil {
+		for _, q := range run.Waits() {
 			add(q.AskedOf)
 			add(q.Approvers...)
 		}
@@ -154,9 +156,9 @@ func (p *Platform) runInvolves(tenant string, e event.Envelope) []string {
 	}
 	switch b := e.Data.(type) {
 	case event.Parked:
-		if b.Question != nil {
-			add(b.Question.AskedOf)
-			add(b.Question.Approvers...)
+		for _, q := range wire.QuestionsOf(b) {
+			add(q.AskedOf)
+			add(q.Approvers...)
 		}
 	case event.ChildParked:
 		add(b.Question.AskedOf)

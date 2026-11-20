@@ -36,6 +36,15 @@ export const AGENT_TABS: AgentTab[] = [
 export type SourceTab = "documents" | "search" | "variants" | "evals";
 export const SOURCE_TABS: SourceTab[] = ["documents", "search", "variants", "evals"];
 
+/**
+ * A corpus's tabs: the sources it holds (the default, at the corpus's own
+ * address), a search to try, with its words as `?q=`, its slice of the
+ * workspace graph, the types its ontology adds, and who may read it. A source
+ * opened from a corpus sits under it, at `/knowledge/{corpus}/sources/{source}`.
+ */
+export type CorpusTab = "sources" | "search" | "graph" | "types" | "evals" | "access";
+export const CORPUS_TABS: CorpusTab[] = ["sources", "search", "graph", "types", "evals", "access"];
+
 /** Monitor: how runs are going (overview), the rules that watch them, and the health of what the deployment runs on. What a rule fires lands in the inbox. */
 export type MonitorTab = "overview" | "rules" | "health";
 export const MONITOR_TABS: MonitorTab[] = ["overview", "rules", "health"];
@@ -43,33 +52,6 @@ export const MONITOR_TABS: MonitorTab[] = ["overview", "rules", "health"];
 /** The Directory: who and what is in the workspace, for everyone in it. */
 export type DirectoryTab = "people" | "agents" | "projects";
 export const DIRECTORY_TABS: DirectoryTab[] = ["people", "agents", "projects"];
-
-/**
- * A project's tabs. The inbox is the default, so `/projects/{name}` opens what
- * is new there; an unknown tab falls back to it. More arrive with later phases
- * of docs/architecture/projects.md.
- */
-export type ProjectTab =
-  | "inbox"
-  | "overview"
-  | "context"
-  | "agents"
-  | "channels"
-  | "schedules"
-  | "people"
-  | "limits"
-  | "history";
-export const PROJECT_TABS: ProjectTab[] = [
-  "inbox",
-  "overview",
-  "context",
-  "agents",
-  "channels",
-  "schedules",
-  "people",
-  "limits",
-  "history",
-];
 
 /**
  * What a project is for, as the Projects page narrows to it with `?kind=`:
@@ -82,24 +64,32 @@ const KIND_SHAPE = /^[a-z][a-z0-9-]{0,31}$/;
 export const kindParam = (value: string | null | undefined): ProjectKindFilter | undefined =>
   value && KIND_SHAPE.test(value) ? value : undefined;
 
+/** How the Projects page orders its cards besides last activity, the default, which the address leaves out. */
+export type ProjectSort = "name" | "created";
+export const PROJECT_SORTS: ProjectSort[] = ["name", "created"];
+
 export type SettingsSection =
+  | "notifications"
   | "profile"
   | "appearance"
   | "workspace"
-  | "routing"
+  | "providers"
   | "models"
   | "limits"
+  | "voice"
   | "connections"
   | "access"
   | "read-audit"
   | "deletions";
 export const SETTINGS_SECTIONS: SettingsSection[] = [
+  "notifications",
   "profile",
   "appearance",
   "workspace",
-  "routing",
+  "providers",
   "models",
   "limits",
+  "voice",
   "connections",
   "access",
   "read-audit",
@@ -109,6 +99,10 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
 export type ConversationPanel =
   | "overview"
   | "activity"
+  /** One response's activity: every run behind it, flat and in time order. Needs `run`. */
+  | "response"
+  /** The session's Details: progress, agents, outputs, environment, and what it used. */
+  | "details"
   | "context"
   | "people"
   | "deliverables"
@@ -116,6 +110,8 @@ export type ConversationPanel =
 const CONVERSATION_PANELS: ConversationPanel[] = [
   "overview",
   "activity",
+  "response",
+  "details",
   "context",
   "people",
   "deliverables",
@@ -130,14 +126,36 @@ export const WORKSPACE_SECTIONS: WorkspaceSection[] = [
   "memories",
   "artifacts",
 ];
+/**
+ * The tabs of a session's workbench, the pane the Details panel opens
+ * (workbench.ts declares what each shows). Details is the default, at the
+ * panel's own address; every other tab is `?bench=`. All six are addresses
+ * from the start, so a tab's own change adds no route.
+ */
+export const WORKBENCH_TAB_IDS = [
+  "details",
+  "browser",
+  "terminal",
+  "changes",
+  "sidechat",
+  "search",
+] as const;
+export type WorkbenchTabId = (typeof WORKBENCH_TAB_IDS)[number];
+/** The most characters of a workbench tab's own selection an address carries. */
+export const MAX_BENCH_REF = 512;
 export type ArtifactTab = "preview" | "versions" | "provenance";
 const ARTIFACT_TABS: ArtifactTab[] = ["preview", "versions", "provenance"];
 export interface ConversationView {
   contextTab?: "sources" | "instructions";
   panel?: ConversationPanel;
+  /** The workbench tab open in Details; absent is Details itself. */
+  bench?: WorkbenchTabId;
+  /** What that tab has selected: its own business, such as a terminal, a file or a query. */
+  benchRef?: string;
   filter?: "all" | "handoffs" | "tools" | "decisions";
   showTools?: boolean;
   run?: string;
+  step?: string;
   artifact?: string;
   artifactTab?: ArtifactTab;
   /** The Workspace section; absent is Files. */
@@ -173,7 +191,35 @@ export type HistorySource = "all" | "chat" | "github" | "slack" | "scheduled" | 
 /** What History keeps by what a conversation is doing. */
 export type HistoryStatus = "needs" | "running" | "failed";
 export type CustomizeSection = "agents" | "skills" | "connections" | "tools";
+export type SessionStatus = "working" | "waiting" | "done" | "failed" | "stopped";
+/** Where a session started, as the Sessions list filters it. */
+export const SESSION_PLACES = ["slack", "github", "schedule", "console"] as const;
+export type SessionPlaceFilter = (typeof SESSION_PLACES)[number];
 export type Route =
+  | { page: "not-found"; path: string }
+  | {
+      page: "sessions";
+      status?: SessionStatus;
+      agent?: string;
+      project?: string;
+      q?: string;
+      place?: SessionPlaceFilter;
+      /** An item's address, such as `github://o/r/pull/5`: the sessions that worked on it. */
+      item?: string;
+    }
+  /** An item people pointed at (a PR, an issue, a Slack thread, a URL), by its address. */
+  | { page: "item"; address: string }
+  /** One message inside a session, focused: it and its direct children, under a breadcrumb back to the root. */
+  | { page: "message"; id: string }
+  | {
+      page: "alerts";
+      tab?: "watching";
+      state?: "open" | "snoozed" | "resolved";
+      priority?: "urgent" | "normal" | "low";
+      mine?: boolean;
+      source?: string;
+      alert?: string;
+    }
   | {
       page: "history";
       q?: string;
@@ -203,6 +249,8 @@ export type Route =
       file?: string;
       catalogQuery?: string;
       libraryTab?: "overview" | "contents" | "versions";
+      /** Memory shown as its files instead of its notes. */
+      memoryView?: "files";
     }
   | {
       page: "operations";
@@ -212,6 +260,8 @@ export type Route =
     }
   | { page: "assignments"; id?: string; agent?: string }
   | { page: "agent-network"; handoff?: string }
+  /** Agents › Store: the catalog of packages, or one package's page by its name (`humagen/review`). */
+  | { page: "agent-store"; package?: string }
   | { page: "agent-control"; agent?: string }
   | { page: "action-policy"; scope?: "workspace" | "agent" | "project" | "personal"; name?: string }
   | {
@@ -242,23 +292,44 @@ export type Route =
       fork?: string;
       bringBack?: string;
     } & ConversationView)
-  /** Every project, searched with `q` and narrowed to one kind. */
-  | { page: "projects"; q?: string; kind?: ProjectKindFilter }
-  /** One project at a tab, and in its inbox, at a message. The workspace itself is the project named "", written `~`. */
-  | { page: "project"; name: string; tab: ProjectTab; message?: string; fork?: boolean }
+  /** Every project, searched with `q`, narrowed to one kind and ordered by `sort`, last activity when absent. */
+  | { page: "projects"; q?: string; kind?: ProjectKindFilter; sort?: ProjectSort }
+  /**
+   * One project: a page of its own, with no tabs. The workspace itself is the
+   * project named "", written `~`. `fork` opens the Fork Project sheet over it.
+   */
+  | {
+      page: "project";
+      name: string;
+      fork?: boolean;
+      /** A tab an older link named. Projects have one page now, so it is ignored. */
+      tab?: string;
+    }
   /** One of a project's channels, with its shared threads. */
   | { page: "channel"; project: string; channel: string }
   | { page: "schedules"; name?: string }
-  | { page: "automations" }
+  /** Scheduled work: schedules, and with `tab` the background work agents keep at for you. */
+  | { page: "automations"; tab?: "background" }
   | { page: "monitor"; tab: MonitorTab }
   /** The inbox, at a message, at the message an alert raised, or narrowed to one kind. */
   | { page: "inbox"; message?: string; alert?: string; kind?: string; view?: NotificationView }
-  | { page: "context"; source?: string; tab?: SourceTab }
-  | { page: "agents" }
+  /** Agents › Knowledge: the corpora the reader may read. */
+  | { page: "knowledge" }
+  /** One corpus, at a tab. */
+  | { page: "corpus"; name: string; tab: CorpusTab; q?: string }
+  /** The workspace graph across every corpus the reader may read. */
+  | { page: "knowledge-graph" }
+  /** One knowledge source, under the corpus it was opened from when `corpus` is set. */
+  | { page: "context"; source?: string; tab?: SourceTab; corpus?: string }
+  | { page: "agents"; state?: string }
   | { page: "agent"; name: string | null; tab: AgentTab }
   | { page: "artifacts"; artifact?: string }
-  /** Your connections: the tools that act as you, and the credential you gave each. `provider` opens one to connect. */
-  | { page: "connections"; provider?: string }
+  /**
+   * Plugins: what a person adds for their own agents (MCPs and skills). With
+   * `scope: "apps"` it is Apps, the workspace's installs, which an administrator
+   * manages. `provider` opens one in the side sheet.
+   */
+  | { page: "connections"; provider?: string; scope?: "apps" }
   | { page: "directory"; tab: DirectoryTab }
   | { page: "settings"; section: SettingsSection; permission?: string };
 
@@ -281,12 +352,18 @@ const pick = <T extends string>(value: string | undefined, allowed: readonly T[]
   oneOf(value, allowed) ?? fallback;
 
 const PAGE_TITLES: Record<Page, string> = {
+  "not-found": "Page not found",
+  message: "Message",
+  item: "Item",
+  sessions: "Sessions",
+  alerts: "Alerts",
   history: defaultCopy.history.title,
   customize: "Customize",
   library: "Library",
   operations: "Operations",
   assignments: "Assignments",
   "agent-network": "Agent Network",
+  "agent-store": defaultCopy.agentStore.title,
   "agent-control": "Agent Controls",
   "action-policy": "Action Policies",
   audit: "Audit",
@@ -294,20 +371,23 @@ const PAGE_TITLES: Record<Page, string> = {
   you: "You",
   "agent-setup": "New Agent",
   notifications: "Notifications",
-  new: "New conversation",
-  conversation: "Conversation",
+  new: "New",
+  conversation: "Session",
   projects: "Projects",
   project: "Project",
   channel: "Channel",
   schedules: "Schedules",
-  automations: "Automations",
+  automations: "Schedules",
   monitor: "Monitor",
   inbox: "Notifications",
-  context: "Context",
+  knowledge: "Knowledge",
+  corpus: "Knowledge",
+  context: "Knowledge",
+  "knowledge-graph": defaultCopy.corpora.graph.workspaceTitle,
   agents: "Agents",
   agent: "Agent",
   artifacts: "Artifacts",
-  connections: "Connections",
+  connections: "Plugins",
   directory: "Directory",
   settings: "Settings",
 };
@@ -344,19 +424,51 @@ export function documentTitle(r: Route, unread = 0, product = "Humagen"): string
   let place = pageTitle(r.page);
   if (r.page === "agent" && r.name) place = r.name;
   else if (r.page === "project") place = r.name === "" ? "Workspace" : r.name;
+  else if (r.page === "corpus") place = r.name;
+  else if (r.page === "context" && r.source) place = r.source;
   else if (r.page === "channel") place = `#${r.channel}`;
-  return `${unread > 0 ? `(${unread}) ` : ""}${place} · ${product}`;
+  return `${unread > 0 ? `(${unread}) ` : ""}${place} - ${product}`;
 }
 
 /** The address of a route, path and query. */
 export function href(r: Route): string {
   switch (r.page) {
-    case "history": {
+    case "not-found":
+      return r.path;
+    case "sessions": {
       const q = new URLSearchParams();
-      for (const key of ["q", "source", "status"] as const) if (r[key]) q.set(key, r[key]);
-      return `/history${q.size ? `?${q}` : ""}`;
+      for (const key of ["q", "status", "agent", "project", "place", "item"] as const)
+        if (r[key]) q.set(key, r[key]);
+      return `/sessions${q.size ? `?${q}` : ""}`;
     }
+    case "message":
+      return `/messages/${enc(r.id)}`;
+    case "item":
+      return `/items/${enc(r.address)}`;
+    case "alerts": {
+      const q = new URLSearchParams();
+      for (const key of ["state", "priority", "source", "alert"] as const)
+        if (r[key]) q.set(key, r[key]);
+      if (r.mine === false) q.set("mine", "false");
+      return `/alerts${r.tab === "watching" ? "/watching" : ""}${q.size ? `?${q}` : ""}`;
+    }
+    case "history":
+      return href({
+        page: "sessions",
+        q: r.q,
+        status:
+          r.status === "needs"
+            ? "waiting"
+            : r.status === "running"
+              ? "working"
+              : r.status === "failed"
+                ? "failed"
+                : undefined,
+      });
     case "library": {
+      if (r.section === "sources") return "/connections";
+      if (r.section === "catalog")
+        return `/connections/catalog${r.catalogQuery ? `?q=${enc(r.catalogQuery)}` : ""}`;
       const q = new URLSearchParams();
       if (r.scope) q.set("scope", r.scope);
       if (r.project !== undefined) q.set("project", r.project);
@@ -368,14 +480,18 @@ export function href(r: Route): string {
       if (r.file) q.set("file", r.file);
       if (r.catalogQuery) q.set("q", r.catalogQuery);
       if (r.libraryTab) q.set("tab", r.libraryTab);
+      if (r.section === "memory" && r.memoryView) q.set("view", r.memoryView);
       return `/library/${r.section}${q.size ? `?${q}` : ""}`;
     }
     case "operations":
-      return `/operations/${r.section}${r.selected ? `/${enc(r.selected)}${r.section === "integrations" && r.tab && r.tab !== "connect" ? `/${r.tab}` : ""}` : ""}`;
+      return "/connections";
     case "assignments":
       return `${r.id ? `/assignments/${enc(r.id)}` : "/assignments"}${r.agent ? `?agent=${enc(r.agent)}` : ""}`;
     case "agent-network":
       return r.handoff ? `/agent-network/handoffs/${enc(r.handoff)}` : "/agent-network";
+    case "agent-store":
+      // A package's name has a slash of its own, kept as one in the path.
+      return r.package ? `/agent-store/${r.package.split("/").map(enc).join("/")}` : "/agent-store";
     case "agent-control":
       return r.agent ? `/agents/${enc(r.agent)}/control` : "/agent-controls";
     case "agent-setup":
@@ -387,16 +503,24 @@ export function href(r: Route): string {
         ? `/operations/policies/${r.scope}${r.name ? `/${enc(r.name)}` : ""}`
         : "/operations/policies";
     case "audit":
-      return "/operations/audit";
+      return "/settings/audit";
     case "usage": {
       const q = new URLSearchParams();
       if (r.days && r.days !== 14) q.set("days", String(r.days));
       if (r.day) q.set("day", r.day);
       if (r.display === "table") q.set("display", "table");
-      return `/operations/usage${q.size ? `?${q}` : ""}`;
+      return `/settings/usage${q.size ? `?${q}` : ""}`;
     }
     case "you":
-      return `/you${r.section === "profile" ? "" : `/${r.section}`}${r.section === "connections" && r.provider ? `/${enc(r.provider)}` : ""}`;
+      return r.section === "connections"
+        ? href({ page: "connections", provider: r.provider })
+        : r.section === "notifications"
+          ? "/settings/notifications"
+          : r.section === "agents"
+            ? "/agents"
+            : r.section === "privacy"
+              ? "/settings/access"
+              : "/settings/profile";
     case "new": {
       const q = new URLSearchParams();
       if (r.project !== undefined) q.set("project", r.project === "" ? "~" : r.project);
@@ -406,94 +530,102 @@ export function href(r: Route): string {
       const query = q.toString();
       return query ? `/?${query}` : "/";
     }
-    case "conversation":
-      if (r.fork) return `/conversations/${enc(r.id)}/fork/${enc(r.fork)}`;
-      if (r.bringBack) return `/conversations/${enc(r.id)}/bring-back/${enc(r.bringBack)}`;
-      if (r.share) return `/conversations/${enc(r.id)}/share`;
-      if (r.panel) {
-        const base = `/conversations/${enc(r.id)}/${r.panel}`;
-        if (r.panel === "activity") {
-          const q = new URLSearchParams();
-          if (r.filter && r.filter !== "all") q.set("filter", r.filter);
-          if (r.showTools === false) q.set("tools", "0");
-          return `${base}${r.run ? `/${enc(r.run)}` : ""}${q.size ? `?${q}` : ""}`;
-        }
-        if (r.panel === "context" && r.contextTab === "instructions") return `${base}/instructions`;
-        if (r.panel === "workspace") {
-          const q = new URLSearchParams();
-          if (r.file) q.set("file", r.file);
-          if (r.workspaceTab) q.set("tab", r.workspaceTab);
-          const section =
-            r.workspaceSection && r.workspaceSection !== "files" ? `/${r.workspaceSection}` : "";
-          const selected =
-            r.workspaceSection === "sandboxes"
-              ? r.sandbox
-              : r.workspaceSection === "scratchpads"
-                ? r.scratchpad
-                : r.workspaceSection === "memories"
-                  ? r.memoryRun
-                  : undefined;
-          const item = selected ? `/${enc(selected)}` : "";
-          if (r.tabs?.length) q.set("tabs", r.tabs.map(encodeURIComponent).join(","));
-          if (r.active) q.set("active", r.active);
-          if (r.expanded) q.set("full", "1");
-          if (r.split) q.set("split", "1");
-          if (r.compare) q.set("compare", r.compare);
-          if (r.artifactTab) q.set("artifact_tab", r.artifactTab);
-          if (r.slide) q.set("slide", String(r.slide));
-          return `${base}${section}${item}${q.size ? `?${q}` : ""}`;
-        }
-        if (r.panel === "deliverables" && r.artifact) {
-          const q = new URLSearchParams();
-          if (r.slide) q.set("slide", String(r.slide));
-          if (r.compare) q.set("compare", r.compare);
-          return `${base}/${enc(r.artifact)}${r.artifactTab ? `/${r.artifactTab}` : ""}${q.size ? `?${q}` : ""}`;
-        }
-        return base;
+    case "conversation": {
+      const q = new URLSearchParams();
+      const panels = {
+        workspace: "files",
+        context: "sources",
+        activity: "steps",
+        response: "activity",
+        details: "details",
+        overview: "sessions",
+        people: "people",
+        deliverables: "files",
+      };
+      if (r.panel) q.set("panel", panels[r.panel]);
+      if (r.panel === "deliverables") q.set("legacy_panel", "deliverables");
+      for (const key of [
+        "message",
+        "fork",
+        "bringBack",
+        "contextTab",
+        "filter",
+        "run",
+        "step",
+        "artifact",
+        "artifactTab",
+        "workspaceSection",
+        "sandbox",
+        "scratchpad",
+        "memoryRun",
+        "active",
+        "compare",
+        "file",
+        "workspaceTab",
+      ] as const)
+        if (r[key]) q.set(key, r[key]);
+      // A workbench tab is an address of Details alone, and Details is its default.
+      if (r.panel === "details" && r.bench && r.bench !== "details") {
+        q.set("bench", r.bench);
+        if (r.benchRef) q.set("benchRef", r.benchRef);
       }
-      return r.message
-        ? `/conversations/${enc(r.id)}?${new URLSearchParams({ message: r.message })}`
-        : `/conversations/${enc(r.id)}`;
+      if (r.share) q.set("share", "1");
+      if (r.showTools === false) q.set("tools", "0");
+      if (r.tabs?.length) q.set("tabs", r.tabs.map(encodeURIComponent).join(","));
+      if (r.expanded) q.set("full", "1");
+      if (r.split) q.set("split", "1");
+      if (r.slide) q.set("slide", String(r.slide));
+      return `/messages/${enc(r.id)}${q.size ? `?${q}` : ""}`;
+    }
     case "projects": {
       const q = new URLSearchParams();
       if (r.q) q.set("q", r.q);
       if (r.kind) q.set("kind", r.kind);
+      if (r.sort) q.set("sort", r.sort);
       const query = q.toString();
       return query ? `/projects?${query}` : "/projects";
     }
     case "project": {
-      if (r.fork) return `/projects/${enc(r.name || "~")}/fork`;
       // Names never hold "/", so nesting lives in the tree, never in the path.
       const base = `/projects/${r.name === "" ? "~" : enc(r.name)}`;
-      if (r.tab !== "inbox") return `${base}/${r.tab}`;
-      return r.message ? `${base}?message=${enc(r.message)}` : base;
+      return r.fork ? `${base}/fork` : base;
     }
     case "channel":
-      return `/projects/${r.project === "" ? "~" : enc(r.project)}/channels/${enc(r.channel)}`;
+      return href({ page: "sessions", project: r.project });
     case "automations":
-      return "/scheduled";
+      return r.tab === "background" ? "/scheduled/background" : "/scheduled";
     case "schedules":
       return r.name ? `/schedules/${enc(r.name)}` : "/schedules";
     case "monitor":
-      return r.tab === "overview" ? "/monitor" : `/monitor/${r.tab}`;
+      return r.tab === "rules"
+        ? "/alerts/watching"
+        : r.tab === "health"
+          ? "/settings/health"
+          : "/sessions";
     case "notifications":
-    case "inbox": {
-      const q = new URLSearchParams();
-      if (r.message) q.set("message", r.message);
-      if (r.alert) q.set("alert", r.alert);
-      if (r.kind) q.set("kind", r.kind);
-      if (r.view) q.set("view", r.view);
-      const query = q.toString();
-      const path = r.page === "notifications" ? "/notifications" : "/inbox";
-      return query ? `${path}?${query}` : path;
+    case "inbox":
+      return href({ page: "alerts", alert: r.alert });
+    case "knowledge":
+      return "/knowledge";
+    case "corpus":
+      if (r.tab === "search")
+        return `/knowledge/${enc(r.name)}/search${r.q ? `?q=${enc(r.q)}` : ""}`;
+      return r.tab === "sources"
+        ? `/knowledge/${enc(r.name)}`
+        : `/knowledge/${enc(r.name)}/${r.tab}`;
+    // Its own first segment: under `/knowledge/` it would take a corpus's name.
+    case "knowledge-graph":
+      return "/knowledge-graph";
+    case "context": {
+      if (!r.source) return r.corpus ? `/knowledge/${enc(r.corpus)}` : "/knowledge";
+      const tab = !r.tab || r.tab === "documents" ? "" : `/${r.tab}`;
+      // A source opened from a corpus sits under it; one opened elsewhere keeps its own address.
+      return r.corpus
+        ? `/knowledge/${enc(r.corpus)}/sources/${enc(r.source)}${tab}`
+        : `/connections/sources/${enc(r.source)}${tab}`;
     }
-    case "context":
-      if (!r.source) return "/context";
-      return !r.tab || r.tab === "documents"
-        ? `/context/${enc(r.source)}`
-        : `/context/${enc(r.source)}/${r.tab}`;
     case "agents":
-      return "/agents";
+      return r.state ? `/agents?state=${enc(r.state)}` : "/agents";
     case "agent": {
       const base = r.name === null ? "/agents/new" : `/agents/${enc(r.name)}`;
       return r.tab === "prompt" ? base : `${base}/${r.tab}`;
@@ -501,14 +633,21 @@ export function href(r: Route): string {
     case "artifacts":
       return r.artifact ? `/artifacts/${enc(r.artifact)}` : "/artifacts";
     case "customize":
-      if (r.section === "skills")
-        return `/customize/skills${href({ ...r, page: "library", section: "skills" }).replace(/^\/library\/skills/, "")}`;
-      return `/customize/${r.section}${r.provider ? `?provider=${enc(r.provider)}` : ""}`;
-    case "connections":
-      return r.provider ? `/connections/${enc(r.provider)}` : "/connections";
+      if (r.section === "skills") return href({ ...r, page: "library", section: "skills" });
+      if (r.section === "agents") return "/agents";
+      return href({ page: "connections", provider: r.section === "tools" ? "other" : r.provider });
+    case "connections": {
+      const base = r.scope === "apps" ? "/settings/apps" : "/settings/plugins";
+      return r.provider ? `${base}/${enc(r.provider)}` : base;
+    }
     case "directory":
-      return r.tab === "people" ? "/directory" : `/directory/${r.tab}`;
+      return r.tab === "agents"
+        ? "/agents"
+        : r.tab === "projects"
+          ? "/projects"
+          : "/settings/people";
     case "settings": {
+      if (r.section === "connections") return "/settings/plugins";
       const base = `/settings/${r.section}`;
       return r.section === "access" && r.permission
         ? `${base}?permission=${enc(r.permission)}`
@@ -537,14 +676,14 @@ function legacy(q: URLSearchParams): Route | null {
     case "runs":
       return { page: "new" };
     case "inbox":
-      return inboxAt(q);
+      return { page: "alerts" };
     case "projects":
     case "schedules":
     case "agents":
       return { page: v };
     case "knowledge":
     case "context":
-      return { page: "context" };
+      return { page: "knowledge" };
     case "storage":
       return { page: "artifacts" };
     case "evals":
@@ -555,9 +694,8 @@ function legacy(q: URLSearchParams): Route | null {
     // What fired belongs in the inbox; an alert's link opens the message it raised.
     case "alerts":
       return {
-        page: "inbox",
+        page: "alerts",
         alert: q.get("alert") ?? undefined,
-        kind: q.get("alert") ? undefined : "alert",
       };
     case "connections":
     case "limits":
@@ -571,13 +709,22 @@ function legacy(q: URLSearchParams): Route | null {
   }
 }
 
-/** The route an address names. Anything it does not recognize is New. */
+/** The route an address names. Unknown addresses keep an explicit missing-page state. */
 export function parse(pathname: string, search = ""): Route {
   // An absent selection is left out, so two routes to one place are equal.
   return Object.fromEntries(
-    Object.entries(read(pathname, search)).filter(([, v]) => v !== undefined),
+    Object.entries(
+      (() => {
+        const route = read(pathname, search);
+        const url = new URL(href(route), "http://localhost");
+        return read(url.pathname, url.search);
+      })(),
+    ).filter(([, v]) => v !== undefined),
   ) as Route;
 }
+
+/** A run's id: `r` and 32 hex digits. */
+const RUN_ID = /^r[0-9a-f]{32}$/;
 
 function queryText(q: URLSearchParams, key: string, max: number): string | undefined {
   const value = q.get(key);
@@ -585,41 +732,116 @@ function queryText(q: URLSearchParams, key: string, max: number): string | undef
   return value !== null && value.length <= max && !/[\u0000\r\n]/.test(value) ? value : undefined;
 }
 
+/** The workbench tab an address names, and its selection: read for Details only. */
+function benchOf(
+  panel: ConversationPanel | undefined,
+  q: URLSearchParams,
+): Pick<ConversationView, "bench" | "benchRef"> {
+  const bench = panel === "details" ? oneOf(q.get("bench"), WORKBENCH_TAB_IDS) : undefined;
+  if (!bench || bench === "details") return {};
+  const benchRef = queryText(q, "benchRef", MAX_BENCH_REF);
+  return benchRef ? { bench, benchRef } : { bench };
+}
+
 function read(pathname: string, search: string): Route {
   const q = new URLSearchParams(search);
   const parts = pathname.split("/").filter(Boolean).map(dec);
   const [head, a, b, c] = parts;
+  // Every message has one address, a session's root included: `/messages/<id>`.
+  // A run's id (`r` and 32 hex digits) opens that message on its own; any other
+  // id is a session's root. `/sessions/<id>` links from before still open it.
+  if (head === "messages") {
+    if (!a) return { page: "sessions" };
+    if (RUN_ID.test(a) && !b) return { page: "message", id: a };
+    return read(`/sessions/${parts.slice(1).map(enc).join("/")}`, search);
+  }
   switch (head) {
+    case "sessions": {
+      if (!a)
+        return {
+          page: "sessions",
+          status: oneOf(q.get("status"), [
+            "working",
+            "waiting",
+            "done",
+            "failed",
+            "stopped",
+          ] as const),
+          agent: queryText(q, "agent", 200),
+          project: queryText(q, "project", 200),
+          q: queryText(q, "q", 200),
+          place: oneOf(q.get("place"), SESSION_PLACES),
+          item: queryText(q, "item", 2048),
+        };
+      if (b) return read(`/conversations/${enc(a)}/${parts.slice(2).map(enc).join("/")}`, search);
+      const panels: Record<string, ConversationPanel> = {
+        files: "workspace",
+        sources: "context",
+        steps: "activity",
+        sessions: "overview",
+        people: "people",
+        workspace: "workspace",
+        context: "context",
+        activity: "response",
+        details: "details",
+        overview: "overview",
+        deliverables: "deliverables",
+      };
+      const slide = Number(q.get("slide"));
+      return {
+        page: "conversation",
+        id: a,
+        panel:
+          q.get("legacy_panel") === "deliverables" ? "deliverables" : panels[q.get("panel") ?? ""],
+        message: queryText(q, "message", 512),
+        fork: queryText(q, "fork", 512),
+        bringBack: queryText(q, "bringBack", 512),
+        share: q.get("share") === "1" || undefined,
+        contextTab: oneOf(q.get("contextTab"), ["sources", "instructions"] as const),
+        filter: oneOf(q.get("filter"), ["all", "handoffs", "tools", "decisions"] as const),
+        showTools: q.get("tools") === "0" ? false : undefined,
+        run: queryText(q, "run", 512),
+        step: queryText(q, "step", 512),
+        artifact: queryText(q, "artifact", 512),
+        artifactTab: oneOf(q.get("artifactTab"), ARTIFACT_TABS),
+        workspaceSection: oneOf(q.get("workspaceSection"), WORKSPACE_SECTIONS),
+        sandbox: queryText(q, "sandbox", 512),
+        scratchpad: queryText(q, "scratchpad", 512),
+        memoryRun: queryText(q, "memoryRun", 512),
+        tabs: q.get("tabs")?.split(",").map(dec),
+        active: queryText(q, "active", 512),
+        compare: queryText(q, "compare", 512),
+        file: queryText(q, "file", 4096),
+        expanded: q.get("full") === "1" || undefined,
+        split: q.get("split") === "1" || undefined,
+        workspaceTab: oneOf(q.get("workspaceTab"), ["edit", "preview", "changes"] as const),
+        slide: Number.isInteger(slide) && slide >= 1 && slide <= 80 ? slide : undefined,
+        ...benchOf(panels[q.get("panel") ?? ""], q),
+      };
+    }
     case "history":
-      return {
-        page: "history",
-        q: queryText(q, "q", 200),
-        source: oneOf(q.get("source"), [
-          "chat",
-          "github",
-          "slack",
-          "scheduled",
-          "assignments",
-        ] as const),
-        status: oneOf(q.get("status"), ["needs", "running", "failed"] as const),
-      };
-    // The old Pull requests page is History's GitHub source.
     case "pull-requests":
-      return { page: "history", source: "github", q: queryText(q, "q", 200) };
-    case "notifications":
       return {
-        page: "notifications",
-        message: q.get("message") ?? undefined,
-        alert: q.get("alert") ?? undefined,
-        kind: q.get("kind") ?? undefined,
-        view: oneOf(q.get("view"), NOTIFICATION_VIEWS),
+        page: "sessions",
+        q: queryText(q, "q", 200),
+        status:
+          q.get("status") === "needs"
+            ? "waiting"
+            : q.get("status") === "running"
+              ? "working"
+              : q.get("status") === "failed"
+                ? "failed"
+                : undefined,
       };
+    case "notifications":
+      return { page: "alerts", alert: q.get("alert") ?? undefined };
     case "library":
       return {
         artifact: queryText(q, "artifact", 160),
         file: queryText(q, "file", 256),
         catalogQuery: queryText(q, "q", 1000),
         libraryTab: oneOf(q.get("tab"), ["overview", "contents", "versions"] as const),
+        memoryView: a === "memory" ? oneOf(q.get("view"), ["files"] as const) : undefined,
         page: "library",
         section: pick(
           a,
@@ -667,12 +889,22 @@ function read(pathname: string, search: string): Route {
             ? oneOf(c, ["connect", "resources", "links", "access", "events", "actions"] as const)
             : undefined,
       };
+    // Generic hubs move to the new navigation; addressed work keeps its action and filters.
     case "assignments":
-      return { page: "assignments", id: a, agent: q.get("agent") || undefined };
+      return a || q.get("agent")
+        ? { page: "assignments", id: a, agent: q.get("agent") || undefined }
+        : { page: "sessions" };
     case "agent-network":
-      return { page: "agent-network", handoff: a === "handoffs" ? b : undefined };
+      return a === "handoffs" && b ? { page: "agent-network", handoff: b } : { page: "agents" };
+    case "agent-store": {
+      const name = parts.slice(1).join("/");
+      return { page: "agent-store", package: name && name.length <= 200 ? name : undefined };
+    }
     case "agent-controls":
       return { page: "agent-control" };
+    case "agent-models":
+      // Shared model chains are gone; every agent sets its own.
+      return { page: "agents" };
     case "you":
       return {
         page: "you",
@@ -735,9 +967,12 @@ function read(pathname: string, search: string): Route {
           ...(b === "context" && parts[3] === "instructions"
             ? { contextTab: "instructions" as const }
             : {}),
+          ...benchOf(b as ConversationPanel, q),
+          ...(b === "details" && q.get("full") === "1" ? { expanded: true } : {}),
           ...(b === "activity"
             ? {
                 run: parts[3],
+                step: queryText(q, "step", 512),
                 filter: oneOf(q.get("filter"), ["all", "handoffs", "tools", "decisions"] as const),
                 showTools: q.get("tools") === "0" ? false : undefined,
               }
@@ -753,47 +988,77 @@ function read(pathname: string, search: string): Route {
         };
       }
       return { page: "conversation", id: a, message: q.get("message") || undefined };
+    case "items":
+      // An address holds slashes, so it is one encoded segment; a raw one is joined back.
+      return a ? { page: "item", address: parts.slice(1).join("/") } : { page: "sessions" };
     case "projects": {
       if (!a)
-        return { page: "projects", q: q.get("q") || undefined, kind: kindParam(q.get("kind")) };
-      if (b === "fork")
-        return { page: "project", name: a === "~" ? "" : a, tab: "inbox", fork: true };
-      // A channel is a page of its own, under the project's Channels tab.
-      if (b === "channels" && parts[3])
-        return { page: "channel", project: a === "~" ? "" : a, channel: parts[3] };
-      const tab = pick(b, PROJECT_TABS, "inbox");
-      return {
-        page: "project",
-        name: a === "~" ? "" : a,
-        tab,
-        message: tab === "inbox" ? (q.get("message") ?? undefined) : undefined,
-      };
+        return {
+          page: "projects",
+          q: q.get("q") || undefined,
+          kind: kindParam(q.get("kind")),
+          sort: oneOf(q.get("sort"), PROJECT_SORTS),
+        };
+      // A project is one page. Its old tabs (context, agents, people, limits,
+      // inbox, overview, schedules, history) and its old channel pages open it.
+      if (b === "fork") return { page: "project", name: a === "~" ? "" : a, fork: true };
+      return { page: "project", name: a === "~" ? "" : a };
     }
     // Scheduled was called Automations; a schedule without a name is the list.
     case "scheduled":
     case "automations":
-      return { page: "automations" };
+      return a === "background"
+        ? { page: "automations", tab: "background" }
+        : { page: "automations" };
     case "schedules":
       return a ? { page: "schedules", name: a } : { page: "automations" };
     case "monitor":
       return { page: "monitor", tab: pick(a, MONITOR_TABS, "overview") };
-    // Alerts became Monitor. Its rules and overview moved there; what fired is in the inbox.
     case "alerts":
-      if (q.get("alert")) return { page: "inbox", alert: q.get("alert") ?? undefined };
-      if (a === "rules" || a === "overview") return { page: "monitor", tab: a };
-      return { page: "inbox", kind: "alert" };
+      return {
+        page: "alerts",
+        tab: a === "watching" || a === "rules" ? "watching" : undefined,
+        state: oneOf(q.get("state"), ["open", "snoozed", "resolved"] as const),
+        priority: oneOf(q.get("priority"), ["urgent", "normal", "low"] as const),
+        mine: q.get("mine") === "false" ? false : undefined,
+        source: queryText(q, "source", 200),
+        alert: queryText(q, "alert", 512),
+      };
     case "inbox":
-      return inboxAt(q);
-    // Knowledge is called Context. Old links open the same place.
+      return { page: "alerts", alert: q.get("alert") ?? undefined };
+    // Knowledge lists corpora, and a corpus is `/knowledge/{corpus}`. Knowledge
+    // was called Context: `/context/{source}` and the old
+    // `/knowledge/{source}/{tab}` still open the source.
     case "context":
-    case "knowledge":
       return a
         ? { page: "context", source: a, tab: pick(b, SOURCE_TABS, "documents") }
-        : { page: "context" };
+        : { page: "knowledge" };
+    case "knowledge-graph":
+      return { page: "knowledge-graph" };
+    case "knowledge": {
+      if (!a) return { page: "knowledge" };
+      if (b === "sources" && c)
+        return {
+          page: "context",
+          corpus: a,
+          source: c,
+          tab: pick(parts[4], SOURCE_TABS, "documents"),
+        };
+      // A corpus's own tabs come first: an old `/knowledge/{source}/search`
+      // opens a corpus, which opens the source when no corpus has that name.
+      const tab = oneOf(b, CORPUS_TABS);
+      if (!tab && oneOf(b, SOURCE_TABS)) return { page: "context", source: a, tab: b as SourceTab };
+      return {
+        page: "corpus",
+        name: a,
+        tab: tab ?? "sources",
+        q: tab === "search" ? queryText(q, "q", 1000) : undefined,
+      };
+    }
     case "agents":
       if (b === "setup") return { page: "agent-setup", name: a === "new" ? undefined : a };
       if (b === "control") return { page: "agent-control", agent: a };
-      if (!a) return { page: "agents" };
+      if (!a) return { page: "agents", state: queryText(q, "state", 80) };
       return {
         page: "agent",
         name: a === "new" ? null : a,
@@ -814,17 +1079,36 @@ function read(pathname: string, search: string): Route {
         provider: q.get("provider") || undefined,
       };
     case "connections":
+      if (a === "sources" && b)
+        return { page: "context", source: b, tab: pick(c, SOURCE_TABS, "documents") };
+      if (a === "catalog")
+        return { page: "library", section: "catalog", catalogQuery: queryText(q, "q", 1000) };
       return { page: "connections", provider: a };
     case "directory":
-      return { page: "directory", tab: pick(a, DIRECTORY_TABS, "people") };
+      // People is the directory; agents and projects have pages of their own.
+      if (a === "agents") return { page: "agents" };
+      if (a === "projects") return { page: "projects" };
+      return { page: "directory", tab: "people" };
     case "settings":
+      if (a === "people") return { page: "directory", tab: "people" };
+      // Plugins is a section of your settings, with a path of its own. It was Connections.
+      if (a === "plugins" || a === "connections") return { page: "connections", provider: b };
+      // Apps are the workspace's installs, under Workspace settings.
+      if (a === "apps") return { page: "connections", provider: b, scope: "apps" };
+      if (a === "health") return { page: "monitor", tab: "health" };
+      if (a === "audit") return { page: "audit" };
+      if (a === "usage") return read("/operations/usage", search);
+      // Models are chosen per agent now; an old link lands on the agents.
+      if (a === "models") return { page: "agents" };
+      // Routing has only its model left, which sits with the model providers.
+      if (a === "routing") return { page: "settings", section: "providers" };
       return {
         page: "settings",
         section: pick(a, SETTINGS_SECTIONS, "profile"),
         permission: q.get("permission") ?? undefined,
       };
     default:
-      return { page: "new" };
+      return { page: "not-found", path: `/${parts.map(enc).join("/")}` };
   }
 }
 
@@ -846,6 +1130,8 @@ export function screenOf(r: Route): string {
       return `conversation:${r.id}`;
     case "project":
       return `project:${r.name}`;
+    case "corpus":
+      return `corpus:${r.name}`;
     case "channel":
       return `channel:${r.project}/${r.channel}`;
     case "agent":
@@ -902,7 +1188,10 @@ export function useRoute(): [Route, (next: Route, opts?: { replace?: boolean }) 
     window.addEventListener("popstate", back);
     // An old `?view=` link is rewritten to the page's own address.
     const canonical = href(parse(window.location.pathname, window.location.search));
-    if (canonical !== window.location.pathname + window.location.search) {
+    if (
+      window.location.pathname !== "/connections/callback" &&
+      canonical !== window.location.pathname + window.location.search
+    ) {
       try {
         window.history.replaceState(null, "", canonical);
       } catch {
@@ -914,7 +1203,8 @@ export function useRoute(): [Route, (next: Route, opts?: { replace?: boolean }) 
   const go = useCallback(
     (next: Route, opts?: { replace?: boolean }) => {
       const to = href(next);
-      show(next, !opts?.replace, () => {
+      const url = new URL(to, window.location.origin);
+      show(parse(url.pathname, url.search), !opts?.replace, () => {
         try {
           if (to !== window.location.pathname + window.location.search) {
             if (opts?.replace) window.history.replaceState(null, "", to);

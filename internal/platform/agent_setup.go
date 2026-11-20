@@ -20,10 +20,10 @@ import (
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/state"
-	anchorrun "github.com/urmzd/orchagent/durable/run"
-	"github.com/urmzd/orchagent/flow/connectors/cron"
-	"github.com/urmzd/orchagent/flow/event"
-	"github.com/urmzd/orchagent/flow/runtime"
+	anchorrun "github.com/urmzd/saige/durable/run"
+	"github.com/urmzd/saige/flow/connectors/cron"
+	"github.com/urmzd/saige/flow/event"
+	"github.com/urmzd/saige/flow/runtime"
 )
 
 const maxAgentSetups = 200
@@ -268,7 +268,7 @@ func (p *Platform) validateSetupPlan(ctx context.Context, who auth.Principal, pl
 	if err != nil {
 		return AgentSetupPlan{}, err
 	}
-	canonical, err := wire.NewRevisionWith(spec, 1, who.Subject, p.now(), p.agentProviders())
+	canonical, err := wire.NewRevisionWith(spec, 1, who.Subject, p.now(), p.agentProviders(who.Tenant))
 	if err != nil {
 		return AgentSetupPlan{}, err
 	}
@@ -461,6 +461,11 @@ func (p *Platform) applySetupAmendment(ctx context.Context, who auth.Principal, 
 	currentPlan.Skills = append([]AgentSkillRef{}, currentPlan.Skills...)
 	if !reflect.DeepEqual(plan, currentPlan) {
 		return operations.ErrConflict
+	}
+	if before, lookupErr := p.Catalog().Get(ctx, who.Tenant, record.Name, 0); lookupErr == nil && !before.Spec.SameContent(plan.Spec) {
+		if _, err := p.checkAgentEvals(ctx, who.Tenant, before.Spec, plan.Spec); err != nil {
+			return err
+		}
 	}
 	record.Plan = plan
 	if home, ok := p.Projects.Tree(who.Tenant).Home(record.Name); ok && home != record.Plan.Project {
@@ -771,9 +776,16 @@ func (p *Platform) TestAgentSetup(ctx context.Context, who auth.Principal, name,
 	if err := p.saveSetup(who.Tenant, &record, "configured"); err != nil {
 		return AgentSetup{}, err
 	}
-	_, err = p.Converse(ctx, who.Tenant, Turn{ID: record.TestTag, Agent: name, Project: record.Plan.Project, Text: text, Actor: event.Actor{ID: who.Subject, User: who.Subject, Display: p.NameOf(who.Tenant, who.Subject)}, ForceAsk: true, Sees: p.Seer(who).Agent})
+	started, err := p.Converse(ctx, who.Tenant, Turn{DryRun: true, ID: record.TestTag, Agent: name, Project: record.Plan.Project, Text: text, Actor: event.Actor{ID: who.Subject, User: who.Subject, Display: p.NameOf(who.Tenant, who.Subject)}, ForceAsk: true, Sees: p.Seer(who).Agent})
 	if err != nil {
-		return p.failSetup(who.Tenant, record, err)
+		failed, saveErr := p.failSetup(who.Tenant, record, err)
+		if saveErr != nil {
+			return failed, saveErr
+		}
+		return failed, err
+	}
+	if started.ID != record.TestRun {
+		return AgentSetup{}, fmt.Errorf("setup test admitted %q but reserved %q", started.ID, record.TestRun)
 	}
 	record.TestTag = ""
 	return record, nil

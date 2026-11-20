@@ -1,6 +1,6 @@
 import type { Page } from "playwright-core";
 
-/** Real schedule creation and the event-condition builder at phone and desktop widths. */
+/** Scheduled and its schedule form at phone and desktop widths. */
 export function automationScreens() {
   return [
     {
@@ -8,20 +8,18 @@ export function automationScreens() {
       path: "/scheduled",
       act: async (page: Page) => {
         await page.getByRole("heading", { name: "Scheduled", exact: true }).waitFor();
-        await page.getByRole("heading", { name: "Schedules", exact: true }).waitFor();
-        await page.getByRole("heading", { name: "GitHub triggers", exact: true }).waitFor();
+        await page.getByRole("button", { name: "New Schedule", exact: true }).waitFor();
       },
     },
     {
-      name: "automation-builder",
+      name: "schedule-builder",
       path: "/scheduled",
       act: async (page: Page) => {
-        await page.getByRole("button", { name: "New GitHub Automation" }).click();
-        await page.getByLabel("Name", { exact: true }).fill("Investigate failed checks");
-        await page.getByLabel("Repository", { exact: true }).fill("urmzd/humagen");
+        await page.getByRole("button", { name: "New Schedule", exact: true }).click();
+        await page.getByLabel("Name", { exact: true }).fill("nightly-checks");
         await page
-          .getByLabel("Instructions")
-          .fill("Investigate the failing check and explain the smallest fix with evidence.");
+          .getByLabel("What to ask", { exact: true })
+          .fill("Which checks failed overnight, and what is the smallest fix for each?");
       },
     },
   ];

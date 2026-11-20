@@ -18,7 +18,7 @@ import (
 	"time"
 
 	"github.com/urmzd/humagen/internal/legacy"
-	"github.com/urmzd/orchagent/flow/event"
+	"github.com/urmzd/saige/flow/event"
 
 	"github.com/urmzd/humagen/pkg/state"
 )
@@ -70,8 +70,8 @@ const (
 	// keeps looking: a run is numbered when it is recorded, and its start
 	// is when its trigger says it happened, which may be a little earlier.
 	scanSlack = time.Hour
-	// lookups is how many records a read fetches at once.
-	lookups = 16
+	// keyReads is how many threads' keys a read of several lists at once.
+	keyReads = 16
 )
 
 const headKey = "h"
@@ -360,25 +360,40 @@ func (x *Index) get(tenant, id string) (*Run, int64, error) {
 	return r, v, err
 }
 
-// all reads the runs numbered seqs, in that order, a few at a time. A number
-// with no run is left out.
+// all reads the runs numbered seqs, in that order: one statement for every
+// state.MaxList of them, not one a run. A number with no run is left out.
 func (x *Index) all(tenant string, seqs []int64) ([]*Run, error) {
-	out := make([]*Run, len(seqs))
-	errs := make([]error, len(seqs))
-	var wg sync.WaitGroup
-	sem := make(chan struct{}, lookups)
+	at := make(map[string]*Run, len(seqs))
+	keys := make([]string, len(seqs))
 	for i, n := range seqs {
-		sem <- struct{}{}
-		wg.Go(func() {
-			defer func() { <-sem }()
-			out[i], _, errs[i] = x.at(tenant, n)
-		})
+		keys[i] = recKey(n)
 	}
-	wg.Wait()
-	if err := errors.Join(errs...); err != nil {
-		return nil, err
+	for chunk := range slices.Chunk(keys, state.MaxList) {
+		c, cancel := ctx()
+		recs, err := state.LookupMany(c, x.st, namespace, tenant, chunk)
+		cancel()
+		if err != nil {
+			return nil, err
+		}
+		for _, rec := range recs {
+			var s storedRun
+			if err := json.Unmarshal(rec.Value, &s); err != nil {
+				return nil, fmt.Errorf("runs: %q: %w", rec.Key, err)
+			}
+			r, err := s.run()
+			if err != nil {
+				return nil, err
+			}
+			at[rec.Key] = r
+		}
 	}
-	return slices.DeleteFunc(out, func(r *Run) bool { return r == nil }), nil
+	out := make([]*Run, 0, len(seqs))
+	for _, k := range keys {
+		if r := at[k]; r != nil {
+			out = append(out, r)
+		}
+	}
+	return out, nil
 }
 
 // under reads the runs whose index keys are under a prefix, oldest first.
@@ -397,9 +412,16 @@ func (x *Index) under(tenant, prefix string, most int) ([]*Run, error) {
 // scan calls fn for a tenant's runs from the newest, until fn returns false
 // or MaxScan runs have been read.
 func (x *Index) scan(tenant string, fn func(r *Run) bool) error {
+	return x.scanBy(tenant, state.MaxList, fn)
+}
+
+// scanBy is scan reading at most page runs a statement: a read that wants a
+// known few asks for that many, not a full page of records to drop.
+func (x *Index) scanBy(tenant string, page int, fn func(r *Run) bool) error {
+	page = min(max(page, 1), state.MaxList)
 	after, seen := "", 0
 	for seen < MaxScan {
-		recs, next, err := x.page(tenant, state.Query{Prefix: "o:", After: after, Limit: min(state.MaxList, MaxScan-seen), Desc: true})
+		recs, next, err := x.page(tenant, state.Query{Prefix: "o:", After: after, Limit: min(page, MaxScan-seen), Desc: true})
 		if err != nil {
 			return err
 		}
@@ -605,7 +627,7 @@ func (t *txn) place(r *Run) error {
 	r.seq = h.Seq
 	t.put(ptrKey(r.ID), r.seq, 0)
 	t.put(treeKey(r.Root, r.seq), "", always)
-	if r.Parent == "" {
+	if conversationTurn(r) {
 		t.put(turnKey(r.Thread, r.seq), "", always)
 	}
 	if !r.Status.Terminal() {
@@ -642,7 +664,7 @@ func (t *txn) place(r *Run) error {
 	if r.UpdatedAt.After(s.UpdatedAt) {
 		s.UpdatedAt = r.UpdatedAt
 	}
-	if r.Parent == "" {
+	if conversationTurn(r) {
 		s.Turns++
 		if !slices.Contains(s.Agents, r.Agent) {
 			s.Agents = append(s.Agents, r.Agent)
@@ -727,7 +749,7 @@ func (t *txn) commit() error {
 		waiting := b2i(r.Status == Parked) - b2i(h.before.Status == Parked)
 		later := r.UpdatedAt.After(s.UpdatedAt)
 		// An answer to a turn is the latest thing said in the conversation.
-		answered := r.Parent == "" && was && r.Status == Completed && firstLine(r.Answer) != ""
+		answered := conversationTurn(r) && was && r.Status == Completed && firstLine(r.Answer) != ""
 		if active != 0 || failed != 0 || waiting != 0 || later || answered {
 			s.Active += active
 			s.Failed += failed

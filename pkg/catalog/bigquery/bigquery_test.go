@@ -50,9 +50,12 @@ func (f *fake) Table(_ context.Context, ds, t string) (table, error) {
 }
 
 func (f *fake) DryRun(context.Context, string) (plan, error) { return f.plan, nil }
-func (f *fake) Run(_ context.Context, _ string, maxBytes int64, maxRows int) (answer, error) {
+func (f *fake) Run(_ context.Context, _ string, maxBytes int64, maxRows int, admit func([]string) error) (answer, error) {
 	f.ran.Add(1)
 	f.lastCap, f.lastRows = maxBytes, maxRows
+	if err := admit(f.plan.Tables); err != nil {
+		return answer{}, err
+	}
 	return f.answer, nil
 }
 func (f *fake) Close() error { return nil }

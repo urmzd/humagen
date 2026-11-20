@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/urmzd/orchagent/flow/address"
-	"github.com/urmzd/orchagent/flow/attachment"
-	"github.com/urmzd/orchagent/flow/event"
+	"github.com/urmzd/saige/flow/address"
+	"github.com/urmzd/saige/flow/attachment"
+	"github.com/urmzd/saige/flow/event"
 )
 
 // ChannelScheme is the scheme of the channel a run Humagen raises itself
@@ -328,3 +328,10 @@ func Clone(e event.Envelope) event.Envelope {
 	e.Private = priv
 	return e
 }
+
+// MetaSession is pinned by platform admission, never accepted from ingress.
+const MetaSession = "_humagen.session"
+
+// MetaSourceAlert links a run to the authorized alert that initiated its session.
+// Ingress copies are stripped; only immutable session identity may pin it.
+const MetaSourceAlert = "_humagen.source_alert"

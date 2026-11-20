@@ -53,3 +53,7 @@ deploy/compose/.env
 .humagen-dev/
 .env.dev
 deploy/tilt/values.local.yaml
+
+# Zensical documentation output and build cache
+/site/
+/.cache/

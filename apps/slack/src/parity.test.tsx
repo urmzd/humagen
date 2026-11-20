@@ -21,7 +21,8 @@ import {
   type Turn,
   timeline,
 } from "@humagen/core";
-import { homeView, renderToSlack } from "@humagen/render-slack";
+import * as fx from "@humagen/core/fixtures";
+import { decodeSlackAction, homeView, renderToSlack } from "@humagen/render-slack";
 import { WebSurface } from "@humagen/render-web";
 import type { ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -38,6 +39,7 @@ import {
   questionMail,
 } from "./harness.ts";
 import { homeModel } from "./home.ts";
+import { Presenter } from "./present.tsx";
 
 /**
  * One state, two renderers. A recorded run goes through the shared adapter
@@ -96,6 +98,33 @@ function live(events: RunEvent[], record?: Run): Turn {
 function slack(element: ReactElement): string {
   const out = renderToSlack(element);
   return JSON.stringify(out.pages).replace(/\\n/g, " ");
+}
+
+/** Visible text only: action payloads and block IDs are not response prose. */
+function slackVisibleText(element: ReactElement): string {
+  const text = (value: unknown): string => {
+    if (Array.isArray(value)) return value.map(text).join(" ");
+    if (!value || typeof value !== "object") return "";
+    return Object.entries(value)
+      .map(([key, item]) => (key === "text" && typeof item === "string" ? item : text(item)))
+      .join(" ");
+  };
+  return text(renderToSlack(element).pages);
+}
+
+function slackAction(element: ReactElement, id: string) {
+  const blocks = renderToSlack(element).pages.flat() as {
+    type: string;
+    elements?: { type: string; action_id: string; value?: string }[];
+  }[];
+  const found = blocks
+    .filter((block) => block.type === "actions")
+    .flatMap((block) => block.elements ?? [])
+    .filter((control) => control.type === "button")
+    .map((control) => decodeSlackAction(control))
+    .find((action) => action?.id === id);
+  assert.ok(found, `Slack must offer ${id}`);
+  return found;
 }
 
 /** What the console shows: the markup's text. */
@@ -270,8 +299,15 @@ test("a failed run is the same failure in both", () => {
     message: "provider: 529 overloaded",
     reference: RUN,
   });
-  // The reference is a copy chip on the web and a line of text on Slack: the same id either way.
-  bothSay(<TurnView turn={turn} />, defaultCopy.retry, RUN);
+  // Keep the diagnostic reference for explicit reporting, out of the everyday response.
+  const failed = <TurnView turn={turn} />;
+  bothSay(failed, defaultCopy.retry, defaultCopy.report);
+  assert.equal(web(failed).includes(RUN), false);
+  assert.equal(slackVisibleText(failed).includes(RUN), false);
+  assert.deepEqual(slackAction(failed, ActionId.report), {
+    id: ActionId.report,
+    payload: { turnId: RUN, target: "internal" },
+  });
   bothShow(turn);
 
   // A run whose final event is gone is ended from its record, to the same state.
@@ -473,7 +509,17 @@ for (const kind of ["approval", "choice", "reply"] as const) {
     assert.deepEqual(replay(run(), asked(kind)), waiting, "the console rebuilds the same state");
     const onRun = <TurnView turn={waiting} />;
     bothSay(onRun, QUESTIONS[kind].prompt);
-    if (kind === "approval") bothSay(onRun, defaultCopy.approve, defaultCopy.cancel);
+    if (kind === "approval") {
+      bothSay(onRun, defaultCopy.approve, defaultCopy.declineAction);
+      assert.ok(slackButtons(onRun).includes(defaultCopy.declineAction));
+      assert.ok(webButtons(onRun).includes(defaultCopy.declineAction));
+      for (const id of [ActionId.approve, ActionId.deny]) {
+        assert.deepEqual(slackAction(onRun, id), {
+          id,
+          payload: { turnId: RUN, target: QUESTIONS.approval.id },
+        });
+      }
+    }
     if (kind === "choice") bothSay(onRun, "us-east", "eu-west");
     if (kind === "reply") bothSay(onRun, defaultCopy.somethingElse);
     assert.deepEqual(
@@ -485,7 +531,15 @@ for (const kind of ["approval", "choice", "reply"] as const) {
     const mail = fromServer(questionMail(RUN, kind));
     const inMail = <MessageView message={forSlack(mail)} />;
     bothSay(<MessageView message={mail} />, QUESTIONS[kind].prompt);
-    if (kind === "approval") bothSay(inMail, defaultCopy.approve, defaultCopy.cancel);
+    if (kind === "approval") {
+      bothSay(inMail, defaultCopy.approve, defaultCopy.declineAction);
+      for (const id of [ActionId.approve, ActionId.deny]) {
+        assert.deepEqual(slackAction(inMail, id), {
+          id,
+          payload: { turnId: mail.id, target: QUESTIONS.approval.id },
+        });
+      }
+    }
     if (kind === "choice") bothSay(inMail, "us-east", "eu-west");
     if (kind === "reply") bothSay(inMail, defaultCopy.reply);
 
@@ -505,6 +559,75 @@ for (const kind of ["approval", "choice", "reply"] as const) {
     }
   });
 }
+
+test("an approval the approval agent judged shows its view in Slack, the workspace's own fields as label and value", () => {
+  const judged = (judgement?: Record<string, unknown>) => {
+    const raw = questionMail(RUN, "approval");
+    const parts = (raw.parts as Record<string, unknown>[]).map((p) => ({
+      ...p,
+      question: { ...(p.question as object), ...(judgement ? { judgement } : {}) },
+    }));
+    return fromServer({ ...raw, parts });
+  };
+  const contextTexts = (el: ReactElement) =>
+    (renderToSlack(el).pages.flat() as { type: string; elements?: { text?: string }[] }[])
+      .filter((b) => b.type === "context")
+      .flatMap((b) => b.elements ?? [])
+      .map((e) => e.text ?? "");
+
+  const asked = (
+    <MessageView
+      message={forSlack(
+        judged({
+          decision: "ask",
+          reason: "Nobody asked to deploy <!here> today.",
+          references: ["Policy: deploys need a person"],
+          fields: [
+            { name: "risk", label: "Risk", value: "high" },
+            { name: "conditions", label: "Conditions", value: "only on main" },
+            { name: "expires_in", label: "Expires in", value: "3600" },
+          ],
+          run: "api-approver-1",
+        }),
+      )}
+    />
+  );
+  const said = contextTexts(asked);
+  // The agent's words ping nobody: Slack's own markup in them is escaped.
+  assert.ok(
+    said.includes(
+      '*Approval agent:* Asked a person: "Nobody asked to deploy &lt;!here&gt; today."',
+    ),
+    said.join("\n"),
+  );
+  for (const pair of ["*Risk:* high", "*Conditions:* only on main", "*Expires in:* 3600"])
+    assert.ok(said.includes(pair), `Slack does not say ${pair}`);
+  assert.ok(said.includes("Based on: Policy: deploys need a person"));
+  bothSay(asked, "Approval agent", "Asked a person", "Risk", "only on main", "Expires in");
+  // The person still decides.
+  assert.ok(slackAction(asked, ActionId.approve));
+
+  // Twelve fields, the most the platform keeps, fit Slack's ten per context block.
+  const many = contextTexts(
+    <MessageView
+      message={forSlack(
+        judged({
+          decision: "allow",
+          reason: "Asked for.",
+          fields: Array.from({ length: 12 }, (_, i) => ({
+            name: `f${i}`,
+            label: `F${i}`,
+            value: `${i}`,
+          })),
+        }),
+      )}
+    />,
+  );
+  for (let i = 0; i < 12; i++) assert.ok(many.includes(`*F${i}:* ${i}`), `F${i}`);
+
+  const bare = <MessageView message={forSlack(judged())} />;
+  assert.doesNotMatch(slack(bare), /Approval agent|Asked a person|Risk|Based on/);
+});
 
 test("an agent's draft reads the same on both, with Publish and Discard for its owner and its words inert", () => {
   const wire = {
@@ -748,8 +871,57 @@ test("a Slack task links to the conversation rather than its individual run", ()
   const view = renderToSlack(
     <TurnView turn={f.settle({ ...record, status: "completed", answer: "Done" })} />,
   );
-  assert.match(
-    JSON.stringify(view),
-    /https:\/\/humagen\.test\/conversations\/shared-thread\|Open Conversation/,
+  // The answer's last line ends with the arrow to the conversation; no line says Open Conversation.
+  assert.ok(
+    JSON.stringify(view).includes(
+      "Done [\u2197\uFE0E](https://humagen.test/conversations/shared-thread)",
+    ),
   );
+  assert.ok(!JSON.stringify(view).includes("Open Conversation"));
+});
+
+test("a streamed Slack answer ends with the arrow to its conversation, and the final blocks do not repeat it", async () => {
+  const calls: { method: string; args: Record<string, unknown> }[] = [];
+  const slack = {
+    async call<T>(method: string, args: Record<string, unknown> = {}) {
+      calls.push({ method, args });
+      return { ts: "1.0001" } as T;
+    },
+    async respond() {},
+  };
+  const presenter = new Presenter(slack, {
+    channel: "C1",
+    threadTs: "1.0",
+    triggerTs: "1.0",
+    recipientUser: "U1",
+    recipientTeam: "T1",
+  });
+  const url = "https://humagen.test/conversations/shared-thread";
+  const turn = { ...fx.doneTurn, citations: [], sessionUrl: url, text: "Rolled back." };
+  await presenter.update({ ...turn, status: "working", text: "Rolled" });
+  await presenter.finish(turn);
+  const stop = calls.findIndex((c) => c.method === "chat.stopStream");
+  const last = calls[stop - 1];
+  assert.equal(last?.method, "chat.appendStream");
+  assert.deepEqual(last?.args.chunks, [{ type: "markdown_text", text: ` [\u2197\uFE0E](${url})` }]);
+  assert.ok(!JSON.stringify(calls[stop]?.args.blocks).includes(url));
+  // An answer ending in code keeps its code whole: the disclaimer carries the arrow instead.
+  calls.length = 0;
+  const coded = new Presenter(slack, {
+    channel: "C1",
+    threadTs: "1.0",
+    triggerTs: "1.0",
+    recipientUser: "U1",
+    recipientTeam: "T1",
+  });
+  const code = { ...turn, text: "Run:\n\n```sh\nmake\n```" };
+  await coded.update({ ...code, status: "working" });
+  await coded.finish(code);
+  const final = calls.find((c) => c.method === "chat.stopStream");
+  const blocks = final?.args.blocks as { elements?: { text: string }[] }[];
+  assert.match(
+    blocks.at(-1)?.elements?.[0]?.text ?? "",
+    /them\. <https:\/\/humagen\.test\/conversations\/shared-thread\|\u2197\uFE0E>$/,
+  );
+  assert.ok(!calls.some((c) => JSON.stringify(c.args.chunks ?? []).includes("\u2197")));
 });

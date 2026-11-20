@@ -1,10 +1,13 @@
 import { defaultCopy } from "@humagen/components";
 import {
+  BellIcon,
   BotIcon,
   BrainIcon,
   GaugeIcon,
+  MicIcon,
   MonitorIcon,
   MoonIcon,
+  NetworkIcon,
   PaletteIcon,
   PlugIcon,
   ScrollTextIcon,
@@ -17,34 +20,27 @@ import {
 import { Input } from "@humagen/render-web/ui/input";
 import { NativeSelect } from "@humagen/render-web/ui/native-select";
 import { Switch as SettingSwitch } from "@humagen/render-web/ui/switch";
-import {
-  type FormEvent,
-  type MouseEvent,
-  type ReactNode,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { type FormEvent, Fragment, type MouseEvent, type ReactNode, useRef, useState } from "react";
 import { AccessExplain } from "./AccessExplain.tsx";
+import { doing } from "./access.ts";
 import {
   ApiError,
   api,
   type Me,
-  type ModelPolicy,
   type Preferences,
   type Revision,
-  type RouterSettings,
   type Settings as Workspace,
 } from "./api.ts";
 import { BillingSettings } from "./Billing.tsx";
-import { accentAttribute } from "./branding.ts";
 import { ClientSettings } from "./Clients.tsx";
 import { DeletionQueue } from "./DeletionQueue.tsx";
-import { chainProblem, ModelChain, POLICY, starterPolicy } from "./ModelChain.tsx";
+import { ModelProviderSettings } from "./ModelProviders.tsx";
+import { PersonalPreferences } from "./PersonalPreferences.tsx";
 import type { PrefsRead } from "./preferences.ts";
 import { ReadAudit } from "./ReadAudit.tsx";
-import { href, type SettingsSection } from "./route.ts";
+import { href, type Route, type SettingsSection } from "./route.ts";
 import { SettingsFormRow } from "./SettingsFormRow.tsx";
+import { Avatar, linked, workspaceSettingsRoute } from "./settingsLinks.tsx";
 import {
   agentOptions,
   button,
@@ -59,55 +55,12 @@ import {
   SkeletonRows,
   useStrip,
 } from "./ui.tsx";
+import { VoiceSettings } from "./VoiceSettings.tsx";
 
 export type Section = SettingsSection;
 
-const accents = (["workspace", "red", "yellow", "green", "purple", "blue", "teal"] as const).map(
-  (id) => ({
-    id,
-    label: defaultCopy.accentPresets[id],
-    icon: (
-      <span
-        aria-hidden
-        data-accent={accentAttribute(id)}
-        className="size-2.5 rounded-full bg-aui-accent"
-      />
-    ),
-  }),
-);
-
-/** A person's picture, or their initial when they have none. */
-export function Avatar({
-  name,
-  prefs,
-  size = 28,
-}: {
-  name: string;
-  prefs: Preferences | null;
-  size?: number;
-}) {
-  if (prefs?.has_photo) {
-    return (
-      <img
-        src={`/api/preferences/photo?v=${prefs.photo_version}`}
-        alt=""
-        width={size}
-        height={size}
-        className="shrink-0 rounded-full object-cover"
-        style={{ width: size, height: size }}
-      />
-    );
-  }
-  return (
-    <span
-      aria-hidden
-      className="inline-flex shrink-0 items-center justify-center rounded-full bg-aui-hover font-medium text-aui-fg"
-      style={{ width: size, height: size, fontSize: Math.round(size * 0.42) }}
-    >
-      {(name.trim()[0] ?? "?").toUpperCase()}
-    </span>
-  );
-}
+// Kept here for their callers; the sidebar reads them from settingsLinks.tsx.
+export { Avatar, workspaceSettingsRoute };
 
 /** A plain link's click: in place on a plain click, left to the browser on a modified one. */
 const follow = (go: () => void) => (e: MouseEvent<HTMLAnchorElement>) => {
@@ -132,8 +85,7 @@ export function Settings({
   onWorkspace,
   onOpenProjects,
   onOpenWorkspace,
-  onOpenWorkspaceAgents = onOpenWorkspace,
-  onConnections,
+  onNavigate,
 }: {
   me: Me;
   /** The saved preferences once prefsRead is "read"; until then, defaults that only draw the page. */
@@ -155,10 +107,7 @@ export function Settings({
   onOpenProjects: () => void;
   /** Opens the workspace's own project, where its instructions and notes are. */
   onOpenWorkspace: () => void;
-  /** Opens the workspace's Agents tab, where the Workspace Default is. */
-  onOpenWorkspaceAgents?: () => void;
-  /** Opens Your connections, the tools that act as you. */
-  onConnections?: () => void;
+  onNavigate?: (route: Route) => void;
 }) {
   const setSection = onSection;
   const [problem, setProblem] = useState<string | null>(null);
@@ -209,68 +158,24 @@ export function Settings({
   const canReadAudit =
     me.principal.roles?.includes("admin") && me.permissions.includes("projects:govern");
   const canGovern = me.permissions.includes("projects:govern");
-  const sections: { id: Section; label: string; icon: ReactNode }[] = [
-    { id: "profile", label: "Profile", icon: <UserIcon size={16} /> },
-    { id: "appearance", label: "Appearance", icon: <PaletteIcon size={16} /> },
-    { id: "workspace", label: "Workspace", icon: <ServerIcon size={16} /> },
-    { id: "routing", label: "Agent routing", icon: <BotIcon size={16} /> },
-    { id: "models", label: "Models", icon: <BrainIcon size={16} /> },
-    { id: "limits", label: "Limits", icon: <GaugeIcon size={16} /> },
-    { id: "connections", label: "Connections", icon: <PlugIcon size={16} /> },
-    { id: "access", label: "Access", icon: <ShieldIcon size={16} /> },
-    ...(canReadAudit
-      ? [
-          {
-            id: "read-audit" as const,
-            label: defaultCopy.readAudit.label,
-            icon: <ScrollTextIcon size={16} />,
-          },
-        ]
-      : []),
-    ...(canGovern
-      ? [
-          {
-            id: "deletions" as const,
-            label: defaultCopy.deletions.title,
-            icon: <TrashIcon size={16} />,
-          },
-        ]
-      : []),
-  ];
-  // On a phone the sections are a row that scrolls inside itself, kept on the open one.
-  const strip = useStrip<HTMLElement>(section);
 
   return (
     <div className="humagen-fade flex min-h-0 flex-1 flex-col md:flex-row">
-      {/* The rule is drawn on a frame around the sections, so it runs the full width while the row's ends fade. */}
-      {/* On a phone the row scrolls inside the 16px gutter, never under the screen's edge. */}
-      <div className="shrink-0 border-aui-border border-b px-4 md:w-52 md:border-r md:border-b-0 md:px-0">
-        <nav
-          ref={strip}
-          aria-label="Settings sections"
-          className="humagen-strip flex gap-0.5 overflow-x-auto py-2 md:flex-col md:p-3"
-        >
-          {sections.map((s) => (
-            <button
-              key={s.id}
-              type="button"
-              aria-current={section === s.id ? "page" : undefined}
-              onClick={() => {
-                setSection(s.id);
-                setProblem(null);
-              }}
-              className="inline-flex min-h-9 pointer-coarse:min-h-11 shrink-0 items-center gap-2.5 whitespace-nowrap rounded-aui px-2.5 text-left text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-hover aria-[current=page]:text-aui-fg"
-            >
-              {s.icon}
-              {s.label}
-            </button>
-          ))}
-        </nav>
-      </div>
-
+      <SettingsNav
+        me={me}
+        section={section}
+        onSection={(next) => {
+          setSection(next);
+          setProblem(null);
+        }}
+        onNavigate={onNavigate}
+      />
       <div className="aui-scroll min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 px-5 pt-8 pb-12 md:px-10">
           <Problem message={problem} />
+          {section === "notifications" && (
+            <PersonalPreferences section="notifications" onSaved={onPrefs} />
+          )}
           {section === "read-audit" &&
             (canReadAudit ? (
               <ReadAudit />
@@ -280,6 +185,16 @@ export function Settings({
                 <Problem message={defaultCopy.readAudit.denied} />
               </>
             ))}
+
+          {section === "voice" && (
+            <>
+              <header className="pb-2">
+                <h1 className={pageTitle}>{defaultCopy.voiceSettings.title}</h1>
+                <p className={pageLede}>{defaultCopy.voiceSettings.lede}</p>
+              </header>
+              <VoiceSettings canEdit={me.permissions.includes("clients:write")} />
+            </>
+          )}
 
           {section === "deletions" &&
             (canGovern ? (
@@ -291,61 +206,15 @@ export function Settings({
               </>
             ))}
 
-          {section === "routing" && (
+          {section === "providers" && (
             <>
               <header className="pb-2">
-                <h1 className={pageTitle}>Agent routing</h1>
+                <h1 className={pageTitle}>Model providers</h1>
                 <p className={pageLede}>
-                  A message goes to the agents it tags. One that tags none goes to the default where
-                  it is posted. When that is Everyone decides, each agent available there decides
-                  for itself whether to answer, and each that does answers in the same thread. When
-                  none does, the message waits for a person to answer or tag an agent.
+                  What agents run on. An agent runs once a provider its models name is enabled.
                 </p>
               </header>
-              {workspace && (
-                <RouterControl
-                  key={JSON.stringify(workspace.router ?? null)}
-                  saved={workspace.router ?? { enabled: false }}
-                  canEdit={canAdmin}
-                  onSave={(router) => saveWorkspace({ router })}
-                />
-              )}
-              <section className={`${card} flex flex-col gap-3`}>
-                <h2 className="text-aui-sm font-medium text-aui-fg">
-                  {defaultCopy.workspaceDefault}
-                </h2>
-                <p className="text-aui-sm text-aui-muted">
-                  {defaultCopy.workspaceDefault} answers a message that tags no agent, unless a
-                  project sets its own. It lives on the workspace's Agents tab.
-                </p>
-                <a
-                  href={href({ page: "project", name: "", tab: "agents" })}
-                  className={`${button} self-start`}
-                  onClick={follow(onOpenWorkspaceAgents)}
-                >
-                  {defaultCopy.workspaceDefault}
-                </a>
-              </section>
-              <section className={`${card} flex flex-col gap-3`}>
-                <h2 className="text-aui-sm font-medium text-aui-fg">Agent capabilities</h2>
-                <p className="text-aui-xs text-aui-muted">
-                  Each agent reads its description first when deciding whether to take a message.
-                  Edit them in Agents.
-                </p>
-                {agents.length === 0 && (
-                  <p className="text-aui-sm text-aui-muted">No agents configured.</p>
-                )}
-                {agents.map((a) => (
-                  <div key={a.spec.name}>
-                    <p className="text-aui-sm font-medium text-aui-fg">{a.spec.name}</p>
-                    <p className="text-aui-xs text-aui-muted">
-                      {a.spec.tagged_only
-                        ? "Only when tagged."
-                        : a.spec.description || "Decides using its name and instructions."}
-                    </p>
-                  </div>
-                ))}
-              </section>
+              <ModelProviderSettings canEdit={me.permissions.includes("clients:write")} />
             </>
           )}
 
@@ -436,23 +305,6 @@ export function Settings({
                   {notRead}
                 </section>
               )}
-              {onConnections && (
-                <section className={`${card} flex flex-wrap items-center justify-between gap-3`}>
-                  <div className="flex min-w-0 flex-col gap-1">
-                    <p className="text-aui-sm text-aui-fg">Your connections</p>
-                    <p className="text-aui-xs text-aui-muted">
-                      The tools that act as you, and the credential you gave each.
-                    </p>
-                  </div>
-                  <a
-                    href={href({ page: "connections" })}
-                    className={button}
-                    onClick={follow(onConnections)}
-                  >
-                    Open Your Connections
-                  </a>
-                </section>
-              )}
             </>
           )}
 
@@ -460,79 +312,22 @@ export function Settings({
             <>
               <header className="pb-2">
                 <h1 className={pageTitle}>Appearance</h1>
-                <p className={pageLede}>These follow you to any browser you sign in from.</p>
               </header>
               {!read && <section className={card}>{notRead}</section>}
               {read && (
-                <section className={`${card} flex flex-col gap-4`}>
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <span>
-                      <span className="block text-aui-sm text-aui-fg">Theme</span>
-                      <span className="block text-aui-xs text-aui-muted">
-                        System follows your device.
-                      </span>
-                    </span>
-                    <Segmented
-                      label="Theme"
-                      value={prefs.theme}
-                      onChange={(theme) => savePrefs({ theme })}
-                      options={[
-                        { id: "system", label: "System", icon: <MonitorIcon size={14} /> },
-                        { id: "light", label: "Light", icon: <SunIcon size={14} /> },
-                        { id: "dark", label: "Dark", icon: <MoonIcon size={14} /> },
-                      ]}
-                    />
-                  </div>
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <span>
-                      <span className="block text-aui-sm text-aui-fg">Accent</span>
-                      <span className="block text-aui-xs text-aui-muted">
-                        Used for focus, selection and progress.
-                      </span>
-                    </span>
-                    <Segmented
-                      label="Accent"
-                      value={prefs.accent}
-                      onChange={(accent) => savePrefs({ accent })}
-                      options={accents}
-                    />
-                  </div>
-                  <div className="border-t border-aui-border pt-4">
-                    <span className="block text-aui-sm text-aui-fg">
-                      {defaultCopy.preferences.typeface}
-                    </span>
-                    <p className="mt-1 text-aui-xs text-aui-muted">
-                      {defaultCopy.preferences.typefaceDescription}
-                    </p>
-                    <p className="mt-3 text-aui-sm">A clear place to think and work.</p>
-                    <p className="mt-1 font-aui-mono text-aui-xs text-aui-muted">
-                      SKILL.md / memory / agents
-                    </p>
-                  </div>
+                <section className={`${card} flex flex-wrap items-center justify-between gap-3`}>
+                  <span className="text-aui-sm text-aui-fg">Theme</span>
+                  <Segmented
+                    label="Theme"
+                    value={prefs.theme}
+                    onChange={(theme) => savePrefs({ theme })}
+                    options={[
+                      { id: "system", label: "System", icon: <MonitorIcon size={14} /> },
+                      { id: "light", label: "Light", icon: <SunIcon size={14} /> },
+                      { id: "dark", label: "Dark", icon: <MoonIcon size={14} /> },
+                    ]}
+                  />
                 </section>
-              )}
-            </>
-          )}
-
-          {section === "models" && (
-            <>
-              <header className="pb-2">
-                <h1 className={pageTitle}>Models</h1>
-                <p className={pageLede}>
-                  Policies say which models agents run on, in order, and which errors move a call to
-                  the next. An agent that follows a policy picks up a change at its next call, so
-                  one edit moves every agent on it off a failing provider.{" "}
-                  {canAdmin ? "" : "Only an admin can change these."}
-                </p>
-              </header>
-              {workspace && (
-                <ModelPolicies
-                  key={JSON.stringify(workspace.model_policies ?? [])}
-                  saved={workspace.model_policies ?? []}
-                  agents={agents}
-                  canEdit={canAdmin}
-                  onSave={(model_policies) => saveWorkspace({ model_policies })}
-                />
               )}
             </>
           )}
@@ -716,7 +511,9 @@ export function Settings({
                   <dt className="text-aui-muted">Signed in as</dt>
                   <dd className="text-aui-fg">{who.email || who.name || who.subject}</dd>
                   <dt className="text-aui-muted">Workspace</dt>
-                  <dd className="text-aui-fg">{who.tenant}</dd>
+                  <dd className="text-aui-fg">
+                    {workspace?.workspace_name || defaultCopy.projects.workspace}
+                  </dd>
                   <dt className="text-aui-muted">Roles</dt>
                   <dd className="text-aui-fg">
                     {who.roles?.length ? who.roles.join(", ") : "None"}
@@ -735,12 +532,16 @@ export function Settings({
                   {me.permissions.map((p) => (
                     <li
                       key={p}
-                      className="rounded-full border border-aui-border px-2 py-0.5 font-aui-mono text-aui-2xs text-aui-muted"
+                      className="rounded-full border border-aui-border px-2 py-0.5 text-aui-xs text-aui-muted"
                     >
-                      {p}
+                      {doing[p] || "Additional workspace access"}
                     </li>
                   ))}
                 </ul>
+                <details className="text-aui-xs text-aui-muted">
+                  <summary className="cursor-pointer">Technical permission names</summary>
+                  <p className="mt-2 break-words font-aui-mono">{me.permissions.join(", ")}</p>
+                </details>
               </section>
               <AccessExplain name={shown} permission={explain} onPermission={onExplain} />
             </>
@@ -751,245 +552,174 @@ export function Settings({
   );
 }
 
-/**
- * Whether agents decide for themselves to take a message that names no agent,
- * and the model that asks them. The provider is one this deployment declares;
- * its key comes from an environment variable or a secrets manager, never from
- * here.
- */
-function RouterControl({
-  saved,
-  canEdit,
-  onSave,
+/** Your own settings; every other section is the workspace's. */
+const yours: Section[] = ["profile", "notifications", "appearance"];
+/** Pages shown inside Your settings. */
+const yourPages = [
+  { label: "Plugins", icon: <PlugIcon size={16} />, route: { page: "connections" } as Route },
+];
+/** Apps the workspace installs once (Slack, GitHub): an administrator's page, in Workspace settings. */
+const appsPage = {
+  label: "Apps",
+  icon: <NetworkIcon size={16} />,
+  route: { page: "connections", scope: "apps" } as Route,
+};
+
+/** The settings sections, and the workspace pages that live inside settings. */
+export function SettingsNav({
+  me,
+  section,
+  active,
+  onSection,
+  onNavigate,
 }: {
-  saved: RouterSettings;
-  canEdit: boolean;
-  onSave: (next: RouterSettings) => void;
+  me: Me;
+  section?: Section;
+  /** The label of a linked page on screen, which then shows as current. */
+  active?: string;
+  onSection: (next: Section) => void;
+  onNavigate?: (route: Route) => void;
 }) {
-  const [draft, setDraft] = useState<RouterSettings>(saved);
-  const [providers, setProviders] = useState<string[] | null>(null);
-  useEffect(() => {
-    let live = true;
-    api
-      .modelProviders()
-      .then(
-        (all) =>
-          live &&
-          setProviders(all.filter((p) => p.declared && p.name !== "offline").map((p) => p.name)),
-      )
-      .catch(() => live && setProviders([]));
-    return () => {
-      live = false;
-    };
-  }, []);
-  const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
-  const problem =
-    draft.enabled && !draft.provider
-      ? "Choose a provider."
-      : draft.enabled && !draft.model?.trim()
-        ? "Name a model."
-        : null;
-  const choices = providers ?? [];
-  // A saved provider stays listed even when this deployment no longer declares it, so the field shows what is saved.
-  const listed =
-    draft.provider && !choices.includes(draft.provider) ? [draft.provider, ...choices] : choices;
+  const canReadAudit =
+    me.principal.roles?.includes("admin") && me.permissions.includes("projects:govern");
+  const canGovern = me.permissions.includes("projects:govern");
+  const admin =
+    me.principal.roles?.includes("admin") ||
+    me.permissions.includes("agents:write") ||
+    me.permissions.includes("projects:govern");
+  type Entry = { id: Section; label: string; icon: ReactNode };
+  // Your own settings first; workspace settings only for someone who can change them.
+  const personal: Entry[] = [
+    { id: "profile", label: "Profile", icon: <UserIcon size={16} /> },
+    { id: "notifications", label: "Notifications", icon: <BellIcon size={16} /> },
+    { id: "appearance", label: "Appearance", icon: <PaletteIcon size={16} /> },
+  ];
+  const workspaceEntries: Entry[] = admin
+    ? [
+        { id: "workspace", label: "Workspace", icon: <ServerIcon size={16} /> },
+        { id: "providers", label: "Model providers", icon: <BrainIcon size={16} /> },
+        { id: "limits", label: "Limits", icon: <GaugeIcon size={16} /> },
+        { id: "voice", label: defaultCopy.voiceSettings.title, icon: <MicIcon size={16} /> },
+        { id: "access", label: "Access", icon: <ShieldIcon size={16} /> },
+        ...(canReadAudit
+          ? [
+              {
+                id: "read-audit" as const,
+                label: defaultCopy.readAudit.label,
+                icon: <ScrollTextIcon size={16} />,
+              },
+            ]
+          : []),
+        ...(canGovern
+          ? [
+              {
+                id: "deletions" as const,
+                label: defaultCopy.deletions.title,
+                icon: <TrashIcon size={16} />,
+              },
+            ]
+          : []),
+      ]
+    : [];
+  // Your settings and the workspace's are two places: the open section says which.
+  const scope =
+    (!active && section && yours.includes(section)) ||
+    (active && yourPages.some((p) => p.label === active))
+      ? "you"
+      : "workspace";
+  const groups = [
+    scope === "you"
+      ? { title: "Your settings", entries: personal }
+      : { title: "Workspace settings", entries: workspaceEntries },
+  ];
+  const sectionLink =
+    "inline-flex min-h-9 pointer-coarse:min-h-11 shrink-0 items-center gap-2.5 whitespace-nowrap rounded-aui px-2.5 text-left text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-hover aria-[current=page]:text-aui-fg";
+  // On a phone the sections are a row that scrolls inside itself, kept on the open one.
+  const strip = useStrip<HTMLElement>(active ?? section ?? "");
   return (
-    <section className={`${card} flex flex-col gap-3`} aria-label="Agents decide for themselves">
-      <SettingsFormRow
-        id="workspace-router"
-        label="Agents decide for themselves"
-        description="On, every agent available where an untagged message is posted is asked, all at once, whether it should answer. Off, no agent takes a message on its own."
-        compact
-      >
-        <SettingSwitch
-          id="workspace-router"
-          aria-describedby="workspace-router-hint"
-          checked={draft.enabled}
-          disabled={!canEdit}
-          onCheckedChange={(enabled) => setDraft((d) => ({ ...d, enabled }))}
-        />
-      </SettingsFormRow>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Label text="Provider" hint="One this deployment declares.">
-          <NativeSelect
-            aria-label="Router provider"
-            value={draft.provider ?? ""}
-            disabled={!canEdit || !draft.enabled}
-            onChange={(e) => setDraft((d) => ({ ...d, provider: e.target.value || undefined }))}
-          >
-            <option value="">
-              {providers === null
-                ? "Loading providers"
-                : listed.length === 0
-                  ? "No provider declared"
-                  : "Choose a provider"}
-            </option>
-            {listed.map((name) => (
-              <option key={name} value={name}>
-                {name}
-              </option>
-            ))}
-          </NativeSelect>
-        </Label>
-        <Label text="Model" hint="A small, fast model is enough: each agent answers yes or no.">
-          <input
-            className={field}
-            maxLength={200}
-            value={draft.model ?? ""}
-            disabled={!canEdit || !draft.enabled}
-            onChange={(e) => setDraft((d) => ({ ...d, model: e.target.value || undefined }))}
-          />
-        </Label>
+    <>
+      {/* The rule is drawn on a frame around the sections, so it runs the full width while the row's ends fade. */}
+      {/* On a phone the row scrolls inside the 16px gutter, never under the screen's edge. */}
+      <div className="shrink-0 border-aui-border border-b px-4 md:w-52 md:border-r md:border-b-0 md:px-0">
+        <nav
+          ref={strip}
+          aria-label="Settings sections"
+          className="humagen-strip flex gap-0.5 overflow-x-auto py-2 md:flex-col md:p-3"
+        >
+          {groups.map((g) => (
+            <Fragment key={g.title}>
+              <p className="hidden px-2.5 pt-3 pb-1 text-aui-xs font-medium text-aui-muted first:pt-0 md:block">
+                {g.title}
+              </p>
+              {g.entries.map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  aria-current={!active && section === s.id ? "page" : undefined}
+                  onClick={() => onSection(s.id)}
+                  className={sectionLink}
+                >
+                  {s.icon}
+                  {s.label}
+                </button>
+              ))}
+              {scope === "you" &&
+                onNavigate &&
+                yourPages.map((item) => (
+                  <a
+                    key={item.label}
+                    href={href(item.route)}
+                    onClick={follow(() => onNavigate(item.route))}
+                    aria-current={active === item.label ? "page" : undefined}
+                    className={sectionLink}
+                  >
+                    {item.icon}
+                    {item.label}
+                  </a>
+                ))}
+              {scope === "workspace" &&
+                onNavigate &&
+                [
+                  ...(me.permissions.includes("clients:write") ? [appsPage] : []),
+                  ...linked.filter((item) => me.permissions.includes(item.permission)),
+                ].map((item) => (
+                  <a
+                    key={item.label}
+                    href={href(item.route)}
+                    onClick={follow(() => onNavigate(item.route))}
+                    aria-current={active === item.label ? "page" : undefined}
+                    className={sectionLink}
+                  >
+                    {item.icon}
+                    {item.label}
+                  </a>
+                ))}
+            </Fragment>
+          ))}
+        </nav>
       </div>
-      <p className="text-aui-xs text-aui-muted">
-        No credential is stored here. The provider's key comes from an environment variable or a
-        secrets manager.
-      </p>
-      {canEdit && (
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          {problem && dirty && <span className="text-aui-xs text-aui-bad">{problem}</span>}
-          {dirty && (
-            <button type="button" className={button} onClick={() => setDraft(saved)}>
-              Discard
-            </button>
-          )}
-          <button
-            type="button"
-            className={primary}
-            disabled={!dirty || problem !== null}
-            onClick={() => onSave(draft)}
-          >
-            Save Routing
-          </button>
-        </div>
-      )}
-    </section>
+    </>
   );
 }
 
-/** Every model policy in the workspace, edited together and saved at once. */
-function ModelPolicies({
-  saved,
-  agents,
-  canEdit,
-  onSave,
+/** A workspace page shown inside settings, beside the settings sections. */
+export function SettingsFrame({
+  me,
+  active,
+  onSection,
+  onNavigate,
+  children,
 }: {
-  saved: ModelPolicy[];
-  agents: Revision[];
-  canEdit: boolean;
-  onSave: (next: ModelPolicy[]) => void;
+  me: Me;
+  active: string;
+  onSection: (next: Section) => void;
+  onNavigate: (route: Route) => void;
+  children: ReactNode;
 }) {
-  const [draft, setDraft] = useState<ModelPolicy[]>(saved);
-  const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
-  const users = (name: string) =>
-    agents
-      .filter((a) => a.spec.provider === POLICY && a.spec.model === name)
-      .map((a) => a.spec.name);
-  const edit = (i: number, patch: Partial<ModelPolicy>) =>
-    setDraft((d) => d.map((p, j) => (j === i ? { ...p, ...patch } : p)));
-  const problem =
-    draft
-      .map((p) =>
-        !/^[a-z0-9][a-z0-9-]{0,62}$/.test(p.name)
-          ? `"${p.name}" is not a valid name: lowercase letters, digits and dashes.`
-          : chainProblem(p.models, p.fallback_on ?? []),
-      )
-      .find(Boolean) ??
-    (new Set(draft.map((p) => p.name)).size !== draft.length ? "Two policies share a name." : null);
-
   return (
-    <div className="flex flex-col gap-6">
-      {draft.length === 0 && (
-        <p className={`${card} text-aui-sm text-aui-muted`}>
-          No policies yet. Agents each name their own models.
-        </p>
-      )}
-      {draft.map((p, i) => {
-        const by = users(saved[i]?.name ?? p.name);
-        return (
-          <section
-            key={i}
-            className="flex flex-col gap-3 border-aui-border border-t pt-5 first:border-t-0 first:pt-0"
-          >
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-[14rem_1fr_auto] sm:items-end">
-              <Label
-                text="Name"
-                hint={
-                  by.length > 0
-                    ? "Agents follow it by name, so it cannot change while they do."
-                    : undefined
-                }
-              >
-                <input
-                  className={field}
-                  value={p.name}
-                  disabled={!canEdit || by.length > 0}
-                  onChange={(e) => edit(i, { name: e.target.value })}
-                />
-              </Label>
-              <Label text="Description">
-                <input
-                  className={field}
-                  maxLength={300}
-                  value={p.description ?? ""}
-                  disabled={!canEdit}
-                  onChange={(e) => edit(i, { description: e.target.value })}
-                />
-              </Label>
-              {canEdit && (
-                <button
-                  type="button"
-                  className={button}
-                  disabled={by.length > 0}
-                  title={by.length > 0 ? `Used by ${by.join(", ")}` : undefined}
-                  onClick={() => setDraft((d) => d.filter((_, j) => j !== i))}
-                >
-                  Remove
-                </button>
-              )}
-            </div>
-            <p className="text-aui-xs text-aui-muted">
-              {by.length === 0 ? "No agent follows it yet." : `Followed by ${by.join(", ")}.`}
-            </p>
-            <ModelChain
-              label={`Models of ${p.name}`}
-              models={p.models}
-              fallbackOn={p.fallback_on ?? []}
-              editable={canEdit}
-              onChange={(models, fallback_on) =>
-                edit(i, { models, fallback_on: fallback_on.length > 0 ? fallback_on : undefined })
-              }
-            />
-          </section>
-        );
-      })}
-      {canEdit && (
-        <div className="flex flex-wrap items-center justify-between gap-2 border-aui-border border-t pt-4">
-          <button
-            type="button"
-            className={button}
-            onClick={() => setDraft((d) => [...d, starterPolicy(d.map((p) => p.name))])}
-          >
-            Add Policy
-          </button>
-          <span className="flex items-center gap-2">
-            {problem && <span className="text-aui-xs text-aui-bad">{problem}</span>}
-            {dirty && (
-              <button type="button" className={button} onClick={() => setDraft(saved)}>
-                Discard
-              </button>
-            )}
-            <button
-              type="button"
-              className={primary}
-              disabled={!dirty || problem !== null}
-              onClick={() => onSave(draft)}
-            >
-              Save Policies
-            </button>
-          </span>
-        </div>
-      )}
+    <div className="humagen-fade flex min-h-0 flex-1 flex-col md:flex-row">
+      <SettingsNav me={me} active={active} onSection={onSection} onNavigate={onNavigate} />
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">{children}</div>
     </div>
   );
 }

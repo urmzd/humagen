@@ -1,11 +1,15 @@
 // Package join decides which agents take a message that names none.
 //
-// There is no central pick. Each agent available where the message was
-// posted is asked, all at once, one low-effort question: should I be
-// involved? An agent that says yes jumps in and answers; one that says no
-// exits, and nothing of it is kept but the reason. Several agents can join
-// the same message. When none does, nothing starts, and the message waits
-// for a person to answer it or to tag an agent.
+// There is no central pick, and no agent is asked blindly. The agents
+// available where the message was posted are searched first (Search): BM25
+// over each one's name, prompt and the asks it answered well, as a tool is
+// found by its description, so an agent needs no description written for
+// routing. Only the best few matches (Shortlist) are then asked, all at
+// once, one low-effort question: should I be involved? An agent that says
+// yes jumps in and answers; one that says no exits, and nothing of it is
+// kept but the reason. Several agents can join the same message. When none
+// does, the caller decides what happens: the console falls back so a
+// message always lands, while a channel stays quiet.
 //
 // The question is behind Asker, so a deployment chooses what answers it: a
 // small model (Model), or anything else. An Asker that fails, or answers in
@@ -31,6 +35,9 @@ type Candidate struct {
 	// Prompt is the agent's system prompt, so the question knows what it is
 	// for when its description says little.
 	Prompt string
+	// Asks are asks the agent answered well (a person rated the answer up),
+	// newest first, which Search matches as it matches the prompt.
+	Asks []string
 }
 
 // Decision is one agent's answer to "should I be involved?".

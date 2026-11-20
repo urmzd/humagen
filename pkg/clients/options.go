@@ -16,10 +16,10 @@ type Capabilities struct {
 
 func EventIDs(surface Surface) []string {
 	if surface == Slack {
-		return []string{"app_mention", "message", "slash_command"}
+		return []string{"app_mention", "message", "slash_command", "reaction_added", "reaction_removed"}
 	}
 	if surface == GitHub {
-		return []string{"issue_comment", "pull_request_review_comment", "pull_request_review", "issues", "pull_request", "check_run", "push"}
+		return []string{"issue_comment", "pull_request_review_comment", "pull_request_review", "pull_request_review_thread", "reaction", "issues", "pull_request", "check_run", "push"}
 	}
 	return []string{}
 }
@@ -31,7 +31,7 @@ func ActionIDs(surface Surface) []string {
 		// Every action the GitHub adapter registers, so a saved list can
 		// grant any of them: github_read_file and github_workflow_status
 		// (CI results) are read-only, and the console lists them.
-		return []string{"github_read_context", "github_read_file", "github_workflow_status", "github_comment", "github_request_review", "github_add_labels", "github_apply_changes", "github_run_checks"}
+		return []string{"github_read_context", "github_fix_base", "github_create_fix_pr", "github_read_file", "github_workflow_status", "github_comment", "github_create_review", "github_request_review", "github_add_labels", "github_apply_changes", "github_run_checks"}
 	}
 	return []string{}
 }

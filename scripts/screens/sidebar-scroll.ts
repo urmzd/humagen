@@ -37,7 +37,7 @@ export async function sidebarScroll(page: Page): Promise<void> {
       const box = element.getBoundingClientRect();
       const header = element.firstElementChild?.getBoundingClientRect();
       const footer = element.lastElementChild?.getBoundingClientRect();
-      const nav = element.querySelector("nav")?.getBoundingClientRect();
+      const nav = element.querySelector("[data-sidebar-scroll] > div")?.getBoundingClientRect();
       return {
         top: box.top,
         bottom: box.bottom,
@@ -109,7 +109,7 @@ export async function sidebarScroll(page: Page): Promise<void> {
   if (size) {
     await page.setViewportSize({ width: size.width, height: 560 });
     const short = await sidebar.evaluate((element) => {
-      const outer = element.querySelector<HTMLElement>(":scope > .aui-scroll");
+      const outer = element.querySelector<HTMLElement>("[data-sidebar-scroll]");
       const lists = element.querySelector<HTMLElement>("[data-sidebar-lists]");
       return {
         outer: outer ? getComputedStyle(outer).overflowY : "",

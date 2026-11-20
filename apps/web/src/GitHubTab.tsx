@@ -153,11 +153,11 @@ function GitHubContent({ tab, review = "" }: { tab: PaneTab; review?: string }) 
           {value.subject.title} #{value.subject.number}
         </h2>
         <p className="text-aui-xs text-aui-muted">
-          {ref?.repo} · {value.subject.state}
+          {ref?.repo} | {value.subject.state}
           {value.subject.head?.sha && (
             <>
               {" "}
-              ·{" "}
+              |{" "}
               <a
                 className="inline-flex min-h-7 items-center underline pointer-coarse:min-h-11"
                 href={`https://github.com/${ref?.repo}/commit/${value.subject.head.sha}`}

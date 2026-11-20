@@ -4,6 +4,10 @@ import { ago, useInsideGutter } from "./ui.tsx";
 
 const words = defaultCopy.threads;
 
+// Making a formatter costs far more than using one, and every message in a
+// thread has a time, so one is shared.
+const exactTime = new Intl.DateTimeFormat(undefined, { dateStyle: "full", timeStyle: "long" });
+
 /** A message's exact local date and time, available without a pointer. */
 export function MessageTime({ at }: { at: string }) {
   const id = useId();
@@ -17,7 +21,7 @@ export function MessageTime({ at }: { at: string }) {
   const shift = useInsideGutter(panel, root, open);
   const date = new Date(at);
   if (!Number.isFinite(date.getTime())) return null;
-  const exact = date.toLocaleString(undefined, { dateStyle: "full", timeStyle: "long" });
+  const exact = exactTime.format(date);
   return (
     <span
       ref={root}

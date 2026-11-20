@@ -9,13 +9,18 @@ import {
 import { useCallback, useMemo, useRef, useState } from "react";
 
 let seq = 0;
-function message(text: string, pick?: QueuedMessage["pick"]): QueuedMessage {
+function message(
+  text: string,
+  pick?: QueuedMessage["pick"],
+  uploads?: QueuedMessage["uploads"],
+): QueuedMessage {
   seq += 1;
   return {
     id: `q${Date.now().toString(36)}${seq}`,
     text,
     queuedAt: new Date().toISOString(),
     ...(pick ? { pick: { ...pick } } : {}),
+    ...(uploads?.length ? { uploads: uploads.map((f) => ({ ...f })) } : {}),
   };
 }
 
@@ -23,9 +28,9 @@ export interface QueueControls {
   state: QueueState;
   dispatch: (action: QueueAction) => void;
   /** Start now if idle, else queue behind the running turn. */
-  send: (text: string, pick?: QueuedMessage["pick"]) => void;
+  send: (text: string, pick?: QueuedMessage["pick"], uploads?: QueuedMessage["uploads"]) => void;
   /** Interrupt the running turn and run this next. */
-  sendNow: (text: string, pick?: QueuedMessage["pick"]) => void;
+  sendNow: (text: string, pick?: QueuedMessage["pick"], uploads?: QueuedMessage["uploads"]) => void;
   promote: (id: string) => void;
   edit: (id: string, text: string) => void;
   remove: (id: string) => void;
@@ -77,8 +82,10 @@ export function useQueue({
     () => ({
       state,
       dispatch,
-      send: (text, pick) => dispatch({ type: "send", message: message(text, pick) }),
-      sendNow: (text, pick) => dispatch({ type: "sendNow", message: message(text, pick) }),
+      send: (text, pick, uploads) =>
+        dispatch({ type: "send", message: message(text, pick, uploads) }),
+      sendNow: (text, pick, uploads) =>
+        dispatch({ type: "sendNow", message: message(text, pick, uploads) }),
       promote: (id) => dispatch({ type: "promote", id }),
       edit: (id, text) => dispatch({ type: "edit", id, text }),
       remove: (id) => dispatch({ type: "remove", id }),

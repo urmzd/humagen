@@ -6,8 +6,19 @@ import { hubTabs, workspaceHub } from "./workspace-navigation.ts";
 test("Customize sections have stable addresses", () => {
   for (const section of ["agents", "skills", "connections", "tools"] as const) {
     const route = { page: "customize", section } as const;
-    assert.deepEqual(parse(href(route)), route);
-    assert.equal(workspaceHub(route), "customize");
+    const target =
+      section === "agents"
+        ? { page: "agents" }
+        : section === "skills"
+          ? { page: "library", section: "skills" }
+          : section === "tools"
+            ? { page: "connections", provider: "other" }
+            : { page: "connections" };
+    assert.deepEqual(parse(href(route)), target);
+    assert.equal(
+      workspaceHub(route),
+      section === "agents" || section === "skills" ? "agents" : null,
+    );
   }
 });
 test("Customize sections follow existing read permissions", () => {
@@ -15,7 +26,7 @@ test("Customize sections follow existing read permissions", () => {
   assert.equal(hubTabs("customize", route, () => false).length, 0);
   assert.deepEqual(
     hubTabs("customize", route, (p) => p === "runs:read").map((t) => t.label),
-    ["Connected Accounts", "Tool Servers"],
+    ["Connected Accounts", "MCPs"],
   );
 });
 
@@ -30,5 +41,5 @@ test("Customize skill links retain file and version selections", () => {
     libraryTab: "contents",
   } as const;
   const address = new URL(href(route), "https://example.com");
-  assert.deepEqual(parse(address.pathname, address.search), route);
+  assert.deepEqual(parse(address.pathname, address.search), { ...route, page: "library" });
 });

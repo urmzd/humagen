@@ -77,7 +77,7 @@ export function callLine(task: Task, edit?: FileEdit, copy: Copy = defaultCopy):
 export interface ToolsLine {
   /** "Read 3 files, ran 2 commands"; "Running npm test" while a call runs. */
   text: string;
-  /** Calls that failed, said after the line without alarm. */
+  /** Calls that failed, said after the line without alarm. Zero when the line itself says all failed. */
   failed: number;
   /** A call is waiting on a person. */
   waiting: boolean;
@@ -123,6 +123,10 @@ export function toolsLine(
       })
     : undefined;
   const base = { failed, waiting, running: running !== undefined, counts };
+  if (waiting) {
+    const pending = tasks.find((task) => task.status === "waiting");
+    return { ...base, text: `Awaiting approval: ${pending?.title || "tool call"}` };
+  }
   if (running) {
     const edit = edits.get(running.id);
     const what = edit ? clipTarget(edit.path) : toolWords(running);
@@ -133,6 +137,8 @@ export function toolsLine(
     const edit = edits.get(only.id);
     return { ...base, text: callLine(only, edit, copy), ...(edit ? { file: edit } : {}) };
   }
+  // Nothing was done, so nothing is named as done; the count is the whole line.
+  if (failed === tasks.length) return { ...base, failed: 0, text: w.allFailed(failed) };
   // Calls by kind, in the order each kind first came. Files written count as one kind.
   const order: string[] = [];
   const count = new Map<string, number>();

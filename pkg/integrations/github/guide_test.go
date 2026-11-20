@@ -16,7 +16,7 @@ import (
 func TestPRGuideUpdatesAcrossCommitsWithoutDuplicateActivationComments(t *testing.T) {
 	fake := github.NewFake()
 	ref := github.Ref{Owner: "acme", Repo: "repo", Number: 42}
-	cfg := github.Config{API: fake, Guides: true, Bots: map[string]string{"reviewer[bot]": "reviewer"}, AutoLabels: map[string]map[string]string{"acme/repo": {"auto": "reviewer"}}}
+	cfg := github.Config{API: fake, Guides: true, Bots: map[string]string{"reviewer[bot]": "reviewer"}}
 	c, tags := start(t, cfg)
 	for i, sha := range []string{commitSHA, strings.Repeat("b", 40)} {
 		evidence := github.Context{Subject: github.ContextSubject{Number: 42, Title: "Add feature", Body: "Why the feature matters"}, Files: []github.ContextFile{{Filename: "feature.go", Status: "modified", Patch: "+change"}}}
@@ -24,11 +24,7 @@ func TestPRGuideUpdatesAcrossCommitsWithoutDuplicateActivationComments(t *testin
 		if err := fake.SeedContext(ref, evidence); err != nil {
 			t.Fatal(err)
 		}
-		action := "labeled"
-		if i > 0 {
-			action = "synchronize"
-		}
-		raw := fmt.Sprintf(`{"action":%q,"repository":{"name":"repo","owner":{"login":"acme"}},"sender":{"type":"User"},"label":{"name":"auto"},"pull_request":{"number":42,"labels":[{"name":"auto"}],"head":{"sha":%q}}}`, action, sha)
+		raw := fmt.Sprintf(`{"action":"review_requested","repository":{"name":"repo","owner":{"login":"acme"}},"sender":{"type":"User"},"requested_reviewer":{"login":"reviewer[bot]"},"pull_request":{"number":42,"state":"open","head":{"sha":%q}}}`, sha)
 		for retry := range 2 {
 			w := httptest.NewRecorder()
 			c.ServeHTTP(w, deliver(t, "pull_request", fmt.Sprintf("delivery-%d", i), raw))

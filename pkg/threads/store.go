@@ -38,6 +38,8 @@ const namespace = "threads"
 //   - "s:<client>:<channel>:<ts>" the thread a surface's thread is.
 //   - "x:<thread>:<surface id>" the message a surface's id was posted as.
 //   - "w:<word>:<thread>" that a message of the thread says the word.
+//   - "f:<thread>:<seq>" that a message's follow-up waits to be carried out
+//     (Followup), written with the message and deleted when it is handled.
 //   - "c:counts" how many threads the tenant and each project hold.
 const (
 	keyThread    = "t:"
@@ -47,6 +49,7 @@ const (
 	keySurface   = "s:"
 	keyPosted    = "x:"
 	keyWord      = "w:"
+	keyFollowup  = "f:"
 	keyCounts    = "c:counts"
 )
 
@@ -68,6 +71,10 @@ func surfaceKey(sf Surface) string {
 }
 
 func postedKey(id, surfaceID string) string { return keyPosted + id + ":" + surfaceID }
+
+func followupKey(id string, n int) string { return keyFollowup + id + ":" + state.Seq(int64(n)) }
+
+func followupPrefix(id string) string { return keyFollowup + id + ":" }
 
 // stamp is a time as nanoseconds, within what an int64 holds.
 func stamp(at time.Time) int64 {
@@ -700,6 +707,9 @@ func (s *Store) Post(tenantName, id string, m Message, at time.Time) (Message, b
 		if next.SurfaceID != "" {
 			w.at(tenantName, postedKey(id, next.SurfaceID), n, 0)
 		}
+		if next.Followup.Pending() {
+			w.put(tenantName, followupKey(id, n), struct{}{})
+		}
 		w.said(tenantName, id, next.Text)
 		if err := w.commit(s); err != nil {
 			return err
@@ -750,6 +760,88 @@ func (s *Store) Settle(tenantName, id, mid string, mentions []Mention) (Message,
 		}
 		w := s.write()
 		w.at(tenantName, messageKey(id, n), m, v)
+		if err := w.commit(s); err != nil {
+			return err
+		}
+		out, changed = m, true
+		return nil
+	})
+	if err != nil {
+		return Message{}, err
+	}
+	if changed {
+		s.tell(tenantName, Notice{ID: id, Message: mid, At: out.At})
+	}
+	return settled(out), nil
+}
+
+// Pending returns a thread's messages whose follow-up is still to be carried
+// out, oldest first: at most limit, MaxPage when zero or more. It reads the
+// follow-up index, never the thread's other messages.
+func (s *Store) Pending(tenantName, id string, limit int) ([]Message, error) {
+	if limit <= 0 || limit > MaxPage {
+		limit = MaxPage
+	}
+	h, _, err := s.writable(tenantName, id)
+	if err != nil {
+		return nil, err
+	}
+	items, _, err := s.kept.List(tenantName, state.Query{Prefix: followupPrefix(id), Limit: limit})
+	if err != nil {
+		return nil, readErr(err)
+	}
+	out := make([]Message, 0, len(items))
+	for _, it := range items {
+		n, err := strconv.Atoi(strings.TrimPrefix(it.Key, followupPrefix(id)))
+		if err != nil || n < 1 || n > h.Head {
+			continue
+		}
+		m, _, err := s.message(tenantName, id, n)
+		if errors.Is(err, ErrNotFound) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		if m.Followup.Pending() {
+			out = append(out, m)
+		}
+	}
+	return out, nil
+}
+
+// HandleFollowup records that a message's follow-up was carried out, and
+// takes it off the follow-up index in the same write. Its decision is kept
+// as it was. A follow-up already handled is left, so a retry changes
+// nothing.
+func (s *Store) HandleFollowup(tenantName, id, mid string) (Message, error) {
+	var out Message
+	changed := false
+	err := state.Retry(func() error {
+		cur, _, err := s.writable(tenantName, id)
+		if err != nil {
+			return err
+		}
+		n := seqOf(mid, cur.Head)
+		if n == 0 {
+			return fmt.Errorf("%w: message %s of %q", ErrNotFound, mid, id)
+		}
+		was, v, err := s.message(tenantName, id, n)
+		if err != nil {
+			return err
+		}
+		if was.Followup == nil {
+			return fmt.Errorf("%w: message %s of %q is no follow-up", ErrInvalid, mid, id)
+		}
+		m := was.clone()
+		if m.Followup.Handled {
+			out, changed = m, false
+			return nil
+		}
+		m.Followup.Handled = true
+		w := s.write()
+		w.at(tenantName, messageKey(id, n), m, v)
+		w.del(tenantName, followupKey(id, n))
 		if err := w.commit(s); err != nil {
 			return err
 		}
@@ -828,6 +920,8 @@ func (s *Store) update(tenantName, id string, version int, at time.Time, fn func
 		}
 		moves := next.Project != cur.Project || next.Channel != cur.Channel
 		switch {
+		case (next.Session == nil) != (cur.Session == nil) || next.Session != nil && *next.Session != *cur.Session:
+			return fmt.Errorf("%w: session identity is immutable", ErrInvalid)
 		case next.ReadOnly != cur.ReadOnly:
 			return fmt.Errorf("%w: archive status is immutable", ErrInvalid)
 		case !sameArchive(next.Archive, cur.Archive):
@@ -836,7 +930,7 @@ func (s *Store) update(tenantName, id string, version int, at time.Time, fn func
 			return fmt.Errorf("%w: the approval mode is changed on its own", ErrInvalid)
 		case next.Moves != cur.Moves:
 			return fmt.Errorf("%w: placement history is server managed", ErrInvalid)
-		case next.ID != cur.ID || !sameSurface(next.Surface, cur.Surface) || next.Announcement != cur.Announcement || !sameFork(next.Fork, cur.Fork):
+		case next.ID != cur.ID || !sameSurface(next.Surface, cur.Surface) || next.Announcement != cur.Announcement || !sameFork(next.Fork, cur.Fork) || !sameImport(next.Import, cur.Import):
 			return fmt.Errorf("%w: a thread stays where it was started", ErrInvalid)
 		case moves && (!moving || cur.Visibility != Private || next.Visibility != Private || cur.Surface != nil || cur.Announcement != ""):
 			return fmt.Errorf("%w: a thread stays where it was started; a private conversation moves, and Share moves one as it shares it", ErrInvalid)
@@ -1046,6 +1140,15 @@ func (s *Store) Get(tenantName, id string) (Thread, error) {
 		return Thread{}, err
 	}
 	return h.Thread, nil
+}
+
+// Summary reads the retained message count beside one conversation's record.
+func (s *Store) Summary(tenantName, id string) (Summary, error) {
+	h, _, err := s.lookup(tenantName, id)
+	if err != nil {
+		return Summary{}, err
+	}
+	return Summary{Thread: h.Thread, Messages: h.Head, First: h.First}, nil
 }
 
 // Message returns one of a thread's messages.
@@ -1301,6 +1404,61 @@ func (s *Store) Summaries(tenantName string, keep func(Thread) bool) (out []Summ
 		return nil, nil, err
 	}
 	return out, elsewhere, nil
+}
+
+// Many reads the records of several threads at once, by id: one statement
+// for every state.MaxList of them. An id with no record is left out.
+func (s *Store) Many(tenantName string, ids []string) ([]Thread, error) {
+	keys := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if ValidID(id) {
+			keys = append(keys, threadKey(id))
+		}
+	}
+	items, err := s.kept.LookupMany(tenantName, keys)
+	if err != nil {
+		return nil, readErr(err)
+	}
+	out := make([]Thread, 0, len(items))
+	for _, it := range items {
+		h, err := decodeHead(it.Value)
+		if err != nil {
+			return nil, readErr(fmt.Errorf("%q: %w", it.Key, err))
+		}
+		out = append(out, h.Thread)
+	}
+	return out, nil
+}
+
+// LastMessages reads the latest message of each of several threads at once,
+// by thread id, from summaries just read: one statement for every
+// state.MaxList of them. A thread with no message is left out.
+func (s *Store) LastMessages(tenantName string, of []Summary) (map[string]Message, error) {
+	keys := make([]string, 0, len(of))
+	for _, sum := range of {
+		if sum.Messages > 0 {
+			keys = append(keys, messageKey(sum.ID, sum.Messages))
+		}
+	}
+	items, err := s.kept.LookupMany(tenantName, keys)
+	if err != nil {
+		return nil, readErr(err)
+	}
+	at := make(map[string]Message, len(items))
+	for _, it := range items {
+		var m Message
+		if err := json.Unmarshal(it.Value, &m); err != nil {
+			return nil, readErr(fmt.Errorf("%q: %w", it.Key, err))
+		}
+		at[it.Key] = m
+	}
+	out := make(map[string]Message, len(items))
+	for _, sum := range of {
+		if m, ok := at[messageKey(sum.ID, sum.Messages)]; ok && sum.Messages > 0 {
+			out[sum.ID] = m
+		}
+	}
+	return out, nil
 }
 
 // Records returns the records of a tenant's threads that keep holds, in no

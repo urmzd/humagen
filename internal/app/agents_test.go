@@ -21,8 +21,9 @@ func fileAgent(name, project string) spec.Agent {
 }
 
 // The file's agent lists and homes land in order (the workspace, the
-// projects, the agents, then where each lives), they are the file's, and a
-// second start changes nothing.
+// projects, the agents, then each one's home), they are the file's, and a
+// second start changes nothing. Only the allow lists and the workspace
+// default decide who answers; a home says only who sees an agent.
 func TestTheFilesAgentsAndHomesLand(t *testing.T) {
 	p := newProjectsPlatform(t)
 	doc := spec.Platform{Metadata: spec.Metadata{Name: "acme"}, Spec: spec.PlatformSpec{
@@ -45,11 +46,11 @@ func TestTheFilesAgentsAndHomesLand(t *testing.T) {
 	if home, _ := tree.Home("globex-helper"); home != "Globex" {
 		t.Fatalf("globex-helper lives in %q", home)
 	}
-	if d, from := tree.DefaultOf("Globex"); d != "globex-helper" || from != "Globex" {
-		t.Fatalf("Globex's default = %s from %q", d, from)
+	if d, from := tree.DefaultOf("Globex"); d != projects.OpenDefault || from != projects.Root {
+		t.Fatalf("Globex's default = %s from %q, want the workspace's", d, from)
 	}
-	if tree.IsAvailable("Field", "globex-helper") || !tree.IsAvailable("Globex", "lead") {
-		t.Fatal("availability does not follow the file")
+	if !tree.IsAvailable("Field", "globex-helper") || !tree.IsAvailable("Globex", "lead") || tree.IsAvailable("Globex", "other") {
+		t.Fatal("availability does not follow the file's allow lists")
 	}
 	root := tree.Root()
 	if root.Agents.Default != projects.OpenDefault || !slices.Contains(root.FileOwns, projects.FieldAgents) {
@@ -157,5 +158,22 @@ func TestAnAgentMdFileLandsWithItsPolicy(t *testing.T) {
 	doc.Spec.Agents = []spec.Agent{{File: bad}}
 	if err := applyPlatforms(t.Context(), p, spec.Config{Platforms: []spec.Platform{doc}}, nil); err == nil {
 		t.Fatal("an .agent.md file saige cannot read was accepted")
+	}
+}
+
+// An agent file written when an agent offered per-message choices still
+// loads: the field is no longer read and is dropped.
+func TestAnAgentFileWithRetiredFieldsStillLoads(t *testing.T) {
+	p := newProjectsPlatform(t)
+	path := filepath.Join(t.TempDir(), "picker.json")
+	if err := os.WriteFile(path, []byte(`{"name":"picker","provider":"offline","model":"offline","system_prompt":"X.","choices":{"models":["offline/other"]}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	doc := spec.Config{Platforms: []spec.Platform{{Metadata: spec.Metadata{Name: "acme"}, Spec: spec.PlatformSpec{Agents: []spec.Agent{{File: path}}}}}}
+	if err := applyPlatforms(t.Context(), p, doc, nil); err != nil {
+		t.Fatalf("an agent file with choices = %v", err)
+	}
+	if _, err := p.Agents.Get(t.Context(), "acme", "picker", 0); err != nil {
+		t.Fatalf("the agent = %v", err)
 	}
 }

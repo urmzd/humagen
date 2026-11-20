@@ -1,4 +1,20 @@
-# CLI
+## Install an app
+
+`humagen install` registers the app with the service in your browser and
+connects it, so there is nothing to copy by hand for GitHub and two tokens to
+paste for Slack.
+
+```sh
+humagen install slack
+humagen install github --webhook-url https://hooks.example.com/connectors/github
+```
+
+`install slack` creates the app from Humagen's manifest, checks the bot token
+and the app-level token with Slack, keeps them in the keychain and writes
+their references into the spec. `install github` registers a GitHub App from
+a manifest, waits for you to install it, and creates the client through the
+API with the key and webhook secret GitHub issued. See the
+[Slack](../guides/slack.md) and [GitHub](../guides/github.md) guides.
 
 ## Connect a surface
 
@@ -55,7 +71,7 @@ client. If the principal lookup fails, the hint uses `<tenant>` as a placeholder
 | `--server URL` | API base URL; defaults to `$HUMAGEN_URL`, then `http://localhost:8080` |
 | `--token REF` | API bearer token reference; defaults to `env:HUMAGEN_TOKEN`. An unset default sends no token for dev mode. `--token ''` explicitly disables authentication. An explicit non-empty reference must resolve locally. |
 | `--name NAME` | Client name; defaults to `github` or `slack` |
-| `--agent NAME` | GitHub defaults to `code-reviewer`; Slack leaves the default agent empty for the workspace default |
+| `--agent NAME` | GitHub defaults to `code-reviewer`, from the Review package in the agent store; Slack leaves the default agent empty for the workspace default |
 | `--force` | Update an existing client with the same name and surface through `PUT /api/clients/{id}` |
 | `--json` | Print the API's create or update response as JSON, without human output |
 
@@ -81,6 +97,553 @@ values under the API contract. Use the console or API to manage additional clien
 options. HTTP errors are returned with their status and server response.
 
 After creating a GitHub client, mention `@code-reviewer` on a pull request.
+`code-reviewer` comes with the Review package: when the workspace has not
+installed it, the command says so first (`Next: install the Review package
+from the Store, then mention @code-reviewer on a pull request`). Install it
+under Agents, Store in the console, or with
+`POST /api/store/packages/review/install`.
 For Slack, configure Slack's Events API endpoint and mention the app in Slack.
 See the [GitHub](github.md), [Slack](slack.md) and [client](clients.md) references
 for app setup, webhook verification and routing.
+
+## Use the agent store
+
+`humagen store` lists, installs and removes the agent store's packages in a
+running platform, through the same API as the console's Store page. Run
+`humagen start` first. The command only sends the request and prints the
+server's answer: the server decides what is installed, what an install adds and
+what a removal retires.
+
+```sh
+humagen store list
+humagen store install review
+humagen store remove review
+```
+
+| Verb | Request | Behavior |
+| --- | --- | --- |
+| `list` | `GET /api/store/packages` | One row per package: its name, its current version, whether the workspace has it installed, the agents for which the server offers an update, the agents installing would add, and its title |
+| `install NAME` | `POST /api/store/packages/{name}/install` | Adds the package's missing agents and prints the ones added. Installing an installed package adds nothing |
+| `remove NAME` | `DELETE /api/store/packages/{name}` | Retires the package's agents and prints the ones retired. An agent changed in the workspace is retired only with `--force` |
+
+`NAME` is a package's name (`humagen/core`) or its last part (`core`). Flags may
+come before or after it.
+
+| Flag | Behavior |
+| --- | --- |
+| `--server URL` | API base URL; defaults to `$HUMAGEN_URL`, then `http://localhost:8080` |
+| `--token REF` | API bearer token reference; defaults to `env:HUMAGEN_TOKEN`. An unset default sends no token for dev mode. `--token ''` explicitly disables authentication. An explicit non-empty reference must resolve locally. The token is never printed |
+| `--json` | Print the API's response as JSON, unchanged, without human output |
+| `--force` | `remove` only: sends `force=true`, which also retires agents changed in the workspace |
+
+```sh
+humagen store list --json
+humagen store remove core --force --server https://humagen.example.com --token op://vault/humagen/token
+```
+
+There is no `humagen store update`: the API has no call that takes a package
+update. `list` shows where the server offers one (`update_available`, per
+agent), and the API does not report an installed version separate from the
+package's current `version`.
+
+Errors go to stderr with exit code 1, with the HTTP status, the server's
+response and what to do: 401 and 403 name `--token` and `HUMAGEN_TOKEN` (`list`
+needs `agents:read`, `install` and `remove` need `agents:write`), 404 names the
+unknown package, 409 on `remove` names `--force`, and a server that cannot be
+reached names `--server` and `HUMAGEN_URL`.
+
+## Import sessions, skills and agents
+
+`humagen import` brings what you already have in other assistants into a
+running platform, through its API. What the server already has is left as it
+is, so a second run sends only what is new. The one thing it replaces, in
+place, is a session's document that would now read differently. A skill
+folder that changed is not a replacement: it is drafted as a new revision
+beside the ones the library holds.
+
+```sh
+humagen import sessions
+humagen import sessions --since 720h --match humagen
+humagen import sessions --from none --export ~/Downloads/conversations.json
+humagen import sessions --from none --project field-notes \
+  --export ~/Downloads/conversations.json
+humagen import skills
+humagen import skills ~/.agents/skills --only ship,pr --scope workspace
+humagen import agents --provider anthropic --model claude-sonnet-5-5
+```
+
+| Verb | Reads | Sends |
+| --- | --- | --- |
+| `sessions` | Claude Code sessions (`~/.claude/projects/*/*.jsonl`), Codex sessions (`~/.codex/sessions` and `~/.codex/archived_sessions`, plain or `.zst`), and with `--export` a `conversations.json` from a ChatGPT or claude.ai data export | One knowledge document per session, in sources named `sessions-TOOL-YYYY-MM` by the month the session started. `POST /api/knowledge`, then `POST /api/knowledge/{name}/documents` |
+| `skills [DIR]` | Each folder under `DIR` that holds a `SKILL.md`. `DIR` defaults to `~/.agents/skills`, the store [agentspec](https://github.com/urmzd/agentspec) keeps | One draft per skill the library lacks, with the folder's files, and one new draft revision per skill whose folder changed since it was imported. `GET /api/library/skills`, then `POST /api/library/skills` |
+| `agents [DIR]` | Each Markdown agent file in `DIR` with YAML frontmatter, as Claude Code, Copilot and agentspec write them. `DIR` defaults to `~/.agents/agents` | One agent per file: its `name` and `description` from the frontmatter, its text as the system prompt. Every other field is named as not carried. `POST /api/agents` |
+
+A session's document holds what was asked, what was answered, one line per
+tool call (the tool and what it ran or read) and the start of each tool's
+result, at most 1,500 bytes of it. Each turn's heading carries what the export
+states about it, in one form for every format:
+
+```text
+## Asked [T id=u1]
+Tools used:
+- Bash: ls [T id=a1 call=t1]
+Tool result [T id=r1 call=t1]:
+## Branch 1: forks after id=a1
+### Asked [T id=u2]
+```
+
+`T` stands for the time the export states, in UTC, written as
+`2026-10-05T10:00:00Z`. `id` is the original id of the
+message, and `call` the original id of the tool call, so a result names the
+call it answers. A part the export does not state is left out of the brackets.
+An id is cut to 64 bytes.
+
+What each format's document keeps:
+
+- **Claude Code**
+  - Roles: Yes
+  - Time of each turn: Yes
+  - Order: Each turn after the one it replies to (`parentUuid`)
+  - Tool calls and results: Yes, linked by the call's id
+  - Message ids: Yes
+  - Attachments: Type and size of an image or document, not the file
+  - Branches: Yes
+  - Conversation id: Yes, in the `uri` and the `Source` line
+  - Provenance: Tool, id, directory, start
+  - Project (`--by-project`): Yes, by directory
+- **Codex**
+  - Roles: Yes
+  - Time of each turn: Yes
+  - Order: By time: a rollout names no parents
+  - Tool calls and results: Yes, linked by `call_id`
+  - Message ids: Where the rollout gives one
+  - Attachments: Type and size of an image, not the file
+  - Branches: Not supported: the format is one line of turns
+  - Conversation id: Yes
+  - Provenance: Tool, id, directory, start, and the session that started it
+  - Project (`--by-project`): Yes, by directory
+- **ChatGPT**
+  - Roles: Yes, with the messages tools sent
+  - Time of each turn: Yes
+  - Order: Each turn after the one it replies to (`mapping`)
+  - Tool calls and results: Yes: a message sent to a tool is a call, and a tool's message its result. The format gives a call no id, so the result's `call` is the id of the message that called it
+  - Message ids: Yes
+  - Attachments: Name, type and size, not the file
+  - Branches: Yes
+  - Conversation id: Yes
+  - Provenance: Tool, id, start
+  - Project: With `--project NAME`: the format has no directory for `--by-project` to go by
+- **claude.ai**
+  - Roles: Yes
+  - Time of each turn: Yes
+  - Order: Each turn after the one it replies to (`parent_message_uuid`); by time in an older export that names no parents
+  - Tool calls and results: Yes, linked by the call's id
+  - Message ids: Yes
+  - Attachments: Name, type, size and the text the export extracted; a file with no text is named
+  - Branches: Yes
+  - Conversation id: Yes
+  - Provenance: Tool, id, start
+  - Project: With `--project NAME`: the format has no directory for `--by-project` to go by
+
+Where the export says which turn each turn replies to, that orders the
+document: a turn is never put before the turn it replies to, whatever their
+times say, and the `Order` line of the heading counts the turns stamped earlier
+than a turn before them. Each still shows the time the export states. Time
+orders only what the export leaves unordered: the turns of a format with no
+parents, and the branches that fork after one turn. There, a turn with no time
+stays after the turn listed before it, turns of one time keep the export's
+order, and a tool's result stays after its call.
+
+The main path comes first: for ChatGPT the branch the export names as current
+(`current_node`), for Claude Code the one the file's last message ends, and
+for claude.ai the one the export names (`current_leaf_message_uuid`) or else
+the one its last listed message ends. Every other branch, the edits and
+retries a person moved on from, follows in a section of its own headed with
+the id of the turn it forks after (`Branch 2: forks after id=… in branch 1`
+for a fork inside a branch, `starts the conversation again` for a second
+first message). The same export always gives the same document. Tool results
+that hang off the path with nothing said are not a branch and stay on the
+path. A Claude Code record with no parent in the file, which is how a file
+goes on after its history is compacted, follows the record before it. At most
+20 branches are kept, and the heading counts the rest (`Branches not shown`).
+
+An image is named with `the image itself is not imported`, and another file
+with no text in the export with `its content is not in the export`: no
+format's file bytes are sent. At most 20 attachments of one message are
+named. A session another session started says which (`Started by`). A
+conversation in an export with nothing asked in it is counted as skipped. What
+looks like a credential (an API key, a token, a private key) is replaced with
+`[redacted]` before anything is sent.
+
+A session over `--max-bytes` keeps what was asked and says in its heading what
+it cut (`Shortened to fit the size limit`): first the tool results, each
+answer to its opening and runs of tool calls to six, then the branches, whose
+fork points the heading lists, then the middle of the session, marked where it
+is left out.
+
+The document's `uri` is the session's id (`claude:ID`, `codex:ID`,
+`chatgpt:ID`, `claude-ai:ID`), which is how a later run knows it is there,
+whatever the document says: a document an earlier version wrote is the same
+session's and is not added again.
+
+The server keeps a digest of each document's title and text together. A run
+writes the document the session would have now and compares its digest with
+the one the server has. The same: nothing is written. Different: the document is replaced
+in place (`updated` in the output), whatever the times in the export say, so a
+turn added to an old export is picked up, and so is a session with no times.
+A document an earlier version wrote has no digest and reads differently, so
+the next run replaces it once with the fuller document.
+
+The replacement is one call, `PUT /api/knowledge/{name}/documents/{id}/text`,
+which the server makes only if the document's digest is still the one the run
+read, so a change to its title or its text since refuses the call (409). The
+document keeps its id, its source and whether it is left out of search. A call
+that fails or is refused leaves the document as it was.
+
+A run makes that call once for a session. A run that is refused lost to
+another writer and never writes over what that writer left. It reads the
+document again. If the document is what the run would have written, the
+session is counted `present`. If it differs, the document is left as it is and
+the session is named in `conflicts`, with the line `Left N sessions as another
+import wrote them while this one ran`. The run cannot know which of the two
+holds the later state of the session, so it does not choose. A conflict is not
+a failure: the exit code stays 0, and `conflicts` is empty in every other
+case. Run the import again from the copy you want kept.
+
+A session's document is written through the import routes
+(`POST /api/knowledge/{name}/imports`, `PUT /api/knowledge/{name}/imports/{id}`:
+the route checks `knowledge:import`, and the server also requires
+`knowledge:write`, since the text is written too), which also take the
+session's structure and keep
+it with that revision of the document in the same write. The structure is
+the tool, the conversation's id, its start and end, the main path's turns in
+order with who said each and when, how many branches are not on it, every
+one counted, and exact counts of what was left out or cut (tool results and
+tool lines cut when the export was read included). It is made from the
+session's records, never from the document's text, so a line in an answer
+that reads as a heading or a speaker is text in that turn. It holds at most
+200 turns, 16 KiB a turn and 128 KiB in all: tool results go first, then
+the oldest turns, and each count says how many went. A source's structures
+are at most 8 MiB together; past that the server refuses the write and the
+run goes on in the next source, as it does when a source's text is full.
+
+The structure is what this run asserts, not something the server can
+verify: the server keeps who sent it and when, and trusts it only for the
+revision of the document it was written with. The ordinary document routes
+take no structure, and an edit of the document, by anyone, leaves it
+untrusted, even if the old title and text are put back, until a run imports
+the session again. A run that may import and finds a session's document
+reading as it would write it, with no trusted structure kept (one an earlier
+version or a run without `knowledge:import` wrote, or one an edit left
+untrusted), sends it again through the import route with the text as it is,
+and counts it `restored`, apart from `updated`: the server then writes the
+structure alone, so the document is not embedded again and its source does
+not read as changed. The server restores only a document with no trusted
+structure: a second import of a revision a trusted structure is kept for is
+refused (409, "a structure is already kept for this revision"), and a run
+that meets that refusal counts the session `present`. It does not compare
+the kept structure with the one it would send: a structure another importer
+wrote, or one a later version of this command would write for the same text,
+stays as it is until the session's text changes. The server keeps a
+digest of each structure, so what is read can be pinned to the structure as
+well as to the document. A restore refused because the source's structures are
+at their bound is not a failure: the document stays present and unchanged,
+is counted in `without_structure`, and the run names the source once
+(`structures_full`). A restore that loses to another writer, where the
+document then reads the same and still has no structure, is counted the
+same way. A reimport may also replace a
+document a person added through the ordinary route with a `TOOL:ID` uri: it
+takes `knowledge:write`, which could edit that document anyway, and the
+structure then names the importer.
+
+Against a server older than this command, which has no import routes, or
+with a token that may not import, the first write finds out: every document
+is then written through the ordinary route without its structure, the run
+says so (`Structures were not kept: ...`, and `structures_not_kept` in its
+JSON), with how many of its documents remain without a structure
+(`without_structure`), and that alone is not a failure. A later run that may
+import restores them. A token that may import and may not write knowledge
+does not fall back, since an ordinary write would be refused too: the
+server's refusal says `you need knowledge:write`, and every session fails
+with that reason.
+
+When the corpus a run would file its sources in is another person's (one it
+may not read, or may not change), the sources go in the next one,
+`sessions-2` and so on, and no session is counted as failed. When every name
+up to `sessions-20` is another person's or full, the sources are left out of
+any corpus and the run says so once (`not_in_corpus`, with
+`not_in_corpus_reason`); a source already in a corpus it can read is not
+named. A corpus that fails (it cannot be read, made or added to) is
+reported on its own (`corpus_failed`, and `Could not file the sources in a
+corpus ...`): every session was sent, so it is not counted as a session not
+added and does not change the exit code, which is 1 only when a session is
+not sent.
+
+A source holds at most 200 documents and 8 MiB, so a busy month continues in
+`sessions-TOOL-YYYY-MM-2` and so on. The sources are put in a corpus, titled
+Imported sessions and named as `--source` is, because the console's Knowledge
+page shows sources by corpus: without one they are counted there and cannot be
+opened. A corpus holds 50 sources, so a long history continues in `sessions-2`.
+To let an agent search the sessions, give it the corpus under Knowledge.
+
+With `--by-project`, a session that ran in a directory goes in a source named
+for that directory's last name (`sessions-in-my-repo`), whichever tool it came
+from, and each such source is attached to the workspace's project of the same
+name, so a run filed in that project is grounded in the sessions that ran
+there. The project is the one named exactly as the directory is, ignoring
+case: the directory `my-repo` is the project `My-Repo`, and not `my_repo` or
+`My Repo`. A directory whose name a source's name cannot spell (`my_repo`,
+`My Repo`, a name over 24 characters) or that ends in a number (`app-2`) has
+eight digits of a hash of the directory's name added to its source's name. Two
+directories are never kept in one source: if two names would still give the
+same source, the second directory's sessions are not sent and the command
+says which two they are. A source says what it holds, and a run adds to one
+and attaches it only when it says it is that directory's. A source of that
+name that says anything else, or says nothing, is not the run's: its sessions
+are named as failed, nothing is added to it, no document in it is replaced
+(with or without `--by-project`), it is not attached and it is put in no
+corpus. A source another writer makes while the run is making it is
+read first and held to the same rule, and what it says is never written over.
+A directory no project is named for is
+listed, and its sessions stay in the corpus; make the project and run the
+command again to attach them. A session from an export has no directory and is
+kept by month as before, unless `--project` names a project for it. A session already imported by month is not moved. One that changed
+since is replaced where it is, in its monthly source. Imported sessions are
+references an agent searches and cites. The server can continue one as a new
+conversation of its own, but no route or console action offers that yet
+([status](../architecture/overview.md#status)).
+
+With `--project NAME`, which needs `--export`, the sessions of every export
+named go in a source named as `--by-project` names one for a directory called
+`NAME` (`sessions-in-field-notes`, with the same hash added for a name a
+source's name cannot spell), and that source is attached to the project
+`NAME`. The source says what it holds (`Conversations imported from an export
+of another assistant, filed in the project NAME.`), which is not what a
+directory's source says, and the two are never one source: an export is not
+added to the source of a directory called `NAME`, a directory's sessions are
+not added to the exports' source, and neither is attached as the other.
+Whichever comes second is refused and named as failed, and the source is
+left as it was. So is a source of that name that does not say what it holds,
+or that another writer made meanwhile for something else. To have both in one project, give the export sources of
+another name with `--source PREFIX` (`exports-in-field-notes`). The
+project is matched as `--by-project` matches one: by its name, ignoring case
+and nothing else. `--project` without `--export` is refused, and so is a name
+with no letter or digit in it, such as `~` or `/`. It files the exports only:
+sessions read with `--from` are filed as they are without it, by month, or by
+directory with `--by-project`. A name no project has is listed as a directory with no
+project is (`No project is named for`, `unfiled` in the JSON): the sessions
+are imported, nothing is attached and no project is made, and a later run
+attaches the source once the project exists. The attachment is made with the
+caller's token, so a caller who may not attach to the project gets the
+failure `--by-project` gives.
+
+A session of the export that an earlier run put in another source, such as
+one imported by month without `--project`, is not added again and is not
+moved: no route moves a document between sources, and the command removes
+nothing. The run says so (`N sessions are already imported in another source
+and were left there`) and names each in `elsewhere` in the JSON, as
+`URI=SOURCE`. Such a document is not written at all, even when the export
+reads differently now than it did: the run counts those (`N of them read
+differently in the export now and were not updated`) and names them in
+`elsewhere_changed`. A run replaces a document only in the project's own
+source of exports. To bring one up to date where it is, import the export
+again as it was first filed: without `--project`, or with that project. To refile one, remove its document from that source
+(`DELETE /api/knowledge/{name}/documents/{id}`, or the console's Knowledge
+page) and run the command again. `--json` also gives `project` and
+`project_source`.
+
+An attachment made by `--by-project` or `--project` is in effect at once,
+with nobody to approve it: a run filed in the project is given the source.
+It is not one of the sources the project names, so
+`GET /api/projects/{name}/knowledge` does not list it. Read it with
+`GET /api/knowledge/{name}/attachments`, or see it counted in the `knowledge`
+layer of `GET /api/projects/{name}/context?agent=AGENT`. A dry run names the source and the project it would attach
+it to; it does not ask the server, so it does not say whether the project
+exists or which sessions are already imported.
+
+A skill is checked here the way the server checks it: `SKILL.md` frontmatter
+the parser accepts, at most 256 files, 1 MiB a supporting file, 128 KiB for
+`SKILL.md` and 2 MiB in all. A folder over one of these is not drafted and is
+named under `failed` with the bound, such as `failed NAME: schema.xsd is over
+1048576 bytes`, `failed NAME: more than 256 files` or `failed NAME: more than
+2097152 bytes in all`. The command stops reading a folder at the first file
+past a bound, so an oversize folder is not read whole. A skill the server
+cannot read, such as one a later release wrote, is named under `failed` and
+nothing is written. The
+skill keeps the `name` in its `SKILL.md`, whatever its folder is called. The
+library reads the frontmatter the skill standard names (`name`, `description`,
+`license`, `compatibility`, `metadata`, `allowed-tools`). A `SKILL.md` it cannot
+read because of other fields, such as one assistant's `arguments` list, is
+drafted with only those, and the command names each field it left out. Hidden files are left out. A skill is
+drafted with no tool list, so it does not limit the tools of a run that uses
+it: the agent's own grants apply. A `SKILL.md` that declares `allowed-tools`
+limits them to the tools it names that the agent holds, and `allowed-tools: ""`
+allows none. A `SKILL.md` that declares more than 128 tools, or a name over
+128 characters, is not drafted: it is named under `failed` with the bound, by
+a dry run too. Whatever its tools, a run that uses the skill reads its
+supporting files with `skill_file_read`, which needs no grant and no approval.
+Skills imported since v0.138.1 change what they limit; see the
+[upgrade notes](../guides/deploy.md#upgrading-what-an-imported-skill-limits).
+Test it and publish it under Library, Skills. A scope holds at most 256 skills: past that the command names
+the ones it left out.
+
+A second import compares each folder with the newest revision the library
+holds of that skill, by the hash of the package: every file's path and
+content, supporting files included. It reports four counts:
+
+- **added**: the library has no skill of that name. The skill's first revision, a draft.
+- **updated as a draft**: a file changed, was added, renamed or deleted since the folder was imported. One new draft revision after the newest. The line names the files that differ.
+- **present**: the newest revision holds exactly what the folder holds. Nothing is written.
+- **conflict**: the folder differs and the newest revision was not written by an import: someone saved it in the editor or promoted it, or an earlier release imported it. Nothing is written.
+
+An updated skill is never published by the import. The published revision
+stays the one agents are bound to and new conversations use until the draft
+is tested and published under Library, Skills, and a run already accepted
+keeps the revision it was pinned with. When the newest revision is itself an
+unpublished draft an import wrote, the changed folder becomes another draft
+after it: a revision is never rewritten. A skill holds at most 32 revisions
+and 16 MiB of files in all its revisions, so a skill with large files holds
+fewer. A change past either is named under `failed`, such as `failed NAME: the
+library holds as many revisions of it as it may (32)` or `failed NAME: the
+library holds as many bytes of files of it as it may (16777216 ...)`, and
+nothing is written. A skill's revisions are never removed, and there is no way
+to free room in a full skill: to keep importing the folder, give it another
+`name` in its `SKILL.md`, or import it into another scope with `--scope`, then
+bind agents to that skill.
+
+Each revision records whether an import wrote it (`via` in the API). A
+conflict means the library may hold edits the folder lacks: bring them into
+the folder, or pass `--force` to draft the folder after them. The edit stays
+in the skill's history either way. A skill imported before this record was
+kept counts as edited, so its first changed import needs `--force` once.
+
+Two imports at once never both draft. An import reads the library once, at
+its start, and everything it does for a skill rests on that one reading: the
+comparison, the choice between update and conflict, and the number of
+revisions its draft is sent with, which the library checks before it writes.
+A skill that gained a revision after that reading was changed while the
+import ran. The import then writes nothing for it: it reports the skill
+present when the library now holds what its folder holds, and a conflict
+otherwise. It never drafts after a revision it did not read at its start;
+run the import again to compare with the library as it now is.
+
+A dry run that cannot read the library, because no server answers at
+`--server` or the server refuses the token, still checks each folder and
+exits 0 when all are valid. It lists them as `unknown`: each is a skill the
+library would take, and whether it would be added, updated, present or in
+conflict is not known. The text says the library could not be read and why.
+An import that is not a dry run fails when the server cannot be reached.
+
+| Flag | Behavior |
+| --- | --- |
+| `--server URL`, `--token REF`, `--json` | As for `humagen store` |
+| `--dry-run` | Say what would be sent and send nothing. For `sessions` and `agents` it does not ask the server what is already there. For `skills` it reads the library, so it reports what would be added, updated, present and in conflict; when the library cannot be read it lists the valid folders as unknown |
+| `--from LIST` | `sessions`: which tools' files to read: `claude`, `codex`, both (the default) or `none` |
+| `--export FILE` | `sessions`: a `conversations.json` from a ChatGPT or claude.ai export; may repeat |
+| `--since WHEN` | `sessions`: only sessions started since a date (`2026-10-01`) or an age (`720h`) |
+| `--match TEXT` | `sessions`: only sessions whose directory or title contains the text |
+| `--source PREFIX` | `sessions`: what the sources' names start with; defaults to `sessions` |
+| `--by-project` | `sessions`: keep each directory's sessions in a source of their own, `PREFIX-in-NAME`, and attach it to the project of that name |
+| `--corpus NAME` | `sessions`: the corpus the sources are put in; defaults to the `--source` prefix. `none` puts them in no corpus |
+| `--max-bytes N` | `sessions`: the most one document may be; defaults to 49152 |
+| `--children` | `sessions`: also add sessions another session started, such as a sub-agent's or a reviewer's |
+| `--home DIR` | `sessions`: the home directory the tools keep their sessions under |
+| `--scope KIND` | `skills`: `personal` (the default) or `workspace` |
+| `--only NAMES` | `skills`: only these folders; `agents`: only these agents. Separated by commas |
+| `--force` | `skills`: draft a changed folder even after a newest revision that was not imported. Nothing is published or removed |
+| `--provider NAME`, `--model NAME` | `agents`: required. A model provider and its model, or `policy` and a model policy |
+
+An agent file names its model and its tools as another assistant knows them,
+and neither names anything on this server. So `agents` needs `--provider` and
+`--model`, the model every imported agent runs on, and creates each agent with
+no tools: grant what it needs under Agents. The file's `model` and `tools` are
+not sent.
+
+An agent carries its `name`, its `description` (on one line) and its text as
+the system prompt. Every other frontmatter field, and a `name` or
+`description` that is not text, is not carried. The command names those
+fields, by name and never by value, for each file it creates an agent from or
+finds the agent of already there, in one line a file, and a second line for
+the hooks and permission rules among them (`hooks`, `permissions`,
+`permissionMode`, `disallowedTools`, in any case or with `-` or `_`). It
+explains each kind once, at the end of the run:
+
+```text
+Created 3 agents on anthropic claude-sonnet-5-5; 0 already there, 0 failed.
+  guarded.md: not carried: color, effort, hooks, model, permissionMode,
+    permissions, tools
+  guarded.md: not enforced: hooks.PreToolUse, permissionMode,
+    permissions.allow, permissions.deny
+  reviewer.md: not carried: model, tools
+Hooks are not enforced: Humagen does not run a file's hook commands. A check
+  before a tool call is set with the agent's approvals, under Agents, and with
+  Ask or Never under Operations, Action Policies. Nothing stands in for a hook
+  that runs after a call or when a turn stops.
+Permission rules are not enforced: no rule of a file is applied. An agent has
+  only the tools granted to it under Agents, where its approvals are set, and
+  Ask or Never for a kind of action is set under Operations, Action Policies.
+  A rule on one command or path has no equivalent.
+Next: each agent has no tools. Grant what it needs under Agents.
+```
+
+(The command prints each file's line whole; it is wrapped here.) Under
+`hooks` and `permissions` only the known names are shown: the hook events,
+such as `PreToolUse`, and `allow`, `deny`, `ask`, `defaultMode` and
+`additionalDirectories`. Any other key is counted, as `1 other permissions
+entry`, since a rule or a command may be written as a key. A name that is not
+plain printable text, such as one holding an escape sequence or a line break,
+is printed quoted (`"\x1b[8mhidden"`); an empty one is `(empty)`; one longer
+than 64 characters is cut, with `...` after it; and a line names at most 40
+fields, then `and N more`. The skills import prints the names in its lines
+the same way. A dry run prints the same lines. A second import prints them
+again for each agent already there, since whether that agent was made from
+the file as it now is is not known.
+
+Two files that name one agent are not merged: the first, by file name, is
+the one imported, as for skills, and the other is reported as `skipped
+b.md: it names the agent same, which a.md gives`, with nothing sent for it.
+
+A file whose frontmatter cannot be read fails with the reason, which quotes
+nothing of the file:
+
+| Reason | When |
+| --- | --- |
+| `does not start with YAML frontmatter` | The first line is not `---` |
+| `has frontmatter with no closing --- line` | No later line is `---` alone, trailing spaces aside. A line such as `---x` does not close it |
+| `has empty frontmatter` | Nothing between the two lines |
+| `has more than one YAML document in its frontmatter` | A document end (`...`) followed by more |
+| `has frontmatter that repeats a key` | A key given twice |
+| `has frontmatter that is not a YAML mapping` | A list or a single value |
+| `has more than 1000 frontmatter fields` | |
+| `has frontmatter that is not valid YAML` | Anything else the parser refuses |
+
+Fields not carried and skipped files do not change the exit code.
+
+`sessions` needs `knowledge:read` and `knowledge:write`, and
+`knowledge:import` as well to keep each session's structure: an import
+needs both `knowledge:import` and `knowledge:write` (the built-in `manager`
+and `admin` roles hold all three); `skills` needs
+`projects:read` and `projects:write`; `agents` needs `agents:read` and
+`agents:write`. When some sessions, skills or agents are not
+sent, the rest still are, each one left out is named with the reason, and the
+exit code is 1. A skill in conflict counts as not sent. With `--json`,
+`skills` prints `drafted`, `added`, `updated` (each with its new `version`, the
+`published` version that stays, and the `changed`, `added` and `removed`
+files), `present`, `conflicts`, `no_room`, `reduced` and `failed`.
+`drafted` is kept for compatibility: it holds what it held before updates
+were reported. When the library was read, that is the names of the skills
+the library lacked that this import drafted, or in a dry run would draft, as
+their first revision: it equals `added`, and an updated skill is never in
+it. In a dry run that could not read the library it is every valid skill
+folder, as a dry run printed before it read the library: it equals
+`unknown`, `added` is empty, and `library_unread` holds the reason. New
+programs read `added` and `unknown`.
+
+With `--json`, `agents` prints `created`, `present`, `skipped` (each with its
+`file`, the agent's `name` and the file it is `from`), `failed`, and by file:
+`reduced` (every field not carried), `not_enforced` (the hook and permission
+fields among them, as `hooks.PreToolUse` or `permissions.deny`) and
+`not_enforced_other` (the count of other entries under each such field). JSON
+holds each name as it is, with no cut and no cap.
+
+# CLI

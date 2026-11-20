@@ -76,8 +76,8 @@ func exerciseSaveContract(t *testing.T, c *contract, actor, other, thread, pad s
 	}
 	first := c.call(actor, "POST", at, path, fmt.Sprintf(`{"source":"scratchpad","id":%q}`, pad), http.StatusCreated)
 	again := c.call(actor, "POST", at, path, fmt.Sprintf(`{"source":"scratchpad","id":%q}`, pad), http.StatusCreated)
-	if first.str("title") != again.str("title") || fmt.Sprint(again.field("version")) != "2" {
-		t.Fatalf("saving again makes a new version: %s then %s", first.raw, again.raw)
+	if first.str("id") != again.str("id") || first.str("title") != again.str("title") || fmt.Sprint(again.field("version")) != "1" {
+		t.Fatalf("saving unchanged source must reuse its artifact: %s then %s", first.raw, again.raw)
 	}
 	c.call(actor, "POST", at, path, `{"source":"message","id":"m-999"}`, http.StatusNotFound)
 	c.call(actor, "POST", at, path, `{"source":"nope","id":"x"}`, http.StatusBadRequest)

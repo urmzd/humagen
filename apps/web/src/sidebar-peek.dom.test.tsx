@@ -75,7 +75,7 @@ test("resting the pointer on a row previews its whole title and how long ago it 
     "GET /api/threads": () => ({ threads: [row], next: null }),
   });
   render(<Bar />);
-  const button = await screen.findByRole("button", { name: /^Vendor contract/ });
+  const button = await screen.findByRole("link", { name: /^Vendor contract/ });
   fireEvent.pointerEnter(button, { pointerType: "mouse" });
   assert.equal(screen.queryByRole("tooltip"), null, "nothing opens at once");
   await wait(PEEK_MS + 50);
@@ -95,7 +95,7 @@ test("a long press previews a row and does not open it", async () => {
   });
   let opened = 0;
   render(<Bar go={() => opened++} />);
-  const button = await screen.findByRole("button", { name: /^Vendor contract/ });
+  const button = await screen.findByRole("link", { name: /^Vendor contract/ });
   fireEvent.touchStart(button, { touches: [{ clientX: 10, clientY: 10 }] });
   await wait(HOLD_MS + 50);
   await screen.findByRole("tooltip");

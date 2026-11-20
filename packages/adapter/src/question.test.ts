@@ -4,7 +4,7 @@ import { ActionId, type UiAction } from "@humagen/core";
 import { follow } from "./fold.ts";
 import { fromServer, toRequest } from "./mail.ts";
 import { answerOfAction, interruptOf } from "./question.ts";
-import type { RunEvent } from "./run.ts";
+import { type Run, type RunEvent, turnOf } from "./run.ts";
 
 let seq = 0;
 const ev = (type: string, data: unknown = {}): RunEvent => {
@@ -111,6 +111,39 @@ for (const kind of ["approval", "choice", "reply"] as const) {
   });
 }
 
+test("a batch of waiting calls parks once on every question, and one resume settles them all", () => {
+  const f = follow({ id: "r1", agent: "lead" });
+  for (const e of [ev("run.accepted.v1"), ev("run.started.v1", { attempt: 1 })]) f.apply(e);
+  f.apply(ev("run.delta.tool.call.v1", { id: "call-1", name: "file_write", phase: "requested" }));
+  const all = [questions.choice, questions.reply, questions.approval];
+  let turn = f.apply(ev("run.parked.v1", { reason: "waiting on a person", question: all[0], questions: all }));
+  assert.equal(turn.status, "waiting");
+  assert.deepEqual(
+    turn.interrupts,
+    all.map((q) => interruptOf(q)),
+    "every question of the batch is shown, in the order the calls asked them",
+  );
+  assert.equal(turn.tasks.find((t) => t.id === "call-1")?.status, "waiting");
+
+  const given = [answers.choice.answer, answers.reply.answer, answers.approval.answer];
+  turn = f.apply(ev("run.resumed.v1", { attempt: 2, answer: given[0], answers: given }));
+  assert.notEqual(turn.status, "waiting");
+  assert.equal(turn.interrupts.length, 3);
+  const [choice, reply, approval] = turn.interrupts;
+  assert.deepEqual(choice?.type === "clarification" && choice.answer, { kind: "answered", by: "olu", at, optionIds: ["blue"] });
+  assert.deepEqual(reply?.type === "clarification" && reply.answer, { kind: "answered", by: "olu", at, optionIds: [], other: "OPS-42" });
+  assert.deepEqual(approval?.type === "approval" && approval.decision, { kind: "approved", by: "olu", at });
+});
+
+test("a parked run's record shows every question it waits on to a reader who missed the park", () => {
+  const all = [questions.choice, questions.approval];
+  const base = { id: "r1", agent: "lead", text: "Go", calls: 0, created_at: at, updated_at: at };
+  const batch = turnOf({ ...base, status: "parked", question: all[0], questions: all } as unknown as Run);
+  assert.deepEqual(batch.interrupts, all.map((q) => interruptOf(q)));
+  const one = turnOf({ ...base, status: "parked", question: questions.choice } as unknown as Run);
+  assert.deepEqual(one.interrupts, [interruptOf(questions.choice)]);
+});
+
 test("a click on a question asks for the answer it means, on the run and in the inbox", () => {
   const click = (id: UiAction["id"], turnId: string, target: string, extra: Partial<UiAction["payload"]> = {}): UiAction => ({
     id,
@@ -158,15 +191,21 @@ test("a question nobody answered, or whose run was stopped, says so", () => {
   f.apply(ev("run.parked.v1", { question: questions.choice }));
   const stopped = f.apply(ev("run.stopped.v1", { reason: "Stopped by ada", by: "ada" }));
   const i = stopped.interrupts[0];
-  assert.equal(i?.type === "clarification" && i.answer.kind, "declined");
+  assert.deepEqual(i?.type === "clarification" && i.answer.kind === "cancelled" && i.answer.note, "The run was stopped");
   const g = follow({ id: "r1", agent: "lead" });
   g.apply(ev("run.parked.v1", { question: questions.choice }));
   const late = g.apply(ev("run.resumed.v1", { answer: { question_id: "q-c", choice: "blue", expired: true, at } })).interrupts[0];
   assert.deepEqual(late?.type === "clarification" && late.answer, {
-    kind: "declined",
-    by: "Nobody",
+    kind: "expired",
     at,
-    reason: "Nobody answered in time, so it went with blue",
+    note: "Nobody answered in time, so it went with blue",
+  });
+  // A run that ended without an answer closes its question in the inbox.
+  const closed = part("choice", { action: "closed", by: "system", at, note: "The run ended without an answer" }).parts[0];
+  assert.deepEqual(closed?.type === "choice" && closed.clarification.answer, {
+    kind: "cancelled",
+    at,
+    note: "The run ended without an answer",
   });
 });
 
@@ -186,6 +225,33 @@ test("whoever answered is shown by name, on the run and in the inbox, never by s
   // The system is still nobody, whatever it is called.
   const closed = part("reply", { action: "closed", by: "system", by_name: "system", at }).parts[0];
   assert.equal(closed?.type === "reply" && closed.resolution?.by, "");
+});
+
+test("a call the approval agent decided says so on the run, with its reason, as the inbox does", () => {
+  for (const [decision, note, said] of [
+    ["approve", "Allowed by the approval agent: Ana asked for the plan.", "allow"],
+    ["deny", "Denied by the approval agent: Nobody asked to write files.", "deny"],
+  ] as const) {
+    const f = follow({ id: "r1", agent: "lead" });
+    f.apply(ev("run.parked.v1", { question: questions.approval }));
+    const onRun = f.apply(
+      ev("run.resumed.v1", { answer: { question_id: "q-a", decision, note, by: "ana", by_name: "Ana", at } }),
+    ).interrupts[0];
+    const judgement = { decision: said, reason: note.slice(note.indexOf(": ") + 2) };
+    assert.ok(onRun?.type === "approval");
+    assert.deepEqual(onRun.judgement, judgement);
+    // An inbox part settled the same way reads the same.
+    const inMail = part("approval", { action: decision, by: "ana", by_name: "Ana", at, note }).parts[0];
+    assert.deepEqual(inMail?.type === "approval" && inMail.approval, onRun);
+  }
+  // A person's own note is theirs, never read as the agent's.
+  const own = follow({ id: "r1", agent: "lead" });
+  own.apply(ev("run.parked.v1", { question: questions.approval }));
+  const mine = own.apply(
+    ev("run.resumed.v1", { answer: { question_id: "q-a", decision: "deny", note: "Not on a Friday.", by: "ana", at } }),
+  ).interrupts[0];
+  assert.ok(mine?.type === "approval" && mine.judgement === undefined && mine.decision.kind === "denied");
+  assert.equal(mine.decision.kind === "denied" && mine.decision.reason, "Not on a Friday.");
 });
 
 // A run the platform held at a limit: the hold on the run's stream and the

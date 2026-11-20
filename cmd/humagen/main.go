@@ -1,7 +1,7 @@
 // Command humagen runs the platform: API, sign-in, event stream, schedules and
-// agent execution, in one process. It is humagen.Main with no options; a
-// program that adds providers, tools or stores calls humagen.Main with
-// options instead. See internal/app for the composition root.
+// agent execution, in one process. Every turn runs on saige. A program that
+// adds providers, tools or stores calls humagen.Main with options of its
+// own. See internal/app for the composition root.
 package main
 
 import (

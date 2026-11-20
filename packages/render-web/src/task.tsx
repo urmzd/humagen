@@ -249,7 +249,7 @@ function AgentItem({
         <span className="min-w-0 flex-1 truncate text-aui-2xs text-aui-muted">{summary}</span>
         {stats.length > 0 && (
           <span className="shrink-0 text-aui-2xs text-aui-muted tabular-nums">
-            {stats.join(" · ")}
+            {stats.join(" | ")}
           </span>
         )}
       </span>

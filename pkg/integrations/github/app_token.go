@@ -15,11 +15,13 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"path"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	transport "github.com/urmzd/orchagent/flow/connectors/github"
+	transport "github.com/urmzd/saige/flow/connectors/github"
 )
 
 // AppConfig configures a GitHub App installation token source.
@@ -34,6 +36,13 @@ type AppConfig struct {
 	PrivateKey     string
 	HTTPClient     *http.Client
 	Clock          func() time.Time
+	// AuthRevision snapshots host consent before a mint attempt. Only a
+	// confirmed HTTP 401 reports it back; network and permission failures do not.
+	AuthRevision   func(context.Context) string
+	OnAuthRejected func(context.Context, string)
+	// Wrap, when set, is put around the authenticating transport: a call it
+	// does not send mints no token. It is where a client's egress guard goes.
+	Wrap func(http.RoundTripper) http.RoundTripper
 }
 
 // IsPrivateKeyPEM reports whether s looks like a PEM-encoded private key
@@ -98,11 +107,14 @@ func SignAppJWT(appID string, key *rsa.PrivateKey, now time.Time) (string, error
 // AppTokenSource mints and caches GitHub App installation access tokens.
 type AppTokenSource struct {
 	base           string
+	origin         *url.URL
 	appID          string
 	installationID string
 	key            *rsa.PrivateKey
 	httpClient     *http.Client
 	clock          func() time.Time
+	authRevision   func(context.Context) string
+	onAuthRejected func(context.Context, string)
 
 	mu        sync.Mutex
 	token     string
@@ -111,34 +123,65 @@ type AppTokenSource struct {
 
 // NewAppTokenSource validates cfg and returns a caching installation token source.
 func NewAppTokenSource(base string, cfg AppConfig) (*AppTokenSource, error) {
-	if strings.TrimSpace(cfg.AppID) == "" {
+	if strings.TrimSpace(cfg.AppID) == "" || len(cfg.AppID) > 200 || strings.ContainsAny(cfg.AppID, "\r\n") {
 		return nil, fmt.Errorf("github: app authentication needs an app_id")
 	}
-	if strings.TrimSpace(cfg.InstallationID) == "" {
-		return nil, fmt.Errorf("github: app authentication needs an installation_id")
+	installation, err := strconv.ParseInt(cfg.InstallationID, 10, 64)
+	if err != nil || installation <= 0 || strconv.FormatInt(installation, 10) != cfg.InstallationID {
+		return nil, fmt.Errorf("github: app authentication needs a numeric installation_id")
 	}
 	key, err := ParsePrivateKeyPEM(cfg.PrivateKey)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("github: app authentication requires a valid RSA private key")
 	}
 	if strings.TrimSpace(base) == "" {
 		base = transport.GitHubBaseURL
 	}
+	origin, err := url.Parse(strings.TrimRight(base, "/"))
+	if err != nil || origin.Host == "" || origin.User != nil || origin.RawQuery != "" || origin.Fragment != "" || origin.RawPath != "" || (origin.Path != "" && path.Clean(origin.Path) != origin.Path) || (origin.Scheme != "https" && (origin.Scheme != "http" || (origin.Hostname() != "127.0.0.1" && origin.Hostname() != "localhost" && origin.Hostname() != "::1"))) {
+		return nil, fmt.Errorf("github: app API base must be HTTPS or loopback HTTP without credentials, query or fragment")
+	}
+	client := &http.Client{}
+	if cfg.HTTPClient != nil {
+		copy := *cfg.HTTPClient
+		client = &copy
+	}
+	if client.Timeout <= 0 || client.Timeout > 30*time.Second {
+		client.Timeout = 30 * time.Second
+	}
+	client.CheckRedirect = refuseAppRedirect
 	return &AppTokenSource{
-		base:           strings.TrimRight(base, "/"),
+		base:           origin.String(),
+		origin:         origin,
 		appID:          strings.TrimSpace(cfg.AppID),
 		installationID: strings.TrimSpace(cfg.InstallationID),
 		key:            key,
-		httpClient:     cfg.HTTPClient,
+		httpClient:     client,
 		clock:          cfg.Clock,
+		authRevision:   cfg.AuthRevision,
+		onAuthRejected: cfg.OnAuthRejected,
 	}, nil
+}
+
+func refuseAppRedirect(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+
+// owns fences credentials before even minting a token. Escaped or cleaned-up
+// paths cannot escape an enterprise API prefix or smuggle another authority.
+func (s *AppTokenSource) owns(u *url.URL) bool {
+	return u != nil && u.User == nil && u.Fragment == "" && u.Scheme == s.origin.Scheme && strings.EqualFold(u.Host, s.origin.Host) && path.Clean(u.Path) == u.Path && strings.HasPrefix(u.Path, s.origin.Path+"/")
 }
 
 // Token returns a valid installation access token, minting a new one when the
 // cached token is missing or within 2 minutes of expiring.
 func (s *AppTokenSource) Token(ctx context.Context) (string, error) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	rejected, revision := false, ""
+	defer func() {
+		s.mu.Unlock()
+		if rejected && revision != "" && s.onAuthRejected != nil {
+			s.onAuthRejected(ctx, revision)
+		}
+	}()
 
 	now := time.Now().UTC()
 	if s.clock != nil {
@@ -146,6 +189,9 @@ func (s *AppTokenSource) Token(ctx context.Context) (string, error) {
 	}
 	if s.token != "" && now.Add(2*time.Minute).Before(s.expiresAt) {
 		return s.token, nil
+	}
+	if s.authRevision != nil {
+		revision = s.authRevision(ctx)
 	}
 
 	jwtToken, err := SignAppJWT(s.appID, s.key, now)
@@ -161,32 +207,36 @@ func (s *AppTokenSource) Token(ctx context.Context) (string, error) {
 	req.Header.Set("Authorization", "Bearer "+jwtToken)
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-	client := s.httpClient
-	if client == nil {
-		client = &http.Client{Timeout: 30 * time.Second}
-	}
-	resp, err := client.Do(req)
+	resp, err := s.httpClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("github: mint installation token for installation %s: %w", s.installationID, err)
+		if ctx.Err() != nil {
+			return "", ctx.Err()
+		}
+		return "", fmt.Errorf("github: installation token request failed")
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return "", fmt.Errorf("github: mint installation token for installation %s: status %d: %s", s.installationID, resp.StatusCode, strings.TrimSpace(string(body)))
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		rejected = resp.StatusCode == http.StatusUnauthorized
+		return "", fmt.Errorf("github: installation token request returned status %d", resp.StatusCode)
 	}
 	var out struct {
 		Token     string    `json:"token"`
 		ExpiresAt time.Time `json:"expires_at"`
 	}
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&out); err != nil {
-		return "", fmt.Errorf("github: mint installation token for installation %s: %w", s.installationID, err)
+	const maxResponse = 1 << 20
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxResponse+1))
+	if err != nil || len(raw) > maxResponse || json.Unmarshal(raw, &out) != nil {
+		return "", fmt.Errorf("github: installation token response was invalid")
 	}
-	if out.Token == "" {
-		return "", fmt.Errorf("github: installation token response for %s carried no token", s.installationID)
+	if out.Token == "" || len(out.Token) > 4096 || strings.ContainsAny(out.Token, "\r\n\t ") {
+		return "", fmt.Errorf("github: installation token response carried no valid token")
 	}
 	expiresAt := out.ExpiresAt
 	if expiresAt.IsZero() {
 		expiresAt = now.Add(55 * time.Minute)
+	}
+	if !expiresAt.After(now) {
+		return "", fmt.Errorf("github: installation token response was already expired")
 	}
 	s.token = out.Token
 	s.expiresAt = expiresAt
@@ -199,6 +249,9 @@ type appRoundTripper struct {
 }
 
 func (rt *appRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	if !rt.source.owns(req.URL) {
+		return nil, fmt.Errorf("github: installation credentials are restricted to the configured API origin and path")
+	}
 	token, err := rt.source.Token(req.Context())
 	if err != nil {
 		return nil, err
@@ -209,7 +262,20 @@ func (rt *appRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) 
 	if base == nil {
 		base = http.DefaultTransport
 	}
-	return base.RoundTrip(cloned)
+	resp, err := base.RoundTrip(cloned)
+	if err != nil {
+		if req.Context().Err() != nil {
+			return nil, req.Context().Err()
+		}
+		return nil, fmt.Errorf("github: installation API request failed")
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		// HTTPAPI includes provider response bodies in its errors. Keep the
+		// status and the named fields of the refusal (refusal.go) while
+		// preventing reflected tokens or private content escaping.
+		_ = refusalOf(cloned, resp, time.Now(), token)
+	}
+	return resp, nil
 }
 
 // NewAppHTTPAPI returns an HTTPAPI that authenticates as a GitHub App
@@ -227,17 +293,19 @@ func NewAppHTTPAPIAt(base string, cfg AppConfig) (*HTTPAPI, error) {
 		return nil, err
 	}
 	var baseTransport http.RoundTripper
-	timeout := 30 * time.Second
+	timeout := source.httpClient.Timeout
 	if cfg.HTTPClient != nil {
 		baseTransport = cfg.HTTPClient.Transport
-		if cfg.HTTPClient.Timeout > 0 {
-			timeout = cfg.HTTPClient.Timeout
-		}
+	}
+	var authenticated http.RoundTripper = &appRoundTripper{base: baseTransport, source: source}
+	if cfg.Wrap != nil {
+		authenticated = cfg.Wrap(authenticated)
 	}
 	authed := &http.Client{
-		Timeout:   timeout,
-		Transport: &appRoundTripper{base: baseTransport, source: source},
+		Timeout:       timeout,
+		Transport:     authenticated,
+		CheckRedirect: refuseAppRedirect,
 	}
-	base = strings.TrimRight(base, "/")
+	base = source.base
 	return &HTTPAPI{HTTPAPI: transport.NewHTTPAPIAt(base, "", authed), base: base, http: authed}, nil
 }

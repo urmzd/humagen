@@ -14,7 +14,7 @@ import {
   useState,
 } from "react";
 import { useGroup } from "./form";
-import { AlertTriangleIcon, ChevronDownIcon, EllipsisIcon } from "./icons";
+import { AlertTriangleIcon, ChevronDownIcon, EllipsisIcon, RefreshIcon } from "./icons";
 import { cn } from "./lib/utils.ts";
 import { SuppressContext } from "./meta";
 import { buttonVariants } from "./ui/button.tsx";
@@ -135,8 +135,11 @@ export function Button({
   const [draft, setDraft] = useState("");
   const group = useGroup(collects);
   const dense = useContext(DenseContext);
+  // Reporting is the lesser of a failure's two actions, so it is text beside Retry, not a second box.
+  const quiet = !style && action?.id === ActionId.report;
   const cls = cn(
-    buttonClass(style ?? "default"),
+    buttonClass(quiet ? "ghost" : (style ?? "default")),
+    quiet && "text-aui-muted",
     dense && "h-6 px-2 py-0",
     "aria-pressed:border-aui-accent aria-pressed:bg-aui-accent/10",
   );
@@ -207,6 +210,7 @@ export function Button({
           else setInlineConfirm(true);
         }}
       >
+        {action?.id === ActionId.retry && <RefreshIcon size={14} />}
         {shown}
       </button>
       {prompt && typing && (
@@ -296,7 +300,13 @@ function keepSplitsTogether(children: ReactNode): ReactNode[] {
       next.type === MenuPrimitive
     ) {
       out.push(
-        <span key={`split:${here.key ?? i}`} data-aui-split-group="" className="inline-flex">
+        <span
+          key={`split:${here.key ?? i}`}
+          data-aui-split-group=""
+          // The halves share one height and one seam: the button's right corners are
+          // squared here, as a utility, since the button's own rounding is one too.
+          className="inline-flex items-stretch [&>[data-aui=button]]:rounded-r-none [&>[data-aui=menu]>button]:h-auto [&>[data-aui=menu]]:ml-0"
+        >
           {here}
           {next}
         </span>,

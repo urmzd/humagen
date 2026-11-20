@@ -51,16 +51,19 @@ function Bar({
   route = { page: "new" },
   onGo = () => {},
   projects = [],
+  sessionMode = false,
 }: {
   pinned?: string[];
   route?: Route;
   onGo?: (r: Route) => void;
   projects?: ProjectView[];
+  sessionMode?: boolean;
 }) {
   const noop = () => {};
   return (
     <Sidebar
       open
+      sessionMode={sessionMode}
       onToggle={noop}
       route={route}
       go={onGo}
@@ -79,8 +82,16 @@ function Bar({
 }
 
 const view = async (name: "Recents" | "Projects" | RegExp) => {
-  fireEvent.click(await screen.findByRole("button", { name: /^Filter conversations/ }));
-  fireEvent.click(await screen.findByRole("button", { name }));
+  fireEvent.click(await screen.findByRole("button", { name: "Filter conversations" }));
+  const panel = within(await screen.findByRole("dialog", { name: "Filter conversations" }));
+  const disclosure = panel.getByRole("button", { name: /^View / });
+  fireEvent.click(disclosure);
+  fireEvent.click(
+    within(panel.getByRole("group", { name: "View" })).getByRole("button", {
+      name: name === "Projects" ? "By project" : name === "Recents" ? "By day" : name,
+    }),
+  );
+  fireEvent.keyDown(disclosure, { key: "Escape" });
 };
 
 test("Recents lists every project newest first, each row one line with one dot", async () => {
@@ -99,8 +110,22 @@ test("Recents lists every project newest first, each row one line with one dot",
     }),
   });
   render(<Bar projects={[{ name: "Launch", title: "Spring launch" } as ProjectView]} />);
+  const start = screen.getByRole("link", { name: "New" });
+  assert.ok(start.closest("[data-sidebar-start]"));
+  assert.equal(
+    start.closest("[data-sidebar-scroll]"),
+    null,
+    "starting work stays outside the scrolling list",
+  );
+  assert.ok(screen.getByRole("button", { name: "Filter conversations" }));
+  assert.equal(
+    screen.getByRole("region", { name: "Sessions" }).getAttribute("data-view"),
+    "projects",
+    "sessions open filed under their projects",
+  );
+  await view("Recents");
   const list = within(await screen.findByRole("list", { name: "Recents" }));
-  const waiting = await list.findByRole("button", { name: /^Waiting on me/ });
+  const waiting = await list.findByRole("link", { name: /^Waiting on me/ });
   assert.doesNotMatch(waiting.textContent ?? "", /Spring launch/);
   assert.match(waiting.textContent ?? "", /Needs you/);
   assert.equal(
@@ -110,24 +135,55 @@ test("Recents lists every project newest first, each row one line with one dot",
   );
   assert.equal(
     list
-      .getByRole("button", { name: /^Still going/ })
+      .getByRole("link", { name: /^Still going/ })
       .querySelector("[data-standing]")
       ?.getAttribute("data-standing"),
     "running",
   );
-  const answered = list.getByRole("button", { name: /^Answered/ });
+  const answered = list.getByRole("link", { name: /^Answered/ });
   await waitFor(() =>
     assert.equal(
       answered.querySelector("[data-row-age] [data-standing]")?.getAttribute("data-standing"),
       "unread",
     ),
   );
-  const quiet = list.getByRole("button", { name: /^Quiet/ });
+  const quiet = list.getByRole("link", { name: /^Quiet/ });
   assert.equal(quiet.querySelector("[data-row-age]")?.textContent, "");
   assert.equal(quiet.querySelector("[data-standing]"), null);
 });
 
-test("hover actions pin and archive a row, and Archived brings it back", async () => {
+test("session rows show relative ages while unread replies retain their dot", async () => {
+  const since = new Date(Date.now() - 24 * hour).toISOString();
+  const rows = [
+    task("s_read", "Read session"),
+    task("s_unread", "Unread reply", { last_agent: true }),
+  ];
+  net = stubFetch({
+    "GET /api/marks": () => ({ archived: [], read: {}, tips: [], since }),
+    "GET /api/sessions": () => ({
+      sessions: rows.map((conversation) => ({
+        id: conversation.id,
+        parent: "console:ada",
+        agent: "lead",
+        title: conversation.title,
+        status: "idle",
+        updated_at: conversation.updated_at,
+        conversation,
+      })),
+      next: "",
+    }),
+  });
+  render(<Bar sessionMode />);
+  await view("Recents");
+  const list = within(await screen.findByRole("list", { name: "Recents" }));
+  const read = await list.findByRole("link", { name: /^Read session/ });
+  assert.equal(read.querySelector("[data-row-age]")?.textContent, "3h");
+  const unread = list.getByRole("link", { name: /^Unread reply/ });
+  await waitFor(() => assert.ok(unread.querySelector('[data-row-age] [data-standing="unread"]')));
+  assert.equal(unread.querySelector("[data-row-age]")?.textContent, "");
+});
+
+test("the row menu archives a session, and Archived brings it back", async () => {
   let marks: Marks = { archived: [], read: {}, tips: [] };
   net = stubFetch({
     "GET /api/marks": () => marks,
@@ -139,15 +195,23 @@ test("hover actions pin and archive a row, and Archived brings it back", async (
     "GET /api/threads": () => ({ threads: [task("t1", "Put me away")], next: null }),
   });
   render(<Bar />);
-  fireEvent.click(await screen.findByRole("button", { name: "Archive Put me away" }));
-  await waitFor(() => assert.ok(!screen.queryByRole("button", { name: /^Put me away/ })));
+  fireEvent.click(await screen.findByRole("button", { name: "Manage Put me away" }));
+  await waitFor(() =>
+    assert.equal(
+      screen.getByRole("button", { name: "Manage Put me away" }).getAttribute("aria-expanded"),
+      "true",
+    ),
+  );
+  fireEvent.click(await screen.findByRole("menuitem", { name: "Archive" }));
+  await waitFor(() => assert.ok(!screen.queryByRole("link", { name: /^Put me away/ })));
   assert.ok(screen.getByText("Archived for you. Others still see it."));
   await view(/^Archived/);
   const archived = within(await screen.findByRole("list", { name: "Archived" }));
-  fireEvent.click(await archived.findByRole("button", { name: "Unarchive Put me away" }));
+  fireEvent.click(await archived.findByRole("button", { name: "Manage Put me away" }));
+  fireEvent.click(await screen.findByRole("menuitem", { name: "Unarchive" }));
   await waitFor(() => assert.deepEqual(marks.archived, []));
   await view("Recents");
-  await screen.findByRole("button", { name: /^Put me away/ });
+  await screen.findByRole("link", { name: /^Put me away/ });
 });
 
 test("Projects groups by project, folds an empty one to No conversations, and caps a long one at See All", async () => {
@@ -168,9 +232,9 @@ test("Projects groups by project, folds an empty one to No conversations, and ca
   );
   await view("Projects");
   const list = within(await screen.findByRole("list", { name: "Projects" }));
-  assert.equal(list.getAllByRole("button", { name: /^Launch task/ }).length, 5);
+  assert.equal(list.getAllByRole("link", { name: /^Launch task/ }).length, 5);
   fireEvent.click(list.getByRole("button", { name: "See All (7)" }));
-  assert.equal(list.getAllByRole("button", { name: /^Launch task/ }).length, 7);
+  assert.equal(list.getAllByRole("link", { name: /^Launch task/ }).length, 7);
   const ops = list.getByText("Ops").closest("details");
   assert.equal(ops?.open, false, "an empty project starts folded");
   assert.match(ops?.textContent ?? "", /No conversations/);
@@ -229,8 +293,29 @@ test("search has one way in: the Search row, with no tip card repeating it", asy
     />
   );
   render(bar());
-  await screen.findByRole("list", { name: "Recents" });
+  await screen.findByRole("list", { name: "Projects" });
   await new Promise((r) => setTimeout(r, 20));
   assert.equal(screen.queryByRole("complementary", { name: "Search across conversations" }), null);
   assert.ok(screen.getByRole("button", { name: "Search" }));
+});
+
+test("choosing a sidebar filter returns keyboard focus to its disclosure", async () => {
+  net = stubFetch({
+    "GET /api/marks": () => ({ archived: [], read: {}, tips: [] }),
+    "GET /api/threads": () => ({ threads: [task("t1", "A session")], next: null }),
+  });
+  render(<Bar />);
+  fireEvent.click(await screen.findByRole("button", { name: "Filter conversations" }));
+  const disclosure = screen.getByRole("button", { name: "Status All" });
+  disclosure.focus();
+  fireEvent.click(disclosure);
+  const failed = within(screen.getByRole("group", { name: "Status" })).getByRole("button", {
+    name: "Failed",
+  });
+  failed.focus();
+  assert.equal(document.activeElement, failed);
+  fireEvent.click(failed);
+  await waitFor(() => assert.equal(disclosure.getAttribute("aria-expanded"), "false"));
+  assert.equal(document.activeElement, disclosure);
+  assert.equal(screen.queryByRole("group", { name: "Status" }), null);
 });

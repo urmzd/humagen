@@ -484,7 +484,11 @@ func (p *Platform) InboxDismiss(who auth.Principal, id string) (inbox.Message, e
 		return inbox.Message{}, err
 	}
 	p.audit(who, m, "", "dismiss", "")
-	return p.InboxGet(who, id)
+	out, err := p.InboxGet(who, id)
+	if err == nil {
+		err = p.projectSessionAlert(who.Tenant, out.Key, out, out.At)
+	}
+	return out, err
 }
 
 // InboxUnhide brings back a message the caller hid, or an announcement they
@@ -756,7 +760,11 @@ func (p *Platform) InboxResolve(ctx context.Context, who auth.Principal, id, par
 	} else {
 		p.settle(who.Tenant, id, reader, by)
 	}
-	return p.inboxGetAs(who, reader, id)
+	out, err := p.inboxGetAs(who, reader, id)
+	if err == nil {
+		err = p.projectSessionAlert(who.Tenant, out.Key, out, out.At)
+	}
+	return out, err
 }
 
 // audit writes one line for every decision made in the inbox. The inbox's own
@@ -820,14 +828,16 @@ func (p *Platform) inboxAlertCompletion(tenant string, a alerts.Alert, extra ...
 		// A rule that names whom to notify addresses its message to them.
 		// Who may read alerts at all is still checked for every reader.
 		Audience: slices.Clone(a.Notify),
-		Source:   inbox.Source{Alert: a.ID, Rule: a.Rule, Run: a.RunID, Agent: a.Agent, Project: a.Project},
+		Source:   inbox.Source{Alert: a.ID, Rule: a.Rule, Run: a.RunID, Agent: a.Agent, Project: a.Project, Thread: a.Session},
 		Parts: []inbox.Part{{Type: inbox.PartAlert, Alert: &inbox.AlertPart{
 			ID: a.ID, Rule: a.Rule, Kind: string(a.Kind), Severity: string(a.Severity), Title: a.Title, Body: a.Body,
 		}}},
 	}
 	if a.RunID != "" {
 		if run, err := p.Runs.Get(tenant, a.RunID); err == nil {
-			m.Source.Thread, m.Source.Project = run.Thread, run.Project
+			if m.Source.Thread == "" {
+				m.Source.Thread, m.Source.Project = run.Thread, run.Project
+			}
 			if run.Status == runs.Failed {
 				m.Parts = append(m.Parts, failurePart(run))
 			}
@@ -943,7 +953,13 @@ func (p *Platform) inboxArtifact(tenant string, a artifacts.Artifact) {
 // raiseInbox raises a message for the platform itself, which has nobody to
 // hand an error to: one that could not be kept is logged and not raised.
 func (p *Platform) raiseInbox(tenant, key string, m inbox.Message, at time.Time) (inbox.Message, bool) {
+	if p.evaluationNotice(tenant, m) {
+		return inbox.Message{}, false
+	}
 	out, raised, err := p.Inbox.Raise(tenant, key, m, at)
+	if err == nil {
+		err = p.projectSessionAlert(tenant, key, out, at)
+	}
 	if err != nil {
 		p.log.Error("platform: inbox message could not be kept", "tenant", tenant, "key", key, "error", err)
 		return inbox.Message{}, false
@@ -1152,6 +1168,12 @@ func (p *Platform) syncMemory(tenant, owner string) {
 // completionInbox retains one message per completed effect, even if a person
 // resolved it before an interrupted completion is retried.
 func (p *Platform) completionInbox(tenant, key string, m inbox.Message, at time.Time) error {
-	_, _, err := p.Inbox.RaiseOnce(tenant, key, m, at)
-	return err
+	if p.evaluationNotice(tenant, m) {
+		return nil
+	}
+	out, _, err := p.Inbox.RaiseOnce(tenant, key, m, at)
+	if err != nil {
+		return err
+	}
+	return p.projectSessionAlert(tenant, key, out, at)
 }

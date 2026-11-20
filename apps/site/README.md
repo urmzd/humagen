@@ -28,7 +28,7 @@ pnpm --filter @humagen/site typecheck
 - `src/lib/llms.ts`: builds `llms.txt` from the content module.
 - `src/lib/og.ts`: draws each page's social preview from its `card` in the content module, the Humagen mark, the console's light tokens (read from render-web's `theme.css`) and the IBM Plex `.woff` files, with satori and resvg. The file name carries a hash of the image, because the deploy caches images as immutable. `src/layouts/Base.astro` writes the Open Graph and Twitter tags.
 - `src/styles/global.css`: imports the console's theme and fonts, and adds the few rules a document page needs.
-- `src/assets/console/`: real console screens, copied from the repository's `showcase/` (captured by teasr from a local preview with seeded data). Astro converts them to WebP at build.
+- `src/assets/console/` and `public/demo/`: real console screens and the hero recording, light and dark, written by `make showcase` from a live preview on real models (`scripts/screens/showcase-live.ts`). Astro converts the screens to WebP at build.
 
 Facts come from the repository: the README, `docs/guides/deploy.md`, `docs/reference/spec.md` and the status table in `docs/architecture/overview.md`. When one of those changes, change the content module with it. Do not add a claim the repository does not support.
 

@@ -109,7 +109,7 @@ export function FileBrowser({
         </nav>
         <div className="min-w-0">{children}</div>
       </div>
-      <Inspector open={open} title={label} onClose={() => setOpen(false)}>
+      <Inspector open={open} title={label} onClose={() => setOpen(false)} modal>
         {open && branch(root)}
       </Inspector>
     </div>

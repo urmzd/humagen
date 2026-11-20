@@ -40,7 +40,7 @@ export function HomePage({
     // greeting centered above it and the boxes scrolling under it. Wider, the
     // prompt is the page, centered.
     <section
-      aria-label="New conversation"
+      aria-label="New session"
       className="humagen-home aui-scroll humagen-fade flex min-h-0 flex-1 flex-col overflow-y-auto pt-8 pb-2 md:pb-8"
     >
       <div className="flex w-full min-w-0 flex-1 flex-col md:my-auto md:block md:flex-none">
@@ -66,11 +66,6 @@ export function HomePage({
         )}
         {below && <div className="max-md:pb-6">{below}</div>}
       </div>
-      {canRun && hasAgents && (
-        <p className="humagen-disclaimer mt-auto px-4 pt-6 text-center text-aui-2xs text-aui-muted">
-          {defaultCopy.disclaimer(defaultCopy.product)}
-        </p>
-      )}
     </section>
   );
 }

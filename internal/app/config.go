@@ -16,11 +16,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/urmzd/orchagent/flow/bus"
-	"github.com/urmzd/orchagent/flow/event"
-	"github.com/urmzd/orchagent/flow/runtime"
-	"github.com/urmzd/orchagent/flow/toolprovider"
-	"github.com/urmzd/orchagent/flow/turn/native"
+	"github.com/urmzd/humagen/internal/toolprovider"
+	"github.com/urmzd/saige/flow/bus"
+	"github.com/urmzd/saige/flow/event"
+	"github.com/urmzd/saige/flow/runtime"
+	"github.com/urmzd/saige/flow/turn/native"
 
 	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/platform"
@@ -137,6 +137,9 @@ func loadFiles(ctx context.Context, o Options, paths []string, keys credref.Reso
 	// own, and a run's events would reach only the process that ran it.
 	declaredStores := cfg.System.Spec.Stores.Kind
 	declaredBus := cfg.System.Spec.Bus.Kind
+	// The same for -public-url, whose default comes from $HUMAGEN_PUBLIC_URL:
+	// the file's own default would hide the variable behind localhost.
+	declaredPublicURL := cfg.System.Spec.Server.PublicURL
 	sys := cfg.System
 	sys.Defaults()
 	sp := sys.Spec
@@ -157,11 +160,12 @@ func loadFiles(ctx context.Context, o Options, paths []string, keys credref.Reso
 		return nil
 	}
 	set("addr", sp.Server.Addr)
-	set("public-url", sp.Server.PublicURL)
+	set("public-url", declaredPublicURL)
 	set("webhook-addr", sp.Server.WebhookAddr)
 	set("drain-grace", sp.Server.DrainGrace)
 	set("shutdown-timeout", sp.Server.ShutdownTimeout)
 	set("role", sp.Server.Role)
+	set("replicas", strconv.Itoa(sp.Server.Replicas))
 	if !sp.Server.Console.On() {
 		l.args = append(l.args, "-web=")
 	} else if d := sp.Server.Console.Dir; d != "" && d != "auto" {
@@ -277,12 +281,11 @@ func loadFiles(ctx context.Context, o Options, paths []string, keys credref.Reso
 	set("concurrency", strconv.Itoa(sp.Execution.Concurrency))
 	set("max-depth", strconv.Itoa(sp.Execution.MaxDepth))
 	set("max-fan-out", strconv.Itoa(sp.Execution.MaxFanOut))
+	set("entry-agent", sp.Branding.EntryAgent)
 	set("room-coalesce-above", strconv.Itoa(sp.Rooms.CoalesceAbove))
 	set("room-tail-interval", sp.Rooms.TailInterval)
 	set("room-max-runs-per-minute", strconv.Itoa(sp.Rooms.MaxRunsPerMinute))
 	set("room-max-runs-per-person", strconv.Itoa(sp.Rooms.MaxRunsPerPerson))
-	set("builtin-provider", sp.Execution.Builtin.Provider)
-	set("builtin-model", sp.Execution.Builtin.Model)
 	if len(sp.SecretEnv) > 0 {
 		var parts []string
 		for _, t := range slices.Sorted(maps.Keys(sp.SecretEnv)) {
@@ -303,6 +306,10 @@ func loadFiles(ctx context.Context, o Options, paths []string, keys credref.Reso
 // envPostgres is the variable the server reads for its database, which a
 // System document's reference fills. The stores and the bus share it.
 const envPostgres = "HUMAGEN_POSTGRES_URL"
+
+// publicURLEnv names where browsers reach the server when neither
+// -public-url nor the file's server.public_url says.
+const publicURLEnv = "HUMAGEN_PUBLIC_URL"
 
 // overlay reads vars first, then the process environment.
 func overlay(vars map[string]string, next func(string) string) func(string) string {
@@ -335,6 +342,20 @@ func openBus(ctx context.Context, o Options, l loaded, kind string, backends pla
 		}
 		return nil, fmt.Errorf("bus: -bus=%q is not memory or postgres", kind)
 	}
+}
+
+// checkReplicas refuses a deployment of more than one replica on the
+// in-memory bus, which a nil bus means to the platform. It runs at start,
+// on the bus that was opened, because the flags and $HUMAGEN_POSTGRES_URL
+// can choose a bus the spec file does not name.
+func checkReplicas(replicas int, broker bus.Bus) error {
+	if replicas < 1 {
+		return fmt.Errorf("-replicas=%d: give the number of server processes the deployment runs, 1 or more", replicas)
+	}
+	if broker != nil {
+		return nil
+	}
+	return spec.MemoryBusReplicas(replicas)
 }
 
 // fileExtensions are the Platform documents' models and tools, as the
@@ -453,8 +474,20 @@ func applyPlatforms(ctx context.Context, p *platform.Platform, cfg spec.Config, 
 					if fromFile, err = wire.SpecOfAgentFile(string(raw), policy); err != nil {
 						return fmt.Errorf("platform %q: agents[%d] %s: %w", tenant, i, a.File, err)
 					}
-				} else if err := decodeStrict(raw, &fromFile); err != nil {
-					return fmt.Errorf("platform %q: agents[%d] %s: %w", tenant, i, a.File, err)
+				} else {
+					// A field the spec no longer reads is dropped, with a note.
+					kept, notes, err := wire.DropRetiredAgentFields(raw)
+					if err != nil {
+						return fmt.Errorf("platform %q: agents[%d] %s: %w", tenant, i, a.File, err)
+					}
+					for _, n := range notes {
+						if log != nil {
+							log.Warn("an agent file holds a field that is no longer read", "platform", tenant, "file", a.File, "note", n)
+						}
+					}
+					if err := decodeStrict(kept, &fromFile); err != nil {
+						return fmt.Errorf("platform %q: agents[%d] %s: %w", tenant, i, a.File, err)
+					}
 				}
 				s = &fromFile
 			}
@@ -493,6 +526,12 @@ func applyPlatforms(ctx context.Context, p *platform.Platform, cfg spec.Config, 
 func applyWorkspace(ctx context.Context, p *platform.Platform, doc spec.Platform) error {
 	w, tenant := doc.Spec.Workspace, doc.Metadata.Name
 	s := p.Settings(tenant)
+	if w.EvalLimits != nil {
+		s.EvalLimits = *w.EvalLimits
+	}
+	if w.Prompts != nil {
+		s.Prompts = *w.Prompts
+	}
 	if doc.Metadata.DisplayName != "" {
 		s.WorkspaceName = doc.Metadata.DisplayName
 	}

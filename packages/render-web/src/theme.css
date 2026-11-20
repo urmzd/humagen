@@ -313,8 +313,11 @@
   --shadow-aui-md: var(--aui-shadow-md);
   --shadow-aui-pop: var(--aui-shadow-pop);
 
-  /* Type scale. Chat UI is dense: 14px body, 13px secondary, 12px meta. */
-  --text-aui-2xs: 0.6875rem;
+  /* Type scale. Chat UI is dense: 14px body, 13px secondary, 12px meta.
+     12px is the floor, at every width: nothing in the scale is smaller. The
+     smallest step keeps its name and a tighter line than xs, for pills, counts
+     and timestamps that sit in a 20px row. */
+  --text-aui-2xs: 0.75rem;
   --text-aui-2xs--line-height: 1rem;
   --text-aui-xs: 0.75rem;
   --text-aui-xs--line-height: 1.125rem;
@@ -353,12 +356,13 @@
 }
 
 /*
- * A row of actions is a fieldset with none of a fieldset's own box. The reset
+ * A row of actions, and a checklist, is a fieldset with none of a fieldset's own box. The reset
  * is here, in this layer, rather than as utilities on the element: a utility
  * sits in a later layer and would beat the card rules below, which give the
  * row of a question or an approval its border, padding and place in the card.
  */
-[data-aui="actions"] {
+[data-aui="actions"],
+[data-aui="checkboxes"] {
   margin: 0;
   border: 0;
   padding: 0;
@@ -431,6 +435,17 @@
   border-top: 1px solid var(--aui-border);
 }
 
+/*
+ * A callout's box. It is here rather than as utilities on the element: a
+ * utility sits in a later layer and would beat the rules below that open its
+ * bottom edge to the actions under it.
+ */
+[data-aui="callout"] {
+  border: 1px solid var(--aui-callout-border);
+  border-radius: var(--radius-aui);
+  background: var(--aui-callout-bg);
+  padding: 0.75rem;
+}
 /* Recovery actions sit inside the callout they recover from. */
 .aui-stack > [data-aui="callout"]:has(+ [data-aui="actions"]) {
   border-bottom-left-radius: 0;
@@ -482,6 +497,7 @@
 /* ---------- Prose ---------- */
 
 .aui-prose {
+  --aui-inline-code-padding: 0.3rem;
   font-size: var(--aui-prose-size, var(--text-aui-base));
   line-height: var(--aui-prose-leading, var(--text-aui-base--line-height));
   color: inherit;
@@ -542,12 +558,20 @@
 .aui-prose :where(strong) {
   font-weight: 600;
 }
+.aui-prose :where(p:has(code)) {
+  /* Cloned end padding must fit inside the paragraph at a line break. */
+  padding-inline-end: var(--aui-inline-code-padding);
+}
 .aui-prose :where(:not(pre) > code) {
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  overflow-wrap: anywhere;
   border-radius: 0.3rem;
   background: var(--aui-code-bg);
-  padding: 0.1rem 0.3rem;
+  padding: 0.1rem var(--aui-inline-code-padding);
   font-family: var(--font-aui-mono);
-  font-size: 0.85em;
+  /* Smaller than the prose around it, never under the scale's 12px floor. */
+  font-size: max(0.85em, var(--text-aui-2xs));
 }
 .aui-prose :where(blockquote) {
   margin: 0.75rem 0;
@@ -607,6 +631,52 @@
 .aui-spinner {
   transform-origin: 50% 50%;
   animation: aui-rotate 0.8s linear infinite;
+}
+
+/*
+ * The control that returns to the end of a list (LatestButton). While an
+ * answer is being written out of view, three dots rise in a wave where its
+ * arrow was; a dot at its corner marks what arrived unseen.
+ */
+.aui-latest-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.aui-latest-dots > span {
+  width: 4px;
+  height: 4px;
+  border-radius: 9999px;
+  background: currentColor;
+  animation: aui-latest-wave 1.2s ease-in-out infinite;
+}
+.aui-latest-dots > span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.aui-latest-dots > span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+@keyframes aui-latest-wave {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.45;
+  }
+  30% {
+    transform: translateY(-3px);
+    opacity: 1;
+  }
+}
+.aui-latest-dot {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background: var(--aui-accent);
+  box-shadow: 0 0 0 2px var(--aui-bg);
 }
 
 /* Text shimmer: muted text with one highlight sweep, then a beat of rest. */
@@ -731,6 +801,10 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  /* Still under way, said without motion: the three dots, standing still. */
+  .aui-latest-dots > span {
+    animation: none;
+  }
   .aui-spinner,
   .aui-streaming > :last-child::after,
   .aui-verb-in,
@@ -1043,6 +1117,25 @@
     background: color-mix(in oklab, var(--aui-accent) 14%, var(--aui-bg, transparent));
     box-shadow: 0 0 0 1px color-mix(in oklab, var(--aui-accent) 45%, transparent);
     user-select: none;
+  }
+  /* An agent's bot (AgentInitials): the canvas, in the agent's color. */
+  .aui-bot {
+    --s: var(--initials-size, 28px);
+    position: relative;
+    display: inline-flex;
+    flex-shrink: 0;
+    width: var(--s);
+    height: var(--s);
+    color: var(--aui-accent);
+  }
+  /* The drawn orb (AgentOrb): the canvas takes this color as its ink. */
+  .aui-orb-drawn {
+    display: inline-flex;
+    flex-shrink: 0;
+    width: var(--orb-size);
+    height: var(--orb-size);
+    color: var(--aui-accent);
+    vertical-align: middle;
   }
   .aui-initials[data-live="true"] {
     animation: aui-initials-glow 2.4s ease-in-out infinite;
@@ -1429,13 +1522,9 @@
 .aui-wave-tick {
   width: var(--aui-wave-w, 8px);
 }
+/* The turn in view: neutral ink, so colour stays for meaning, not position. */
 .aui-wave-now {
-  background: linear-gradient(
-    90deg,
-    var(--aui-brand-red),
-    var(--aui-brand-yellow),
-    var(--aui-brand-green)
-  );
+  background: var(--aui-fg);
 }
 @media (max-width: 47.99rem) {
   .aui-wave-rail {

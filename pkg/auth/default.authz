@@ -16,10 +16,12 @@ role operator extends viewer {
 }
 
 # Everything an operator does, and also defines and revises agents (their
-# call policies among them) and what they are grounded in. The natural
-# approver of calls between agents.
+# call policies among them) and what they are grounded in, and imports
+# sessions from other tools with their structure (knowledge:import). The
+# natural approver of calls between agents.
 role manager extends operator {
   allow write on agents, knowledge
+  allow import on knowledge
 }
 
 # Also defines and revises agents, decides what they are grounded in, sets

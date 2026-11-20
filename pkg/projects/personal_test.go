@@ -1,12 +1,13 @@
 package projects_test
 
 import (
-	"github.com/urmzd/humagen/pkg/projects"
-	"github.com/urmzd/humagen/pkg/state"
-	"github.com/urmzd/humagen/pkg/state/statetest"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/urmzd/humagen/pkg/projects"
+	"github.com/urmzd/humagen/pkg/state"
+	"github.com/urmzd/humagen/pkg/state/statetest"
 )
 
 func TestPersonalProjectOwnerBoundarySurvivesRestart(t *testing.T) {

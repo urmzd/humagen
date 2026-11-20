@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/library"
 	"github.com/urmzd/humagen/pkg/projects"
@@ -19,6 +20,33 @@ func personalLibraryScope(who auth.Principal, scope library.Scope) (library.Scop
 	}
 	return scope, nil
 }
+
+// skillView is a revision as a route answers with it: what its reader may
+// see of it (LibraryView), and the hash of its package.
+type skillView struct {
+	library.Revision
+	// PackageHash is the snapshot hash over every file's path and content,
+	// the one a run that uses the revision is pinned with. A folder that
+	// hashes the same holds the same package. Empty for a revision from
+	// before packages, which holds instructions only.
+	PackageHash string `json:"package_hash,omitempty"`
+	// TestResults are the verdicts of an unpublished revision's finished
+	// tests, among those its reader may see (platform.SkillTestResults).
+	// Only a skill's history carries them.
+	TestResults []platform.SkillTestResult `json:"test_results,omitempty"`
+}
+
+// skillView hashes the package before a caller drops its files.
+func (s *Server) skillView(who auth.Principal, r library.Revision) skillView {
+	view := skillView{Revision: s.P.LibraryView(who, r)}
+	if r.Files != nil {
+		if pkg, err := r.Package(); err == nil {
+			view.PackageHash = pkg.Hash
+		}
+	}
+	return view
+}
+
 func (s *Server) listLibrarySkills(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	kind := r.URL.Query().Get("scope")
 	if kind == "" {
@@ -32,24 +60,34 @@ func (s *Server) listLibrarySkills(w http.ResponseWriter, r *http.Request, who a
 		s.problem(w, err)
 		return
 	}
-	rows, err := s.P.SkillLibrary.List(who.Tenant, scope)
+	// A skill this server cannot read, such as one a later release wrote
+	// past its bounds, is named under unreadable and fails only itself.
+	rows, unreadable, err := s.P.SkillLibrary.List(who.Tenant, scope)
 	if err != nil {
 		s.problem(w, err)
 		return
 	}
+	views := make([]skillView, len(rows))
 	for i := range rows {
-		rows[i] = s.P.LibraryView(who, rows[i])
-		rows[i].Files = nil // Package content is loaded only after opening a skill.
+		views[i] = s.skillView(who, rows[i])
+		views[i].Files = nil // Package content is loaded only after opening a skill.
 	}
-	ok(w, 200, map[string]any{"skills": rows})
+	ok(w, 200, map[string]any{"skills": views, "unreadable": unreadable})
 }
 func (s *Server) draftLibrarySkill(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	var body struct {
 		Scope      library.Scope      `json:"scope"`
 		Definition library.Definition `json:"definition"`
 		Version    int                `json:"version"`
+		// Via is "import" for a draft read from a skill folder, which the
+		// revision records, or empty for one saved in the editor.
+		Via string `json:"via"`
 	}
 	if !decode(w, r, &body) {
+		return
+	}
+	if body.Via != "" && body.Via != library.ViaImport {
+		fail(w, 400, "via is import, or left out")
 		return
 	}
 	scope, err := personalLibraryScope(who, body.Scope)
@@ -57,12 +95,17 @@ func (s *Server) draftLibrarySkill(w http.ResponseWriter, r *http.Request, who a
 		s.problem(w, err)
 		return
 	}
-	row, err := s.P.DraftSkill(who, scope, body.Definition, body.Version, nil)
+	var row library.Revision
+	if body.Via == library.ViaImport {
+		row, err = s.P.ImportSkill(who, scope, body.Definition, body.Version)
+	} else {
+		row, err = s.P.DraftSkill(who, scope, body.Definition, body.Version, nil)
+	}
 	if err != nil {
 		s.problem(w, err)
 		return
 	}
-	ok(w, 201, s.P.LibraryView(who, row))
+	ok(w, 201, s.skillView(who, row))
 }
 func (s *Server) getLibrarySkill(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	row, err := s.P.LibrarySkill(who, r.PathValue("id"))
@@ -75,10 +118,15 @@ func (s *Server) getLibrarySkill(w http.ResponseWriter, r *http.Request, who aut
 		s.problem(w, err)
 		return
 	}
+	views := make([]skillView, len(rows))
 	for i := range rows {
-		rows[i] = s.P.LibraryView(who, rows[i])
+		views[i] = s.skillView(who, rows[i])
+		if views[i].TestResults, err = s.P.SkillTestResults(who, rows[i]); err != nil {
+			s.problem(w, err)
+			return
+		}
 	}
-	ok(w, 200, map[string]any{"revisions": rows})
+	ok(w, 200, map[string]any{"revisions": views})
 }
 func (s *Server) skillRevision(w http.ResponseWriter, r *http.Request, who auth.Principal) (library.Revision, bool) {
 	latest, err := s.P.LibrarySkill(who, r.PathValue("id"))
@@ -132,7 +180,7 @@ func (s *Server) publishLibrarySkill(w http.ResponseWriter, r *http.Request, who
 		s.problem(w, err)
 		return
 	}
-	ok(w, 200, s.P.LibraryView(who, saved))
+	ok(w, 200, s.skillView(who, saved))
 }
 func (s *Server) promoteLibrarySkill(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	row, found := s.skillRevision(w, r, who)
@@ -160,5 +208,5 @@ func (s *Server) promoteLibrarySkill(w http.ResponseWriter, r *http.Request, who
 		s.problem(w, err)
 		return
 	}
-	ok(w, 201, s.P.LibraryView(who, saved))
+	ok(w, 201, s.skillView(who, saved))
 }

@@ -144,7 +144,7 @@ export function CitationProvenance({
         </span>
       ) : (
         <span>
-          {known && citation.refreshFailed ? `${labels.lastGoodCopy} · ` : ""}
+          {known && citation.refreshFailed ? `${labels.lastGoodCopy} | ` : ""}
           {labels.freshnessUnknown}
         </span>
       )}
@@ -169,9 +169,9 @@ export function SourceMark({ label, className }: { label: string; className?: st
   return (
     <span
       aria-hidden
-      className={`inline-flex shrink-0 items-center justify-center rounded-[0.3rem] bg-aui-subtle font-semibold text-aui-muted uppercase ${className ?? "size-4 text-[0.6rem]"}`}
+      className={`inline-flex shrink-0 items-center justify-center rounded-[0.3rem] bg-aui-subtle font-semibold text-aui-muted uppercase ${className ?? "size-4 text-aui-2xs leading-none"}`}
     >
-      {label.charAt(0) || "·"}
+      {label.charAt(0) || "|"}
     </span>
   );
 }
@@ -196,7 +196,8 @@ export function Favicon({
   } catch {
     src = null;
   }
-  if (!src || failed) return <SourceMark label={label} className={`${className} text-[0.55rem]`} />;
+  if (!src || failed)
+    return <SourceMark label={label} className={`${className} text-aui-2xs leading-none`} />;
   return (
     <img
       src={src}
@@ -244,7 +245,7 @@ export function CitationChip({ href, label }: { href?: string; label: string }) 
   );
 
   const chip =
-    "relative -top-[0.3em] mx-0.5 inline-flex h-[1.35em] min-w-[1.35em] items-center justify-center gap-1 rounded-full border border-aui-border bg-aui-subtle px-1.5 align-baseline font-medium text-[0.68em] text-aui-muted leading-none tabular-nums no-underline transition-colors hover:border-aui-accent hover:bg-aui-accent-soft hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-aui-accent";
+    "relative -top-[0.3em] mx-0.5 inline-flex h-[1.35em] min-w-[1.35em] items-center justify-center gap-1 rounded-full border border-aui-border bg-aui-subtle px-1.5 align-baseline font-medium text-[max(0.68em,var(--text-aui-2xs))] text-aui-muted leading-none tabular-nums no-underline transition-colors hover:border-aui-accent hover:bg-aui-accent-soft hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-aui-accent";
 
   const body: ReactNode = <span>{n}</span>;
   const aria = citation ? `Source ${n}: ${citation.title}` : `Source ${n}`;

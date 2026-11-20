@@ -162,7 +162,7 @@ func TestDefaultPersonasUnderTheDefaultPolicy(t *testing.T) {
 	}{
 		{"mock-viewer", viewer},
 		{"mock-operator", operator},
-		{"mock-manager", []auth.Permission{auth.AgentsRead, auth.AgentsWrite, auth.RunsRead, auth.RunsWrite, auth.SchedulesRead, auth.SchedulesWrite, auth.AlertsRead, auth.AlertsWrite, auth.KnowledgeRead, auth.KnowledgeWrite, auth.EvalsRead, auth.EvalsWrite, auth.BillingRead, auth.ArtifactsRead, auth.ArtifactsWrite, auth.ClientsRead, auth.ProjectsRead, auth.ProjectsWrite, auth.PeopleRead, auth.SpeechWrite}},
+		{"mock-manager", []auth.Permission{auth.AgentsRead, auth.AgentsWrite, auth.RunsRead, auth.RunsWrite, auth.SchedulesRead, auth.SchedulesWrite, auth.AlertsRead, auth.AlertsWrite, auth.KnowledgeRead, auth.KnowledgeWrite, auth.KnowledgeImport, auth.EvalsRead, auth.EvalsWrite, auth.BillingRead, auth.ArtifactsRead, auth.ArtifactsWrite, auth.ClientsRead, auth.ProjectsRead, auth.ProjectsWrite, auth.PeopleRead, auth.SpeechWrite}},
 		{"mock-admin", auth.Permissions()},
 		{"mock-nobody", nil},
 	} {

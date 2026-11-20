@@ -20,6 +20,7 @@ import { Input } from "@humagen/render-web/ui/input";
 import { ChangeReview, CodeEditor, FileBrowser, Inspector } from "@humagen/web";
 import { type ReactNode, useCallback, useEffect, useId, useRef, useState } from "react";
 import { ApiError, api } from "./api.ts";
+import { recordFileDelete, recordFileSave } from "./fileActivity.ts";
 import type { ConversationView } from "./route.ts";
 import {
   MAX_WORKSPACE_FILE_BYTES,
@@ -231,6 +232,8 @@ export function WorkspaceFiles({
         content: snapshot.content,
         revision: snapshot.revision,
       });
+      // What the person saved goes with their next message.
+      recordFileSave(thread, name, snapshot.revision ? snapshot.base : undefined, file.content);
       if (!live.current) return;
       updateDraft(name, (current) => ({
         ...asDraft(file),
@@ -363,6 +366,7 @@ export function WorkspaceFiles({
     setProblem("");
     try {
       await workspaceFiles.remove(thread, path, draft.revision);
+      recordFileDelete(thread, path);
       if (!live.current) return;
       closeTab(path, true);
       setNote(words.deleted);
@@ -579,7 +583,7 @@ export function WorkspaceFiles({
                 >
                   <SaveIcon size={14} />
                   {busy === "save" ? words.saving : words.save}
-                  <kbd className="hidden text-[10px] opacity-60 sm:inline">⌘/Ctrl S</kbd>
+                  <kbd className="hidden text-aui-2xs opacity-60 sm:inline">⌘/Ctrl S</kbd>
                 </Button>
               </div>
               {draft.conflict && (

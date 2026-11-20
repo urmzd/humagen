@@ -203,7 +203,7 @@ export function PlusMenu({
   // Associate each response with its project. A late response cannot fill a
   // different project's pane, and a refused read never invents a channel.
   useEffect(() => {
-    if (!offersProject || scope === null) {
+    if (pane !== "channels" || !offersProject || scope === null) {
       setChannels(null);
       return;
     }
@@ -223,7 +223,7 @@ export function PlusMenu({
     return () => {
       live = false;
     };
-  }, [offersProject, scope, channelRetry]);
+  }, [offersProject, scope, channelRetry, pane]);
 
   useEffect(() => {
     if (pane !== "channels" || projectFixed || scopedChannels?.state !== "ready") return;
@@ -354,6 +354,8 @@ export function PlusMenu({
       (target === search.current || target.dataset.plusItem === "agent")
     ) {
       event.preventDefault();
+      if (target.dataset.plusItem === "agent") target.click();
+      else if (shownAgents.length === 1) onMention?.(shownAgents[0]!.name);
       onClose();
     } else if (event.key === "Enter" && target instanceof HTMLInputElement) {
       event.preventDefault();
@@ -434,32 +436,8 @@ export function PlusMenu({
               )}
               <ChevronRightIcon size={16} className="text-aui-muted" />
             </button>
-            {offersProject && (
-              <>
-                <button
-                  type="button"
-                  ref={(button) => {
-                    categoryButtons.current.projects = button;
-                  }}
-                  data-plus-item="action"
-                  data-category="projects"
-                  aria-haspopup="dialog"
-                  className={row}
-                  disabled={!!projectFixed}
-                  title={projectFixed}
-                  onClick={() => open("projects")}
-                >
-                  <ProjectIcon size={16} className="text-aui-muted" />
-                  <span className="min-w-0 flex-1">{defaultCopy.navigation.projects}</span>
-                  <span className="max-w-[45%] truncate text-aui-xs text-aui-muted">
-                    {projectName(project)}
-                  </span>
-                  <ChevronRightIcon size={16} className="text-aui-muted" />
-                </button>
-                {projectFixed && (
-                  <p className="px-2.5 pb-2 text-aui-xs text-aui-muted">{projectFixed}</p>
-                )}
-              </>
+            {projectFixed && (
+              <p className="px-2.5 pb-2 text-aui-xs text-aui-muted">{projectFixed}</p>
             )}
             {onSkill && (
               <button
@@ -731,7 +709,7 @@ export function SelectionChips({
   const path = p ? above(p) : [];
   const label =
     where === null ? null : channel && channel !== "general" ? `${where} / #${channel}` : where;
-  if (label === null) return null;
+  if (label === null && !projectControl) return null;
   return (
     <ul aria-label={words.selected} className="flex min-w-0 flex-wrap items-center gap-1">
       <li
@@ -746,7 +724,7 @@ export function SelectionChips({
               <button
                 type="button"
                 className={remove}
-                aria-label={words.removeProject(label)}
+                aria-label={words.removeProject(label ?? "Personal")}
                 onClick={() => onChange({ ...selection, project: null, channel: "general" })}
               >
                 <XIcon size={12} />

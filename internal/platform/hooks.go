@@ -4,12 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"slices"
 	"strings"
 	"time"
 
-	"github.com/urmzd/orchagent/flow/event"
-	"github.com/urmzd/orchagent/flow/toolprovider"
+	"github.com/urmzd/humagen/internal/toolprovider"
+	"github.com/urmzd/saige/flow/event"
 
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/memory"
@@ -88,17 +89,36 @@ func (p *Platform) ended(ctx context.Context, run runs.Run) {
 			}
 			return nil
 		}},
-		{"operation", func() error { return p.Operations.Settle(run.Tenant, run.ID, run.Status == runs.Completed, p.now()) }},
+		{"output", func() error {
+			var err error
+			run, err = p.keepOutput(run)
+			return err
+		}},
+		{"operation", func() error { return p.settleRunOperations(ctx, run) }},
 		{"usage", func() error { return p.settleUsage(ctx, run) }},
 		{"alerts", func() error { return p.raise(run) }},
+		{"online_eval", func() error { return p.scoreOnline(run) }},
+		{"skill_test", func() error { return p.recordSkillTest(run) }},
+		{"spoken", func() error { return p.speakToSurface(ctx, run) }},
 		{"questions", func() error { return p.settleQuestionsOf(run) }},
+		{"session_alerts", func() error { return p.settleSessionAlerts(run.Tenant, run.Thread) }},
+		{"background", func() error { return p.settleBackgroundRun(ctx, run) }},
 		{"cascade", func() error { return p.cascade(ctx, run) }},
 		{"answer", func() error { return p.deliverAnswer(ctx, run) }},
+		{"followups", func() error {
+			if run.Parent != "" {
+				return nil
+			}
+			return p.releaseFollowups(ctx, run.Tenant, run.Thread)
+		}},
 		{"housekeeping", func() error {
+			if IsEvaluation(run) {
+				return nil
+			}
 			switch {
 			case run.Origin == runs.OriginSystem:
 				return p.fileHook(run)
-			case run.Origin == runs.OriginAPI && run.Parent == "" && run.Status == runs.Completed:
+			case run.Origin == runs.OriginAPI && run.Parent == "" && run.Status == runs.Completed && wire.Meta(run.Tag())[metaBackground] == "":
 				return p.afterTurn(ctx, run)
 			}
 			return nil
@@ -115,7 +135,12 @@ func (p *Platform) ended(ctx context.Context, run runs.Run) {
 			return
 		}
 		if err := step.apply(); err != nil {
-			p.log.Error("platform: completion action will retry", "run", run.ID, "action", step.name, "error", err)
+			level := slog.LevelError
+			if errors.Is(err, errSkillTestWait) {
+				// Bounded by the step itself, which says once when it stops.
+				level = slog.LevelDebug
+			}
+			p.log.Log(ctx, level, "platform: completion action will retry", "run", run.ID, "action", step.name, "error", err)
 			failed = true
 			continue
 		}
@@ -406,10 +431,15 @@ func hookMeta(hook, target string, extra ...map[string]string) map[string]string
 // trimmed to one line, bounded, and stored only as a title or as notes people
 // can read and remove.
 func (p *Platform) fileHook(run runs.Run) error {
+	meta := wire.Meta(run.Tag())
+	if meta[metaHook] == hookApproval {
+		// An approval run that failed still says so: its question is left
+		// for a person, and the hand-off is audited.
+		return p.fileApproval(context.Background(), run)
+	}
 	if run.Status != runs.Completed {
 		return nil
 	}
-	meta := wire.Meta(run.Tag())
 	target := meta[metaFor]
 	switch meta[metaHook] {
 	case hookTitle:

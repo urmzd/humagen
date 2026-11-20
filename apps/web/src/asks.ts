@@ -1,13 +1,28 @@
 import { type Copy, defaultCopy } from "@humagen/components";
 import type { Interrupt, Turn } from "@humagen/core";
-import type { ThreadAsk } from "./api.ts";
+import type { ThreadAsk, ThreadTurn } from "./api.ts";
 
 /**
  * A question a run waits on is read by everyone in its thread and answered
- * by the people it is for. The platform says which a reader is (`ask` on a
- * thread's turn), so the console offers the answer only to them, and tells
- * anyone else whom it is for.
+ * by the people it is for. The platform says which a reader is (`asks` on a
+ * thread's turn, one for each question the run waits on), so the console
+ * offers each answer only to them, and tells anyone else whom it is for.
  */
+
+/**
+ * Every question a turn's run waits on, as the reader stands to each. A run
+ * parked by a batch of tool calls waits on several at once; a server from
+ * before batches sends the first alone, as `ask`.
+ */
+export function asksOf(turn: Pick<ThreadTurn, "ask" | "asks"> | undefined): ThreadAsk[] {
+  if (!turn) return [];
+  return turn.asks?.length ? turn.asks : turn.ask ? [turn.ask] : [];
+}
+
+/** True when a run waits on questions and none of them is the reader's to answer. */
+export function allForOthers(asks: ThreadAsk[] | undefined): boolean {
+  return !!asks?.length && asks.every((a) => !a.yours);
+}
 
 const words = defaultCopy.threads.questionFor;
 
@@ -30,19 +45,19 @@ export function questionFor(ask: ThreadAsk, agent: string): string {
 }
 
 /**
- * The turn as one reader sees it: a question that is not theirs to answer
+ * The turn as one reader sees it: each question that is not theirs to answer
  * shows whom it is for, and no way to answer it. A question theirs, or one
  * the platform said nothing about, is left as it is.
  */
-export function askedOf(turn: Turn, ask: ThreadAsk | undefined): Turn {
-  if (!ask || ask.yours) return turn;
-  const forOthers = questionFor(ask, turn.agent.name);
+export function askedOf(turn: Turn, asks: ThreadAsk[] | undefined): Turn {
+  const others = (asks ?? []).filter((a) => !a.yours);
+  if (others.length === 0) return turn;
   let changed = false;
   const interrupts = turn.interrupts.map((i) => {
-    if (i.id !== ask.question || i.type !== "clarification" || i.answer.kind !== "pending")
-      return i;
+    const ask = others.find((a) => a.question === i.id);
+    if (!ask || i.type !== "clarification" || i.answer.kind !== "pending") return i;
     changed = true;
-    return { ...i, forOthers };
+    return { ...i, forOthers: questionFor(ask, turn.agent.name) };
   });
   return changed ? { ...turn, interrupts } : turn;
 }
@@ -53,8 +68,8 @@ const othersCopy: Copy = {
   status: { ...defaultCopy.status, waiting: defaultCopy.threads.waitingOnOthers },
 };
 
-export function copyFor(ask: ThreadAsk | undefined): Copy {
-  return ask && !ask.yours ? othersCopy : defaultCopy;
+export function copyFor(asks: ThreadAsk[] | undefined): Copy {
+  return allForOthers(asks) ? othersCopy : defaultCopy;
 }
 
 /** Why the platform did not take a reader's answer to one question of a run. */

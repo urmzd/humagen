@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/urmzd/orchagent/flow/event"
-	"github.com/urmzd/orchagent/flow/mcptools"
-	"github.com/urmzd/orchagent/flow/toolprovider"
+	"github.com/urmzd/humagen/internal/mcptools"
+	"github.com/urmzd/humagen/internal/toolprovider"
+	"github.com/urmzd/saige/flow/event"
 
 	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/wire"
@@ -241,8 +241,9 @@ func (p *Platform) ownStarts(tenant, subject string) []string {
 // are checked here as well as when the credential was given, so one the
 // workspace no longer allows is not used, however it was kept.
 func (p *Platform) personCredential(_ context.Context, tenant string, prov toolprovider.Provider, actor event.Actor) (mcptools.PersonCredential, error) {
-	// Native source consent is not consent to an MCP endpoint.
-	if strings.HasPrefix(prov.Name, "hsrc-") {
+	// Native source consent, and a warehouse login, is not consent to an
+	// MCP endpoint.
+	if strings.HasPrefix(prov.Name, "hsrc-") || strings.HasPrefix(prov.Name, "hcat-") {
 		return mcptools.PersonCredential{}, mcptools.ErrNoPersonCredential
 	}
 	person := actor.User
@@ -308,7 +309,9 @@ type ToolCredential struct {
 // ToolCredentials is the person-scoped providers of a workspace, as one
 // person stands with each, and what the workspace lets them give.
 type ToolCredentials struct {
-	Providers []ToolCredential `json:"providers"`
+	AllowedHosts   []string         `json:"allowed_hosts"`
+	OAuthAvailable bool             `json:"oauth_available"`
+	Providers      []ToolCredential `json:"providers"`
 	// Values reports whether this workspace lets people store a value.
 	Values bool `json:"values"`
 	// References is how the references the person asking may give start:
@@ -328,7 +331,11 @@ func (p *Platform) ToolCredentials(ctx context.Context, who auth.Principal) (Too
 	if err != nil {
 		return ToolCredentials{}, err
 	}
-	out := ToolCredentials{Providers: []ToolCredential{}, Values: p.cfg.CredentialValues[who.Tenant], References: []string{}}
+	resolved, err := p.resolveSettings(who.Tenant, "", nil, who.Subject)
+	if err != nil {
+		return ToolCredentials{}, err
+	}
+	out := ToolCredentials{AllowedHosts: append([]string{}, resolved.Ceilings.ToolServers...), OAuthAvailable: p.ConnectionAuth != nil, Providers: []ToolCredential{}, Values: p.cfg.CredentialValues[who.Tenant], References: []string{}}
 	if who.Kind != auth.Machine {
 		out.References = p.ownStarts(who.Tenant, who.Subject)
 	}

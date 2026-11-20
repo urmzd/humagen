@@ -1,7 +1,22 @@
 # Federated retrieval and the catalog
 
-Status: proposed. This document changes no behavior. It describes the target
-design and the order of the changes that reach it.
+Status: mostly built. Checked against `main` on 2026-11-19. Changes 1 to 5
+have landed; change 6 has not. "Current boundary" describes the system before
+these changes.
+
+## What is built
+
+Numbers are the items of [Changes](#changes). Each was read in code on `main`.
+Nothing was run for this list.
+
+| # | Change | State | Evidence |
+|---|--------|-------|----------|
+| 1 | Hybrid search: the embedder slot, the Vertex embedder, derived vectors and fusion | Built | #132; `pkg/dense`, `internal/app/embedder.go`, `pkg/knowledge/vectors.go` |
+| 2 | Catalog core: `pkg/catalog`, `catalog_search`, `GET /api/catalog`, publish and withdraw | Built | #154, #156; `pkg/catalog/catalog.go`, `internal/platform/catalog.go` |
+| 3 | BigQuery and Snowflake connectors | Built | #155, #197; `pkg/catalog/bigquery`, `pkg/catalog/snowflake` |
+| 4 | GCS and S3, then OneDrive | Built | #197, #284; `pkg/catalog/objectstorage`. A `collect` capability constant: not confirmed, `pkg/catalog/connector.go` declares `catalog` and `live` only |
+| 5 | Console: a Catalog view | Built | #202; `Catalog` mounted in `apps/web/src/App.tsx`. Grouping of New Source connectors by capability: not confirmed |
+| 6 | Opt-in indexing of agent-written files | Not built | No code found on main |
 
 ## Goal
 
@@ -16,7 +31,8 @@ hold at the size of a company's data, and stay inside each reader's own access.
   into passages of about 800 bytes and ranked with BM25 only: lexical, no
   embeddings. Its logic and passages live in memory, written through
   `pkg/state` ([status](../architecture/overview.md#status)).
-- **Hybrid search exists, unused.** `orchagent/flow/knowledge` has an `Embedder`
+- **Hybrid search exists, unused.** fiber's knowledge package (its embedders
+  are now `pkg/dense` in Humagen) has an `Embedder`
   interface (a deterministic `Hashing` embedder and an OpenAI-compatible `HTTP`
   one), a dense arm, reciprocal rank fusion and a pgvector backend. The
   platform does not use it.
@@ -47,8 +63,8 @@ copy of the warehouse, and it never guesses a table name.
 ## Hybrid retrieval in `pkg/knowledge`
 
 `pkg/knowledge` keeps its API, lifecycle, variants and access rules. It gains a
-dense arm beside BM25, composed from `orchagent/flow/knowledge` rather than
-reimplemented:
+dense arm beside BM25. As built, the embedders are `pkg/dense` and the fusion
+is in `pkg/knowledge/vectors.go`, in Humagen, not composed from another module:
 
 - **Embedder slot.** A System spec field `knowledge.embedder`, a slot:
   `none` (the default, today's behavior), `hashing`, `openai` (any
@@ -62,7 +78,7 @@ reimplemented:
   vector is missing or from another model are queued again.
 - **Fusion.** Search embeds the query (bounded by a short timeout, outside the
   store lock), ranks the selected passages by cosine similarity, and fuses that
-  list with BM25 by reciprocal rank fusion, as `orchagent/flow/knowledge` does. A
+  list with BM25 by reciprocal rank fusion (`pkg/knowledge/vectors.go`). A
   passage without a vector still ranks lexically. If the query cannot be
   embedded, search is lexical, and the hit says so.
 - **Same access rules.** Fusion runs over exactly the passages the lexical arm

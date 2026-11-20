@@ -1,6 +1,6 @@
 {
   "name": "@humagen/render-web",
-  "version": "0.90.0",
+  "version": "0.160.0",
   "private": true,
   "type": "module",
   "description": "DOM implementations of the humagen primitives, plus theme tokens.",
@@ -13,6 +13,7 @@
     "./icons": "./src/icons.tsx"
   },
   "scripts": {
+    "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -26,6 +27,7 @@
     "react-day-picker": "^10.0.2",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
+    "sonner": "2.0.7",
     "tailwind-merge": "^3.4.0"
   },
   "peerDependencies": {

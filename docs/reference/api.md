@@ -2,14 +2,14 @@
 
 The backend is Go. The surfaces that call it (the web console, a Slack app,
 later a GitHub app) may be TypeScript. They share one contract:
-[`api/openapi.yaml`](../../api/openapi.yaml), an OpenAPI 3.2 description of every
+[`api/openapi.yaml`](https://github.com/urmzd/humagen/blob/main/api/openapi.yaml), an OpenAPI 3.2 description of every
 route `internal/httpapi` serves. The TypeScript client in
-[`packages/client`](../../packages/client) is generated from it.
+[`packages/client`](https://github.com/urmzd/humagen/tree/main/packages/client) is generated from it.
 
 ## How the contract stays true
 
 The spec is written by hand, from the code. The tests in
-[`internal/httpapi/openapi_test.go`](../../internal/httpapi/openapi_test.go) run
+[`internal/httpapi/openapi_test.go`](https://github.com/urmzd/humagen/blob/main/internal/httpapi/openapi_test.go) run
 with `go test ./...` and fail when the two disagree:
 
 | Test | Fails when |
@@ -26,6 +26,18 @@ from a map or an inline struct (`getMe`, `getStorage`, a refusal, a manifest)
 fails as soon as a test sees it. What is not guaranteed: a property that is
 optional in the spec and that no test makes the server send can drift without
 notice, and so can a field of a response shape no test reaches.
+
+An operation that is offered as a tool over the humagen MCP (`POST /api/mcp`)
+says what a call does with three markers beside `x-permission`:
+`x-readonly: true` for a call that changes nothing, `x-destructive: true` for
+one that removes something, and `x-idempotent: true` for a change that is safe
+to repeat. An MCP client is given them as the tool's hints. They are read from
+the contract and never from the HTTP verb: `getMessageContext` is a `POST`
+because it takes a body, and it is a read. An unmarked operation is listed as
+a change that is neither destructive nor safe to repeat, and
+`TestAnOperationsHintsComeFromTheContract` fails for a `GET` that is offered as
+a tool and not marked `x-readonly`. `TestTheMCPListsExactlyItsTools` pins the
+tools the MCP lists.
 
 So a change to a route, a handler's answer or a type's JSON fields is a change
 to `api/openapi.yaml` in the same commit, followed by `make client`. A new
@@ -45,7 +57,8 @@ over it and never guesses its shape. The API sends run events only (`run.*`).
 | `type` | `data` | Was |
 |--------|--------|-----|
 | `run.accepted.v1`, `run.started.v1`, `run.resumed.v1` | `RunAcceptedEvent`, `RunStartedEvent`, `RunResumedEvent` | `lifecycle.accepted`, `.started`, `.resumed` |
-| `run.parked.v1`, `run.child.parked.v1` | the question, the child's question | `lifecycle.parked`, `lifecycle.child.parked` |
+| `run.parked.v1`, `run.child.parked.v1` | the question (`question`, and `questions` with every one when a batch of tool calls parked the run on several; `run.resumed.v1` then carries `answers`), the child's question | `lifecycle.parked`, `lifecycle.child.parked` |
+| `run.delta.tool.marker.v1` | `ToolMarkerEvent`: a tool call that waits for a decision, such as an approval. The question a person answers is on `run.parked.v1` | none |
 | `run.completed.v1`, `run.failed.v1`, `run.stopped.v1` | the answer and usage, the error and `terminal`, the reason and partial answer | `lifecycle.completed`, `.failed`, `.stopped` |
 | `run.delta.text.v1`, `run.delta.thinking.v1`, `run.delta.tool.call.v1`, `run.delta.tool.done.v1`, `run.delta.citation.v1` | one fragment each | `delta.*` |
 | `run.action.taken.v1` | the action and its summary | `action.taken` |
@@ -199,3 +212,47 @@ resumed. A run stopped elsewhere ends it with `StreamEndedError` and `reason`
 `stopped`. `getRun` is the authority on whether a run is over. A refusal by a
 limit throws from `createRun`: `failureOf(error).refusal` names the limit, the
 policy and when the count resets.
+
+## Agent sessions
+
+`POST /api/sessions` starts or continues one agent's session. The list and detail
+routes return its real conversation metadata, messages, children, evidence links,
+and usage. Post to `/api/sessions/{id}/messages` to continue it, or select an agent
+and `fresh` to start an independent child. People, links, stop, and feedback routes
+share the same ancestor-aware access checks as transcript reads.
+
+`GET /api/sessions/{id}/stream` supports `Last-Event-ID` with one cursor per run.
+A `session-reset` event supplies the authoritative snapshot when completed run
+cursors are compacted; clients replace transient stream state with that snapshot.
+
+## Messages while an agent works
+
+A message posted to `/api/threads/{id}/messages` or `/api/sessions/{id}/messages`
+that would start agent work, while a top-level run its poster may stop is working
+in the conversation, is a follow-up. It starts nothing at once. Posting answers
+with `rule` `followup`, and the message carries `followup`:
+
+| Outcome | What happens |
+|---------|--------------|
+| `queue` | The message waits. Once every run in `waiting` has ended, and no run answering an earlier message is working, what it calls for starts. Queued messages start in the order they were posted. |
+| `replace` | The runs in `waiting` are asked to stop with the cause `replace: <reason>`, keeping what they have said. The message starts once they have ended. |
+| `stop` | The runs in `waiting` are asked to stop with the cause `stop: <reason>`. Nothing starts, and the reason stays on the message. |
+
+The first word after any leading mentions forces the outcome: `queue`, `replace`
+or `stop`, in any case, with an optional colon. After `stop` the rest is the
+reason; after `queue` or `replace` the rest is what runs, with the leading
+mentions kept. A message that starts with `stop` is a follow-up even when it
+would start no work itself. Otherwise the workspace's router model decides,
+given both texts as data. No model, a timeout, an error or an answer that is not
+exactly one JSON object with a known outcome and a reason all queue.
+
+`handled` is set once a follow-up was carried out. Release is a completion step of
+each run, retried until it succeeds, so it survives a worker restart. It reads the
+poster's access as it stands then, not as it stood when they posted: someone no
+longer allowed to post there starts nothing. The runs a released message starts
+are named by the message, so a retried release joins them instead of starting
+them again. The poster's `model` and `effort` choice is kept for them.
+
+A run the poster may not stop is neither waited on nor interrupted. A post with
+`post_only`, an answer to a question and a reply are never follow-ups. The
+console's composer still queues its own messages before sending them.

@@ -8,16 +8,44 @@ export interface HubTab {
   active: boolean;
 }
 
+/** Workspace pages use Settings navigation instead of a second hub tab strip. */
+export function settingsPageLabel(route: Route): string | undefined {
+  if (route.page === "directory" && route.tab === "people") return "People";
+  if (route.page === "connections") return route.scope === "apps" ? "Apps" : "Plugins";
+  if (route.page === "usage") return "Usage";
+  if (route.page === "monitor" && route.tab === "health") return "Health";
+  if (route.page === "action-policy") return "Policies";
+  if (route.page === "audit") return "Audit";
+  if (route.page === "agent-control") return "Agent controls";
+  return undefined;
+}
+
 export function workspaceHub(route: Route): WorkspaceHub | null {
-  if (route.page === "customize") return "customize";
+  if (settingsPageLabel(route)) return null;
+  // Agents, and what they draw on (skills, knowledge, memory), share one place with tabs.
+  if (route.page === "customize")
+    return route.section === "skills" || route.section === "agents" ? "agents" : null;
   if (route.page === "notifications" || route.page === "inbox") return "notifications";
   if (route.page === "monitor" && route.tab === "rules") return "notifications";
-  if (route.page === "library" || route.page === "artifacts" || route.page === "context")
-    return "library";
+  if (route.page === "library" && (route.section === "skills" || route.section === "memory"))
+    return "agents";
   if (
-    ["agents", "agent", "agent-setup", "agent-network", "assignments", "agent-control"].includes(
-      route.page,
-    )
+    route.page === "knowledge" ||
+    route.page === "corpus" ||
+    route.page === "context" ||
+    route.page === "knowledge-graph"
+  )
+    return "agents";
+  if (
+    [
+      "agents",
+      "agent",
+      "agent-setup",
+      "agent-network",
+      "agent-store",
+      "assignments",
+      "agent-control",
+    ].includes(route.page)
   )
     return "agents";
   if (["operations", "action-policy", "usage", "monitor", "audit"].includes(route.page))
@@ -38,7 +66,7 @@ export function hubTabs(
         ["agents", nav.agents, can("agents:read")],
         ["skills", nav.skills, can("projects:read")],
         ["connections", nav.connections, can("runs:read")],
-        ["tools", "Tool Servers", can("runs:read")],
+        ["tools", "MCPs", can("runs:read")],
       ] as const
     )
       .filter(([, , visible]) => visible)
@@ -55,20 +83,6 @@ export function hubTabs(
       : hub === "library"
         ? [
             {
-              label: nav.sources,
-              route: { page: "library", section: "sources" },
-              active:
-                route.page === "context" ||
-                (route.page === "library" && route.section === "sources"),
-              visible: can("knowledge:read"),
-            },
-            {
-              label: defaultCopy.catalog.title,
-              route: { page: "library", section: "catalog" },
-              active: route.page === "library" && route.section === "catalog",
-              visible: can("knowledge:read"),
-            },
-            {
               label: nav.skills,
               route: { page: "library", section: "skills" },
               active: route.page === "library" && route.section === "skills",
@@ -81,7 +95,7 @@ export function hubTabs(
               visible: can("runs:read") || can("projects:read") || can("agents:read"),
             },
             {
-              label: nav.deliverables,
+              label: "Saved files",
               route: { page: "library", section: "deliverables" },
               active:
                 route.page === "artifacts" ||
@@ -94,25 +108,38 @@ export function hubTabs(
               {
                 label: nav.agents,
                 route: { page: "agents" },
-                active: ["agents", "agent", "agent-setup"].includes(route.page),
+                active: [
+                  "agents",
+                  "agent",
+                  "agent-setup",
+                  "agent-network",
+                  "assignments",
+                  "agent-control",
+                ].includes(route.page),
                 visible: can("agents:read"),
               },
               {
-                label: nav.network,
-                route: { page: "agent-network" },
-                active: route.page === "agent-network",
-                visible: can("runs:read"),
+                label: nav.skills,
+                route: { page: "library", section: "skills" },
+                active:
+                  (route.page === "library" && route.section === "skills") ||
+                  (route.page === "customize" && route.section === "skills"),
+                visible: can("projects:read"),
               },
               {
-                label: nav.assignments,
-                route: { page: "assignments" },
-                active: route.page === "assignments",
-                visible: can("runs:read"),
+                label: "Knowledge",
+                route: { page: "knowledge" },
+                active:
+                  route.page === "knowledge" ||
+                  route.page === "corpus" ||
+                  route.page === "context" ||
+                  route.page === "knowledge-graph",
+                visible: can("knowledge:read"),
               },
               {
-                label: nav.controls,
-                route: { page: "agent-control" },
-                active: route.page === "agent-control",
+                label: defaultCopy.agentStore.title,
+                route: { page: "agent-store" },
+                active: route.page === "agent-store",
                 visible: can("agents:read"),
               },
             ]

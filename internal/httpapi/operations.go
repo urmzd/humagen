@@ -167,20 +167,24 @@ func (s *Server) getAssignment(w http.ResponseWriter, r *http.Request, who auth.
 }
 
 type assignmentInput struct {
-	ID       string               `json:"id"`
-	Agent    string               `json:"agent"`
-	Project  string               `json:"project"`
-	Thread   string               `json:"thread,omitempty"`
-	Owner    string               `json:"owner"`
-	Goal     string               `json:"goal"`
-	DoneWhen string               `json:"done_when"`
-	DueAt    time.Time            `json:"due_at,omitempty"`
-	Cron     string               `json:"cron,omitempty"`
-	Trigger  string               `json:"trigger,omitempty"`
-	Source   string               `json:"source,omitempty"`
-	State    operations.WorkState `json:"state"`
-	Blocker  string               `json:"blocker,omitempty"`
-	Version  int                  `json:"version"`
+	ID       string `json:"id"`
+	Agent    string `json:"agent"`
+	Project  string `json:"project"`
+	Thread   string `json:"thread,omitempty"`
+	Owner    string `json:"owner"`
+	Goal     string `json:"goal"`
+	DoneWhen string `json:"done_when"`
+	// DoneChecks and MaxContinue are the deterministic checks the answer
+	// must pass and how often failing work is continued.
+	DoneChecks  []operations.Check   `json:"done_checks,omitempty"`
+	MaxContinue int                  `json:"max_continue,omitempty"`
+	DueAt       time.Time            `json:"due_at,omitempty"`
+	Cron        string               `json:"cron,omitempty"`
+	Trigger     string               `json:"trigger,omitempty"`
+	Source      string               `json:"source,omitempty"`
+	State       operations.WorkState `json:"state"`
+	Blocker     string               `json:"blocker,omitempty"`
+	Version     int                  `json:"version"`
 }
 
 func (s *Server) putAssignment(w http.ResponseWriter, r *http.Request, who auth.Principal) {
@@ -202,7 +206,7 @@ func (s *Server) putAssignment(w http.ResponseWriter, r *http.Request, who auth.
 		fail(w, http.StatusBadRequest, "new assignments start at version 0")
 		return
 	}
-	a, err := s.P.SetAssignment(r.Context(), who, operations.Assignment{ID: b.ID, Agent: b.Agent, Project: projects.NameOf(b.Project), Thread: b.Thread, Owner: b.Owner, Goal: b.Goal, DoneWhen: b.DoneWhen, DueAt: b.DueAt, Cron: b.Cron, Trigger: b.Trigger, Source: b.Source, State: b.State, Blocker: b.Blocker}, b.Version)
+	a, err := s.P.SetAssignment(r.Context(), who, operations.Assignment{ID: b.ID, Agent: b.Agent, Project: projects.NameOf(b.Project), Thread: b.Thread, Owner: b.Owner, Goal: b.Goal, DoneWhen: b.DoneWhen, DoneChecks: b.DoneChecks, MaxContinue: b.MaxContinue, DueAt: b.DueAt, Cron: b.Cron, Trigger: b.Trigger, Source: b.Source, State: b.State, Blocker: b.Blocker}, b.Version)
 	if err != nil {
 		s.problem(w, err)
 		return

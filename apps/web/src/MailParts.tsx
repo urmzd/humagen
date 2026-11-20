@@ -43,7 +43,7 @@ const done: Record<string, string> = {
 function Record({ resolution }: { resolution: Resolution }) {
   return (
     <p data-testid="part-resolved" className="text-aui-xs text-aui-muted">
-      {done[resolution.outcome] ?? "Resolved"}
+      {done[resolution.outcome] ?? "Done"}
       {resolution.by ? ` by ${resolution.by}` : ""}, {ago(resolution.at)}.
     </p>
   );
@@ -179,7 +179,7 @@ export function platformParts(onOpen: (source: Source) => void): Record<string, 
               <p className="truncate text-aui-sm font-medium text-aui-fg" title={a.title}>
                 {a.title}
               </p>
-              <p className="truncate text-aui-xs text-aui-muted">{facts.join(" · ")}</p>
+              <p className="truncate text-aui-xs text-aui-muted">{facts.join(" | ")}</p>
             </div>
           </div>
           {a.description && (

@@ -64,7 +64,7 @@ export function StopBanner({
     >
       {icon}
       <span className="min-w-0 flex-1 text-aui-muted">
-        <span className="font-medium text-aui-fg">Stopped</span> · {label}
+        <span className="font-medium text-aui-fg">Stopped</span> | {label}
       </span>
       {stop === "confirmed" && (
         <button
@@ -155,7 +155,7 @@ export function SpendBlockedBanner({
         <span className="font-medium text-aui-fg">
           {capped ? "Spend cap reached" : "Next turn would pass the spend cap"}
         </span>{" "}
-        · {formatUsd(budget.spentUsd)} of {formatUsd(budget.limitUsd)} this {budget.period}
+        | {formatUsd(budget.spentUsd)} of {formatUsd(budget.limitUsd)} this {budget.period}
       </span>
       {onAddBudget && (
         <button

@@ -11,13 +11,13 @@ import (
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/urmzd/humagen/internal/mcptools"
+	"github.com/urmzd/humagen/internal/toolprovider"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/personctx"
-	"github.com/urmzd/orchagent/flow/mcptools"
-	"github.com/urmzd/orchagent/flow/runtime"
-	"github.com/urmzd/orchagent/flow/toolprovider"
-	"github.com/urmzd/orchagent/flow/turn/native"
-	"github.com/urmzd/orchagent/flow/turn/native/saigetypes"
+	saigetypes "github.com/urmzd/saige/agent/types"
+	"github.com/urmzd/saige/flow/runtime"
+	"github.com/urmzd/saige/flow/turn/native"
 )
 
 const personToolsGrant = "mcp:person_tools:write"
@@ -62,18 +62,27 @@ func (p *Platform) DiscoverPersonTools(ctx context.Context, who auth.Principal, 
 		return nil, err
 	}
 	if !resolved.Ceilings.AllowsToolServer(server.Host()) {
-		return nil, fmt.Errorf("%w: this server's host is not allowed", ErrForbidden)
+		return nil, fmt.Errorf("%w: %s", ErrForbidden, p.toolHostRefusal(resolved.Ceilings.ToolServers))
 	}
 	if server.Credential != "" && !p.refAllowed(who.Tenant, who.Subject, server.Credential) {
 		return nil, fmt.Errorf("%w: %w", personctx.ErrInvalid, errPersonRef)
 	}
-	return p.discoverPersonTools(ctx, server)
+	return p.discoverPersonToolsFor(ctx, who.Tenant, who.Subject, server)
 }
 
-func (p *Platform) discoverPersonTools(ctx context.Context, server personctx.ToolServer) ([]toolprovider.Tool, error) {
+func (p *Platform) discoverPersonToolsFor(ctx context.Context, tenant, person string, server personctx.ToolServer) ([]toolprovider.Tool, error) {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
+	// Snapshot consent before resolving the bearer used by discovery.
+	oauthClient := p.personOAuthHTTPClient(tenant, person, server)
 	var secret mcptools.Secret
+	if server.OAuth != "" {
+		var err error
+		secret, err = p.personalOAuth(ctx, tenant, person, server)
+		if err != nil {
+			return nil, err
+		}
+	}
 	if server.Credential != "" {
 		var err error
 		secret, err = p.personToolResolver().Resolve(ctx, server.Credential)
@@ -81,10 +90,10 @@ func (p *Platform) discoverPersonTools(ctx context.Context, server personctx.Too
 			return nil, errors.New("personal tool credential could not be resolved")
 		}
 	}
-	client := &http.Client{Transport: personBearer{secret: secret, next: p.personHTTPClient().Transport}, Timeout: 15 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	client := &http.Client{Transport: personBearer{secret: secret, next: oauthClient.Transport}, Timeout: 15 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	cs, err := mcp.NewClient(&mcp.Implementation{Name: "humagen", Version: "1"}, nil).Connect(ctx, &mcp.StreamableClientTransport{Endpoint: server.URL, HTTPClient: client, DisableStandaloneSSE: true, MaxRetries: -1, MaxEventSize: 1 << 20}, nil)
 	if err != nil {
-		return nil, errors.New("personal tool server could not be reached")
+		return nil, errors.New("your MCP could not be reached")
 	}
 	defer func() { _ = cs.Close() }()
 	out := []toolprovider.Tool{}
@@ -148,11 +157,11 @@ func (p *Platform) personalToolGroup(ctx context.Context, req runtime.Request) (
 			return native.ToolGroup{}, err
 		}
 		if !slices.ContainsFunc(own.ToolServers, func(s personctx.ToolServer) bool {
-			return s.Name == server.Name && s.URL == server.URL && s.Credential == server.Credential && samePersonTools(s.Tools, server.Tools)
+			return s.Name == server.Name && s.URL == server.URL && s.Credential == server.Credential && s.OAuth == server.OAuth && samePersonTools(s.Tools, server.Tools)
 		}) {
 			continue
 		}
-		offered, err := p.discoverPersonTools(ctx, server)
+		offered, err := p.discoverPersonToolsFor(ctx, req.Tenant, c.Person, server)
 		if err != nil {
 			return native.ToolGroup{}, err
 		}
@@ -160,7 +169,14 @@ func (p *Platform) personalToolGroup(ctx context.Context, req runtime.Request) (
 			return native.ToolGroup{}, fmt.Errorf("%w: %s tool list changed; approve it again in Customize", mcptools.ErrHeldBack, server.Name)
 		}
 		prov := toolprovider.Provider{Tenant: req.Tenant, Name: "person-" + server.Name, Transport: toolprovider.TransportHTTP, Endpoint: server.URL}
-		opts := []mcptools.Option{mcptools.WithResolver(p.personToolResolver()), mcptools.WithHTTPClient(p.personHTTPClient())}
+		opts := []mcptools.Option{mcptools.WithResolver(p.personToolResolver()), mcptools.WithHTTPClient(p.personOAuthHTTPClient(req.Tenant, c.Person, server))}
+		if server.OAuth != "" {
+			prov.CredentialScope = toolprovider.ScopePerson
+			source := mcptools.NewTokenSource(func(ctx context.Context) (mcptools.Secret, error) {
+				return p.personalOAuth(ctx, req.Tenant, c.Person, server)
+			})
+			opts = append(opts, mcptools.WithPersonCredential(mcptools.PersonCredential{Source: source}))
+		}
 		if server.Credential != "" {
 			prov.CredentialScope = toolprovider.ScopePerson
 			opts = append(opts, mcptools.WithPersonCredential(mcptools.PersonCredential{Ref: server.Credential}))
@@ -176,13 +192,16 @@ func (p *Platform) personalToolGroup(ctx context.Context, req runtime.Request) (
 		}
 		go func() { <-ctx.Done(); _ = session.Close() }()
 		for _, tool := range tools.All() {
-			out = append(out, &personalTool{Tool: tool, p: p, req: req, server: server, person: c.Person})
+			out = append(out, &personServerTool{Tool: tool, p: p, req: req, server: server, person: c.Person})
 		}
 	}
 	return native.ToolGroup{Name: personToolsGrant, Tools: out}, nil
 }
 
-type personalTool struct {
+// personServerTool is one tool of a server a person connected, checked
+// against what the person approved each time it runs. What it declares
+// (declaration) is read by the one wrapper every run tool passes through.
+type personServerTool struct {
 	saigetypes.Tool
 	p      *Platform
 	req    runtime.Request
@@ -190,32 +209,55 @@ type personalTool struct {
 	person string
 }
 
-func (t *personalTool) ActsForPerson() bool { return true }
-func (t *personalTool) Approval(_ saigetypes.ToolCallPart) (native.ApprovalRequest, bool) {
-	if t.Definition().Capability == saigetypes.ToolCapabilityRead {
-		return native.ApprovalRequest{}, false
+// declaration is what a personal tool declares, as a registry tool would: it
+// acts with the person's own account, and a call that is not a read waits
+// for that person, who may be the one asking, for a day.
+func (t *personServerTool) declaration() SystemTool {
+	d := SystemTool{Name: t.Definition().Name, ActsForPerson: true}
+	if t.Definition().Capability != saigetypes.ToolCapabilityRead {
+		d.Approval = ToolApproval{Mode: ApprovalAlways, Approvers: []string{t.person}, SelfApproval: true, Expires: 24 * time.Hour, Prompt: allowPrompt}
 	}
-	return native.ApprovalRequest{Prompt: fmt.Sprintf("Allow %s to use %s?", t.req.Agent(), t.Definition().Name), Approvers: []string{t.person}, SelfApproval: true, ExpiresIn: 24 * time.Hour}, true
+	return d
 }
-func (t *personalTool) Execute(ctx context.Context, args map[string]any) (string, error) {
+func (t *personServerTool) checkCurrent(ctx context.Context) error {
 	own, err := t.p.PersonContexts.Get(t.req.Tenant, t.person)
 	if err != nil {
-		return "", err
+		return err
 	}
 	if !slices.ContainsFunc(own.ToolServers, func(s personctx.ToolServer) bool {
-		return s.Name == t.server.Name && s.URL == t.server.URL && s.Credential == t.server.Credential && samePersonTools(s.Tools, t.server.Tools)
+		return s.Name == t.server.Name && s.URL == t.server.URL && s.Credential == t.server.Credential && s.OAuth == t.server.OAuth && samePersonTools(s.Tools, t.server.Tools)
 	}) {
-		return "", mcptools.ErrHeldBack
+		return mcptools.ErrHeldBack
 	}
-	offered, err := t.p.discoverPersonTools(ctx, t.server)
+	offered, err := t.p.discoverPersonToolsFor(ctx, t.req.Tenant, t.person, t.server)
 	if err != nil {
-		return "", err
+		return err
 	}
 	if !samePersonTools(offered, t.server.Tools) {
-		return "", mcptools.ErrHeldBack
+		return mcptools.ErrHeldBack
+	}
+	return nil
+}
+
+func (t *personServerTool) Execute(ctx context.Context, args map[string]any) (string, error) {
+	if err := t.checkCurrent(ctx); err != nil {
+		return "", err
 	}
 	return t.Tool.Execute(ctx, args)
 }
+
+func (t *personServerTool) ExecuteRich(ctx context.Context, args map[string]any) (saigetypes.ToolResult, error) {
+	if err := t.checkCurrent(ctx); err != nil {
+		return saigetypes.ToolResult{}, err
+	}
+	if rich, ok := t.Tool.(saigetypes.RichTool); ok {
+		return rich.ExecuteRich(ctx, args)
+	}
+	text, err := t.Tool.Execute(ctx, args)
+	return saigetypes.TextResult(text), err
+}
+
+var _ saigetypes.RichTool = (*personServerTool)(nil)
 
 func (p *Platform) personHTTPClient() *http.Client {
 	base := http.DefaultClient

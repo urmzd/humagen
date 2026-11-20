@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { href, type Route } from "./route.ts";
+import { pageColumn, tabItem, tabRule, tabStrip } from "./ui.tsx";
 
 export function WorkspaceTabs({
   label,
@@ -12,38 +13,42 @@ export function WorkspaceTabs({
   current: string;
   onGo: (route: Route) => void;
 }) {
+  // The same strip a page's own tabs draw (Tabs), in the page's column, so
+  // tabs look and sit the same whichever kind heads a page.
   return (
-    <nav
-      aria-label={label}
-      className="humagen-beside-drawer flex shrink-0 flex-wrap gap-x-4 gap-y-1 border-aui-border border-b px-5 pt-2 md:px-8"
-    >
-      {items.map((item) => (
-        <a
-          key={item.label}
-          href={href(item.route)}
-          aria-current={
-            (item.active ?? current.split("?")[0] === href(item.route).split("?")[0])
-              ? "page"
-              : undefined
-          }
-          onClick={(event) => {
-            if (
-              event.button === 0 &&
-              !event.metaKey &&
-              !event.ctrlKey &&
-              !event.shiftKey &&
-              !event.altKey
-            ) {
-              event.preventDefault();
-              onGo(item.route);
-            }
-          }}
-          className="inline-flex min-h-11 items-center gap-2 border-b-2 border-transparent px-1 text-sm text-aui-muted hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:border-aui-primary aria-[current=page]:font-medium aria-[current=page]:text-aui-fg"
-        >
-          {item.icon}
-          {item.label}
-        </a>
-      ))}
+    <nav aria-label={label} className={`humagen-beside-drawer shrink-0 pt-8 ${pageColumn}`}>
+      <div className="relative">
+        <span aria-hidden className={tabRule} />
+        <div className={tabStrip}>
+          {items.map((item) => (
+            <a
+              key={item.label}
+              href={href(item.route)}
+              aria-current={
+                (item.active ?? current.split("?")[0] === href(item.route).split("?")[0])
+                  ? "page"
+                  : undefined
+              }
+              onClick={(event) => {
+                if (
+                  event.button === 0 &&
+                  !event.metaKey &&
+                  !event.ctrlKey &&
+                  !event.shiftKey &&
+                  !event.altKey
+                ) {
+                  event.preventDefault();
+                  onGo(item.route);
+                }
+              }}
+              className={tabItem}
+            >
+              {item.icon}
+              {item.label}
+            </a>
+          ))}
+        </div>
+      </div>
     </nav>
   );
 }

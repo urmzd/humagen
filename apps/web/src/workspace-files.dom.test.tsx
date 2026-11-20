@@ -3,7 +3,8 @@ import { afterEach, test } from "node:test";
 import { defaultCopy } from "@humagen/components";
 import { Markdown } from "@humagen/primitives";
 import { MarkdownHeadingContext, WebSurface } from "@humagen/render-web";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { Inspector } from "@humagen/web";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { StrictMode, useState } from "react";
 import { stubFetch } from "./dom.ts";
 import type { ConversationView } from "./route.ts";
@@ -73,6 +74,102 @@ const editor = () =>
   screen.findByRole("textbox", { name: `Edit ${file.path}` }) as Promise<HTMLTextAreaElement>;
 const save = () =>
   fireEvent.click(screen.getAllByRole("button", { name: /^Save/ })[0] as HTMLElement);
+
+test("a desktop file picker is modal above Details and restores focus without closing its parent", async () => {
+  const matchMedia = window.matchMedia;
+  const showModal = HTMLDialogElement.prototype.showModal;
+  const modals: HTMLDialogElement[] = [];
+  let closed = 0;
+  window.matchMedia = ((query: string) => ({
+    matches: query === "(prefers-reduced-motion: reduce)",
+    addEventListener() {},
+    removeEventListener() {},
+  })) as unknown as typeof window.matchMedia;
+  HTMLDialogElement.prototype.showModal = function () {
+    modals.push(this);
+    showModal.call(this);
+  };
+  const plan = { path: "plan.md", content: "# Launch plan\nOwner: Developer\n", revision: "plan1" };
+  const network = setup({
+    [`GET ${base}`]: () => ({
+      files: [{ path: plan.path, size: plan.content.length, revision: plan.revision }],
+      writable: true,
+      retention_days: 7,
+    }),
+    [`GET ${base}/content`]: (_body, query) => {
+      assert.equal(query.get("path"), plan.path);
+      return plan;
+    },
+  });
+  function Details() {
+    const [view, setView] = useState<ConversationView>({});
+    return (
+      <>
+        <div id="humagen-inspector-dock" />
+        <WorkspaceFiles
+          thread="thread-1"
+          open
+          onClose={() => closed++}
+          view={view}
+          onView={setView}
+          frame={(body) => (
+            <Inspector open title="Details" onClose={() => closed++}>
+              {body}
+            </Inspector>
+          )}
+        />
+      </>
+    );
+  }
+  try {
+    render(<Details />);
+    const details = (await screen.findByRole("dialog", { name: "Details" })) as HTMLDialogElement;
+    assert.equal(details.parentElement?.id, "humagen-inspector-dock");
+    const trigger = await within(details).findByRole("button", { name: words.files });
+    const openPicker = async () => {
+      trigger.focus();
+      fireEvent.click(trigger);
+      const picker = (await screen.findByRole("dialog", {
+        name: words.files,
+      })) as HTMLDialogElement;
+      assert.equal(document.querySelectorAll("#humagen-inspector-dock > dialog[open]").length, 1);
+      assert.ok(
+        modals.includes(picker),
+        "the nested picker must use native modal behavior on desktop",
+      );
+      assert.equal(picker.parentElement?.id === "humagen-inspector-dock", false);
+      assert.equal(
+        document.activeElement === within(picker).getByRole("heading", { name: words.files }),
+        true,
+      );
+      return picker;
+    };
+    const picker = await openPicker();
+    fireEvent.keyDown(within(picker).getByRole("button", { name: plan.path }), { key: "Escape" });
+    await waitFor(() => assert.equal(document.activeElement === trigger, true));
+    assert.equal(details.open, true);
+    assert.equal(closed, 0);
+
+    const cancelled = await openPicker();
+    fireEvent(cancelled, new Event("cancel", { bubbles: true, cancelable: true }));
+    await waitFor(() => assert.equal(document.activeElement === trigger, true));
+    assert.equal(closed, 0, "the nested native cancel must not close Details");
+
+    const chosen = await openPicker();
+    fireEvent.click(within(chosen).getByRole("button", { name: plan.path }));
+    const input = (await screen.findByRole("textbox", {
+      name: `Edit ${plan.path}`,
+    })) as HTMLTextAreaElement;
+    assert.equal(input.value, plan.content);
+    assert.equal(details.open, true);
+    assert.equal(closed, 0);
+    assert.equal(network.seen.filter((request) => request.method !== "GET").length, 0);
+  } finally {
+    cleanup();
+    window.matchMedia = matchMedia;
+    HTMLDialogElement.prototype.showModal = showModal;
+  }
+});
 
 test("workspace loads in StrictMode and saves then publishes the exact revision", async () => {
   const network = setup();

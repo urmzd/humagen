@@ -39,9 +39,17 @@ func (p *Platform) SourceResources(ctx context.Context, who auth.Principal, name
 	if err != nil {
 		return nil, fmt.Errorf("%w: %s", knowledge.ErrInvalid, knowledge.FailureCause(err))
 	}
+	proof, err := p.sourceOAuthProof(who, src)
+	if err != nil {
+		return nil, err
+	}
 	resources, err := provider.Resources(ctx, src.Lifecycle.Origin, secret)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %s", knowledge.ErrInvalid, knowledge.FailureCause(err))
+	}
+	currentProof, err := p.sourceOAuthProof(who, src)
+	if err != nil || currentProof != proof {
+		return nil, knowledge.ProviderError{Cause: knowledge.AuthExpired}
 	}
 	resources, err = knowledge.SafeResources(resources, secret)
 	if err != nil {

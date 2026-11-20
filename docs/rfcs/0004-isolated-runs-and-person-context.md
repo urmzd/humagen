@@ -1,7 +1,30 @@
 # Isolated runs and person context
 
-Status: proposed. This document changes no behavior. It describes the target
-design and the order of the changes that reach it.
+Status: mostly built. Checked against `main` on 2026-11-19. Changes 1 to 9
+have landed, apart from the parts of changes 2 and 9 marked below. "Current
+boundary" describes the system before these changes. The layers this document
+calls playscape, anchor and fiber are now `saige/sandbox`, `saige/durable` and
+`saige/flow`, in the one module `go.mod` requires
+(`github.com/urmzd/saige`).
+
+## What is built
+
+Numbers are the rows of [Changes](#changes). Each was read in code, on `main`
+or in saige v0.45.1. Nothing was run for this list.
+
+| # | Change | State | Evidence |
+|---|--------|-------|----------|
+| 1 | This document | Built | #119 |
+| 2 | The driver seam, the `docker` driver (`runc`, `runsc`), the `local` driver and the pool | Built, in saige | `saige/sandbox/isolate` (`isolate.go`, `pool.go`, `docker/`, `local/`); slot kinds in `pkg/spec/system.go` |
+| 2 | The `firecracker` driver | Not built | No such driver in `saige/sandbox` |
+| 3 | The egress gate, with credential injection | Built, in saige | `saige/sandbox/isolate/egress`; applied in `internal/platform/isolation.go` |
+| 4 | Tools run through a run's instance | Built | #127; `internal/platform/isolation.go` |
+| 5 | The run context: person store, setting kinds, resolution, pinning at admission, narrowing for called runs | Built | #122; `pkg/runctx`, `pkg/settings`, `pkg/personctx`, `internal/platform/runcontext.go` |
+| 6 | Memory as files, and `memory_search` | Built | #128, #152; `pkg/memory/files.go`, `internal/platform/memory_files.go`. `pkg/memory` is kept |
+| 7 | `humagen worker`, and admission and spend counters in the shared store | Built | #163, #120; `-role` in `internal/app/main.go` |
+| 8 | Large rooms: coalesced reads, per-room admission | Built | #125; `pkg/rooms`. Coalescing is per replica |
+| 9 | Stores read and write per request, striped counters, the single-writer lock gone | Built | #124, #130, #176, #175; `pkg/usage/shared.go`; `pkg/state/postgres.go` locks migrations only |
+| 9 | The schema distributed by its shard keys | Not built | The tenant is the shard key in the key layout only; nothing distributes the tables |
 
 ## Goal
 
@@ -21,7 +44,7 @@ people in it.
   `os.Root`, shared by every run in it, including called runs
   (`internal/platform/sandbox.go`).
 - **Tool servers.** A stdio MCP server is a host process started with the
-  platform's own privileges (`orchagent/flow/mcptools`). A person-scoped provider
+  platform's own privileges (`internal/mcptools`). A person-scoped provider
   already connects with that person's credential, one session per person.
 - **Person state.** It is spread over `pkg/credentials` (credentials),
   `pkg/prefs` (display choices only, which never grant) and nothing else.

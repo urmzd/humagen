@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"mime"
 	"net/http"
 	"os"
@@ -34,8 +35,11 @@ import (
 	"github.com/urmzd/humagen/pkg/call"
 	"github.com/urmzd/humagen/pkg/callpolicy"
 	"github.com/urmzd/humagen/pkg/clients"
+	"github.com/urmzd/humagen/pkg/connectionauth"
+	"github.com/urmzd/humagen/pkg/corpora"
 	"github.com/urmzd/humagen/pkg/credentials"
 	"github.com/urmzd/humagen/pkg/evals"
+	"github.com/urmzd/humagen/pkg/graph"
 	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/join"
 	"github.com/urmzd/humagen/pkg/knowledge"
@@ -53,9 +57,10 @@ import (
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/scratchpads"
 	"github.com/urmzd/humagen/pkg/sourcelinks"
-	"github.com/urmzd/orchagent/flow/bus"
-	"github.com/urmzd/orchagent/flow/connectors/cron"
-	"github.com/urmzd/orchagent/flow/event"
+	"github.com/urmzd/saige/flow/bus"
+	"github.com/urmzd/saige/flow/connectors/cron"
+	"github.com/urmzd/saige/flow/event"
+	orchsession "github.com/urmzd/saige/flow/session"
 )
 
 // maxBody bounds every request body. Nothing this API accepts is large.
@@ -104,6 +109,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /api/agents/{name}/action-policy", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.putActionPolicy))))
 	mux.HandleFunc("GET /api/projects/{name}/action-policy", s.authed(auth.ProjectsRead, s.seenProject(s.getActionPolicy)))
 	mux.HandleFunc("PUT /api/projects/{name}/action-policy", s.authed(auth.ProjectsWrite, s.seenProject(s.putActionPolicy)))
+	mux.HandleFunc("GET /api/me/background", s.authed(auth.RunsRead, s.listBackground))
+	mux.HandleFunc("POST /api/me/background/{id}/stop", s.authed(auth.RunsWrite, s.stopBackground))
 	mux.HandleFunc("GET /api/me/action-policy", s.authed("", s.getActionPolicy))
 	mux.HandleFunc("PUT /api/me/action-policy", s.authed("", s.putActionPolicy))
 	mux.HandleFunc("GET /api/pull-requests", s.authed(auth.RunsRead, s.listReviewedPulls))
@@ -117,6 +124,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/handoffs", s.authed(auth.RunsRead, s.listHandoffs))
 	mux.HandleFunc("GET /api/agent-network", s.authed(auth.AgentsRead, s.agentNetwork))
 	mux.HandleFunc("GET /api/me", s.authed("", s.me))
+	// The humagen MCP: the API's management operations as tools, each served
+	// by its own route below as the caller (mcp.go).
+	mux.HandleFunc("POST /api/mcp", s.authed("", s.mcpEndpoint))
+	s.installDispatch(mux)
 	// Any signed-in caller may ask, and only about themselves: it takes a
 	// permission and no subject.
 	mux.HandleFunc("GET /api/access/explain", s.authed("", s.explainAccess))
@@ -133,8 +144,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /api/me/context", s.authed(auth.RunsWrite, s.putPersonContext))
 	mux.HandleFunc("GET /api/agent-hues", s.authed(auth.RunsRead, s.agentHues))
 	// The deployment's status page: each component, checked at most every 30s.
-	mux.HandleFunc("GET /api/health", s.authed(auth.AlertsRead, func(w http.ResponseWriter, r *http.Request, _ auth.Principal) {
-		ok(w, http.StatusOK, s.P.Health(r.Context()))
+	mux.HandleFunc("GET /api/health", s.authed(auth.AlertsRead, func(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+		ok(w, http.StatusOK, s.P.HealthFor(r.Context(), who.Tenant))
 	}))
 	mux.HandleFunc("GET /api/discovery", s.authed("", s.discover))
 	mux.HandleFunc("GET /api/project-templates", s.authed(auth.ProjectsRead, s.listProjectTemplates))
@@ -142,11 +153,35 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/project-forks/{name}", s.authed(auth.ProjectsRead, s.projectFork))
 	mux.HandleFunc("GET /api/project-agent-hues", s.authed(auth.ProjectsRead, s.agentHues))
 	mux.HandleFunc("GET /api/model-providers", s.authed(auth.AgentsRead, s.modelProviders))
+	// A workspace's own providers: an administrator sets each up with its key,
+	// as a client is, and agents and routing run on them by name.
+	mux.HandleFunc("PUT /api/model-providers/{name}", s.authed(auth.ClientsWrite, s.putModelProvider))
+	mux.HandleFunc("DELETE /api/model-providers/{name}", s.authed(auth.ClientsWrite, s.deleteModelProvider))
+	mux.HandleFunc("POST /api/model-providers/{name}/check", s.authed(auth.ClientsWrite, s.checkModelProvider))
+
+	mux.HandleFunc("GET /api/agents/{name}/health", s.authed(auth.AgentsRead, s.seenAgent(s.agentHealth)))
+	mux.HandleFunc("GET /api/agents/{name}/changes", s.authed(auth.AgentsRead, s.seenAgent(s.agentChanges)))
 	mux.HandleFunc("GET /api/agents", s.authed(auth.AgentsRead, s.listAgents))
+	s.sessionRoutes(mux)
+	s.messageRoutes(mux)
+	mux.HandleFunc("GET /api/catalog/connectors/bigquery/setup", s.authed(auth.KnowledgeWrite, s.getBigQuerySetup))
+	mux.HandleFunc("POST /api/catalog/connectors/bigquery", s.authed(auth.KnowledgeWrite, s.createBigQueryConnector))
+	mux.HandleFunc("POST /api/catalog/connectors/{name}/reconnect", s.authed(auth.KnowledgeWrite, s.reconnectBigQueryConnector))
+	mux.HandleFunc("POST /api/catalog/connectors/snowflake", s.authed(auth.KnowledgeWrite, s.createSnowflakeConnector))
+	mux.HandleFunc("PUT /api/catalog/connectors/{name}/login", s.authed(auth.KnowledgeRead, s.putCatalogLogin))
+	mux.HandleFunc("DELETE /api/catalog/connectors/{name}/login", s.authed(auth.KnowledgeRead, s.deleteCatalogLogin))
+	mux.HandleFunc("GET /api/connections/presets", s.authed(auth.RunsRead, s.listConnectionPresets))
+	mux.HandleFunc("GET /api/connections/{provider}", s.authed(auth.RunsRead, s.getConnection))
+	mux.HandleFunc("POST /api/connections/{provider}/check", s.authed(auth.RunsWrite, s.checkConnection))
+	mux.HandleFunc("POST /api/clients/{id}/check", s.authed(auth.ClientsWrite, s.checkClientConnection))
+	mux.HandleFunc("POST /api/connections/{provider}/authorize", s.authed(auth.RunsWrite, s.authorizeConnection))
+	mux.HandleFunc("POST /api/connections/{provider}/callback", s.authed(auth.RunsWrite, s.completeConnection))
+	mux.HandleFunc("DELETE /api/connections/{provider}", s.authed(auth.RunsWrite, s.disconnectConnection))
 	s.agentSetupRoutes(mux)
 	s.outcomeLearningRoutes(mux)
 	mux.HandleFunc("POST /api/agents", s.authed(auth.AgentsWrite, s.createAgent))
 	mux.HandleFunc("POST /api/agents/{name}/reset", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.resetAgent))))
+	s.storeRoutes(mux)
 	mux.HandleFunc("PUT /api/agents/{name}", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.reviseAgent))))
 	mux.HandleFunc("PUT /api/agents/{name}/home", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.putAgentHome))))
 	mux.HandleFunc("GET /api/agents/{name}/history", s.authed(auth.AgentsRead, agentNamed(s.seenAgent(s.agentHistory))))
@@ -172,6 +207,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/memory/files", s.authed(auth.RunsRead, s.listMemoryFiles))
 	mux.HandleFunc("GET /api/memory/files/content", s.authed(auth.RunsRead, s.readMemoryFile))
 	mux.HandleFunc("GET /api/memory/files/history", s.authed(auth.RunsRead, s.memoryHistory))
+	mux.HandleFunc("PUT /api/memory/files/content", s.authed(auth.RunsWrite, s.writeMemoryFile))
+	mux.HandleFunc("DELETE /api/memory/files/content", s.authed(auth.RunsWrite, s.deleteMemoryFile))
 	mux.HandleFunc("POST /api/memory/files/restore", s.authed(auth.RunsWrite, s.restoreMemory))
 	mux.HandleFunc("POST /api/memory/files/proposals/{id}", s.authed(auth.RunsWrite, s.decideMemoryProposal))
 	mux.HandleFunc("GET /api/memory/search", s.authed(auth.RunsRead, s.searchMemory))
@@ -202,6 +239,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/github/pull", s.authed(auth.RunsRead, s.getGitHubPull))
 	mux.HandleFunc("GET /api/github/issue", s.authed(auth.RunsRead, s.getGitHubIssue))
 	mux.HandleFunc("PUT /api/runs/{id}/feedback", s.authed(auth.RunsRead, s.seenRun(s.putFeedback)))
+	mux.HandleFunc("DELETE /api/runs/{id}/feedback", s.authed(auth.RunsRead, s.seenRun(s.deleteFeedback)))
 	mux.HandleFunc("GET /api/runs/{id}/feedback", s.authed(auth.RunsRead, s.seenRun(s.listFeedback)))
 	mux.HandleFunc("GET /api/runs/{id}/tree", s.authed(auth.RunsRead, s.seenRun(s.runTree)))
 	mux.HandleFunc("POST /api/runs/{id}/calls", s.authed(auth.RunsWrite, s.seenRun(s.createCall)))
@@ -220,6 +258,7 @@ func (s *Server) Handler() http.Handler {
 	s.workspaceFileRoutes(mux)
 	s.scratchpadRoutes(mux)
 	s.observeRoutes(mux)
+	s.corpusRoutes(mux)
 	s.preferenceRoutes(mux)
 	s.markRoutes(mux)
 	s.projectRoutes(mux)
@@ -277,7 +316,7 @@ func agentNamed(h handler) handler {
 // An empty permission means any signed-in caller.
 func (s *Server) authed(perm auth.Permission, h handler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		who, err := s.Authn.Authenticate(r)
+		who, err := s.callerOf(r)
 		if err != nil {
 			fail(w, http.StatusUnauthorized, "sign in to continue")
 			return
@@ -294,23 +333,125 @@ func (s *Server) authed(perm auth.Permission, h handler) http.HandlerFunc {
 		}
 		bodyLimit := int64(maxBody)
 		switch r.Pattern {
+		case "POST /api/messages", "POST /api/messages/{id}", "POST /api/sessions", "POST /api/sessions/{id}/messages", "POST /api/threads", "POST /api/threads/{id}/messages":
+			bodyLimit = 4*(platform.MaxUploadBytes/3+1) + maxBody
+		case "POST /api/library/skills":
+			// A package's files travel as base64, beside its other fields.
+			bodyLimit = 4*(library.MaxPackageBytes/3+1) + maxBody
 		case "PUT /api/threads/{id}/files/content":
 			// A UTF-8 file can expand to six JSON bytes per input byte.
 			bodyLimit = 6*platform.MaxFileBytes + 4096
+		case "PUT /api/memory/files/content":
+			bodyLimit = memoryWriteBody
 		case "POST /api/threads/{id}/scratchpads", "PUT /api/threads/{id}/scratchpads/{pad}":
 			bodyLimit = 6*scratchpads.MaxContent + 4096
-		case "POST /api/voice/transcriptions":
+		case "POST /api/voice/transcriptions", "POST /api/sessions/{id}/voice/transcriptions":
 			bodyLimit = platform.MaxRecordingBytes
 		}
 		r.Body = http.MaxBytesReader(w, r.Body, bodyLimit)
-		if r.Method != http.MethodGet {
+		// A route registered for GET also answers HEAD, and both are reads.
+		read := strings.HasPrefix(r.Pattern, http.MethodGet+" ")
+		if !read {
 			s.Log.Info("httpapi: change", "subject", who.Subject, "kind", who.Kind, "tenant", who.Tenant,
 				"method", r.Method, "path", r.URL.Path)
 		}
-		who = s.P.AuditedReader(who, r.Pattern)
-		h(w, r.WithContext(auth.With(r.Context(), who)), who)
+		// A read is what a response shows: the records of what this one
+		// shows by exception are written together before its first header,
+		// and when they cannot be the answer is that nothing is there. That
+		// holds for a HEAD as for a GET: its headers tell of what it read.
+		who, commit := s.P.ResponseReader(who, r.Pattern)
+		if !read {
+			h(w, r.WithContext(auth.With(r.Context(), who)), who)
+			return
+		}
+		// A refusal ends the request for its handler too, so a stream that
+		// would go on waiting for events lets go of what it follows.
+		ctx, end := context.WithCancel(r.Context())
+		defer end()
+		recorded := &recordedResponse{ResponseWriter: w, commit: commit, end: end, had: w.Header().Clone()}
+		h(recorded, r.WithContext(auth.With(ctx, who)), who)
+		// An answer with no body is still an answer.
+		recorded.decide()
 	}
 }
+
+// errResponseRefused is what a handler's writes come to once its response
+// was refused: there is nobody to write to, as when a client has gone.
+var errResponseRefused = errors.New("httpapi: the response was refused: its read records could not be written")
+
+// recordedResponse holds a response back until the records of what it shows
+// by exception are written (Platform.ResponseReader). The first header or
+// byte the handler sends decides it: with the records written the response
+// goes out as the handler wrote it, and without them the caller is told 404
+// at once and nothing the handler wrote or set, a header included, leaves.
+// After a refusal the handler's request is ended and its writes and flushes
+// fail, so a stream's handler returns and lets go of what it follows; a
+// handler that ignores both has written to nowhere.
+type recordedResponse struct {
+	http.ResponseWriter
+	commit func() bool
+	// end ends the handler's request.
+	end func()
+	// had is the headers set before the handler ran, which a refusal keeps.
+	had     http.Header
+	decided bool
+	refused bool
+}
+
+// decide writes the records once and reports whether the response may go.
+func (w *recordedResponse) decide() bool {
+	if !w.decided {
+		w.decided = true
+		if !w.commit() {
+			w.refused = true
+			header := w.Header()
+			clear(header)
+			maps.Copy(header, w.had)
+			notFound(w.ResponseWriter)
+			// The refusal leaves now, not when a stream's handler returns.
+			_ = http.NewResponseController(w.ResponseWriter).Flush()
+			w.end()
+		}
+	}
+	return !w.refused
+}
+
+func (w *recordedResponse) WriteHeader(code int) {
+	if w.decide() {
+		w.ResponseWriter.WriteHeader(code)
+	}
+}
+
+func (w *recordedResponse) Write(b []byte) (int, error) {
+	if !w.decide() {
+		return 0, errResponseRefused
+	}
+	return w.ResponseWriter.Write(b)
+}
+
+// ReadFrom is how io.Copy and http.ServeContent send a file: the records are
+// written before its first byte, and the writer below still sends it its
+// own way.
+func (w *recordedResponse) ReadFrom(src io.Reader) (int64, error) {
+	if !w.decide() {
+		return 0, errResponseRefused
+	}
+	if from, ok := w.ResponseWriter.(io.ReaderFrom); ok {
+		return from.ReadFrom(src)
+	}
+	return io.Copy(struct{ io.Writer }{w.ResponseWriter}, src)
+}
+
+// FlushError is what http.ResponseController flushes a stream through.
+func (w *recordedResponse) FlushError() error {
+	if !w.decide() {
+		return errResponseRefused
+	}
+	return http.NewResponseController(w.ResponseWriter).Flush()
+}
+
+// Unwrap gives http.ResponseController the writer's deadlines and duplex.
+func (w *recordedResponse) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 
 func (s *Server) me(w http.ResponseWriter, _ *http.Request, who auth.Principal) {
 	// first_admin says the caller is the one who should set the workspace
@@ -625,8 +766,16 @@ func (s *Server) removeMemory(w http.ResponseWriter, r *http.Request, who auth.P
 }
 
 func (s *Server) listRuns(w http.ResponseWriter, _ *http.Request, who auth.Principal) {
-	seer := s.P.Seer(who)
-	ok(w, http.StatusOK, map[string]any{"runs": orEmpty(s.P.ShownRunsAs(who, slices.DeleteFunc(s.P.Runs.List(who.Tenant, 200), func(r runs.Run) bool { return !seer.Run(r) })))})
+	// One snapshot answers for every run: the tree and each run's thread
+	// are read once, not once a run.
+	seer := s.P.Seer(who).Snapshot()
+	list := s.P.Runs.List(who.Tenant, 200)
+	threads := make([]string, len(list))
+	for i, r := range list {
+		threads[i] = r.Thread
+	}
+	seer.Read(threads...)
+	ok(w, http.StatusOK, map[string]any{"runs": orEmpty(seer.ShownRuns(slices.DeleteFunc(list, func(r runs.Run) bool { return !seer.Run(r) || platform.IsEvaluation(r) })))})
 }
 
 func (s *Server) createRun(w http.ResponseWriter, r *http.Request, who auth.Principal) {
@@ -717,6 +866,8 @@ func (s *Server) createRun(w http.ResponseWriter, r *http.Request, who auth.Prin
 		ID: id, Agent: body.Agent, Text: body.Text, After: body.After, Project: body.Project, Actor: actor, Client: client, KeepsNotes: keeps,
 		// An agent the person may not read is one that is not there.
 		Sees: s.P.Seer(asks).Agent,
+		// The text is the person's own, so a skill it names is used.
+		NamesSkills: true,
 	})
 	if err != nil {
 		s.problem(w, err)
@@ -1015,10 +1166,11 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request, who auth.Princip
 			if !s.P.InboxNoticeFor(who, n) {
 				// A client's machine hears of a message addressed to
 				// people it maps, once for each of them, to tell them
-				// in Slack.
+				// in Slack: a background result asked in its own
+				// Slack thread, as a reply there.
 				sent = sent[:0]
-				for _, as := range s.P.SurfaceNoticesFor(who, n) {
-					sent = append(sent, inboxNotice{Notice: n, For: &as})
+				for _, one := range s.P.SurfaceNoticesFor(r.Context(), who, n) {
+					sent = append(sent, inboxNotice{Notice: n, For: &one.For, ReplyIn: one.Reply})
 				}
 			}
 			for _, one := range sent {
@@ -1134,6 +1286,20 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 		return
 	}
 	switch {
+	case errors.Is(err, connectionauth.ErrUnavailable):
+		fail(w, 503, "connection authentication is unavailable")
+	case errors.Is(err, connectionauth.ErrInvalid):
+		fail(w, 400, "invalid connection authentication request")
+	case errors.Is(err, connectionauth.ErrReconnect):
+		fail(w, 409, "reconnect this connection")
+	case errors.Is(err, connectionauth.ErrBusy):
+		fail(w, 409, "connection authentication is already in progress")
+	case errors.Is(err, orchsession.ErrNotFound):
+		notFound(w)
+	case errors.Is(err, orchsession.ErrInvalid):
+		fail(w, 400, err.Error())
+	case errors.Is(err, orchsession.ErrDenied):
+		fail(w, 403, "session call denied")
 	case errors.Is(err, notifications.ErrNotFound):
 		notFound(w)
 	case errors.Is(err, notifications.ErrCapacity):
@@ -1149,6 +1315,20 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 		fail(w, http.StatusConflict, detail(err, library.ErrConflict))
 	case errors.Is(err, auth.ErrForbidden):
 		fail(w, http.StatusForbidden, detail(err, auth.ErrForbidden))
+	case errors.Is(err, corpora.ErrNotFound), errors.Is(err, graph.ErrNotFound):
+		notFound(w)
+	case errors.Is(err, graph.ErrInvalid):
+		fail(w, http.StatusBadRequest, detail(err, graph.ErrInvalid))
+	case errors.Is(err, graph.ErrLimit):
+		fail(w, http.StatusTooManyRequests, detail(err, graph.ErrLimit))
+	case errors.Is(err, corpora.ErrInvalid):
+		fail(w, http.StatusBadRequest, detail(err, corpora.ErrInvalid))
+	case errors.Is(err, corpora.ErrExists):
+		fail(w, http.StatusConflict, "a corpus of that name already exists")
+	case errors.Is(err, corpora.ErrConflict):
+		fail(w, http.StatusConflict, "the corpus was changed by someone else; reload and try again")
+	case errors.Is(err, corpora.ErrLimit):
+		fail(w, http.StatusTooManyRequests, detail(err, corpora.ErrLimit))
 	case errors.Is(err, sourcelinks.ErrInvalid):
 		fail(w, http.StatusBadRequest, "invalid source link rule")
 	case errors.Is(err, sourcelinks.ErrNotFound):
@@ -1181,6 +1361,10 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 	case errors.Is(err, wire.ErrExists), errors.Is(err, platform.ErrScheduleExists), errors.Is(err, platform.ErrProjectExists),
 		errors.Is(err, alerts.ErrExists), errors.Is(err, knowledge.ErrExists), errors.Is(err, evals.ErrExists):
 		fail(w, http.StatusConflict, "already exists")
+	case errors.Is(err, knowledge.ErrChanged):
+		fail(w, http.StatusConflict, "the document changed since it was read; read it again")
+	case errors.Is(err, knowledge.ErrStructureKept):
+		fail(w, http.StatusConflict, "a structure is already kept for this revision of the document; it changes only with the session's text")
 	case errors.Is(err, clients.ErrExists):
 		// The message names only a client of the caller's own workspace.
 		fail(w, http.StatusConflict, err.Error())
@@ -1228,16 +1412,20 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 		fail(w, http.StatusNotFound, "not found")
 	case errors.Is(err, people.ErrInvalid):
 		fail(w, http.StatusBadRequest, detail(err, people.ErrInvalid))
-	case errors.Is(err, platform.ErrSettings), errors.Is(err, platform.ErrModelPolicy):
+	case errors.Is(err, platform.ErrSettings), errors.Is(err, platform.ErrModelPolicy), errors.Is(err, platform.ErrModelProvider):
 		fail(w, http.StatusBadRequest, err.Error())
-	case errors.Is(err, platform.ErrModelPolicyInUse):
+	case errors.Is(err, platform.ErrModelPolicyInUse), errors.Is(err, platform.ErrModelProviderInUse):
 		fail(w, http.StatusConflict, err.Error())
 	case errors.Is(err, platform.ErrSourceInUse):
 		fail(w, http.StatusConflict, detail(err, platform.ErrSourceInUse))
 	case errors.Is(err, platform.ErrNoBaseline):
 		fail(w, http.StatusBadRequest, "that setting names an agent that does not exist")
+	case errors.Is(err, evals.ErrRegression):
+		fail(w, http.StatusConflict, "The change did not pass its evaluation checks. Review its scores before trying again.")
 	case errors.Is(err, evals.ErrBusy):
 		fail(w, http.StatusConflict, "that suite is already running")
+	case errors.Is(err, platform.ErrStoreConflict):
+		fail(w, http.StatusConflict, detail(err, platform.ErrStoreConflict))
 	case errors.Is(err, wire.ErrConflict):
 		fail(w, http.StatusConflict, "the agent was revised by someone else, reload and try again")
 	case errors.Is(err, platform.ErrForbidden), errors.Is(err, auth.ErrForbidden), errors.Is(err, call.ErrDepth), errors.Is(err, call.ErrFanOut), errors.Is(err, call.ErrBudget),
@@ -1251,6 +1439,11 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 		fail(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, platform.ErrWorkspaceConflict):
 		fail(w, http.StatusConflict, err.Error())
+	case errors.Is(err, platform.ErrUnisolated):
+		fail(w, http.StatusConflict, "this deployment has no isolated sandbox to run a command in")
+	case errors.Is(err, platform.ErrSandboxUnavailable):
+		w.Header().Set("Retry-After", "5")
+		fail(w, http.StatusServiceUnavailable, "the sandbox could not run the command; try again")
 	case errors.Is(err, platform.ErrSandbox), errors.Is(err, artifacts.ErrInvalid):
 		fail(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, memory.ErrSensitive):
@@ -1391,8 +1584,45 @@ func APITagID(subject, key string) string {
 	return "api-" + strconv.Itoa(len(subject)) + "-" + subject + "-" + key
 }
 
-func (s *Server) modelProviders(w http.ResponseWriter, _ *http.Request, _ auth.Principal) {
-	ok(w, http.StatusOK, map[string]any{"providers": s.P.ModelProviderChoices()})
+// modelProviders lists what agents may run on. Someone who may manage the
+// workspace's providers also reads how each of its own is set up, with no
+// key: a reference by its name, a stored value only as kept.
+func (s *Server) modelProviders(w http.ResponseWriter, _ *http.Request, who auth.Principal) {
+	out := map[string]any{"providers": s.P.ModelProviderChoices(who.Tenant), "kinds": platform.ModelProviderKinds()}
+	if who.Can(auth.ClientsWrite) {
+		out["workspace"] = s.P.ModelProviders(who.Tenant)
+	}
+	ok(w, http.StatusOK, out)
+}
+
+func (s *Server) putModelProvider(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	var in platform.ModelProviderInput
+	if !decode(w, r, &in) {
+		return
+	}
+	m, err := s.P.SetModelProvider(r.Context(), who, r.PathValue("name"), in)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, m)
+}
+
+func (s *Server) deleteModelProvider(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	if err := s.P.DeleteModelProvider(r.Context(), who, r.PathValue("name")); err != nil {
+		s.problem(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) checkModelProvider(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	c, err := s.P.CheckModelProvider(r.Context(), who, r.PathValue("name"))
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, c)
 }
 
 func (s *Server) resetAgent(w http.ResponseWriter, r *http.Request, who auth.Principal) {

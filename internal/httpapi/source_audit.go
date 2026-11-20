@@ -43,6 +43,12 @@ func (w *sourceMutationWriter) Write(bytes []byte) (int, error) {
 // auditedSource observes an already-authorized source mutation. Handlers use
 // this same request snapshot in the store's atomic scope guard.
 func (s *Server) auditedSource(action string, next func(http.ResponseWriter, *http.Request, auth.Principal)) func(http.ResponseWriter, *http.Request, auth.Principal) {
+	return s.auditedSourceUnder(action, auth.KnowledgeWrite, next)
+}
+
+// auditedSourceUnder is auditedSource for a route that checks another
+// permission than knowledge:write, which the record names.
+func (s *Server) auditedSourceUnder(action string, rule auth.Permission, next func(http.ResponseWriter, *http.Request, auth.Principal)) func(http.ResponseWriter, *http.Request, auth.Principal) {
 	return func(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 		source, err := s.sourceSnapshot(who, r)
 		if err != nil {
@@ -53,7 +59,7 @@ func (s *Server) auditedSource(action string, next func(http.ResponseWriter, *ht
 		if source.Lifecycle != nil {
 			project = source.Lifecycle.Project
 		}
-		attempt, err := s.P.BeginAudit(who, audit.Change{Action: action, Resource: "source", ID: source.Name, Scope: "project", Project: project, After: map[string]string{"route": r.Pattern, "rule": "knowledge:write"}})
+		attempt, err := s.P.BeginAudit(who, audit.Change{Action: action, Resource: "source", ID: source.Name, Scope: "project", Project: project, After: map[string]string{"route": r.Pattern, "rule": string(rule)}})
 		if err != nil {
 			s.problem(w, err)
 			return

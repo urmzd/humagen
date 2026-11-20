@@ -24,20 +24,22 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/santhosh-tekuri/jsonschema/v6"
+	"github.com/urmzd/humagen/internal/mcptools"
+	"github.com/urmzd/humagen/internal/toolprovider"
 	"github.com/urmzd/humagen/internal/wire"
-	"github.com/urmzd/orchagent/flow/connectors/cron"
-	"github.com/urmzd/orchagent/flow/event"
-	"github.com/urmzd/orchagent/flow/mcptools"
-	"github.com/urmzd/orchagent/flow/runtime"
-	"github.com/urmzd/orchagent/flow/toolprovider"
-	"github.com/urmzd/orchagent/flow/turn/native"
 	"github.com/urmzd/saige/agent/agenttest"
 	saigetypes "github.com/urmzd/saige/agent/types"
+	"github.com/urmzd/saige/flow/connectors/cron"
+	"github.com/urmzd/saige/flow/event"
+	"github.com/urmzd/saige/flow/runtime"
+	orchsession "github.com/urmzd/saige/flow/session"
+	"github.com/urmzd/saige/flow/turn/native"
 	"go.yaml.in/yaml/v4"
 
 	"github.com/urmzd/humagen/internal/platform"
@@ -46,9 +48,12 @@ import (
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/catalog"
 	"github.com/urmzd/humagen/pkg/clients"
+	"github.com/urmzd/humagen/pkg/connectionauth"
+	"github.com/urmzd/humagen/pkg/corpora"
 	"github.com/urmzd/humagen/pkg/credentials"
 	"github.com/urmzd/humagen/pkg/drive"
 	"github.com/urmzd/humagen/pkg/evals"
+	"github.com/urmzd/humagen/pkg/graph"
 	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/integrations/github"
 	"github.com/urmzd/humagen/pkg/join"
@@ -62,14 +67,16 @@ import (
 	"github.com/urmzd/humagen/pkg/policy"
 	"github.com/urmzd/humagen/pkg/prefs"
 	"github.com/urmzd/humagen/pkg/projects"
+	"github.com/urmzd/humagen/pkg/prompts"
 	"github.com/urmzd/humagen/pkg/rooms"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/settings"
+	"github.com/urmzd/humagen/pkg/signals"
 	"github.com/urmzd/humagen/pkg/sourcelinks"
 	"github.com/urmzd/humagen/pkg/speech"
 	"github.com/urmzd/humagen/pkg/threads"
 	"github.com/urmzd/humagen/pkg/usage"
-	"github.com/urmzd/orchagent/flow/attachment"
+	"github.com/urmzd/saige/flow/attachment"
 )
 
 // The API contract is api/openapi.yaml. These tests are what keep it true:
@@ -115,6 +122,9 @@ func loadSpec(t *testing.T) *apiSpec {
 	var viaYAML any
 	if err := yaml.Unmarshal(raw, &viaYAML); err != nil {
 		t.Fatalf("the spec is not YAML: %v", err)
+	}
+	if err := specJSONKeys(viaYAML, "openapi"); err != nil {
+		t.Fatalf("the spec must use JSON mapping keys: %v", err)
 	}
 	// Through JSON, so every value is one the schema compiler expects.
 	asJSON, err := json.Marshal(viaYAML)
@@ -603,15 +613,29 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		written bool
 	}
 	shapes := map[string]shape{
+		"EvalTrace": {typ: evals.Trace{}}, "EvalToolOutcome": {typ: evals.ToolResult{}},
+		"EvalRetrieval": {typ: evals.Retrieval{}}, "EvalContextBlock": {typ: evals.ContextBlock{}}, "EvalProvenance": {typ: evals.Provenance{}},
+		"Upload":          {typ: platform.Upload{}, written: true},
+		"SessionIdentity": {typ: threads.SessionIdentity{}}, "SessionInput": {typ: platform.SessionInput{}, written: true}, "SessionPostInput": {typ: platform.SessionPostInput{}, written: true},
+		"AgentSessionSummary": {typ: platform.SessionSummary{}}, "SessionAuthor": {typ: platform.SessionAuthor{}},
+		"SessionPart": {typ: platform.SessionPart{}}, "SessionFeedback": {typ: platform.SessionFeedback{}},
+		"SessionMessage": {typ: platform.SessionMessage{}}, "SessionLink": {typ: orchsession.Link{}},
+		"AgentSession": {typ: platform.SessionView{}},
+		"MessageNode":  {typ: platform.MessageNode{}}, "MessageAudience": {typ: platform.MessageAudience{}},
+		"RootMessage": {typ: platform.RootMessage{}}, "RootMessagePage": {typ: platform.RootMessagePage{}},
+		"MessageTrace": {typ: platform.MessageTrace{}}, "TraceNode": {typ: platform.TraceNode{}}, "TracePick": {typ: platform.TracePick{}},
+		"TraceTool": {typ: platform.TraceTool{}}, "TraceContext": {typ: platform.TraceContext{}}, "TraceSource": {typ: platform.TraceSource{}}, "TraceApproval": {typ: platform.TraceApproval{}},
 		"Principal": {typ: auth.Principal{}}, "AccessDecision": {typ: accessDecision{}}, "AccessHeldRole": {typ: heldRole{}}, "AgentSpec": {typ: wire.AgentSpec{}}, "AgentSource": {typ: wire.Source{}},
+		"StorePackage": {typ: platform.StorePackage{}}, "StoreAgent": {typ: platform.StoreAgent{}}, "StoreInstall": {typ: platform.StoreInstall{}}, "StoreRemoval": {typ: platform.StoreRemoval{}},
 		"PackageBase": {typ: wire.PackageBase{}}, "AgentPackage": {typ: wire.AgentPackage{}}, "AgentAccess": {typ: wire.Access{}}, "Revision": {typ: revisionView{}}, "JoinDecision": {typ: join.Decision{}},
-		"Note": {typ: noteView{}}, "DriveTree": {typ: drive.Tree{}}, "DriveEntry": {typ: drive.Entry{}}, "DriveChange": {typ: drive.Change{}}, "DriveProposal": {typ: drive.Proposal{}}, "DriveVersion": {typ: drive.Version{}}, "DriveHit": {typ: drive.Hit{}}, "MemoryFiles": {typ: memoryTree{}}, "MemoryFile": {typ: memoryFile{}}, "MemoryRestoreInput": {typ: memoryRestore{}, written: true}, "MemoryDecisionInput": {typ: memoryDecision{}, written: true}, "LibraryScope": {typ: library.Scope{}}, "MemoryFolder": {typ: platform.MemoryFolder{}}, "LibrarySkillFile": {typ: library.File{}}, "LibrarySkillDefinition": {typ: library.Definition{}}, "LibrarySkill": {typ: library.Revision{}}, "LibraryProvenance": {typ: library.Provenance{}}, "AuditRecord": {typ: audit.Record{}}, "PersonalPreferences": {typ: prefs.Personal{}}, "NativeNotification": {typ: platform.Notification{}}, "NativeNotificationItem": {typ: platform.NotificationItem{}}, "Actor": {typ: event.Actor{}}, "Run": {typ: runs.Run{}},
+		"Note": {typ: noteView{}}, "DriveTree": {typ: drive.Tree{}}, "DriveEntry": {typ: drive.Entry{}}, "DriveChange": {typ: drive.Change{}}, "DriveProposal": {typ: drive.Proposal{}}, "DriveVersion": {typ: drive.Version{}}, "DriveHit": {typ: drive.Hit{}}, "MemoryFiles": {typ: memoryTree{}}, "MemoryFile": {typ: memoryFile{}}, "MemoryRestoreInput": {typ: memoryRestore{}, written: true}, "MemoryWriteInput": {typ: memoryWrite{}, written: true}, "MemoryDecisionInput": {typ: memoryDecision{}, written: true}, "LibraryScope": {typ: library.Scope{}}, "MemoryFolder": {typ: platform.MemoryFolder{}}, "LibrarySkillFile": {typ: library.File{}}, "LibrarySkillDefinition": {typ: library.Definition{}}, "LibrarySkill": {typ: skillView{}}, "LibraryProvenance": {typ: library.Provenance{}}, "AuditRecord": {typ: audit.Record{}}, "PersonalPreferences": {typ: prefs.Personal{}}, "NativeNotification": {typ: platform.Notification{}}, "NativeNotificationItem": {typ: platform.NotificationItem{}}, "Actor": {typ: event.Actor{}}, "Run": {typ: runs.Run{}},
 
 		"SourceDependency": {typ: platform.SourceDependency{}}, "SourceDependencies": {typ: platform.SourceDependencies{}},
 		"ThreadSummary": {typ: platform.ThreadSummary{}},
 		"WorkspaceFile": {typ: platform.WorkspaceFile{}}, "WorkspaceFileContent": {typ: platform.WorkspaceFileContent{}}, "WorkspaceFileList": {typ: platform.WorkspaceFileList{}}, "WorkspaceFileWrite": {typ: platform.WorkspaceFileWrite{}, written: true}, "WorkspaceFilePublish": {typ: platform.WorkspaceFilePublish{}, written: true},
 		"Thread": {typ: threads.Thread{}}, "ThreadParticipant": {typ: threads.Participant{}}, "ThreadMention": {typ: threads.Mention{}},
-		"ThreadAnswerRef": {typ: threads.AnswerRef{}}, "ThreadMessage": {typ: threads.Message{}}, "ThreadTurn": {typ: platform.ThreadTurn{}}, "ThreadAnnouncement": {typ: threads.Announcement{}}, "ThreadAsk": {typ: platform.Ask{}},
+		"ThreadImport": {typ: threads.Import{}}, "ThreadImportTurn": {typ: threads.ImportTurn{}}, "ThreadImportOmitted": {typ: threads.ImportOmitted{}}, "ThreadImportCut": {typ: threads.ImportCut{}},
+		"ThreadAnswerRef": {typ: threads.AnswerRef{}}, "ThreadFollowup": {typ: threads.Followup{}}, "ThreadMessage": {typ: threads.Message{}}, "ThreadTurn": {typ: platform.ThreadTurn{}}, "ThreadAnnouncement": {typ: threads.Announcement{}}, "ThreadAsk": {typ: platform.Ask{}},
 		"ThreadAnswers": {typ: answers{}}, "ThreadPosted": {typ: platform.Posted{}}, "ThreadNotice": {typ: threads.Notice{}}, "RoomPage": {typ: rooms.Page{}},
 		"ThreadInput": {typ: platform.ThreadInput{}, written: true}, "ThreadMessageInput": {typ: platform.MessageInput{}, written: true},
 		"ThreadUpdate": {typ: platform.ThreadUpdate{}, written: true}, "ThreadParticipantsUpdate": {typ: platform.ParticipantsUpdate{}, written: true},
@@ -625,6 +649,9 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		"ProjectKnowledge": {typ: platform.ProjectKnowledge{}}, "ProjectKnowledgeSource": {typ: projects.KnowledgeSource{}}, "ProjectKnowledgeInput": {typ: platform.KnowledgeInput{}, written: true},
 		"ProjectSkill": {typ: platform.SkillDetail{}}, "ProjectSkillRef": {typ: projects.SkillRef{}}, "ProjectSkills": {typ: platform.ProjectSkills{}}, "ProjectSkillsInput": {typ: platform.SkillsInput{}, written: true},
 		"MentionKind": {typ: platform.MentionKind{}}, "MentionItem": {typ: platform.MentionItem{}},
+		"VoiceSettings": {typ: platform.VoiceSettings{}}, "VoiceProvider": {typ: platform.VoiceProvider{}}, "VoiceKind": {typ: platform.VoiceKind{}},
+		"VoiceProviderInput": {typ: platform.VoiceProviderInput{}, written: true}, "VoicePrice": {typ: speech.Price{}}, "VoiceCheck": {typ: platform.VoiceCheck{}},
+		"VoiceUsage": {typ: platform.VoiceUsage{}}, "VoiceSpeech": {typ: platform.VoiceSpeech{}}, "VoiceSpeechInput": {typ: speakInput{}, written: true}, "SpokenCorrection": {typ: correction{}, written: true}, "SpokenAnswer": {typ: platform.SpokenAnswer{}},
 		"ProjectInput": {typ: platform.ProjectInput{}, written: true}, "ProjectUpdate": {typ: platform.ProjectUpdate{}, written: true},
 		"ProjectAgents": {typ: projects.Agents{}}, "AgentAvailability": {typ: projects.Availability{}}, "AgentOffer": {typ: platform.Offer{}},
 		"DefaultResolved": {typ: platform.Nearer{}}, "ProjectAgentsView": {typ: platform.ProjectAgents{}},
@@ -639,11 +666,16 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 			Text     string `json:"text"`
 			Severity string `json:"severity,omitempty"`
 		}{}, written: true},
-		"Settings": {typ: platform.Settings{}}, "RouterSettings": {typ: platform.RouterSettings{}}, "Preferences": {typ: prefs.Preferences{}},
-		"ToolCredentials": {typ: platform.ToolCredentials{}}, "ToolCredential": {typ: platform.ToolCredential{}}, "ToolCredentialInput": {typ: credentials.Input{}, written: true}, "PersonContext": {typ: personctx.Context{}}, "PersonContextInput": {typ: personctx.Input{}, written: true}, "PersonToolServer": {typ: personctx.ToolServer{}}, "RunSettings": {typ: settings.Layer{}}, "RunCeilings": {typ: settings.Ceilings{}}, "RunPreferences": {typ: settings.Preferences{}},
+		"Settings": {typ: platform.Settings{}}, "Preferences": {typ: prefs.Preferences{}},
+		"ConnectionHealth": {typ: platform.ConnectionHealth{}}, "ConnectionPreset": {typ: platform.ConnectionPreset{}}, "ConnectionAuthorization": {typ: connectionauth.Authorization{}},
+		"ConnectionAuthorizationInput": {typ: platform.ConnectionAuthorizationInput{}, written: true},
+		"ConnectionRegistration":       {typ: connectionauth.Registration{}, written: true},
+		"ConnectionDetail":             {typ: platform.ConnectionDetail{}}, "ConnectionMapping": {typ: platform.ConnectionMapping{}},
+		"ConnectionCallback": {typ: ConnectionCallback{}, written: true},
+		"ToolCredentials":    {typ: platform.ToolCredentials{}}, "ToolCredential": {typ: platform.ToolCredential{}}, "ToolCredentialInput": {typ: credentials.Input{}, written: true}, "PersonContext": {typ: personctx.Context{}}, "PersonContextInput": {typ: personctx.Input{}, written: true}, "PersonToolServer": {typ: personctx.ToolServer{}}, "RunSettings": {typ: settings.Layer{}}, "RunCeilings": {typ: settings.Ceilings{}}, "RunPreferences": {typ: settings.Preferences{}},
 		"RunFeedback": {typ: shownFeedback{}}, "Attachment": {typ: attachment.Attachment{}},
 		"Schedule": {typ: schedule{}}, "ScheduleView": {typ: scheduleView{}},
-		"InboxNotice": {typ: inboxNotice{}}, "InboxFrom": {typ: inbox.From{}}, "InboxSource": {typ: inbox.Source{}},
+		"InboxNotice": {typ: inboxNotice{}}, "InboxNoticeReply": {typ: platform.SurfaceReply{}}, "InboxFrom": {typ: inbox.From{}}, "InboxSource": {typ: inbox.Source{}},
 		"InboxOutcome": {typ: inbox.Outcome{}}, "InboxLimits": {typ: inbox.Limits{}}, "InboxAlertPart": {typ: inbox.AlertPart{}},
 		"InboxFailurePart": {typ: inbox.FailurePart{}}, "InboxNoteRef": {typ: inbox.NoteRef{}}, "InboxMemoryPart": {typ: inbox.MemoryPart{}},
 		"InboxBudgetPart": {typ: inbox.BudgetPart{}}, "InboxPart": {typ: inbox.Part{}}, "InboxQuestionPart": {typ: inbox.QuestionPart{}}, "InboxQuestionTool": {typ: inbox.QuestionTool{}}, "InboxMessage": {typ: inbox.Message{}}, "InboxMentionPart": {typ: inbox.MentionPart{}},
@@ -654,13 +686,22 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		"AnalyticsGroup": {typ: runs.Group{}}, "AnalyticsBucket": {typ: runs.Bucket{}}, "Summary": {typ: runs.Summary{}},
 		"JournalEntry": {typ: journal.Entry{}}, "Span": {typ: journal.Span{}},
 		"AlertRule": {typ: ruleView{}}, "Alert": {typ: alertView{}},
+
+		"AgentEvaluationHealth": {typ: platform.AgentEvaluationHealth{}}, "OnlineEvaluation": {typ: evals.Online{}}, "EvaluationSignals": {typ: signals.Record{}}, "EvaluationLimits": {typ: evals.Limits{}}, "AgentChangeScore": {typ: evals.ChangeScore{}}, "AgentChange": {typ: evals.Change{}}, "PromptLayers": {typ: prompts.Config{}},
 		"EvalCheck": {typ: evals.Check{}}, "EvalCase": {typ: evals.Case{}}, "EvalSuite": {typ: evals.Suite{}, written: true},
 		"EvalVerdict": {typ: evals.Verdict{}}, "EvalHit": {typ: evals.Hit{}}, "EvalResult": {typ: evals.Result{}},
 		"EvalRun": {typ: evals.Run{}}, "EvalSuiteView": {typ: suiteView{}, written: true},
+		"BigQuerySetupInput": {typ: platform.BigQuerySetupInput{}, written: true}, "BigQuerySetupCredential": {typ: platform.BigQuerySetupCredential{}, written: true},
+		"BigQuerySetupView": {typ: platform.BigQuerySetupView{}}, "BigQueryADCScope": {typ: platform.BigQueryADCScope{}},
+		"SnowflakeSetupInput": {typ: platform.SnowflakeSetupInput{}, written: true}, "CatalogLoginInput": {typ: platform.CatalogLoginInput{}, written: true},
 		"CatalogColumn": {typ: catalog.Column{}}, "CatalogStats": {typ: catalog.Stats{}}, "CatalogEntry": {typ: catalog.Entry{}}, "CatalogMark": {typ: catalog.Mark{}},
 		"CatalogConnector": {typ: catalog.Connector{}}, "CatalogConnectorView": {typ: platform.CatalogConnectorView{}}, "CatalogPage": {typ: platform.CatalogPage{}},
 		"KnowledgeVariant": {typ: knowledge.Variant{}}, "KnowledgeSource": {typ: knowledge.Source{}},
-		"KnowledgeDocument": {typ: knowledge.Document{}}, "KnowledgeHit": {typ: knowledge.Hit{}},
+		"Corpus": {typ: platform.CorpusView{}}, "CorpusMember": {typ: platform.CorpusMemberView{}}, "CorpusReader": {typ: corpora.Reader{}},
+		"GraphNode": {typ: graph.Node{}}, "GraphEdge": {typ: graph.Edge{}}, "GraphStaleness": {typ: graph.Staleness{}}, "GraphNodeView": {typ: platform.GraphNodeView{}}, "GraphHealth": {typ: platform.GraphHealth{}}, "GraphView": {typ: platform.GraphView{}}, "OwnerAction": {typ: platform.OwnerAction{}, written: true},
+		"CorpusHit": {typ: platform.CorpusHit{}}, "CorpusSearchWarning": {typ: platform.CorpusSearchWarning{}}, "CorpusSearch": {typ: platform.CorpusSearch{}},
+		"CorpusMemberRef": {typ: corpora.Member{}, written: true}, "CorpusCreate": {typ: platform.CorpusCreate{}, written: true}, "CorpusChange": {typ: platform.CorpusChange{}, written: true},
+		"KnowledgeDocument": {typ: knowledge.Document{}}, "KnowledgeHit": {typ: knowledge.Hit{}}, "ImportedSession": {typ: knowledge.Imported{}, written: true}, "ImportedTurn": {typ: knowledge.ImportedTurn{}, written: true}, "ImportedOmitted": {typ: knowledge.ImportedOmitted{}, written: true},
 		"PolicyScope": {typ: policy.Scope{}}, "Policy": {typ: policyView{}}, "PolicyChange": {typ: policyChangeView{}},
 		"Measure": {typ: measure{}}, "ScopeUsage": {typ: scopeUsage{}}, "UsageEntry": {typ: usage.Entry{}},
 		"SkillAgentUse": {typ: platform.SkillAgentUse{}}, "SkillUsage": {typ: platform.SkillUsage{}},
@@ -948,7 +989,7 @@ func (c *contract) sweep(tok string) {
 		if op.path == "/api/events" || needsQuery(op) {
 			continue
 		}
-		if op.path == "/api/read-audit" || op.path == "/api/audit" || op.path == "/api/me/memory" || op.path == "/api/me/notifications" || op.path == "/api/me/context" {
+		if op.path == "/api/read-audit" || op.path == "/api/audit" || op.path == "/api/me/memory" || op.path == "/api/me/notifications" || op.path == "/api/me/context" || op.path == "/api/catalog/connectors/bigquery/setup" {
 			c.call(tok, "GET", op.path, op.path, "", http.StatusForbidden)
 			continue
 		}
@@ -980,7 +1021,15 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	})
 	notesServer := httptest.NewTLSServer(mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return notes }, nil))
 	t.Cleanup(notesServer.Close)
-	f := newFixtureWith(t, platform.Config{BuiltinProvider: "offline", BuiltinModel: "offline", PersonalHTTP: notesServer.Client(), AgentOptions: []native.Option{
+	var quotaClock atomic.Pointer[time.Time]
+	now := func() time.Time {
+		if at := quotaClock.Load(); at != nil {
+			return *at
+		}
+		return time.Now()
+	}
+	contractBrowser := newBrowserFake(t)
+	f := newFixtureWith(t, platform.Config{Now: now, TestBuiltinProvider: "offline", TestBuiltinModel: "offline", PersonalHTTP: notesServer.Client(), AgentOptions: []native.Option{
 		native.WithProvider(native.ProviderOpenAI, func(native.Spec) (saigetypes.Provider, error) {
 			return &agenttest.ScriptedProvider{Responses: [][]saigetypes.Delta{agenttest.TextResponse("Completed the configured setup check.")}}, nil
 		}),
@@ -998,24 +1047,40 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		}), ToolProviders: []platform.ToolProviderSeed{
 			{Provider: toolprovider.Provider{Tenant: "acme", Name: "issues", Transport: toolprovider.TransportHTTP, Endpoint: "https://issues.example.com/mcp", CredentialScope: toolprovider.ScopePerson}},
 			{Provider: toolprovider.Provider{Tenant: "acme", Name: "wiki", Transport: toolprovider.TransportHTTP, Endpoint: "https://wiki.example.com/mcp", CredentialRef: "env:WIKI_TOKEN"}},
+			contractBrowser.seed("session-contract", "browser"),
 		}},
 		CredentialRefs:   map[string][]string{"acme": {"op://People/{subject}/"}},
 		CredentialValues: map[string]bool{"acme": true},
 		Connectors: []platform.CatalogConnector{
+			bigQueryContractSeed(t),
 			{Tenant: "acme", Connector: catalog.Connector{Name: "warehouse", System: "bigquery", Owner: "catalog-owner"}, Crawler: contractWarehouse{}},
 			{Tenant: "acme", Connector: catalog.Connector{Name: "broken", System: "bigquery", Owner: "catalog-owner"}, Crawler: contractWarehouse{fail: true}},
 			{Tenant: "acme", Connector: catalog.Connector{Name: "live-only", System: "bigquery", Owner: "catalog-owner"}, Querier: contractWarehouse{}},
 		},
 		GitHubAPI: func(string) github.API { return sourceFake },
 		Speech:    contractSpeech{},
+		VoiceBuild: func(kind string, _ speech.Config) (platform.Voice, error) {
+			if kind == speech.KindOpenAI {
+				return &speech.Fake{Err: speech.ErrUnavailable}, nil
+			}
+			return &speech.Fake{Text: "Voice is set up.", Language: "english", Duration: 3 * time.Second}, nil
+		},
 	})
 	c := &contract{t: t, f: f, spec: loadSpec(t), seen: map[string]bool{}}
+	exerciseEvaluationPolicyContract(t, c)
+	exerciseConnectionContract(t, c)
+	exerciseConnectionHealthContract(t, c)
+	exerciseBackgroundContract(t, c)
+	exerciseBigQueryContract(t, c)
+	sessionContract := exerciseSessionContract(t, c)
+	exerciseBrowserContract(t, c, sessionContract["token"])
 	contractSource(t, f, c, sourceFake)
 	contractGitHubItems(t, f, c, sourceFake)
 	pullToken := f.machine(t, "pull-contract", "humagen:runs:read")
 	c.call(pullToken, "GET", "/api/pull-requests", "/api/pull-requests", "", http.StatusOK)
 	c.call(pullToken, "GET", "/api/pull-requests", "/api/pull-requests?status=bad", "", http.StatusBadRequest)
 	acme, globex := f.machine(t, "acme", everything...), f.machine(t, "globex", everything...)
+	foreignPerson := f.person(t, "globex", "oauth-reader", "OAuth reader", "humagen-admins")
 	auditAdmin := f.person(t, "acme", "audit-admin", "Audit admin", "humagen-admins")
 	// The catalog: its owner crawls, publishes and withdraws a connector.
 	cataloger := f.person(t, "acme", "catalog-owner", "Catalog owner", "humagen-admins")
@@ -1115,6 +1180,20 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "POST", transcribe, transcribe, webmVoice+"silence", http.StatusUnprocessableEntity, octets...)
 	c.call(acme, "POST", transcribe, transcribe, webmVoice+"offline", http.StatusServiceUnavailable, octets...)
 
+	// The workspace's voice provider: none, set up, checked, broken, off.
+	const provider = "/api/voice/provider"
+	c.call(auditAdmin, "GET", provider, provider, "", http.StatusOK)
+	c.call(auditAdmin, "POST", provider+"/check", provider+"/check", "", http.StatusNotFound)
+	c.call(auditAdmin, "PUT", provider, provider, `{"kind":"elevenlabs","key":"k"}`, http.StatusBadRequest)
+	c.call(auditAdmin, "PUT", provider, provider, `{"kind":"groq","key":"gsk_contract"}`, http.StatusOK)
+	c.call(auditAdmin, "GET", provider, provider, "", http.StatusOK)
+	c.call(auditAdmin, "POST", provider+"/check", provider+"/check", "", http.StatusOK)
+	c.call(acme, "GET", "/api/voice", "/api/voice", "", http.StatusOK)
+	c.call(auditAdmin, "PUT", provider, provider, `{"kind":"openai","key":"sk_contract"}`, http.StatusOK)
+	c.call(auditAdmin, "POST", provider+"/check", provider+"/check", "", http.StatusBadGateway)
+	c.call(auditAdmin, "DELETE", provider, provider, "", http.StatusNoContent)
+	exerciseSessionVoiceContract(t, c)
+
 	c.call(auditAdmin, "GET", "/api/audit", "/api/audit?limit=501", "", http.StatusBadRequest)
 	c.call(auditAdmin, "GET", "/api/read-audit", "/api/read-audit?limit=501", "", http.StatusBadRequest)
 
@@ -1153,6 +1232,25 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(auditAdmin, "POST", decide, "/api/memory/files/proposals/"+proposal.ID, `{"scope":"me","decision":"maybe"}`, http.StatusBadRequest)
 	c.call(auditAdmin, "POST", decide, "/api/memory/files/proposals/"+proposal.ID, `{"scope":"me","decision":"approve"}`, http.StatusOK)
 	c.call(auditAdmin, "POST", decide, "/api/memory/files/proposals/"+proposal.ID, `{"scope":"me","decision":"discard"}`, http.StatusNotFound)
+	// A file is written against the version it was read at. A stale base is a
+	// conflict that writes nothing.
+	number := func(r reply) int { n, _ := strconv.Atoi(string(r.field("version").(json.Number))); return n }
+	head := number(c.call(auditAdmin, "GET", files, files+"?scope=me", "", http.StatusOK))
+	written := c.call(auditAdmin, "PUT", content, content, fmt.Sprintf(`{"scope":"me","file":"plan.md","content":"Final plan","base_version":%d}`, head), http.StatusOK)
+	if written.field("can_write") != true || number(written) != head+1 {
+		t.Errorf("the written tree = %s", written.raw)
+	}
+	c.call(auditAdmin, "PUT", content, content, fmt.Sprintf(`{"scope":"me","file":"plan.md","content":"Stale plan","base_version":%d}`, head), http.StatusConflict)
+	c.call(auditAdmin, "PUT", content, content, `{"scope":"me","file":"../x","content":"x","base_version":0}`, http.StatusBadRequest)
+	c.call(acme, "PUT", content, content, `{"scope":"me","file":"plan.md","content":"x","base_version":0}`, http.StatusNotFound)
+	// One file's history, and a delete against the version read.
+	c.call(auditAdmin, "GET", history, history+"?scope=me&file=plan.md&limit=2", "", http.StatusOK)
+	c.call(auditAdmin, "GET", history, history+"?scope=me&file=../x", "", http.StatusBadRequest)
+	c.call(auditAdmin, "DELETE", content, content+fmt.Sprintf("?scope=me&file=plan.md&base_version=%d", head), "", http.StatusConflict)
+	c.call(auditAdmin, "DELETE", content, content+"?scope=me&file=../x&base_version=0", "", http.StatusBadRequest)
+	c.call(auditAdmin, "DELETE", content, content+fmt.Sprintf("?scope=me&file=missing.md&base_version=%d", head+1), "", http.StatusNotFound)
+	c.call(acme, "DELETE", content, content+"?scope=me&file=plan.md&base_version=0", "", http.StatusNotFound)
+	c.call(auditAdmin, "DELETE", content, content+fmt.Sprintf("?scope=me&file=plan.md&base_version=%d", head+1), "", http.StatusOK)
 	found := c.call(auditAdmin, "GET", "/api/memory/search", "/api/memory/search?q=concise", "", http.StatusOK)
 	if len(sliceOf(found.field("hits"))) != 1 {
 		t.Errorf("search found %v", found.field("hits"))
@@ -1189,6 +1287,21 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "GET", "/api/me/credentials", "/api/me/credentials", "", http.StatusOK)
 	c.call(ana, "DELETE", mine, "/api/me/credentials/issues", "", http.StatusNoContent)
 	c.call(ana, "DELETE", mine, "/api/me/credentials/issues", "", http.StatusNotFound)
+
+	// A Snowflake warehouse holds no credential: each person keeps their own
+	// login to it, and a value never comes back out.
+	const login = "/api/catalog/connectors/{name}/login"
+	c.call(ana, "POST", "/api/catalog/connectors/snowflake", "/api/catalog/connectors/snowflake", `{"name":"finance","account":"acme-test","database":"ANALYTICS","warehouse":"READ_WH"}`, http.StatusCreated)
+	c.call(ana, "POST", "/api/catalog/connectors/snowflake", "/api/catalog/connectors/snowflake", `{"name":"finance","account":"acme-test","database":"ANALYTICS","warehouse":"READ_WH"}`, http.StatusConflict)
+	c.call(ana, "POST", "/api/catalog/connectors/snowflake", "/api/catalog/connectors/snowflake", `{"name":"bad","account":"acme-test","database":"ANALYTICS; DROP","warehouse":"READ_WH"}`, http.StatusBadRequest)
+	c.call(ana, "PUT", login, "/api/catalog/connectors/finance/login", `{"ref":"op://People/ana/snowflake"}`, http.StatusNoContent)
+	c.call(ana, "PUT", login, "/api/catalog/connectors/finance/login", `{"value":"pat-ana-contract"}`, http.StatusNoContent)
+	c.call(ana, "PUT", login, "/api/catalog/connectors/finance/login", `{"ref":"op://People/ben/snowflake"}`, http.StatusBadRequest)
+	c.call(ana, "PUT", login, "/api/catalog/connectors/finance/login", `{}`, http.StatusBadRequest)
+	if catalogView := c.call(ana, "GET", "/api/catalog", "/api/catalog", "", http.StatusOK); strings.Contains(string(catalogView.raw), "pat-ana-contract") || !strings.Contains(string(catalogView.raw), `"login":"connected"`) {
+		t.Errorf("the catalog after ana's login = %s", catalogView.raw)
+	}
+	c.call(ana, "DELETE", login, "/api/catalog/connectors/finance/login", "", http.StatusNoContent)
 
 	// A person's own context: theirs to read and narrow, a reference under
 	// their own start, the version they read.
@@ -1228,6 +1341,33 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	if err := f.p.EnsureBuiltins(t.Context(), "acme"); err != nil {
 		t.Fatal(err)
 	}
+	// The agent store: Core and Review, installed, removed and refused.
+	install, remove := "/api/store/packages/{name}/install", "/api/store/packages/{name}"
+	if store := c.call(acme, "GET", "/api/store/packages", "/api/store/packages", "", http.StatusOK); !strings.Contains(string(store.raw), `"missing":["humagen-writer","humagen-analyst"]`) {
+		t.Errorf("a new workspace's store = %s", store.raw)
+	}
+	if added := c.call(acme, "POST", install, "/api/store/packages/humagen%2Fcore/install", "", http.StatusOK); !strings.Contains(string(added.raw), `"added":["humagen-writer","humagen-analyst"]`) {
+		t.Errorf("install core = %s", added.raw)
+	}
+	c.call(acme, "POST", install, "/api/store/packages/review/install", "", http.StatusOK)
+	c.call(acme, "POST", install, "/api/store/packages/system/install", "", http.StatusNotFound)
+	if reviewer, err := f.p.Agents.Get(t.Context(), "acme", platform.BuiltinQAReviewer, 0); err != nil {
+		t.Fatal(err)
+	} else {
+		mine := reviewer.Spec.Clone()
+		mine.SystemPrompt = "Our test checklist."
+		if _, err := f.p.Agents.Revise(t.Context(), "acme", mine, reviewer.Rev, "ana"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	c.call(acme, "DELETE", remove, "/api/store/packages/review", "", http.StatusConflict)
+	c.call(acme, "DELETE", remove, "/api/store/packages/review?force=maybe", "", http.StatusBadRequest)
+	c.call(acme, "DELETE", remove, "/api/store/packages/nope", "", http.StatusNotFound)
+	if removed := c.call(acme, "DELETE", remove, "/api/store/packages/review?force=true", "", http.StatusOK); !strings.Contains(string(removed.raw), `"customized":["qa-reviewer"]`) {
+		t.Errorf("forced removal = %s", removed.raw)
+	}
+	c.call(globex, "POST", "/api/agents", "/api/agents", `{"name":"code-reviewer","provider":"offline","model":"offline","system_prompt":"Ours."}`, http.StatusCreated)
+	c.call(globex, "POST", install, "/api/store/packages/review/install", "", http.StatusConflict)
 	c.call(acme, "POST", "/api/agents/{name}/reset", "/api/agents/humagen-writer/reset", `{"expected_rev":0}`, http.StatusOK)
 	c.call(acme, "POST", "/api/agents/{name}/reset", "/api/agents/humagen-writer/reset", `{"expected_rev":999}`, http.StatusConflict)
 	c.call(acme, "POST", "/api/agents/{name}/reset", "/api/agents/humagen-writer/reset", `{"expected_rev":"bad"}`, http.StatusBadRequest)
@@ -1301,6 +1441,9 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "PUT", "/api/runs/{id}/feedback", "/api/runs/"+id+"/feedback", `{"rating":"down","reason":"incomplete","comment":"Please add sources"}`, http.StatusOK)
 	c.call(acme, "GET", "/api/runs/{id}/feedback", "/api/runs/"+id+"/feedback", "", http.StatusOK)
 	c.call(acme, "GET", "/api/runs/{id}/feedback", "/api/runs/"+id+"/feedback?after=ada@example.com", "", http.StatusBadRequest)
+	// The down rating opened an eval candidate, which waits for a reviewer.
+	candidate, _ := obj(sliceOf(c.call(acme, "GET", "/api/eval-candidates", "/api/eval-candidates?agent=helper&limit=1", "", http.StatusOK).field("candidates"))[0])["id"].(string)
+	c.call(acme, "GET", "/api/eval-candidates", "/api/eval-candidates?limit=0", "", http.StatusBadRequest)
 	next := c.call(acme, "POST", "/api/runs", "/api/runs", `{"agent":"helper","text":"And again","after":"`+id+`"}`, http.StatusAccepted)
 	if next.str("thread") != first.str("thread") || next.str("prev") != id {
 		t.Errorf("the follow-up is not in the first turn's conversation: %s", next.raw)
@@ -1545,8 +1688,10 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	agentsAt := "/api/projects/{name}/agents"
 	fieldAgents := c.call(acme, "GET", agentsAt, "/api/projects/Field/agents", "", http.StatusOK)
 	v, _ := strconv.Atoi(fmt.Sprint(fieldAgents.field("version")))
+	// A project's own default is kept as written and not read: the
+	// workspace's decides.
 	set := c.call(acme, "PUT", agentsAt, "/api/projects/Field/agents", fmt.Sprintf(`{"version":%d,"enable":["helper"],"default":"helper"}`, v), http.StatusOK)
-	if d := obj(set.field("default_resolved")); d["agent"] != "helper" || d["from"] != "project:Field" {
+	if d := obj(set.field("default_resolved")); d["agent"] != "*" || d["from"] != "project:~" {
 		t.Errorf("Field's default = %s", set.raw)
 	}
 	c.call(acme, "PUT", agentsAt, "/api/projects/Field/agents", fmt.Sprintf(`{"version":%d,"enable":[]}`, v), http.StatusConflict)
@@ -1559,9 +1704,9 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	if lives := c.call(acme, "PUT", home, "/api/agents/fieldbot/home", `{"project":"Field"}`, http.StatusOK); lives.str("home") != "Field" {
 		t.Errorf("fieldbot's home = %s", lives.raw)
 	}
-	if inUse := c.call(acme, "PUT", home, "/api/agents/helper/home", `{"project":"Launch"}`, http.StatusConflict); !strings.Contains(inUse.str("error"), "the default of Field") {
-		t.Errorf("homing an agent Field defaults to = %s", inUse.raw)
-	}
+	// What uses an agent holds no change of its home back.
+	c.call(acme, "PUT", home, "/api/agents/helper/home", `{"project":"Launch"}`, http.StatusOK)
+	c.call(acme, "PUT", home, "/api/agents/helper/home", `{"project":"~"}`, http.StatusOK)
 	c.call(acme, "PUT", home, "/api/agents/humagen-writer/home", `{"project":"Field"}`, http.StatusBadRequest)
 	c.call(acme, "PUT", home, "/api/agents/ghost/home", `{"project":"Field"}`, http.StatusNotFound)
 
@@ -1690,10 +1835,12 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	}
 	c.call(initech, "POST", "/api/projects", "/api/projects", `{"name":"One too many","kind":"company"}`, http.StatusTooManyRequests)
 	// A conversation in the workspace that names no agent, where nothing
-	// answers untagged messages, starts nothing.
+	// answers untagged messages, lands on the entry agent.
 	initechRoot := c.call(initech, "GET", agentsAt, "/api/projects/~/agents", "", http.StatusOK)
 	c.call(initech, "PUT", agentsAt, "/api/projects/~/agents", fmt.Sprintf(`{"version":%v,"enable":["*"]}`, initechRoot.field("version")), http.StatusOK)
-	c.call(initech, "POST", "/api/runs", "/api/runs", `{"text":"hi"}`, http.StatusConflict)
+	if landed := c.call(initech, "POST", "/api/runs", "/api/runs", `{"text":"hi"}`, http.StatusAccepted); landed.str("agent") != platform.BuiltinEntry {
+		t.Fatalf("an untagged message landed on %q, want the entry agent", landed.str("agent"))
+	}
 	c.call(initech, "GET", "/api/join", "/api/join?q=anything", "", http.StatusOK)
 
 	// Schedules.
@@ -1716,6 +1863,15 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	if listed := c.call(acme, "GET", "/api/schedules", "/api/schedules", "", http.StatusOK); !strings.Contains(string(listed.raw), `"managed":"file"`) {
 		t.Errorf("the file's schedule does not say so: %s", listed.raw)
 	}
+	// A project's page lists the schedules filed there.
+	if launch := c.call(acme, "GET", "/api/schedules", "/api/schedules?project=Launch", "", http.StatusOK); !strings.Contains(string(launch.raw), `"from-file"`) {
+		t.Errorf("Launch's schedules leave out the one filed there: %s", launch.raw)
+	}
+	if ws := c.call(acme, "GET", "/api/schedules", "/api/schedules?project=~", "", http.StatusOK); strings.Contains(string(ws.raw), `"from-file"`) {
+		t.Errorf("the workspace's own schedules hold Launch's: %s", ws.raw)
+	}
+	c.call(acme, "GET", "/api/schedules", "/api/schedules?project=", "", http.StatusBadRequest)
+	c.call(acme, "GET", "/api/schedules", "/api/schedules?project=Ghost", "", http.StatusNotFound)
 	c.call(acme, "PUT", "/api/schedules/{name}", "/api/schedules/from-file", `{"expression":"0 3 * * *","agent":"helper","text":"Mine."}`, http.StatusConflict)
 	c.call(acme, "DELETE", "/api/schedules/{name}", "/api/schedules/from-file", "", http.StatusConflict)
 	if err := f.p.Schedules.Release("acme", "from-file"); err != nil {
@@ -1732,6 +1888,8 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "PUT", "/api/alert-rules/{name}", "/api/alert-rules/spend", `{"kind":"spend","window_seconds":86400,"severity":"critical"}`, http.StatusBadRequest)
 	c.call(acme, "PUT", "/api/alert-rules/{name}", "/api/alert-rules/ghost", `{"kind":"run_failed","severity":"critical"}`, http.StatusNotFound)
 	alertList := c.call(acme, "GET", "/api/alerts", "/api/alerts", "", http.StatusOK)
+	c.call(acme, "GET", "/api/alerts", "/api/alerts?source=budget", "", http.StatusOK)
+	c.call(acme, "GET", "/api/alerts", "/api/alerts?source="+strings.Repeat("x", 65), "", http.StatusBadRequest)
 	if fired := sliceOf(alertList.field("alerts")); len(fired) > 0 {
 		c.call(acme, "POST", "/api/alerts/{id}/ack", "/api/alerts/"+obj(fired[0])["id"].(string)+"/ack", "", http.StatusOK)
 	}
@@ -1756,6 +1914,11 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "POST", "/api/knowledge/{name}/sync", "/api/knowledge/remote/sync", "", http.StatusBadRequest)
 	c.call(acme, "PUT", "/api/knowledge/{name}/configuration", "/api/knowledge/remote/configuration", `{"mode":"indexed","provider":"drive","origin":"folder1","project":"~"}`, http.StatusOK)
 	c.call(ana, "PUT", "/api/knowledge/{name}/credential", "/api/knowledge/remote/credential", `{"ref":"op://People/ana/drive"}`, http.StatusOK)
+	c.call(ana, "PUT", "/api/knowledge/{name}/credential", "/api/knowledge/remote/credential", `{"oauth":"drive"}`, http.StatusServiceUnavailable)
+	c.call(ana, "PUT", "/api/knowledge/{name}/credential", "/api/knowledge/remote/credential", `{"oauth":"onedrive"}`, http.StatusBadRequest)
+	c.call(acme, "POST", "/api/knowledge", "/api/knowledge", `{"name":"remote-onedrive","configuration":{"mode":"indexed","provider":"onedrive","origin":"D4648F06C91D9D3D!54927","project":"~"}}`, http.StatusCreated)
+	c.call(ana, "PUT", "/api/knowledge/{name}/credential", "/api/knowledge/remote-onedrive/credential", `{"oauth":"onedrive"}`, http.StatusServiceUnavailable)
+	c.call(acme, "DELETE", "/api/knowledge/{name}", "/api/knowledge/remote-onedrive", "", http.StatusNoContent)
 	capReader := f.person(t, "acme", "source-cap", "Source capacity reader", "humagen-admins")
 	for i := 0; i < credentials.MaxPerPerson; i++ {
 		if _, err := f.p.Credentials.Put("acme", "source-cap", fmt.Sprintf("cap-%d", i), credentials.Input{Ref: fmt.Sprintf("op://People/source-cap/cap-%d", i)}, time.Now()); err != nil {
@@ -1842,6 +2005,92 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "POST", "/api/knowledge/{name}/variants", "/api/knowledge/handbook/variants", `{"name":"lean"}`, http.StatusCreated)
 	docPath := "/api/knowledge/handbook/documents/" + doc.str("id")
 	c.call(acme, "PUT", "/api/knowledge/{name}/documents/{id}", docPath, `{"excluded":true}`, http.StatusOK)
+	// A document's text is replaced in place, only from the digest it was
+	// read with: a stale one is refused, and another tenant's is not found.
+	replaced := c.call(acme, "PUT", "/api/knowledge/{name}/documents/{id}/text", docPath+"/text", `{"title":"Refunds","text":"Refunds are issued within seven days of a request.","digest":"`+doc.str("digest")+`"}`, http.StatusOK)
+	if replaced.str("id") != doc.str("id") || replaced.str("digest") == doc.str("digest") || replaced.str("digest") == "" {
+		t.Fatalf("replaced = %v, was %v", replaced, doc)
+	}
+	c.call(acme, "PUT", "/api/knowledge/{name}/documents/{id}/text", docPath+"/text", `{"title":"Refunds","text":"Stale.","digest":"`+doc.str("digest")+`"}`, http.StatusConflict)
+	c.call(acme, "PUT", "/api/knowledge/{name}/documents/{id}/text", docPath+"/text", `{"title":"Refunds","text":"No digest."}`, http.StatusBadRequest)
+	// An imported session's document and its structure, on the import
+	// routes; the ordinary routes take no structure. The session is made up.
+	session := `{"tool":"codex","id":"generated-contract","turns":[{"speaker":"user","text":"generated question"}],"branches":0,"omitted":{"turns":0,"results":0,"cut_turns":0,"attachments":0}}`
+	c.call(acme, "POST", "/api/knowledge/{name}/documents", "/api/knowledge/handbook/documents", `{"title":"A chat","uri":"codex:generated-contract","text":"generated","session":`+session+`}`, http.StatusBadRequest)
+	imported := c.call(acme, "POST", "/api/knowledge/{name}/imports", "/api/knowledge/handbook/imports", `{"title":"A chat","uri":"codex:generated-contract","text":"generated","session":`+session+`}`, http.StatusCreated)
+	c.call(acme, "POST", "/api/knowledge/{name}/imports", "/api/knowledge/handbook/imports", `{"title":"A chat","uri":"codex:generated-contract","text":"generated"}`, http.StatusBadRequest)
+	importPath := "/api/knowledge/handbook/imports/" + imported.str("id")
+	grown := c.call(acme, "PUT", "/api/knowledge/{name}/imports/{id}", importPath, `{"title":"A chat","text":"generated, grown","digest":"`+imported.str("digest")+`","session":`+session+`}`, http.StatusOK)
+	// A conversation continued from it, through its route, is read through
+	// the threads route with its imported origin as the contract says, and
+	// another workspace does not find it. The source is filed nowhere, so
+	// the project is the workspace itself.
+	// The digests are the ones the import answered with, as a client reads
+	// them.
+	if grown.str("structure_digest") == "" {
+		t.Fatalf("the import answered no structure digest: %s", grown.raw)
+	}
+	continuePath := "/api/knowledge/handbook/documents/" + grown.str("id") + "/continue"
+	pins := `"document_digest":"` + grown.str("digest") + `","structure_digest":"` + grown.str("structure_digest") + `"`
+	continued := c.call(ana, "POST", "/api/knowledge/{name}/documents/{id}/continue", continuePath, `{`+pins+`,"project":"~"}`, http.StatusCreated)
+	if origin := obj(continued.field("import")); origin["document_digest"] != grown.str("digest") || origin["tool"] != "codex" || origin["by"] != "ana" || continued.str("visibility") != "private" {
+		t.Fatalf("the continuation answers %s", continued.raw)
+	}
+	c.call(ana, "POST", "/api/knowledge/{name}/documents/{id}/continue", continuePath, `{`+pins+`}`, http.StatusBadRequest)
+	c.call(ana, "POST", "/api/knowledge/{name}/documents/{id}/continue", continuePath, `{"document_digest":"`+imported.str("digest")+`","project":"~"}`, http.StatusConflict)
+	room = c.call(ana, "GET", "/api/threads/{id}", "/api/threads/"+continued.str("id"), "", http.StatusOK)
+	if origin := obj(obj(room.field("thread"))["import"]); origin["document_digest"] != grown.str("digest") || origin["tool"] != "codex" || origin["by"] != "ana" {
+		t.Fatalf("the continuation reads %s", room.raw)
+	}
+	c.call(globex, "GET", "/api/threads/{id}", "/api/threads/"+continued.str("id"), "", http.StatusNotFound)
+	c.call(acme, "PUT", "/api/knowledge/{name}/imports/{id}", importPath, `{"title":"A chat","text":"stale","digest":"`+imported.str("digest")+`","session":`+session+`}`, http.StatusConflict)
+	c.call(globex, "POST", "/api/knowledge/{name}/imports", "/api/knowledge/handbook/imports", `{"title":"A chat","uri":"codex:generated-contract","text":"generated","session":`+session+`}`, http.StatusNotFound)
+	c.call(globex, "PUT", "/api/knowledge/{name}/documents/{id}/text", docPath+"/text", `{"title":"Refunds","text":"Theirs.","digest":"`+replaced.str("digest")+`"}`, http.StatusNotFound)
+
+	// Corpora hold sources; another tenant never sees one.
+	c.call(acme, "POST", "/api/corpora", "/api/corpora", `{"name":"policies","description":"How we work.","members":[{"kind":"source","name":"handbook"}],"readers":[{"kind":"workspace"}]}`, http.StatusCreated)
+	c.call(acme, "POST", "/api/corpora", "/api/corpora", `{"name":"policies"}`, http.StatusConflict)
+	c.call(acme, "POST", "/api/corpora", "/api/corpora", `{"name":"ghosts","members":[{"kind":"source","name":"ghost"}]}`, http.StatusBadRequest)
+	c.call(acme, "GET", "/api/corpora", "/api/corpora", "", http.StatusOK)
+	policies := c.call(acme, "GET", "/api/corpora/{name}", "/api/corpora/policies", "", http.StatusOK)
+	c.call(acme, "PATCH", "/api/corpora/{name}", "/api/corpora/policies", `{"links":"shared","version":999999}`, http.StatusConflict)
+	c.call(acme, "PATCH", "/api/corpora/{name}", "/api/corpora/policies", fmt.Sprintf(`{"links":"shared","version":%v}`, policies.field("version")), http.StatusOK)
+	c.call(acme, "DELETE", "/api/corpora/{name}/members/{kind}/{member}", "/api/corpora/policies/members/source/handbook", "", http.StatusOK)
+	c.call(acme, "DELETE", "/api/corpora/{name}/members/{kind}/{member}", "/api/corpora/policies/members/source/handbook", "", http.StatusNotFound)
+	c.call(acme, "POST", "/api/corpora/{name}/members", "/api/corpora/policies/members", `{"kind":"source","name":"handbook"}`, http.StatusOK)
+	c.call(acme, "GET", "/api/corpora/{name}/search", "/api/corpora/policies/search?q=refunds", "", http.StatusOK)
+	c.call(acme, "GET", "/api/corpora/{name}/search", "/api/corpora/policies/search?q=", "", http.StatusBadRequest)
+	c.call(acme, "GET", "/api/corpora/{name}/graph", "/api/corpora/policies/graph", "", http.StatusOK)
+	c.call(acme, "GET", "/api/corpora/{name}/graph", "/api/corpora/policies/graph?limit=0", "", http.StatusBadRequest)
+	c.call(acme, "POST", "/api/corpora/{name}/graph/build", "/api/corpora/policies/graph/build", "", http.StatusOK)
+	c.call(acme, "GET", "/api/graph", "/api/graph?q=refunds", "", http.StatusOK)
+	c.call(acme, "GET", "/api/graph", "/api/graph?limit=x", "", http.StatusBadRequest)
+	// A person confirms owning a document the graph suggests is theirs.
+	c.call(ana, "POST", "/api/knowledge/{name}/documents", "/api/knowledge/handbook/documents", `{"title":"Leave","text":"Parental leave is sixteen weeks."}`, http.StatusCreated)
+	c.call(ana, "POST", "/api/corpora", "/api/corpora", `{"name":"ana-docs","members":[{"kind":"source","name":"handbook"}]}`, http.StatusCreated)
+	leave := ""
+	for _, n := range sliceOf(c.call(ana, "GET", "/api/corpora/{name}/graph", "/api/corpora/ana-docs/graph", "", http.StatusOK).field("nodes")) {
+		if node := obj(n); node["name"] == "Leave" {
+			leave, _ = node["id"].(string)
+		}
+	}
+	if leave == "" {
+		t.Fatal("the graph has no node for ana's document")
+	}
+	c.call(ana, "PUT", "/api/graph/nodes/{id}/owner", "/api/graph/nodes/"+leave+"/owner", `{"action":"confirm"}`, http.StatusOK)
+	c.call(ana, "PUT", "/api/graph/nodes/{id}/owner", "/api/graph/nodes/"+leave+"/owner", `{"action":"hand_off","to":"nobody"}`, http.StatusBadRequest)
+	c.call(acme, "PUT", "/api/graph/nodes/{id}/owner", "/api/graph/nodes/"+leave+"/owner", `{"action":"confirm"}`, http.StatusNotFound)
+	// An ontology is declared, inferred from a warehouse, accepted or discarded.
+	const infer, accept, discard = "/api/corpora/{name}/ontology/infer", "/api/corpora/{name}/ontology/accept", "/api/corpora/{name}/ontology/discard"
+	c.call(ana, "POST", "/api/corpora", "/api/corpora", `{"name":"ledger","members":[{"kind":"catalog","name":"finance"}],"ontology":{"$defs":{"Invoice":{"type":"object"}}}}`, http.StatusCreated)
+	c.call(ana, "POST", accept, "/api/corpora/ledger/ontology/accept", "", http.StatusBadRequest)
+	c.call(ana, "POST", infer, "/api/corpora/ledger/ontology/infer", "", http.StatusOK)
+	c.call(ana, "POST", accept, "/api/corpora/ledger/ontology/accept", `{"types":["Invoice"]}`, http.StatusOK)
+	c.call(ana, "POST", infer, "/api/corpora/ana-docs/ontology/infer", "", http.StatusBadRequest)
+	c.call(ana, "POST", discard, "/api/corpora/ledger/ontology/discard", "", http.StatusOK)
+	c.call(ana, "PATCH", "/api/corpora/{name}", "/api/corpora/ledger", `{"ontology":{"$defs":{"Person":{"type":"object"}}}}`, http.StatusBadRequest)
+	c.call(ana, "PATCH", "/api/corpora/{name}", "/api/corpora/ledger", `{"ontology":{}}`, http.StatusOK)
+	c.call(acme, "DELETE", "/api/corpora/{name}", "/api/corpora/policies?version=x", "", http.StatusBadRequest)
 
 	c.call(acme, "POST", "/api/evals", "/api/evals", `{"name":"smoke","target":"agent","subject":"helper","cases":[{"id":"says-offline","input":"hello","checks":[{"kind":"contains","value":"offline provider"}]}]}`, http.StatusCreated)
 	c.call(acme, "POST", "/api/evals", "/api/evals", `{"name":"lost","target":"agent","subject":"ghost","cases":[{"id":"a","input":"hello","checks":[{"kind":"contains","value":"x"}]}]}`, http.StatusNotFound)
@@ -1964,6 +2213,22 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "PUT", know, "/api/projects/Field/knowledge", fmt.Sprintf(`{"version":%d,"knowledge":[]}`, knownAt), http.StatusConflict)
 	c.call(acme, "PUT", know, "/api/projects/Field/knowledge", fmt.Sprintf(`{"version":%d,"knowledge":["ghost"]}`, knownAt+1), http.StatusBadRequest)
 	c.call(acme, "PUT", know, "/api/projects/Field/knowledge", fmt.Sprintf(`{"version":%d}`, knownAt+1), http.StatusBadRequest)
+	// A project's context is the corpora it attaches; a session filed there
+	// searches them.
+	cor := "/api/projects/{name}/corpora"
+	got = c.call(acme, "GET", cor, "/api/projects/Field/corpora", "", http.StatusOK)
+	corporaAt := version(got)
+	got = c.call(acme, "PUT", cor, "/api/projects/Field/corpora", fmt.Sprintf(`{"version":%d,"corpora":["policies"]}`, corporaAt), http.StatusOK)
+	if g := sliceOf(got.field("given")); len(g) != 1 || obj(g[0])["name"] != "policies" || obj(g[0])["from"] != "Field" {
+		t.Errorf("Field's corpora are %s", got.raw)
+	}
+	c.call(acme, "PUT", cor, "/api/projects/Field/corpora", fmt.Sprintf(`{"version":%d,"corpora":[]}`, corporaAt), http.StatusConflict)
+	c.call(acme, "PUT", cor, "/api/projects/Field/corpora", fmt.Sprintf(`{"version":%d,"corpora":["ghost"]}`, corporaAt+1), http.StatusBadRequest)
+	c.call(acme, "PUT", cor, "/api/projects/Field/corpora", fmt.Sprintf(`{"version":%d}`, corporaAt+1), http.StatusBadRequest)
+	c.call(acme, "GET", cor, "/api/projects/Ghost/corpora", "", http.StatusNotFound)
+	if pv := c.call(acme, "GET", "/api/projects/{name}", "/api/projects/Field", "", http.StatusOK); !strings.Contains(string(pv.raw), `"context":{"corpora":["policies"]}`) {
+		t.Errorf("Field's view does not carry its context: %s", pv.raw)
+	}
 	// The skills a project declares are what a message posted there and
 	// below can name; GET /api/skills lists them without instructions, and
 	// GET /api/mentions lists the mention kinds and completes one.
@@ -2063,6 +2328,11 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	forkPath := "/api/threads/" + obj(draft.field("thread"))["id"].(string) + "/fork"
 	forked := c.call(ana, "POST", "/api/threads/{id}/fork", forkPath, `{"through":"m-1","title":"Alternative"}`, http.StatusCreated)
 	c.call(ana, "POST", "/api/threads/{id}/fork", forkPath, `{"through":"m-999"}`, http.StatusNotFound)
+	listed := c.call(ana, "GET", "/api/threads/{id}/forks", forkPath+"s", "", http.StatusOK)
+	if forks := sliceOf(listed.field("forks")); len(forks) != 1 || obj(forks[0])["id"] != forked.str("id") || obj(forks[0])["title"] != "Alternative" {
+		t.Fatalf("forks of the draft: %s", listed.raw)
+	}
+	c.call(ana, "GET", "/api/threads/{id}/forks", "/api/threads/th-0000000000000000/forks", "", http.StatusNotFound)
 	c.call(ana, "POST", "/api/threads/{id}/bring-back", "/api/threads/"+forked.str("id")+"/bring-back", `{"run":"r00000000000000000000000000000000"}`, http.StatusNotFound)
 	forkAnswer := c.call(ana, "POST", "/api/threads/{id}/messages", "/api/threads/"+forked.str("id")+"/messages", `{"text":"@helper alternative"}`, http.StatusCreated)
 	forkRun := obj(sliceOf(forkAnswer.field("runs"))[0])["id"].(string)
@@ -2359,15 +2629,28 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 
 	for _, op := range c.spec.ops {
 		// One that names an object is asked below, of an object made here.
-		if !refusesUnknownFields(op) || len(pathParams(op.path)) > 0 {
+		// The MCP's body is a JSON-RPC envelope, asked below.
+		if !refusesUnknownFields(op) || len(pathParams(op.path)) > 0 || op.path == "/api/mcp" {
 			continue
 		}
 		caller := acme
+		if strings.HasPrefix(op.path, "/api/sessions/") {
+			caller = sessionContract["token"]
+		}
 		if strings.HasPrefix(op.path, "/api/me/memory") || strings.HasPrefix(op.path, "/api/agent-setups/") || strings.HasSuffix(op.path, "/skill-draft") || strings.HasSuffix(op.path, "/decision-memory") {
 			caller = auditAdmin
 		}
 		c.call(caller, op.method, op.path, op.path, `{"unknown_field":1}`, http.StatusBadRequest)
 	}
+
+	// The humagen MCP: a JSON-RPC request in, its response out (a protocol
+	// error is a JSON-RPC error in a 200), and what is not JSON-RPC over JSON
+	// refused before it.
+	mcpList := `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`
+	c.call(acme, "POST", "/api/mcp", "/api/mcp", mcpList, http.StatusOK, "Content-Type", "application/json", "Accept", "application/json, text/event-stream")
+	c.call(acme, "POST", "/api/mcp", "/api/mcp", mcpList, http.StatusUnsupportedMediaType, "Content-Type", "text/plain", "Accept", "application/json, text/event-stream")
+	c.call("", "POST", "/api/mcp", "/api/mcp", mcpList, http.StatusUnauthorized, "Content-Type", "application/json")
+	c.call(acme, "POST", "/api/mcp", "/api/mcp", `{"jsonrpc":"2.0","method":"notifications/initialized"}`, http.StatusAccepted, "Content-Type", "application/json", "Accept", "application/json, text/event-stream")
 
 	// The rest, one by one.
 	c.call(acme, "DELETE", "/api/policies", "/api/policies?kind=nonsense", "", http.StatusNotFound)
@@ -2385,19 +2668,29 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	// A workspace that has spent its spend limit refuses a new run with 402.
 	// The offline provider prices nothing, so the spend is written to the
 	// ledger as a priced call would be.
+	// Hold this fixture's quota window steady even across UTC midnight.
+	quotaAt := time.Now()
+	quotaClock.Store(&quotaAt)
 	c.call(acme, "PUT", "/api/policies", "/api/policies", `{"scope":{"kind":"tenant"},"period":"day","max_runs":100,"max_concurrent":50,"spend_limit":5000}`, http.StatusOK)
 	if _, err := c.f.p.Usage.Append(usage.Entry{Kind: usage.Spent, Tenant: "acme", Agent: "helper", RunID: "r-spent", Key: "r-spent/a1/1",
-		At: time.Now(), Spend: &usage.Spend{Micros: 5000, ModelCalls: 1, Tokens: 1000}}); err != nil {
+		At: quotaAt, Spend: &usage.Spend{Micros: 5000, ModelCalls: 1, Tokens: 1000}}); err != nil {
 		t.Fatal(err)
 	}
 	c.call(acme, "POST", "/api/runs", "/api/runs", `{"agent":"helper","text":"hi"}`, http.StatusPaymentRequired)
 	c.call(acme, "PUT", "/api/policies", "/api/policies", `{"scope":{"kind":"tenant"},"period":"day","max_runs":100,"max_concurrent":50,"spend_limit":1000000}`, http.StatusOK)
 	// With the agent at its day's limit, everything that would start it is
-	// told so.
+	// told so. Seed a completed admission in this window: earlier contract
+	// requests may have run on the previous UTC day.
+	for _, kind := range []usage.Kind{usage.Admitted, usage.Ended} {
+		if _, err := c.f.p.Usage.Append(usage.Entry{Kind: kind, Tenant: "acme", Agent: "helper", RunID: "r-quota", At: quotaAt}); err != nil {
+			t.Fatal(err)
+		}
+	}
 	c.call(acme, "PUT", "/api/policies", "/api/policies", `{"scope":{"kind":"agent","name":"helper"},"period":"day","max_runs":1}`, http.StatusOK)
 	c.call(acme, "POST", "/api/schedules/{name}/run", "/api/schedules/nightly/run", "", http.StatusTooManyRequests)
 	c.callFromLiveRun(acme, `{"key":"k429","agent":"helper","text":"hi","mode":"delegate"}`, http.StatusTooManyRequests)
 	c.call(acme, "DELETE", "/api/policies", "/api/policies?kind=agent&name=helper", "", http.StatusNoContent)
+	quotaClock.Store(nil)
 
 	// Durable agent operations use the same contract and admission path.
 	for _, path := range []string{"/api/agent-controls", "/api/agents/helper/control"} {
@@ -2439,6 +2732,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "GET", "/api/agent-network", "/api/agent-network", "", http.StatusOK)
 
 	workspaceID := exerciseWorkspaceFileContract(t, c, auditAdmin, globex)
+	exerciseSandboxCommandContract(t, c)
 	padID := exerciseScratchpadContract(t, c, auditAdmin, globex, workspaceID)
 	exerciseSaveContract(t, c, auditAdmin, globex, workspaceID, padID)
 	// Two rules hold for every route that takes something: another
@@ -2456,10 +2750,31 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "PUT", "/api/projects/{name}/memory/{id}", "/api/projects/Launch/memory/"+freshProjectNote.str("id"), `{"text":""}`, http.StatusBadRequest)
 	freshPersonalNote := c.call(auditAdmin, "POST", "/api/me/memory", "/api/me/memory", `{"text":"Personal correction source"}`, http.StatusCreated)
 	real := map[string]map[string]string{
+		"/api/sessions/{id}":                         {"id": sessionContract["id"]},
+		"/api/messages/{id}":                         {"id": sessionContract["id"]},
+		"/api/messages/{id}/trace":                   {"id": sessionContract["id"]},
+		"/api/messages/{id}/answer":                  {"id": sessionContract["id"]},
+		"/api/messages/{id}/feedback":                {"id": sessionContract["id"]},
+		"/api/messages/{id}/stop":                    {"id": sessionContract["id"]},
+		"/api/messages/{id}/context":                 {"id": sessionContract["id"]},
+		"/api/sessions/{id}/messages":                {"id": sessionContract["id"]},
+		"/api/sessions/{id}/stream":                  {"id": sessionContract["id"]},
+		"/api/sessions/{id}/voice/transcriptions":    {"id": sessionContract["id"]},
+		"/api/sessions/{id}/voice/speech":            {"id": sessionContract["id"]},
+		"/api/sessions/{id}/messages/{mid}":          {"id": sessionContract["id"], "mid": "m-1"},
+		"/api/sessions/{id}/stop":                    {"id": sessionContract["id"]},
+		"/api/sessions/{id}/browser":                 {"id": sessionContract["id"]},
+		"/api/sessions/{id}/people":                  {"id": sessionContract["id"]},
+		"/api/sessions/{id}/links":                   {"id": sessionContract["id"]},
+		"/api/sessions/{id}/alerts":                  {"id": sessionContract["id"]},
+		"/api/alerts/{id}":                           {"id": sessionContract["alert"]},
+		"/api/sessions/{id}/messages/{mid}/feedback": {"id": sessionContract["id"], "mid": sessionContract["run"]},
+
 		"/api/threads/{id}/files":                             {"id": workspaceID},
 		"/api/threads/{id}/files/content":                     {"id": workspaceID},
 		"/api/threads/{id}/files/publish":                     {"id": workspaceID},
 		"/api/threads/{id}/sandboxes":                         {"id": workspaceID},
+		"/api/threads/{id}/sandboxes/commands":                {"id": workspaceID},
 		"/api/threads/{id}/memory":                            {"id": workspaceID},
 		"/api/threads/{id}/artifacts":                         {"id": workspaceID},
 		"/api/threads/{id}/scratchpads":                       {"id": workspaceID},
@@ -2490,12 +2805,18 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/knowledge/{name}/attachment":           {"name": "handbook"},
 		"/api/knowledge/{name}/attachments":          {"name": "handbook"},
 		"/api/clients/{id}":                          {"id": "support"}, "/api/clients/{id}/bindings": {"id": "app"}, "/api/evals/{name}": {"name": "smoke"}, "/api/evals/{name}/runs": {"name": "smoke"},
-		"/api/evals/{name}/run": {"name": "smoke"}, "/api/knowledge/{name}": {"name": "handbook"},
+		"/api/eval-candidates/{id}/accept": {"id": candidate},
+		"/api/evals/{name}/run":            {"name": "smoke"}, "/api/knowledge/{name}": {"name": "handbook"},
 		"/api/knowledge/{name}/resources": {"name": "handbook"}, "/api/knowledge/{name}/snapshot": {"name": "handbook"}, "/api/knowledge/{name}/replace": {"name": "handbook"}, "/api/knowledge/{name}/sync-settings": {"name": "handbook"},
-		"/api/knowledge/{name}/dependencies":  {"name": "handbook"},
-		"/api/knowledge/{name}/configuration": {"name": "handbook"}, "/api/knowledge/{name}/credential": {"name": "handbook"}, "/api/knowledge/{name}/sync": {"name": "handbook"},
+		"/api/knowledge/{name}/dependencies": {"name": "handbook"},
+		"/api/corpora/{name}":                {"name": "policies"}, "/api/corpora/{name}/members": {"name": "policies"}, "/api/corpora/{name}/search": {"name": "policies"}, "/api/corpora/{name}/graph": {"name": "policies"}, "/api/corpora/{name}/graph/build": {"name": "policies"}, "/api/corpora/{name}/ontology/infer": {"name": "policies"}, "/api/corpora/{name}/ontology/accept": {"name": "policies"}, "/api/corpora/{name}/ontology/discard": {"name": "policies"},
+		"/api/corpora/{name}/members/{kind}/{member}": {"name": "policies", "kind": "source", "member": "handbook"},
+		"/api/knowledge/{name}/configuration":         {"name": "handbook"}, "/api/knowledge/{name}/credential": {"name": "handbook"}, "/api/knowledge/{name}/sync": {"name": "handbook"},
 		"/api/knowledge/{name}/documents": {"name": "handbook"}, "/api/knowledge/{name}/documents/{id}": {"name": "handbook", "id": doc.str("id")},
-		"/api/knowledge/{name}/variants": {"name": "handbook"}, "/api/knowledge/{name}/variants/{variant}": {"name": "handbook"},
+		"/api/knowledge/{name}/documents/{id}/text": {"name": "handbook", "id": doc.str("id")},
+		"/api/knowledge/{name}/imports":             {"name": "handbook"}, "/api/knowledge/{name}/imports/{id}": {"name": "handbook", "id": imported.str("id")},
+		"/api/knowledge/{name}/documents/{id}/continue": {"name": "handbook", "id": grown.str("id")},
+		"/api/knowledge/{name}/variants":                {"name": "handbook"}, "/api/knowledge/{name}/variants/{variant}": {"name": "handbook"},
 		"/api/project-forks/{name}": {"name": "Forked"}, "/api/projects/{name}/fork": {"name": "Field"},
 		"/api/projects/{name}": {"name": "Launch"}, "/api/projects/{name}/memory": {"name": "Launch"}, "/api/projects/{name}/history": {"name": "Launch"},
 		"/api/projects/{name}/agents":         {"name": "Launch"},
@@ -2513,13 +2834,15 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/me/credentials/{provider}":      {"provider": "issues"},
 		"/api/inbox/{id}/deliveries/{client}": {"id": mid, "client": "app"},
 		"/api/projects/{name}/channels":       {"name": "Field"}, "/api/projects/{name}/channels/{channel}": {"name": "Field", "channel": "renewals"},
-		"/api/projects/{name}/experts": {"name": "Field"}, "/api/projects/{name}/knowledge": {"name": "Field"}, "/api/projects/{name}/skills": {"name": "Field"}, "/api/threads/{id}": {"id": tid},
+		"/api/projects/{name}/experts": {"name": "Field"}, "/api/projects/{name}/knowledge": {"name": "Field"}, "/api/projects/{name}/corpora": {"name": "Field"}, "/api/projects/{name}/skills": {"name": "Field"}, "/api/threads/{id}": {"id": tid},
 		"/api/threads/{id}/messages": {"id": tid}, "/api/threads/{id}/participants": {"id": tid},
 		"/api/threads/{id}/share":       {"id": tid},
 		"/api/threads/{id}/publication": {"id": draftID},
 		"/api/threads/{id}/fork":        {"id": tid}, "/api/threads/{id}/bring-back": {"id": tid},
+		"/api/threads/{id}/forks": {"id": tid},
 	}
 	valid := map[string]string{
+		"/api/connections/{provider}/callback":  `{"state":"unknown","code":"code"}`,
 		"/api/agent-setups/{name}":              `{"version":1,"plan":{"spec":{"name":"helper","provider":"openai","model":"gpt-4o-mini","system_prompt":"Help"},"project":"~"}}`,
 		"/api/agent-setups/{name}/test":         `{"text":"Setup check"}`,
 		"/api/artifacts/{id}/promote-memory":    `{"version":1,"accepted":true}`,
@@ -2531,23 +2854,32 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/inbox/{id}/read": `{}`, "/api/inbox/{id}/snooze": `{"until":"2999-01-01T00:00:00Z"}`,
 		"/api/inbox/{id}/parts/{part}/resolve": `{"action":"acknowledge"}`, "/api/knowledge/{name}/documents": `{"title":"t","text":"words here"}`,
 		"/api/knowledge/{name}/documents/{id}": `{"excluded":false}`, "/api/knowledge/{name}/variants": `{"name":"other"}`,
-		"/api/projects/{name}": `{"version":1}`, "/api/projects/{name}/memory": `{"text":"x"}`, "/api/projects/{name}/memory/approve": `{"ids":[]}`,
+		"/api/knowledge/{name}/documents/{id}/text":     `{"title":"t","text":"words here","digest":""}`,
+		"/api/knowledge/{name}/imports":                 `{"title":"t","uri":"codex:generated-contract","text":"words here","session":` + session + `}`,
+		"/api/knowledge/{name}/imports/{id}":            `{"title":"t","text":"words here","digest":"","session":` + session + `}`,
+		"/api/knowledge/{name}/documents/{id}/continue": `{"document_digest":"` + grown.str("digest") + `","structure_digest":"` + grown.str("structure_digest") + `","project":"~"}`,
+		"/api/projects/{name}":                          `{"version":1}`, "/api/projects/{name}/memory": `{"text":"x"}`, "/api/projects/{name}/memory/approve": `{"ids":[]}`,
 		"/api/inbox/{id}/deliveries/{client}": `{"channel":"C0123ABC","ts":"1700000000.000100"}`, "/api/inbox/{id}/dismiss": ``, "/api/inbox/{id}/unhide": ``,
 		"/api/inbox/marks": `{"ids":["m-1"],"mark":"read"}`, "/api/inbox/read-all": `{"view":"inbox"}`,
 		"/api/projects/{name}/agents": `{"version":1}`, "/api/agents/{name}/home": `{"project":""}`,
 		"/api/runs/{id}/calls":                       `{"key":"k9","agent":"helper","text":"hi","mode":"delegate"}`,
 		"/api/runs/{id}/questions/{question}/answer": `{"action":"choose","choice":"red"}`,
 		"/api/alert-rules/{name}":                    `{"kind":"run_failed","severity":"critical"}`,
+		"/api/model-providers/{name}":                `{"kind":"openai","base_url":"http://127.0.0.1:9/v1"}`,
 		"/api/schedules/{name}":                      `{"expression":"0 3 * * *","agent":"helper","text":"Report."}`,
 		"/api/me/credentials/{provider}":             `{"ref":"op://People/svc/issues"}`,
 		"/api/projects/{name}/channels":              `{"name":"x"}`, "/api/projects/{name}/channels/{channel}": `{"version":1}`,
-		"/api/projects/{name}/experts": `{"version":1,"experts":[]}`, "/api/projects/{name}/knowledge": `{"version":1,"knowledge":[]}`, "/api/projects/{name}/skills": `{"version":1,"skills":[]}`, "/api/threads/{id}": `{"version":1}`,
+		"/api/projects/{name}/experts": `{"version":1,"experts":[]}`, "/api/projects/{name}/knowledge": `{"version":1,"knowledge":[]}`, "/api/projects/{name}/corpora": `{"version":1,"corpora":[]}`, "/api/projects/{name}/skills": `{"version":1,"skills":[]}`, "/api/threads/{id}": `{"version":1}`,
 		"/api/threads/{id}/messages": `{"text":"x"}`, "/api/threads/{id}/participants": `{"version":1}`,
 		"/api/threads/{id}/fork": `{"through":"m-1"}`, "/api/threads/{id}/bring-back": `{"run":"r00000000000000000000000000000000"}`,
 		"/api/threads/{id}/share": `{}`, "/api/threads/{id}/marks": `{"read":true}`, "/api/threads/{id}/approval": `{"mode":"ask"}`,
 		"/api/projects/{name}/members": `{"version":1,"members":[{"who":"*","role":"member"}]}`, "/api/projects/{name}/move": `{"version":1,"parent":""}`,
 		"/api/projects/{name}/limits": `{"period":"day","max_runs":1}`, "/api/projects/{name}/announcements": `{"subject":"Hi","text":"Hi."}`,
 		"/api/memory/files/proposals/{id}": `{"scope":"project","decision":"discard"}`,
+		"/api/eval-candidates/{id}/accept": `{"suite":"smoke","checks":[{"kind":"contains","value":"x"}]}`,
+		"/api/corpora/{name}":              `{}`, "/api/corpora/{name}/members": `{"kind":"source","name":"handbook"}`,
+		"/api/catalog/connectors/{name}/login": `{"ref":"op://People/svc-globex/x"}`,
+		"/api/graph/nodes/{id}/owner":          `{"action":"confirm"}`,
 	}
 	for _, op := range c.spec.ops {
 		params := pathParams(op.path)
@@ -2563,10 +2895,17 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 			path = strings.ReplaceAll(path, "{"+name+"}", v)
 		}
 		if _, documents := op.schemas["404"]; documents {
-			c.call(globex, op.method, op.path, path, valid[op.path], http.StatusNotFound)
+			foreign := globex
+			if strings.HasPrefix(op.path, "/api/connections/") || op.path == "/api/clients/{id}/check" || op.path == "/api/catalog/connectors/{name}/reconnect" {
+				foreign = foreignPerson
+			}
+			c.call(foreign, op.method, op.path, path, valid[op.path], http.StatusNotFound)
 		}
 		if refusesUnknownFields(op) {
 			caller := acme
+			if strings.HasPrefix(op.path, "/api/sessions/") || strings.HasPrefix(op.path, "/api/messages/") || op.path == "/api/alerts/{id}" {
+				caller = sessionContract["token"]
+			}
 			if strings.HasPrefix(op.path, "/api/me/memory") || strings.HasPrefix(op.path, "/api/agent-setups/") || strings.HasSuffix(op.path, "/skill-draft") || strings.HasSuffix(op.path, "/decision-memory") {
 				caller = auditAdmin
 			}
@@ -2576,9 +2915,32 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 
 	c.call(acme, "DELETE", "/api/artifacts/{id}", artifactPath, "", http.StatusNoContent)
 	c.call(acme, "DELETE", "/api/artifacts/{id}", artifactPath, "", http.StatusNotFound)
+	// A workspace's own model provider: set up, checked, in use, removed.
+	c.call(acme, "PUT", "/api/model-providers/{name}", "/api/model-providers/house", `{"kind":"openai","base_url":"http://127.0.0.1:9/v1"}`, http.StatusOK)
+	c.call(acme, "POST", "/api/model-providers/{name}/check", "/api/model-providers/house/check", "", http.StatusOK)
+	c.call(acme, "POST", "/api/model-providers/{name}/check", "/api/model-providers/nowhere/check", "", http.StatusBadRequest)
+	c.call(acme, "POST", "/api/agents", "/api/agents", `{"name":"house-agent","provider":"house","model":"llama3.2","system_prompt":"Answer."}`, http.StatusCreated)
+	c.call(acme, "DELETE", "/api/model-providers/{name}", "/api/model-providers/house", "", http.StatusConflict)
+	c.call(acme, "DELETE", "/api/model-providers/{name}", "/api/model-providers/nowhere", "", http.StatusBadRequest)
+	c.call(acme, "PUT", "/api/model-providers/{name}", "/api/model-providers/spare", `{"kind":"openai","base_url":"http://127.0.0.1:9/v1"}`, http.StatusOK)
+	c.call(acme, "DELETE", "/api/model-providers/{name}", "/api/model-providers/spare", "", http.StatusNoContent)
 	c.call(acme, "DELETE", "/api/clients/{id}", "/api/clients/support", "", http.StatusNoContent)
 	c.call(acme, "DELETE", "/api/clients/{id}", "/api/clients/support", "", http.StatusNotFound)
+	// A reviewer accepts the candidate into a suite, or dismisses it. Either
+	// way it leaves the queue.
+	c.call(acme, "POST", "/api/eval-candidates/{id}/accept", "/api/eval-candidates/"+candidate+"/accept", `{"suite":"smoke","checks":[]}`, http.StatusBadRequest)
+	c.call(acme, "POST", "/api/eval-candidates/{id}/accept", "/api/eval-candidates/"+candidate+"/accept", `{"suite":"smoke","checks":[{"kind":"contains","value":"hello"}]}`, http.StatusOK)
+	c.call(acme, "POST", "/api/eval-candidates/{id}/accept", "/api/eval-candidates/"+candidate+"/accept", `{"suite":"smoke","checks":[{"kind":"contains","value":"hello"}]}`, http.StatusNotFound)
+	rated := c.call(acme, "POST", "/api/runs", "/api/runs", `{"agent":"helper","text":"Say it again"}`, http.StatusAccepted).str("id")
+	c.settled(acme, rated)
+	c.call(acme, "PUT", "/api/runs/{id}/feedback", "/api/runs/"+rated+"/feedback", `{"rating":"down","reason":"slow"}`, http.StatusOK)
+	dismissed, _ := obj(sliceOf(c.call(acme, "GET", "/api/eval-candidates", "/api/eval-candidates?agent=helper", "", http.StatusOK).field("candidates"))[0])["id"].(string)
+	c.call(acme, "DELETE", "/api/eval-candidates/{id}", "/api/eval-candidates/"+dismissed, "", http.StatusNoContent)
+	c.call(acme, "DELETE", "/api/eval-candidates/{id}", "/api/eval-candidates/"+dismissed, "", http.StatusNotFound)
 	c.call(acme, "DELETE", "/api/evals/{name}", "/api/evals/smoke", "", http.StatusNoContent)
+	c.call(acme, "DELETE", "/api/corpora/{name}", "/api/corpora/policies?version=999999", "", http.StatusConflict)
+	c.call(acme, "DELETE", "/api/corpora/{name}", "/api/corpora/policies", "", http.StatusNoContent)
+	c.call(acme, "DELETE", "/api/corpora/{name}", "/api/corpora/policies", "", http.StatusNotFound)
 	c.call(acme, "DELETE", "/api/knowledge/{name}/variants/{variant}", "/api/knowledge/handbook/variants/lean", "", http.StatusNoContent)
 	c.call(acme, "DELETE", "/api/knowledge/{name}/documents/{id}", docPath, "", http.StatusNoContent)
 	// A source a project names is not deleted from under it: Field names
@@ -2651,20 +3013,49 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 // it is documented anyway. Keep it short: an entry is a code the server can
 // send that is hard to provoke in a test, never a guess.
 var unexercised = map[string]string{
+	"PUT /api/agents/{name}/home 409":                    "a home is refused only while the agent's default skills would not fit it; the guard is in platform.homeUsers",
+	"POST /api/sessions 409":                             "governed admission to a deleted project uses the same path tested by POST /api/runs deleted-project response",
+	"POST /api/sessions 200":                             "a chat surface's reply landing in its existing root, covered by TestAChatServiceFindsOrStartsASlackThreadsRootSession",
+	"POST /api/messages/{id} 409":                        "a full or moved conversation, the same PostMessage path POST /api/sessions/{id}/messages takes",
+	"POST /api/messages/{id}/feedback 409":               "rating an unfinished run, the same putFeedback path the legacy feedback route exercises",
+	"POST /api/messages 409":                             "a place nobody answers (no entry agent, no client default, no mention), covered by TestAPlaceNobodyAnswersIsRefusedSayingWhy",
+	"POST /api/sessions/{id}/messages 409":               "deleted-project admission uses the same PostMessage path tested by thread/run responses",
+	"POST /api/sessions/{id}/people 409":                 "concurrent participant changes fail thread version CAS covered by participant race tests",
+	"POST /api/sessions/{id}/alerts 409":                 "random alert identity collision fails CreateSession CAS; callers cannot supply the ID",
+	"PUT /api/sessions/{id}/messages/{mid}/feedback 409": "same putFeedback handler unfinished-run409 is exercised via legacy feedback route",
+
+	// Voice mode's refusals, each covered by its own test in voice_session_test.go.
+	"POST /api/sessions/{id}/voice/transcriptions 402": "a spend limit reached, covered by TestVoiceModeStopsAtTheSpendLimit",
+	"POST /api/sessions/{id}/voice/speech 402":         "a spend limit reached, covered by TestVoiceModeStopsAtTheSpendLimit",
+	"POST /api/sessions/{id}/voice/transcriptions 413": "a recording over the body cap, the same MaxBytesReader TestTheConsoleTranscribesARecording covers",
+	"POST /api/sessions/{id}/voice/transcriptions 422": "no words heard, covered by TestVoiceModeHearsAndSpeaksInASession",
+	"POST /api/sessions/{id}/voice/transcriptions 503": "a provider that fails, covered by TestVoiceModeHearsAndSpeaksInASession",
+	"POST /api/sessions/{id}/voice/speech 503":         "a provider that fails, covered by TestVoiceModeHearsAndSpeaksInASession",
+	"POST /api/runs/{id}/speech 402":                   "a spend limit reached, the same check TestVoiceModeStopsAtTheSpendLimit covers",
+	"POST /api/runs/{id}/speech 422":                   "an answer with no words, covered by TestAFinishedAnswerIsOneClip",
+	"POST /api/runs/{id}/speech 503":                   "a provider that fails, covered by TestAFinishedAnswerIsOneClip",
+
 	"POST /api/voice/transcriptions 404":            "a deployment with speech left out, covered by TestWithoutSpeechTheConsoleHasNoVoiceNotes",
 	"POST /api/catalog/connectors/{name}/crawl 409": "a crawl asked for while another of the same connector runs; the guard is in platform.crawl",
+	"POST /api/corpora/{name}/ontology/infer 409":   "the corpus changed between its owner check and the write; the store's version check, covered in pkg/corpora",
+	"POST /api/corpora/{name}/ontology/accept 409":  "the corpus changed between its owner check and the write; the store's version check, covered in pkg/corpora",
+	"POST /api/corpora/{name}/ontology/discard 409": "the corpus changed between its owner check and the write; the store's version check, covered in pkg/corpora",
+	"PUT /api/graph/nodes/{id}/owner 429":           "MaxDecisions owner decisions per workspace, a bound in pkg/graph",
+	"POST /api/corpora 429":                         "MaxCorpora per workspace, covered by TestTwoProcessesAgreeOnCorpora in pkg/corpora",
 	// The atomic source configuration race is covered by TestPromotionGuardAndProvenanceSurviveRestart.
-	"POST /api/artifacts/{id}/promote-knowledge 409": "source audience changed concurrently",
-	"POST /api/projects/{name}/fork 429":             "bounded private operation-plan capacity, covered by projectforks store tests",
-	"POST /api/threads/{id}/fork 429":                "bounded workspace or project thread cap, covered by thread store tests",
-	"POST /api/threads/{id}/bring-back 429":          "bounded per-person posting rate and thread message cap, covered by platform and thread store tests",
-	"POST /api/source-link-rules 409":                "opaque random ID collision is rejected by store CAS; platform never accepts a caller ID",
-	"PUT /api/source-link-rules/{id} 409":            "authorization snapshot CAS or immutable disabled fork copy; exercised in source-link store tests",
-	"DELETE /api/source-link-rules/{id} 409":         "concurrent rule change is rejected by store snapshot test",
+	"POST /api/artifacts/{id}/promote-knowledge 409":         "source audience changed concurrently",
+	"POST /api/projects/{name}/fork 429":                     "bounded private operation-plan capacity, covered by projectforks store tests",
+	"POST /api/threads/{id}/fork 429":                        "bounded workspace or project thread cap, covered by thread store tests",
+	"POST /api/knowledge/{name}/documents/{id}/continue 429": "bounded workspace or project thread cap, the same Threads.Create the fork route reaches",
+	"POST /api/threads/{id}/bring-back 429":                  "bounded per-person posting rate and thread message cap, covered by platform and thread store tests",
+	"POST /api/source-link-rules 409":                        "opaque random ID collision is rejected by store CAS; platform never accepts a caller ID",
+	"PUT /api/source-link-rules/{id} 409":                    "authorization snapshot CAS or immutable disabled fork copy; exercised in source-link store tests",
+	"DELETE /api/source-link-rules/{id} 409":                 "concurrent rule change is rejected by store snapshot test",
 
 	"PUT /api/knowledge/{name}/attachment 429": "bounded relation store refuses new attachments at10000 records; cap exercised in source-link suggestion store tests",
 
 	"POST /api/knowledge/{name}/documents 409": "source scope can change between authorization and insertion; atomic rejection is exercised by pkg/knowledge promotion and scope tests",
+	"POST /api/knowledge/{name}/imports 409":   "source scope can change between authorization and insertion, as for an ordinary add; the store's guard is the one AddForScope uses",
 	// A workspace holds at most 1,000 call policies, one per agent. Making
 	// that many agents here would only test a counter, which
 	// pkg/callpolicy's tests do.
