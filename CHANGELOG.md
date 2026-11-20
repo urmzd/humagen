@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.153.0 (2026-11-20)
+
+### Features
+
+- **auth**: the Slack app the server starts signs in under Tailscale (#444) ([67991c9](https://github.com/urmzd/humagen/commit/67991c9bff2d33a1f713368acf2c19c48df4b0cc))
+
+### Misc
+
+- publish the guide through docs.urmzd.com (#446) ([d7d71a5](https://github.com/urmzd/humagen/commit/d7d71a5ffceb406dd38607c640d46cecb9f64927))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.152.0...v0.153.0)
+
+
 ## 0.152.0 (2026-11-20)
 
 ### Features
