@@ -12,7 +12,7 @@ import {
   useSessionAttention,
 } from "./SessionCenter.tsx";
 import { Sidebar } from "./Sidebar.tsx";
-import { type AgentSessionSummary, type Alert, attentionAlerts } from "./sessionCenter.ts";
+import type { AgentSessionSummary, Alert } from "./sessionCenter.ts";
 import { sampleFiles } from "./storage.fixtures.ts";
 
 let net: ReturnType<typeof stubFetch> | undefined;
@@ -69,26 +69,12 @@ const alert = (
   severity: "warning",
   at: now,
 });
-test("Home says how many alerts wait in one link and lists none of them", async () => {
-  const alerts = [
-    alert("low", "low"),
-    alert("resolved", "urgent", "resolved"),
-    alert("a"),
-    alert("b", "urgent"),
-    alert("c"),
-    alert("d"),
-  ];
-  assert.deepEqual(
-    attentionAlerts(alerts).map((a) => a.id),
-    ["a", "b", "c", "d"],
-  );
+test("Home does not repeat the alert count: the menu's Alerts entry carries it", async () => {
   net = stubFetch({ "GET /api/sessions": () => ({ sessions: [session("s_root")], next: "" }) });
   let sessionsLoaded = false;
-  const went: unknown[] = [];
-  render(
+  const { container } = render(
     <HomeSessionGlance
-      alerts={alerts}
-      go={(route) => went.push(route)}
+      go={() => {}}
       tick={0}
       via={{ list: async () => ({ artifacts: [], next: null }) }}
       onHasSessions={() => {
@@ -97,42 +83,25 @@ test("Home says how many alerts wait in one link and lists none of them", async 
     />,
   );
   await waitFor(() => assert.equal(sessionsLoaded, true));
-  const waiting = screen.getByRole("link", { name: "4 waiting on you" });
-  assert.equal(waiting.getAttribute("href"), "/alerts");
-  fireEvent.click(waiting);
-  assert.deepEqual(went, [{ page: "alerts" }]);
-  assert.equal(screen.queryAllByRole("listitem").length, 0);
-  assert.equal(screen.queryByText("Alert b"), null);
-  assert.equal(screen.queryByRole("button", { name: /Resolve|Mark Done/ }), null);
-  assert.equal(screen.queryByText("Recently made"), null);
+  assert.equal(screen.queryByText(/waiting on you/), null);
+  assert.equal(screen.queryByRole("link"), null);
+  assert.equal(container.textContent, "");
 });
 
-test("Home's count comes from the count alone, before the alerts are read", async () => {
-  // The alerts never answer here: the line and the badge's number still show.
+test("the badge's count comes from the count alone, before the alerts are read", async () => {
+  // The alerts never answer here: the badge's number still shows.
   net = stubFetch({
     "GET /api/alerts/count": () => ({ waiting: 4 }),
     "GET /api/alerts": () => new Promise(() => {}),
     "GET /api/sessions": () => ({ sessions: [], next: "" }),
   });
-  function Home() {
+  function Badge() {
     const attention = useSessionAttention(true, null);
-    return (
-      <>
-        <output aria-label="badge">{attention.count}</output>
-        <HomeSessionGlance
-          alerts={attention.alerts}
-          waiting={attention.count}
-          go={() => {}}
-          tick={0}
-          via={{ list: async () => ({ artifacts: [], next: null }) }}
-        />
-      </>
-    );
+    return <output aria-label="badge">{attention.count}</output>;
   }
-  render(<Home />);
-  const waiting = await screen.findByRole("link", { name: "4 waiting on you" });
-  assert.equal(waiting.getAttribute("href"), "/alerts");
-  assert.equal(screen.getByLabelText("badge").textContent, "4");
+  render(<Badge />);
+  await waitFor(() => assert.equal(screen.getByLabelText("badge").textContent, "4"));
+  await waitFor(() => assert.ok(net?.seen.some((r) => r.path.startsWith("/api/alerts?"))));
   const asked = net.seen.map((r) => r.path);
   assert.ok(asked.includes("/api/alerts/count"), `asked ${asked.join(", ")}`);
   // The count is asked for before the alerts, so it is first in line for a connection.
@@ -168,7 +137,6 @@ test("Home shows the three newest artifacts in one strip, each opening where it 
   const went: unknown[] = [];
   render(
     <HomeSessionGlance
-      alerts={[]}
       go={(route) => went.push(route)}
       tick={0}
       via={{
@@ -188,16 +156,15 @@ test("Home shows the three newest artifacts in one strip, each opening where it 
   const card = within(strip).getByRole("link", { name: first.title });
   assert.equal(card.getAttribute("href"), href({ page: "artifacts", artifact: first.id }));
   fireEvent.click(card);
-  fireEvent.click(within(strip).getByRole("link", { name: "All artifacts" }));
-  assert.deepEqual(went, [{ page: "artifacts", artifact: first.id }, { page: "artifacts" }]);
-  assert.equal(screen.queryByText(/waiting on you/), null);
+  assert.deepEqual(went, [{ page: "artifacts", artifact: first.id }]);
+  // The menu's Artifacts entry opens the full list, so the strip does not link to it again.
+  assert.equal(within(strip).queryByRole("link", { name: "All artifacts" }), null);
 });
 
 test("Home says in one line when its recent artifacts could not be read", async () => {
   net = stubFetch({ "GET /api/sessions": () => ({ sessions: [], next: "" }) });
   render(
     <HomeSessionGlance
-      alerts={[]}
       go={() => {}}
       tick={0}
       via={{
@@ -211,12 +178,11 @@ test("Home says in one line when its recent artifacts could not be read", async 
   assert.equal(screen.queryByRole("region", { name: "Recently made" }), null);
 });
 
-test("Home with nothing waiting and nothing made draws nothing, and asks for no artifacts it may not read", async () => {
+test("Home with nothing made draws nothing, and asks for no artifacts it may not read", async () => {
   net = stubFetch({ "GET /api/sessions": () => ({ sessions: [], next: "" }) });
   let asked = 0;
   const { container } = render(
     <HomeSessionGlance
-      alerts={[]}
       go={() => {}}
       tick={0}
       canArtifacts={false}

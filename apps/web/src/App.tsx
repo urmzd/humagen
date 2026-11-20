@@ -1185,8 +1185,6 @@ function Console({
                       home={
                         <HomeSessionGlance
                           onHasSessions={setHasSessions}
-                          alerts={attention.alerts}
-                          waiting={attention.count}
                           go={go}
                           canArtifacts={can("artifacts:read")}
                           tick={tick}

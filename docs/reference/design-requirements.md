@@ -1990,12 +1990,12 @@ request totals remain open.
 
 ### DES-075: A calm Home and states that say whose move it is
 
-Home under the chat bar is one quiet line and one strip. The line says how many
-of the person's Urgent and Normal alerts are waiting ("2 waiting on you") and
-opens Alerts; it lists none of them and offers no decision. The strip, Recently
-made, shows the three newest artifacts the person may read from the existing
-`GET /api/artifacts`, each card opening it at `/artifacts/{id}`, with All
-artifacts beside the heading. With nothing waiting and nothing made, Home is the
+Home under the chat bar is one strip. Recently made shows the three newest
+artifacts the person may read from the existing `GET /api/artifacts`, each card
+opening it at `/artifacts/{id}`. Home does not say how many alerts are waiting:
+the Alerts entry in the menu carries that count as a badge, and the menu button
+carries a dot when the menu is closed. The strip has no link to all artifacts,
+because the Artifacts entry in the menu opens them. With nothing made, Home is the
 greeting and the chat bar. Home no longer lists alerts or recent sessions:
 sessions are in the sidebar's Recents and on Sessions.
 

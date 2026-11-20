@@ -697,23 +697,17 @@ export function AlertsPage({
   );
 }
 /**
- * Under the chat bar: one quiet line saying how many alerts wait on the
- * person, which opens them, and one strip of the newest things their agents
- * made. Nothing is listed, decided or dismissed here, and nothing moves. With
- * nothing waiting and nothing made, Home is the greeting and the chat bar.
+ * Under the chat bar: one strip of the newest things the person's agents
+ * made. Alerts are counted on the Alerts entry of the menu, so Home does not
+ * repeat them. With nothing made, Home is the greeting and the chat bar.
  */
 export function HomeSessionGlance({
-  alerts,
-  waiting: counted,
   go,
   tick,
   onHasSessions,
   canArtifacts = true,
   via = storage,
 }: {
-  alerts: Alert[];
-  /** How many alerts wait on the reader, when it is known apart from the alerts. */
-  waiting?: number;
   go: (route: Route) => void;
   tick: unknown;
   onHasSessions?: (has: boolean) => void;
@@ -762,43 +756,17 @@ export function HomeSessionGlance({
       live = false;
     };
   }, [tick, canArtifacts, via]);
-  const waiting = counted ?? attentionAlerts(alerts).length;
   const failed = madeFailed && made.length === 0;
-  if (waiting === 0 && made.length === 0 && !failed) return null;
+  if (made.length === 0 && !failed) return null;
   const c = defaultCopy.home;
-  const link =
-    "rounded-aui-sm text-aui-xs text-aui-muted underline-offset-4 hover:text-aui-fg hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent";
-  const alertsRoute: Route = { page: "alerts" };
-  const artifactsRoute: Route = { page: "artifacts" };
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-4 pt-6">
-      {waiting > 0 && (
-        <p className="flex justify-center">
-          <a
-            href={href(alertsRoute)}
-            onClick={(event) => follow(event, () => go(alertsRoute))}
-            className={`${link} inline-flex min-h-6 items-center gap-2 pointer-coarse:min-h-11`}
-          >
-            <span aria-hidden className="size-1.5 rounded-full bg-aui-accent" />
-            {c.waitingOnYou(waiting)}
-          </a>
-        </p>
-      )}
       {failed && <p className="text-center text-aui-xs text-aui-muted">{c.madeFailed}</p>}
       {made.length > 0 && (
         <section aria-labelledby="home-made">
-          <div className="flex items-center justify-between gap-3 pb-2">
-            <h2 id="home-made" className="font-medium text-aui-xs text-aui-muted">
-              {c.recentlyMade}
-            </h2>
-            <a
-              href={href(artifactsRoute)}
-              onClick={(event) => follow(event, () => go(artifactsRoute))}
-              className={`${link} inline-flex min-h-6 items-center pointer-coarse:min-h-11`}
-            >
-              {c.allArtifacts}
-            </a>
-          </div>
+          <h2 id="home-made" className="pb-2 font-medium text-aui-xs text-aui-muted">
+            {c.recentlyMade}
+          </h2>
           <ul className="grid gap-3 sm:grid-cols-3">
             {made.map((file) => {
               const to: Route = { page: "artifacts", artifact: file.id };
