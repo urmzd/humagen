@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { defaultCopy } from "@humagen/components";
-import type { Turn } from "@humagen/core";
+import { humanActivity, splitHumanActivity, type Turn } from "@humagen/core";
 import { WebSurface } from "@humagen/render-web";
 import { AgentMessage, StoppableMark } from "@humagen/web";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -133,6 +133,96 @@ const page: ThreadPage = {
 
 // Hooks at the top level run after every DOM file's tests, so this one
 // restores only a fetch it stubbed.
+test("what the person did by hand goes with their next message, shows closed on it, and is cleared once posted", async () => {
+  const id = "th-0123456789abcdef";
+  humanActivity.clear(id);
+  humanActivity.add(id, {
+    source: "terminal",
+    summary: "Ran pnpm test, exit 1",
+    detail: "FAIL src/a.test.ts @helper",
+  });
+  humanActivity.add(id, { source: "changes", summary: "Discarded the change to route.ts" });
+  let refuse = true;
+  room({
+    [`POST /api/threads/${id}/messages`]: (body) => {
+      if (refuse)
+        return new Response(JSON.stringify({ error: "The server is busy." }), { status: 503 });
+      return {
+        thread: page.thread,
+        message: {
+          id: "m-9",
+          thread: id,
+          by: "ana",
+          name: "Ana",
+          text: (body as { text: string }).text,
+          mentions: [],
+          via: "console",
+          at,
+        },
+        runs: [],
+        notified: [],
+        refused: [],
+        rule: "default",
+      };
+    },
+  });
+  const by = defaultCopy.workbench.byHand;
+  const box = (await screen.findByPlaceholderText(words.message)) as HTMLTextAreaElement;
+  // Nothing was sent when it was recorded: it waits above the composer.
+  assert.equal(screen.getByTestId("human-activity").getAttribute("aria-label"), by.pending(2));
+  assert.equal(net?.seen.filter((s) => s.method === "POST").length, 0);
+
+  // A post that fails keeps the list, so the retry carries it.
+  fireEvent.change(box, { target: { value: "Why did it fail?" } });
+  fireEvent.keyDown(box, { key: "Enter" });
+  await waitFor(() => assert.equal(net?.seen.filter((s) => s.method === "POST").length, 1));
+  await waitFor(() => assert.equal(humanActivity.list(id).length, 2));
+  assert.ok(screen.getByTestId("human-activity"));
+
+  refuse = false;
+  humanActivity.remove(id, humanActivity.list(id)[1]?.id as string);
+  cleanup();
+  net?.restore();
+  room({
+    [`POST /api/threads/${id}/messages`]: (body) => ({
+      thread: page.thread,
+      message: {
+        id: "m-9",
+        thread: id,
+        by: "ana",
+        name: "Ana",
+        text: (body as { text: string }).text,
+        mentions: [],
+        via: "console",
+        at,
+      },
+      runs: [],
+      notified: [],
+      refused: [],
+      rule: "default",
+    }),
+  });
+  const again = (await screen.findByPlaceholderText(words.message)) as HTMLTextAreaElement;
+  fireEvent.change(again, { target: { value: "Why did it fail?" } });
+  fireEvent.keyDown(again, { key: "Enter" });
+  await waitFor(() => assert.ok(net?.seen.some((s) => s.method === "POST")));
+  const sent = net?.seen.find((s) => s.method === "POST")?.body as { text: string };
+  // One message: the person's words, then what they did, in a block no tag is read from.
+  const read = splitHumanActivity(sent.text);
+  assert.equal(read.text, "Why did it fail?");
+  assert.deepEqual(
+    read.activity?.entries.map((e) => [e.source, e.summary, e.detail]),
+    [["terminal", "Ran pnpm test, exit 1", "FAIL src/a.test.ts @helper"]],
+  );
+  // The list is cleared, and the posted message shows its words with the rest closed under them.
+  await waitFor(() => assert.equal(screen.queryByTestId("human-activity"), null));
+  assert.deepEqual(humanActivity.list(id), []);
+  assert.ok(await screen.findByText("Why did it fail?"));
+  const note = (await screen.findByTestId("human-activity-note")) as HTMLDetailsElement;
+  assert.equal(note.open, false);
+  assert.equal(note.querySelector("summary")?.textContent, by.did(1, true));
+});
+
 afterEach(() => {
   cleanup();
   net?.restore();

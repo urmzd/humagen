@@ -4109,6 +4109,61 @@ export const defaultCopy = {
     back: "Back",
     files: (n: number) => `${n} ${n === 1 ? "file" : "files"}`,
   },
+  /**
+   * The session's workbench: the tabs of the pane Details opens, and what a
+   * person did by hand in them, which goes with their next message
+   * (docs/architecture/workbench.md).
+   */
+  workbench: {
+    tabs: "Workbench",
+    tab: {
+      details: "Details",
+      browser: "Browser",
+      terminal: "Terminal",
+      changes: "Changes",
+      sidechat: "Side Chat",
+      search: "Search",
+    },
+    expand: "Expand Workbench",
+    collapse: "Collapse Workbench",
+    byHand: {
+      /** The list above the composer. */
+      pending: (n: number) =>
+        n === 1
+          ? "1 thing you did goes with your next message"
+          : `${n} things you did go with your next message`,
+      source: {
+        terminal: "Terminal",
+        browser: "Browser",
+        files: "Files",
+        changes: "Changes",
+        other: "Other",
+      },
+      remove: (summary: string) => `Remove: ${summary}`,
+      clear: "Clear All",
+      /** Under the list when the next message cannot carry all of it. */
+      overflow: (n: number) =>
+        n === 1
+          ? "1 does not fit in your next message and will go with the one after."
+          : `${n} do not fit in your next message and will go with the one after.`,
+      /** In a thread, the collapsed line on a message that carried some. */
+      did: (n: number, mine: boolean) =>
+        `${mine ? "You did" : "Did"} ${n} ${n === 1 ? "thing" : "things"} by hand`,
+      omitted: (n: number) => `${n} more did not fit in this message.`,
+    },
+  },
+  // Each workbench tab keeps its own words in its own block below, so two
+  // tabs never change the same lines. Only the tab's own change edits its block.
+  /** The Browser tab (WorkbenchBrowser.tsx). */
+  workbenchBrowser: {},
+  /** The Terminal tab (WorkbenchTerminal.tsx). */
+  workbenchTerminal: {},
+  /** The Changes tab (WorkbenchChanges.tsx). */
+  workbenchChanges: {},
+  /** The Side Chat tab (WorkbenchSidechat.tsx). */
+  workbenchSidechat: {},
+  /** The Search tab (WorkbenchSearch.tsx). */
+  workbenchSearch: {},
   /** The control that returns to the end of a thread or of an answer's activity, named by what is there. */
   latest: {
     jump: "Jump to latest",
