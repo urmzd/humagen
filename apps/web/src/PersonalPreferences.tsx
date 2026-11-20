@@ -218,9 +218,7 @@ export function PersonalPreferences({
               {section === "notifications" && (
                 <>
                   <section aria-label={copy.notifications}>
-                    <p className="pb-2 text-sm leading-6 text-aui-muted">
-                      {defaultCopy.notifications.description}
-                    </p>
+                    <p className="pb-2 text-sm leading-6 text-aui-muted">{copy.priorityHint}</p>
                     <PreferenceRow
                       icon={<BellIcon size={18} />}
                       label={copy.email}
@@ -234,7 +232,7 @@ export function PersonalPreferences({
                         setSaved(false);
                       }}
                     />
-                    {Object.entries(copy.events).map(([kind, label]) => (
+                    {Object.entries(copy.priorities).map(([kind, label]) => (
                       <SettingsFormRow key={kind} id={`${formID}-${kind}`} label={label}>
                         <NativeSelect
                           id={`${formID}-${kind}`}

@@ -347,11 +347,15 @@ export interface ReviewProps {
     tone: Tone;
     findings: {
       title: string;
+      location?: { label: string; url?: string };
+      change?: string;
+      feedback?: FeedbackProps;
       suggestion: string;
       evidence: {
         observation: string;
         source: {
           label: string;
+          action?: ActionRef;
           url?: string;
           /**
            * Lines at a full commit SHA. A renderer whose host can read them

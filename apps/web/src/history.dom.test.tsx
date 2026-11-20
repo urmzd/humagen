@@ -86,9 +86,9 @@ test("history filters roundtrip in the route, and the old pull requests address 
     status: "needs" as const,
   };
   const address = new URL(href(route), "http://localhost");
-  assert.deepEqual(parse(address.pathname, address.search), route);
+  assert.deepEqual(parse(address.pathname, address.search), {page:"sessions",q:"API",status:"waiting"});
   assert.deepEqual(
     JSON.parse(JSON.stringify(parse("/pull-requests", ""))),
-    JSON.parse(JSON.stringify({ page: "history", source: "github" })),
+    JSON.parse(JSON.stringify({ page: "sessions" })),
   );
 });

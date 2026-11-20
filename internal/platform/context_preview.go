@@ -11,12 +11,14 @@ import (
 	"github.com/urmzd/humagen/pkg/memory"
 	"github.com/urmzd/humagen/pkg/operations"
 	"github.com/urmzd/humagen/pkg/projects"
+	"github.com/urmzd/humagen/pkg/prompts"
 )
 
 // ContextLayer describes the text actually composed, and its content budget.
 // Omitted content uses the same unit as Used.
 // Knowledge and skills count names. A zero budget means no extra composer cap.
 type ContextLayer struct {
+	Version        string `json:"version,omitempty"`
 	Kind           string `json:"kind"`
 	From           string `json:"from"`
 	Text           string `json:"text"`
@@ -37,7 +39,7 @@ type ProjectContext struct {
 // Conversation text and the separately supplied system prompt belong to runtime.
 func (p *Platform) turnLayers(tenant string, tree *projects.Tree, chain []projects.Project, project, channel, agent string) []ContextLayer {
 	workspace := p.Settings(tenant).WorkspaceName
-	out := instructionLayers(chain, workspace)
+	out := []ContextLayer{}
 	if channel != "" {
 		if c, err := p.Projects.Channel(tenant, project, channel); err == nil && strings.TrimSpace(c.Purpose) != "" {
 			text := fmt.Sprintf("This conversation is in #%s. Its purpose: %s", c.Name, strings.TrimSpace(c.Purpose))
@@ -86,6 +88,14 @@ func (p *Platform) ProjectContextAs(ctx context.Context, who auth.Principal, pro
 		system.Text = string([]rune(system.Text)[:32000])
 		system.PreviewOmitted = system.Used - 32000
 	}
+	prefix, err := p.promptLayers(who.Tenant, project)
+	if err != nil {
+		return out, err
+	}
+	for _, layer := range prefix.Layers {
+		out.Layers = append(out.Layers, promptPreview(layer))
+	}
+	system.Version = prompts.NewLayer("agent", agent, rev.Spec.SystemPrompt).Version
 	out.Layers = append(out.Layers, system)
 	for _, l := range p.turnLayers(who.Tenant, tree, chain, project, channel, agent) {
 		if l.Kind == "agent_notes" {

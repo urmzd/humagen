@@ -380,7 +380,7 @@ export function StepGroup({
       {line.counts && !line.running && line.file && <Counts edit={line.file} />}
       {line.waiting && <span className="shrink-0 text-aui-accent">{w.waiting}</span>}
       {line.failed > 0 && (
-        <span className="shrink-0 text-aui-muted">· {w.failed(line.failed)}</span>
+        <span className="shrink-0 text-aui-muted">| {w.failed(line.failed)}</span>
       )}
     </>
   );

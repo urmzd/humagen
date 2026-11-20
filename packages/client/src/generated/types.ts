@@ -1005,6 +1005,8 @@ export interface Actor {
 
 /** The workspace's tools that act as the caller, how the caller stands with each, and what the workspace lets people give. */
 export interface ToolCredentials {
+  oauth_available: boolean;
+  allowed_hosts: string[];
   providers: ToolCredential[];
   /** Whether this workspace lets people store a credential's value with Humagen. Off, people give only a reference to where it is kept. */
   values: boolean;
@@ -1049,6 +1051,7 @@ export interface PersonalApprovedTool {
 
 /** An MCP server a person adds for themselves. Its credential is a reference, never a secret. */
 export interface PersonToolServer {
+  oauth?: string;
   /** Exact tools approved by the person. Missing means unavailable to runs. */
   tools?: PersonalApprovedTool[];
   name: string;
@@ -1114,6 +1117,7 @@ handle and by name, never by the subject they sign in with, which may
 hold an address.
  */
 export interface RunFeedback {
+  finding_id?: string;
   run: string;
   /** The rater's handle, else their subject when it holds no address (a machine's), else "". */
   by: string;
@@ -1416,6 +1420,7 @@ visibility and an optional default agent. Its turns are its people's
 messages and its agents' runs.
  */
 export interface Thread {
+  session?: SessionIdentity;
   /** A saved project-fork archive. Its passive history is immutable and it accepts no messages or runs. */
   read_only?: boolean;
   /** Number of committed placement changes, without former audience identities. */
@@ -2008,6 +2013,7 @@ export interface ProjectContext {
 }
 
 export interface ContextLayer {
+  version?: string;
   kind: string;
   from: string;
   text: string;
@@ -2148,6 +2154,7 @@ a path), which has no title, parent or account: show the workspace's
 name for it. It reads as version 0 until it is first changed.
  */
 export interface Project {
+  approve_reviews?: boolean;
   template?: string;
   /** An initiative coordinates child projects. Its agents cannot run directly in descendants. */
   initiative?: boolean;
@@ -2272,6 +2279,7 @@ and instructions are replaced as a whole: one left out is cleared.
 when given.
  */
 export interface ProjectUpdate {
+  approve_reviews?: boolean;
   /** The version the caller read. */
   version: number;
   title?: string;
@@ -2528,6 +2536,8 @@ message that tags none, is the root's `default`
 (`GET /api/projects/~/agents`).
  */
 export interface Settings {
+  eval_limits?: EvaluationLimits;
+  prompts?: PromptLayers;
   /** Whether an agent is sent the conversation so far. */
   history: "recent" | "none";
   history_limit: number;
@@ -2561,6 +2571,7 @@ export interface PersonalPreferences {
   /** Opt in to the configured email relay using the same event preferences and quiet hours. */
   email?: boolean;
   briefing: string;
+  /** Per-event delivery preferences. Session alert priorities use urgent, normal and low keys; unset priorities are off. Earlier event-kind keys remain supported. */
   notifications: Record<string, "immediate" | "digest" | "off">;
   quiet_start: string;
   quiet_end: string;
@@ -3217,7 +3228,7 @@ export interface Span {
 /** `budget` is raised by a billing policy, never by a rule, and a rule
 cannot be created with it.
  */
-export type AlertKind = "run_failed" | "failure_rate" | "slow_run" | "eval_below" | "spend" | "budget";
+export type AlertKind = "run_failed" | "failure_rate" | "slow_run" | "eval_below" | "spend" | "budget" | "session" | "mention" | "source" | "approval" | "clarification" | "failure" | "operation" | "alert" | "connection";
 
 export type AlertSeverity = "warning" | "critical";
 
@@ -3272,6 +3283,16 @@ lists every alert to them. At most 20 entries.
 }
 
 export interface Alert {
+  who?: string[];
+  resolve_when?: string;
+  action?: string;
+  resolved_at?: string;
+  resolved_by?: string;
+  snoozed_until?: string;
+  state?: "open" | "snoozed" | "resolved";
+  priority?: "urgent" | "normal" | "low";
+  message?: string;
+  session?: string;
   id: string;
   rule: string;
   kind: AlertKind;
@@ -3299,6 +3320,7 @@ export interface EvalCheck {
 }
 
 export interface EvalCase {
+  trace?: EvalTrace;
   id: string;
   input: string;
   checks?: EvalCheck[];
@@ -3307,6 +3329,7 @@ export interface EvalCase {
 }
 
 export interface EvalSuite {
+  every_seconds?: number;
   name: string;
   description?: string;
   target: EvalTarget;
@@ -3366,7 +3389,7 @@ export interface EvalRun {
 }
 
 /** A suite with its most recent runs, newest first. */
-export type EvalSuiteView = EvalSuite & { runs: EvalRun[] };
+export type EvalSuiteView = EvalSuite & { every_seconds?: number; runs: EvalRun[] };
 
 /** A saved view of a source, which leaves some documents out. */
 export interface KnowledgeVariant {
@@ -3514,6 +3537,40 @@ export interface CatalogEntry {
 export interface CatalogMark {
   by: string;
   at: string;
+}
+
+export interface BigQuerySetupCredential {
+  kind?: "oauth" | "adc" | "reference";
+  /** A permitted personal credential reference */
+  ref?: string;
+}
+
+export interface BigQuerySetupInput {
+  name: string;
+  project: string;
+  /** Explicit dataset IDs, at most 6000 characters in total. */
+  datasets: string[];
+  location?: string;
+  credential?: BigQuerySetupCredential;
+  max_bytes_billed: number;
+  max_rows: number;
+  timeout_seconds: number;
+  refresh_hours: number;
+}
+
+export interface BigQueryAdcScope {
+  project: string;
+  /** An empty array permits every dataset in this deployment-declared project. */
+  datasets: string[];
+}
+
+export interface BigQuerySetupView {
+  oauth_available: boolean;
+  connected: boolean;
+  /** Your managed OAuth connector names that can bind renewed consent. */
+  oauth_connectors: string[];
+  adc: BigQueryAdcScope[];
+  credential_refs: string[];
 }
 
 export interface CatalogConnector {
@@ -3763,6 +3820,7 @@ export interface SlackCommand {
 }
 
 export interface SlackOptions {
+  action_channels?: string[];
   sessions?: boolean;
   commands?: SlackCommand[];
   /** The subject of the credential a Slack app signs in to the API with. Only it may act for `people`. */
@@ -3787,6 +3845,8 @@ export interface GitHubAutomation {
 }
 
 export interface GitHubOptions {
+  fix_pull_requests?: boolean;
+  action_repositories?: string[];
   /** Signed webhook rules. Own bot events and commits are always ignored. Check runs require commit author evidence in the payload. */
   automations?: GitHubAutomation[];
   /** Exact verified non-bot GitHub logins mapped explicitly by this installation to workspace subjects. No inferred identity or cross-installation fallback. */
@@ -3872,7 +3932,7 @@ discriminator: dotted segments and a version, such as
 or one type. The set is open: a reader passes over a type it does not
 know (`UnknownEvent`). This list is the catalog this build registers.
  */
-export type EventType = "control.compact.v1" | "control.stop.v1" | "cron.tick.v1" | "github.issue_comment.created.v1" | "github.issues.labeled.v1" | "github.issues.opened.v1" | "github.pull_request.labeled.v1" | "github.pull_request.opened.v1" | "github.pull_request.ready_for_review.v1" | "github.pull_request.review_requested.v1" | "github.pull_request.synchronize.v1" | "github.pull_request_review.submitted.v1" | "github.pull_request_review_comment.created.v1" | "jira.comment.created.v1" | "jira.issue.assigned.v1" | "jira.issue.created.v1" | "message.posted.v1" | "run.accepted.v1" | "run.action.taken.v1" | "run.child.parked.v1" | "run.completed.v1" | "run.context.compacted.v1" | "run.delta.citation.v1" | "run.delta.text.v1" | "run.delta.thinking.v1" | "run.delta.tool.call.v1" | "run.delta.tool.done.v1" | "run.failed.v1" | "run.parked.v1" | "run.resumed.v1" | "run.started.v1" | "run.stopped.v1" | "run.usage.child.v1" | "run.usage.v1" | "slack.command.invoked.v1" | "slack.session.stopped.v1";
+export type EventType = "control.compact.v1" | "control.stop.v1" | "cron.tick.v1" | "github.issue_comment.created.v1" | "github.issues.labeled.v1" | "github.issues.opened.v1" | "github.pull_request.labeled.v1" | "github.pull_request.opened.v1" | "github.pull_request.ready_for_review.v1" | "github.pull_request.review_requested.v1" | "github.pull_request.synchronize.v1" | "github.pull_request_review.submitted.v1" | "github.pull_request_review_comment.created.v1" | "jira.comment.created.v1" | "jira.issue.assigned.v1" | "jira.issue.created.v1" | "message.posted.v1" | "run.accepted.v1" | "run.action.taken.v1" | "run.child.parked.v1" | "run.completed.v1" | "run.context.compacted.v1" | "run.delta.citation.v1" | "run.delta.text.v1" | "run.delta.thinking.v1" | "run.delta.tool.call.v1" | "run.delta.tool.done.v1" | "run.failed.v1" | "run.feedback.v1" | "run.parked.v1" | "run.resumed.v1" | "run.started.v1" | "run.stopped.v1" | "run.usage.child.v1" | "run.usage.v1" | "slack.command.invoked.v1" | "slack.session.stopped.v1";
 
 /** One fragment of the agent's answer, in order. Concatenate fragments. */
 export interface TextPayload {
@@ -4300,6 +4360,7 @@ version; `data` is that type's body as JSON. `run`, `seq`, `agent`,
 `version` and `digest` are set on every run event.
  */
 export interface EventEnvelope {
+  session?: string;
   /** Unique per source. A redelivery keeps it. */
   id: string;
   /** What produced the event, as a URI. */
@@ -4337,7 +4398,7 @@ which variant it is. A type not in the mapping is an `UnknownEvent`.
 The API sends run events only (`run.*`); the other types are listed
 so the union is the whole catalog.
  */
-export type RunEvent = CompactRequestedEvent | StopRequestedEvent | CronTickEvent | GitHubIssueCommentCreatedEvent | GitHubIssueLabeledEvent | GitHubIssueOpenedEvent | GitHubPullLabeledEvent | GitHubPullOpenedEvent | GitHubPullReadyForReviewEvent | GitHubReviewRequestedEvent | GitHubPullSynchronizeEvent | GitHubReviewSubmittedEvent | GitHubReviewCommentCreatedEvent | JiraCommentCreatedEvent | JiraIssueAssignedEvent | JiraIssueCreatedEvent | MessagePostedEvent | RunAcceptedEvent | ActionTakenEvent | ChildParkedEvent | RunCompletedEvent | ContextCompactedEvent | CitationEvent | TextDeltaEvent | ThinkingDeltaEvent | ToolCallEvent | ToolDoneEvent | RunFailedEvent | RunParkedEvent | RunResumedEvent | RunStartedEvent | RunStoppedEvent | UsageChildEvent | UsageCallEvent | SlackCommandInvokedEvent | SlackSessionStoppedEvent;
+export type RunEvent = CompactRequestedEvent | StopRequestedEvent | CronTickEvent | GitHubIssueCommentCreatedEvent | GitHubIssueLabeledEvent | GitHubIssueOpenedEvent | GitHubPullLabeledEvent | GitHubPullOpenedEvent | GitHubPullReadyForReviewEvent | GitHubReviewRequestedEvent | GitHubPullSynchronizeEvent | GitHubReviewSubmittedEvent | GitHubReviewCommentCreatedEvent | JiraCommentCreatedEvent | JiraIssueAssignedEvent | JiraIssueCreatedEvent | MessagePostedEvent | RunAcceptedEvent | ActionTakenEvent | ChildParkedEvent | RunCompletedEvent | ContextCompactedEvent | CitationEvent | TextDeltaEvent | ThinkingDeltaEvent | ToolCallEvent | ToolDoneEvent | RunFailedEvent | RunFeedbackEvent | RunParkedEvent | RunResumedEvent | RunStartedEvent | RunStoppedEvent | UsageChildEvent | UsageCallEvent | SlackCommandInvokedEvent | SlackSessionStoppedEvent;
 
 /** A request that a run compact its context. The runtime's traffic, never sent on this API. */
 export type CompactRequestedEvent = EventEnvelope & { type: "control.compact.v1"; data: CompactRequestPayload };
@@ -4469,6 +4530,317 @@ export interface Manifest {
   root: string;
   runs: ManifestRun[];
   usage: ManifestUsage;
+}
+
+export interface SessionIdentity {
+  agent: string;
+  parent: string;
+  label?: string;
+  /** The readable session alert that anchors this fix conversation. */
+  source_alert?: string;
+}
+
+/** A session message with optional routing to a mentioned agent. */
+export interface SessionPostInput {
+  text: string;
+  /** The turn it follows. Empty follows the latest. */
+  after?: string;
+  post_only?: boolean;
+  /** A model, `provider/model`, the runs this message starts use in place of their agent's own. Applied only for an agent whose `choices.models` offers it; any other runs on its own model. The run's model ceilings still apply. */
+  model?: string;
+  /** A reasoning effort, such as `low` or `high`, the runs this message starts use. Applied only for an agent whose `choices.efforts` offers it. A model that does not take it fails the run before any model call. */
+  effort?: string;
+  answers?: ThreadAnswerRef;
+  act_as?: ActAs;
+  surface?: SurfaceRef;
+  /** The @agent in text whose child receives this request. */
+  agent?: string;
+  /** Start an independent child instead of continuing its existing session. */
+  fresh?: boolean;
+  label?: string;
+}
+
+export interface SessionInput {
+  text: string;
+  agent?: string;
+  parent?: string;
+  label?: string;
+  fresh?: boolean;
+  project?: string;
+  model?: string;
+  effort?: string;
+  /** The readable session alert that anchors this fix conversation. */
+  source_alert?: string;
+}
+
+export interface AgentSessionSummary {
+  conversation: ThreadSummary;
+  id: string;
+  agent: string;
+  parent: string;
+  label?: string;
+  project: string;
+  title: string;
+  status: "working" | "waiting" | "done" | "failed" | "stopped";
+  updated_at: string;
+}
+
+export interface SessionAuthor {
+  kind: string;
+  name: string;
+  version?: string;
+}
+
+export interface SessionPart {
+  type: string;
+  text?: string;
+  session?: string;
+  agent?: string;
+  status?: string;
+}
+
+export interface SessionFeedback {
+  rating: "up" | "down";
+  reason?: string;
+  comment?: string;
+  finding_id?: string;
+}
+
+export interface SessionMessage {
+  finding_feedback?: SessionFeedback[];
+  message?: ThreadMessage;
+  id: string;
+  session: string;
+  author: SessionAuthor;
+  status: string;
+  parts: SessionPart[];
+  at: string;
+  run?: Run;
+  ask?: ThreadAsk;
+  feedback?: SessionFeedback;
+}
+
+export interface SessionLink {
+  target: string;
+  kind: "context" | "evidence";
+  created_at: string;
+}
+
+export interface AgentSession {
+  usage?: RunUsage;
+  conversation: ThreadSummary;
+  thread: Thread;
+  id: string;
+  agent: string;
+  parent: string;
+  label?: string;
+  project: string;
+  title: string;
+  status: "working" | "waiting" | "done" | "failed" | "stopped";
+  updated_at: string;
+  messages: SessionMessage[];
+  children: AgentSessionSummary[];
+  links: SessionLink[];
+  people: ThreadParticipant[];
+  next?: string;
+  cursor: string;
+  /** More changed messages remain after a since read. Continue with the returned cursor. */
+  more?: boolean;
+  summary?: string;
+}
+
+export interface ConnectionHealth {
+  healthy: boolean;
+  checked_at: string;
+  message: string;
+}
+
+export interface ConnectionMapping {
+  kind: string;
+  id: string;
+  name: string;
+  agents: string[];
+  projects: string[];
+  /** Configured reply channels or repositories visible to the caller. */
+  places: string[];
+  tools: string[];
+  health?: ConnectionHealth;
+}
+
+export interface ConnectionDetail {
+  connection: ConnectionPreset;
+  mappings: ConnectionMapping[];
+  note: string;
+  truncated: boolean;
+}
+
+export interface ConnectionPreset {
+  id: string;
+  name: string;
+  kind: string;
+  endpoint?: string;
+  available: boolean;
+  connected: boolean;
+  reason?: string;
+  scope: string;
+  /** Granted scopes reported by the provider. Omitted when it did not report scopes. */
+  granted_scopes?: string[];
+  /** A confirmed provider rejection requires renewed consent. */
+  reconnect_required?: boolean;
+  health?: ConnectionHealth;
+}
+
+export interface ConnectionRegistration {
+  issuer: string;
+  client_id: string;
+  client_secret?: string;
+}
+
+export interface ConnectionAuthorizationInput {
+  endpoint?: string;
+  scope?: "person" | "workspace";
+  registration?: ConnectionRegistration;
+}
+
+export interface ConnectionAuthorization {
+  provider?: string;
+  url: string;
+  expires_at: string;
+}
+
+export interface ConnectionCallback {
+  /** Required with GitHub installation callbacks; verified by GitHub before saving. */
+  installation_id?: string;
+  state: string;
+  code: string;
+}
+
+export interface PromptLayers {
+  platform?: string;
+  workspace?: string;
+  slack_word_budget?: number;
+}
+
+export interface EvalTrace {
+  run: string;
+  tools: EvalToolOutcome[];
+  retrieval?: EvalRetrieval;
+}
+
+export interface EvalRetrieval {
+  input: string;
+  query: string;
+  sources: string[];
+  prompt: string;
+  blocks: EvalContextBlock[];
+  digest: string;
+}
+
+export interface EvalContextBlock {
+  text: string;
+  citation: string;
+  provenance: EvalProvenance;
+}
+
+export interface EvalProvenance {
+  document_uuid?: string;
+  document_title?: string;
+  source_uri?: string;
+  section_uuid?: string;
+  section_heading?: string;
+  section_index?: number;
+}
+
+export interface EvalToolOutcome {
+  name: string;
+  arguments: Record<string, unknown>;
+  result?: string;
+  error?: string;
+}
+
+export interface FeedbackPayload {
+  run: string;
+  session?: string;
+  message?: string;
+  finding?: string;
+  actor: Actor;
+  rating: string;
+  reasons?: string[];
+  comment?: string;
+  surface: string;
+  removed?: boolean;
+}
+
+export type RunFeedbackEvent = EventEnvelope & { type: "run.feedback.v1"; data: FeedbackPayload };
+
+export interface EvaluationLimits {
+  max_spend?: number;
+  max_duration_ms?: number;
+  require_evidence?: boolean;
+}
+
+export interface EvaluationSignals {
+  spend: number;
+  model_calls: number;
+  tokens: number;
+  unpriced_calls: number;
+  latency_ms: number;
+  waiting_ms: number;
+  tool_calls: number;
+  tool_errors: number;
+  attempts: number;
+  retries: number;
+  up: number;
+  down: number;
+  run: string;
+  rating?: string;
+}
+
+export interface OnlineEvaluation {
+  agent: string;
+  run: string;
+  version: number;
+  passed: boolean;
+  words: number;
+  word_budget: number;
+  verdicts: EvalVerdict[];
+  at: string;
+  signals: EvaluationSignals;
+}
+
+export interface AgentEvaluationHealth {
+  agent: string;
+  status: "untested" | "healthy" | "needs_review";
+  samples: number;
+  passed: number;
+  pass_rate: number;
+  results: OnlineEvaluation[];
+}
+
+export interface AgentChangeScore {
+  suite: string;
+  suite_hash: string;
+  before: number;
+  after: number;
+  passed: boolean;
+  results: EvalResult[] | null;
+}
+
+export interface AgentChange {
+  id: string;
+  agent: string;
+  kind: string;
+  context_hash: string;
+  before_hash: string;
+  after_hash: string;
+  candidate: Record<string, unknown>;
+  scores: AgentChangeScore[] | null;
+  evaluated: boolean;
+  passed: boolean;
+  at: string;
+  error?: string;
+  override_by?: string;
+  override_reason?: string;
 }
 
 export interface GitHubSubjectPullRequest {
@@ -4621,6 +4993,46 @@ export interface ClientViewCredentials {
 export interface ManifestUsage {
   metered: boolean;
   total: Usage;
+}
+
+export interface ListSessionsResponse {
+  sessions: AgentSessionSummary[];
+  next: string;
+}
+
+export interface StopSessionBody {
+  children?: boolean;
+}
+
+export interface InviteSessionPersonBody {
+  person: string;
+}
+
+export interface LinkSessionBody {
+  target: string;
+  kind?: "context" | "evidence";
+}
+
+export interface SaveSessionFeedbackBody {
+  rating: "up" | "down";
+  reason?: string;
+  comment?: string;
+  finding_id?: string;
+}
+
+export interface CreateSessionAlertBody {
+  title: string;
+  body?: string;
+  priority: "urgent" | "normal" | "low";
+  message?: string;
+  who?: string[];
+  action?: string;
+  resolve_when?: string;
+}
+
+export interface ChangeAlertStateBody {
+  state: "open" | "snoozed" | "resolved";
+  snoozed_until?: string;
 }
 
 export interface ReviewedPullsResponse {
@@ -4778,6 +5190,7 @@ export interface ListRunFeedbackResponse {
 }
 
 export interface SaveRunFeedbackBody {
+  finding_id?: string;
   rating: "up" | "down";
   reason?: string;
   comment?: string;
@@ -4991,10 +5404,6 @@ export interface ListKnowledgeResourcesResponse {
 export interface SetKnowledgeSyncSettingsBody {
   every_seconds: number;
   stop_after_seconds: number;
-}
-
-export interface ConnectKnowledgeSourceBody {
-  ref: string;
 }
 
 export interface SearchKnowledgeResponseWarningsItem {

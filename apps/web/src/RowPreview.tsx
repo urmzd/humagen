@@ -29,9 +29,11 @@ export function usePeek() {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && close();
     window.addEventListener("keydown", onKey);
     window.addEventListener("scroll", close, true);
+    document.addEventListener("pointerdown", close, true);
     return () => {
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("scroll", close, true);
+      document.removeEventListener("pointerdown", close, true);
     };
   }, [at, close]);
   useEffect(() => stop, [stop]);
@@ -114,7 +116,7 @@ export function ConversationPeek({
         {task.title || "Untitled conversation"}
       </span>
       <span className="truncate text-aui-2xs text-aui-muted">
-        {project || words.outsideProject} · {words.updated(updatedWhen(task.updated_at))}
+        {project || words.outsideProject} | {words.updated(updatedWhen(task.updated_at))}
       </span>
       {task.last && (
         <span className="mt-1 flex items-start gap-1.5 text-aui-muted">

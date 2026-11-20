@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { UnknownEvent } from "@humagen/client/types";
-import { adapter, type RunEvent } from "./run.ts";
+import { adapter, failureOf, type RunEvent } from "./run.ts";
 
 function ev(type: string, data: unknown = {}, seq = 1): RunEvent {
   return {
@@ -329,4 +329,23 @@ test("legacy and malformed citation facts remain explicitly unproven", () => {
   assert.equal(event.citation.mode, "live");
   assert.equal(event.citation.copyAt, undefined);
   assert.equal(event.citation.refreshFailed, undefined);
+});
+
+
+test("provider credential failures preserve safe context without exposing a secret", () => {
+  const failure = failureOf("Anthropic API key sk-private is unauthorized", "r1");
+  assert.equal(failure.title, "Anthropic credential unavailable");
+  assert.equal(failure.retryable, false);
+  assert.doesNotMatch(JSON.stringify(failure), /sk-private/);
+  assert.match(failure.message ?? "", /workspace operator/);
+});
+
+test("budget exhaustion is not retried blindly and connection refusal keeps its safe cause", () => {
+  const budget = failureOf("workspace spend limit reached", "r2");
+  assert.equal(budget.title, "Budget reached");
+  assert.equal(budget.retryable, false);
+  const unavailable = failureOf("dial tcp private-host.internal:443: connection refused", "r3");
+  assert.equal(unavailable.kind, "unavailable");
+  assert.match(unavailable.message ?? "", /connection refused/);
+  assert.doesNotMatch(unavailable.message ?? "", /private-host/);
 });

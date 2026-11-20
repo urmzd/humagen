@@ -327,6 +327,10 @@ type alertView struct {
 	AckedByName string `json:"acked_by_name,omitempty"`
 }
 
+func viewAlert(names platform.Names, a alerts.Alert) alertView {
+	return alertView{Alert: names.Alert(a), AckedByName: names.Of(a.AckedBy)}
+}
+
 // ruleView is a rule and what the person who made it is called.
 type ruleView struct {
 	alerts.Rule
@@ -337,7 +341,24 @@ func viewRule(names platform.Names, r alerts.Rule) ruleView {
 	return ruleView{Rule: r, CreatedByName: names.Of(r.CreatedBy)}
 }
 
-func (s *Server) listAlerts(w http.ResponseWriter, _ *http.Request, who auth.Principal) {
+func (s *Server) listAlerts(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	q := r.URL.Query()
+	if v := q.Get("state"); v != "" && v != "open" && v != "snoozed" && v != "resolved" {
+		fail(w, http.StatusBadRequest, "unknown alert state")
+		return
+	}
+	if v := q.Get("priority"); v != "" && v != "urgent" && v != "normal" && v != "low" {
+		fail(w, http.StatusBadRequest, "unknown alert priority")
+		return
+	}
+	if v := q.Get("source"); len(v) > 64 || strings.ContainsAny(v, "\x00\r\n") {
+		fail(w, http.StatusBadRequest, "invalid alert source")
+		return
+	}
+	if v := q.Get("mine"); v != "" && v != "true" && v != "false" {
+		fail(w, http.StatusBadRequest, "mine must be true or false")
+		return
+	}
 	seer := s.P.Seer(who)
 	names := s.P.Names(who.Tenant)
 	out := []alertView{}
@@ -347,10 +368,37 @@ func (s *Server) listAlerts(w http.ResponseWriter, _ *http.Request, who auth.Pri
 		return
 	}
 	for _, a := range all {
+		a = a.View(time.Now().UTC())
+		if v := q.Get("state"); v != "" && string(a.State) != v {
+			continue
+		}
+		if v := q.Get("priority"); v != "" && string(a.Priority) != v {
+			continue
+		}
+		if v := q.Get("source"); v != "" && string(a.Kind) != v {
+			continue
+		}
+		if v := q.Get("session"); v != "" && a.Session != v {
+			continue
+		}
+		if q.Get("mine") == "true" && !alertFor(a, who) {
+			continue
+		}
 		if seer.Alert(a) {
-			out = append(out, alertView{Alert: a, AckedByName: names.Of(a.AckedBy)})
+			out = append(out, viewAlert(names, a))
 		}
 	}
+	rank := func(p alerts.Priority) int {
+		switch p {
+		case alerts.Urgent:
+			return 0
+		case alerts.Normal:
+			return 1
+		default:
+			return 2
+		}
+	}
+	slices.SortStableFunc(out, func(a, b alertView) int { return rank(a.Priority) - rank(b.Priority) })
 	ok(w, http.StatusOK, map[string]any{"alerts": out})
 }
 
@@ -360,7 +408,7 @@ func (s *Server) ackAlert(w http.ResponseWriter, r *http.Request, who auth.Princ
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusOK, alertView{Alert: a, AckedByName: s.P.NameOf(who.Tenant, a.AckedBy)})
+	ok(w, http.StatusOK, viewAlert(s.P.Names(who.Tenant), a.View(time.Now().UTC())))
 }
 
 func (s *Server) listRules(w http.ResponseWriter, _ *http.Request, who auth.Principal) {
@@ -656,7 +704,7 @@ func (s *Server) listSuites(w http.ResponseWriter, _ *http.Request, who auth.Pri
 		if !seer.Suite(suite) {
 			continue
 		}
-		runs, _ := s.P.Evals.Runs(who.Tenant, suite.Name)
+		runs, _ := s.P.EvalRunsView(who, suite.Name)
 		if len(runs) > 20 {
 			runs = runs[:20]
 		}
@@ -665,7 +713,7 @@ func (s *Server) listSuites(w http.ResponseWriter, _ *http.Request, who auth.Pri
 				runs[i].Results = []evals.Result{}
 			}
 		}
-		out = append(out, suiteView{Suite: suite, Runs: orEmpty(runs)})
+		out = append(out, suiteView{Suite: s.P.EvalSuiteView(suite), Runs: orEmpty(runs)})
 	}
 	ok(w, http.StatusOK, map[string]any{"suites": out})
 }
@@ -710,6 +758,11 @@ func (s *Server) putSuite(replace bool) handler {
 			s.problem(w, err)
 			return
 		}
+		suite, err = s.P.MergeEvalSuiteReplay(who, suite, replace)
+		if err != nil {
+			s.problem(w, err)
+			return
+		}
 		suite.CreatedBy, suite.UpdatedAt = who.Subject, time.Now()
 		if err := s.P.Evals.Put(who.Tenant, suite, replace); err != nil {
 			s.problem(w, err)
@@ -719,7 +772,7 @@ func (s *Server) putSuite(replace bool) handler {
 		if replace {
 			status = http.StatusOK
 		}
-		ok(w, status, suite)
+		ok(w, status, s.P.EvalSuiteView(suite))
 	}
 }
 
@@ -749,7 +802,7 @@ func (s *Server) runSuite(w http.ResponseWriter, r *http.Request, who auth.Princ
 }
 
 func (s *Server) suiteRuns(w http.ResponseWriter, r *http.Request, who auth.Principal) {
-	runs, err := s.P.Evals.Runs(who.Tenant, r.PathValue("name"))
+	runs, err := s.P.EvalRunsView(who, r.PathValue("name"))
 	if err != nil {
 		s.problem(w, err)
 		return
@@ -783,13 +836,24 @@ func (s *Server) configureSource(w http.ResponseWriter, r *http.Request, who aut
 }
 func (s *Server) connectSource(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	var body struct {
-		Ref string `json:"ref"`
+		Ref   string `json:"ref"`
+		OAuth string `json:"oauth"`
 	}
 	if !decode(w, r, &body) {
 		return
 	}
-	if err := s.P.ConnectSource(who, r.PathValue("name"), body.Ref); err != nil {
-		s.problem(w, err)
+	var connectErr error
+	if body.OAuth != "" {
+		if body.Ref != "" {
+			s.problem(w, knowledge.ErrInvalid)
+			return
+		}
+		connectErr = s.P.ConnectSourceOAuth(who, r.PathValue("name"), body.OAuth)
+	} else {
+		connectErr = s.P.ConnectSource(who, r.PathValue("name"), body.Ref)
+	}
+	if connectErr != nil {
+		s.problem(w, connectErr)
 		return
 	}
 	src, err := s.P.SourceAs(who, r.PathValue("name"))

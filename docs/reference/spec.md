@@ -1292,3 +1292,22 @@ servers and reviews their tool lists in Customize. Changes to schemas,
 metadata or read-only hints require another review; every write tool asks
 that person for approval. MCP clients and credential resolution run in the
 trusted worker, outside the agent sandbox.
+
+### Service connection authorization
+
+`System.spec.connections` is optional and defaults to disabled. It accepts
+`encryption_key` (a secret reference to a base64-encoded 32-byte key),
+`redirect_url` (HTTPS, or loopback HTTP for development), and optional
+`clients` keyed by `notion`, `linear` or `granola`. Each client names an HTTPS
+`issuer`, `client_id`, optional `client_secret` reference, and up to 32 `scopes`.
+Missing pre-registered clients use discovery and Dynamic Client Registration.
+The key encrypts OAuth state and tokens on the shared record store. It does not
+change host ceilings or grant tools. See [Connections](connections.md).
+
+### Pull request approvals
+
+A project's `approve_reviews` defaults to `false`. Set it to `true` only when
+agents working in that project may submit approving pull request reviews.
+Comment and request-changes reviews remain available under their normal tool
+and repository grants. The connector checks the actual run's project again
+when delivering a review; a repository grant alone never grants approval.

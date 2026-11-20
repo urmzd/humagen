@@ -36,6 +36,8 @@ servers:
   - url: http://127.0.0.1:8080
     description: A local server started with `make dev`.
 tags:
+  - name: connections
+    description: Connected account authorization and health.
   - name: health
     description: Liveness.
   - name: auth
@@ -55,6 +57,8 @@ tags:
     description: Agent definitions, their revisions and what they remember.
   - name: runs
     description: Runs, the calls between them, and what each recorded.
+  - name: sessions
+    description: One agent conversation, with durable children, messages and links.
   - name: threads
     description: Conversations, which are trees of runs.
   - name: events
@@ -105,6 +109,640 @@ security:
   - bearerToken: []
   - sessionCookie: []
 paths:
+  /api/agents/{name}/changes: {"get": {"operationId": "listAgentChanges", "tags": ["agents"], "summary": "listAgentChanges", "x-permission": "agents:read", "parameters": [{"name": "name", "in": "path", "required": true, "schema": {"type": "string"}}], "responses": {"200": {"description": "Success", "content": {"application/json": {"schema": {"type": "array", "items": {"$ref": "#/components/schemas/AgentChange"}}}}}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "500": {"$ref": "#/components/responses/ServerError"}}}}
+  /api/agents/{name}/health: {"get": {"operationId": "getAgentHealth", "tags": ["agents"], "summary": "getAgentHealth", "x-permission": "agents:read", "parameters": [{"name": "name", "in": "path", "required": true, "schema": {"type": "string"}}], "responses": {"200": {"description": "Success", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AgentEvaluationHealth"}}}}, "401": {"$ref": "#/components/responses/Unauthorized"}, "403": {"$ref": "#/components/responses/Forbidden"}, "404": {"$ref": "#/components/responses/NotFound"}, "500": {"$ref": "#/components/responses/ServerError"}}}}
+  /api/sessions:
+    get:
+      operationId: "listSessions"
+      tags:
+        - "sessions"
+      summary: "List sessions"
+      x-permission: "runs:read"
+      parameters:
+        - {name: roots, in: query, required: false, schema: {type: boolean}}
+        - {name: mine, in: query, required: false, schema: {type: boolean}}
+        - {"name": "status", "in": "query", "required": false, "schema": {"type": "string"}}
+        - {"name": "agent", "in": "query", "required": false, "schema": {"type": "string"}}
+        - {"name": "project", "in": "query", "required": false, "schema": {"type": "string"}}
+        - {"name": "parent", "in": "query", "required": false, "schema": {"type": "string"}}
+        - {"name": "after", "in": "query", "required": false, "schema": {"type": "string"}}
+        - {"name": "limit", "in": "query", "required": false, "schema": {"type": "integer", "minimum": 1, "maximum": 200}}
+      responses:
+        "200":
+          description: "Successful session operation"
+          content:
+            application/json:
+              schema:
+                type: "object"
+                additionalProperties: false
+                required:
+                  - "sessions"
+                  - "next"
+                properties:
+                  sessions:
+                    type: "array"
+                    items:
+                      $ref: "#/components/schemas/AgentSessionSummary"
+                  next:
+                    type: "string"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+    post:
+      operationId: "startSession"
+      tags:
+        - "sessions"
+      summary: "Start session"
+      x-permission: "runs:write"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SessionInput"
+      responses:
+        "201":
+          description: "Successful session operation"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentSession"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/ServerError"
+  /api/sessions/{id}:
+    get:
+      operationId: "getSession"
+      tags:
+        - "sessions"
+      summary: "Get session"
+      x-permission: "runs:read"
+      parameters:
+        - {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}
+        - {"name": "since", "in": "query", "required": false, "description": "Opaque cursor for changed messages, ordered by update time. While more is true, request the returned cursor to continue. Cannot be combined with before or around.", "schema": {"type": "string"}}
+        - {"name": "before", "in": "query", "required": false, "schema": {"type": "string"}}
+        - {"name": "summary", "in": "query", "required": false, "schema": {"type": "boolean"}}
+        - {"name": "around", "in": "query", "required": false, "description": "Return at most 200 turns around this message or run ID. Cannot be combined with since or before. Unknown anchors return 404; next pages toward older turns.", "schema": {"type": "string", "maxLength": 200}}
+      responses:
+        "200":
+          description: "Successful session operation"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentSession"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+  /api/sessions/{id}/messages:
+    post:
+      operationId: "postSessionMessage"
+      tags:
+        - "sessions"
+      summary: "Post session message"
+      x-permission: "runs:write"
+      parameters:
+        - {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SessionPostInput"
+      responses:
+        "201":
+          description: "Successful session operation"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentSession"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/ServerError"
+  /api/sessions/{id}/stop:
+    post:
+      operationId: "stopSession"
+      tags:
+        - "sessions"
+      summary: "Stop session"
+      x-permission: "runs:write"
+      parameters:
+        - {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: "object"
+              additionalProperties: false
+              properties:
+                children:
+                  type: "boolean"
+      responses:
+        "204":
+          description: "Successful session operation"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+  /api/sessions/{id}/people:
+    post:
+      operationId: "inviteSessionPerson"
+      tags:
+        - "sessions"
+      summary: "Invite session person"
+      x-permission: "runs:write"
+      parameters:
+        - {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: "object"
+              additionalProperties: false
+              required:
+                - "person"
+              properties:
+                person:
+                  type: "string"
+      responses:
+        "200":
+          description: "Successful session operation"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentSession"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/ServerError"
+  /api/sessions/{id}/links:
+    post:
+      operationId: "linkSession"
+      tags:
+        - "sessions"
+      summary: "Link session"
+      x-permission: "runs:write"
+      parameters:
+        - {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: "object"
+              additionalProperties: false
+              required:
+                - "target"
+              properties:
+                target:
+                  type: "string"
+                kind:
+                  type: "string"
+                  enum:
+                    - "context"
+                    - "evidence"
+      responses:
+        "204":
+          description: "Successful session operation"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+  /api/sessions/{id}/messages/{mid}/feedback:
+    put:
+      operationId: "saveSessionFeedback"
+      tags:
+        - "sessions"
+      summary: "Save session feedback"
+      x-permission: "runs:read"
+      parameters:
+        - {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}
+        - {"name": "mid", "in": "path", "required": true, "schema": {"type": "string"}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: "object"
+              additionalProperties: false
+              required:
+                - "rating"
+              properties:
+                rating:
+                  type: "string"
+                  enum:
+                    - "up"
+                    - "down"
+                reason:
+                  type: "string"
+                  maxLength: 80
+                comment:
+                  type: "string"
+                  maxLength: 4000
+                finding_id:
+                  type: "string"
+                  maxLength: 200
+      responses:
+        "200":
+          description: "Successful session operation"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunFeedback"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/ServerError"
+    delete:
+      operationId: "deleteSessionFeedback"
+      tags:
+        - "sessions"
+      summary: "Delete session feedback"
+      x-permission: "runs:read"
+      parameters:
+        - {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}
+        - {"name": "mid", "in": "path", "required": true, "schema": {"type": "string"}}
+        - {"name": "finding_id", "in": "query", "required": false, "schema": {"type": "string"}}
+      responses:
+        "204":
+          description: "Successful session operation"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+  /api/sessions/{id}/stream:
+    get:
+      operationId: "streamSession"
+      tags:
+        - "sessions"
+      summary: "Stream session"
+      description: |
+        Emits session snapshots and run events. Resume with Last-Event-ID.
+        A session-reset event carries an authoritative AgentSession snapshot
+        when the bounded cursor compacts. Clear transient deltas and reload
+        visible older history pages on reset.
+      x-permission: "runs:read"
+      parameters:
+        - {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}
+        - {"name": "Last-Event-ID", "in": "header", "required": false, "schema": {"type": "string"}}
+      responses:
+        "200":
+          description: "Session snapshots and run events; reconnect using the last event ID."
+          content:
+            text/event-stream:
+              schema:
+                type: "string"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+  /api/sessions/{id}/alerts:
+    post:
+      operationId: "createSessionAlert"
+      tags:
+        - "sessions"
+      summary: "Create session alert"
+      x-permission: "alerts:write"
+      parameters:
+        - {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: "object"
+              additionalProperties: false
+              required:
+                - "title"
+                - "priority"
+              properties:
+                title:
+                  type: "string"
+                body:
+                  type: "string"
+                priority:
+                  type: "string"
+                  enum:
+                    - "urgent"
+                    - "normal"
+                    - "low"
+                message:
+                  type: "string"
+                who:
+                  type: "array"
+                  items:
+                    type: "string"
+                action:
+                  type: "string"
+                resolve_when:
+                  type: "string"
+      responses:
+        "201":
+          description: "Successful session operation"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Alert"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/ServerError"
+  /api/alerts/{id}:
+    patch:
+      operationId: "changeAlertState"
+      tags:
+        - "sessions"
+      summary: "Change alert state"
+      x-permission: "alerts:write"
+      parameters:
+        - {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: "object"
+              additionalProperties: false
+              required:
+                - "state"
+              properties:
+                state:
+                  type: "string"
+                  enum:
+                    - "open"
+                    - "snoozed"
+                    - "resolved"
+                snoozed_until:
+                  type: "string"
+                  format: "date-time"
+      responses:
+        "200":
+          description: "Successful session operation"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Alert"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+  /api/connections/{provider}/check:
+    post:
+      operationId: checkConnection
+      tags: [connections]
+      summary: Check currently granted connection access
+      x-permission: runs:write
+      parameters:
+        - {name: provider, in: path, required: true, schema: {type: string}}
+      responses:
+        "200":
+          description: A read-only check result. Healthy false describes refused or expired credentials without exposing secrets.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ConnectionHealth"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "503": {$ref: "#/components/responses/Unavailable"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/clients/{id}/check:
+    post:
+      operationId: checkClientConnection
+      tags: [connections]
+      summary: Check currently granted connection access
+      x-permission: clients:write
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      responses:
+        "200":
+          description: A read-only check result. Healthy false describes refused or expired credentials without exposing secrets.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ConnectionHealth"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/connections/presets:
+    get:
+      operationId: "listConnectionPresets"
+      tags:
+        - "sessions"
+      summary: "List connection presets"
+      x-permission: "runs:read"
+      responses:
+        "200":
+          description: "Successful session operation"
+          content:
+            application/json:
+              schema:
+                type: "array"
+                items:
+                  $ref: "#/components/schemas/ConnectionPreset"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/ServerError"
+  /api/connections/{provider}/authorize:
+    post:
+      operationId: "authorizeConnection"
+      tags:
+        - "sessions"
+      summary: "Authorize connection"
+      description: GitHub installation requires a person with clients:write in addition to runs:write.
+      x-permission: "runs:write"
+      parameters:
+        - {"name": "provider", "in": "path", "required": true, "schema": {"type": "string"}}
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConnectionAuthorizationInput"
+      responses:
+        "200":
+          description: "Successful session operation"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectionAuthorization"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/ServerError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+
+  /api/connections/{provider}/callback:
+    post:
+      operationId: "completeConnection"
+      tags:
+        - "sessions"
+      summary: "Complete connection"
+      description: GitHub installation requires a person with clients:write in addition to runs:write.
+      x-permission: "runs:write"
+      parameters:
+        - {"name": "provider", "in": "path", "required": true, "schema": {"type": "string"}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConnectionCallback"
+      responses:
+        "204":
+          description: "Successful session operation"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/ServerError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+
+  /api/connections/{provider}:
+    get:
+      operationId: getConnection
+      tags: [connections]
+      summary: Read your connection and its visible configured uses
+      x-permission: runs:read
+      parameters:
+        - {name: provider, in: path, required: true, schema: {type: string}}
+      responses:
+        "200":
+          description: Current connection and configured uses visible to the caller. A known disconnected preset remains readable.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ConnectionDetail"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+    delete:
+      operationId: "disconnectConnection"
+      tags:
+        - "sessions"
+      summary: "Disconnect connection"
+      x-permission: "runs:write"
+      parameters:
+        - {"name": "provider", "in": "path", "required": true, "schema": {"type": "string"}}
+      responses:
+        "204":
+          description: "Successful session operation"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+
   /api/pull-requests:
     get:
       operationId: reviewedPulls
@@ -1885,6 +2523,63 @@ paths:
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "500": {$ref: "#/components/responses/ServerError"}
+  /api/catalog/connectors/bigquery/setup:
+    get:
+      operationId: getBigQuerySetup
+      tags: [knowledge]
+      summary: Read your available BigQuery credentials and deployment scopes
+      x-permission: knowledge:write
+      responses:
+        "200":
+          description: Current caller's available consent and permitted fallback scopes.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BigQuerySetupView"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/catalog/connectors/bigquery:
+    post:
+      operationId: createBigQueryConnector
+      tags: [knowledge]
+      summary: Save a private unverified BigQuery connector
+      description: Uses existing personal OAuth consent by default. ADC and credential references additionally require clients:write and must stay within the deployment's permitted scope. Saving does not verify or publish the connector.
+      x-permission: knowledge:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/BigQuerySetupInput"}
+      responses:
+        "201":
+          description: Saved private connector. Verify separately before publishing.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CatalogConnector"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/catalog/connectors/{name}/reconnect:
+    post:
+      operationId: reconnectBigQueryConnector
+      tags: [knowledge]
+      summary: Bind renewed consent to your existing BigQuery connector
+      description: Reuses the immutable saved configuration and current personal consent. It does not verify or publish the connector.
+      x-permission: knowledge:write
+      parameters:
+        - {name: name, in: path, required: true, schema: {type: string}}
+      responses:
+        "200":
+          description: Existing connector with renewed consent binding.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CatalogConnector"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
   /api/catalog/connectors/{name}/publish:
     post:
       operationId: publishConnector
@@ -2266,6 +2961,26 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
         "500": {$ref: "#/components/responses/ServerError"}
   /api/runs/{id}/feedback:
+    delete:
+      operationId: "deleteRunFeedback"
+      tags:
+        - "sessions"
+      summary: "Delete run feedback"
+      x-permission: "runs:read"
+      parameters:
+        - {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}
+        - {"name": "finding_id", "in": "query", "required": false, "schema": {"type": "string"}}
+      responses:
+        "204":
+          description: "Successful session operation"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
     put:
       operationId: saveRunFeedback
       tags: [runs]
@@ -2282,6 +2997,7 @@ paths:
               additionalProperties: false
               required: [rating]
               properties:
+                finding_id: {type: string, maxLength: 200}
                 rating: {type: string, enum: [up, down]}
                 reason: {type: string, maxLength: 80}
                 comment: {type: string, maxLength: 4000}
@@ -3584,6 +4300,8 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "413": {$ref: "#/components/responses/TooLarge"}
         "500": {$ref: "#/components/responses/ServerError"}
+        '409':
+          $ref: '#/components/responses/Conflict'
 
   /api/schedules:
     get:
@@ -4819,6 +5537,12 @@ paths:
       tags: [alerts]
       summary: List fired alerts
       x-permission: alerts:read
+      parameters:
+        - {"name": "state", "in": "query", "required": false, "schema": {"type": "string", "enum": [open, snoozed, resolved]}}
+        - {"name": "priority", "in": "query", "required": false, "schema": {"type": "string", "enum": [urgent, normal, low]}}
+        - {"name": "session", "in": "query", "required": false, "schema": {"type": "string"}}
+        - {"name": "mine", "in": "query", "required": false, "schema": {"type": "boolean"}}
+        - {name: source, in: query, description: Exact alert kind that produced the notice., schema: {type: string, maxLength: 64}}
       responses:
         "200":
           description: The alerts.
@@ -4831,6 +5555,7 @@ paths:
                   alerts:
                     type: array
                     items: {$ref: "#/components/schemas/Alert"}
+        "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "500": {$ref: "#/components/responses/ServerError"}
@@ -5484,13 +6209,21 @@ paths:
         - {name: name, in: path, required: true, schema: {type: string}}
       operationId: connectKnowledgeSource
       tags: [knowledge]
-      summary: Connect your own source credential reference
+      summary: Connect your own source account or credential reference
       x-permission: knowledge:read
       requestBody:
         required: true
         content:
           application/json:
-            schema: {type: object, required: [ref], properties: {ref: {type: string, maxLength: 512}}}
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                ref: {type: string, minLength: 1, maxLength: 512}
+                oauth: {type: string, enum: [drive]}
+              oneOf:
+                - required: [ref]
+                - required: [oauth]
       responses:
         "200":
           description: The source. Needs attention records a failed refresh without discarding its last good copy.
@@ -5504,6 +6237,8 @@ paths:
         "413": {$ref: "#/components/responses/TooLarge"}
         "429": {$ref: "#/components/responses/TooMany"}
         "500": {$ref: "#/components/responses/ServerError"}
+        "503": {$ref: "#/components/responses/Unavailable"}
+
   /api/knowledge/{name}/sync:
     post:
       parameters:
@@ -8238,6 +8973,11 @@ components:
       description: How far back to look, as a Go duration up to `720h`, such as `1h` or `24h`. Defaults to `1h`.
       schema: {type: string}
   responses:
+    Unavailable:
+      description: The connection service is not configured or temporarily unavailable.
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/ErrorBody"}
     ServerError:
       description: An error on the server's side. It is logged and reported without detail.
       content:
@@ -9884,8 +10624,14 @@ components:
     ToolCredentials:
       description: The workspace's tools that act as the caller, how the caller stands with each, and what the workspace lets people give.
       type: object
-      required: [providers, values, references]
+      required: [providers, values, references, allowed_hosts, oauth_available]
       properties:
+        oauth_available:
+          type: "boolean"
+        allowed_hosts:
+          type: "array"
+          items:
+            type: "string"
         providers:
           type: array
           maxItems: 64
@@ -9949,6 +10695,8 @@ components:
       type: object
       required: [name, url]
       properties:
+        oauth:
+          type: "string"
         tools:
           description: Exact tools approved by the person. Missing means unavailable to runs.
           type: array
@@ -10037,6 +10785,8 @@ components:
       type: object
       required: [run, by, by_name, mine, rating, updated_at]
       properties:
+        finding_id:
+          type: "string"
         run: {type: string}
         by:
           description: The rater's handle, else their subject when it holds no address (a machine's), else "".
@@ -10508,6 +11258,8 @@ components:
       type: object
       required: [id, project, channel, visibility, participants, version, created_by, created_at, updated_at]
       properties:
+        session:
+          $ref: "#/components/schemas/SessionIdentity"
         read_only:
           description: A saved project-fork archive. Its passive history is immutable and it accepts no messages or runs.
           type: boolean
@@ -11391,6 +12143,8 @@ components:
       additionalProperties: false
       required: [kind, from, text, budget, used, omitted, preview_omitted, sent, unit]
       properties:
+        version:
+          type: "string"
         kind: {type: string}
         from: {type: string}
         text: {type: string}
@@ -11602,6 +12356,7 @@ components:
       type: object
       required: [name, kind, experts, members, agents, version, created_at, updated_at]
       properties:
+        approve_reviews: {type: boolean, default: false}
         template: {type: string}
         initiative:
           description: An initiative coordinates child projects. Its agents cannot run directly in descendants.
@@ -11858,6 +12613,7 @@ components:
       type: object
       required: [version]
       properties:
+        approve_reviews: {type: boolean, default: false}
         version:
           description: The version the caller read.
           type: integer
@@ -12250,6 +13006,9 @@ components:
       type: object
       required: [history, history_limit, title_agent, memory_agent, memory_auto_approve, workspace_name, model_policies, router]
       properties:
+        eval_limits: {$ref: "#/components/schemas/EvaluationLimits"}
+        prompts:
+          $ref: "#/components/schemas/PromptLayers"
         history:
           description: Whether an agent is sent the conversation so far.
           type: string
@@ -12297,7 +13056,8 @@ components:
         briefing: {type: string, maxLength: 500}
         notifications:
           type: object
-          maxProperties: 10
+          description: Per-event delivery preferences. Session alert priorities use urgent, normal and low keys; unset priorities are off. Earlier event-kind keys remain supported.
+          maxProperties: 13
           additionalProperties: {type: string, enum: [immediate, digest, off]}
         quiet_start: {type: string}
         quiet_end: {type: string}
@@ -13181,7 +13941,7 @@ components:
       description: |
         `budget` is raised by a billing policy, never by a rule, and a rule
         cannot be created with it.
-      enum: [run_failed, failure_rate, slow_run, eval_below, spend, budget]
+      enum: [run_failed, failure_rate, slow_run, eval_below, spend, budget, session, mention, source, approval, clarification, failure, operation, alert, connection]
     AlertSeverity:
       type: string
       enum: [warning, critical]
@@ -13260,6 +14020,38 @@ components:
       type: object
       required: [id, rule, kind, severity, title, at]
       properties:
+        who:
+          type: "array"
+          items:
+            type: "string"
+        resolve_when:
+          type: "string"
+        action:
+          type: "string"
+        resolved_at:
+          type: "string"
+          format: "date-time"
+        resolved_by:
+          type: "string"
+        snoozed_until:
+          type: "string"
+          format: "date-time"
+        state:
+          type: "string"
+          enum:
+            - "open"
+            - "snoozed"
+            - "resolved"
+        priority:
+          type: "string"
+          enum:
+            - "urgent"
+            - "normal"
+            - "low"
+        message:
+          type: "string"
+        session:
+          type: "string"
         id: {type: string}
         rule: {type: string}
         kind: {$ref: "#/components/schemas/AlertKind"}
@@ -13293,6 +14085,7 @@ components:
       type: object
       required: [id, input]
       properties:
+        trace: {$ref: "#/components/schemas/EvalTrace"}
         id: {type: string}
         input: {type: string}
         checks:
@@ -13306,6 +14099,7 @@ components:
       type: object
       required: [name, target, subject, cases]
       properties:
+        every_seconds: {type: integer, minimum: 0, maximum: 2592000}
         name: {type: string}
         description: {type: string}
         target: {$ref: "#/components/schemas/EvalTarget"}
@@ -13387,6 +14181,7 @@ components:
         - type: object
           required: [runs]
           properties:
+            every_seconds: {type: integer, minimum: 0, maximum: 2592000}
             runs:
               type: array
               items: {$ref: "#/components/schemas/EvalRun"}
@@ -13586,6 +14381,52 @@ components:
       properties:
         by: {type: string}
         at: {type: string, format: date-time}
+    BigQuerySetupCredential:
+      type: object
+      additionalProperties: false
+      properties:
+        kind: {type: string, enum: [oauth, adc, reference], default: oauth}
+        ref: {type: string, maxLength: 512, description: "A permitted personal credential reference, required only for reference kind."}
+    BigQuerySetupInput:
+      type: object
+      additionalProperties: false
+      required: [name, project, datasets, max_bytes_billed, max_rows, timeout_seconds, refresh_hours]
+      properties:
+        name: {type: string}
+        project: {type: string, minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$'}
+        datasets:
+          type: array
+          minItems: 1
+          maxItems: 50
+          uniqueItems: true
+          description: Explicit dataset IDs, at most 6000 characters in total.
+          items: {type: string, minLength: 1, maxLength: 1024, pattern: '^[A-Za-z0-9_]+$'}
+        location: {type: string, maxLength: 64}
+        credential: {$ref: "#/components/schemas/BigQuerySetupCredential"}
+        max_bytes_billed: {type: integer, format: int64, minimum: 1, maximum: 1099511627776}
+        max_rows: {type: integer, minimum: 1, maximum: 10000}
+        timeout_seconds: {type: integer, minimum: 1, maximum: 600}
+        refresh_hours: {type: integer, minimum: 1, maximum: 720}
+    BigQueryADCScope:
+      type: object
+      additionalProperties: false
+      required: [project, datasets]
+      properties:
+        project: {type: string}
+        datasets:
+          type: array
+          description: An empty array permits every dataset in this deployment-declared project.
+          items: {type: string}
+    BigQuerySetupView:
+      type: object
+      additionalProperties: false
+      required: [oauth_available, connected, oauth_connectors, adc, credential_refs]
+      properties:
+        oauth_available: {type: boolean}
+        connected: {type: boolean}
+        oauth_connectors: {type: array, items: {type: string}, description: Your managed OAuth connector names that can bind renewed consent.}
+        adc: {type: array, items: {$ref: "#/components/schemas/BigQueryADCScope"}}
+        credential_refs: {type: array, items: {type: string}}
     CatalogConnector:
       type: object
       required: [name, system, entries, generation]
@@ -13919,6 +14760,7 @@ components:
     SlackOptions:
       type: object
       properties:
+        action_channels: {type: array, items: {type: string}}
         sessions: {type: boolean}
         commands:
           type: array
@@ -13949,6 +14791,8 @@ components:
     GitHubOptions:
       type: object
       properties:
+        fix_pull_requests: {type: boolean, default: false}
+        action_repositories: {type: array, items: {type: string}}
         automations:
           description: Signed webhook rules. Own bot events and commits are always ignored. Check runs require commit author evidence in the payload.
           type: array
@@ -14116,6 +14960,7 @@ components:
         - run.delta.tool.call.v1
         - run.delta.tool.done.v1
         - run.failed.v1
+        - run.feedback.v1
         - run.parked.v1
         - run.resumed.v1
         - run.started.v1
@@ -14694,6 +15539,7 @@ components:
       type: object
       required: [id, source, type, channel, time, hops]
       properties:
+        session: {type: string}
         id:
           description: Unique per source. A redelivery keeps it.
           type: string
@@ -14782,6 +15628,7 @@ components:
         - $ref: "#/components/schemas/ToolCallEvent"
         - $ref: "#/components/schemas/ToolDoneEvent"
         - $ref: "#/components/schemas/RunFailedEvent"
+        - $ref: "#/components/schemas/RunFeedbackEvent"
         - $ref: "#/components/schemas/RunParkedEvent"
         - $ref: "#/components/schemas/RunResumedEvent"
         - $ref: "#/components/schemas/RunStartedEvent"
@@ -14821,6 +15668,7 @@ components:
           run.delta.tool.call.v1: "#/components/schemas/ToolCallEvent"
           run.delta.tool.done.v1: "#/components/schemas/ToolDoneEvent"
           run.failed.v1: "#/components/schemas/RunFailedEvent"
+          run.feedback.v1: "#/components/schemas/RunFeedbackEvent"
           run.parked.v1: "#/components/schemas/RunParkedEvent"
           run.resumed.v1: "#/components/schemas/RunResumedEvent"
           run.started.v1: "#/components/schemas/RunStartedEvent"
@@ -15200,3 +16048,464 @@ components:
             total:
               description: Every run's own calls in the tree, once each, attached and delegated runs alike.
               $ref: "#/components/schemas/Usage"
+
+    SessionIdentity:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "agent"
+        - "parent"
+      properties:
+        agent:
+          type: "string"
+        parent:
+          type: "string"
+        label:
+          type: "string"
+        source_alert: {type: string, description: "The readable session alert that anchors this fix conversation."}
+
+    SessionPostInput:
+      description: A session message with optional routing to a mentioned agent.
+      type: object
+      additionalProperties: false
+      required: [text]
+      properties:
+        text: {type: string, maxLength: 8000}
+        after:
+          description: The turn it follows. Empty follows the latest.
+          type: string
+        post_only: {type: boolean}
+        model:
+          description: "A model, `provider/model`, the runs this message starts use in place of their agent's own. Applied only for an agent whose `choices.models` offers it; any other runs on its own model. The run's model ceilings still apply."
+          type: string
+          maxLength: 200
+        effort:
+          description: "A reasoning effort, such as `low` or `high`, the runs this message starts use. Applied only for an agent whose `choices.efforts` offers it. A model that does not take it fails the run before any model call."
+          type: string
+          maxLength: 32
+          pattern: "^[a-z]+$"
+        answers: {$ref: "#/components/schemas/ThreadAnswerRef"}
+        act_as: {$ref: "#/components/schemas/ActAs"}
+        surface: {$ref: "#/components/schemas/SurfaceRef"}
+        agent: {type: string, description: "The @agent in text whose child receives this request."}
+        fresh: {type: boolean, description: "Start an independent child instead of continuing its existing session."}
+        label: {type: string}
+    SessionInput:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "text"
+      properties:
+        text:
+          type: "string"
+        agent:
+          type: "string"
+        parent:
+          type: "string"
+        label:
+          type: "string"
+        fresh:
+          type: "boolean"
+        project:
+          type: "string"
+        model:
+          type: "string"
+        effort:
+          type: "string"
+        source_alert: {type: string, description: "The readable session alert that anchors this fix conversation."}
+
+    AgentSessionSummary:
+      type: "object"
+      additionalProperties: false
+      required:
+        - conversation
+        - "id"
+        - "agent"
+        - "parent"
+        - "project"
+        - "title"
+        - "status"
+        - "updated_at"
+      properties:
+        conversation: {$ref: "#/components/schemas/ThreadSummary"}
+        id:
+          type: "string"
+        agent:
+          type: "string"
+        parent:
+          type: "string"
+        label:
+          type: "string"
+        project:
+          type: "string"
+        title:
+          type: "string"
+        status:
+          type: "string"
+          enum:
+            - "working"
+            - "waiting"
+            - "done"
+            - "failed"
+            - "stopped"
+        updated_at:
+          type: "string"
+          format: "date-time"
+    SessionAuthor:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "kind"
+        - "name"
+      properties:
+        kind:
+          type: "string"
+        name:
+          type: "string"
+        version:
+          type: "string"
+    SessionPart:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "type"
+      properties:
+        type:
+          type: "string"
+        text:
+          type: "string"
+        session:
+          type: "string"
+        agent:
+          type: "string"
+        status:
+          type: "string"
+    SessionFeedback:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "rating"
+      properties:
+        rating:
+          type: "string"
+          enum:
+            - "up"
+            - "down"
+        reason:
+          type: "string"
+          maxLength: 80
+        comment:
+          type: "string"
+          maxLength: 4000
+        finding_id:
+          type: "string"
+          maxLength: 200
+    SessionMessage:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "id"
+        - "session"
+        - "author"
+        - "status"
+        - "parts"
+        - "at"
+      properties:
+        finding_feedback: {type: array, items: {$ref: "#/components/schemas/SessionFeedback"}}
+        message: {$ref: "#/components/schemas/ThreadMessage"}
+        id:
+          type: "string"
+        session:
+          type: "string"
+        author:
+          $ref: "#/components/schemas/SessionAuthor"
+        status:
+          type: "string"
+        parts:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/SessionPart"
+        at:
+          type: "string"
+          format: "date-time"
+        run:
+          $ref: "#/components/schemas/Run"
+        ask:
+          $ref: "#/components/schemas/ThreadAsk"
+        feedback:
+          $ref: "#/components/schemas/SessionFeedback"
+    SessionLink:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "target"
+        - "kind"
+        - "created_at"
+      properties:
+        target:
+          type: "string"
+        kind:
+          type: "string"
+          enum:
+            - "context"
+            - "evidence"
+        created_at:
+          type: "string"
+          format: "date-time"
+    AgentSession:
+      type: "object"
+      additionalProperties: false
+      required:
+        - conversation
+        - "id"
+        - "agent"
+        - "parent"
+        - "project"
+        - "title"
+        - "status"
+        - "updated_at"
+        - "messages"
+        - "children"
+        - "links"
+        - "people"
+        - "cursor"
+        - "thread"
+      properties:
+        usage: {$ref: "#/components/schemas/RunUsage"}
+        conversation: {$ref: "#/components/schemas/ThreadSummary"}
+        thread: {$ref: "#/components/schemas/Thread"}
+        id:
+          type: "string"
+        agent:
+          type: "string"
+        parent:
+          type: "string"
+        label:
+          type: "string"
+        project:
+          type: "string"
+        title:
+          type: "string"
+        status:
+          type: "string"
+          enum:
+            - "working"
+            - "waiting"
+            - "done"
+            - "failed"
+            - "stopped"
+        updated_at:
+          type: "string"
+          format: "date-time"
+        messages:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/SessionMessage"
+        children:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/AgentSessionSummary"
+        links:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/SessionLink"
+        people:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/ThreadParticipant"
+        next:
+          type: "string"
+        cursor:
+          type: "string"
+        more:
+          type: "boolean"
+          description: "More changed messages remain after a since read. Continue with the returned cursor."
+        summary:
+          type: "string"
+    ConnectionHealth:
+      type: object
+      additionalProperties: false
+      required: [healthy, checked_at, message]
+      properties:
+        healthy: {type: boolean}
+        checked_at: {type: string, format: date-time}
+        message: {type: string}
+    ConnectionMapping:
+      type: object
+      additionalProperties: false
+      required: [kind, id, name, agents, projects, places, tools]
+      properties:
+        kind: {type: string}
+        id: {type: string}
+        name: {type: string}
+        agents: {type: array, items: {type: string}}
+        projects: {type: array, items: {type: string}}
+        places: {type: array, items: {type: string}, description: Configured reply channels or repositories visible to the caller.}
+        tools: {type: array, items: {type: string}}
+        health: {$ref: "#/components/schemas/ConnectionHealth"}
+    ConnectionDetail:
+      type: object
+      additionalProperties: false
+      required: [connection, mappings, note, truncated]
+      properties:
+        connection: {$ref: "#/components/schemas/ConnectionPreset"}
+        mappings: {type: array, maxItems: 200, items: {$ref: "#/components/schemas/ConnectionMapping"}}
+        note: {type: string}
+        truncated: {type: boolean}
+    ConnectionPreset:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "id"
+        - "name"
+        - "kind"
+        - "available"
+        - "connected"
+        - "scope"
+      properties:
+        id:
+          type: "string"
+        name:
+          type: "string"
+        kind:
+          type: "string"
+        endpoint:
+          type: "string"
+        available:
+          type: "boolean"
+        connected:
+          type: "boolean"
+        reason:
+          type: "string"
+        scope:
+          type: "string"
+        granted_scopes:
+          description: Granted scopes reported by the provider. Omitted when it did not report scopes.
+          type: array
+          items: {type: string}
+        reconnect_required: {type: boolean, description: A confirmed provider rejection requires renewed consent.}
+        health: {$ref: "#/components/schemas/ConnectionHealth"}
+    ConnectionRegistration:
+      type: object
+      additionalProperties: false
+      required: [issuer, client_id]
+      properties:
+        issuer: {type: string, format: uri}
+        client_id: {type: string, minLength: 1, maxLength: 4096}
+        client_secret: {type: string, maxLength: 8192, format: password, writeOnly: true}
+    ConnectionAuthorizationInput:
+      type: object
+      additionalProperties: false
+      properties:
+        endpoint: {type: string}
+        scope: {type: string, enum: [person, workspace]}
+        registration: {$ref: "#/components/schemas/ConnectionRegistration"}
+    ConnectionAuthorization:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "url"
+        - "expires_at"
+      properties:
+        provider:
+          type: "string"
+        url:
+          type: "string"
+        expires_at:
+          type: "string"
+          format: "date-time"
+    ConnectionCallback:
+      type: "object"
+      additionalProperties: false
+      required:
+        - "state"
+        - "code"
+      properties:
+        installation_id: {type: string, description: "Required with GitHub installation callbacks; verified by GitHub before saving."}
+        state:
+          type: "string"
+        code:
+          type: "string"
+    PromptLayers:
+      type: "object"
+      additionalProperties: false
+      properties:
+        platform:
+          type: "string"
+          maxLength: 16000
+        workspace:
+          type: "string"
+          maxLength: 16000
+        slack_word_budget:
+          type: "integer"
+          minimum: 0
+          maximum: 2000
+    EvalTrace:
+      type: object
+      required: [run, tools]
+      properties:
+        run: {type: string}
+        tools: {type: array, items: {$ref: "#/components/schemas/EvalToolOutcome"}}
+        retrieval: {$ref: "#/components/schemas/EvalRetrieval"}
+    EvalRetrieval:
+      type: object
+      required: [input, query, sources, prompt, blocks, digest]
+      properties:
+        input: {type: string}
+        query: {type: string}
+        sources: {type: array, minItems: 1, maxItems: 64, items: {type: string}}
+        prompt: {type: string}
+        blocks: {type: array, maxItems: 64, items: {$ref: "#/components/schemas/EvalContextBlock"}}
+        digest: {type: string}
+    EvalContextBlock:
+      type: object
+      required: [text, citation, provenance]
+      properties:
+        text: {type: string}
+        citation: {type: string}
+        provenance: {$ref: "#/components/schemas/EvalProvenance"}
+    EvalProvenance:
+      type: object
+      properties:
+        document_uuid: {type: string}
+        document_title: {type: string}
+        source_uri: {type: string}
+        section_uuid: {type: string}
+        section_heading: {type: string}
+        section_index: {type: integer}
+    EvalToolOutcome:
+      type: object
+      required: [name, arguments]
+      properties:
+        name: {type: string}
+        arguments: {type: object, additionalProperties: true}
+        result: {type: string}
+        error: {type: string}
+    FeedbackPayload:
+      type: object
+      required: [run, actor, rating, surface]
+      properties:
+        run: {type: string}
+        session: {type: string}
+        message: {type: string}
+        finding: {type: string}
+        actor: {$ref: "#/components/schemas/Actor"}
+        rating: {type: string}
+        reasons: {type: array, items: {type: string}}
+        comment: {type: string}
+        surface: {type: string}
+        removed: {type: boolean}
+    RunFeedbackEvent:
+      allOf:
+        - $ref: "#/components/schemas/EventEnvelope"
+        - type: object
+          required: [type, data]
+          properties:
+            type: {type: string, const: run.feedback.v1}
+            data: {$ref: "#/components/schemas/FeedbackPayload"}
+    EvaluationLimits: {"type": "object", "properties": {"max_spend": {"type": "integer", "minimum": 0}, "max_duration_ms": {"type": "integer", "minimum": 0}, "require_evidence": {"type": "boolean"}}}
+    EvaluationSignals: {"type": "object", "properties": {"spend": {"type": "integer"}, "model_calls": {"type": "integer"}, "tokens": {"type": "integer"}, "unpriced_calls": {"type": "integer"}, "latency_ms": {"type": "integer"}, "waiting_ms": {"type": "integer"}, "tool_calls": {"type": "integer"}, "tool_errors": {"type": "integer"}, "attempts": {"type": "integer"}, "retries": {"type": "integer"}, "up": {"type": "integer"}, "down": {"type": "integer"}, "run": {"type": "string"}, "rating": {"type": "string"}}, "required": ["spend", "model_calls", "tokens", "unpriced_calls", "latency_ms", "waiting_ms", "tool_calls", "tool_errors", "attempts", "retries", "up", "down", "run"]}
+    OnlineEvaluation: {"type": "object", "properties": {"agent": {"type": "string"}, "run": {"type": "string"}, "version": {"type": "integer"}, "passed": {"type": "boolean"}, "words": {"type": "integer"}, "word_budget": {"type": "integer"}, "verdicts": {"type": "array", "items": {"$ref": "#/components/schemas/EvalVerdict"}}, "at": {"type": "string", "format": "date-time"}, "signals": {"$ref": "#/components/schemas/EvaluationSignals"}}, "required": ["agent", "run", "version", "passed", "words", "word_budget", "verdicts", "at", "signals"]}
+    AgentEvaluationHealth: {"type": "object", "properties": {"agent": {"type": "string"}, "status": {"type": "string", "enum": ["untested", "healthy", "needs_review"]}, "samples": {"type": "integer"}, "passed": {"type": "integer"}, "pass_rate": {"type": "number"}, "results": {"type": "array", "items": {"$ref": "#/components/schemas/OnlineEvaluation"}}}, "required": ["agent", "status", "samples", "passed", "pass_rate", "results"]}
+    AgentChangeScore: {"type": "object", "properties": {"suite": {"type": "string"}, "suite_hash": {"type": "string"}, "before": {"type": "number"}, "after": {"type": "number"}, "passed": {"type": "boolean"}, "results": {"type": ["array", "null"], "items": {"$ref": "#/components/schemas/EvalResult"}}}, "required": ["suite", "suite_hash", "before", "after", "passed", "results"]}
+    AgentChange: {"type": "object", "properties": {"id": {"type": "string"}, "agent": {"type": "string"}, "kind": {"type": "string"}, "context_hash": {"type": "string"}, "before_hash": {"type": "string"}, "after_hash": {"type": "string"}, "candidate": {"type": "object", "additionalProperties": true}, "scores": {"type": ["array", "null"], "items": {"$ref": "#/components/schemas/AgentChangeScore"}}, "evaluated": {"type": "boolean"}, "passed": {"type": "boolean"}, "at": {"type": "string", "format": "date-time"}, "error": {"type": "string"}, "override_by": {"type": "string"}, "override_reason": {"type": "string"}}, "required": ["id", "agent", "kind", "context_hash", "before_hash", "after_hash", "candidate", "scores", "evaluated", "passed", "at"]}

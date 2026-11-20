@@ -28,13 +28,13 @@ test("a model and an effort are picked from a text control", async () => {
   render(<Harness seen={seen} />);
   fireEvent.click(
     screen.getByRole("button", {
-      name: "Model and effort for this message: Agent's model · Default effort",
+      name: "Model and effort for this message: Agent's model | Default effort",
     }),
   );
   fireEvent.click(await screen.findByRole("menuitemradio", { name: "anthropic/opus" }));
-  fireEvent.click(screen.getByRole("button", { name: /: opus · Default effort$/ }));
+  fireEvent.click(screen.getByRole("button", { name: /: opus | Default effort$/ }));
   fireEvent.click(await screen.findByRole("menuitemradio", { name: "High" }));
-  await screen.findByRole("button", { name: /: opus · High$/ });
+  await screen.findByRole("button", { name: /: opus | High$/ });
   assert.deepEqual(seen.at(-1), { model: "anthropic/opus", effort: "high" });
 });
 

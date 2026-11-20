@@ -2,6 +2,8 @@ import { defaultCopy } from "@humagen/components";
 import { type FormEvent, useEffect, useState } from "react";
 
 import { api, type Source, type SourceConfiguration, type SourceDependencies } from "./api.ts";
+import { whereReferences } from "./connections.ts";
+import { connectionApi, type ConnectionPreset } from "./connectionApi.ts";
 import { ago, button, Chip, card, field, Label, Problem } from "./ui.tsx";
 
 const words = defaultCopy.sourceLifecycle;
@@ -43,6 +45,33 @@ export function SourceLifecycle({
   const lifecycle = source.lifecycle;
   const [config, setConfig] = useState<SourceConfiguration>(() => sourceConfiguration(source));
   const [reference, setReference] = useState("");
+  const [references, setReferences] = useState<string[] | null>(null);
+  const [account, setAccount] = useState<ConnectionPreset | null>(null);
+  useEffect(() => {
+    let active = true;
+    if (lifecycle?.provider === "drive")
+      connectionApi
+        .presets()
+        .then((rows) => {
+          if (active) setAccount(rows.find((p) => p.id === "drive") ?? null);
+        })
+        .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [lifecycle?.provider]);
+  useEffect(() => {
+    let active = true;
+    api
+      .toolCredentials()
+      .then((info) => {
+        if (active) setReferences(info.references);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
   const [dependencies, setDependencies] = useState<SourceDependencies | null | undefined>(
     undefined,
   );
@@ -126,22 +155,72 @@ export function SourceLifecycle({
       {busy && <output className="text-aui-sm">{words.working}</output>}
       {lifecycle && lifecycle.provider !== "manual" && (
         <>
-          <form onSubmit={connect} className="flex flex-col gap-2">
-            <Label text={words.credential} hint={words.credentialHint}>
-              <input
-                aria-label={words.credential}
-                className={field}
-                value={reference}
-                autoComplete="off"
-                required
-                placeholder="op://"
-                onChange={(event) => setReference(event.target.value)}
-              />
-            </Label>
-            <button className={`${button} self-start`} type="submit" disabled={busy || !reference}>
-              {words.connect}
-            </button>
-          </form>
+          {lifecycle.provider === "drive" && (
+            <div className="flex flex-col items-start gap-2">
+              <p className="text-aui-sm text-aui-muted">
+                Use your Google Drive account for this source, its selected folder and project.
+                Other people's accounts are never used for you.
+              </p>
+              {account?.connected ? (
+                <button
+                  type="button"
+                  className={button}
+                  disabled={busy}
+                  onClick={() =>
+                    void run(async () => {
+                      await connectionApi.useSource(source.name, "drive");
+                      setNotice(
+                        "Your Google Drive account is connected to this source. Preview its resources to verify access.",
+                      );
+                    })
+                  }
+                >
+                  Use my Google Drive account
+                </button>
+              ) : (
+                <a className="underline" href="/connections?provider=drive">
+                  Connect Google Drive
+                </a>
+              )}
+              {account?.reason && <p className="text-aui-xs text-aui-muted">{account.reason}</p>}
+            </div>
+          )}
+          {references?.length === 0 ? (
+            lifecycle.provider !== "drive" && (
+              <p className="text-aui-sm text-aui-muted">
+                This workspace does not allow source credential references yet.{" "}
+                <a className="underline" href="/connections">
+                  Open Connections
+                </a>{" "}
+                to connect your account for agent tools, or ask an administrator to enable source
+                credentials.
+              </p>
+            )
+          ) : (
+            <form onSubmit={connect} className="flex flex-col gap-2">
+              <Label
+                text={words.credential}
+                hint={references ? whereReferences(references) : words.credentialHint}
+              >
+                <input
+                  aria-label={words.credential}
+                  className={field}
+                  value={reference}
+                  autoComplete="off"
+                  required
+                  placeholder="op://"
+                  onChange={(event) => setReference(event.target.value)}
+                />
+              </Label>
+              <button
+                className={`${button} self-start`}
+                type="submit"
+                disabled={busy || !reference}
+              >
+                {words.connect}
+              </button>
+            </form>
+          )}
           {canWrite && lifecycle.mode !== "live" && (
             <button
               className={`${button} self-start`}

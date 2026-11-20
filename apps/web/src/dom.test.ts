@@ -20,6 +20,11 @@ import { loadTests } from "./testload.ts";
 // may still be running the tests after this module returns.
 GlobalRegistrator.register({ url: "http://localhost:5173/" });
 await loadTests([
+  "/src/bigquery-connection.dom.test.tsx",
+  "/src/connection-flows.dom.test.tsx",
+  "/src/agent-builder.dom.test.tsx",
+  "/src/session-center.dom.test.tsx",
+  "/src/session-ux.dom.test.tsx",
   "/src/agent-choices.dom.test.tsx",
   "/src/conversation-overview.dom.test.tsx",
   "/src/github-tab.dom.test.tsx",

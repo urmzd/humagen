@@ -39,6 +39,8 @@ export interface Control {
   size: { width: number; height: number };
   /** A link inside a sentence, which is exempt from the target size, as WCAG 2.5.8 allows. */
   inline: boolean;
+  /** The empty, full-viewport button that dismisses the adjacent navigation drawer. */
+  navigationBackdrop?: boolean;
   /** A field a person types into: its text size, which below 16px makes Safari zoom on focus. */
   font?: number;
 }
@@ -120,7 +122,7 @@ export function judge(s: Snapshot, rules: Rules): Problem[] {
         });
     }
     for (const c of s.controls) {
-      if (past(c.box)) {
+      if (!c.navigationBackdrop && past(c.box)) {
         problems.push({
           check: "gutter",
           detail: `control "${c.label}" spans ${px(c.box.left)} to ${px(c.box.right)}px`,
@@ -237,7 +239,9 @@ export function collect(): Snapshot {
   const selector =
     "button, a[href], input:not([type=hidden]), select, textarea, summary, [role=button], [role=tab], [role=link], [role=menuitem], [role=option], [role=switch], [role=checkbox], [role=radio]";
   for (const el of document.querySelectorAll(selector)) {
-    if (!shown(el)) continue;
+    // Inert content may remain visible behind a drawer, but it cannot be
+    // clicked or focused until that surface closes. Its text still gets checked.
+    if (!shown(el) || el.closest("[inert]")) continue;
     // A control inside another is measured as the outer one.
     if (el.parentElement?.closest(selector)) continue;
     const box = cut(el, el.getBoundingClientRect());
@@ -269,6 +273,19 @@ export function collect(): Snapshot {
         };
     }
     const st = getComputedStyle(el);
+    const adjacent = el.nextElementSibling;
+    const navigationBackdrop =
+      el.matches('button[tabindex="-1"][aria-label="Dismiss navigation"]') &&
+      !(el.textContent ?? "").trim() &&
+      el.childElementCount === 0 &&
+      st.position === "fixed" &&
+      Math.abs(drawn.left) <= 0.5 &&
+      Math.abs(drawn.top) <= 0.5 &&
+      Math.abs(drawn.right - width) <= 0.5 &&
+      Math.abs(drawn.bottom - height) <= 0.5 &&
+      adjacent?.matches('aside[aria-label="Navigation"]') &&
+      shown(adjacent) &&
+      getComputedStyle(adjacent).position === "fixed";
     // In a sentence (WCAG 2.5.8's inline exception): a control with words of
     // its own, drawn in the flow of a paragraph that says more than it does.
     // An icon beside a heading is not in a sentence, and is measured.
@@ -321,6 +338,7 @@ export function collect(): Snapshot {
       box,
       size: { width: whole.width, height: whole.height },
       inline,
+      ...(navigationBackdrop ? { navigationBackdrop: true } : {}),
       ...(typed ? { font: Number.parseFloat(st.fontSize) } : {}),
     });
   }

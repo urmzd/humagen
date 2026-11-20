@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"strings"
 
 	"github.com/urmzd/orchagent/flow/event"
 
@@ -20,6 +21,23 @@ import (
 // what whoever answered is called. Any other event, and one whose body does
 // not read as the runtime writes it, is handed out as it is.
 func shownEvent(names platform.Names, e platform.APIEvent) platform.APIEvent {
+	if e.Type == event.TypeFeedback {
+		var feedback event.Feedback
+		if json.Unmarshal(e.Data, &feedback) == nil {
+			// This actor is authenticated by the native evidence writer, not a
+			// person lookup. Preserve its system attribution in API projections.
+			if feedback.Actor.Bot && strings.HasPrefix(feedback.Actor.ID, "system:github:commit:") {
+				return e
+			}
+			who := feedback.Actor.User
+			if who == "" {
+				who = feedback.Actor.ID
+			}
+			feedback.Actor = event.Actor{ID: names.Key(who), Display: names.Of(who)}
+			e.Data, _ = json.Marshal(feedback)
+		}
+		return e
+	}
 	if e.Type != event.TypeResumed || len(e.Data) == 0 {
 		return e
 	}

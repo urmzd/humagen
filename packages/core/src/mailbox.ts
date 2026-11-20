@@ -390,7 +390,7 @@ function partLine(part: MessagePart): string {
     case "reply":
       return part.prompt;
     case "memory":
-      return part.proposals.map((p) => p.text).join(" · ");
+      return part.proposals.map((p) => p.text).join(" | ");
     case "budget":
       return `${formatAmount(part.meter.used, part.meter.unit)} of ${formatAmount(part.meter.limit, part.meter.unit)}${part.meter.period ? ` this ${part.meter.period}` : ""}`;
     case "alert":
@@ -398,7 +398,7 @@ function partLine(part: MessagePart): string {
     case "failure":
       return part.failure.message;
     case "reference":
-      return part.citations.map((c) => c.title).join(" · ");
+      return part.citations.map((c) => c.title).join(" | ");
     case "artifact":
       return part.artifact.title;
     case "draft":

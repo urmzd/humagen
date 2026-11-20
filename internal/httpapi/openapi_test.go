@@ -24,6 +24,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -46,6 +47,7 @@ import (
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/catalog"
 	"github.com/urmzd/humagen/pkg/clients"
+	"github.com/urmzd/humagen/pkg/connectionauth"
 	"github.com/urmzd/humagen/pkg/credentials"
 	"github.com/urmzd/humagen/pkg/drive"
 	"github.com/urmzd/humagen/pkg/evals"
@@ -62,14 +64,17 @@ import (
 	"github.com/urmzd/humagen/pkg/policy"
 	"github.com/urmzd/humagen/pkg/prefs"
 	"github.com/urmzd/humagen/pkg/projects"
+	"github.com/urmzd/humagen/pkg/prompts"
 	"github.com/urmzd/humagen/pkg/rooms"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/settings"
+	"github.com/urmzd/humagen/pkg/signals"
 	"github.com/urmzd/humagen/pkg/sourcelinks"
 	"github.com/urmzd/humagen/pkg/speech"
 	"github.com/urmzd/humagen/pkg/threads"
 	"github.com/urmzd/humagen/pkg/usage"
 	"github.com/urmzd/orchagent/flow/attachment"
+	orchsession "github.com/urmzd/orchagent/flow/session"
 )
 
 // The API contract is api/openapi.yaml. These tests are what keep it true:
@@ -115,6 +120,9 @@ func loadSpec(t *testing.T) *apiSpec {
 	var viaYAML any
 	if err := yaml.Unmarshal(raw, &viaYAML); err != nil {
 		t.Fatalf("the spec is not YAML: %v", err)
+	}
+	if err := specJSONKeys(viaYAML, "openapi"); err != nil {
+		t.Fatalf("the spec must use JSON mapping keys: %v", err)
 	}
 	// Through JSON, so every value is one the schema compiler expects.
 	asJSON, err := json.Marshal(viaYAML)
@@ -603,6 +611,18 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		written bool
 	}
 	shapes := map[string]shape{
+		"AgentEvaluationHealth": {typ: platform.AgentEvaluationHealth{}}, "OnlineEvaluation": {typ: evals.Online{}}, "EvaluationSignals": {typ: signals.Record{}}, "EvaluationLimits": {typ: evals.Limits{}}, "AgentChangeScore": {typ: evals.ChangeScore{}}, "AgentChange": {typ: evals.Change{}}, "EvalRetrieval": {typ: evals.Retrieval{}}, "EvalContextBlock": {typ: evals.ContextBlock{}}, "EvalProvenance": {typ: evals.Provenance{}},
+		"EvalTrace": {typ: evals.Trace{}}, "EvalToolOutcome": {typ: evals.ToolResult{}},
+		"SessionIdentity": {typ: threads.SessionIdentity{}}, "SessionInput": {typ: platform.SessionInput{}, written: true}, "SessionPostInput": {typ: platform.SessionPostInput{}, written: true},
+		"AgentSessionSummary": {typ: platform.SessionSummary{}}, "SessionAuthor": {typ: platform.SessionAuthor{}},
+		"SessionPart": {typ: platform.SessionPart{}}, "SessionFeedback": {typ: platform.SessionFeedback{}},
+		"SessionMessage": {typ: platform.SessionMessage{}}, "SessionLink": {typ: orchsession.Link{}},
+		"AgentSession":     {typ: platform.SessionView{}},
+		"ConnectionHealth": {typ: platform.ConnectionHealth{}}, "ConnectionPreset": {typ: platform.ConnectionPreset{}}, "ConnectionAuthorization": {typ: connectionauth.Authorization{}},
+		"ConnectionAuthorizationInput": {typ: platform.ConnectionAuthorizationInput{}, written: true},
+		"ConnectionRegistration":       {typ: connectionauth.Registration{}, written: true},
+		"ConnectionDetail":             {typ: platform.ConnectionDetail{}}, "ConnectionMapping": {typ: platform.ConnectionMapping{}},
+		"ConnectionCallback": {typ: ConnectionCallback{}, written: true}, "PromptLayers": {typ: prompts.Config{}},
 		"Principal": {typ: auth.Principal{}}, "AccessDecision": {typ: accessDecision{}}, "AccessHeldRole": {typ: heldRole{}}, "AgentSpec": {typ: wire.AgentSpec{}}, "AgentSource": {typ: wire.Source{}},
 		"PackageBase": {typ: wire.PackageBase{}}, "AgentPackage": {typ: wire.AgentPackage{}}, "AgentAccess": {typ: wire.Access{}}, "Revision": {typ: revisionView{}}, "JoinDecision": {typ: join.Decision{}},
 		"Note": {typ: noteView{}}, "DriveTree": {typ: drive.Tree{}}, "DriveEntry": {typ: drive.Entry{}}, "DriveChange": {typ: drive.Change{}}, "DriveProposal": {typ: drive.Proposal{}}, "DriveVersion": {typ: drive.Version{}}, "DriveHit": {typ: drive.Hit{}}, "MemoryFiles": {typ: memoryTree{}}, "MemoryFile": {typ: memoryFile{}}, "MemoryRestoreInput": {typ: memoryRestore{}, written: true}, "MemoryDecisionInput": {typ: memoryDecision{}, written: true}, "LibraryScope": {typ: library.Scope{}}, "MemoryFolder": {typ: platform.MemoryFolder{}}, "LibrarySkillFile": {typ: library.File{}}, "LibrarySkillDefinition": {typ: library.Definition{}}, "LibrarySkill": {typ: library.Revision{}}, "LibraryProvenance": {typ: library.Provenance{}}, "AuditRecord": {typ: audit.Record{}}, "PersonalPreferences": {typ: prefs.Personal{}}, "NativeNotification": {typ: platform.Notification{}}, "NativeNotificationItem": {typ: platform.NotificationItem{}}, "Actor": {typ: event.Actor{}}, "Run": {typ: runs.Run{}},
@@ -659,6 +679,8 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		"EvalRun": {typ: evals.Run{}}, "EvalSuiteView": {typ: suiteView{}, written: true},
 		"CatalogColumn": {typ: catalog.Column{}}, "CatalogStats": {typ: catalog.Stats{}}, "CatalogEntry": {typ: catalog.Entry{}}, "CatalogMark": {typ: catalog.Mark{}},
 		"CatalogConnector": {typ: catalog.Connector{}}, "CatalogConnectorView": {typ: platform.CatalogConnectorView{}}, "CatalogPage": {typ: platform.CatalogPage{}},
+		"BigQuerySetupInput": {typ: platform.BigQuerySetupInput{}, written: true}, "BigQuerySetupCredential": {typ: platform.BigQuerySetupCredential{}, written: true},
+		"BigQuerySetupView": {typ: platform.BigQuerySetupView{}}, "BigQueryADCScope": {typ: platform.BigQueryADCScope{}},
 		"KnowledgeVariant": {typ: knowledge.Variant{}}, "KnowledgeSource": {typ: knowledge.Source{}},
 		"KnowledgeDocument": {typ: knowledge.Document{}}, "KnowledgeHit": {typ: knowledge.Hit{}},
 		"PolicyScope": {typ: policy.Scope{}}, "Policy": {typ: policyView{}}, "PolicyChange": {typ: policyChangeView{}},
@@ -948,7 +970,7 @@ func (c *contract) sweep(tok string) {
 		if op.path == "/api/events" || needsQuery(op) {
 			continue
 		}
-		if op.path == "/api/read-audit" || op.path == "/api/audit" || op.path == "/api/me/memory" || op.path == "/api/me/notifications" || op.path == "/api/me/context" {
+		if op.path == "/api/read-audit" || op.path == "/api/audit" || op.path == "/api/me/memory" || op.path == "/api/me/notifications" || op.path == "/api/me/context" || op.path == "/api/catalog/connectors/bigquery/setup" {
 			c.call(tok, "GET", op.path, op.path, "", http.StatusForbidden)
 			continue
 		}
@@ -980,7 +1002,14 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	})
 	notesServer := httptest.NewTLSServer(mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return notes }, nil))
 	t.Cleanup(notesServer.Close)
-	f := newFixtureWith(t, platform.Config{BuiltinProvider: "offline", BuiltinModel: "offline", PersonalHTTP: notesServer.Client(), AgentOptions: []native.Option{
+	var quotaClock atomic.Pointer[time.Time]
+	now := func() time.Time {
+		if at := quotaClock.Load(); at != nil {
+			return *at
+		}
+		return time.Now()
+	}
+	f := newFixtureWith(t, platform.Config{Now: now, BuiltinProvider: "offline", BuiltinModel: "offline", PersonalHTTP: notesServer.Client(), AgentOptions: []native.Option{
 		native.WithProvider(native.ProviderOpenAI, func(native.Spec) (saigetypes.Provider, error) {
 			return &agenttest.ScriptedProvider{Responses: [][]saigetypes.Delta{agenttest.TextResponse("Completed the configured setup check.")}}, nil
 		}),
@@ -1002,6 +1031,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		CredentialRefs:   map[string][]string{"acme": {"op://People/{subject}/"}},
 		CredentialValues: map[string]bool{"acme": true},
 		Connectors: []platform.CatalogConnector{
+			bigQueryContractSeed(t),
 			{Tenant: "acme", Connector: catalog.Connector{Name: "warehouse", System: "bigquery", Owner: "catalog-owner"}, Crawler: contractWarehouse{}},
 			{Tenant: "acme", Connector: catalog.Connector{Name: "broken", System: "bigquery", Owner: "catalog-owner"}, Crawler: contractWarehouse{fail: true}},
 			{Tenant: "acme", Connector: catalog.Connector{Name: "live-only", System: "bigquery", Owner: "catalog-owner"}, Querier: contractWarehouse{}},
@@ -1010,12 +1040,18 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		Speech:    contractSpeech{},
 	})
 	c := &contract{t: t, f: f, spec: loadSpec(t), seen: map[string]bool{}}
+	exerciseConnectionContract(t, c)
+	exerciseConnectionHealthContract(t, c)
+	exerciseBigQueryContract(t, c)
+	exerciseEvaluationPolicyContract(t, c)
+	sessionContract := exerciseSessionContract(t, c)
 	contractSource(t, f, c, sourceFake)
 	contractGitHubItems(t, f, c, sourceFake)
 	pullToken := f.machine(t, "pull-contract", "humagen:runs:read")
 	c.call(pullToken, "GET", "/api/pull-requests", "/api/pull-requests", "", http.StatusOK)
 	c.call(pullToken, "GET", "/api/pull-requests", "/api/pull-requests?status=bad", "", http.StatusBadRequest)
 	acme, globex := f.machine(t, "acme", everything...), f.machine(t, "globex", everything...)
+	foreignPerson := f.person(t, "globex", "oauth-reader", "OAuth reader", "humagen-admins")
 	auditAdmin := f.person(t, "acme", "audit-admin", "Audit admin", "humagen-admins")
 	// The catalog: its owner crawls, publishes and withdraws a connector.
 	cataloger := f.person(t, "acme", "catalog-owner", "Catalog owner", "humagen-admins")
@@ -1732,6 +1768,8 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "PUT", "/api/alert-rules/{name}", "/api/alert-rules/spend", `{"kind":"spend","window_seconds":86400,"severity":"critical"}`, http.StatusBadRequest)
 	c.call(acme, "PUT", "/api/alert-rules/{name}", "/api/alert-rules/ghost", `{"kind":"run_failed","severity":"critical"}`, http.StatusNotFound)
 	alertList := c.call(acme, "GET", "/api/alerts", "/api/alerts", "", http.StatusOK)
+	c.call(acme, "GET", "/api/alerts", "/api/alerts?source=budget", "", http.StatusOK)
+	c.call(acme, "GET", "/api/alerts", "/api/alerts?source="+strings.Repeat("x", 65), "", http.StatusBadRequest)
 	if fired := sliceOf(alertList.field("alerts")); len(fired) > 0 {
 		c.call(acme, "POST", "/api/alerts/{id}/ack", "/api/alerts/"+obj(fired[0])["id"].(string)+"/ack", "", http.StatusOK)
 	}
@@ -1756,6 +1794,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "POST", "/api/knowledge/{name}/sync", "/api/knowledge/remote/sync", "", http.StatusBadRequest)
 	c.call(acme, "PUT", "/api/knowledge/{name}/configuration", "/api/knowledge/remote/configuration", `{"mode":"indexed","provider":"drive","origin":"folder1","project":"~"}`, http.StatusOK)
 	c.call(ana, "PUT", "/api/knowledge/{name}/credential", "/api/knowledge/remote/credential", `{"ref":"op://People/ana/drive"}`, http.StatusOK)
+	c.call(ana, "PUT", "/api/knowledge/{name}/credential", "/api/knowledge/remote/credential", `{"oauth":"drive"}`, http.StatusServiceUnavailable)
 	capReader := f.person(t, "acme", "source-cap", "Source capacity reader", "humagen-admins")
 	for i := 0; i < credentials.MaxPerPerson; i++ {
 		if _, err := f.p.Credentials.Put("acme", "source-cap", fmt.Sprintf("cap-%d", i), credentials.Input{Ref: fmt.Sprintf("op://People/source-cap/cap-%d", i)}, time.Now()); err != nil {
@@ -2363,6 +2402,9 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 			continue
 		}
 		caller := acme
+		if strings.HasPrefix(op.path, "/api/sessions/") || op.path == "/api/alerts/{id}" {
+			caller = sessionContract["token"]
+		}
 		if strings.HasPrefix(op.path, "/api/me/memory") || strings.HasPrefix(op.path, "/api/agent-setups/") || strings.HasSuffix(op.path, "/skill-draft") || strings.HasSuffix(op.path, "/decision-memory") {
 			caller = auditAdmin
 		}
@@ -2385,19 +2427,29 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	// A workspace that has spent its spend limit refuses a new run with 402.
 	// The offline provider prices nothing, so the spend is written to the
 	// ledger as a priced call would be.
+	// Hold this fixture's quota window steady even across UTC midnight.
+	quotaAt := time.Now()
+	quotaClock.Store(&quotaAt)
 	c.call(acme, "PUT", "/api/policies", "/api/policies", `{"scope":{"kind":"tenant"},"period":"day","max_runs":100,"max_concurrent":50,"spend_limit":5000}`, http.StatusOK)
 	if _, err := c.f.p.Usage.Append(usage.Entry{Kind: usage.Spent, Tenant: "acme", Agent: "helper", RunID: "r-spent", Key: "r-spent/a1/1",
-		At: time.Now(), Spend: &usage.Spend{Micros: 5000, ModelCalls: 1, Tokens: 1000}}); err != nil {
+		At: quotaAt, Spend: &usage.Spend{Micros: 5000, ModelCalls: 1, Tokens: 1000}}); err != nil {
 		t.Fatal(err)
 	}
 	c.call(acme, "POST", "/api/runs", "/api/runs", `{"agent":"helper","text":"hi"}`, http.StatusPaymentRequired)
 	c.call(acme, "PUT", "/api/policies", "/api/policies", `{"scope":{"kind":"tenant"},"period":"day","max_runs":100,"max_concurrent":50,"spend_limit":1000000}`, http.StatusOK)
 	// With the agent at its day's limit, everything that would start it is
-	// told so.
+	// told so. Seed a completed admission in this window: earlier contract
+	// requests may have run on the previous UTC day.
+	for _, kind := range []usage.Kind{usage.Admitted, usage.Ended} {
+		if _, err := c.f.p.Usage.Append(usage.Entry{Kind: kind, Tenant: "acme", Agent: "helper", RunID: "r-quota", At: quotaAt}); err != nil {
+			t.Fatal(err)
+		}
+	}
 	c.call(acme, "PUT", "/api/policies", "/api/policies", `{"scope":{"kind":"agent","name":"helper"},"period":"day","max_runs":1}`, http.StatusOK)
 	c.call(acme, "POST", "/api/schedules/{name}/run", "/api/schedules/nightly/run", "", http.StatusTooManyRequests)
 	c.callFromLiveRun(acme, `{"key":"k429","agent":"helper","text":"hi","mode":"delegate"}`, http.StatusTooManyRequests)
 	c.call(acme, "DELETE", "/api/policies", "/api/policies?kind=agent&name=helper", "", http.StatusNoContent)
+	quotaClock.Store(nil)
 
 	// Durable agent operations use the same contract and admission path.
 	for _, path := range []string{"/api/agent-controls", "/api/agents/helper/control"} {
@@ -2456,6 +2508,16 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "PUT", "/api/projects/{name}/memory/{id}", "/api/projects/Launch/memory/"+freshProjectNote.str("id"), `{"text":""}`, http.StatusBadRequest)
 	freshPersonalNote := c.call(auditAdmin, "POST", "/api/me/memory", "/api/me/memory", `{"text":"Personal correction source"}`, http.StatusCreated)
 	real := map[string]map[string]string{
+		"/api/sessions/{id}":                         {"id": sessionContract["id"]},
+		"/api/sessions/{id}/messages":                {"id": sessionContract["id"]},
+		"/api/sessions/{id}/stream":                  {"id": sessionContract["id"]},
+		"/api/sessions/{id}/stop":                    {"id": sessionContract["id"]},
+		"/api/sessions/{id}/people":                  {"id": sessionContract["id"]},
+		"/api/sessions/{id}/links":                   {"id": sessionContract["id"]},
+		"/api/sessions/{id}/messages/{mid}/feedback": {"id": sessionContract["id"], "mid": sessionContract["run"]},
+		"/api/sessions/{id}/alerts":                  {"id": sessionContract["id"]},
+		"/api/alerts/{id}":                           {"id": sessionContract["alert"]},
+
 		"/api/threads/{id}/files":                             {"id": workspaceID},
 		"/api/threads/{id}/files/content":                     {"id": workspaceID},
 		"/api/threads/{id}/files/publish":                     {"id": workspaceID},
@@ -2520,6 +2582,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/threads/{id}/fork":        {"id": tid}, "/api/threads/{id}/bring-back": {"id": tid},
 	}
 	valid := map[string]string{
+		"/api/connections/{provider}/callback":  `{"state":"unknown","code":"code"}`,
 		"/api/agent-setups/{name}":              `{"version":1,"plan":{"spec":{"name":"helper","provider":"openai","model":"gpt-4o-mini","system_prompt":"Help"},"project":"~"}}`,
 		"/api/agent-setups/{name}/test":         `{"text":"Setup check"}`,
 		"/api/artifacts/{id}/promote-memory":    `{"version":1,"accepted":true}`,
@@ -2563,10 +2626,17 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 			path = strings.ReplaceAll(path, "{"+name+"}", v)
 		}
 		if _, documents := op.schemas["404"]; documents {
-			c.call(globex, op.method, op.path, path, valid[op.path], http.StatusNotFound)
+			foreign := globex
+			if strings.HasPrefix(op.path, "/api/connections/") || op.path == "/api/clients/{id}/check" || op.path == "/api/catalog/connectors/{name}/reconnect" {
+				foreign = foreignPerson
+			}
+			c.call(foreign, op.method, op.path, path, valid[op.path], http.StatusNotFound)
 		}
 		if refusesUnknownFields(op) {
 			caller := acme
+			if strings.HasPrefix(op.path, "/api/sessions/") || op.path == "/api/alerts/{id}" {
+				caller = sessionContract["token"]
+			}
 			if strings.HasPrefix(op.path, "/api/me/memory") || strings.HasPrefix(op.path, "/api/agent-setups/") || strings.HasSuffix(op.path, "/skill-draft") || strings.HasSuffix(op.path, "/decision-memory") {
 				caller = auditAdmin
 			}
@@ -2651,6 +2721,12 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 // it is documented anyway. Keep it short: an entry is a code the server can
 // send that is hard to provoke in a test, never a guess.
 var unexercised = map[string]string{
+	"POST /api/sessions 409":                             "governed admission to a deleted project uses the same Converse path tested by POST /api/runs deleted-project response",
+	"POST /api/sessions/{id}/messages 409":               "governed admission to a deleted project uses the same PostMessage path tested by thread/run deleted-project responses",
+	"POST /api/sessions/{id}/people 409":                 "concurrent participant changes fail the thread version check; store and participant race tests cover the CAS",
+	"POST /api/sessions/{id}/alerts 409":                 "random alert identity collision fails CreateSession CAS; callers cannot supply the ID",
+	"PUT /api/sessions/{id}/messages/{mid}/feedback 409": "canonical confinement calls the identical putFeedback handler whose unfinished-run409 is exercised by PUT /api/runs/{id}/feedback",
+
 	"POST /api/voice/transcriptions 404":            "a deployment with speech left out, covered by TestWithoutSpeechTheConsoleHasNoVoiceNotes",
 	"POST /api/catalog/connectors/{name}/crawl 409": "a crawl asked for while another of the same connector runs; the guard is in platform.crawl",
 	// The atomic source configuration race is covered by TestPromotionGuardAndProvenanceSurviveRestart.

@@ -811,6 +811,11 @@ func (p *Platform) ReviseBy(ctx context.Context, who auth.Principal, spec wire.A
 		if expect == 0 {
 			expect = old.Rev
 		}
+		if !old.Spec.SameContent(kept) {
+			if _, err := p.checkAgentEvals(ctx, who.Tenant, old.Spec, kept); err != nil {
+				return wire.Revision{}, err
+			}
+		}
 		rev, err := p.Agents.Revise(ctx, who.Tenant, kept, expect, who.Subject)
 		if expectedRev == 0 && errors.Is(err, wire.ErrConflict) && merges < maxMerges {
 			continue

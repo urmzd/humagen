@@ -1,10 +1,12 @@
 package platform
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
@@ -90,6 +92,7 @@ func (p *Platform) CitationEventVisible(who auth.Principal, e event.Envelope) bo
 func (p *Platform) ShownRunAs(who auth.Principal, run runs.Run) runs.Run {
 	original := run
 	run = p.ShownRun(who.Tenant, run)
+	run.Answer = p.reviewText(context.Background(), original, run.Answer, &who, time.Time{})
 	run.Citations = []runs.Citation{}
 	if original.Tenant != who.Tenant || !who.Can(auth.KnowledgeRead) || !p.Seer(who).Run(original) {
 		return run

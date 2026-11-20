@@ -34,6 +34,7 @@ import (
 	"github.com/urmzd/humagen/pkg/call"
 	"github.com/urmzd/humagen/pkg/callpolicy"
 	"github.com/urmzd/humagen/pkg/clients"
+	"github.com/urmzd/humagen/pkg/connectionauth"
 	"github.com/urmzd/humagen/pkg/credentials"
 	"github.com/urmzd/humagen/pkg/evals"
 	"github.com/urmzd/humagen/pkg/inbox"
@@ -56,6 +57,7 @@ import (
 	"github.com/urmzd/orchagent/flow/bus"
 	"github.com/urmzd/orchagent/flow/connectors/cron"
 	"github.com/urmzd/orchagent/flow/event"
+	orchsession "github.com/urmzd/orchagent/flow/session"
 )
 
 // maxBody bounds every request body. Nothing this API accepts is large.
@@ -143,6 +145,16 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/project-agent-hues", s.authed(auth.ProjectsRead, s.agentHues))
 	mux.HandleFunc("GET /api/model-providers", s.authed(auth.AgentsRead, s.modelProviders))
 	mux.HandleFunc("GET /api/agents", s.authed(auth.AgentsRead, s.listAgents))
+	s.sessionRoutes(mux)
+	mux.HandleFunc("GET /api/agents/{name}/health", s.authed(auth.AgentsRead, s.seenAgent(s.agentHealth)))
+	mux.HandleFunc("GET /api/agents/{name}/changes", s.authed(auth.AgentsRead, s.seenAgent(s.agentChanges)))
+	mux.HandleFunc("GET /api/connections/presets", s.authed(auth.RunsRead, s.listConnectionPresets))
+	mux.HandleFunc("GET /api/connections/{provider}", s.authed(auth.RunsRead, s.getConnection))
+	mux.HandleFunc("POST /api/connections/{provider}/check", s.authed(auth.RunsWrite, s.checkConnection))
+	mux.HandleFunc("POST /api/clients/{id}/check", s.authed(auth.ClientsWrite, s.checkClientConnection))
+	mux.HandleFunc("POST /api/connections/{provider}/authorize", s.authed(auth.RunsWrite, s.authorizeConnection))
+	mux.HandleFunc("POST /api/connections/{provider}/callback", s.authed(auth.RunsWrite, s.completeConnection))
+	mux.HandleFunc("DELETE /api/connections/{provider}", s.authed(auth.RunsWrite, s.disconnectConnection))
 	s.agentSetupRoutes(mux)
 	s.outcomeLearningRoutes(mux)
 	mux.HandleFunc("POST /api/agents", s.authed(auth.AgentsWrite, s.createAgent))
@@ -176,6 +188,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/memory/files/proposals/{id}", s.authed(auth.RunsWrite, s.decideMemoryProposal))
 	mux.HandleFunc("GET /api/memory/search", s.authed(auth.RunsRead, s.searchMemory))
 	mux.HandleFunc("GET /api/catalog", s.authed(auth.KnowledgeRead, s.getCatalog))
+	mux.HandleFunc("GET /api/catalog/connectors/bigquery/setup", s.authed(auth.KnowledgeWrite, s.getBigQuerySetup))
+	mux.HandleFunc("POST /api/catalog/connectors/bigquery", s.authed(auth.KnowledgeWrite, s.createBigQueryConnector))
+	mux.HandleFunc("POST /api/catalog/connectors/{name}/reconnect", s.authed(auth.KnowledgeWrite, s.reconnectBigQueryConnector))
 	mux.HandleFunc("POST /api/catalog/connectors/{name}/publish", s.authed(auth.KnowledgeWrite, s.publishConnector))
 	mux.HandleFunc("DELETE /api/catalog/connectors/{name}/publish", s.authed(auth.KnowledgeWrite, s.withdrawConnector))
 	mux.HandleFunc("POST /api/catalog/connectors/{name}/crawl", s.authed(auth.KnowledgeWrite, s.crawlConnector))
@@ -202,6 +217,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/github/pull", s.authed(auth.RunsRead, s.getGitHubPull))
 	mux.HandleFunc("GET /api/github/issue", s.authed(auth.RunsRead, s.getGitHubIssue))
 	mux.HandleFunc("PUT /api/runs/{id}/feedback", s.authed(auth.RunsRead, s.seenRun(s.putFeedback)))
+	mux.HandleFunc("DELETE /api/runs/{id}/feedback", s.authed(auth.RunsRead, s.seenRun(s.deleteFeedback)))
 	mux.HandleFunc("GET /api/runs/{id}/feedback", s.authed(auth.RunsRead, s.seenRun(s.listFeedback)))
 	mux.HandleFunc("GET /api/runs/{id}/tree", s.authed(auth.RunsRead, s.seenRun(s.runTree)))
 	mux.HandleFunc("POST /api/runs/{id}/calls", s.authed(auth.RunsWrite, s.seenRun(s.createCall)))
@@ -626,7 +642,7 @@ func (s *Server) removeMemory(w http.ResponseWriter, r *http.Request, who auth.P
 
 func (s *Server) listRuns(w http.ResponseWriter, _ *http.Request, who auth.Principal) {
 	seer := s.P.Seer(who)
-	ok(w, http.StatusOK, map[string]any{"runs": orEmpty(s.P.ShownRunsAs(who, slices.DeleteFunc(s.P.Runs.List(who.Tenant, 200), func(r runs.Run) bool { return !seer.Run(r) })))})
+	ok(w, http.StatusOK, map[string]any{"runs": orEmpty(s.P.ShownRunsAs(who, slices.DeleteFunc(s.P.Runs.List(who.Tenant, 200), func(r runs.Run) bool { return !seer.Run(r) || platform.IsEvaluation(r) })))})
 }
 
 func (s *Server) createRun(w http.ResponseWriter, r *http.Request, who auth.Principal) {
@@ -1134,6 +1150,20 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 		return
 	}
 	switch {
+	case errors.Is(err, orchsession.ErrNotFound):
+		notFound(w)
+	case errors.Is(err, orchsession.ErrInvalid):
+		fail(w, 400, err.Error())
+	case errors.Is(err, orchsession.ErrDenied):
+		fail(w, 403, "session call denied")
+	case errors.Is(err, connectionauth.ErrUnavailable):
+		fail(w, 503, "connection authentication is unavailable")
+	case errors.Is(err, connectionauth.ErrInvalid):
+		fail(w, 400, "invalid connection authentication request")
+	case errors.Is(err, connectionauth.ErrReconnect):
+		fail(w, 409, "reconnect this connection")
+	case errors.Is(err, connectionauth.ErrBusy):
+		fail(w, 409, "connection authentication is already in progress")
 	case errors.Is(err, notifications.ErrNotFound):
 		notFound(w)
 	case errors.Is(err, notifications.ErrCapacity):
@@ -1236,6 +1266,8 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 		fail(w, http.StatusConflict, detail(err, platform.ErrSourceInUse))
 	case errors.Is(err, platform.ErrNoBaseline):
 		fail(w, http.StatusBadRequest, "that setting names an agent that does not exist")
+	case errors.Is(err, evals.ErrRegression):
+		fail(w, http.StatusConflict, "The change did not pass its evaluation checks. Review its scores before trying again.")
 	case errors.Is(err, evals.ErrBusy):
 		fail(w, http.StatusConflict, "that suite is already running")
 	case errors.Is(err, wire.ErrConflict):

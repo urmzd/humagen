@@ -16,6 +16,99 @@ const OUTCOMES: Record<string, string> = {
 };
 
 export const defaultCopy = {
+  bigQueryConnection: {
+    title: "BigQuery",
+    close: "Close",
+    intro:
+      "Connect your Google account, choose the datasets and query limits, then verify metadata access. Metadata stays private until you publish it.",
+    configure: "Add a BigQuery connection",
+    name: "Connection name",
+    cloudProject: "Google Cloud project",
+    datasets: "Datasets",
+    datasetsHint:
+      "List 1–50 dataset IDs, separated by commas or new lines. Only these datasets will be crawled.",
+    location: "Location (optional)",
+    authentication: "Authentication",
+    authenticationHint:
+      "Google authorization is separate from Drive. Do not paste a service-account key or access token.",
+    googleAccount: "Your Google account",
+    connectGoogle: "Connect Google Account",
+    reconnectGoogle: "Reconnect Google Account",
+    connectFirst: "Connect your Google account before saving this connection.",
+    accountReady: "Google account authorized. Dataset access is checked after you save.",
+    oauthUnavailable:
+      "Google authorization is unavailable. An administrator can enable this connection for the workspace.",
+    useGoogleAccount: "Use Reconnected Account",
+    reconnected:
+      "This connection now uses your renewed Google authorization. Verify metadata access again.",
+    reconnectFailed:
+      "This connection could not use your Google account. Reconnect Google, reload this list, then try again.",
+    allDatasets: "all datasets",
+    adcScopes: (scopes: string) => `Deployment access is limited to ${scopes}.`,
+    defaultCredentials: "Application Default Credentials",
+    reference: "Existing credential reference",
+    credentialRef: "Credential reference",
+    referenceHint: (starts: string) =>
+      `Use an existing reference under: ${starts}. Never enter its value.`,
+    maxGiB: "Maximum query bytes (GiB)",
+    maxRows: "Maximum result rows",
+    timeout: "Query timeout (seconds)",
+    refresh: "Metadata refresh (hours)",
+    limitsHint:
+      "Google account connections list metadata only. Approved deployment credentials can also run bounded read-only queries. Metadata verification never runs a query.",
+    save: "Save Connection",
+    saving: "Saving Connection…",
+    saved: "Connection saved privately. Verify metadata access before publishing.",
+    saveFailed:
+      "The connection could not be saved. Reload connections to check whether it exists, then check the name, datasets and authorization. Your input is unchanged.",
+    configured: "Configured connections",
+    reload: "Reload Connections",
+    loading: "Loading configured connections…",
+    loadFailed: "Configured connections could not be loaded. Reload connections to try again.",
+    empty:
+      "No BigQuery connection is visible yet. Connect your Google account and add the datasets you want to use.",
+    select: "Configured BigQuery connection",
+    metadata: "Metadata check",
+    lastSuccess: "Last successful check",
+    entries: "Catalog entries",
+    never: "Not checked yet",
+    checked: "Metadata available",
+    unchecked: "Needs verification",
+    checkFailed: "Latest check failed",
+    verify: "Verify Metadata",
+    verifying: "Verifying Metadata…",
+    verified:
+      "Metadata access verified. The catalog count and last successful check have been updated.",
+    verifyHint:
+      "Verification crawls table and column metadata. It does not read rows or prove permission to run live queries.",
+    verifyFailed:
+      "Metadata verification failed. Check your datasets and Google access, reconnect if needed, then verify again. The previous successful check is unchanged.",
+    actionFailed:
+      "The visibility change failed. Reload connections to check the current state before trying again.",
+    private: "Metadata is private to the connection owner.",
+    shared: (project?: string) =>
+      project
+        ? `Metadata is published to members of ${project}.`
+        : "Metadata is published to the workspace.",
+    publish: "Publish Metadata",
+    published: "Metadata published.",
+    withdraw: "Withdraw Metadata",
+    withdrawn: "Metadata withdrawn.",
+    publishHint:
+      "Publishing shares metadata with the configured project, or the workspace when no project is set. It does not grant access to data rows.",
+    readOnly: "The connection owner with permission to manage knowledge can verify or publish it.",
+    problems: {
+      name: "Use 1–63 lowercase letters, numbers or hyphens for the connection name, beginning with a letter or number.",
+      project: "Enter a Google Cloud project ID without spaces, up to 128 characters.",
+      datasets:
+        "Enter 1–50 dataset IDs using letters, numbers or underscores, separated by commas or new lines.",
+      location: "Use up to 64 letters, numbers or hyphens for the location.",
+      credential:
+        "Enter an existing env:, keychain: or op:// credential reference, never the credential value.",
+      limits:
+        "Use whole numbers: 1–1024 GiB, 1–10,000 rows, 1–600 seconds and 1–720 refresh hours.",
+    },
+  },
   githubTabs: {
     repository: "Repository",
     address: "GitHub URL or #number",
@@ -87,7 +180,7 @@ export const defaultCopy = {
     loading: "Loading reviews…",
     empty: "No pull requests match these filters.",
     counts: (errors: number, warnings: number, infos: number) =>
-      `${errors} ${errors === 1 ? "error" : "errors"} · ${warnings} ${warnings === 1 ? "warning" : "warnings"} · ${infos} ${infos === 1 ? "note" : "notes"}`,
+      `${errors} ${errors === 1 ? "error" : "errors"} | ${warnings} ${warnings === 1 ? "warning" : "warnings"} | ${infos} ${infos === 1 ? "note" : "notes"}`,
     ci: (state: string) => `CI: ${state}`,
   },
   workspaceFiles: {
@@ -617,7 +710,7 @@ export const defaultCopy = {
     all: "All connectors",
     empty: "No catalog entries",
     emptyHint:
-      "Connectors appear after they are declared in the workspace configuration. Ask the owner to crawl a connector to list its metadata.",
+      "Add a catalog connection in Connections. Its owner can verify access and publish metadata for the project.",
     noMatch: "No entries match your search.",
     loading: "Loading catalog",
     failed: "The catalog could not be loaded.",
@@ -863,7 +956,7 @@ export const defaultCopy = {
     provider: "System",
     origin: "Folder or Page ID",
     project: "Project",
-    workspace: "Company",
+    workspace: "Workspace",
     scopeHint:
       "The project organizes this collection. Provider searches use each reader's current upstream access.",
     choose: "Choose Resources",
@@ -1204,7 +1297,7 @@ export const defaultCopy = {
     loading: "Loading",
     refresh: "Refresh",
     none: "None",
-    workspace: "Company",
+    workspace: "Workspace",
   },
   activityControls: {
     filters: "Filter activity",
@@ -1373,7 +1466,7 @@ export const defaultCopy = {
     name: "New project name",
     titleField: "Project title",
     parent: "Parent project",
-    company: "Company",
+    company: "Workspace",
     create: "Create Fork",
     retry: "Retry Copy",
     memory: "Confirmed memory to copy",
@@ -1820,7 +1913,7 @@ export const defaultCopy = {
     scope: "Scope",
     personal: "Personal",
     project: "Project",
-    workspace: "Company",
+    workspace: "Workspace",
     projectName: "Project",
     new: "New Skill",
     name: "Name",
@@ -1933,6 +2026,9 @@ export const defaultCopy = {
       agents: "Manage the agents that work with you.",
     },
     privateDefault: "New conversations start private. Sharing requires an audience review.",
+    priorities: { urgent: "Urgent alerts", normal: "Normal alerts", low: "Low-priority alerts" },
+    priorityHint:
+      "Choose delivery by alert priority. Unset priorities stay off. Quiet hours apply to delivery; alerts remain in the alert center.",
     events: {
       approval: "Approvals",
       clarification: "Questions",
@@ -1969,7 +2065,8 @@ export const defaultCopy = {
       "The system proposes lasting context from eligible conversations. Confirmed entries are used according to the context's access rules.",
     personalManagementHint:
       "Personal learning uses your private conversations when enabled. New suggestions wait for your review.",
-    manualManagementHint: "Company memory is maintained through reviewed additions and promotions.",
+    manualManagementHint:
+      "Workspace memory is maintained through reviewed additions and promotions.",
     preferences: "Memory Preferences",
     chainMissing: "This memory chain is not available. Choose one you can access.",
     loadFailed: "Memory could not be loaded. Try again.",
@@ -1991,7 +2088,7 @@ export const defaultCopy = {
 
     search: "Search Memory",
     scope: "Scope",
-    workspace: "Company",
+    workspace: "Workspace",
     project: "Project",
     agent: "Agent",
     owner: "Owner",
@@ -2107,6 +2204,8 @@ export const defaultCopy = {
     failed: "The read audit could not be loaded.",
   },
   approve: "Approve",
+  askApproval: "Ask a question",
+  declineAction: "Decline action",
   cancel: "Cancel",
   edit: "Edit",
   confirmDestructive: {
@@ -2121,21 +2220,24 @@ export const defaultCopy = {
   actsForPersonIn: (calls: string[]) =>
     `${calls.join("; ")}: ${calls.length === 1 ? "uses" : "use"} the credentials of the person this run acts for. Only they may change ${calls.length === 1 ? "its" : "their"} arguments.`,
   expires: (time: string) => `Expires ${time}`,
-  approvedBy: (by: string, time: string) => `Approved by ${by} · ${time}`,
+  approvedBy: (by: string, time: string) => `Approved by ${by} | ${time}`,
   rejected: "Rejected, I won't run it.",
-  rejectedBy: (by: string, time: string) => `Rejected by ${by} · ${time}`,
+  rejectedBy: (by: string, time: string) => `Rejected by ${by} | ${time}`,
   timedOut: "Timed out, I didn't run it.",
   cancelled: "Cancelled, the request was stopped.",
   somethingElse: "Something Else",
-  answeredBy: (by: string, choice: string, time: string) => `${by} chose ${choice} · ${time}`,
+  answeredBy: (by: string, choice: string, time: string) => `${by} chose ${choice} | ${time}`,
   /** A question answered in words, not by picking one of its options. */
-  repliedBy: (by: string, text: string, time: string) => `${by} answered "${text}" · ${time}`,
-  declinedBy: (by: string, time: string) => `Declined by ${by} · ${time}`,
+  repliedBy: (by: string, text: string, time: string) => `${by} answered "${text}" | ${time}`,
+  declinedBy: (by: string, time: string) => `Declined by ${by} | ${time}`,
   approvalNeeded: (summary: string) => `Approval needed: ${summary}`,
   /** A run the platform held at a limit, for a person to grant it more or stop it. */
   /** A structured code review an agent returned (`humagen.github.review.v1`). */
   reviewReport: {
     title: "Review",
+    unverified: "Unverified",
+    openSession: "Open Session",
+    openStep: "Open Step",
     /** The commit the review read, beside the title. */
     commit: (sha: string) => `Commit ${sha}`,
     preparing: "Preparing the review",
@@ -2178,7 +2280,7 @@ export const defaultCopy = {
     granted: "Granted already",
     grants: "Grants",
     stopped: "Stopped at its limit.",
-    stoppedBy: (by: string, time: string) => `Stopped by ${by} · ${time}`,
+    stoppedBy: (by: string, time: string) => `Stopped by ${by} | ${time}`,
   },
   inputNeeded: (question: string) => `Input needed: ${question}`,
   planWorking: "Working",
@@ -2221,13 +2323,13 @@ export const defaultCopy = {
   tone: { ok: "Done", warn: "Warning", bad: "Error", info: "Note", neutral: "Note" },
   ask: "Ask",
   alwaysAllow: (tool: string) => `Always Allow ${tool}`,
-  askedBy: (by: string, time: string) => `${by} asked · ${time}`,
+  askedBy: (by: string, time: string) => `${by} asked | ${time}`,
   notYours: "Only the person who started this can approve it. You can still ask or stop it.",
   batchTitle: (n: number) => `${n} actions need your approval`,
   approveSelected: "Approve Selected",
   denyAll: "Cancel All",
   unsure: "I'm Not Sure",
-  unsureBy: (by: string, time: string) => `${by} wasn't sure · ${time}`,
+  unsureBy: (by: string, time: string) => `${by} wasn't sure | ${time}`,
   stopPhase: {
     requested: "Stopping. Other viewers may still see it finish.",
     acknowledged: "Stop requested. Waiting for the agent to confirm.",
@@ -2241,7 +2343,7 @@ export const defaultCopy = {
   subagent: (name: string, steps?: number, tokens?: number) =>
     [name, steps ? `${steps} steps` : null, tokens ? `${Math.round(tokens / 1000)}k tokens` : null]
       .filter(Boolean)
-      .join(" · "),
+      .join(" | "),
   cantRetry: "This turn can't be retried. Send a new message instead.",
   /** A turn that acted for a person is theirs to retry, and the reader is not them. */
   retryOnlyTheirs: "Only the person this turn acted for can retry it.",
@@ -2298,7 +2400,7 @@ export const defaultCopy = {
     emptyOpen: "You're all caught up",
     emptyOpenHint: "Nothing is waiting on you. New approvals, alerts and artifacts land here.",
     pick: "Select a notification",
-    shortcuts: "j/k to navigate · e to hide · u to mark unread",
+    shortcuts: "j/k to navigate | e to hide | u to mark unread",
     pickHint: "Decisions come first, then updates.",
     back: "Back",
     needsYou: "Needs you",
@@ -2322,7 +2424,7 @@ export const defaultCopy = {
       time,
     ]
       .filter(Boolean)
-      .join(" · "),
+      .join(" | "),
   /** Said next to the kind tag, so urgency never rests on color. */
   severity: { bad: "Urgent", warn: "Warning" } as Partial<Record<string, string>>,
   show: { label: "Show", open: "Open", resolved: "Resolved", all: "All" },
@@ -2654,7 +2756,7 @@ export const defaultCopy = {
     timeout: () => "Timed out",
     tool_error: (service = "A tool") => `${service} failed`,
     forbidden: () => "Not allowed",
-    internal: () => "Something broke on my end",
+    internal: () => "Run failed",
   },
   /**
    * What to say under each failure's title, for a host that has no words of its
@@ -2737,7 +2839,7 @@ export const defaultCopy = {
     noAgentMatch: "No agent matches.",
     project: "Project",
     chooseProject: "Choose a project",
-    projectless: "Company",
+    projectless: "Workspace",
     channel: "Channel",
     picker: {
       back: "Back",
@@ -2760,7 +2862,7 @@ export const defaultCopy = {
     notHere: (agents: string[]) =>
       `${agents.join(", ")} can't answer in this project. Pick another project, or mention another agent.`,
     /** The chat bar's prompt. */
-    placeholder: "Message, or @ an agent",
+    placeholder: "Message @agent",
     /** Under an answer that went to an agent because it was selected, not tagged. */
     routedAll: (agent: string) => `Routed to ${agent}, with every agent selected`,
     routed: (agent: string) => `Routed to ${agent}`,
@@ -2805,15 +2907,15 @@ export const defaultCopy = {
   agentPlace: {
     livesIn: (project: string) => `Lives in ${project}`,
     availableIn: "Available in",
-    platform: "Company agent: available wherever a project enables it",
+    platform: "Workspace agent: available wherever a project enables it",
     everywhere: "Available everywhere",
     nowhere: "Not enabled in any project yet.",
     loses: (n: number) => `${n} ${n === 1 ? "place" : "places"} will lose this agent.`,
     /** On an agent's Access tab. */
     title: "Where it answers",
-    hint: "Company agents answer wherever a project enables them. An agent with another project as its home answers there and below.",
+    hint: "Workspace agents answer wherever a project enables them. An agent with another project as its home answers there and below.",
     home: "Lives in",
-    noHome: "Company",
+    noHome: "Workspace",
     livesHere: "Lives here",
     /** Where a project agent answers: its home and everything below it. */
     homeAndBelow: (title: string) => `${title} and the projects below it`,
@@ -2841,7 +2943,7 @@ export const defaultCopy = {
     more: "Show More",
     failed: "The directory could not be read.",
     /** An agent's row: where it lives or that it is a platform agent, and where it is enabled. */
-    platformAgent: "Company agent",
+    platformAgent: "Workspace agent",
     enabledIn: (places: string) => `Enabled in ${places}`,
     enabledEverywhere: "Enabled everywhere",
     notEnabled: "Not enabled anywhere",
@@ -2887,8 +2989,8 @@ export const defaultCopy = {
       instructions: "Instructions",
       paused: "Paused",
     },
-    title: "Scheduled",
-    lede: "Work that runs on its own: on a schedule, or when GitHub sends an event. Each run lands in History.",
+    title: "Schedules",
+    lede: "Work that runs on a schedule or when GitHub sends an event. Follow its results in Sessions.",
     newSchedule: "New Schedule",
     newGitHub: "New GitHub Automation",
     newTitle: "New GitHub Automation",
@@ -3081,9 +3183,9 @@ export const defaultCopy = {
   },
   /** The project tree: its kinds, where a project sits, and what a person does with one. */
   projects: {
-    companyName: "Company",
+    companyName: "Workspace",
     personalTitle: "Personal",
-    companyStart: "Start in the company-wide project",
+    companyStart: "Start in the workspace",
     unreadUpdates: "Unread updates",
     title: "Projects",
     lede: "Where work belongs. A project's instructions, notes and limits reach everything below it.",
@@ -3100,7 +3202,7 @@ export const defaultCopy = {
     details: "Details",
     moreAgents: (count: number) => `+${count} more agents`,
     /** The workspace is the root of the tree. */
-    workspace: "The workspace",
+    workspace: "Workspace",
     workspaceHint: "Holds every project. Its instructions and notes reach every agent.",
     /** Where a row sits when the row above it is not its parent: "in Field › Globex". */
     within: (path: string[]) => `in ${path.join(" › ")}`,
@@ -3160,7 +3262,7 @@ export const defaultCopy = {
       available: "Available here",
       availableHint:
         "Agents that may answer here and below: what this project and those above it enable, the agents that live here, narrowed by every allow list on the way.",
-      everyPlatform: "Every Company agent",
+      everyPlatform: "Every Workspace agent",
       noneAvailable: "No agent may answer here. Enable one, or let one live here.",
       default: "Default",
       defaultHint:
@@ -3176,8 +3278,8 @@ export const defaultCopy = {
         "Each agent available here decides for itself whether to answer an untagged message. When none does, it waits for a person.",
       enable: "Enable",
       enableHint:
-        "Company agents this project enables for itself and everything below. It adds to what the projects above enable.",
-      enableEvery: "Every Company agent",
+        "Workspace agents this project enables for itself and everything below. It adds to what the projects above enable.",
+      enableEvery: "Every Workspace agent",
       enableEveryHint:
         "Every agent that lives in no project. An agent that lives in a project is never reached this way.",
       enableNone: "Enables nothing of its own.",
@@ -3232,7 +3334,7 @@ export const defaultCopy = {
         usage: (used: number, budget: number, unit: string) =>
           budget > 0
             ? `${used.toLocaleString()} / ${budget.toLocaleString()} ${unit}`
-            : `${used.toLocaleString()} ${unit} · no additional cap`,
+            : `${used.toLocaleString()} ${unit} | no additional cap`,
         kinds: {
           instructions: "Instructions",
           agent_instructions: "Agent instructions",
@@ -3338,7 +3440,7 @@ export const defaultCopy = {
     privateHint: "Only the people in it read a private thread. Tagging a person invites them.",
     /** Who takes part, in the meta line. */
     participants: (n: number) => `${n} ${n === 1 ? "person" : "people"}`,
-    startThread: "Start a thread",
+    startThread: "Message @agent",
     reply: "Reply",
     send: "Send",
     /** The control that posts a message no agent answers, unless it tags one. */
@@ -3399,7 +3501,7 @@ export const defaultCopy = {
     /** A mention kind, as completion offers `@kind:`: its title, or what it is. */
     mentionKind: (kind: string, title?: string) => title || `Mention by ${kind}`,
     /** The chat bar's prompt in a conversation. Nothing runs until a message tags an agent. */
-    message: "Ask anything, @ to mention, / for actions",
+    message: "Message @agent",
     /** The control at the top of a private conversation that shares it in a project's channel. */
     share: "Share",
     shareTitle: "Share this conversation",

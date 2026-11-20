@@ -746,7 +746,7 @@ test("a dirty skill package keeps its scope until it is explicitly saved or disc
   fireEvent.change(editor, {
     target: { value: editor.value.replace("Original instructions", "Unsaved instructions") },
   });
-  const company = screen.getByRole("button", { name: "Company" }) as HTMLButtonElement;
+  const company = screen.getByRole("button", { name: "Workspace" }) as HTMLButtonElement;
   assert.equal(company.disabled, true);
   fireEvent.click(company);
   assert.match(editor.value, /Unsaved instructions/);

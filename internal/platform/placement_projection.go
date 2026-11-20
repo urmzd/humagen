@@ -1,6 +1,7 @@
 package platform
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 	"time"
@@ -16,6 +17,7 @@ import (
 // moved conversation's operational event view. Durable journal bytes are never
 // rewritten. The publication preview names this exclusion explicitly.
 func (p *Platform) ShownEvent(who auth.Principal, e event.Envelope) event.Envelope {
+	e = p.reviewEvent(context.Background(), e, &who)
 	hidden, moved := p.movedContext(who.Tenant, e.Run)
 	if !moved || e.Data == nil {
 		return e
@@ -35,6 +37,7 @@ func (p *Platform) ShownEvent(who auth.Principal, e event.Envelope) event.Envelo
 // APIEvent is an event as the API sends it: the envelope, with data as the
 // JSON the reader is shown.
 type APIEvent struct {
+	Session string          `json:"session,omitempty"`
 	ID      string          `json:"id"`
 	Source  string          `json:"source"`
 	Type    string          `json:"type"`
@@ -59,6 +62,7 @@ func (p *Platform) ShownAPI(who auth.Principal, e event.Envelope) (APIEvent, boo
 	if event.Family(e.Type) != "run" || e.Tenant != who.Tenant {
 		return APIEvent{}, false
 	}
+	e = p.reviewEvent(context.Background(), e, &who)
 	var raw []byte
 	switch {
 	case e.Type == event.TypeCitation:
@@ -81,7 +85,7 @@ func (p *Platform) ShownAPI(who auth.Principal, e event.Envelope) (APIEvent, boo
 		}
 	}
 	return APIEvent{
-		ID: e.ID, Source: e.Source, Type: e.Type, Subject: e.Subject, Channel: e.Channel, Time: e.Time, Hops: e.Hops,
+		Session: e.Session, ID: e.ID, Source: e.Source, Type: e.Type, Subject: e.Subject, Channel: e.Channel, Time: e.Time, Hops: e.Hops,
 		Tenant: e.Tenant, Run: e.Run, Seq: e.Seq, Agent: e.Agent, Version: e.Version, Digest: e.Digest, Data: raw,
 	}, true
 }

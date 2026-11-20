@@ -428,3 +428,27 @@ are returned, so the router retries them with its bounded backoff.
 Code channels and agent sessions are new Slack surfaces. This connector is
 tested against the documented contract through the in-memory fake and has not
 yet been exercised against a live workspace.
+
+## Durable native session feedback
+
+Managed webhook installations show lifecycle with reactions on the original
+thread message: eyes while working, a check on success, x on failure, raising
+hand when waiting and raised hand when stopped. The app needs reactions write
+permission. A reaction failure is retried independently of delivering the answer.
+The answer retains native user/channel mentions and HTTPS permalinks.
+
+A plain reply in a thread with a persisted agent answer continues its agent's
+session. A standalone thanks in that known thread receives a heart reaction
+without starting a model turn. Bot messages and unknown unmentioned channel
+threads do not start work.
+
+Signed thumbs-up/down reactions on delivered agent answers save the same
+`run.feedback.v1` assessment as console feedback, including reaction removal.
+A raised-hand reaction stops the known run through the installation's existing
+stop policy. Subscribe to `reaction_added` and `reaction_removed`, and include
+them in an installation's explicit event capabilities when those are configured.
+Delivery handles and native event IDs persist across connector rebuilds.
+
+Cross-surface `slack_post_message` actions require an explicit destination channel
+in `slack.action_channels`. This is an exact channel-ID list; project bindings,
+installation capabilities and runtime action policy still constrain the write.

@@ -28,6 +28,7 @@ import (
 	"github.com/urmzd/humagen/pkg/memory"
 	"github.com/urmzd/humagen/pkg/policy"
 	"github.com/urmzd/humagen/pkg/projects"
+	"github.com/urmzd/humagen/pkg/prompts"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/humagen/pkg/state/statetest"
@@ -657,7 +658,11 @@ func TestContextLayersInOrderAndWithinBudget(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	text := wire.TextOf(second.Tag())
+	pin, ok, err := prompts.Read(wire.Meta(second.Tag()))
+	if err != nil || !ok {
+		t.Fatalf("prompt snapshot: %v %v", ok, err)
+	}
+	text := pin.System("") + wire.TextOf(second.Tag())
 	order := []string{
 		"the workspace's first, then each project's down to this one",
 		"(instructions of Acme not sent)",
@@ -708,7 +713,11 @@ func TestContextLayersInOrderAndWithinBudget(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := wire.TextOf(top.Tag()); !strings.Contains(got, "ROOT-RULE") || !strings.Contains(got, "What everyone in Acme knows:\n- WORKSPACE-NOTE") || strings.Contains(got, "FIELD") {
+	topPrompt, _, err := prompts.Read(wire.Meta(top.Tag()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := topPrompt.System("") + "\n\n" + wire.TextOf(top.Tag()); !strings.Contains(got, "ROOT-RULE") || !strings.Contains(got, "What everyone in Acme knows:\n- WORKSPACE-NOTE") || strings.Contains(got, "FIELD") {
 		t.Fatalf("a turn at the root was sent:\n%s", got)
 	}
 }
@@ -745,7 +754,11 @@ func TestACronRunInAProjectGetsItsContext(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		sent := wire.TextOf(r.Tag())
+		pin, _, err := prompts.Read(wire.Meta(r.Tag()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		sent := pin.System("") + "\n\n" + wire.TextOf(r.Tag())
 		for i, want := range []string{"GLOBEX-RULE", "FIELD-NOTE", "AGENT-NOTE", "What changed this week?"} {
 			if !strings.Contains(sent, want) {
 				t.Fatalf("%s run, layer %d: %q missing from:\n%s", origin, i, want, sent)

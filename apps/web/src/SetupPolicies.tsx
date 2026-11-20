@@ -122,7 +122,7 @@ export function SetupPolicies({
               {effective && (
                 <p className="text-aui-xs text-aui-muted">
                   {words.effective}: {words[effective]}
-                  {labels.length ? ` · ${labels.join(", ")}` : ""}
+                  {labels.length ? ` | ${labels.join(", ")}` : ""}
                 </p>
               )}
             </div>

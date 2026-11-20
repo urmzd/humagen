@@ -25,7 +25,7 @@ export function ModelPicker({
     pick.model ? modelName(pick.model) : offers.models.length > 0 ? words.agentModel : "",
     pick.effort ? words.effort(pick.effort) : offers.efforts.length > 0 ? words.agentEffort : "",
   ].filter(Boolean);
-  const label = parts.join(" · ");
+  const label = parts.join(" | ");
   const item = (
     key: string,
     name: string,

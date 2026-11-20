@@ -144,7 +144,7 @@ export function CitationProvenance({
         </span>
       ) : (
         <span>
-          {known && citation.refreshFailed ? `${labels.lastGoodCopy} · ` : ""}
+          {known && citation.refreshFailed ? `${labels.lastGoodCopy} | ` : ""}
           {labels.freshnessUnknown}
         </span>
       )}
@@ -171,7 +171,7 @@ export function SourceMark({ label, className }: { label: string; className?: st
       aria-hidden
       className={`inline-flex shrink-0 items-center justify-center rounded-[0.3rem] bg-aui-subtle font-semibold text-aui-muted uppercase ${className ?? "size-4 text-[0.6rem]"}`}
     >
-      {label.charAt(0) || "·"}
+      {label.charAt(0) || "|"}
     </span>
   );
 }

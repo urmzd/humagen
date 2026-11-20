@@ -530,6 +530,9 @@ func (x *Index) Record(runID string, tag event.Envelope, rev int) error {
 				thread, project, client, within, channel, message = top.Thread, top.Project, top.Client, top.Within, top.Channel, ""
 			}
 		}
+		if sid := wire.Meta(tag)[wire.MetaSession]; sid != "" {
+			thread = sid
+		}
 		r := &Run{
 			Citations: []Citation{},
 			ID:        runID, TagID: tag.ID, Tenant: tag.Tenant, Agent: wire.AgentOf(tag), Rev: rev, Origin: wire.Origin(tag),
@@ -1104,6 +1107,19 @@ type ThreadSummary struct {
 	LastAgent bool      `json:"last_agent,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// ConversationSummary reads one retained projection without scanning a workspace.
+func (x *Index) ConversationSummary(tenant, id string) (ThreadSummary, error) {
+	var s storedThread
+	_, err := x.lookup(tenant, threadKey(id), &s)
+	return s.summary(), err
+}
+
+// A governed child remains in its execution tree, but a canonical child
+// session has a separate user-facing transcript of its own.
+func conversationTurn(r *Run) bool {
+	return r.Parent == "" || (wire.Meta(r.tag)[wire.MetaSession] != "" && wire.Meta(r.tag)[wire.MetaSession] == r.Thread)
 }
 
 // MaxLast bounds ThreadSummary.Last, in bytes.

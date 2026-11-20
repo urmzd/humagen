@@ -54,6 +54,8 @@ const (
 
 // ToolServer is an MCP server a person adds for themselves.
 type ToolServer struct {
+	// OAuth names a configured connection; its credential never enters the run snapshot.
+	OAuth string `json:"oauth,omitempty"`
 	// Tools is the exact list the person approved. Nil means not approved.
 	Tools []toolprovider.Tool `json:"tools,omitempty"`
 	// Name is lower case letters, digits and dashes, unique among the
@@ -137,6 +139,9 @@ func (in Input) Check() error {
 		}
 		if u, err := url.Parse(t.URL); len(t.URL) > MaxURL || err != nil || u.Scheme != "https" || u.User != nil || u.Host == "" || t.Host() == "" {
 			return fmt.Errorf("%w: tool server %q: the address is an https URL with no user or password in it", ErrInvalid, t.Name)
+		}
+		if t.OAuth != "" && (!serverName.MatchString(t.OAuth) || t.Credential != "") {
+			return fmt.Errorf("%w: choose OAuth or a credential reference", ErrInvalid)
 		}
 		if t.Credential != "" {
 			if _, err := credref.Parse(t.Credential); err != nil {

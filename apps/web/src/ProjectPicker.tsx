@@ -274,10 +274,13 @@ export function ProjectPicker({
   canCreate = true,
   personalLabel,
   className = "",
+  locked,
   onChange,
   onCreated,
 }: {
   className?: string;
+  /** Why the session must stay in this project. */
+  locked?: string;
   /** What the person's own project reads as: "No project" over Home's chat bar. */
   personalLabel?: string;
   projects: ProjectView[] | null;
@@ -307,13 +310,18 @@ export function ProjectPicker({
       <button
         type="button"
         aria-label={value === null ? "Select project" : `Select project: ${label}`}
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        onClick={() => setOpen(true)}
+        aria-haspopup={locked ? undefined : "dialog"}
+        aria-expanded={locked ? undefined : open}
+        aria-disabled={!!locked}
+        title={locked || label}
+        onClick={() => {
+          if (!locked) setOpen(!open);
+        }}
         className="inline-flex min-h-9 pointer-coarse:min-h-11 max-w-full items-center gap-2 rounded-aui px-1.5 text-aui-sm text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
       >
         <ProjectIcon size={18} />
         <span className="truncate">{label}</span>
+        {locked && <span className="sr-only">{locked}</span>}
       </button>
       <Inspector open={open} title={defaultCopy.chat.chooseProject} onClose={() => setOpen(false)}>
         <ProjectChoices

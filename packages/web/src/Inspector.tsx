@@ -60,6 +60,10 @@ export function Inspector({
       media.removeEventListener("change", show);
       if (dialog.open) dialog.close();
       if (opener?.isConnected) opener.focus({ preventScroll: true });
+      else
+        document
+          .querySelector<HTMLElement>("[data-session-details]")
+          ?.focus({ preventScroll: true });
     };
   }, [open, dock]);
   if (!mounted) return null;

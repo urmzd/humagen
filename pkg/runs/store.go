@@ -605,7 +605,7 @@ func (t *txn) place(r *Run) error {
 	r.seq = h.Seq
 	t.put(ptrKey(r.ID), r.seq, 0)
 	t.put(treeKey(r.Root, r.seq), "", always)
-	if r.Parent == "" {
+	if conversationTurn(r) {
 		t.put(turnKey(r.Thread, r.seq), "", always)
 	}
 	if !r.Status.Terminal() {
@@ -642,7 +642,7 @@ func (t *txn) place(r *Run) error {
 	if r.UpdatedAt.After(s.UpdatedAt) {
 		s.UpdatedAt = r.UpdatedAt
 	}
-	if r.Parent == "" {
+	if conversationTurn(r) {
 		s.Turns++
 		if !slices.Contains(s.Agents, r.Agent) {
 			s.Agents = append(s.Agents, r.Agent)
@@ -727,7 +727,7 @@ func (t *txn) commit() error {
 		waiting := b2i(r.Status == Parked) - b2i(h.before.Status == Parked)
 		later := r.UpdatedAt.After(s.UpdatedAt)
 		// An answer to a turn is the latest thing said in the conversation.
-		answered := r.Parent == "" && was && r.Status == Completed && firstLine(r.Answer) != ""
+		answered := conversationTurn(r) && was && r.Status == Completed && firstLine(r.Answer) != ""
 		if active != 0 || failed != 0 || waiting != 0 || later || answered {
 			s.Active += active
 			s.Failed += failed

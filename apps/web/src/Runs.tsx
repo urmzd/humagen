@@ -1,8 +1,9 @@
 import { replay as fold, settled } from "@humagen/adapter";
 import { emptyTurn, reduce, type Turn } from "@humagen/core";
-import { useEffect, useReducer } from "react";
+import { useEffect, useReducer, useRef } from "react";
 import { adapter, type Run, type RunEvent, turnOf } from "./adapter.ts";
 import { api, subscribe } from "./api.ts";
+import { followSession } from "./sessionStream.ts";
 import { hueOf, isEnded } from "./ui.tsx";
 
 type Action = { type: "seed"; turn: Turn } | { type: "open" } | { type: "event"; event: RunEvent };
@@ -20,12 +21,12 @@ export function replay(run: Run, events: RunEvent[]): Turn | undefined {
   return fold(run, events, { hue: hueOf });
 }
 
-export function useRunTurn(run: Run | undefined): Turn | undefined {
+export function useRunTurn(run: Run | undefined, history = false): Turn | undefined {
   const [state, dispatch] = useReducer(
     (s: { turn?: Turn; to: ReturnType<typeof adapter>; fresh: boolean }, a: Action) => {
       switch (a.type) {
         case "seed":
-          return { turn: a.turn, to: make(), fresh: true };
+          return { turn: a.turn, to: make(), fresh: false };
         case "open":
           return { ...s, to: make(), fresh: true };
         case "event": {
@@ -40,6 +41,8 @@ export function useRunTurn(run: Run | undefined): Turn | undefined {
     { to: make(), fresh: true },
   );
 
+  const latest = useRef(run);
+  latest.current = run;
   const id = run?.id;
   const agent = run?.agent;
   // biome-ignore lint/correctness/useExhaustiveDependencies: reseed only when the selected run changes, not on every poll of its record
@@ -50,6 +53,7 @@ export function useRunTurn(run: Run | undefined): Turn | undefined {
     // and tool calls after the stream has let them go. Its record stands in until
     // then, and stays if the journal holds nothing.
     if (isEnded(run)) {
+      if (run.thread?.startsWith("s_") && !history) return;
       let on = true;
       api
         .runEvents(id)
@@ -62,6 +66,17 @@ export function useRunTurn(run: Run | undefined): Turn | undefined {
         on = false;
       };
     }
+    if (run.thread?.startsWith("s_"))
+      return followSession(run.thread, {
+        run: (event) => {
+          if (event.run === id) dispatch({ type: "event", event });
+        },
+        reset: (session) => {
+          const authoritative =
+            session.messages.find((message) => message.run?.id === id)?.run ?? latest.current;
+          if (authoritative) dispatch({ type: "seed", turn: turnOf(authoritative) });
+        },
+      });
     return subscribe(
       { run: id },
       {
@@ -69,7 +84,7 @@ export function useRunTurn(run: Run | undefined): Turn | undefined {
         onEvent: (event) => dispatch({ type: "event", event }),
       },
     );
-  }, [id, agent]);
+  }, [id, agent, history]);
 
   if (!run || !state.turn) return undefined;
   const recorded = turnOf(run);

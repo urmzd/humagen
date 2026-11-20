@@ -3,6 +3,7 @@ import { type FormEvent, useCallback, useEffect, useState } from "react";
 import type { GitHubAutomation } from "../../../packages/client/src/generated/types.ts";
 import { api, type Client, type Revision, type ScheduleView } from "./api.ts";
 import type { ProjectRef } from "./projects.ts";
+import { href } from "./route.ts";
 import { ScheduleForm } from "./Schedules.tsx";
 import { AgentMark, button, card, field, Label, Page, Problem, primary } from "./ui.tsx";
 
@@ -84,7 +85,17 @@ export function Automations({
     }
   };
   return (
-    <Page title={words.title} lede={words.lede}>
+    <Page
+      title={words.title}
+      lede={
+        <>
+          {words.lede}{" "}
+          <a className="underline underline-offset-2" href={href({ page: "sessions" })}>
+            Open Sessions
+          </a>
+        </>
+      }
+    >
       {problem && <Problem message={problem} />}
       {!kind && (
         <div className="flex flex-wrap gap-2">
@@ -277,7 +288,7 @@ export function Automations({
             <span className="flex-1">
               {s.name}
               <span className="block text-aui-sm text-aui-muted">
-                {s.expression} · {s.agent}
+                {s.expression} | {s.agent}
               </span>
             </span>
             <span>{s.paused ? "Paused" : "Active"}</span>
@@ -299,9 +310,9 @@ export function Automations({
               <div className="min-w-0 flex-1">
                 <strong>{rule.name}</strong>
                 <p className="break-words text-aui-sm text-aui-muted">
-                  {rule.event} in {rule.repository} · {rule.action}
-                  {rule.conclusion ? ` · ${rule.conclusion}` : ""}
-                  {rule.label ? ` · ${rule.label}` : ""}
+                  {rule.event} in {rule.repository} | {rule.action}
+                  {rule.conclusion ? ` | ${rule.conclusion}` : ""}
+                  {rule.label ? ` | ${rule.label}` : ""}
                 </p>
                 <p>{rule.instructions}</p>
               </div>
@@ -327,7 +338,7 @@ export function Automations({
           Object.entries(c.github?.auto_labels ?? {}).flatMap(([repo, labels]) =>
             Object.entries(labels).map(([label, agent]) => (
               <div className={card} key={`${c.id}/${repo}/${label}`}>
-                <AgentMark name={agent} /> {repo} · Label equals {label} · {agent}
+                <AgentMark name={agent} /> {repo} | Label equals {label} | {agent}
               </div>
             )),
           ),

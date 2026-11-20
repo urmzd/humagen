@@ -358,7 +358,7 @@ test("notification rows lead with the title and agent initials, without a kind c
   assert.equal(within(item).queryByText("lead published signups.csv"), null);
   assert.equal(item.querySelector('[data-aui="kind"]'), null);
   assert.equal(item.querySelector('[data-aui="template-mark"]'), null);
-  assert.match(item.textContent ?? "", /lead · lead published signups.csv body/);
+  assert.match(item.textContent ?? "", /lead | lead published signups.csv body/);
   assert.equal(screen.queryByText(/2 open|1 open/), null);
   assert.equal(box.reads.length, 0, "an empty pane never silently reads a preview");
   assert.ok(screen.getByText(defaultCopy.mailbox.pick));

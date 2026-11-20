@@ -32,6 +32,68 @@ to `api/openapi.yaml` in the same commit, followed by `make client`. A new
 event type registered in fiber's catalog needs its variant in `RunEvent` and
 `EventType` too.
 
+## Agent sessions
+
+`POST /api/sessions` starts one agent's conversation. A child names `parent`
+and `agent`; the same parent, agent and optional `label` continues the same
+durable session. `fresh: true` creates a separate child. The tenant always
+comes from the authenticated caller. Session identity and owning agent cannot
+be changed through compatibility thread routes.
+
+`GET /api/sessions` supports `roots`, `mine`, `parent`, `agent`, `project`,
+`status`, `after` and a page `limit` of at most 200. `GET /api/sessions/{id}`
+returns messages, child status, references and people. `since` is an opaque
+cursor for changed messages, including later feedback on old runs. Each delta
+page returns at most 200 changes; while `more` is true, continue with the
+returned `cursor`. Clients merge messages by ID. `summary=true` requests a
+bounded text summary. `before` pages older history; `around=<message-or-run-id>`
+opens a bounded page containing an older anchor, with `next` paging farther
+back. `since`, `before` and `around` cannot be combined. A message contains its
+original safe message or run view, including the reader's whole-answer and
+finding feedback.
+
+`POST /api/sessions/{id}/messages` returns 201. Naming another agent continues
+its child session while retaining the request in the parent. The parent keeps
+one owner. People, links, stop and message-feedback endpoints live beneath
+the same session path. Links carry references and do not grant read access.
+Message requests may select a mentioned `agent`, use `fresh=true` for an
+independent child, or provide a continuing `label`. Starting with `source_alert`
+creates a fix child in the alert's session tree and preserves the authorized
+source backlink on later turns. The source audience still controls access.
+
+`GET /api/sessions/{id}/stream` sends `session` snapshots and `run` events.
+Reconnect with the last SSE `id` in `Last-Event-ID`; this cursor tracks each
+run independently, so a child starting at sequence 1 does not skip events.
+At 200 tracked runs, `session-reset` carries an authoritative session snapshot
+and a compacted cursor. Clear transient deltas and reload any visible older
+history pages on reset. Completed run deltas retire; active positions remain
+unless all 200 runs are active, when the reset replaces those deltas too.
+Feedback updates produce a fresh session snapshot. Access is checked again
+while streaming. Earlier thread and run routes remain available for one
+compatibility release; new console conversation traffic uses sessions.
+
+`run.feedback.v1` is an opt-in observation with its own stable event ID and
+sequence zero, not a runtime execution sequence. Feedback persistence remains
+authoritative. Agent health and retained change scorecards are available at
+`GET /api/agents/{name}/health` and `/changes`.
+
+## Connection setup
+
+`GET /api/connections/{provider}` returns the caller's connection, reported
+granted scopes, latest observed health and visible configured uses. These
+mappings describe configuration, not proof of agent activity. Custom OAuth
+authorization may provide an issuer-bound client registration; its secret is
+accepted only on input and is never returned.
+
+`GET /api/catalog/connectors/bigquery/setup` reports personal consent,
+reconnectable connector names and permitted fallback credentials.
+`POST /api/catalog/connectors/bigquery` saves a private, unverified connector
+with explicit datasets and query limits. Its `project` is the Google project.
+ADC or credential references also require `clients:write` and existing
+deployment permission. Saving makes no provider request. After renewing
+consent, `POST /api/catalog/connectors/{name}/reconnect` binds it to the same
+saved OAuth configuration. Verification and publication remain separate.
+
 ## Events
 
 Every event is one envelope (`EventEnvelope`: `id`, `source`, `type`,

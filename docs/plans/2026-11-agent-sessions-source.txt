@@ -1,0 +1,713 @@
+Humagen Agent Sessions
+
+  Contents
+  1. Sessions
+  2. Session tools
+  3. API
+  4. orchagent
+  5. Surfaces and reviews
+  5b. Talks like a person
+  6. Builder and evals
+  7. Connections
+  8. Console
+  9. What testing found
+  10. Fix now
+  11. Order of work
+  12. Live validation
+  13. Decisions
+
+  Plan · 2026-11-07 · humagen and orchagent
+
+Humagen Agent Sessions
+
+Agents that work wherever you already are. Every conversation is a session with one agent; agents call agents through their sessions; people join when an agent needs them. Humagen becomes the place that runs and remembers those sessions, not a new chat platform to maintain.
+
+78issues found by hand testing
+
+3blockers
+
+209API paths today
+
+12names for "connection"
+
+29page types today
+
+1. Sessions
+
+A session is one agent's conversation. It starts where you are (a Slack thread, a GitHub pull request, the console) and answers there. When an agent needs another agent it opens a child session; when it needs a person it mentions them. Nothing copies Slack: no rooms, no channels, no project chat.
+
+One rule for every session
+
+A session is identified by (parent, agent, label). The parent is either a place (a Slack thread, a PR, a new console chat) or another session. The label is optional.
+
+Situation | Example | Result | 
+
+A person mentions an agent somewhere | @reviewer on PR #5 | The reviewer's session for PR #5 | 
+
+An agent calls another agent | The reviewer calls @security-reviewer | A child session under the review | 
+
+Same parent and agent again | The reviewer asks security a follow-up | Continues that child; it remembers its earlier findings | 
+
+Same parent and agent, with a label | Three security passes at once | security-reviewer#a, #b, #c, each with its own context | 
+
+Explicitly fresh | fresh: true, or "Start fresh" in the @ menu | A new session with a generated label | 
+
+An example
+
+PR #5 in urmzd/orchagentthe place
+
+reviewersessionstarted by a review request; posts the PR review
+
+security-reviewerchildcontinued twice
+
+architect-reviewer#a, #bchildrentwo independent passes, compared by the reviewer
+
+qa-reviewerchildran the tests; its output is evidence in the review
+
+@sampersonasked whether the API change is intended; joined from a Slack DM and asked "catch me up"
+
+People
+
+@person in a session invites them. They are told where they are (Slack DM, email, console) with a link that opens the session.
+
+On joining they can ask for a summary since they last looked, answer the agent's question, or take over the conversation.
+
+A question for a person parks the agent's run without holding a worker, as ask_person does today.
+
+Projects
+
+Without rooms, a project is only a bundle of context: its repos, its connections, its default agents and who may use them. Sessions are filed under a project; there is no project chat, inbox, history or channel. Each person has a Personal project, which replaces "No project".
+
+2. Session tools
+
+Agents get five tools for working with other sessions. People get the same five verbs in the console and the API, with the same permissions, so asking in words and clicking can never disagree.
+
+Tool | Does | API | In the console | 
+
+session_call | Start or continue a child session: agent, brief, optional label, fresh, and wait to block for the answer | POST /sessions with parent | @agent in the composer | 
+
+session_listen | Wait for new messages or the end of one or more sessions. Fan out three calls, then listen for all three | GET /sessions/{id}/stream | The child rows update live | 
+
+session_read | Read up: the transcript, or a summary since a cursor | GET /sessions/{id}?since=&summary=true | "Catch me up" | 
+
+session_status | Track children: who is working, waiting, done or failed | GET /sessions?parent={id} | The session's tree | 
+
+session_link | Cross-reference another session as context or evidence; reading one links it automatically | POST /sessions/{id}/links | Linked sessions in Details | 
+
+Rules
+
+Default deny. An agent calls only the agents its call policy names, reads only sessions in its own tree or ones shared with it, and stops at a depth limit.
+
+Listening is durable. A parent waiting on children parks its run and frees its worker, and resumes when they finish, through durable's signals. Three subagents in parallel cost no idle workers.
+
+Spend rolls up. Children spend from the parent's budget, and the parent's usage includes theirs, as run.completed already does for delegations.
+
+No loops. The existing hop limit and "an agent's own output never wakes it" still apply.
+
+Provenance. A child's message can be cited as evidence, so a review finding can point to the qa-reviewer's test run.
+
+3. API
+
+Call | Does | 
+
+POST /sessions | Start one. Body: {text, agent?, parent?, label?, fresh?, project?, files?}. Without agent, the first mention or the project default answers. Returns the session | 
+
+POST /sessions/{id}/messages | Add a message. Answering a question is a reply | 
+
+GET /sessions/{id}/stream | Server-sent events for the session and a status line per child. Reconnect with Last-Event-ID | 
+
+GET /sessions/{id} | The session as messages, its children and links. ?since= and ?summary=true read up | 
+
+GET /sessions | Mine, filtered by status, agent, project or parent | 
+
+POST /sessions/{id}/stop | Stop it and, optionally, its children | 
+
+POST /sessions/{id}/people | Invite a person (also done by @person) | 
+
+POST /sessions/{id}/links | Cross-reference another session | 
+
+PUT /sessions/{id}/messages/{mid}/feedback | Up or down, reasons, comment, optional finding id | 
+
+POST /sessions/{id}/alerts, GET /alerts, PATCH /alerts/{id} | Alerts on sessions: create, list by state and priority, resolve or snooze | 
+
+/agents, /connections, /projects | Agents with versions and evals; connected systems; context bundles | 
+
+Today's 209 paths become these plus admin resources (people, models, limits, audit). The old routes stay for one release so the Slack app and console can move over.
+{
+  "id": "m_7",
+  "session": "s_review_pr5",
+  "author": { "kind": "agent", "name": "reviewer", "version": "1.4.0" },
+  "status": "working",            // working | waiting | done | failed | stopped
+  "parts": [
+    { "type": "text", "text": "Checking security and architecture in parallel." },
+    { "type": "call", "session": "s_sec", "agent": "security-reviewer", "status": "done" },
+    { "type": "step", "name": "github_read_file", "summary": "Read auth/login.go" },
+    { "type": "review", "review": { "format": "humagen.review.v2" } }
+  ]
+}
+
+4. orchagent
+
+flow already keys a conversation as (tenant, agent, surface), and its documentation says different agents in one Slack thread keep separate journals because each is one agent's conversation, not a room. The session model is that design, finished.
+
+Change | Why | 
+
+Session key (parent, agent, label). A delegation keys on its parent session instead of being its own one-shot thread | Calls continue by default; labels give parallel sessions | 
+
+app.Session(...) with Post, Stream, Read, Summary, Children, Link; retire Ask and Reply from PR #5 | One handle at the right level, the same verbs as the tools | 
+
+Session tools as native tools, with durable listen | Agents call, wait, read, track and link | 
+
+Mention resolution: agents, people, places, links | One routing language for every surface | 
+
+Real Slack and GitHub connectors deliver to any place a session names; native verbs may target granted places | Today only a fake Slack sink does cross-surface delivery | 
+
+Slack reactions, GitHub reaction polling and /feedback become run.feedback.v1 | Feedback from every surface | 
+
+GitHub CreateReview with line comments and suggestions | Real pull request reviews | 
+
+mcptools token source for OAuth, with refresh | One-click connections | 
+
+API cleanup: Run with roles, one Handler(), clearer option names, full connector config in WithSlack and WithGitHub | humagen can move onto flow.New | 
+
+5. Surfaces and structured answers
+
+One session, rendered natively by each place it reaches. A structured answer such as a review is data the platform checks, then each surface draws in its own form.
+
+Surface | While working | When done | Feedback | 
+
+Slack | Streams in the thread, children as status lines | A card: title, counts, summary, errors first, Open Pull Request, Open Session | Reactions, or the card's thumbs and a modal with reasons | 
+
+GitHub | One status comment, edited | A real review: verdict, body, a line comment per finding with a committable suggestion, evidence collapsed | Committing a suggestion, resolving a finding, reactions, /feedback | 
+
+Console | Steps and child sessions stream | The card; each finding opens the diff at its line; each evidence item opens its step or child session | Thumbs that save on click, and a modal with reasons | 
+
+Review v2
+
+Adds to today's v1: title, verdict (approve, comment, request changes), scope.commit, and per finding location, change (becomes a suggestion), and evidence naming the step or child session that observed it. Counts and emoji are derived from findings. Locations must fall in the diff and changes must apply, or they degrade to the review body; evidence without a step shows as unverified. Agents may Approve only where a project's policy allows it.
+
+5b. Talks like a person
+
+In Slack and GitHub an agent should behave like a teammate who uses those tools well: react instead of announcing, reply in the thread, link instead of quoting, and say only what helps.
+
+Reactions both ways
+
+Who | Does | Means | 
+
+Agent | Reacts 👀 to the message it picked up | Got it, working. Replaces "Working on it" messages | 
+
+Agent | Swaps 👀 for ✅, or ❌ with a one-line reply saying why | Done, or could not | 
+
+Agent | Reacts 🙋 when it has asked someone something | Waiting on a person | 
+
+Person | 👍 or 👎 on the agent's reply | Feedback, saved as run.feedback.v1 | 
+
+Person | ✋ on the agent's reply | Stop | 
+
+Person | Replies in the thread | Continues the session; no mention needed | 
+
+A short acknowledgement or a simple yes is a reaction, not a message. The same reactions work on GitHub comments, which carry 👍, 👎, 👀 and 🚀.
+
+Native references
+
+Slack: <@U…> mentions, <#C…> channel links and message permalinks that unfurl. Never a pasted copy of a message that a link would show.
+
+GitHub: #123, @login, commit SHAs and permalinks with line ranges, which GitHub renders as code.
+
+Across surfaces: a Slack reply about a PR links the PR and its exact lines; a GitHub review links back to the session.
+
+A platform prompt, in layers
+
+Every agent should share a basic understanding of how humagen works and one way of behaving. Today only two layers exist: each agent's own prompt, and project instructions (from project templates). Add layers above them, composed in a fixed order:
+
+Layer | Owned by | Holds | Set in | 
+
+Platform | humagen, shipped and versioned | What a session is, mentions, people, alerts, the session tools, reactions, the house style | Built in; overridable by a spec field, as every humagen setting is | 
+
+Workspace | Admins | The company: who we are, our words, our policies, our tone | Settings › Workspace, the spec, or by asking the builder | 
+
+Project | Project owners | Repos, conventions, what "done" means | Project instructions (exists today) | 
+
+Agent | The agent's maintainer | Its job | The agent's prompt | 
+
+Pinned per run. A run records the version of each layer it used, as it already pins the agent's definition, so a retry sees exactly the same prompt.
+
+Visible. The context preview, which already lists what an agent was sent, shows each layer and its size.
+
+Bounded and cached. The shared layers have a size limit and come first, so they form a stable prefix the provider's prompt cache reuses across every agent.
+
+Tested before it applies. Changing the platform or workspace layer runs a sample of every agent's evals and shows the result on the change card, like any agent change.
+
+The platform layer, in part:
+You are an agent in humagen. You work in a session: one conversation with you,
+started wherever a person is (Slack, GitHub, the console), answered there.
+@agent starts or continues that agent's session; @person asks a person.
+Use the session tools to delegate, wait, read up and cite other sessions.
+Raise an alert only when a person must act.
+
+Lead with the answer. No preamble, no restating the question, no sign-off.
+Match the place: in Slack, one to four sentences and no headings;
+in a GitHub review, the structured format; in the console, whatever fits.
+Ask one question at a time, and only when you cannot proceed.
+Link to things instead of quoting them. React instead of acknowledging.
+If you have nothing new to say, say nothing.
+
+An online eval enforces it: a Slack reply over its word budget (for example 120 words, unless asked for detail) or opening with filler counts against the agent's health, so drift shows up without anyone reading transcripts.
+
+6. Builder and evals
+
+New agent opens a session with humagen-builder. The same session is where the agent is changed, tested, paused and retired. Each change arrives as a card (prompt diff, tools, where it listens, eval results) for a person to approve. Pause All and Build With the Builder stop being separate buttons.
+
+ | Online evals | Offline evals | 
+
+When | As each run ends | On a schedule, and before a change is saved | 
+
+Against | That run's output and signals (cost, time, tool failures, format, evidence linked) | Suite cases plus recorded traces; a new version replays past inputs | 
+
+Result | Agent health; an alert in the agent's builder session when a limit is crossed | A score per version on the change card; a drop needs an override | 
+
+Cases come from real sessions: every thumbs down with a reason becomes a candidate case. Checks stay deterministic unless a suite marks one as judged by a model, which is labelled wherever it appears. The builder gets tools for pause, retire, connections, writing suites and running them.
+
+7. Connections
+
+Today there are 12 names for one idea (connections, connected accounts, tool servers, MCP servers, clients, systems, installations, apps, sources, providers, connectors, credential references) across five addresses plus Library. None of Notion, Linear or Granola can be connected: Notion loops on a credential reference, and Add Tool Server rejects every host without saying which are allowed. Slack and GitHub accept fake credentials and show "Enabled".
+
+One page, one word: Connections. Presets for Slack, GitHub, Notion, Linear, Granola, Google Drive and BigQuery, plus "Other tool server".
+
+Connect runs OAuth: discovery (RFC 9728, RFC 8414), Dynamic Client Registration (RFC 7591) with PKCE, a pre-registered client where DCR is missing, refresh before expiry, tokens encrypted at rest.
+
+Each connection has one detail page: status and Reconnect, where agents reply (Slack channels, repos), the tools it gives and to which agents, what it syncs for knowledge, the projects using it, and workspace or just me.
+
+Credentials are checked when saved, or the card says "not verified".
+
+An empty state always offers the first action. No page tells a person to edit a config field.
+
+8. Console
+
+Navigation
+
+Entry | Holds | Replaces | 
+
+New | Start a session | Home greeting stays as the empty state | 
+
+Sessions | Mine, by state and project, with children nested | Recents, History, Activity, Monitor, project tabs | 
+
+Alerts | The alert center: open alerts across sessions, Urgent first, and Watching | Notifications, Inbox, Alert Rules, Home "Needs you" and "What's new", project Inbox, phone "Work" | 
+
+Agents | Health and evals; New agent opens a builder session | Customize › Agents, Agent Network, Assignments, Agent Controls, Directory › Agents | 
+
+Connections | Everything outside | Five connection addresses, Library › Sources and Catalog, Operations › Integrations | 
+
+Library | Skills, memory, saved files | Customize › Skills, Deliverables, Artifacts | 
+
+Settings | Workspace, people, models, limits, audit, appearance | Operations, Directory, You › Profile duplicate | 
+
+Alerts live on sessions; there is no inbox
+
+Today attention is spread over Notifications (four views, 13 kinds), Home's "Needs you" and "What's new", a project Inbox tab, the phone's Work tab, alert rules and announcements, with counts that disagree. Replace all of it with one object: an alert on a session. The context stays where the work is, and the fix is a reply away.
+
+Part | Rule | 
+
+Where it lives | Every alert belongs to a session, optionally anchored to a message. A system alert (a connection expired, a budget reached, an eval dropped) opens or joins a session with the agent that owns the problem, so "why?" can be asked in place | 
+
+Priority | Urgent, Normal, Low. One word each, one mark each | 
+
+State | Open, Snoozed until a time, Resolved. Alerts are resolved, not read; reading is a property of the session (its unread dot) | 
+
+Who creates it | An agent asking a question or approval (resolves when answered); a failed run; a rule; or a person in plain words: "alert me if the nightly fails", "remind me Friday to check this" | 
+
+How it shows | Open alerts pin to the top of their session with their action (Answer, Approve, Retry, Reconnect), Resolve and Snooze. The session row rises to the top of the list with its priority mark | 
+
+Alert center | One page of open alerts across sessions, Urgent first, filtered by mine or everyone's, priority and source; bulk Resolve and Snooze with Undo. A Watching tab lists standing alerts (rules) and lets you pause or delete them | 
+
+Notifying | Delivery is a preference per priority: Urgent pushes now (Slack DM, email, browser); Normal joins a digest; Low stays in the center. The sidebar badge counts open Urgent and Normal alerts for you, and nothing else | 
+
+Today | Becomes | 
+
+approval, clarification, mention | A Normal alert on that session; resolves when answered | 
+
+failure, budget, alert, source, operation | An alert from a rule, in the session of the agent that owns the problem; Urgent or Normal by rule | 
+
+result, artifact, memory | The session's unread dot; no alert | 
+
+announcement | A session with the people it is for; an alert only if its author flags one | 
+
+Alert rules | Standing alerts in the center's Watching tab, also created by asking | 
+
+Agents get one more tool, alert_create (session, priority, title, who, resolve-when), with alert_resolve, under the same default-deny policy. The API: POST /sessions/{id}/alerts, GET /alerts?state=open&priority=, PATCH /alerts/{id} to resolve or snooze.
+
+Home
+
+Home is the composer and nothing that must be cleaned up. Layout after the reference: a one-line greeting, the composer, one row of text controls under it (project, agent, model and effort, approvals), then at most three rows:
+
+If you have open Urgent or Normal alerts: up to three of them, each with its priority mark, title, session and × to resolve (Undo in a toast), and an Alert center link.
+
+Otherwise: Continue, your three most recent sessions.
+
+Starter suggestions only in a workspace with no sessions yet.
+
+"Needs you", "What's new" and the coloured starter dots go. Sessions that schedules or other agents started nest under their parent or their agent, so a fan-out of twenty runs is one row in your list, not twenty.
+
+Session view
+
+Header: agent, title, project, people, Share, ⋯ (rename, archive, delete).
+
+Open alerts pin above the transcript with their action, Resolve and Snooze.
+
+One Details panel with tabs Files, Sources, Steps and Sessions (children and links), replacing Overview, Workspace, Context and Activity.
+
+Under an answer: Copy, Reply, thumbs up, thumbs down. Fork, Replay and Save go in ⋯; Bring Back merges into Fork.
+
+Feedback: saves on click; only the icon changes, in a neutral selected state; a centred modal adds reason chips for both directions and a comment.
+
+Reply attaches a removable quote chip, not raw Markdown.
+
+Failures name the cause ("Anthropic key missing", "Budget reached") with Retry where it can work and a working Report Issue.
+
+Composer
+
+One placeholder, short enough for a narrow column: "Message @agent".
+
+Layout follows the composer's own width (container queries), not the window's, so a narrow pane gets the compact layout.
+
+The approval control reads "Approvals: Default", and its menu fits its box.
+
+One project picker. In a session that has answered, it is shown locked with the reason.
+
+The @ menu shows who will answer before sending, offers Continue or Start fresh for an agent already in the session, and says "No agent named @billing" for an unknown name.
+
+A starter fills an empty draft or is added to an existing one, never replacing it.
+
+Stop and Queued are visible states in the composer while an agent works.
+
+/ appears only when there are skills.
+
+Rows, hover and focus
+
+Hand testing found six different row treatments: radii of 0, 7.6, 9.6 and 12.8px, highlight boxes that cut into avatars, four browser tooltips per agent row repeating visible text, and focus rings offset by −2, 0 or 1px. One row component replaces them: a fixed inset, one radius, no title tooltips, one focus ring. At rest a row shows its title, state and age; hover adds only ⋯.
+
+Colour
+
+Flat neutral surfaces. One interaction accent taken from the brand (today "Workspace" and "Red" are the same hue, and red badges read as errors). The moving sweep means working, and appears in the composer, the page's top edge and the sidebar's activity pill; the sidebar's wave and preview stay as they are. Agent colours appear only in agent marks, never as selected states.
+
+Words
+
+One word per idea, from the person's side: session, agent, person, connection, project, alert. No raw ids (personal-7e52…, r250b…), no config keys (credential_scope, person_tools), no permission strings in place of sentences.
+
+9. What testing found
+
+Four agents clicked through a local console (seeded data, offline model) at 390, 480, 768, 1024 and 1280px in dark mode. Screenshots are in /private/tmp/claude-501/-Users-urmzd-github/1760bf4a-fb8a-4956-a49b-a1e2797506b2/scratchpad/explore/.
+
+3blockers
+
+38major
+
+37minor
+
+    Rating shifts the row 140px and is never saved.
+    Notion loops between "cannot be used" and "reconnect".
+    Every failure is "Something broke on my end"; Report Issue does nothing.
+    On a phone the More menu opens off screen.
+    "Default ▾" is the approval mode; its menu spills out.
+    At 480px the placeholder is cut and "Default" sits alone.
+
+  Blockers 3
+
+# | Where | Finding | 
+
+T1 | Session view | The console never sends a rating or comment; it says "Thanks for the feedback" and the rating is gone on reload. Only Slack saves feedback | 
+
+S1 | Sources | Notion cannot be connected: a credential reference is refused, then the page asks to reconnect, in a loop. No OAuth | 
+
+S2 | Tool servers | Add Tool Server rejects every host ("host is not allowed") without listing allowed ones; the credential field is disabled. Linear and Granola have no route | 
+
+  Composer 11 major, 7 minor
+
+# | Sev | Finding | 
+
+C1 | major | 390 to 600px: placeholder cut to "Ask anything, @ to mention, /"; "Default ▾" alone on a second row. The compact layout follows the window, not the column | 
+
+C2 | major | With a side panel at 1024px the composer is 288px and the placeholder's second line is clipped | 
+
+C3 | major | The approval menu is 288px inside a 224px popover; text spills 64px out and covers action icons on a phone | 
+
+C4 | major | "Default ▾" never says it is the approval mode; "Approvals" is only in the accessible label | 
+
+C5 | major | + › Agents: Enter closes the menu without adding the mention (Space and click work) | 
+
+C6 | major | A message with no agent, or an unknown @billing, posts and nothing happens; the API knows it was refused but the UI never says | 
+
+C7 | major | Clicking a starter replaces the draft with no warning or undo | 
+
+C8 | major | In an answered session the folder still lists projects; picking one returns a raw 409 "a conversation that has runs stays in its project" | 
+
+C9 | major | One project, three names: "No project", "Personal", "personal project" | 
+
+C10 | major | Two project pickers: a popover in + and a page-reflowing drawer from the folder; the folder does not toggle closed | 
+
+C11 | major | Skills empty everywhere and / opens nothing, yet the placeholder promises "/ for actions" | 
+
+C12 | minor | Mic fails with "Check that the microphone is allowed" even when allowed (inferred: no speech service) | 
+
+C13 | minor | Two placeholders: "Message, or @ an agent" and "Ask anything, @ to mention, / for actions" | 
+
+C14 | minor | Mentions are plain text in the draft but tokens for skills; no "no match" for @zzz; "People and agents" lists agents only | 
+
+C15 | minor | A binary-file notice stays after the file is removed; focus falls to the page body | 
+
+C16 | minor | Queueing is a hidden label change on the same arrow; no Stop in the composer | 
+
+C17 | minor | helper and humagen-analyst both show "HA"; the always-on glow hides the focus state; folder has no tooltip | 
+
+C18 | minor | The disclaimer sits at the page bottom on Home but under the composer in sessions; on a phone Home shows the project as a bare icon | 
+
+  Session view 1 blocker, 8 major, 9 minor
+
+# | Sev | Finding | 
+
+T2 | major | "Thanks for the feedback" pushes Save, Fork and Replay 140px right and wraps on a phone; the selected thumb is boxed in the agent's colour, even for thumbs down | 
+
+T3 | major | Report Issue has no handler; message sessions offer no Retry, only "Retry it from your inbox"; every failure is "Something broke on my end", even a missing key or 402 | 
+
+T4 | major | Clicking a wave mark scrolls the whole page 72px, pushing the header off screen | 
+
+T5 | major | Fork with defaults opens Home as "Untitled conversation" with no fork context, even after reload | 
+
+T6 | major | Save as Artifact uses the Archive icon, saves on one click, makes identical v2 on a second click, no undo | 
+
+T7 | major | Reply inserts raw Markdown ([this answer](/conversations/…)); a second Reply stacks another | 
+
+T8 | major | Replay With menu is clipped under the header; picking an agent silently creates a new conversation with the same title | 
+
+T9 | major | Opening a session fires about 80 API calls in 3 seconds (inferred from network) | 
+
+T10 | minor | Seven actions under answers, eight on forks; Fork, Replay With and Bring Back overlap | 
+
+T11 | minor | Raw ids and jargon: "Forked through: r250b…", "Ref r3cc…", "Original execution inputs and private source provenance" | 
+
+T12 | minor | Header shows Share or People & Access for the same panel; "Conversation Settings" holds no settings; project missing on desktop | 
+
+T13 | minor | Closing Overview, Workspace, Context or Activity drops focus to the body | 
+
+T14 | minor | "Context" means two things; Workspace, Artifact and Deliverables name one thing; panel widths differ | 
+
+T15 | minor | Source labels ("Indexed Copy", "Live Results") sit below all chips, detached from their source | 
+
+T16 | minor | The wave is tiny at 45% opacity; previews show raw ```json; it overlaps the avatar on a phone | 
+
+T17 | minor | Step summaries mislabel tools; a pending approval reads "Made a change" in green; "Ask / Cancel" buttons unclear | 
+
+T18 | minor | The fork context block uses a different message style | 
+
+  Navigation and attention 10 major, 12 minor
+
+# | Sev | Finding | 
+
+N1 | major | Phone: the More menu opens off the right edge, labels cut | 
+
+N2 | major | Phone: a lower row's ⋮ menu opens under the account footer, hiding Rename, Archive and Delete | 
+
+N3 | major | Phone: a long-press preview stays on screen through other menus | 
+
+N4 | major | Counts disagree: bell 4, Inbox 4, Home "Needs you" 3, phone "Work" 3; "Needs you" lists FYI items | 
+
+N5 | major | Customize › agent › "All agents" lands on a different Agents hub while Customize stays highlighted | 
+
+N6 | major | Connections at five addresses | 
+
+N7 | major | Two Profile pages edit the same name; Theme in two places | 
+
+N8 | major | A project's Inbox tab is a third feed pattern with different row actions | 
+
+N9 | major | Row hover shows Pin, Archive and ⋮, cutting the title from 214 to 142px; Pin and Archive repeat inside ⋮ | 
+
+N10 | major | Search results show raw ids (personal-7e5222…), overflowing on a phone | 
+
+N11 | minor | Agent Network, Assignments, Agent Controls and Monitor are reachable only by URL or a tab | 
+
+N12 | minor | Notifications toolbar: a 13-kind select, an Unread toggle beside views, counts with different meanings | 
+
+N13 | minor | An artifact notification has two buttons to the same place and no link to its conversation | 
+
+N14 | minor | The view switch hides in a filter icon; "Needs attention" there means Failed elsewhere | 
+
+N15 | minor | Rows have no age or project and no waiting mark, against DES-054 | 
+
+N16 | minor | /customize/tools repeats its heading; tab and heading names differ | 
+
+N17 | minor | /agents/lead/setup is titled "New Agent" with a load error; GET /api/agent-setups/{name} 404s on every agent page | 
+
+N18 | minor | /scheduled tab says "Automations"; its hint has no link | 
+
+N19 | minor | The whole sidebar scrolls; New is cut under the header | 
+
+N20 | minor | Unknown URLs silently go Home; the health page shows "docs/spec.md" | 
+
+N21 | minor | Phone: ⋮ on every row makes a column of dots | 
+
+N22 | minor | More's trigger relabels itself while its accessible name stays "More" | 
+
+  Agents, connections and settings 2 blockers, 9 major, 9 minor
+
+# | Sev | Finding | 
+
+S3 | major | "Your connections" is a dead end pointing at credential_scope: person; "agents granted person_tools", but no agent editor grants tools | 
+
+S4 | major | Connect a System shows errors at the top, off screen from Connect, and clears both secrets on every refusal | 
+
+S5 | major | Fake Slack and GitHub credentials save as "Enabled" with no check and no Test | 
+
+S6 | major | Forms ask for team ids, U0123=alice maps and free-text agents; the env reference rule is hidden; the GitHub key field is mentioned but missing | 
+
+S7 | major | Remove client and Delete Source act on one click with no undo; Agents ⋯ holds only Pause All; a disabled toggle still says "Enabled" | 
+
+S8 | major | "Needs attention" filter returns nothing for a failing agent; a draft reads "Paused"; no reason anywhere | 
+
+S9 | major | New Agent offers providers that are not registered; a dry run raised an Urgent notification and appeared in History | 
+
+S10 | major | Source forms share one "Folder or Page ID" field for every provider; project is free text; the name pattern is an invalid regex | 
+
+S11 | major | Opening an agent from Customize flips to another tab set; Skills in Library and Customize | 
+
+S12 | minor | Raw ids; the workspace is "default", "Company", "The workspace" and "~"; Access lists 23 permission strings | 
+
+S13 | minor | Routing and Catalog end at "declared in the workspace configuration" | 
+
+S14 | minor | Add Policy saves a prefilled policy with no confirmation; placeholders look like typed values | 
+
+S15 | minor | Accent "Workspace" equals "Red"; red badges read as errors | 
+
+S16 | minor | Phone: Settings and agent tabs scroll with no cue; labels cut | 
+
+S17 | minor | Agents state filter not in the URL; its label cut to "Needs attentior" | 
+
+S18 | minor | Submitting an empty tool server form shows nothing | 
+
+S19 | minor | Agent Access mixes save-now and save-as-revision; "1 lines" | 
+
+S20 | minor | Agent rows carry four browser tooltips repeating visible text; the hover box cuts into the avatar | 
+
+What works and stays
+
+Every page has an address and old links redirect; Cmd+K search works everywhere.
+
+The @ list, the + menu's keyboard handling, and attachment checks are solid.
+
+Steps show durations, inputs and results; the review card groups by severity with evidence links.
+
+Archive has Undo; panels have addresses and become sheets on a phone; nothing scrolls sideways at 390px.
+
+Client cards ("Answers for", "Reaches", "Secrets held") and Access › Explain read clearly.
+
+10. Fix now
+
+These are broken today and do not wait for the redesign. Each is small and lands in humagen on its own.
+
+Fix | Findings | 
+
+Console ratings and comments call the feedback API; the row does not shift; neutral selected state | T1, T2 | 
+
+Show a refused mention ("No agent named @billing") and who will answer | C6 | 
+
+Failure titles name the cause; Report Issue works; Retry only where it can succeed | T3 | 
+
+Tool servers list the allowed hosts; Notion's reference flow stops looping | S1, S2 | 
+
+Client form: errors beside Connect, secrets kept, credentials verified or marked unverified | S4, S5 | 
+
+Phone menus stay on screen and above the footer; previews close | N1, N2, N3 | 
+
+Approval control labelled and its menu fits; folder locked in answered sessions | C3, C4, C8 | 
+
+Starters never replace a draft; Enter adds a mention in + › Agents | C5, C7 | 
+
+One attention count; Fork opens its context; Save as Artifact gets its own icon and dedupes | N4, T5, T6 | 
+
+Dry runs stay out of alerts and History; agent-setup 404 removed | S9, N17 | 
+
+11. Order of work
+
+0
+Fix nowhumagen · independent PRs
+The table in section 10.
+
+1
+Sessions in orchagentorchagent · minor release
+Session key (parent, agent, label); app.Session; retire Ask and Reply.
+Session tools with durable listen; mention resolution; API cleanup.
+
+2
+Surfaces in orchagentorchagent
+Cross-surface delivery on real connectors; feedback from reactions and /feedback; GitHub CreateReview; mcptools OAuth token source.
+Status as reactions (👀, ✅, ❌, 🙋) on Slack and GitHub; ✋ to stop; native mentions and permalinks.
+
+3
+Session API in humagenhumagen · depends on 1
+/sessions beside old routes; console and Slack app move; humagen moves onto flow.New; old routes removed the next release.
+Platform and workspace prompt layers, versioned, pinned per run, shown in the context preview, gated by evals; the word-budget online check.
+
+4
+Consolehumagen · depends on 3
+Navigation down to seven entries; attention model; session view and Details panel; composer; one row component; colour; words.
+Remove rooms, project channels, orphan pages and duplicate pages.
+
+5
+Connectionshumagen · depends on 2
+One page, presets, OAuth with DCR and PKCE, refresh, encryption, health, verified credentials.
+
+6
+Reviewshumagen · depends on 2
+humagen.review.v2 with checks; PR review with suggestions; Slack and console cards; per-finding feedback.
+
+7
+Builder and evalshumagen
+Builder tools; New agent as a builder session; online checks; scheduled trace scoring and replay; eval gate on save.
+
+8
+Live validationboth
+The matrix below in urmzd.slack.com and GitHub, evidence saved.
+
+12. Live validation
+
+Workspace urmzd (team T0B3QNBK4FL, #humagen-test), GitHub App 5473438 on urmzd/humagen-integration-test.
+
+Case | Do | Pass when | 
+
+Slack session | @humagen in #humagen-test | 👀 appears at once, then a short reply in the thread and ✅; the console shows the same session | 
+
+Reads like a person | Ten ordinary questions in Slack | Every reply within its word budget with no preamble; a thanks gets a reaction, not a message | 
+
+Continue anywhere | Reply to that session from the console | The answer lands in both the console and the Slack thread | 
+
+Review fan-out | Request review from the reviewer on a test PR | Three child sessions run in parallel; a PR review posts with line comments and a suggestion; #humagen-test follows | 
+
+Continue a child | Ask the reviewer to re-check security after a push | The same security-reviewer session continues | 
+
+Person in the loop | The reviewer mentions @sam | Sam gets a Slack DM, opens the session, asks "catch me up", answers; the review resumes | 
+
+Feedback | Commit a suggestion; react 👎 on Slack; thumbs in the console | Three run.feedback.v1 events, one with a finding id | 
+
+Connect | Connect Notion, Linear and Granola from presets | OAuth completes; an agent uses each; tokens refresh | 
+
+Builder | "Make me an agent that triages new issues", then add an eval | A change card with eval results; a regression blocks the save | 
+
+Alerts | Ask "alert me if the nightly review fails", then make it fail | An Urgent alert pins to the top of that session, the row rises, a Slack DM arrives; Resolve clears it everywhere | 
+
+13. Decisions
+
+The word: session or thread?Recommend session.It is one agent's conversation, not a room; "thread" stays for Slack's own threads.
+
+Projects: a context bundle, or gone?Recommend a context bundlerepos, connections, default agents, who may use them; no chat, inbox or history.
+
+Default limits for session callsRecommend depth 3, eight open children per session.Raised per agent in its call policy.
+
+May agents approve pull requests?Recommend only where a project's policy allows.Comment and Request changes otherwise.
+
+No inbox: alerts on sessions plus an alert center?Recommend yes, with three priorities.Notifications become delivery preferences per priority, not a page.
+
+Interaction accentRecommend one fixed brand hue; drop the per-workspace presets.
+
+Slack test appRecommend A0CBV3NQQ03the one the local integration notes use.
+
+This plan replaces the earlier surfaces plan (https://claude.ai/artifact/Xb4sAjmcqFQ9dfUcAhpJmt) and review (https://claude.ai/artifact/WktP7DfuupsUwPv7cmXatE).
+

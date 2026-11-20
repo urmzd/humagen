@@ -37,7 +37,7 @@ test("the deletion queue waits for explicit approval and cannot approve an item 
   );
   assert.ok(within(waiting).getByRole("button", { name: "Restore" }));
   assert.equal(net.seen.filter((request) => request.method === "POST").length, 0);
-  assert.ok(!waiting.textContent?.includes("·"));
+  assert.ok(!waiting.textContent?.includes("|"));
 });
 
 test("approval refills the review batch and restoration cancels the next deletion", async () => {

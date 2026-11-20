@@ -256,6 +256,8 @@ export type FailureKind =
 
 export interface Failure {
   kind: FailureKind;
+  /** A safe, specific cause supplied by the adapter. */
+  title?: string;
   /** Plain-language cause, e.g. "The deploys service timed out after 30s". */
   message: string;
   /** System to name in copy: "Linear", "the model provider". */

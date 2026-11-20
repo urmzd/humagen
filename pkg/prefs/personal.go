@@ -33,7 +33,7 @@ func DefaultPersonal() Personal {
 	return Personal{Notifications: map[string]Delivery{}, Timezone: "UTC"}
 }
 
-var notificationKinds = map[string]bool{"approval": true, "clarification": true, "failure": true, "result": true, "mention": true, "announcement": true, "memory": true, "budget": true, "artifact": true, "alert": true}
+var notificationKinds = map[string]bool{"urgent": true, "normal": true, "low": true, "approval": true, "clarification": true, "failure": true, "result": true, "mention": true, "announcement": true, "memory": true, "budget": true, "artifact": true, "alert": true}
 
 func CleanPersonal(next Personal) (Personal, error) {
 	if next.EmailVersion < 0 || next.EmailVersion > 9007199254740991 {

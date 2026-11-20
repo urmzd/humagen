@@ -171,7 +171,7 @@ export function Home({ home, copy = defaultCopy }: { home: HomeModel; copy?: Cop
           n.detail,
         ]
           .filter(Boolean)
-          .join(" · ");
+          .join(" | ");
         return (
           <Row
             key={`${n.kind}:${n.id}`}
@@ -212,7 +212,7 @@ export function Home({ home, copy = defaultCopy }: { home: HomeModel; copy?: Cop
                   u.at ? timeToken(u.at) : null,
                 ]
                   .filter(Boolean)
-                  .join(" · ")}
+                  .join(" | ")}
               >
                 {open(url, u.subject)}
               </Row>
@@ -239,7 +239,7 @@ export function Home({ home, copy = defaultCopy }: { home: HomeModel; copy?: Cop
                   p.activeAt ? copy.projects.count.active(timeToken(p.activeAt)) : null,
                 ]
                   .filter(Boolean)
-                  .join(" · ")}
+                  .join(" | ")}
               >
                 {open(url, p.title)}
               </Row>

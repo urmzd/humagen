@@ -1,3 +1,4 @@
+import { followSession } from "./sessionStream.ts";
 import { runStateTypes, subscribe } from "./api.ts";
 
 /**
@@ -17,7 +18,9 @@ export function followRoom(thread: string, changed: () => void, wait = 150): () 
   };
   let close: () => void;
   try {
-    close = subscribe(
+    if (thread.startsWith("s_")) {
+      close = followSession(thread, { session: soon });
+    } else close = subscribe(
       { thread, type: runStateTypes },
       { onThread: soon, onEvent: soon, onPage: soon },
     );

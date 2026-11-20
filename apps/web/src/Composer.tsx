@@ -1,6 +1,6 @@
 import { defaultCopy } from "@humagen/components";
 import { ArrowUpIcon, FileIcon, XIcon } from "@humagen/render-web";
-import { type QueueControls, QueueStrip } from "@humagen/web";
+import { Modal, type QueueControls, QueueStrip } from "@humagen/web";
 import {
   type KeyboardEvent,
   type ReactNode,
@@ -20,6 +20,8 @@ import {
 import {
   insertTag,
   matching,
+  mentionsIn,
+  mentionTokens,
   sigilOf,
   type TagOption,
   type Typing,
@@ -27,7 +29,7 @@ import {
   withMention,
   withoutMention,
 } from "./tags.ts";
-import { AgentMark, Presence } from "./ui.tsx";
+import { AgentMark, button, Presence, primary } from "./ui.tsx";
 import {
   canRecord,
   MAX_RECORDING_MS,
@@ -98,7 +100,7 @@ interface Recognizer {
       }) => void)
     | null;
   onend: (() => void) | null;
-  onerror: (() => void) | null;
+  onerror: ((event: { error?: string }) => void) | null;
   start: () => void;
   stop: () => void;
 }
@@ -147,7 +149,8 @@ const tool =
  * as the `@` completion writes it, or taken out.
  */
 export type ComposerSeed =
-  | { text: string; mode?: "prepend" }
+  | { text: string; mode?: "prepend" | "append" }
+  | { quote: { label: string; url: string; text?: string; agent?: string } }
   | { mention: string; remove?: boolean };
 
 /**
@@ -158,7 +161,6 @@ export type ComposerSeed =
  * now, and Esc with nothing typed stops the reply.
  */
 export function Composer({
-  placeholder,
   queue,
   autoFocus,
   onDraft,
@@ -166,6 +168,7 @@ export function Composer({
   trailing,
   seed,
   tags,
+  sessionAgents,
   plus,
   voice,
   disclaimer = defaultCopy.disclaimer(defaultCopy.product),
@@ -194,7 +197,14 @@ export function Composer({
    * each time the tag being typed changes, for options looked up as it is
    * typed.
    */
-  tags?: { label: string; options: TagOption[]; onQuery?: (typing: Typing) => void };
+  tags?: {
+    label: string;
+    defaultAgent?: string;
+    options: TagOption[];
+    onQuery?: (typing: Typing) => void;
+  };
+  /** Agents with an existing session that can be continued or started afresh. */
+  sessionAgents?: string[];
   /**
    * The + menu, in place of + attaching files at once: what it shows, given
    * a way to close it and to attach files, and where the conversation is
@@ -207,6 +217,9 @@ export function Composer({
 }) {
   const [value, setValue] = useState("");
   const [files, setFiles] = useState<Attached[]>([]);
+  const [quote, setQuote] = useState<Extract<ComposerSeed, { quote: unknown }>["quote"]>();
+  const [chooseSession, setChooseSession] = useState<string>();
+  const [sessionPick, setSessionPick] = useState<{ agent: string; fresh: boolean }>();
   const [notice, setNotice] = useState<string | null>(null);
   const [listening, setListening] = useState(false);
   const input = useRef<HTMLTextAreaElement>(null);
@@ -267,7 +280,15 @@ export function Composer({
   const open = count > 0;
   // The skills a message here can name, drawn as tokens where it names them.
   const skillNames = tags?.options.filter((o) => o.kind === "skill").map((o) => o.token) ?? [];
-  const tokens = commandTokens(value, skillNames);
+  const tokens = [
+    ...commandTokens(value, skillNames),
+    ...mentionTokens(value, tags?.options ?? []),
+  ].sort((a, b) => a.start - b.start);
+  const audience = mentionsIn(
+    value,
+    (tags?.options ?? []).filter((option) => option.kind === "agent").map((option) => option.token),
+  );
+  if (!audience.length && tags?.defaultAgent) audience.push(tags.defaultAgent);
   const backdrop = useRef<HTMLDivElement>(null);
   const [listAt, setListAt] = useState<{ up: boolean; max: number }>({ up: true, max: 256 });
   useLayoutEffect(() => {
@@ -302,6 +323,8 @@ export function Composer({
     // can land where it was.
     input.current?.focus();
     caretAfter.current = next.caret;
+    if (option.kind === "agent" && sessionAgents?.includes(option.token))
+      setChooseSession(option.token);
   };
 
   const change = (next: string) => {
@@ -318,16 +341,32 @@ export function Composer({
     const el = input.current;
     let next: string;
     let caret: number;
+    if ("quote" in seed) {
+      setQuote(seed.quote);
+      el?.focus();
+      return;
+    }
     if ("mention" in seed) {
       if (seed.remove) {
         next = withoutMention(value, seed.mention);
         caret = next.length;
+        if (sessionPick?.agent === seed.mention) setSessionPick(undefined);
       } else {
         const at = value.trim() ? (el?.selectionStart ?? value.length) : 0;
         ({ text: next, caret } = withMention(value.trim() ? value : "", at, seed.mention));
+        if (sessionAgents?.includes(seed.mention)) {
+          setMenu(false);
+          el?.focus();
+          setChooseSession(seed.mention);
+        }
       }
     } else {
-      next = seed.mode === "prepend" ? seed.text + value : seed.text;
+      next =
+        seed.mode === "prepend"
+          ? seed.text + value
+          : seed.mode === "append" && value.trim()
+            ? `${value}\n\n${seed.text}`
+            : seed.text;
       caret = next.length;
     }
     // A mention picked in the + menu leaves focus there, for the next pick;
@@ -407,11 +446,20 @@ export function Composer({
 
   const send = (now: boolean) => {
     if (!ready) return;
-    const text = withAttached(value, files);
-    if (now) queue.sendNow(text);
-    else queue.send(text);
+    const text = withAttached(
+      quote
+        ? `${quote.agent ? `@${quote.agent} ` : ""}Replying to [${quote.label}](${quote.url}):\n\n${value}`
+        : value,
+      files,
+    );
+    const pick =
+      sessionPick && mentionsIn(text, [sessionPick.agent]).length ? sessionPick : undefined;
+    if (now) queue.sendNow(text, pick);
+    else queue.send(text, pick);
     change("");
     setFiles([]);
+    setQuote(undefined);
+    setSessionPick(undefined);
     setNotice(null);
     input.current?.focus();
   };
@@ -546,9 +594,15 @@ export function Composer({
       }
     };
     r.onend = () => setListening(false);
-    r.onerror = () => {
+    r.onerror = (event) => {
       setListening(false);
-      setNotice("Dictation stopped. Check that the microphone is allowed for this page.");
+      setNotice(
+        event.error === "not-allowed" || event.error === "service-not-allowed"
+          ? "Dictation is not allowed. Check microphone permissions for this page."
+          : event.error === "no-speech"
+            ? "No speech was detected. Try again."
+            : "The speech service is unavailable. You can keep typing your message.",
+      );
     };
     speech.current = r;
     setListening(true);
@@ -564,7 +618,40 @@ export function Composer({
       : "Dictate";
 
   return (
-    <div className="relative z-10 flex min-w-0 flex-col gap-1.5">
+    <div className="humagen-composer-container relative z-10 flex min-w-0 flex-col gap-1.5">
+      {chooseSession && (
+        <Modal title={`Session for @${chooseSession}`} onClose={() => setChooseSession(undefined)}>
+          <div className="flex flex-col gap-4 p-5">
+            <h3 className="text-aui-lg font-medium">Session for @{chooseSession}</h3>
+            <p className="text-aui-sm text-aui-muted">
+              Continue with this agent’s earlier context, or start a separate session. Your message
+              stays in the draft until you send it.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                className={primary}
+                onClick={() => {
+                  setSessionPick({ agent: chooseSession, fresh: false });
+                  setChooseSession(undefined);
+                }}
+              >
+                Continue
+              </button>
+              <button
+                type="button"
+                className={button}
+                onClick={() => {
+                  setSessionPick({ agent: chooseSession, fresh: true });
+                  setChooseSession(undefined);
+                }}
+              >
+                Start fresh
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
       <form
         ref={form}
         aria-label="Message"
@@ -689,6 +776,45 @@ export function Composer({
           </Presence>
         )}
         <QueueStrip queue={queue} />
+        {sessionPick && mentionsIn(value, [sessionPick.agent]).length > 0 && (
+          <div className="flex items-center gap-2 px-2 text-aui-xs text-aui-muted">
+            <span>
+              {sessionPick.fresh ? "Start fresh" : "Continue"} @{sessionPick.agent}
+            </span>
+            <button
+              type="button"
+              className={tool}
+              aria-label="Clear session choice"
+              onClick={() => {
+                setSessionPick(undefined);
+                input.current?.focus();
+              }}
+            >
+              <XIcon size={14} />
+            </button>
+          </div>
+        )}
+        {quote && (
+          <div
+            className="flex min-w-0 items-center gap-2 rounded-aui bg-aui-hover px-3 py-2 text-aui-xs"
+            data-reply-quote
+          >
+            <a href={quote.url} className="min-w-0 flex-1 truncate" title={quote.text}>
+              Replying to {quote.label}
+            </a>
+            <button
+              type="button"
+              aria-label="Remove reply"
+              className={tool}
+              onClick={() => {
+                setQuote(undefined);
+                input.current?.focus();
+              }}
+            >
+              <XIcon size={14} />
+            </button>
+          </div>
+        )}
         {files.length > 0 && (
           <ul className="flex flex-wrap gap-1.5 px-2 pt-1" aria-label="Attached files">
             {files.map((f) => (
@@ -701,7 +827,11 @@ export function Composer({
                 <button
                   type="button"
                   aria-label={`Remove ${f.name}`}
-                  onClick={() => setFiles(files.filter((x) => x.id !== f.id))}
+                  onClick={() => {
+                    setFiles(files.filter((x) => x.id !== f.id));
+                    setNotice(null);
+                    input.current?.focus();
+                  }}
                   className="inline-flex size-8 pointer-coarse:size-11 shrink-0 items-center justify-center rounded-full text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
                 >
                   <XIcon size={12} />
@@ -740,7 +870,11 @@ export function Composer({
           ref={input}
           rows={1}
           value={value}
-          placeholder={placeholder}
+          placeholder={
+            audience.length > 0
+              ? `Message ${audience.map((name) => `@${name}`).join(", ")}`
+              : defaultCopy.chat.placeholder
+          }
           onChange={(e) => {
             change(e.target.value);
             follow(e.target.value);
@@ -769,6 +903,25 @@ export function Composer({
           }
           className="humagen-composer-input relative max-h-[200px] min-h-10 pointer-coarse:min-h-11 w-full resize-none bg-transparent px-3 pt-2 text-aui-base text-aui-fg outline-none placeholder:text-aui-muted"
         />
+        {tags && typing?.query && typing.sigil === "@" && !shown.length && (
+          <p role="status" className="px-3 text-aui-xs text-aui-muted">
+            No matching people or agents for @{typing.query}
+          </p>
+        )}
+        {tags && typing?.sigil === "/" && !commands.length && (
+          <p role="status" className="px-3 text-aui-xs text-aui-muted">
+            {tags.options.some((o) => o.kind === "skill") ? (
+              <>No skill matches /{typing.query}.</>
+            ) : (
+              <>
+                No skills yet. Skills become / commands here.{" "}
+                <a href="/library/skills" className="underline hover:text-aui-fg">
+                  Create a skill
+                </a>
+              </>
+            )}
+          </p>
+        )}
         {notice && (
           <p role="status" className="px-3 text-aui-xs text-aui-muted">
             {notice}
@@ -815,6 +968,16 @@ export function Composer({
           {/* What the + menu picked sits in the bar, beside +, so nothing under it moves. */}
           <div className="humagen-composer-chips min-w-0 flex-1">{plus?.chips}</div>
           {trailing}
+          {queue.running && (
+            <button
+              type="button"
+              onClick={() => queue.stop()}
+              disabled={queue.state.status === "stopping"}
+              className="inline-flex min-h-9 shrink-0 items-center gap-1 rounded-aui px-2 text-aui-xs text-aui-fg hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
+            >
+              {queue.state.status === "stopping" ? "Stopping…" : "Stop"}
+            </button>
+          )}
           {/*
           One button in one place. With nothing to send it records a voice
           note (or dictates, where the deployment does not transcribe), and

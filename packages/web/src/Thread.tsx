@@ -18,7 +18,10 @@ export function Thread({
   column,
   turns,
   busy = false,
+  focus,
 }: {
+  /** An addressed message to reveal without scrolling the surrounding page. */
+  focus?: string;
   children: ReactNode;
   label?: string;
   className?: string;
@@ -35,8 +38,9 @@ export function Thread({
 }) {
   const scroller = useRef<HTMLDivElement>(null);
   const content = useRef<HTMLDivElement>(null);
-  const stuck = useRef(true);
+  const stuck = useRef(!focus);
   const [atBottom, setAtBottom] = useState(true);
+  const revealed = useRef<string | undefined>(undefined);
 
   const toBottom = useCallback((smooth: boolean) => {
     const el = scroller.current;
@@ -44,6 +48,28 @@ export function Thread({
     const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
     el.scrollTo({ top: el.scrollHeight, behavior: smooth && !reduce ? "smooth" : "auto" });
   }, []);
+
+  useEffect(() => {
+    if (!focus) {
+      revealed.current = undefined;
+      return;
+    }
+    if (revealed.current === focus || (turns && !turns.some((turn) => turn.id === focus))) return;
+    const root = scroller.current;
+    const target = root?.querySelector<HTMLElement>(`[data-turn-id="${CSS.escape(focus)}"]`);
+    if (!root || !target) return;
+    revealed.current = focus;
+    stuck.current = false;
+    setAtBottom(false);
+    root.scrollTo({
+      top:
+        root.scrollTop +
+        target.getBoundingClientRect().top -
+        root.getBoundingClientRect().top -
+        root.clientHeight / 3,
+      behavior: "auto",
+    });
+  }, [focus, turns]);
 
   useEffect(() => {
     const el = content.current;

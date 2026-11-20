@@ -9,6 +9,7 @@ import (
 
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/policy"
+	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/usage"
 )
 
@@ -572,9 +573,31 @@ func TestThreadsPage(t *testing.T) {
 	f := newFixture(t)
 	acme := f.machine(t, "acme", everything...)
 	f.do(t, nil, "POST", "/api/agents", acme, helperSpec)
+	var created []string
 	for _, text := range []string{"one", "two", "three"} {
-		f.do(t, nil, "POST", "/api/runs", acme, `{"agent":"helper","text":"`+text+`"}`)
-		time.Sleep(5 * time.Millisecond)
+		res, out := f.do(t, nil, "POST", "/api/runs", acme, `{"agent":"helper","text":"`+text+`"}`)
+		if res.StatusCode != http.StatusAccepted {
+			t.Fatalf("create run = %d %v", res.StatusCode, out)
+		}
+		created = append(created, out["id"].(string))
+	}
+	// Completion changes last activity and can move an unseen conversation
+	// above an issued cursor. This exact-page assertion needs settled runs.
+	deadline := time.Now().Add(10 * time.Second)
+	for _, id := range created {
+		for {
+			run, err := f.p.Runs.Get("acme", id)
+			if err != nil || run.Status == runs.Failed || run.Status == runs.Stopped {
+				t.Fatalf("run did not complete: %+v %v", run, err)
+			}
+			if run.Status == runs.Completed {
+				break
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("run did not settle before paging: %+v", run)
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
 	}
 
 	// With no parameters the old shape still works, and next is present.
@@ -595,6 +618,21 @@ func TestThreadsPage(t *testing.T) {
 	if len(second["threads"].([]any)) != 1 || second["next"] != nil {
 		t.Fatalf("second page = %v", second)
 	}
+	seen := map[string]bool{}
+	for _, page := range []map[string]any{first, second} {
+		for _, item := range page["threads"].([]any) {
+			id := item.(map[string]any)["id"].(string)
+			if seen[id] {
+				t.Fatalf("conversation repeated across pages: %s", id)
+			}
+			seen[id] = true
+		}
+	}
+	for _, id := range created {
+		if !seen[id] {
+			t.Fatalf("conversation omitted from pages: %s", id)
+		}
+	}
 	if _, none := f.do(t, nil, "GET", "/api/threads?origin=cron", acme, ""); len(none["threads"].([]any)) != 0 {
 		t.Fatalf("origin filter = %v", none)
 	}
@@ -607,6 +645,41 @@ func TestThreadsPage(t *testing.T) {
 	globex := f.machine(t, "globex", everything...)
 	if _, other := f.do(t, nil, "GET", "/api/threads?before="+cursor, globex, ""); len(other["threads"].([]any)) != 0 {
 		t.Fatalf("another tenant paged into these threads: %v", other)
+	}
+}
+
+func TestThreadsPageLateCompletionMovesAboveCursor(t *testing.T) {
+	f := newFixture(t)
+	token := f.machine(t, "acme", everything...)
+	at := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	for i, id := range []string{"oldest", "middle", "newest"} {
+		started := at.Add(time.Duration(i) * time.Minute)
+		if err := f.p.Runs.Record(id, wire.NewEvent(wire.Raise{ID: id, Tenant: "acme", Agent: "helper", Origin: runs.OriginAPI, At: started}), 1); err != nil {
+			t.Fatal(err)
+		}
+		if id != "oldest" {
+			f.p.Runs.End("acme", id, runs.Completed, "done", "", started.Add(time.Second))
+		}
+	}
+	_, first := f.do(t, nil, "GET", "/api/threads?limit=2&origin=api", token, "")
+	cursor, _ := first["next"].(string)
+	items := first["threads"].([]any)
+	if len(items) != 2 || cursor == "" || items[0].(map[string]any)["id"] != "newest" || items[1].(map[string]any)["id"] != "middle" {
+		t.Fatalf("first page = %v", first)
+	}
+	// Reproduce the CI interleaving without a scheduler or arbitrary sleep:
+	// the only unseen run completes after the first page has been read.
+	if _, changed := f.p.Runs.End("acme", "oldest", runs.Completed, "late answer", "", at.Add(time.Hour)); !changed {
+		t.Fatal("late run did not complete")
+	}
+	_, second := f.do(t, nil, "GET", "/api/threads?limit=2&origin=api&before="+cursor, token, "")
+	if len(second["threads"].([]any)) != 0 || second["next"] != nil {
+		t.Fatalf("moved conversation appeared below the cursor: %v", second)
+	}
+	_, refreshed := f.do(t, nil, "GET", "/api/threads?limit=1&origin=api", token, "")
+	items = refreshed["threads"].([]any)
+	if len(items) != 1 || items[0].(map[string]any)["id"] != "oldest" {
+		t.Fatalf("completed conversation did not move to the first page: %v", refreshed)
 	}
 }
 

@@ -101,7 +101,7 @@ export function ProjectContextPreview({
                 {words.kinds[layer.kind as keyof typeof words.kinds] ?? layer.kind}
                 {layer.from && (
                   <span className="inline-flex items-center gap-1">
-                    <span aria-hidden>·</span>
+                    <span aria-hidden>|</span>
                     {layer.kind.startsWith("agent_") && <AgentMark name={layer.from} size={12} />}
                     {layer.from}
                   </span>
@@ -109,14 +109,14 @@ export function ProjectContextPreview({
               </h3>
               <p className="text-aui-xs text-aui-muted">
                 {words.usage(layer.used, layer.budget, layer.unit)}
-                {layer.omitted > 0 ? ` · ${words.omitted(layer.omitted)}` : ""}
+                {layer.omitted > 0 ? ` | ${words.omitted(layer.omitted)}` : ""}
                 {layer.preview_omitted > 0
-                  ? ` · ${words.previewOmitted(layer.preview_omitted)}`
+                  ? ` | ${words.previewOmitted(layer.preview_omitted)}`
                   : ""}
                 {layer.kind === "skills"
-                  ? ` · ${words.available}`
+                  ? ` | ${words.available}`
                   : !layer.sent
-                    ? ` · ${words.notSent}`
+                    ? ` | ${words.notSent}`
                     : ""}
               </p>
               {layer.text && (

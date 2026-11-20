@@ -211,6 +211,9 @@ test("external source creation defaults to live access and includes its project 
   let body: unknown;
   const picked: string[] = [];
   net = stubFetch({
+    "GET /api/projects": () => ({
+      projects: [{ name: "Private Project", title: "Private Project" }],
+    }),
     "GET /api/clients": () => ({ clients: [], caps: { max: 20, max_per_surface: 10 } }),
     "GET /api/knowledge": () => ({ sources: [] }),
     "POST /api/knowledge": (input) => {
@@ -237,9 +240,10 @@ test("external source creation defaults to live access and includes its project 
   fireEvent.change(within(form).getByLabelText("Source Name"), {
     target: { value: "private-source" },
   });
-  fireEvent.change(within(form).getByLabelText("Folder or Page ID"), {
+  fireEvent.change(within(form).getByLabelText("Google Drive folder ID"), {
     target: { value: "folder-private" },
   });
+  await waitFor(() => assert.ok(within(form).getByRole("option", { name: "Private Project" })));
   fireEvent.change(within(form).getByLabelText("Project"), {
     target: { value: "Private Project" },
   });
@@ -276,7 +280,7 @@ test("a collected source saves its selected cadence in the same creation request
   fireEvent.change(within(form).getByLabelText("Source Name"), {
     target: { value: "scheduled-source" },
   });
-  fireEvent.change(within(form).getByLabelText("Folder or Page ID"), {
+  fireEvent.change(within(form).getByLabelText("Google Drive folder ID"), {
     target: { value: "selected-folder" },
   });
   fireEvent.change(within(form).getByLabelText(defaultCopy.sourceOperations.mode), {
@@ -301,7 +305,11 @@ test("a collected source saves its selected cadence in the same creation request
       sync_every_seconds: 900,
     },
   });
-  assert.equal(net.seen.length, 1, "source and schedule are one atomic create request");
+  assert.equal(
+    net.seen.filter((r) => r.method === "POST").length,
+    1,
+    "source and schedule are one atomic create request",
+  );
 });
 
 test("Access changes live mode explicitly and clears indexed resource pins", async () => {
@@ -684,7 +692,7 @@ test("empty Context Health offers a source action without zero counters or dead 
   await screen.findByText(defaultCopy.sourceOperations.healthEmptyTitle);
   assert.equal(
     screen.getByRole("link", { name: "Add Sources" }).getAttribute("href"),
-    "/library/sources",
+    "/connections",
   );
   assert.equal(screen.queryByText(defaultCopy.sourceOperations.noSelection), null);
   assert.equal(screen.queryByLabelText(defaultCopy.sourceOperations.filter), null);

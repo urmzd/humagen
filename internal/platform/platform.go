@@ -24,11 +24,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/urmzd/orchagent/durable"
 	"github.com/urmzd/orchagent/durable/ledger"
 	dqueue "github.com/urmzd/orchagent/durable/queue"
 	drun "github.com/urmzd/orchagent/durable/run"
 	"github.com/urmzd/orchagent/durable/worker"
+	"github.com/urmzd/orchagent/flow"
 	"github.com/urmzd/orchagent/flow/attachment/resolve"
 	filesblob "github.com/urmzd/orchagent/flow/blob"
 	"github.com/urmzd/orchagent/flow/bus"
@@ -38,6 +38,7 @@ import (
 	"github.com/urmzd/orchagent/flow/event"
 	"github.com/urmzd/orchagent/flow/isolation"
 	"github.com/urmzd/orchagent/flow/runtime"
+	"github.com/urmzd/orchagent/flow/session"
 	"github.com/urmzd/orchagent/flow/toolprovider"
 	"github.com/urmzd/orchagent/flow/turn"
 	"github.com/urmzd/orchagent/flow/turn/native"
@@ -50,6 +51,7 @@ import (
 
 	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/wire"
+	"github.com/urmzd/humagen/internal/wire/sessionstate"
 	"github.com/urmzd/humagen/pkg/agentcolors"
 	"github.com/urmzd/humagen/pkg/alerts"
 	"github.com/urmzd/humagen/pkg/artifacts"
@@ -61,11 +63,13 @@ import (
 	"github.com/urmzd/humagen/pkg/callpolicy"
 	"github.com/urmzd/humagen/pkg/catalog"
 	"github.com/urmzd/humagen/pkg/clients"
+	"github.com/urmzd/humagen/pkg/connectionauth"
 	"github.com/urmzd/humagen/pkg/contextflags"
 	"github.com/urmzd/humagen/pkg/credentials"
 	"github.com/urmzd/humagen/pkg/drive"
 	"github.com/urmzd/humagen/pkg/evals"
 	"github.com/urmzd/humagen/pkg/feedback"
+	"github.com/urmzd/humagen/pkg/githubinstall"
 	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/integrations/github"
 	"github.com/urmzd/humagen/pkg/integrations/slack"
@@ -90,6 +94,7 @@ import (
 	"github.com/urmzd/humagen/pkg/scratchpads"
 	"github.com/urmzd/humagen/pkg/sourcelinks"
 	"github.com/urmzd/humagen/pkg/speech"
+	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/humagen/pkg/threads"
 	"github.com/urmzd/humagen/pkg/usage"
 )
@@ -100,6 +105,9 @@ var ErrForbidden = errors.New("platform: forbidden")
 // Config is what a running platform needs. Nothing here reads the environment,
 // so a test can build a second platform in the same process.
 type Config struct {
+	// PublicURL is the configured canonical console URL for trusted backlinks.
+	// Empty omits external console links.
+	PublicURL string
 	// Rooms is how conversations with many viewers are read and how fast
 	// runs are admitted into them (pkg/rooms). Zero fields are its defaults.
 	Rooms rooms.Config
@@ -131,6 +139,12 @@ type Config struct {
 	// clients already in the store are started by New.
 	Clients clients.Store
 	Secrets clients.Secrets
+	// ConnectionAuth configures encrypted, person-scoped service authorizations.
+	ConnectionAuth *connectionauth.Config
+	// ConnectionCheckHTTP overrides native credential verification transport.
+	// Nil uses public HTTPS with redirects refused; supplied clients are trusted.
+	ConnectionCheckHTTP *http.Client
+	GitHubInstall       *githubinstall.Config
 	// Env reads the process's environment for an "env:NAME" secret reference.
 	// Nil resolves none.
 	Env func(name string) (string, bool)
@@ -261,6 +275,12 @@ type Config struct {
 
 // Platform is the assembled system.
 type Platform struct {
+	surfaceRecords *surfaceRecords
+
+	ConnectionAuth *connectionauth.Manager
+	GitHubInstall  *githubinstall.Manager
+	Sessions       session.Store
+	app            *flow.App
 	// Rooms holds the conversations followed on this server (pkg/rooms).
 	Rooms    *rooms.Hub
 	roomGate *rooms.Gate
@@ -296,6 +316,7 @@ type Platform struct {
 	Marks *marks.Store
 	// PersonContexts is what each person brings to the runs that act for
 	// them: their run settings, tool servers and memory volume.
+	connectionHealth     *state.Table[connectionObservation]
 	PersonContexts       *personctx.Store
 	runSettings          runSettings
 	Memory               *memory.Store
@@ -611,31 +632,32 @@ func New(cfg Config) (*Platform, error) {
 	if o := cfg.Backends.Outbox; o != nil && p.broker == cfg.Backends.Bus && p.ledger == cfg.Backends.Ledger {
 		opts = append(opts, runtime.WithOutbox(o))
 	}
-	rt, err := runtime.New(
-		durable.New(p.ledger, p.queue),
-		p.Agents.Resolver(),
-		p.broker,
-		append(opts,
-			runtime.WithRuntime(exec),
-			runtime.WithLogger(log),
-			runtime.WithStopGrace(cfg.StopGrace),
-			// The ledger is where a stop is recorded, so a request made while a
-			// run waits in the queue or between attempts is honoured however long
-			// it waits. It is the same ledger the runs execute from.
-			runtime.WithStopLedger(p.ledger),
-			// A run parked on a person is woken through the queue as soon as
-			// it is answered or stopped, not at the worker's next poll.
-			runtime.WithWaker(p.queue),
-			// A spec's approvers and answerers may name this workspace's roles.
-			runtime.WithRoles(p.rolesOf),
+	flowOptions := []flow.Option{
+		flow.WithDefinitionResolver(p.Agents.Resolver()),
+		flow.WithDurable(p.ledger, p.queue), flow.WithBus(p.broker),
+		flow.WithSessions(p.Sessions), flow.WithThreads(sessionstate.NewJournal(p.sharedState())),
+		flow.WithWorkspace(p.dir), flow.WithTurnRuntime(exec),
+		flow.WithRuntimeOptions(append(opts,
+			runtime.WithSessions(p.Sessions), runtime.WithChildStarter(p.startSessionChild),
+			runtime.WithChildRunID(func(parent runtime.Input, c runtime.SessionCall) string {
+				return runtime.RunID(parent.Trigger.Tenant, call.TagID(parent.Trigger.ID, c.ID))
+			}), runtime.WithLogger(log),
+			runtime.WithStopGrace(cfg.StopGrace), runtime.WithStopLedger(p.ledger),
+			runtime.WithWaker(p.queue), runtime.WithRoles(p.rolesOf),
 			runtime.WithQuestionTTL(cfg.QuestionTTL),
-		)...,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("platform: runtime: %w", err)
+		)...),
 	}
-	p.rt, p.stops = rt, rt
-	p.asked = rt.StopRequested
+	for name, provider := range cfg.Ext.Providers {
+		flowOptions = append(flowOptions, flow.WithModelProvider(name, provider))
+	}
+	app, err := flow.New(startup, flowOptions...)
+	if err != nil {
+		return nil, fmt.Errorf("platform: flow: %w", err)
+	}
+	p.app = app
+	p.closers = append(p.closers, app.Close)
+	p.rt, p.stops = app.Runtime(), app.Runtime()
+	p.asked = p.rt.StopRequested
 	if cfg.Stops != nil {
 		p.stops = stopFunc(cfg.Stops)
 	}
@@ -672,6 +694,7 @@ func (p *Platform) executor(groups runtime.ToolGroupSource) (turn.Runtime, error
 		runtime.WithCatalog(p.operationsCatalog(p.cfg.Ext.catalog(p.fileTools(p.connectorTools)), groups)),
 
 		runtime.WithDelegator(p.attach),
+		runtime.WithSessionRuntime(func() *runtime.Runtime { return p.rt }),
 		// An agent's declared sources ground its turns, searched in the
 		// run's tenant.
 		runtime.WithKnowledge(p.knowledgeFor),
@@ -696,6 +719,11 @@ func (p *Platform) executor(groups runtime.ToolGroupSource) (turn.Runtime, error
 func (p *Platform) Invoke(ctx context.Context, tag event.Envelope) (runs.Run, error) {
 	if tag.Time.IsZero() {
 		tag.Time = p.now()
+	}
+	wire.DeleteMeta(&tag, wire.MetaSession)
+	wire.DeleteMeta(&tag, wire.MetaSourceAlert)
+	if err := p.pinSessionSourceAlert(ctx, &tag); err != nil {
+		return runs.Run{}, err
 	}
 	agent := wire.AgentOf(tag)
 	if agent == "" {
@@ -759,7 +787,31 @@ func (p *Platform) Invoke(ctx context.Context, tag event.Envelope) (runs.Run, er
 	// A run a held run calls may still be claimed while this process
 	// drains, so the caller can finish.
 	p.drain.called(edge.Parent, runID)
-	acc, err := p.rt.AcceptOwn(ctx, tag, agent)
+	var acc runtime.Acceptance
+	if child, ok := ctx.Value(sessionCallKey{}).(admittedSessionCall); ok {
+		meta := wire.Meta(tag)
+		meta[wire.MetaSession] = child.call.Session.ID
+		wire.SetContext(&tag, meta)
+		acc, err = p.rt.AcceptOwnSessionChild(ctx, tag, agent, child.call.Session, child.parent, child.call.QuestionID)
+	} else if edge.Parent != "" {
+		// Legacy call edges identify trigger tags; the durable ledger uses
+		// the tenant-bound run identity derived from that tag.
+		acc, err = p.rt.AcceptOwnChild(ctx, tag, agent, runtime.RunID(tag.Tenant, edge.Parent))
+	} else if wire.Origin(tag) == OriginEval && wire.Meta(tag)[metaEvalRevision] != "" {
+		acc, err = p.rt.AcceptOwnVersion(ctx, tag, agent, wire.Meta(tag)[metaEvalRevision])
+	} else if th, thErr := p.Threads.Get(tag.Tenant, wire.Meta(tag)[runs.MetaThread]); thErr == nil && th.Session != nil {
+		rec, lookupErr := p.Sessions.Get(ctx, tag.Tenant, th.ID)
+		if lookupErr != nil {
+			err = lookupErr
+		} else {
+			meta := wire.Meta(tag)
+			meta[wire.MetaSession] = rec.ID
+			wire.SetContext(&tag, meta)
+			acc, err = p.rt.AcceptOwnSession(ctx, tag, agent, rec)
+		}
+	} else {
+		acc, err = p.rt.AcceptOwn(ctx, tag, agent)
+	}
 	if err != nil {
 		// It never started, so it holds no place.
 		p.appendUsage(usage.Entry{Kind: usage.Ended, Tenant: tag.Tenant, RunID: runID, At: p.now()})
@@ -1096,6 +1148,9 @@ func (p *Platform) observe(ctx context.Context, e event.Envelope) {
 
 // raise checks a run that has just ended against its tenant's alert rules.
 func (p *Platform) raise(run runs.Run) error {
+	if IsEvaluation(run) {
+		return nil
+	}
 	spoken := false
 	raised, err := p.Alerts.EvaluateOnce(run, p.Runs.Recent)
 	if err != nil {
@@ -1117,7 +1172,7 @@ func (p *Platform) raise(run runs.Run) error {
 
 // RunTypes are the type prefixes the platform observes: every run event,
 // the opt-in usage and compaction families among them.
-var RunTypes = []string{"run", "run.usage", "run.context"}
+var RunTypes = []string{"run", "run.usage", "run.context", "run.feedback"}
 
 // channels are the channel roots every run publishes under: one per
 // registered connector's scheme, and the channel of a run Humagen raises
@@ -1339,6 +1394,7 @@ func (p *Platform) Run(ctx context.Context) error {
 	// The work done once per deployment runs on the elected leader only,
 	// and moves to another process when this one stops leading.
 	singletons := map[string]func(context.Context) error{
+		"scheduled evals":     p.runEvalSchedule,
 		"email notifications": p.runEmailNotifications,
 		"source refresh":      p.refreshSources,
 		"catalog crawl":       p.crawlCatalog,
