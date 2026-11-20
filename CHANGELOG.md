@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.152.0 (2026-11-20)
+
+### Features
+
+- **api**: the messages route takes a client's machine posting for a person (#442) ([7838895](https://github.com/urmzd/humagen/commit/783889589d4e0217533a30cd872721e923f9d162))
+- **image**: the image carries Node and the Slack app, so surfaces.slack runs in it (#445) ([c9fd2ce](https://github.com/urmzd/humagen/commit/c9fd2ce54cb4997f777bbe47a615cf9f4eb906ef))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.151.0...v0.152.0)
+
+
 ## 0.151.0 (2026-11-20)
 
 ### Features
