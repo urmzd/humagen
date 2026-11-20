@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@humagen/client": "workspace:*",
+    "@humagen/components": "workspace:*",
     "@humagen/core": "workspace:*"
   },
   "devDependencies": {
