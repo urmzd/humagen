@@ -5,10 +5,11 @@ import {
   createHumanActivityStore,
   foldHumanActivity,
   humanActivity,
+  MAX_HUMAN_ACTIVITY,
   splitHumanActivity,
 } from "@humagen/core";
 import { ListChecksIcon, TerminalIcon } from "@humagen/render-web";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { HumanActivityList, HumanActivityNote, useHumanActivity } from "./humanActivity.tsx";
 import { lazyView } from "./lazy.tsx";
 import type { ConversationView } from "./route.ts";
@@ -221,7 +222,7 @@ test("what is done by hand in a tab shows above the composer, and each line can 
       .getAllByRole("listitem")
       .map((li) => [li.getAttribute("data-source"), li.textContent]),
     [
-      ["terminal", `${words.byHand.source.terminal}: Ran pnpm test, exit 1`],
+      ["terminal", `${words.byHand.source.terminal}: Ran pnpm test, exit 1FAIL a.test.ts`],
       ["changes", `${words.byHand.source.changes}: Kept the change to route.ts`],
     ],
   );
@@ -246,7 +247,151 @@ test("the list says when the next message has no room for all of it", () => {
   const { omitted } = foldHumanActivity("", store.list(thread));
   assert.ok(omitted > 0);
   render(<HumanActivityList conversation={thread} store={store} />);
-  assert.equal(screen.getByRole("status").textContent, words.byHand.overflow(omitted));
+  const told = within(screen.getByRole("status"));
+  assert.equal(
+    told.getByTestId("human-activity-overflow").textContent,
+    words.byHand.overflow(omitted),
+  );
+  // Each line that waits for the message after says so; the ones that go do not.
+  fireEvent.click(screen.getByRole("button", { name: words.byHand.earlier(36) }));
+  const rows = within(screen.getByTestId("human-activity")).getAllByRole("listitem");
+  assert.deepEqual(
+    rows.map((li) => li.getAttribute("data-later") === "true"),
+    rows.map((_, i) => i >= 40 - omitted),
+  );
+  for (const li of rows)
+    assert.equal(
+      li.querySelector("summary")?.textContent?.includes(words.byHand.rowLater),
+      li.getAttribute("data-later") === "true",
+    );
+});
+
+test("every line's detail can be read whole before sending, by a press or a key, and long lines wrap", () => {
+  const store = createHumanActivityStore();
+  const output = `FAIL src/route.test.ts\n${"expected 1 to equal 2 ".repeat(20)}`.trim();
+  const long = `Ran ${"pnpm --filter @humagen/web test ".repeat(5)}`.trim();
+  store.add(thread, { source: "terminal", summary: long, detail: output });
+  store.add(thread, { source: "changes", summary: "Kept the change to route.ts" });
+  render(<HumanActivityList conversation={thread} store={store} />);
+  const [withDetail, without] = within(screen.getByTestId("human-activity")).getAllByRole(
+    "listitem",
+  ) as [HTMLElement, HTMLElement];
+  // A native disclosure: its summary takes focus, and Enter, Space or a tap opens it.
+  const row = withDetail.querySelector("details") as HTMLDetailsElement;
+  const line = row.querySelector("summary") as HTMLElement;
+  assert.equal(row.open, false);
+  assert.ok(line.textContent?.includes(long));
+  // The detail is on the page in full, not in a tooltip, and nothing is cut to one line.
+  assert.equal(within(row).getByTestId("human-activity-detail").textContent, output);
+  assert.equal(withDetail.querySelector("[title]:not(button)"), null);
+  assert.equal(withDetail.querySelector(".truncate"), null);
+  assert.ok(line.querySelector(".break-words"));
+  // Taking it out is a button of its own beside the line, not inside what opens it.
+  const out = within(withDetail).getByRole("button", { name: words.byHand.remove(long) });
+  assert.equal(line.contains(out), false);
+  // Nothing moves while it waits on the person.
+  assert.equal(withDetail.querySelector("[class*=transition], [class*=animate]"), null);
+  // A line with nothing more to it has nothing to open.
+  assert.equal(without.querySelector("details"), null);
+  assert.equal(without.querySelector(".truncate"), null);
+});
+
+test("the list says which lines go without their detail, and how many", () => {
+  const store = createHumanActivityStore();
+  for (let i = 0; i < 10; i++)
+    store.add(thread, { source: "terminal", summary: `Ran step ${i}`, detail: "x".repeat(400) });
+  const { bare, omitted } = foldHumanActivity("", store.list(thread));
+  assert.ok(bare.length > 0 && bare.length < 10);
+  assert.equal(omitted, 0);
+  render(<HumanActivityList conversation={thread} store={store} />);
+  assert.equal(
+    within(screen.getByRole("status")).getByTestId("human-activity-bare").textContent,
+    words.byHand.bare(bare.length),
+  );
+  fireEvent.click(screen.getByRole("button", { name: words.byHand.earlier(6) }));
+  const rows = within(screen.getByTestId("human-activity")).getAllByRole("listitem");
+  assert.deepEqual(
+    rows.filter((li) => li.getAttribute("data-bare") === "true").map((li) => rows.indexOf(li)),
+    bare.map((id) => store.list(thread).findIndex((r) => r.id === id)),
+  );
+  for (const li of rows)
+    assert.equal(
+      li.querySelector("summary")?.textContent?.includes(words.byHand.rowBare),
+      li.getAttribute("data-bare") === "true",
+    );
+});
+
+test("with room for every detail, nothing is said to be left out", () => {
+  const store = createHumanActivityStore();
+  store.add(thread, { source: "terminal", summary: "Ran pnpm test, exit 1", detail: "FAIL" });
+  render(<HumanActivityList conversation={thread} store={store} />);
+  assert.equal(screen.queryByRole("status"), null);
+  assert.equal(screen.queryByText(words.byHand.rowBare), null);
+});
+
+test("a long list shows its newest lines and a count of the rest, which one press shows", () => {
+  const store = createHumanActivityStore();
+  for (let i = 1; i <= 4; i++) store.add(thread, { source: "other", summary: `Did ${i}` });
+  render(<HumanActivityList conversation={thread} store={store} />);
+  const list = within(screen.getByTestId("human-activity"));
+  const lines = () => list.getAllByRole("listitem").map((li) => li.textContent);
+  // Four fit: there is nothing more to show.
+  assert.equal(list.queryByRole("button", { name: /Earlier/ }), null);
+  assert.equal(lines().length, 4);
+  act(() => {
+    for (let i = 5; i <= 7; i++) store.add(thread, { source: "other", summary: `Did ${i}` });
+  });
+  const more = list.getByRole("button", { name: words.byHand.earlier(3) });
+  assert.equal(more.getAttribute("aria-expanded"), "false");
+  assert.deepEqual(
+    lines(),
+    [4, 5, 6, 7].map((i) => `${words.byHand.source.other}: Did ${i}`),
+  );
+  fireEvent.click(more);
+  assert.equal(lines().length, 7);
+  const fewer = list.getByRole("button", { name: words.byHand.fewer });
+  assert.equal(fewer.getAttribute("aria-expanded"), "true");
+  fireEvent.click(fewer);
+  assert.equal(lines().length, 4);
+});
+
+test("a list too tall for its box marks the edge that lines are out of view past", () => {
+  const store = createHumanActivityStore();
+  for (let i = 1; i <= 4; i++) store.add(thread, { source: "other", summary: `Did ${i}` });
+  render(<HumanActivityList conversation={thread} store={store} />);
+  const box = within(screen.getByTestId("human-activity")).getByRole("list");
+  // All of it is in view: no edge is marked.
+  assert.equal(box.getAttribute("data-more-above"), null);
+  assert.equal(box.getAttribute("data-more-below"), null);
+  // The page lays it out taller than its box, as a phone does with long lines.
+  Object.defineProperty(box, "clientHeight", { configurable: true, value: 100 });
+  Object.defineProperty(box, "scrollHeight", { configurable: true, value: 300 });
+  fireEvent.scroll(box);
+  assert.equal(box.getAttribute("data-more-above"), null);
+  assert.equal(box.getAttribute("data-more-below"), "true");
+  box.scrollTop = 80;
+  fireEvent.scroll(box);
+  assert.equal(box.getAttribute("data-more-above"), "true");
+  assert.equal(box.getAttribute("data-more-below"), "true");
+  box.scrollTop = 200;
+  fireEvent.scroll(box);
+  assert.equal(box.getAttribute("data-more-above"), "true");
+  assert.equal(box.getAttribute("data-more-below"), null);
+});
+
+test("the list says when it was full and the oldest were dropped", () => {
+  const store = createHumanActivityStore();
+  for (let i = 0; i < MAX_HUMAN_ACTIVITY; i++)
+    store.add(thread, { source: "other", summary: `Did ${i}` });
+  render(<HumanActivityList conversation={thread} store={store} />);
+  assert.equal(screen.queryByTestId("human-activity-dropped"), null);
+  act(() => {
+    store.add(thread, { source: "other", summary: "One more" });
+  });
+  assert.equal(
+    within(screen.getByRole("status")).getByTestId("human-activity-dropped").textContent,
+    words.byHand.dropped(1, MAX_HUMAN_ACTIVITY),
+  );
 });
 
 test("a conversation's record is its own, and the hook follows it", async () => {

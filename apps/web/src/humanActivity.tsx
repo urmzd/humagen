@@ -7,6 +7,7 @@ import {
   type HumanActivitySource,
   type HumanActivityStore,
   humanActivity,
+  MAX_HUMAN_ACTIVITY,
   type SplitHumanActivity,
 } from "@humagen/core";
 import {
@@ -18,7 +19,15 @@ import {
   TerminalIcon,
   XIcon,
 } from "@humagen/render-web";
-import { type ReactNode, useCallback, useMemo, useSyncExternalStore } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 
 /*
  * What a person did by hand in a session's workbench, on the page: the hook a
@@ -81,11 +90,99 @@ export function useHumanActivity(
 const quiet =
   "inline-flex shrink-0 items-center justify-center rounded-aui text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent";
 
+/** How many lines the list shows before the rest are asked for. */
+const SHOWN = 4;
+
+const detailBox =
+  "ml-7 whitespace-pre-wrap break-words rounded-aui bg-aui-hover px-2.5 py-2 font-aui-mono text-aui-base text-aui-fg";
+
+/**
+ * One thing that goes with the next message. A line with a detail opens in
+ * place to show it whole, since the detail is sent under the person's name
+ * and they did not write it. `bare` says the message has no room for the
+ * detail, and `later` that it has none for the line.
+ */
+function Row({
+  record: r,
+  bare,
+  later,
+  onRemove,
+  onResize,
+}: {
+  record: HumanActivityRecord;
+  bare: boolean;
+  /** The next message has no room for the line at all. */
+  later: boolean;
+  onRemove: () => void;
+  /** The line opened or closed, so the list is a different height. */
+  onResize: () => void;
+}) {
+  const line = (
+    <>
+      <span className="flex h-6 w-5 shrink-0 items-center justify-center text-aui-muted">
+        {sourceMark[r.source]}
+      </span>
+      <span className="sr-only">{words.source[r.source]}: </span>
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span className="break-words">{r.summary}</span>
+        {bare && <span className="text-aui-muted">{words.rowBare}</span>}
+        {later && <span className="text-aui-muted">{words.rowLater}</span>}
+      </span>
+    </>
+  );
+  return (
+    <li
+      data-source={r.source}
+      data-bare={bare || undefined}
+      data-later={later || undefined}
+      className="flex min-w-0 items-start gap-1 text-aui-base text-aui-fg"
+    >
+      {r.detail ? (
+        <details
+          className="group/row min-w-0 flex-1"
+          // An opened detail is brought into the list's view, in one step.
+          onToggle={(e) => {
+            if (e.currentTarget.open) e.currentTarget.scrollIntoView?.({ block: "nearest" });
+            onResize();
+          }}
+        >
+          <summary className="flex min-h-9 cursor-pointer list-none items-start gap-2 rounded-aui py-1.5 hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent pointer-coarse:min-h-11 pointer-coarse:py-2.5 [&::-webkit-details-marker]:hidden">
+            {line}
+            <span className="flex h-6 shrink-0 items-center text-aui-muted">
+              <ChevronRightIcon size={14} aria-hidden className="group-open/row:rotate-90" />
+            </span>
+          </summary>
+          <pre data-testid="human-activity-detail" className={`${detailBox} mb-1.5`}>
+            {r.detail}
+          </pre>
+        </details>
+      ) : (
+        <div className="flex min-h-9 min-w-0 flex-1 items-start gap-2 py-1.5 pointer-coarse:min-h-11 pointer-coarse:py-2.5">
+          {line}
+        </div>
+      )}
+      <button
+        type="button"
+        aria-label={words.remove(r.summary)}
+        title={words.remove(r.summary)}
+        onClick={onRemove}
+        className={`${quiet} size-9 pointer-coarse:size-11`}
+      >
+        <XIcon size={16} />
+      </button>
+    </li>
+  );
+}
+
 /**
  * What goes with the person's next message, above the composer: one line for
- * each thing they did, each with a way to take it out. Nothing draws when
- * there is nothing recorded. `draft` is what is typed so far, which decides
- * how much room the message has left.
+ * each thing they did, each with a way to take it out, and each detail a
+ * press away, so all of what is sent can be read first. The newest few show;
+ * a button above them shows the rest. Under the list it says what the message
+ * will not carry: details with no room, lines with no room, and lines dropped
+ * when the list was full. Nothing draws when there is nothing recorded.
+ * `draft` is what is typed so far, which decides how much room the message
+ * has left.
  */
 export function HumanActivityList({
   conversation,
@@ -97,8 +194,25 @@ export function HumanActivityList({
   store?: HumanActivityStore;
 }) {
   const { records, remove, clear } = useHumanActivity(conversation, store);
+  const [all, setAll] = useState(false);
+  // The list scrolls when it is tall. A rule on an edge says lines are out of
+  // view past it, so a line cut by the edge is not taken for the last.
+  const box = useRef<HTMLUListElement>(null);
+  const [past, setPast] = useState({ above: false, below: false });
+  const measure = useCallback(() => {
+    const el = box.current;
+    if (!el) return;
+    const above = el.scrollTop > 1;
+    const below = el.scrollTop + el.clientHeight < el.scrollHeight - 1;
+    setPast((was) => (was.above === above && was.below === below ? was : { above, below }));
+  }, []);
+  useLayoutEffect(measure);
   if (!records.length) return null;
-  const { omitted } = foldHumanActivity(draft, records);
+  const { omitted, bare, included } = foldHumanActivity(draft, records);
+  // Read with the records: it changes only when they do.
+  const dropped = store.dropped(conversation);
+  const hidden = records.length > SHOWN ? records.length - SHOWN : 0;
+  const shown = all || !hidden ? records : records.slice(-SHOWN);
   return (
     <section
       aria-label={words.pending(records.length)}
@@ -115,36 +229,42 @@ export function HumanActivityList({
           {words.clear}
         </button>
       </div>
-      <ul className="aui-scroll flex max-h-40 flex-col overflow-y-auto">
-        {records.map((r) => (
-          <li
+      {hidden > 0 && (
+        <button
+          type="button"
+          aria-expanded={all}
+          onClick={() => setAll(!all)}
+          className={`${quiet} min-h-9 self-start px-2 text-aui-base pointer-coarse:min-h-11`}
+        >
+          {all ? words.fewer : words.earlier(hidden)}
+        </button>
+      )}
+      <ul
+        ref={box}
+        onScroll={measure}
+        data-more-above={past.above || undefined}
+        data-more-below={past.below || undefined}
+        className={`aui-scroll flex max-h-[40vh] flex-col overflow-y-auto border-y ${past.above ? "border-t-aui-muted" : "border-t-transparent"} ${past.below ? "border-b-aui-muted" : "border-b-transparent"}`}
+      >
+        {shown.map((r) => (
+          <Row
             key={r.id}
-            data-source={r.source}
-            className="flex min-w-0 items-center gap-2 text-aui-base text-aui-fg"
-          >
-            <span className="flex size-5 shrink-0 items-center justify-center text-aui-muted">
-              {sourceMark[r.source]}
-            </span>
-            <span className="sr-only">{words.source[r.source]}: </span>
-            <span className="min-w-0 flex-1 truncate" title={r.detail ?? r.summary}>
-              {r.summary}
-            </span>
-            <button
-              type="button"
-              aria-label={words.remove(r.summary)}
-              title={words.remove(r.summary)}
-              onClick={() => remove(r.id)}
-              className={`${quiet} size-9 pointer-coarse:size-11`}
-            >
-              <XIcon size={16} />
-            </button>
-          </li>
+            record={r}
+            bare={bare.includes(r.id)}
+            later={!included.includes(r.id)}
+            onRemove={() => remove(r.id)}
+            onResize={measure}
+          />
         ))}
       </ul>
-      {omitted > 0 && (
-        <p role="status" className="text-aui-base text-aui-muted">
-          {words.overflow(omitted)}
-        </p>
+      {(bare.length > 0 || omitted > 0 || dropped > 0) && (
+        <div role="status" className="flex flex-col gap-1 text-aui-base text-aui-muted">
+          {bare.length > 0 && <p data-testid="human-activity-bare">{words.bare(bare.length)}</p>}
+          {omitted > 0 && <p data-testid="human-activity-overflow">{words.overflow(omitted)}</p>}
+          {dropped > 0 && (
+            <p data-testid="human-activity-dropped">{words.dropped(dropped, MAX_HUMAN_ACTIVITY)}</p>
+          )}
+        </div>
       )}
     </section>
   );

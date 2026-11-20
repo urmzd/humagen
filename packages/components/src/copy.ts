@@ -4141,6 +4141,23 @@ export const defaultCopy = {
       },
       remove: (summary: string) => `Remove: ${summary}`,
       clear: "Clear All",
+      /** Above the newest few, when the list holds more than it shows. */
+      earlier: (n: number) => `Show ${n} Earlier`,
+      fewer: "Show Fewer",
+      /** On a line whose detail the next message has no room for. */
+      rowBare: "Goes without its detail, which does not fit",
+      /** On a line the next message has no room for at all. */
+      rowLater: "Does not fit, and goes with the message after",
+      /** Under the list when some lines go without their detail. */
+      bare: (n: number) =>
+        n === 1
+          ? "1 goes without its detail, to fit in your next message. Remove others to send it in full."
+          : `${n} go without their detail, to fit in your next message. Remove others to send them in full.`,
+      /** Under the list when it was full and the oldest were dropped. */
+      dropped: (n: number, max: number) =>
+        n === 1
+          ? `The list holds ${max}. The oldest 1 was dropped and will not be sent.`
+          : `The list holds ${max}. The oldest ${n} were dropped and will not be sent.`,
       /** Under the list when the next message cannot carry all of it. */
       overflow: (n: number) =>
         n === 1
