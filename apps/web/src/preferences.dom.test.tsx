@@ -114,13 +114,13 @@ async function choose(title: string, item: "Pin" | "Unpin", init?: object) {
 const manage = (title: string) => screen.findByRole("button", { name: `Manage ${title}` });
 
 /** Switches the conversation list to its Projects view, from the filter menu. */
-async function projectsView() {
+async function projectsView(choice = "By project") {
   fireEvent.click(await screen.findByRole("button", { name: "Filter conversations" }));
   const panel = within(await screen.findByRole("dialog", { name: "Filter conversations" }));
   const disclosure = panel.getByRole("button", { name: /^View / });
   fireEvent.click(disclosure);
   fireEvent.click(
-    within(panel.getByRole("group", { name: "View" })).getByRole("button", { name: "By project" }),
+    within(panel.getByRole("group", { name: "View" })).getByRole("button", { name: choice }),
   );
   fireEvent.keyDown(disclosure, { key: "Escape" });
 }
@@ -372,6 +372,8 @@ test("keyboard unpinning a project without recent conversations returns focus to
     "GET /api/threads": () => ({ threads: [], next: null }),
   });
   render(<Pins />);
+  // By day lists no project, so the pinned shortcut is the project's only control.
+  await projectsView("By day");
   const unpin = await screen.findByRole("button", { name: "Unpin project Launch" });
   const projects = screen.getByRole("link", { name: "Projects" });
   unpin.focus();

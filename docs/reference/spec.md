@@ -685,13 +685,17 @@ spec:
       background_color: "#1a1a2e"
       command_description: Ask Acme's agents
       command_usage_hint: "[question]"
+      code_channels: false  # true offers Continue in a Code Channel; needs the manifest pushed and the app reinstalled
       humagen_client:          # how the app signs in to humagen's API. Dev sign-in needs none
         token_url: https://login.example.com/oauth2/v1/token
         client_id: humagen-slack
         client_secret: {ref: env:HUMAGEN_SLACK_CLIENT_SECRET}
-        scopes: [humagen:agents:read, humagen:runs:read, humagen:runs:write, humagen:billing:read, humagen:projects:read]
+        scopes: [humagen:agents:read, humagen:runs:read, humagen:runs:write, humagen:billing:read, humagen:projects:read, humagen:clients:read]
         audience: ""        # set when the provider needs one named
       # humagen_token: {ref: env:HUMAGEN_SLACK_API_TOKEN}   # instead: a bearer token that does not expire
+      machine: humagen-slack   # the subject that credential signs in as. Under tailscale leave it out
+      people:               # whom the app acts for: a Slack user id to their subject here. None is nobody
+        U0123456: "issuer|person-subject"
     github:
       enabled: false
       owners: [acme]
@@ -865,6 +869,15 @@ shown on the approval card. `humagen config check` refuses a schema without
 that core. An answer that is missing or does not hold to the schema leaves the
 call for a person.
 
+The schema as it ships also has an optional `answer`: in a session set to Run
+and Answer (approval mode `decide`), the approval agent is shown a question an
+agent asks a person, and answers it with `decision: allow` and `answer` (one of
+the options for a choice, words for a reply) only when the session already
+settles it. A workspace schema without `answer` keeps working and decides calls
+only: every question goes to a person. Run and Answer is a person's choice for
+one session, made in the console, not a spec field; a session asks until
+someone chooses it.
+
 A `choices` block
 from an older policy or agent spec is not read: a file that has one still
 starts, with a load note. `subscriptions` is refused: the platform decides
@@ -879,8 +892,9 @@ started with.
 client of its API, restarting it when it exits. It needs Node.js on `PATH` and
 `apps/slack` with its dependencies installed (`pnpm install`), found under the
 working directory, beside the binary, or at `HUMAGEN_SLACK_APP_DIR`. The Humagen image
-carries neither, so there the surface is logged as off and the server runs
-without it.
+carries both: Node.js, and the app with its dependencies at
+`/usr/share/warp/slack`, which the image's `HUMAGEN_SLACK_APP_DIR` names. Where
+either is missing, the surface is logged as off and the server runs without it.
 
 The app is given its tokens, its workspace and Humagen's address, plus `PATH`,
 `HOME`, `TMPDIR`, `TZ`, `XDG_STATE_HOME`, the `NODE_OPTIONS`,
@@ -892,6 +906,13 @@ Humagen's environment reaches it.
 surface: its name (`app_name`, else the workspace's or deployment's
 `display_name`), `command`, `description`, `background_color`,
 `command_description` and `command_usage_hint`, each Humagen's when left out.
+`code_channels: true` adds the code channels feature and the
+`code_channels:manage`, `channels:read` and `groups:read` scopes to that
+manifest, and starts the app with `SLACK_CODE_CHANNELS=1`. It is off unless
+set, and the manifest is then the one every install already has. Turning it on
+changes the manifest, so push it and reinstall the app before the setting does
+anything: until then Slack refuses the call and conversations stay in their
+threads. See [the Slack app](https://github.com/urmzd/humagen/blob/main/apps/slack/README.md#code-channels).
 What the app says in Slack itself (its tagline, disclaimer and suggested
 prompts) is the `SLACK_BRANDING` file's. The app's icon and its bot's
 picture are set on the app's page at api.slack.com.
@@ -901,10 +922,62 @@ needs none. Under `oidc` or `mock` it needs `humagen_client`: a machine client o
 the identity provider, whose access tokens the app gets with client credentials
 and renews as they expire, with the scopes [the API](api.md#authenticating-a-machine)
 lists for a Slack surface. `humagen_token` is a bearer token given as it is, for a
-token that does not expire; set one or the other. A process cannot sign in
-through Tailscale Serve, so `tailscale` sign-in refuses a Slack surface. A spec
-that needs a credential and has none is refused when it is checked, and so is a
-start whose `-auth` flag needs one the file does not give.
+token that does not expire; set one or the other. Under `tailscale` it needs
+none and takes none: a process cannot sign in through Tailscale Serve, so the
+server makes a credential for the app it starts, new at every start and kept
+in memory only (see [security](../architecture/security.md#the-slack-app-under-tailscale)).
+A `humagen_client` or `humagen_token` under `tailscale` is refused, since
+nothing could verify it. A spec that needs a credential and has none is
+refused when it is checked, and so is a start whose `-auth` flag needs one the
+file does not give.
+
+#### Whom the Slack app acts for
+
+By default the app acts for nobody: it answers, and every run it asks for is
+the app's own. `people` names who is who, a Slack user id (`U...` or `W...`)
+in `team` to the subject that person signs in to Humagen with. With it the
+server keeps a [client](clients.md#people-a-slack-app-answers-for) for the app
+and starts the app with `HUMAGEN_CLIENT` set to that client's id, so a mapped
+person's message, runs, Home tab and answers to a run's questions are theirs.
+A Slack user the map does not name stays nobody.
+
+| Field | Default | Meaning |
+|-------|---------|---------|
+| `people` | none: the app acts for nobody, with no client record and no `HUMAGEN_CLIENT` | At most 500 Slack user ids, each mapped to a subject of 1 to 200 characters. `team` must then be a team id of at most 30 characters |
+| `machine` | under `tailscale`, `slack-app:<team>`, the subject of the credential the server makes | The subject the app's own credential signs in as, the only credential that may act for `people`. Under `tailscale` it is refused, since the server knows it. Under every other sign-in it is required with `people`: the subject is the identity provider's to choose, so the server cannot know it |
+
+The record is `slack-app-<team id in lowercase>`, such as `slack-app-t0123456`,
+in the workspace the document names. It holds no secret and has no connector:
+Slack reaches the app over Socket Mode, never through the server, so the
+record is offered no webhook and `bot_token` is not on it. A client's secrets
+are `env:HUMAGEN_*` references given to its workspace, with a signing secret
+beside the token, and a Socket Mode app has neither to give. So files a person
+attaches in Slack are still not read: the server reads them through a client's
+own connector, which this record does not have, and a message with a file is
+refused as it is with no client.
+
+The file owns three things on that record: `team`, `machine` and `people`. At
+every start they are made what the file says, people added and removed, and a
+change to them through the API is not kept. Everything else is an
+administrator's, set through [the clients API](clients.md#api) and left alone
+at a start: `default_agent`, `agents`, `home`, `enabled` and the options under
+`slack`. The record starts with `agents: ["*"]` and no default agent, which is
+what the app does with no client: a message that names no agent is answered by
+the default where it lands (the workspace's entry agent, unless a project or a
+channel sets another), and a person may name any agent they may use. The record
+cannot be deleted through the API.
+
+A file that stops mapping people, or turns the surface off, takes the machine
+and the people off the record at the next start and starts the app with no
+`HUMAGEN_CLIENT`. When another client already has the record's id, the server
+says so in its log, leaves that client alone and starts the app acting for
+nobody.
+
+Under `oidc` or `mock` the app's credential also needs `humagen:clients:read`
+once `people` is set, to read its own record; without it the app refuses to
+start. The credential the server makes under `tailscale` has it. The credential
+named as `machine` can raise runs as every person mapped, so treat it as their
+sign-ins (see [clients](clients.md#people-a-slack-app-answers-for)).
 
 Model names are shared across the workspaces in one process: two workspaces
 may declare the same model, but not two different ones under one name.
@@ -999,7 +1072,7 @@ below may do, and what it prefers. A person adds their own level through
 
 | Setting | Kind | Left out everywhere | Rule |
 |---------|------|---------------------|------|
-| `ceilings.tools` | ceiling | narrows nothing | at most 64 tool names, as an agent's `tools` writes them (`mcp:<name>` for a provider's tools). A tool the agent grants that is not listed is taken away for the run. `[]` allows none of them. It does not take away `skill_file_read`, which a run whose skills have supporting files is always offered: it reads only those files, which the run was given ([managed library](../architecture/managed-library.md#skills-are-immutable-packages)). An administrator who wants a run to read no file at all must also keep supporting files out of the skills its runs use. An agent's `tools` may not name `skill_file_read` |
+| `ceilings.tools` | ceiling | narrows nothing | at most 64 tool names, as an agent's `tools` writes them (`mcp:<name>` for a provider's tools). A tool the agent grants that is not listed is taken away for the run. `[]` allows none of them. It does not take away `skill_file_read`, which a run whose skills have supporting files is always offered: it reads only those files, which the run was given ([managed library](../architecture/managed-library.md#skills-are-immutable-packages)). An administrator who wants a run to read no file at all must also keep supporting files out of the skills its runs use. An agent's `tools` may not name `skill_file_read`. It does take away the background tools every agent's turn for a person is offered (`notify`, `watch_start`, `goal_start`, `task_start`, `background_list`, `background_stop`): list them to keep them ([background work](../guides/background.md)) |
 | `ceilings.models` | ceiling | narrows nothing | at most 64 `provider/model`, or `provider/*` for all of a provider's. The run's model and fallbacks outside it are dropped, and a run with none left is refused |
 | `ceilings.call_depth` | ceiling | the deployment's depth | 0 to 16: how deep a run's calls to other agents may go. 0 calls none. It never deepens the deployment's own limit |
 | `ceilings.tool_servers` | ceiling | none | at most 64 hosts, in lower case, a person's own tool servers may be on. Default deny: only `workspace.run` opens it, and a project or a person only narrows it |

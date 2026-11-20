@@ -360,3 +360,32 @@ test("budget exhaustion is not retried blindly and connection refusal keeps its 
   assert.match(unavailable.message ?? "", /connection refused/);
   assert.doesNotMatch(unavailable.message ?? "", /private-host/);
 });
+
+test("the engine's stop after failed steps is said in plain words, with Retry", () => {
+  const failure = failureOf("agent run: too many consecutive failed tool turns: 2 turns", "r4");
+  assert.equal(failure.kind, "tool_error");
+  assert.equal(failure.title, "Stopped after failed steps");
+  assert.match(failure.message, /^2 steps in a row failed/);
+  assert.doesNotMatch(JSON.stringify(failure), /consecutive|tool turns/);
+});
+
+test("a publish that fails before it reports does not stay generating", () => {
+  const to = adapter();
+  to(ev("run.delta.tool.call.v1", { id: "t1", name: "publish_artifact" }));
+  const closed = to(ev("run.delta.tool.done.v1", { id: "t1", name: "publish_artifact", error: "invalid arguments\nno such file: report.md" })).find((e) => e.type === "attachment.upserted");
+  assert.ok(closed?.type === "attachment.upserted" && closed.attachment.type === "artifact");
+  assert.equal(closed.attachment.id, "t1");
+  assert.equal(closed.attachment.phase, "failed");
+  assert.equal(closed.attachment.error, "no such file: report.md");
+  // Nothing is left open for the run's end to close a second time.
+  assert.deepEqual(to(ev("run.failed.v1", { terminal: true, error: "boom" })).map((e) => e.type), ["turn.failed"]);
+});
+
+test("a publish still open when the run fails is closed with it", () => {
+  const to = adapter();
+  to(ev("run.delta.tool.call.v1", { id: "t1", name: "publish_artifact" }));
+  const [closed, failed] = to(ev("run.failed.v1", { terminal: true, error: "boom" }));
+  assert.ok(closed?.type === "attachment.upserted" && closed.attachment.type === "artifact");
+  assert.equal(closed.attachment.phase, "failed");
+  assert.equal(failed?.type, "turn.failed");
+});

@@ -67,7 +67,7 @@ Shared components use only primitives, never DOM or Block Kit. When a concept ca
 
 | Concept | Web | Slack | Notes |
 |---|---|---|---|
-| Lifecycle | Orb (thinking, searching, calling, delegating, composing, waiting, done, error) | One reaction on the user's message (👀 ✋ ✅ ❌ ⏹️) plus `agents.sessions.setStatus` | Each emoji has one meaning |
+| Lifecycle | Orb (thinking, searching, calling, delegating, composing, waiting, done, error) | One reaction on the user's message (👀 ✋ ✅ ❌ ⏹️) plus `agents.sessions.setStatus`, and a one-line status (`assistant.threads.setStatus`) naming the running step | Each emoji has one meaning |
 | Composer | `PromptInput`: suggestions, attachments, and Stop while running | Slack's own composer | Suggestions map to `setSuggestedPrompts`, up to 4 |
 | Queue | Queued strip (edit, reorder, remove, send now), Cmd+Enter to send now, auto or manual mode | The host queues per thread and marks queued messages with ⏳ | `queueReduce`; nothing queued runs after a failure or a plain Stop |
 | Status line | Lualine-style segments: status, model, approval mode, context meter, compaction, budget, queue | `SessionNotices` when something changes | `contextPressure`, `budgetPressure`, `headroom` |

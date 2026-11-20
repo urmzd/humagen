@@ -67,6 +67,12 @@ type ExternalRef struct {
 	TS       string           `json:"ts,omitempty"`
 	ThreadTS string           `json:"thread_ts,omitempty"`
 	Audience *SurfaceAudience `json:"audience,omitempty"`
+	// AppUser is the Slack app's own bot user id, whose mention is how a
+	// channel message reaches the app and is not a tag. Files asks the
+	// platform to ingest the message's files. Both are read only from a
+	// client's own machine (MessagesInput.ActAs).
+	AppUser string `json:"app_user,omitempty"`
+	Files   bool   `json:"files,omitempty"`
 	// GitHub: owner/name, pull or issue (or comment, on either), its number
 	// and the comment's id.
 	Repo      string `json:"repo,omitempty"`
@@ -271,6 +277,14 @@ type MessagesInput struct {
 	Messages []Message    `json:"messages"`
 	Ref      *ExternalRef `json:"ref,omitempty"`
 	Stream   bool         `json:"stream,omitempty"`
+	// ActAs is the person of a client the message is posted for. Only that
+	// client's own machine (its Slack app) may send it, with a slack ref
+	// that names the client: the message lands in the Slack thread's root
+	// session, started on the thread's first message.
+	ActAs *ActAs `json:"act_as,omitempty"`
+	// PostOnly, with ActAs, records the message and starts nothing: what
+	// people said in the thread before the app was asked.
+	PostOnly bool `json:"post_only,omitempty"`
 	// surface is set only by a surface built into the server, which verified
 	// the person and the place (SendSurfaceMessages): its runs answer on the
 	// surface, and its refs' User is believed. No request can set it.
@@ -324,6 +338,12 @@ func (p *Platform) SendMessages(ctx context.Context, who auth.Principal, in Mess
 	if err := in.check(); err != nil {
 		return MessageView{}, err
 	}
+	if in.ActAs != nil {
+		return p.sendForSurfacePerson(ctx, who, in)
+	}
+	if in.PostOnly {
+		return MessageView{}, fmt.Errorf("%w: post_only is for a client's machine posting for a person (act_as)", threads.ErrInvalid)
+	}
 	if !in.surface {
 		in.dropUnverified()
 	}
@@ -362,6 +382,59 @@ func (p *Platform) SendMessages(ctx context.Context, who auth.Principal, in Mess
 	out, err := p.sendUnder(ctx, who, root, origin, in.Messages)
 	out.Created = created
 	return out, err
+}
+
+// sendForSurfacePerson is SendMessages from a client's own machine, such as
+// the Slack app, for a person of that client: one message, into the root
+// session of the Slack thread it names. The thread's first message starts
+// that session; every later one lands in it. Who may post, for whom and
+// where is StartSurfaceSession's to say.
+func (p *Platform) sendForSurfacePerson(ctx context.Context, who auth.Principal, in MessagesInput) (MessageView, error) {
+	bad := func(why string) (MessageView, error) {
+		return MessageView{}, fmt.Errorf("%w: %s", threads.ErrInvalid, why)
+	}
+	if in.Ref == nil || in.Ref.Type != RefSlack || in.Ref.Client == "" {
+		return bad("a message posted for a person (act_as) names the slack thread and its client in ref")
+	}
+	if len(in.Messages) != 1 || in.Messages[0].Ref != nil {
+		return bad("a message posted for a person (act_as) is one message, with the request's ref")
+	}
+	ref := *in.Ref
+	if _, err := ref.Place(); err != nil {
+		return MessageView{}, err
+	}
+	if !slackTS(ref.TS) {
+		// A reply named only by its thread would be taken for the thread's
+		// first message, and so for one already posted.
+		return bad("a message posted for a person (act_as) names its own ts in ref, beside the thread's for a reply")
+	}
+	m := in.Messages[0]
+	text, err := m.Content.text()
+	if err != nil {
+		return MessageView{}, err
+	}
+	if len(m.Content.uploads()) > 0 {
+		return bad("a surface's files are read from its message (ref.files), not uploaded with it")
+	}
+	if c, err := p.Clients.Get(who.Tenant, ref.Client); err == nil && c.Identity.Team != ref.Team {
+		return bad(fmt.Sprintf("ref: client %q is not team %s's", c.ID, ref.Team))
+	}
+	v, started, err := p.StartSurfaceSession(ctx, who, SessionInput{
+		Text: text, ActAs: in.ActAs, PostOnly: in.PostOnly,
+		Surface: &SurfaceRef{Client: ref.Client, Channel: ref.Channel, TS: cmpOr(ref.ThreadTS, ref.TS), Message: ref.TS, AppUser: ref.AppUser, Audience: ref.Audience, Files: ref.Files},
+	})
+	if err != nil {
+		return MessageView{}, err
+	}
+	out := MessageView{Root: v.ID, Role: "user", Content: publicContent(m.Content), Created: started}
+	if v.Posted != nil {
+		out.Posted = *v.Posted
+		out.ID = messageID(v.ID, v.Posted.Message.ID)
+		// As every other path answers: the message's id across the platform.
+		out.Posted.Message.ID = out.ID
+	}
+	out.Posted.Runs, out.Posted.Notified, out.Posted.Refused = nonNil(out.Posted.Runs), nonNil(out.Posted.Notified), nonNil(out.Posted.Refused)
+	return out, nil
 }
 
 // SendSurfaceMessages is SendMessages for a surface built into the server

@@ -1,13 +1,14 @@
 {
   "name": "@humagen/screens",
-  "version": "0.146.0",
+  "version": "0.160.0",
   "private": true,
   "type": "module",
   "description": "Captures every console screen at phone and desktop width and fails on a broken layout.",
   "scripts": {
     "screens": "node --experimental-strip-types run.ts",
     "typecheck": "tsc --noEmit",
-    "test": "node --test --experimental-strip-types *.test.ts"
+    "test": "node --test --experimental-strip-types *.test.ts",
+    "showcase": "node --experimental-strip-types showcase-live.ts"
   },
   "devDependencies": {
     "@types/node": "^26.6.4",

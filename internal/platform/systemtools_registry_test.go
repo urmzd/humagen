@@ -45,6 +45,9 @@ func registryTable(t *testing.T, p *platform.Platform) string {
 		sort.Strings(does)
 		approval := "policy"
 		switch {
+		case tl.Approval.PerCall != nil && tl.Approval.Mode == platform.ApprovalAlways:
+			// Every call is asked, of approvers named for each call.
+			approval = fmt.Sprintf("always, approvers per call self=%v expires=%s", tl.Approval.SelfApproval, tl.Approval.Expires)
 		case tl.Approval.PerCall != nil:
 			approval = "policy, and per call"
 		case tl.Approval.Mode == platform.ApprovalNone:

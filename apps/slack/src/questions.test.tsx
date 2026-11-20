@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { defaultCopy } from "@humagen/components";
 import { type decodeReplyModal, REPLY_MODAL } from "@humagen/render-slack";
 import {
+  CHANNEL,
   click,
   type FakeSlack,
   interactive,
@@ -18,7 +19,7 @@ import {
   type World,
   world,
 } from "./harness.ts";
-import { words } from "./host.ts";
+import { ENTRY, words } from "./host.ts";
 import { HumagenError } from "./humagen.ts";
 import { promptIn, recordedOf, settleCard, settledElsewhere } from "./questions.tsx";
 import { validateBlocks } from "./validate.ts";
@@ -79,7 +80,10 @@ const end = async (w: World) => {
   await w.app.idle();
 };
 
-type View = Parameters<typeof decodeReplyModal>[0] & { blocks?: unknown[] };
+type View = Parameters<typeof decodeReplyModal>[0] & {
+  blocks?: unknown[];
+  title?: { text: string };
+};
 /** The modal the app opened, sent back as Slack does when it is submitted with these words. */
 const submit = (view: View, text: string, user: string) =>
   interactive({
@@ -288,13 +292,226 @@ test("a person's own answer, recorded as sent, is not called settled elsewhere",
   await end(w);
 });
 
-test("Ask a question on a call says it cannot be asked yet, and decides nothing", async () => {
+test("Ask a Question on a call opens a form, and the question is asked in the thread as the person while the call keeps waiting", async () => {
+  const w = mapped();
+  const { run, blocks, ts } = await parkOn(w, "approval");
+  await deliver(w, click(blocks, defaultCopy.askApproval, { ts, threadTs: TS, user: OTHER_USER }));
+
+  const opened = w.slack.of("views.open");
+  assert.equal(opened.length, 1, "one form, on the click's trigger");
+  const view = opened[0]?.view as View & { private_metadata: string; callback_id: string };
+  assert.equal(view.callback_id, ENTRY.askCall);
+  assert.equal(view.title?.text, words.askCallTitle);
+  // The form names the call it is about by id, and shows it as the card says it.
+  assert.deepEqual(JSON.parse(view.private_metadata), {
+    run,
+    question: "q-approve",
+    action: "Allow lead to call deploy?",
+    channel: CHANNEL,
+    threadTs: TS,
+  });
+  assert.match(texts(view.blocks), /Allow lead to call deploy\?/);
+  assert.equal(w.humagen.answered.length, 0, "opening the form decides nothing");
+
+  const posts = w.humagen.posts.length;
+  await deliver(
+    w,
+    interactive({
+      type: "view_submission",
+      user: { id: OTHER_USER, team_id: TEAM },
+      view: { ...view, state: { values: { text: { value: { value: "  Which <env>?  " } } } } },
+    }),
+  );
+  // Everyone in the thread reads who asked what, about which call.
+  const said = w.slack.of("chat.postMessage").find((m) => m.thread_ts === TS);
+  assert.ok(said, "the question is said in the call's thread");
+  assert.equal(
+    said.text,
+    words.askCallSaid(`<@${OTHER_USER}>`, "Allow lead to call deploy?", "Which &lt;env&gt;?"),
+  );
+  // Asked of the agent that made the call, as olu, in the humagen thread the Slack thread is.
+  const asked = w.humagen.posts.slice(posts);
+  assert.equal(asked.length, 1);
+  assert.deepEqual(asked[0]?.act_as, { client: CLIENT, user: OTHER_USER });
+  assert.equal(
+    asked[0]?.text,
+    `@lead ${words.askCallAsked("Allow lead to call deploy?", "Which <env>?")}`,
+  );
+  assert.equal(asked[0]?.surface.ts, TS);
+  const answering = w.humagen.last.id;
+  assert.notEqual(answering, run, "a run of its own answers the question");
+
+  // The answer streams in the thread while the call waits: nothing was decided.
+  w.humagen.emit(answering, "run.accepted.v1");
+  w.humagen.emit(answering, "run.completed.v1", { text: "Production, the web service." });
+  await settle();
+  await settle(20);
+  assert.equal(w.humagen.answered.length, 0, "the call is still for a person to decide");
+  const streamed = w.slack.of("chat.startStream").at(-1);
+  assert.equal(streamed?.thread_ts, TS, "the answer is streamed in the call's thread");
+  const from = w.slack.calls.findLastIndex((c) => c.method === "chat.startStream");
+  assert.ok(
+    w.slack.calls
+      .slice(from)
+      .some((c) => JSON.stringify(c.args).includes("Production, the web service.")),
+    "the agent's answer is in that stream",
+  );
+  const card = w.slack.of("chat.update").find((u) => u.ts === ts);
+  assert.equal(card, undefined, "the call's card is not settled");
+  collect("ask about a call", w.slack);
+  await end(w);
+});
+
+test("someone the client does not map asks about a call through the app, as a mention there would", async () => {
+  const w = world();
+  const { run, blocks, ts } = await parkOn(w, "approval");
+  await deliver(w, click(blocks, defaultCopy.askApproval, { ts, threadTs: TS, user: OTHER_USER }));
+  const view = w.slack.of("views.open")[0]?.view as View;
+  await deliver(
+    w,
+    interactive({
+      type: "view_submission",
+      user: { id: OTHER_USER, team_id: TEAM },
+      view: { ...view, state: { values: { text: { value: { value: "Why now?" } } } } },
+    }),
+  );
+  const asked = w.humagen.last;
+  assert.notEqual(asked.id, run);
+  assert.equal(asked.agent, "lead", "the agent that made the call answers");
+  assert.equal(asked.text, words.askCallAsked("Allow lead to call deploy?", "Why now?"));
+  assert.equal(w.humagen.asked.at(-1)?.act_as, undefined, "for nobody: the client maps nobody");
+  assert.equal(w.humagen.answered.length, 0);
+  w.humagen.emit(asked.id, "run.accepted.v1");
+  w.humagen.emit(asked.id, "run.completed.v1", { text: "The release window closes at five." });
+  await settle(20);
+  await end(w);
+});
+
+test("an empty question asks nothing, and a call whose thread is not here says where to ask", async () => {
+  const w = mapped();
+  const { run, blocks, ts } = await parkOn(w, "approval");
+  await deliver(w, click(blocks, defaultCopy.askApproval, { ts, threadTs: TS, user: OTHER_USER }));
+  const view = w.slack.of("views.open")[0]?.view as View;
+  const posts = w.humagen.posts.length;
+  const submitted = (text: string) =>
+    interactive({
+      type: "view_submission",
+      user: { id: OTHER_USER, team_id: TEAM },
+      view: { ...view, state: { values: { text: { value: { value: text } } } } },
+    });
+  await deliver(w, submitted("   "));
+  assert.equal(w.humagen.posts.length, posts);
+  // The run is gone, so there is no thread to ask in: the person is told, alone.
+  w.humagen.runs.delete(run);
+  await deliver(w, submitted("Why now?"));
+  assert.equal(w.humagen.posts.length, posts);
+  assert.equal(w.slack.of("chat.postEphemeral").at(-1)?.text, words.askCallNowhere);
+  await end(w);
+});
+
+test("the approval agent is offered for the thread from a waiting call's menu, set as the person, said in the thread, and undone from there", async () => {
+  const w = mapped();
+  const { run, blocks, ts } = await parkOn(w, "approval");
+  const thread = w.humagen.runs.get(run)?.thread;
+  assert.ok(thread);
+  await deliver(
+    w,
+    click(blocks, defaultCopy.approvals.letAgentDecide, { ts, threadTs: TS, user: OTHER_USER }),
+  );
+  assert.deepEqual(w.humagen.modes, [
+    { thread, mode: "auto", as: { client: CLIENT, user: OTHER_USER } },
+  ]);
+  assert.equal(w.humagen.answered.length, 0, "the waiting call is not decided by it");
+  const note = w.slack.of("chat.postMessage").at(-1);
+  assert.equal(note?.thread_ts, TS);
+  assert.equal(note?.text, defaultCopy.approvals.nowAuto(`<@${OTHER_USER}>`));
+  assert.deepEqual(buttons(note?.blocks as unknown[]), [defaultCopy.approvals.askMeAgain]);
+
+  await deliver(
+    w,
+    click(note?.blocks as unknown[], defaultCopy.approvals.askMeAgain, {
+      ts: "1800000099.000100",
+      threadTs: TS,
+    }),
+  );
+  assert.deepEqual(w.humagen.modes.at(-1), {
+    thread,
+    mode: "ask",
+    as: { client: CLIENT, user: USER },
+  });
+  const back = w.slack.of("chat.postMessage").at(-1);
+  assert.equal(back?.text, defaultCopy.approvals.nowAsk(`<@${USER}>`));
+  assert.deepEqual(buttons(back?.blocks as unknown[]), [defaultCopy.approvals.letAgentDecideAgain]);
+  collect("approval mode", w.slack);
+  await end(w);
+});
+
+test("only a person the client maps changes a thread's approvals, and Humagen's refusal is said to them alone", async () => {
   const w = mapped();
   const { blocks, ts } = await parkOn(w, "approval");
-  await deliver(w, click(blocks, defaultCopy.askApproval, { ts, threadTs: TS, user: OTHER_USER }));
-  assert.equal(w.humagen.answered.length, 0);
-  assert.equal(w.slack.of("views.open").length, 0);
-  assert.equal(w.slack.of("chat.postEphemeral").at(-1)?.text, words.askNotYet);
+  const notes = w.slack.of("chat.postMessage").length;
+  await deliver(
+    w,
+    click(blocks, defaultCopy.approvals.letAgentDecide, { ts, threadTs: TS, user: "U09NOBODY" }),
+  );
+  assert.equal(w.humagen.modes.length, 0);
+  assert.equal(w.slack.of("chat.postEphemeral").at(-1)?.text, defaultCopy.noPermission);
+  w.humagen.refuseMode = { status: 403, message: "Only a member of this project may change it." };
+  await deliver(
+    w,
+    click(blocks, defaultCopy.approvals.letAgentDecide, { ts, threadTs: TS, user: OTHER_USER }),
+  );
+  assert.equal(w.humagen.modes.length, 0);
+  assert.equal(
+    w.slack.of("chat.postEphemeral").at(-1)?.text,
+    "Only a member of this project may change it.",
+  );
+  assert.equal(w.slack.of("chat.postMessage").length, notes, "nothing is said in the thread");
+  await end(w);
+});
+
+test("an app whose client maps nobody offers no approval agent on a call", async () => {
+  const w = world();
+  const { blocks } = await parkOn(w, "approval");
+  assert.ok(!texts(blocks).includes(defaultCopy.approvals.letAgentDecide));
+  await end(w);
+});
+
+test("what the approval agent said about a call is put on its card in the thread, and stays once it is decided", async () => {
+  const w = mapped();
+  const watching = new AbortController();
+  const watch = w.app.watchInbox(watching.signal);
+  const { run, ts } = await parkOn(w, "approval");
+  const mail = questionMail(run, "approval");
+  const part = (mail.parts as Record<string, unknown>[])[0] as Record<string, unknown>;
+  part.question = {
+    ...(part.question as object),
+    judgement: { decision: "ask", reason: "Deploys on a Friday need a person." },
+  };
+  w.humagen.raise(mail);
+  await settle();
+  const judged = w.slack
+    .of("chat.update")
+    .filter((u) => u.ts === ts)
+    .at(-1);
+  assert.ok(judged, "the card is drawn again where it was shown");
+  assert.match(texts(judged.blocks), /Asked a person: \\"Deploys on a Friday need a person.\\"/);
+  assert.ok(buttons(judged.blocks as unknown[]).includes(defaultCopy.approve), "it still waits");
+
+  // A person decides: the record comes, and the agent's view stays beside it.
+  w.humagen.emit(run, "run.resumed.v1", {
+    attempt: 2,
+    answer: { question_id: "q-approve", decision: "approve", by: "ana", by_name: "Ana", at: AT },
+  });
+  await settle();
+  const settledCard = w.slack
+    .of("chat.update")
+    .filter((u) => u.ts === ts)
+    .at(-1);
+  assert.match(texts(settledCard?.blocks), /Approved by Ana/);
+  assert.match(texts(settledCard?.blocks), /Deploys on a Friday need a person/);
+  watching.abort();
+  await watch;
   await end(w);
 });
 

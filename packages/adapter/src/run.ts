@@ -419,7 +419,11 @@ export function adapter(
         const name = t.name ?? tools.get(t.id);
         const start = toolStarted.get(t.id);
         const duration = start !== undefined ? Date.parse(e.time) - start : undefined;
+        // A publish that failed before it could report leaves its card open: close it here.
+        const unpublished = t.error && publishing.includes(t.id) ? [unpublishedFile(t.id, t.error)] : [];
+        if (unpublished.length) publishing.splice(publishing.indexOf(t.id), 1);
         return [
+          ...unpublished,
           { type: "activity", activity: "thinking" },
           { type: "task.upserted", task: task(t.id, name, { status: t.error || FAILED_RESULT.test(t.result ?? "") ? "error" : "complete", output: t.error || t.result, ...(t.arguments === undefined ? {} : { input: JSON.stringify(t.arguments, null, 2).slice(0, 32_000) }), ...(duration !== undefined && Number.isFinite(duration) && duration >= 0 ? { durationMs: duration } : {}) }) },
         ];
@@ -521,6 +525,7 @@ export function adapter(
           if (settled) out.push({ type: "interrupt.resolved", interrupt: settled });
         }
         asked.clear();
+        out.push(...publishing.splice(0).map((id) => unpublishedFile(id)));
         out.push({ type: "turn.stopped" }, { type: "stop.updated", stop: "confirmed" });
         return out;
       }
@@ -530,6 +535,7 @@ export function adapter(
         // terminal failure ends the turn.
         if (!l?.terminal) return [];
         return [
+          ...publishing.splice(0).map((id) => unpublishedFile(id)),
           {
             type: "turn.failed",
             failure: failureOf(l.error, e.run ?? ""),
@@ -550,6 +556,14 @@ function doing(tool?: string): "searching" | "delegating" | "calling" {
   if (/^(delegate|call|agent|tag)[_:.]|subagent|handoff/.test(name)) return "delegating";
   if (/search|recall|retriev|lookup|find|read|fetch|get/.test(name)) return "searching";
   return "calling";
+}
+
+/** The card of a publish that did not happen: it failed, or the run ended first. */
+function unpublishedFile(id: string, error?: string): TurnEvent {
+  return {
+    type: "attachment.upserted",
+    attachment: { type: "artifact", id, title: "File", kind: "document", phase: "failed", error: lastLine(error) || "The file was not published." },
+  };
 }
 
 /** Runtime errors nest one per line, and the cause is the last. */
@@ -642,5 +656,9 @@ export function failureOf(error: string | undefined, reference: string): Failure
     return { ...base, kind: "forbidden", message: "The agent does not have access to complete this request.", retryable: false };
   if (/unavailable|connection refused|(?:status|http)[: ]+50[234]/i.test(text))
     return { ...base, kind: "unavailable", message: /connection refused/i.test(text) ? "The service could not be reached (connection refused). Try again shortly." : "The service is unavailable. Try again shortly." };
+  // The engine stops a run whose every tool call failed several turns running.
+  const stuck = /too many consecutive failed tool turns(?::\s*(\d+))?/i.exec(text);
+  if (stuck)
+    return { ...base, kind: "tool_error", title: "Stopped after failed steps", message: `${stuck[1] ? `${stuck[1]} steps` : "Several steps"} in a row failed, so the run stopped. Open the steps above to see why.` };
   return { ...base, kind: "internal", message: lastLine(error) || "The run failed." };
 }

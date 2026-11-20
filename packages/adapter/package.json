@@ -1,6 +1,6 @@
 {
   "name": "@humagen/adapter",
-  "version": "0.146.0",
+  "version": "0.160.0",
   "private": true,
   "type": "module",
   "description": "The one adapter between humagen's API and the humagen UI model, shared by the console and the Slack app.",
@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@humagen/client": "workspace:*",
+    "@humagen/components": "workspace:*",
     "@humagen/core": "workspace:*"
   },
   "devDependencies": {

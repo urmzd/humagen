@@ -1,6 +1,6 @@
 import "./react.ts";
 import { type Copy, defaultCopy, type TurnCapabilities, TurnView } from "@humagen/components";
-import type { Turn, TurnStatus } from "@humagen/core";
+import type { Interrupt, Judgement, Turn, TurnStatus } from "@humagen/core";
 import {
   type Block,
   emptyBudget,
@@ -27,6 +27,8 @@ import { type SlackApi, SlackError } from "./slack.ts";
  * `run.tsx`), driven by a live turn instead of a recorded one: a reaction on
  * the message that asked, the session's status, `chat.startStream`, ordered
  * `chat.appendStream` calls, and `chat.stopStream` with the final blocks. A
+ * one-line status above the reply box says what the run is doing while it
+ * works (`assistant.threads.setStatus`), and is cleared when it parks or ends. A
  * turn that outgrows one message continues in the next, in the same thread.
  * Every block and every chunk comes from `@humagen/render-slack`.
  *
@@ -49,6 +51,22 @@ export interface Presented {
   ts: string;
   /** Every message the turn used, in order. */
   messages: string[];
+}
+
+/**
+ * The shortest time between two status lines, so a run that moves quickly
+ * from task to task does not send Slack a call for each one. The latest line
+ * is still shown once the time is up.
+ */
+export const STATUS_LINE_EVERY_MS = 2500;
+
+/**
+ * A question as the run now has it, keeping what the approval agent said
+ * that the card was shown (`Presenter.judge`) when the run's own copy has none.
+ */
+function keepJudgement(shown: Interrupt, now: Interrupt): Interrupt {
+  if (shown.type !== "approval" || now.type !== "approval") return now;
+  return !now.judgement && shown.judgement ? { ...now, judgement: shown.judgement } : now;
 }
 
 /** Codes that mean the place itself is unusable, so falling back to a plain post would fail too. */
@@ -80,6 +98,16 @@ export class Presenter {
    * card there; the rest of the turn continues in a new message.
    */
   private paused: { ts: string; turn: Turn; linked: boolean } | null = null;
+  /** The status line Slack was last told, empty for none, and when. */
+  private said = "";
+  private saidAt = Number.NEGATIVE_INFINITY;
+  /** The status line the turn calls for now, sent when the throttle allows. */
+  private wanted = "";
+  private lineTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Status line calls, one after another, so a clear never lands before an older line. */
+  private lineCalls: Promise<void> = Promise.resolve();
+  /** Slack refused a status line here, so none is sent again. */
+  private lineOff = false;
 
   constructor(
     private readonly slack: SlackApi,
@@ -93,8 +121,16 @@ export class Presenter {
       shown?: TurnStatus;
       /** The copy a turn is rendered with, for a branded disclaimer. */
       copy?: Copy;
+      /** Whether the finished answer offers Continue in a Code Channel. Left out, it never does. */
+      codeChannel?: () => boolean;
+      /** Slack said the session here is the channel itself, as in a code channel. */
+      onCodeChannel?: () => void;
       /** What this app can act on. A bridged outcome offers none of it. */
       capabilities?: TurnCapabilities;
+      /** The clock the status line is throttled by. */
+      now?: () => number;
+      /** The shortest time between two status lines. */
+      statusEvery?: number;
     } = {},
   ) {
     this.native = opts.outcomesOnly ? false : (opts.native ?? true);
@@ -109,8 +145,15 @@ export class Presenter {
     return this.opts.copy ?? defaultCopy;
   }
 
+  /**
+   * What the host can act on beyond the defaults. Continue in a Code Channel
+   * is added only where a code channel may be opened here.
+   */
   private get caps(): TurnCapabilities | undefined {
-    return this.opts.outcomesOnly ? undefined : this.opts.capabilities;
+    if (this.opts.outcomesOnly) return undefined;
+    return this.opts.codeChannel?.()
+      ? { ...this.opts.capabilities, codeChannel: true }
+      : this.opts.capabilities;
   }
 
   /** Whether native streaming was still in use, so the caller can remember a refusal. */
@@ -143,6 +186,7 @@ export class Presenter {
     } catch (e) {
       if (e instanceof SlackError && e.code === "thread_ts_not_allowed" && !this.threadless) {
         this.threadless = true;
+        this.opts.onCodeChannel?.();
         await this.slack
           .call("agents.sessions.setStatus", args)
           .catch((again: Error) => this.log(`session status skipped: ${again.message}`));
@@ -153,13 +197,85 @@ export class Presenter {
     }
   }
 
-  /** Show a status change once: the reaction, then the session. */
+  private now(): number {
+    return this.opts.now?.() ?? Date.now();
+  }
+
+  /**
+   * Ask for a status line above the reply box, or for none with "". A clear, and
+   * the first line after none, are sent at once. A line that replaces another
+   * waits until STATUS_LINE_EVERY_MS has passed since that one was sent, and
+   * only the latest line is sent then.
+   */
+  private async line(text: string) {
+    // The status belongs to a thread: a code channel's session has none.
+    if (this.threadless || this.lineOff) return;
+    this.wanted = text;
+    if (text === this.said) {
+      this.cancelLine();
+      return;
+    }
+    const wait =
+      text && this.said
+        ? this.saidAt + (this.opts.statusEvery ?? STATUS_LINE_EVERY_MS) - this.now()
+        : 0;
+    if (wait <= 0) {
+      this.cancelLine();
+      await this.say();
+      return;
+    }
+    if (this.lineTimer) return;
+    this.lineTimer = setTimeout(() => {
+      this.lineTimer = null;
+      void this.say();
+    }, wait);
+    this.lineTimer.unref?.();
+  }
+
+  private cancelLine() {
+    if (!this.lineTimer) return;
+    clearTimeout(this.lineTimer);
+    this.lineTimer = null;
+  }
+
+  /** Send the wanted status line, after any status line call still in flight. */
+  private say(): Promise<void> {
+    this.lineCalls = this.lineCalls.then(async () => {
+      const text = this.wanted;
+      if (text === this.said || this.lineOff || this.threadless) return;
+      this.said = text;
+      this.saidAt = this.now();
+      try {
+        await this.slack.call("assistant.threads.setStatus", {
+          channel_id: this.target.channel,
+          thread_ts: this.target.threadTs,
+          status: text,
+        });
+      } catch (e) {
+        // A thread that takes no status line refuses every one: the answer is unaffected.
+        this.lineOff = true;
+        this.cancelLine();
+        this.log(`status line skipped: ${(e as Error).message}`);
+      }
+    });
+    return this.lineCalls;
+  }
+
+  /**
+   * Show a status change once: the reaction, then the session. The status
+   * line follows the session while the run works and is cleared before it
+   * when the run parks or ends.
+   */
   private async sync(turn: Turn) {
     if (this.opts.outcomesOnly) return;
-    if (this.shown === turn.status) return;
-    await this.react(turn.status);
-    await this.status(turn);
-    this.shown = turn.status;
+    const text = lifecycle(turn).statusText ?? "";
+    if (!text) await this.line("");
+    if (this.shown !== turn.status) {
+      await this.react(turn.status);
+      await this.status(turn);
+      this.shown = turn.status;
+    }
+    if (text) await this.line(text);
   }
 
   private async open(turn: Turn) {
@@ -354,8 +470,34 @@ export class Presenter {
     const now = new Map(turn.interrupts.map((i) => [i.id, i]));
     const shown: Turn = {
       ...paused.turn,
-      interrupts: paused.turn.interrupts.map((i) => now.get(i.id) ?? i),
+      interrupts: paused.turn.interrupts.map((i) => keepJudgement(i, now.get(i.id) ?? i)),
     };
+    await this.redrawPaused(shown);
+  }
+
+  /**
+   * Show what the approval agent said about a call on its card, once the
+   * inbox has it: the run's own events do not carry it, and an approval the
+   * agent handed to a person changes nothing on the run. The card keeps
+   * its buttons while it waits, and the judgement stays once it settles.
+   */
+  async judge(question: string, judgement: Judgement): Promise<void> {
+    if (this.opts.canDeliver && !(await this.opts.canDeliver())) return;
+    const paused = this.paused;
+    if (!paused) return;
+    const shown: Turn = {
+      ...paused.turn,
+      interrupts: paused.turn.interrupts.map((i) =>
+        i.id === question && i.type === "approval" ? { ...i, judgement } : i,
+      ),
+    };
+    await this.redrawPaused(this.opts.outcomesOnly ? bridgeOutcome(shown) : shown);
+  }
+
+  /** Draw the card a question was shown on again, as `shown` has it, when anything changed. */
+  private async redrawPaused(shown: Turn): Promise<void> {
+    const paused = this.paused;
+    if (!paused) return;
     if (JSON.stringify(shown.interrupts) === JSON.stringify(paused.turn.interrupts)) return;
     const view = renderToSlack(
       <TurnView

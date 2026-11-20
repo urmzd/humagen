@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -510,6 +511,55 @@ spec:
 	}
 	if !strings.Contains(got.String(), `"background_color": "#2b50c8"`) || !strings.Contains(got.String(), `"name": "Ask about this"`) || strings.Contains(got.String(), `slash_commands`) {
 		t.Errorf("with nothing set, the manifest is Humagen's:\n%s", got.String())
+	}
+}
+
+// Opening code channels is off by default, and the manifest asks for the
+// feature and its scopes only when the Slack surface turns it on: a default
+// manifest is unchanged, so nobody reinstalls for a setting they left off.
+func TestTheSlackManifestAsksForCodeChannelsOnlyWhenTheSpecTurnsThemOn(t *testing.T) {
+	manifest := func(slack string) string {
+		t.Helper()
+		path := filepath.Join(t.TempDir(), "humagen.yaml")
+		if err := os.WriteFile(path, []byte("api_version: humagen/v1\nkind: Platform\nmetadata: {name: default, display_name: Humagen}\nspec:\n  surfaces:\n    slack: {enabled: true, team: T1, bot_token: {ref: \"env:B\"}, app_token: {ref: \"env:A\"}"+slack+"}\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		var got bytes.Buffer
+		if err := slackCmd([]string{"manifest", "-f", path}, &got); err != nil {
+			t.Fatal(err)
+		}
+		return got.String()
+	}
+	var plain bytes.Buffer
+	if err := slackCmd([]string{"manifest"}, &plain); err != nil {
+		t.Fatal(err)
+	}
+	for _, off := range []string{manifest(""), manifest(", code_channels: false")} {
+		if off != plain.String() {
+			t.Errorf("with code channels off the manifest is not the default one:\n%s", off)
+		}
+	}
+	if strings.Contains(plain.String(), "code_channels") || strings.Contains(plain.String(), "channels:read") || strings.Contains(plain.String(), "groups:read") {
+		t.Errorf("the default manifest asks for code channels:\n%s", plain.String())
+	}
+	on := manifest(", code_channels: true")
+	var m SlackManifest
+	if err := json.Unmarshal([]byte(on), &m); err != nil {
+		t.Fatal(err)
+	}
+	if m.Features.CodeChannels == nil || !m.Features.CodeChannels.Enabled {
+		t.Errorf("with code channels on the manifest lacks the feature:\n%s", on)
+	}
+	for _, scope := range slackCodeChannelScopes {
+		if !slices.Contains(m.OAuth.Scopes.Bot, scope) {
+			t.Errorf("with code channels on the manifest lacks %s", scope)
+		}
+	}
+	// Nothing else changes: the same events, and every scope the default has.
+	var d SlackManifest
+	_ = json.Unmarshal(plain.Bytes(), &d)
+	if !reflect.DeepEqual(m.Settings, d.Settings) || !reflect.DeepEqual(m.OAuth.Scopes.Bot[:len(d.OAuth.Scopes.Bot)], d.OAuth.Scopes.Bot) {
+		t.Errorf("code channels changed more than the feature and its scopes:\n%s", on)
 	}
 }
 

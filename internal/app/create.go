@@ -212,22 +212,20 @@ func (c createOptions) secretRefHint(tenant string) error {
 	return fmt.Errorf("the server does not let this workspace read %s; start it with -secret-refs \"%s=%s\" (or set spec.secret_env in the System document); ensure these variables are set on the server", strings.Join(names, ", "), tenant, strings.Join(names, ","))
 }
 
-func createCmd(args []string, out io.Writer) error {
-	c, err := parseCreate(args, out)
-	if err != nil {
-		return err
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
+// apiCaller is how a command calls the API at server as the bearer tokenRef
+// names: one JSON request, its answer, and an error for anything but success.
+// A redirect is not followed, so a token is sent to the server named and no other.
+func apiCaller(ctx context.Context, server, tokenRef string, explicit bool) (func(method, path string, body any) (json.RawMessage, error), error) {
+	var err error
 	token := ""
-	if c.token != "" {
+	if tokenRef != "" {
 		// An unset default token is the dev-mode path. An explicit reference
 		// must resolve, so a typo cannot silently become an anonymous request.
 		_, present := os.LookupEnv("HUMAGEN_TOKEN")
-		if c.explicitToken || c.token != "env:HUMAGEN_TOKEN" || (present && strings.TrimSpace(os.Getenv("HUMAGEN_TOKEN")) != "") {
-			token, err = credref.Default.Resolve(ctx, c.token)
+		if explicit || tokenRef != "env:HUMAGEN_TOKEN" || (present && strings.TrimSpace(os.Getenv("HUMAGEN_TOKEN")) != "") {
+			token, err = credref.Default.Resolve(ctx, tokenRef)
 			if err != nil {
-				return fmt.Errorf("resolve --token: %w", err)
+				return nil, fmt.Errorf("resolve --token: %w", err)
 			}
 		}
 	}
@@ -240,7 +238,7 @@ func createCmd(args []string, out io.Writer) error {
 				return nil, err
 			}
 		}
-		req, err := http.NewRequestWithContext(ctx, method, c.server+path, bytes.NewReader(data))
+		req, err := http.NewRequestWithContext(ctx, method, server+path, bytes.NewReader(data))
 		if err != nil {
 			return nil, err
 		}
@@ -270,6 +268,20 @@ func createCmd(args []string, out io.Writer) error {
 			return nil, errors.New("client API returned invalid JSON")
 		}
 		return json.RawMessage(data), nil
+	}
+	return request, nil
+}
+
+func createCmd(args []string, out io.Writer) error {
+	c, err := parseCreate(args, out)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	request, err := apiCaller(ctx, c.server, c.token, c.explicitToken)
+	if err != nil {
+		return err
 	}
 	raw, err := request(http.MethodGet, "/api/clients", nil)
 	if err != nil {

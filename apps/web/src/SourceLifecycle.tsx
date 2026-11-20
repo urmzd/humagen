@@ -197,7 +197,7 @@ export function SourceLifecycle({
               <p className="text-aui-sm text-aui-muted">
                 This workspace does not allow source credential references yet.{" "}
                 <a className="underline" href="/connections">
-                  Open Connections
+                  Open Plugins
                 </a>{" "}
                 to connect your account for agent tools, or ask an administrator to enable source
                 credentials.

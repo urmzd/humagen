@@ -2,8 +2,9 @@ import type { Turn, TurnStatus } from "@humagen/core";
 
 /**
  * Signals that live outside the message on Slack: a reaction on the user's
- * message and the agent session status. Pure mapping; the host calls
- * reactions.add/remove and agents.sessions.setStatus.
+ * message, the agent session status, and the one-line status above the reply
+ * box. Pure mapping; the host calls reactions.add/remove,
+ * agents.sessions.setStatus and assistant.threads.setStatus.
  *
  * Each emoji has exactly one meaning, and words always back it up (the reply
  * and the session status), so color and emoji never carry state alone.
@@ -26,8 +27,24 @@ export interface SlackLifecycle {
   reaction: string | null;
   /** agents.sessions.setStatus. "suspended" while a human must act. */
   sessionStatus: SessionStatus;
-  /** Short status line while processing, e.g. "Checking recent deploys". */
+  /**
+   * Short status line while processing, e.g. "Checking recent deploys", for
+   * assistant.threads.setStatus. One line of at most STATUS_TEXT_CHARS.
+   */
   statusText?: string;
+}
+
+/**
+ * The longest status line sent. Slack shows it on one line above the reply
+ * box and documents no limit of its own, so it is kept to what fits there.
+ */
+export const STATUS_TEXT_CHARS = 50;
+
+/** A status line on one line, shortened with an ellipsis when it is too long. */
+export function statusLine(text: string): string {
+  const line = text.replace(/\s+/g, " ").trim();
+  if (line.length <= STATUS_TEXT_CHARS) return line;
+  return `${line.slice(0, STATUS_TEXT_CHARS - 1).trimEnd()}…`;
 }
 
 const REACTION_BY_STATUS: Record<TurnStatus, string | null> = {
@@ -55,7 +72,7 @@ export function lifecycle(turn: Turn): SlackLifecycle {
     reaction: REACTION_BY_STATUS[turn.status],
     sessionStatus: SESSION_BY_STATUS[turn.status],
     ...(SESSION_BY_STATUS[turn.status] === "processing"
-      ? { statusText: running?.title ?? turn.planTitle ?? "Thinking" }
+      ? { statusText: statusLine(running?.title || turn.planTitle || "Thinking") || "Thinking" }
       : {}),
   };
 }

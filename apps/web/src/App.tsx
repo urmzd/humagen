@@ -1185,8 +1185,6 @@ function Console({
                       home={
                         <HomeSessionGlance
                           onHasSessions={setHasSessions}
-                          alerts={attention.alerts}
-                          waiting={attention.count}
                           go={go}
                           canArtifacts={can("artifacts:read")}
                           tick={tick}
@@ -1310,6 +1308,16 @@ function Console({
                       can={can}
                       onChanged={loadSchedules}
                       onSchedule={(name) => go({ page: "schedules", name })}
+                      tab={route.tab ?? "schedules"}
+                      onTab={(tab) =>
+                        go(
+                          tab === "background"
+                            ? { page: "automations", tab }
+                            : { page: "automations" },
+                        )
+                      }
+                      onConversation={(id) => go({ page: "conversation", id })}
+                      tick={tick}
                     />
                   )}
                   {route.page === "schedules" && (
@@ -1530,7 +1538,7 @@ function Console({
                               go({
                                 page: "new",
                                 agent: BUILTIN_BUILDER,
-                                ask: "Help me build an agent that ",
+                                ask: "/agent-creator ",
                               })
                           : undefined
                       }
@@ -1631,6 +1639,7 @@ function Console({
                       agents={agents.map((a) => a.spec.name)}
                       projects={projectNames}
                       canDelete={can("artifacts:write")}
+                      onStart={can("runs:write") ? (ask) => go({ page: "new", ask }) : undefined}
                       onOpenRun={openRun}
                       onOpenThread={openThread}
                       selectedId={route.artifact ?? null}
@@ -1656,10 +1665,11 @@ function Console({
                       ["connections", "tools"].includes(route.section))) && (
                     <Connections
                       provider={route.provider}
+                      scope={route.page === "connections" ? route.scope : undefined}
                       canConnect={can(CONNECT_PERMISSION)}
                       canWrite={can("clients:write")}
-                      onOpen={(provider) =>
-                        go({ page: "connections", provider }, { replace: true })
+                      onOpen={(provider, scope) =>
+                        go({ page: "connections", provider, scope }, { replace: true })
                       }
                       onNavigate={go}
                     />

@@ -220,7 +220,19 @@ func TestAnImportedSkillsSupportingFileReachesTheAnswer(t *testing.T) {
 				} `json:"test_results"`
 			} `json:"revisions"`
 		}
-		if api(t, server, "GET", "/api/library/skills/"+skill.ID, nil, &history); len(history.Revisions) != 1 || len(history.Revisions[0].TestResults) != 1 || history.Revisions[0].TestResults[0].Verdict != "passed" {
+		// The verdict is recorded by the run's end hook (recordSkillTest), just
+		// after the run reads as completed, so it is waited for, not assumed.
+		for deadline := time.Now().Add(30 * time.Second); ; time.Sleep(20 * time.Millisecond) {
+			history.Revisions = nil
+			api(t, server, "GET", "/api/library/skills/"+skill.ID, nil, &history)
+			if len(history.Revisions) == 1 && len(history.Revisions[0].TestResults) > 0 {
+				break
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("no verdict was recorded: history = %+v", history)
+			}
+		}
+		if len(history.Revisions[0].TestResults) != 1 || history.Revisions[0].TestResults[0].Verdict != "passed" {
 			t.Fatalf("history = %+v", history)
 		}
 		if code := api(t, server, "POST", fmt.Sprintf("/api/library/skills/%s/versions/%d/publish", skill.ID, skill.Version), nil, nil); code != 200 {

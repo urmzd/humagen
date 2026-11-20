@@ -83,11 +83,23 @@ export interface TurnCapabilities {
   /** Ask Follow-up on a review's findings, which puts words in the host's composer. */
   followUp?: boolean;
   /**
+   * Continue in a Code Channel on a finished answer. Unlike the others it is
+   * left out unless a host turns it on: only Slack has the place, and only
+   * where the workspace opted in.
+   */
+  codeChannel?: boolean;
+  /**
    * Run Details on a finished turn: what the run used, shown only to the
    * person who asks. Unlike the others it is offered only when a host says
    * it can answer (`true`), since usage is never shown on the turn itself.
    */
   runDetails?: boolean;
+  /**
+   * "Let the approval agent decide in this thread" in a menu on an approval
+   * that waits for a person. Offered only when a host says it can (`true`):
+   * the console sets the mode with its own toggle under the composer.
+   */
+  approvalAgent?: boolean;
 }
 
 /** Fallback preview when a tool supplies none: scalar args as fields, never a JSON dump. */
@@ -162,12 +174,15 @@ export function ApprovalCard({
   turnId,
   approval,
   viewer,
+  offerAgent = false,
   copy = defaultCopy,
 }: {
   turnId: string;
   approval: Approval;
   /** Who is looking. Non-initiators can ask but never approve. */
   viewer?: string;
+  /** Offer to let the approval agent decide the conversation's next actions (`TurnCapabilities.approvalAgent`). */
+  offerAgent?: boolean;
 } & WithCopy) {
   const { decision } = approval;
   const fields = previewFields(approval, copy);
@@ -253,6 +268,18 @@ export function ApprovalCard({
             action={{ id: ActionId.deny, payload }}
             accessibilityLabel={approval.budget ? undefined : `${denyLabel}: ${approval.summary}`}
           />
+          {/* The conversation's mode, not this call: a menu, so it never reads as a decision. */}
+          {offerAgent && !approval.budget && (
+            <Menu
+              label={copy.moreOptions}
+              items={[
+                {
+                  label: copy.approvals.letAgentDecide,
+                  action: { id: ActionId.approvalMode, payload: { turnId, target: "auto" } },
+                },
+              ]}
+            />
+          )}
         </Actions>
         {meta.length > 0 && <Context items={meta} />}
       </>
@@ -313,8 +340,14 @@ export function ApprovalCard({
 export function ApprovalBatch({
   turnId,
   approvals,
+  offerAgent = false,
   copy = defaultCopy,
-}: { turnId: string; approvals: ApprovalT[] } & WithCopy) {
+}: {
+  turnId: string;
+  approvals: ApprovalT[];
+  /** Offer letting the approval agent decide from here on, as one approval's card does. */
+  offerAgent?: boolean;
+} & WithCopy) {
   const name = `batch:${turnId}`;
   const acting = approvals.filter((a) => a.actsForPerson).map((a) => a.summary);
   return (
@@ -346,6 +379,15 @@ export function ApprovalBatch({
               label: copy.approveAll(approvals.length),
               action: { id: ActionId.approveAll, payload: { turnId, target: name } },
             },
+            // The conversation's mode, not these calls. A run held at a limit is the person's to decide.
+            ...(offerAgent && !approvals.some((a) => a.budget)
+              ? [
+                  {
+                    label: copy.approvals.letAgentDecide,
+                    action: { id: ActionId.approvalMode, payload: { turnId, target: "auto" } },
+                  },
+                ]
+              : []),
             {
               label: copy.denyAll,
               action: { id: ActionId.denyAll, payload: { turnId, target: name } },
@@ -370,7 +412,21 @@ export function ClarificationCard({
   clarification,
   copy = defaultCopy,
 }: { turnId: string; clarification: Clarification } & WithCopy) {
-  const { answer, options } = clarification;
+  const { answer, options, judgement } = clarification;
+  // The approval agent's part, in Run and Answer: an answer it gave, which the person
+  // can tell from their own, or why it left the question for them.
+  const judged = judgement ? (
+    <Context
+      items={[
+        withReason(
+          judgement.decision === "allow"
+            ? copy.judgement.answered
+            : `**${copy.judgement.by}:** ${copy.judgement.decision[judgement.decision]}`,
+          untrusted(judgement.reason),
+        ),
+      ]}
+    />
+  ) : null;
   if (answer.kind === "answered") {
     const picked = options.filter((o) => answer.optionIds.includes(o.id)).map((o) => o.label);
     // Words typed instead of a pick read as an answer, not a choice.
@@ -386,6 +442,7 @@ export function ClarificationCard({
       <>
         <Text text={clarification.question} />
         <Context items={[line]} />
+        {judged}
       </>
     );
   }
@@ -438,6 +495,7 @@ export function ClarificationCard({
     <>
       <Summary text={copy.inputNeeded(clarification.question)} />
       <Text text={body} />
+      {judged}
       <Actions
         blockId={`clarification:${clarification.id}`}
         confirmChoice={{
@@ -476,10 +534,17 @@ export function InterruptCard({
   turnId,
   interrupt,
   viewer,
+  offerAgent,
   copy,
-}: { turnId: string; interrupt: Interrupt; viewer?: string } & WithCopy) {
+}: { turnId: string; interrupt: Interrupt; viewer?: string; offerAgent?: boolean } & WithCopy) {
   return interrupt.type === "approval" ? (
-    <ApprovalCard turnId={turnId} approval={interrupt} viewer={viewer} copy={copy} />
+    <ApprovalCard
+      turnId={turnId}
+      approval={interrupt}
+      viewer={viewer}
+      offerAgent={offerAgent}
+      copy={copy}
+    />
   ) : (
     <ClarificationCard turnId={turnId} clarification={interrupt} copy={copy} />
   );
@@ -550,10 +615,10 @@ export function FailureAlert({
         ? []
         : failure.kind === "internal"
           ? [
-              { label: copy.retry, id: ActionId.retry },
+              { label: copy.retry, id: ActionId.retry, style: "primary" as const },
               { label: copy.report, id: ActionId.report },
             ]
-          : [{ label: copy.retry, id: ActionId.retry }];
+          : [{ label: copy.retry, id: ActionId.retry, style: "primary" as const }];
   // Someone else may retry it: the reader is told why they are not offered it.
   const notOffered = isRetryable(failure) ? failure.retryNotOffered : undefined;
   const offered = actions.filter(
@@ -571,7 +636,12 @@ export function FailureAlert({
       {offered.length > 0 && (
         <Actions blockId={`failure:${turnId}`}>
           {offered.map((a) => (
-            <Button key={a.id} label={a.label} action={{ id: a.id, payload }} />
+            <Button
+              key={a.id}
+              label={a.label}
+              action={{ id: a.id, payload }}
+              style={"style" in a ? a.style : undefined}
+            />
           ))}
         </Actions>
       )}
@@ -876,6 +946,7 @@ export function TurnView({
   const pendingApprovals = open.filter(
     (i): i is ApprovalT => i.type === "approval" && i.decision.kind === "pending",
   );
+  const offerAgent = capabilities?.approvalAgent === true;
   // One link: the session, where a person goes to see the run. The source's own page
   // stands in only when there is no session.
   const runUrl = turn.sessionUrl ?? turn.source?.url;
@@ -1010,11 +1081,21 @@ export function TurnView({
       {/* Gated tool rows hold their own controls on the web; Slack gets the cards. */}
       {pendingApprovals.length > 1 && owned.size > 0 ? (
         <Only surface="slack">
-          <ApprovalBatch turnId={turn.id} approvals={pendingApprovals} copy={copy} />
+          <ApprovalBatch
+            turnId={turn.id}
+            approvals={pendingApprovals}
+            offerAgent={offerAgent}
+            copy={copy}
+          />
         </Only>
       ) : pendingApprovals.length > 1 ? (
         <>
-          <ApprovalBatch turnId={turn.id} approvals={pendingApprovals} copy={copy} />
+          <ApprovalBatch
+            turnId={turn.id}
+            approvals={pendingApprovals}
+            offerAgent={offerAgent}
+            copy={copy}
+          />
           {open
             .filter((i) => !pendingApprovals.includes(i as ApprovalT))
             .map((i) => (
@@ -1023,6 +1104,7 @@ export function TurnView({
                 turnId={turn.id}
                 interrupt={i}
                 viewer={viewer}
+                offerAgent={offerAgent}
                 copy={copy}
               />
             ))}
@@ -1031,10 +1113,23 @@ export function TurnView({
         open.map((i) =>
           owned.has(i.id) && i.type === "approval" && i.decision.kind === "pending" ? (
             <Only key={i.id} surface="slack">
-              <InterruptCard turnId={turn.id} interrupt={i} viewer={viewer} copy={copy} />
+              <InterruptCard
+                turnId={turn.id}
+                interrupt={i}
+                viewer={viewer}
+                offerAgent={offerAgent}
+                copy={copy}
+              />
             </Only>
           ) : (
-            <InterruptCard key={i.id} turnId={turn.id} interrupt={i} viewer={viewer} copy={copy} />
+            <InterruptCard
+              key={i.id}
+              turnId={turn.id}
+              interrupt={i}
+              viewer={viewer}
+              offerAgent={offerAgent}
+              copy={copy}
+            />
           ),
         )
       )}
@@ -1059,6 +1154,14 @@ export function TurnView({
           <Button
             label={copy.resume}
             action={{ id: ActionId.resume, payload: { turnId: turn.id, target: turn.id } }}
+          />
+        </Actions>
+      )}
+      {final && capabilities?.codeChannel === true && (
+        <Actions blockId={`code-channel:${turn.id}`}>
+          <Button
+            label={copy.continueInCodeChannel}
+            action={{ id: ActionId.codeChannel, payload: { turnId: turn.id, target: turn.id } }}
           />
         </Actions>
       )}

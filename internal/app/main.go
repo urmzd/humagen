@@ -87,6 +87,7 @@ const usage = `usage: humagen start [-f PATH] [flags]     run the platform here;
        humagen worker [-f PATH] [flags]    run only the turns on the shared run queue, with no API (needs -state=postgres)
        humagen deploy [-f PATH] [-o DIR]  run it where the spec's deploy says: local, compose or kubernetes
        humagen setup                      answer a few questions and write humagen.yaml
+       humagen install github|slack       register the GitHub or Slack app in your browser and connect it
        humagen create github|slack [flags] connect a surface through the API
        humagen store list|install|remove  use the agent store through the API
        humagen import sessions|skills|agents  bring sessions, skills and agents from other assistants in, through the API
@@ -158,6 +159,8 @@ func run(o Options, args []string) error {
 		return deployCmd(o, args[1:], os.Stdin, os.Stdout)
 	case "setup":
 		return setupCmd(o, args[1:], os.Stdin, os.Stdout)
+	case "install":
+		return installCmd(o, args[1:], os.Stdin, os.Stdout)
 	case "create":
 		return createCmd(args[1:], os.Stdout)
 	case "store":
@@ -371,6 +374,11 @@ func serve(o Options, args []string, d serveDefaults) error {
 			return err
 		}
 		defer stopAuthn()
+		// Tailscale sign-in has no credential a process can be given from
+		// outside, so the server makes one for each Slack app it starts.
+		if err := mintSlackCredentials(*authMode, authn, slack); err != nil {
+			return err
+		}
 	}
 
 	refs, err := secretRefs(*secretRefsFlag, *tenant, getenv)
@@ -549,6 +557,15 @@ func serve(o Options, args []string, d serveDefaults) error {
 	}
 	if err := applyPlatforms(ctx, p, file.cfg, log); err != nil {
 		return err
+	}
+	// A Slack app is told which client it is only once the record that
+	// makes it act for the people the file maps is in place.
+	slackClients, err := applySlackClients(ctx, p, file.cfg, *authMode, log)
+	if err != nil {
+		return err
+	}
+	for _, app := range slack {
+		app.client = slackClients[app.tenant]
 	}
 	postReleaseNotes(p, file.cfg, release.Running(o.Version.Version), o.Changelog, log)
 	// After the agents, so an agent the file or the seed names keeps its

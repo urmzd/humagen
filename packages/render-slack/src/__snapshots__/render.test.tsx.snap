@@ -296,6 +296,7 @@ The deploys service didn't answer within 30s.",
       "elements": [
         {
           "action_id": "aui.retry#0",
+          "style": "primary",
           "text": {
             "emoji": true,
             "text": "Retry",

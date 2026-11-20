@@ -1,6 +1,6 @@
 {
   "name": "@humagen/console",
-  "version": "0.146.0",
+  "version": "0.160.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -16,7 +16,6 @@
     "@humagen/primitives": "workspace:*",
     "@humagen/render-web": "workspace:*",
     "@humagen/web": "workspace:*",
-    "border-beam": "1.4.1",
     "fflate": "0.8.3",
     "metal-fx": "2.0.11",
     "react": "^19.3.0",

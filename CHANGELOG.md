@@ -1,5 +1,68 @@
 # Changelog
 
+## 0.160.0 (2026-11-20)
+
+### Features
+
+- **approvals**: Run and Answer, where the approval agent also answers what the session settles (stack 6/6) (#457) ([a0156ea](https://github.com/urmzd/humagen/commit/a0156ea3602e88b3e314c2419b424564e1a9e826))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.159.0...v0.160.0)
+
+
+## 0.156.0 (2026-11-20)
+
+### Features
+
+- **console**: list and stop background work (#449) ([6a61eda](https://github.com/urmzd/humagen/commit/6a61edad9756fc27e948c0d640aa88a0b038893d))
+
+### Misc
+
+- **client**: a stream test names the request it reads (#451) ([32dc2fa](https://github.com/urmzd/humagen/commit/32dc2faf41b7cf913a07fcd2238a7e21c23a2ca4))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.155.0...v0.156.0)
+
+
+## 0.153.0 (2026-11-20)
+
+### Features
+
+- **auth**: the Slack app the server starts signs in under Tailscale (#444) ([67991c9](https://github.com/urmzd/humagen/commit/67991c9bff2d33a1f713368acf2c19c48df4b0cc))
+
+### Misc
+
+- publish the guide through docs.urmzd.com (#446) ([d7d71a5](https://github.com/urmzd/humagen/commit/d7d71a5ffceb406dd38607c640d46cecb9f64927))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.152.0...v0.153.0)
+
+
+## 0.152.0 (2026-11-20)
+
+### Features
+
+- **api**: the messages route takes a client's machine posting for a person (#442) ([7838895](https://github.com/urmzd/humagen/commit/783889589d4e0217533a30cd872721e923f9d162))
+- **image**: the image carries Node and the Slack app, so surfaces.slack runs in it (#445) ([c9fd2ce](https://github.com/urmzd/humagen/commit/c9fd2ce54cb4997f777bbe47a615cf9f4eb906ef))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.151.0...v0.152.0)
+
+
+## 0.151.0 (2026-11-20)
+
+### Features
+
+- **cli**: humagen install registers the GitHub or Slack app in the browser and connects it (#440) ([8e0d8ec](https://github.com/urmzd/humagen/commit/8e0d8eca1c58262e283f30109ff1c2c606f92c2e))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.150.0...v0.151.0)
+
+
+## 0.150.0 (2026-11-20)
+
+### Features
+
+- **slack**: continue a conversation in a code channel, off by default (#406) ([b4e3d48](https://github.com/urmzd/humagen/commit/b4e3d48edbaab4ec7cf88cc07d4d0140a04b406e))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.149.0...v0.150.0)
+
+
 ## 0.146.0 (2026-11-20)
 
 ### Features

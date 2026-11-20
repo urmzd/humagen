@@ -26,6 +26,8 @@
 | [Build a sourced chronology from records](guides/records-research.md) | Guide | A native agent reads the records in a conversation, cites and quotes each dated event, lists unknowns, and opens current official pages |
 | [Reconcile account exports](guides/finance-exports.md) | Guide | A native agent runs a shipped script over authorized exports in a sandbox, reports what does not reconcile, and drafts a plan whose amounts are all sourced |
 | [Research current public sources](guides/public-web.md) | Guide | A native agent with `web_search` and `web_fetch` cites the pages it opened |
+| [Background work](guides/background.md) | Guide | Watches, goals and tasks an agent keeps at while you do other things, and `notify`; you are told in your inbox when each ends |
+| [Schedules from a conversation](guides/schedules-from-a-conversation.md) | Guide | An agent proposes recurring work in a conversation or Slack thread, you approve it on a card, it confirms the next run, and running it once now tries it |
 | [Connect a Mac desktop](guides/desktop.md) | Guide | Pinned native MCP tools, permissions, targeting instructions, and an opt-in fixture check |
 | [Connect a browser](guides/browser.md) | Guide | Pinned Playwright MCP configuration, existing-tab connection, and real browser acceptance |
 | [Read selected mail and approve a calendar change](guides/mail-calendar.md) | Guide | A native agent on the person's own Gmail and Google Calendar connections, with each write approved in Humagen |

@@ -102,6 +102,11 @@ export class FakeSlack implements SlackApi {
     return this.of("agents.sessions.setStatus").map((a) => String(a.status));
   }
 
+  /** Status lines above the reply box in the order they were set, "" for a clear. */
+  get lines(): string[] {
+    return this.of("assistant.threads.setStatus").map((a) => String(a.status));
+  }
+
   /** Everything streamed as answer text, joined. */
   get streamed(): string {
     return this.of("chat.appendStream")
@@ -397,6 +402,23 @@ export class FakeHumagen implements Humagen {
     return posted;
   }
 
+  /** Every approval mode set, in order, and for whom. */
+  readonly modes: { thread: string; mode: "ask" | "auto"; as: ActAs }[] = [];
+  /** What the platform says to the next mode set, as a refusal would: a status and its words. */
+  refuseMode: { status: number; message: string } | null = null;
+  /** As the platform does: only for a person the client maps, as them. */
+  async setApprovalMode(thread: string, mode: "ask" | "auto", as: ActAs) {
+    const client = this.clients.get(as.client);
+    if (!client?.slack?.people?.[as.user])
+      throw new HumagenError(403, "that person is not mapped to anyone in this workspace");
+    if (this.refuseMode) throw new HumagenError(this.refuseMode.status, this.refuseMode.message);
+    this.modes.push({ thread, mode, as });
+    return {
+      id: thread,
+      ...(mode === "auto" ? { approval: { mode, by: client.slack.people[as.user] } } : {}),
+    };
+  }
+
   /** How many reads of one message fail next, as when humagen is restarting. */
   failReads = 0;
 
@@ -408,6 +430,12 @@ export class FakeHumagen implements Humagen {
     // A copy, as a read over HTTP is: a later change does not reach it.
     const m = this.mailbox.get(id) as WireMessage | undefined;
     return m ? structuredClone(m) : null;
+  }
+
+  /** The title each conversation was given, by thread. */
+  readonly titles = new Map<string, string>();
+  async threadTitle(id: string) {
+    return this.titles.get(id) ?? null;
   }
 
   /** The surface of each humagen thread the fake started from one. */
@@ -748,8 +776,16 @@ export class FakeHumagen implements Humagen {
     });
   }
 
-  /** Put a message in a person's own inbox, and tell the app's machine for whom. */
-  tellFor(subject: string, actAs: ActAs, message: Record<string, unknown>) {
+  /**
+   * Put a message in a person's own inbox, and tell the app's machine for
+   * whom, and for a background result asked in its Slack thread, where.
+   */
+  tellFor(
+    subject: string,
+    actAs: ActAs,
+    message: Record<string, unknown>,
+    replyIn?: InboxNotice["reply_in"],
+  ) {
     const mine = this.personal.get(subject) ?? [];
     this.personal.set(subject, [...mine.filter((m) => m.id !== message.id), message]);
     this.notes.push({
@@ -758,6 +794,7 @@ export class FakeHumagen implements Humagen {
       state: String(message.state),
       updated_at: this.at(),
       for: actAs,
+      ...(replyIn ? { reply_in: replyIn } : {}),
     });
   }
 
@@ -875,10 +912,23 @@ export function click(
         ? [{ action_id: e.action_id, value: e.value, label: e.text?.text }]
         : [],
   );
-  const button = buttons.find((b) => b.label === label);
+  // An overflow menu's options are chosen the same way: by what they say.
+  type Option = { text?: { text: string }; value: string };
+  const options = elements.flatMap((e) =>
+    e.type === "overflow"
+      ? ((e as unknown as { options: Option[] }).options ?? []).map((o) => ({
+          action_id: e.action_id,
+          selected_option: { value: o.value },
+          label: o.text?.text,
+        }))
+      : [],
+  );
+  const button:
+    | { action_id?: string; value?: string; selected_option?: { value: string } }
+    | undefined = buttons.find((b) => b.label === label) ?? options.find((o) => o.label === label);
   if (!button) {
     throw new Error(
-      `no button "${label}" among: ${buttons.map((b) => b.label).join(", ") || "none"}`,
+      `no button "${label}" among: ${[...buttons, ...options].map((b) => b.label).join(", ") || "none"}`,
     );
   }
   envelopes += 1;
@@ -891,7 +941,11 @@ export function click(
     trigger_id: `trigger-${envelopes}`,
     // Slack sends the message the button is on, blocks included.
     message: { ts: at.ts, thread_ts: at.threadTs, blocks },
-    actions: [{ action_id: button.action_id, value: button.value }],
+    actions: [
+      button.selected_option
+        ? { action_id: button.action_id, selected_option: button.selected_option }
+        : { action_id: button.action_id, value: button.value },
+    ],
     ...(at.state ? { state: at.state } : {}),
   });
 }

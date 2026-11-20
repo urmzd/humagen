@@ -59,6 +59,7 @@ import (
 	"github.com/urmzd/humagen/pkg/audit"
 	"github.com/urmzd/humagen/pkg/auditrefs"
 	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/background"
 	"github.com/urmzd/humagen/pkg/blob"
 	"github.com/urmzd/humagen/pkg/call"
 	"github.com/urmzd/humagen/pkg/callpolicy"
@@ -399,11 +400,14 @@ type Platform struct {
 	Drive          *drive.Store // the versioned file trees memory is kept in
 	// Web reads the public web for the web_search and web_fetch tools. Nil
 	// uses the default client (pkg/webtools).
-	Web                  *webtools.Client
-	SkillLibrary         *library.Store
-	AgentSkillDefaults   *library.DefaultsStore
-	skillDefaultsMu      sync.Mutex
-	Notifications        *notifications.Store
+	Web                *webtools.Client
+	SkillLibrary       *library.Store
+	AgentSkillDefaults *library.DefaultsStore
+	skillDefaultsMu    sync.Mutex
+	Notifications      *notifications.Store
+	// Background keeps the work agents do for people while nobody watches
+	// (background.go).
+	Background           *background.Store
 	ContextFlags         *contextflags.Store
 	SourceSuggestions    *sourcelinks.Suggestions
 	SourceEvidence       *knowledge.EvidenceStore
@@ -1540,6 +1544,7 @@ func (p *Platform) Run(ctx context.Context) error {
 	singletons := map[string]func(context.Context) error{
 		"scheduled evals":     p.runEvalSchedule,
 		"email notifications": p.runEmailNotifications,
+		"background work":     p.runBackground,
 		"source refresh":      p.refreshSources,
 		"catalog crawl":       p.crawlCatalog,
 		"knowledge graph":     p.refreshGraphs,

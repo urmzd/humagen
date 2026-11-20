@@ -675,7 +675,7 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		"ToolCredentials":    {typ: platform.ToolCredentials{}}, "ToolCredential": {typ: platform.ToolCredential{}}, "ToolCredentialInput": {typ: credentials.Input{}, written: true}, "PersonContext": {typ: personctx.Context{}}, "PersonContextInput": {typ: personctx.Input{}, written: true}, "PersonToolServer": {typ: personctx.ToolServer{}}, "RunSettings": {typ: settings.Layer{}}, "RunCeilings": {typ: settings.Ceilings{}}, "RunPreferences": {typ: settings.Preferences{}},
 		"RunFeedback": {typ: shownFeedback{}}, "Attachment": {typ: attachment.Attachment{}},
 		"Schedule": {typ: schedule{}}, "ScheduleView": {typ: scheduleView{}},
-		"InboxNotice": {typ: inboxNotice{}}, "InboxFrom": {typ: inbox.From{}}, "InboxSource": {typ: inbox.Source{}},
+		"InboxNotice": {typ: inboxNotice{}}, "InboxNoticeReply": {typ: platform.SurfaceReply{}}, "InboxFrom": {typ: inbox.From{}}, "InboxSource": {typ: inbox.Source{}},
 		"InboxOutcome": {typ: inbox.Outcome{}}, "InboxLimits": {typ: inbox.Limits{}}, "InboxAlertPart": {typ: inbox.AlertPart{}},
 		"InboxFailurePart": {typ: inbox.FailurePart{}}, "InboxNoteRef": {typ: inbox.NoteRef{}}, "InboxMemoryPart": {typ: inbox.MemoryPart{}},
 		"InboxBudgetPart": {typ: inbox.BudgetPart{}}, "InboxPart": {typ: inbox.Part{}}, "InboxQuestionPart": {typ: inbox.QuestionPart{}}, "InboxQuestionTool": {typ: inbox.QuestionTool{}}, "InboxMessage": {typ: inbox.Message{}}, "InboxMentionPart": {typ: inbox.MentionPart{}},
@@ -1070,6 +1070,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	exerciseEvaluationPolicyContract(t, c)
 	exerciseConnectionContract(t, c)
 	exerciseConnectionHealthContract(t, c)
+	exerciseBackgroundContract(t, c)
 	exerciseBigQueryContract(t, c)
 	sessionContract := exerciseSessionContract(t, c)
 	exerciseBrowserContract(t, c, sessionContract["token"])

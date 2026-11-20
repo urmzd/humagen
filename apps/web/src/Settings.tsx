@@ -7,6 +7,7 @@ import {
   MicIcon,
   MonitorIcon,
   MoonIcon,
+  NetworkIcon,
   PaletteIcon,
   PlugIcon,
   ScrollTextIcon,
@@ -555,8 +556,14 @@ export function Settings({
 const yours: Section[] = ["profile", "notifications", "appearance"];
 /** Pages shown inside Your settings. */
 const yourPages = [
-  { label: "Connections", icon: <PlugIcon size={16} />, route: { page: "connections" } as Route },
+  { label: "Plugins", icon: <PlugIcon size={16} />, route: { page: "connections" } as Route },
 ];
+/** Apps the workspace installs once (Slack, GitHub): an administrator's page, in Workspace settings. */
+const appsPage = {
+  label: "Apps",
+  icon: <NetworkIcon size={16} />,
+  route: { page: "connections", scope: "apps" } as Route,
+};
 
 /** The settings sections, and the workspace pages that live inside settings. */
 export function SettingsNav({
@@ -672,20 +679,21 @@ export function SettingsNav({
                 ))}
               {scope === "workspace" &&
                 onNavigate &&
-                linked
-                  .filter((item) => me.permissions.includes(item.permission))
-                  .map((item) => (
-                    <a
-                      key={item.label}
-                      href={href(item.route)}
-                      onClick={follow(() => onNavigate(item.route))}
-                      aria-current={active === item.label ? "page" : undefined}
-                      className={sectionLink}
-                    >
-                      {item.icon}
-                      {item.label}
-                    </a>
-                  ))}
+                [
+                  ...(me.permissions.includes("clients:write") ? [appsPage] : []),
+                  ...linked.filter((item) => me.permissions.includes(item.permission)),
+                ].map((item) => (
+                  <a
+                    key={item.label}
+                    href={href(item.route)}
+                    onClick={follow(() => onNavigate(item.route))}
+                    aria-current={active === item.label ? "page" : undefined}
+                    className={sectionLink}
+                  >
+                    {item.icon}
+                    {item.label}
+                  </a>
+                ))}
             </Fragment>
           ))}
         </nav>

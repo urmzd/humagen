@@ -1,5 +1,6 @@
 import { defaultCopy } from "@humagen/components";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { CheckIcon, ClockIcon } from "@humagen/render-web";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { type AlertRuleConfig, api, type ProjectView } from "./api.ts";
 import { agentShown } from "./branding.ts";
 import {
@@ -71,6 +72,48 @@ export function placeOfSession(s: AgentSessionSummary): SessionPlaceFilter | und
 
 /** How many of the newest artifacts Home shows. The rest are under Artifacts. */
 const HOME_MADE = 3;
+/** One alert row's tracks: a box to tick, the alert, then priority, age and actions once there is room. */
+const alertRow =
+  "grid grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-x-3 gap-y-2 px-4 @3xl:grid-cols-[1.5rem_minmax(0,1fr)_6.5rem_5rem_7.5rem_11rem]";
+/**
+ * A row's lesser action. In the table it is its icon, named by a label that
+ * shows on hover and on keyboard focus; in a stacked row, and on touch where
+ * nothing hovers, the label is written beside the icon.
+ */
+function RowAction({
+  label,
+  icon,
+  disabled,
+  onClick,
+}: {
+  label: string;
+  icon: ReactNode;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      disabled={disabled}
+      onClick={onClick}
+      className="group/action relative inline-flex min-h-8 min-w-8 items-center justify-center gap-1.5 rounded-aui px-2 text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent disabled:opacity-50 pointer-coarse:min-h-11 pointer-coarse:min-w-11"
+    >
+      {icon}
+      <span aria-hidden className="@3xl:hidden pointer-coarse:inline">
+        {label}
+      </span>
+      <span
+        aria-hidden
+        className="humagen-glass-pop pointer-events-none absolute right-0 bottom-full z-20 mb-1 hidden whitespace-nowrap rounded-aui px-2 py-1 text-aui-2xs text-aui-fg @3xl:group-hover/action:block @3xl:group-focus-visible/action:block pointer-coarse:!hidden"
+      >
+        {label}
+      </span>
+    </button>
+  );
+}
+const alertCheck =
+  "inline-flex size-6 items-center justify-center self-start pointer-coarse:size-11 @3xl:self-center";
 
 const failure = (error: unknown) =>
   error instanceof Error ? error.message : "This could not be loaded. Try again.";
@@ -451,6 +494,7 @@ export function AlertsPage({
     );
   };
   const shown = (rows ?? []).filter((a) => !route.source || a.kind === route.source);
+  const picked = shown.filter((a) => selected.has(a.id));
   return (
     <Page
       title="Alerts"
@@ -567,116 +611,151 @@ export function AlertsPage({
               />
             </div>
           </div>
-          {canWrite && selected.size > 0 && (
-            <div className="flex gap-2">
-              <button
-                type="button"
-                className={button}
-                disabled={busy}
-                onClick={() =>
-                  void change(
-                    shown.filter((a) => selected.has(a.id)),
-                    "resolved",
-                  )
-                }
-              >
-                {words.markSelectedDone}
-              </button>
-              <button
-                type="button"
-                className={button}
-                disabled={busy}
-                onClick={() =>
-                  void change(
-                    shown.filter((a) => selected.has(a.id)),
-                    "snoozed",
-                  )
-                }
-              >
-                {words.snoozeSelected}
-              </button>
-            </div>
-          )}
           {!rows && !problem ? (
             <SkeletonRows count={4} />
           ) : shown.length ? (
-            <ul className="flex flex-col gap-3">
-              {shown.map((a) => (
-                <li key={a.id}>
-                  <ItemCard
-                    title={a.title}
-                    // An alert with no session (maintenance before a workspace has a model) opens its page.
-                    href={alertDestination(a) && href(alertDestination(a)!)}
-                    time={ago(a.at)}
-                    onOpen={() => {
-                      const to = alertDestination(a);
-                      if (to) go(to);
-                    }}
-                    facts={
-                      <>
+            // Laid out as a table, so alerts line up: what it is, how pressing, when, and what to do.
+            // It is a list to a screen reader: each row is its own grid with the same tracks,
+            // and under 48rem a row stacks, which a real table cannot do.
+            <div className="humagen-glass overflow-hidden rounded-aui-lg">
+              <div
+                className={`${alertRow} min-h-11 border-aui-border border-b py-2 text-aui-2xs text-aui-muted`}
+              >
+                <label className={alertCheck}>
+                  {canWrite && (
+                    <input
+                      type="checkbox"
+                      aria-label={words.table.selectAll}
+                      checked={picked.length === shown.length}
+                      ref={(box) => {
+                        if (box)
+                          box.indeterminate = picked.length > 0 && picked.length < shown.length;
+                      }}
+                      onChange={(e) =>
+                        setSelected(e.target.checked ? new Set(shown.map((a) => a.id)) : new Set())
+                      }
+                    />
+                  )}
+                </label>
+                {picked.length > 0 ? (
+                  <span className="col-span-full col-start-2 flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1">
+                    <span className="text-aui-fg">{words.table.selected(picked.length)}</span>
+                    <button
+                      type="button"
+                      className={textAction}
+                      disabled={busy}
+                      onClick={() => void change(picked, "resolved")}
+                    >
+                      {words.markSelectedDone}
+                    </button>
+                    <button
+                      type="button"
+                      className={textAction}
+                      disabled={busy}
+                      onClick={() => void change(picked, "snoozed")}
+                    >
+                      {words.snoozeSelected}
+                    </button>
+                  </span>
+                ) : (
+                  <>
+                    <span aria-hidden>{words.table.alert}</span>
+                    <span aria-hidden className="hidden @3xl:block">
+                      {words.table.source}
+                    </span>
+                    <span aria-hidden className="hidden @3xl:block">
+                      {words.table.priority}
+                    </span>
+                    <span aria-hidden className="hidden @3xl:block">
+                      {words.table.when}
+                    </span>
+                  </>
+                )}
+              </div>
+              <ul aria-label={words.table.label}>
+                {shown.map((a) => {
+                  const to = alertDestination(a);
+                  const title = "min-w-0 font-medium text-aui-sm text-aui-fg line-clamp-2";
+                  return (
+                    <li
+                      key={a.id}
+                      className={`${alertRow} border-aui-border border-b py-3 last:border-b-0 ${selected.has(a.id) ? "bg-aui-hover" : ""}`}
+                    >
+                      <label className={alertCheck}>
                         {canWrite && (
-                          <label className="inline-flex size-6 shrink-0 cursor-pointer items-center justify-center pointer-coarse:size-11">
-                            <input
-                              type="checkbox"
-                              aria-label={`Select ${a.title}`}
-                              checked={selected.has(a.id)}
-                              onChange={(e) =>
-                                setSelected((old) => {
-                                  const next = new Set(old);
-                                  if (e.target.checked) next.add(a.id);
-                                  else next.delete(a.id);
-                                  return next;
-                                })
-                              }
-                            />
-                          </label>
+                          <input
+                            type="checkbox"
+                            aria-label={`Select ${a.title}`}
+                            checked={selected.has(a.id)}
+                            onChange={(e) =>
+                              setSelected((old) => {
+                                const next = new Set(old);
+                                if (e.target.checked) next.add(a.id);
+                                else next.delete(a.id);
+                                return next;
+                              })
+                            }
+                          />
                         )}
-                        <AlertMark alert={a} />
-                        {a.agent && <AgentTag name={a.agent} />}
-                        <Tag>
+                      </label>
+                      <span className="flex min-w-0 flex-col items-start gap-1">
+                        {to ? (
+                          // An alert with no session (maintenance before a workspace has a model) opens its page.
+                          <a
+                            href={href(to)}
+                            onClick={(event) => follow(event, () => go(to))}
+                            // The title is as tall as a pointer needs, and on a touch screen as a finger does.
+                            className={`${title} rounded-aui-sm underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent inline-flex min-h-6 items-center pointer-coarse:min-h-11`}
+                          >
+                            {a.title}
+                          </a>
+                        ) : (
+                          <span className={title}>{a.title}</span>
+                        )}
+                      </span>
+                      <span className="col-start-2 flex min-w-0 items-center gap-3 @3xl:contents">
+                        <span className="text-aui-xs text-aui-muted">
                           {a.kind[0]?.toUpperCase()}
                           {a.kind.slice(1).replaceAll("_", " ")}
-                        </Tag>
-                      </>
-                    }
-                    actions={
-                      <>
+                        </span>
+                        <span>
+                          <AlertMark alert={a} />
+                        </span>
+                        <span className="text-aui-xs text-aui-muted">{ago(a.at)}</span>
+                      </span>
+                      <span className="col-start-2 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 @3xl:col-start-auto @3xl:justify-end">
                         <button
                           type="button"
                           className={primary}
                           onClick={() => {
-                            const to = alertPage(a) ?? alertDestination(a);
-                            if (to) go(to);
+                            const page = alertPage(a) ?? to;
+                            if (page) go(page);
                           }}
                         >
                           {alertActionLabel(a)}
                         </button>
                         {canWrite && (
                           <>
-                            <button
-                              type="button"
+                            <RowAction
+                              label={words.markDone}
+                              icon={<CheckIcon size={16} />}
                               disabled={busy}
-                              className={textAction}
                               onClick={() => void change([a], "resolved")}
-                            >
-                              {words.markDone}
-                            </button>
-                            <button
-                              type="button"
+                            />
+                            <RowAction
+                              label={words.snooze}
+                              icon={<ClockIcon size={16} />}
                               disabled={busy}
-                              className={textAction}
                               onClick={() => void change([a], "snoozed")}
-                            >
-                              {words.snooze}
-                            </button>
+                            />
                           </>
                         )}
-                      </>
-                    }
-                  />
-                </li>
-              ))}
-            </ul>
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
           ) : (
             <p className="text-aui-sm text-aui-muted">{words.empty[route.state ?? "open"]}</p>
           )}
@@ -697,23 +776,17 @@ export function AlertsPage({
   );
 }
 /**
- * Under the chat bar: one quiet line saying how many alerts wait on the
- * person, which opens them, and one strip of the newest things their agents
- * made. Nothing is listed, decided or dismissed here, and nothing moves. With
- * nothing waiting and nothing made, Home is the greeting and the chat bar.
+ * Under the chat bar: one strip of the newest things the person's agents
+ * made. Alerts are counted on the Alerts entry of the menu, so Home does not
+ * repeat them. With nothing made, Home is the greeting and the chat bar.
  */
 export function HomeSessionGlance({
-  alerts,
-  waiting: counted,
   go,
   tick,
   onHasSessions,
   canArtifacts = true,
   via = storage,
 }: {
-  alerts: Alert[];
-  /** How many alerts wait on the reader, when it is known apart from the alerts. */
-  waiting?: number;
   go: (route: Route) => void;
   tick: unknown;
   onHasSessions?: (has: boolean) => void;
@@ -762,43 +835,17 @@ export function HomeSessionGlance({
       live = false;
     };
   }, [tick, canArtifacts, via]);
-  const waiting = counted ?? attentionAlerts(alerts).length;
   const failed = madeFailed && made.length === 0;
-  if (waiting === 0 && made.length === 0 && !failed) return null;
+  if (made.length === 0 && !failed) return null;
   const c = defaultCopy.home;
-  const link =
-    "rounded-aui-sm text-aui-xs text-aui-muted underline-offset-4 hover:text-aui-fg hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent";
-  const alertsRoute: Route = { page: "alerts" };
-  const artifactsRoute: Route = { page: "artifacts" };
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-4 pt-6">
-      {waiting > 0 && (
-        <p className="flex justify-center">
-          <a
-            href={href(alertsRoute)}
-            onClick={(event) => follow(event, () => go(alertsRoute))}
-            className={`${link} inline-flex min-h-6 items-center gap-2 pointer-coarse:min-h-11`}
-          >
-            <span aria-hidden className="size-1.5 rounded-full bg-aui-accent" />
-            {c.waitingOnYou(waiting)}
-          </a>
-        </p>
-      )}
       {failed && <p className="text-center text-aui-xs text-aui-muted">{c.madeFailed}</p>}
       {made.length > 0 && (
         <section aria-labelledby="home-made">
-          <div className="flex items-center justify-between gap-3 pb-2">
-            <h2 id="home-made" className="font-medium text-aui-xs text-aui-muted">
-              {c.recentlyMade}
-            </h2>
-            <a
-              href={href(artifactsRoute)}
-              onClick={(event) => follow(event, () => go(artifactsRoute))}
-              className={`${link} inline-flex min-h-6 items-center pointer-coarse:min-h-11`}
-            >
-              {c.allArtifacts}
-            </a>
-          </div>
+          <h2 id="home-made" className="pb-2 font-medium text-aui-xs text-aui-muted">
+            {c.recentlyMade}
+          </h2>
           <ul className="grid gap-3 sm:grid-cols-3">
             {made.map((file) => {
               const to: Route = { page: "artifacts", artifact: file.id };

@@ -12,6 +12,16 @@ const call = (id: string, tool: string, args: unknown, over: Partial<Task> = {})
 });
 
 describe("toolsLine", () => {
+  it("counts a run of calls that all failed, without naming them as done", () => {
+    const failed = { status: "error" as const, output: "no such file" };
+    const line = toolsLine([
+      call("1", "file_write", { path: "a.md" }, failed),
+      call("2", "file_write", { path: "a.md" }, failed),
+    ]);
+    expect(line.text).toBe("2 steps failed");
+    expect(line.failed).toBe(0);
+  });
+
   it("says what a lone call was pointed at", () => {
     expect(
       toolsLine([

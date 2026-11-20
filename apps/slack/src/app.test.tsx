@@ -79,12 +79,18 @@ test("a mention becomes one run, streamed natively, with the session kept in ste
   assert.equal(w.humagen.last.id, runId("acme", SUBJECT, KEY));
   assert.equal(w.humagen.last.tag_id, tagId(SUBJECT, KEY));
 
-  // Before any event: seen, processing, and a stream opened in the mention's thread.
+  // Before any event: seen, processing, a status line, and a stream opened in the mention's thread.
   assert.deepEqual(w.slack.methods, [
     "reactions.add",
     "agents.sessions.setStatus",
+    "assistant.threads.setStatus",
     "chat.startStream",
   ]);
+  assert.deepEqual(w.slack.of("assistant.threads.setStatus")[0], {
+    channel_id: CHANNEL,
+    thread_ts: TS,
+    status: "Thinking",
+  });
   assert.equal(w.slack.of("reactions.add")[0]?.name, "eyes");
   assert.equal(w.slack.of("reactions.add")[0]?.timestamp, TS);
   assert.deepEqual(w.slack.of("agents.sessions.setStatus")[0], {
@@ -129,13 +135,19 @@ test("a mention becomes one run, streamed natively, with the session kept in ste
   assert.deepEqual(order, [
     "reactions.add",
     "agents.sessions.setStatus",
+    "assistant.threads.setStatus",
     "chat.startStream",
+    "assistant.threads.setStatus",
+    "assistant.threads.setStatus",
     "chat.stopStream",
+    "assistant.threads.setStatus",
     "reactions.remove",
     "reactions.add",
     "agents.sessions.setStatus",
   ]);
   assert.deepEqual(w.slack.statuses, ["processing", "active"]);
+  // The status line follows the work, and is cleared before the session settles.
+  assert.deepEqual(w.slack.lines, ["Thinking", "Github search", "Thinking", ""]);
   assert.equal(w.slack.of("reactions.add").at(-1)?.name, "white_check_mark");
   assert.equal(
     w.slack.streamed,

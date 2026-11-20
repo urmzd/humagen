@@ -84,6 +84,17 @@ apply_workspace_prompt | runs | other |  | always role:admin self=false expires=
 alert_create | runs | other |  | policy
 alert_resolve | runs | other | idempotent | policy
 memory_search | runs | other | idempotent,parallel,read-only | policy
+notify | runs | other |  | policy
+watch_start | runs | other |  | policy
+goal_start | runs | other |  | policy
+task_start | runs | other |  | policy
+background_list | runs | other | idempotent,parallel,read-only | policy
+background_stop | runs | other | idempotent | policy
+run/create_schedule (create_schedule) | runs | other |  | always, approvers per call self=true expires=24h0m0s
+run/update_schedule (update_schedule) | runs | other | idempotent | always, approvers per call self=true expires=24h0m0s
+run/pause_schedule (pause_schedule) | runs | other |  | always, approvers per call self=true expires=24h0m0s
+run/resume_schedule (resume_schedule) | runs | other |  | always, approvers per call self=true expires=24h0m0s
+run/run_schedule (run_schedule) | runs | other |  | always, approvers per call self=true expires=24h0m0s
 source_search | runs | read_context | acts-for-person,idempotent,parallel,read-only | policy
 catalog_search | runs | read_context | idempotent,parallel,read-only | policy
 catalog_query | runs | read_context | acts-for-person,idempotent,parallel,read-only | policy

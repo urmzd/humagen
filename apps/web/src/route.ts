@@ -308,7 +308,8 @@ export type Route =
   /** One of a project's channels, with its shared threads. */
   | { page: "channel"; project: string; channel: string }
   | { page: "schedules"; name?: string }
-  | { page: "automations" }
+  /** Scheduled work: schedules, and with `tab` the background work agents keep at for you. */
+  | { page: "automations"; tab?: "background" }
   | { page: "monitor"; tab: MonitorTab }
   /** The inbox, at a message, at the message an alert raised, or narrowed to one kind. */
   | { page: "inbox"; message?: string; alert?: string; kind?: string; view?: NotificationView }
@@ -323,8 +324,12 @@ export type Route =
   | { page: "agents"; state?: string }
   | { page: "agent"; name: string | null; tab: AgentTab }
   | { page: "artifacts"; artifact?: string }
-  /** Connections: apps and MCPs. `provider` opens one in the side sheet. */
-  | { page: "connections"; provider?: string }
+  /**
+   * Plugins: what a person adds for their own agents (MCPs and skills). With
+   * `scope: "apps"` it is Apps, the workspace's installs, which an administrator
+   * manages. `provider` opens one in the side sheet.
+   */
+  | { page: "connections"; provider?: string; scope?: "apps" }
   | { page: "directory"; tab: DirectoryTab }
   | { page: "settings"; section: SettingsSection; permission?: string };
 
@@ -382,7 +387,7 @@ const PAGE_TITLES: Record<Page, string> = {
   agents: "Agents",
   agent: "Agent",
   artifacts: "Artifacts",
-  connections: "Connections",
+  connections: "Plugins",
   directory: "Directory",
   settings: "Settings",
 };
@@ -588,7 +593,7 @@ export function href(r: Route): string {
     case "channel":
       return href({ page: "sessions", project: r.project });
     case "automations":
-      return "/scheduled";
+      return r.tab === "background" ? "/scheduled/background" : "/scheduled";
     case "schedules":
       return r.name ? `/schedules/${enc(r.name)}` : "/schedules";
     case "monitor":
@@ -631,8 +636,10 @@ export function href(r: Route): string {
       if (r.section === "skills") return href({ ...r, page: "library", section: "skills" });
       if (r.section === "agents") return "/agents";
       return href({ page: "connections", provider: r.section === "tools" ? "other" : r.provider });
-    case "connections":
-      return r.provider ? `/settings/connections/${enc(r.provider)}` : "/settings/connections";
+    case "connections": {
+      const base = r.scope === "apps" ? "/settings/apps" : "/settings/plugins";
+      return r.provider ? `${base}/${enc(r.provider)}` : base;
+    }
     case "directory":
       return r.tab === "agents"
         ? "/agents"
@@ -640,7 +647,7 @@ export function href(r: Route): string {
           ? "/projects"
           : "/settings/people";
     case "settings": {
-      if (r.section === "connections") return "/settings/connections";
+      if (r.section === "connections") return "/settings/plugins";
       const base = `/settings/${r.section}`;
       return r.section === "access" && r.permission
         ? `${base}?permission=${enc(r.permission)}`
@@ -1000,7 +1007,9 @@ function read(pathname: string, search: string): Route {
     // Scheduled was called Automations; a schedule without a name is the list.
     case "scheduled":
     case "automations":
-      return { page: "automations" };
+      return a === "background"
+        ? { page: "automations", tab: "background" }
+        : { page: "automations" };
     case "schedules":
       return a ? { page: "schedules", name: a } : { page: "automations" };
     case "monitor":
@@ -1082,8 +1091,10 @@ function read(pathname: string, search: string): Route {
       return { page: "directory", tab: "people" };
     case "settings":
       if (a === "people") return { page: "directory", tab: "people" };
-      // Connections is a section of your settings, with a path of its own.
-      if (a === "connections") return { page: "connections", provider: b };
+      // Plugins is a section of your settings, with a path of its own. It was Connections.
+      if (a === "plugins" || a === "connections") return { page: "connections", provider: b };
+      // Apps are the workspace's installs, under Workspace settings.
+      if (a === "apps") return { page: "connections", provider: b, scope: "apps" };
       if (a === "health") return { page: "monitor", tab: "health" };
       if (a === "audit") return { page: "audit" };
       if (a === "usage") return read("/operations/usage", search);

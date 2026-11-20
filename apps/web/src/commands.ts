@@ -132,6 +132,8 @@ export function commandsFor(
   at: Typing,
   words: { named: string; limit: (max: number) => string },
   limit = 12,
+  /** Commands this person used, newest first: they lead the list, and break ties in a search. */
+  recent: readonly string[] = [],
 ): Command[] {
   const skills = options.filter((o) => o.kind === "skill");
   const rest = text.slice(0, at.start) + text.slice(at.start + 1 + at.query.length);
@@ -158,7 +160,8 @@ export function commandsFor(
         ...(disabled ? { disabled } : {}),
       },
       r: name ? name.score : 10,
-      i,
+      // Used before comes first among equals; never used keeps the order it was given in.
+      i: recent.includes(option.token) ? recent.indexOf(option.token) - recent.length : i,
     });
   });
   return ranked
@@ -199,4 +202,29 @@ export function skillRefs(
       if ((!known || known.has(name)) && outsideCode(text, start)) out.push({ start, end, name });
     }
   return out.sort((a, b) => a.start - b.start);
+}
+
+/** Where this browser keeps the commands a person used, newest first. */
+export const RECENT_COMMANDS_KEY = "humagen.commands.recent";
+const MAX_RECENT = 12;
+
+/** The commands used in this browser, newest first. A convenience, so it never throws. */
+export function recentCommands(): string[] {
+  try {
+    const kept: unknown = JSON.parse(window.localStorage.getItem(RECENT_COMMANDS_KEY) ?? "[]");
+    return Array.isArray(kept) ? kept.filter((n): n is string => typeof n === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Puts the commands a sent message named at the front of the ones remembered. */
+export function rememberCommands(names: readonly string[]): void {
+  if (names.length === 0) return;
+  try {
+    const next = [...names, ...recentCommands().filter((n) => !names.includes(n))];
+    window.localStorage.setItem(RECENT_COMMANDS_KEY, JSON.stringify(next.slice(0, MAX_RECENT)));
+  } catch {
+    // The list still works for this visit, in the order it was given.
+  }
 }

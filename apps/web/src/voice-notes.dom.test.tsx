@@ -58,7 +58,7 @@ function setup(voice?: VoiceNotes) {
   const sent: string[] = [];
   function Compose() {
     const queue = useQueue({ onStart: (m) => sent.push(m.text), onInterrupt: () => {} });
-    return <Composer placeholder="Message" queue={queue} disclaimer={null} voice={voice} />;
+    return <Composer placeholder="Message" queue={queue} voice={voice} />;
   }
   render(<Compose />);
   return { sent, box: screen.getByRole("textbox") as HTMLTextAreaElement };

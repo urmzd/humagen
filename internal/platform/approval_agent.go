@@ -1,6 +1,7 @@
 package platform
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"slices"
@@ -36,6 +37,11 @@ import (
 // kept on the question's card (judge) with the fields a workspace's schema
 // adds.
 //
+// In a session set to Run and Answer (threads.ApprovalDecide) it is also
+// shown a question an agent asks a person (approval_questions.go), and
+// answers it the same way, as the person who chose the mode, only when the
+// session settles the answer.
+//
 // The approval agent answers with structured output: its spec's output
 // schema (approve.DefaultSchema as it ships; a workspace may add fields of
 // its own, keeping decision and reason) is what its model is asked for, and
@@ -50,6 +56,9 @@ const (
 	metaApprovalRun      = "_humagen.approval.run"
 	metaApprovalQuestion = "_humagen.approval.question"
 	metaApprovalTool     = "_humagen.approval.tool"
+	// metaApprovalKind is the kind of question an approval run decides:
+	// empty, or approval, for a call, else choice or reply.
+	metaApprovalKind = "_humagen.approval.kind"
 )
 
 // sessionTurns is how many of the session's latest messages the approval
@@ -77,48 +86,83 @@ func (p *Platform) approvalCall(run runs.Run, q event.Question, spec wire.AgentS
 	if q.Tool.ActsForPerson {
 		c.Policy = append(c.Policy, "This tool acts with a person's own account: allow only what the session clearly asks of it.")
 	}
+	c.Session = p.sessionSoFar(run)
+	return c
+}
+
+// sessionSoFar is the latest messages of run's session, oldest first, as
+// the approval agent reads them. A run in no session, or one whose session
+// cannot be read, has none.
+func (p *Platform) sessionSoFar(run runs.Run) []approve.Turn {
 	if run.Thread == "" {
-		return c
+		return nil
 	}
 	last, err := p.Threads.Last(run.Tenant, run.Thread)
 	if err != nil {
-		return c
+		return nil
 	}
 	path, err := p.Threads.Path(run.Tenant, run.Thread, last.ID)
 	if err != nil {
-		return c
+		return nil
 	}
 	if len(path) > sessionTurns {
 		path = path[len(path)-sessionTurns:]
 	}
+	out := make([]approve.Turn, 0, len(path))
 	for _, m := range path {
 		who := m.Name
 		if who == "" {
 			who = "someone"
 		}
-		c.Session = append(c.Session, approve.Turn{Who: who, Text: m.Text})
+		out = append(out, approve.Turn{Who: who, Text: m.Text})
 	}
-	return c
+	return out
 }
 
 // startApproval asks the approval agent about q, which run parked on and m
 // holds, in a run of its own. With no approval agent in the workspace the
 // question stays for a person.
 func (p *Platform) startApproval(ctx context.Context, run runs.Run, q event.Question, m inbox.Message, spec wire.AgentSpec, by auth.Principal) {
+	p.askApprover(ctx, run, aboutOf(q), m, approve.Describe(p.approvalCall(run, q, spec)), by)
+}
+
+// judgedAbout is what an approval run decides: one question run asked, a
+// call (Tool, kind approval) or a question for a person (kind choice or
+// reply).
+type judgedAbout struct {
+	Question, Tool, Kind string
+	// Mode is the session's approval mode it was decided in.
+	Mode string
+}
+
+func aboutOf(q event.Question) judgedAbout {
+	a := judgedAbout{Question: q.ID, Kind: q.Kind, Mode: threads.ApprovalAuto}
+	if q.Tool != nil {
+		a.Tool = q.Tool.Name
+	}
+	if isPersonQuestion(q) {
+		a.Mode = threads.ApprovalDecide
+	}
+	return a
+}
+
+// askApprover starts the approval agent's run about one question, put to
+// it as prompt.
+func (p *Platform) askApprover(ctx context.Context, run runs.Run, about judgedAbout, m inbox.Message, prompt string, by auth.Principal) {
 	if err := p.EnsureBuiltins(ctx, run.Tenant); err != nil {
 		p.log.Warn("platform: the approval agent could not be made ready; a person decides", "tenant", run.Tenant, "run", run.ID, "error", err)
 		return
 	}
 	if _, err := p.Catalog().Get(ctx, run.Tenant, BuiltinApprover, 0); err != nil {
-		p.auditJudgement(by, run, q.ID, q.Tool.Name, "", approve.Decision{Verdict: approve.Ask, Reason: "This workspace has no approval agent, so a person decides."})
+		p.auditJudgement(by, run, about, "", approve.Decision{Verdict: approve.Ask, Reason: "This workspace has no approval agent, so a person decides."})
 		return
 	}
 	// One run per question: a run that parks twice is asked about twice.
 	turn := run
-	turn.ID = run.ID + "-" + q.ID
-	extra := map[string]string{metaApprovalRun: run.ID, metaApprovalQuestion: q.ID, metaApprovalTool: q.Tool.Name}
-	if err := p.startHook(ctx, turn, BuiltinApprover, hookApproval, m.ID, approve.Describe(p.approvalCall(run, q, spec)), extra); err != nil {
-		p.log.Warn("platform: the approval agent could not be asked; a person decides", "tenant", run.Tenant, "run", run.ID, "question", q.ID, "error", err)
+	turn.ID = run.ID + "-" + about.Question
+	extra := map[string]string{metaApprovalRun: run.ID, metaApprovalQuestion: about.Question, metaApprovalTool: about.Tool, metaApprovalKind: about.Kind}
+	if err := p.startHook(ctx, turn, BuiltinApprover, hookApproval, m.ID, prompt, extra); err != nil {
+		p.log.Warn("platform: the approval agent could not be asked; a person decides", "tenant", run.Tenant, "run", run.ID, "question", about.Question, "error", err)
 	}
 }
 
@@ -141,6 +185,14 @@ func (p *Platform) fileApproval(ctx context.Context, decided runs.Run) error {
 	}
 	by := p.approvingFor(decided.Tenant, *th.Approval)
 	question, tool := meta[metaApprovalQuestion], meta[metaApprovalTool]
+	if kind := meta[metaApprovalKind]; kind == event.QuestionChoice || kind == event.QuestionReply {
+		if !th.Approval.Decides() {
+			// The session left Run and Answer since: a person answers.
+			return nil
+		}
+		return p.fileAnswer(ctx, decided, parked, m, judgedAbout{Question: question, Kind: kind, Mode: threads.ApprovalDecide}, by)
+	}
+	about := judgedAbout{Question: question, Tool: tool, Kind: event.QuestionApproval, Mode: th.Approval.ModeOf()}
 	var d approve.Decision
 	switch {
 	case decided.Status != runs.Completed:
@@ -165,7 +217,7 @@ func (p *Platform) fileApproval(ctx context.Context, decided runs.Run) error {
 		answer = QuestionAnswer{Action: ActDeny, Note: "Denied by the approval agent: " + d.Reason}
 	default:
 		p.log.Info("platform: the approval agent handed a call to a person", "tenant", parked.Tenant, "run", parked.ID, "question", question, "reason", d.Reason)
-		p.auditJudgement(by, parked, question, tool, decided.ID, d)
+		p.auditJudgement(by, parked, about, decided.ID, d)
 		return nil
 	}
 	actx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
@@ -174,7 +226,7 @@ func (p *Platform) fileApproval(ctx context.Context, decided runs.Run) error {
 		p.log.Info("platform: an approval was left for a person", "tenant", parked.Tenant, "run", parked.ID, "question", question, "error", err)
 		return nil
 	}
-	p.auditJudgement(by, parked, question, tool, decided.ID, d)
+	p.auditJudgement(by, parked, about, decided.ID, d)
 	return nil
 }
 
@@ -199,9 +251,19 @@ func (p *Platform) judge(tenant string, m inbox.Message, question, decidedBy str
 // auditJudgement records what the approval agent decided about a question
 // run asked, for the person who chose Run. decidedBy is the approval run.
 // The fields a workspace's schema adds are recorded with it, each under
-// "field." and its name.
-func (p *Platform) auditJudgement(by auth.Principal, run runs.Run, question, tool, decidedBy string, d approve.Decision) {
-	after := map[string]string{"tool": tool, "question": question, "mode": threads.ApprovalAuto, "verdict": string(d.Verdict), "reason": d.Reason, "agent": BuiltinApprover}
+// "field." and its name, and an answer to a question under "answer".
+func (p *Platform) auditJudgement(by auth.Principal, run runs.Run, about judgedAbout, decidedBy string, d approve.Decision) {
+	mode := cmp.Or(about.Mode, threads.ApprovalAuto)
+	after := map[string]string{"question": about.Question, "mode": mode, "verdict": string(d.Verdict), "reason": d.Reason, "agent": BuiltinApprover}
+	if about.Tool != "" {
+		after["tool"] = about.Tool
+	}
+	if about.Kind != "" {
+		after["kind"] = about.Kind
+	}
+	if d.Answer != "" {
+		after["answer"] = d.Answer
+	}
 	if decidedBy != "" {
 		after["approval_run"] = decidedBy
 	}

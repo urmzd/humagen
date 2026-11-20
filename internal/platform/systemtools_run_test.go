@@ -35,6 +35,8 @@ var namedCategories = map[string]operations.Category{
 	"publish_artifact": operations.PublishArtifacts, "read_agent": operations.ReadContext, "read_agent_evals": operations.Other, "record_outcome": operations.Other,
 	"retire_agent": operations.Other, "run_eval_suite": operations.Other, "runs_summary": operations.ReadContext, "save_agent": operations.WriteFiles,
 	"web_fetch": operations.ReadContext, "web_search": operations.ReadContext,
+	"notify": operations.Other, "watch_start": operations.Other, "goal_start": operations.Other, "task_start": operations.Other, "background_list": operations.Other, "background_stop": operations.Other,
+	"create_schedule": operations.Other, "update_schedule": operations.Other, "pause_schedule": operations.Other, "resume_schedule": operations.Other, "run_schedule": operations.Other,
 	"session_call": operations.Other, "session_link": operations.Other, "session_listen": operations.Other, "session_read": operations.Other,
 	"session_status": operations.Other, "set_workspace_prompt": operations.Other, "shell": operations.WriteFiles, "slack_add_reaction": operations.ExternalMessages,
 	"slack_post_message": operations.ExternalMessages, "source_search": operations.ReadContext, "tag_writer": operations.CallAgents, "write_eval_suite": operations.Other,
@@ -128,13 +130,14 @@ func TestAToolDeclaresItselfToBeRegistered(t *testing.T) {
 	}
 }
 
-// Three names are both an operation of the API contract and a run tool,
+// Some names are both an operation of the API contract and a run tool,
 // with different implementations. Each has its own registry key, a run is
 // offered the run tool and an MCP client the operation, and neither is
 // reached through the other's name.
 func TestANameSharedAcrossExposuresHasAKeyOfItsOwn(t *testing.T) {
 	p := registryPlatform(t)
-	for _, name := range []string{ToolListAgents, ToolListAlerts, ToolRunEval} {
+	shared := append([]string{ToolListAgents, ToolListAlerts, ToolRunEval}, ScheduleTools()...)
+	for _, name := range shared {
 		operation, ok := p.SystemTool(name)
 		if !ok || operation.Exposure != ExposeMCP || operation.Call == nil || operation.Run != nil {
 			t.Errorf("SystemTool(%q) is not the API operation: %+v", name, operation)
@@ -158,7 +161,7 @@ func TestANameSharedAcrossExposuresHasAKeyOfItsOwn(t *testing.T) {
 		seen[tl.Name]++
 	}
 	for name, n := range seen {
-		if n > 1 && !slices.Contains([]string{ToolListAgents, ToolListAlerts, ToolRunEval}, name) {
+		if n > 1 && !slices.Contains(shared, name) {
 			t.Errorf("%s is in the registry %d times", name, n)
 		}
 	}
@@ -205,8 +208,8 @@ func TestATurnsToolsAreBuiltFromTheRegistry(t *testing.T) {
 		}
 		built++
 	}
-	if built != 38 {
-		t.Errorf("built %d tools, want 38", built)
+	if built != 49 {
+		t.Errorf("built %d tools, want 49", built)
 	}
 	for _, name := range []string{"no_such_tool", "list_schedules", "session_call", "delegate_task"} {
 		if _, err := tools.Lookup(name); !errors.Is(err, native.ErrNoSuchTool) {
@@ -287,8 +290,8 @@ func TestEachToolsOwnApprovalIsWhatItAsked(t *testing.T) {
 			t.Errorf("%s declares approvers of its own", tl.Name)
 		}
 	}
-	if own != 7 {
-		t.Errorf("%d tools carry their own approvers, want 7", own)
+	if own != 12 {
+		t.Errorf("%d tools carry their own approvers, want 12", own)
 	}
 }
 

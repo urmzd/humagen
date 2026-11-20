@@ -31,6 +31,8 @@ import type {
   Assignment,
   AssignmentInput,
   AttachKnowledgeSourceBody,
+  BackgroundList,
+  BackgroundTask,
   BigQuerySetupInput,
   BigQuerySetupView,
   Branding,
@@ -1808,6 +1810,38 @@ address with the caller's bearer token.
     return this.rawRequest<PersonContext>("PUT", path, {
       body,
       contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Lists the caller's own watches, goals and tasks: what is still running, newest first, then what ended in the last 30 days, most recent first, at most 100 in all. A machine has none. */
+  async listBackground(options?: RequestOptions): Promise<BackgroundList> {
+    const path = "/api/me/background";
+    return this.request<BackgroundList>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listBackgroundRaw(options?: RequestOptions): Promise<ApiResponse<BackgroundList>> {
+    const path = "/api/me/background";
+    return this.rawRequest<BackgroundList>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Stops a watch, goal or task the caller owns. A run in flight finishes, and what it finds is not sent. Stopping one that already ended answers it as it is. Another person's is not found. */
+  async stopBackground(id: string, options?: RequestOptions): Promise<BackgroundTask> {
+    let path = "/api/me/background/{id}/stop";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<BackgroundTask>("POST", path, {
+      ...options,
+    });
+  }
+
+  async stopBackgroundRaw(id: string, options?: RequestOptions): Promise<ApiResponse<BackgroundTask>> {
+    let path = "/api/me/background/{id}/stop";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<BackgroundTask>("POST", path, {
       ...options,
     });
   }
@@ -4285,8 +4319,17 @@ they may approve themselves, through the same checks as their own
 answer: the approvers a question names, self-approval and the
 runtime's. A budget request, an action the agent always asks about,
 a run forced to ask and an action the policy does not ask about still
-go to a person. Each automatic approval and each change of mode is
-audited. Takes a person who may post in the conversation.
+go to a person. `decide` (Run and Answer) does what `auto` does,
+and the approval agent also answers, as the caller, a question an
+agent asks a person (a choice or a reply) when the session already
+settles the answer; anything else, anything asked of someone else,
+and anything in work someone else asked for still goes to a person.
+Each automatic approval and answer, each hand-off, and each change
+of mode is audited. Takes a person who may post in the conversation.
+A surface that authenticated a person itself sets it for them with
+`act_as`: only the credential its client names, and only for a person
+its client maps; every check is then that person's, and `auto` and
+`decide` act as them.
  */
   async setApprovalMode(id: string, body: SetApprovalModeBody, options?: RequestOptions): Promise<Thread> {
     let path = "/api/threads/{id}/approval";

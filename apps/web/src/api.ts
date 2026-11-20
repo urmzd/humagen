@@ -775,6 +775,31 @@ export interface ToolCredential {
 }
 
 /** The tools that act as you, and what this workspace lets people give for them. */
+/** One watch, goal or task an agent keeps at for you (`GET /api/me/background`). */
+export interface BackgroundTask {
+  id: string;
+  kind: "watch" | "goal" | "task";
+  /** What to watch for, the goal, or the task's ask. */
+  text: string;
+  how?: string;
+  state: "active" | "done" | "expired" | "stopped" | "failed";
+  agent: string;
+  project?: string;
+  every?: string;
+  until: string;
+  next?: string;
+  working: boolean;
+  runs: number;
+  limit: number;
+  /** The conversation that asked. */
+  session: string;
+  /** The conversation its runs are in. */
+  thread?: string;
+  result?: string;
+  created_at: string;
+  ended_at?: string;
+}
+
 export interface ToolCredentials {
   allowed_hosts?: string[];
   oauth_available?: boolean;
@@ -1368,6 +1393,11 @@ export const api = {
       enabled,
     }),
   deleteClient: (id: string) => call<void>("DELETE", `/api/clients/${encodeURIComponent(id)}`),
+  /** Your own background work: watches, goals and tasks, running first. */
+  background: () =>
+    call<{ items: BackgroundTask[] }>("GET", "/api/me/background").then((r) => r.items ?? []),
+  stopBackground: (id: string) =>
+    call<BackgroundTask>("POST", `/api/me/background/${encodeURIComponent(id)}/stop`),
   /** Your own credentials for the tools that act as you. Nobody else's can be named. */
   toolCredentials: () => call<ToolCredentials>("GET", "/api/me/credentials"),
   connectTool: (provider: string, input: ToolCredentialInput) =>
@@ -2086,8 +2116,11 @@ export interface Thread {
   };
   /** The imported conversation it continues: the pinned revision and the turns its agent is sent. */
   import?: ThreadImport;
-  /** How its gated tool actions are approved: absent asks a person; auto approves for `by` (DES-057). */
-  approval?: { mode: "auto"; by: string; roles?: string[]; at: string };
+  /**
+   * How its gated tool actions are approved: absent asks a person; auto approves for `by`
+   * (DES-057); decide does that and also answers what the session settles (DES-079).
+   */
+  approval?: { mode: "auto" | "decide"; by: string; roles?: string[]; at: string };
   /** The inbox id of the announcement a reply to which, in Slack, started the thread. */
   announcement?: string;
   /** The Slack thread this thread is, when it was started from Slack. It never changes. */
@@ -2484,8 +2517,8 @@ export const coworking = {
     body: { project: string; channel: string; summary: string; placement_token: string },
   ) => call<Thread>("POST", `${threadPath(id)}/publication`, body),
   share: (id: string, s: ThreadShare) => call<ThreadShared>("POST", `${threadPath(id)}/share`, s),
-  /** Sets how a conversation's gated tool actions are approved: ask, or auto for the caller. */
-  setApprovalMode: (id: string, mode: "ask" | "auto") =>
+  /** Sets how a conversation's gated tool actions are approved: ask, or auto or decide for the caller. */
+  setApprovalMode: (id: string, mode: "ask" | "auto" | "decide") =>
     call<Thread>("PUT", `${threadPath(id)}/approval`, { mode }),
   /** The skills a `$name` can pick in a project. */
   skills: (project: string) =>

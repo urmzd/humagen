@@ -62,7 +62,7 @@ function ComposerSample({ working }: { working: boolean }) {
   }, [working, queue]);
   return (
     <div className="w-full max-w-xl">
-      <Composer placeholder="Message" queue={queue} disclaimer={null} />
+      <Composer placeholder="Message" queue={queue} />
     </div>
   );
 }

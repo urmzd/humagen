@@ -47,18 +47,9 @@ var modelPresets = []struct {
 // System and a Platform document, keeping what is already there as each
 // question's default. It never asks for a key, only where one is kept.
 func runSetup(r *bufio.Reader, out io.Writer, path string) error {
-	var cfg spec.Config
-	if _, err := os.Stat(path); err == nil {
-		if cfg, err = spec.Load(path); err != nil {
-			return err
-		}
-	}
-	cfg.System.Defaults()
-	if len(cfg.Platforms) == 0 {
-		cfg.Platforms = []spec.Platform{{Metadata: spec.Metadata{Name: cfg.System.Tenant()}}}
-		if cfg.Platforms[0].Metadata.Name == "" {
-			cfg.Platforms[0].Metadata.Name = "default"
-		}
+	cfg, err := openSpec(path)
+	if err != nil {
+		return err
 	}
 	sys, plat := &cfg.System, &cfg.Platforms[0]
 	q := asker{r: r, out: out}
@@ -151,22 +142,21 @@ func runSetup(r *bufio.Reader, out io.Writer, path string) error {
 
 	sl := plat.Spec.Surfaces.Slack
 	switch {
-	case kind == "tailscale":
-		// The Slack app calls humagen's API, and a process cannot sign in
-		// through Tailscale Serve.
-		if sl != nil && sl.Enabled {
-			fmt.Fprintln(out, "Slack is off: its app cannot sign in to Humagen through Tailscale Serve.")
-			sl.Enabled = false
-		}
 	case q.yes("Answer in Slack too?", sl != nil && sl.Enabled):
 		if sl == nil {
 			sl = &spec.Slack{BotToken: &spec.Ref{Ref: "env:SLACK_BOT_TOKEN"}, AppToken: &spec.Ref{Ref: "env:SLACK_APP_TOKEN"}}
 		}
 		sl.Enabled = true
-		fmt.Fprintln(out, "  Create the app from `humagen slack manifest`, install it, and make an app-level token with connections:write.")
+		fmt.Fprintln(out, "  `humagen install slack` does this for you. By hand: create the app from `humagen slack manifest`, install it, and make an app-level token with connections:write.")
 		sl.Team = q.text("Slack team id (T...)", sl.Team, nonEmpty)
 		sl.BotToken = &spec.Ref{Ref: q.text("Where is the bot token (xoxb-)?", sl.BotToken.Ref, parseRef)}
 		sl.AppToken = &spec.Ref{Ref: q.text("Where is the app token (xapp-)?", sl.AppToken.Ref, parseRef)}
+		if kind == "tailscale" && (sl.HumagenClient != nil || sl.HumagenToken.Set()) {
+			// The server gives the app it starts its own credential, and one
+			// in the file would be refused.
+			fmt.Fprintln(out, "  Under tailscale sign-in Humagen gives the Slack app its credential, so the one in the file is removed.")
+			sl.HumagenClient, sl.HumagenToken = nil, nil
+		}
 		if kind == "oidc" && !sl.HumagenToken.Set() {
 			fmt.Fprintln(out, "  The app signs in to Humagen as a machine client of the identity provider, with client credentials.")
 			c := sl.HumagenClient
@@ -192,6 +182,34 @@ func runSetup(r *bufio.Reader, out io.Writer, path string) error {
 	if err := cfg.Check(nil); err != nil {
 		return err
 	}
+	if err := saveSpec(cfg, path); err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "Wrote %s. Edit it any time (docs/reference/spec.md); `humagen setup` asks again.\n", path)
+	return nil
+}
+
+// openSpec reads the spec at path for a command that asks and writes it back,
+// or starts one with a single workspace when there is no file yet.
+func openSpec(path string) (spec.Config, error) {
+	var cfg spec.Config
+	if _, err := os.Stat(path); err == nil {
+		if cfg, err = spec.Load(path); err != nil {
+			return cfg, err
+		}
+	}
+	cfg.System.Defaults()
+	if len(cfg.Platforms) == 0 {
+		cfg.Platforms = []spec.Platform{{Metadata: spec.Metadata{Name: cfg.System.Tenant()}}}
+		if cfg.Platforms[0].Metadata.Name == "" {
+			cfg.Platforms[0].Metadata.Name = "default"
+		}
+	}
+	return cfg, nil
+}
+
+// saveSpec writes cfg to path, readable by its owner alone, replacing the file whole.
+func saveSpec(cfg spec.Config, path string) error {
 	// A spec read in the language from before the rename is written back in
 	// it, whatever its name, so that release still reads it.
 	write := spec.Marshal
@@ -212,7 +230,6 @@ func runSetup(r *bufio.Reader, out io.Writer, path string) error {
 	if err := os.Rename(tmp, path); err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "Wrote %s. Edit it any time (docs/reference/spec.md); `humagen setup` asks again.\n", path)
 	return nil
 }
 

@@ -331,7 +331,8 @@ function Callout({ tone, title, text }: PrimitiveProps["Callout"]) {
       data-aui="callout"
       data-tone={tone}
       role={tone === "bad" ? "alert" : "status"}
-      className="flex min-w-0 items-start gap-3 rounded-aui border border-[var(--aui-callout-border)] bg-[var(--aui-callout-bg)] p-3 text-aui-sm"
+      // Its box is drawn in theme.css, not as utilities, so the rules that join it to its actions win.
+      className="flex min-w-0 items-start gap-3 text-aui-sm"
     >
       <span className={`mt-0.5 ${toneText[tone]}`}>{toneIcon[tone]}</span>
       <div className="flex min-w-0 flex-1 flex-col gap-1 text-aui-muted [&_a]:underline [&_code]:font-aui-mono [&_code]:text-[max(0.85em,var(--text-aui-2xs))]">

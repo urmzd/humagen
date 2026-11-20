@@ -170,9 +170,6 @@ importers:
       '@humagen/web':
         specifier: workspace:*
         version: link:../../packages/web
-      border-beam:
-        specifier: 1.4.1
-        version: 1.4.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       fflate:
         specifier: 0.8.3
         version: 0.8.3
@@ -252,6 +249,9 @@ importers:
       '@humagen/client':
         specifier: workspace:*
         version: link:../client
+      '@humagen/components':
+        specifier: workspace:*
+        version: link:../components
       '@humagen/core':
         specifier: workspace:*
         version: link:../core
@@ -2245,12 +2245,6 @@ packages:
 
   boolbase@1.0.0:
     resolution: {integrity: sha512-JZOSA7Mo9sNGB8+UjSgzdLtokWAky1zbztM3WRLCbZ70/3cTANmQmOdR7y2g+J0e2WXywy1yS468tY+IruqEww==}
-
-  border-beam@1.4.1:
-    resolution: {integrity: sha512-YyugmKjrhkg1PBC1ZKX7JvFo/zYzha6NXOq24VWrnvBYmDRvGCgFS9oxZoKJ+oS9Kn436l1etYGlAdGiWK+3ag==}
-    peerDependencies:
-      react: '>=18.0.0'
-      react-dom: '>=18.0.0'
 
   bot-avatars@0.2.2:
     resolution: {integrity: sha512-EszpDsXfbO7SD3Jv/g8/7mt3I4EpN4WuDy6Uk3reuzIgU+dl4iKtk+fuIzGgfXjOraF1jQqUjaDOdcql1khXHQ==}
@@ -5231,11 +5225,6 @@ snapshots:
   base64-js@0.0.8: {}
 
   boolbase@1.0.0: {}
-
-  border-beam@1.4.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1):
-    dependencies:
-      react: 19.3.1
-      react-dom: 19.3.1(react@19.3.1)
 
   bot-avatars@0.2.2(react@19.3.1):
     dependencies:

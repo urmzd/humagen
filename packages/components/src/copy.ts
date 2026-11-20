@@ -827,6 +827,8 @@ export const defaultCopy = {
     title: "Knowledge",
     newCorpus: "New Corpus",
     empty: "No corpora yet",
+    emptyHint:
+      "A corpus is a named body of knowledge. Add sources to it, then give it to an agent.",
     loadFailed: "Knowledge could not be loaded.",
     edit: "Edit",
     delete: "Delete",
@@ -2119,6 +2121,8 @@ export const defaultCopy = {
       files: (n: number) => `Updated ${n} files`,
       running: (what: string) => `Running ${what}`,
       failed: (n: number) => `${n} failed`,
+      /** Every call in the run failed, so there is nothing done to name. */
+      allFailed: (n: number) => `${n} steps failed`,
       earlierFailed: (n: number) =>
         `${n} earlier failed ${n === 1 ? "command" : "commands"} not shown`,
       waiting: "waiting for you",
@@ -2345,7 +2349,8 @@ export const defaultCopy = {
     draft: "Draft",
     published: "Published",
     version: "Version",
-    empty: "No skills in this scope.",
+    empty: "No skills here yet",
+    emptyHint: "Create a skill, or import a folder that holds a SKILL.md.",
     failed: "The skill library could not be loaded or changed.",
     test: "Test Skill",
     agent: "Test Agent",
@@ -2719,6 +2724,8 @@ export const defaultCopy = {
   judgement: {
     by: "Approval agent",
     decision: { allow: "Allowed", deny: "Denied", ask: "Asked a person" },
+    /** A question the approval agent answered in a session set to Run and Answer (DES-079). */
+    answered: "Answered by the approval agent",
     basedOn: (references: string[]) => `Based on: ${references.join("; ")}`,
   },
   /** A run the platform held at a limit, for a person to grant it more or stop it. */
@@ -2786,6 +2793,8 @@ export const defaultCopy = {
   runLink: (url: string) => `[${url}](${url})`,
   disclaimer: (name: string) =>
     `${name} is AI and can make mistakes. Double-check its answers before you rely on them.`,
+  /** Under an answer, where the host can move the conversation into a code channel. */
+  continueInCodeChannel: "Continue in a Code Channel",
   helpful: "Helpful",
   notHelpful: "Not helpful",
   /** Asked after a rating. Answering is optional; the rating is already recorded. */
@@ -3001,11 +3010,82 @@ export const defaultCopy = {
     } as Record<"open" | "snoozed" | "resolved", string>,
     markDone: "Mark Done",
     markDoneNamed: (title: string) => `Mark ${title} done`,
+    /** The alerts table: its name, its column headings and what its header says once rows are ticked. */
+    table: {
+      label: "Alerts",
+      selectAll: "Select all alerts",
+      selected: (n: number) => `${n} selected`,
+      alert: "Alert",
+      source: "Source",
+      priority: "Priority",
+      when: "When",
+    },
     markSelectedDone: "Mark Selected Done",
     snooze: "Snooze 1h",
     snoozeSelected: "Snooze Selected for 1 Hour",
     doneWhen: (condition: string) => `Done when: ${condition}`,
     updated: (n: number) => `Updated ${n} ${n === 1 ? "alert" : "alerts"}.`,
+  },
+  /** The Artifacts page: what agents published, and tiles that start a new one. */
+  artifactsPage: {
+    makeNew: "Make something new",
+    /** One per file an agent writes natively. `ask` is the request the chat bar starts with. */
+    starters: [
+      { label: "Document", format: "Word, .docx", ask: "Create a document (.docx) about " },
+      { label: "Slides", format: "PowerPoint, .pptx", ask: "Create a slide deck (.pptx) about " },
+      { label: "Sheet", format: "Excel, .xlsx", ask: "Create a spreadsheet (.xlsx) of " },
+      { label: "Report", format: "PDF", ask: "Create a PDF report about " },
+    ],
+  },
+  /** Plugins, in your settings: what you add for your own work. Apps are the workspace's, on a page of their own. */
+  plugins: {
+    title: "Plugins",
+    lede: "What this workspace offers for your own work. What you add is yours alone: it is used when you ask directly, and an agent uses only what is set on that agent.",
+    /** The two views of the page: everything this deployment offers, and what you have added. */
+    view: "Plugins shown",
+    catalog: "Catalog",
+    installed: "Installed",
+    search: "Search plugins",
+    noMatch: "No plugin matches that search.",
+    noneInstalled: "You have not added any plugins yet. Add one from the catalog.",
+    mcps: "MCPs",
+    /** The shelves MCPs sit on. */
+    families: {
+      google: {
+        title: "Google Workspace",
+        lede: "Mail, calendar and files in your Google account.",
+      },
+      work: {
+        title: "Work tools",
+        lede: "Notes, issues and meetings from the tools your team uses.",
+      },
+      yours: { title: "Added by you", lede: "MCPs you added by address or key." },
+    } as Record<"google" | "work" | "yours", { title: string; lede: string }>,
+    /** One line on what each offered MCP does, by its id. */
+    about: {
+      notion: "Search, read and update pages in your Notion workspace.",
+      linear: "Find, create and update issues and projects.",
+      granola: "Read your meeting notes and transcripts.",
+      atlassian: "Search and update Jira and Confluence.",
+      gmail: "Search, read, draft and send email.",
+      "google-calendar": "Check availability and schedule events.",
+      "google-drive": "Search, upload and share files.",
+      "google-docs": "Read, draft and edit documents.",
+      "google-sheets": "Read, write and format spreadsheets.",
+      "google-slides": "Read, edit and export presentations.",
+    } as Record<string, string | undefined>,
+    skills: "Skills",
+    skillsLede: "Your personal skills.",
+    manageSkills: "Manage Skills",
+    noSkills: "No personal skills yet",
+    noSkillsHint:
+      "A skill teaches the assistant how you do a task. Create one, or import a folder, in Manage Skills.",
+    /** The page's tabs: the kinds of plugin. */
+    kinds: "Kinds of plugin",
+    apps: {
+      title: "Apps",
+      lede: "Installed once for the workspace by an administrator. Everyone in the workspace can then use them.",
+    },
   },
   /** The tag every message carries, in the list and above its parts. */
   partKind: {
@@ -3156,8 +3236,25 @@ export const defaultCopy = {
     autoHint:
       "The approval agent decides each action the policy asks about, and hands you anything it is unsure of. Every decision is audited.",
     autoFor: (name: string) => `Run, chosen by ${name}`,
+    /** The secondary option beside Run: the approval agent also answers questions (DES-079). */
+    answers: "Answer Questions",
+    decide: "Run and Answer",
+    decideHint:
+      "The approval agent also answers a question an agent asks you when the session already settles it, and hands you the rest. Each answer says it was the approval agent's, and is audited.",
+    decideFor: (name: string) => `Run and Answer, chosen by ${name}`,
     waiting: "No model is enabled for the approval agent yet, so every action waits for a person.",
     failed: "Could not change approvals. Try again.",
+    /** In the menu of an approval waiting in a Slack thread: sets the conversation, not the call. */
+    letAgentDecide: "Let the approval agent decide in this thread",
+    /** Under the note that the approval agent decides, to set the thread back. */
+    askMeAgain: "Ask Me Again",
+    /** Under the note that a person decides again, to hand it back to the approval agent. */
+    letAgentDecideAgain: "Let the Approval Agent Decide",
+    /** What changed in the thread, said where everyone in it reads it. */
+    nowAuto: (who: string) =>
+      `${who} let the approval agent decide gated actions in this thread. It decides from the next action on, as ${who} could, and hands a person anything it is unsure of. An action already waiting still waits for a person.`,
+    nowAsk: (who: string) =>
+      `${who} set this thread to ask a person about every gated action again.`,
   },
   /** Over Home's chat bar: the person's own project, where a conversation in no project is filed (DES-057). */
   noProject: "No project",
@@ -3591,6 +3688,32 @@ export const defaultCopy = {
     empty: "Nothing scheduled yet",
     active: "Active",
     paused: "Paused",
+    tabs: "Scheduled work",
+    schedulesTab: "Schedules",
+    backgroundTab: "Background",
+  },
+  background: {
+    title: "Background",
+    empty: "No background work",
+    stop: "Stop",
+    retry: "Retry",
+    couldNotLoad: "Background work could not be loaded",
+    couldNotStop: "It could not be stopped",
+    kind: { watch: "Watch", goal: "Goal", task: "Task" } as Record<string, string>,
+    state: {
+      active: "Active",
+      done: "Done",
+      expired: "Ran out",
+      stopped: "Stopped",
+      failed: "Failed",
+    } as Record<string, string>,
+    working: "Working",
+    every: (every: string) => `Every ${every}`,
+    checks: (runs: number) => (runs === 1 ? "1 check" : `${runs} checks`),
+    turns: (runs: number, limit: number) => `Turn ${runs} of ${limit}`,
+    next: (when: string) => `Next ${when}`,
+    nextSoon: "Next run soon",
+    stopsIn: (when: string) => `Stops ${when}`,
   },
   schedules: {
     deliver: "Send to",
@@ -3638,6 +3761,26 @@ export const defaultCopy = {
       weekends: (at: string) => `Weekends at ${at} UTC`,
       weekly: (day: number, at: string) =>
         `${["Sundays", "Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays"][day]} at ${at} UTC`,
+      everyMinutes: (n: number) => `Every ${n} minutes`,
+      everyHours: (n: number) => `Every ${n} hours`,
+    },
+    /**
+     * The fields of an approval card for a schedule an agent proposes from a
+     * conversation (create_schedule, update_schedule): what it checks, how
+     * often, which agent, where it posts, and when it runs next.
+     */
+    proposal: {
+      name: "Schedule",
+      checks: "Checks",
+      every: "How often",
+      agent: "Agent",
+      posts: "Posts",
+      nextRun: "Next run",
+      postsHere: "In this Slack channel, only when something fires",
+      postsSlack: (channel: string) => `In Slack channel ${channel}, only when something fires`,
+      postsGitHub: (issue: string) => `On ${issue}, only when something fires`,
+      postsInbox: "To your inbox, only when something fires",
+      postsNowhere: "Nowhere: each answer stays in its own session",
     },
   },
   /** The one-field form a Slack mention or an expert's question opens to reply. */
@@ -3693,11 +3836,8 @@ export const defaultCopy = {
       },
     } as Record<string, { label: string; description: string; slack?: string }>,
     needsYou: "Needs you",
-    /** The one quiet line under the chat bar on the web: how many alerts wait on the person, linking to them. */
-    waitingOnYou: (n: number) => `${n} waiting on you`,
     /** The strip under the chat bar on the web: the newest things the person's agents made. */
     recentlyMade: "Recently made",
-    allArtifacts: "All artifacts",
     /** In place of the strip when it could not be read. */
     madeFailed: "Recent artifacts could not be loaded.",
     nothingWaiting: "Nothing needs you right now, and no alerts are open.",
@@ -3762,7 +3902,7 @@ export const defaultCopy = {
     review: "Review",
     whoAnswers: "Who answers you",
     dmRouting: "In direct messages, send my questions to",
-    connections: "Connections",
+    connections: "Plugins",
     manageAll: "Manage all",
     connectedTo: (account: string) => `Connected to ${account}`,
     connectedHere: "Connected for this workspace.",
@@ -4044,10 +4184,11 @@ export const defaultCopy = {
         failed: "The schedule could not be saved. Try again.",
       },
       slack: {
-        title: "Slack",
-        none: "No channels linked",
+        /** The card holds every link out of Humagen; Slack channels are the kind a project keeps today. */
+        title: "External references",
+        none: "No references linked",
         add: "Add",
-        addLabel: "Add Slack Channel",
+        addLabel: "Add External Reference",
         heading: "Link a Slack channel",
         client: "Slack app",
         channel: "Slack channel ID",
@@ -4569,16 +4710,6 @@ export const defaultCopy = {
     working: "Jump to latest, answer in progress",
     /** Something arrived out of view and has not been seen. */
     unseen: "Jump to latest, new content",
-  },
-  /** The prompt's lines for the threads at work in a session. */
-  working: {
-    label: (n: number) => (n === 1 ? "1 thread working" : `${n} threads working`),
-    open: (agent: string) => `Open ${agent}'s activity`,
-    for: (who: string) => `for ${who}`,
-    stop: "Stop",
-    stopping: "Stopping…",
-    more: (n: number) => `+${n} working`,
-    fewer: "Show fewer",
   },
   /** A message's references and the work under it: its origin, what it read and touched, what it delegated. */
   trace: {

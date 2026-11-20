@@ -189,7 +189,14 @@ test("a project page is headed by its title under a way back to Projects: no tab
   const headings = within(side)
     .getAllByRole("heading", { level: 2 })
     .map((h) => h.textContent);
-  assert.deepEqual(headings, ["Instructions", "Context", "Memory", "Scheduled", "Slack", "Access"]);
+  assert.deepEqual(headings, [
+    "Access",
+    "Instructions",
+    "Context",
+    "Memory",
+    "Scheduled",
+    "External references",
+  ]);
 });
 
 test("the More menu holds Pin, Edit, Fork, then Archive and Delete after a rule; Edit opens a sheet", async () => {
@@ -559,10 +566,10 @@ test("Slack: a linked channel shows with its app, Add links one by its id, and R
       },
     },
   });
-  const slack = await card("Slack");
+  const slack = await card("External references");
   await within(slack).findByText("#C0123 via Acme Slack");
   assert.ok(!within(slack).queryByText(/general/), "a channel with no Slack binding is no link");
-  fireEvent.click(within(slack).getByRole("button", { name: "Add Slack Channel" }));
+  fireEvent.click(within(slack).getByRole("button", { name: "Add External Reference" }));
   const sheet = await screen.findByRole("dialog", { name: "Link a Slack channel" });
   const apps = within(sheet)
     .getAllByRole("option")

@@ -371,6 +371,11 @@ test("deleting a file asks first, deletes at the revision read, and is recorded"
   const { state } = await world();
   const recorded: HumanActivityInput[] = [];
   render(<Tab recorded={recorded} initial="report.md" />);
+  // The file is read before it is removed, so it is deleted at the revision read
+  // and the record can say how many lines went with it.
+  await waitFor(() =>
+    assert.ok(screen.getByTestId("changes-diff").querySelectorAll("[data-line]").length > 0),
+  );
   fireEvent.click(await screen.findByRole("button", { name: words.remove }));
   const sure = screen.getByRole("group", { name: words.confirmRemove("report.md") });
   fireEvent.keyDown(sure, { key: "Escape" });

@@ -1137,6 +1137,44 @@ export interface Actor {
   user?: string;
 }
 
+/** The caller's background work. */
+export interface BackgroundList {
+  items: BackgroundTask[];
+}
+
+/** One watch, goal or task an agent keeps at for a person: a loop of runs of the same agent, acting for them, until it ends. */
+export interface BackgroundTask {
+  id: string;
+  kind: "watch" | "goal" | "task";
+  /** What to watch for, the goal, or the task's ask. */
+  text: string;
+  /** How a watch is checked, or when a goal is met. */
+  how?: string;
+  state: "active" | "done" | "expired" | "stopped" | "failed";
+  agent: string;
+  project?: string;
+  /** How long after one check of a watch the next starts, as a Go duration. */
+  every?: string;
+  /** When it stops if it has not ended. */
+  until: string;
+  /** When the next run starts, while one is waited for. */
+  next?: string;
+  /** Whether a run is working now. */
+  working: boolean;
+  /** Runs started. */
+  runs: number;
+  /** The most runs it makes. */
+  limit: number;
+  /** The conversation that asked. */
+  session: string;
+  /** The conversation its runs are in. */
+  thread?: string;
+  /** What the last run said, and once ended, what the person was told. */
+  result?: string;
+  created_at: string;
+  ended_at?: string;
+}
+
 /** The workspace's tools that act as the caller, how the caller stands with each, and what the workspace lets people give. */
 export interface ToolCredentials {
   providers: ToolCredential[];
@@ -1592,7 +1630,7 @@ not selected. Absent when none is selected.
   fork?: ThreadFork;
   import?: ThreadImport;
   archive?: ThreadArchive;
-  /** How the conversation's gated tool actions are approved, and who chose it. Absent asks a person. `auto` approves for that person what they may approve themselves, within policy; a budget request and an action the agent or the policy always asks about still go to a person. */
+  /** How the conversation's gated tool actions are approved, and who chose it. Absent asks a person. `auto` approves for that person what they may approve themselves, within policy; a budget request and an action the agent or the policy always asks about still go to a person. `decide` does that too, and also answers for them a question an agent asks a person when the session already settles it. */
   approval?: ThreadApproval;
   /** The inbox id of the announcement the thread was started from, a reply to its post on the thread's surface. It never changes, and the thread's turns start with it. */
   announcement?: string;
@@ -3194,8 +3232,28 @@ question is addressed to, by subject or by a role they hold, so it
 reads the message for them (`act_as_client`, `act_as_user`) and
 tells them in Slack. A message to several people it maps, such as
 experts named by a role, is one notice for each, at most 20.
+A `result` is forwarded only when background work (a watch, a
+goal or a task ending on its own) or `notify` sent it, for the
+person the work is for. Work asked in a Slack thread of one of
+the workspace's Slack clients is forwarded to that client alone.
  */
   for?: ActAs;
+  /** With `for`, on a background result only: the client's own Slack
+thread the work was asked from, to post the result in as a
+reply. Absent when the work was asked anywhere else, or when its
+runs read private context or the person may no longer read that
+conversation; the client then tells the person in a direct
+message.
+ */
+  reply_in?: InboxNoticeReply;
+}
+
+/** A Slack thread of a client's to reply in with a background result. */
+export interface InboxNoticeReply {
+  channel: string;
+  ts: string;
+  /** The private session to open for the details, a watch's checks or a task's run. Absent when the work ran in the conversation that asked. */
+  session?: string;
 }
 
 export interface InboxFrom {
@@ -3416,7 +3474,9 @@ answering checks again.
 }
 
 /** What the approval agent said about an approval, once it was asked,
-whether it allowed the call, denied it or left it for a person.
+whether it allowed the call, denied it or left it for a person. On
+a choice or a reply, in a conversation set to `decide`, `allow` is
+an answer it gave and `ask` a question it left for a person.
  */
 export interface InboxJudgement {
   decision: "allow" | "ask" | "deny";
@@ -5387,12 +5447,15 @@ export interface ContextResult {
   note?: string;
 }
 
-/** People's messages from one origin. Who said them is the caller. */
+/** People's messages from one origin. Who said them is the caller, or with act_as the person a client's own machine posts for. */
 export interface MessagesInput {
   messages: InMessage[];
   ref?: ExternalRef;
   /** Accepted; follow GET /api/messages/{id}/stream for what happens beneath. */
   stream?: boolean;
+  act_as?: ActAs;
+  /** With act_as, record the message and start nothing, for what people said in the thread before the app was asked. */
+  post_only?: boolean;
 }
 
 /** One person's message. role is user; the platform writes the agents' messages. */
@@ -5452,6 +5515,10 @@ export interface ExternalRef {
   ts?: string;
   thread_ts?: string;
   audience?: SurfaceAudience;
+  /** The Slack app's own bot user id, whose mention is how a channel message reaches the app and is not a tag. Read only from a client's own machine posting for a person (act_as). */
+  app_user?: string;
+  /** Ask the platform to ingest the Slack message's files. Read only from a client's own machine posting for a person (act_as). */
+  files?: boolean;
   repo?: string;
   kind?: "pull" | "issue" | "comment";
   number?: number;
@@ -6135,7 +6202,7 @@ export interface PreparedCallInputMessagesItem {
 }
 
 export interface ThreadApproval {
-  mode: "auto";
+  mode: "auto" | "decide";
   by: string;
   roles?: string[];
   at: string;
@@ -6531,7 +6598,8 @@ export interface PublishThreadSummaryBody {
 }
 
 export interface SetApprovalModeBody {
-  mode: "ask" | "auto";
+  mode: "ask" | "auto" | "decide";
+  act_as?: ActAs;
 }
 
 export interface ListSchedulesResponse {

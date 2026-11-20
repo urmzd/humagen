@@ -513,8 +513,9 @@ export function KnowledgePage({
       {corpora === null ? (
         <SkeletonRows count={3} height="7rem" />
       ) : list.length === 0 ? (
-        <div className="flex flex-col items-start gap-3">
-          <Empty title={words.empty} />
+        // A quiet card in the page's own column: what a corpus is, and the one thing to do next.
+        <div className="humagen-glass flex flex-col items-start gap-1 rounded-aui-lg px-5 pb-6">
+          <Empty title={words.empty}>{words.emptyHint}</Empty>
           {newCorpus}
         </div>
       ) : (

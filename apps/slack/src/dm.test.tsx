@@ -246,3 +246,83 @@ test("a question to a role reaches each person the client maps who holds it, eac
   assert.equal(w.slack.of("chat.postMessage").length, 2, "none sent again");
   assert.equal(w.slack.of("chat.update").length, 1, "only vic's is edited");
 });
+
+/** A result a watch dana asked for sent her, as her inbox reads it. */
+function watchResult(source: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: "m-watch",
+    kind: "result",
+    to: "dana",
+    subject: "Plaud is back: the status page is green <!channel> <https://evil.test|click>",
+    from: { kind: "agent", name: "lead" },
+    at: "2026-10-09T00:40:00Z",
+    updated_at: "2026-10-09T00:40:00Z",
+    severity: "info",
+    state: "open",
+    unread: true,
+    source: { thread: "th-asked", project: "Globex", agent: "lead", ...source },
+    parts: [
+      { id: "p1", type: "text", state: "info", text: "Private details: incident #42 notes." },
+    ],
+  };
+}
+
+test("background work asked in this app's Slack thread replies there, once, with its one line and the session to open", async () => {
+  const w = mapping();
+  const at = { channel: "C0PLAUD", ts: "1700000000.000100", session: "th-checks" };
+  await watching(w, async () => {
+    w.humagen.tellFor("dana", { client: "app", user: USER }, watchResult(), at);
+    await settle();
+    await w.app.idle();
+    // Read in the console later: the reply is neither posted nor edited again.
+    w.humagen.tellFor(
+      "dana",
+      { client: "app", user: USER },
+      { ...watchResult(), unread: false },
+      at,
+    );
+  });
+  const posted = w.slack.of("chat.postMessage");
+  assert.equal(posted.length, 1, "replied once, and not sent to her direct messages");
+  const reply = posted[0];
+  assert.equal(reply?.channel, "C0PLAUD");
+  assert.equal(reply?.thread_ts, "1700000000.000100", "a reply in the thread that asked");
+  const text = JSON.stringify(reply);
+  assert.match(String(reply?.text), new RegExp(`^<@${USER}> Plaud is back`), "it names her");
+  assert.match(text, /https:\/\/humagen\.test\/tasks\/th-checks\|Open Session/);
+  assert.ok(!text.includes("Private details"), "the details stay in her inbox");
+  assert.ok(!text.includes("<!channel>"), "pings nobody else");
+  assert.ok(!text.includes("<https://evil.test"), "links nothing the agent wrote");
+  assert.equal(w.slack.of("chat.update").length, 0, "never edited into the thread");
+});
+
+test("background work asked anywhere else, or whose result is for her alone, reaches her direct messages", async () => {
+  const w = mapping();
+  // The platform sends no thread to reply in: the work was asked in the
+  // console, or its runs read private context. She is told even about a
+  // conversation that is this app's Slack thread she is in: nothing pinged her.
+  const thread = await slackThread(w, true);
+  await watching(w, async () => {
+    w.humagen.tellFor("dana", { client: "app", user: USER }, watchResult({ thread }));
+  });
+  const dms = w.slack.of("chat.postMessage");
+  assert.equal(dms.length, 1);
+  assert.equal(dms[0]?.channel, USER, "posted to her direct messages");
+  assert.equal(dms[0]?.thread_ts, undefined);
+  assert.match(JSON.stringify(dms[0]?.blocks), /Private details/, "with what she was sent");
+});
+
+test("a background result for a person another app maps, or already settled, is posted nowhere", async () => {
+  const w = mapping();
+  const at = { channel: "C0PLAUD", ts: "1700000000.000100" };
+  await watching(w, async () => {
+    w.humagen.tellFor("dana", { client: "other", user: USER }, watchResult(), at);
+    w.humagen.tellFor(
+      "dana",
+      { client: "app", user: USER },
+      { ...watchResult(), id: "m-done", state: "dismissed" },
+      at,
+    );
+  });
+  assert.equal(w.slack.of("chat.postMessage").length, 0);
+});

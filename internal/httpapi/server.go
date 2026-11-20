@@ -109,6 +109,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /api/agents/{name}/action-policy", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.putActionPolicy))))
 	mux.HandleFunc("GET /api/projects/{name}/action-policy", s.authed(auth.ProjectsRead, s.seenProject(s.getActionPolicy)))
 	mux.HandleFunc("PUT /api/projects/{name}/action-policy", s.authed(auth.ProjectsWrite, s.seenProject(s.putActionPolicy)))
+	mux.HandleFunc("GET /api/me/background", s.authed(auth.RunsRead, s.listBackground))
+	mux.HandleFunc("POST /api/me/background/{id}/stop", s.authed(auth.RunsWrite, s.stopBackground))
 	mux.HandleFunc("GET /api/me/action-policy", s.authed("", s.getActionPolicy))
 	mux.HandleFunc("PUT /api/me/action-policy", s.authed("", s.putActionPolicy))
 	mux.HandleFunc("GET /api/pull-requests", s.authed(auth.RunsRead, s.listReviewedPulls))
@@ -1164,10 +1166,11 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request, who auth.Princip
 			if !s.P.InboxNoticeFor(who, n) {
 				// A client's machine hears of a message addressed to
 				// people it maps, once for each of them, to tell them
-				// in Slack.
+				// in Slack: a background result asked in its own
+				// Slack thread, as a reply there.
 				sent = sent[:0]
-				for _, as := range s.P.SurfaceNoticesFor(who, n) {
-					sent = append(sent, inboxNotice{Notice: n, For: &as})
+				for _, one := range s.P.SurfaceNoticesFor(r.Context(), who, n) {
+					sent = append(sent, inboxNotice{Notice: n, For: &one.For, ReplyIn: one.Reply})
 				}
 			}
 			for _, one := range sent {
