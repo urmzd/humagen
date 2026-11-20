@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.147.0 (2026-11-20)
+
+### Features
+
+- **console**: the session workbench, with what a person did by hand sent in their next message (#432) ([6ca4a2f](https://github.com/urmzd/humagen/commit/6ca4a2f573126aa369d7c953eccaa33edcb6fecb))
+- **slack**: keep a turn's plan as a commentable canvas tab in a code channel (#400) ([b37727a](https://github.com/urmzd/humagen/commit/b37727a3d73f9bbb7f57681625f7dbe9fbf4d34c))
+- **api**: continue an imported document (#435) ([07ccb2d](https://github.com/urmzd/humagen/commit/07ccb2d80df94072b95df545840620b785b7e99d))
+
+### Bug Fixes
+
+- **slack**: read the public URL from HUMAGEN_PUBLIC_URL and never link this machine (#441) ([9437e8b](https://github.com/urmzd/humagen/commit/9437e8b5a8a48fa8ae7be4ce71e293ba68678b51))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.146.1...v0.147.0)
+
+
 ## 0.146.0 (2026-11-20)
 
 ### Features
