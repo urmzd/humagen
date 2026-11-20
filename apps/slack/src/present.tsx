@@ -27,6 +27,8 @@ import { type SlackApi, SlackError } from "./slack.ts";
  * `run.tsx`), driven by a live turn instead of a recorded one: a reaction on
  * the message that asked, the session's status, `chat.startStream`, ordered
  * `chat.appendStream` calls, and `chat.stopStream` with the final blocks. A
+ * one-line status above the reply box says what the run is doing while it
+ * works (`assistant.threads.setStatus`), and is cleared when it parks or ends. A
  * turn that outgrows one message continues in the next, in the same thread.
  * Every block and every chunk comes from `@humagen/render-slack`.
  *
@@ -50,6 +52,13 @@ export interface Presented {
   /** Every message the turn used, in order. */
   messages: string[];
 }
+
+/**
+ * The shortest time between two status lines, so a run that moves quickly
+ * from task to task does not send Slack a call for each one. The latest line
+ * is still shown once the time is up.
+ */
+export const STATUS_LINE_EVERY_MS = 2500;
 
 /** Codes that mean the place itself is unusable, so falling back to a plain post would fail too. */
 const NO_PLACE =
@@ -80,6 +89,16 @@ export class Presenter {
    * card there; the rest of the turn continues in a new message.
    */
   private paused: { ts: string; turn: Turn; linked: boolean } | null = null;
+  /** The status line Slack was last told, empty for none, and when. */
+  private said = "";
+  private saidAt = Number.NEGATIVE_INFINITY;
+  /** The status line the turn calls for now, sent when the throttle allows. */
+  private wanted = "";
+  private lineTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Status line calls, one after another, so a clear never lands before an older line. */
+  private lineCalls: Promise<void> = Promise.resolve();
+  /** Slack refused a status line here, so none is sent again. */
+  private lineOff = false;
 
   constructor(
     private readonly slack: SlackApi,
@@ -99,6 +118,10 @@ export class Presenter {
       onCodeChannel?: () => void;
       /** What this app can act on. A bridged outcome offers none of it. */
       capabilities?: TurnCapabilities;
+      /** The clock the status line is throttled by. */
+      now?: () => number;
+      /** The shortest time between two status lines. */
+      statusEvery?: number;
     } = {},
   ) {
     this.native = opts.outcomesOnly ? false : (opts.native ?? true);
@@ -165,13 +188,85 @@ export class Presenter {
     }
   }
 
-  /** Show a status change once: the reaction, then the session. */
+  private now(): number {
+    return this.opts.now?.() ?? Date.now();
+  }
+
+  /**
+   * Ask for a status line above the reply box, or for none with "". A clear, and
+   * the first line after none, are sent at once. A line that replaces another
+   * waits until STATUS_LINE_EVERY_MS has passed since that one was sent, and
+   * only the latest line is sent then.
+   */
+  private async line(text: string) {
+    // The status belongs to a thread: a code channel's session has none.
+    if (this.threadless || this.lineOff) return;
+    this.wanted = text;
+    if (text === this.said) {
+      this.cancelLine();
+      return;
+    }
+    const wait =
+      text && this.said
+        ? this.saidAt + (this.opts.statusEvery ?? STATUS_LINE_EVERY_MS) - this.now()
+        : 0;
+    if (wait <= 0) {
+      this.cancelLine();
+      await this.say();
+      return;
+    }
+    if (this.lineTimer) return;
+    this.lineTimer = setTimeout(() => {
+      this.lineTimer = null;
+      void this.say();
+    }, wait);
+    this.lineTimer.unref?.();
+  }
+
+  private cancelLine() {
+    if (!this.lineTimer) return;
+    clearTimeout(this.lineTimer);
+    this.lineTimer = null;
+  }
+
+  /** Send the wanted status line, after any status line call still in flight. */
+  private say(): Promise<void> {
+    this.lineCalls = this.lineCalls.then(async () => {
+      const text = this.wanted;
+      if (text === this.said || this.lineOff || this.threadless) return;
+      this.said = text;
+      this.saidAt = this.now();
+      try {
+        await this.slack.call("assistant.threads.setStatus", {
+          channel_id: this.target.channel,
+          thread_ts: this.target.threadTs,
+          status: text,
+        });
+      } catch (e) {
+        // A thread that takes no status line refuses every one: the answer is unaffected.
+        this.lineOff = true;
+        this.cancelLine();
+        this.log(`status line skipped: ${(e as Error).message}`);
+      }
+    });
+    return this.lineCalls;
+  }
+
+  /**
+   * Show a status change once: the reaction, then the session. The status
+   * line follows the session while the run works and is cleared before it
+   * when the run parks or ends.
+   */
   private async sync(turn: Turn) {
     if (this.opts.outcomesOnly) return;
-    if (this.shown === turn.status) return;
-    await this.react(turn.status);
-    await this.status(turn);
-    this.shown = turn.status;
+    const text = lifecycle(turn).statusText ?? "";
+    if (!text) await this.line("");
+    if (this.shown !== turn.status) {
+      await this.react(turn.status);
+      await this.status(turn);
+      this.shown = turn.status;
+    }
+    if (text) await this.line(text);
   }
 
   private async open(turn: Turn) {

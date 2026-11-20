@@ -102,6 +102,11 @@ export class FakeSlack implements SlackApi {
     return this.of("agents.sessions.setStatus").map((a) => String(a.status));
   }
 
+  /** Status lines above the reply box in the order they were set, "" for a clear. */
+  get lines(): string[] {
+    return this.of("assistant.threads.setStatus").map((a) => String(a.status));
+  }
+
   /** Everything streamed as answer text, joined. */
   get streamed(): string {
     return this.of("chat.appendStream")

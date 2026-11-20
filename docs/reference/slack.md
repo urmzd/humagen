@@ -410,6 +410,32 @@ A session is a thread in an ordinary channel and the whole channel in a code
 channel. The trigger cannot tell the two apart, so the sink sends the thread
 first and repeats without it when Slack answers `thread_ts_not_allowed`.
 
+### The Slack app's status line
+
+The [Slack app](https://github.com/urmzd/humagen/blob/main/apps/slack/README.md)
+also shows one line above the reply box while a run works, as other Slack
+agents do: "Checking recent deploys", "Testing Plaud alerts". It is the title
+of the step running now, else the plan's title, else "Thinking"
+(`lifecycle` in `packages/render-slack/src/lifecycle.ts`), on one line of at
+most 50 characters, cut with an ellipsis. Slack documents no length of its
+own for it.
+
+`agents.sessions.setStatus` takes only the session state, so the line is set
+with `assistant.threads.setStatus` (`channel_id`, `thread_ts`, `status`),
+which needs the `assistant:write` scope the app's manifest already has
+(`statusLine` in the sandbox's capabilities):
+
+| When | Call |
+|------|------|
+| The run starts, or resumes after a question | The line, at once, after the session is set to `processing`. |
+| The step changes | The new line, only when it differs, and no sooner than 2.5 seconds after the last one. The latest line waiting is sent when the time is up, whether or not anything else happens. |
+| The run waits on a person, completes, fails or stops | `status: ""`, at once and before the session status, so no held line follows it. |
+
+A code channel's session has no thread, so it gets no line. A thread that
+refuses one (for example where Slack keeps the status to assistant threads)
+is logged and not asked again during that turn; the answer never depends on
+it. The connector sets no line.
+
 ## Stopping a run
 
 Slack shows a stop button on a `processing` session because the manifest

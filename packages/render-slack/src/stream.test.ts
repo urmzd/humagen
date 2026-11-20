@@ -1,7 +1,7 @@
 import { emptyTurn, reduce, type Turn } from "@humagen/core";
 import * as fx from "@humagen/core/fixtures";
 import { describe, expect, it } from "vitest";
-import { lifecycle, reactionChanges } from "./lifecycle";
+import { lifecycle, reactionChanges, STATUS_TEXT_CHARS, statusLine } from "./lifecycle";
 import {
   emptyBudget,
   STREAM_MESSAGE_CHARS,
@@ -295,6 +295,29 @@ describe("lifecycle", () => {
       sessionStatus: "suspended",
     });
     expect(lifecycle(fx.failedTurn)).toMatchObject({ reaction: "x", sessionStatus: "active" });
+  });
+
+  it("has a status line only while processing, and nothing to clear it with afterwards", () => {
+    expect(lifecycle(fx.waitingTurn).statusText).toBeUndefined();
+    expect(lifecycle(fx.doneTurn).statusText).toBeUndefined();
+    expect(lifecycle(fx.failedTurn).statusText).toBeUndefined();
+  });
+
+  it("names the running task, else the plan, else says it is thinking", () => {
+    const working: Turn = { ...fx.streamingTurn, tasks: [], planTitle: "Testing Plaud alerts" };
+    expect(lifecycle(working).statusText).toBe("Testing Plaud alerts");
+    expect(lifecycle({ ...working, planTitle: undefined }).statusText).toBe("Thinking");
+    expect(lifecycle({ ...working, planTitle: "  " }).statusText).toBe("Thinking");
+  });
+
+  it("keeps the status line to one short line", () => {
+    expect(statusLine("Checking\n  recent   deploys ")).toBe("Checking recent deploys");
+    const long = statusLine(`Reading ${"the incident timeline ".repeat(10)}`);
+    expect(long.length).toBeLessThanOrEqual(STATUS_TEXT_CHARS);
+    expect(long.endsWith("…")).toBe(true);
+    expect(long).not.toMatch(/\s…$/);
+    const title = "x".repeat(STATUS_TEXT_CHARS);
+    expect(statusLine(title)).toBe(title);
   });
 
   it("swaps reactions on transitions", () => {
