@@ -1,0 +1,22 @@
+---
+// A console screen in its glass bezel, in the reader's theme: the light and
+// the dark take are both given, and CSS shows the one that matches
+// (global.css, .theme-light and .theme-dark). Both are lazy, so the hidden
+// one is never fetched.
+import type { ImageMetadata } from "astro";
+import { Image } from "astro:assets";
+
+type Props = {
+  light: ImageMetadata;
+  dark: ImageMetadata;
+  alt: string;
+  sizes: string;
+  class?: string;
+};
+const { light, dark, alt, sizes, class: extra = "" } = Astro.props;
+const widths = [640, 960, 1280, 1600];
+---
+<div class={`glass site-shot m-0 ${extra}`}>
+  <Image class="theme-light" src={light} alt={alt} widths={widths} sizes={sizes} format="webp" loading="lazy" />
+  <Image class="theme-dark" src={dark} alt={alt} widths={widths} sizes={sizes} format="webp" loading="lazy" />
+</div>

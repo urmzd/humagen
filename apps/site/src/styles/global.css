@@ -445,3 +445,39 @@ a.site-link:hover {
   outline: 2px solid var(--aui-accent);
   outline-offset: 2px;
 }
+
+/*
+ * A screen in the reader's theme. Shot.astro and the hero recording give a
+ * light and a dark take; only the one matching the theme is shown.
+ */
+.site-shot video {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 10;
+  border: 1px solid var(--aui-border);
+  border-radius: var(--radius-aui-lg);
+  background: var(--aui-bg);
+}
+
+.site-shot .theme-dark {
+  display: none;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .site-shot .theme-light {
+    display: none;
+  }
+
+  :root:not([data-theme="light"]) .site-shot .theme-dark {
+    display: block;
+  }
+}
+
+[data-theme="dark"] .site-shot .theme-light {
+  display: none;
+}
+
+[data-theme="dark"] .site-shot .theme-dark {
+  display: block;
+}
