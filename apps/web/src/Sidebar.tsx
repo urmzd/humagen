@@ -7,7 +7,7 @@ import {
   CheckIcon,
   ChevronRightIcon,
   CodeIcon,
-  EllipsisVerticalIcon,
+  EllipsisIcon,
   FolderIcon,
   FolderOpenIcon,
   HistoryIcon,
@@ -94,7 +94,7 @@ export function SidebarItem({
       aria-label={
         open ? undefined : count ? (badgeLabel ?? defaultCopy.sidebar.needYou(label, count)) : label
       }
-      className={`relative flex h-9 pointer-coarse:h-11 items-center gap-2.5 [&>svg]:size-[18px] rounded-aui text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover/60 hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-hover aria-[current=page]:font-medium aria-[current=page]:text-aui-fg ${
+      className={`relative flex h-9 pointer-coarse:h-11 items-center gap-2.5 [&>svg]:size-[18px] [&>svg]:[stroke-width:1.75] rounded-aui text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover/60 hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-hover aria-[current=page]:font-medium aria-[current=page]:text-aui-fg ${
         open ? "px-2.5" : "w-9 justify-center"
       }`}
     >
@@ -410,7 +410,7 @@ function TaskRow({
               setRenaming(false);
             }
           }}
-          className="h-12 w-full rounded-aui border border-aui-accent bg-transparent px-2.5 text-aui-sm text-aui-fg outline-none"
+          className="h-9 w-full rounded-aui border border-aui-accent bg-transparent px-2.5 text-aui-sm text-aui-fg outline-none"
         />
       ) : (
         <a
@@ -426,13 +426,13 @@ function TaskRow({
           data-thread-row={task.id}
           aria-current={current ? "page" : undefined}
           // The age keeps the width the menu button takes, so a title is cut at the same place at rest and under the pointer.
-          className={`relative flex min-h-8 pointer-coarse:min-h-11 w-full items-center gap-2 rounded-aui py-1 pr-2 pl-2.5 text-left text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover/60 hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-hover aria-[current=page]:font-medium aria-[current=page]:text-aui-fg ${current || peek.at ? "[@media(pointer:coarse)]:pr-12" : ""}`}
+          className={`relative flex min-h-9 pointer-coarse:min-h-11 w-full items-center gap-2 rounded-aui py-1 pr-2 pl-2.5 text-left text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover/60 hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-hover aria-[current=page]:font-medium aria-[current=page]:text-aui-fg ${current || peek.at ? "[@media(pointer:coarse)]:pr-12" : ""}`}
         >
           {priority && (
             <span
               title={`${priority} alert`}
               aria-label={`${priority} alert`}
-              className={`absolute inset-y-0 left-0 flex w-2.5 items-center justify-center text-aui-xs ${priority === "urgent" ? "text-aui-bad" : "text-aui-muted"}`}
+              className={`text-aui-xs ${priority === "urgent" ? "text-aui-bad" : "text-aui-muted"}`}
             >
               {priority === "urgent" ? "!" : priority === "normal" ? "•" : "|"}
             </span>
@@ -488,7 +488,7 @@ function TaskRow({
               label={`Manage ${title}`}
               popup="menu"
               className={`${rowAction} opacity-0 group-hover/task:opacity-100 group-focus-within/task:opacity-100 focus-visible:opacity-100 aria-expanded:opacity-100 aria-expanded:bg-aui-hover aria-expanded:text-aui-fg [@media(pointer:coarse)]:size-11 ${current || peek.at ? "[@media(pointer:coarse)]:opacity-100" : "[@media(pointer:coarse)]:pointer-events-none [@media(pointer:coarse)]:group-focus-within/task:pointer-events-auto"}`}
-              button={<EllipsisVerticalIcon size={15} />}
+              button={<EllipsisIcon size={16} />}
             >
               {(close) => (
                 <RowMenu
@@ -649,8 +649,8 @@ function RowMenu({
 /** A small section label, as Claude's sidebar draws Pinned and Recents. */
 function Label({ children, action }: { children: ReactNode; action?: ReactNode }) {
   return (
-    // Solid, in the sidebar's own color: rows pass under it without showing through.
-    <div className="sticky top-0 z-10 flex h-8 items-center justify-between gap-1 bg-[var(--humagen-plane)] pr-2 pl-2">
+    // Solid on a desktop, in the sidebar's own color, so rows pass under it without showing through.
+    <div className="humagen-sidebar-label sticky top-0 z-10 flex h-8 items-center justify-between gap-1 pr-2 pl-2">
       <p className="px-2.5 text-aui-xs text-aui-muted">{children}</p>
       {action}
     </div>
@@ -1144,7 +1144,11 @@ export function Sidebar({
             aria-label={open ? "Close sidebar" : "Open sidebar"}
             className="inline-flex size-8 pointer-coarse:size-11 items-center justify-center rounded-aui text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
           >
-            {open ? <PanelLeftCloseIcon size={18} /> : <PanelLeftOpenIcon size={18} />}
+            {open ? (
+              <PanelLeftCloseIcon size={18} strokeWidth={1.75} />
+            ) : (
+              <PanelLeftOpenIcon size={18} strokeWidth={1.75} />
+            )}
           </button>
         </div>
 
@@ -1169,7 +1173,7 @@ export function Sidebar({
                 type="button"
                 onClick={onSearch}
                 aria-label={nav.search}
-                className={`group/search flex h-9 pointer-coarse:h-11 items-center gap-2.5 rounded-aui text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover/60 hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent ${open ? "px-2.5" : "w-9 justify-center"}`}
+                className={`group/search flex h-9 pointer-coarse:h-11 items-center gap-2.5 [&>svg]:[stroke-width:1.75] rounded-aui text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover/60 hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent ${open ? "px-2.5" : "w-9 justify-center"}`}
               >
                 <SearchIcon size={18} />
                 {open && (
