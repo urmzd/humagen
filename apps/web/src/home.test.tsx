@@ -256,7 +256,7 @@ test("retained Company announcement sits above the greeting and uses one page he
   assert.doesNotMatch(html, /Mark as Read|role="alert"|animate/);
 });
 
-test("Home keeps starters after the input and its disclaimer before session content", () => {
+test("Home keeps starters after the input, before session content, with no disclaimer until a conversation starts", () => {
   const html = renderToStaticMarkup(
     <HomePage greeting="Hello" canRun hasAgents below={<div>Updates fixture</div>}>
       {prompt}
@@ -265,6 +265,6 @@ test("Home keeps starters after the input and its disclaimer before session cont
   );
   assert.ok(html.indexOf("</form>") < html.indexOf("Starter fixture"));
   assert.ok(html.indexOf("Starter fixture") < html.indexOf("Updates fixture"));
-  assert.ok(html.indexOf("humagen-disclaimer") < html.indexOf("Updates fixture"));
+  assert.doesNotMatch(html, /humagen-disclaimer|can make mistakes/);
   assert.doesNotMatch(html, /flex-col-reverse/);
 });
