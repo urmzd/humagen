@@ -19,8 +19,10 @@ tab. Read it before adding one.
 | Words | `packages/components/src/copy.ts` | `workbench`, and one block per tab: `workbenchBrowser`, `workbenchTerminal`, `workbenchChanges`, `workbenchSidechat`, `workbenchSearch` |
 
 `SessionWorkbench` is mounted by `ThreadRoom` in `apps/web/src/Room.tsx`
-where `SessionDetailsPanel` was. With only Details built there is no tab
-strip and the pane is the Details it always was.
+where `SessionDetailsPanel` was. With only Details to show there is no tab
+strip and the pane is the Details it always was. The strip is a component of
+its own (`BenchStrip`), so that it brings the open tab into view when the
+pane draws its tabs after a reload.
 
 ## Tabs and their addresses
 
