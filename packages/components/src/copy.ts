@@ -2199,6 +2199,7 @@ export const defaultCopy = {
     inspect: (name: string, version: number) => `Open ${name}, Version ${version}, in a new tab`,
     tools: "Tool Restrictions",
     noTools: "No Tools",
+    agentTools: "Not Restricted",
     review: "Review Default Skills",
     needsReview: "Default skills need review before another turn can start.",
     title: "Default skills",
@@ -2278,6 +2279,9 @@ export const defaultCopy = {
     tools: "Allowed Tools",
     toolsHint:
       "Exact tool names, one per line. Empty permits no tools. Agent and workspace restrictions still apply.",
+    limitTools: "Limit the tools of a run that uses this skill",
+    toolsUnlimited:
+      "Not limited: a run that uses this skill keeps the agent's own tools. Its supporting files are always readable.",
     save: "Save Draft",
     draft: "Draft",
     published: "Published",
@@ -2298,6 +2302,9 @@ export const defaultCopy = {
       "No listed agent is available in this test project. Choose another test project or review the agent's home.",
     publish: "Publish Version",
     publishNeedsTest: "Complete a readable test for this exact revision before publishing.",
+    publishNeedsCleanTest:
+      "A tool call failed in every finished test of this revision. Open the test, fix the skill and test again before publishing.",
+    testToolFailed: "A tool call failed",
     testPending:
       "A test for this revision is still waiting or running. Open its conversation to review progress.",
     promotion: "Promote to Another Scope",

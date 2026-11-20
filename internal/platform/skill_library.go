@@ -13,6 +13,7 @@ import (
 	"github.com/urmzd/humagen/pkg/library"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/humagen/pkg/signals"
 )
 
 func (p *Platform) LibraryScope(who auth.Principal, scope library.Scope, write bool) error {
@@ -84,8 +85,10 @@ func (p *Platform) draftSkill(who auth.Principal, scope library.Scope, definitio
 		if source.PublishedAt.IsZero() {
 			return library.Revision{}, fmt.Errorf("%w: publish a revision before promoting it", library.ErrConflict)
 		}
-		// Promotion carries exactly the selected revision, never edited content.
+		// Promotion carries exactly the selected revision, never edited
+		// content, with the tool limit it is used with.
 		definition = source.Definition
+		definition.Tools = source.ToolLimit()
 	}
 	action := "draft"
 	if from != nil {
@@ -171,11 +174,24 @@ func (p *Platform) PublishSkill(who auth.Principal, id string, version int) (lib
 	if err != nil {
 		return library.Revision{}, err
 	}
-	passed := false
+	passed, failedTools := false, false
 	for _, id := range r.Tests {
-		if test, err := p.Runs.Get(who.Tenant, id); err == nil && test.Status == runs.Completed && p.Seer(who).Run(test) {
-			passed = true
+		test, err := p.Runs.Get(who.Tenant, id)
+		if err != nil || test.Status != runs.Completed || !p.Seer(who).Run(test) {
+			continue
 		}
+		failed, err := p.skillTestToolFailures(who.Tenant, test.ID)
+		if err != nil {
+			return library.Revision{}, err
+		}
+		if failed == 0 {
+			passed = true
+		} else {
+			failedTools = true
+		}
+	}
+	if !passed && failedTools {
+		return library.Revision{}, fmt.Errorf("%w: a tool call failed in every finished test of this revision; fix the skill and test it again before publishing", library.ErrConflict)
 	}
 	if !passed {
 		return library.Revision{}, fmt.Errorf("%w: a test must finish successfully before publishing", library.ErrConflict)
@@ -191,6 +207,44 @@ func (p *Platform) PublishSkill(who auth.Principal, id string, version int) (lib
 		p.LogAuditCompletionFailure(completion)
 	}
 	return saved, err
+}
+
+// skillTestToolFailures is how many tool calls of a skill's test run failed:
+// a tool the model was told of and not offered, a read refused, a tool that
+// erred. A test passes only when its run completed and this is zero, the two
+// checks every evaluation makes of a run (evals.CheckSignals). A run whose
+// tool call failed may still complete, with an answer that only says it
+// could not do what the skill asks, which is no evidence the skill works.
+func (p *Platform) skillTestToolFailures(tenant, run string) (int, error) {
+	events, err := p.Journal.Events(tenant, []string{run})
+	if err != nil {
+		return 0, err
+	}
+	return signals.Fold(run, events, nil).ToolErrors, nil
+}
+
+// FailedSkillTests is the tests of r its reader may see that completed with
+// a failed tool call (skillTestToolFailures), so do not count as passing.
+// It is read for an unpublished revision only: a published one passed.
+func (p *Platform) FailedSkillTests(who auth.Principal, r library.Revision) ([]string, error) {
+	if !r.PublishedAt.IsZero() {
+		return nil, nil
+	}
+	var out []string
+	for _, id := range r.Tests {
+		test, err := p.Runs.Get(who.Tenant, id)
+		if err != nil || test.Status != runs.Completed || !p.Seer(who).Run(test) {
+			continue
+		}
+		failed, err := p.skillTestToolFailures(who.Tenant, test.ID)
+		if err != nil {
+			return nil, err
+		}
+		if failed > 0 {
+			out = append(out, test.ID)
+		}
+	}
+	return out, nil
 }
 
 // librarySkill resolves the nearest published declaration through the real
@@ -228,11 +282,12 @@ func (p *Platform) librarySkill(tenant, project, person, name string) (pinnedSki
 	return pinnedSkill{}, false
 }
 func pinRevision(r library.Revision) pinnedSkill {
-	tools := slices.Clone(r.Tools)
-	if tools == nil {
-		tools = []string{}
+	pinned := pinnedSkill{Private: r.Scope.Kind == "personal", Name: r.Name, From: r.Scope.Project, Instructions: r.Instructions, Description: r.Description, Version: r.Version}
+	// A revision that does not limit the run's tools pins no limit
+	// (library.Revision.ToolLimit), so the agent's own grants apply.
+	if tools := r.ToolLimit(); tools != nil {
+		pinned.Tools = &tools
 	}
-	pinned := pinnedSkill{Private: r.Scope.Kind == "personal", Name: r.Name, From: r.Scope.Project, Instructions: r.Instructions, Description: r.Description, Version: r.Version, Tools: &tools}
 	if r.Files != nil {
 		pinned.PackageID = r.ID
 		if pkg, err := r.Package(); err == nil {
@@ -252,6 +307,9 @@ func humanSubject(who auth.Principal) string {
 // LibraryView removes private source and test references before returning a
 // revision. A public promotion never reveals the private source's owner.
 func (p *Platform) LibraryView(who auth.Principal, r library.Revision) library.Revision {
+	// Answered as it is used: an imported revision's stored empty list
+	// from before allowed-tools was read is not its limit.
+	r.Tools = r.ToolLimit()
 	if r.OriginRun != "" && !p.Seer(who).RunID(r.OriginRun) {
 		r.OriginRun = ""
 	}

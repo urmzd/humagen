@@ -905,8 +905,8 @@ export interface LibrarySkillDefinition {
   outputs?: string;
   /** Immutable package files. SKILL.md supplies metadata and instructions. Omitted on compact list responses and legacy revisions. */
   files?: LibrarySkillFile[];
-  /** Exact permitted tools, intersected with the agent's grants. Empty permits no tools. */
-  tools: string[];
+  /** The tools a run that uses the skill is limited to, intersected with the agent's grants. Absent does not limit them: the agent's own tools apply. Empty permits no tools. A package's `allowed-tools` narrows the list, and narrows an absent list to the tools it names. A revision drafted with `via: import` is limited only as its `SKILL.md` declares, and is answered so. Whatever the list, a run is offered `skill_file_read` to read the supporting files of the skills it uses. */
+  tools?: string[];
 }
 
 export interface LibrarySkillFile {
@@ -921,7 +921,7 @@ export interface LibraryProvenance {
   version: number;
 }
 
-export type LibrarySkill = LibrarySkillDefinition & { id: string; scope: LibraryScope; version: number; by: string; at: string; published_at?: string; published_by?: string; tests: string[]; from?: LibraryProvenance; via?: "import"; package_hash?: string; origin_run?: string };
+export type LibrarySkill = LibrarySkillDefinition & { id: string; scope: LibraryScope; version: number; by: string; at: string; published_at?: string; published_by?: string; tests: string[]; failed_tests?: string[]; from?: LibraryProvenance; via?: "import"; package_hash?: string; origin_run?: string };
 
 export interface AuditRecord {
   id: string;

@@ -82,9 +82,9 @@ func TestTheFilesTheInstructionsNameAreListedFirst(t *testing.T) {
 	}
 }
 
-// In the turn's text a named file over what file_read returns is listed
+// In the turn's text a named file over what skill_file_read returns is listed
 // first and marked, and the remainder line counts the rest, for both the
-// file_read list and the host one.
+// skill_file_read list and the host one.
 func TestTheTurnTextMarksANamedLargeFileAndCountsTheRest(t *testing.T) {
 	resources := skillResources(200, "z/big.xsd")
 	for i := range resources {
@@ -103,8 +103,8 @@ func TestTheTurnTextMarksANamedLargeFileAndCountsTheRest(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
-		"not execute it:\nskill:many/z/big.xsd (1048576 bytes), over the 131072 bytes file_read returns\nskill:many/a/f000.xsd (10 bytes)",
-		"63 of 201 supporting files are listed: those the instructions name first, then by path. 138 more are not listed; file_read reads any path the instructions name, as skill:many/<path>.",
+		"not execute it:\nskill:many/z/big.xsd (1048576 bytes), over the 131072 bytes skill_file_read returns\nskill:many/a/f000.xsd (10 bytes)",
+		"63 of 201 supporting files are listed: those the instructions name first, then by path. 138 more are not listed; skill_file_read reads any path the instructions name, as skill:many/<path>.",
 		"not execute it:\n/tmp/hf/many/z/big.xsd (1048576 bytes)\n",
 		"138 more are not listed; every file is under /tmp/hf/many/.",
 	} {

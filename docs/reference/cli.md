@@ -457,8 +457,12 @@ library reads the frontmatter the skill standard names (`name`, `description`,
 `license`, `compatibility`, `metadata`, `allowed-tools`). A `SKILL.md` it cannot
 read because of other fields, such as one assistant's `arguments` list, is
 drafted with only those, and the command names each field it left out. Hidden files are left out. A skill is
-drafted with no tools permitted; choose its tools, test it and publish it under
-Library, Skills. A scope holds at most 256 skills: past that the command names
+drafted with no tool list, so it does not limit the tools of a run that uses
+it: the agent's own grants apply. A `SKILL.md` that declares `allowed-tools`
+limits them to the tools it names that the agent holds, and `allowed-tools: ""`
+allows none. Whatever its tools, a run that uses the skill reads its
+supporting files with `skill_file_read`, which needs no grant and no approval.
+Test it and publish it under Library, Skills. A scope holds at most 256 skills: past that the command names
 the ones it left out.
 
 A second import compares each folder with the newest revision the library

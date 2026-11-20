@@ -3,6 +3,7 @@ package library
 import (
 	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -107,6 +108,63 @@ func importDraftsARevisionMarkedAsImported(t *testing.T, open func(*testing.T) s
 	if err != nil || len(rows) != 2 || rows[0].Via != ViaImport || rows[1].Via != "" {
 		t.Fatalf("history = %+v, %v", rows, err)
 	}
+}
+
+// A tool list that is absent stays absent, and an empty one stays empty,
+// through what is stored and read back: absent does not limit a run's tools
+// and empty allows none. An imported revision is limited only as its
+// SKILL.md declares, the empty list an earlier import wrote included; an
+// edit saved in the editor is limited as stored.
+func TestAToolListKeepsAbsentApartFromEmpty(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		s, err := Open(open(t))
+		if err != nil {
+			t.Fatal(err)
+		}
+		scope, now := Scope{Kind: "workspace"}, time.Now()
+		pkg := func(name, allowed string) Definition {
+			return Definition{Skill: projects.Skill{Name: name}, Files: []File{
+				{Path: "SKILL.md", Data: []byte("---\nname: " + name + "\ndescription: Generated fixture\n" + allowed + "---\nRead references/guide.md.\n")},
+				{Path: "references/guide.md", Data: []byte("Generated fixture guide")},
+			}}
+		}
+		cases := []struct {
+			name, allowed string
+			tools         []string
+			imported      bool
+			stored, limit []string
+		}{
+			{"now", "", nil, true, nil, nil},
+			{"before", "", []string{}, true, []string{}, nil},
+			{"declared", "allowed-tools: file_read file_read\n", nil, true, []string{"file_read"}, []string{"file_read"}},
+			{"declared-none", "allowed-tools: \"\"\n", nil, true, []string{}, []string{}},
+			{"edited", "", []string{}, false, []string{}, []string{}},
+			{"edited-open", "", nil, false, nil, nil},
+		}
+		for _, c := range cases {
+			d := pkg(c.name, c.allowed)
+			d.Tools = c.tools
+			if c.imported {
+				_, err = s.Import("acme", "ada", scope, d, 0, now)
+			} else {
+				_, err = s.Draft("acme", "ada", scope, d, 0, nil, now)
+			}
+			if err != nil {
+				t.Fatalf("%s: %v", c.name, err)
+			}
+			rows, err := s.History("acme", scope, c.name)
+			if err != nil || len(rows) != 1 {
+				t.Fatalf("%s: %v", c.name, err)
+			}
+			r := rows[0]
+			if (r.Tools == nil) != (c.stored == nil) || !slices.Equal(r.Tools, c.stored) {
+				t.Errorf("%s stored %#v, want %#v", c.name, r.Tools, c.stored)
+			}
+			if limit := r.ToolLimit(); (limit == nil) != (c.limit == nil) || !slices.Equal(limit, c.limit) {
+				t.Errorf("%s limits to %#v, want %#v", c.name, limit, c.limit)
+			}
+		}
+	})
 }
 
 // A record this release cannot read, such as one a later release wrote past

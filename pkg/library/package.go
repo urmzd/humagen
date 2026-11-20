@@ -137,7 +137,9 @@ func maxFileBytes(path string) int {
 }
 
 // Normalize makes SKILL.md authoritative for metadata and instructions.
-// Frontmatter only narrows the explicit platform tool selection.
+// Frontmatter only narrows the platform tool selection: an explicit one to
+// the tools allowed-tools names, and an absent one, which limits nothing,
+// to those tools.
 func (d Definition) Normalize() (Definition, error) {
 	if d.Files == nil {
 		return d, nil
@@ -147,10 +149,29 @@ func (d Definition) Normalize() (Definition, error) {
 		return Definition{}, err
 	}
 	d.Description, d.Instructions = pkg.Description, pkg.Body
-	if pkg.AllowedTools != nil {
+	switch {
+	case pkg.AllowedTools == nil:
+	case d.Tools == nil:
+		d.Tools = declaredTools(pkg.AllowedTools)
+	default:
 		d.Tools = slices.DeleteFunc(slices.Clone(d.Tools), func(tool string) bool { return !slices.Contains(pkg.AllowedTools, tool) })
 	}
 	return d, nil
+}
+
+// declaredTools is an allowed-tools list as a tool selection: each name
+// once, in the order declared; nil stays nil, and an empty list stays empty.
+func declaredTools(allowed []string) []string {
+	if allowed == nil {
+		return nil
+	}
+	out := []string{}
+	for _, tool := range allowed {
+		if !slices.Contains(out, tool) {
+			out = append(out, tool)
+		}
+	}
+	return out
 }
 
 // PackageFiles exposes old instruction-only revisions as a standard package.

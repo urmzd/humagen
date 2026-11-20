@@ -1207,6 +1207,7 @@ paths:
       operationId: publishLibrarySkill
       tags: [projects]
       summary: Publish a successfully tested immutable revision
+      description: A revision is published when a test of it the caller may read completed with no failed tool call. Otherwise the answer is 409, and it says when every finished test had a failed tool call.
       x-permission: projects:write
       parameters:
         - {name: id, in: path, required: true, schema: {type: string}}
@@ -12455,7 +12456,7 @@ components:
         chat_agent: {type: string}
     LibrarySkillDefinition:
       type: object
-      required: [name, description, tools]
+      required: [name, description]
       properties:
         name: {type: string, maxLength: 64}
         description: {type: string, maxLength: 1024}
@@ -12470,7 +12471,7 @@ components:
           maxItems: 256
           items: {$ref: '#/components/schemas/LibrarySkillFile'}
         tools:
-          description: Exact permitted tools, intersected with the agent's grants. Empty permits no tools.
+          description: "The tools a run that uses the skill is limited to, intersected with the agent's grants. Absent does not limit them: the agent's own tools apply. Empty permits no tools. A package's `allowed-tools` narrows the list, and narrows an absent list to the tools it names. A revision drafted with `via: import` is limited only as its `SKILL.md` declares, and is answered so. Whatever the list, a run is offered `skill_file_read` to read the supporting files of the skills it uses."
           type: array
           maxItems: 32
           items: {type: string, maxLength: 128}
@@ -12504,6 +12505,11 @@ components:
             published_at: {type: string, format: date-time}
             published_by: {type: string}
             tests:
+              type: array
+              maxItems: 10
+              items: {type: string}
+            failed_tests:
+              description: "Tests of an unpublished revision, among those the reader may read, whose run completed with a failed tool call: a tool the model was told of and not offered, a refused read, or a tool that erred. Such a test does not count as passing, so it does not let the revision be published. Only `GET /api/library/skills/{id}` carries it; absent when there are none."
               type: array
               maxItems: 10
               items: {type: string}

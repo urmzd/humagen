@@ -49,7 +49,7 @@ function definitionOf(row: LibrarySkill): LibrarySkillDefinition {
     name: row.name,
     description: row.description,
     instructions: row.instructions,
-    tools: [...row.tools],
+    tools: row.tools ? [...row.tools] : undefined,
     inputs: row.inputs ?? "",
     outputs: row.outputs ?? "",
     argument_hint: row.argument_hint ?? "",
@@ -133,7 +133,10 @@ export function SkillsLibrary({
   const [usesFailed, setUsesFailed] = useState(false);
   const [testPassed, setTestPassed] = useState(false);
   const [testPending, setTestPending] = useState(false);
-  const [testUses, setTestUses] = useState<{ id: string; thread: string; agent: string }[]>([]);
+  const [testFailed, setTestFailed] = useState(false);
+  const [testUses, setTestUses] = useState<
+    { id: string; thread: string; agent: string; failed: boolean }[]
+  >([]);
   const [testProject, setTestProject] = useState("");
   const [destination, setDestination] = useState<LibraryScope>({ kind: "project", project: "" });
   const [problem, setProblem] = useState<string | null>(null);
@@ -229,24 +232,45 @@ export function SkillsLibrary({
     let timer: ReturnType<typeof setTimeout> | undefined;
     setTestUses([]);
     setTestPassed(false);
+    setTestFailed(false);
     setTestPending(false);
     const read = async () => {
       if (!selected) return;
-      const results = await Promise.allSettled(
-        selected.tests.slice(0, 10).map((id) => api.run(id)),
-      );
+      const [results, history] = await Promise.all([
+        Promise.allSettled(selected.tests.slice(0, 10).map((id) => api.run(id))),
+        // The server judges each finished test: one with a failed tool call
+        // does not pass. The history says which, as of now.
+        selected.published_at
+          ? Promise.resolve([] as LibrarySkill[])
+          : api.librarySkill(selected.id).catch(() => [] as LibrarySkill[]),
+      ]);
       if (!live) return;
+      const failed =
+        history.find((row) => row.version === selected.version)?.failed_tests ??
+        selected.failed_tests ??
+        [];
       const readable = results.flatMap((result) =>
         result.status === "fulfilled" ? [result.value] : [],
       );
-      setTestPassed(readable.some((run) => run.status === "completed"));
+      const finished = readable.filter((run) => run.status === "completed");
+      setTestPassed(finished.some((run) => !failed.includes(run.id)));
+      setTestFailed(finished.some((run) => failed.includes(run.id)));
       const pending = readable.some((run) =>
         ["accepted", "running", "parked"].includes(run.status),
       );
       setTestPending(pending);
       setTestUses(
         readable.flatMap((run) =>
-          run.thread ? [{ id: run.id, thread: run.thread, agent: run.agent }] : [],
+          run.thread
+            ? [
+                {
+                  id: run.id,
+                  thread: run.thread,
+                  agent: run.agent,
+                  failed: failed.includes(run.id),
+                },
+              ]
+            : [],
         ),
       );
       if (pending) timer = setTimeout(() => void read(), 1000);
@@ -494,7 +518,8 @@ export function SkillsLibrary({
         name: folder.name,
         description: existing?.description ?? "",
         instructions: existing?.instructions ?? "",
-        tools: existing?.tools ?? [],
+        // A folder limits nothing unless its SKILL.md declares allowed-tools.
+        tools: existing?.tools,
         files: folder.files,
       });
       setCreating(true);
@@ -823,24 +848,43 @@ export function SkillsLibrary({
                   </FileBrowser>
                   <details className="mt-5 text-sm">
                     <summary className="cursor-pointer py-2 font-medium">{copy.tools}</summary>
-                    <label className="mt-2 flex flex-col gap-2">
-                      <span className="text-muted-foreground">{copy.toolsHint}</span>
-                      <Textarea
-                        aria-label={copy.tools}
+                    <label className="mt-2 flex items-center gap-2">
+                      <input
+                        type="checkbox"
                         disabled={!mayWrite || busy}
-                        value={definition.tools.join("\n")}
+                        checked={definition.tools !== undefined}
                         onChange={(event) => {
                           setDefinition({
                             ...definition,
-                            tools: event.target.value
-                              .split("\n")
-                              .map((tool) => tool.trim())
-                              .filter(Boolean),
+                            tools: event.target.checked ? [] : undefined,
                           });
                           setDirty(true);
                         }}
                       />
+                      {copy.limitTools}
                     </label>
+                    {definition.tools === undefined ? (
+                      <p className="mt-2 text-muted-foreground">{copy.toolsUnlimited}</p>
+                    ) : (
+                      <label className="mt-2 flex flex-col gap-2">
+                        <span className="text-muted-foreground">{copy.toolsHint}</span>
+                        <Textarea
+                          aria-label={copy.tools}
+                          disabled={!mayWrite || busy}
+                          value={definition.tools.join("\n")}
+                          onChange={(event) => {
+                            setDefinition({
+                              ...definition,
+                              tools: event.target.value
+                                .split("\n")
+                                .map((tool) => tool.trim())
+                                .filter(Boolean),
+                            });
+                            setDirty(true);
+                          }}
+                        />
+                      </label>
+                    )}
                   </details>
                   {!mayWrite && (
                     <p className="mt-3 text-sm text-muted-foreground">{copy.readOnly}</p>
@@ -967,7 +1011,9 @@ export function SkillsLibrary({
                           {copy.publish}
                         </Button>
                         {!testPassed && (
-                          <p className="text-sm text-muted-foreground">{copy.publishNeedsTest}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {testFailed ? copy.publishNeedsCleanTest : copy.publishNeedsTest}
+                          </p>
                         )}
                       </div>
                       {testUses.length > 0 && (
@@ -986,6 +1032,9 @@ export function SkillsLibrary({
                               >
                                 {copy.testRun}
                               </a>
+                              {run.failed && (
+                                <Badge variant="destructive">{copy.testToolFailed}</Badge>
+                              )}
                             </li>
                           ))}
                         </ul>

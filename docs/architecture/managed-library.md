@@ -127,22 +127,65 @@ refuses the run with the words that refuse the message. A draft, another
 project's skill or another person's own skill is never used.
 
 Existing test, publish, promotion and agent-binding workflows remain. A package
-never grants tools through frontmatter. `allowed-tools` can only narrow the
-explicit tool selection, which is intersected with agent grants. The admitted
-run pins the selected revision, hash and resource manifest. Supporting text can
-be read through the existing gated `file_read` tool with `skill:<name>/<path>`.
-What `file_read` returns enters the model's context, so it reads a supporting
+never grants tools through frontmatter. A revision's `tools` is the list a run
+that uses it is limited to, intersected with the agent's own grants:
+
+| `tools` | A run that uses the skill |
+|---|---|
+| absent | keeps the agent's own tools |
+| `[]` | is offered none of them |
+| a list | is offered those the agent holds |
+
+A run that uses several skills is limited to what every limiting skill
+allows. `allowed-tools` narrows the list, and narrows an absent list to the
+tools it names. The editor shows an absent list as not limited, and its
+"Limit the tools" box sets an empty one. `humagen import skills` and a folder
+opened in the editor send no list, so an imported skill limits a run only as
+its `SKILL.md` declares; `allowed-tools: ""` allows none. A revision with
+`via: import` is read that way however it was stored: an import before this
+release wrote `[]` whatever the folder said, which withdrew every tool,
+`file_read` included, from a run that used the skill, and no person chose it.
+A choice saved in the editor is a revision without `via: import` and is read
+as stored. Promotion carries the limit a revision is used with.
+
+The admitted run pins the selected revision, hash and resource manifest. A
+run whose skills have supporting files is offered `skill_file_read`, whatever
+its tools are limited to and whatever the agent is granted, and the turn's
+text names it with each file's `skill:<name>/<path>`: the text never names a
+tool the run lacks (`TestTheTurnTextAndTheTurnsToolsAgree`). It is not a
+grant: no agent or skill names it, and it reads only the packages the run was
+admitted with, in the run's tenant and at the pinned hash. A path outside a
+package, another skill's file, a conversation file and a missing file are
+each refused with the reason. It discloses nothing the person did not choose
+for the turn, whose instructions are already in its text, so neither a
+skill's tool list nor the action policy holds it and nobody is asked, in a
+skill's test too; a paused agent or workspace stops it, and each call is
+recorded on the run as any tool call is. A turn reads at most 64 files with
+it. `file_read` still reads `skill:` paths for an agent granted it, under its
+grant and the action policy.
+
+What a read returns enters the model's context, so it reads a supporting
 file of at most 128 KiB: a larger one is listed with its size and the words
-"over the 131072 bytes file_read returns", and reading it is refused. A
+"over the 131072 bytes skill_file_read returns", and reading it is refused. A
 supporting file's bytes are never put into the turn's text. The turn's text
 lists at most 63 supporting files of a skill, as many as a package of the
 earlier 64 files held, so the list costs a model no more than it did. The
 files `SKILL.md`'s instructions name by their exact path come first, then the
 rest by path; a listed file over 128 KiB is marked as above. Past 63 the text
 says how many are listed and how many are not, and tells a native model that
-`file_read` reads any path the instructions name. `file_read` reads any file
+`skill_file_read` reads any path the instructions name. It reads any file
 of the pinned package, listed or not, and a coding agent's directory holds
 every file.
+
+A skill's test passes when its run completed and none of its tool calls
+failed, the two checks every evaluation makes of a run. A tool the model was
+told of and not offered, a refused read or a tool that erred is a failed
+call: the run may still complete, with an answer that says it could not do
+what the skill asks. Publishing needs one passing test of the revision.
+`GET /api/library/skills/{id}` names an unpublished revision's finished tests
+with a failed tool call under `failed_tests`, the console marks each with "A
+tool call failed" and keeps Publish off, and a publish with no passing test
+answers 409 saying a tool call failed in every finished test.
 
 A skill record this release cannot read, such as one a later release wrote
 past these bounds, fails only itself: `GET /api/library/skills` lists the
@@ -154,7 +197,7 @@ missing files and cross-tenant references are refused. Reading a script does not
 execute it. Private packages retain the existing publication classification.
 
 A provider a program adds may run its turn in a program of its own on the
-host, which is offered no platform tool, so `file_read` cannot serve it. No
+host, which is offered no platform tool, so `skill_file_read` cannot serve it. No
 provider Humagen ships does. For a turn on one, the same pinned package, read in the run's tenant and checked
 against the pinned hash, is written to a directory of that turn's own on the
 host (`pkg/skillfiles`), and the turn's text names each supporting file by its
@@ -165,7 +208,7 @@ revision, binary ones included, read only, and is removed when the turn
 returns. A pin that names another tenant's package, another version, or a
 file outside its package refuses the turn, as does a directory that cannot
 be written. A provider declares that its program reads host files
-(`skillfiles.HostReader`); every other model keeps `file_read`. The files
+(`skillfiles.HostReader`); every other model keeps `skill_file_read`. The files
 are placed when any model of the turn's chain, the one it starts on or a
 fallback, is such a provider, and a chain that also holds a native model is
 told both the `skill:` paths and the host paths.

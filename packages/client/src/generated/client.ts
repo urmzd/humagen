@@ -1407,7 +1407,7 @@ visible older history pages on reset.
     });
   }
 
-  /** Publish a successfully tested immutable revision */
+  /** A revision is published when a test of it the caller may read completed with no failed tool call. Otherwise the answer is 409, and it says when every finished test had a failed tool call. */
   async publishLibrarySkill(id: string, version: number, options?: RequestOptions): Promise<LibrarySkill> {
     let path = "/api/library/skills/{id}/versions/{version}/publish";
     path = path.replace("{id}", encodeURIComponent(String(id)));

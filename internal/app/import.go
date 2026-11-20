@@ -1539,7 +1539,9 @@ var readSkillFile = func(path string, max int64) ([]byte, error) {
 // from the bytes read, so a file that grew since it was listed is still read
 // no further than the bound.
 func readSkillFolder(dir, name string) (library.Definition, error) {
-	def := library.Definition{Tools: []string{}}
+	// No tool list: the revision limits a run's tools only as far as its
+	// SKILL.md declares allowed-tools (library.Definition.Normalize).
+	def := library.Definition{}
 	def.Name = name
 	root := filepath.Join(dir, name)
 	// A store may keep a skill in a folder named otherwise than the skill.

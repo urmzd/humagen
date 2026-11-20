@@ -61,10 +61,16 @@ func (s Scope) Valid() bool {
 
 type Definition struct {
 	projects.Skill
-	Inputs  string   `json:"inputs,omitempty"`
-	Outputs string   `json:"outputs,omitempty"`
-	Tools   []string `json:"tools"`
-	Files   []File   `json:"files,omitempty"`
+	Inputs  string `json:"inputs,omitempty"`
+	Outputs string `json:"outputs,omitempty"`
+	// Tools are the tools a run that uses the skill is limited to, within
+	// the agent's own grants: absent (nil) does not limit them, an empty
+	// list allows none, and a list allows those it names that the agent
+	// holds. A run that uses several skills is limited to what every
+	// limiting skill allows. Nil is kept apart from empty in what is stored
+	// and answered (omitzero).
+	Tools []string `json:"tools,omitzero"`
+	Files []File   `json:"files,omitempty"`
 }
 
 func (d Definition) Valid() bool {
@@ -113,6 +119,26 @@ type Revision struct {
 	PublishedBy string      `json:"published_by,omitempty"`
 	Tests       []string    `json:"tests"`
 	From        *Provenance `json:"from,omitempty"`
+}
+
+// ToolLimit is the tools a run that uses r is limited to (Definition.Tools),
+// nil when r does not limit them.
+//
+// A revision drafted from a skill folder (ViaImport) is limited by what its
+// SKILL.md declares in allowed-tools, nil when it declares nothing. An
+// import before this release wrote an empty list whatever the folder said,
+// which records no one's choice and withdrew every tool from a run that
+// used the skill, so that stored list is not read. A person's own choice is
+// a revision saved in the editor, never ViaImport, and is read as stored.
+func (r Revision) ToolLimit() []string {
+	if r.Via != ViaImport || r.Files == nil {
+		return slices.Clone(r.Tools)
+	}
+	pkg, err := r.Package()
+	if err != nil {
+		return slices.Clone(r.Tools)
+	}
+	return declaredTools(pkg.AllowedTools)
 }
 
 func clone(r Revision) Revision {
@@ -274,9 +300,6 @@ func (s *Store) draft(tenant, by string, scope Scope, d Definition, expected int
 	}
 	if tenant == "" || by == "" || !scope.Valid() || !d.Valid() || at.IsZero() || len(trustedOrigin) > 1 || len(trustedOrigin) == 1 && len(trustedOrigin[0]) > 128 {
 		return Revision{}, ErrInvalid
-	}
-	if d.Tools == nil {
-		d.Tools = []string{}
 	}
 	var out Revision
 	err = state.Retry(func() error {
