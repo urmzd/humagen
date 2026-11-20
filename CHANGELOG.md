@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.157.0 (2026-11-20)
+
+### Features
+
+- **slack**: show what the agent is doing above the reply box (stack 2/6) (#453) ([215ed9a](https://github.com/urmzd/humagen/commit/215ed9aa313d56b78ffddf9b8ff0229845c2c54e))
+- **web**: a cleaner console on a phone (stack 1/6) (#452) ([6a062bd](https://github.com/urmzd/humagen/commit/6a062bd9e04e4b72f0115079803cfed24a45c383))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.156.0...v0.157.0)
+
+
 ## 0.156.0 (2026-11-20)
 
 ### Features
