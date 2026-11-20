@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.149.0 (2026-11-20)
+
+### Features
+
+- **console**: consolidated console review: alerts, plugins and apps, workbench, composer, sidebar (#436) ([3880e77](https://github.com/urmzd/humagen/commit/3880e772173e6e5a4553331ec9cea1ff442465a4))
+- **slack**: a code channel shows the run in its context bar and takes the conversation's title (#399) ([6846977](https://github.com/urmzd/humagen/commit/684697787af2f44dd424f6c49039d7bcbb4e5497))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.148.0...v0.149.0)
+
+
 ## 0.146.0 (2026-11-20)
 
 ### Features

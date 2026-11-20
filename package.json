@@ -2,7 +2,7 @@
   "name": "humagen",
   "private": true,
   "type": "module",
-  "version": "0.146.0",
+  "version": "0.149.0",
   "packageManager": "pnpm@11.6.0",
   "scripts": {
     "build": "turbo run build",
