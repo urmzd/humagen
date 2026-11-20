@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.155.0 (2026-11-20)
+
+### Features
+
+- **background**: watches, goals and background tasks that notify the person (#447) ([239bff9](https://github.com/urmzd/humagen/commit/239bff948a15f04297b7769e8a748e10441eb565))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.154.0...v0.155.0)
+
+
 ## 0.153.0 (2026-11-20)
 
 ### Features
