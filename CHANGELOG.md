@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.143.1 (2026-11-20)
+
+### Bug Fixes
+
+- **import**: name what an agent file's import does not carry (#392) ([1dd4c64](https://github.com/urmzd/humagen/commit/1dd4c64e01c2f8981780aee6a246f35ea001daa6))
+- **console**: align the sidebar's session rows and make them links (#398) ([bce095f](https://github.com/urmzd/humagen/commit/bce095ffad9de0fc26423129a98573be2cc14b6c))
+
+### Misc
+
+- **import**: stop two imports racing on the test's own T (#402) ([8c3fffc](https://github.com/urmzd/humagen/commit/8c3fffce496ed814376e2723e6e790b089cbc474))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.143.0...v0.143.1)
+
+
 ## 0.143.0 (2026-11-20)
 
 ### Features
