@@ -85,7 +85,7 @@ export const Connections = lazyPage(
   () => import("./Connections.tsx"),
   (m) => m.Connections,
   {
-    title: () => "Connections",
+    title: () => "Plugins",
   },
 );
 export const YourConnections = lazyPage(

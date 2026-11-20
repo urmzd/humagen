@@ -2940,6 +2940,20 @@ export const defaultCopy = {
     doneWhen: (condition: string) => `Done when: ${condition}`,
     updated: (n: number) => `Updated ${n} ${n === 1 ? "alert" : "alerts"}.`,
   },
+  /** Plugins, in your settings: what you add for your own work. Apps are the workspace's, on a page of their own. */
+  plugins: {
+    title: "Plugins",
+    lede: "Yours alone. They are used when you ask directly; an agent uses only what is set on that agent.",
+    mcps: "MCPs",
+    skills: "Skills",
+    skillsLede: "Your personal skills.",
+    manageSkills: "Manage Skills",
+    noSkills: "You have no personal skills yet.",
+    apps: {
+      title: "Apps",
+      lede: "Installed once for the workspace by an administrator. Everyone in the workspace can then use them.",
+    },
+  },
   /** The tag every message carries, in the list and above its parts. */
   partKind: {
     text: "Note",
@@ -3695,7 +3709,7 @@ export const defaultCopy = {
     review: "Review",
     whoAnswers: "Who answers you",
     dmRouting: "In direct messages, send my questions to",
-    connections: "Connections",
+    connections: "Plugins",
     manageAll: "Manage all",
     connectedTo: (account: string) => `Connected to ${account}`,
     connectedHere: "Connected for this workspace.",

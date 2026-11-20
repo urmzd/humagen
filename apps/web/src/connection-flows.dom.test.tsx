@@ -599,7 +599,7 @@ function offered(over: Record<string, (body: unknown) => unknown> = {}) {
   };
 }
 
-test("Connections is Apps and MCPs, each item once, with what is connected on its own card", async () => {
+test("Plugins is MCPs and your skills, Apps is the workspace's installs, and each item shows once", async () => {
   net = stubFetch(
     offered({
       "GET /api/clients": () => ({
@@ -622,13 +622,23 @@ test("Connections is Apps and MCPs, each item once, with what is connected on it
       }),
     }),
   );
-  render(<Connections canConnect canWrite />);
+  const workspace = render(<Connections scope="apps" canConnect canWrite />);
+  assert.ok(await screen.findByRole("heading", { name: "Apps", level: 1 }));
   const apps = await screen.findByRole("list", { name: "Apps" });
-  const mcps = screen.getByRole("list", { name: "MCPs" });
   const slack = await within(apps).findByRole("listitem", { name: "Slack" });
   await within(slack).findByText("Installed");
   assert.ok(within(slack).getByRole("button", { name: "Manage" }));
   assert.equal(screen.getAllByRole("listitem", { name: "Slack" }).length, 1, "Slack appears once");
+  // A person's plugins are not the workspace's page.
+  assert.equal(screen.queryByRole("list", { name: "MCPs" }), null);
+  workspace.unmount();
+
+  render(<Connections canConnect canWrite />);
+  assert.ok(await screen.findByRole("heading", { name: "Plugins", level: 1 }));
+  const mcps = await screen.findByRole("list", { name: "MCPs" });
+  // The workspace's apps are an administrator's page, not a person's plugin.
+  assert.equal(screen.queryByRole("list", { name: "Apps" }), null);
+  assert.equal(screen.queryByRole("listitem", { name: "Slack" }), null);
   await within(mcps).findByRole("listitem", { name: "my-tools" });
   assert.ok(within(mcps).getByRole("listitem", { name: "Notion" }));
   // Data sources are added inside a corpus, not here; Add MCP replaces a card for any server.
@@ -730,7 +740,8 @@ test("an empty MCP group is its title and Add MCP; without the right to connect 
   net.restore();
   net = stubFetch(offered(appsOnly));
   render(<Connections canConnect={false} />);
-  await screen.findByRole("region", { name: "Apps" });
+  await screen.findByRole("heading", { name: "Plugins", level: 1 });
+  await waitFor(() => assert.ok(net?.seen.some((r) => r.path === "/api/me/context")));
   assert.equal(screen.queryByRole("region", { name: "MCPs" }), null);
 });
 
@@ -792,7 +803,7 @@ test("the GitHub app's sheet holds the rules that start a session, saved on the 
       }),
     }),
   );
-  render(<Connections canConnect canWrite />);
+  render(<Connections scope="apps" canConnect canWrite />);
   const card = await screen.findByRole("listitem", { name: "GitHub" });
   fireEvent.click(within(card).getByRole("button", { name: "Manage" }));
   const dialog = await sheet("GitHub");

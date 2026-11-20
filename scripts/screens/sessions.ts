@@ -264,17 +264,19 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
       },
     },
     {
+      // Apps are the workspace's installs, on an administrator's page of their own.
       name: "connections",
-      path: "/connections",
+      path: "/settings/apps",
       act: async (page) => {
-        await page.getByRole("heading", { name: "Connections", exact: true }).waitFor();
+        await page.getByRole("heading", { name: "Apps", exact: true }).waitFor();
         await page.getByRole("list", { name: "Apps", exact: true }).waitFor();
       },
     },
     {
       name: "connections-mcps",
-      path: "/connections",
+      path: "/settings/plugins",
       act: async (page) => {
+        await page.getByRole("heading", { name: "Plugins", exact: true }).waitFor();
         await page.getByRole("list", { name: "MCPs", exact: true }).waitFor();
       },
     },
