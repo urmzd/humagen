@@ -37,4 +37,5 @@ export HUMAGEN_CLIENT=""
 # Optional: the agent that answers when a message names none and there is no client
 export HUMAGEN_DEFAULT_AGENT=""
 # Optional: where people reach the console, for links to published files
+# An address on this machine (localhost, 127.0.0.1) is ignored: nobody in Slack can open it
 export HUMAGEN_PUBLIC_URL=""

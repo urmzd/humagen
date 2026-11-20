@@ -6,6 +6,7 @@ import {
   formatArgs,
   formatResult,
   lineDiff,
+  paragraphsAtSteps,
   shortAddress,
   timeline,
   toolFailed,
@@ -274,5 +275,139 @@ describe("turnChanges", () => {
       // Edits add up.
       ["src/a.go", 2, 2, ["3", "5"]],
     ]);
+  });
+});
+
+describe("paragraphsAtSteps", () => {
+  const at = (...positions: number[]) => positions.map((p) => ({ at: p }));
+
+  it("breaks the words into paragraphs where a step came between them", () => {
+    const text = "I'll look it up on the web.Here are three changes.";
+    expect(paragraphsAtSteps(text, at(27))).toBe(
+      "I'll look it up on the web.\n\nHere are three changes.",
+    );
+    // Spaces or a single line break at the step become the break.
+    expect(paragraphsAtSteps("Before. \nAfter.", at(7))).toBe("Before.\n\nAfter.");
+  });
+
+  it("adds nothing where the words already break, before any words, or before more words come", () => {
+    expect(paragraphsAtSteps("Before.\n\nAfter.", at(7))).toBe("Before.\n\nAfter.");
+    expect(paragraphsAtSteps("After.", at(0))).toBe("After.");
+    expect(paragraphsAtSteps("Before.", at(7))).toBe("Before.");
+  });
+
+  it("never breaks inside a code fence", () => {
+    const text = "```sh\nmake\nmake test\n```";
+    expect(paragraphsAtSteps(text, at(10))).toBe(text);
+  });
+
+  it("lays out a prefix as a prefix of the whole, so a stream can append to it", () => {
+    const text = "I'll look it up.Here it is. Then I checked.And it holds.";
+    const steps = at(16, 43);
+    const whole = paragraphsAtSteps(text, steps);
+    for (let n = 0; n <= text.length; n++) {
+      expect(whole.startsWith(paragraphsAtSteps(text.slice(0, n), steps).trimEnd())).toBe(true);
+    }
+  });
+});
+
+describe("paragraphsAtSteps, where a break would harm", () => {
+  const lay = (text: string, ...at: number[]) =>
+    paragraphsAtSteps(
+      text,
+      at.map((a) => ({ at: a })),
+    );
+
+  it("makes exactly one blank line when the words already end in a newline", () => {
+    expect(lay("Let me check.\nFound it.", 14)).toBe("Let me check.\n\nFound it.");
+    expect(lay("Let me check.\r\nFound it.", 15)).not.toMatch(/\n\s*\n\s*\n/);
+  });
+
+  it("keeps a numbered list, a bulleted list, a quote or a table going on after the step together", () => {
+    expect(lay("1. one\n2. two", 7)).toBe("1. one\n2. two");
+    expect(lay("- one\n- two", 6)).toBe("- one\n- two");
+    expect(lay("> quoted line\n> continues", 14)).toBe("> quoted line\n> continues");
+    const table = "| a | b |\n|---|---|\n| 1 | 2 |\n| 3 | 4 |";
+    expect(lay(table, 30)).toBe(table);
+    // A list followed by words that do not go on with it still gets its break.
+    expect(lay("- one\nDone.", 6)).toBe("- one\n\nDone.");
+  });
+
+  it("tracks a fence by its character and length", () => {
+    // A backtick line inside a tilde fence does not close it.
+    const tilde = "~~~\n```\nstill code\n~~~\nafter";
+    expect(lay(tilde, 9)).toBe(tilde);
+    // A shorter fence inside a longer one does not close it.
+    const longer = "````md\n```\ninner\n```\nstill code\n````";
+    expect(lay(longer, 23)).toBe(longer);
+    // After the real close, the break is made.
+    expect(lay("~~~\ncode\n~~~\nAfter.", 12)).toBe("~~~\ncode\n~~~\n\nAfter.");
+  });
+
+  it("never breaks inside a link, inline code, a table row or a word: at the line's end, or not at all", () => {
+    expect(lay("see [the docs](https://x.test/d) now\nNext.", 9)).toBe(
+      "see [the docs](https://x.test/d) now\n\nNext.",
+    );
+    expect(lay("see [the docs](https://x.test/d) now", 9)).toBe(
+      "see [the docs](https://x.test/d) now",
+    );
+    expect(lay("run `go test` now\nNext.", 7)).toBe("run `go test` now\n\nNext.");
+    expect(lay("| a | b |\n|---|---|\n| 1 | 2 |", 24)).toBe("| a | b |\n|---|---|\n| 1 | 2 |");
+    expect(lay("hello world", 3)).toBe("hello world");
+  });
+});
+
+describe("paragraphsAtSteps, generated transcripts (ported from the reviewer of #393)", () => {
+  function rnd(seed: number) {
+    let x = seed >>> 0 || 1;
+    return () => {
+      x ^= x << 13;
+      x ^= x >>> 17;
+      x ^= x << 5;
+      return (x >>> 0) / 2 ** 32;
+    };
+  }
+  const pieces = [
+    "word",
+    " ",
+    "\n",
+    "\n\n",
+    "```",
+    "`",
+    "- ",
+    "| a |",
+    "> ",
+    "  ",
+    "\t",
+    "[x](u)",
+    ".",
+    "~~~",
+    "1. ",
+  ];
+
+  it("lays out a prefix as a prefix of the whole, for 4,000 transcripts and every prefix", () => {
+    const fails: string[] = [];
+    for (let seed = 1; seed <= 4000 && fails.length < 5; seed++) {
+      const r = rnd(seed);
+      let text = "";
+      const tasks: { at: number }[] = [];
+      const n = 3 + Math.floor(r() * 12);
+      for (let i = 0; i < n; i++) {
+        text += pieces[Math.floor(r() * pieces.length)];
+        if (r() < 0.3) tasks.push({ at: text.length });
+      }
+      const whole = paragraphsAtSteps(text, tasks);
+      expect(whole.replace(/\s+/g, "")).toBe(text.replace(/\s+/g, ""));
+      // A break adds one blank line, never two.
+      if (!/\n[ \t]*\n[ \t]*\n/.test(text)) expect(whole).not.toMatch(/\n[ \t]*\n[ \t]*\n/);
+      for (let k = 0; k <= text.length; k++) {
+        const part = paragraphsAtSteps(text.slice(0, k), tasks).replace(/\s+$/, "");
+        if (!whole.startsWith(part)) {
+          fails.push(`${JSON.stringify(text)} at=${JSON.stringify(tasks)} k=${k}`);
+          break;
+        }
+      }
+    }
+    expect(fails).toEqual([]);
   });
 });

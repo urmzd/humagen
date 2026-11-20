@@ -455,6 +455,7 @@ func (p *Platform) Converse(ctx context.Context, tenant string, t Turn) (runs.Ru
 	if t.TestSkill != nil {
 		t.ForceAsk = true
 		pinSkills(meta, []pinnedSkill{pinRevision(*t.TestSkill)})
+		meta[metaSkillTest] = skillTestRef(*t.TestSkill)
 	}
 	body := t.Text
 	th := threads.Thread{Channel: projects.General}

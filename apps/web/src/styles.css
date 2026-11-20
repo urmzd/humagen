@@ -552,7 +552,16 @@ button.humagen-tick:focus-visible {
 .humagen-sidebar-reveal {
   animation: humagen-fade var(--humagen-dur) var(--humagen-ease-out) 60ms backwards;
 }
+/* A section's sticky label. The drawer on a phone is glass over the dimmed page, so there the label is glass too. */
+.humagen-sidebar-label {
+  background: var(--humagen-plane);
+}
 @media (max-width: 47.99rem) {
+  .humagen-sidebar-label {
+    background: var(--aui-chrome-bg);
+    -webkit-backdrop-filter: blur(var(--aui-chrome-blur)) saturate(var(--aui-chrome-saturate));
+    backdrop-filter: blur(var(--aui-chrome-blur)) saturate(var(--aui-chrome-saturate));
+  }
   .humagen-sidebar {
     animation: humagen-drawer-left var(--humagen-dur-slow) var(--humagen-ease-out) backwards;
   }
@@ -886,6 +895,8 @@ html[data-gallery], html[data-gallery] body, html[data-gallery] #root {
     padding-right: env(safe-area-inset-right);
     translate: 0 1.5rem;
   }
+  /* A body that lays itself out (a terminal, a browser view) has no height of its own to ask for. */
+  .humagen-inspector[data-fill] { height: calc(var(--humagen-app-height) - var(--humagen-keyboard, 0px) - env(safe-area-inset-top) - 1rem); }
   .humagen-inspector[open] { translate: none; }
   @starting-style {
     .humagen-inspector[open] { translate: 0 1.5rem; }

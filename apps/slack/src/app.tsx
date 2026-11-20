@@ -1,6 +1,7 @@
 import "./react.ts";
 import { createHash } from "node:crypto";
 import {
+  type AnswerRequest,
   actedFor,
   answerOfAction,
   answers,
@@ -56,7 +57,9 @@ import {
 import { BUILDER, choose, mayRoute, type Routing } from "./agents.ts";
 import { type Branding, brandedCopy, brandedWords, DEFAULT_BRANDING } from "./branding.ts";
 import { bridgePolicy, subscribed } from "./bridge.ts";
-import { CodeChannels } from "./codechannel-open.ts";
+import { CodeChannels } from "./codechannel.ts";
+import { CodeChannels as CodeChannelOpener } from "./codechannel-open.ts";
+import { offersRunDetails, runDetailsReply } from "./details.tsx";
 import { inThread, Names, readThread, sinceLastTurn, withHistory } from "./history.ts";
 import { homeModel } from "./home.ts";
 import { askForm, buildForm, ENTRY, formKind, type words } from "./host.ts";
@@ -77,7 +80,9 @@ import {
   type WireProject,
 } from "./humagen.ts";
 import { eventKey, runId, type Session, sessionName, sessionOf, threadKey } from "./keys.ts";
+import { memoryPlanStore, PlanCanvas, type PlanStore } from "./plancanvas.ts";
 import { Presenter } from "./present.tsx";
+import { promptIn, recordedOf, settleCard, settledElsewhere } from "./questions.tsx";
 import { type Envelope, type SlackApi, SlackError } from "./slack.ts";
 
 /**
@@ -110,6 +115,8 @@ export interface AppOptions {
   branding?: Branding;
   /** Whether a person may move a conversation into a code channel of its own. Off when left out. */
   codeChannels?: boolean;
+  /** How long to wait before each further look for a code channel session's title. */
+  titleWaits?: number[];
   /** The least time between two writes of one turn to Slack. */
   flushMs?: number;
   /** How often a run's record is read while it is being followed. */
@@ -131,6 +138,8 @@ export interface AppOptions {
    * doubled after each failure up to five minutes. 5 seconds by default.
    */
   catchUpRetryMs?: number;
+  /** Which canvas is each code channel's plan. Left out, kept in memory. */
+  plans?: PlanStore;
   log?: (line: string) => void;
 }
 
@@ -499,7 +508,11 @@ export class App {
   /** Display names for thread history, when the app may read them. */
   private readonly names: Names;
   /** Moving a conversation into a code channel. Null unless the deployment turned it on. */
-  private readonly code: CodeChannels | null;
+  private readonly code: CodeChannelOpener | null;
+  /** The context bar and session name of each code channel. */
+  private readonly chrome: CodeChannels;
+  /** The plan tab of each code channel, and people's comments on it. */
+  private readonly plans: PlanCanvas;
 
   constructor(
     private readonly slack: SlackApi,
@@ -517,7 +530,7 @@ export class App {
     this.words = brandedWords(this.branding);
     this.names = new Names(slack, (line) => this.log(line));
     this.code = opts.codeChannels
-      ? new CodeChannels(slack, {
+      ? new CodeChannelOpener(slack, {
           team: opts.team,
           botUser: opts.botUser,
           subject: opts.subject,
@@ -525,6 +538,19 @@ export class App {
           log: (line) => this.log(line),
         })
       : null;
+    this.chrome = new CodeChannels(slack, {
+      title: (thread) => humagen.threadTitle(thread),
+      href: this.href,
+      copy: this.copy,
+      log: (line) => this.log(line),
+      ...(opts.titleWaits ? { titleWaits: opts.titleWaits } : {}),
+    });
+    this.plans = new PlanCanvas(slack, opts.plans ?? memoryPlanStore(), {
+      botUser: opts.botUser,
+      names: this.names,
+      log: (line) => this.log(line),
+      ...(opts.now ? { now: opts.now } : {}),
+    });
   }
 
   private log(line: string) {
@@ -765,6 +791,11 @@ export class App {
     if (event.type === "assistant_thread_started") {
       const at = event.assistant_thread;
       if (at?.channel_id) await this.suggest(at.channel_id, at.thread_ts);
+      return;
+    }
+    if (event.type === "channel_archive" || event.type === "group_archive") {
+      // Not subscribed to today. When it is, an archived code channel is forgotten.
+      if (event.channel) this.chrome.forget(event.channel);
       return;
     }
     if (event.type === "agent_session_stopped") {
@@ -1041,9 +1072,14 @@ export class App {
       outcomesOnly: controls.policy.bound,
       canDeliver: async () => this.bridgeOutputAllowed(job.session.channel, outputRun),
       copy: this.copy,
+      capabilities: this.capabilities,
       log: (line) => this.log(line),
       ...(queued ? { shown: "queued" as const } : {}),
       ...(this.code ? { codeChannel: () => movable && Boolean(this.code?.available) } : {}),
+      // Slack said the session is the channel: its context bar and name follow the run.
+      onCodeChannel: () => {
+        if (live.run) this.track(this.chrome.sync(job.session.channel, live.run));
+      },
     });
 
     let placed: Awaited<ReturnType<App["place"]>>;
@@ -1122,6 +1158,9 @@ export class App {
           !job.conversation &&
           !controls.policy.bound &&
           Boolean(await this.code?.offers(job.session.channel));
+        // What people wrote on the channel's plan canvas since the last turn goes first.
+        const remarks = await this.plans.comments(job.session.channel);
+        text = remarks.with(text);
         // Stop was pressed before there was a run to stop: say so and settle the session.
         if (live.stopped) {
           await presenter.finish(
@@ -1142,6 +1181,7 @@ export class App {
           },
           placed.key,
         );
+        remarks.delivered();
       }
     } catch (e) {
       this.log(`Humagen refused the turn: ${(e as Error).message}`);
@@ -1174,6 +1214,7 @@ export class App {
     if (owner) this.requesters.set(run.id, owner);
     this.log(`run ${run.id} for ${job.user} in ${job.session.channel}, answered by ${run.agent}`);
     const following = follow(run, { href: this.href });
+    this.plans.follow(run.id, job.session.channel);
     const abort = new AbortController();
     const pump = this.pump(run, following, presenter, items, abort.signal);
     let turn: Turn;
@@ -1186,7 +1227,9 @@ export class App {
     // A quiet run's stream is closed as it stands: still working, so the session
     // stays processing and Stop stays available. Its end is posted when it comes.
     await presenter.finish(turn);
+    await this.plans.settle(run.id, turn);
     this.native = this.native && presenter.streaming;
+    if (this.chrome.has(job.session.channel)) void this.chrome.settle(job.session.channel, run);
     if (stalled) {
       this.track(this.later(run, following, presenter));
       // The thread is not held for it. A later message follows it in the conversation,
@@ -1327,6 +1370,7 @@ export class App {
         if (!this.claim(run.id)) return;
         following.settle(record);
         await presenter.conclude(following.turn);
+        await this.plans.settle(run.id, following.turn);
         this.log(`run ${run.id} ended ${following.turn.status}, after it went quiet`);
         return;
       }
@@ -1458,6 +1502,7 @@ export class App {
         continue;
       }
       await presenter.update(following.turn);
+      this.plans.offer(run.id, following.turn);
       dirty = false;
       last = Date.now();
     }
@@ -1537,9 +1582,10 @@ export class App {
     if (run.status !== "stopped")
       this.log(`run ${run.id} ended ${run.status} before the stop reached it`);
     const turn = follow(run, { href: this.href }).settle(run);
-    await this.postView(session, renderToSlack(<TurnView copy={this.copy} turn={turn} />)).catch(
-      (e: Error) => this.log(`the end of run ${run.id} was not posted: ${e.message}`),
-    );
+    await this.postView(
+      session,
+      renderToSlack(<TurnView copy={this.copy} capabilities={this.capabilities} turn={turn} />),
+    ).catch((e: Error) => this.log(`the end of run ${run.id} was not posted: ${e.message}`));
   }
 
   /**
@@ -1618,6 +1664,7 @@ export class App {
     this.seen.set(dedupe, true);
 
     if (ui.id === ActionId.feedback) return this.onFeedback(ui, p);
+    if (ui.id === ActionId.runDetails) return this.onRunDetails(ui, p);
     // The Home tab's own controls, and Review on an item it shows.
     if (ui.payload.turnId === HOME_ID) return this.onHome(p, ui);
     if (ui.id === ActionId.codeChannel) {
@@ -1650,6 +1697,8 @@ export class App {
     mine = as && !sent ? await readFor(as) : null;
     if (mine && as) return this.onPersonal(p, ui, mine, as);
     if (answers(ui)) return this.onAnswer(p, ui);
+    // Humagen takes a decision on a call, not a question about it: say so, not nothing.
+    if (ui.id === ActionId.ask) return this.whisper(p, this.words.askNotYet);
     if (ui.id === ActionId.retry || ui.id === ActionId.resume) {
       const run = await this.humagen.getRun(ui.payload.turnId);
       const outcome = run
@@ -1744,6 +1793,32 @@ export class App {
     return "started";
   }
 
+  /** What this app can act on from a turn: Run Details where its client maps people (see details.tsx). */
+  private get capabilities() {
+    return { runDetails: offersRunDetails(this.clientRecord?.client, this.opts.subject) };
+  }
+
+  /** What a run used, for the person who clicked alone, read as them (see details.tsx). */
+  private async onRunDetails(ui: UiAction, p: ActionPayload) {
+    const channel = p.channel?.id ?? p.container?.channel_id;
+    if (!channel) return;
+    const reply = await runDetailsReply(
+      { humagen: this.humagen, actAs: (user) => this.actAs(user), copy: this.copy },
+      ui.payload.turnId,
+      p.user.id,
+    );
+    if (reply.refused) this.log(`run details refused (${reply.refused}) for ${ui.payload.turnId}`);
+    await this.slack
+      .call("chat.postEphemeral", {
+        channel,
+        user: p.user.id,
+        ...(p.message?.thread_ts ? { thread_ts: p.message.thread_ts } : {}),
+        text: reply.text.slice(0, LIMITS.fallbackText),
+        ...(reply.blocks ? { blocks: reply.blocks } : {}),
+      })
+      .catch((e: Error) => this.log(`run details could not be shown: ${e.message}`));
+  }
+
   /** Open while the trigger is fresh; a skipped modal still keeps the rating. */
   private async onFeedback(ui: UiAction, p: ActionPayload) {
     const event = feedbackEvent(ui);
@@ -1822,19 +1897,19 @@ export class App {
   private async onAnswer(p: ActionPayload, ui: UiAction): Promise<void> {
     const answer = answerOfAction(ui);
     if (!answer) {
-      // humagen: a modal that collects a reply to a question (as feedbackModal does for a
-      // rating), for Something Else and Reply. Until then a reply is typed in the console.
-      if (ui.id === ActionId.clarifyOther) return this.whisper(p, this.words.replyInConsole);
+      // Something Else and Reply carry no words yet: a modal collects them.
+      if (ui.id === ActionId.clarifyOther) return this.askForAnswer(p, ui);
       return;
     }
-    const as = await this.actAs(p.user.id);
-    if (!as) {
+    const who = await this.mapped(p.user.id);
+    if (!who) {
       this.log(`an answer from ${p.user.id} was not sent: this client does not map them to anyone`);
       return this.whisper(p, defaultCopy.noPermission);
     }
     try {
-      await this.humagen.answerQuestion(answer, as);
+      const recorded = await this.humagen.answerQuestion(answer, who.as);
       this.log(`question ${answer.question} on ${answer.run} answered for ${p.user.id}`);
+      await this.settleStale(p, answer, recorded, who.person);
     } catch (e) {
       this.log(
         `question ${answer.question} on ${answer.run} was not answered: ${(e as Error).message}`,
@@ -1845,6 +1920,67 @@ export class App {
         status === 403 ? defaultCopy.noPermission : defaultCopy.failure.internal(),
       );
     }
+  }
+
+  /**
+   * Where the card was when its reply modal opened, by who opened it and for
+   * which question: a refusal, or a question settled meanwhile, is said there.
+   */
+  private readonly replying = new Recent<ActionPayload>(500);
+
+  /**
+   * Open the reply modal for a question's Something Else or Reply, while the
+   * trigger is fresh. Only someone the client maps is asked for words: the
+   * answer is sent as them, so nobody else is shown a form that cannot send.
+   */
+  private async askForAnswer(p: ActionPayload, ui: UiAction): Promise<void> {
+    const target = { run: ui.payload.turnId, question: ui.payload.target ?? "" };
+    if (!(await this.actAs(p.user.id))) {
+      this.log(`a reply from ${p.user.id} was not asked for: this client maps them to nobody`);
+      return this.whisper(p, defaultCopy.noPermission);
+    }
+    if (!p.trigger_id || !target.run || !target.question)
+      return this.whisper(p, this.words.replyInConsole);
+    const context = promptIn(p.message?.blocks ?? [], target.question);
+    this.replying.set(replyingKey(p.user.id, target), p);
+    try {
+      await this.slack.call("views.open", {
+        trigger_id: p.trigger_id,
+        view: replyModal(target, context ? { context } : {}),
+      });
+    } catch (e) {
+      this.log(`the reply modal for ${target.question} did not open: ${(e as Error).message}`);
+      await this.whisper(p, defaultCopy.failure.internal());
+    }
+  }
+
+  /**
+   * Humagen recorded something other than what was just sent: the question
+   * was answered elsewhere, expired, or its run stopped. The person is told,
+   * and the card they pressed, which nothing else will settle, shows the record.
+   */
+  private async settleStale(
+    p: ActionPayload,
+    answer: AnswerRequest,
+    message: unknown,
+    person: string,
+  ): Promise<void> {
+    const recorded = recordedOf(message, answer.question);
+    if (!recorded || !settledElsewhere(recorded, answer.body, person)) return;
+    await this.whisper(p, this.words.alreadySettled);
+    const channel = p.channel?.id ?? p.container?.channel_id;
+    const blocks = p.message?.blocks;
+    if (!channel || !p.message?.ts || !blocks) return;
+    const settled = settleCard(blocks, answer.run, recorded, this.copy);
+    if (!settled) return;
+    await this.slack
+      .call("chat.update", {
+        channel,
+        ts: p.message.ts,
+        ...(p.message.text ? { text: p.message.text.slice(0, LIMITS.fallbackText) } : {}),
+        blocks: settled,
+      })
+      .catch((e: Error) => this.log(`a settled question's card was not updated: ${e.message}`));
   }
 
   // The inbox
@@ -1938,9 +2074,15 @@ export class App {
    * waits on. Someone the client does not map is not asked for at all.
    */
   private async onReply(user: string, text: string, target: ReplyTarget): Promise<void> {
-    const as = await this.actAs(user);
-    if (!as) {
+    // The card the modal was opened from, when it was a question in a thread.
+    const key = "run" in target ? replyingKey(user, target) : "";
+    const card = key ? this.replying.get(key) : undefined;
+    if (key) this.replying.delete(key);
+    const who = await this.mapped(user);
+    const as = who?.as;
+    if (!who || !as) {
       this.log(`a reply from ${user} was not sent: this client does not map them to anyone`);
+      if (card) await this.whisper(card, defaultCopy.noPermission);
       return;
     }
     try {
@@ -1959,13 +2101,24 @@ export class App {
             ...this.personalView(updated),
           });
       } else {
-        await this.humagen.answerQuestion(
-          { run: target.run, question: target.question, body: { action: "reply", text } },
-          as,
-        );
+        const answer: AnswerRequest = {
+          run: target.run,
+          question: target.question,
+          body: { action: "reply", text },
+        };
+        const recorded = await this.humagen.answerQuestion(answer, as);
+        this.log(`question ${answer.question} on ${answer.run} answered in words for ${user}`);
+        if (card) await this.settleStale(card, answer, recorded, who.person);
       }
     } catch (e) {
       this.log(`a reply from ${user} was refused: ${(e as Error).message}`);
+      // The modal is closed by now: the refusal is said where the card is.
+      const status = e instanceof HumagenError ? e.status : 0;
+      if (card)
+        await this.whisper(
+          card,
+          status === 403 ? defaultCopy.noPermission : defaultCopy.failure.internal(),
+        );
     }
   }
 
@@ -2750,6 +2903,10 @@ export class App {
   }
 }
 
+/** One person's reply to one question, as `replying` keeps the card it was opened from. */
+const replyingKey = (user: string, at: { run: string; question: string }) =>
+  `${user}\n${at.run}\n${at.question}`;
+
 /** The team a delivery says it is from. Each kind of delivery carries it somewhere else. */
 function teamOf(type: string, p: Record<string, unknown>): string | undefined {
   const at = (v: unknown, k: string) =>
@@ -2783,7 +2940,7 @@ interface ActionPayload {
   container?: { type?: string; channel_id?: string };
   view?: { type?: string };
   trigger_id?: string;
-  message?: { ts: string; thread_ts?: string };
+  message?: { ts: string; thread_ts?: string; text?: string; blocks?: unknown[] };
   actions?: { action_id: string; value?: string; selected_option?: { value: string } }[];
   state?: Parameters<typeof decodeSlackAction>[1];
 }

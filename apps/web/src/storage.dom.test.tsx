@@ -28,7 +28,7 @@ const page = (via: StorageTransport, canDelete = true) =>
     />,
   );
 const titles = () =>
-  screen.queryAllByTestId("stored-row").map((r) => r.querySelector("span span")?.textContent);
+  screen.queryAllByTestId("stored-row").map((r) => r.querySelector("button")?.textContent);
 
 test("delete asks first: Keep It changes nothing, Delete Version removes the file and its bytes from the totals", async () => {
   const via = memoryStorage();
@@ -157,4 +157,33 @@ test("a selected artifact keeps Open in Workspace, Download and Close available 
   fireEvent.click(inside(actions).getByRole("button", { name: "Close" }));
   await waitFor(() => assert.ok(!screen.queryByTestId("stored-detail")));
   assert.ok(screen.getByText("launch-plan.md"));
+});
+
+test("each artifact is a card with a picture of what it holds, and the open one is marked", async () => {
+  page(memoryStorage());
+  const open = await screen.findByRole("button", { name: "launch-plan.md" });
+  const cards = screen.getAllByTestId("stored-row");
+  assert.equal(cards.length, sampleFiles().length);
+  // A text file shows its first lines; one with no text shows its kind.
+  assert.ok(
+    cards[0]?.querySelector('[data-thumb="text"]')?.textContent?.includes("Q4 launch plan"),
+  );
+  assert.ok(cards.some((card) => card.querySelector('[data-thumb="kind"]')));
+  // A picture is the file itself, asked for inline and only when its card comes into view.
+  const picture = cards
+    .map((card) => card.querySelector('[data-thumb="image"] img'))
+    .find((img) => img);
+  assert.match(picture?.getAttribute("src") ?? "", /^\/api\/artifacts\/[^/]+\/content\?inline=1$/);
+  assert.equal(picture?.getAttribute("loading"), "lazy");
+  assert.equal(picture?.getAttribute("alt"), "");
+  // The picture repeats the card's words, so assistive technology skips it.
+  for (const card of cards)
+    assert.equal(card.querySelector("[data-thumb]")?.getAttribute("aria-hidden"), "true");
+  assert.equal(open.getAttribute("aria-current"), null);
+  fireEvent.click(open);
+  await screen.findByTestId("stored-detail");
+  assert.equal(
+    screen.getByRole("button", { name: "launch-plan.md" }).getAttribute("aria-current"),
+    "true",
+  );
 });

@@ -696,7 +696,7 @@ func (p *Platform) fileTool(name string, req runtime.Request, action func(event.
 			schema([]string{"path"}, map[string]string{"path": "Relative path of the file"}),
 			func(ctx context.Context, args map[string]any) (string, error) {
 				if requested := arg(args, "path"); strings.HasPrefix(requested, "skill:") {
-					return p.readPinnedSkillFile(req, requested)
+					return p.readPinnedSkillFile(req, ToolFileRead, requested)
 				}
 				thread, _, area, err := where(ctx)
 				if err != nil {

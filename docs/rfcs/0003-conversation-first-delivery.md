@@ -6,8 +6,8 @@ capability or a design example is not a working Humagen integration.
 
 Status: partly built. Checked against `main` on 2026-11-19. The "Current
 boundary" column below was corrected on that date. The
-[corpus model](#proposed-corpus-model) is superseded by RFC 0010 (Corpora and
-the workspace graph), which is kept in the humagen-cloud repository.
+[corpus model](#proposed-corpus-model) is superseded by
+[RFC 0010](0010-corpora.md) (Corpora and the workspace graph).
 
 | Decision | State | Evidence |
 |---|---|---|
@@ -42,8 +42,8 @@ and open an editable native draft before any work runs.
 
 ## Proposed corpus model
 
-> **Superseded (2026-11-19):** RFC 0010 (Corpora and the workspace graph, in
-> the humagen-cloud repository) replaces this model. On main a corpus is a
+> **Superseded (2026-11-19):** [RFC 0010](0010-corpora.md) (Corpora and the
+> workspace graph) replaces this model. On main a corpus is a
 > named set of sources and catalog connectors and holds no content
 > (`pkg/corpora/corpora.go`). None of the records below exist. The section is
 > kept as the record of the earlier design.

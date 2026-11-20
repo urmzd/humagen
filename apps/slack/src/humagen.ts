@@ -270,6 +270,8 @@ export interface Humagen {
     actAs: ActAs,
     options?: CallOptions,
   ): Promise<WireMessage>;
+  /** The title a conversation has, or null while it has none. */
+  threadTitle(id: string, options?: CallOptions): Promise<string | null>;
   /** The Slack channels a client is bound to. */
   bindings(client: string, options?: CallOptions): Promise<Binding[]>;
   /** Record where the app posted an inbox message, so it edits that post later. */
@@ -432,6 +434,7 @@ const sleep = (ms: number, signal: AbortSignal) =>
  * | postThread | `POST /api/threads` with a surface |
  * | getInboxMessage, inboxMessageFor | `GET /api/inbox/{id}`, for a person with `act_as_client` and `act_as_user` |
  * | resolveFor | `POST /api/inbox/{id}/parts/{part}/resolve` with `act_as` |
+ * | threadTitle | `GET /api/threads/{id}?limit=1` |
  * | bindings | `GET /api/clients/{id}/bindings` |
  * | recordDelivery | `PUT /api/inbox/{id}/deliveries/{client}` |
  * | announcements | `GET /api/projects/{name}/inbox?kind=announcement&state=all` |
@@ -628,6 +631,10 @@ export function httpHumagen(cfg: {
           `/api/threads/${enc(id)}?limit=1`,
         ),
       ).then((page) => page?.thread.surface ?? null),
+    threadTitle: (id) =>
+      orNull(http<{ thread: { title?: string } }>("GET", `/api/threads/${enc(id)}?limit=1`)).then(
+        (page) => page?.thread.title || null,
+      ),
     inboxMessageFor: (id, actAs) =>
       orNull(
         http<{ message: WireMessage }>(

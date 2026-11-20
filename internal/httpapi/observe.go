@@ -69,6 +69,10 @@ func (s *Server) observeRoutes(mux *http.ServeMux) {
 	// Its audit record is written by the handler, which names a restore
 	// of a structure apart from a reimport of the text.
 	mux.HandleFunc("PUT /api/knowledge/{name}/imports/{id}", s.authed(auth.KnowledgeImport, s.seenSource(s.reimportDocument)))
+	// Continuing an imported document starts a conversation, so it takes
+	// runs:write, as a fork does; reading the source also takes
+	// knowledge:read, which seenSource checks (import_continue.go).
+	mux.HandleFunc("POST /api/knowledge/{name}/documents/{id}/continue", s.authed(auth.RunsWrite, s.seenSource(s.continueImport)))
 	mux.HandleFunc("PUT /api/knowledge/{name}/documents/{id}", s.authed(auth.KnowledgeWrite, s.seenSource(s.auditedSource("source.document.exclude", s.excludeDocument))))
 	mux.HandleFunc("POST /api/knowledge/{name}/variants", s.authed(auth.KnowledgeWrite, s.seenSource(s.auditedSource("source.variant.save", s.saveVariant))))
 	mux.HandleFunc("DELETE /api/knowledge/{name}/variants/{variant}", s.authed(auth.KnowledgeWrite, s.seenSource(s.auditedSource("source.variant.delete", s.deleteVariant))))

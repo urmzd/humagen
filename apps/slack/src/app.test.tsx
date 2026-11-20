@@ -32,7 +32,6 @@ import {
   type World,
   world,
 } from "./harness.ts";
-import { words } from "./host.ts";
 import { type ClientRecord, HumagenError } from "./humagen.ts";
 import { runId, tagId } from "./keys.ts";
 import { validateBlocks } from "./validate.ts";
@@ -1875,7 +1874,7 @@ test("an approval waits in the run's thread with live buttons, and a mapped pers
   collect("question in thread", w.slack);
 });
 
-test("a choice is answered with the option clicked, and a reply is sent to the console", async () => {
+test("a choice is answered with the option clicked, and a reply opens a form for the words", async () => {
   const w = mapped();
   const { run, shown, ts } = await parkOn(w, "choice");
   await deliver(w, click(blocksOf(shown), "eu-west", { ts, threadTs: TS, user: OTHER_USER }));
@@ -1892,6 +1891,7 @@ test("a choice is answered with the option clicked, and a reply is sent to the c
   await emit(w, "run.completed.v1", { text: "Done." });
   await w.app.idle();
 
+  // Words are typed in a modal (questions.test.tsx follows it through).
   const r = mapped();
   const reply = await parkOn(r, "reply");
   await deliver(
@@ -1902,8 +1902,10 @@ test("a choice is answered with the option clicked, and a reply is sent to the c
       user: OTHER_USER,
     }),
   );
-  assert.equal(r.humagen.answered.length, 0);
-  assert.equal(r.slack.of("chat.postEphemeral").at(-1)?.text, words.replyInConsole);
+  assert.equal(r.humagen.answered.length, 0, "nothing is answered until the words are sent");
+  assert.equal(r.slack.of("views.open").length, 1);
+  assert.equal(r.slack.of("chat.postEphemeral").length, 0);
+  collect("reply to a question", r.slack);
   await deliver(r, stopPressed(TS));
   await r.app.idle();
 });

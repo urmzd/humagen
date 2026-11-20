@@ -207,6 +207,11 @@ export class FakeHumagen implements Humagen {
   /** Set to refuse the next answer, as humagen does someone who may not answer. */
   refuseAnswer: HumagenError | null = null;
   /**
+   * Set to the question's inbox message, settled, to answer as the real route
+   * does once a question is no longer waiting: 200 with what was recorded.
+   */
+  recorded: Record<string, unknown> | null = null;
+  /**
    * Set when the app's own credential is a person, as under dev sign-in: what
    * it asks as itself then acts for that person, as humagen's ActorOf records it.
    */
@@ -403,6 +408,12 @@ export class FakeHumagen implements Humagen {
     // A copy, as a read over HTTP is: a later change does not reach it.
     const m = this.mailbox.get(id) as WireMessage | undefined;
     return m ? structuredClone(m) : null;
+  }
+
+  /** The title each conversation was given, by thread. */
+  readonly titles = new Map<string, string>();
+  async threadTitle(id: string) {
+    return this.titles.get(id) ?? null;
   }
 
   /** The surface of each humagen thread the fake started from one. */
@@ -610,6 +621,8 @@ export class FakeHumagen implements Humagen {
       this.refuseAnswer = null;
       throw e;
     }
+    // Settled before this answer came: nothing changes, and what was recorded is returned.
+    if (this.recorded) return this.recorded;
     const by = this.clients.get(as.client)?.slack?.people?.[as.user] ?? as.user;
     const { action, choice, text } = answer.body;
     this.emit(answer.run, "run.resumed.v1", {
@@ -882,7 +895,8 @@ export function click(
     channel: { id: at.channel ?? CHANNEL },
     container: { type: "message", channel_id: at.channel ?? CHANNEL },
     trigger_id: `trigger-${envelopes}`,
-    message: { ts: at.ts, thread_ts: at.threadTs },
+    // Slack sends the message the button is on, blocks included.
+    message: { ts: at.ts, thread_ts: at.threadTs, blocks },
     actions: [{ action_id: button.action_id, value: button.value }],
     ...(at.state ? { state: at.state } : {}),
   });

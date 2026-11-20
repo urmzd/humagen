@@ -294,7 +294,8 @@ class Serializer {
               : "Failed";
     const meta = [
       `*${state}*`,
-      exitCode !== undefined ? `exit ${exitCode}` : null,
+      // A passed command says so; only a failure needs its code.
+      exitCode !== undefined && exitCode !== 0 ? `exit ${exitCode}` : null,
       durationMs !== undefined ? `${(durationMs / 1000).toFixed(1)}s` : null,
       cwd ? `\`${escapeSlackText(cwd)}\`` : null,
     ].filter(Boolean);

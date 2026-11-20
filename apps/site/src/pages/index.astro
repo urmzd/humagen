@@ -7,7 +7,8 @@ import Agent from "../components/Agent.astro";
 import Icon from "../components/Icon.astro";
 import {
   actions,
-  contact,
+  closing,
+  docs,
   hero,
   pages,
   points,
@@ -43,25 +44,28 @@ const body = "site-text text-aui-base text-aui-muted";
 ---
 <Base page={pages.home} jsonLd={jsonLd}>
   <div class="site-frame">
-    <section aria-labelledby="hero-title" data-reveal-group class="flex flex-col gap-4 px-5 pt-14 pb-14 md:px-10 md:pt-20 md:pb-20">
+    <section
+      aria-labelledby="hero-title"
+      data-reveal-group
+      class="flex flex-col items-center gap-5 px-5 pt-16 pb-14 text-center md:px-10 md:pt-24 md:pb-20"
+    >
       <h1
         id="hero-title"
         data-reveal
-        class="humagen-display max-w-[20ch] text-[1.875rem] leading-[1.15] font-semibold text-aui-fg md:text-[2.75rem]"
+        class="humagen-display max-w-[16ch] text-balance text-[2.25rem] leading-[1.08] font-semibold tracking-[-0.025em] text-aui-fg sm:text-[3rem] lg:text-[4.25rem]"
       >
         {hero.title}
       </h1>
-      <p data-reveal class="max-w-[62ch] text-aui-lg text-aui-muted">{hero.lede}</p>
-      <div data-reveal class="flex flex-wrap items-center gap-2 pt-2">
+      <p data-reveal class="max-w-[58ch] text-balance text-aui-lg text-aui-muted">{hero.lede}</p>
+      <div data-reveal class="flex flex-wrap items-center justify-center gap-x-5 gap-y-3 pt-2">
         <a class={primaryButton} href={pages.deploy.path}>{actions.deploy}</a>
-        <a class={outlineButton} href={site.repo}>
+        <a class="site-link inline-flex min-h-9 items-center gap-1.5 text-aui-base text-aui-fg" href={site.repo}>
           {actions.github}
           <Icon name="external" />
         </a>
-        <a class={outlineButton} href={contact.href}>{contact.label}</a>
       </div>
       <p data-reveal class="text-aui-xs text-aui-muted">{hero.status}</p>
-      <figure data-reveal class="m-0 pt-8">
+      <figure data-reveal class="m-0 w-full pt-8 text-left">
         <div class={`${shot} shadow-aui-md`}>
           <Image
             src={homeShot}
@@ -210,13 +214,19 @@ const body = "site-text text-aui-base text-aui-muted";
       </div>
     </section>
 
-    <section aria-labelledby="closing-title" data-reveal-group class={section}>
+    <section aria-labelledby="closing-title" data-reveal-group class={`${section} text-center`}>
       <div data-reveal>
-        <h2 id="closing-title" class={h2}>Questions before you run it?</h2>
-        <p class={`${body} mt-3`}>
-          Write to the founder at <a href={contact.href}>{contact.email}</a>, or open an issue on{" "}
-          <a href={`${site.repo}/issues`}>GitHub</a>.
-        </p>
+        <h2 id="closing-title" class="humagen-display mx-auto max-w-[22ch] text-[1.75rem] leading-[1.15] font-semibold tracking-[-0.02em] text-aui-fg md:text-[2.5rem]">
+          {closing.heading}
+        </h2>
+        <p class={`${body} mx-auto mt-4 max-w-[56ch]`}>{closing.body}</p>
+        <div class="mt-7 flex flex-wrap items-center justify-center gap-x-5 gap-y-3">
+          <a class={outlineButton} href={site.repo}>
+            {actions.github}
+            <Icon name="external" />
+          </a>
+          <a class="site-link inline-flex min-h-9 items-center text-aui-base text-aui-fg" href={docs.href}>Read the docs</a>
+        </div>
       </div>
     </section>
   </div>

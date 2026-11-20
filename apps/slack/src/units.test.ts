@@ -165,6 +165,29 @@ test("config: every missing name is reported at once, and no value is echoed", (
   assert.deepEqual(cfg.slack.operators, ["U01ABCDEF", "U02ABCDEF"]);
 });
 
+test("a console address on this machine is never linked from Slack", () => {
+  const base = {
+    SLACK_BOT_TOKEN: "b",
+    SLACK_APP_TOKEN: "a",
+    SLACK_TEAM_ID: "T01ABCDEF",
+    HUMAGEN_TENANT: "acme",
+  };
+  for (const address of [
+    "http://127.0.0.1:8095",
+    "http://localhost:8080/",
+    "http://console.localhost:8080",
+    "http://[::1]:8080",
+    "http://0.0.0.0:8080",
+  ]) {
+    const cfg = readConfig({ ...base, HUMAGEN_PUBLIC_URL: address });
+    assert.equal(cfg.humagen.publicUrl, undefined, address);
+    assert.equal(cfg.notes.filter((n) => n.includes("HUMAGEN_PUBLIC_URL")).length, 1, address);
+  }
+  const cfg = readConfig({ ...base, HUMAGEN_PUBLIC_URL: "https://localhost.example.com" });
+  assert.equal(cfg.humagen.publicUrl, "https://localhost.example.com");
+  assert.deepEqual(cfg.notes, []);
+});
+
 // A deployment configured before the rename sets WARP_ names: each still
 // works, with a note naming it; the new name wins; a missing setting is named
 // by its new name.

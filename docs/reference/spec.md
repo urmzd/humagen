@@ -57,7 +57,7 @@ metadata:
 spec:
   server:
     addr: 127.0.0.1:8080
-    public_url: http://localhost:8080
+    public_url: http://localhost:8080   # where browsers reach the server. Unset, $HUMAGEN_PUBLIC_URL, then this default
     webhook_addr: ""        # a second listener that serves only signed webhooks
     console: {enabled: true, dir: auto}      # auto finds a built apps/web
     drain_grace: 25s        # after SIGTERM, how long runs in flight may finish before they are handed back
@@ -237,6 +237,11 @@ follow-up turn sees what the last one wrote.
 | `docker` (default) | Containers with no network, a read-only root, no capabilities, a non-root user, a seccomp profile stricter than Docker's default and resource limits, on `runtime: runsc` (gVisor) unless it says `runc` with `insecure_development_runtime: true` | Production |
 | `local` | Host processes, with the server's privileges, in a directory laid out like an instance. The shell works | Development without Docker |
 | `unisolated` | This host, as before the sandbox: files in the conversation's directory, stdio servers as host processes. The shell is refused | Development and tests |
+
+A person's own command, from a session's Terminal tab, runs only on the
+`docker` kind, in an instance started for that one command. `local` and
+`unisolated` would run it on this host, so they refuse it and the console
+shows no command line.
 
 The server says at start which one it runs. `local` and `unisolated` are
 never chosen for you: name them in the spec or with `-sandbox`. The Docker
@@ -1002,7 +1007,7 @@ below may do, and what it prefers. A person adds their own level through
 
 | Setting | Kind | Left out everywhere | Rule |
 |---------|------|---------------------|------|
-| `ceilings.tools` | ceiling | narrows nothing | at most 64 tool names, as an agent's `tools` writes them (`mcp:<name>` for a provider's tools). A tool the agent grants that is not listed is taken away for the run. `[]` allows none |
+| `ceilings.tools` | ceiling | narrows nothing | at most 64 tool names, as an agent's `tools` writes them (`mcp:<name>` for a provider's tools). A tool the agent grants that is not listed is taken away for the run. `[]` allows none of them. It does not take away `skill_file_read`, which a run whose skills have supporting files is always offered: it reads only those files, which the run was given ([managed library](../architecture/managed-library.md#skills-are-immutable-packages)). An administrator who wants a run to read no file at all must also keep supporting files out of the skills its runs use. An agent's `tools` may not name `skill_file_read` |
 | `ceilings.models` | ceiling | narrows nothing | at most 64 `provider/model`, or `provider/*` for all of a provider's. The run's model and fallbacks outside it are dropped, and a run with none left is refused |
 | `ceilings.call_depth` | ceiling | the deployment's depth | 0 to 16: how deep a run's calls to other agents may go. 0 calls none. It never deepens the deployment's own limit |
 | `ceilings.tool_servers` | ceiling | none | at most 64 hosts, in lower case, a person's own tool servers may be on. Default deny: only `workspace.run` opens it, and a project or a person only narrows it |
