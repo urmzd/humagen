@@ -967,7 +967,8 @@ export function Connections({
                   <li
                     key={it.id}
                     aria-label={it.name}
-                    className="group/row relative isolate flex min-h-16 min-w-0 items-center gap-3 border-aui-border border-b py-3 hover:bg-aui-hover"
+                    // In a narrow column the status and the action drop under the name rather than squeeze it out.
+                    className="group/row relative isolate flex min-h-16 min-w-0 flex-wrap items-center gap-x-3 gap-y-1 border-aui-border border-b py-3 hover:bg-aui-hover"
                   >
                     <span className="flex size-9 shrink-0 items-center justify-center rounded-aui-lg border border-aui-border bg-aui-surface">
                       <ConnectionLogo id={it.logo} name={it.name} />
@@ -981,7 +982,7 @@ export function Connections({
                       type="button"
                       aria-label={it.name}
                       onClick={() => (it.go ? it.go() : open(it.id))}
-                      className="flex min-h-6 min-w-0 flex-1 flex-col justify-center text-left outline-none after:absolute after:inset-0 focus-visible:after:outline-2 focus-visible:after:outline-aui-accent pointer-coarse:min-h-11"
+                      className="flex min-h-6 min-w-28 flex-1 flex-col justify-center text-left outline-none after:absolute after:inset-0 focus-visible:after:outline-2 focus-visible:after:outline-aui-accent pointer-coarse:min-h-11"
                     >
                       <span className="w-full min-w-0 truncate font-medium text-aui-sm text-aui-fg">
                         {it.name}
