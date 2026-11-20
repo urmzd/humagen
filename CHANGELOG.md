@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.158.0 (2026-11-20)
+
+### Features
+
+- **schedules**: an agent proposes, and runs once, a schedule from a conversation (stack 4/6) (#455) ([42d274f](https://github.com/urmzd/humagen/commit/42d274fe525ebd6447739e0b08f8f3ac9310dac7))
+- **slack**: background work reports back in the Slack thread that asked (stack 3/6) (#454) ([5a337c9](https://github.com/urmzd/humagen/commit/5a337c9bfe2b4acd9bd2418fff7f9eeb1052806c))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.157.0...v0.158.0)
+
+
 ## 0.156.0 (2026-11-20)
 
 ### Features
