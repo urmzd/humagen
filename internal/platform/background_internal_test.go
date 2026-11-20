@@ -18,8 +18,11 @@ import (
 	"github.com/urmzd/humagen/pkg/background"
 	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/join"
+	"github.com/urmzd/humagen/pkg/personctx"
 	"github.com/urmzd/humagen/pkg/projects"
+	"github.com/urmzd/humagen/pkg/runctx"
 	"github.com/urmzd/humagen/pkg/runs"
+	runsettings "github.com/urmzd/humagen/pkg/settings"
 	"github.com/urmzd/humagen/pkg/threads"
 )
 
@@ -342,6 +345,15 @@ func TestEveryTurnForAPersonHasTheBackgroundTools(t *testing.T) {
 	inner.RunID = it.Last
 	if got := p.withBackgroundTools(inner).Definition.Spec.Tools; len(got) != 0 {
 		t.Errorf("background work is offered %v", got)
+	}
+	// A tool ceiling still decides: one that lists only notify leaves only it.
+	ceiled := p.withBackgroundTools(req)
+	ceiled.Meta = map[string]string{}
+	if err := runctx.Pin(ceiled.Meta, runctx.New("ada", runsettings.Resolve(runsettings.Layer{Ceilings: runsettings.Ceilings{Tools: []string{ToolNotify}}}), personctx.Context{})); err != nil {
+		t.Fatal(err)
+	}
+	if ceiled, err = boundRunContext(ceiled); err != nil || !slices.Equal(ceiled.Definition.Spec.Tools, []string{ToolNotify}) {
+		t.Fatalf("under a ceiling of notify alone the turn is offered %v: %v", ceiled.Definition.Spec.Tools, err)
 	}
 	// The whole path a turn's request takes offers them too.
 	resolved, err := p.resolveRevision(req)
