@@ -78,6 +78,7 @@ import {
   type WireProject,
 } from "./humagen.ts";
 import { eventKey, runId, type Session, sessionName, sessionOf, threadKey } from "./keys.ts";
+import { memoryPlanStore, PlanCanvas, type PlanStore } from "./plancanvas.ts";
 import { Presenter } from "./present.tsx";
 import { promptIn, recordedOf, settleCard, settledElsewhere } from "./questions.tsx";
 import { type Envelope, type SlackApi, SlackError } from "./slack.ts";
@@ -131,6 +132,8 @@ export interface AppOptions {
    * doubled after each failure up to five minutes. 5 seconds by default.
    */
   catchUpRetryMs?: number;
+  /** Which canvas is each code channel's plan. Left out, kept in memory. */
+  plans?: PlanStore;
   log?: (line: string) => void;
 }
 
@@ -492,6 +495,8 @@ export class App {
   private readonly words: typeof words;
   /** Display names for thread history, when the app may read them. */
   private readonly names: Names;
+  /** The plan tab of each code channel, and people's comments on it. */
+  private readonly plans: PlanCanvas;
 
   constructor(
     private readonly slack: SlackApi,
@@ -508,6 +513,12 @@ export class App {
     this.copy = brandedCopy(this.branding);
     this.words = brandedWords(this.branding);
     this.names = new Names(slack, (line) => this.log(line));
+    this.plans = new PlanCanvas(slack, opts.plans ?? memoryPlanStore(), {
+      botUser: opts.botUser,
+      names: this.names,
+      log: (line) => this.log(line),
+      ...(opts.now ? { now: opts.now } : {}),
+    });
   }
 
   private log(line: string) {
@@ -1073,6 +1084,9 @@ export class App {
           return this.refuse(job, presenter, agent, NO_AGENT);
         }
         if (job.history) text = await this.withThread(job, text);
+        // What people wrote on the channel's plan canvas since the last turn goes first.
+        const remarks = await this.plans.comments(job.session.channel);
+        text = remarks.with(text);
         // Stop was pressed before there was a run to stop: say so and settle the session.
         if (live.stopped) {
           await presenter.finish(
@@ -1093,6 +1107,7 @@ export class App {
           },
           placed.key,
         );
+        remarks.delivered();
       }
     } catch (e) {
       this.log(`Humagen refused the turn: ${(e as Error).message}`);
@@ -1125,6 +1140,7 @@ export class App {
     if (owner) this.requesters.set(run.id, owner);
     this.log(`run ${run.id} for ${job.user} in ${job.session.channel}, answered by ${run.agent}`);
     const following = follow(run, { href: this.href });
+    this.plans.follow(run.id, job.session.channel);
     const abort = new AbortController();
     const pump = this.pump(run, following, presenter, items, abort.signal);
     let turn: Turn;
@@ -1137,6 +1153,7 @@ export class App {
     // A quiet run's stream is closed as it stands: still working, so the session
     // stays processing and Stop stays available. Its end is posted when it comes.
     await presenter.finish(turn);
+    await this.plans.settle(run.id, turn);
     this.native = this.native && presenter.streaming;
     if (stalled) {
       this.track(this.later(run, following, presenter));
@@ -1278,6 +1295,7 @@ export class App {
         if (!this.claim(run.id)) return;
         following.settle(record);
         await presenter.conclude(following.turn);
+        await this.plans.settle(run.id, following.turn);
         this.log(`run ${run.id} ended ${following.turn.status}, after it went quiet`);
         return;
       }
@@ -1409,6 +1427,7 @@ export class App {
         continue;
       }
       await presenter.update(following.turn);
+      this.plans.offer(run.id, following.turn);
       dirty = false;
       last = Date.now();
     }
