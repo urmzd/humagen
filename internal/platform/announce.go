@@ -169,8 +169,8 @@ func (p *Platform) ProjectInbox(who auth.Principal, project string, children boo
 
 // SurfaceNoticesFor reports, for a client's machine, a notice of a message
 // addressed to people its clients map, and who each of them is there: a
-// mention of them, or a question they may answer, named by subject or sent
-// to a role they hold, as experts named by a role are. The machine reads it
+// mention of them, a question they may answer, or an alert for them, named
+// by subject or sent to a role they hold, as experts named by a role are. The machine reads it
 // for each of them (act_as) and tells them in a direct message. Nothing
 // reaches the machine about anyone it does not map, and one notice names at
 // most MaxNotified people, as one message notifies at most that many.
@@ -184,7 +184,7 @@ func (p *Platform) ProjectInbox(who auth.Principal, project string, children boo
 // maps them.
 func (p *Platform) SurfaceNoticesFor(ctx context.Context, who auth.Principal, n inbox.Notice) []SurfaceNotice {
 	switch n.Kind {
-	case inbox.KindMention, inbox.KindClarification, inbox.KindApproval, inbox.KindResult:
+	case inbox.KindMention, inbox.KindClarification, inbox.KindApproval, inbox.KindResult, inbox.KindAlert:
 	default:
 		return nil
 	}
