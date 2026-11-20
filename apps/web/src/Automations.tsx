@@ -28,6 +28,7 @@ export function Automations({
   tab = "schedules",
   onTab,
   onConversation,
+  tick,
 }: {
   schedules: ScheduleView[];
   agents: Revision[];
@@ -38,6 +39,8 @@ export function Automations({
   tab?: "schedules" | "background";
   onTab?: (tab: "schedules" | "background") => void;
   onConversation?: (id: string) => void;
+  /** Bumped whenever a run starts or ends, so Background reads again. */
+  tick?: number;
 }) {
   const [making, setMaking] = useState(false);
   const canSchedule = can("schedules:write");
@@ -55,7 +58,7 @@ export function Automations({
   if (tab === "background") {
     return (
       <Page title={words.title} tabs={tabs}>
-        <Background onConversation={onConversation ?? (() => {})} />
+        <Background onConversation={onConversation ?? (() => {})} tick={tick} />
       </Page>
     );
   }

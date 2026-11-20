@@ -17,6 +17,7 @@ import (
 	"github.com/urmzd/humagen/internal/toolprovider"
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/background"
 	"github.com/urmzd/humagen/pkg/catalog"
 	"github.com/urmzd/humagen/pkg/graph"
 	"github.com/urmzd/saige/flow/event"
@@ -76,6 +77,8 @@ type hidden struct {
 	candidate      string
 	memoryProposal string
 	personalNote   string
+	// background is a watch another person of the hidden workspace owns.
+	background string
 	// connector is a catalog connector of the hidden project, owned by the
 	// workspace's machine and published to that project.
 	connector string
@@ -197,6 +200,11 @@ func hide(t *testing.T, f *fixture, owner string, inside bool) hidden {
 		t.Fatal(err)
 	}
 	h.personalNote = personal.ID
+	watch, err := f.p.Background.Create("acme", background.Spec{Kind: background.Watch, Owner: "canary-memory-owner", Agent: h.agent, Session: "canary-session", Project: h.project, Text: "Watch " + marker + "."}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.background = watch.ID
 	skill, err := f.p.SkillLibrary.Draft("acme", "svc-acme", library.Scope{Kind: "project", Project: h.project}, library.Definition{Skill: projects.Skill{Name: "hidden-skill", Description: "Skill " + marker, Instructions: "Instructions " + marker}, Tools: []string{}}, 0, nil, time.Now())
 	if err != nil {
 		t.Fatal(err)
@@ -666,6 +674,8 @@ func (h hidden) value(path, param string) (string, bool) {
 			return h.notificationID, true
 		case prefix("/api/me/memory/"):
 			return h.personalNote, true
+		case prefix("/api/me/background/"):
+			return h.background, h.background != ""
 		case prefix("/api/agents/{name}/memory/"):
 			return h.agentNote, true
 		case prefix("/api/projects/{name}/memory/"):
@@ -1290,6 +1300,11 @@ func sweepWrites(t *testing.T, f *fixture, owner, outsider string, h hidden) {
 	for _, a := range kept(f.p.Alerts.Alerts("acme")) {
 		if a.ID == h.alert && !a.Open() {
 			t.Errorf("after the sweep the hidden alert was acknowledged by %s", a.AckedBy)
+		}
+	}
+	if h.background != "" {
+		if w, err := f.p.Background.Get("acme", h.background); err != nil || w.State != background.Active {
+			t.Errorf("after the sweep the hidden watch is %q: %v", w.State, err)
 		}
 	}
 }

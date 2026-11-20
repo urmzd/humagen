@@ -44,7 +44,14 @@ function progress(t: BackgroundTask): string | undefined {
  * what is still running first. A card opens the conversation its runs are in;
  * its menu stops one still running.
  */
-export function Background({ onConversation }: { onConversation: (id: string) => void }) {
+export function Background({
+  onConversation,
+  tick = 0,
+}: {
+  onConversation: (id: string) => void;
+  /** Bumped whenever a run starts or ends: the list is read again, as its runs are what change it. */
+  tick?: number;
+}) {
   const [items, setItems] = useState<BackgroundTask[] | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [stopping, setStopping] = useState<string | null>(null);
@@ -53,7 +60,8 @@ export function Background({ onConversation }: { onConversation: (id: string) =>
     setProblem(null);
     api.background().then(setItems, () => setProblem(words.couldNotLoad));
   }, []);
-  useEffect(load, []);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: tick is the signal to read again.
+  useEffect(load, [load, tick]);
 
   const stop = (id: string) => {
     setStopping(id);

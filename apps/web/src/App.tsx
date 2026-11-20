@@ -1317,6 +1317,7 @@ function Console({
                         )
                       }
                       onConversation={(id) => go({ page: "conversation", id })}
+                      tick={tick}
                     />
                   )}
                   {route.page === "schedules" && (

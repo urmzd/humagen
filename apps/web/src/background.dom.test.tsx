@@ -146,3 +146,41 @@ test("durations read as a person writes them", async () => {
   assert.equal(span("1h30m0s"), "1h30m");
   assert.equal(span("24h0m0s"), "24h");
 });
+
+test("the list is read again when a run starts or ends, so an ended task stops offering Stop", async () => {
+  let ended = false;
+  const { restore } = stubFetch({
+    "GET /api/me/background": () => ({
+      items: [
+        ended ? { ...watch, state: "done", result: "Deploy is green", next: undefined } : watch,
+      ],
+    }),
+  });
+  const props = {
+    schedules: [],
+    agents: [],
+    projects: [],
+    can: () => true,
+    onChanged: () => {},
+    onSchedule: () => {},
+    tab: "background" as const,
+    onTab: () => {},
+  };
+  try {
+    const { rerender } = render(<Automations {...props} tick={0} />);
+    await waitFor(() =>
+      assert.ok(
+        screen.getByRole("button", { name: "More for the release workflow on main passes" }),
+      ),
+    );
+    ended = true;
+    rerender(<Automations {...props} tick={1} />);
+    await waitFor(() => assert.ok(screen.getByText("Done")));
+    assert.equal(
+      screen.queryByRole("button", { name: "More for the release workflow on main passes" }),
+      null,
+    );
+  } finally {
+    restore();
+  }
+});
