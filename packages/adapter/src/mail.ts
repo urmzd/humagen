@@ -27,7 +27,7 @@ import {
   type Tone,
   type UiAction,
 } from "@humagen/core";
-import { defaultCopy } from "../../components/src/copy.ts";
+import { defaultCopy } from "@humagen/components/copy";
 import {
   interruptOf,
   settledFromOutcome,

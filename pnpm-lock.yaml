@@ -252,6 +252,9 @@ importers:
       '@humagen/client':
         specifier: workspace:*
         version: link:../client
+      '@humagen/components':
+        specifier: workspace:*
+        version: link:../components
       '@humagen/core':
         specifier: workspace:*
         version: link:../core
