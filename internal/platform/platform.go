@@ -447,6 +447,9 @@ type Platform struct {
 	// ToolProviders is the MCP servers agents reach through "mcp:<name>"
 	// grants, and the tools accepted from each.
 	ToolProviders toolprovider.Store
+	// toolGrants expands a provider grant into its accepted tools, for a
+	// run and for a person acting on a session's browser (browser_view.go).
+	toolGrants browserGrants
 	// closers release what New opened, in reverse, on Close.
 	closers []func() error
 

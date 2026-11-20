@@ -96,6 +96,7 @@ import {
 } from "./ui.tsx";
 import { useVoiceNotes } from "./useVoiceNotes.ts";
 import { SessionWorkbench } from "./Workbench.tsx";
+import { BrowserCard } from "./WorkbenchBrowserCard.tsx";
 import { WorkingStrip } from "./WorkingStrip.tsx";
 import { Workspace } from "./Workspace.tsx";
 import { openBench, WorkbenchOpen } from "./workbench.ts";
@@ -628,6 +629,7 @@ function AnswerView({
         </RunFeedbackHost>
       </AgentTint>
       <AnswerRefs run={run} open={activityOpen} onActivity={onActivity} />
+      <BrowserCard thread={run.thread} tasks={drawn.tasks} />
       {refused && stillAsks(shown, refused.question) && (
         <div className="pl-11">
           <Problem message={refused.why} />

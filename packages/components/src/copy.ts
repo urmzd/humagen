@@ -4155,7 +4155,92 @@ export const defaultCopy = {
   // Each workbench tab keeps its own words in its own block below, so two
   // tabs never change the same lines. Only the tab's own change edits its block.
   /** The Browser tab (WorkbenchBrowser.tsx). */
-  workbenchBrowser: {},
+  workbenchBrowser: {
+    /** The card under an answer that used the browser. It opens the tab. */
+    card: {
+      title: "Browser",
+      open: "Open Browser",
+      steps: (n: number) => (n === 1 ? "1 step" : `${n} steps`),
+      /** Where the browser runs: the tool provider it is reached through. */
+      on: (provider: string) => `on ${provider}`,
+      working: "Working",
+      thumbnail: "The latest screenshot",
+    },
+    /** What the agent did at one step, from its tool call. */
+    step: {
+      navigate: (url: string) => `Went to ${url}`,
+      back: "Went back",
+      click: (what: string) => `Clicked ${what}`,
+      type: (what: string) => `Typed into ${what}`,
+      fill: "Filled in a form",
+      press: (key: string) => `Pressed ${key}`,
+      screenshot: "Took a screenshot",
+      snapshot: "Read the page",
+      tabs: "Changed tabs",
+      wait: "Waited for the page",
+      resize: "Resized the window",
+      dialog: "Answered a dialog",
+      close: "Closed the page",
+      computer: (action: string) => `Computer: ${action}`,
+      other: (tool: string) => tool,
+      thePage: "the page",
+    },
+    failed: "Failed",
+    running: "Running",
+    /** The list of what the agent did. */
+    steps: "What the agent did",
+    stepOf: (n: number, total: number) => `Step ${n} of ${total}`,
+    earlier: "Earlier Step",
+    later: "Later Step",
+    goThere: "Go To This Address",
+    /** Nothing was done in a browser in this session. */
+    none: "No browser work in this session",
+    ask: "Ask For Browser Work",
+    askSeed: "Use the browser to ",
+    toDetails: "Back To Details",
+    /** The page as it is now. */
+    page: "The page now",
+    untitled: "Untitled page",
+    noShot: "No screenshot yet",
+    look: "Take Screenshot",
+    refresh: "Refresh",
+    back: "Back",
+    address: "Address",
+    addressHint: "https://",
+    go: "Go",
+    working: "Working in the browser",
+    /** On the screenshot: pick what to act on. */
+    screenshot: (title: string) => `Screenshot of ${title}`,
+    pick: "Pick something on the page to click or type into",
+    elements: "On this page",
+    element: (role: string, name: string) => (name ? `${role} "${name}"` : role),
+    moreElements: (n: number) => `${n} more are not listed`,
+    selected: "Selected",
+    click: "Click",
+    typeInto: (what: string) => `Text for ${what}`,
+    type: "Type",
+    submit: "Press Enter after",
+    cancel: "Cancel",
+    /** Screenshots this console took, newest first. */
+    shots: "Screenshots taken here",
+    shotOf: (when: string, what: string) => `${when}: ${what}`,
+    latest: "Latest",
+    /** Why the page cannot be opened from here. */
+    noControl: "This session's browser cannot be opened from here",
+    notKept: "Screenshots the agent took are not kept",
+    /** What a person did, as their next message says it. */
+    did: {
+      look: "Took a screenshot",
+      navigate: (url: string) => `Went to ${url} in the browser`,
+      back: (url: string) => (url ? `Went back in the browser, to ${url}` : "Went back in the browser"),
+      click: (what: string, page: string) => `Clicked ${what} on ${page}`,
+      type: (n: number, what: string, submit: boolean) =>
+        `Typed ${n} ${n === 1 ? "character" : "characters"} into ${what}${submit ? " and pressed Enter" : ""}`,
+      press: (key: string) => `Pressed ${key} in the browser`,
+      failed: (what: string, why: string) => `Tried in the browser, and it failed: ${what}. ${why}`,
+      page: (title: string, url: string) => [title && `Page: ${title}`, url].filter(Boolean).join("\n"),
+    },
+  },
   /** The Terminal tab (WorkbenchTerminal.tsx). */
   workbenchTerminal: {},
   /** The Changes tab (WorkbenchChanges.tsx). */

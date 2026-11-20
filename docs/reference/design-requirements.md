@@ -2045,3 +2045,33 @@ the posted message closed and open. Not seen: a tab's failure to load, the
 overflow line, and Details before this change at the same size. The five tabs
 are separate changes. The contract for them is
 [workbench.md](../architecture/workbench.md).
+
+**Browser tab.** Built (`WorkbenchBrowser.tsx`, `WorkbenchBrowserCard.tsx`,
+`browserSteps.ts`, `browserShots.ts`). An answer that used browser tools has
+one card under it: where the browser was left, how many steps, and the tool
+provider it runs on; it opens the tab on the answer's last step. The tab lists
+the agent's steps from its tool calls, each with the page it left the browser
+on, and steps back through them at `?benchRef=<step>`. A person who may post
+acts on the same browser by hand through `POST /api/sessions/{id}/browser`
+(`runs:write`, `internal/platform/browser_view.go`): a screenshot, an address,
+back, and a click or typed text on an element picked on the screenshot or from
+the list under it. Each action is recorded for their next message; typed text
+is recorded as a count. The agent's own screenshots are not kept by the
+platform, since a tool result reaches a run's events as text only, so the tab
+shows no picture of an earlier step and the card shows one only after the
+console has been given one. No live video. The empty state is a title and one
+action.
+
+Evidence: `workbench-browser.dom.test.tsx` (20 tests: steps, addresses,
+actions and what each records, refusals, the empty state, the card);
+`TestAPersonActsOnTheSessionsBrowserByHand`,
+`TestABrowserActionIsRefusedBeforeItReachesTheBrowser` and the contract test
+in `internal/httpapi`. Seen in Chrome against a local server, a stand-in model
+and the pinned Playwright MCP worker driving a real headless browser, at
+1280x800 and 390x844, light and dark: the card, the steps, a screenshot, an
+element picked, the page after typing and clicking, the earlier screenshots,
+the pane filling the page, the list above the composer, the posted message
+open, the empty state, and a session with no browser. Smallest text measured
+14px; lowest contrast measured 8.3:1 (dark) and 10.6:1 (light). Not seen: a
+step still running, a browser that cannot be reached (502), a policy refusal
+(403), and a reader who may not post.

@@ -35,6 +35,8 @@ import type {
   BigQuerySetupView,
   Branding,
   BringBackThreadResultBody,
+  BrowserAction,
+  BrowserView,
   CallPolicy,
   CallPolicyInput,
   CatalogConnector,
@@ -1010,6 +1012,35 @@ visible older history pages on reset.
     let path = "/api/sessions/{id}/stop";
     path = path.replace("{id}", encodeURIComponent(String(id)));
     return this.rawRequest<void>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** The browser is the one the session's agent works in: an MCP tool
+provider the agent holds a write grant on (`mcp:<name>:write`),
+shared and reached over HTTP, whose accepted tools include a
+screenshot. The caller must be a person allowed to post in the
+session, and the action policy must allow that agent's browser
+actions without review. Only accepted tools are called. Every action
+but `look` is audited, without what was typed. The answer is the page
+afterwards. Nothing is sent to the agent.
+ */
+  async actOnSessionBrowser(id: string, body: BrowserAction, options?: RequestOptions): Promise<BrowserView> {
+    let path = "/api/sessions/{id}/browser";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<BrowserView>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async actOnSessionBrowserRaw(id: string, body: BrowserAction, options?: RequestOptions): Promise<ApiResponse<BrowserView>> {
+    let path = "/api/sessions/{id}/browser";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<BrowserView>("POST", path, {
       body,
       contentType: "application/json",
       ...options,

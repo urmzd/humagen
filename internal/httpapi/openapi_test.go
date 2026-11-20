@@ -1028,6 +1028,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		}
 		return time.Now()
 	}
+	contractBrowser := newBrowserFake(t)
 	f := newFixtureWith(t, platform.Config{Now: now, TestBuiltinProvider: "offline", TestBuiltinModel: "offline", PersonalHTTP: notesServer.Client(), AgentOptions: []native.Option{
 		native.WithProvider(native.ProviderOpenAI, func(native.Spec) (saigetypes.Provider, error) {
 			return &agenttest.ScriptedProvider{Responses: [][]saigetypes.Delta{agenttest.TextResponse("Completed the configured setup check.")}}, nil
@@ -1046,6 +1047,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		}), ToolProviders: []platform.ToolProviderSeed{
 			{Provider: toolprovider.Provider{Tenant: "acme", Name: "issues", Transport: toolprovider.TransportHTTP, Endpoint: "https://issues.example.com/mcp", CredentialScope: toolprovider.ScopePerson}},
 			{Provider: toolprovider.Provider{Tenant: "acme", Name: "wiki", Transport: toolprovider.TransportHTTP, Endpoint: "https://wiki.example.com/mcp", CredentialRef: "env:WIKI_TOKEN"}},
+			contractBrowser.seed("session-contract", "browser"),
 		}},
 		CredentialRefs:   map[string][]string{"acme": {"op://People/{subject}/"}},
 		CredentialValues: map[string]bool{"acme": true},
@@ -1070,6 +1072,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	exerciseConnectionHealthContract(t, c)
 	exerciseBigQueryContract(t, c)
 	sessionContract := exerciseSessionContract(t, c)
+	exerciseBrowserContract(t, c, sessionContract["token"])
 	contractSource(t, f, c, sourceFake)
 	contractGitHubItems(t, f, c, sourceFake)
 	pullToken := f.machine(t, "pull-contract", "humagen:runs:read")
@@ -2747,6 +2750,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/sessions/{id}/voice/speech":            {"id": sessionContract["id"]},
 		"/api/sessions/{id}/messages/{mid}":          {"id": sessionContract["id"], "mid": "m-1"},
 		"/api/sessions/{id}/stop":                    {"id": sessionContract["id"]},
+		"/api/sessions/{id}/browser":                 {"id": sessionContract["id"]},
 		"/api/sessions/{id}/people":                  {"id": sessionContract["id"]},
 		"/api/sessions/{id}/links":                   {"id": sessionContract["id"]},
 		"/api/sessions/{id}/alerts":                  {"id": sessionContract["id"]},
