@@ -216,6 +216,72 @@ it hears that way it drops unread.
   conversations with different agents are threads in one DM, each headed by
   its agent's first message.
 
+For an agent that needs those, the next section gives it an app of its own.
+
+#### An agent's own Slack app, linked
+
+Humagen already lets a workspace install an app per agent: a Slack
+[client](../reference/clients.md) whose `default_agent` is the agent and whose
+`bots` maps the app's bot user to it. Today that is assembled by hand (a
+manifest written for it, the bot user id copied into `bots` or
+`HUMAGEN_SLACK_BOTS`), and the mapping is read only for messages the same app
+received. Three changes make it a button.
+
+**1. The manifest comes from the agent.** `humagen slack manifest --agent
+barbara`, and `GET /api/agents/{name}/slack-manifest` for the console, write
+the shared app's manifest (`slackManifest`, so scopes and events never drift)
+with the agent's identity in place of the workspace's:
+
+| Manifest field | From |
+|----------------|------|
+| `display_information.name`, `bot_user.display_name` | `identity.display_name` |
+| `description`, `long_description` | the agent's `description` and `greeting` |
+| `background_color` | its hue |
+| `agent_view.agent_description`, `suggested_prompts` | its `greeting` and `starters` |
+| `slash_commands` | none: `/ask` stays the shared app's |
+
+Slack does not take an icon in a manifest, so the page offers the mark as a
+PNG to upload, at the size Slack asks for.
+
+**2. Connecting it links it.** On the agent's Access tab, **Give It Its Own
+Slack App**:
+
+1. **Create in Slack** opens Slack's create-from-manifest page with the
+   manifest filled in. (Whether Slack's `new_app` link takes a manifest
+   inline is to be checked; if not, the page shows it with Copy.)
+2. Install it to the workspace; a Slack admin approves it as for any app.
+3. Paste the bot token and signing secret (or app-level token under Socket
+   Mode). The server calls `auth.test` with the token and learns the team,
+   the app id and the bot user id itself, then saves the client: `identity`
+   from `auth.test`, `default_agent` and `agents` the agent alone, `bots`
+   `{<bot user>: <agent>}`, `home` the shared client's. Nobody types an id.
+4. The row shows Connected with the app's name once its first event arrives.
+
+The link is the record: removing the client unlinks the bot user, and
+renaming the agent moves the link with it.
+
+**3. A mention of a linked bot routes to its agent, through any app.** The
+Slack text grammar reads `<@U…>` through the `bots` of the client that
+received the message (`slackContext.Bots` in `internal/platform/surface_threads.go`).
+It reads instead through the bots of every enabled Slack client in the team,
+each still subject to the receiving client's allow-list. So:
+
+- In a thread the shared app is answering, `@Humagen ask @Barbara to refresh
+  the report` (Barbara's real Slack user) tags `@barbara`, exactly as typing
+  her handle does.
+- Who answers is the agent's own app when it can: a linked agent's turns post
+  through its app wherever that app is in the channel, and through the shared
+  app, in persona, where it is not. Either way it is the same name and mark.
+- A message that mentions both apps reaches both. Each Slack message is
+  posted once by its ts, so only one is accepted, and the rule decides which
+  without a race: the agent's own app takes a message that tags its agent,
+  and the shared app drops it.
+
+`apps/slack` serves one client today (`HUMAGEN_CLIENT`). Serving linked apps
+means one process holding several: a Socket Mode connection, routing and
+branding per client, one event stream. The webhook connector already serves
+several clients, so a deployment can use it for linked apps until then.
+
 ### 3. An agent's page opens on its home
 
 `/agents/{name}` opens on a new **Home** tab, and its settings regroup into
@@ -275,7 +341,10 @@ Small changes that make each agent read as itself:
    stream and status line, threads that stay with the agent they
    were started for and are followed without a mention, `/ask` with the picker, the lead and the agents on App
    Home.
-4. **GitHub and notifications.** The persona header and the waiting lines.
+4. **Linked apps.** The manifest from the agent, the connect flow with
+   `auth.test`, team-wide resolution of linked bots, several clients in
+   `apps/slack`.
+5. **GitHub and notifications.** The persona header and the waiting lines.
 
 Each phase updates `docs/architecture/surfaces.md` and the status table.
 
@@ -292,6 +361,5 @@ Each phase updates `docs/architecture/surfaces.md` and the status table.
    metric it reports) or is it always sessions this week?
 5. For an agent installed from the store, are `identity` fields part of the
    package, so updating it can change the face people know?
-6. Devin and Grok give a named bot its own Slack app. If one agent ever needs
-   a real Slack user (autocomplete, its own DM, its own sidebar entry), is that
-   a client with that agent as its default, added later, or never?
+6. When the lead calls a linked agent in a channel its app is not in, should
+   it offer to invite the app, or answer in persona and say nothing?
