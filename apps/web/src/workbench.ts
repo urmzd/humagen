@@ -10,6 +10,7 @@ import {
 } from "@humagen/render-web";
 import { type ComponentType, createContext, useContext } from "react";
 import type { Run } from "./adapter.ts";
+import { lazyView } from "./lazy.tsx";
 import {
   type ConversationView,
   MAX_BENCH_REF,
@@ -118,7 +119,14 @@ const entries: Record<WorkbenchTabId, WorkbenchTabEntry | undefined> = {
   // Details: progress, agents, outputs, environment and what was used (SessionPanel.tsx).
   details: { view: DetailsTab },
   // Browser slot: the agent's browser or computer view (WorkbenchBrowser.tsx).
-  browser: undefined,
+  browser: {
+    view: lazyView(
+      () => import("./WorkbenchBrowser.tsx"),
+      (m) => m.WorkbenchBrowser,
+    ),
+    available: (session) => session.summary?.environment.some((e) => e.kind === "browser") ?? false,
+    fill: true,
+  },
   // Terminal slot: a terminal in the session's sandbox (WorkbenchTerminal.tsx).
   terminal: undefined,
   // Changes slot: what the session changed, to keep or discard (WorkbenchChanges.tsx).

@@ -26,6 +26,7 @@ await loadTests([
   "/src/agent-builder.dom.test.tsx",
   "/src/session-panel.dom.test.tsx",
   "/src/workbench.dom.test.tsx",
+  "/src/workbench-browser.dom.test.tsx",
   "/src/session-center.dom.test.tsx",
   "/src/session-ux.dom.test.tsx",
   "/src/conversation-overview.dom.test.tsx",
