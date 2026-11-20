@@ -680,6 +680,26 @@ on memory only (`internal/platform`); the contract's
 fields against the Go types (`internal/httpapi`). The route that starts one
 and the console's Continue Conversation are not built.
 
+`humagen import agents` carries an agent file's `name`, `description` and
+text, and nothing else: the agent runs on `--provider` and `--model`, with no
+tools. Every other frontmatter field is named per file as not carried, in
+text and under `reduced` with `--json`, on every run, a dry run and a second
+import included. Hooks and permission rules (`hooks`, `permissions`,
+`permissionMode`, `disallowedTools`) are named again under `not_enforced`,
+with only the known names under each field and the rest counted, and one note
+at the end of the run says what is true: Humagen does not run a file's hook
+commands or apply its rules; a check before a tool call is the agent's
+approvals and the action policies' Ask and Never, which the import does not
+set; nothing stands in for a hook after a call or when a turn stops. Two files
+of one agent name are reported apart, the second as skipped. The frontmatter
+closes only at a line that is `---` alone, a second YAML document or a
+repeated key fails with its own reason, and every name from a file is
+printed quoted when it is not plain text, cut at 64 characters and 40 names
+a line (the skills and sessions imports' lines are escaped the same way).
+Tested with generated files against a stub server (`internal/app`) and run
+against a local in-memory server; not checked with real agent files
+([import](../reference/cli.md#import-sessions-skills-and-agents)).
+
 A library skill's supporting file may be up to 1 MiB and its package 256
 files and 2 MiB, while `SKILL.md`, whose body is what a model is asked, stays
 at 128 KiB. So `humagen import skills` drafts a skill that ships a large
