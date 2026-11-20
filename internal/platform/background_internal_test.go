@@ -97,16 +97,24 @@ func useBackground(t *testing.T, p *Platform, req runtime.Request, name string, 
 	return v, err
 }
 
-// notices are the results in ada's inbox linked to a conversation.
+// notices are the results in ada's inbox linked to a conversation, once
+// there is at least one: a task's notice is written just after it ends, in
+// the same completion step, so it is waited for.
 func notices(p *Platform, thread string) []inbox.Message {
-	page, _ := p.Inbox.Snapshot("acme")
-	var out []inbox.Message
-	for _, m := range page {
-		if m.Kind == inbox.KindResult && m.To == "ada" && m.Source.Thread == thread {
-			out = append(out, m)
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		page, _ := p.Inbox.Snapshot("acme")
+		var out []inbox.Message
+		for _, m := range page {
+			if m.Kind == inbox.KindResult && m.To == "ada" && m.Source.Thread == thread {
+				out = append(out, m)
+			}
 		}
+		if len(out) > 0 || time.Now().After(deadline) {
+			return out
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
-	return out
 }
 
 // A watch is checked in the background, in a private session of its own,
