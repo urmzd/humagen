@@ -4325,6 +4325,35 @@ paths:
         "429": {$ref: "#/components/responses/TooMany"}
         "500": {$ref: "#/components/responses/ServerError"}
 
+  /api/threads/{id}/forks:
+    get:
+      operationId: listThreadForks
+      tags: [threads]
+      summary: List the forks of a conversation the caller may read
+      description: The most recently active first, at most 50. A fork is private to whoever started it, so this is the caller's way back to their own. An archived fork and a read-only archive are left out. A fork's saved history is not included; read the fork for it.
+      x-permission: runs:read
+      x-readonly: true
+      parameters:
+        - {$ref: "#/components/parameters/ThreadID"}
+      responses:
+        "200":
+          description: The forks, without their saved history.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [forks]
+                properties:
+                  forks:
+                    type: array
+                    maxItems: 50
+                    items: {$ref: "#/components/schemas/ThreadForkSummary"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+
   /api/threads/{id}/bring-back:
     post:
       operationId: bringBackThreadResult
@@ -13742,6 +13771,17 @@ components:
               name: {type: string}
               text: {type: string}
               at: {type: string, format: date-time}
+    ThreadForkSummary:
+      description: One fork of a conversation at a glance, without its saved history.
+      type: object
+      additionalProperties: false
+      required: [id, title, through, at, updated_at]
+      properties:
+        id: {type: string}
+        title: {type: string, description: "The fork's title, empty when it was given none."}
+        through: {type: string, description: "The message or run of the source the fork's history ends at."}
+        at: {type: string, format: date-time, description: "When it was forked."}
+        updated_at: {type: string, format: date-time, description: "When anything last happened in it."}
     ThreadImport:
       description: |
         Where a conversation continued from an imported one came from: a

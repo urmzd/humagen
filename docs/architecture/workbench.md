@@ -122,6 +122,12 @@ function BrowserCard({ step }: { step: string }) {
 (`packages/web`, `packages/components`) cannot import it: pass an `onOpen`
 prop down from a console file instead.
 
+### Side Chat
+
+Built (`WorkbenchSidechat.tsx`, `sidechat.ts`). Its `benchRef` is the id of a
+fork of the session, or nothing for the box and the list of earlier side chats.
+It records an answer with source `other` and the key `sidechat:<run>:<part>`.
+
 ## What a person did by hand
 
 Anything the reader does by hand in a tab before their next message is

@@ -4347,7 +4347,43 @@ export const defaultCopy = {
     recordDeleted: (path: string) => `Deleted ${path}`,
   },
   /** The Side Chat tab (WorkbenchSidechat.tsx). */
-  workbenchSidechat: {},
+  workbenchSidechat: {
+    /** The tab before anything is asked: its title, over the box. */
+    empty: "Ask about this session on the side",
+    /** The session has no saved turn a side chat could start from. */
+    nothing: "Nothing to ask about yet",
+    /** The reader may not post here, so may not start one. */
+    readOnly: "You can read this session, not ask in it",
+    placeholder: "Ask on the side",
+    earlier: "Earlier side chats",
+    /** A side chat that was given no title. */
+    untitled: "Side chat",
+    /** The title a side chat is saved under, from its first question. */
+    title: (question: string) => `Side chat: ${question}`,
+    all: "All Side Chats",
+    fresh: "New Side Chat",
+    openFull: "Open as Conversation",
+    /** Under a side chat's header: how much of the session it was given. */
+    from: (when: string) => `Reads this session as it was ${when}. Nothing here is posted in it.`,
+    thread: "Side chat",
+    saidBy: (name: string) => `Message from ${name}`,
+    answeredBy: (name: string) => `Answer from ${name}`,
+    add: "Add to Message",
+    added: "Added to Message",
+    /** What the main thread's agent reads above the answer. */
+    summary: (agent: string, question: string) =>
+      question
+        ? `Side chat answer from ${agent} to "${question}"`
+        : `Side chat answer from ${agent}`,
+    part: (summary: string, i: number, n: number) => `${summary} (part ${i} of ${n})`,
+    missing: "This side chat is unavailable",
+    failed: {
+      start: "The side chat could not be started. Try again.",
+      post: "The message could not be sent. Try again.",
+      list: "Earlier side chats could not be read.",
+      stop: "The answer could not be stopped.",
+    },
+  },
   /** The Search tab (WorkbenchSearch.tsx). */
   workbenchSearch: {},
   /** The control that returns to the end of a thread or of an answer's activity, named by what is there. */

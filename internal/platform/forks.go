@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/urmzd/humagen/pkg/audit"
 	"github.com/urmzd/humagen/pkg/auth"
@@ -86,6 +87,50 @@ func (p *Platform) ForkThread(ctx context.Context, who auth.Principal, id string
 	result, err := p.Threads.Create(who.Tenant, threads.Thread{Project: source.Project, Channel: source.Channel, Title: in.Title, Visibility: threads.Private, CreatedBy: person.Subject, Agents: agents, Mode: mode, Fork: &threads.Fork{Sources: in.Sources, SourceThread: id, Through: in.Through, By: person.Subject, At: now, Context: history}, Import: source.Import}, now)
 	_ = attempt.Finish(err)
 	return result, err
+}
+
+// MaxForksListed caps one listing of a conversation's forks.
+const MaxForksListed = 50
+
+// ForkSummary is one fork of a conversation at a glance. It never carries the
+// fork's saved history: that is read with the fork itself.
+type ForkSummary struct {
+	ID        string    `json:"id"`
+	Title     string    `json:"title"`
+	Through   string    `json:"through"`
+	At        time.Time `json:"at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// ForksOf lists the forks of a conversation the reader may read, the most
+// recently active first, at most MaxForksListed. A fork is private to whoever
+// started it, so this is the reader's own way back to theirs: an archived
+// fork and a read-only archive are left out. It answers ErrNotFound for a
+// conversation the reader does not see.
+func (p *Platform) ForksOf(who auth.Principal, id string) ([]ForkSummary, error) {
+	if _, err := p.ThreadRecord(who.Tenant, id); err != nil || !p.SeesThread(who, id) {
+		return nil, threads.ErrNotFound
+	}
+	found, err := p.Threads.Records(who.Tenant, func(th threads.Thread) bool {
+		return th.Fork != nil && th.Fork.SourceThread == id && th.Archive == nil && !th.ReadOnly
+	})
+	if err != nil {
+		return nil, err
+	}
+	seer := p.Seer(who)
+	out := []ForkSummary{}
+	for _, th := range found {
+		if seer.Place(Place{Project: th.Project, Thread: th.ID}) {
+			out = append(out, ForkSummary{ID: th.ID, Title: th.Title, Through: th.Fork.Through, At: th.Fork.At, UpdatedAt: th.UpdatedAt})
+		}
+	}
+	slices.SortFunc(out, func(a, b ForkSummary) int {
+		if n := b.UpdatedAt.Compare(a.UpdatedAt); n != 0 {
+			return n
+		}
+		return strings.Compare(a.ID, b.ID)
+	})
+	return out[:min(len(out), MaxForksListed)], nil
 }
 
 // BringBackInput selects an outcome. Text, if present, is the caller's edit.

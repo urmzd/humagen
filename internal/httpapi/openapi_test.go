@@ -2321,6 +2321,11 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	forkPath := "/api/threads/" + obj(draft.field("thread"))["id"].(string) + "/fork"
 	forked := c.call(ana, "POST", "/api/threads/{id}/fork", forkPath, `{"through":"m-1","title":"Alternative"}`, http.StatusCreated)
 	c.call(ana, "POST", "/api/threads/{id}/fork", forkPath, `{"through":"m-999"}`, http.StatusNotFound)
+	listed := c.call(ana, "GET", "/api/threads/{id}/forks", forkPath+"s", "", http.StatusOK)
+	if forks := sliceOf(listed.field("forks")); len(forks) != 1 || obj(forks[0])["id"] != forked.str("id") || obj(forks[0])["title"] != "Alternative" {
+		t.Fatalf("forks of the draft: %s", listed.raw)
+	}
+	c.call(ana, "GET", "/api/threads/{id}/forks", "/api/threads/th-0000000000000000/forks", "", http.StatusNotFound)
 	c.call(ana, "POST", "/api/threads/{id}/bring-back", "/api/threads/"+forked.str("id")+"/bring-back", `{"run":"r00000000000000000000000000000000"}`, http.StatusNotFound)
 	forkAnswer := c.call(ana, "POST", "/api/threads/{id}/messages", "/api/threads/"+forked.str("id")+"/messages", `{"text":"@helper alternative"}`, http.StatusCreated)
 	forkRun := obj(sliceOf(forkAnswer.field("runs"))[0])["id"].(string)
@@ -2826,6 +2831,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/threads/{id}/share":       {"id": tid},
 		"/api/threads/{id}/publication": {"id": draftID},
 		"/api/threads/{id}/fork":        {"id": tid}, "/api/threads/{id}/bring-back": {"id": tid},
+		"/api/threads/{id}/forks": {"id": tid},
 	}
 	valid := map[string]string{
 		"/api/connections/{provider}/callback":  `{"state":"unknown","code":"code"}`,

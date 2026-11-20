@@ -149,7 +149,14 @@ const entries: Record<WorkbenchTabId, WorkbenchTabEntry | undefined> = {
     available: changesAvailable,
   },
   // Side chat slot: a chat beside the thread that does not post in it (WorkbenchSidechat.tsx).
-  sidechat: undefined,
+  sidechat: {
+    view: lazyView(
+      () => import("./WorkbenchSidechat.tsx"),
+      (m) => m.WorkbenchSidechat,
+    ),
+    available: (session) => session.canPost,
+    fill: true,
+  },
   // Search slot: pull requests, artifacts and tools (WorkbenchSearch.tsx).
   search: undefined,
 };
