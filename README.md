@@ -16,23 +16,24 @@
 </p>
 
 <p align="center">
-  <img src="showcase/agents.png" alt="Humagen agent console with seeded example agents" width="80%">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="showcase/demo-dark.gif">
+    <img src="showcase/demo-light.gif" alt="A person tags @lead with a launch task. lead asks researcher and writer in parallel, and answers in about ten seconds with both parts and a note on what was not verified." width="80%">
+  </picture>
 </p>
-<p align="center"><em>Local preview with seeded example data, captured with teasr. No model calls.</em></p>
-
-Formerly warp. Old settings, config files and specs still work, with a note at start. See [docs/guides/upgrading-from-warp.md](docs/guides/upgrading-from-warp.md).
+<p align="center"><em>Real models on a local preview: <code>lead</code> asks <code>researcher</code> and <code>writer</code>, then answers. Idle pauses shortened.</em></p>
 
 ## Features
 
-- **Conversations** that branch across agents. Tag `@agent`, or let every available agent decide whether to join: each that does answers side by side, and with none the message waits for a person.
-- **Channels and threads** where people and agents talk in one room, with private threads, project inboxes and announcements.
-- **Projects** with members, owners, tighter limits below them, and knowledge sources that ground every run.
-- **Archive and deletion review**: archived conversations wait 30 days in a queue where an admin restores them or approves permanent deletion.
-- **Agent lifecycle**: revisions, deterministic evals, schedules, run traces, alerts and analytics.
-- **Governance**: tenant permissions, depth and fan-out limits, admission policies and usage accounting.
-- **Slack**: bind a project to a channel, post as mapped people, and answer with streamed console components over Socket Mode.
-- **GitHub**: ask the app in a comment, through signed webhook ingress.
-- **Per-person MCP tools**: agents act with each person's own credential, never a shared one.
+- **Agents that work together**: tag an `@agent`, or let every available agent decide whether to join. Agents call each other as subagents, handoffs or delegations, and wait for a person when they need an approval or an answer.
+- **Any model, per agent**: Anthropic, OpenAI, Google Gemini directly or through Vertex AI, or any OpenAI-compatible server such as Ollama. Each agent names its own model and its fallbacks.
+- **Self-hosted**: one process and Postgres, on a laptop, a VM or Kubernetes. Your data stays on machines you own.
+- **Rules you set**: tenant permissions, per-project limits, action policies and admission checks. Nothing is allowed until it is granted, and spend is counted per run.
+- **A record of every run**: traces, the journal, alerts, usage and spend show who asked, which agent answered, what it called and what it cost. Runs are durable and replay after a crash.
+- **Where people already work**: the web console, a Slack app in channels and threads, and GitHub comments, all showing the same events.
+- **Answers from your knowledge**: projects hold knowledge sources searched by vectors and keywords, and search returns only what the person asking may read.
+- **Tools that act as you**: MCP tools run in a sandbox with each person's own credential, never a shared one.
+- **Agents with a lifecycle**: revisions, deterministic evals, schedules and analytics. A run keeps the definition it started with.
 
 What is built, and its current limits, is in the [status table](docs/architecture/overview.md#status).
 
@@ -53,6 +54,8 @@ go mod download
 pnpm install
 ```
 
+Humagen was called warp. Old settings, config files and specs still work, with a note at start. See [docs/guides/upgrading-from-warp.md](docs/guides/upgrading-from-warp.md).
+
 ## Quick Start
 
 ```sh
@@ -65,11 +68,20 @@ Open <http://127.0.0.1:8080>. `humagen start` runs everything in one process: lo
 On a terminal, the first start asks a few questions (name, model providers, MCP tools, sign-in, Slack) and writes `humagen.yaml` to your config directory.
 
 <p align="center">
-  <img src="showcase/runs.png" alt="Seeded offline conversation" width="30%"> &nbsp;
-  <img src="showcase/analytics.png" alt="Analytics for the seeded offline runs" width="30%"> &nbsp;
-  <img src="showcase/ui-approval.png" alt="Approval card" width="30%">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="showcase/agents-dark.png">
+    <img src="showcase/agents-light.png" alt="The Agents page: each agent with its health, runs, success rate and median time over 24 hours" width="30%">
+  </picture> &nbsp;
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="showcase/usage-dark.png">
+    <img src="showcase/usage-light.png" alt="The Usage page: runs, how many finished without help, failures, spend and tokens" width="30%">
+  </picture> &nbsp;
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="showcase/policies-dark.png">
+    <img src="showcase/policies-light.png" alt="The action policy: whether agents may read context, write files, publish, send messages or call other agents" width="30%">
+  </picture>
 </p>
-<p align="center"><em>Runs &middot; Analytics &middot; Approvals</em></p>
+<p align="center"><em>Agents &middot; Usage &middot; Policies</em></p>
 
 ## Examples
 
@@ -187,7 +199,7 @@ make tilt
 | Regenerate the TypeScript client | `make client` |
 | Client typecheck and tests | `make client-check` |
 | Lint the API spec | `make spec-lint` |
-| Refresh `showcase/` | `SCREENS_SHOWCASE=1 make screens` (needs Chrome and [teasr](https://github.com/urmzd/teasr)) |
+| Record the README and website demo | `make dev-live`, then `make showcase` (real models; needs Chrome and ffmpeg) |
 
 ## Documentation
 

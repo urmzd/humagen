@@ -1,4 +1,4 @@
-.PHONY: all init build test integration lint fmt check start dev dev-live dev-signin web tilt screens up down chart-check image client client-check spec-lint oag-install slack-manifest slack-diff slack-push
+.PHONY: all init build test integration lint fmt check start dev dev-live dev-signin web tilt screens showcase up down chart-check image client client-check spec-lint oag-install slack-manifest slack-diff slack-push
 
 BIN := humagen
 
@@ -86,6 +86,12 @@ screens: build
 	pnpm install --frozen-lockfile
 	pnpm --filter @humagen/console build
 	pnpm --filter @humagen/screens screens
+
+# The README and website demo, recorded from a live preview on real models,
+# and the gallery stills (scripts/screens/showcase-live.ts). Start a fresh
+# `make dev-live` with the console built first. Needs Chrome and ffmpeg.
+showcase:
+	pnpm --filter @humagen/screens showcase
 
 # The container image, from the Dockerfile at the root.
 IMAGE ?= humagen:local

@@ -62,19 +62,28 @@ export const hero = {
   status: "Open source under Apache 2.0.",
 };
 
-/** Real console screens, captured from a local preview with seeded example data. */
+/**
+ * Real console screens, recorded from a local preview on real models by
+ * `make showcase` (scripts/screens/showcase-live.ts). Each has a light and a
+ * dark take; the page shows the one that matches the reader's theme.
+ */
 export const screens = {
-  home: {
-    alt: "The Humagen console home: a message box that takes an @agent, a Needs you list of items waiting on a person, and recent project posts.",
-    caption: "The console, running locally with example data. No model calls.",
+  demo: {
+    label:
+      "A recording: a person tags @lead with a launch task. lead asks researcher and writer, and answers in about ten seconds with both parts.",
+    caption: "Recorded on a local preview with real models. Idle pauses shortened, nothing else.",
   },
-  turn: {
-    alt: "An agent's answer in a conversation: a recommendation, a decision, a published slide file, one cited knowledge source and four completed work steps.",
-    caption: "An answer cites its source, keeps its files and shows its steps.",
+  answer: {
+    alt: "lead's answer: two rows for the researcher and writer it called, with their times, then the reasons and the launch note, and a line saying what was not verified.",
+    caption: "Every agent it called is one row you can open, with its time.",
   },
   agents: {
-    alt: "The Agents page: each agent with its state, revision, model and runs, success rate and median time over 24 hours.",
-    caption: "Each agent with its revision, model and the last day's runs.",
+    alt: "The Agents page: each agent with its health, runs, success rate and median time over 24 hours.",
+    caption: "Each agent's health, runs, success and median time.",
+  },
+  usage: {
+    alt: "The Usage page: work by day, runs, how many finished without help, failures, spend in US dollars and tokens.",
+    caption: "Runs, help needed, failures and spend, from the runs themselves.",
   },
 };
 
@@ -85,6 +94,10 @@ export const points = {
   together: {
     title: "Agents work together, and with people",
     body: "Tag an `@agent`, or let every available agent decide whether to join. Agents call other agents as subagents, handoffs or delegations. A run waits for a person when it needs an approval or an answer.",
+  },
+  govern: {
+    title: "Rules you set, and a bill you can read",
+    body: "Action policies decide whether agents may read context, write files, publish, send messages or call other agents, for the workspace, a project or a person. Every run is counted: whether it needed a person, whether it failed, and what it cost.",
   },
   operate: {
     title: "Each agent has a history",
