@@ -14,7 +14,7 @@ tab. Read it before adding one.
 | The pane | `apps/web/src/Workbench.tsx` | `SessionWorkbench` |
 | Details, the first tab | `apps/web/src/SessionPanel.tsx` | `DetailsTab`, `useSessionSummary` |
 | Tab addresses | `apps/web/src/route.ts` | `WORKBENCH_TAB_IDS`, `WorkbenchTabId`, `MAX_BENCH_REF`, `ConversationView.bench`, `ConversationView.benchRef` |
-| What was done by hand, no React | `packages/core/src/human-activity.ts` | `humanActivity`, `createHumanActivityStore`, `HumanActivityStore`, `HumanActivityRecord`, `HumanActivityInput`, `HumanActivitySource`, `foldHumanActivity`, `splitHumanActivity`, `postWithHumanActivity`, the `MAX_*` limits |
+| What was done by hand, no React | `packages/core/src/human-activity.ts` | `humanActivity`, `createHumanActivityStore`, `HumanActivityStore`, `HumanActivityRecord`, `HumanActivityInput`, `HumanActivitySource`, `foldHumanActivity`, `splitHumanActivity`, `postWithHumanActivity`, `HUMAN_DETAIL_LEFT_OUT`, the `MAX_*` limits |
 | The same, on the page | `apps/web/src/humanActivity.tsx` | `useHumanActivity`, `HumanActivityList`, `HumanActivityNote` |
 | Words | `packages/components/src/copy.ts` | `workbench`, and one block per tab: `workbenchBrowser`, `workbenchTerminal`, `workbenchChanges`, `workbenchSidechat`, `workbenchSearch` |
 
@@ -137,6 +137,13 @@ recorded, listed above the composer where each line can be removed, and
 folded into that message, so the agent reads one message that covers it.
 Nothing is sent before they submit.
 
+A detail is text the person did not write (a command's output, a page's
+title, an agent's answer) and it goes out under their name, so the list shows
+all of it before sending: a line with a detail opens in place, by a press or
+from the keyboard, and a long summary wraps. The list shows the newest four
+lines and a button that counts and shows the earlier ones. When it is taller
+than its box, a rule marks the edge that lines are out of view past.
+
 ```tsx
 export function WorkbenchTerminal({ record }: WorkbenchTabProps) {
   const ran = (command: string, exit: number, output: string) =>
@@ -161,7 +168,7 @@ const { record, records, remove, clear } = useHumanActivity(thread);
 | --- | --- |
 | `source` | `terminal`, `browser`, `files`, `changes` or `other`. |
 | `summary` | One line: what was done and how it came out. Line breaks become spaces; at most 200 characters. |
-| `detail` | Optional. What the agent should read: output, a diff, an address. At most 600 characters; the rest is cut with an ellipsis, so send the part that matters (the end of a failing command's output). |
+| `detail` | Optional. What the agent should read: output, a diff, an address. At most 600 characters; the rest is cut with an ellipsis, never through the middle of a character, so send the part that matters (the end of a failing command's output). |
 | `at` | Optional ISO time. Defaults to now. |
 | `key` | Optional. A later record with the same source and key replaces the earlier one, for something done over and over (saving one file). |
 
@@ -202,10 +209,10 @@ export) show the text as it is.
 
 | Limit | Value | At the limit |
 | --- | --- | --- |
-| Records per conversation | 50 | The oldest is dropped. |
+| Records per conversation | 50 | The oldest is dropped. It goes with no message, and the list says how many were dropped (`store.dropped`) until it is cleared or a message is posted. |
 | Summary | 200 characters | Cut, with an ellipsis. |
 | Detail | 600 characters | Cut, with an ellipsis. |
-| The section | 4000 characters, or what the person's words leave of the API's 8000 | Records are written oldest first. One that does not fit with its detail is written without it. One that does not fit at all is left out with every one after it; the section's last line says how many, the list says so before sending, and they stay recorded for the message after. |
+| The section | 4000 characters, or what the person's words leave of the API's 8000 | Records are written oldest first. One that does not fit with its detail is written with the line `(detail left out: no room in this message)` in its place, so the agent knows there was more; the list marks each such line and counts them before sending (`bare` of `foldHumanActivity`). One that does not fit at all is left out with every one after it; the section's last line says how many, the list marks each and says so before sending, and they stay recorded for the message after. |
 
 A post that fails clears nothing. A message queued behind a reply carries
 what is recorded when its turn comes, not when it was typed. The record is

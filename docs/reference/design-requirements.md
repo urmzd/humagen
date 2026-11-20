@@ -2027,7 +2027,14 @@ it rides in the text, its entries in a code block that the platform never reads
 for tags. A thread draws the section closed under the person's words. At most
 50 records are kept per conversation; a summary is 200 characters, a detail 600,
 and the section 4000 or what the person's words leave of the API's 8000. What
-does not fit is said before sending and goes with the message after.
+does not fit is said before sending and goes with the message after. A line
+with a detail opens in place, by a press or from the keyboard, so all of what
+is sent can be read first. A record that goes without its detail is marked in
+the list and counted under it, and the section says in the detail's place that
+it was left out. The list shows its newest four lines and counts the earlier
+ones on a button that shows them, and says how many of the oldest were dropped
+when it was full. A browser action whose answer never arrived is recorded as
+outcome unknown, not as failed.
 
 Text in the workbench and in both lists is 14px or larger, and secondary text
 is `text-aui-muted`. Details' own rows keep the sizes they had.
