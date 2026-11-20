@@ -83,6 +83,17 @@ func TestTheSlackAppIsGivenOnlyWhatItNeeds(t *testing.T) {
 		}
 	}
 
+	// Code channels are off unless the surface turns them on.
+	app.choice.CodeChannels = true
+	env, err = app.env(context.Background(), "http://127.0.0.1:8080", "", lookup)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(env, "SLACK_CODE_CHANNELS=1") {
+		t.Errorf("with code_channels: %v", env)
+	}
+	app.choice.CodeChannels = false
+
 	// A token is given as it is.
 	app.choice.HumagenClient, app.choice.HumagenToken = nil, &spec.Ref{Ref: "env:API_TOKEN"}
 	env, err = app.env(context.Background(), "http://127.0.0.1:8080", "", lookup)

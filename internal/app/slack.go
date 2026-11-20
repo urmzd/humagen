@@ -51,6 +51,9 @@ type SlackManifest struct {
 			Description      string   `json:"agent_description"`
 			SuggestedPrompts []string `json:"suggested_prompts"`
 		} `json:"agent_view"`
+		// CodeChannels is present only when the Slack surface turns code
+		// channels on, so the default manifest asks for nothing new.
+		CodeChannels *slackCodeChannels `json:"code_channels,omitempty"`
 	} `json:"features"`
 	OAuth struct {
 		Scopes struct {
@@ -80,6 +83,15 @@ type slackShortcut struct {
 	Description string `json:"description"`
 }
 
+type slackCodeChannels struct {
+	Enabled bool `json:"enabled"`
+}
+
+// slackCodeChannelScopes are what opening a code channel adds to the bot's
+// scopes: creating one, and reading a channel's record to tell a code channel
+// and where it was opened from (apps/slack/src/codechannel-open.ts).
+var slackCodeChannelScopes = []string{"code_channels:manage", "channels:read", "groups:read"}
+
 type slackCommand struct {
 	Command      string `json:"command"`
 	Description  string `json:"description"`
@@ -96,6 +108,9 @@ type slackCommand struct {
 type slackCopy struct {
 	Description     string
 	BackgroundColor spec.Color
+	// CodeChannels adds the code channels feature and its scopes. Off, the
+	// manifest is the one every install already has.
+	CodeChannels bool
 }
 
 func slackManifest(name string, c slackCopy) SlackManifest {
@@ -128,6 +143,10 @@ func slackManifest(name string, c slackCopy) SlackManifest {
 		"app_mentions:read", "assistant:write", "channels:history", "chat:write", "commands",
 		"groups:history", "im:history", "mpim:history", "reactions:write", "users:read",
 		"files:read", "files:write", "canvases:write",
+	}
+	if c.CodeChannels {
+		m.Features.CodeChannels = &slackCodeChannels{Enabled: true}
+		m.OAuth.Scopes.Bot = append(m.OAuth.Scopes.Bot, slackCodeChannelScopes...)
 	}
 	m.Settings.Events.Bot = []string{"agent_session_stopped", "app_home_opened", "app_mention", "assistant_thread_started", "message.im"}
 	m.Settings.Interactivity.Enabled = true
@@ -171,7 +190,7 @@ func slackCmd(args []string, out io.Writer) error {
 				n = sl.AppName
 			}
 			if sl != nil {
-				said = slackCopy{Description: sl.Description, BackgroundColor: sl.BackgroundColor}
+				said = slackCopy{Description: sl.Description, BackgroundColor: sl.BackgroundColor, CodeChannels: sl.CodeChannels}
 			}
 			break
 		}
@@ -250,6 +269,10 @@ func (s *slackApp) env(ctx context.Context, url, publicURL string, lookup func(s
 		"SLACK_OPERATORS="+strings.Join(s.choice.Operators, ","),
 		"HUMAGEN_URL="+url, "HUMAGEN_TENANT="+s.tenant, "HUMAGEN_PUBLIC_URL="+publicURL,
 	)
+	// Off, the name is not set at all, so the app starts exactly as it did.
+	if s.choice.CodeChannels {
+		env = append(env, "SLACK_CODE_CHANNELS=1")
+	}
 	// How the app signs in to humagen's API (apps/slack/src/config.ts).
 	if c := s.choice.HumagenClient; c != nil {
 		secret, err := s.keys.Resolve(ctx, c.ClientSecret.Ref)

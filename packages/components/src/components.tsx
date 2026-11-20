@@ -79,6 +79,12 @@ export interface TurnCapabilities {
   report?: boolean;
   /** Ask Follow-up on a review's findings, which puts words in the host's composer. */
   followUp?: boolean;
+  /**
+   * Continue in a Code Channel on a finished answer. Unlike the others it is
+   * left out unless a host turns it on: only Slack has the place, and only
+   * where the workspace opted in.
+   */
+  codeChannel?: boolean;
 }
 
 /** Fallback preview when a tool supplies none: scalar args as fields, never a JSON dump. */
@@ -919,6 +925,14 @@ export function TurnView({
           <Button
             label={copy.resume}
             action={{ id: ActionId.resume, payload: { turnId: turn.id, target: turn.id } }}
+          />
+        </Actions>
+      )}
+      {final && capabilities?.codeChannel === true && (
+        <Actions blockId={`code-channel:${turn.id}`}>
+          <Button
+            label={copy.continueInCodeChannel}
+            action={{ id: ActionId.codeChannel, payload: { turnId: turn.id, target: turn.id } }}
           />
         </Actions>
       )}

@@ -610,6 +610,12 @@ type Slack struct {
 	// slash command. Left out, Humagen's.
 	CommandDescription string `json:"command_description,omitempty"`
 	CommandUsageHint   string `json:"command_usage_hint,omitempty"`
+	// CodeChannels lets a person move a conversation into a Slack code channel
+	// of its own, with a button on the answer. Off unless set: it needs the
+	// code channels feature and scopes in the app's manifest, which
+	// `humagen slack manifest -f` writes only when this is on, so turning it
+	// on means pushing the manifest and reinstalling the app.
+	CodeChannels bool `json:"code_channels,omitempty"`
 	// HumagenClient is how the app signs in to humagen's API: a machine client of
 	// the identity provider, whose tokens it gets and renews with client
 	// credentials. Sign-in other than dev needs it or HumagenToken.

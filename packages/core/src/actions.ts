@@ -66,6 +66,12 @@ export const ActionId = {
    */
   openReview: "aui.review.open",
   reviewFollowUp: "aui.review.follow_up",
+  /**
+   * Move a conversation into a place of its own, where a surface has one: on
+   * Slack, a code channel. `turnId` is the answered run. Offered only where
+   * the host says it can (`TurnCapabilities.codeChannel`).
+   */
+  codeChannel: "aui.code_channel.open",
 } as const;
 
 export type ActionId = (typeof ActionId)[keyof typeof ActionId];

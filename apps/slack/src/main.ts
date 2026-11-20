@@ -57,6 +57,7 @@ async function main() {
     defaultAgent: config.humagen.defaultAgent,
     publicUrl: config.humagen.publicUrl,
     branding: config.slack.branding,
+    codeChannels: config.slack.codeChannels,
     log,
   });
 

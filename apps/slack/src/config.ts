@@ -29,6 +29,8 @@ export interface Config {
     streamJournal: string;
     /** Socket Mode liveness: replace a silent connection, and how many failures in a row end the app. */
     socket: { idleMs?: number; maxAttempts?: number };
+    /** Whether a person may move a conversation into a code channel. Off unless `SLACK_CODE_CHANNELS` says so. */
+    codeChannels: boolean;
   };
   /** What to tell the operator at start: each old setting name in use. */
   notes: string[];
@@ -108,6 +110,7 @@ export function readConfig(given: Record<string, string | undefined> = process.e
         ...(idleMs !== undefined ? { idleMs } : {}),
         ...(maxAttempts !== undefined ? { maxAttempts } : {}),
       },
+      codeChannels: /^(1|true|on|yes)$/i.test(env.SLACK_CODE_CHANNELS?.trim() ?? ""),
     },
     humagen: {
       url: env.HUMAGEN_URL?.trim() || "http://127.0.0.1:8080",
