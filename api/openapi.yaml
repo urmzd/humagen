@@ -4720,7 +4720,11 @@ paths:
         runtime's. A budget request, an action the agent always asks about,
         a run forced to ask and an action the policy does not ask about still
         go to a person. Each automatic approval and each change of mode is
-        audited. Takes a person who may post in the conversation.
+        audited. Takes a person who may post in the conversation. A surface
+        that authenticated a person itself sets it for them with `act_as`:
+        only the credential its client names, and only for a person its
+        client maps; every check is then that person's, and `auto` approves
+        as them.
       x-permission: runs:write
       parameters:
         - {$ref: "#/components/parameters/ThreadID"}
@@ -4734,6 +4738,7 @@ paths:
               required: [mode]
               properties:
                 mode: {type: string, enum: [ask, auto]}
+                act_as: {$ref: "#/components/schemas/ActAs"}
       responses:
         "200":
           description: The conversation.

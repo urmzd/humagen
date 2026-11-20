@@ -261,6 +261,17 @@ export interface Humagen {
    * found by its surface or started where the platform files it.
    */
   postThread(body: ThreadPostRequest, options?: CallOptions): Promise<ThreadPosted>;
+  /**
+   * Set how a humagen thread's gated actions are approved, for a person the
+   * client maps: `auto`, the approval agent decides as them, or `ask`. The
+   * console's toggle, with the same checks, made as that person.
+   */
+  setApprovalMode(
+    thread: string,
+    mode: "ask" | "auto",
+    actAs: ActAs,
+    options?: CallOptions,
+  ): Promise<unknown>;
   /** One inbox message as the platform sends it, or null when it does not exist for this caller. */
   getInboxMessage(id: string, options?: CallOptions): Promise<WireMessage | null>;
   /** Where a humagen thread is on a client's surface, or null when it is on none or does not exist here. */
@@ -440,6 +451,7 @@ const sleep = (ms: number, signal: AbortSignal) =>
  * | stopRun | `POST /api/runs/{id}/stop` |
  * | answerQuestion | `POST /api/runs/{id}/questions/{question}/answer` |
  * | postThread | `POST /api/threads` with a surface |
+ * | setApprovalMode | `PUT /api/threads/{id}/approval` with `act_as` |
  * | getInboxMessage, inboxMessageFor | `GET /api/inbox/{id}`, for a person with `act_as_client` and `act_as_user` |
  * | resolveFor | `POST /api/inbox/{id}/parts/{part}/resolve` with `act_as` |
  * | threadTitle | `GET /api/threads/{id}?limit=1` |
@@ -632,6 +644,8 @@ export function httpHumagen(cfg: {
       }
     },
     postThread: (body) => http<ThreadPosted>("POST", "/api/threads", body),
+    setApprovalMode: (thread, mode, actAs) =>
+      http<unknown>("PUT", `/api/threads/${enc(thread)}/approval`, { mode, act_as: actAs }),
     threadSurface: (id) =>
       orNull(
         http<{ thread: { surface?: { client: string; channel: string; ts: string } } }>(

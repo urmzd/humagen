@@ -227,6 +227,33 @@ test("whoever answered is shown by name, on the run and in the inbox, never by s
   assert.equal(closed?.type === "reply" && closed.resolution?.by, "");
 });
 
+test("a call the approval agent decided says so on the run, with its reason, as the inbox does", () => {
+  for (const [decision, note, said] of [
+    ["approve", "Allowed by the approval agent: Ana asked for the plan.", "allow"],
+    ["deny", "Denied by the approval agent: Nobody asked to write files.", "deny"],
+  ] as const) {
+    const f = follow({ id: "r1", agent: "lead" });
+    f.apply(ev("run.parked.v1", { question: questions.approval }));
+    const onRun = f.apply(
+      ev("run.resumed.v1", { answer: { question_id: "q-a", decision, note, by: "ana", by_name: "Ana", at } }),
+    ).interrupts[0];
+    const judgement = { decision: said, reason: note.slice(note.indexOf(": ") + 2) };
+    assert.ok(onRun?.type === "approval");
+    assert.deepEqual(onRun.judgement, judgement);
+    // An inbox part settled the same way reads the same.
+    const inMail = part("approval", { action: decision, by: "ana", by_name: "Ana", at, note }).parts[0];
+    assert.deepEqual(inMail?.type === "approval" && inMail.approval, onRun);
+  }
+  // A person's own note is theirs, never read as the agent's.
+  const own = follow({ id: "r1", agent: "lead" });
+  own.apply(ev("run.parked.v1", { question: questions.approval }));
+  const mine = own.apply(
+    ev("run.resumed.v1", { answer: { question_id: "q-a", decision: "deny", note: "Not on a Friday.", by: "ana", at } }),
+  ).interrupts[0];
+  assert.ok(mine?.type === "approval" && mine.judgement === undefined && mine.decision.kind === "denied");
+  assert.equal(mine.decision.kind === "denied" && mine.decision.reason, "Not on a Friday.");
+});
+
 // A run the platform held at a limit: the hold on the run's stream and the
 // budget part in the inbox are one approval card, which grants or stops.
 const budgetHold = {

@@ -3181,6 +3181,17 @@ export const defaultCopy = {
     autoFor: (name: string) => `Run, chosen by ${name}`,
     waiting: "No model is enabled for the approval agent yet, so every action waits for a person.",
     failed: "Could not change approvals. Try again.",
+    /** In the menu of an approval waiting in a Slack thread: sets the conversation, not the call. */
+    letAgentDecide: "Let the approval agent decide in this thread",
+    /** Under the note that the approval agent decides, to set the thread back. */
+    askMeAgain: "Ask Me Again",
+    /** Under the note that a person decides again, to hand it back to the approval agent. */
+    letAgentDecideAgain: "Let the Approval Agent Decide",
+    /** What changed in the thread, said where everyone in it reads it. */
+    nowAuto: (who: string) =>
+      `${who} let the approval agent decide gated actions in this thread. It decides from the next action on, as ${who} could, and hands a person anything it is unsure of. An action already waiting still waits for a person.`,
+    nowAsk: (who: string) =>
+      `${who} set this thread to ask a person about every gated action again.`,
   },
   /** Over Home's chat bar: the person's own project, where a conversation in no project is filed (DES-057). */
   noProject: "No project",
