@@ -304,6 +304,44 @@ test("with Terminal and Browser built, a command and a browser step open those t
   ]);
 });
 
+test("a browser step reached through any provider is found, worded as the Browser tab words it", () => {
+  const items = searchItems({
+    thread,
+    runs: ["run-9"],
+    responses: [
+      {
+        id: "m9",
+        rootRun: "run-9",
+        status: "done",
+        content: [
+          tool("b1", "pw__browser_navigate", {
+            input: { url: "https://example.test/orders" },
+            result: {
+              text: "- Page URL: https://example.test/orders\n- Page Title: Orders",
+              sources: [],
+              isError: false,
+            },
+          } as Partial<ResponseTool>),
+          tool("b2", "mcp__pw__browser_click", { input: { element: "Late shipments link" } }),
+        ],
+      },
+    ] as unknown as ResponseState[],
+  });
+  const steps = items.filter((i) => i.group === "browser");
+  assert.deepEqual(
+    steps.map((s) => [s.key, s.title, s.detail]),
+    [
+      ["call:b2", defaultCopy.workbenchBrowser.step.click("Late shipments link"), "Orders"],
+      [
+        "call:b1",
+        defaultCopy.workbenchBrowser.step.navigate("https://example.test/orders"),
+        "Orders",
+      ],
+    ],
+  );
+  assert.ok(steps.every((s) => s.target?.kind === "tab" && s.target.tab === "browser"));
+});
+
 test("the keyboard reaches the field and every result", async () => {
   stubSession();
   const { files, selections } = mount();

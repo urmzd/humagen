@@ -7,6 +7,7 @@
  */
 import { defaultCopy } from "@humagen/components";
 import { allTools, type ResponseState, type ResponseTool } from "@humagen/core";
+import { browserSteps, browserTool, callsOfResponses } from "./browserSteps.ts";
 import { fuzzy, type Hit } from "./commands.ts";
 import type { Route, WorkbenchTabId } from "./route.ts";
 import type { SessionSummary } from "./sessionSummary.ts";
@@ -78,9 +79,9 @@ export interface SessionRead {
 export const MAX_CALLS = 200;
 
 // The same names sessionSummary.ts sorts under Environment, which keeps its
-// own copies private: a call in the sandbox, and a step in the browser.
+// own copy private: a call in the sandbox. A step in the browser is whatever
+// the Browser tab takes for one (browserSteps.ts), so the two cannot disagree.
 const SANDBOX = /^(sandbox_|bash$|shell$|run_command$|exec$|python$|code_execution$)/;
-const BROWSER = /^(browser_|computer$)/;
 
 const note = defaultCopy.workbenchSearch.note;
 
@@ -211,6 +212,8 @@ export function searchItems(input: {
   const tools = new Map<string, SearchItem>();
   const agents = new Map<string, SearchItem>();
   const responses = input.responses ?? [];
+  // Each browser step as the Browser tab words it, with the page it left.
+  const worded = new Map(browserSteps(callsOfResponses(responses)).map((s) => [s.id, s]));
   for (let i = responses.length - 1; i >= 0; i--) {
     const response = responses[i];
     if (!response) continue;
@@ -244,14 +247,16 @@ export function searchItems(input: {
             detail: ran ? t.title || spoken(t.name) : undefined,
             target: { kind: "tab", tab: "terminal", ref: t.id, fallback },
           });
-      } else if (BROWSER.test(t.name)) {
+      } else if (browserTool(t.name)) {
         const did = stepOf(t);
+        const step = worded.get(t.id);
+        const page = step?.title ?? step?.url;
         if (steps.length < MAX_CALLS)
           steps.push({
             key: `call:${t.id}`,
             group: "browser",
-            title: oneLine(t.title || did || spoken(t.name)),
-            detail: t.title && did ? oneLine(did) : spoken(t.name),
+            title: oneLine(t.title || step?.label || did || spoken(t.name)),
+            detail: t.title && did ? oneLine(did) : page ? oneLine(page) : spoken(t.name),
             target: { kind: "tab", tab: "browser", ref: t.id, fallback },
           });
       }
