@@ -6,7 +6,7 @@
 |---|---|---|
 | Where | Go, in `humagen serve` (`pkg/integrations/slack`) | TypeScript, `apps/slack`, a separate process |
 | How Slack reaches it | Signed webhooks to a public URL | Socket Mode, no public URL |
-| How it reaches Humagen | In process | The HTTP API, as a machine |
+| How it reaches Humagen | In process | The HTTP API, as a machine. Under `tailscale` sign-in the server that starts it makes its credential ([security](../architecture/security.md#the-slack-app-under-tailscale)) |
 | A run looks like | One plain message per run, edited with `chat.update` | Humagen components: native streaming, plans, tool steps, failures with Retry, files. See [steps, command output and run details](#steps-command-output-and-run-details) |
 | Agent session status and the stop button | Yes | Yes |
 | Code channel slash commands | Yes | Yes: each command in the client's `slack.commands`, registered with `agents.conversations.setCommands` when a message is accepted in the channel. Ordinary channels use `/skill` |
@@ -118,6 +118,9 @@ credential and the people it answers for:
 ```json
 "slack": {"machine": "<subject of the app's machine credential>", "people": {"U01ANA": "ana@example.com"}}
 ```
+
+Under `tailscale` sign-in the app's subject is `slack-app:<team id>`, such as
+`slack-app:T0123ABCD`, and a mapped person is `tailscale:<login>`.
 
 The webhook connector shows a parked run as a suspended session and does not
 take answers.

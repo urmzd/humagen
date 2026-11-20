@@ -1020,7 +1020,7 @@ routes too long for a table column. Each is followed by its state.
 - `pkg/auth`: OIDC sign-in, machine tokens, roles and scopes
   - Built, tested against an in-process issuer
 - Okta SSO and Tailscale Serve identity
-  - Okta uses OIDC without forcing reauthentication. `-auth=tailscale` trusts Serve on loopback, maps namespaced subjects through the authorization policy, and needs no application sign-in
+  - Okta uses OIDC without forcing reauthentication. `-auth=tailscale` trusts Serve on loopback, maps namespaced subjects through the authorization policy, and needs no application sign-in. The Slack app the server starts signs in with a token the server makes for it at start, kept in memory and taken only on loopback
 - `pkg/authz`: a policy language mapping claims to roles and roles to permissions, with Explain
   - Built. The built-in policy declares the four roles. `HUMAGEN_AUTHZ_POLICY` loads a file
 - `pkg/auth/mockidp`: a loopback-only development identity provider, `-auth=mock`

@@ -910,10 +910,14 @@ needs none. Under `oidc` or `mock` it needs `humagen_client`: a machine client o
 the identity provider, whose access tokens the app gets with client credentials
 and renews as they expire, with the scopes [the API](api.md#authenticating-a-machine)
 lists for a Slack surface. `humagen_token` is a bearer token given as it is, for a
-token that does not expire; set one or the other. A process cannot sign in
-through Tailscale Serve, so `tailscale` sign-in refuses a Slack surface. A spec
-that needs a credential and has none is refused when it is checked, and so is a
-start whose `-auth` flag needs one the file does not give.
+token that does not expire; set one or the other. Under `tailscale` it needs
+none and takes none: a process cannot sign in through Tailscale Serve, so the
+server makes a credential for the app it starts, new at every start and kept
+in memory only (see [security](../architecture/security.md#the-slack-app-under-tailscale)).
+A `humagen_client` or `humagen_token` under `tailscale` is refused, since
+nothing could verify it. A spec that needs a credential and has none is
+refused when it is checked, and so is a start whose `-auth` flag needs one the
+file does not give.
 
 Model names are shared across the workspaces in one process: two workspaces
 may declare the same model, but not two different ones under one name.

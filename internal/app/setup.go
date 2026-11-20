@@ -142,13 +142,6 @@ func runSetup(r *bufio.Reader, out io.Writer, path string) error {
 
 	sl := plat.Spec.Surfaces.Slack
 	switch {
-	case kind == "tailscale":
-		// The Slack app calls humagen's API, and a process cannot sign in
-		// through Tailscale Serve.
-		if sl != nil && sl.Enabled {
-			fmt.Fprintln(out, "Slack is off: its app cannot sign in to Humagen through Tailscale Serve.")
-			sl.Enabled = false
-		}
 	case q.yes("Answer in Slack too?", sl != nil && sl.Enabled):
 		if sl == nil {
 			sl = &spec.Slack{BotToken: &spec.Ref{Ref: "env:SLACK_BOT_TOKEN"}, AppToken: &spec.Ref{Ref: "env:SLACK_APP_TOKEN"}}
@@ -158,6 +151,12 @@ func runSetup(r *bufio.Reader, out io.Writer, path string) error {
 		sl.Team = q.text("Slack team id (T...)", sl.Team, nonEmpty)
 		sl.BotToken = &spec.Ref{Ref: q.text("Where is the bot token (xoxb-)?", sl.BotToken.Ref, parseRef)}
 		sl.AppToken = &spec.Ref{Ref: q.text("Where is the app token (xapp-)?", sl.AppToken.Ref, parseRef)}
+		if kind == "tailscale" && (sl.HumagenClient != nil || sl.HumagenToken.Set()) {
+			// The server gives the app it starts its own credential, and one
+			// in the file would be refused.
+			fmt.Fprintln(out, "  Under tailscale sign-in Humagen gives the Slack app its credential, so the one in the file is removed.")
+			sl.HumagenClient, sl.HumagenToken = nil, nil
+		}
 		if kind == "oidc" && !sl.HumagenToken.Set() {
 			fmt.Fprintln(out, "  The app signs in to Humagen as a machine client of the identity provider, with client credentials.")
 			c := sl.HumagenClient

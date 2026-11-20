@@ -310,12 +310,20 @@ func (i installer) github(args []string) error {
 			show(w, http.StatusBadRequest, "GitHub does not know that installation of this app", "Install the app from the page GitHub opened, then return here.")
 			return
 		}
-		finish(result{app: app, installation: id, owner: owner})
+		// The page first: the command ends on the result, and stops this server with it.
 		show(w, http.StatusOK, "GitHub is connected", "Return to the terminal. You can close this tab.")
+		finish(result{app: app, installation: id, owner: owner})
 	})
 	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	go func() { _ = srv.Serve(ln) }()
-	defer func() { _ = srv.Close() }()
+	// Stopped gently, so the page that says it is done reaches the browser.
+	defer func() {
+		stop, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		if srv.Shutdown(stop) != nil {
+			_ = srv.Close()
+		}
+	}()
 
 	fmt.Fprintf(i.out, "Opening GitHub to register %q. Confirm its name, then choose the repositories it may work in.\n", *appName)
 	if *quiet || i.open(here+"/") != nil {
@@ -496,9 +504,6 @@ func (i installer) slack(o Options, args []string) error {
 		return err
 	}
 	sys, plat := &cfg.System, &cfg.Platforms[0]
-	if sys.Spec.Auth.Kind == "tailscale" {
-		return errors.New("the Slack app cannot sign in to Humagen through Tailscale Serve; use oidc, or dev on one machine")
-	}
 	sl := plat.Spec.Surfaces.Slack
 	if sl == nil {
 		sl = &spec.Slack{}
