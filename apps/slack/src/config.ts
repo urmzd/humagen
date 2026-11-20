@@ -29,8 +29,10 @@ export interface Config {
     streamJournal: string;
     /** Socket Mode liveness: replace a silent connection, and how many failures in a row end the app. */
     socket: { idleMs?: number; maxAttempts?: number };
+    /** Whether a person may move a conversation into a code channel. Off unless `SLACK_CODE_CHANNELS` says so. */
+    codeChannels: boolean;
   };
-  /** What to tell the operator at start: each old setting name in use. */
+  /** What to tell the operator at start: each old setting name in use, and a console address left out. */
   notes: string[];
   humagen: {
     url: string;
@@ -40,7 +42,7 @@ export interface Config {
     /** The client record this app is, when it is one. */
     client?: string;
     defaultAgent?: string;
-    /** Where people reach the console, for links to files. */
+    /** Where people reach the console, for links to files. Never this machine's own address. */
     publicUrl?: string;
   };
 }
@@ -50,6 +52,24 @@ const list = (v: string | undefined) =>
     .split(/[\s,]+/)
     .map((s) => s.trim())
     .filter(Boolean);
+
+/** Whether an address names the machine it is opened on, which is nobody else's console. */
+export function loopback(address: string): boolean {
+  let host: string;
+  try {
+    host = new URL(address).hostname.toLowerCase();
+  } catch {
+    return false;
+  }
+  return (
+    host === "localhost" ||
+    host.endsWith(".localhost") ||
+    host === "0.0.0.0" ||
+    host === "[::1]" ||
+    host === "[::]" ||
+    /^127(\.\d{1,3}){3}$/.test(host)
+  );
+}
 
 /** Read the environment. Every missing name is reported at once, and no value is ever echoed. */
 export function readConfig(given: Record<string, string | undefined> = process.env): Config {
@@ -92,6 +112,15 @@ export function readConfig(given: Record<string, string | undefined> = process.e
   };
   const idleMs = count("SLACK_SOCKET_IDLE_MS", 10_000);
   const maxAttempts = count("SLACK_SOCKET_MAX_ATTEMPTS", 1);
+  // A link posted in Slack opens on the reader's machine, so one to this
+  // machine reaches nothing there. The app runs as it does with no address.
+  let publicUrl = env.HUMAGEN_PUBLIC_URL?.trim().replace(/\/+$/, "") || undefined;
+  if (publicUrl && loopback(publicUrl)) {
+    publicUrl = undefined;
+    notes.push(
+      "HUMAGEN_PUBLIC_URL names this machine, which nobody in Slack can open, so messages carry no console links. Set it to the address people reach the console at.",
+    );
+  }
   if (bad.length > 0) throw new Error(bad.join("; "));
   if (missing.length > 0) {
     throw new Error(
@@ -108,6 +137,7 @@ export function readConfig(given: Record<string, string | undefined> = process.e
         ...(idleMs !== undefined ? { idleMs } : {}),
         ...(maxAttempts !== undefined ? { maxAttempts } : {}),
       },
+      codeChannels: /^(1|true|on|yes)$/i.test(env.SLACK_CODE_CHANNELS?.trim() ?? ""),
     },
     humagen: {
       url: env.HUMAGEN_URL?.trim() || "http://127.0.0.1:8080",
@@ -115,7 +145,7 @@ export function readConfig(given: Record<string, string | undefined> = process.e
       token,
       client: env.HUMAGEN_CLIENT?.trim() || undefined,
       defaultAgent: env.HUMAGEN_DEFAULT_AGENT?.trim() || undefined,
-      publicUrl: env.HUMAGEN_PUBLIC_URL?.trim().replace(/\/+$/, "") || undefined,
+      publicUrl,
     },
   };
 }

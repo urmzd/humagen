@@ -6,7 +6,7 @@ import type { ThreadPage, ThreadTurn } from "./api.ts";
  */
 export const MAX_PAGES = 50;
 
-/** What a turn is, whichever read it came in: a message's id, a run's, or an announcement's. */
+/** What a turn is, whichever read it came in: a message's id, a run's or an announcement's. */
 const keyOf = (t: ThreadTurn) =>
   t.message
     ? `m:${t.message.id}`

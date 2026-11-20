@@ -9,6 +9,8 @@ export * from "./FileBrowser";
 export * from "./HumagenMark";
 export * from "./Inbox";
 export * from "./Inspector";
+export * from "./Latest";
+export * from "./latestState";
 export * from "./Mailbox";
 export * from "./MessageActionRow";
 export * from "./Modal";

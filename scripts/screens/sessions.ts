@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import type { Page } from "playwright-core";
 import { defaultCopy } from "../../packages/components/src/copy.ts";
 import {
@@ -19,7 +20,8 @@ const details = (page: Page) => page.getByRole("dialog", { name: "Details", exac
 
 async function readySession(page: Page): Promise<void> {
   await composer(page).waitFor();
-  await page.getByRole("button", { name: "Details", exact: true }).waitFor();
+  // The Details button says how many calls are running ("Details, 1 working").
+  await page.getByRole("button", { name: /^Details(, \d+ working)?$/ }).waitFor();
 }
 
 async function detailsReady(page: Page): Promise<void> {
@@ -85,13 +87,114 @@ async function filesReady(page: Page): Promise<void> {
 
 /** A bounded acceptance set. Every state is captured at each configured width and theme. */
 export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
-  const session = `/sessions/${ids.work.id}`;
+  const session = `/messages/${ids.work.id}`;
   return [
+    {
+      name: "session-inline-code",
+      path: `/messages/${ids.inlineCode.id}`,
+      act: async (page) => {
+        await readySession(page);
+        const answer = page.getByRole("article", { name: "screens-writer message", exact: true });
+        await answer.getByText("ok example.com/calc", { exact: true }).waitFor();
+        await page.evaluate(() => document.fonts.ready);
+        const fragments = await answer.locator(".aui-prose code").evaluateAll((nodes) =>
+          nodes.flatMap((node) => {
+            const parent = node.closest("p")?.getBoundingClientRect();
+            if (!parent) throw new Error("Inline code must belong to prose");
+            return Array.from(node.getClientRects(), (rect) => ({
+              left: rect.left,
+              right: rect.right,
+              min: parent.left,
+              max: parent.right,
+            }));
+          }),
+        );
+        assert.ok(fragments.length >= 3, "The recorded short chips and long path must render");
+        for (const fragment of fragments)
+          assert.ok(
+            fragment.left >= fragment.min - 1 && fragment.right <= fragment.max + 1,
+            `Inline code escapes its text column: ${JSON.stringify(fragment)}`,
+          );
+      },
+    },
+    {
+      name: "session-uploads",
+      path: session,
+      act: async (page) => {
+        await readySession(page);
+        // Reloaded from the actual session API, rather than the composer's local draft.
+        const message = page
+          .getByRole("article", { name: "Message from Developer", exact: true })
+          .first();
+        await message.scrollIntoViewIfNeeded();
+        const uploads = message.getByRole("list", { name: defaultCopy.details.used.uploads });
+        await uploads.getByText("capture.png", { exact: true }).waitFor();
+        await uploads.getByText("launch-notes.txt", { exact: true }).waitFor();
+      },
+    },
+    {
+      name: "composer-attachments",
+      path: "/",
+      act: async (page) => {
+        await composer(page).waitFor();
+        await page.locator('input[type="file"]').setInputFiles({
+          name: "capture.png",
+          mimeType: "image/png",
+          buffer: readFileSync(new URL("../../showcase/ui-approval.png", import.meta.url)),
+        });
+        await page.getByText("capture.png", { exact: true }).waitFor();
+        await composer(page).fill("Inspect this screenshot.");
+      },
+    },
     {
       name: "new",
       path: "/",
       act: async (page) => {
         await composer(page).waitFor();
+      },
+    },
+    {
+      // Nothing seeds an artifact (there is no model to publish one), so the
+      // strip is drawn from three answered here, as the list route answers.
+      name: "home-made",
+      path: "/",
+      act: async (page) => {
+        const at = (days: number) => new Date(Date.now() - days * 86_400_000).toISOString();
+        const made = (id: string, title: string, kind: string, days: number) => ({
+          id,
+          title,
+          kind,
+          mime: "text/markdown",
+          size: 2048,
+          sha256: id,
+          version: 1,
+          run: `run-${id}`,
+          thread: ids.work.id,
+          agent: "screens-approval",
+          created_by: "screens-approval",
+          created_at: at(days),
+        });
+        await page.route(/\/api\/artifacts\?limit=3$/, (route) =>
+          route.fulfill({
+            json: {
+              artifacts: [
+                made("a_plan", "Launch plan", "document", 0),
+                made("a_budget", "Briefing budget", "spreadsheet", 2),
+                made("a_deck", "Owner briefing deck", "presentation", 5),
+              ],
+              next: null,
+            },
+          }),
+        );
+        await page.reload({ waitUntil: "domcontentloaded" });
+        await composer(page).waitFor();
+        const strip = page.getByRole("region", {
+          name: defaultCopy.home.recentlyMade,
+          exact: true,
+        });
+        await strip.getByRole("link", { name: "Launch plan", exact: true }).waitFor();
+        // The menu's Artifacts entry opens the full list: the strip does not link to it again.
+        assert.equal(await strip.getByRole("link", { name: "All artifacts" }).count(), 0);
       },
     },
     {
@@ -108,11 +211,10 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
           "Alerts",
           "Projects",
           "Agents",
-          "Connections",
           "Scheduled",
           "Artifacts",
         ])
-          await sections.getByRole("link", { name: new RegExp(`^${name}(?:,|$)`) }).waitFor();
+          await sections.getByRole("link", { name: new RegExp(`^${name}(?:[ ,]|$)`) }).waitFor();
       },
     },
     {
@@ -120,9 +222,7 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
       path: "/",
       act: async (page) => {
         await composer(page).fill("Keep this unsent draft while choosing context.");
-        await page
-          .getByRole("button", { name: "Add files, agents or a project", exact: true })
-          .click();
+        await page.getByRole("button", { name: defaultCopy.chat.plus, exact: true }).click();
         await page.getByRole("dialog", { name: "Add to this conversation", exact: true }).waitFor();
         assert.equal(
           await composer(page).inputValue(),
@@ -163,30 +263,34 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
       },
     },
     {
+      // Apps are the workspace's installs, on an administrator's page of their own.
       name: "connections",
-      path: "/connections",
+      path: "/settings/apps",
       act: async (page) => {
-        await page.getByRole("heading", { name: "Connections", exact: true }).waitFor();
-        await page.getByRole("tablist", { name: "Connection kinds" }).waitFor();
+        await page.getByRole("heading", { name: "Apps", exact: true, level: 1 }).waitFor();
+        await page.getByRole("list", { name: "Apps", exact: true }).waitFor();
       },
     },
     {
-      name: "connections-knowledge",
-      path: "/connections",
+      name: "connections-mcps",
+      path: "/settings/plugins",
       act: async (page) => {
-        await page.getByRole("tab", { name: "Data sources", exact: true }).click();
-        await page.getByRole("heading", { name: "BigQuery", exact: true }).first().waitFor();
+        await page.getByRole("heading", { name: "Plugins", exact: true }).waitFor();
+        // The catalog is one region of shelves, each its own list.
+        await page.getByRole("region", { name: "MCPs", exact: true }).waitFor();
       },
     },
     {
       name: "artifacts",
       path: "/artifacts",
       act: async (page) => {
-        await page.getByRole("heading", { name: "Deliverables", exact: true }).waitFor();
+        await page.getByRole("heading", { name: "Artifacts", exact: true }).waitFor();
         await page.getByRole("searchbox", { name: "Search artifacts", exact: true }).waitFor();
+        // The empty state is its title as text, not a heading. Nothing seeds an
+        // artifact here: there is no model to seed one with.
         await page
           .getByRole("list", { name: "Artifacts", exact: true })
-          .or(page.getByRole("heading", { name: "No artifacts yet", exact: true }))
+          .or(page.getByText("No artifacts yet", { exact: true }))
           .waitFor();
       },
     },
@@ -197,7 +301,23 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
         await page.getByRole("heading", { name: "Appearance", exact: true }).waitFor();
       },
     },
-    { name: "session", path: session, act: readySession },
+    {
+      name: "session",
+      path: session,
+      act: async (page) => {
+        await readySession(page);
+        const worked = page.getByTestId("worked").first();
+        await worked.scrollIntoViewIfNeeded();
+        const bounds = await worked.boundingBox();
+        if (await page.evaluate(() => matchMedia("(pointer: coarse)").matches))
+          assert.ok(bounds && bounds.height >= 44, "Worked must have a 44px touch target");
+        await worked.click();
+        await detailsReady(page);
+        await details(page).getByRole("button", { name: "Close Details", exact: true }).click();
+        await details(page).waitFor({ state: "hidden" });
+        await worked.scrollIntoViewIfNeeded();
+      },
+    },
     {
       name: "session-menu",
       path: session,
@@ -239,7 +359,7 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
     })),
     {
       name: "session-approval",
-      path: `/sessions/${ids.approval.id}`,
+      path: `/messages/${ids.approval.id}`,
       act: async (page) => {
         await readySession(page);
         await page.getByRole("button", { name: "Ask a question", exact: true }).first().waitFor();
@@ -251,7 +371,7 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
     },
     {
       name: "session-review",
-      path: `/sessions/${ids.review.id}`,
+      path: `/messages/${ids.review.id}`,
       act: async (page) => {
         await readySession(page);
         await page.getByText(REVIEW_TITLE, { exact: true }).waitFor();

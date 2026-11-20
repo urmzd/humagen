@@ -130,7 +130,7 @@ export function Catalog({
                 </p>
                 {!page.connectors.length && (
                   <a className={`${button} mt-3`} href={href({ page: "connections" })}>
-                    Open Connections
+                    Open Plugins
                   </a>
                 )}
               </div>

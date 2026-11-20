@@ -62,6 +62,19 @@ const initial: Personal = {
   remember: false,
   use_personal_memory_in_projects: false,
 };
+
+// A person who has set no quiet hours has only the server's default zone, so
+// the form starts from the browser's zone. A saved window keeps its own zone.
+function withBrowserZone(personal: Personal): Personal {
+  if (personal.quiet_start || personal.quiet_end || personal.timezone !== "UTC") return personal;
+  try {
+    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return zone ? { ...personal, timezone: zone } : personal;
+  } catch {
+    return personal;
+  }
+}
+
 export function PersonalPreferences({
   section = "profile",
   onSaved,
@@ -85,7 +98,7 @@ export function PersonalPreferences({
       .then(([preferences, me]) => {
         if (live) {
           setProfile(preferences);
-          setValue(preferences.personal ?? initial);
+          setValue(withBrowserZone(preferences.personal ?? initial));
           setRoles(me.principal.roles ?? []);
           setEmailAvailable(me.email_notifications_available === true);
         }
@@ -112,7 +125,7 @@ export function PersonalPreferences({
       });
       setProfile(result);
       onSaved?.(result);
-      setValue(result.personal ?? initial);
+      setValue(withBrowserZone(result.personal ?? initial));
       setSaved(true);
     } catch (error) {
       if (error instanceof ApiError && error.status === 409) {

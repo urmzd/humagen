@@ -1,7 +1,7 @@
 import type { PersonContext, PersonContextInput, PersonToolServer } from "./api.ts";
 import { startsAllowed } from "./connections.ts";
 
-/** The most tool servers one person adds, as the server holds it. */
+/** The most MCPs one person adds, as the server holds it. */
 export const MAX_TOOL_SERVERS = 16;
 
 const NAME = /^[a-z0-9][a-z0-9-]{0,62}$/;
@@ -24,11 +24,9 @@ export function toolServerProblem(
   existing: PersonToolServer[],
   starts: string[],
 ): string | null {
-  if (existing.length >= MAX_TOOL_SERVERS)
-    return `You can add at most ${MAX_TOOL_SERVERS} tool servers.`;
+  if (existing.length >= MAX_TOOL_SERVERS) return `You can add at most ${MAX_TOOL_SERVERS} MCPs.`;
   if (!NAME.test(s.name)) return "A name is lower case letters, digits and dashes, at most 63.";
-  if (existing.some((o) => o.name === s.name))
-    return `You already have a tool server named ${s.name}.`;
+  if (existing.some((o) => o.name === s.name)) return `You already have an MCP named ${s.name}.`;
   let u: URL;
   try {
     u = new URL(s.url);

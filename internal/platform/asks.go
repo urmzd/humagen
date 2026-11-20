@@ -4,7 +4,7 @@ import (
 	"cmp"
 	"context"
 
-	"github.com/urmzd/orchagent/flow/event"
+	"github.com/urmzd/saige/flow/event"
 
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/runs"
@@ -43,14 +43,22 @@ type Ask struct {
 func (p *Platform) AsksIn(ctx context.Context, who auth.Principal, turns []ThreadTurn) []ThreadTurn {
 	var s *shower
 	for i, t := range turns {
-		if t.Run == nil || t.Run.Status != runs.Parked || t.Run.Question == nil {
+		if t.Run == nil || t.Run.Status != runs.Parked {
 			continue
 		}
-		if s == nil {
-			s = p.shower(who.Tenant)
+		// A run parked on a batch of tool calls waits on several questions
+		// at once, and a reader may stand differently to each.
+		for _, q := range t.Run.Waits() {
+			if s == nil {
+				s = p.shower(who.Tenant)
+			}
+			if ask, ok := p.askOf(ctx, who, *t.Run, q, s); ok {
+				turns[i].Asks = append(turns[i].Asks, ask)
+			}
 		}
-		if ask, ok := p.askOf(ctx, who, *t.Run, *t.Run.Question, s); ok {
-			turns[i].Ask = &ask
+		if len(turns[i].Asks) > 0 {
+			first := turns[i].Asks[0]
+			turns[i].Ask = &first
 		}
 	}
 	return turns

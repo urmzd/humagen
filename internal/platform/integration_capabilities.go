@@ -54,7 +54,7 @@ func (p *Platform) ClientCapabilities(tenant, id string) (InstallationCapabiliti
 			if len(out.Actions) >= 32 {
 				break
 			}
-			out.Actions = append(out.Actions, InstallationAction{ID: a.Name, Description: a.Description, Enabled: c.AllowsAction(a.Name), Category: string(categoryOf(a.Name))})
+			out.Actions = append(out.Actions, InstallationAction{ID: a.Name, Description: a.Description, Enabled: c.AllowsAction(a.Name), Category: string(p.categoryOf(a.Name))})
 		}
 	}
 	return out, nil

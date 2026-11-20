@@ -1,5 +1,9 @@
 # GitHub and Slack trial
 
+To install either app, use `humagen install`: see the [Slack](slack.md) and
+[GitHub](github.md) guides. This page covers a manual trial with environment
+variables and one credential item.
+
 Humagen owns [clients](../reference/clients.md) (which Slack apps and GitHub installations a
 workspace answers through), agent definitions, review and command policy, and
 the run history shown in its console. Fiber supplies signed
@@ -85,7 +89,7 @@ list, write the secret as a value. See [clients](../reference/clients.md#secrets
 ## GitHub installation
 
 Use GitHub's [manifest registration flow](https://docs.github.com/en/apps/sharing-github-apps/registering-a-github-app-from-a-manifest)
-with [humagen's manifest](../../examples/github-review/app-manifest.json).
+with [humagen's manifest](https://github.com/urmzd/humagen/blob/main/examples/github-review/app-manifest.json).
 Replace its app name, webhook URL and callback URL.
 
 1. Submit JSON in the `manifest` form field to `https://github.com/settings/apps/new`,
@@ -117,20 +121,21 @@ forwarder, not a GitHub-style asynchronous relay.
 ```sh
 export HUMAGEN_GITHUB_OWNERS='your-account'
 export HUMAGEN_GITHUB_BOTS='your-app[bot]=github-agent'
-export HUMAGEN_GITHUB_AUTO_LABELS='{"your-account/sandbox":{"agent:auto":"github-agent"}}'
+export HUMAGEN_GITHUB_DEFAULT_AGENT=github-agent
 export HUMAGEN_GITHUB_CHECKS=true
 export HUMAGEN_GITHUB_GUIDES=true
 ```
 
-Applying the configured label starts a review. Subsequent commits update its
-guide and start separate reviews. Mention the app for questions. For writes,
-map the app to `github-fixer`, update the label mapping accordingly, and enable
+A pull request that opens ready for review, leaves draft or gets a push is
+reviewed by the default agent, once per commit; labels start nothing (see
+[Automatic review](../reference/github.md#automatic-review)). Mention the app
+for questions. For writes, map the app to `github-fixer` and enable
 `HUMAGEN_GITHUB_MUTATIONS=true`. Only explicit `/fix` or `/check <run-id>`
 requests from repository writers receive a run-bound grant. See [GitHub](../reference/github.md).
 
 ## Slack installation
 
-Create or update the app using [the manifest](../../examples/slack/manifest.json),
+Create or update the app using [the manifest](https://github.com/urmzd/humagen/blob/main/examples/slack/manifest.json),
 replace `YOUR_HOST` with the forwarder URL, install it, and invite its bot to the
 trial channel. Configure the bot token/signing secret through the credential
 item. Set `HUMAGEN_SLACK_TEAM`, `HUMAGEN_SLACK_BOTS` (bot-user-id=agent-name)

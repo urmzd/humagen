@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/urmzd/orchagent/flow/event"
-	fl "github.com/urmzd/orchagent/flow/event/legacy"
+	"github.com/urmzd/saige/flow/event"
+	fl "github.com/urmzd/saige/flow/event/legacy"
 )
 
 // Run triggers and run events before the event union.

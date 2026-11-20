@@ -59,13 +59,13 @@ func TestAWorkspaceThatWroteNothingReadsAsTheUpgradeLeavesIt(t *testing.T) {
 	}
 }
 
-func TestAZeroAgentsAddsNothingAndStarIsWritten(t *testing.T) {
+func TestEnableListsDecideNothing(t *testing.T) {
 	s := field(t)
 	setAgents(t, s, projects.Root, projects.Agents{}, admin)
 	tree := s.Tree("acme")
 	for _, p := range []string{projects.Root, "Field", "Globex", "Renewals"} {
-		if got := tree.Available(p); got.All || len(got.Names) != 0 || tree.IsAvailable(p, "helper") {
-			t.Fatalf("%q with nothing enabled = %+v", p, got)
+		if got := tree.Available(p); !got.All || len(got.Names) != 0 || !tree.IsAvailable(p, "helper") {
+			t.Fatalf("%q with nothing enabled = %+v, want every agent", p, got)
 		}
 	}
 	if enable := tree.Root().Agents.Enable; enable == nil {
@@ -73,11 +73,10 @@ func TestAZeroAgentsAddsNothingAndStarIsWritten(t *testing.T) {
 	}
 	setAgents(t, s, "Field", projects.Agents{Enable: []string{"helper"}}, ada)
 	tree = s.Tree("acme")
-	if tree.IsAvailable(projects.Root, "helper") || tree.IsAvailable("Launch", "helper") {
-		t.Fatal("an enable list reached above or beside its project")
-	}
-	if !tree.IsAvailable("Field", "helper") || !tree.IsAvailable("Renewals", "helper") || tree.IsAvailable("Renewals", "other") {
-		t.Fatal("an enable list did not reach exactly its agent, here and below")
+	for _, p := range []string{projects.Root, "Launch", "Field", "Renewals"} {
+		if !tree.IsAvailable(p, "helper") || !tree.IsAvailable(p, "other") {
+			t.Fatalf("an enable list in Field changed who answers in %q", p)
+		}
 	}
 }
 
@@ -128,50 +127,32 @@ func TestAllowOnlyTightensDownTheChain(t *testing.T) {
 	}
 }
 
-func TestStarNeverReachesAnAgentThatLivesInAProject(t *testing.T) {
+func TestAHomeDecidesNothingAboutWhereAnAgentAnswers(t *testing.T) {
 	s := field(t)
 	mustHome(t, s, "globex-helper", "Globex")
 	tree := s.Tree("acme")
-	for _, p := range []string{projects.Root, "Field", "Initech", "Launch"} {
-		if tree.IsAvailable(p, "globex-helper") || slices.Contains(tree.Available(p).Names, "globex-helper") {
-			t.Errorf("globex-helper is available in %q, outside its home", p)
+	for _, p := range []string{projects.Root, "Field", "Initech", "Launch", "Globex", "Renewals"} {
+		if !tree.IsAvailable(p, "globex-helper") || !tree.Available(p).All {
+			t.Errorf("globex-helper is not available in %q: %+v", p, tree.Available(p))
 		}
 	}
-	for _, p := range []string{"Globex", "Renewals"} {
-		got := tree.Available(p)
-		if !tree.IsAvailable(p, "globex-helper") || !got.All || !slices.Equal(got.Names, []string{"globex-helper"}) {
-			t.Errorf("%q = %+v, want every platform agent and globex-helper", p, got)
-		}
-	}
+	// The home is still read, as who sees the agent.
 	if home, ok := tree.Home("globex-helper"); !ok || home != "Globex" || !slices.Equal(tree.Homes("Globex"), []string{"globex-helper"}) {
 		t.Fatalf("home = %q %v, homes %v", home, ok, tree.Homes("Globex"))
 	}
-	// Another spelling of its name names the same agent, which lives there.
 	if home, ok := tree.Home(" Globex-Helper"); !ok || home != "Globex" {
 		t.Fatalf("the home of Globex-Helper = %q %v", home, ok)
 	}
-	// An allow list above the home still decides inside it.
+	// An allow list is policy, and decides wherever it is on the chain.
 	setAgents(t, s, "Field", projects.Agents{Enable: []string{}, Allow: []string{"writer"}}, ada)
-	if s.Tree("acme").IsAvailable("Globex", "globex-helper") {
-		t.Fatal("an ancestor's allow list did not narrow a project agent")
+	tree = s.Tree("acme")
+	if tree.IsAvailable("Globex", "globex-helper") || !tree.IsAvailable("Launch", "globex-helper") {
+		t.Fatal("an allow list did not narrow exactly its own subtree")
 	}
-}
-
-func TestAnEnableEntryNamingAProjectAgentAddsNothing(t *testing.T) {
-	s := field(t)
-	setAgents(t, s, projects.Root, projects.Agents{}, admin)
-	mustHome(t, s, "globex-helper", "Globex")
-	// Only the file can write one now, since the API refuses it.
-	if _, err := s.Upsert("acme", projects.Project{Name: "Initech", Kind: projects.Account, Parent: "Field",
-		Agents: projects.Agents{Enable: []string{"globex-helper"}}}, []string{projects.FieldAgents}, "file", t0); err != nil {
-		t.Fatal(err)
-	}
-	if tree := s.Tree("acme"); tree.IsAvailable("Initech", "globex-helper") || len(tree.Available("Initech").Names) != 0 {
-		t.Fatalf("an enable entry reached a project agent: %+v", tree.Available("Initech"))
-	}
-	p, _ := s.Get("acme", "Field")
-	if _, err := s.SetAgents("acme", "Field", p.Version, projects.Agents{Enable: []string{"globex-helper"}}, ada, t0); !errors.Is(err, projects.ErrInvalid) {
-		t.Fatalf("enabling a project agent = %v, want ErrInvalid", err)
+	// Enabling an agent with a home is no longer refused: it adds nothing.
+	p, _ := s.Get("acme", "Launch")
+	if _, err := s.SetAgents("acme", "Launch", p.Version, projects.Agents{Enable: []string{"globex-helper"}}, ada, t0); err != nil {
+		t.Fatalf("an enable list naming an agent with a home = %v", err)
 	}
 }
 
@@ -188,21 +169,19 @@ func TestAvailableAgreesWithIsAvailable(t *testing.T) {
 	for _, p := range tree.Subtree(projects.Root) {
 		got := tree.Available(p)
 		for _, a := range agents {
-			_, homed := tree.Home(a)
-			listed := slices.Contains(got.Names, a) || (got.All && !homed)
-			if listed != tree.IsAvailable(p, a) {
+			if listed := got.All || slices.Contains(got.Names, a); listed != tree.IsAvailable(p, a) {
 				t.Errorf("%q: Available %+v and IsAvailable(%s) = %v disagree", p, got, a, tree.IsAvailable(p, a))
 			}
 		}
 	}
-	// Spot checks of the rule itself.
+	// Spot checks: only allow lists decide.
 	for _, c := range []struct {
 		project, agent string
 		want           bool
 	}{
-		{projects.Root, "writer", true}, {projects.Root, "lead", false}, {projects.Root, "field-helper", false},
-		{"Launch", "lead", false}, {"Field", "lead", true}, {"Field", "field-helper", true}, {"Field", "globex-helper", false},
-		{"Initech", "writer", true}, {"Initech", "field-helper", true}, {"Initech", "globex-helper", false}, {"Initech", "other", false},
+		{projects.Root, "writer", true}, {projects.Root, "lead", true}, {projects.Root, "field-helper", true},
+		{"Launch", "lead", true}, {"Field", "globex-helper", true},
+		{"Initech", "writer", true}, {"Initech", "globex-helper", true}, {"Initech", "other", false},
 		{"Renewals", "globex-helper", true}, {"Renewals", "lead", true}, {"Renewals", "writer", false}, {"Renewals", "field-helper", false},
 		{"Globex", projects.OpenDefault, false}, {"Nowhere", "writer", false},
 	} {
@@ -212,33 +191,35 @@ func TestAvailableAgreesWithIsAvailable(t *testing.T) {
 	}
 }
 
-func TestADefaultIsInheritedNearestFirst(t *testing.T) {
+func TestOnlyTheWorkspaceDefaultIsRead(t *testing.T) {
 	s := field(t)
 	tree := s.Tree("acme")
 	if d, from := tree.DefaultOf("Renewals"); d != projects.OpenDefault || from != projects.Root {
-		t.Fatalf("Renewals inherits %q from %q, want the root's auto", d, from)
+		t.Fatalf("Renewals inherits %q from %q, want the root's open default", d, from)
 	}
 	if d, _ := tree.NamedDefault("Renewals"); d != "" {
-		t.Fatalf("a chain of auto names %q", d)
+		t.Fatalf("an open workspace default names %q", d)
 	}
+	// A project's own default, written before projects stopped choosing
+	// agents, is not read.
 	setAgents(t, s, "Field", projects.Agents{Enable: []string{}, Default: "field-helper"}, ada)
-	setAgents(t, s, "Globex", projects.Agents{Enable: []string{}, Default: projects.OpenDefault}, ada)
+	setAgents(t, s, projects.Root, projects.Agents{Enable: []string{projects.Everyone}, Default: "lead"}, admin)
 	tree = s.Tree("acme")
-	for _, c := range []struct{ project, agent, from, named, namedFrom string }{
-		{"Renewals", projects.OpenDefault, "Globex", "field-helper", "Field"},
-		{"Initech", "field-helper", "Field", "field-helper", "Field"},
-		{"Launch", projects.OpenDefault, projects.Root, "", ""},
-		{"Nowhere", "", "", "", ""},
+	for _, c := range []struct{ project, agent, from string }{
+		{"Renewals", "lead", projects.Root},
+		{"Field", "lead", projects.Root},
+		{projects.Root, "lead", projects.Root},
+		{"Nowhere", "", ""},
 	} {
 		d, from := tree.DefaultOf(c.project)
 		n, nFrom := tree.NamedDefault(c.project)
-		if d != c.agent || from != c.from || n != c.named || nFrom != c.namedFrom {
-			t.Errorf("%q: default %q from %q, named %q from %q; want %q %q %q %q", c.project, d, from, n, nFrom, c.agent, c.from, c.named, c.namedFrom)
+		if d != c.agent || from != c.from || n != c.agent || nFrom != c.from {
+			t.Errorf("%q: default %q from %q, named %q from %q; want %q from %q", c.project, d, from, n, nFrom, c.agent, c.from)
 		}
 	}
 }
 
-func TestADefaultMustBeAvailableWhereItIsSet(t *testing.T) {
+func TestOnlyTheWorkspaceDefaultIsChecked(t *testing.T) {
 	s := field(t)
 	mustHome(t, s, "globex-helper", "Globex")
 	set := func(name string, a projects.Agents, w projects.Writer) error {
@@ -246,20 +227,18 @@ func TestADefaultMustBeAvailableWhereItIsSet(t *testing.T) {
 		_, err := s.SetAgents("acme", name, p.Version, a, w, t0)
 		return err
 	}
-	if err := set("Initech", projects.Agents{Enable: []string{}, Default: "globex-helper"}, ada); !errors.Is(err, projects.ErrInvalid) {
-		t.Fatalf("a default that lives elsewhere = %v", err)
+	// A project's default is not read, so it is not checked either.
+	if err := set("Initech", projects.Agents{Enable: []string{}, Default: "globex-helper"}, ada); err != nil {
+		t.Fatalf("a project default = %v", err)
 	}
-	if err := set("Renewals", projects.Agents{Enable: []string{}, Default: "globex-helper"}, ada); err != nil {
-		t.Fatalf("a default that lives above = %v", err)
+	if err := set(projects.Root, projects.Agents{Enable: []string{}, Allow: []string{"writer"}, Default: "lead"}, admin); !errors.Is(err, projects.ErrInvalid) {
+		t.Fatalf("a workspace default its own allow list refuses = %v", err)
 	}
-	if err := set("Field", projects.Agents{Enable: []string{}, Allow: []string{"writer"}, Default: "lead"}, ada); !errors.Is(err, projects.ErrInvalid) {
-		t.Fatalf("a default its own allow list refuses = %v", err)
+	if err := set(projects.Root, projects.Agents{Enable: []string{}, Default: "lead"}, admin); err != nil {
+		t.Fatalf("a workspace default = %v", err)
 	}
 	if err := set("Launch", projects.Agents{Enable: []string{}, Default: projects.OpenDefault}, ada); err != nil {
-		t.Fatalf("auto = %v", err)
-	}
-	if err := set(projects.Root, projects.Agents{Enable: []string{}, Default: "lead"}, admin); !errors.Is(err, projects.ErrInvalid) {
-		t.Fatalf("a root default nothing enables = %v", err)
+		t.Fatalf("open = %v", err)
 	}
 }
 
@@ -330,38 +309,27 @@ func TestSettingAgentsIsVersionedAndRecorded(t *testing.T) {
 	}
 }
 
-func TestAHomeIsRefusedWhileSomethingWouldLoseTheAgent(t *testing.T) {
+func TestAHomeIsRefusedWhileThePlatformWouldLoseTheAgent(t *testing.T) {
 	s := field(t)
-	setAgents(t, s, "Launch", projects.Agents{Enable: []string{}, Default: "helper"}, ada)
-	setAgents(t, s, "Initech", projects.Agents{Enable: []string{"helper"}, Allow: []string{"helper", "writer"}}, ada)
-	// An allow list above the new home still decides there: it does not count.
-	setAgents(t, s, "Field", projects.Agents{Enable: []string{}, Allow: []string{"helper", "writer"}}, ada)
-	err := s.SetHome("acme", "helper", "Globex", admin, t0, nil)
-	if !errors.Is(err, projects.ErrInUse) {
-		t.Fatalf("SetHome = %v, want ErrInUse", err)
-	}
-	for _, want := range []string{"the default of Launch", "the enable list of Initech", "the allow list of Initech"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("%q does not name %s", err, want)
-		}
-	}
-	if strings.Contains(err.Error(), "Field") {
-		t.Errorf("%q names the allow list above the home", err)
+	var before, after bool
+	err := s.SetHome("acme", "helper", "Globex", admin, t0, func(b, a *projects.Tree) []string {
+		_, before = b.Home("helper")
+		home, _ := a.Home("helper")
+		after = home == "Globex"
+		return []string{"the schedule nightly in Launch"}
+	})
+	if !errors.Is(err, projects.ErrInUse) || !strings.Contains(err.Error(), "the schedule nightly in Launch") || before || !after {
+		t.Fatalf("SetHome = %v, before %v, after %v", err, before, after)
 	}
 	if _, homed := s.Tree("acme").Home("helper"); homed {
 		t.Fatal("a refused home was kept")
 	}
-
-	// What the platform knows of is asked too, with the tree as it would be.
-	s = field(t)
-	var sawBefore, sawAfter bool
-	err = s.SetHome("acme", "helper", "Globex", admin, t0, func(before, after *projects.Tree) []string {
-		sawBefore = before.IsAvailable("Launch", "helper")
-		sawAfter = !after.IsAvailable("Launch", "helper") && after.IsAvailable("Renewals", "helper")
-		return []string{"the schedule nightly in Launch"}
-	})
-	if !errors.Is(err, projects.ErrInUse) || !strings.Contains(err.Error(), "the schedule nightly in Launch") || !sawBefore || !sawAfter {
-		t.Fatalf("SetHome = %v, before %v, after %v", err, sawBefore, sawAfter)
+	// Nothing in the tree itself holds a home back: no default or list
+	// loses the agent, since where it answers does not change.
+	setAgents(t, s, "Launch", projects.Agents{Enable: []string{}, Default: "helper"}, ada)
+	setAgents(t, s, "Initech", projects.Agents{Enable: []string{"helper"}, Allow: []string{"helper", "writer"}}, ada)
+	if err := s.SetHome("acme", "helper", "Globex", admin, t0, nil); err != nil {
+		t.Fatalf("SetHome with lists naming the agent = %v", err)
 	}
 }
 

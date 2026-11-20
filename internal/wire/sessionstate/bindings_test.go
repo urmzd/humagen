@@ -12,7 +12,7 @@ import (
 	"github.com/urmzd/humagen/internal/wire/sessionstate"
 	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/humagen/pkg/state/statetest"
-	"github.com/urmzd/orchagent/flow/session"
+	"github.com/urmzd/saige/flow/session"
 )
 
 func TestRunsUseBindingOrderAcrossReplicasAndRestart(t *testing.T) {

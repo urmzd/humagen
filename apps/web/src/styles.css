@@ -12,10 +12,18 @@ html[data-theme="dark"] {
   color-scheme: dark;
 }
 
+/*
+ * The page, the body and the console are all the app's height. Sized 100%,
+ * html and body would follow Safari's short viewport on an iPhone home
+ * screen and clip the console viewport.ts makes taller: the bottom of the
+ * screen would show a blank strip and the end of the composer cut off.
+ */
 html,
-body,
+body {
+  height: var(--humagen-app-height, 100%);
+  overflow: hidden;
+}
 #root {
-  height: 100%;
   overflow: hidden;
 }
 
@@ -552,7 +560,16 @@ button.humagen-tick:focus-visible {
 .humagen-sidebar-reveal {
   animation: humagen-fade var(--humagen-dur) var(--humagen-ease-out) 60ms backwards;
 }
+/* A section's sticky label. The drawer on a phone is glass over the dimmed page, so there the label is glass too. */
+.humagen-sidebar-label {
+  background: var(--humagen-plane);
+}
 @media (max-width: 47.99rem) {
+  .humagen-sidebar-label {
+    background: var(--aui-chrome-bg);
+    -webkit-backdrop-filter: blur(var(--aui-chrome-blur)) saturate(var(--aui-chrome-saturate));
+    backdrop-filter: blur(var(--aui-chrome-blur)) saturate(var(--aui-chrome-saturate));
+  }
   .humagen-sidebar {
     animation: humagen-drawer-left var(--humagen-dur-slow) var(--humagen-ease-out) backwards;
   }
@@ -679,7 +696,7 @@ button.humagen-tick:focus-visible {
 
 /* One header height for a page and every drawer beside it, so their dividers meet. */
 :root { --humagen-header-h: 4.5rem; }
-/* The composer's height under a conversation, held while the conversation is read (Chat.tsx). Its disclaimer wraps on a phone. */
+/* The composer's height under a conversation, held while the conversation is read (Chat.tsx). */
 :root { --humagen-composer-h: 7.5rem; }
 @media (max-width: 47.99rem) { :root { --humagen-composer-h: 6rem; } }
 .humagen-conversation-header {
@@ -856,8 +873,6 @@ html[data-gallery], html[data-gallery] body, html[data-gallery] #root {
   /* The page ends above the home indicator, except while the keyboard covers it. */
   .humagen-content { padding-bottom: env(safe-area-inset-bottom); }
   :root[data-keyboard] .humagen-content { padding-bottom: 0; }
-  /* While the keyboard is up the chat bar sits right on it; the disclaimer comes back when it closes. */
-  :root[data-keyboard] .humagen-disclaimer { display: none; }
   /* The drawer runs the full height and keeps its rows clear of the notch and the indicator. */
   .humagen-sidebar {
     padding-top: env(safe-area-inset-top);
@@ -886,6 +901,8 @@ html[data-gallery], html[data-gallery] body, html[data-gallery] #root {
     padding-right: env(safe-area-inset-right);
     translate: 0 1.5rem;
   }
+  /* A body that lays itself out (a terminal, a browser view) has no height of its own to ask for. */
+  .humagen-inspector[data-fill] { height: calc(var(--humagen-app-height) - var(--humagen-keyboard, 0px) - env(safe-area-inset-top) - 1rem); }
   .humagen-inspector[open] { translate: none; }
   @starting-style {
     .humagen-inspector[open] { translate: 0 1.5rem; }
@@ -983,72 +1000,6 @@ body {
   .humagen-update { left: max(1rem, env(safe-area-inset-left)); }
 }
 
-/*
- * The chat bar glows: a ring in the brand's sweep, with a soft halo of the
- * same colors under it. Quiet at rest, brighter while the person writes. While
- * a reply is in flight the sweep turns slowly round the bar, so the system
- * reads as working; it stops when the reply ends, and never moves with
- * reduced motion. The sweep is a square of conic gradient turned by
- * transform, clipped to the bar's corners (Composer.tsx).
- */
-/* At rest and in focus the bar has its plain border; colour appears only while an agent works. */
-.humagen-glow[data-working] {
-  border-color: transparent;
-}
-.humagen-glow-ring,
-.humagen-glow-halo {
-  position: absolute;
-  inset: -1px;
-  border-radius: inherit;
-  overflow: hidden;
-  pointer-events: none;
-  transition: opacity var(--humagen-dur) var(--humagen-ease-out);
-}
-/* The ring: the sweep, cut to a 1px line along the bar's own corners. */
-.humagen-glow-ring {
-  padding: 1px;
-  -webkit-mask:
-    linear-gradient(#000 0 0) content-box,
-    linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask:
-    linear-gradient(#000 0 0) content-box exclude,
-    linear-gradient(#000 0 0);
-  opacity: 0;
-}
-/* The halo, under the bar's own surface. */
-.humagen-glow-halo {
-  z-index: -1;
-  filter: blur(18px);
-  opacity: 0;
-}
-.humagen-glow-sweep {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 150%;
-  aspect-ratio: 1;
-  transform: translate(-50%, -50%);
-  /* Neutral: the moving light says "working"; colour is kept for meaning. */
-  background: conic-gradient(
-    transparent,
-    color-mix(in oklch, var(--aui-fg) 60%, transparent) 15%,
-    transparent 35%
-  );
-}
-.humagen-glow[data-working] > .humagen-glow-ring { opacity: 1; }
-.humagen-glow[data-working] > .humagen-glow-halo { opacity: 0.4; }
-.humagen-glow[data-working] .humagen-glow-sweep {
-  animation: humagen-glow-turn 4s linear infinite;
-}
-@keyframes humagen-glow-turn {
-  to { transform: translate(-50%, -50%) rotate(360deg); }
-}
-@media (prefers-reduced-motion: reduce) {
-  .humagen-glow[data-working] .humagen-glow-sweep {
-    animation: none;
-  }
-}
 
 /* Composer controls adapt to their own column, including beside Details. */
 .humagen-composer-container { container: composer / inline-size; }
@@ -1057,6 +1008,7 @@ body {
 @container composer (max-width: 36rem) {
   .humagen-composer { border-radius: 1rem; }
   .humagen-composer-bar { gap: .125rem; }
+  .humagen-approval-label { display: none; }
   .humagen-composer-chips { flex: 1 1 8rem; }
   .humagen-composer-send { margin-left: auto; }
   .humagen-composer-bar .humagen-project-picker { max-width: 11rem; }

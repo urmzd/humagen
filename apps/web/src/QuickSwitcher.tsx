@@ -28,8 +28,7 @@ const kindLabel = (kind: string) =>
   })[kind] ?? words.all;
 
 function destination(item: DiscoveryItem): Route {
-  if (item.kind === "project")
-    return { page: "project", name: item.id === "~" ? "" : item.id, tab: "context" };
+  if (item.kind === "project") return { page: "project", name: item.id === "~" ? "" : item.id };
   if (item.kind === "agent") return { page: "agent", name: item.id, tab: "prompt" };
   if (item.kind === "source")
     return { page: "context", source: item.source ?? item.id, tab: "documents" };

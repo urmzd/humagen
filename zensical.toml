@@ -1,0 +1,49 @@
+[project]
+site_name = "Humagen"
+site_description = "Run a shared workspace for people and agents, from your first local session to deployment."
+site_url = "https://docs.urmzd.com/humagen/"
+repo_url = "https://github.com/urmzd/humagen"
+repo_name = "urmzd/humagen"
+exclude_docs = "/assets/**"
+extra_css = ["/brand/zensical.css"]
+nav = [
+  { "Start here" = "README.md" },
+  { "Use the workspace" = [
+    { "Projects and people" = "architecture/company-workspace.md" },
+    { "Conversations" = "architecture/conversation-workspace.md" },
+    { "Session workbench" = "architecture/workbench.md" },
+    { "How agents call each other" = "architecture/agent-calls.md" },
+    { "GitHub and Slack" = "guides/integrations.md" },
+  ] },
+  { "Run Humagen" = [
+    { "Local development" = "guides/develop.md" },
+    { "Deployment" = "guides/deploy.md" },
+    { "Architecture" = "architecture/overview.md" },
+  ] },
+  { "Reference" = [
+    { "Configuration" = "reference/spec.md" },
+    { "Commands" = "reference/cli.md" },
+    { "HTTP API" = "reference/api.md" },
+    { "Permissions" = "reference/authorization.md" },
+    { "Documentation index" = "catalog.md" },
+  ] },
+  { "All project guides" = "https://docs.urmzd.com/" },
+]
+
+[project.theme]
+font = false
+logo = "/brand/logo-mark.svg"
+favicon = "/brand/favicon.svg"
+features = ["content.code.copy", "navigation.footer", "search.highlight"]
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: light)"
+scheme = "default"
+toggle.icon = "lucide/moon"
+toggle.name = "Switch to dark mode"
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: dark)"
+scheme = "slate"
+toggle.icon = "lucide/sun"
+toggle.name = "Switch to light mode"

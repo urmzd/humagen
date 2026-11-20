@@ -1,6 +1,7 @@
 import { XIcon } from "@humagen/render-web";
 import { type ReactNode, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { LatestButton, useLatest } from "./Latest.tsx";
 import { usePresence } from "./Presence.tsx";
 
 /** A docked inspector on desktop and a native modal on smaller screens. */
@@ -16,7 +17,16 @@ export function Inspector({
   footer,
   actions,
   lead,
+  tabs,
+  fill = false,
+  working = false,
 }: {
+  /**
+   * What the body shows is still being written. When its end is off view,
+   * the control that goes there shows that. The body is never scrolled for
+   * the reader.
+   */
+  working?: boolean;
   /** Controls in the header, before Close. They stay on its one line. */
   actions?: ReactNode;
   open: boolean;
@@ -33,15 +43,23 @@ export function Inspector({
   footer?: ReactNode;
   /** Stays under the header while the body scrolls, such as an intro line. */
   lead?: ReactNode;
+  /** A tab strip under the header, which draws its own rule. */
+  tabs?: ReactNode;
+  /**
+   * The body is as tall as the inspector and does not scroll or pad: what is
+   * in it lays itself out, as a terminal or a browser view does.
+   */
+  fill?: boolean;
 }) {
   const root = useRef<HTMLDialogElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
   const label = useId();
+  const latest = useLatest({ working, follow: false });
   const [dock, setDock] = useState<HTMLElement | null>(null);
   const { mounted } = usePresence(open, 220);
-  const snapshot = useRef({ children, title, footer, lead });
-  if (open) snapshot.current = { children, title, footer, lead };
-  const shown = open ? { children, title, footer, lead } : snapshot.current;
+  const snapshot = useRef({ children, title, footer, lead, tabs });
+  if (open) snapshot.current = { children, title, footer, lead, tabs };
+  const shown = open ? { children, title, footer, lead, tabs } : snapshot.current;
   useLayoutEffect(() => {
     setDock(modal ? null : document.getElementById("humagen-inspector-dock"));
   }, [modal]);
@@ -76,6 +94,7 @@ export function Inspector({
       data-layer="inspector"
       data-wide={wide || undefined}
       data-expanded={expanded || undefined}
+      data-fill={fill || undefined}
       inert={!open}
       aria-hidden={!open || undefined}
       aria-labelledby={label}
@@ -116,7 +135,24 @@ export function Inspector({
       {shown.lead && (
         <div className="shrink-0 border-aui-border border-b px-5 py-4">{shown.lead}</div>
       )}
-      <div className="aui-scroll min-h-0 min-w-0 flex-1 overflow-y-auto p-5">{shown.children}</div>
+      {shown.tabs && <div className="shrink-0 px-2">{shown.tabs}</div>}
+      {fill ? (
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">{shown.children}</div>
+      ) : (
+        <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+          <div
+            ref={latest.scroller}
+            onScroll={latest.onScroll}
+            tabIndex={-1}
+            className="aui-scroll min-h-0 min-w-0 flex-1 overflow-y-auto p-5 outline-none"
+          >
+            <div ref={latest.content} className="min-h-full">
+              {shown.children}
+            </div>
+          </div>
+          <LatestButton look={latest.look} onJump={latest.jump} scroller={latest.scroller} />
+        </div>
+      )}
       {shown.footer && (
         <footer className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-aui-border border-t px-5 py-4">
           {shown.footer}

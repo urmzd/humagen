@@ -79,7 +79,7 @@ test("overview reads environment, latest context, delegated agents and changes w
   assert.ok(screen.getAllByText("+2 -1").length >= 1);
   assert.ok(screen.getByText("Merged"));
   const link = screen.getByRole("link", { name: /Merged acme\/api #12 Repair lease/ });
-  assert.ok(link.getAttribute("href")?.includes("/sessions/c1?panel=files"));
+  assert.ok(link.getAttribute("href")?.includes("/messages/c1?panel=files"));
   assert.ok(link.getAttribute("href")?.includes("pull%3Aacme%2Fapi%2312"));
   const context = screen.getByRole("heading", { name: "Context" }).closest("details")!;
   fireEvent.click(within(context).getByText("Context"));

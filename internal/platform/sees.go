@@ -2,13 +2,14 @@ package platform
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"strings"
 	"time"
 
 	"github.com/urmzd/humagen/internal/wire"
-	"github.com/urmzd/orchagent/flow/event"
-	"github.com/urmzd/orchagent/flow/runtime"
+	"github.com/urmzd/saige/flow/event"
+	"github.com/urmzd/saige/flow/runtime"
 
 	"github.com/urmzd/humagen/pkg/call"
 
@@ -122,6 +123,263 @@ type Seer struct {
 	// hosts is, for each client asked about, whether the reader is the
 	// machine that hosts its surface.
 	hosts map[string]bool
+	// records holds each thread record a snapshot has read, found or not, so
+	// a listing reads a thread once however many of its rows live in it. Nil
+	// reads the record each time it is asked for (Snapshot).
+	records map[string]threadRead
+	// runs holds where each run a snapshot has read lives, found or not
+	// (ReadRuns).
+	runs map[string]runPlace
+	// held, when set, keeps back the records of reads made by exception
+	// until what they granted is disclosed (Holding).
+	held *heldReads
+}
+
+// runPlace is one read of where a run lives.
+type runPlace struct {
+	at Place
+	ok bool
+}
+
+// heldReads is the reads a listing's reader was granted by exception
+// (projects:govern), by the row each was granted for, and what recording
+// each came to.
+type heldReads struct {
+	// row is the row being decided, "" between decisions.
+	row string
+	by  map[string][]readPlace
+	// recorded is whether each place's record was written.
+	recorded map[readPlace]bool
+}
+
+// readPlace is what a read record names: a project and a thread in it.
+type readPlace struct{ project, thread string }
+
+// threadRead is one read of a thread's record: the record, or why not.
+type threadRead struct {
+	th  threads.Thread
+	err error
+}
+
+// Snapshot makes the seer read each thread's record once, as it already
+// reads the tree and each private thread's participants once. It is for one
+// listing in one request, which asks about many rows of the same threads:
+// what it answers is as of the first read of each. A seer kept longer than a
+// request, such as a stream's, is not a snapshot, and reads every time.
+func (s *Seer) Snapshot() *Seer {
+	if s.records == nil {
+		s.records = map[string]threadRead{}
+	}
+	return s
+}
+
+// Holding makes the seer keep back the record of a read it grants by
+// exception while it decides a row (deciding), until the row is disclosed
+// (Disclose).
+//
+// The rule: a read by exception is recorded when the reader is shown what it
+// granted. That is a row a response returns, or a fact of one a response
+// states, such as a count that includes it. The platform examining a
+// conversation to order, filter or page a listing is not the reader reading
+// it: a session that is passed over, cut from the page, or left out by a
+// filter after its turns were read is told to nobody, and no record of it is
+// written. A row that is returned is recorded with every exceptional grant
+// its decision rested on: its own conversation, and each session above it
+// that the reader also sees only by exception, which the row names as its
+// parent. Recording still comes first, and the records of one answer are
+// written together or not at all: when they cannot be written the answer is
+// refused whole and no record of it is kept.
+//
+// A seer that is not holding records each exceptional read as it grants it,
+// which is right wherever everything decided is shown.
+func (s *Seer) Holding() *Seer {
+	if s.held == nil {
+		s.held = &heldReads{by: map[string][]readPlace{}, recorded: map[readPlace]bool{}}
+	}
+	return s
+}
+
+// deciding runs one row's decision. On a holding seer the exceptional reads
+// it grants are kept back under the row's name, and granted for now.
+func (s *Seer) deciding(row string, decide func() bool) bool {
+	if s.held == nil {
+		return decide()
+	}
+	was := s.held.row
+	s.held.row = row
+	defer func() { s.held.row = was }()
+	return decide()
+}
+
+// Disclose records the exceptional reads the decisions of rows rested on,
+// now that the rows are to be shown, and reports whether they may be. The
+// records are one answer's: a request's are kept back with the rest of its
+// response's and written together before the response is sent
+// (Platform.ResponseReader), and a reader with no request has them written
+// here in one write. Either way all are written or none, and when none is
+// nothing of the rows may be shown: the caller refuses its whole answer
+// (disclosedSessions). A seer that is not holding recorded them as it
+// decided.
+func (s *Seer) Disclose(rows ...string) bool {
+	if s.held == nil {
+		return true
+	}
+	var unwritten []readPlace
+	for _, row := range rows {
+		for _, at := range s.held.by[row] {
+			ok, done := s.held.recorded[at]
+			if done && !ok {
+				return false
+			}
+			if !done && !slices.Contains(unwritten, at) {
+				unwritten = append(unwritten, at)
+			}
+		}
+	}
+	ok := true
+	if s.who.AuditRead != nil {
+		for _, at := range unwritten {
+			ok = s.who.AuditRead(s.who.Subject, at.project, at.thread) && ok
+		}
+	} else if len(unwritten) > 0 {
+		places := make([]Place, len(unwritten))
+		for i, at := range unwritten {
+			places[i] = Place{Project: at.project, Thread: at.thread}
+		}
+		ok = s.p.recordReads(s.who, places, "platform")
+	}
+	for _, at := range unwritten {
+		s.held.recorded[at] = ok
+	}
+	return ok
+}
+
+// recordExceptional writes the record of a read granted by exception, and
+// reports whether the read may go ahead.
+func (s *Seer) recordExceptional(at Place) bool {
+	if s.who.AuditRead != nil {
+		return s.who.AuditRead(s.who.Subject, at.Project, at.Thread)
+	}
+	return s.p.recordRead(s.who, at, "platform")
+}
+
+// ReadRuns gives a snapshot where the runs a listing is about to ask of
+// live, read together (runs.Index.Many) in place of a read a run. A run the
+// index does not hold is asked of again when it is needed, since one being
+// admitted is placed before it is indexed. A read that fails holds nothing.
+// It does nothing on a seer that is not a snapshot.
+func (s *Seer) ReadRuns(ids ...string) {
+	if s.records == nil {
+		return
+	}
+	if s.runs == nil {
+		s.runs = map[string]runPlace{}
+	}
+	want := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if _, held := s.runs[id]; !held && id != "" && !slices.Contains(want, id) {
+			want = append(want, id)
+		}
+	}
+	if len(want) < 2 {
+		return
+	}
+	found, err := s.p.Runs.Many(s.who.Tenant, want)
+	if err != nil {
+		return
+	}
+	threads := make([]string, 0, len(found))
+	for id, r := range found {
+		at := placeOfRun(r)
+		s.runs[id] = runPlace{at: at, ok: true}
+		threads = append(threads, at.Thread)
+	}
+	s.Read(threads...)
+}
+
+// placeOfRunID is Platform.placeOfRunID, from what a snapshot has read.
+func (s *Seer) placeOfRunID(id string) (Place, bool) {
+	if r, held := s.runs[id]; held {
+		return r.at, r.ok
+	}
+	return s.p.placeOfRunID(s.who.Tenant, id)
+}
+
+// Hold gives a snapshot the records a listing has just read in one page, so
+// asking about them reads nothing more. It does nothing on a seer that is
+// not a snapshot.
+func (s *Seer) Hold(recs ...threads.Thread) {
+	if s.records == nil {
+		return
+	}
+	for _, th := range recs {
+		if _, held := s.records[th.ID]; !held {
+			s.records[th.ID] = threadRead{th: th}
+		}
+	}
+}
+
+// Read gives a snapshot the records of the threads a listing is about to
+// ask of, in one statement for every state.MaxList of them, in place of a
+// read a thread. One with no record is remembered as having none. A read
+// that fails holds nothing, and each thread is then read as it is asked of.
+// It does nothing on a seer that is not a snapshot.
+func (s *Seer) Read(ids ...string) {
+	if s.records == nil {
+		return
+	}
+	want := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if _, held := s.records[id]; !held && id != "" && !slices.Contains(want, id) {
+			want = append(want, id)
+		}
+	}
+	if len(want) < 2 {
+		return
+	}
+	recs, err := s.p.Threads.Many(s.who.Tenant, want)
+	if err != nil {
+		return
+	}
+	s.Hold(recs...)
+	for _, id := range want {
+		if _, held := s.records[id]; !held {
+			s.records[id] = threadRead{err: fmt.Errorf("%w: thread %q", threads.ErrNotFound, id)}
+		}
+	}
+}
+
+// record is a thread's record: read once by a snapshot, else read now.
+func (s *Seer) record(id string) (threads.Thread, error) {
+	if s.records == nil {
+		return s.p.Threads.Get(s.who.Tenant, id)
+	}
+	if r, held := s.records[id]; held {
+		return r.th, r.err
+	}
+	th, err := s.p.Threads.Get(s.who.Tenant, id)
+	s.records[id] = threadRead{th: th, err: err}
+	return th, err
+}
+
+// threadGone reports whether a conversation was deleted: no one sees it, or
+// anything in it, again.
+func (s *Seer) threadGone(id string) bool {
+	if id == "" {
+		return false
+	}
+	th, err := s.record(id)
+	return err == nil && th.Archive != nil && th.Archive.Deleted != nil
+}
+
+// current is Platform.CurrentPlace, from the seer's read of the record.
+func (s *Seer) current(at Place) Place {
+	if at.Thread != "" {
+		if th, err := s.record(at.Thread); err == nil {
+			at.Project = th.Project
+		}
+	}
+	return at
 }
 
 // Seer is a reader's view of their workspace, as the tree stands now.
@@ -145,10 +403,10 @@ func (p *Platform) Sees(who auth.Principal, at Place) bool { return p.Seer(who).
 // rule, the machine a client names to host its surface reads the threads on
 // that surface, wherever they are filed: the Slack thread is already its own.
 func (s *Seer) Place(at Place) bool {
-	if s.p.threadGone(s.who.Tenant, at.Thread) {
+	if s.threadGone(at.Thread) {
 		return false
 	}
-	if s.tree.PendingFork(s.p.CurrentPlace(s.who.Tenant, at).Project) {
+	if s.tree.PendingFork(s.current(at).Project) {
 		return false
 	}
 	return s.sessionAncestorsVisible(at.Thread) && s.forkSourcesVisible(at, s.placeDirect) && s.placeDirect(at)
@@ -160,7 +418,7 @@ func (s *Seer) Place(at Place) bool {
 // exactly the same rule as canonical session endpoints.
 func (s *Seer) sessionAncestorsVisible(id string) bool {
 	for depth := 0; depth <= 64; depth++ {
-		th, err := s.p.Threads.Get(s.who.Tenant, id)
+		th, err := s.record(id)
 		if err != nil {
 			return !strings.HasPrefix(id, "s_")
 		}
@@ -174,12 +432,12 @@ func (s *Seer) sessionAncestorsVisible(id string) bool {
 		if !strings.HasPrefix(parent, "s_") {
 			return true
 		}
-		p, err := s.p.Threads.Get(s.who.Tenant, parent)
+		p, err := s.record(parent)
 		if err != nil {
 			return false
 		}
 		at := Place{Project: p.Project, Thread: p.ID}
-		if s.p.threadGone(s.who.Tenant, parent) || !s.forkSourcesVisible(at, s.placeDirect) || !s.placeDirect(at) {
+		if s.threadGone(parent) || !s.forkSourcesVisible(at, s.placeDirect) || !s.placeDirect(at) {
 			return false
 		}
 		id = parent
@@ -188,7 +446,7 @@ func (s *Seer) sessionAncestorsVisible(id string) bool {
 }
 
 func (s *Seer) placeDirect(at Place) bool {
-	at = s.p.CurrentPlace(s.who.Tenant, at)
+	at = s.current(at)
 	if s.tree.PendingFork(at.Project) {
 		return false
 	}
@@ -203,10 +461,14 @@ func (s *Seer) placeDirect(at Place) bool {
 		if ordinary.placeDirect(at) {
 			return true
 		}
-		if s.who.AuditRead != nil {
-			return s.who.AuditRead(s.who.Subject, at.Project, at.Thread)
+		if s.held != nil && s.held.row != "" {
+			// Granted for now; recorded when the row is disclosed.
+			if read := (readPlace{at.Project, at.Thread}); !slices.Contains(s.held.by[s.held.row], read) {
+				s.held.by[s.held.row] = append(s.held.by[s.held.row], read)
+			}
+			return true
 		}
-		return s.p.recordRead(s.who, at, "platform")
+		return s.recordExceptional(at)
 	}
 	if th := s.thread(at.Thread); th != nil && th.Client != "" && s.hosting(th.Client) {
 		return true
@@ -248,7 +510,7 @@ func (s *Seer) thread(id string) *threadAccess {
 		return th
 	}
 	var out *threadAccess
-	if th, err := s.p.Threads.Get(s.who.Tenant, id); err == nil && (th.Visibility == threads.Private || th.Surface != nil) {
+	if th, err := s.record(id); err == nil && (th.Visibility == threads.Private || th.Surface != nil) {
 		out = &threadAccess{Private: th.Visibility == threads.Private}
 		if th.Surface != nil {
 			out.Client = th.Surface.Client
@@ -281,13 +543,30 @@ func (s *Seer) Conversation(id, project string) bool {
 	return s.Place(s.p.placeOfConversation(s.who.Tenant, id, project))
 }
 
+// Session reports whether the reader sees a session: its thread and its
+// agent, and the same of every session above it, so sharing a child never
+// leaks context from a parent whose access has since been revoked.
+func (s *Seer) Session(id string) bool {
+	for depth := 0; depth <= 64; depth++ {
+		th, err := s.record(id)
+		if err != nil || th.Session == nil || !s.Place(Place{Project: th.Project, Thread: id}) || !s.Agent(th.Session.Agent) {
+			return false
+		}
+		if !strings.HasPrefix(th.Session.Parent, "s_") {
+			return true
+		}
+		id = th.Session.Parent
+	}
+	return false
+}
+
 // Run reports whether the reader sees a run: where its conversation lives.
 func (s *Seer) Run(r runs.Run) bool { return s.Place(placeOfRun(r)) }
 
 // RunID reports whether the reader sees the run an id names, one being
 // admitted included. One that does not exist is not seen.
 func (s *Seer) RunID(id string) bool {
-	at, ok := s.p.placeOfRunID(s.who.Tenant, id)
+	at, ok := s.placeOfRunID(id)
 	return ok && s.Place(at)
 }
 
@@ -388,6 +667,9 @@ func (s *Seer) Suite(suite evals.Suite) bool {
 	if suite.Target == evals.Knowledge {
 		return s.p.SourceVisible(s.who, suite.Subject)
 	}
+	if suite.Target == evals.Corpus {
+		return s.p.CorpusReadable(s.who, suite.Subject)
+	}
 	return suite.Target != evals.Agent || s.Agent(suite.Subject)
 }
 
@@ -395,14 +677,14 @@ func (s *Seer) Suite(suite evals.Suite) bool {
 // where it lives, when the index holds it, else its project; and its agent.
 // A run's alert in a private thread is its participants'.
 func (s *Seer) Alert(a alerts.Alert) bool {
-	if a.Session != "" && !s.p.SeesSession(s.who, a.Session) {
+	if a.Session != "" && !s.Session(a.Session) {
 		return false
 	}
 	if a.Agent != "" && !s.Agent(a.Agent) {
 		return false
 	}
 	if a.RunID != "" {
-		if at, ok := s.p.placeOfRunID(s.who.Tenant, a.RunID); ok {
+		if at, ok := s.placeOfRunID(a.RunID); ok {
 			return s.Place(at)
 		}
 	}
@@ -452,7 +734,7 @@ func (s *Seer) MemoryOwner(owner string) bool {
 // conversation is among SystemThreads from when its run is recorded. One
 // opened after the mark is counted from a later read.
 func (p *Platform) ProjectCounts(who auth.Principal) map[string]runs.ProjectCount {
-	seer := p.Seer(who)
+	seer := p.Seer(who).Snapshot()
 	mark := p.Runs.Opened(who.Tenant)
 	hidden := map[string]bool{}
 	recs, err := p.Threads.Records(who.Tenant, func(th threads.Thread) bool { return true })
@@ -462,6 +744,8 @@ func (p *Platform) ProjectCounts(who auth.Principal) map[string]runs.ProjectCoun
 		p.log.Warn("platform: project counts: threads", "err", err)
 		return map[string]runs.ProjectCount{}
 	}
+	// The records just read answer for themselves: none is read again.
+	seer.Hold(recs...)
 	for _, th := range recs {
 		if !seer.Place(Place{Project: th.Project, Thread: th.ID}) {
 			hidden[th.ID] = true

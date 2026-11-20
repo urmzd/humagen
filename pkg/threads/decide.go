@@ -3,8 +3,6 @@ package threads
 import (
 	"fmt"
 	"slices"
-
-	"github.com/urmzd/humagen/pkg/projects"
 )
 
 // MaxAll is how many of a thread's selected agents answer one untagged
@@ -34,12 +32,19 @@ const (
 	RuleUntagged Rule = "untagged"
 	// RuleDefault: the default the thread inherits answers, if there is one.
 	RuleDefault Rule = "default"
+	// RuleFollowup: it was posted while agents worked in the thread, so its
+	// follow-up decides (Message.Followup): what it calls for starts once
+	// that work has ended, or, for a stop, never. The platform applies it
+	// before Decide.
+	RuleFollowup Rule = "followup"
 )
 
 // Where a default is set.
 const (
-	FromThread  = "thread"
-	FromClient  = "client"
+	FromThread = "thread"
+	FromClient = "client"
+	// FromChannel is where a default was set before channels stopped
+	// choosing agents; old answers may still say it.
 	FromChannel = "channel"
 )
 
@@ -51,13 +56,14 @@ type Default struct {
 	From  string `json:"from"`
 }
 
-// Nearer returns the defaults set nearer a message than its project, nearest
-// first: the thread's, the client's default agent (for a thread a client
-// files outside a bound channel; "" otherwise) and the channel's. Each is
-// returned, set or not, so the first that is set wins and the project's
-// chain decides only when none is.
-func Nearer(t Thread, clientDefault string, ch projects.Channel) []Default {
-	return []Default{{Agent: t.Default, From: FromThread}, {Agent: clientDefault, From: FromClient}, {Agent: ch.Default, From: FromChannel}}
+// Nearer returns the defaults set nearer a message than the workspace's,
+// nearest first: the thread's, and the client's default agent (for a thread
+// a client files outside a bound channel; "" otherwise). Each is returned,
+// set or not, so the first that is set wins and the workspace default
+// decides only when none is. A channel's default is no longer read: agents
+// are independent of projects and their channels.
+func Nearer(t Thread, clientDefault string) []Default {
+	return []Default{{Agent: t.Default, From: FromThread}, {Agent: clientDefault, From: FromClient}}
 }
 
 // Input is what decides what a message starts.

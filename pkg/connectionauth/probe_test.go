@@ -11,7 +11,7 @@ func TestConnectionProbesVerifyProviderIdentityAndSanitizeRefusal(t *testing.T) 
 	for _, tc := range []struct {
 		name, body, team string
 		healthy          bool
-	}{{"slack", `{"ok":true,"team_id":"T12345"}`, "T12345", true}, {"slack", `{"ok":true,"team_id":"T99999"}`, "T12345", false}, {"slack", `{"ok":false,"error":"secret-token"}`, "T12345", false}, {"drive", `{"kind":"drive#about"}`, "", true}, {"drive", `{"error":"secret-token"}`, "", false}, {"github", `{"total_count":0,"repositories":[]}`, "", true}} {
+	}{{"slack", `{"ok":true,"team_id":"T12345"}`, "T12345", true}, {"slack", `{"ok":true,"team_id":"T99999"}`, "T12345", false}, {"slack", `{"ok":false,"error":"secret-token"}`, "T12345", false}, {"drive", `{"kind":"drive#about"}`, "", true}, {"drive", `{"error":"secret-token"}`, "", false}, {"onedrive", `{"id":"b!drive","driveType":"business"}`, "", true}, {"onedrive", `{"id":"D4648F06C91D9D3D","driveType":"personal"}`, "", true}, {"onedrive", `{"error":{"code":"secret-token"}}`, "", false}, {"onedrive", `{"id":"","driveType":"personal"}`, "", false}, {"github", `{"total_count":0,"repositories":[]}`, "", true}} {
 		t.Run(tc.name+tc.body, func(t *testing.T) {
 			client := &http.Client{Transport: transport(func(r *http.Request) (*http.Response, error) {
 				if r.Header.Get("Authorization") != "Bearer secret-token" {

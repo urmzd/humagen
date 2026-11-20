@@ -8,8 +8,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/urmzd/orchagent/flow/address"
-	"github.com/urmzd/orchagent/flow/event"
+	"github.com/urmzd/saige/flow/address"
+	"github.com/urmzd/saige/flow/event"
 
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/clients"

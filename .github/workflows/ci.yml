@@ -19,9 +19,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # No module cache here. gofmt downloads nothing, and this job ends
+      # first, so it would save an empty cache under the key every Go job
+      # shares. A key is written once: the others would then restore nothing
+      # and download every module from the proxy on every run.
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+          cache: false
       - name: Check formatting
         run: |
           unformatted=$(gofmt -l .)
@@ -71,9 +76,13 @@ jobs:
         with:
           go-version-file: go.mod
       - name: Test, with Postgres
+        # A package gets 20 minutes, not go test's default 10. Under the race
+        # detector on a shared runner internal/httpapi has taken from 390 s to
+        # 600 s for the same tree, so the default turned a slow runner into a
+        # failure with no test hung. A test that hangs still fails the job.
         run: |
           set -o pipefail
-          go test ./... -race -v 2>&1 | tee test.log | grep -vE '^(=== (RUN|PAUSE|CONT|NAME)|\s*--- PASS|PASS$)'
+          go test ./... -race -v -timeout 20m 2>&1 | tee test.log | grep -vE '^(=== (RUN|PAUSE|CONT|NAME)|\s*--- PASS|PASS$)'
       # Each backend suite skips when its variable is unset, so a renamed
       # variable would turn them into silent passes. Fail on any such skip.
       # Suites that also need Redis are left out: no Redis runs here.
@@ -112,8 +121,18 @@ jobs:
         with:
           context: .
           push: false
+          load: true
+          tags: humagen:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - name: The image runs the binary and can load the Slack app
+        if: steps.changed.outputs.image == 'true'
+        # Loads every module the Slack app imports, as the image's own user,
+        # without starting it: the app's sources, its dependencies and Node
+        # are all in the image, or this fails.
+        run: |
+          docker run --rm humagen:ci version
+          docker run --rm --entrypoint sh humagen:ci -c 'cd "$HUMAGEN_SLACK_APP_DIR" && node --import tsx -e "await import(\"./src/app.tsx\"); console.log(\"slack app loads\")"'
 
   helm:
     name: Helm chart

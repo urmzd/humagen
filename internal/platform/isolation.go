@@ -12,12 +12,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/urmzd/orchagent/sandbox/workspace"
 	saigetypes "github.com/urmzd/saige/agent/types"
+	"github.com/urmzd/saige/sandbox/workspace"
 
-	"github.com/urmzd/orchagent/flow/event"
-	"github.com/urmzd/orchagent/flow/isolation"
-	"github.com/urmzd/orchagent/flow/runtime"
+	"github.com/urmzd/saige/flow/event"
+	"github.com/urmzd/saige/flow/isolation"
+	"github.com/urmzd/saige/flow/runtime"
 
 	"github.com/urmzd/humagen/pkg/runs"
 )
@@ -100,13 +100,22 @@ func grantsToolServers(req runtime.Request) bool {
 type runFiles struct {
 	p           *Platform
 	tenant, run string
+	// of is the conversation of a command a person ran by hand, which has
+	// no run to find it by (person_command.go). Empty for a run.
+	of string
 
 	mu     sync.Mutex
 	thread string
 	loaded map[string][sha256.Size]byte
+	// wrote and refused are what the last Save kept and what it would not.
+	wrote   []runs.SandboxFile
+	refused []string
 }
 
 func (f *runFiles) conversation() (string, error) {
+	if f.of != "" {
+		return f.of, nil
+	}
 	r, err := f.p.runRecordOf(f.tenant, f.run)
 	if err != nil {
 		return "", fmt.Errorf("%w: this run has no conversation", ErrSandbox)
@@ -178,6 +187,12 @@ func (f *runFiles) Save(ctx context.Context, inst isolation.Instance) error {
 	var wrote []runs.SandboxFile
 	var refused []string
 	defer func() {
+		f.mu.Lock()
+		f.wrote, f.refused = wrote, refused
+		f.mu.Unlock()
+		if f.run == "" {
+			return // a person's command: its answer says what changed
+		}
 		if err := f.p.Runs.RecordSandbox(f.tenant, f.run, true, wrote, refused); err != nil {
 			f.p.log.Info("platform: the run's sandbox record was not kept", "run", f.run, "error", err)
 		}

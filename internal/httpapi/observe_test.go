@@ -16,7 +16,7 @@ import (
 var everything = []string{
 	"humagen:agents:read", "humagen:agents:write", "humagen:runs:read", "humagen:runs:write",
 	"humagen:schedules:read", "humagen:schedules:write", "humagen:alerts:read", "humagen:alerts:write",
-	"humagen:knowledge:read", "humagen:knowledge:write", "humagen:evals:read", "humagen:evals:write",
+	"humagen:knowledge:read", "humagen:knowledge:write", "humagen:knowledge:import", "humagen:evals:read", "humagen:evals:write",
 	"humagen:billing:read", "humagen:billing:write", "humagen:artifacts:read", "humagen:artifacts:write",
 	"humagen:clients:read", "humagen:clients:write", "humagen:projects:read", "humagen:projects:write", "humagen:projects:govern",
 	"humagen:people:read", "humagen:speech:write",
@@ -286,9 +286,9 @@ func TestConversationsBranchAndPick(t *testing.T) {
 	f.do(t, nil, "POST", "/api/agents", tok, `{"name":"releaser","description":"Cuts releases and tags versions.","model":"offline","provider":"offline","system_prompt":"x"}`)
 
 	// A new workspace's default is everyone. A message no agent takes
-	// starts nothing: it waits.
-	if res, out := f.do(t, nil, "POST", "/api/runs", tok, `{"text":"what is the weather"}`); res.StatusCode != http.StatusConflict || !strings.Contains(fmt.Sprint(out["error"]), "waits for a person") {
-		t.Fatalf("a message no agent takes = %d %v, want 409", res.StatusCode, out)
+	// still lands: with no match, on the first agent available, saying so.
+	if res, out := f.do(t, nil, "POST", "/api/runs", tok, `{"text":"what is the weather"}`); res.StatusCode != http.StatusAccepted || !strings.Contains(fmt.Sprint(out["picked"]), "first agent available") {
+		t.Fatalf("a message no agent takes = %d %v, want 202 on the first agent available", res.StatusCode, out)
 	}
 	if res, _ := f.do(t, nil, "PUT", "/api/projects/~/agents", tok, `{"version":0,"enable":["*"],"default":"ghost"}`); res.StatusCode != http.StatusBadRequest {
 		t.Fatalf("a workspace default that is not an agent = %d, want 400", res.StatusCode)
@@ -306,10 +306,10 @@ func TestConversationsBranchAndPick(t *testing.T) {
 	if weather["agent"] != "helper" || weather["picked"] != nil {
 		t.Fatalf("an untagged message, so the workspace default should answer: %v", weather)
 	}
-	// Asking everyone, when no agent takes it, never falls back to the
-	// default: it waits.
-	if res, _ := f.do(t, nil, "POST", "/api/runs", tok, `{"agent":"*","text":"what is the weather"}`); res.StatusCode != http.StatusConflict {
-		t.Fatalf("asking everyone with no taker = %d, want 409", res.StatusCode)
+	// Asking everyone, when no agent takes it, lands on the workspace's
+	// named default, saying why: it never waits for a person.
+	if res, out := f.do(t, nil, "POST", "/api/runs", tok, `{"agent":"*","text":"what is the weather"}`); res.StatusCode != http.StatusAccepted || out["agent"] != "helper" || !strings.Contains(fmt.Sprint(out["picked"]), "workspace default") {
+		t.Fatalf("asking everyone with no taker = %d %v, want 202 on the workspace default", res.StatusCode, out)
 	}
 	id := first["id"].(string)
 

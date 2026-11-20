@@ -92,14 +92,12 @@ CREATE TABLE IF NOT EXISTS humagen_usage_runs (
 	last    timestamptz NOT NULL,
 	PRIMARY KEY (tenant, run_id)
 );
-CREATE INDEX IF NOT EXISTS humagen_usage_runs_last ON humagen_usage_runs (tenant, last);
 CREATE TABLE IF NOT EXISTS humagen_usage_keys (
 	tenant text        COLLATE "C" NOT NULL,
 	key    text        COLLATE "C" NOT NULL,
 	at     timestamptz NOT NULL,
 	PRIMARY KEY (tenant, key)
 );
-CREATE INDEX IF NOT EXISTS humagen_usage_keys_at ON humagen_usage_keys (tenant, at);
 CREATE TABLE IF NOT EXISTS humagen_usage_stripes (
 	tenant text COLLATE "C" NOT NULL,
 	scope  text COLLATE "C" NOT NULL,
@@ -121,18 +119,39 @@ CREATE TABLE IF NOT EXISTS humagen_usage_slots (
 	stripe int  NOT NULL,
 	PRIMARY KEY (tenant, scope, run_id)
 );
-CREATE INDEX IF NOT EXISTS humagen_usage_slots_run ON humagen_usage_slots (tenant, run_id);
 `
+
+// countersIndexes are the counters' indexes, by name. They are not part of
+// countersSchema because of what creating one locks. CREATE TABLE IF NOT
+// EXISTS takes no lock on a table that is there, but CREATE INDEX IF NOT
+// EXISTS locks its table against writes before it looks for the index, and
+// holds that lock until its transaction ends. Created in one transaction,
+// the indexes had every process that opened the counters hold a lock on
+// the runs table while it waited for one on the keys table, and a call
+// being counted writes its key and then its run: each waited for the
+// other, and Postgres ended one of them as a deadlock.
+var countersIndexes = []struct{ name, create string }{
+	{"humagen_usage_runs_last", `CREATE INDEX IF NOT EXISTS humagen_usage_runs_last ON humagen_usage_runs (tenant, last)`},
+	{"humagen_usage_keys_at", `CREATE INDEX IF NOT EXISTS humagen_usage_keys_at ON humagen_usage_keys (tenant, at)`},
+	{"humagen_usage_slots_run", `CREATE INDEX IF NOT EXISTS humagen_usage_slots_run ON humagen_usage_slots (tenant, run_id)`},
+}
 
 // The tables a release before striped admission wrote are read as stripe 0:
 // humagen_usage_days.runs, which nothing writes now, and the runs in
 // humagen_usage_active, given slots once when the counters are opened.
 // Neither grows, so a stripe's count is still bounded as the package says.
 
-// OpenCounters creates the counters' tables if they are not there. The
-// caller owns the pool. The counts are filled from an earlier release's
-// entries the first time a ledger is opened on them (Open with
+// OpenCounters creates the counters' tables and indexes if they are not
+// there. The caller owns the pool. The counts are filled from an earlier
+// release's entries the first time a ledger is opened on them (Open with
 // WithCounters).
+//
+// It can be called while other processes count on the same database, and
+// cannot deadlock with them. Opened on counters that are all there, it
+// locks no table. An index that is missing is created in a transaction of
+// its own, so an opener waits for a table's writers while holding no other
+// table's lock, only the advisory lock that puts openers in a line, which
+// nothing that counts ever takes.
 func OpenCounters(ctx context.Context, pool *pgxpool.Pool) (*Counters, error) {
 	if pool == nil {
 		return nil, errors.New("usage: counters: no pool")
@@ -148,6 +167,25 @@ func OpenCounters(ctx context.Context, pool *pgxpool.Pool) (*Counters, error) {
 	})
 	if err != nil {
 		return nil, fmt.Errorf("usage: counters: migrate: %w", err)
+	}
+	for _, index := range countersIndexes {
+		var there bool
+		if err := pool.QueryRow(ctx, `SELECT to_regclass(quote_ident(current_schema()) || '.' || quote_ident($1)) IS NOT NULL`, index.name).Scan(&there); err != nil {
+			return nil, fmt.Errorf("usage: counters: migrate: %w", err)
+		}
+		if there {
+			continue
+		}
+		err := pgx.BeginFunc(ctx, pool, func(tx pgx.Tx) error {
+			if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1, 0)`, int32(countersLock)); err != nil {
+				return err
+			}
+			_, err := tx.Exec(ctx, index.create)
+			return err
+		})
+		if err != nil {
+			return nil, fmt.Errorf("usage: counters: migrate: %s: %w", index.name, err)
+		}
 	}
 	return &Counters{pool: pool}, nil
 }

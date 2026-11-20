@@ -1,0 +1,89 @@
+# Reconcile account exports with a native agent that runs reconcile.py in a
+# sandbox. Trusted local trial: dev sign-in, memory state.
+# docs/guides/finance-exports.md.
+#
+# The authorized exports, authorized.txt and a copy of reconcile.py go into
+# the conversation's working directory (examples/conversation-files.sh put).
+# The agent runs "python3 reconcile.py" with the shell tool in a Docker
+# instance of python:3.13-alpine, which has no network and is destroyed when
+# the run ends; what it writes under out/ is kept with the conversation.
+# Before #383 this profile ran on the Claude Code program in a folder on this
+# host, whose allow rules refused every command but the script and every write
+# outside out/. Nothing here does that now: inside the instance the shell can
+# run any command and write anywhere in the working directory. authorized.txt
+# and "only under out/" are instructions to the agent, so put into the
+# conversation only the exports it may read.
+#
+# Needs a running Docker daemon. runc shares the host's kernel and is for
+# trusted local trials only. Do not swap in the local sandbox kind: it runs
+# the shell as host processes with the server's privileges, unconfined, with
+# an empty environment and only the shell's default search path
+# (/usr/local/bin, /bin, /usr/bin and the like). unisolated refuses the shell.
+#
+# Limits a person would otherwise miss: the files API takes UTF-8 text only,
+# at most 2 MiB a file; a native turn makes at most 10 rounds of tool calls.
+#
+# Providers in order of preference: Anthropic, OpenAI, then Google, each with
+# its key from the shell (set at least one). Nothing here reaches a bank or
+# moves money.
+api_version: humagen/v1
+kind: System
+metadata: {name: finance-exports-local}
+spec:
+  server: {addr: '127.0.0.1:8080'}
+  auth: {kind: dev, tenant: {fixed: default}}
+  stores: {kind: memory}
+  sandbox:
+    kind: docker
+    docker:
+      runtime: runc
+      insecure_development_runtime: true
+      image: python:3.13-alpine
+---
+api_version: humagen/v1
+kind: Platform
+metadata: {name: default}
+spec:
+  models:
+    - name: anthropic
+      kind: anthropic
+      anthropic: {key: {ref: env:ANTHROPIC_API_KEY}}
+    - name: openai
+      kind: openai
+      openai: {key: {ref: env:OPENAI_API_KEY}}
+    - name: google
+      kind: google
+      google: {key: {ref: env:GOOGLE_API_KEY}}
+  agents:
+    - spec:
+        name: ledger
+        description: Reconciles authorized account exports and drafts a sourced plan
+        provider: anthropic
+        model: claude-sonnet-5-5
+        fallbacks:
+          - {provider: openai, model: gpt-5.1}
+          - {provider: google, model: gemini-pro-latest}
+        fallback_on: [unavailable, rate_limit]
+        tools: [file_list, file_read, file_write, shell, publish_artifact]
+        system_prompt: >-
+          You work on the account exports in your working directory. Read
+          authorized.txt first: it lists the only files you may open, and you
+          do not open, list the contents of or draw on any other export. Do
+          no arithmetic yourself: run "python3 reconcile.py" with the shell
+          tool, exactly that command and no other, which removes duplicates,
+          reconciles each export's balances and writes out/transactions.csv,
+          out/reconciliation.csv and out/summary.csv, and take every number
+          from those files. If the script stops, on copies of one transaction
+          that disagree or on an amount that is not whole cents, report
+          exactly what it printed and what out/conflicts.csv holds, write no
+          plan, and do not choose between the copies. Report each export that
+          does not reconcile, with its difference, and never explain a
+          difference away. When asked for a plan, write out/plan.csv with
+          file_write, with the columns kind, name, cents, source: every
+          amount is a row of out/summary.csv copied exactly, with source
+          written as out/summary.csv:N where N is that row's line number in
+          the file, the header being line 1; your own suggestions are rows
+          of kind "proposal" with cents left empty. Write nothing outside
+          out/ and change no export. Say what the exports do not show. You
+          give no financial advice beyond ordering what the numbers show, you
+          cannot reach any account, and you say so.

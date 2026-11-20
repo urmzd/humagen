@@ -25,14 +25,25 @@ func connectionAuthorization(ctx context.Context, system spec.System, keys credr
 		return nil, errors.New("connection encryption key must be 32 random bytes encoded as base64")
 	}
 	config := &connectionauth.Config{Key: key, RedirectURL: settings.RedirectURL, Providers: platform.DefaultConnectionProviders()}
-	for _, name := range []string{"drive", "slack", "bigquery"} {
+	for _, name := range []string{"drive", "onedrive", "slack", "bigquery"} {
 		if _, ok := settings.Clients[name]; ok {
 			config.Providers = append(config.Providers, platform.NativeConnectionProvider(name))
+		}
+	}
+	// One Google application serves every Google Workspace tool server.
+	google := map[string]bool{}
+	if _, ok := settings.Clients[platform.GoogleClient]; ok {
+		for _, provider := range platform.GoogleToolProviders() {
+			google[provider.Name] = true
+			config.Providers = append(config.Providers, provider)
 		}
 	}
 	for i := range config.Providers {
 		provider := &config.Providers[i]
 		client, ok := settings.Clients[provider.Name]
+		if !ok && google[provider.Name] {
+			client, ok = settings.Clients[platform.GoogleClient]
+		}
 		if !ok {
 			continue
 		}

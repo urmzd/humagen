@@ -1,5 +1,8 @@
 import { defaultCopy } from "@humagen/components";
+import { ColumnsIcon, FileIcon, LayersIcon, ScrollTextIcon } from "@humagen/render-web";
 import { useEffect, useState } from "react";
+import { ArtifactThumb } from "./ArtifactThumb.tsx";
+import { AgentTag, ItemCard, itemGrid, Tag } from "./cards.tsx";
 import {
   bytes,
   contentUrl,
@@ -20,7 +23,6 @@ import {
   agentOptions,
   ago,
   button,
-  Chip,
   Confirm,
   Empty,
   Menu,
@@ -33,6 +35,10 @@ import {
   textLink,
   UsageMeter,
 } from "./ui.tsx";
+
+const words = defaultCopy.artifactsPage;
+/** The tiles' marks, in the order of the starters in the copy. */
+const starterIcons = [FileIcon, LayersIcon, ColumnsIcon, ScrollTextIcon];
 
 /** How much is stored, against the limit when there is one, and where it is. */
 export function StorageUsed({ use }: { use: StorageUse }) {
@@ -265,7 +271,7 @@ export function StorageMore({
   );
 }
 
-/** The list of files, with the state it is in said plainly when there is nothing to list. */
+/** The grid of files, one card each with a picture of what it holds, with the state it is in said plainly when there is nothing to list. */
 export function StoredList({
   files,
   selected,
@@ -291,47 +297,35 @@ export function StoredList({
     return narrowed ? (
       <Empty title="No artifacts match">Change the filters or the search to see the rest.</Empty>
     ) : (
-      <Empty title="No artifacts yet">
-        When an agent publishes a file from its sandbox, it is kept here as an artifact, with every
-        later version. Each one also arrives in your inbox.
-      </Empty>
+      <div className="humagen-glass rounded-aui-lg px-5">
+        <Empty title="No artifacts yet">
+          When an agent publishes a file from its sandbox, it is kept here as an artifact, with
+          every later version. Each one also arrives in your inbox.
+        </Empty>
+      </div>
     );
   }
   return (
-    <ul className={rows} aria-label="Artifacts">
+    <ul className={itemGrid} aria-label="Artifacts">
       {files.map((f) => (
-        <li key={f.id} className="humagen-enter">
-          <button
-            type="button"
-            data-testid="stored-row"
-            aria-current={f.id === selected ? "true" : undefined}
-            onClick={() => onSelect(f.id)}
-            className="flex w-full items-center gap-3 px-1 py-2.5 text-left transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent focus-visible:-outline-offset-2 aria-[current=true]:bg-aui-hover"
-          >
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-aui-sm font-medium text-aui-fg">{f.title}</span>
-              {f.description && (
-                <span className="block truncate text-aui-xs text-aui-muted">{f.description}</span>
-              )}
-            </span>
-            <Chip>{kindWord[f.kind]}</Chip>
-            <span className="hidden w-14 shrink-0 text-right text-aui-xs text-aui-muted @xl:inline">
-              v{f.version}
-            </span>
-            <span className="hidden w-16 shrink-0 text-right text-aui-xs tabular-nums text-aui-muted @lg:inline">
-              {bytes(f.size)}
-            </span>
-            <span className="hidden w-32 shrink-0 items-center gap-1.5 truncate text-aui-xs text-aui-muted @2xl:inline-flex">
-              <AgentMark name={f.agent} size={12} />
-              <span className="truncate">{f.agent}</span>
-            </span>
-            <span className="hidden w-28 shrink-0 truncate text-aui-xs text-aui-muted @4xl:inline">
-              {f.project ?? ""}
-            </span>
-            <span className="w-24 shrink-0 text-right text-aui-xs text-aui-muted">
-              {ago(f.created_at)}
-            </span>
-          </button>
+        <li key={f.id} className="humagen-enter min-w-0" data-testid="stored-row">
+          <ItemCard
+            media={<ArtifactThumb file={f} />}
+            title={f.title}
+            current={f.id === selected}
+            time={ago(f.created_at)}
+            description={f.description}
+            facts={
+              <>
+                <Tag>{kindWord[f.kind]}</Tag>
+                <AgentTag name={f.agent} />
+                {f.project && <Tag>{f.project}</Tag>}
+                <Tag>v{f.version}</Tag>
+                <Tag>{bytes(f.size)}</Tag>
+              </>
+            }
+            onOpen={() => onSelect(f.id)}
+          />
         </li>
       ))}
     </ul>
@@ -351,10 +345,13 @@ export function Storage({
   onOpenRun,
   onOpenThread,
   onOpenArtifact,
+  onStart,
   selectedId,
   onSelect,
   via = platform,
 }: {
+  /** Starts a new session with a request already written, for the tiles that make something new. */
+  onStart?: (ask: string) => void;
   /** The artifact that is open, when the address names one. Leave out to let the page keep its own. */
   selectedId?: string | null;
   onSelect?: (id: string | null) => void;
@@ -422,12 +419,44 @@ export function Storage({
 
   return (
     <Page
-      title={defaultCopy.conversation.deliverables}
-      lede="Documents, presentations and data from your projects, with their versions and the conversations that produced them."
+      // Named as the sidebar names it, with no line under it, as every list page is.
+      title={defaultCopy.navigation.artifacts}
     >
-      {store.use && <StorageUsed use={store.use} />}
       {over && <Problem message={OVER_LIMIT} />}
       <Problem message={problem} />
+
+      {onStart && (
+        <section aria-labelledby="artifacts-new" className="flex min-w-0 flex-col gap-2">
+          <h2 id="artifacts-new" className="font-medium text-aui-muted text-aui-xs">
+            {words.makeNew}
+          </h2>
+          {/* One tile per file an agent writes natively, so what is asked for is what can be made. */}
+          <ul className="grid min-w-0 grid-cols-2 gap-3 @2xl:grid-cols-4">
+            {words.starters.map((starter, i) => {
+              const Icon = starterIcons[i] ?? FileIcon;
+              return (
+                <li key={starter.label} className="min-w-0">
+                  <button
+                    type="button"
+                    onClick={() => onStart(starter.ask)}
+                    className="humagen-glass flex min-h-16 w-full min-w-0 items-center gap-3 rounded-aui-lg px-4 py-3 text-left transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
+                  >
+                    <span className="flex size-9 shrink-0 items-center justify-center rounded-aui border border-aui-border text-aui-muted">
+                      <Icon size={18} />
+                    </span>
+                    <span className="flex min-w-0 flex-col">
+                      <span className="truncate font-medium text-aui-fg text-aui-sm">
+                        {starter.label}
+                      </span>
+                      <span className="truncate text-aui-muted text-aui-xs">{starter.format}</span>
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
 
       <div className="flex flex-wrap items-center gap-2">
         <SearchField
@@ -493,6 +522,11 @@ export function Storage({
         failed={store.moreFailed}
         onMore={store.more}
       />
+
+      {/* With nothing stored and no limit there is nothing to measure. */}
+      {store.use && (store.use.count > 0 || !!store.use.limit_bytes) && (
+        <StorageUsed use={store.use} />
+      )}
     </Page>
   );
 }

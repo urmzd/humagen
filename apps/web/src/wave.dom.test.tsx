@@ -1,13 +1,24 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
-import { slotAt, Thread, type TurnRailEntry } from "@humagen/web";
+import { RAIL_MIN_TURNS, slotAt, Thread, type TurnRailEntry } from "@humagen/web";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 
 afterEach(cleanup);
 
+const filler = (id: string): TurnRailEntry => ({
+  id,
+  agent: "helper",
+  preview: `Step ${id}`,
+  status: "done",
+  weight: 60,
+});
+// The rail shows from RAIL_MIN_TURNS turns: a short conversation needs no way around it.
 const turns: TurnRailEntry[] = [
   { id: "a", agent: "lead", preview: "Summarize the launch plan", status: "done", weight: 400 },
   { id: "b", agent: "helper", preview: "When does packaging arrive?", status: "done", weight: 90 },
+  filler("d"),
+  filler("e"),
+  filler("f"),
   { id: "c", agent: "lead", preview: "Draft the checklist", status: "working", weight: 40 },
 ];
 
@@ -34,9 +45,9 @@ test("slotAt: a pointer down the rail lands on the turn whose slot it is over, n
 test("the wave is one slider over the turns, at the latest, previewing its prompt", () => {
   conversation();
   const wave = screen.getByRole("slider", { name: "Turns in this conversation" });
-  assert.equal(wave.getAttribute("aria-valuemax"), "3");
-  assert.equal(wave.getAttribute("aria-valuenow"), "3");
-  assert.match(wave.getAttribute("aria-valuetext") ?? "", /3 of 3, lead: Draft the checklist/);
+  assert.equal(wave.getAttribute("aria-valuemax"), "6");
+  assert.equal(wave.getAttribute("aria-valuenow"), "6");
+  assert.match(wave.getAttribute("aria-valuetext") ?? "", /6 of 6, lead: Draft the checklist/);
 });
 
 test("the keyboard steps through the wave and shows the prompt of the turn it reaches", () => {
@@ -50,9 +61,9 @@ test("the keyboard steps through the wave and shows the prompt of the turn it re
   assert.match(screen.getByRole("tooltip").textContent ?? "", /packaging/);
 });
 
-test("a conversation of one turn has no wave", () => {
+test("a short conversation has no wave", () => {
   render(
-    <Thread turns={turns.slice(0, 1)}>
+    <Thread turns={turns.slice(0, RAIL_MIN_TURNS - 1)}>
       <article data-turn-id="a" />
     </Thread>,
   );
@@ -69,6 +80,10 @@ test("a turn's preview carries its author's mark: an agent's initials, a person'
       status: "done",
       weight: 60,
     },
+    filler("w"),
+    filler("x"),
+    filler("y"),
+    filler("z"),
     { id: "a", agent: "lead", preview: "Yes, once QA signs off.", status: "done", weight: 80 },
   ];
   render(

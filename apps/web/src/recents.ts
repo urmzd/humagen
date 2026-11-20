@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, type ThreadSummary } from "./api.ts";
+import { api, call, type ThreadSummary } from "./api.ts";
 import { sessionCenter, sessionThread } from "./sessionCenter.ts";
 import { within } from "./timeout.ts";
 
@@ -155,4 +155,50 @@ export function useRecents(
     },
     more,
   };
+}
+
+const roots = new Map<string, string>();
+
+/** The root of a session: the one a person started, which Recents lists. */
+async function rootOf(id: string): Promise<string> {
+  let at = id;
+  // An agent's session names the session that called it as its parent.
+  for (let depth = 0; depth < 8 && at.startsWith("s_"); depth++) {
+    const session = await call<{ parent?: string }>(
+      "GET",
+      `/api/sessions/${encodeURIComponent(at)}`,
+    );
+    if (!session.parent?.startsWith("s_")) break;
+    at = session.parent;
+  }
+  return at;
+}
+
+/**
+ * The Recents row the open session belongs to. Recents lists the sessions
+ * people started; an agent's own session under one is part of it, so it is
+ * shown as its root's row rather than as a second row with the same title.
+ * Null while that is being found out, when no row is marked.
+ */
+export function useRecentsRow(open: string | null, listed: boolean): string | null {
+  const direct = !open || listed || !open.startsWith("s_") || roots.has(open);
+  const [found, setFound] = useState<{ of: string; root: string } | null>(null);
+  useEffect(() => {
+    if (direct || !open) return;
+    let live = true;
+    rootOf(open)
+      .catch(() => open)
+      .then((root) => {
+        roots.set(open, root);
+        if (live) setFound({ of: open, root });
+      });
+    return () => {
+      live = false;
+    };
+  }, [open, direct]);
+  if (!open) return null;
+  if (listed) return open;
+  if (roots.has(open)) return roots.get(open) ?? open;
+  if (!open.startsWith("s_")) return open;
+  return found?.of === open ? found.root : null;
 }

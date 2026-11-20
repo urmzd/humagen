@@ -113,15 +113,9 @@ func TestAReplyToAnAnnouncementsSlackPostStartsAThreadSeededWithIt(t *testing.T)
 		t.Fatalf("the reply is shown as %q's", shown[1].Message.By)
 	}
 
-	// An untagged reply is answered by the channel's chain, as any message
-	// there: general's default, never the client's.
-	gen, err := p.Projects.Channel(tenant, "Field", projects.General)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := p.UpdateChannel(t.Context(), tenant, "Field", projects.General, ada, platform.ChannelUpdate{Version: gen.Version, Default: "lead", Slack: gen.Slack}); err != nil {
-		t.Fatal(err)
-	}
+	// An untagged reply is answered as any message in the bound channel: by
+	// the workspace default, never the client's.
+	setAgents(t, p, "~", platform.AgentsInput{Enable: []string{"*"}, Default: "lead"})
 	later, err := p.StartThread(t.Context(), machine, fromSlack(newsChannel, newsPost, "1700000000.000300", "<@UAPP> and the dates?"))
 	if err != nil || later.Thread.ID != th.ID || later.Message.ID != "m-2" {
 		t.Fatalf("a later reply = %+v, %v", later, err)
@@ -224,6 +218,10 @@ func TestAReplyToAWithdrawnAnnouncementOrADraftStartsNothing(t *testing.T) {
 	started, err := p.StartThread(t.Context(), machine, fromSlack(newsChannel, newsPost, "1700000000.000200", "<@UAPP> noted"))
 	if err != nil {
 		t.Fatal(err)
+	}
+	// An untagged reply lands on an agent; it ends before the next reply.
+	for _, r := range started.Runs {
+		await(t, p, r.ID, runs.Completed)
 	}
 	late := postedToSlack(t, p, machine, inbox.From{Kind: "person", Name: "ada"}, platform.Announcement{Subject: "Secret plans", Text: "Not for Slack."}, "1700000000.000900")
 	for _, m := range []inbox.Message{early, late} {

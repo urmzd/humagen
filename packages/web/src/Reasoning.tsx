@@ -9,8 +9,6 @@ import {
 } from "@humagen/render-web";
 import { useEffect, useId, useRef, useState } from "react";
 
-const REASONING_VERBS = ["Thinking…", "Weighing options…", "Planning next steps…"] as const;
-
 function formatSeconds(s: number) {
   if (s < 60) return `${s}s`;
   const m = Math.floor(s / 60);
@@ -41,7 +39,7 @@ export function Reasoning({
   const [measured, setMeasured] = useState<number | undefined>(undefined);
   const { open, setOpen, toggle } = useDisclosure({ defaultOpen: streaming });
   const wasStreaming = useRef(streaming);
-  const verb = useVerbSequence(streaming, REASONING_VERBS, 2200);
+  const verb = useVerbSequence(streaming);
 
   useEffect(() => {
     if (streaming && started.current === null) started.current = Date.now();

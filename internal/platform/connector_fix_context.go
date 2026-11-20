@@ -9,8 +9,8 @@ import (
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/runs"
-	"github.com/urmzd/orchagent/flow/connector"
-	transport "github.com/urmzd/orchagent/flow/connectors/github"
+	"github.com/urmzd/saige/flow/connector"
+	transport "github.com/urmzd/saige/flow/connectors/github"
 )
 
 func (p *Platform) fixPullContext(c clients.Client) func(context.Context, transport.Ref) (transport.FixPullContext, error) {

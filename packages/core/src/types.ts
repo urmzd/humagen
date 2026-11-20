@@ -146,7 +146,22 @@ export interface Approval {
    * is ready to show.
    */
   budget?: BudgetGrant;
+  /**
+   * What the approval agent said about the call, in a session set to Run:
+   * set whether it allowed the call, denied it or left it for a person.
+   */
+  judgement?: Judgement;
   decision: Decision;
+}
+
+/** The approval agent's view of one call. Its words are a model's: show them inert. */
+export interface Judgement {
+  decision: "allow" | "ask" | "deny";
+  reason: string;
+  /** What the decision rests on. */
+  references?: string[];
+  /** What the workspace's own schema adds, such as a risk level, in the order the agent gave them. Ready to show. */
+  fields?: Field[];
 }
 
 /** The limit a held run reached, and what approving grants it. */
@@ -182,7 +197,11 @@ export type Answer =
   | { kind: "answered"; by: string; at: string; optionIds: string[]; other?: string }
   | { kind: "declined"; by: string; at: string; reason?: string }
   /** "I'm not sure": the agent should proceed with its best judgment or ask differently. */
-  | { kind: "unsure"; by: string; at: string };
+  | { kind: "unsure"; by: string; at: string }
+  /** Nobody answered in time. `note` says what applied instead, in words, when anything did. */
+  | { kind: "expired"; at: string; note?: string }
+  /** The run stopped or ended before anyone answered. `note` says which, in words. */
+  | { kind: "cancelled"; at: string; note?: string };
 
 /** The agent needs the human to pick or type something before continuing. */
 export interface Clarification {
@@ -199,6 +218,11 @@ export interface Clarification {
    * The card shows the question and this line, and no way to answer it.
    */
   forOthers?: string;
+  /**
+   * What the approval agent said about it, in a session set to Run and Answer:
+   * `allow` is an answer it gave as the person, `ask` a question it left for them.
+   */
+  judgement?: Judgement;
   answer: Answer;
 }
 

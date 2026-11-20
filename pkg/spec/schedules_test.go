@@ -13,6 +13,9 @@ func TestEachScheduleCheckNamesItsPath(t *testing.T) {
 	withSchedule := func(sc string) string {
 		return "    agents: {enable: [lead]}\n    projects:\n      - name: Field\n        agents: {enable: []}\n        schedules:\n          - " + sc + "\n"
 	}
+	withScheduleAllowing := func(sc, allow string) string {
+		return "    projects:\n      - name: Field\n        agents: {allow: [" + allow + "]}\n        schedules:\n          - " + sc + "\n"
+	}
 	for name, tc := range map[string]struct{ workspace, want string }{
 		"a cron that does not parse": {
 			withSchedule(`{name: recap, cron: "whenever", agent: lead, text: "What changed?"}`), `workspace.projects[0].schedules[0].cron:`,
@@ -21,9 +24,9 @@ func TestEachScheduleCheckNamesItsPath(t *testing.T) {
 			withSchedule(`{name: recap, cron: "41 8 * * 1", agent: ghost, text: "What changed?"}`),
 			`workspace.projects[0].schedules[0].agent: "ghost" is not an agent in this file or one of the platform's own`,
 		},
-		"an agent not available in its project": {
-			withSchedule(`{name: recap, cron: "41 8 * * 1", agent: helper, text: "What changed?"}`),
-			`workspace.projects[0].schedules[0].agent: helper is not available in "Field": nothing on its chain enables it`,
+		"an agent its project's allow list leaves out": {
+			withScheduleAllowing(`{name: recap, cron: "41 8 * * 1", agent: helper, text: "What changed?"}`, "lead"),
+			`workspace.projects[0].schedules[0].agent: helper is not available in "Field": the allow list of "Field" leaves it out`,
 		},
 		"an answer sent to nobody's inbox": {
 			withSchedule(`{name: recap, cron: "41 8 * * 1", agent: lead, text: "What changed?", deliver: inbox}`),

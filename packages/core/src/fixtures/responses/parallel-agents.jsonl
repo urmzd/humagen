@@ -1,0 +1,24 @@
+{"type":"message_start","t_ms":0,"message":{"id":"msg_parallel","role":"assistant","content":[],"humagen":{"request_id":"m_2","root_run":"r_entry","agent":"humagen","ref":"github://urmzd/humagen/pull/243","trace_url":"/messages/msg_parallel"}}}
+{"type":"content_block_start","t_ms":10,"index":0,"content_block":{"type":"server_tool_use","id":"htu_r_entry_1","name":"agent","kind":"agent","title":"Review security","input":{"agent":"security-reviewer","title":"Review security","brief":"Review PR #243 for security risks."}}}
+{"type":"content_block_stop","index":0}
+{"type":"content_block_start","t_ms":12,"index":1,"content_block":{"type":"server_tool_use","id":"htu_r_entry_2","name":"agent","kind":"agent","title":"Review performance","input":{"agent":"perf-reviewer","title":"Review performance","brief":"Review PR #243 for performance."}}}
+{"type":"content_block_stop","index":1}
+{"type":"humagen.tool_status","t_ms":13,"tool_use_id":"htu_r_entry_1","path":["htu_r_entry_1"],"status":"running","elapsed_ms":0}
+{"type":"humagen.tool_status","t_ms":13,"tool_use_id":"htu_r_entry_2","path":["htu_r_entry_2"],"status":"running","elapsed_ms":0}
+{"type":"humagen.nested","t_ms":200,"parent_tool_use_id":"htu_r_entry_1","agent_run_id":"r_sec","depth":1,"event":{"type":"content_block_start","index":0,"content_block":{"type":"server_tool_use","id":"htu_r_sec_1","name":"read_diff","kind":"tool","title":"Read the diff","input":{"pull":243}}}}
+{"type":"humagen.nested","t_ms":210,"parent_tool_use_id":"htu_r_entry_2","agent_run_id":"r_perf","depth":1,"event":{"type":"content_block_start","index":0,"content_block":{"type":"server_tool_use","id":"htu_r_perf_1","name":"read_diff","kind":"tool","title":"Read the diff","input":{"pull":243}}}}
+{"type":"humagen.progress","t_ms":220,"parent_tool_use_id":"htu_r_entry_2","text":"Profiling the query path"}
+{"type":"humagen.nested","t_ms":800,"parent_tool_use_id":"htu_r_entry_1","agent_run_id":"r_sec","depth":1,"event":{"type":"content_block_start","index":1,"content_block":{"type":"server_tool_result","tool_use_id":"htu_r_sec_1","is_error":false,"content":[{"type":"text","text":"3 files changed"}]}}}
+{"type":"humagen.nested","t_ms":900,"parent_tool_use_id":"htu_r_entry_2","agent_run_id":"r_perf","depth":1,"event":{"type":"content_block_start","index":1,"content_block":{"type":"server_tool_result","tool_use_id":"htu_r_perf_1","is_error":false,"content":[{"type":"text","text":"3 files changed"}]}}}
+{"type":"humagen.nested","t_ms":1000,"parent_tool_use_id":"htu_r_entry_1","agent_run_id":"r_sec","depth":1,"event":{"type":"content_block_start","index":2,"content_block":{"type":"text","text":"No injection risk; the new endpoint checks the tenant."}}}
+{"type":"humagen.nested","t_ms":1100,"parent_tool_use_id":"htu_r_entry_2","agent_run_id":"r_perf","depth":1,"event":{"type":"content_block_start","index":2,"content_block":{"type":"server_tool_use","id":"htu_r_perf_2","name":"run_benchmark","kind":"tool","title":"Run the benchmark","input":{"suite":"sessions"}}}}
+{"type":"content_block_start","t_ms":2400,"index":2,"content_block":{"type":"server_tool_result","tool_use_id":"htu_r_entry_1","is_error":false,"content":[{"type":"text","text":"No injection risk; the new endpoint checks the tenant."},{"type":"search_result","source":"https://github.com/urmzd/humagen/pull/243/files","title":"PR #243 files","content":[]}]}}
+{"type":"humagen.tool_status","t_ms":2401,"tool_use_id":"htu_r_entry_1","path":["htu_r_entry_1"],"status":"done","elapsed_ms":2388}
+{"type":"humagen.nested","t_ms":5200,"parent_tool_use_id":"htu_r_entry_2","agent_run_id":"r_perf","depth":1,"event":{"type":"content_block_start","index":3,"content_block":{"type":"server_tool_result","tool_use_id":"htu_r_perf_2","is_error":false,"content":[{"type":"text","text":"p95 41ms (was 39ms)"}]}}}
+{"type":"content_block_start","t_ms":5600,"index":3,"content_block":{"type":"server_tool_result","tool_use_id":"htu_r_entry_2","is_error":false,"content":[{"type":"text","text":"p95 went from 39ms to 41ms; within budget."}]}}
+{"type":"humagen.tool_status","t_ms":5601,"tool_use_id":"htu_r_entry_2","path":["htu_r_entry_2"],"status":"done","elapsed_ms":5588}
+{"type":"content_block_start","t_ms":5700,"index":4,"content_block":{"type":"text","text":"## security-reviewer\nNo injection risk; the new endpoint checks the tenant.\n\n## perf-reviewer\np95 went from 39ms to 41ms; within budget."}}
+{"type":"content_block_stop","t_ms":5800,"index":4}
+{"type":"message_delta","t_ms":5810,"delta":{"stop_reason":"end_turn"},"usage":{"input_tokens":300,"output_tokens":60}}
+{"type":"humagen.usage","by_model":{"anthropic/claude-sonnet-5-5":{"input_tokens":4100,"output_tokens":310}},"cost_usd":0.017}
+{"type":"message_stop","t_ms":5815}

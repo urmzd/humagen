@@ -161,3 +161,12 @@ test("a stale profile save refreshes email consent without losing the edited bri
   assert.equal(body.personal.email_version, 2);
   assert.equal(body.personal.briefing, "Keep this edited briefing");
 });
+
+test("quiet hours start from the browser's time zone until a window is saved", async () => {
+  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  mount(false);
+  const field = (await screen.findByLabelText(
+    defaultCopy.personalPreferences.timezone,
+  )) as HTMLInputElement;
+  assert.equal(field.value, zone);
+});

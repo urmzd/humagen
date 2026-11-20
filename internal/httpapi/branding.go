@@ -46,11 +46,14 @@ type brandingView struct {
 	// Starters are null for the console's own.
 	Starters []spec.Starter    `json:"starters"`
 	Copy     map[string]string `json:"copy"`
+	// EntryAgent is the entry agent's agent name, which people see as Name.
+	EntryAgent string `json:"entry_agent"`
 }
 
 func (s *Server) getBranding(w http.ResponseWriter, _ *http.Request, who auth.Principal) {
 	b := s.Branding.For(who.Tenant)
 	v := brandingView{Name: b.Name, Wordmark: b.Wordmark, Title: b.Title, LogoAlt: b.LogoAlt, Starters: b.Spec.Starters, Copy: b.Spec.Copy}
+	v.EntryAgent, _ = s.P.EntryAgent(who.Tenant)
 	if v.Copy == nil {
 		v.Copy = map[string]string{}
 	}

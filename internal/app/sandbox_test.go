@@ -11,10 +11,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/urmzd/orchagent/sandbox/isolate/docker"
+	"github.com/urmzd/saige/sandbox/isolate/docker"
 
 	"github.com/urmzd/humagen/pkg/credref"
-	"github.com/urmzd/orchagent/flow/isolation"
+	"github.com/urmzd/saige/flow/isolation"
 )
 
 func openSandboxWith(t *testing.T, l loaded, runtimeDefault string, args ...string) (isolation.Sandbox, error) {
@@ -158,5 +158,15 @@ func TestARemoteDockerSandbox(t *testing.T) {
 	}
 	if _, err := s.Leaser.Lease(context.Background(), isolation.Request{Run: "r"}); err == nil || !strings.Contains(err.Error(), "TLSDir") {
 		t.Fatalf("plain tcp lease = %v", err)
+	}
+}
+
+// Only the docker sandbox keeps a command away from this host, so only it
+// lets a person run a command of their own. Nothing else is assumed to.
+func TestOnlyTheDockerSandboxIsContained(t *testing.T) {
+	for kind, want := range map[string]bool{"": true, "docker": true, " docker ": true, "local": false, "unisolated": false, "firecracker": false} {
+		if got := (sandboxFlags{kind: &kind}).contained(); got != want {
+			t.Errorf("-sandbox=%q contained = %v, want %v", kind, got, want)
+		}
 	}
 }

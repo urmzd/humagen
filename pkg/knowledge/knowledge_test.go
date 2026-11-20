@@ -209,3 +209,28 @@ func sources(t *testing.T, s *Store, tenant string) []Source {
 	}
 	return out
 }
+
+func TestDocumentTextForScopeReadsOneDocumentInOrder(t *testing.T) {
+	s := NewStore()
+	now := time.Now()
+	if _, err := s.Create("t", "handbook", "", "ana", now); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := s.Add("t", "handbook", "Leave", "", strings.Repeat("Parental leave is sixteen weeks. ", 200), "ana", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, texts, err := s.DocumentTextForScope("t", "handbook", doc.ID, nil)
+	if err != nil || got.ID != doc.ID || len(texts) != doc.Passages || !strings.HasPrefix(texts[0], "Parental leave") {
+		t.Fatalf("read %+v, %d passages, %v", got, len(texts), err)
+	}
+	if _, err := s.SetExcluded("t", "handbook", doc.ID, true, now); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.DocumentTextForScope("t", "handbook", doc.ID, nil); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("an excluded document = %v", err)
+	}
+	if _, _, err := s.DocumentTextForScope("t", "handbook", "missing", nil); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("a missing document = %v", err)
+	}
+}

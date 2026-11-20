@@ -44,11 +44,10 @@ test("a person adds a server by its address and a reference, and the write keeps
     serve({ run: { preferences: { model: "offline/echo" } }, tool_servers: [], version: 2 }),
   );
   render(<YourToolServers references={starts} />);
-  assert.ok(await screen.findByText("No tool servers"));
-  fireEvent.click(screen.getByRole("button", { name: "Add Tool Server" }));
-  const form = await screen.findByRole("form", { name: "New tool server" });
+  fireEvent.click(await screen.findByRole("button", { name: "Add MCP" }));
+  const form = await screen.findByRole("form", { name: "New MCP" });
   fireEvent.change(screen.getByLabelText(/^Name/), { target: { value: "issues" } });
-  fireEvent.change(screen.getByLabelText(/^Address/), {
+  fireEvent.change(screen.getByLabelText(/^URL/), {
     target: { value: "https://issues.example.com/mcp" },
   });
   fireEvent.change(screen.getByLabelText(/^Credential reference/), {
@@ -78,10 +77,10 @@ test("a person adds a server by its address and a reference, and the write keeps
 test("a reference outside the person's own starts is refused before anything is sent", async () => {
   net = stubFetch(serve({ run: {}, tool_servers: [], version: 0 }));
   render(<YourToolServers references={starts} />);
-  fireEvent.click(await screen.findByRole("button", { name: "Add Tool Server" }));
-  const form = await screen.findByRole("form", { name: "New tool server" });
+  fireEvent.click(await screen.findByRole("button", { name: "Add MCP" }));
+  const form = await screen.findByRole("form", { name: "New MCP" });
   fireEvent.change(screen.getByLabelText(/^Name/), { target: { value: "issues" } });
-  fireEvent.change(screen.getByLabelText(/^Address/), {
+  fireEvent.change(screen.getByLabelText(/^URL/), {
     target: { value: "https://issues.example.com/mcp" },
   });
   fireEvent.change(screen.getByLabelText(/^Credential reference/), {
@@ -101,7 +100,11 @@ test("a person removes a server, and one who may not change them sees them with 
   net = stubFetch(serve(one));
   const { unmount } = render(<YourToolServers references={starts} />);
   fireEvent.click(await screen.findByRole("button", { name: "Remove notes" }));
-  assert.ok(await screen.findByText("No tool servers"));
+  // Settle on plain timers: a DOM wait started while the write is in flight can stall happy-dom.
+  for (let i = 0; i < 200 && !net.seen.some((r) => r.method === "PUT"); i++)
+    await new Promise((done) => setTimeout(done, 5));
+  await new Promise((done) => setTimeout(done, 30));
+  assert.equal(screen.queryByRole("listitem", { name: "notes" }), null);
   assert.deepEqual(net.seen.find((r) => r.method === "PUT")?.body, {
     run: {},
     tool_servers: [],
@@ -114,7 +117,7 @@ test("a person removes a server, and one who may not change them sees them with 
   render(<YourToolServers references={starts} canConnect={false} />);
   assert.ok(await screen.findByRole("listitem", { name: "notes" }));
   assert.ok(screen.getByText("Reached without a credential."));
-  for (const name of ["Add Tool Server", "Remove notes"])
+  for (const name of ["Add MCP", "Remove notes"])
     assert.ok(!screen.queryByRole("button", { name }), `${name} is offered`);
   await waitFor(() => assert.ok(!net?.seen.some((r) => r.method !== "GET")));
 });
@@ -155,14 +158,14 @@ test("an existing server's changed list is reviewed before a new snapshot is sav
 test("tool connections name allowed hosts and refuse unknown hosts before discovery", async () => {
   net = stubFetch(serve({ run: {}, tool_servers: [], version: 0 }));
   render(<YourToolServers references={[]} allowedHosts={["allowed.example.com"]} />);
-  await screen.findByText("No tool servers");
-  assert.ok(screen.getByText("Allowed hosts: allowed.example.com."));
-  fireEvent.click(screen.getByRole("button", { name: "Add Tool Server" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Add MCP" }));
+  // The allowed hosts are said where an MCP is added, not on the page.
+  assert.ok(await screen.findByText("Allowed hosts: allowed.example.com."));
   fireEvent.change(screen.getByLabelText(/^Name/), { target: { value: "notes" } });
-  fireEvent.change(screen.getByLabelText(/^Address/), {
+  fireEvent.change(screen.getByLabelText(/^URL/), {
     target: { value: "https://other.example.com/mcp" },
   });
-  fireEvent.submit(screen.getByRole("form", { name: "New tool server" }));
+  fireEvent.submit(screen.getByRole("form", { name: "New MCP" }));
   await screen.findByText("This host is not allowed. Allowed hosts: allowed.example.com.");
   assert.equal(net.seen.filter((r) => r.method === "POST").length, 0);
 });
@@ -170,9 +173,8 @@ test("tool connections name allowed hosts and refuse unknown hosts before discov
 test("empty tool connection submission explains the missing name", async () => {
   net = stubFetch(serve({ run: {}, tool_servers: [], version: 0 }));
   render(<YourToolServers references={[]} />);
-  await screen.findByText("No tool servers");
-  fireEvent.click(screen.getByRole("button", { name: "Add Tool Server" }));
-  fireEvent.submit(screen.getByRole("form", { name: "New tool server" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Add MCP" }));
+  fireEvent.submit(screen.getByRole("form", { name: "New MCP" }));
   await screen.findByText("A name is lower case letters, digits and dashes, at most 63.");
   assert.equal(net.seen.filter((r) => r.method === "POST").length, 0);
 });

@@ -94,17 +94,11 @@ func (p *Platform) Health(ctx context.Context) Health {
 	return b.last
 }
 
-// providerHealth probes every model provider at once.
+// providerHealth probes every provider the deployment declares, at once.
+// A workspace's own are added per workspace (HealthFor).
 func (p *Platform) providerHealth(ctx context.Context) []HealthComponent {
 	names := p.cfg.Ext.ProviderNames()
-	if len(names) == 0 && (p.cfg.BuiltinProvider == "" || p.cfg.BuiltinProvider == "offline") {
-		// Nothing calls a model: say it as an outage, not an empty list.
-		return []HealthComponent{{
-			ID: "provider:none", Name: "Model providers", Group: "Model providers", Status: HealthDown,
-			Detail: "No model provider is configured, so agents cannot answer. Ask a workspace administrator to configure a provider, then review Models in Settings.",
-		}}
-	}
-	out := make([]HealthComponent, len(names), len(names)+1)
+	out := make([]HealthComponent, len(names))
 	var wg sync.WaitGroup
 	for i, name := range names {
 		wg.Go(func() {
@@ -112,15 +106,33 @@ func (p *Platform) providerHealth(ctx context.Context) []HealthComponent {
 		})
 	}
 	wg.Wait()
-	// The platform's own agents run on a built-in provider, read from the
-	// environment, unless a declared model of the same name replaces it.
-	if b := p.cfg.BuiltinProvider; b != "" && b != "offline" && !slices.Contains(names, b) {
-		out = append(out, HealthComponent{
-			ID: "provider:" + b, Name: b, Group: "Model providers", Status: HealthOperational,
-			Detail: "Built in, configured from the environment; not checked",
+	return out
+}
+
+// HealthFor is Health as tenant's workspace reads it: each provider its
+// administrators set up is listed, unchecked (Check on the provider asks
+// it), and a workspace with no provider at all, declared or its own, is told
+// so as an outage, since no agent of its can answer.
+func (p *Platform) HealthFor(ctx context.Context, tenant string) Health {
+	h := p.Health(ctx)
+	h.Components = slices.Clone(h.Components)
+	own := p.ModelProviders(tenant)
+	for _, m := range own {
+		h.Components = append(h.Components, HealthComponent{
+			ID: "provider:" + m.Name, Name: m.Name, Group: "Model providers", Status: HealthOperational,
+			Detail:  "Set up by an administrator; not checked here",
+			History: []HealthSample{{At: h.CheckedAt, Status: HealthOperational}},
 		})
 	}
-	return out
+	if len(own) == 0 && len(p.cfg.Ext.ProviderNames()) == 0 {
+		h.Components = append(h.Components, HealthComponent{
+			ID: "provider:none", Name: "Model providers", Group: "Model providers", Status: HealthDown,
+			Detail:  "No model provider is set up, so agents cannot answer. An administrator adds one in Settings, under Model providers.",
+			History: []HealthSample{{At: h.CheckedAt, Status: HealthDown}},
+		})
+		h.Status = worse(h.Status, HealthDown)
+	}
+	return h
 }
 
 func kept(durable bool) string {

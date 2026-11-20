@@ -15,10 +15,10 @@ import (
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/humagen/pkg/state/statetest"
-	"github.com/urmzd/orchagent/flow/event"
-	"github.com/urmzd/orchagent/flow/runtime"
-	"github.com/urmzd/orchagent/flow/turn/native"
 	saigetypes "github.com/urmzd/saige/agent/types"
+	"github.com/urmzd/saige/flow/event"
+	"github.com/urmzd/saige/flow/runtime"
+	"github.com/urmzd/saige/flow/turn/native"
 )
 
 func TestSetupCapabilityUsesAuthoritativeAdmissionBeforeRunProjection(t *testing.T) {
@@ -328,12 +328,12 @@ func TestSetupAskApprovalPreservesExplicitAudienceAndUnderlyingRestrictions(t *t
 	}
 	calls := 0
 	base := &saigetypes.ToolFunc{Def: saigetypes.ToolDef{Name: "action"}, Fn: func(context.Context, map[string]any) (string, error) { calls++; return "ok", nil }}
-	tool := p.operationTool(req, base, operations.Other)
+	tool := p.operationTool(req, base, SystemTool{Category: operations.Other})
 	approval, needed := tool.(native.Approving).Approval(saigetypes.ToolCallPart{Name: "action"})
 	if !needed || !approval.SelfApproval || !slices.Equal(approval.Approvers, []string{"designated-reviewer"}) {
 		t.Fatalf("declared approval audience widened: %+v", approval)
 	}
-	strict := p.operationTool(req, &setupStrictApprovalProbe{ToolFunc: base}, operations.Other)
+	strict := p.operationTool(req, &setupStrictApprovalProbe{ToolFunc: base}, SystemTool{Category: operations.Other})
 	approval, needed = strict.(native.Approving).Approval(saigetypes.ToolCallPart{Name: "action"})
 	if !needed || approval.SelfApproval || !slices.Equal(approval.Approvers, []string{"strict-reviewer"}) {
 		t.Fatalf("underlying tool approval weakened: %+v", approval)

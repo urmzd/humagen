@@ -359,6 +359,43 @@ type QuestionPart struct {
 	SteeredForName string `json:"steered_for_name,omitempty"`
 	// Budget is a budget question's limit and what approving it grants.
 	Budget *QuestionBudget `json:"budget,omitempty"`
+	// Judgement is what the approval agent said about an approval, once it
+	// was asked: set whether it allowed the call, denied it or left it for a
+	// person.
+	Judgement *Judgement `json:"judgement,omitempty"`
+}
+
+// Judgement is the approval agent's answer about one approval, as a person
+// reads it on the card.
+type Judgement struct {
+	// Decision is allow, ask or deny, and Reason why.
+	Decision string `json:"decision"`
+	Reason   string `json:"reason"`
+	// References are what the decision rests on.
+	References []string `json:"references,omitempty"`
+	// Fields are what the workspace's own schema for the answer adds, such
+	// as a risk level, in the order the agent gave them.
+	Fields []JudgementField `json:"fields,omitempty"`
+	// Run is the approval agent's run that decided.
+	Run string `json:"run,omitempty"`
+}
+
+// JudgementField is one field of a judgement a workspace's schema adds:
+// its name in the schema, the label a person reads, and its value.
+type JudgementField struct {
+	Name  string `json:"name"`
+	Label string `json:"label"`
+	Value string `json:"value"`
+}
+
+func (j *Judgement) clone() *Judgement {
+	if j == nil {
+		return nil
+	}
+	c := *j
+	c.References = slices.Clone(j.References)
+	c.Fields = slices.Clone(j.Fields)
+	return &c
 }
 
 // QuestionBudget is the limit a run is held at, and what approving grants.
@@ -499,6 +536,7 @@ func (m Message) clone() Message {
 				t := *q.Tool
 				q.Tool = &t
 			}
+			q.Judgement = q.Judgement.clone()
 			p.Question = &q
 		}
 		if p.Memory != nil {
@@ -615,6 +653,9 @@ const (
 	DidDismiss  What = "dismissed"
 	DidSnooze   What = "snoozed"
 	DidWithdraw What = "withdrawn"
+	// DidJudge is the approval agent's judgement of an approval, kept on
+	// its question.
+	DidJudge What = "judged"
 	// DidUnhide is a reader bringing back a message they hid, or a
 	// broadcast they snoozed, for themselves.
 	DidUnhide What = "unhidden"
@@ -639,6 +680,8 @@ type Change struct {
 	Action  string    `json:"action,omitempty"`
 	Note    string    `json:"note,omitempty"`
 	Until   time.Time `json:"until,omitzero"`
+	// Judgement is the approval agent's judgement, on a DidJudge change.
+	Judgement *Judgement `json:"judgement,omitempty"`
 	// Raised is the message as it was raised, on a Raised change.
 	Raised *Message `json:"-"`
 	// Delivery is where the client in By posted the message, on a
@@ -914,6 +957,14 @@ func (s *Store) Read(tenantName, id, by string, read bool, at time.Time) (Messag
 // one decides it and the other is returned that decision.
 func (s *Store) Resolve(tenantName, id, part string, o Outcome) (Message, bool, error) {
 	return s.do(Change{Tenant: tenantName, Message: id, What: DidResolve, Part: part, Action: o.Action, By: o.By, At: o.At, Note: o.Note})
+}
+
+// Judge keeps the approval agent's judgement on an approval part's
+// question, whatever state the part is in: the card shows it beside the
+// call, and beside the outcome once there is one. A later judgement
+// replaces an earlier one.
+func (s *Store) Judge(tenantName, id, part string, j Judgement, at time.Time) (Message, bool, error) {
+	return s.do(Change{Tenant: tenantName, Message: id, What: DidJudge, Part: part, By: "system", At: at, Judgement: &j})
 }
 
 // Dismiss sets a message aside without a decision. A broadcast is set aside

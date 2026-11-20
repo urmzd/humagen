@@ -66,7 +66,14 @@ const (
 	Agent Target = "agent"
 	// Knowledge suites send queries to a source and check what is retrieved.
 	Knowledge Target = "knowledge"
+	// Corpus suites send queries to a corpus's search, as an agent runs it,
+	// and check what is retrieved.
+	Corpus Target = "corpus"
 )
+
+// Retrieves reports whether a target's cases name the documents a search
+// should return rather than checks on an answer.
+func (t Target) Retrieves() bool { return t == Knowledge || t == Corpus }
 
 // CheckKind is one deterministic test of an answer.
 type CheckKind string
@@ -137,8 +144,8 @@ func (s Suite) Validate() error {
 	switch {
 	case !validName.MatchString(s.Name):
 		return fmt.Errorf("%w: a suite name is lowercase letters, digits and dashes", ErrInvalid)
-	case s.Target != Agent && s.Target != Knowledge:
-		return fmt.Errorf("%w: a suite targets an agent or a knowledge source", ErrInvalid)
+	case s.Target != Agent && s.Target != Knowledge && s.Target != Corpus:
+		return fmt.Errorf("%w: a suite targets an agent, a knowledge source or a corpus", ErrInvalid)
 	case s.Subject == "":
 		return fmt.Errorf("%w: a suite needs something to test", ErrInvalid)
 	case len(s.Cases) == 0:
@@ -165,7 +172,7 @@ func (s Suite) Validate() error {
 			}
 		}
 		seen[c.ID] = true
-		if s.Target == Knowledge {
+		if s.Target.Retrieves() {
 			if len(c.Expect) == 0 || slices.Contains(c.Expect, "") {
 				return fmt.Errorf("%w: case %d names no document it expects", ErrInvalid, n)
 			}
@@ -422,6 +429,7 @@ type Store struct {
 	onlineAgent *state.Table[Online]
 	online      *state.Table[Online]
 	candidates  *state.Table[Candidate]
+	resolved    *state.Table[Resolution]
 	kept        *state.Table[stored]
 	// now is the clock a run's heartbeat is read and written by.
 	now func() time.Time
@@ -500,7 +508,7 @@ func Open(st state.Store) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Store{tenants: tenants, retrievals: state.NewTable[Retrieval](st, "evals.retrievals"), changes: state.NewTable[Change](st, "evals.changes"), onlineAgent: state.NewTable[Online](st, "evals.agent_online"), kept: state.NewTable[stored](st, namespace), online: state.NewTable[Online](st, "evals.online"), candidates: state.NewTable[Candidate](st, "evals.candidates"), now: time.Now}, nil
+	return &Store{tenants: tenants, retrievals: state.NewTable[Retrieval](st, "evals.retrievals"), changes: state.NewTable[Change](st, "evals.changes"), onlineAgent: state.NewTable[Online](st, "evals.agent_online"), kept: state.NewTable[stored](st, namespace), online: state.NewTable[Online](st, "evals.online"), candidates: state.NewTable[Candidate](st, "evals.candidates"), resolved: state.NewTable[Resolution](st, "evals.candidate_resolutions"), now: time.Now}, nil
 }
 
 // stale reports whether a running run has gone unwritten so long that

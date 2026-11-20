@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/orchagent/flow/runtime"
-	"github.com/urmzd/orchagent/flow/turn/native"
+	"github.com/urmzd/saige/flow/runtime"
+	"github.com/urmzd/saige/flow/turn/native"
 
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/internal/wire"
@@ -374,10 +374,11 @@ func TestBuiltinWriter(t *testing.T) {
 		t.Fatal("a built-in agent exists with no model to run on")
 	}
 
-	p, err := platform.New(platform.Config{Workspace: t.TempDir(), BuiltinProvider: "offline", BuiltinModel: "offline"})
+	p, err := platform.New(platform.Config{Workspace: t.TempDir(), TestBuiltinProvider: "offline", TestBuiltinModel: "offline"})
 	if err != nil {
 		t.Fatal(err)
 	}
+	install(t, p, tenant, "humagen/core")
 	for range 2 {
 		if err := p.EnsureBuiltins(ctx, tenant); err != nil {
 			t.Fatal(err)
@@ -402,7 +403,7 @@ func TestBuiltinWriter(t *testing.T) {
 		t.Fatal(err)
 	}
 	back, _ := p.Agents.Get(ctx, tenant, platform.BuiltinWriter, 0)
-	if back.Rev != 3 || back.Spec.SystemPrompt == drifted.SystemPrompt || len(back.Spec.Tools) != 5 {
+	if back.Rev != 3 || back.Spec.SystemPrompt == drifted.SystemPrompt || len(back.Spec.Tools) != len(platform.FileTools())+len(platform.WebTools()) {
 		t.Fatalf("after drifting the built-in is rev %d with %d tools", back.Rev, len(back.Spec.Tools))
 	}
 }

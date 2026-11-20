@@ -244,7 +244,7 @@ export function ConversationOverview({
       >
         <a
           className={`${row} underline underline-offset-4`}
-          href={href({ page: "project", name: thread.project, tab: "overview" })}
+          href={href({ page: "project", name: thread.project })}
         >
           {project}
         </a>

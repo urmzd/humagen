@@ -16,7 +16,9 @@ import {
   type InboxItem,
   type Interrupt,
   isRetryable,
+  type Judgement,
   type Notice,
+  paragraphsAtSteps,
   readAgentChange,
   readReview,
   SERVICE_TONE,
@@ -60,6 +62,8 @@ import { AgentChangeCards } from "./agent-change";
 import { type Copy, defaultCopy } from "./copy";
 import { AnswerText, reviewCountLine } from "./review";
 import { toolsLine } from "./timeline";
+import { ChangedFiles, turnSettled } from "./turn-changes";
+import { FailedCommands, workSummary } from "./work";
 
 interface WithCopy {
   copy?: Copy;
@@ -78,6 +82,24 @@ export interface TurnCapabilities {
   report?: boolean;
   /** Ask Follow-up on a review's findings, which puts words in the host's composer. */
   followUp?: boolean;
+  /**
+   * Continue in a Code Channel on a finished answer. Unlike the others it is
+   * left out unless a host turns it on: only Slack has the place, and only
+   * where the workspace opted in.
+   */
+  codeChannel?: boolean;
+  /**
+   * Run Details on a finished turn: what the run used, shown only to the
+   * person who asks. Unlike the others it is offered only when a host says
+   * it can answer (`true`), since usage is never shown on the turn itself.
+   */
+  runDetails?: boolean;
+  /**
+   * "Let the approval agent decide in this thread" in a menu on an approval
+   * that waits for a person. Offered only when a host says it can (`true`):
+   * the console sets the mode with its own toggle under the composer.
+   */
+  approvalAgent?: boolean;
 }
 
 /** Fallback preview when a tool supplies none: scalar args as fields, never a JSON dump. */
@@ -102,6 +124,49 @@ function withReason(line: string, reason?: string) {
 }
 
 /**
+ * Words a model wrote, made inert for the Text primitive: a link's markup and a
+ * time token are broken with a zero-width space, so they show as typed and
+ * nothing in them becomes a link. Each renderer already escapes what would
+ * ping on its surface.
+ */
+export function untrusted(text: string): string {
+  return text.replaceAll("](", "]\u200B(").replaceAll("{{", "{\u200B{");
+}
+
+/**
+ * The approval agent's view of a call: what it decided and why, then each
+ * field the workspace's schema adds as a label and its value, then what it
+ * rests on. Muted lines, so the call itself stays the point of the card.
+ */
+function JudgementView({ judgement: j, copy }: { judgement: Judgement; copy: Copy }) {
+  const words = copy.judgement;
+  const fields = (j.fields ?? []).map((f) => `**${untrusted(f.label)}:** ${untrusted(f.value)}`);
+  const references = j.references ?? [];
+  // Slack reads it as one line under the call: the workspace's fields first
+  // (a risk level), then the decision and its reason, then what it rests on.
+  if (useSurface().surface === "slack") {
+    return (
+      <Context
+        items={[
+          ...fields,
+          withReason(`**${words.by}:** ${words.decision[j.decision]}`, untrusted(j.reason)),
+          ...(references.length > 0 ? [words.basedOn(references.map(untrusted))] : []),
+        ]}
+      />
+    );
+  }
+  return (
+    <>
+      <Context
+        items={[withReason(`**${words.by}:** ${words.decision[j.decision]}`, untrusted(j.reason))]}
+      />
+      {fields.length > 0 && <Context items={fields} />}
+      {references.length > 0 && <Context items={[words.basedOn(references.map(untrusted))]} />}
+    </>
+  );
+}
+
+/**
  * Approval gate. Point first, a preview of exactly what will happen, specific
  * verbs, one emphasized button, and a record in place of the controls once decided.
  */
@@ -109,12 +174,15 @@ export function ApprovalCard({
   turnId,
   approval,
   viewer,
+  offerAgent = false,
   copy = defaultCopy,
 }: {
   turnId: string;
   approval: Approval;
   /** Who is looking. Non-initiators can ask but never approve. */
   viewer?: string;
+  /** Offer to let the approval agent decide the conversation's next actions (`TurnCapabilities.approvalAgent`). */
+  offerAgent?: boolean;
 } & WithCopy) {
   const { decision } = approval;
   const fields = previewFields(approval, copy);
@@ -125,6 +193,12 @@ export function ApprovalCard({
   const denyLabel = approval.budget ? copy.budgetHold.stop : copy.declineAction;
   const payload = { turnId, target: approval.id };
   const allowed = viewer === undefined || canDecide(approval, viewer);
+  const { judgement } = approval;
+  const judged = judgement ? <JudgementView judgement={judgement} copy={copy} /> : null;
+  // When the approval agent decided, the record's note repeats its reason, which the
+  // judgement already shows: the record keeps only who and when.
+  const noted = (reason?: string) =>
+    reason && judgement?.reason && reason.endsWith(judgement.reason) ? undefined : reason;
 
   if (decision.kind === "asked") {
     // Asking halts the call; the agent answers, then the gate is raised again.
@@ -132,6 +206,7 @@ export function ApprovalCard({
       <>
         <Text text={`**${approval.summary}**`} />
         {fields.length > 0 && <Fields items={fields} />}
+        {judged}
         <Context
           items={[`${copy.askedBy(decision.by, timeToken(decision.at))}: "${decision.question}"`]}
         />
@@ -144,6 +219,7 @@ export function ApprovalCard({
       <>
         <Text text={`**${approval.summary}**`} />
         {fields.length > 0 && <Fields items={fields} />}
+        {judged}
         <Actions blockId={`approval:${approval.id}:r${approval.revision ?? 0}`}>
           <Button label={copy.askApproval} action={{ id: ActionId.ask, payload }} />
         </Actions>
@@ -163,6 +239,7 @@ export function ApprovalCard({
         <Summary text={copy.approvalNeeded(approval.summary)} />
         <Text text={`**${approval.summary}**`} />
         {fields.length > 0 && <Fields items={fields} />}
+        {judged}
         <Actions blockId={`approval:${approval.id}:r${approval.revision ?? 0}`}>
           <Button
             label={approveLabel}
@@ -191,6 +268,18 @@ export function ApprovalCard({
             action={{ id: ActionId.deny, payload }}
             accessibilityLabel={approval.budget ? undefined : `${denyLabel}: ${approval.summary}`}
           />
+          {/* The conversation's mode, not this call: a menu, so it never reads as a decision. */}
+          {offerAgent && !approval.budget && (
+            <Menu
+              label={copy.moreOptions}
+              items={[
+                {
+                  label: copy.approvals.letAgentDecide,
+                  action: { id: ActionId.approvalMode, payload: { turnId, target: "auto" } },
+                },
+              ]}
+            />
+          )}
         </Actions>
         {meta.length > 0 && <Context items={meta} />}
       </>
@@ -202,9 +291,13 @@ export function ApprovalCard({
       <>
         <Text text={`**${approval.summary}**`} />
         {fields.length > 0 && <Fields items={fields} />}
+        {judged}
         <Context
           items={[
-            withReason(copy.approvedBy(decision.by, timeToken(decision.at)), decision.reason),
+            withReason(
+              copy.approvedBy(decision.by, timeToken(decision.at)),
+              noted(decision.reason),
+            ),
           ]}
         />
       </>
@@ -222,6 +315,7 @@ export function ApprovalCard({
   return (
     <>
       <Text text={`~~${approval.summary}~~ ${outcome}`} />
+      {judged}
       {decision.kind === "denied" && (
         <Context
           items={[
@@ -230,7 +324,7 @@ export function ApprovalCard({
                 decision.by,
                 timeToken(decision.at),
               ),
-              decision.reason,
+              noted(decision.reason),
             ),
           ]}
         />
@@ -246,8 +340,14 @@ export function ApprovalCard({
 export function ApprovalBatch({
   turnId,
   approvals,
+  offerAgent = false,
   copy = defaultCopy,
-}: { turnId: string; approvals: ApprovalT[] } & WithCopy) {
+}: {
+  turnId: string;
+  approvals: ApprovalT[];
+  /** Offer letting the approval agent decide from here on, as one approval's card does. */
+  offerAgent?: boolean;
+} & WithCopy) {
   const name = `batch:${turnId}`;
   const acting = approvals.filter((a) => a.actsForPerson).map((a) => a.summary);
   return (
@@ -279,6 +379,15 @@ export function ApprovalBatch({
               label: copy.approveAll(approvals.length),
               action: { id: ActionId.approveAll, payload: { turnId, target: name } },
             },
+            // The conversation's mode, not these calls. A run held at a limit is the person's to decide.
+            ...(offerAgent && !approvals.some((a) => a.budget)
+              ? [
+                  {
+                    label: copy.approvals.letAgentDecide,
+                    action: { id: ActionId.approvalMode, payload: { turnId, target: "auto" } },
+                  },
+                ]
+              : []),
             {
               label: copy.denyAll,
               action: { id: ActionId.denyAll, payload: { turnId, target: name } },
@@ -303,7 +412,21 @@ export function ClarificationCard({
   clarification,
   copy = defaultCopy,
 }: { turnId: string; clarification: Clarification } & WithCopy) {
-  const { answer, options } = clarification;
+  const { answer, options, judgement } = clarification;
+  // The approval agent's part, in Run and Answer: an answer it gave, which the person
+  // can tell from their own, or why it left the question for them.
+  const judged = judgement ? (
+    <Context
+      items={[
+        withReason(
+          judgement.decision === "allow"
+            ? copy.judgement.answered
+            : `**${copy.judgement.by}:** ${copy.judgement.decision[judgement.decision]}`,
+          untrusted(judgement.reason),
+        ),
+      ]}
+    />
+  ) : null;
   if (answer.kind === "answered") {
     const picked = options.filter((o) => answer.optionIds.includes(o.id)).map((o) => o.label);
     // Words typed instead of a pick read as an answer, not a choice.
@@ -319,6 +442,7 @@ export function ClarificationCard({
       <>
         <Text text={clarification.question} />
         <Context items={[line]} />
+        {judged}
       </>
     );
   }
@@ -340,6 +464,19 @@ export function ClarificationCard({
       </>
     );
   }
+  if (answer.kind === "expired" || answer.kind === "cancelled") {
+    // Nobody answered: say what happened instead, with no way left to answer.
+    const line =
+      answer.kind === "expired"
+        ? (answer.note ?? copy.questionExpired)
+        : copy.questionCancelled(answer.note);
+    return (
+      <>
+        <Text text={clarification.question} />
+        <Context items={[`${line} | ${timeToken(answer.at)}`]} />
+      </>
+    );
+  }
   // Someone it is not for reads it, and is told whom it is for.
   if (clarification.forOthers) {
     return (
@@ -358,6 +495,7 @@ export function ClarificationCard({
     <>
       <Summary text={copy.inputNeeded(clarification.question)} />
       <Text text={body} />
+      {judged}
       <Actions
         blockId={`clarification:${clarification.id}`}
         confirmChoice={{
@@ -396,10 +534,17 @@ export function InterruptCard({
   turnId,
   interrupt,
   viewer,
+  offerAgent,
   copy,
-}: { turnId: string; interrupt: Interrupt; viewer?: string } & WithCopy) {
+}: { turnId: string; interrupt: Interrupt; viewer?: string; offerAgent?: boolean } & WithCopy) {
   return interrupt.type === "approval" ? (
-    <ApprovalCard turnId={turnId} approval={interrupt} viewer={viewer} copy={copy} />
+    <ApprovalCard
+      turnId={turnId}
+      approval={interrupt}
+      viewer={viewer}
+      offerAgent={offerAgent}
+      copy={copy}
+    />
   ) : (
     <ClarificationCard turnId={turnId} clarification={interrupt} copy={copy} />
   );
@@ -470,10 +615,10 @@ export function FailureAlert({
         ? []
         : failure.kind === "internal"
           ? [
-              { label: copy.retry, id: ActionId.retry },
+              { label: copy.retry, id: ActionId.retry, style: "primary" as const },
               { label: copy.report, id: ActionId.report },
             ]
-          : [{ label: copy.retry, id: ActionId.retry }];
+          : [{ label: copy.retry, id: ActionId.retry, style: "primary" as const }];
   // Someone else may retry it: the reader is told why they are not offered it.
   const notOffered = isRetryable(failure) ? failure.retryNotOffered : undefined;
   const offered = actions.filter(
@@ -491,7 +636,12 @@ export function FailureAlert({
       {offered.length > 0 && (
         <Actions blockId={`failure:${turnId}`}>
           {offered.map((a) => (
-            <Button key={a.id} label={a.label} action={{ id: a.id, payload }} />
+            <Button
+              key={a.id}
+              label={a.label}
+              action={{ id: a.id, payload }}
+              style={"style" in a ? a.style : undefined}
+            />
           ))}
         </Actions>
       )}
@@ -634,23 +784,36 @@ export function toolsLineText(
 }
 
 /**
- * A turn's steps where a surface has room for one line each: every run of
- * tool calls between two parts of the answer as one context line, in the
- * order they came, and each call to another agent as its own row. Slack draws
- * this; the web opens each run in place.
+ * A turn's steps where a surface has room for one line each. While the turn
+ * is going: every run of tool calls between two parts of the answer as one
+ * context line, in the order they came, so the last line says what is
+ * happening now. Once it has ended: one line that counts the work by kind
+ * (`workSummary`). Each call to another agent keeps its own row either way.
+ * Slack draws this; the web opens each run in place.
  */
 export function ToolLines({ turn, copy = defaultCopy }: { turn: Turn } & WithCopy) {
   const { segments, rest } = timeline(turn);
   const edits = fileEdits(turn.tasks);
-  const runs = [...segments, ...rest].filter(
+  const all = [...segments, ...rest].filter(
     (s): s is Extract<Segment, { kind: "tools" | "call" }> =>
       s.kind === "tools" || s.kind === "call",
   );
-  if (runs.length === 0) return null;
+  if (all.length === 0) return null;
+  const ended = turn.status === "done" || turn.status === "failed" || turn.status === "stopped";
+  const own = turn.tasks.filter((t) => !t.subagent);
+  // A turn that made one call says what it was pointed at; more are counted.
+  const summary =
+    ended && own.length > 0
+      ? own.length === 1
+        ? toolsLineText(own, copy, edits)
+        : workSummary(turn.tasks, copy, edits)
+      : undefined;
+  const runs = ended ? all.filter((s) => s.kind === "call") : all;
   const shown = runs.length > MAX_TOOL_LINES ? runs.slice(0, MAX_TOOL_LINES - 1) : runs;
   const more = runs.slice(shown.length).flatMap((s) => (s.kind === "tools" ? s.tasks : [s.task]));
   return (
     <>
+      {summary && <Context key="work" items={[summary]} />}
       {shown.map((s) =>
         s.kind === "call" ? (
           <TaskList
@@ -677,6 +840,46 @@ export function linkCitations(text: string, citations: Citation[]): string {
     const c = citations[i] as Citation;
     return c.url ? `[[${i + 1}]](${c.url})` : `[${i + 1}]`;
   });
+}
+
+const FENCE_LINE = /^ {0,3}(`{3,}|~{3,})(.*)$/;
+/** A table's delimiter row, with or without pipes at its edges. */
+const TABLE_DELIMITER = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)+\|?\s*$/;
+
+/**
+ * Room for markdown in one Slack message, as render-slack counts it
+ * (`LIMITS.markdownTotal`): the arrow never makes an answer need another.
+ */
+const SLACK_MARKDOWN = 12_000;
+
+/**
+ * Whether markdown can end with a link on its last line, as Slack ends an
+ * answer with the arrow to its conversation: not when it ends in code (a
+ * fence, or a line indented as code), a table (with or without pipes at its
+ * edges), a rule, a heading's underline or a link reference definition, where
+ * a link would be swallowed or would change what is drawn.
+ */
+export function answerTakesLink(markdown: string): boolean {
+  const lines = markdown.trimEnd().split("\n");
+  const last = lines.at(-1) ?? "";
+  if (!last.trim()) return false;
+  let open: { ch: string; len: number } | null = null;
+  for (const line of lines) {
+    const m = FENCE_LINE.exec(line);
+    if (!m) continue;
+    const mark = m[1] as string;
+    if (!open) open = { ch: mark[0] as string, len: mark.length };
+    else if (mark[0] === open.ch && mark.length >= open.len && !(m[2] ?? "").trim()) open = null;
+  }
+  if (open || FENCE_LINE.test(last)) return false;
+  if (/^( {4}|\t)/.test(last)) return false;
+  // The last block is a table when any of its lines is a delimiter row.
+  const block = lines.slice(lines.findLastIndex((l) => !l.trim()) + 1);
+  if (block.some((l) => TABLE_DELIMITER.test(l)) || /^\s*\|.*\|\s*$/.test(last)) return false;
+  // A setext underline (and a rule, which three or more dashes also are).
+  if (/^ {0,3}(=+|-+)[ \t]*$/.test(last) && block.length > 1) return false;
+  if (/^\s*([-*_])(\s*\1){2,}\s*$/.test(last)) return false;
+  return !/^ {0,3}\[[^\]]+\]:\s*\S/.test(last);
 }
 
 /** The point of the turn in one line, for notifications and screen readers. */
@@ -714,8 +917,14 @@ export function TurnView({
   viewer,
   capabilities,
   hideTasks = false,
+  linked = false,
 }: {
   turn: Turn;
+  /**
+   * Slack: the streamed answer already ends with the arrow to the
+   * conversation (`streamLink`), so the final blocks do not repeat it.
+   */
+  linked?: boolean;
   /** What the host can act on. Controls it can't act on are left out. */
   capabilities?: TurnCapabilities;
   /** A web message frame may group these same tasks above the answer. */
@@ -737,15 +946,50 @@ export function TurnView({
   const pendingApprovals = open.filter(
     (i): i is ApprovalT => i.type === "approval" && i.decision.kind === "pending",
   );
+  const offerAgent = capabilities?.approvalAgent === true;
   // One link: the session, where a person goes to see the run. The source's own page
   // stands in only when there is no session.
   const runUrl = turn.sessionUrl ?? turn.source?.url;
-  const session = runUrl ? (
+  const disclaimer = turn.disclaimer ?? copy.disclaimer(turn.agent.name);
+  const footer = disclaimer && turn.status !== "queued";
+  // On Slack the session is one small arrow, on no line of its own: at the end of
+  // a finished answer's last line, or else at the end of the disclaimer.
+  const slack = useSurface().surface === "slack";
+  // Slack shows the answer as one text with its steps above it: words said
+  // before a call and after it are kept apart as paragraphs, as a stream does.
+  const words = slack ? paragraphsAtSteps(turn.text, turn.tasks) : turn.text;
+  const arrow = slack && turn.sessionUrl ? `[${copy.conversationLink}](${turn.sessionUrl})` : "";
+  const answerDrawn =
+    !streamed &&
+    !!turn.text.trim() &&
+    turn.text.trim() !== turn.outcome?.summary.trim() &&
+    readReview(turn.text, turn.status === "working" && !turn.detached).kind === "text";
+  const answer = linkCitations(words, turn.citations).trimEnd();
+  // Markdown the message holds before the answer (the outcome), counted toward Slack's room.
+  const before = turn.outcome
+    ? turn.outcome.summary.length +
+      (turn.outcome.decisions ?? []).reduce((n, d) => n + d.length + 3, 0) +
+      (turn.outcome.nextAction?.length ?? 0)
+    : 0;
+  const inAnswer =
+    !!arrow &&
+    (streamed
+      ? linked
+      : answerDrawn &&
+        (turn.status === "done" || turn.status === "waiting") &&
+        answerTakesLink(answer) &&
+        // Where the arrow would push the answer into another message, the disclaimer has it.
+        before + answer.length + arrow.length + 1 <= SLACK_MARKDOWN);
+  const inFooter = !!arrow && !inAnswer && !!footer;
+  const session = arrow ? (
+    !inAnswer && !inFooter ? (
+      <Context items={[arrow]} />
+    ) : null
+  ) : runUrl ? (
     <Context
       items={[turn.sessionUrl ? `[${copy.openConversation}](${runUrl})` : copy.runLink(runUrl)]}
     />
   ) : null;
-  const disclaimer = turn.disclaimer ?? copy.disclaimer(turn.agent.name);
 
   return (
     <>
@@ -809,7 +1053,9 @@ export function TurnView({
             turnId={turn.id}
             agent={turn.agent.name}
             text={turn.text}
-            markdown={linkCitations(turn.text, turn.citations)}
+            markdown={
+              inAnswer && !streamed ? `${answer} ${arrow}` : linkCitations(words, turn.citations)
+            }
             streaming={turn.status === "working" && !turn.detached}
             pullRequestHint={turn.source?.url}
             followUp={capabilities?.followUp !== false}
@@ -819,17 +1065,37 @@ export function TurnView({
       {turn.attachments?.map((a) => (
         <AttachmentView key={a.id} attachment={a} />
       ))}
+      {/* A command that failed is shown with its output; one that passed is a count in the steps. */}
+      <Only surface="slack">
+        <FailedCommands turn={turn} copy={copy} />
+      </Only>
+      {/* The web shows what a turn changed as its own card (`TurnChanges` in `@humagen/web`). */}
+      {turnSettled(turn.status) && (
+        <Only surface="slack">
+          <ChangedFiles tasks={turn.tasks} copy={copy} />
+        </Only>
+      )}
       <Only surface="slack">
         <AgentChangeCards tasks={turn.tasks} />
       </Only>
       {/* Gated tool rows hold their own controls on the web; Slack gets the cards. */}
       {pendingApprovals.length > 1 && owned.size > 0 ? (
         <Only surface="slack">
-          <ApprovalBatch turnId={turn.id} approvals={pendingApprovals} copy={copy} />
+          <ApprovalBatch
+            turnId={turn.id}
+            approvals={pendingApprovals}
+            offerAgent={offerAgent}
+            copy={copy}
+          />
         </Only>
       ) : pendingApprovals.length > 1 ? (
         <>
-          <ApprovalBatch turnId={turn.id} approvals={pendingApprovals} copy={copy} />
+          <ApprovalBatch
+            turnId={turn.id}
+            approvals={pendingApprovals}
+            offerAgent={offerAgent}
+            copy={copy}
+          />
           {open
             .filter((i) => !pendingApprovals.includes(i as ApprovalT))
             .map((i) => (
@@ -838,6 +1104,7 @@ export function TurnView({
                 turnId={turn.id}
                 interrupt={i}
                 viewer={viewer}
+                offerAgent={offerAgent}
                 copy={copy}
               />
             ))}
@@ -846,10 +1113,23 @@ export function TurnView({
         open.map((i) =>
           owned.has(i.id) && i.type === "approval" && i.decision.kind === "pending" ? (
             <Only key={i.id} surface="slack">
-              <InterruptCard turnId={turn.id} interrupt={i} viewer={viewer} copy={copy} />
+              <InterruptCard
+                turnId={turn.id}
+                interrupt={i}
+                viewer={viewer}
+                offerAgent={offerAgent}
+                copy={copy}
+              />
             </Only>
           ) : (
-            <InterruptCard key={i.id} turnId={turn.id} interrupt={i} viewer={viewer} copy={copy} />
+            <InterruptCard
+              key={i.id}
+              turnId={turn.id}
+              interrupt={i}
+              viewer={viewer}
+              offerAgent={offerAgent}
+              copy={copy}
+            />
           ),
         )
       )}
@@ -877,6 +1157,14 @@ export function TurnView({
           />
         </Actions>
       )}
+      {final && capabilities?.codeChannel === true && (
+        <Actions blockId={`code-channel:${turn.id}`}>
+          <Button
+            label={copy.continueInCodeChannel}
+            action={{ id: ActionId.codeChannel, payload: { turnId: turn.id, target: turn.id } }}
+          />
+        </Actions>
+      )}
       {final && capabilities?.feedback !== false && (
         <Feedback
           up={{ id: ActionId.feedback, payload: { turnId: turn.id, target: "up" } }}
@@ -887,16 +1175,28 @@ export function TurnView({
           blockId={`feedback:${turn.id}`}
         />
       )}
+      {capabilities?.runDetails === true &&
+        (final || turn.status === "failed" || turn.status === "stopped") && (
+          <Only surface="slack">
+            <Actions blockId={`details:${turn.id}`}>
+              <Button
+                label={copy.runDetails.button}
+                action={{ id: ActionId.runDetails, payload: { turnId: turn.id, target: turn.id } }}
+              />
+            </Actions>
+          </Only>
+        )}
       {/*
-        Every message ends the same way, whatever happened in it: the references, then one
-        line with the one link to the run, then the disclaimer. Nothing sits between them
-        and nothing comes after, so cards, notices and feedback all go above.
+        Every message ends the same way, whatever happened in it: the references, then the
+        one link to the run, then the disclaimer. Nothing sits between them and nothing
+        comes after, so cards, notices and feedback all go above. On Slack the link is the
+        arrow at the end of the answer or of the disclaimer, and a line only with neither.
       */}
       {turn.citations.length > 0 && (
         <Sources items={turn.citations} labels={copy.citation} scope={turn.id} />
       )}
       {session}
-      {disclaimer && turn.status !== "queued" && <Context items={[disclaimer]} />}
+      {footer && <Context items={[inFooter ? `${disclaimer} ${arrow}` : disclaimer]} />}
     </>
   );
 }
@@ -1088,7 +1388,7 @@ function itemActions(item: InboxItem, copy: Copy) {
 /**
  * Everything waiting on a person, across conversations. Slack publishes it as
  * the App Home tab (placement "home"); the web wraps it in an inbox panel.
- * Decisions resolve the item in place; the next refresh moves it to Resolved.
+ * Decisions resolve the item in place; the next refresh moves it to Done.
  */
 export function InboxView({
   items,

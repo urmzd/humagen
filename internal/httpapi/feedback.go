@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	gh "github.com/urmzd/humagen/internal/presentation/github"
-	"github.com/urmzd/orchagent/flow/event"
+	"github.com/urmzd/saige/flow/event"
 	"net/http"
 	"strconv"
 	"time"
@@ -145,6 +145,7 @@ func (s *Server) deleteFeedback(w http.ResponseWriter, r *http.Request, who auth
 		s.problem(w, err)
 		return
 	}
+	s.P.RefreshGoodAsk(who.Tenant, r.PathValue("id"))
 	at, err := s.P.Feedback.ChangedAt(who.Tenant, r.PathValue("id"), who.Subject)
 	if err != nil {
 		s.problem(w, err)

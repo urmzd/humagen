@@ -11,14 +11,16 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	saigetypes "github.com/urmzd/saige/agent/types"
 
-	"github.com/urmzd/orchagent/flow/turn/native"
+	"github.com/urmzd/saige/flow/turn/native"
 
 	"github.com/urmzd/humagen/pkg/spec"
 )
@@ -42,7 +44,10 @@ func TestStartWorksWithNothingConfigured(t *testing.T) {
 	case <-time.After(30 * time.Second):
 		t.Fatal("start did not listen")
 	}
-	// The seeded agents are there, signed in as the developer, with no key.
+	// Signed in as the developer with no key, the console answers with the
+	// agents every workspace has, the entry agent and the approval agent, on
+	// the chain they ship with, and no example agent and nothing from the
+	// store: they run once an administrator enables a provider.
 	var body []byte
 	deadline := time.Now().Add(10 * time.Second)
 	for {
@@ -61,8 +66,8 @@ func TestStartWorksWithNothingConfigured(t *testing.T) {
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	if !strings.Contains(string(body), `"lead"`) {
-		t.Errorf("no seeded lead agent: %s", body)
+	if !strings.Contains(string(body), `"name":"humagen"`) || !strings.Contains(string(body), `"name":"approver"`) || strings.Contains(string(body), `"name":"humagen-writer"`) || strings.Contains(string(body), `"lead"`) {
+		t.Errorf("want the entry and approval agents, nothing from the store and no example agent: %s", body)
 	}
 	cancel()
 	select {
@@ -467,7 +472,7 @@ spec:
 	if err := slackCmd([]string{"manifest", "-f", path}, &got); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(got.String(), `"name": "Acme"`) || !strings.Contains(got.String(), `"command": "/acme"`) {
+	if !strings.Contains(got.String(), `"name": "Acme"`) || strings.Contains(got.String(), `slash_commands`) {
 		t.Errorf("manifest:\n%s", got.String())
 	}
 }
@@ -495,7 +500,7 @@ spec:
 	if err := slackCmd([]string{"manifest", "-f", path}, &got); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{`"description": "Acme's field agents in Slack"`, `"background_color": "#1a1a2e"`, `"description": "Ask Acme's agents"`, `"usage_hint": "[question]"`} {
+	for _, want := range []string{`"description": "Acme's field agents in Slack"`, `"background_color": "#1a1a2e"`} {
 		if !strings.Contains(got.String(), want) {
 			t.Errorf("manifest lacks %s:\n%s", want, got.String())
 		}
@@ -504,8 +509,72 @@ spec:
 	if err := slackCmd([]string{"manifest"}, &got); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(got.String(), `"background_color": "#2b50c8"`) || !strings.Contains(got.String(), `"description": "Ask Humagen in this channel"`) {
+	if !strings.Contains(got.String(), `"background_color": "#2b50c8"`) || !strings.Contains(got.String(), `"name": "Ask about this"`) || strings.Contains(got.String(), `slash_commands`) {
 		t.Errorf("with nothing set, the manifest is Humagen's:\n%s", got.String())
+	}
+}
+
+// Opening code channels is off by default, and the manifest asks for the
+// feature and its scopes only when the Slack surface turns it on: a default
+// manifest is unchanged, so nobody reinstalls for a setting they left off.
+func TestTheSlackManifestAsksForCodeChannelsOnlyWhenTheSpecTurnsThemOn(t *testing.T) {
+	manifest := func(slack string) string {
+		t.Helper()
+		path := filepath.Join(t.TempDir(), "humagen.yaml")
+		if err := os.WriteFile(path, []byte("api_version: humagen/v1\nkind: Platform\nmetadata: {name: default, display_name: Humagen}\nspec:\n  surfaces:\n    slack: {enabled: true, team: T1, bot_token: {ref: \"env:B\"}, app_token: {ref: \"env:A\"}"+slack+"}\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		var got bytes.Buffer
+		if err := slackCmd([]string{"manifest", "-f", path}, &got); err != nil {
+			t.Fatal(err)
+		}
+		return got.String()
+	}
+	var plain bytes.Buffer
+	if err := slackCmd([]string{"manifest"}, &plain); err != nil {
+		t.Fatal(err)
+	}
+	for _, off := range []string{manifest(""), manifest(", code_channels: false")} {
+		if off != plain.String() {
+			t.Errorf("with code channels off the manifest is not the default one:\n%s", off)
+		}
+	}
+	if strings.Contains(plain.String(), "code_channels") || strings.Contains(plain.String(), "channels:read") || strings.Contains(plain.String(), "groups:read") {
+		t.Errorf("the default manifest asks for code channels:\n%s", plain.String())
+	}
+	on := manifest(", code_channels: true")
+	var m SlackManifest
+	if err := json.Unmarshal([]byte(on), &m); err != nil {
+		t.Fatal(err)
+	}
+	if m.Features.CodeChannels == nil || !m.Features.CodeChannels.Enabled {
+		t.Errorf("with code channels on the manifest lacks the feature:\n%s", on)
+	}
+	for _, scope := range slackCodeChannelScopes {
+		if !slices.Contains(m.OAuth.Scopes.Bot, scope) {
+			t.Errorf("with code channels on the manifest lacks %s", scope)
+		}
+	}
+	// Nothing else changes: the same events, and every scope the default has.
+	var d SlackManifest
+	_ = json.Unmarshal(plain.Bytes(), &d)
+	if !reflect.DeepEqual(m.Settings, d.Settings) || !reflect.DeepEqual(m.OAuth.Scopes.Bot[:len(d.OAuth.Scopes.Bot)], d.OAuth.Scopes.Bot) {
+		t.Errorf("code channels changed more than the feature and its scopes:\n%s", on)
+	}
+}
+
+// Slack's App Directory asks for a long description of 175 to 4,000
+// characters, and a push that Slack refuses leaves the live app on its old
+// manifest.
+func TestTheSlackManifestHasALongDescriptionSlackAccepts(t *testing.T) {
+	for _, name := range []string{"Humagen", "A"} {
+		long := slackManifest(name, slackCopy{}).DisplayInformation.LongDescription
+		if n := utf8.RuneCountInString(long); n < 175 || n > 4000 {
+			t.Errorf("the long description for %q is %d characters, outside 175 to 4000", name, n)
+		}
+		if !strings.Contains(long, "@"+name) || strings.Contains(long, "/agent") || strings.Contains(long, "/skill") {
+			t.Errorf("the long description names the mention and no slash command:\n%s", long)
+		}
 	}
 }
 
