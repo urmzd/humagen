@@ -12471,7 +12471,7 @@ components:
           maxItems: 256
           items: {$ref: '#/components/schemas/LibrarySkillFile'}
         tools:
-          description: "The tools a run that uses the skill is limited to, intersected with the agent's grants. Absent does not limit them: the agent's own tools apply. Empty permits no tools. A package's `allowed-tools` narrows the list, and narrows an absent list to the tools it names. A draft with `via: import` takes no list (400 for a non-empty one; an empty one reads as none): it is limited only as its `SKILL.md` declares, at most 128 names of at most 128 characters, and is stored and answered so. Whatever the list, a run is offered `skill_file_read` to read the supporting files of the skills it uses."
+          description: "The tools a run that uses the skill is limited to, intersected with the agent's grants. Absent does not limit them: the agent's own tools apply. Empty permits no tools. A package's `allowed-tools` narrows the list, and narrows an absent list to the tools it names. A draft with `via: import` takes no list (400 for a non-empty one; an empty one reads as none): it is limited only as its `SKILL.md` declares, at most 128 names of at most 128 characters, and is stored and answered so. Whatever the list, a run is offered `skill_file_read` to read the supporting files of the skills it uses; the list may not name it (400)."
           type: array
           maxItems: 128
           items: {type: string, maxLength: 128}
@@ -12509,7 +12509,7 @@ components:
               maxItems: 10
               items: {type: string}
             test_results:
-              description: "The verdict of each finished test of an unpublished revision that the reader may read, in the order tested. Only `GET /api/library/skills/{id}` carries it. A test passes when its run completed, called no tool the run did not have and had no read of the skill's own files refused; `failed` says why one did not in `reason`. Any other failed tool call is a `warnings` entry and does not stop a test passing. The verdict is recorded when the test ends. A finished test whose events are still arriving is left out for up to two minutes; after that, one whose verdict was not recorded and whose events are no longer all kept is `unknown`. Neither counts as passed."
+              description: "The verdict of each finished test of an unpublished revision that the reader may read, in the order tested. Only `GET /api/library/skills/{id}` carries it. A test passes when its run completed, called no tool the run did not have and had no read of the skill's own files refused; `failed` says why one did not in `reason`. Any other failed tool call is a `warnings` entry and does not stop a test passing. The verdict is recorded when the test ends; a test that was stopped or failed is `failed` at once. A completed test whose events are still arriving is left out for up to two minutes; after that, one whose verdict was not recorded and whose events are not whole is `unknown`, and `reason` says whether they are no longer kept or did not all arrive. Neither counts as passed."
               type: array
               maxItems: 10
               items:

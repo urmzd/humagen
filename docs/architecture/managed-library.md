@@ -165,7 +165,9 @@ run whose skills have supporting files is offered `skill_file_read`, whatever
 its tools are limited to and whatever the agent is granted, and the turn's
 text names it with each file's `skill:<name>/<path>`: the text never names a
 tool the run lacks (`TestTheTurnTextAndTheTurnsToolsAgree`). It is not a
-grant: no agent or skill names it, and it reads only the packages the run was
+grant: an agent's tools, a skill's tool list and a `SKILL.md`'s
+`allowed-tools` may not name it, and one that does is refused with the
+reason. It reads only the packages the run was
 admitted with, in the run's tenant and at the pinned hash. A path outside a
 package, another skill's file, a conversation file and a missing file are
 each refused with the reason. It discloses nothing the person did not choose
@@ -201,13 +203,21 @@ person denied, is a warning shown beside the test, which does not stop it
 passing. A skill's test asks before every other action, and reading the
 skill's own files asks nothing.
 
-The verdict is recorded with the revision when the test run ends (a
-completion step, retried like the others), on memory and on Postgres, so it
-outlasts the run's events, which the journal keeps only so long. A finished
-test not recorded yet is judged from its events while all of them are kept.
-One whose events are still arriving has no verdict yet, for up to two
-minutes; after that, with neither, its verdict is unknown and it does not
-count as passed: test it again. Publishing needs one passing test of the revision.
+The verdict is recorded with the revision when the test run ends, on memory
+and on Postgres, so it outlasts the run's events, which the journal keeps
+only so long. Only a run listed as the revision's test has its verdict
+kept, so a revision holds at most its ten; a test started past the ten is
+not listed, and is stopped.
+A test stopped or failed before it completed is recorded as failed at once,
+saying how it ended. A completed test is recorded once its events are whole:
+its acceptance and completion, each attempt's events numbered without a gap,
+and a result for every tool call that began executing. A call lost at the
+very end of the final attempt together with its result cannot be seen. The
+recording waits up to two minutes for events still arriving, or for the run
+to be listed, then stops and logs once. A finished test not recorded is judged from its events while they
+are whole; otherwise its verdict is unknown, saying whether its events are no
+longer kept or did not all arrive, and it does not count as passed: test it
+again. Publishing needs one passing test of the revision.
 `GET /api/library/skills/{id}` answers each finished test of an unpublished
 revision under `test_results` with its verdict, the reason it did not pass
 and its warnings; the console shows each beside the test and keeps Publish

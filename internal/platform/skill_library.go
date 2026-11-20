@@ -83,6 +83,9 @@ func (p *Platform) draftSkill(who auth.Principal, scope library.Scope, definitio
 			return library.Revision{}, err
 		}
 	}
+	if err := library.CheckTools(definition); err != nil {
+		return library.Revision{}, err
+	}
 	var normalizeErr error
 	if definition, normalizeErr = definition.Normalize(); normalizeErr != nil {
 		return library.Revision{}, normalizeErr
@@ -168,7 +171,14 @@ func (p *Platform) TestSkill(ctx context.Context, who auth.Principal, id string,
 	}
 	run, err := p.Converse(ctx, who.Tenant, Turn{ID: fmt.Sprintf("skill-test-%s", rand.Text()), Agent: agent, Text: text, Project: project, Actor: ActorOf(who), ForceAsk: true, TestSkill: &r, Sees: p.Seer(who).Agent})
 	if err == nil {
-		err = p.SkillLibrary.Tested(who.Tenant, r.Scope, r.Name, r.Version, run.ID)
+		// Only a listed test's result is kept (library.Store.RecordTest).
+		// A test past the revision's ten, started beside others, is not
+		// listed, and is stopped.
+		if err = p.SkillLibrary.Tested(who.Tenant, r.Scope, r.Name, r.Version, run.ID); err != nil {
+			if _, stopErr := p.StopRun(ctx, who, run.ID); stopErr != nil {
+				p.log.Warn("platform: a skill test past the revision's ten could not be stopped", "run", run.ID, "error", stopErr)
+			}
+		}
 	}
 	if completion := attempt.Finish(err); completion != nil {
 		p.LogAuditCompletionFailure(completion)
@@ -239,25 +249,39 @@ type SkillTestResult struct {
 // events the bus has not delivered yet.
 const skillTestSettle = 2 * time.Minute
 
-// unknownResult is why a finished test whose result was never recorded and
-// whose events are no longer all kept does not count: it fails closed.
-const unknownResult = "its result was not recorded and its events are no longer kept; test it again"
+// Why a finished test whose result was never recorded has no verdict: it
+// fails closed, with the one of these that is true.
+const (
+	eventsGone    = "its result was not recorded and its events are no longer kept; test it again"
+	eventsMissing = "its result was not recorded and its events did not all arrive in time to judge it; test it again"
+)
 
 // judgeSkillTest is the result of a skill's test run from its events. A
 // test passes when its run completed, called no tool the run did not have
 // ("tool not found", the model told of a tool it was not offered) and had
 // no read of the skill's own files refused. Any other failed tool call, a
 // recoverable mistake or a denied approval, is a warning: it does not stop
-// the test passing. complete is false when the events do not hold the run
-// from its acceptance to its completion, so cannot be judged.
-func judgeSkillTest(run runs.Run, events []event.Envelope) (result library.TestResult, complete bool) {
+// the test passing.
+//
+// A run that ended without completing (stopped, failed) fails at once: what
+// its events say adds to the reason, and nothing is waited for. A completed
+// run is judged only when its events hold it whole; missing is why they do
+// not, "" when they do.
+//
+// Whole means: the acceptance and the completion are there, each attempt's
+// events are numbered without a gap (the high bits of Seq are the attempt,
+// and the bus may deliver late and out of order), and each tool call that
+// began executing has its result. That last check sees a failed call whose
+// result is missing at the end of the final attempt, which the numbering
+// cannot, as the completion opens the next number band. It cannot see a
+// call lost at that end together with its result: nothing that arrived
+// names it.
+func judgeSkillTest(run runs.Run, events []event.Envelope) (result library.TestResult, missing string) {
 	result.Run = run.ID
 	accepted, completed := false, false
 	var reasons []string
-	// A run's events are numbered in order within each attempt (the high
-	// bits of Seq), and the bus may deliver them late and out of order: a
-	// gap means an event, perhaps a failed tool call, is not here yet.
 	seen := map[uint64][]uint64{}
+	executing, done := map[string]bool{}, map[string]bool{}
 	for _, e := range events {
 		if e.Run != run.ID {
 			continue
@@ -268,7 +292,12 @@ func judgeSkillTest(run runs.Run, events []event.Envelope) (result library.TestR
 			accepted = true
 		case event.Completed:
 			completed = true
+		case event.ToolCall:
+			if b.Phase == "executing" {
+				executing[b.ID] = true
+			}
 		case event.ToolDone:
+			done[b.ID] = true
 			if b.Error == "" {
 				continue
 			}
@@ -285,13 +314,26 @@ func judgeSkillTest(run runs.Run, events []event.Envelope) (result library.TestR
 		}
 	}
 	if run.Status != runs.Completed {
-		reasons = append([]string{"the test did not complete"}, reasons...)
+		reasons = append([]string{"the test did not complete: it " + string(run.Status)}, reasons...)
 	}
 	if len(reasons) > 0 {
 		result.Reason = clip(strings.Join(reasons, "; "), library.MaxTestText)
 	}
 	result.Passed = result.Reason == ""
-	return result, accepted && completed && contiguous(seen)
+	switch {
+	case run.Status != runs.Completed:
+		return result, ""
+	case !accepted:
+		return result, eventsGone
+	case !completed || !contiguous(seen):
+		return result, eventsMissing
+	}
+	for id := range executing {
+		if !done[id] {
+			return result, eventsMissing
+		}
+	}
+	return result, ""
 }
 
 // contiguous reports whether each attempt's event numbers run without a gap
@@ -307,10 +349,17 @@ func contiguous(seen map[uint64][]uint64) bool {
 	return true
 }
 
+// errSkillTestWait is a completion step waiting for a skill test's events:
+// it retries quietly (ended), and only while the events may still come.
+var errSkillTestWait = errors.New("platform: a skill test's events are not all here yet")
+
 // recordSkillTest records the result of a skill's test run with the
 // revision it tested, when the run ends, so the verdict outlasts the run's
-// events. A run whose events are not all there yet is left to be judged
-// when it is read (SkillTestResults).
+// events. It retries only while a completed run's events may still arrive
+// or the run is listed as the revision's test (skillTestSettle); what cannot
+// change by retrying (no such revision, a published one) is done with.
+// A run whose events are not all there by then is judged when it is read
+// (SkillTestResults), and logged once.
 func (p *Platform) recordSkillTest(run runs.Run) error {
 	ref := wire.Meta(run.Tag())[metaSkillTest]
 	if ref == "" {
@@ -321,35 +370,49 @@ func (p *Platform) recordSkillTest(run runs.Run) error {
 	if !ok || err != nil {
 		return nil
 	}
+	settling := p.now().Sub(run.UpdatedAt) < skillTestSettle
+	giveUp := func(why string, err error) error {
+		if settling {
+			return fmt.Errorf("%w: %v", errSkillTestWait, err)
+		}
+		p.log.Warn("platform: a skill test's result was not recorded; it is judged when read", "run", run.ID, "why", why, "error", err)
+		return nil
+	}
 	latest, err := p.SkillLibrary.Find(run.Tenant, id)
 	if errors.Is(err, library.ErrNotFound) {
 		return nil
 	} else if err != nil {
-		return err
+		return giveUp("the library could not be read", err)
 	}
 	events, err := p.Journal.Events(run.Tenant, []string{run.ID})
 	if err != nil {
-		return err
+		return giveUp("its events could not be read", err)
 	}
-	result, complete := judgeSkillTest(run, events)
-	if !complete {
-		// An event not delivered yet: try again while it may still come.
-		// Later, the result is judged when read, or is unknown.
-		if p.now().Sub(run.UpdatedAt) < skillTestSettle {
-			return fmt.Errorf("platform: the events of skill test %s are not all here yet", run.ID)
-		}
+	result, missing := judgeSkillTest(run, events)
+	if missing != "" {
+		return giveUp(missing, errSkillTestWait)
+	}
+	err = p.SkillLibrary.RecordTest(run.Tenant, latest.Scope, latest.Name, version, result)
+	switch {
+	case errors.Is(err, library.ErrNotTested):
+		// Listed just after it starts; one never listed was refused.
+		return giveUp("the revision does not list it as a test", err)
+	case errors.Is(err, library.ErrNotFound), errors.Is(err, library.ErrInvalid):
 		return nil
+	case err != nil:
+		return giveUp("the library could not be written", err)
 	}
-	return p.SkillLibrary.RecordTest(run.Tenant, latest.Scope, latest.Name, version, result)
+	return nil
 }
 
 // SkillTestResults is the verdict of each finished test of an unpublished
 // revision that its reader may see, in the order tested: the result recorded
 // when the test ended, or, for one not recorded yet, what its events say.
-// One whose events are not all delivered yet is left out until they are, for
-// at most skillTestSettle; after that, a test with neither is unknown. Neither
-// counts as passed. A published
-// revision passed already and answers none.
+// A completed test whose events are not all delivered yet is left out until
+// they are, for at most skillTestSettle; after that, one with neither is
+// unknown, saying which is true: its events are gone, or did not all
+// arrive. Neither counts as passed. A published revision passed already and
+// answers none.
 func (p *Platform) SkillTestResults(who auth.Principal, r library.Revision) ([]SkillTestResult, error) {
 	if !r.PublishedAt.IsZero() {
 		return nil, nil
@@ -366,14 +429,14 @@ func (p *Platform) SkillTestResults(who auth.Principal, r library.Revision) ([]S
 			if err != nil {
 				return nil, err
 			}
-			var complete bool
-			if result, complete = judgeSkillTest(test, events); !complete {
+			var missing string
+			if result, missing = judgeSkillTest(test, events); missing != "" {
 				// Events still on their way are waited for: it has no
 				// verdict yet, and does not count as passed.
 				if p.now().Sub(test.UpdatedAt) < skillTestSettle {
 					continue
 				}
-				out = append(out, SkillTestResult{Run: test.ID, Verdict: TestUnknown, Reason: unknownResult})
+				out = append(out, SkillTestResult{Run: test.ID, Verdict: TestUnknown, Reason: missing})
 				continue
 			}
 		}

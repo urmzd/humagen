@@ -905,7 +905,7 @@ export interface LibrarySkillDefinition {
   outputs?: string;
   /** Immutable package files. SKILL.md supplies metadata and instructions. Omitted on compact list responses and legacy revisions. */
   files?: LibrarySkillFile[];
-  /** The tools a run that uses the skill is limited to, intersected with the agent's grants. Absent does not limit them: the agent's own tools apply. Empty permits no tools. A package's `allowed-tools` narrows the list, and narrows an absent list to the tools it names. A draft with `via: import` takes no list (400 for a non-empty one; an empty one reads as none): it is limited only as its `SKILL.md` declares, at most 128 names of at most 128 characters, and is stored and answered so. Whatever the list, a run is offered `skill_file_read` to read the supporting files of the skills it uses. */
+  /** The tools a run that uses the skill is limited to, intersected with the agent's grants. Absent does not limit them: the agent's own tools apply. Empty permits no tools. A package's `allowed-tools` narrows the list, and narrows an absent list to the tools it names. A draft with `via: import` takes no list (400 for a non-empty one; an empty one reads as none): it is limited only as its `SKILL.md` declares, at most 128 names of at most 128 characters, and is stored and answered so. Whatever the list, a run is offered `skill_file_read` to read the supporting files of the skills it uses; the list may not name it (400). */
   tools?: string[];
 }
 

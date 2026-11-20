@@ -46,7 +46,7 @@ const maxSkillFileRead = 128 << 10
 // it and no person is asked. Each call is
 // recorded on the run's stream as every tool call is, and a paused agent or
 // workspace stops it as it stops every tool (operationAdmissionRequest).
-const ToolSkillFileRead = "skill_file_read"
+const ToolSkillFileRead = wire.SkillFileRead
 
 // maxSkillFileReads is how many supporting files one attempt of a turn
 // reads with skill_file_read (a retried attempt counts again): one more than the files a turn's text lists for a skill

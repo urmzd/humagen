@@ -170,6 +170,22 @@ const (
 	MaxSkillToolName = 128
 )
 
+// SkillFileRead is the tool a run is offered to read the supporting files of
+// the skills it uses (wire.SkillFileRead). It is not a grant, so no skill's
+// tool list or allowed-tools may name it.
+const SkillFileRead = "skill_file_read"
+
+// errSkillFileRead is why a list that names SkillFileRead is refused.
+var errSkillFileRead = fmt.Errorf("%w: %s cannot be named in a skill's tools: a run that uses a skill with supporting files is always offered it", ErrInvalid, SkillFileRead)
+
+// CheckTools refuses a tool list that names SkillFileRead, with the reason.
+func CheckTools(d Definition) error {
+	if slices.Contains(d.Tools, SkillFileRead) {
+		return errSkillFileRead
+	}
+	return nil
+}
+
 // declaredTools is an allowed-tools list as a tool selection: each name
 // once, in the order declared; nil stays nil, and an empty list stays empty.
 // A list past MaxSkillTools names, or with a name past MaxSkillToolName
@@ -182,6 +198,9 @@ func declaredTools(allowed []string) ([]string, error) {
 	for _, tool := range allowed {
 		if tool == "" || len(tool) > MaxSkillToolName || strings.ContainsAny(tool, "\x00\r\n") {
 			return nil, fmt.Errorf("%w: SKILL.md's allowed-tools names a tool of %d characters; a tool name holds at most %d, on one line", ErrInvalid, len(tool), MaxSkillToolName)
+		}
+		if tool == SkillFileRead {
+			return nil, errSkillFileRead
 		}
 		if !slices.Contains(out, tool) {
 			out = append(out, tool)

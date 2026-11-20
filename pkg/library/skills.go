@@ -402,6 +402,9 @@ func (s *Store) draft(tenant, by string, scope Scope, d Definition, expected int
 			return Revision{}, err
 		}
 	}
+	if err := CheckTools(d); err != nil {
+		return Revision{}, err
+	}
 	if d, err = d.Normalize(); err != nil {
 		return Revision{}, err
 	}
@@ -623,13 +626,26 @@ func (s *Store) Tested(tenant string, scope Scope, name string, version int, run
 	return err
 }
 
+// ErrNotTested is RecordTest's answer for a run an unpublished revision
+// does not list as its test (yet: Tested lists a test once it has started).
+var ErrNotTested = errors.New("library: that run is not a test of the revision")
+
 // RecordTest keeps the result of one test run of a revision, replacing an
-// earlier one of the same run. A revision keeps at most 10.
+// earlier one of the same run. Only a run the revision lists as its test
+// (Tested) has a result kept, so a revision keeps at most as many as it has
+// tests: for another run it keeps nothing and answers ErrNotTested. For a
+// published revision it does nothing.
 func (s *Store) RecordTest(tenant string, scope Scope, name string, version int, result TestResult) error {
 	if !result.valid() {
 		return ErrInvalid
 	}
 	_, err := s.change(tenant, scope, name, version, func(r *Revision) error {
+		if !r.PublishedAt.IsZero() {
+			return state.ErrUnchanged
+		}
+		if !slices.Contains(r.Tests, result.Run) {
+			return ErrNotTested
+		}
 		for i, t := range r.Results {
 			if t.Run == result.Run {
 				if t.Passed == result.Passed && t.Reason == result.Reason && slices.Equal(t.Warnings, result.Warnings) {
@@ -640,7 +656,7 @@ func (s *Store) RecordTest(tenant string, scope Scope, name string, version int,
 			}
 		}
 		if len(r.Results) >= 10 {
-			return ErrInvalid
+			return state.ErrUnchanged
 		}
 		r.Results = append(r.Results, result)
 		return nil
