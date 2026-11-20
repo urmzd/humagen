@@ -159,9 +159,21 @@ spec:
 	}
 	stderr := os.Stderr
 	os.Stderr = logs
-	t.Cleanup(func() { os.Stderr = stderr; _ = logs.Close() })
+	// The app's goroutine starts its child with this file, so the file is
+	// closed only once that goroutine has ended. This cleanup runs after the
+	// one that stops the server.
+	appDone := make(chan struct{})
+	t.Cleanup(func() {
+		select {
+		case <-appDone:
+		case <-time.After(30 * time.Second):
+			t.Error("the Slack app's goroutine did not end with the server")
+		}
+		os.Stderr = stderr
+		_ = logs.Close()
+	})
 
-	addr := serveFor(t, Options{}, "-f", path, "-addr", "127.0.0.1:0", "-public-url", "https://humagen.example.ts.net")
+	addr := serveFor(t, Options{slackDone: func(string, error) { close(appDone) }}, "-f", path, "-addr", "127.0.0.1:0", "-public-url", "https://humagen.example.ts.net")
 	var url, token string
 	for deadline := time.Now().Add(30 * time.Second); ; time.Sleep(20 * time.Millisecond) {
 		if b, err := os.ReadFile(filepath.Join(appDir, "given")); err == nil {
