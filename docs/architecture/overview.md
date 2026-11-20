@@ -735,65 +735,53 @@ over 131072 characters. It does not read `unreadable`, so a skill this server
 cannot read is missing from its Library page without a word. Read from code,
 not opened in a browser.
 
-Mail has an [existing-account CLI path](../guides/mail-calendar.md): Codex apps
-searched and read one exact unsent non-personal Gmail fixture and its actual
-CSV attachment through Humagen. Contacts returned no match for an exact audit
-marker; contact writes are not exposed. Calendar schemas were discovered, but
-an exact event action still needs approval. The full mail/contacts/calendar
-requirement remains partial; no event, personal mail or contact was changed.
+The example profiles run on native agents since the `claude-code` and `codex`
+model kinds were removed (#383). Each starts and passes `humagen config check`
+(`TestEveryExampleProfilePassesConfigCheck` holds every YAML under `examples/`
+to that check, `TestExampleAgentsGrantOnlyToolsThatExist` to tool names the
+platform has, and `TestDocsNameOnlyExampleFilesThatExist` to example files
+that exist). None of the ported profiles below has been run with a live model
+since the port; the live checks quoted in their guides ran on the removed
+programs unless a guide says otherwise.
 
-Cloud documents have an [existing-account CLI path](../guides/cloud-documents.md):
-Codex apps retrieve actual Drive revision text, and a separately selected
-Claude Code agent applies an approved Docs edit with the required revision.
-A real private-account fixture exercised history fetches, an exact guarded
-change and an actual stale-token rejection. Coalesced revisions were reported
-as unknown; exhaustive history, real user documents and OneDrive are not covered.
+Mail and calendar have a [native profile](../guides/mail-calendar.md) on the
+person's own Gmail and Google Calendar connections (the Google Workspace
+presets, `person_tools`), each write approved in Humagen. Signing in to a real
+account through those presets has not been exercised. Contacts have no preset.
 
-Account exports have a [configured CLI path](../guides/finance-exports.md): an
-agent on Claude Code runs a shipped script that removes duplicates, reconciles
-balances and totals months and debts, and drafts a plan whose amounts are all
-copied from that output, with writes confined to an output folder. Checked on
-five invented exports with a checker that shares no code with the script; real
-exports, a bank's own format and the quality of the plan are not covered.
+Cloud documents have a [native profile](../guides/cloud-documents.md) on the
+person's own Google Docs and Drive connections. Revision history and a
+revision-guarded write depend on what Google's servers offer, which has not
+been exercised; the agent reports either as missing rather than substitute.
+OneDrive is not covered.
 
-Travel refunds have a [configured CLI path](../guides/travel-refund.md): one
-agent on Claude Code reads a booking and current policy pages and cannot write,
-and a second writes the request a person approves, under an output folder only.
-Checked on an invented booking; a real itinerary, an airline's own policy and
-sending anything are not covered.
+Account exports have a [native profile](../guides/finance-exports.md): the
+exports and `reconcile.py` go into the conversation through the files API, and
+the agent runs the script with the shell in a Docker instance with no network.
+The script ran unchanged in that image and its regression suite passes. The
+removed program's allow rules (only the script, writes only under `out/`) have
+no native equivalent: they are instructions now.
 
-Records research has a [configured CLI path](../guides/records-research.md):
-an agent on Claude Code builds a chronology from a folder of records, quoting
-each dated event from its record, lists what is unknown or in conflict, and
-opens current official pages, with writes confined to an output folder. Checked
-on six invented records; real records, scans and legal correctness are not
-covered.
+Travel refunds have a [native profile](../guides/travel-refund.md): one agent
+reads the booking records in a conversation and current policy pages and has
+no tool that writes, and a second writes the request a person approves. Sending
+anything is not covered.
 
-Raster generation has a [configured Codex path](../guides/image-generation.md):
-a real account-backed image was generated, inspected and revised using its
-actual pixels, with both PNGs independently opened and the original hash
-preserved. Checked on Codex CLI 0.167.0 and a generated fixture. Files stay on
-the CLI host; automatic console publication and image-specific journal events
-are not covered. Edits can change texture outside the requested region.
+Records research has a [native profile](../guides/records-research.md): an
+agent builds a chronology from the records in a conversation, quoting each
+dated event, and opens current official pages. Scans and PDFs go in as
+attachments, not through the text-only files API.
 
-Bulk local files have a [configured CLI path](../guides/local-files.md): an
-agent on Claude Code surveys a folder on this host in place, writes a plan with
-a hash for every file, and applies only the part a person approves. Checked on a
-generated folder of 322 files and 117 MiB; real folders, cloud folders and a
-console view of the plan are not covered.
+Public-source research has a [native profile](../guides/public-web.md) on
+`web_search` and `web_fetch`. The tools were checked against the live web on
+their own; the profile has not been run with a live model.
 
-Office files have a [configured CLI path](../guides/office-files.md): an agent
-on Claude Code edits a `.docx` run by run and audits `.xlsx` formulas across
-saved revisions, in a folder on this host. Checked on generated files, with a
-part-by-part comparison and Quick Look renders of the document; real
-templates, Word and Excel, tracked changes and cloud revision history are not
-covered.
-
-Public-source research has a [configured CLI path](../guides/public-web.md)
-with built-in tools restricted to WebSearch and WebFetch; the program's user
-settings, hooks and plugins still load. A real HTTP run executed both and its
-reported version matched a separate official-feed retrieval. This does not
-establish authenticated browser access or validate every generated claim.
+Removed with #383, with no native replacement and no example: raster image
+generation (Codex's image tool), reading and organizing a folder on the host
+in place (no confined way does that now; only the `local` sandbox kind's shell
+could, unconfined and with the server's privileges), and editing an existing `.docx` or auditing `.xlsx` formulas (an
+uploaded Office file reaches a model only as a note, and the native Office
+writer builds new files from a revision model). Their guides are gone.
 
 Native Mac control has a pinned stdio connection in
 [the desktop guide](../guides/desktop.md). Exact-window targeting is requested
@@ -810,15 +798,16 @@ and opens/closes Details before its capture.
 Browser automation has a pinned external-worker path in
 [the browser guide](../guides/browser.md): explicit MCP grants, inline page
 snapshots, interactions, selected downloads, and image results. The local
-connector acceptance uses a real isolated browser. The optional Claude Code
-profile and connected acceptance helper also exercise an independently launched,
-signed-in local fixture through an explicit CDP endpoint: actual model screenshot
-interpretation, the same retained tab, a selected action and exact-byte CSV reads
-pass at both widths and themes. The CLI's restricted file tools actually refuse
-an outside-directory Read; capture artifacts and previously verified downloads
-stay outside that directory. Wire receipts verify inline PNG blocks, not just
-saved paths. Third-party portal login, SSO/MFA and extension
-handoff remain unverified. Prompts are not tab authorization boundaries; existing
+connector acceptance uses a real isolated browser. The connected acceptance
+helper exercises an independently launched, signed-in local fixture through an
+explicit CDP endpoint: model screenshot interpretation, the same retained tab,
+a selected action and an exact-byte download, at both widths and themes, with
+wire receipts that verify inline PNG blocks, not just saved paths. It passed
+on the Claude Code profile before #383; it now builds from the native profile
+and has not been rerun. The native agent cannot read the download folder, so
+the helper checks the bytes itself, and the agent reading what it downloaded
+is no longer shown. Third-party portal login, SSO/MFA and
+extension handoff remain unverified. Prompts are not tab authorization boundaries; existing
 browser downloads follow Chrome settings and need explicit shared file access.
 
 Markdown inline-code fragments retain their own padding and rounded background
@@ -835,13 +824,20 @@ fixture, with real PNG response blocks before and after the action. This does
 not establish a third-party portal, every-pixel comparison or the same workflow
 through the console.
 
-A [local media CLI path](../guides/media-evidence.md) renders original PDF
-pages, inspects image pixels and video frames, and retains source offsets for
-local English ASR and original-clip checks. Generated-fixture acceptance
-includes a valid 126 MB video and independently verified frame PTS. ASR errors
-and coarse word boundaries are retained as uncertainty; correlated passes are
-not manual listening. Real records, long-recording coverage and a native
-console media timeline are not covered.
+Mixed evidence has a [native profile](../guides/media-evidence.md) on
+attachments. Its agent runs on Gemini with no fallback to a model that cannot
+hear, since a fallback chain takes only the media every member takes; its
+chain takes PDF, images, MP3, WAV and MP4 and not M4A (`audio/mp4`), which
+`TestMediaEvidenceAgentHearsAudio` checks. The profile has not been run with
+a live model. In the live re-run of the acceptance matrix after #383, an
+agent of its own on a Gemini model (not this profile) read PDF pages and
+images given as uploads, heard WAV and MP3, did not receive an M4A as audio,
+and gave unreliable times for speech. Local Whisper transcription and frame or page extraction
+went with the Claude Code program: `file_read` and the shell return text only.
+The transcription left is a cloud speech provider (the `speech` slot or a
+workspace voice provider), which keeps words without timestamps; it was not
+part of that check. Video, long recordings and a console media timeline are
+not covered.
 
 People can supply up to five inline uploads, 25 MiB decoded in total, with a
 session or thread message. The platform sniffs the bytes, stores them through

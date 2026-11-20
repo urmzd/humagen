@@ -1,73 +1,77 @@
 # Read selected mail and approve a calendar change
 
-`examples/mail-calendar/humagen.yaml` uses existing signed-in Codex apps for
-Gmail and Contacts reads, and Claude Code's native Google Calendar tools for
-an explicitly approved event action. No mail send, invitation, contact write
-or event deletion is part of this example. These are local CLI account
-connections, not native Humagen Gmail or calendar adapters.
+`examples/mail-calendar/humagen.yaml` runs a native agent, `mail-calendar`,
+on the person's own Gmail and Google Calendar connections. These are Google's
+Workspace tool servers, which a person connects in **Settings › Connections**
+with the `gmail` and `google-calendar` presets
+([connections](../reference/connections.md)). The agent is granted
+`person_tools`: the tools of the connections that person approved, and
+nothing else. No mail send, invitation or event deletion is asked of it.
 
-## Connect and start
+Before #383 this example used the Codex program's connected apps for Gmail and
+Contacts and the Claude Code program's Calendar tools. Those are gone. There is
+no Google Contacts preset, so the contacts reader is gone too.
 
-Sign in to Codex and Claude Code on this host and connect the intended accounts
-in those programs. Set both model directories to an existing absolute work
-folder, then start:
+## Configure and start
+
+Google registers no OAuth client for a caller, so the deployment needs one:
+create an OAuth client of type Web application in a Google Cloud project,
+enable the Gmail and Calendar MCP APIs, add the profile's `redirect_url` as an
+authorized redirect URI, and put its client ID in the profile. The redirect
+URL is where the console that starts the sign-in is served, followed by
+`/connections/callback`; the profile assumes the server serves the built
+console at `http://localhost:8080`.
+
+The server does not start without these two, besides a provider key
+(`ANTHROPIC_API_KEY`, `OPENAI_API_KEY` or `GOOGLE_API_KEY`):
+
+| Variable | What it is |
+|----------|------------|
+| `HUMAGEN_CONNECTION_KEY` | A base64-encoded 32-byte key that encrypts consent. Keep it across restarts |
+| `HUMAGEN_GOOGLE_CLIENT_SECRET` | The OAuth client's secret |
 
 ```sh
 humagen config check -f examples/mail-calendar/humagen.yaml
 humagen start -f examples/mail-calendar/humagen.yaml
 ```
 
+The workspace's `run.ceilings.tool_servers` lists `gmailmcp.googleapis.com`
+and `calendarmcp.googleapis.com`. Those are the only hosts a person's own tool
+server may be on here: the other Google presets are listed as unavailable and
+say which hosts are allowed, and Other MCP, which the presets list still
+offers, is refused for any other host. Then connect Gmail and
+Google Calendar in **Settings › Connections**, sign in with Google, review the
+tools each server offers, and approve the list.
+
 ## Permission boundaries
 
-Codex's read-only setting restricts local files only. The mail and contacts
-prompts ask for reads; they do not restrict the program's connected app tool
-list. Cloud approvals follow the installed program and app settings. Gmail
-access is mailbox-wide: the prompt selects the message. The Calendar allow
-list preauthorizes create/update tools; person approval is an instruction,
-not a Humagen approval gate. Neither configuration confines access to one
-account object.
-
-Codex enables `apps` and ignores user config. Claude Code exposes only
-ToolSearch as a built-in tool and permits the exact native Calendar names
-in the profile. Its user settings, hooks and account connections still load.
-Opened content enters the model providers and consumes account usage.
+- Every tool that its server does not mark read-only waits for the person's
+  approval in Humagen before it runs. Reads do not.
+- Access is what the person consented to: `gmail.modify` for Gmail, and
+  `calendar.events` with `calendar.readonly` for Calendar. The prompt selects
+  the message and the event; it does not narrow that access.
+- Opened mail enters the model provider's context.
+- The profile uses development sign-in and memory state, for a trusted local
+  trial: every client reaching it is an administrator.
 
 ## Select the message and attachment
 
-Choose `account-reader` and give a narrow search or exact message ID, intended
-account and attachment name. For example:
-
 ```text
 Search only EXACT_QUERY, with at most one result, in my connected Gmail.
-Confirm it is EXPECTED_MESSAGE_ID before reading full MIME. Open only its
-selected ATTACHMENT_NAME using the attachment ID from that message. Cite
-actual identifiers and content, not only a file name. Do not send or modify
-mail, read unrelated messages or use Calendar.
+Confirm it is EXPECTED_MESSAGE_ID before reading it. Open only its selected
+ATTACHMENT_NAME. Cite actual identifiers and content, not only a file name.
+Do not send or modify mail, read unrelated messages or use Calendar.
 ```
 
-The Codex app path uses `search_email_ids` or `search_emails`, `read_email` and
-`read_attachment`. Select the returned attachment by its actual message and
-attachment ID. Its supported rendering and size depend on the tool and file
-format; a saved-file reference alone does not prove the agent read the bytes.
-For an unsupported attachment, download only that selected file to the work
-folder and use the [local media path](media-evidence.md) for its actual format.
-
-## Read a selected contact
-
-Choose `contacts-reader` and give an exact name/query or selected resource ID.
-The connected app exposes `search_contacts` and `read_contact`. Read only the
-selected person after resolving an ambiguous match. This connector exposes
-no create/update/delete tool here. Contact writes need a write-capable People
-or Contacts MCP connection and an exact authorized change; this example does
-not invent that capability.
+Whether an attachment's content can be read depends on the tools Google's
+Gmail server offers; the agent is told to say when none can. A saved-file
+reference alone does not prove the agent read the bytes.
 
 ## Approve one exact calendar action
 
-Choose `calendar-writer` and supply the calendar ID, title, start and end with
-an IANA time zone, and whether to create or update. For an update also provide
-the event ID, expected current values and only the fields to change. Review
-the concrete proposal before approving it. Invitations, guests, notifications
-and reminders need their own explicit authorization.
+Supply the calendar, title, start and end with an IANA time zone, and whether
+to create or update. For an update also give the event ID, the expected
+current values and only the fields to change:
 
 ```text
 Prepare, but do not save, this change in calendar EXACT_CALENDAR_ID:
@@ -75,42 +79,22 @@ update event EXACT_EVENT_ID from EXPECTED_OLD_VALUES to APPROVED_NEW_VALUES.
 Keep every other field and event unchanged. Show the proposal for approval.
 ```
 
-The native tool prefix is `mcp__claude_ai_Google_Calendar__`; discover the exact
-`get_event`, `list_events`, `create_event` and `update_event` names. After the
-approved action, read it back and compare its ID, calendar and fields. After
-an uncertain create response, check only the selected time range before retrying
-to avoid duplicates. The discovered update schema has no expected-version or
-etag field. Read-before-update detects an earlier change but cannot prevent a
-race between read and write; do not claim an atomic guarded update.
+When the write tool runs, Humagen asks for approval of that call with its
+arguments. After it, the agent reads the event back. Reading before an update
+detects an earlier change but cannot prevent a race between the read and the
+write; do not treat it as an atomic guarded update.
 
-## What was checked
+## What was checked, and what was not
 
-On 17 November 2026, these existing connectors ran through real Humagen servers
-and signed-in programs, with non-personal fixture content only:
+The profile passes `humagen config check` with no variables set, and starts
+and stops with throwaway values for the two variables above and no provider
+key. On that server, `GET /api/connections/presets` listed `gmail` and
+`google-calendar` as available and the other Google presets as blocked by the
+host ceiling.
 
-- One unsent Gmail draft with no recipients was created, with the generated
-  `req026-fixture.csv`. Nothing was sent. This was a draft fixture, not a
-  received message. Codex searched only its exact subject, confirmed the
-  selected message, read full MIME, then opened the selected attachment's
-  rendered content and reported size of 127 bytes. All five original CSV
-  fields matched the local fixture; the renderer also showed an added index
-  column, not a source column. The draft remains available for peer review.
-- Independent acceptance instrumentation downloaded the fixture through the
-  native Gmail attachment tool and compared its 127 raw bytes and SHA-256
-  with the generated source. That download tool is not granted by this
-  shipped profile. The profile's checked result is rendered text and size,
-  not a reproducible raw-byte hash or byte-for-byte validation.
-- Claude Code's native attachment tool also opened those bytes, but its
-  `get_message` call returned a permission error. The cause is unconfirmed;
-  the working message path uses the connected Codex Gmail app instead.
-- One exact nonexistent Contacts audit marker returned zero matches. No real
-  contact was opened or modified. No contact write tool was exposed.
-- Calendar tool schemas and primary-calendar metadata were discovered. No
-  event was created or changed. A concrete private historical fixture proposal
-  awaits explicit approval, so the calendar-write acceptance is still blocked.
-
-No received message, original personal message or appointment was used. Contacts writes, Outlook,
-another account and the console flow were not checked. The full requirement
-is not closed by the working mail/attachment path: the remaining asks are an
-exact approved Calendar action and, for contact writes, a write-capable connector
-plus the selected contact and change.
+The presets were checked against Google's published server metadata only.
+Signing in to a real Google account through them, the tools those servers
+offer, reading a message or attachment, and any calendar write have not been
+exercised. The earlier checks on 17 November 2026 ran on the removed Codex and
+Claude Code paths and say nothing about this one. Contacts, Outlook and another
+account are not covered.
