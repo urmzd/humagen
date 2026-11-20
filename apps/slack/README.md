@@ -47,6 +47,11 @@ Run `pnpm install` once from the repository root. The adapter and renderers are 
 
 A turn streams with `chat.startStream`, `appendStream` and `stopStream`, and
 the session status follows it: processing while it works, active when it ends.
+While it works, one line above the reply box says what it is doing, such as
+"Checking recent deploys": the running step's title, else the plan's, else
+"Thinking", set with `assistant.threads.setStatus` and cleared when the run
+waits on a person or ends. See
+[the status line](../../docs/reference/slack.md#the-slack-apps-status-line).
 Where native streaming is refused, the turn is posted once and edited. A
 message sent while a turn is running waits for it, as in the console.
 

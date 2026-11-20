@@ -39,6 +39,11 @@ export const CAPABILITIES: Record<string, Capability> = {
     scopes: ["chat:write"],
     events: ["agent_session_stopped"],
   },
+  statusLine: {
+    why: "One line above the reply box saying what the agent is doing, cleared when it parks or ends.",
+    methods: ["assistant.threads.setStatus"],
+    scopes: ["assistant:write"],
+  },
   suggestedPrompts: {
     why: "Prompt bar suggestions, shown at the top of the agent's Messages tab.",
     methods: ["assistant.threads.setSuggestedPrompts"],

@@ -1074,6 +1074,7 @@ export class App {
       copy: this.copy,
       capabilities: this.capabilities,
       log: (line) => this.log(line),
+      ...(this.opts.now ? { now: this.opts.now } : {}),
       ...(queued ? { shown: "queued" as const } : {}),
       ...(this.code ? { codeChannel: () => movable && Boolean(this.code?.available) } : {}),
       // Slack said the session is the channel: its context bar and name follow the run.
