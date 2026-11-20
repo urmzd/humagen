@@ -3,9 +3,10 @@
 import {
   alternatives,
   architecture,
-  contact,
   deployIntro,
   doc,
+  docs,
+  help,
   hero,
   limits,
   pages,
@@ -31,7 +32,8 @@ export function llmsTxt(): string {
   out.push(`- [${pages.deploy.title}](${url(pages.deploy.path)}): ${pages.deploy.description}`);
   out.push(`- [Source on GitHub](${site.repo}): code, docs and issues, ${site.license}`);
   out.push(`- [Spec reference](${doc("docs/reference/spec.md")}): every setting`);
-  out.push(`- [${contact.label}](${contact.href}): ${contact.email}`, "");
+  out.push(`- [Documentation](${docs.href}): guides, architecture and reference`);
+  out.push(`- [${help.label}](${help.href}): questions and bug reports`, "");
 
   out.push("## What it does", "");
   for (const p of [points.together, points.operate, ...points.grid]) {

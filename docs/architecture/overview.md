@@ -272,7 +272,7 @@ is the bound that holds whatever the price.
 | `GET /api/usage` | `spend` (used, limit, `unpriced_calls`, `other_costs`) and `tokens` per scope |
 | `GET /api/analytics` | `usage` per group: calls, tokens, spend, unpriced calls |
 | Console | The run's Activity page (calls, tokens, cost, context), the session gauge's context edge, Analytics, Limits |
-| Slack app | Nothing. Usage is not shown on a turn in the console either, so the shared adapter carries none (see [clients](../reference/clients.md#usage-on-a-turn)) |
+| Slack app | Nothing on a turn. Usage is not shown on a turn in the console either, so the shared adapter carries none (see [clients](../reference/clients.md#usage-on-a-turn)). A finished turn offers Run Details to a person the client maps: the run's `usage` and elapsed time, read as them and shown to them alone (see [Slack](../reference/slack.md#steps-command-output-and-run-details)) |
 
 ## People in the loop
 
@@ -583,8 +583,9 @@ against real exports of each tool, and file bytes are not imported
 Each imported session's document is kept with the session's structure,
 written through its own routes in the same write as the document
 (`pkg/knowledge/imported.go`, `internal/httpapi/import_documents.go`), with a digest of the structure
-itself, so a later stage can pin source, document, document digest and
-structure digest together; a structure kept for a revision is never
+itself, recorded on the document as `structure_digest`, so a
+continuation pins source, document, document digest and structure digest
+together; a structure kept for a revision is never
 replaced in place (409). Each
 route checks `knowledge:import`, and the platform also requires
 `knowledge:write`, since the text is written too; the built-in `manager` and
@@ -611,8 +612,29 @@ and Postgres, the four formats' generated records included
 server and a stub older server on memory only (`internal/httpapi`,
 `internal/platform`, `internal/app`).
 
-Continuing an imported conversation is built in the platform, with no route
-and no console yet (`ContinueImport` in `internal/platform/import_continue.go`).
+Continuing an imported conversation is built in the platform
+(`ContinueImport` in `internal/platform/import_continue.go`) and has a route,
+`POST /api/knowledge/{name}/documents/{id}/continue`
+(`internal/httpapi/import_continue.go`). The route checks `runs:write`, as a
+fork does; reading the source also takes `knowledge:read`, and a source the
+caller cannot see, or another workspace's, is not found (404). Its body names
+the document digest the caller read, the structure digest when a structure is
+kept, and the project the caller saw the source filed in (`~` for the
+workspace itself), which is required so that a source detached since is
+refused (409) rather than continued elsewhere. It answers the new thread
+(201), whose `import` says how many turns were sent of how many the import
+kept, the branches not continued, the turns whose files were not imported and
+the pinned digest. No agent is started: the caller posts the first message.
+A client takes both digests from the document listing. A write that keeps a
+structure records its digest on the document as `structure_digest` beside
+`structure_bytes`, and an ordinary edit removes both; they are given only to a
+reader who sees the source. Listing never reads a structure, so a document
+whose structure an earlier release kept is listed with `structure_bytes` and
+no digest until it is imported again: a client continues it naming no
+structure digest, and the conversation pins the digest of the trusted
+structure it reads. Once a document records a digest, a continuation must
+name it, so a structure written after the person read the document refuses
+it. The console's Continue Conversation is still to come.
 It starts a private plain thread of the caller's, in the source's project
 (the one it is scoped to, else the one it is attached to, else the workspace
 itself), holding the conversation's origin (`Thread.import`, read only in the
@@ -677,8 +699,37 @@ Tested: the thread record and the source's id on memory and Postgres
 no id and an earlier release's rewrite of one (`internal/platform`); the
 platform's other continuation tests, its seed, its refusals and who sees it,
 on memory only (`internal/platform`); the contract's
-fields against the Go types (`internal/httpapi`). The route that starts one
-and the console's Continue Conversation are not built.
+fields against the Go types, and the route on memory and Postgres
+(`internal/httpapi`): who may call it, each refusal, the audit record, the
+listing, a second continuation of the same document, the seed's bound, and a
+scripted model that answers a fact from the imported lines on the first turn
+and is sent only that conversation's turns on the second. A client that takes the
+digests only from the listing continues the document, one an earlier release
+imported included, an untrusted structure of such a document is refused, and
+a reader who cannot see the source is given neither digest; the store
+records the digest with every write, and a listing reads no structure (the
+reads are counted), on memory and Postgres (`pkg/knowledge`). The console's
+Continue Conversation is not built.
+
+`humagen import agents` carries an agent file's `name`, `description` and
+text, and nothing else: the agent runs on `--provider` and `--model`, with no
+tools. Every other frontmatter field is named per file as not carried, in
+text and under `reduced` with `--json`, on every run, a dry run and a second
+import included. Hooks and permission rules (`hooks`, `permissions`,
+`permissionMode`, `disallowedTools`) are named again under `not_enforced`,
+with only the known names under each field and the rest counted, and one note
+at the end of the run says what is true: Humagen does not run a file's hook
+commands or apply its rules; a check before a tool call is the agent's
+approvals and the action policies' Ask and Never, which the import does not
+set; nothing stands in for a hook after a call or when a turn stops. Two files
+of one agent name are reported apart, the second as skipped. The frontmatter
+closes only at a line that is `---` alone, a second YAML document or a
+repeated key fails with its own reason, and every name from a file is
+printed quoted when it is not plain text, cut at 64 characters and 40 names
+a line (the skills and sessions imports' lines are escaped the same way).
+Tested with generated files against a stub server (`internal/app`) and run
+against a local in-memory server; not checked with real agent files
+([import](../reference/cli.md#import-sessions-skills-and-agents)).
 
 A library skill's supporting file may be up to 1 MiB and its package 256
 files and 2 MiB, while `SKILL.md`, whose body is what a model is asked, stays
@@ -686,14 +737,14 @@ at 128 KiB. So `humagen import skills` drafts a skill that ships a large
 schema or source file, or a tree of many schema files, instead of naming it
 under `failed`. A turn's text lists at most 63 of a skill's supporting files,
 those its instructions name first, and says how many more there are;
-`file_read` reads any of them.
+`skill_file_read` reads any of them.
 A skill's revisions hold at most 16 MiB of file bytes together, as 32
 revisions of the earlier 512 KiB package did; with paths and text, a stored
 record or history answer is at most about 41.8 MiB (about 32.9 MiB before), and
 a skill with large files holds fewer than 32 revisions. A full skill takes no
 more and cannot be emptied: the import names it under `failed` and says to go
 on under another name or scope. A model is told a file is over the 128 KiB
-`file_read` returns, and `file_read` refuses it. A record this release cannot read fails only
+`skill_file_read` returns, and the read is refused. A record this release cannot read fails only
 itself: its scope is listed without it and names it under `unreadable`.
 Checked by test on memory and Postgres with generated files, and by an
 import of a real skill library; not checked in a live run
@@ -715,65 +766,53 @@ over 131072 characters. It does not read `unreadable`, so a skill this server
 cannot read is missing from its Library page without a word. Read from code,
 not opened in a browser.
 
-Mail has an [existing-account CLI path](../guides/mail-calendar.md): Codex apps
-searched and read one exact unsent non-personal Gmail fixture and its actual
-CSV attachment through Humagen. Contacts returned no match for an exact audit
-marker; contact writes are not exposed. Calendar schemas were discovered, but
-an exact event action still needs approval. The full mail/contacts/calendar
-requirement remains partial; no event, personal mail or contact was changed.
+The example profiles run on native agents since the `claude-code` and `codex`
+model kinds were removed (#383). Each starts and passes `humagen config check`
+(`TestEveryExampleProfilePassesConfigCheck` holds every YAML under `examples/`
+to that check, `TestExampleAgentsGrantOnlyToolsThatExist` to tool names the
+platform has, and `TestDocsNameOnlyExampleFilesThatExist` to example files
+that exist). None of the ported profiles below has been run with a live model
+since the port; the live checks quoted in their guides ran on the removed
+programs unless a guide says otherwise.
 
-Cloud documents have an [existing-account CLI path](../guides/cloud-documents.md):
-Codex apps retrieve actual Drive revision text, and a separately selected
-Claude Code agent applies an approved Docs edit with the required revision.
-A real private-account fixture exercised history fetches, an exact guarded
-change and an actual stale-token rejection. Coalesced revisions were reported
-as unknown; exhaustive history, real user documents and OneDrive are not covered.
+Mail and calendar have a [native profile](../guides/mail-calendar.md) on the
+person's own Gmail and Google Calendar connections (the Google Workspace
+presets, `person_tools`), each write approved in Humagen. Signing in to a real
+account through those presets has not been exercised. Contacts have no preset.
 
-Account exports have a [configured CLI path](../guides/finance-exports.md): an
-agent on Claude Code runs a shipped script that removes duplicates, reconciles
-balances and totals months and debts, and drafts a plan whose amounts are all
-copied from that output, with writes confined to an output folder. Checked on
-five invented exports with a checker that shares no code with the script; real
-exports, a bank's own format and the quality of the plan are not covered.
+Cloud documents have a [native profile](../guides/cloud-documents.md) on the
+person's own Google Docs and Drive connections. Revision history and a
+revision-guarded write depend on what Google's servers offer, which has not
+been exercised; the agent reports either as missing rather than substitute.
+OneDrive is not covered.
 
-Travel refunds have a [configured CLI path](../guides/travel-refund.md): one
-agent on Claude Code reads a booking and current policy pages and cannot write,
-and a second writes the request a person approves, under an output folder only.
-Checked on an invented booking; a real itinerary, an airline's own policy and
-sending anything are not covered.
+Account exports have a [native profile](../guides/finance-exports.md): the
+exports and `reconcile.py` go into the conversation through the files API, and
+the agent runs the script with the shell in a Docker instance with no network.
+The script ran unchanged in that image and its regression suite passes. The
+removed program's allow rules (only the script, writes only under `out/`) have
+no native equivalent: they are instructions now.
 
-Records research has a [configured CLI path](../guides/records-research.md):
-an agent on Claude Code builds a chronology from a folder of records, quoting
-each dated event from its record, lists what is unknown or in conflict, and
-opens current official pages, with writes confined to an output folder. Checked
-on six invented records; real records, scans and legal correctness are not
-covered.
+Travel refunds have a [native profile](../guides/travel-refund.md): one agent
+reads the booking records in a conversation and current policy pages and has
+no tool that writes, and a second writes the request a person approves. Sending
+anything is not covered.
 
-Raster generation has a [configured Codex path](../guides/image-generation.md):
-a real account-backed image was generated, inspected and revised using its
-actual pixels, with both PNGs independently opened and the original hash
-preserved. Checked on Codex CLI 0.167.0 and a generated fixture. Files stay on
-the CLI host; automatic console publication and image-specific journal events
-are not covered. Edits can change texture outside the requested region.
+Records research has a [native profile](../guides/records-research.md): an
+agent builds a chronology from the records in a conversation, quoting each
+dated event, and opens current official pages. Scans and PDFs go in as
+attachments, not through the text-only files API.
 
-Bulk local files have a [configured CLI path](../guides/local-files.md): an
-agent on Claude Code surveys a folder on this host in place, writes a plan with
-a hash for every file, and applies only the part a person approves. Checked on a
-generated folder of 322 files and 117 MiB; real folders, cloud folders and a
-console view of the plan are not covered.
+Public-source research has a [native profile](../guides/public-web.md) on
+`web_search` and `web_fetch`. The tools were checked against the live web on
+their own; the profile has not been run with a live model.
 
-Office files have a [configured CLI path](../guides/office-files.md): an agent
-on Claude Code edits a `.docx` run by run and audits `.xlsx` formulas across
-saved revisions, in a folder on this host. Checked on generated files, with a
-part-by-part comparison and Quick Look renders of the document; real
-templates, Word and Excel, tracked changes and cloud revision history are not
-covered.
-
-Public-source research has a [configured CLI path](../guides/public-web.md)
-with built-in tools restricted to WebSearch and WebFetch; the program's user
-settings, hooks and plugins still load. A real HTTP run executed both and its
-reported version matched a separate official-feed retrieval. This does not
-establish authenticated browser access or validate every generated claim.
+Removed with #383, with no native replacement and no example: raster image
+generation (Codex's image tool), reading and organizing a folder on the host
+in place (no confined way does that now; only the `local` sandbox kind's shell
+could, unconfined and with the server's privileges), and editing an existing `.docx` or auditing `.xlsx` formulas (an
+uploaded Office file reaches a model only as a note, and the native Office
+writer builds new files from a revision model). Their guides are gone.
 
 Native Mac control has a pinned stdio connection in
 [the desktop guide](../guides/desktop.md). Exact-window targeting is requested
@@ -790,15 +829,16 @@ and opens/closes Details before its capture.
 Browser automation has a pinned external-worker path in
 [the browser guide](../guides/browser.md): explicit MCP grants, inline page
 snapshots, interactions, selected downloads, and image results. The local
-connector acceptance uses a real isolated browser. The optional Claude Code
-profile and connected acceptance helper also exercise an independently launched,
-signed-in local fixture through an explicit CDP endpoint: actual model screenshot
-interpretation, the same retained tab, a selected action and exact-byte CSV reads
-pass at both widths and themes. The CLI's restricted file tools actually refuse
-an outside-directory Read; capture artifacts and previously verified downloads
-stay outside that directory. Wire receipts verify inline PNG blocks, not just
-saved paths. Third-party portal login, SSO/MFA and extension
-handoff remain unverified. Prompts are not tab authorization boundaries; existing
+connector acceptance uses a real isolated browser. The connected acceptance
+helper exercises an independently launched, signed-in local fixture through an
+explicit CDP endpoint: model screenshot interpretation, the same retained tab,
+a selected action and an exact-byte download, at both widths and themes, with
+wire receipts that verify inline PNG blocks, not just saved paths. It passed
+on the Claude Code profile before #383; it now builds from the native profile
+and has not been rerun. The native agent cannot read the download folder, so
+the helper checks the bytes itself, and the agent reading what it downloaded
+is no longer shown. Third-party portal login, SSO/MFA and
+extension handoff remain unverified. Prompts are not tab authorization boundaries; existing
 browser downloads follow Chrome settings and need explicit shared file access.
 
 Markdown inline-code fragments retain their own padding and rounded background
@@ -815,13 +855,20 @@ fixture, with real PNG response blocks before and after the action. This does
 not establish a third-party portal, every-pixel comparison or the same workflow
 through the console.
 
-A [local media CLI path](../guides/media-evidence.md) renders original PDF
-pages, inspects image pixels and video frames, and retains source offsets for
-local English ASR and original-clip checks. Generated-fixture acceptance
-includes a valid 126 MB video and independently verified frame PTS. ASR errors
-and coarse word boundaries are retained as uncertainty; correlated passes are
-not manual listening. Real records, long-recording coverage and a native
-console media timeline are not covered.
+Mixed evidence has a [native profile](../guides/media-evidence.md) on
+attachments. Its agent runs on Gemini with no fallback to a model that cannot
+hear, since a fallback chain takes only the media every member takes; its
+chain takes PDF, images, MP3, WAV and MP4 and not M4A (`audio/mp4`), which
+`TestMediaEvidenceAgentHearsAudio` checks. The profile has not been run with
+a live model. In the live re-run of the acceptance matrix after #383, an
+agent of its own on a Gemini model (not this profile) read PDF pages and
+images given as uploads, heard WAV and MP3, did not receive an M4A as audio,
+and gave unreliable times for speech. Local Whisper transcription and frame or page extraction
+went with the Claude Code program: `file_read` and the shell return text only.
+The transcription left is a cloud speech provider (the `speech` slot or a
+workspace voice provider), which keeps words without timestamps; it was not
+part of that check. Video, long recordings and a console media timeline are
+not covered.
 
 People can supply up to five inline uploads, 25 MiB decoded in total, with a
 session or thread message. The platform sniffs the bytes, stores them through
@@ -871,6 +918,7 @@ and GitHub release from `main`, using the main-only `release` environment.
 | Save as Artifact and diffs | Implemented: `POST /api/threads/{id}/artifacts` saves an answer, a message (a structured review as its JSON) or a scratchpad through the publication path; retries of the same source, title and content return the existing artifact across processes and restarts, while changed scratchpad content makes a new version; artifact version comparison and file changes share `ChangeReview`, side by side on a desktop, with line pins for review findings. See [conversation-workspace.md](conversation-workspace.md#save-as-artifact-and-diffs). |
 | Native GitHub feedback and fix provenance | Implemented: durable reaction IDs confine removals to their original assessments; exact suggestion commits produce reserved system evidence without human ratings or evaluation candidates. Fix PR backlinks use validated session/source-alert identity and the configured public URL. Focused race tests cover replay, ambiguous commits and revoked access; live GitHub writes remain unverified. See [GitHub integration](../reference/github.md). |
 | GitHub review tabs | Implemented: Workspace pull, issue and review tabs read bounded GitHub evidence through tenant-authorized clients, display exact-head workflow status and changed-file findings, and preserve their tab references in the address. |
+| Session workbench | Implemented: the Details pane is a tabbed workbench (`workbench.ts`, `Workbench.tsx`) addressed as `?panel=details&bench=` with a tab's selection in `?benchRef=`. Six tabs are built: Details, Browser, Terminal, Changes, Side Chat and Search. A tab with nothing to show is left out of the strip, and the open tab is brought into view after a reload. What a person does by hand in a tab is recorded per conversation, listed above the composer and folded into their next message as text (`packages/core/src/human-activity.ts`); no API field carries it, and the list is kept in page memory, so a reload before sending loses it. Browser, Terminal, Changes and Side Chat record; Search records nothing. See [workbench.md](workbench.md). Browser: the agent's browser steps from its tool calls, a card under each answer that used the browser, and a person's own look, address, click and typing on the same browser through `POST /api/sessions/{id}/browser` (`internal/platform/browser_view.go`). Not built: the agent's own screenshots are not kept, and there is no live video ([browser guide](../guides/browser.md#look-at-the-browser-and-act-on-it-from-the-console)). Terminal (`WorkbenchTerminal.tsx`): the commands the session's agents ran, live, and on a docker sandbox a person's own command in an instance of its own (`POST /api/threads/{id}/sandboxes/commands`, `internal/platform/person_command.go`). Not built: a shell that persists between commands, Stop, and streamed output of a person's command; `local` and `unisolated` sandboxes get no command line. Seen together in a running console (docker sandbox, the pinned browser worker, a stand-in model) at 1280x800 and 390x844, light and dark: the tabs keep their addresses across a reload, the browser card opens the Browser tab, Search opens Terminal and Browser on the call, and five things done by hand in four tabs went to the agent in one message, after which the list cleared. |
 | Workspace pane | Implemented: the Workspace is a tabbed pane beside the conversation (`pane.ts`: tabs, active, Expand and split in the address; at most 12 tabs), opened from Conversation Settings and from artifacts in the conversation; a full-screen sheet on a phone. See [conversation-workspace.md](conversation-workspace.md#the-workspace-panel). |
 | Memories by scope | Project-chain regression verified: the run's project mounts writable, ancestors mount read-only, and `Run.memory` plus per-run scope paths agree (`TestMemoryMountsKeepOwnProjectWritableAndAncestorsReadOnly`). Implemented: `Run.memory` recorded at memory install and finish on lease and release, `GET /api/threads/{id}/memory`, and the Workspace's read-only Memories section by conversation, session and message. See [conversation-workspace.md](conversation-workspace.md#memories-by-scope). |
 | Conversation scratchpads | Implemented: `pkg/scratchpads` on `pkg/state` per request (50 per conversation, 80-character names, 256 KiB, versioned), `/api/threads/{id}/scratchpads`, the Workspace's Scratchpads section, and `file_read scratch:<name>` for the conversation's agents. See [conversation-workspace.md](conversation-workspace.md#scratchpads). |
@@ -913,6 +961,8 @@ routes too long for a table column. Each is followed by its state.
   - Built. Every name people typed before still works, each with a note at start, through `internal/legacy` and the apps' `legacy.ts`; every name stored data or a running deployment depends on is kept, each pinned by a test; [upgrading-from-warp.md](../guides/upgrading-from-warp.md) lists both. The chart and `humagen deploy` refuse an image from before 0.21.0, which cannot read the spec they write. Tested: `internal/legacy`, `TestWhatWasStoredBeforeTheRenameSurvivesARestart` (memory and Postgres), `TestPostgresReadsWhatAnOlderReleaseWrote`, the deploy tests in `internal/app/rename_deploy_test.go`, `deploy/helm/check.sh`, `TestNoNewOldName`. The default Postgres upgrade also passes on a live kind cluster with Helm and Flux, retaining the Deployment, PVC and Secrets ([rename verification](../guides/rename-verification.md)). Live rejection without `nameOverride` was not exercised. Helm 4 memory-store reuse-values now omits null store entries without weakening strict spec validation ([issue #62](https://github.com/urmzd/humagen/issues/62)); both memory and default Postgres upgrades pass the live Deployment, PVC, Secret and pod checks
 - Slack feedback, uploads, skills, canvases and connection controls
   - Built: like and dislike open the shared feedback modal; run references, ratings, reasons and comments write through the state backend; prompt, answer and conversation context are retrieved from the existing run and thread records and can be collected through a run-scoped paginated API (`GET /api/runs/{id}/feedback`), which names each rater by handle and by name, marks the reader's own rating, never shows a subject, and pages by a number in the order ratings were first given (those kept before come first, in the order last rated), never by a subject (`TestFeedbackNamesRatersAndNeverShowsAnAddress`, `TestFeedbackPagesByANumberThatSurvivesARestart`). Mapped people's uploads are read from the actual Slack message and resolved through Fiber's attachment pipeline. `/skill` lists and invokes the client's configured commands, also registered dynamically in code channels. In a code channel a turn also keeps the context bar to its run's project, agent and console conversation, and names the session once from the conversation's title (`apps/slack/src/codechannel.ts`, fake Slack only: not run in a real code channel, and Slack may ask for a scope the manifest does not request, in which case both are skipped); closing a code channel with a shared summary is written and tested but nothing calls it, because no event says a session is over. `/agent canvas RUN_ID` publishes a finished answer only from its own channel, after reading it as the mapped person. `/agent connections` shows private status and connects or disconnects their own allowed credential references. Tested with fake Slack, the HTTP contract and tenant/person confinement tests. Live Slack validation is checked separately by CI.
+- Slack work summary, command output and run details
+  - Built in the Slack app: a turn that was posted, not streamed, counts its work by kind once it ends (`workSummary`); a `shell` command that exited non-zero and was not run again with success is shown with its exit code and the end of its output, read from the call's result (`commandResult`), on streamed turns too; Run Details answers a mapped person alone with the run's usage, read as them. Component, renderer, adapter and Slack app tests pass, and `pnpm validate:slack` accepts the blocks. Not yet seen in a Slack client: the captures are the repository's Block Kit preview. A natively streamed turn still shows Slack's own task card per call. See [Slack](../reference/slack.md#steps-command-output-and-run-details)
 - GitHub and Slack integrations: signed webhook ingress, tenant-bound tools and delivery through `Invoke`
   - Built, tested with simulated APIs. Durable versioned event/action controls tighten actual installations at execution. Slack bridges support passive inbound, outcomes-only and two-way directions, with server checks withholding private context and native-host checks excluding Activity/source metadata. Memory/Postgres replay, contract, policy and native-host regressions cover these boundaries. Live external delivery remains unverified.
 - `pkg/clients`: a workspace's Slack apps and GitHub installations as records, each with an identity, an allow-list of agents, options and an enabled flag. Several per surface per workspace, and several workspaces per process. See [clients](../reference/clients.md)
@@ -950,7 +1000,7 @@ routes too long for a table column. Each is followed by its state.
 - Slack app (`apps/slack`): Socket Mode, a client of the HTTP API as a machine. DMs, mentions, `/agent`, shortcuts, Home, native streaming, session status, stop, inbox items in the run's thread. A thread's conversation is derived from the thread, so a restart loses neither it nor deduplication. Name, tagline, disclaimer and suggested prompts come from a checked branding file (`SLACK_BRANDING`). Streams a crashed process left open are closed at the next start from a file journal. A silent or slept-through socket is replaced, with backoff, and the app exits non-zero after repeated failures. A person the app's client maps posts as themselves into the Humagen thread their Slack thread is (`POST /api/threads` with a surface): the platform reads the tags and files it, the people's messages since the app was last asked there go first as their own messages, posted only, and a message posted before starts nothing again. Anyone else asks through the app, as before, with people's messages folded into the run's text, except in a bound channel: that is a project's channel, so they are told to ask an admin to connect their Slack account and Humagen is not asked (`in a bound channel, someone the client maps to nobody is told to be connected`). The Home tab is the shared Home (`homeView`) for a person the app's client maps, read as them through the client (`act_as` on `GET /api/inbox` and `GET /api/projects`): at most five that need them, newest first, with the rest counted as the inbox's `open` counts them, an agent's draft waiting on them as an owner among them and a posted announcement never; five posted announcements of their projects, unread first; and eight of the projects that name them (`mine` on each project view: they are a member or an owner through an entry for their subject or a `role:<name>` they hold, on the project or as an owner above it, and access only through `*` or only through `projects:govern` does not count), where something happened most recently first and then in tree order, archived ones left out and the rest counted in "N more in Projects", each opening in the console when the app has its address (`HUMAGEN_PUBLIC_URL`). Without it, Review sends what needs them to their messages with the app, where a press is theirs, done for them through the client, with no Snooze or Dismiss since Humagen does those only as the caller, and What's new and Your projects are shown to read. Ask a Question and Build an Agent open a form whose words are posted as them in their messages with the app, Build an Agent tagging `@humagen-builder` where the client reaches it, and Search Context opens the console. It shows no access or connections, which it cannot know. Someone the client maps to nobody keeps the mailbox
   - Built, tested with fakes for Slack and Humagen (`history.test.ts`, `announce.test.tsx`, `dm.test.tsx`, `home.test.tsx`), What's new against the console's Home, and Needs you, its rows and its total, What's new and Your projects the same on both renderers (`parity.test.tsx`), the projects list read for a person against the server on memory and Postgres (`TestAClientsMachineListsAPersonsProjectsAsTheySeeThem`), which of them name the person (`TestNamedIsWhereAnEntryNamesTheReader`, and `TestAPersonsOwnProjectsAreTheOnesThatNameThem` on memory and Postgres), and against a real server with a fake Slack. A run is recorded as the Slack person's when the app's client maps them (`act_as`), and acts for them, so a tool that acts as a person uses theirs; else it is the app's, and acts for nobody. Asking about someone else's message with the shortcut is the app's, for nobody, since those words are the whole request, and in a bound channel it is refused, since only a person's own words are posted there. A message that starts several runs is followed for the first; the others answer in Humagen. Not live-validated
 - Questions in Slack: a run's question shows in its thread with Humagen's approval and choice cards and live buttons, answered through Humagen as the Slack person the app's client maps (`slack.machine`, `slack.people`), refused for anyone unmapped without asking, and settled in place
-  - Built, tested with fakes for Slack and Humagen. A reply to a question in the inbox, and to a mention in a person's direct messages, is typed in the reply modal (`replyModal`), sent as the person through the client; a mention's reply goes through their inbox, so it posts in the thread as a human message and starts no run, whatever the thread's default, and a viewer who was tagged replies too (`TestASlackReplyToAMentionStartsNoRun`); Something Else on a run's own card still points to the console. Not live-validated, and not run against a real server: no model that asks is wired into `test:server`
+  - Built, tested with fakes for Slack and Humagen. A reply to a question in the inbox, and to a mention in a person's direct messages, is typed in the reply modal (`replyModal`), sent as the person through the client; a mention's reply goes through their inbox, so it posts in the thread as a human message and starts no run, whatever the thread's default, and a viewer who was tagged replies too (`TestASlackReplyToAMentionStartsNoRun`); Something Else on a run's own card opens the same modal, and a press on a card whose question is no longer waiting shows what was recorded in place of its buttons (`questions.test.tsx`). Not live-validated, and not run against a real server: no model that asks is wired into `test:server`
 - Slack and GitHub coworking in projects
   - Built. A project's owners bind a channel to a Slack channel of a Slack client (`slack {client, channel}` on the channel, in the API or the Platform document; one Slack channel bound once, archiving unbinds it; `GET /api/clients/{id}/bindings`); binding one or moving a binding also takes `clients:write`, so no owner captures a Slack channel the client's admins did not give the project (`TestBindingASlackChannelTakesTheClientsAdmin`). A client's `home` is a project and one of its channels, shown only to those who may read that project: a change that names no home keeps one the caller is not shown (`TestAClientsHomeIsShownOnlyWhereTheCallerMayReadIt`). The client's machine posts a mapped person's Slack message with its surface: one Slack thread is one Humagen thread, found by its surface or started and filed from the binding, shared in a bound channel and otherwise in the home, private for a direct message or the assistant pane; the text is read in the one grammar, each message ts is posted once, the client's default answers outside a bound channel, and its allow-list holds, the agents asked for a default of `*` included, there and on every message its machine posts for a person in any other thread (`TestAClientsListHoldsWhereverItPostsForAPerson`). The machine reads its own surface's threads wherever they are filed. An in-process connector's run is filed by the same binding (`stamp`), and `runs.ProjectOf` believes it for `slack` and `github`; it acts for the person the team maps the Slack user to only if they may start it there, as `act_as` asks (the policy grants their subject `runs:write`, and they are a member of the project), and is not started otherwise, nor for someone mapped to nobody in a bound channel (`TestAConnectorsRunIsHeldToThePersonItActsFor`); a Slack mention that names no agent is answered as one in a thread there would be, by the bound channel's chain in a bound channel and by the client's default first in its home (`TestAConnectorsRunIsFiledByItsBinding`). Announcements of a project whose general channel is bound are posted there top-level once, with a delivery receipt, the record of the post; drafts never reach a channel, and a withdrawn one's post says only that it was withdrawn. The event stream does not replay, so each time it opens, at the start and after every reconnect, the app catches up: it reads each bound project's newest 50 announcements in the project's inbox, where a client's machine is shown its own receipts and nobody else any (`TestAProjectsInboxShowsOnlyTheReadersOwnReceipts`), edits a post whose announcement changed since its receipt and records the same post again, which moves the receipt's `at` on only after a change (`TestARereportedPostMovesItsReceiptOnOnlyAfterAChange`, on memory and Postgres), and posts, oldest first, an open one with no receipt from the last 24 hours and announced no earlier than the Slack channel was bound (`bound_at` on the channel and on `GET /api/clients/{id}/bindings`, kept while the binding holds, `TestABindingSaysWhenItWasMade`). So an edit, a withdrawal, a restart or a reconnect updates that post, release notes posted at a start after the binding reach a bound workspace general, and a notice during a catch-up posts nothing twice, as each announcement is looked at one look at a time and read afresh, receipt and all; a look asked for during one that fails still runs. The app does this only when its client names its credential as the machine, the only one shown the receipts, and a catch-up that could not read Humagen is tried again with backoff until one finishes, skipping a project the machine may not read; an announcement a notice names is posted only as a catch-up would post it, and the app reads it once more after each receipt, so a change between an edit and its receipt is shown too (`announce.test.tsx`, `units.test.ts`, `humagen.server.test.ts`). Not caught up on: a change to an announcement older than a bound project's newest 50 made while the app was away, whose post keeps its words, withdrawn ones included; old posts in a Slack channel no longer bound; and a post whose receipt Humagen did not take is remembered only by the process that made it. A message's history shows a receipt (`delivered`) to its client's machine alone (`TestOnlyAClientsMachineRecordsAndSeesItsDeliveries`). A reply in an announcement's Slack thread, the one that mentions the app since Slack delivers no other in a channel, starts a shared thread in the bound channel, found by the post's surface: the platform finds the announcement by the receipt at that channel and ts (`inbox.ByDelivery`, rebuilt on replay), and the thread names it (`announcement`). Its turns, and the room each run is sent, start with the announcement as it stands, from the person who posted it, the agent a schedule ran, or Humagen itself for release notes (`kind: system`, sent to a run as `humagen (system)`), never from the replier, who posts the reply as their own message, read in the one grammar and answered by the channel's chain; what it says tags nobody, a later reply finds the same thread, and a withdrawn one then says only that. It seeds only a thread the Slack channel's binding files in its own project, so only those who see that project read the thread, and the announcement is then part of the thread and of its runs' input, read with them under `runs:read`, not `projects:read`. In that channel a reply under one withdrawn before anyone replied, or under a draft, starts nothing (410), and the app says so; after the Slack channel is bound to another project, or unbound, a reply under an old post starts a thread where it is now filed, as any other, open or withdrawn, and nobody there is told what became of it (`TestAReplyToAnAnnouncementsSlackPostStartsAThreadSeededWithIt`, `TestAReplyToAWithdrawnAnnouncementOrADraftStartsNothing`, `TestAnAnnouncementSeedsOnlyAThreadInItsOwnProject`, `TestAnAnnouncementsThreadIsFoundByItsPostAfterARestart` with `-state=postgres`, `TestAnAnnouncementsSlackThreadIsReadAsTheSpecSays`, `TestAReplyToReleaseNotesStartsAThreadSeededWithThem`, `TestReleaseNotesSeedAThreadAsTheSpecSays`, `announce.test.tsx`, `room.dom.test.tsx`). The client's machine is told of them wherever it may see the project, as a viewer too, and a members-only project's only where it names the machine among its members (`TestAMachineIsToldOfAnnouncementsWhereItsClientIsBound`, `TestAnAnnouncementWhereTheAppOnlyViewsKeepsItsReceipt`). The event stream tells a client's machine of a mention or a question addressed to a person it maps, by subject or by a role they hold, once for each such person and at most 20, and for whom (`TestAMachineHearsOfAnExpertQuestionForEveryoneItMapsInTheRole`); the app reads it for them (`act_as`), posts it to their direct messages with Open Thread and Reply, unless they are already in the app's own Slack thread it was raised in (they wrote there, or were mentioned there the Slack way, read with `conversations.replies`), and keeps each person's current. A tag by handle, an invitation into a private thread and an expert asked by a run ping nobody in Slack, so they reach the person's direct messages (`dm.test.tsx`). A reply in the thread settles the mention of its poster. Tested in `pkg/projects`, `pkg/threads`, the platform (`surface_threads_test.go`), the contract and the Slack app. GitHub comments follow the same addressing: a comment's `@agent` and `auto_labels` tag, and one that mentions the app's own login (`github.login`) and names no agent reaches `stamp` untagged and is answered as an untagged Slack message outside a bound channel is, by the client's default and then its home channel's chain, under its allow-list, filed in the client's home for nobody, with nothing run or posted when no default answers; it posts no PR guide (`TestAGitHubCommentToTheAppIsTheClientsDefaults`, in memory and with Postgres, `TestAnUntaggedGitHubCommentFallsToTheHomesChain`, `TestAnUntaggedGitHubCommentNobodyMayAnswerStartsNothing`, driven by a fake connector's tag in the shape fiber's connector raises, and `TestACommentWhoseAgentIsResolvedLaterPostsNoGuide`). fiber's GitHub connector raises such a comment (`github.Config` with `Login` and `DefaultAgent`), and through it a signed comment that mentions the app and names no agent is answered by the client's default, while one that mentions neither the app nor an agent starts nothing (`TestASignedCommentToTheAppIsAnsweredByTheClientsDefault`)
 - `packages/adapter`: the shared platform-to-UI adapter, run events and inbox messages to Humagen's model and Humagen actions back to platform calls, shared by the console and the Slack app
@@ -1090,7 +1140,7 @@ routes too long for a table column. Each is followed by its state.
 - Read confinement: members-only projects and private threads, one predicate on every read path
   - Built. One rule, `platform.Seer` over `seesPlace`: a role of at least viewer in the project, and in a private thread taking part, or `projects:govern`. Every read path asks it and answers 404 "not found" for what it hides, exactly as for what does not exist: runs, their events, manifest and trace, threads and their pages, the journal, analytics, alerts and rules, published files and downloads, storage, schedules and the runs each lists as recent (found by its name, so a schedule moved out of a project, or a name used again, shows only those the reader may read), the inbox and its counts, memory, limits, usage and notices, eval suites, and the agents that live in a project. A record that names agents names only those the reader may read: a client's default, list, bots and auto-labels (all but to the machine that hosts it), a project's `enable`, `allow` and `default` and its history, the workspace's title and memory agents, an agent's spec (the agents it may call and the approvals of those calls, hashed as shown) and its call policy's `allow` and `trusted`, a run manifest's definition, a channel's default and its history, and a thread's default, the agents added to it by name who never answered there, and the tags in its turns that started nothing (a tag of such an agent reads as one of nobody), all but to the machine that hosts its surface, leave out one that lives in a project the reader may not read, as if it were not there, and so does what the builder reads of a spec; a spec whose every approval is left out leaves out who may approve too. A run names the agent that ran it, which was available where it ran, even one moved since, and so does what is built only from runs the reader may read: a conversation's agents, the agents that joined a thread by answering there, a tag that started a run, analytics and the analyst's summaries by agent and their slowest runs, a recap's rows of what was done, and a filter of runs by agent, so one page never hides a name another shows. Such a title or memory agent is asked only about the turns there and below, so its runs reach only who may read it. A model policy such an agent runs on is not removed, and the refusal does not name it. A change to any of them keeps what the writer was not shown (in a project's lists, the `allow` names, which let nothing run there while their agents live where they do, since its owners read every project below it; an enable entry or a default never names such an agent; in a spec, the agents it may call, their approvals and, when the writer was shown none of those, who may approve; in a call policy, the callers while its mode still lists them; in a channel or a thread, its default when none is written; in a thread, a participant, whose removal is that of one not there). What the writer was not shown counts toward no limit they are told of (a call policy's 100 callers, past which a list holds only names already stored, and the 50 participants a change that adds to a thread leaves, of at most 100; a spec's kept approvals keep who may approve them, which a writer shown no approvals who adds one reads back), and a spec's is kept against the revision the write expects, a call policy's, a channel's and a thread's under their store's lock, so an entry another writer adds meanwhile is kept too; a client's and the settings' are kept against what was read when the write began, and naming such an agent, in any spelling of its name, answers in the words for one that does not exist, there and wherever else a request names an agent: the agent a run, a call from a run or a schedule asks, a thread's tags, default and participants, a channel's default, a limit's scope, an alert rule's agent and an eval's subject. A thread's, a client's or a channel's default the person a read, a turn or a message is for may not read is passed over for them, as if it were not set: who answers is the next default along, so what they read and what their messages do never tell it from none, and no agent they may not read is asked to join for them. Moving an agent into a project is refused while a channel's default would lose it, as for a project's or a client's; a thread's is kept and left out instead. A refusal that an agent is not available says where it lives only when everyone in the workspace reads that project, and the call tool offers a run only the agents available where its calls are filed (`TestAClientNamesOnlyTheAgentsTheCallerMayRead`, `TestAProjectsListsNameOnlyTheAgentsTheCallerMayRead`, `TestTheSettingsNameOnlyTheAgentsTheCallerMayRead`, `TestAThreadNamesOnlyTheAgentsItsPosterMayRead`, `TestASpecAndItsCallPolicyNameOnlyTheAgentsTheCallerMayRead`, `TestAThreadShowsOnlyTheAgentsItsReaderMayRead`, `TestATurnNamesNoDefaultItsPersonMayNotRead`, `TestARefusalNamesWhereAnAgentLivesOnlyWhereEveryoneReadsIt`, `TestTheCallToolOffersOnlyAgentsAvailableWhereTheRunIs`, `TestTheAnalystNamesWhoRanAndTheBuilderOnlyAgentsEveryoneTheyReachMayRead`, `TestAChannelNamesNoDefaultItsReaderMayNotRead`, `TestASpecWhoseEveryApprovalIsHiddenNamesNoApprovers`, `TestWhatAWriterIsNotShownCountsTowardNoLimit`, `TestPutKeepingKeepsWhatIsStoredWhenItWrites`, `TestABusyThreadsParticipantsStillChange`). The event stream drops a hidden run's events and a hidden thread's or message's notice, and a project's counts in the directory leave out the sub-projects, the private threads and the conversations of housekeeping runs serving a turn the reader is not shown. They are decided as of one moment, so a conversation opened while they are read is counted from the next read and never for a reader who may not read it (`TestAProjectsCountsLeaveOutWhatTheCallerMayNotRead`, `TestCountsNeverTellOfAConversationOpenedWhileTheyAreRead`, `TestProjectCountsAreReadAsOfAMark`). A person a surface reads, posts or answers for is held to where they may read, never where the surface's machine may: the machine reads every thread on its surface wherever it is filed, but a mapped person who may not read a run finds nothing to answer in it, and nothing is recorded (`TestAMappedPersonAnswersOnlyWhatTheyMayRead`). Members-only projects are accepted, and account projects are members only from creation; a private thread is read by its participants, tagging a person invites them, and nothing said there is proposed as a note or titled where others read it. What a deleted project held is read by whom it was read by when it was deleted: its tombstone keeps its parent and members. A recap reads only what everyone it reaches may read, and names as configuration only the agents they may all read; its rows of what was done name the agent that ran, as the runs do (`TestARecapNamesOnlyTheAgentsEveryoneItReachesMayRead`). The sweep reads every GET in the contract and the event stream as another workspace and as a non-member of a members-only project in the same workspace, checking that a hidden object answers as a missing one and that no list, filter or event carries it (`TestAnOutsiderReadsNothingHidden`, `TestAnOutsiderStreamCarriesNothingHidden`). The hidden project's channel is bound to a Slack client the non-member may read, so a client's bindings are swept too and leave the hidden one out, and so is that client with its home in the hidden project and the hidden agent as its default, in its list and behind a bot, beside a project the non-member reads whose allow list names the hidden agent and one of whose channels the platform file gave the hidden agent as its default, an agent they read whose spec may call it and whose call policy admits and trusts it, read with a run of that agent and its manifest, a conversation in the workspace whose default and participant came to live in the hidden project, and the workspace's title agent set to it, which titles a conversation in the hidden project and is not asked about one in a project the non-member reads, and a schedule that ran in the hidden project and was moved to the workspace is swept with its recent runs. It also sends every other operation that names an object against a hidden one, and bodies naming the hidden project or following its run, or naming the hidden agent, as it is spelled and in capitals, in a client, a project's lists, the settings, a run, a schedule, a channel's default, a limit, an alert rule, an eval, a spec's spawn list or approvals, a call policy's lists or a call from a run, checking each answers as for one that does not exist and changes nothing, and that saving the client, the settings, the open agent's spec and its call policy as the non-member reads them keeps the hidden agent (`TestAnOutsiderChangesNothingHidden`). A second sweep hides only a private thread in a project the reader is a member of, with its run, a file it published, the alert a rule raised for the run and that alert's inbox message, and reads, writes and streams as that member while a participant posts there (`TestAPrivateThreadIsItsParticipantsAlone`). With `TestSeesNeedsARoleAndInAPrivateThreadToTakePart`, `TestAPrivateThreadsHousekeepingStaysInIt`, `TestTaggingAPersonInAPrivateThreadInvitesThem` and `TestADeletedProjectIsReadByWhoReadItThen`. The console says "Private" in a thread's meta and its row, offers Private in a channel's composer, says on New Project that accounts are members only, and asks an account's owners whether to make one everyone sees members only, except under a project everyone owns, where it says to name owners above first; nothing is closed for them
 - Versioned skills, private memory, personal settings and native console notifications
-  - Implemented backend and standalone console workflows: immutable drafts, real forced-approval test runs, tested publication and scoped promotion; exact-owner personal memory with explicit shared-project opt-in; durable native delivery with hourly digests, quiet hours and projection-only dismissal. Agent defaults durably bind up to four exact published skill revisions to the current agent spec revision; home moves cannot widen their scope. Exact-revision Used By lists real readable agent bindings separately from tests; stale bindings surface a review-required readiness state and link to Context. `humagen import skills` drafts a folder that changed since it was imported as a new unpublished revision and leaves the published one, reports a skill edited in the library since as a conflict unless `--force`, and loses cleanly to a concurrent import; a revision records `via: import` and answers carry `package_hash` (`TestImportSkillsDraftsAChangedFolderAndLeavesThePublishedRevision`, `TestImportSkillsReportsAConflictWithAnEditMadeInTheLibrary`, `TestTwoSkillImportsAtOnceLeaveOneDraft`, `TestASkillRevisionSaysItWasImportedAndCarriesItsPackageHash`). The import's tests run against a server that holds the real skill store in memory; the store's conditional draft runs on memory and Postgres in the store suite (`TestImportDraftsARevisionMarkedAsImported`), and no import was run against a Postgres server. Canonical Library routes preserve resource scope in copied links and reloads; You routes alias Settings. The retained legacy notification components remain for compatibility. The current console routes `/inbox` and `/notifications` to Alerts, uses one open Urgent/Normal count, and keeps delivery preferences by priority separate; DOM and route tests cover canonical behavior; earlier phone/desktop captures do not certify the new session console. Memory corrections retain provenance; scope/search/kind/expiry controls and explicit reviewed project promotion are implemented. Audit date/actor/domain filters, resource links, expanded snapshots and CSV export are implemented.
+  - Implemented backend and standalone console workflows: immutable drafts, real forced-approval test runs, tested publication and scoped promotion; exact-owner personal memory with explicit shared-project opt-in; durable native delivery with hourly digests, quiet hours and projection-only dismissal. Agent defaults durably bind up to four exact published skill revisions to the current agent spec revision; home moves cannot widen their scope. Exact-revision Used By lists real readable agent bindings separately from tests; stale bindings surface a review-required readiness state and link to Context. `humagen import skills` drafts a folder that changed since it was imported as a new unpublished revision and leaves the published one, reports a skill edited in the library since as a conflict unless `--force`, and loses cleanly to a concurrent import; a revision records `via: import` and answers carry `package_hash` (`TestImportSkillsDraftsAChangedFolderAndLeavesThePublishedRevision`, `TestImportSkillsReportsAConflictWithAnEditMadeInTheLibrary`, `TestTwoSkillImportsAtOnceLeaveOneDraft`, `TestASkillRevisionSaysItWasImportedAndCarriesItsPackageHash`). An imported skill limits a run's tools only as its `SKILL.md` declares (no list: the agent's own tools; an earlier import's stored empty list is read the same way), a run reads its skills' supporting files with `skill_file_read`, confined to the pinned packages, unasked and recorded, whatever its tools, a skill test that called a tool the run did not have or had a read of the skill's own file refused does not pass, other failed calls are warnings, and the verdict is recorded when the test ends and fails closed once unrecorded events are gone (`test_results`); an import refuses a tool list and a `SKILL.md` past 128 tools (`TestAnImportedSkillsSupportingFileReachesTheAnswer`, `TestAnImportedSkillLimitsToolsOnlyAsItsFolderDeclares`, `TestSkillFileReadReachesOnlyThePinnedPackages`, `TestTheTurnTextAndTheTurnsToolsAgree`, `TestASkillTestFailsOnAMissingToolOrARefusedReadAndWarnsOtherwise`, `TestASkillTestVerdictOutlastsItsEvents`, `TestAnImportTakesNoToolList`, `TestImportSkillsNamesAnAllowedToolsPastTheBound`, scripted model on memory and Postgres; not yet checked in a live run). Imports since v0.138.1 change what they limit ([upgrade notes](../guides/deploy.md#upgrading-what-an-imported-skill-limits)). The import's tests run against a server that holds the real skill store in memory; the store's conditional draft runs on memory and Postgres in the store suite (`TestImportDraftsARevisionMarkedAsImported`), and no import was run against a Postgres server. Canonical Library routes preserve resource scope in copied links and reloads; You routes alias Settings. The retained legacy notification components remain for compatibility. The current console routes `/inbox` and `/notifications` to Alerts, uses one open Urgent/Normal count, and keeps delivery preferences by priority separate; DOM and route tests cover canonical behavior; earlier phone/desktop captures do not certify the new session console. Memory corrections retain provenance; scope/search/kind/expiry controls and explicit reviewed project promotion are implemented. Audit date/actor/domain filters, resource links, expanded snapshots and CSV export are implemented.
 - Cross-domain change audit foundation
   - Built: bounded, credential-redacted attempts and observed outcomes, principal-derived actors, opaque public IDs that reveal no hidden-record count, memory/Postgres replay, and inbox retention. Mutations can persist an attempt before acting and leave an unknown completion pending. Upper library work adds `GET /api/audit` and an Audit view with exact-owner personal confinement, retained break-glass/project history adapters and explicitly labeled current call-policy snapshots. Historical unknown rules are left absent.
 - Recorded break-glass reads: a read made only through `projects:govern` (a project or thread the reader sees by no role of their own) kept in an audit record a workspace's admins can list

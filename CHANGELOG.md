@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.146.0 (2026-11-20)
+
+### Features
+
+- **slack**: count a finished turn's work, show a failed command's output, and answer run details on request (#405) ([d289c38](https://github.com/urmzd/humagen/commit/d289c3851bee7facfc8a2d60796d9fe1539f10e4))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.145.0...v0.146.0)
+
+
+## 0.144.0 (2026-11-20)
+
+### Breaking
+
+- **skills**: read a skill's own files without a tool grant (#397) ([49ddd83](https://github.com/urmzd/humagen/commit/49ddd83c9cc1e48e253139651ccfcc4dee7847ac))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.143.1...v0.144.0)
+
+
 ## 0.143.0 (2026-11-20)
 
 ### Features

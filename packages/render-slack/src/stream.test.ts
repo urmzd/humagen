@@ -7,6 +7,7 @@ import {
   STREAM_MESSAGE_CHARS,
   type StreamChunk,
   streamHeader,
+  streamLink,
   streamPages,
   streamStart,
   streamStopTitle,
@@ -15,18 +16,69 @@ import {
 } from "./stream";
 
 describe("streamUpdate", () => {
-  it("sends progress before text, and only the text delta", () => {
+  it("puts a new card where its step came in the words, and sends only the text delta", () => {
     const a: Turn = { ...emptyTurn("t", { name: "A" }), text: "Hello" };
-    const b = reduce(reduce(a, { type: "text.delta", text: " world" }), {
+    const b = reduce(reduce(a, { type: "text.delta", text: " world." }), {
       type: "task.upserted",
       task: { id: "x", title: "Searching", status: "in_progress" },
     });
     const { chunks, rewritten } = streamUpdate(a, b);
     expect(rewritten).toBe(false);
+    // The step began after " world." was said, so its card goes after it, not before.
     expect(chunks).toEqual([
+      { type: "markdown_text", text: " world." },
       { type: "task_update", id: "x", title: "Searching", status: "in_progress" },
-      { type: "markdown_text", text: " world" },
     ]);
+    // What comes after the step starts a paragraph below its card.
+    const c = reduce(b, { type: "text.delta", text: "Found it." });
+    expect(streamUpdate(b, c).chunks).toEqual([{ type: "markdown_text", text: "\n\nFound it." }]);
+  });
+
+  it("sends updates to cards already shown before the words that follow them", () => {
+    const task = { id: "x", title: "Searching", status: "in_progress" as const, at: 5 };
+    const a: Turn = { ...emptyTurn("t", { name: "A" }), text: "Hello", tasks: [task] };
+    const b: Turn = { ...a, text: "Hello. Done", tasks: [{ ...task, status: "complete" }] };
+    expect(streamUpdate(a, b).chunks[0]).toMatchObject({ type: "task_update", status: "complete" });
+  });
+
+  it("keeps a sentence whole above a call when the stream had sent only its first word", () => {
+    const said = " bring in @researcher to look it up on the web.";
+    const a: Turn = { ...emptyTurn("t", { name: "A" }), text: "I'll" };
+    const call = {
+      id: "c",
+      title: "researcher",
+      status: "in_progress" as const,
+      subagent: { name: "researcher" },
+    };
+    const b = reduce(reduce(a, { type: "text.delta", text: said }), {
+      type: "task.upserted",
+      task: call,
+    });
+    const c = reduce(reduce(b, { type: "task.upserted", task: { ...call, status: "complete" } }), {
+      type: "text.delta",
+      text: "Here are three changes.",
+    });
+    const first = streamUpdate(a, b).chunks;
+    expect(first).toEqual([
+      { type: "markdown_text", text: said },
+      { type: "task_update", id: "c", title: "researcher", status: "in_progress" },
+    ]);
+    expect(streamUpdate(b, c).chunks).toEqual([
+      { type: "task_update", id: "c", title: "researcher", status: "complete" },
+      { type: "markdown_text", text: "\n\nHere are three changes." },
+    ]);
+  });
+
+  it("names another agent's step once, with its own title when it has one", () => {
+    const turn = (title: string): Turn => ({
+      ...emptyTurn("t", { name: "A" }),
+      tasks: [{ id: "c", title, status: "complete", subagent: { name: "researcher" } }],
+    });
+    const title = (t: Turn) => (streamUpdate(null, t).chunks[0] as { title: string }).title;
+    expect(title(turn("researcher"))).toBe("researcher");
+    expect(title(turn("Researcher"))).toBe("researcher");
+    expect(title(turn(""))).toBe("researcher");
+    expect(title(turn("Looked up Go releases"))).toBe("researcher: Looked up Go releases");
   });
 
   it("sends task details once, since Slack appends them", () => {
@@ -256,5 +308,53 @@ describe("lifecycle", () => {
   it("caps suggested prompts at four", () => {
     const suggestions = Array.from({ length: 6 }, (_, i) => ({ title: `T${i}`, message: `M${i}` }));
     expect(suggestedPrompts({ suggestions }).prompts).toHaveLength(4);
+  });
+});
+
+describe("streamLink", () => {
+  const session = "https://example.com/sessions/turn-1";
+  const sent = (turn: Turn) => streamPages(emptyBudget(), streamUpdate(null, turn).chunks).budget;
+
+  it("ends a finished answer's last line with the arrow, as text and not on a line of its own", () => {
+    const turn: Turn = { ...fx.doneTurn, citations: [], text: "Rolled back. The rate is normal." };
+    expect(streamLink(turn, sent(turn))).toEqual({
+      type: "markdown_text",
+      text: ` [\u2197\uFE0E](${session})`,
+    });
+  });
+
+  it("leaves it to the final blocks when the words cannot take it", () => {
+    const at = (patch: Partial<Turn>) => {
+      const turn: Turn = { ...fx.doneTurn, citations: [], ...patch };
+      return streamLink(turn, sent(turn));
+    };
+    expect(at({ text: "Run:\n\n```sh\nmake\n```" })).toBeNull();
+    expect(at({ text: "| a |\n| --- |\n| 1 |" })).toBeNull();
+    expect(at({ text: "Cut short", status: "failed" })).toBeNull();
+    expect(at({ text: "Cut short", status: "stopped" })).toBeNull();
+    expect(at({ text: "" })).toBeNull();
+    expect(at({ text: "No session", sessionUrl: undefined })).toBeNull();
+  });
+
+  it("does not put the arrow under a task card that came after the words", () => {
+    const turn: Turn = { ...fx.doneTurn, citations: [], tasks: [], text: "Words first." };
+    const words = sent(turn);
+    const card = streamPages(words, [
+      { type: "task_update", id: "late", title: "Checked", status: "complete" },
+    ]).budget;
+    expect(streamLink(turn, words)).not.toBeNull();
+    expect(streamLink(turn, card)).toBeNull();
+    // An update to a card already above the words leaves them last.
+    const early = sent({ ...turn, tasks: [{ id: "k", title: "Read", status: "in_progress" }] });
+    const updated = streamPages(early, [
+      { type: "task_update", id: "k", title: "Read", status: "complete" },
+    ]).budget;
+    expect(streamLink(turn, updated)).not.toBeNull();
+  });
+
+  it("is left out when it would push a full message over into a new one", () => {
+    const turn: Turn = { ...fx.doneTurn, citations: [], tasks: [] };
+    const full = { ...emptyBudget(), text: "x".repeat(STREAM_MESSAGE_CHARS - 5), textLast: true };
+    expect(streamLink(turn, full)).toBeNull();
   });
 });

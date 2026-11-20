@@ -35,6 +35,8 @@ import type {
   BigQuerySetupView,
   Branding,
   BringBackThreadResultBody,
+  BrowserAction,
+  BrowserView,
   CallPolicy,
   CallPolicyInput,
   CatalogConnector,
@@ -55,6 +57,7 @@ import type {
   ConnectionHealth,
   ConnectionPreset,
   ContextResult,
+  ContinueImportedDocumentBody,
   ConversationMemory,
   ConversationSandboxes,
   Corpus,
@@ -149,6 +152,7 @@ import type {
   ListSkillsResponse,
   ListSourceLinkSuggestionsResponse,
   ListStorePackagesResponse,
+  ListThreadForksResponse,
   ListThreadsResponse,
   ListUsageNoticesResponse,
   Manifest,
@@ -227,6 +231,8 @@ import type {
   Run,
   RunFeedback,
   RunList,
+  SandboxCommand,
+  SandboxCommandResult,
   SaveKnowledgeVariantBody,
   SaveRunFeedbackBody,
   SaveSessionFeedbackBody,
@@ -1016,6 +1022,35 @@ visible older history pages on reset.
     });
   }
 
+  /** The browser is the one the session's agent works in: an MCP tool
+provider the agent holds a write grant on (`mcp:<name>:write`),
+shared and reached over HTTP, whose accepted tools include a
+screenshot. The caller must be a person allowed to post in the
+session, and the action policy must allow that agent's browser
+actions without review. Only accepted tools are called. Every action
+but `look` is audited, without what was typed. The answer is the page
+afterwards. Nothing is sent to the agent.
+ */
+  async actOnSessionBrowser(id: string, body: BrowserAction, options?: RequestOptions): Promise<BrowserView> {
+    let path = "/api/sessions/{id}/browser";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<BrowserView>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async actOnSessionBrowserRaw(id: string, body: BrowserAction, options?: RequestOptions): Promise<ApiResponse<BrowserView>> {
+    let path = "/api/sessions/{id}/browser";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<BrowserView>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
   /** Post session message */
   async postSessionMessage(id: string, body: SessionPostInput, options?: RequestOptions): Promise<AgentSession> {
     let path = "/api/sessions/{id}/messages";
@@ -1407,7 +1442,7 @@ visible older history pages on reset.
     });
   }
 
-  /** Publish a successfully tested immutable revision */
+  /** A revision is published when a test of it the caller may read passed (see `test_results`). Otherwise the answer is 409, naming why the last finished test did not pass. */
   async publishLibrarySkill(id: string, version: number, options?: RequestOptions): Promise<LibrarySkill> {
     let path = "/api/library/skills/{id}/versions/{version}/publish";
     path = path.replace("{id}", encodeURIComponent(String(id)));
@@ -3985,6 +4020,23 @@ here too (429).
     });
   }
 
+  /** The most recently active first, at most 50. A fork is private to whoever started it, so this is the caller's way back to their own. An archived fork and a read-only archive are left out. A fork's saved history is not included; read the fork for it. */
+  async listThreadForks(id: string, options?: RequestOptions): Promise<ListThreadForksResponse> {
+    let path = "/api/threads/{id}/forks";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<ListThreadForksResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listThreadForksRaw(id: string, options?: RequestOptions): Promise<ApiResponse<ListThreadForksResponse>> {
+    let path = "/api/threads/{id}/forks";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<ListThreadForksResponse>("GET", path, {
+      ...options,
+    });
+  }
+
   /** The caller explicitly posts a completed result as their own passive message. Requires posting access to the parent and read access to both conversations. Tags are plain text, not routing or notification instructions. */
   async bringBackThreadResult(id: string, body: BringBackThreadResultBody, options?: RequestOptions): Promise<ThreadMessage> {
     let path = "/api/threads/{id}/bring-back";
@@ -4958,6 +5010,27 @@ to that machine only, wherever the message is read.
     let path = "/api/threads/{id}/sandboxes";
     path = path.replace("{id}", encodeURIComponent(String(id)));
     return this.rawRequest<ConversationSandboxes>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** The command runs with sh -c in an instance started for it alone, with the conversation's files in its work directory, no network, no memory and no tool servers, for at most 15 seconds. What it changed is written back to the conversation's files and the instance is destroyed. It runs only where the session sandbox says commands, and only while no work is under way in the conversation. Nothing is sent to an agent. */
+  async runSandboxCommand(id: string, body: SandboxCommand, options?: RequestOptions): Promise<SandboxCommandResult> {
+    let path = "/api/threads/{id}/sandboxes/commands";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<SandboxCommandResult>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async runSandboxCommandRaw(id: string, body: SandboxCommand, options?: RequestOptions): Promise<ApiResponse<SandboxCommandResult>> {
+    let path = "/api/threads/{id}/sandboxes/commands";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<SandboxCommandResult>("POST", path, {
+      body,
+      contentType: "application/json",
       ...options,
     });
   }
@@ -6665,6 +6738,61 @@ grounds nothing until a source of that name is made again.
     path = path.replace("{name}", encodeURIComponent(String(name)));
     path = path.replace("{id}", encodeURIComponent(String(id)));
     return this.rawRequest<KnowledgeDocument>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Starts a private conversation of the caller's that continues a
+document an import wrote from a session of another tool. The
+conversation is a plain thread in the source's project (the one it
+is scoped to, else the one it is attached to, else the workspace
+itself), and its `import` holds the pinned revision and the passive
+turns its agent is sent ahead of the conversation's own: the newest
+turns of the main path that fit half the workspace's history limit,
+counted with their labels and marks as the transcript is written,
+and at most 200 turns and 128 KiB. Nothing is summarized. No branch
+is continued, and no attachment is imported. The agent keeps its
+own knowledge sources: continuing grants and limits none. No agent
+is started: the caller posts the first message.
+
+The caller must also read knowledge and see the source: a source of
+a project they do not see, another workspace's, an excluded or
+missing document answer 404. A document that is not an imported
+session's, one whose kept structure was edited since its import or
+is malformed, and a workspace whose history setting is none answer
+400. A document no import kept a structure with, whose `uri` names
+a session, is continued as one block whose speakers are not known
+(`import.structure` is `not_kept`). The document and structure
+digests, and the project, must still be the ones the caller read:
+409 otherwise, and no conversation is started. Posting in the
+project is required (403). Audited as
+`conversation.continue_import`.
+
+From the answer a client shows: how many turns were sent
+(`import.context` length) of how many the import kept (that plus
+`import.omitted.turns` and `import.omitted.results`), the branches
+not continued (`import.branches`), how many turns carried files
+that were not imported (`import.import_cut.attachments`) and the
+pinned revision (`import.document_digest`).
+ */
+  async continueImportedDocument(name: string, id: string, body: ContinueImportedDocumentBody, options?: RequestOptions): Promise<Thread> {
+    let path = "/api/knowledge/{name}/documents/{id}/continue";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<Thread>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async continueImportedDocumentRaw(name: string, id: string, body: ContinueImportedDocumentBody, options?: RequestOptions): Promise<ApiResponse<Thread>> {
+    let path = "/api/knowledge/{name}/documents/{id}/continue";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<Thread>("POST", path, {
       body,
       contentType: "application/json",
       ...options,

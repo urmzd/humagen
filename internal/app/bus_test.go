@@ -117,3 +117,29 @@ func TestTheSpecSetsTheBusOnlyWhenItSays(t *testing.T) {
 		t.Fatalf("a declared bus: args %v, %v", l.args, err)
 	}
 }
+
+// The file sets -public-url only when it says, so $HUMAGEN_PUBLIC_URL is
+// the address when neither the file nor a flag gives one.
+func TestPublicURLComesFromTheEnvironmentWhenTheFileIsSilent(t *testing.T) {
+	write := func(body string) string {
+		t.Helper()
+		path := filepath.Join(t.TempDir(), "humagen.yaml")
+		if err := os.WriteFile(path, []byte("api_version: humagen/v1\nkind: System\nmetadata: {name: humagen}\nspec:\n"+body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	l, err := loadFiles(t.Context(), Options{}, []string{write("  server: {addr: \"127.0.0.1:9\"}\n")}, credref.Resolver{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, arg := range l.args {
+		if strings.HasPrefix(arg, "-public-url=") {
+			t.Fatalf("a file that names no public_url set %s, which would hide $%s", arg, publicURLEnv)
+		}
+	}
+	l, err = loadFiles(t.Context(), Options{}, []string{write("  server: {public_url: \"https://humagen.example.test\"}\n")}, credref.Resolver{})
+	if err != nil || !slices.Contains(l.args, "-public-url=https://humagen.example.test") {
+		t.Fatalf("a declared public_url was not passed on: %v, %v", l.args, err)
+	}
+}

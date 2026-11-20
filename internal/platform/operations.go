@@ -197,6 +197,11 @@ func (p *Platform) operationsCatalog(base runtime.Catalog, groups runtime.ToolGr
 	}
 }
 func (c *operationsCatalog) Lookup(name string) (saigetypes.Tool, error) {
+	if name == ToolSkillFileRead {
+		// Not a grant, and not held by a skill's tool list or the action
+		// policy: it reads only the run's pinned skill packages.
+		return c.p.skillFileTool(c.req), nil
+	}
 	t, err := c.inner.Lookup(name)
 	if err != nil {
 		return nil, err

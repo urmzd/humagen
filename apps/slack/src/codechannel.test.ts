@@ -328,7 +328,11 @@ test("a code channel Slack refuses the chrome for still gets its answer", async 
   await settle();
   await w.app.idle();
   await settle();
-  assert.equal(w.slack.streamed, "Fixed.");
+  // The streamed answer ends with the arrow to its conversation (#394).
+  assert.match(
+    w.slack.streamed,
+    /^Fixed\. \[\u2197\uFE0E\]\(https:\/\/humagen\.test\/conversations\/[^)]+\)$/,
+  );
   assert.ok(w.slack.methods.includes("chat.stopStream"));
   assert.equal(w.slack.of("agents.conversations.setProperties").length, 1);
   assert.equal(w.slack.of("agents.sessions.rename").length, 1);

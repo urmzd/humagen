@@ -61,14 +61,20 @@ func (s Scope) Valid() bool {
 
 type Definition struct {
 	projects.Skill
-	Inputs  string   `json:"inputs,omitempty"`
-	Outputs string   `json:"outputs,omitempty"`
-	Tools   []string `json:"tools"`
-	Files   []File   `json:"files,omitempty"`
+	Inputs  string `json:"inputs,omitempty"`
+	Outputs string `json:"outputs,omitempty"`
+	// Tools are the tools a run that uses the skill is limited to, within
+	// the agent's own grants: absent (nil) does not limit them, an empty
+	// list allows none, and a list allows those it names that the agent
+	// holds. A run that uses several skills is limited to what every
+	// limiting skill allows. Nil is kept apart from empty in what is stored
+	// and answered (omitzero).
+	Tools []string `json:"tools,omitzero"`
+	Files []File   `json:"files,omitempty"`
 }
 
 func (d Definition) Valid() bool {
-	if !projects.ValidSkill(d.Name) || !d.validPackage() || strings.TrimSpace(d.Description) == "" || strings.TrimSpace(d.Instructions) == "" || utf8.RuneCountInString(d.Description) > projects.MaxSkillDescription || len(d.ArgumentHint) > projects.MaxArgumentHint || len(d.Inputs) > 4000 || len(d.Outputs) > 4000 || len(d.Tools) > 32 {
+	if !projects.ValidSkill(d.Name) || !d.validPackage() || strings.TrimSpace(d.Description) == "" || strings.TrimSpace(d.Instructions) == "" || utf8.RuneCountInString(d.Description) > projects.MaxSkillDescription || len(d.ArgumentHint) > projects.MaxArgumentHint || len(d.Inputs) > 4000 || len(d.Outputs) > 4000 || len(d.Tools) > MaxSkillTools {
 		return false
 	}
 	for _, value := range []string{d.Description, d.Instructions, d.ArgumentHint, d.Inputs, d.Outputs} {
@@ -105,20 +111,133 @@ type Revision struct {
 	// write over unasked.
 	Via string `json:"via,omitempty"`
 	Definition
-	Scope       Scope       `json:"scope"`
-	Version     int         `json:"version"`
-	By          string      `json:"by"`
-	At          time.Time   `json:"at"`
-	PublishedAt time.Time   `json:"published_at,omitzero"`
-	PublishedBy string      `json:"published_by,omitempty"`
-	Tests       []string    `json:"tests"`
-	From        *Provenance `json:"from,omitempty"`
+	Scope       Scope     `json:"scope"`
+	Version     int       `json:"version"`
+	By          string    `json:"by"`
+	At          time.Time `json:"at"`
+	PublishedAt time.Time `json:"published_at,omitzero"`
+	PublishedBy string    `json:"published_by,omitempty"`
+	Tests       []string  `json:"tests"`
+	// Results are the recorded results of its test runs, at most one a
+	// run and as many as Tests holds. The store keeps them (records); a
+	// revision is never answered with them.
+	Results []TestResult `json:"-"`
+	From    *Provenance  `json:"from,omitempty"`
+}
+
+// ToolLimit is the tools a run that uses r is limited to (Definition.Tools),
+// nil when r does not limit them.
+//
+// A revision drafted from a skill folder (ViaImport) is limited by what its
+// SKILL.md declares in allowed-tools, nil when it declares nothing. An
+// import before this release wrote an empty list whatever the folder said,
+// which records no one's choice and withdrew every tool from a run that
+// used the skill, so that stored list is not read. A person's own choice is
+// a revision saved in the editor, never ViaImport, and is read as stored.
+//
+// The store reads every revision this way (checkRows), so what it answers,
+// what it writes back and what limits a run are one list. One whose
+// allowed-tools is past the bounds (declaredTools) allows no tool: it is
+// never read as limiting nothing.
+func (r Revision) ToolLimit() []string {
+	if r.Via != ViaImport || r.Files == nil {
+		return slices.Clone(r.Tools)
+	}
+	pkg, err := r.Package()
+	if err != nil {
+		return slices.Clone(r.Tools)
+	}
+	tools, err := declaredTools(pkg.AllowedTools)
+	if err != nil {
+		return []string{}
+	}
+	return tools
+}
+
+// TestResult is what one test run of a revision showed, recorded when the
+// run ended so it outlasts the run's events. A test passes when its run
+// completed and called no tool it did not have and no read of the skill's
+// own files was refused; Reason says why one did not. Warnings are the
+// other failed tool calls, which do not stop it passing.
+type TestResult struct {
+	Run      string   `json:"run"`
+	Passed   bool     `json:"passed"`
+	Reason   string   `json:"reason,omitempty"`
+	Warnings []string `json:"warnings,omitempty"`
+}
+
+// Bounds on a recorded test result: how many warnings it keeps, and the
+// characters of its reason and of each warning.
+const (
+	MaxTestWarnings = 5
+	MaxTestText     = 300
+)
+
+func (t TestResult) valid() bool {
+	if t.Run == "" || len(t.Run) > 128 || utf8.RuneCountInString(t.Reason) > MaxTestText || t.Passed != (t.Reason == "") || len(t.Warnings) > MaxTestWarnings {
+		return false
+	}
+	for _, w := range t.Warnings {
+		if w == "" || utf8.RuneCountInString(w) > MaxTestText {
+			return false
+		}
+	}
+	return true
+}
+
+// ResultOf is the recorded result of the test run, when there is one.
+func (r Revision) ResultOf(run string) (TestResult, bool) {
+	for _, t := range r.Results {
+		if t.Run == run {
+			return t, true
+		}
+	}
+	return TestResult{}, false
+}
+
+// records is a skill's revisions as the store keeps them: each with its
+// recorded test results, which a revision's own JSON leaves out.
+type records []Revision
+
+type storedRevision struct {
+	Revision
+	Results []TestResult `json:"results,omitempty"`
+}
+
+func (rs records) MarshalJSON() ([]byte, error) {
+	out := make([]storedRevision, len(rs))
+	for i, r := range rs {
+		out[i] = storedRevision{Revision: r, Results: r.Results}
+	}
+	return json.Marshal(out)
+}
+
+func (rs *records) UnmarshalJSON(data []byte) error {
+	var in []storedRevision
+	if err := json.Unmarshal(data, &in); err != nil {
+		return err
+	}
+	out := make(records, len(in))
+	for i, r := range in {
+		r.Revision.Results = r.Results
+		out[i] = r.Revision
+	}
+	*rs = out
+	return nil
 }
 
 func clone(r Revision) Revision {
 	r.Tools = slices.Clone(r.Tools)
 	r.Files = cloneFiles(r.Files)
 	r.Tests = slices.Clone(r.Tests)
+	if r.Results != nil {
+		results := make([]TestResult, len(r.Results))
+		for i, t := range r.Results {
+			t.Warnings = slices.Clone(t.Warnings)
+			results[i] = t
+		}
+		r.Results = results
+	}
 	if r.From != nil {
 		from := *r.From
 		r.From = &from
@@ -186,8 +305,17 @@ func checkRows(key string, revisions []Revision) ([]Revision, error) {
 		if r.Via != "" && r.Via != ViaImport {
 			return nil, ErrInvalid
 		}
-		if !r.Valid() || r.Scope != first.Scope || r.Name != first.Name || r.Version != i+1 || r.By == "" || r.At.IsZero() || len(r.Tests) > 10 {
+		if !r.Valid() || r.Scope != first.Scope || r.Name != first.Name || r.Version != i+1 || r.By == "" || r.At.IsZero() || len(r.Tests) > 10 || len(r.Results) > 10 {
 			return nil, ErrInvalid
+		}
+		for _, t := range r.Results {
+			if !t.valid() {
+				return nil, ErrInvalid
+			}
+		}
+		// An import is read with the limit it is used with (ToolLimit).
+		if r.Via == ViaImport {
+			revisions[i].Tools = r.ToolLimit()
 		}
 	}
 	return revisions, nil
@@ -217,7 +345,7 @@ func (s *Store) convert(recs []state.Record) error {
 		if len(r.Key) > 0 && r.Key[0] == '#' {
 			continue
 		}
-		var revisions []Revision
+		var revisions records
 		if err := json.Unmarshal(r.Value, &revisions); err != nil {
 			return fmt.Errorf("%q/%q: %w", r.Tenant, r.Key, err)
 		}
@@ -239,7 +367,7 @@ func (s *Store) convert(recs []state.Record) error {
 // record.
 func (s *Store) read(tenant string, scope Scope, name string) ([]Revision, int64, error) {
 	key := skillKey(scope, name)
-	var rows []Revision
+	var rows records
 	ver, err := s.kv.lookupMaybe(tenant, key, &rows)
 	if err != nil || ver == 0 {
 		return nil, 0, err
@@ -269,14 +397,19 @@ func (s *Store) Import(tenant, by string, scope Scope, d Definition, expected in
 
 func (s *Store) draft(tenant, by string, scope Scope, d Definition, expected int, from *Provenance, at time.Time, via string, trustedOrigin []string) (Revision, error) {
 	var err error
+	if via == ViaImport {
+		if d, err = ImportTools(d); err != nil {
+			return Revision{}, err
+		}
+	}
+	if err := CheckTools(d); err != nil {
+		return Revision{}, err
+	}
 	if d, err = d.Normalize(); err != nil {
 		return Revision{}, err
 	}
 	if tenant == "" || by == "" || !scope.Valid() || !d.Valid() || at.IsZero() || len(trustedOrigin) > 1 || len(trustedOrigin) == 1 && len(trustedOrigin[0]) > 128 {
 		return Revision{}, ErrInvalid
-	}
-	if d.Tools == nil {
-		d.Tools = []string{}
 	}
 	var out Revision
 	err = state.Retry(func() error {
@@ -300,7 +433,7 @@ func (s *Store) draft(tenant, by string, scope Scope, d Definition, expected int
 		r := clone(Revision{OriginRun: outcomeOrigin(previous, from, trustedOrigin), ID: ID(scope, d.Name), Via: via, Definition: d, Scope: scope, Version: len(previous) + 1, By: by, At: at, Tests: []string{}, From: from})
 		next := append(slices.Clone(previous), r)
 		o := &ops{}
-		o.put(tenant, skillKey(scope, d.Name), next, ver)
+		o.put(tenant, skillKey(scope, d.Name), records(next), ver)
 		if ver == 0 {
 			// A new skill is counted in its scope, and a new scope in the
 			// tenant, in the same write.
@@ -360,7 +493,7 @@ func (s *Store) change(tenant string, scope Scope, name string, version int, fn 
 		next := slices.Clone(rows)
 		next[version-1] = r
 		o := &ops{}
-		o.put(tenant, skillKey(scope, name), next, ver)
+		o.put(tenant, skillKey(scope, name), records(next), ver)
 		if err := o.commit(s.kv); err != nil {
 			return err
 		}
@@ -398,7 +531,7 @@ func (s *Store) scan(tenant string, scope Scope, fn func([]Revision)) ([]string,
 	}
 	unreadable := []string{}
 	for _, it := range items {
-		var rows []Revision
+		var rows records
 		if json.Unmarshal(it.Value, &rows) != nil {
 			unreadable = append(unreadable, strings.TrimPrefix(it.Key, prefix))
 			continue
@@ -493,6 +626,44 @@ func (s *Store) Tested(tenant string, scope Scope, name string, version int, run
 	return err
 }
 
+// ErrNotTested is RecordTest's answer for a run an unpublished revision
+// does not list as its test (yet: Tested lists a test once it has started).
+var ErrNotTested = errors.New("library: that run is not a test of the revision")
+
+// RecordTest keeps the result of one test run of a revision, replacing an
+// earlier one of the same run. Only a run the revision lists as its test
+// (Tested) has a result kept, so a revision keeps at most as many as it has
+// tests: for another run it keeps nothing and answers ErrNotTested. For a
+// published revision it does nothing.
+func (s *Store) RecordTest(tenant string, scope Scope, name string, version int, result TestResult) error {
+	if !result.valid() {
+		return ErrInvalid
+	}
+	_, err := s.change(tenant, scope, name, version, func(r *Revision) error {
+		if !r.PublishedAt.IsZero() {
+			return state.ErrUnchanged
+		}
+		if !slices.Contains(r.Tests, result.Run) {
+			return ErrNotTested
+		}
+		for i, t := range r.Results {
+			if t.Run == result.Run {
+				if t.Passed == result.Passed && t.Reason == result.Reason && slices.Equal(t.Warnings, result.Warnings) {
+					return state.ErrUnchanged
+				}
+				r.Results[i] = result
+				return nil
+			}
+		}
+		if len(r.Results) >= 10 {
+			return state.ErrUnchanged
+		}
+		r.Results = append(r.Results, result)
+		return nil
+	})
+	return err
+}
+
 func (s *Store) Publish(tenant, by string, scope Scope, name string, version int, at time.Time) (Revision, error) {
 	r, err := s.change(tenant, scope, name, version, func(r *Revision) error {
 		if !r.PublishedAt.IsZero() {
@@ -529,7 +700,7 @@ func (s *Store) Find(tenant, id string) (Revision, error) {
 	} else if err != nil {
 		return Revision{}, err
 	}
-	var rows []Revision
+	var rows records
 	if _, err := s.kv.lookup(tenant, key, &rows); errors.Is(err, state.ErrNotFound) {
 		return Revision{}, ErrNotFound
 	} else if err != nil {

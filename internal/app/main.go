@@ -228,7 +228,7 @@ func serve(o Options, args []string, d serveDefaults) error {
 	stateKind := addStateFlags(fs, os.Getenv)
 	mockAddr := fs.String("mock-idp-addr", "127.0.0.1:8081", "with -auth=mock, the loopback address the development identity provider listens on")
 	mockPersonas := fs.String("mock-personas", "", `with -auth=mock, a JSON file of {"people": [...], "machines": [...]} to sign in as. Empty means the built-in set`)
-	publicURL := fs.String("public-url", "http://localhost:8080", "where browsers reach this server")
+	publicURL := fs.String("public-url", or(strings.TrimSpace(legacy.Getenv(publicURLEnv)), "http://localhost:8080"), "where browsers reach this server. The default is $"+publicURLEnv+" when that is set")
 	webDir := fs.String("web", d.web, "directory of a built web console to serve")
 	entryAgent := fs.String("entry-agent", "humagen", "the workspace's entry agent, which owns each root session that names nobody")
 	maxDepth := fs.Int("max-depth", 4, "deepest an agent-to-agent call may land")
@@ -487,6 +487,7 @@ func serve(o Options, args []string, d serveDefaults) error {
 		Bus:                  broker,
 		Workspace:            *workspaceDir,
 		Sandbox:              sbx,
+		SandboxContained:     sandboxing.contained(),
 		Concurrency:          *concurrency,
 		Role:                 role,
 		Leader:               elector,

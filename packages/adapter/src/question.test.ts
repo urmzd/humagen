@@ -191,15 +191,21 @@ test("a question nobody answered, or whose run was stopped, says so", () => {
   f.apply(ev("run.parked.v1", { question: questions.choice }));
   const stopped = f.apply(ev("run.stopped.v1", { reason: "Stopped by ada", by: "ada" }));
   const i = stopped.interrupts[0];
-  assert.equal(i?.type === "clarification" && i.answer.kind, "declined");
+  assert.deepEqual(i?.type === "clarification" && i.answer.kind === "cancelled" && i.answer.note, "The run was stopped");
   const g = follow({ id: "r1", agent: "lead" });
   g.apply(ev("run.parked.v1", { question: questions.choice }));
   const late = g.apply(ev("run.resumed.v1", { answer: { question_id: "q-c", choice: "blue", expired: true, at } })).interrupts[0];
   assert.deepEqual(late?.type === "clarification" && late.answer, {
-    kind: "declined",
-    by: "Nobody",
+    kind: "expired",
     at,
-    reason: "Nobody answered in time, so it went with blue",
+    note: "Nobody answered in time, so it went with blue",
+  });
+  // A run that ended without an answer closes its question in the inbox.
+  const closed = part("choice", { action: "closed", by: "system", at, note: "The run ended without an answer" }).parts[0];
+  assert.deepEqual(closed?.type === "choice" && closed.clarification.answer, {
+    kind: "cancelled",
+    at,
+    note: "The run ended without an answer",
   });
 });
 
