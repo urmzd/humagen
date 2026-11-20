@@ -5,8 +5,11 @@ import { ApiError, api, coworking, type Revision, type Thread } from "./api.ts";
 import { useConfiguredProviders } from "./ModelChain.tsx";
 import { POLICY } from "./models.ts";
 
-/** How a session's gated actions are approved: ✋ a person, or ⏩ the approval agent. */
-export type ApprovalMode = "ask" | "auto";
+/**
+ * How a session's gated actions are approved: ✋ a person, or ⏩ the approval agent,
+ * which in "decide" also answers questions the session already settles (DES-079).
+ */
+export type ApprovalMode = "ask" | "auto" | "decide";
 
 /** The built-in that decides gated actions in a session set to Run. */
 const APPROVER = "approver";
@@ -54,8 +57,11 @@ export function useApproverReady(): boolean | null {
  * icon button, ✋ Ask Me (every gated action waits for a person) or ⏩ Run
  * (the approval agent decides each, handing a person anything it is unsure
  * of). Its tooltip says what the mode does, and when the approval agent has
- * no model to run on, that every action waits for a person. With no session
- * yet, as on Home, the choice is held and applied once the session starts.
+ * no model to run on, that every action waits for a person. In Run, a
+ * secondary text control, Answer Questions, turns on Run and Answer, where
+ * the approval agent also answers questions the session settles (DES-079);
+ * it is off until pressed, and Ask Me turns it off. With no session yet, as
+ * on Home, the choice is held and applied once the session starts.
  */
 export function ApprovalToggle({
   thread,
@@ -78,25 +84,38 @@ export function ApprovalToggle({
   const [approval, setApproval] = useState(thread?.approval);
   const [problem, setProblem] = useState("");
   useEffect(() => setApproval(thread?.approval), [thread?.approval]);
-  const mode: ApprovalMode = thread ? (approval?.mode === "auto" ? "auto" : "ask") : pending;
+  const mode: ApprovalMode = thread
+    ? approval?.mode === "auto" || approval?.mode === "decide"
+      ? approval.mode
+      : "ask"
+    : pending;
+  const someoneElse = approval && thread && approval.by !== me ? nameOf(approval.by) : "";
   const label =
     mode === "ask"
       ? words.ask
-      : approval && thread && approval.by !== me
-        ? words.autoFor(nameOf(approval.by))
-        : words.auto;
-  const hint = mode === "ask" ? words.askHint : ready === false ? words.waiting : words.autoHint;
-  const toggle = () => {
-    const next: ApprovalMode = mode === "ask" ? "auto" : "ask";
+      : mode === "decide"
+        ? someoneElse
+          ? words.decideFor(someoneElse)
+          : words.decide
+        : someoneElse
+          ? words.autoFor(someoneElse)
+          : words.auto;
+  const hint =
+    mode === "ask"
+      ? words.askHint
+      : ready === false
+        ? words.waiting
+        : mode === "decide"
+          ? words.decideHint
+          : words.autoHint;
+  const choose = (next: ApprovalMode) => {
     setProblem("");
     if (!thread) {
       onPending?.(next);
       return;
     }
     const was = approval;
-    setApproval(
-      next === "auto" ? { mode: "auto", by: me, at: new Date().toISOString() } : undefined,
-    );
+    setApproval(next === "ask" ? undefined : { mode: next, by: me, at: new Date().toISOString() });
     coworking.setApprovalMode(thread.id, next).then(
       (t) => setApproval(t.approval),
       (e) => {
@@ -110,7 +129,7 @@ export function ApprovalToggle({
     <span className="inline-flex min-w-0 items-center gap-1">
       <button
         type="button"
-        onClick={toggle}
+        onClick={() => choose(mode === "ask" ? "auto" : "ask")}
         aria-label={`${words.label}: ${label}`}
         title={`${label}. ${hint}`}
         data-approval-mode={mode}
@@ -122,6 +141,19 @@ export function ApprovalToggle({
           {mode === "ask" ? words.ask : words.auto}
         </span>
       </button>
+      {mode !== "ask" && (
+        // The secondary option: a text control, pressed while Run and Answer is on.
+        <button
+          type="button"
+          aria-pressed={mode === "decide"}
+          onClick={() => choose(mode === "decide" ? "auto" : "decide")}
+          title={words.decideHint}
+          data-approval-answers={mode === "decide" ? "on" : "off"}
+          className={`inline-flex h-8 pointer-coarse:h-11 shrink-0 items-center rounded-aui px-1.5 text-aui-xs hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent ${mode === "decide" ? "text-aui-fg underline underline-offset-4" : "text-aui-muted"}`}
+        >
+          {words.answers}
+        </button>
+      )}
       {problem && (
         <span role="alert" className="text-aui-2xs text-aui-bad">
           {problem}

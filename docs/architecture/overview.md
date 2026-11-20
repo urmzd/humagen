@@ -296,6 +296,24 @@ side by side.
 | Choice | The agent calls `ask_person` with `options` | `choose` one option |
 | Reply | The agent calls `ask_person` without options | `reply` in words |
 
+### The approval agent
+
+A session's approval mode is the person's choice, stored on the session:
+`ask` (the default), `auto` (Run) or `decide` (Run and Answer). In Run, the
+built-in approval agent (`approver`, `internal/platform/approval_agent.go`)
+decides an approval of a tool call the action policy leaves to a person, in a
+metered run of its own with structured output (`pkg/approve`), and answers as
+the person who chose Run, with the roles they held then, less any they no
+longer hold. Run and Answer also hands it a choice or a reply an agent asks
+with `ask_person` (`internal/platform/approval_questions.go`): it answers only
+what the session already settles, through the path a person's answer takes,
+and never a question asked of anyone else, in work someone else asked for, or
+that the person could not answer themselves; those are handed over without
+asking it. `ask`, a denial of a question, an answer that is not one of the
+options, a failed run and an unreadable answer all leave the question for a
+person. Each decision and hand-off is audited as `approval.judged` and kept on
+the question's card (DES-057, DES-079).
+
 ### Who is asked
 
 Who may answer is decided from the run's pinned revision, so revising an agent
@@ -1369,6 +1387,8 @@ routes too long for a table column. Each is followed by its state.
   - Built. fiber's host call tool wrapper forwards `Approving`, so the caller parks on the approval; `TestACallTheCalleeHoldsWaitsForItsApprovers` covers approve and deny end to end. The question waits the policy's `expires_seconds`
 - An agent's approval queue: approval questions about calling an agent carry it as `source.target`, and `GET /api/inbox?kind=approval&agent=X&state=open` lists what was raised by or would call `X`. It offers a note only where the run takes one from the viewer (`steered_for`), and says when a call acts as the person
   - Built, tested, the queue's notes in happy-dom (`governance.dom.test.tsx`)
+- Run and Answer (DES-079): a session's approval mode `decide`, where the approval agent also answers an `ask_person` choice or reply the session already settles, as the person who chose it, and hands them the rest (see [The approval agent](#the-approval-agent))
+  - Built, tested (`approval_questions_test.go`, `approval-toggle.dom.test.tsx`). Not yet checked in Slack's bench or a running console
 - Built-in `manager` role: everything an operator has, and writing agents (their call policies among them) and knowledge. Granted by `-manager-group` (`humagen-managers`); mock persona `mock-manager`
   - Built, tested
 

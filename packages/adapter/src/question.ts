@@ -42,7 +42,7 @@ export interface WireQuestion {
   hold?: { id: string; topic?: string; data?: unknown };
   /** A `budget` inbox part's limit, as the platform keeps it on the part. */
   budget?: WireBudget;
-  /** What the approval agent said about an approval, as an inbox part keeps it. */
+  /** What the approval agent said about an approval or, in Run and Answer, a question, as an inbox part keeps it. */
   judgement?: WireJudgement;
 }
 
@@ -293,15 +293,19 @@ export function interruptOf(q: WireQuestion, settled?: Settled): Interrupt | nul
       };
     }
     case "choice":
-    case "reply":
+    case "reply": {
+      // The approval agent's view, in a session set to Run and Answer: an answer it gave or a hand-off.
+      const judgement = q.judgement ? judgementOf(q.judgement) : undefined;
       return {
         type: "clarification",
         id: q.id,
         question: q.prompt,
         options: options.map((o) => ({ id: o, label: o })),
         ...(q.kind === "reply" ? { allowOther: true } : {}),
+        ...(judgement ? { judgement } : {}),
         answer: answerOf(settled, options),
       };
+    }
     default:
       return null;
   }

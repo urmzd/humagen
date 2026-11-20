@@ -219,10 +219,10 @@ func (s *Server) updateThread(w http.ResponseWriter, r *http.Request, who auth.P
 }
 
 // putApprovalMode sets how the conversation's gated tool actions are
-// approved: ask, or auto for the caller (DES-057). A surface that
-// authenticated a person itself sets it for them with act_as: every check
-// is then the person's, as on the console, and the conversation approves
-// as them.
+// approved: ask, or auto or decide for the caller (DES-057, DES-079). A
+// surface that authenticated a person itself sets it for them with act_as:
+// every check is then the person's, as on the console, and the conversation
+// approves as them.
 func (s *Server) putApprovalMode(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	var in struct {
 		Mode  string          `json:"mode"`

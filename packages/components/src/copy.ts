@@ -2669,6 +2669,8 @@ export const defaultCopy = {
   judgement: {
     by: "Approval agent",
     decision: { allow: "Allowed", deny: "Denied", ask: "Asked a person" },
+    /** A question the approval agent answered in a session set to Run and Answer (DES-079). */
+    answered: "Answered by the approval agent",
     basedOn: (references: string[]) => `Based on: ${references.join("; ")}`,
   },
   /** A run the platform held at a limit, for a person to grant it more or stop it. */
@@ -3179,6 +3181,12 @@ export const defaultCopy = {
     autoHint:
       "The approval agent decides each action the policy asks about, and hands you anything it is unsure of. Every decision is audited.",
     autoFor: (name: string) => `Run, chosen by ${name}`,
+    /** The secondary option beside Run: the approval agent also answers questions (DES-079). */
+    answers: "Answer Questions",
+    decide: "Run and Answer",
+    decideHint:
+      "The approval agent also answers a question an agent asks you when the session already settles it, and hands you the rest. Each answer says it was the approval agent's, and is audited.",
+    decideFor: (name: string) => `Run and Answer, chosen by ${name}`,
     waiting: "No model is enabled for the approval agent yet, so every action waits for a person.",
     failed: "Could not change approvals. Try again.",
     /** In the menu of an approval waiting in a Slack thread: sets the conversation, not the call. */
