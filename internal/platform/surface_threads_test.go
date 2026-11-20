@@ -368,13 +368,13 @@ func TestAMachineHearsOfAMentionOfAPersonItMapsAndSettlesItForThem(t *testing.T)
 	if p.InboxNoticeFor(machine, notice) {
 		t.Fatal("the machine reads ana's mention as its own")
 	}
-	heard := p.SurfaceNoticesFor(machine, notice)
+	heard := forOf(p.SurfaceNoticesFor(t.Context(), machine, notice))
 	if len(heard) != 1 || heard[0] != (platform.ActAs{Client: "app", User: "U0ANA"}) {
 		t.Fatalf("the machine hears of it for %+v", heard)
 	}
 	as := heard[0]
 	other := auth.Principal{Subject: "svc-other", Tenant: tenant, Kind: auth.Machine, Scopes: []auth.Permission{auth.RunsRead, auth.RunsWrite}}.WithPolicy(machine.Policy())
-	if heard := p.SurfaceNoticesFor(other, notice); len(heard) != 0 {
+	if heard := p.SurfaceNoticesFor(t.Context(), other, notice); len(heard) != 0 {
 		t.Fatalf("another machine hears of ana's mention for %+v", heard)
 	}
 	done, err := p.InboxResolve(t.Context(), machine, m.ID, m.Parts[0].ID, platform.Resolution{Action: platform.ActReply, Text: "On it.", ActAs: &as})
@@ -499,7 +499,7 @@ grant viewer, security to subject "olu"
 		t.Fatal(err)
 	}
 
-	heard := p.SurfaceNoticesFor(machine, inbox.Notice{ID: m.ID, Kind: inbox.KindMention, State: inbox.Open})
+	heard := forOf(p.SurfaceNoticesFor(t.Context(), machine, inbox.Notice{ID: m.ID, Kind: inbox.KindMention, State: inbox.Open}))
 	want := []platform.ActAs{{Client: "app", User: "U0OLU"}, {Client: "app", User: "U0VIC"}}
 	if !slices.Equal(heard, want) {
 		t.Fatalf("the machine hears of the experts' question for %+v, want %+v", heard, want)
@@ -532,4 +532,13 @@ func TestOnASurfaceTheDefaultAnswersAndFailsClosed(t *testing.T) {
 	if stale.Rule != threads.RuleDefault || len(stale.Runs) != 0 || !strings.Contains(stale.Reason, "@helper answers untagged messages here, but it is not available here") {
 		t.Fatalf("a stale default started %+v", stale)
 	}
+}
+
+// forOf is who each notice a machine hears is for.
+func forOf(heard []platform.SurfaceNotice) []platform.ActAs {
+	out := make([]platform.ActAs, 0, len(heard))
+	for _, h := range heard {
+		out = append(out, h.For)
+	}
+	return out
 }

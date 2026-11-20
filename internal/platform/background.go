@@ -49,7 +49,8 @@ import (
 // leader's sweep (checkBackground) starts what is due, ends what ran out, and
 // settles a run that ended unobserved. When one ends on its own, the person
 // is told in their inbox, which their notification settings deliver
-// (console, email). One that a person or an agent stopped tells nobody.
+// (console, email), and a Slack app that maps them (background_report.go).
+// One that a person or an agent stopped tells nobody.
 //
 // notify is the plain case: an agent tells the person something now, as it
 // finishes work they asked to hear about.
@@ -116,7 +117,7 @@ func (p *Platform) notifyTool(req runtime.Request) saigetypes.Tool {
 	})
 	return &saigetypes.ToolFunc{Def: saigetypes.ToolDef{
 		Name:        ToolNotify,
-		Description: "Notify the person you work for now: it lands in their inbox and reaches them wherever their notification settings say (console, email). Use it when they asked to be told when something finishes or happens. Not for progress updates.",
+		Description: "Notify the person you work for now: it lands in their inbox and reaches them wherever their notification settings say (console, email), and in Slack when they asked from there: keep subject to one line that reads well on its own. Use it when they asked to be told when something finishes or happens. Not for progress updates.",
 		Parameters:  params,
 	}, Fn: func(_ context.Context, args map[string]any) (string, error) {
 		who, run, th, err := p.backgroundCaller(req)

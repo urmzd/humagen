@@ -1166,10 +1166,11 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request, who auth.Princip
 			if !s.P.InboxNoticeFor(who, n) {
 				// A client's machine hears of a message addressed to
 				// people it maps, once for each of them, to tell them
-				// in Slack.
+				// in Slack: a background result asked in its own
+				// Slack thread, as a reply there.
 				sent = sent[:0]
-				for _, as := range s.P.SurfaceNoticesFor(who, n) {
-					sent = append(sent, inboxNotice{Notice: n, For: &as})
+				for _, one := range s.P.SurfaceNoticesFor(r.Context(), who, n) {
+					sent = append(sent, inboxNotice{Notice: n, For: &one.For, ReplyIn: one.Reply})
 				}
 			}
 			for _, one := range sent {

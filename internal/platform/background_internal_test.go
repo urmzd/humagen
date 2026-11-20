@@ -27,7 +27,13 @@ import (
 // the turn's run and the request its tools are given.
 func backgroundPlatform(t *testing.T) (*Platform, runs.Run, runtime.Request) {
 	t.Helper()
-	p, err := New(Config{Workspace: t.TempDir(), Router: func(string) join.Asker { return join.Words }})
+	return backgroundPlatformWith(t, nil)
+}
+
+// backgroundPlatformWith is backgroundPlatform under a workspace policy.
+func backgroundPlatformWith(t *testing.T, pol *auth.Policy) (*Platform, runs.Run, runtime.Request) {
+	t.Helper()
+	p, err := New(Config{Workspace: t.TempDir(), Policy: pol, Router: func(string) join.Asker { return join.Words }})
 	if err != nil {
 		t.Fatal(err)
 	}

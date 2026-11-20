@@ -161,8 +161,16 @@ export interface InboxNotice {
   kind: string;
   state: string;
   updated_at: string;
-  /** To this app's machine only: the person it maps a mention or a question is addressed to. */
+  /**
+   * To this app's machine only: the person it maps a mention, a question or
+   * a background result is addressed to.
+   */
   for?: ActAs;
+  /**
+   * With `for`, on a background result only: this app's Slack thread the
+   * work was asked from, to reply in, and the session to open for details.
+   */
+  reply_in?: { channel: string; ts: string; session?: string };
 }
 
 export type StreamItem =
