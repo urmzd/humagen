@@ -225,15 +225,10 @@ export function composerChrome(conversation: string): Scene[] {
     {
       name: "composer-approval-mode",
       path: `/conversations/${conversation}`,
+      // The menu open: the three modes, each with its one line.
       act: async (page) => {
-        const toggle = page.getByRole("button", { name: /^Approvals: / });
-        const before = await toggle.getAttribute("aria-label");
-        await toggle.click();
-        await page.waitForFunction(
-          (was) =>
-            document.querySelector("[data-approval-mode]")?.getAttribute("aria-label") !== was,
-          before,
-        );
+        await page.getByRole("button", { name: /^Approvals: / }).click();
+        await page.getByRole("menu", { name: "Approvals" }).waitFor();
       },
     },
   ];

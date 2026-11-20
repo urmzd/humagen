@@ -869,6 +869,15 @@ shown on the approval card. `humagen config check` refuses a schema without
 that core. An answer that is missing or does not hold to the schema leaves the
 call for a person.
 
+The schema as it ships also has an optional `answer`: in a session set to Run
+and Answer (approval mode `decide`), the approval agent is shown a question an
+agent asks a person, and answers it with `decision: allow` and `answer` (one of
+the options for a choice, words for a reply) only when the session already
+settles it. A workspace schema without `answer` keeps working and decides calls
+only: every question goes to a person. Run and Answer is a person's choice for
+one session, made in the console, not a spec field; a session asks until
+someone chooses it.
+
 A `choices` block
 from an older policy or agent spec is not read: a file that has one still
 starts, with a load note. `subscriptions` is refused: the platform decides
@@ -1063,7 +1072,7 @@ below may do, and what it prefers. A person adds their own level through
 
 | Setting | Kind | Left out everywhere | Rule |
 |---------|------|---------------------|------|
-| `ceilings.tools` | ceiling | narrows nothing | at most 64 tool names, as an agent's `tools` writes them (`mcp:<name>` for a provider's tools). A tool the agent grants that is not listed is taken away for the run. `[]` allows none of them. It does not take away `skill_file_read`, which a run whose skills have supporting files is always offered: it reads only those files, which the run was given ([managed library](../architecture/managed-library.md#skills-are-immutable-packages)). An administrator who wants a run to read no file at all must also keep supporting files out of the skills its runs use. An agent's `tools` may not name `skill_file_read` |
+| `ceilings.tools` | ceiling | narrows nothing | at most 64 tool names, as an agent's `tools` writes them (`mcp:<name>` for a provider's tools). A tool the agent grants that is not listed is taken away for the run. `[]` allows none of them. It does not take away `skill_file_read`, which a run whose skills have supporting files is always offered: it reads only those files, which the run was given ([managed library](../architecture/managed-library.md#skills-are-immutable-packages)). An administrator who wants a run to read no file at all must also keep supporting files out of the skills its runs use. An agent's `tools` may not name `skill_file_read`. It does take away the background tools every agent's turn for a person is offered (`notify`, `watch_start`, `goal_start`, `task_start`, `background_list`, `background_stop`): list them to keep them ([background work](../guides/background.md)) |
 | `ceilings.models` | ceiling | narrows nothing | at most 64 `provider/model`, or `provider/*` for all of a provider's. The run's model and fallbacks outside it are dropped, and a run with none left is refused |
 | `ceilings.call_depth` | ceiling | the deployment's depth | 0 to 16: how deep a run's calls to other agents may go. 0 calls none. It never deepens the deployment's own limit |
 | `ceilings.tool_servers` | ceiling | none | at most 64 hosts, in lower case, a person's own tool servers may be on. Default deny: only `workspace.run` opens it, and a project or a person only narrows it |

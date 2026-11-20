@@ -218,6 +218,11 @@ export interface Clarification {
    * The card shows the question and this line, and no way to answer it.
    */
   forOthers?: string;
+  /**
+   * What the approval agent said about it, in a session set to Run and Answer:
+   * `allow` is an answer it gave as the person, `ask` a question it left for them.
+   */
+  judgement?: Judgement;
   answer: Answer;
 }
 

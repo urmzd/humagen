@@ -520,8 +520,8 @@ export function Chat({
           })
           .then((p) => {
             // Run, chosen before the session started, is applied to it now.
-            if (pendingApproval === "auto")
-              void coworking.setApprovalMode(p.thread.id, "auto").catch(() => undefined);
+            if (pendingApproval !== "ask")
+              void coworking.setApprovalMode(p.thread.id, pendingApproval).catch(() => undefined);
             onThread(p.thread.id);
             done(p.runs);
           })
@@ -791,6 +791,7 @@ export function Chat({
     (threadId.startsWith("s_") ||
       room.thread.read_only ||
       room.thread.fork ||
+      room.thread.import ||
       room.turns.some((t) => t.message))
   ) {
     return (

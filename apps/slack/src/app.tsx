@@ -26,6 +26,7 @@ import {
   ActionId,
   emptyQueue,
   emptyTurn,
+  encodeAction,
   type Failure,
   feedbackEvent,
   HOME_ID,
@@ -63,7 +64,16 @@ import { CodeChannels as CodeChannelOpener } from "./codechannel-open.ts";
 import { offersRunDetails, runDetailsReply } from "./details.tsx";
 import { inThread, Names, readThread, sinceLastTurn, withHistory } from "./history.ts";
 import { homeModel } from "./home.ts";
-import { askForm, buildForm, ENTRY, formKind, type words } from "./host.ts";
+import {
+  type AskCall,
+  askCallForm,
+  askCallOf,
+  askForm,
+  buildForm,
+  ENTRY,
+  formKind,
+  type words,
+} from "./host.ts";
 import {
   type ActAs,
   type Agent,
@@ -510,6 +520,8 @@ export class App {
   private readonly confirmed = new Recent<true>(10_000);
   /** Runs followed slowly right now, and how to make each one look again at once. */
   private readonly slow = new Map<string, () => void>();
+  /** The presenter of each run followed right now, by run: the cards its questions are on. */
+  private readonly presenting = new Map<string, Presenter>();
   private readonly branding: Branding;
   /** What a turn the app posts as itself is from: its branded name, else the product's. */
   private readonly selfName: string;
@@ -1251,6 +1263,8 @@ export class App {
     const following = follow(run, { href: this.href });
     this.plans.follow(run.id, job.session.channel);
     const abort = new AbortController();
+    // Where its cards are, while it is followed: what the approval agent says reaches them.
+    this.presenting.set(run.id, presenter);
     const pump = this.pump(run, following, presenter, items, abort.signal);
     let turn: Turn;
     let stalled: boolean;
@@ -1258,6 +1272,7 @@ export class App {
       ({ turn, stalled } = await pump);
     } finally {
       abort.abort();
+      this.presenting.delete(run.id);
     }
     // A quiet run's stream is closed as it stands: still working, so the session
     // stays processing and Stop stays available. Its end is posted when it comes.
@@ -1732,8 +1747,9 @@ export class App {
     mine = as && !sent ? await readFor(as) : null;
     if (mine && as) return this.onPersonal(p, ui, mine, as);
     if (answers(ui)) return this.onAnswer(p, ui);
-    // Humagen takes a decision on a call, not a question about it: say so, not nothing.
-    if (ui.id === ActionId.ask) return this.whisper(p, this.words.askNotYet);
+    // A question about a call is asked in its thread, and the call keeps waiting.
+    if (ui.id === ActionId.ask) return this.askAboutCall(p, ui);
+    if (ui.id === ActionId.approvalMode) return this.onApprovalMode(p, ui);
     if (ui.id === ActionId.retry || ui.id === ActionId.resume) {
       const run = await this.humagen.getRun(ui.payload.turnId);
       const outcome = run
@@ -1828,9 +1844,14 @@ export class App {
     return "started";
   }
 
-  /** What this app can act on from a turn: Run Details where its client maps people (see details.tsx). */
+  /**
+   * What this app can act on from a turn, where its client maps people (see
+   * details.tsx): Run Details, and letting the approval agent decide a
+   * thread's actions, which is set as the person who chose it.
+   */
   private get capabilities() {
-    return { runDetails: offersRunDetails(this.clientRecord?.client, this.opts.subject) };
+    const people = offersRunDetails(this.clientRecord?.client, this.opts.subject);
+    return { runDetails: people, approvalAgent: people };
   }
 
   /** What a run used, for the person who clicked alone, read as them (see details.tsx). */
@@ -1987,6 +2008,126 @@ export class App {
       this.log(`the reply modal for ${target.question} did not open: ${(e as Error).message}`);
       await this.whisper(p, defaultCopy.failure.internal());
     }
+  }
+
+  /**
+   * Ask a Question on a call that waits for approval: a form for the
+   * question, opened while the trigger is fresh. Submitted, the question is
+   * asked in the call's thread, as the console asks one typed while a run
+   * waits (`askCall`). Deciding stays with the card's buttons.
+   */
+  private async askAboutCall(p: ActionPayload, ui: UiAction): Promise<void> {
+    const channel = p.channel?.id ?? p.container?.channel_id ?? "";
+    const { turnId: run, target: question } = ui.payload;
+    if (!p.trigger_id || !run || !question) return;
+    // Nobody posts in a bound channel's thread but a person the client maps.
+    if (channel && !(await this.actAs(p.user.id)) && (await this.isBound(channel)))
+      return this.whisper(p, this.copy.threads.unmappedInBound);
+    const threadTs = p.message?.thread_ts ?? p.message?.ts;
+    const at: AskCall = {
+      run,
+      question,
+      action: promptIn(p.message?.blocks ?? [], question),
+      channel,
+      ...(threadTs ? { threadTs } : {}),
+    };
+    try {
+      await this.slack.call("views.open", {
+        trigger_id: p.trigger_id,
+        view: askCallForm(at, this.words),
+      });
+    } catch (e) {
+      this.log(`the question form for ${question} did not open: ${(e as Error).message}`);
+      await this.whisper(p, defaultCopy.failure.internal());
+    }
+  }
+
+  /**
+   * A question about a call, submitted: said in the call's Slack thread, so
+   * everyone there reads what was asked, then asked of the agent that made
+   * the call, as the person who asked: their message in the humagen thread
+   * when the client maps them, else through the app, as a mention there
+   * would be. It is answered beside the call, not behind it: the call's
+   * card keeps waiting, with its buttons, and the answer streams below.
+   */
+  private async askCall(user: string, at: AskCall, question: string): Promise<void> {
+    const run = await this.humagen.getRun(at.run).catch(() => null);
+    const session = run ? await this.sessionOfRun(run) : null;
+    if (!run || !session || session.team !== this.opts.team) {
+      this.log(`a question about ${at.question} on ${at.run} has no thread here to be asked in`);
+      if (at.channel)
+        await this.slack
+          .call("chat.postEphemeral", {
+            channel: at.channel,
+            user,
+            ...(at.threadTs ? { thread_ts: at.threadTs } : {}),
+            text: this.words.askCallNowhere,
+          })
+          .catch(() => {});
+      return;
+    }
+    const action = at.action || run.agent;
+    const said = await this.slack.call<{ ts: string }>("chat.postMessage", {
+      channel: session.channel,
+      thread_ts: session.threadTs,
+      text: this.words.askCallSaid(`<@${user}>`, plainText(action), echoed(question)),
+    });
+    const job: Job = {
+      session,
+      // The agent that made the call is tagged, so it answers, wherever the thread's default points.
+      text: `${run.agent ? `@${run.agent} ` : ""}${this.words.askCallAsked(action, question)}`,
+      triggerTs: said.ts,
+      user,
+      key: eventKey(session, said.ts),
+    };
+    this.seen.set(job.key, true);
+    // A thread of its own: the thread's queue is held by the run that waits.
+    const beside: Thread = { queue: emptyQueue("auto"), jobs: new Map([[job.key, job]]) };
+    this.track(
+      this.answer(beside, job, false).catch((e) =>
+        this.log(`the question about ${at.question} was not answered: ${(e as Error).message}`),
+      ),
+    );
+  }
+
+  /**
+   * Let the approval agent decide a thread's gated actions, or ask a person
+   * again: the console's toggle, set through the same route as the person
+   * who pressed, whom the client must map. Humagen decides whether they may,
+   * as it does in the console. What changed is said in the thread, with the
+   * way back.
+   */
+  private async onApprovalMode(p: ActionPayload, ui: UiAction): Promise<void> {
+    const mode = ui.payload.target === "ask" ? "ask" : "auto";
+    const who = await this.mapped(p.user.id);
+    if (!who) {
+      this.log(`approvals were not changed for ${p.user.id}: this client maps them to nobody`);
+      return this.whisper(p, defaultCopy.noPermission);
+    }
+    const run = await this.humagen.getRun(ui.payload.turnId).catch(() => null);
+    if (!run?.thread) return this.whisper(p, this.words.modeFailed);
+    try {
+      await this.humagen.setApprovalMode(run.thread, mode, who.as);
+    } catch (e) {
+      this.log(`approvals for ${run.thread} were not changed: ${(e as Error).message}`);
+      // As the console does: a refusal in Humagen's own words, anything else a retry.
+      const refused = e instanceof HumagenError && e.status === 403;
+      return this.whisper(
+        p,
+        refused ? e.message || defaultCopy.noPermission : this.words.modeFailed,
+      );
+    }
+    this.log(`approvals for ${run.thread} set to ${mode} for ${p.user.id}`);
+    const channel = p.channel?.id ?? p.container?.channel_id;
+    const threadTs = p.message?.thread_ts ?? p.message?.ts;
+    if (!channel) return;
+    await this.slack
+      .call("chat.postMessage", {
+        channel,
+        ...(threadTs ? { thread_ts: threadTs } : {}),
+        ...approvalModeNote(mode, p.user.id, run.id, this.copy),
+      })
+      .catch((e: Error) => this.log(`the change of approvals was not said: ${e.message}`));
   }
 
   /**
@@ -2608,6 +2749,23 @@ export class App {
     }
   }
 
+  /**
+   * An approval the approval agent judged, in a conversation set to Run:
+   * what it said is put on the call's card in the run's thread, while the
+   * run is followed here. The inbox keeps the judgement; the run's events
+   * never carry it, so a call it handed to a person would otherwise show
+   * no reason in Slack.
+   */
+  private async judged(message: PlatformMessage): Promise<void> {
+    const run = message.about.find((s) => s.kind === "run")?.id;
+    const presenter = run ? this.presenting.get(run) : undefined;
+    if (!presenter) return;
+    for (const part of message.parts) {
+      if (part.type !== "approval" || !part.approval.judgement) continue;
+      await presenter.judge(part.approval.id, part.approval.judgement);
+    }
+  }
+
   /** An inbox message changed. One about a run in this app's thread is shown there, once, and kept current. */
   private async onNotice(notice: InboxNotice): Promise<void> {
     if (notice.for) return this.tell(notice);
@@ -2616,6 +2774,7 @@ export class App {
     if (!message) return;
     const posted = this.mail.get(message.id);
     if (posted) return this.showMail(message, posted);
+    if (message.kind === "approval") await this.judged(message);
     if (messageState(message) !== "open") return;
     // A failed turn already says so in its own message, with Retry, and a
     // question is shown on the run it holds up.
@@ -2995,6 +3154,12 @@ export class App {
     }
     const reply = p.type === "view_submission" && p.view ? decodeReplyModal(p.view) : null;
     if (reply) return this.onReply(p.user.id, reply.text, reply.target);
+    const about = p.type === "view_submission" && p.view ? askCallOf(p.view) : null;
+    if (about) {
+      const question = p.view?.state?.values?.text?.value?.value?.trim() ?? "";
+      if (question) await this.askCall(p.user.id, about, question);
+      return;
+    }
     if (p.type !== "view_submission" || p.view?.callback_id !== ENTRY.form) return;
     const said = p.view.state?.values?.text?.value?.value?.trim() ?? "";
     if (!said) return;
@@ -3003,6 +3168,46 @@ export class App {
     // A global shortcut or the Home tab has no channel: answer in the app's own messages with this person.
     await this.start({ channel: p.user.id, user: p.user.id }, text);
   }
+}
+
+/** Words for Slack's mrkdwn with nothing in them read as markup: no mention, link or broadcast. */
+const plainText = (s: string) =>
+  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+/**
+ * What a change of a thread's approvals says in the thread: who changed it
+ * and what it means now, with one button that changes it back.
+ */
+export function approvalModeNote(
+  mode: "ask" | "auto",
+  user: string,
+  run: string,
+  copy: Copy = defaultCopy,
+) {
+  const who = `<@${user}>`;
+  const text = mode === "auto" ? copy.approvals.nowAuto(who) : copy.approvals.nowAsk(who);
+  const back = mode === "auto" ? "ask" : "auto";
+  return {
+    text,
+    blocks: [
+      { type: "section", text: { type: "mrkdwn", text } },
+      {
+        type: "actions",
+        block_id: `approval-mode:${run}:${mode}`,
+        elements: [
+          {
+            type: "button",
+            action_id: `${ActionId.approvalMode}#0`,
+            text: {
+              type: "plain_text",
+              text: back === "ask" ? copy.approvals.askMeAgain : copy.approvals.letAgentDecideAgain,
+            },
+            value: encodeAction({ turnId: run, target: back }),
+          },
+        ],
+      },
+    ],
+  };
 }
 
 /** One person's reply to one question, as `replying` keeps the card it was opened from. */

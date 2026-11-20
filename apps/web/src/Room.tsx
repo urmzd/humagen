@@ -49,7 +49,7 @@ import { Reference } from "./cards.tsx";
 import { type Completion, useCompletion } from "./completion.ts";
 import { deriveTitle } from "./conversationList.ts";
 import { Deliverables, revisionPrompt } from "./Deliverables.tsx";
-import { ForkContext } from "./ForkConversation.tsx";
+import { ForkContext, ImportContext } from "./ForkConversation.tsx";
 import { GitHubTab, reviewText, reviewView } from "./GitHubTab.tsx";
 import { HumanActivityList, HumanActivityNote } from "./humanActivity.tsx";
 import { itemActions } from "./itemActions.tsx";
@@ -1051,6 +1051,12 @@ export function ThreadRoom({
               {th.fork && (
                 <div className="mx-auto w-full max-w-4xl px-4 py-4">
                   <ForkContext thread={th} />
+                </div>
+              )}
+              {th.import && (
+                <div className="mx-auto w-full max-w-4xl px-4 py-4">
+                  {/* A continuation just started has no turns yet: focus goes to where it came from. */}
+                  <ImportContext thread={th} autoFocus={turns.length === 0} />
                 </div>
               )}
               {posts && (

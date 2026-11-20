@@ -12,6 +12,7 @@ import type {
   AnalyticsGroup,
   AuditRecord,
   Branding,
+  ContinueImportedDocumentBody,
   DriveVersion,
   EvalCandidate,
   EvalCandidatePage,
@@ -59,6 +60,7 @@ import type {
   StorePackage,
   StoreRemoval,
   ThreadFollowup,
+  ThreadImport,
   ThreadShare,
   VoiceSettings,
   VoiceTranscript,
@@ -435,6 +437,12 @@ export interface Doc {
   excluded: boolean;
   added_by?: string;
   added_at: string;
+  /** The revision's digest; absent on a document kept before digests were. */
+  digest?: string;
+  /** The size of the imported session's structure kept with this revision. */
+  structure_bytes?: number;
+  /** That structure's digest, when the write that kept it recorded one. */
+  structure_digest?: string;
 }
 
 export interface Hit {
@@ -1815,6 +1823,13 @@ export const api = {
     ),
   addDocument: (name: string, d: { title: string; uri: string; text: string }) =>
     call<Doc>("POST", `/api/knowledge/${encodeURIComponent(name)}/documents`, d),
+  /** Starts a private conversation that continues an imported document, as it was listed. */
+  continueImport: (name: string, id: string, body: ContinueImportedDocumentBody) =>
+    call<Thread>(
+      "POST",
+      `/api/knowledge/${encodeURIComponent(name)}/documents/${encodeURIComponent(id)}/continue`,
+      body,
+    ),
   removeDocument: (name: string, id: string) =>
     call<void>(
       "DELETE",
@@ -2125,8 +2140,13 @@ export interface Thread {
       at: string;
     }[];
   };
-  /** How its gated tool actions are approved: absent asks a person; auto approves for `by` (DES-057). */
-  approval?: { mode: "auto"; by: string; roles?: string[]; at: string };
+  /** The imported conversation it continues: the pinned revision and the turns its agent is sent. */
+  import?: ThreadImport;
+  /**
+   * How its gated tool actions are approved: absent asks a person; auto approves for `by`
+   * (DES-057); decide does that and also answers what the session settles (DES-079).
+   */
+  approval?: { mode: "auto" | "decide"; by: string; roles?: string[]; at: string };
   /** The inbox id of the announcement a reply to which, in Slack, started the thread. */
   announcement?: string;
   /** The Slack thread this thread is, when it was started from Slack. It never changes. */
@@ -2523,8 +2543,8 @@ export const coworking = {
     body: { project: string; channel: string; summary: string; placement_token: string },
   ) => call<Thread>("POST", `${threadPath(id)}/publication`, body),
   share: (id: string, s: ThreadShare) => call<ThreadShared>("POST", `${threadPath(id)}/share`, s),
-  /** Sets how a conversation's gated tool actions are approved: ask, or auto for the caller. */
-  setApprovalMode: (id: string, mode: "ask" | "auto") =>
+  /** Sets how a conversation's gated tool actions are approved: ask, or auto or decide for the caller. */
+  setApprovalMode: (id: string, mode: "ask" | "auto" | "decide") =>
     call<Thread>("PUT", `${threadPath(id)}/approval`, { mode }),
   /** The skills a `$name` can pick in a project. */
   skills: (project: string) =>
