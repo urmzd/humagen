@@ -635,10 +635,32 @@ test("Plugins is MCPs and your skills, Apps is the workspace's installs, and eac
 
   render(<Connections canConnect canWrite />);
   assert.ok(await screen.findByRole("heading", { name: "Plugins", level: 1 }));
-  const mcps = await screen.findByRole("list", { name: "MCPs" });
+  const mcps = await screen.findByRole("region", { name: "MCPs" });
   // The workspace's apps are an administrator's page, not a person's plugin.
   assert.equal(screen.queryByRole("list", { name: "Apps" }), null);
   assert.equal(screen.queryByRole("listitem", { name: "Slack" }), null);
+  // The catalog is shelved: what the workspace offers, then what you added yourself.
+  const yours = await within(mcps).findByRole("list", { name: "Added by you" });
+  await within(yours).findByRole("listitem", { name: "my-tools" });
+  assert.ok(
+    within(within(mcps).getByRole("list", { name: "Work tools" })).getByRole("listitem", {
+      name: "Notion",
+    }),
+  );
+  // Installed lists only what is already yours.
+  fireEvent.click(screen.getByRole("button", { name: "Installed" }));
+  assert.ok(await screen.findByRole("listitem", { name: "my-tools" }));
+  assert.equal(screen.queryByRole("listitem", { name: "Notion" }), null);
+  fireEvent.click(screen.getByRole("button", { name: "Catalog" }));
+  // Search narrows by name or by what it does.
+  fireEvent.change(screen.getByRole("searchbox", { name: "Search plugins" }), {
+    target: { value: "notion" },
+  });
+  assert.equal(screen.queryByRole("listitem", { name: "my-tools" }), null);
+  assert.ok(screen.getByRole("listitem", { name: "Notion" }));
+  fireEvent.change(screen.getByRole("searchbox", { name: "Search plugins" }), {
+    target: { value: "" },
+  });
   await within(mcps).findByRole("listitem", { name: "my-tools" });
   assert.ok(within(mcps).getByRole("listitem", { name: "Notion" }));
   // Data sources are added inside a corpus, not here; Add MCP replaces a card for any server.

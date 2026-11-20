@@ -2943,8 +2943,40 @@ export const defaultCopy = {
   /** Plugins, in your settings: what you add for your own work. Apps are the workspace's, on a page of their own. */
   plugins: {
     title: "Plugins",
-    lede: "Yours alone. They are used when you ask directly; an agent uses only what is set on that agent.",
+    lede: "What this workspace offers for your own work. What you add is yours alone: it is used when you ask directly, and an agent uses only what is set on that agent.",
+    /** The two views of the page: everything this deployment offers, and what you have added. */
+    view: "Plugins shown",
+    catalog: "Catalog",
+    installed: "Installed",
+    search: "Search plugins",
+    noMatch: "No plugin matches that search.",
+    noneInstalled: "You have not added any plugins yet. Add one from the catalog.",
     mcps: "MCPs",
+    /** The shelves MCPs sit on. */
+    families: {
+      google: {
+        title: "Google Workspace",
+        lede: "Mail, calendar and files in your Google account.",
+      },
+      work: {
+        title: "Work tools",
+        lede: "Notes, issues and meetings from the tools your team uses.",
+      },
+      yours: { title: "Added by you", lede: "MCPs you added by address or key." },
+    } as Record<"google" | "work" | "yours", { title: string; lede: string }>,
+    /** One line on what each offered MCP does, by its id. */
+    about: {
+      notion: "Search, read and update pages in your Notion workspace.",
+      linear: "Find, create and update issues and projects.",
+      granola: "Read your meeting notes and transcripts.",
+      atlassian: "Search and update Jira and Confluence.",
+      gmail: "Search, read, draft and send email.",
+      "google-calendar": "Check availability and schedule events.",
+      "google-drive": "Search, upload and share files.",
+      "google-docs": "Read, draft and edit documents.",
+      "google-sheets": "Read, write and format spreadsheets.",
+      "google-slides": "Read, edit and export presentations.",
+    } as Record<string, string | undefined>,
     skills: "Skills",
     skillsLede: "Your personal skills.",
     manageSkills: "Manage Skills",
