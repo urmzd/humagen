@@ -1,7 +1,7 @@
 # Security
 
 How the platform decides who is calling, what they may do, and what it refuses.
-Report vulnerabilities as described in [SECURITY.md](../../SECURITY.md).
+Report vulnerabilities as described in [SECURITY.md](https://github.com/urmzd/humagen/blob/main/SECURITY.md).
 
 ## Callers
 

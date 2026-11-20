@@ -88,8 +88,8 @@ not weakened or silently accepted. Text entry uses the supported `type` tool.
 
 ## Dotfiles, processes and printers
 
-For host commands, use the [configured Claude Code or Codex runtime](coding-agents.md)
-in an explicit work directory. With Claude Code, grant only the commands needed,
+For host commands, use the configured Claude Code or Codex runtime
+in an explicit work directory. See the [local folder example](local-files.md) for Claude Code setup. Grant only the commands needed,
 for example `Bash(dotfiles doctor:*)`, `Bash(lpstat:*)`, and `Bash(ps:*)`. Use the
 machine's `dotfiles` CLI for managed configuration instead of editing deployed
 files by hand. A diagnosis does not authorize applying every proposed fix.

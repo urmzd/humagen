@@ -3,7 +3,7 @@
 One command starts humagen's API, the console with hot reload and a database
 that keeps conversations across restarts, and restarts only what a change
 needs. It is a [Tilt](https://docs.tilt.dev/) extension,
-[`deploy/tilt/dev/Tiltfile`](../../deploy/tilt/dev/Tiltfile), so a project
+[`deploy/tilt/dev/Tiltfile`](https://github.com/urmzd/humagen/blob/main/deploy/tilt/dev/Tiltfile), so a project
 built on humagen uses the same workflow with its own command and spec, rather
 than keeping a launcher of its own.
 
@@ -16,7 +16,7 @@ tilt down -f dev.Tiltfile                   # stop everything; the database is k
 ```
 
 It needs Tilt, Go, Node.js and pnpm, and Docker for the database (not with
-`--memory`). The root [`Tiltfile`](../../Tiltfile) is a different setup: humagen
+`--memory`). The root [`Tiltfile`](https://github.com/urmzd/humagen/blob/main/Tiltfile) is a different setup: humagen
 on a local Kubernetes cluster through its Helm chart
 ([deploy](deploy.md#local-kubernetes-with-tilt)).
 
@@ -32,7 +32,7 @@ on a local Kubernetes cluster through its Helm chart
 | `console` | The Vite dev server on `127.0.0.1:5173`, proxying `/api` and `/auth` to the API | never: Vite reloads the page itself, and the API keeps running |
 
 Tilt is the only supervisor: it starts, restarts and stops each process.
-[`run.sh`](../../deploy/tilt/dev/run.sh) checks the process's port first, so a
+[`run.sh`](https://github.com/urmzd/humagen/blob/main/deploy/tilt/dev/run.sh) checks the process's port first, so a
 port another process holds stops the start with that process named instead of
 a bind error, waits for the database, then becomes the process (`exec`), so the
 signal Tilt sends reaches it and nothing is left holding the port. Agents'
@@ -47,7 +47,7 @@ restart and a reload of the page.
 
 A project that calls `humagen.Main` with its own options, and has its own spec,
 loads the extension pinned to the release its `go.mod` requires.
-[`examples/tilt/Tiltfile`](../../examples/tilt/Tiltfile) is a copy to start from:
+[`examples/tilt/Tiltfile`](https://github.com/urmzd/humagen/blob/main/examples/tilt/Tiltfile) is a copy to start from:
 
 ```python
 v1alpha1.extension_repo(name = 'humagen', url = 'https://github.com/urmzd/humagen', ref = 'v0.38.0')

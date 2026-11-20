@@ -262,7 +262,7 @@ describe("renderToSlack", () => {
     const answer = (text: string) =>
       renderToSlack(<TurnView turn={{ ...fx.doneTurn, citations: [], text }} />);
     const markdown = (out: ReturnType<typeof answer>) =>
-      out.pages.flat().filter((b) => b.type === "markdown") as { text: string }[];
+      out.pages.flat().filter((b) => b.type === "markdown") as unknown as { text: string }[];
     // One paragraph just under the limit: alone it is one message, and so it stays.
     const near = "abcdefghi ".repeat(1200).slice(0, 11_998).trimEnd().replace(/ $/, "x");
     const full = answer(near);
@@ -298,6 +298,30 @@ describe("renderToSlack", () => {
     // A host's own wording replaces the default.
     const custom = renderToSlack(<TurnView turn={{ ...fx.doneTurn, disclaimer: "Beta." }} />);
     expect(JSON.stringify(custom.blocks.at(-1))).toContain("Beta.");
+  });
+
+  it("posts the words said before a call and after it as two paragraphs", () => {
+    const turn: Turn = {
+      ...fx.doneTurn,
+      citations: [],
+      text: "I'll ask the researcher.Here is what it found.",
+      tasks: [
+        {
+          id: "c",
+          title: "researcher",
+          status: "complete",
+          at: 24,
+          subagent: { name: "researcher" },
+        },
+      ],
+    };
+    const md = renderToSlack(<TurnView turn={turn} />).blocks.find((b) => b.type === "markdown") as
+      | { text: string }
+      | undefined;
+    // With the conversation link (#394), the finished answer also ends with its arrow.
+    expect(md?.text).toBe(
+      "I'll ask the researcher.\n\nHere is what it found. [\u2197\uFE0E](https://example.com/sessions/turn-1)",
+    );
   });
 
   it("shares the markdown budget across blocks", () => {

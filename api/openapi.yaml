@@ -13472,6 +13472,7 @@ components:
         mode: {$ref: "#/components/schemas/ThreadMode"}
         surface: {$ref: "#/components/schemas/ThreadSurface"}
         fork: {$ref: "#/components/schemas/ThreadFork"}
+        import: {$ref: "#/components/schemas/ThreadImport"}
         archive: {$ref: "#/components/schemas/ThreadArchive"}
         approval:
           description: How the conversation's gated tool actions are approved, and who chose it. Absent asks a person. `auto` approves for that person what they may approve themselves, within policy; a budget request and an action the agent or the policy always asks about still go to a person.
@@ -13644,6 +13645,147 @@ components:
               name: {type: string}
               text: {type: string}
               at: {type: string, format: date-time}
+    ThreadImport:
+      description: |
+        Where a conversation continued from an imported one came from: a
+        knowledge document an import wrote from a session of another tool,
+        pinned by its source and that source's id, the document's id, its
+        digest and its structure's digest.
+        It is fixed when the conversation is started, and a fork of it keeps
+        it. Its context is passive text the agent is sent ahead of the
+        conversation's own turns, each line labelled with the tool and the
+        speaker there and marked "(imported, not said here)"; it is never a
+        message or a run. Only a reader who still sees the source reads the
+        conversation, and it is published only through a reviewed summary.
+        While the workspace's history setting is none, nothing is posted,
+        run or forked in it.
+        A kept structure is what its importer stated (`imported_by`), not a
+        verified record. No route starts a continuation yet.
+      type: object
+      additionalProperties: false
+      required: [source, source_id, document, uri, title, structure, document_digest, by, at, context, omitted]
+      properties:
+        source:
+          description: The knowledge source the document is in.
+          type: string
+        source_id:
+          description: |
+            The source's id when the conversation was continued
+            (KnowledgeSource `id`). A source of the same name made since is
+            another source, and so is one whose id was lost: no one reads
+            the conversation through either.
+          type: string
+          pattern: "^[0-9a-f]{32}$"
+        document:
+          description: The document's id in the source.
+          type: string
+        uri:
+          description: The document's uri when it was continued. Shown only; it decides nothing.
+          type: string
+          maxLength: 2048
+        title:
+          description: The document's title when it was continued. Shown only.
+          type: string
+          maxLength: 1024
+        structure:
+          description: "`kept` when an import kept the conversation's structure with the revision continued, and the context is its main path; `not_kept` when none was, and the context is the document's text as one block whose speakers are not known."
+          type: string
+          enum: [kept, not_kept]
+        tool:
+          description: The tool the conversation is from, as its importer stated it. Absent when the structure is not kept.
+          type: string
+          enum: [claude, codex, chatgpt, claude-ai]
+        child:
+          description: The conversation was started by another session, so a person did not write its user turns.
+          type: boolean
+        document_digest:
+          description: The digest of the document revision continued.
+          type: string
+          pattern: "^[0-9a-f]{64}$"
+        structure_digest:
+          description: The digest of the structure continued. Absent when the structure is not kept.
+          type: string
+          pattern: "^[0-9a-f]{64}$"
+        imported_by:
+          description: The handle of whoever sent the structure through an import route, whose assertion it is. Absent when the structure is not kept.
+          type: string
+        imported_at: {type: string, format: date-time}
+        started_at:
+          description: When the imported conversation began, as the import stated it. Absent when not stated.
+          type: string
+          format: date-time
+        ended_at:
+          description: When the imported conversation's main path was last added to, as the import stated it.
+          type: string
+          format: date-time
+        by:
+          description: The handle of the person who continued it.
+          type: string
+        at:
+          description: When it was continued.
+          type: string
+          format: date-time
+        context:
+          description: The turns of the main path the agent is sent, oldest first, the newest that fit half the workspace's history limit as the transcript is written. At most 200 turns and 128 KiB of text.
+          type: array
+          minItems: 1
+          maxItems: 200
+          items: {$ref: "#/components/schemas/ThreadImportTurn"}
+        omitted: {$ref: "#/components/schemas/ThreadImportOmitted"}
+        branches:
+          description: How many branches of the conversation are not on its main path; none is continued. Absent when the structure is not kept, so unknown.
+          type: integer
+          minimum: 0
+        import_cut: {$ref: "#/components/schemas/ThreadImportCut"}
+    ThreadImportTurn:
+      description: One passive turn of an imported conversation.
+      type: object
+      additionalProperties: false
+      required: [speaker, text]
+      properties:
+        speaker:
+          description: "`user`, `assistant`, `tool` (a line naming a tool the assistant called) or `result` (what a tool gave back), as the importer stated it; `document` for the one block of a document whose structure is not kept."
+          type: string
+          enum: [user, assistant, tool, result, document]
+        at:
+          description: When it was said, as the import stated it.
+          type: string
+          format: date-time
+        text: {type: string}
+        cut:
+          description: The text is the opening of a longer turn, cut by the import or to fit.
+          type: boolean
+    ThreadImportOmitted:
+      description: What the context leaves out of the turns the import kept, every count exact.
+      type: object
+      additionalProperties: false
+      required: [turns, results, cut]
+      properties:
+        turns:
+          description: Turns other than tool results left out to fit, the oldest.
+          type: integer
+          minimum: 0
+        results:
+          description: Tool results left out to fit. They go before any other turn.
+          type: integer
+          minimum: 0
+        cut:
+          description: Turns of the context cut to their opening to fit.
+          type: integer
+          minimum: 0
+    ThreadImportCut:
+      description: What the import itself stated it left out of the conversation's main path, or cut, when it wrote the document. Absent when the structure is not kept, so unknown.
+      type: object
+      additionalProperties: false
+      required: [turns, results, cut_turns, attachments]
+      properties:
+        turns: {type: integer, minimum: 0}
+        results: {type: integer, minimum: 0}
+        cut_turns: {type: integer, minimum: 0}
+        attachments:
+          description: Turns of the main path that carried files. No file is imported.
+          type: integer
+          minimum: 0
     ThreadMention:
       description: One tag in a message, and what it came to.
       type: object
@@ -17104,6 +17246,15 @@ components:
       type: object
       required: [name, documents, passages, excluded, variants, updated_at]
       properties:
+        id:
+          description: |
+            Tells this source apart from any earlier or later source of the
+            same name: set when it is created, never changed, and never
+            given to another source. Absent for a source created before
+            sources kept ids until a conversation imported into it is
+            continued, which gives it one.
+          type: string
+          pattern: "^[0-9a-f]{32}$"
         lifecycle: {$ref: "#/components/schemas/KnowledgeLifecycle"}
         content_version: {type: integer, format: int64, minimum: 0}
         name: {type: string}

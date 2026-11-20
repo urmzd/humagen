@@ -176,10 +176,12 @@ export function Composer({
   /**
    * The + menu, in place of + attaching files at once: what it shows, given
    * a way to close it and to attach files, and where the conversation is
-   * filed, shown as a text control in the bar. Ctrl+/ (Cmd+/) opens it.
+   * filed, shown as a text control in the bar. Ctrl+/ (Cmd+/) opens it. The
+   * menu is given the draft as it stands, so a host that marks the draft's
+   * mentions need not keep the draft itself and render again on every key.
    */
   plus?: {
-    menu: (close: () => void, attach: () => void, leave: () => void) => ReactNode;
+    menu: (close: () => void, attach: () => void, leave: () => void, draft: string) => ReactNode;
     chips?: ReactNode;
   };
 }) {
@@ -764,6 +766,7 @@ export function Composer({
                     picker.current?.click();
                   },
                   () => setMenu(false),
+                  value,
                 )}
               </div>
             )}

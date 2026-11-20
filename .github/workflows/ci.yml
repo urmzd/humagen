@@ -76,9 +76,13 @@ jobs:
         with:
           go-version-file: go.mod
       - name: Test, with Postgres
+        # A package gets 20 minutes, not go test's default 10. Under the race
+        # detector on a shared runner internal/httpapi has taken from 390 s to
+        # 600 s for the same tree, so the default turned a slow runner into a
+        # failure with no test hung. A test that hangs still fails the job.
         run: |
           set -o pipefail
-          go test ./... -race -v 2>&1 | tee test.log | grep -vE '^(=== (RUN|PAUSE|CONT|NAME)|\s*--- PASS|PASS$)'
+          go test ./... -race -v -timeout 20m 2>&1 | tee test.log | grep -vE '^(=== (RUN|PAUSE|CONT|NAME)|\s*--- PASS|PASS$)'
       # Each backend suite skips when its variable is unset, so a renamed
       # variable would turn them into silent passes. Fail on any such skip.
       # Suites that also need Redis are left out: no Redis runs here.

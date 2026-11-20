@@ -18,6 +18,7 @@ import {
   isRetryable,
   type Judgement,
   type Notice,
+  paragraphsAtSteps,
   readAgentChange,
   readReview,
   SERVICE_TONE,
@@ -836,13 +837,16 @@ export function TurnView({
   // On Slack the session is one small arrow, on no line of its own: at the end of
   // a finished answer's last line, or else at the end of the disclaimer.
   const slack = useSurface().surface === "slack";
+  // Slack shows the answer as one text with its steps above it: words said
+  // before a call and after it are kept apart as paragraphs, as a stream does.
+  const words = slack ? paragraphsAtSteps(turn.text, turn.tasks) : turn.text;
   const arrow = slack && turn.sessionUrl ? `[${copy.conversationLink}](${turn.sessionUrl})` : "";
   const answerDrawn =
     !streamed &&
     !!turn.text.trim() &&
     turn.text.trim() !== turn.outcome?.summary.trim() &&
     readReview(turn.text, turn.status === "working" && !turn.detached).kind === "text";
-  const answer = linkCitations(turn.text, turn.citations).trimEnd();
+  const answer = linkCitations(words, turn.citations).trimEnd();
   // Markdown the message holds before the answer (the outcome), counted toward Slack's room.
   const before = turn.outcome
     ? turn.outcome.summary.length +
@@ -932,9 +936,7 @@ export function TurnView({
             agent={turn.agent.name}
             text={turn.text}
             markdown={
-              inAnswer && !streamed
-                ? `${answer} ${arrow}`
-                : linkCitations(turn.text, turn.citations)
+              inAnswer && !streamed ? `${answer} ${arrow}` : linkCitations(words, turn.citations)
             }
             streaming={turn.status === "working" && !turn.detached}
             pullRequestHint={turn.source?.url}

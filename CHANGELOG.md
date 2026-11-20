@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.141.1 (2026-11-19)
+
+### Bug Fixes
+
+- **console**: keep a session answer's steps after a reload (#390) ([e275587](https://github.com/urmzd/humagen/commit/e275587af2aad7409b5b0e1815db2e0a9117efda))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.141.0...v0.141.1)
+
+
 ## 0.141.0 (2026-11-19)
 
 ### Features

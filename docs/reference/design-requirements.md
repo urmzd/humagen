@@ -11,7 +11,7 @@ records checks made at the time. The detailed [control-plane spec](../rfcs/0001-
 [board rules](board-design-rules.md), and
 [gap analysis](control-plane-gap-analysis.md) provide the
 larger design. The gap analysis records its own review revision; recheck code
-before treating it as current. Repository rules in [AGENTS.md](../../AGENTS.md) still
+before treating it as current. Repository rules in [AGENTS.md](https://github.com/urmzd/humagen/blob/main/AGENTS.md) still
 govern implementation, including shared presentation and agent identity.
 
 The [workspace principles](workspace-principles.md) apply the

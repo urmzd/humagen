@@ -25,7 +25,7 @@ or where nothing may listen on a public address. Do not point both at the same
 Slack app: both would answer.
 
 The rest of this page describes the connector. The app is described in its
-[README](../../apps/slack/README.md).
+[README](https://github.com/urmzd/humagen/blob/main/apps/slack/README.md).
 
 ## What the API lacks for the Slack app
 
@@ -257,7 +257,7 @@ slash commands. Responses use one message per run, edited as events arrive.
 
 ## App definition
 
-[`examples/slack/manifest.json`](../../examples/slack/manifest.json) declares
+[`examples/slack/manifest.json`](https://github.com/urmzd/humagen/blob/main/examples/slack/manifest.json) declares
 the app: an agent view, a bot user, code channels, and the scopes and events the
 connector uses. Replace `YOUR_HOST` with the public address of `humagen serve`,
 then create the app from the manifest at <https://api.slack.com/apps>.
@@ -420,7 +420,7 @@ are returned, so the router retries them with its bounded backoff.
   runs there; `message.session` is not handled.
 - **Session titles and renames** are left to Slack and its users.
 - **Native streaming.** The connector edits answers with `chat.update`. The
-  [Slack app](../../apps/slack/README.md) streams them.
+  [Slack app](https://github.com/urmzd/humagen/blob/main/apps/slack/README.md) streams them.
 - Command registration, lifecycle replay cursors and the runs a session holds
   are bounded, in memory and per client, like the sink's message handles. A
   restart forgets them, and so does changing the client.

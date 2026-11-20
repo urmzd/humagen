@@ -16,18 +16,69 @@ import {
 } from "./stream";
 
 describe("streamUpdate", () => {
-  it("sends progress before text, and only the text delta", () => {
+  it("puts a new card where its step came in the words, and sends only the text delta", () => {
     const a: Turn = { ...emptyTurn("t", { name: "A" }), text: "Hello" };
-    const b = reduce(reduce(a, { type: "text.delta", text: " world" }), {
+    const b = reduce(reduce(a, { type: "text.delta", text: " world." }), {
       type: "task.upserted",
       task: { id: "x", title: "Searching", status: "in_progress" },
     });
     const { chunks, rewritten } = streamUpdate(a, b);
     expect(rewritten).toBe(false);
+    // The step began after " world." was said, so its card goes after it, not before.
     expect(chunks).toEqual([
+      { type: "markdown_text", text: " world." },
       { type: "task_update", id: "x", title: "Searching", status: "in_progress" },
-      { type: "markdown_text", text: " world" },
     ]);
+    // What comes after the step starts a paragraph below its card.
+    const c = reduce(b, { type: "text.delta", text: "Found it." });
+    expect(streamUpdate(b, c).chunks).toEqual([{ type: "markdown_text", text: "\n\nFound it." }]);
+  });
+
+  it("sends updates to cards already shown before the words that follow them", () => {
+    const task = { id: "x", title: "Searching", status: "in_progress" as const, at: 5 };
+    const a: Turn = { ...emptyTurn("t", { name: "A" }), text: "Hello", tasks: [task] };
+    const b: Turn = { ...a, text: "Hello. Done", tasks: [{ ...task, status: "complete" }] };
+    expect(streamUpdate(a, b).chunks[0]).toMatchObject({ type: "task_update", status: "complete" });
+  });
+
+  it("keeps a sentence whole above a call when the stream had sent only its first word", () => {
+    const said = " bring in @researcher to look it up on the web.";
+    const a: Turn = { ...emptyTurn("t", { name: "A" }), text: "I'll" };
+    const call = {
+      id: "c",
+      title: "researcher",
+      status: "in_progress" as const,
+      subagent: { name: "researcher" },
+    };
+    const b = reduce(reduce(a, { type: "text.delta", text: said }), {
+      type: "task.upserted",
+      task: call,
+    });
+    const c = reduce(reduce(b, { type: "task.upserted", task: { ...call, status: "complete" } }), {
+      type: "text.delta",
+      text: "Here are three changes.",
+    });
+    const first = streamUpdate(a, b).chunks;
+    expect(first).toEqual([
+      { type: "markdown_text", text: said },
+      { type: "task_update", id: "c", title: "researcher", status: "in_progress" },
+    ]);
+    expect(streamUpdate(b, c).chunks).toEqual([
+      { type: "task_update", id: "c", title: "researcher", status: "complete" },
+      { type: "markdown_text", text: "\n\nHere are three changes." },
+    ]);
+  });
+
+  it("names another agent's step once, with its own title when it has one", () => {
+    const turn = (title: string): Turn => ({
+      ...emptyTurn("t", { name: "A" }),
+      tasks: [{ id: "c", title, status: "complete", subagent: { name: "researcher" } }],
+    });
+    const title = (t: Turn) => (streamUpdate(null, t).chunks[0] as { title: string }).title;
+    expect(title(turn("researcher"))).toBe("researcher");
+    expect(title(turn("Researcher"))).toBe("researcher");
+    expect(title(turn(""))).toBe("researcher");
+    expect(title(turn("Looked up Go releases"))).toBe("researcher: Looked up Go releases");
   });
 
   it("sends task details once, since Slack appends them", () => {
