@@ -15,7 +15,10 @@ import {
   commandTokens,
   type Hit,
   nextEnabled,
+  recentCommands,
+  rememberCommands,
   segments,
+  skillsIn,
 } from "./commands.ts";
 import { LazyFrame, sparing, whenIdle } from "./lazy.tsx";
 import { SendRing, VoiceLevel, WorkingBeam } from "./pages.ts";
@@ -243,10 +246,17 @@ export function Composer({
   // `/` opens the command menu (commands.ts); `@` the tag list.
   const commands: Command[] =
     tags && typing?.sigil === "/"
-      ? commandsFor(tags.options, value, typing, {
-          named: defaultCopy.threads.commandNamed,
-          limit: defaultCopy.threads.commandLimit,
-        })
+      ? commandsFor(
+          tags.options,
+          value,
+          typing,
+          {
+            named: defaultCopy.threads.commandNamed,
+            limit: defaultCopy.threads.commandLimit,
+          },
+          undefined,
+          recentCommands(),
+        )
       : [];
   const shown =
     tags && typing && typing.sigil !== "/"
@@ -454,6 +464,14 @@ export function Composer({
       ) || "Please inspect the attached files.";
     const pick =
       sessionPick && mentionsIn(text, [sessionPick.agent]).length ? sessionPick : undefined;
+    // The commands this message names lead the / menu next time.
+    if (tags)
+      rememberCommands(
+        skillsIn(
+          value,
+          tags.options.filter((o) => o.kind === "skill").map((o) => o.token),
+        ),
+      );
     if (now) queue.sendNow(text, pick, uploadsOf(files));
     else queue.send(text, pick, uploadsOf(files));
     change("");
@@ -683,7 +701,7 @@ export function Composer({
             role="listbox"
             aria-label={defaultCopy.threads.commands}
             style={{ maxHeight: listAt.max }}
-            className={`absolute right-2 left-2 z-20 overflow-y-auto rounded-aui border border-aui-border bg-aui-surface p-1 shadow-lg ${listAt.up ? "bottom-full mb-1" : "top-full mt-1"}`}
+            className={`absolute right-2 left-2 z-20 overflow-y-auto rounded-aui border border-aui-border bg-aui-surface p-1 shadow-lg ${listAt.up ? "bottom-full mb-1 md:[.humagen-home_&]:top-full md:[.humagen-home_&]:bottom-auto md:[.humagen-home_&]:mt-1 md:[.humagen-home_&]:mb-0" : "top-full mt-1"}`}
           >
             {commands.map((c, i) => (
               <li
@@ -721,7 +739,7 @@ export function Composer({
             role="listbox"
             aria-label={tags.label}
             style={{ maxHeight: listAt.max }}
-            className={`absolute right-2 left-2 z-20 overflow-y-auto rounded-aui border border-aui-border bg-aui-surface p-1 shadow-lg ${listAt.up ? "bottom-full mb-1" : "top-full mt-1"}`}
+            className={`absolute right-2 left-2 z-20 overflow-y-auto rounded-aui border border-aui-border bg-aui-surface p-1 shadow-lg ${listAt.up ? "bottom-full mb-1 md:[.humagen-home_&]:top-full md:[.humagen-home_&]:bottom-auto md:[.humagen-home_&]:mt-1 md:[.humagen-home_&]:mb-0" : "top-full mt-1"}`}
           >
             {shown.map((o, i) => (
               <li

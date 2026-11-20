@@ -145,3 +145,31 @@ test("a posted message shows every way of naming a skill as /name, and /name onl
     ["review", "triage"],
   );
 });
+
+test("commands a person used lead the list, newest first, and break ties in a search", () => {
+  const at = { start: 0, query: "", sigil: "/" as const };
+  const names = (recent: string[], text = "/", query = "") =>
+    commandsFor(options, text, { ...at, query }, reasons, 12, recent).map((c) => c.option.token);
+  // Never used: the order they were given in.
+  assert.deepEqual(names([]), [
+    "security-review",
+    "review",
+    "rubber-duck",
+    "pr-resolve-comments",
+    "triage",
+  ]);
+  assert.deepEqual(names(["triage", "rubber-duck"]), [
+    "triage",
+    "rubber-duck",
+    "security-review",
+    "review",
+    "pr-resolve-comments",
+  ]);
+  // A closer match still wins: recency only orders equals.
+  assert.deepEqual(names(["security-review"], "/review", "review").slice(0, 2), [
+    "review",
+    "security-review",
+  ]);
+  // A name that is no longer a skill is ignored.
+  assert.deepEqual(names(["gone"]).length, 5);
+});
