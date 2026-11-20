@@ -487,6 +487,7 @@ func serve(o Options, args []string, d serveDefaults) error {
 		Bus:                  broker,
 		Workspace:            *workspaceDir,
 		Sandbox:              sbx,
+		SandboxContained:     sandboxing.contained(),
 		Concurrency:          *concurrency,
 		Role:                 role,
 		Leader:               elector,

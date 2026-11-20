@@ -2717,6 +2717,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "GET", "/api/agent-network", "/api/agent-network", "", http.StatusOK)
 
 	workspaceID := exerciseWorkspaceFileContract(t, c, auditAdmin, globex)
+	exerciseSandboxCommandContract(t, c)
 	padID := exerciseScratchpadContract(t, c, auditAdmin, globex, workspaceID)
 	exerciseSaveContract(t, c, auditAdmin, globex, workspaceID, padID)
 	// Two rules hold for every route that takes something: another
@@ -2757,6 +2758,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/threads/{id}/files/content":                     {"id": workspaceID},
 		"/api/threads/{id}/files/publish":                     {"id": workspaceID},
 		"/api/threads/{id}/sandboxes":                         {"id": workspaceID},
+		"/api/threads/{id}/sandboxes/commands":                {"id": workspaceID},
 		"/api/threads/{id}/memory":                            {"id": workspaceID},
 		"/api/threads/{id}/artifacts":                         {"id": workspaceID},
 		"/api/threads/{id}/scratchpads":                       {"id": workspaceID},

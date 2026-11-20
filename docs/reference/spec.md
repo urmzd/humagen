@@ -238,6 +238,11 @@ follow-up turn sees what the last one wrote.
 | `local` | Host processes, with the server's privileges, in a directory laid out like an instance. The shell works | Development without Docker |
 | `unisolated` | This host, as before the sandbox: files in the conversation's directory, stdio servers as host processes. The shell is refused | Development and tests |
 
+A person's own command, from a session's Terminal tab, runs only on the
+`docker` kind, in an instance started for that one command. `local` and
+`unisolated` would run it on this host, so they refuse it and the console
+shows no command line.
+
 The server says at start which one it runs. `local` and `unisolated` are
 never chosen for you: name them in the spec or with `-sandbox`. The Docker
 daemon must have `runsc` registered for the default. `runc` shares the host's

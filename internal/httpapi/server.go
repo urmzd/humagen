@@ -1436,6 +1436,11 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 		fail(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, platform.ErrWorkspaceConflict):
 		fail(w, http.StatusConflict, err.Error())
+	case errors.Is(err, platform.ErrUnisolated):
+		fail(w, http.StatusConflict, "this deployment has no isolated sandbox to run a command in")
+	case errors.Is(err, platform.ErrSandboxUnavailable):
+		w.Header().Set("Retry-After", "5")
+		fail(w, http.StatusServiceUnavailable, "the sandbox could not run the command; try again")
 	case errors.Is(err, platform.ErrSandbox), errors.Is(err, artifacts.ErrInvalid):
 		fail(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, memory.ErrSensitive):
