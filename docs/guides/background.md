@@ -15,10 +15,11 @@ Each kind also ends when its time or runs run out, or after three failed runs
 in a row (a task after one). You are told how it ended. Work that someone
 stopped tells nobody.
 
-## Grant the tools
+## The tools
 
-An agent has these tools only when its revision names them. The builder may
-propose them like any other grantable tool.
+Every agent has these tools on any turn it takes for a person: no definition
+has to name them. A watch's check, a goal's later turns and a task's run need
+only the tools the agent already has to do the checking or the work.
 
 | Tool | What it does |
 |------|--------------|
@@ -29,9 +30,11 @@ propose them like any other grantable tool.
 | `background_list` | Lists the person's watches, goals and tasks. |
 | `background_stop` | Stops one of the person's own. |
 
-```yaml
-tools: [github_workflow_status, shell, notify, watch_start, goal_start, task_start, background_list, background_stop]
-```
+They are not offered to an evaluation, a housekeeping run, a run that acts for
+nobody, a run another agent called, or a run that is itself background work.
+To take them away from a workspace or a project, leave them out of its run
+settings' allowed tools (`run.ceilings.tools` in
+[the spec](../reference/spec.md#run-settings)).
 
 ## How it runs
 

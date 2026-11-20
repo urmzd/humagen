@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -17,8 +18,11 @@ import (
 	"github.com/urmzd/humagen/pkg/background"
 	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/join"
+	"github.com/urmzd/humagen/pkg/personctx"
 	"github.com/urmzd/humagen/pkg/projects"
+	"github.com/urmzd/humagen/pkg/runctx"
 	"github.com/urmzd/humagen/pkg/runs"
+	runsettings "github.com/urmzd/humagen/pkg/settings"
 	"github.com/urmzd/humagen/pkg/threads"
 )
 
@@ -294,5 +298,71 @@ func TestNotify(t *testing.T) {
 	req.RunID = nobody.ID
 	if _, _, err := p.UseTool(t.Context(), req, ToolNotify, map[string]any{"subject": "x"}); !errors.Is(err, auth.ErrForbidden) {
 		t.Fatalf("a run for nobody notified: %v", err)
+	}
+}
+
+// Every agent's turn for a person has the background tools, whatever its
+// definition names. A run for nobody, and one that is itself background
+// work, are offered none.
+func TestEveryTurnForAPersonHasTheBackgroundTools(t *testing.T) {
+	p, _, req := backgroundPlatform(t)
+	if len(req.Definition.Spec.Tools) != 0 {
+		t.Fatalf("the fixture's agent names tools: %v", req.Definition.Spec.Tools)
+	}
+	got := p.withBackgroundTools(req).Definition.Spec.Tools
+	if !slices.Equal(got, BackgroundTools()) {
+		t.Fatalf("a turn for a person is offered %v, want %v", got, BackgroundTools())
+	}
+	if len(req.Definition.Spec.Tools) != 0 {
+		t.Fatal("the pinned definition was changed")
+	}
+	named := req
+	named.Definition.Spec.Tools = []string{ToolNotify, ToolFileRead}
+	if got := p.withBackgroundTools(named).Definition.Spec.Tools; len(got) != len(BackgroundTools())+1 {
+		t.Fatalf("a tool the definition names is offered twice: %v", got)
+	}
+
+	nobody, err := p.Converse(t.Context(), "acme", Turn{ID: "api-nobody-tools", Agent: "lead", Text: "hi", Project: "Field"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	awaitEnd(t, p, nobody.ID)
+	for what, id := range map[string]string{"a run for nobody": nobody.ID, "a run that does not exist": "r-missing"} {
+		other := req
+		other.RunID = id
+		if got := p.withBackgroundTools(other).Definition.Spec.Tools; len(got) != 0 {
+			t.Errorf("%s is offered %v", what, got)
+		}
+	}
+
+	task, err := useBackground(t, p, req, ToolTaskStart, map[string]any{"ask": "search"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.checkBackground(t.Context())
+	it := awaitState(t, p, task.ID)
+	inner := req
+	inner.RunID = it.Last
+	if got := p.withBackgroundTools(inner).Definition.Spec.Tools; len(got) != 0 {
+		t.Errorf("background work is offered %v", got)
+	}
+	// A tool ceiling still decides: one that lists only notify leaves only it.
+	ceiled := p.withBackgroundTools(req)
+	ceiled.Meta = map[string]string{}
+	if err := runctx.Pin(ceiled.Meta, runctx.New("ada", runsettings.Resolve(runsettings.Layer{Ceilings: runsettings.Ceilings{Tools: []string{ToolNotify}}}), personctx.Context{})); err != nil {
+		t.Fatal(err)
+	}
+	if ceiled, err = boundRunContext(ceiled); err != nil || !slices.Equal(ceiled.Definition.Spec.Tools, []string{ToolNotify}) {
+		t.Fatalf("under a ceiling of notify alone the turn is offered %v: %v", ceiled.Definition.Spec.Tools, err)
+	}
+	// The whole path a turn's request takes offers them too.
+	resolved, err := p.resolveRevision(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range BackgroundTools() {
+		if !slices.Contains(resolved.Definition.Spec.Tools, name) {
+			t.Errorf("the resolved turn lacks %s: %v", name, resolved.Definition.Spec.Tools)
+		}
 	}
 }
