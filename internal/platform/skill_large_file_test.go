@@ -118,8 +118,8 @@ func (m *hasher) Stream(ctx context.Context, req saigetypes.Request) (<-chan sai
 
 // A supporting file as large as the library takes reaches a coding agent
 // whole, on the host, and its bytes are never put into what a model is
-// asked. A native model is told the file is over what file_read returns,
-// and file_read refuses it while it still reads a file at that bound.
+// asked. A native model is told the file is over what skill_file_read
+// returns, and file_read refuses it while it still reads a file at that bound.
 func TestALargeSupportingFileReachesACodingAgentWholeAndNeverThePrompt(t *testing.T) {
 	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
 		t.Setenv("TMPDIR", t.TempDir())
@@ -186,7 +186,7 @@ func TestALargeSupportingFileReachesACodingAgentWholeAndNeverThePrompt(t *testin
 		asked = strings.Join(plain.asked, "\n")
 		plain.mu.Unlock()
 		for _, line := range []string{
-			fmt.Sprintf("skill:schemas/schemas/large.xsd (%d bytes), over the %d bytes file_read returns\n", library.MaxPackageFileBytes, readBound),
+			fmt.Sprintf("skill:schemas/schemas/large.xsd (%d bytes), over the %d bytes skill_file_read returns\n", library.MaxPackageFileBytes, readBound),
 			fmt.Sprintf("skill:schemas/schemas/small.xsd (%d bytes)\n", readBound),
 		} {
 			if !strings.Contains(asked, line) {
@@ -264,7 +264,7 @@ func TestATurnListsAtMost63SkillFilesAndGivesEveryOne(t *testing.T) {
 		asked := strings.Join(plain.asked, "\n")
 		plain.mu.Unlock()
 		named := "\nskill:many/schemas/part200.xsd (512 bytes)\nskill:many/schemas/part254.xsd (512 bytes)\nskill:many/schemas/part000.xsd (512 bytes)\n"
-		if n := strings.Count(asked, "\nskill:many/"); n != 63 || !strings.Contains(asked, named) || !strings.Contains(asked, "skill:many/schemas/part060.xsd (512 bytes)\n"+remainder+" file_read reads any path the instructions name, as skill:many/<path>.") || strings.Contains(asked, "part061.xsd") {
+		if n := strings.Count(asked, "\nskill:many/"); n != 63 || !strings.Contains(asked, named) || !strings.Contains(asked, "skill:many/schemas/part060.xsd (512 bytes)\n"+remainder+" skill_file_read reads any path the instructions name, as skill:many/<path>.") || strings.Contains(asked, "part061.xsd") {
 			t.Fatalf("the native list named %d files: %.4000s", n, asked)
 		}
 		req := runtime.Request{RunID: run.ID, Tenant: tenant, Definition: native.Revision{Spec: native.Spec{Name: "plain"}, Version: wire.VersionOf(1)}}

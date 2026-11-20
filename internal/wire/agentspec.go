@@ -61,6 +61,11 @@ const (
 // agent is built, never here.
 const MCPGroupPrefix = "mcp:"
 
+// SkillFileRead is the tool a run is offered to read the supporting files of
+// the skills it uses. It is not a grant: an agent's tools and a skill's tool
+// list may not name it.
+const SkillFileRead = "skill_file_read"
+
 // MaxFallbacks bounds how many models an agent may fall back to. Every
 // fallback is a client built with the agent and a model that may answer for
 // it, so the list is a policy, not a search: a short one an operator can
@@ -458,6 +463,9 @@ func (s AgentSpec) ValidateAccepting(providers []string, accept func(string) boo
 	}
 	if err := uniqueNonEmpty("tool", c.Name, c.Tools); err != nil {
 		return err
+	}
+	if slices.Contains(c.Tools, SkillFileRead) {
+		return fmt.Errorf("%w: agent %q names %s, which no agent is granted: a run is offered it to read the supporting files of the skills it uses", ErrInvalidAgent, c.Name, SkillFileRead)
 	}
 	groups := false
 	for _, name := range c.Tools {

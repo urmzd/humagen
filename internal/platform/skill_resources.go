@@ -1,11 +1,13 @@
 package platform
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"path"
 	"strings"
+	"sync"
 	"unicode/utf8"
 
 	"github.com/urmzd/humagen/internal/wire"
@@ -14,6 +16,7 @@ import (
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/skillfiles"
 	saigeskills "github.com/urmzd/saige/agent/skills"
+	saigetypes "github.com/urmzd/saige/agent/types"
 	"github.com/urmzd/saige/flow/runtime"
 	"github.com/urmzd/saige/flow/turn/native"
 )
@@ -21,22 +24,85 @@ import (
 // maxPinnedSkills is how many skills one run's pin is read for.
 const maxPinnedSkills = 64
 
-// maxSkillFileRead is the largest supporting file file_read answers with.
-// What file_read returns enters the model's context, so this is the bound
-// supporting files had before the library took larger ones
+// maxSkillFileRead is the largest supporting file skill_file_read (and
+// file_read) answers with. What it returns enters the model's context, so
+// this is the bound supporting files had before the library took larger ones
 // (library.MaxPackageFileBytes). A larger file is listed with its size and
 // placed whole on the host for a coding agent, which reads it itself; a
-// native model is told it is over this bound and file_read refuses it.
+// native model is told it is over this bound and the read is refused.
 const maxSkillFileRead = 128 << 10
 
+// ToolSkillFileRead reads a supporting file of a skill the run is pinned
+// with. It is not a grant: no agent spec or skill tool list names it. A turn
+// is offered it exactly when its text lists skill: paths (withSkills), so
+// the text never names a tool the turn does not have.
+//
+// It reads only the packages the run was admitted with (readPinnedSkillFile):
+// no conversation file, no other skill, no path outside a package, at most
+// maxSkillFileRead bytes a file and maxSkillFileReads files an attempt of a
+// turn. What it can return is part of the skill the person chose for the
+// turn, whose instructions are already in the turn's text, so neither a
+// skill's tool list, a workspace's tools ceiling nor the action policy holds
+// it and no person is asked. Each call is
+// recorded on the run's stream as every tool call is, and a paused agent or
+// workspace stops it as it stops every tool (operationAdmissionRequest).
+const ToolSkillFileRead = wire.SkillFileRead
+
+// maxSkillFileReads is how many supporting files one attempt of a turn
+// reads with skill_file_read (a retried attempt counts again): one more than the files a turn's text lists for a skill
+// (maxListedSkillFiles), so a model can read every listed file and one the
+// instructions name.
+const maxSkillFileReads = maxListedSkillFiles + 1
+
+// skillFileTool is skill_file_read for one turn.
+type skillFileTool struct {
+	p   *Platform
+	req runtime.Request
+
+	mu    sync.Mutex
+	reads int
+}
+
+func (p *Platform) skillFileTool(req runtime.Request) saigetypes.Tool {
+	return &skillFileTool{p: p, req: req}
+}
+
+func (t *skillFileTool) Definition() saigetypes.ToolDef {
+	return saigetypes.ToolDef{
+		Name:        ToolSkillFileRead,
+		Description: "Read a supporting file of a skill this turn uses, with the exact path the turn lists: skill:<name>/<path>. It reads only the files of those skills, at most 131072 bytes a file. Reading a script does not execute it.",
+		Parameters:  schema([]string{"path"}, map[string]string{"path": "skill:<name>/<path>, as the turn lists it"}),
+	}
+}
+
+func (t *skillFileTool) Execute(_ context.Context, args map[string]any) (string, error) {
+	if err := t.p.operationAdmissionRequest(t.req); err != nil {
+		return "", err
+	}
+	requested := arg(args, "path")
+	if !strings.HasPrefix(requested, "skill:") {
+		return "", fmt.Errorf("%w: skill_file_read reads only the supporting files of the skills this turn uses, as skill:<name>/<path>", ErrSandbox)
+	}
+	t.mu.Lock()
+	if t.reads >= maxSkillFileReads {
+		t.mu.Unlock()
+		return "", fmt.Errorf("%w: this turn has read %d skill files, as many as one turn may", ErrSandbox, maxSkillFileReads)
+	}
+	t.reads++
+	t.mu.Unlock()
+	return t.p.readPinnedSkillFile(t.req, ToolSkillFileRead, requested)
+}
+
 // readPinnedSkillFile reads only a package version pinned by this run's
-// admission. The ordinary file_read grant and action policy still apply.
-func (p *Platform) readPinnedSkillFile(req runtime.Request, requested string) (string, error) {
+// admission. Through file_read, the ordinary file_read grant and action
+// policy still apply; through skill_file_read, they do not (ToolSkillFileRead).
+func (p *Platform) readPinnedSkillFile(req runtime.Request, tool, requested string) (string, error) {
 	name, path, ok := strings.Cut(strings.TrimPrefix(requested, "skill:"), "/")
 	if !ok || req.RunID == "" {
 		return "", fmt.Errorf("%w: no pinned skill file", ErrSandbox)
 	}
-	run, err := p.Runs.Get(req.Tenant, req.RunID)
+	// A turn may read before its run's record is written (runRecordOf).
+	run, err := p.runRecordOf(req.Tenant, req.RunID)
 	if err != nil {
 		return "", fmt.Errorf("%w: no pinned skill file", ErrSandbox)
 	}
@@ -54,15 +120,20 @@ func (p *Platform) readPinnedSkillFile(req runtime.Request, requested string) (s
 			return "", err
 		}
 		data, _, err := pkg.ReadResource(path, maxSkillFileRead)
-		if errors.Is(err, saigeskills.ErrResourceTooLarge) {
-			return "", fmt.Errorf("%w: that skill file is over the %d bytes file_read returns", ErrSandbox, maxSkillFileRead)
+		switch {
+		case errors.Is(err, saigeskills.ErrResourceTooLarge):
+			return "", fmt.Errorf("%w: that skill file is over the %d bytes %s returns", ErrSandbox, maxSkillFileRead, tool)
+		case errors.Is(err, saigeskills.ErrOutsideSkillRoot):
+			return "", fmt.Errorf("%w: %q is outside the package of skill %s", ErrSandbox, path, name)
+		case errors.Is(err, saigeskills.ErrResourceNotFound):
+			return "", fmt.Errorf("%w: skill %s has no file %q", ErrSandbox, name, path)
 		}
 		if err != nil || !utf8.Valid(data) || strings.ContainsRune(string(data), 0) {
 			return "", fmt.Errorf("%w: that skill file is not readable text", ErrSandbox)
 		}
 		return string(data), nil
 	}
-	return "", fmt.Errorf("%w: skill is not pinned to this run", ErrSandbox)
+	return "", fmt.Errorf("%w: skill %s is not one this turn uses", ErrSandbox, name)
 }
 
 // pinnedPackage is the package a run was pinned to: the revision the pin

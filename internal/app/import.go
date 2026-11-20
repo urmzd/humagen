@@ -1487,6 +1487,9 @@ func skillFolder(dir, name string) (def library.Definition, dropped []string, er
 	if !whole.Valid() {
 		return whole, nil, errors.New("not a skill the library takes: check its name, description and instructions in SKILL.md")
 	}
+	// Checked above as the server derives it, and sent as none: an
+	// import's tool limit is what its SKILL.md declares (library.ImportTools).
+	whole.Tools = nil
 	return whole, dropped, nil
 }
 
@@ -1539,7 +1542,9 @@ var readSkillFile = func(path string, max int64) ([]byte, error) {
 // from the bytes read, so a file that grew since it was listed is still read
 // no further than the bound.
 func readSkillFolder(dir, name string) (library.Definition, error) {
-	def := library.Definition{Tools: []string{}}
+	// No tool list: the revision limits a run's tools only as far as its
+	// SKILL.md declares allowed-tools (library.Definition.Normalize).
+	def := library.Definition{}
 	def.Name = name
 	root := filepath.Join(dir, name)
 	// A store may keep a skill in a folder named otherwise than the skill.

@@ -223,7 +223,7 @@ func TestACodingAgentReadsThePinnedSkillFilesOnTheHost(t *testing.T) {
 	if !strings.Contains(asked[0], filepath.Join("brief", "assets", "icon.bin")+" (3 bytes)") {
 		t.Fatalf("a supporting file is missing from what was asked: %q", asked[0])
 	}
-	if strings.Contains(asked[0], "with file_read") || strings.Contains(asked[0], "skill:brief/") {
+	if strings.Contains(asked[0], "with skill_file_read") || strings.Contains(asked[0], "skill:brief/") {
 		t.Fatalf("a program with no platform tool was told to use one: %q", asked[0])
 	}
 	if left := placed(t); len(left) != 0 {
@@ -255,9 +255,9 @@ func TestAFailedRunOnACodingAgentLeavesNoSkillFiles(t *testing.T) {
 	}
 }
 
-// A model that is offered the platform's tools is told what it was told
-// before: file_read paths, and nothing is written to the host.
-func TestANativeModelKeepsFileReadForSkillFiles(t *testing.T) {
+// A model that is offered the platform's tools is told skill_file_read
+// paths, and nothing is written to the host.
+func TestANativeModelReadsSkillFilesWithSkillFileRead(t *testing.T) {
 	plain := &program{}
 	p, who := published(t, map[string]*program{"plain": plain})
 	posted, err := p.StartThread(t.Context(), who, platform.ThreadInput{Project: "Shared", Agents: []string{"plain"}, Text: "$brief Summarize the decision"})
@@ -273,8 +273,8 @@ func TestANativeModelKeepsFileReadForSkillFiles(t *testing.T) {
 	if len(paths) != 0 || strings.Contains(asked[0], root) {
 		t.Fatalf("a native model was given host paths: %q", asked[0])
 	}
-	if !strings.Contains(asked[0], "Supporting files are read on demand with file_read using these exact paths. Reading a script does not execute it:\nskill:brief/assets/icon.bin (3 bytes)\nskill:brief/references/style.md ("+strconv.Itoa(len(pinnedBytes))+" bytes)") {
-		t.Fatalf("the file_read manifest changed: %q", asked[0])
+	if !strings.Contains(asked[0], "Supporting files are read on demand with skill_file_read using these exact paths. Reading a script does not execute it:\nskill:brief/assets/icon.bin (3 bytes)\nskill:brief/references/style.md ("+strconv.Itoa(len(pinnedBytes))+" bytes)") {
+		t.Fatalf("the skill_file_read manifest changed: %q", asked[0])
 	}
 	if _, err := os.Stat(root); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("a native turn wrote to the host: %v", err)
@@ -298,8 +298,8 @@ func chained(t *testing.T, first, second *program) (*platform.Platform, auth.Pri
 }
 
 const (
-	toolManifest = "Supporting files are read on demand with file_read using these exact paths. Reading a script does not execute it:\nskill:brief/assets/icon.bin (3 bytes)\nskill:brief/references/style.md ("
-	hostManifest = "If you are not offered file_read, the same files are on this host for this turn only, read only."
+	toolManifest = "Supporting files are read on demand with skill_file_read using these exact paths. Reading a script does not execute it:\nskill:brief/assets/icon.bin (3 bytes)\nskill:brief/references/style.md ("
+	hostManifest = "If you are not offered skill_file_read, the same files are on this host for this turn only, read only."
 )
 
 // gone fails the test when a turn's skill files are still on the host.
@@ -337,15 +337,16 @@ func TestACodingAgentFallbackReadsThePinnedSkillFiles(t *testing.T) {
 	for who, text := range map[string]string{"the native model": first[0], "the fallback": asked[0]} {
 		tool, host := strings.Index(text, toolManifest), strings.Index(text, hostManifest)
 		if tool < 0 || host < tool {
-			t.Fatalf("%s was not told both ways, file_read first: %q", who, text)
+			t.Fatalf("%s was not told both ways, skill_file_read first: %q", who, text)
 		}
 	}
 	gone(t, "after the run", paths)
 }
 
 // An agent on a coding agent that falls back to a native model: the coding
-// agent has the files, and the native model that answers keeps file_read.
-func TestANativeFallbackOfACodingAgentKeepsFileRead(t *testing.T) {
+// agent has the files, and the native model that answers keeps
+// skill_file_read.
+func TestANativeFallbackOfACodingAgentKeepsSkillFileRead(t *testing.T) {
 	coder, native := &program{host: true, fail: true}, &program{}
 	p, _, id := chained(t, coder, native)
 	run := await(t, p, id, runs.Completed)
@@ -358,7 +359,7 @@ func TestANativeFallbackOfACodingAgentKeepsFileRead(t *testing.T) {
 	}
 	asked, _, _ := native.seen()
 	if !strings.Contains(asked[0], toolManifest) {
-		t.Fatalf("the native fallback lost the file_read manifest: %q", asked[0])
+		t.Fatalf("the native fallback lost the skill_file_read manifest: %q", asked[0])
 	}
 	gone(t, "after the run", paths)
 }

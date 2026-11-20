@@ -2,6 +2,7 @@ package library
 
 import (
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -90,11 +91,22 @@ func TestMalformedPackagesFailWholeAndNeverGrantTools(t *testing.T) {
 			t.Fatal("accepted malformed package", err)
 		}
 	}
+	// A selection that limits nothing (nil) is narrowed to what allowed-tools
+	// names; the run is still held to the agent's own grants, so this only
+	// narrows. A package that declares nothing limits nothing.
 	d := packageDefinition()
 	d.Tools = nil
 	normal, err := d.Normalize()
-	if err != nil || len(normal.Tools) != 0 {
-		t.Fatal("frontmatter granted tools", err)
+	if err != nil || !slices.Equal(normal.Tools, []string{"file_read"}) {
+		t.Fatal("allowed-tools did not narrow an absent selection", normal.Tools, err)
+	}
+	d.Files[0].Data = []byte("---\nname: brief\ndescription: Summarize decisions\n---\n\nRead references/style.md before writing.\n")
+	if normal, err = d.Normalize(); err != nil || normal.Tools != nil {
+		t.Fatal("a package that declares no tools limited them", normal.Tools, err)
+	}
+	d.Files[0].Data = []byte("---\nname: brief\ndescription: Summarize decisions\nallowed-tools: \"\"\n---\n\nRead references/style.md before writing.\n")
+	if normal, err = d.Normalize(); err != nil || normal.Tools == nil || len(normal.Tools) != 0 {
+		t.Fatal("an empty allowed-tools did not allow no tools", normal.Tools, err)
 	}
 	d = packageDefinition()
 	d.Files[0].Data = []byte("---\nname: brief\ndescription: Brief\n---\n" + strings.Repeat("x", MaxPackageInstructions+1))
