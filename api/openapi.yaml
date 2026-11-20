@@ -19583,7 +19583,7 @@ components:
         truncated: {type: boolean}
         note: {type: string}
     MessagesInput:
-      description: People's messages from one origin. Who said them is the caller.
+      description: People's messages from one origin. Who said them is the caller, or with act_as the person a client's own machine posts for.
       type: object
       additionalProperties: false
       required: [messages]
@@ -19597,6 +19597,12 @@ components:
         stream:
           type: boolean
           description: Accepted; follow GET /api/messages/{id}/stream for what happens beneath.
+        act_as:
+          $ref: "#/components/schemas/ActAs"
+          description: The person of a client the message is posted for. Only that client's own machine (its Slack app) may send it, with one message and a slack ref that names the client. The message lands in the Slack thread's root session, which the thread's first message starts.
+        post_only:
+          type: boolean
+          description: With act_as, record the message and start nothing, for what people said in the thread before the app was asked.
     InMessage:
       description: One person's message. role is user; the platform writes the agents' messages.
       type: object
@@ -19666,6 +19672,8 @@ components:
         ts: {type: string}
         thread_ts: {type: string}
         audience: {$ref: "#/components/schemas/SurfaceAudience"}
+        app_user: {type: string, description: "The Slack app's own bot user id, whose mention is how a channel message reaches the app and is not a tag. Read only from a client's own machine posting for a person (act_as)."}
+        files: {type: boolean, description: "Ask the platform to ingest the Slack message's files. Read only from a client's own machine posting for a person (act_as)."}
         repo: {type: string}
         kind: {type: string, enum: [pull, issue, comment]}
         number: {type: integer, minimum: 1}
