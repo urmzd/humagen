@@ -149,6 +149,7 @@ import type {
   ListSkillsResponse,
   ListSourceLinkSuggestionsResponse,
   ListStorePackagesResponse,
+  ListThreadForksResponse,
   ListThreadsResponse,
   ListUsageNoticesResponse,
   Manifest,
@@ -3981,6 +3982,23 @@ here too (429).
     return this.rawRequest<Thread>("POST", path, {
       body,
       contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** The most recently active first, at most 50. A fork is private to whoever started it, so this is the caller's way back to their own. An archived fork and a read-only archive are left out. A fork's saved history is not included; read the fork for it. */
+  async listThreadForks(id: string, options?: RequestOptions): Promise<ListThreadForksResponse> {
+    let path = "/api/threads/{id}/forks";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<ListThreadForksResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listThreadForksRaw(id: string, options?: RequestOptions): Promise<ApiResponse<ListThreadForksResponse>> {
+    let path = "/api/threads/{id}/forks";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<ListThreadForksResponse>("GET", path, {
       ...options,
     });
   }

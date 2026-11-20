@@ -1657,6 +1657,19 @@ export interface ThreadFork {
   context: ThreadForkContextItem[];
 }
 
+/** One fork of a conversation at a glance, without its saved history. */
+export interface ThreadForkSummary {
+  id: string;
+  /** The fork's title, empty when it was given none. */
+  title: string;
+  /** The message or run of the source the fork's history ends at. */
+  through: string;
+  /** When it was forked. */
+  at: string;
+  /** When anything last happened in it. */
+  updated_at: string;
+}
+
 /** Where a conversation continued from an imported one came from: a
 knowledge document an import wrote from a session of another tool,
 pinned by its source and that source's id, the document's id, its
@@ -6402,6 +6415,10 @@ export interface ForkThreadBody {
   title?: string;
   agents?: string[];
   mode?: ThreadMode;
+}
+
+export interface ListThreadForksResponse {
+  forks: ThreadForkSummary[];
 }
 
 export interface BringBackThreadResultBody {
