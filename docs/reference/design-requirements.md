@@ -2045,3 +2045,30 @@ the posted message closed and open. Not seen: a tab's failure to load, the
 overflow line, and Details before this change at the same size. The five tabs
 are separate changes. The contract for them is
 [workbench.md](../architecture/workbench.md).
+
+Changes tab (`WorkbenchChanges.tsx`, `workbenchChanges.ts`): implemented. It
+lists the files the session's runs wrote or removed in its working files, from
+what each run recorded (`GET /api/threads/{id}/sandboxes`) and the files as they
+are now (`GET /api/threads/{id}/files`); no route was added. A file opens at
+`?bench=changes&benchRef=<path>` on its comparison: old and new line numbers, a
+plus or minus sign and a tint on each changed line, three unchanged lines around
+a change and longer runs folded to one row, 300 rows at a time. The platform
+keeps no copy of a file from before a write, so the text before is the one an
+earlier `file_write` of the same session wrote (Last Change), and otherwise
+nothing, in which case the whole file is drawn as added and the tab says so. A
+file over 256 KB is read only on request, a binary file says so with its size,
+and a comparison past the bound of `compareText` says why. Where the files are
+writable the reader can delete a file, or put it back to its earlier text when
+that text's hash is one a run recorded leaving there; both ask first, write at
+the revision read, and are recorded as `changes`. Edit File opens the Workspace
+pane's editor, whose saves and deletes are recorded as `files`
+(`fileActivity.ts`), one record per file against its text before the first
+unsent save. Not built: keeping a change (nothing on the server would hold it),
+comparisons of edits made by fragments or patches, and restoring a file a run
+or a person removed. Evidence: `workbench-changes.dom.test.tsx`; seen in Chrome
+against a local server with a stand-in model at 1280x800 and 390x844, light and
+dark: the list, a comparison, the whole file, a large file before and after it
+is compared, a binary file, the empty state, both confirmations, a removed file,
+and the list above the composer after a restore, a delete and a save in the
+editor, and the pane filling the page. Not seen: a refused write and a file
+that cannot be read.
