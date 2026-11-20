@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.156.0 (2026-11-20)
+
+### Features
+
+- **console**: list and stop background work (#449) ([6a61eda](https://github.com/urmzd/humagen/commit/6a61edad9756fc27e948c0d640aa88a0b038893d))
+
+### Misc
+
+- **client**: a stream test names the request it reads (#451) ([32dc2fa](https://github.com/urmzd/humagen/commit/32dc2faf41b7cf913a07fcd2238a7e21c23a2ca4))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.155.0...v0.156.0)
+
+
 ## 0.153.0 (2026-11-20)
 
 ### Features
