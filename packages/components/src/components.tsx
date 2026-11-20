@@ -645,7 +645,7 @@ export function FailureAlert({
           ))}
         </Actions>
       )}
-      {!isRetryable(failure) && failure.kind !== "auth_required" && (
+      {!isRetryable(failure) && failure.kind !== "auth_required" && copy.cantRetry && (
         <Context items={[copy.cantRetry]} />
       )}
       {notOffered && <Context items={[notOffered]} />}

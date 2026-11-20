@@ -1757,6 +1757,61 @@ export const defaultCopy = {
     all: "All Selected Agents",
     mode: "Who answers",
   },
+  /**
+   * Continuing a conversation imported from another tool: the action on a
+   * document's row, its failures, and what the new conversation says of its
+   * origin. A tool is named as its import names it ("imported from TOOL").
+   */
+  continueImport: {
+    action: "Continue Conversation",
+    /** The row for one project, when the source is filed in more than one. */
+    actionIn: (project: string) => `Continue in ${project}`,
+    /** The workspace itself, as a place to continue in. */
+    workspace: "Workspace",
+    menu: (title: string) => `Actions for ${title}`,
+    starting: (title: string) => `Starting a conversation from ${title}…`,
+    reload: "Reload Documents",
+    forbidden: "You are not allowed to start a conversation from this document.",
+    gone: "This document or its source is no longer here, or you can no longer see it.",
+    tooLarge: "This conversation is too large to continue.",
+    failed: "The conversation could not be started.",
+    tools: {
+      claude: "Claude Code",
+      codex: "Codex",
+      chatgpt: "ChatGPT",
+      "claude-ai": "claude.ai",
+    },
+    heading: (tool: string) => `Imported from ${tool}`,
+    headingUnknown: "Imported document",
+    speakers: {
+      user: "User",
+      assistant: "Assistant",
+      tool: "Tool call",
+      result: "Tool result",
+      document: "Document",
+    },
+    /** How a turn is named: its speaker there, and the tool it is from. */
+    speaker: (speaker: string, tool: string) => `${speaker}, imported from ${tool}`,
+    turnCut: "Shortened",
+    facts: "What was carried over",
+    sent: (sent: number, kept: number) =>
+      `${sent} of ${kept} ${kept === 1 ? "turn" : "turns"} sent`,
+    mainPath: "Main path",
+    oneBlock: "Sent as one block",
+    speakersUnknown: "Speakers not known",
+    shortened: (n: number) => `${n} shortened to fit`,
+    branches: (n: number) => `${n} ${n === 1 ? "branch" : "branches"} not continued`,
+    noBranches: "No other branches",
+    files: (n: number) => `Files on ${n} ${n === 1 ? "turn" : "turns"} not imported`,
+    importLeftOut: (n: number) => `Import left out ${n} ${n === 1 ? "turn" : "turns"}`,
+    importShortened: (n: number) => `Import shortened ${n} ${n === 1 ? "turn" : "turns"}`,
+    importUnknown: "What the import left out is not known",
+    started: "Started",
+    ended: "Last turn",
+    revision: (short: string) => `Revision ${short}`,
+    changedSince: "The document has changed in its source since this conversation was started.",
+    goneSince: "The document is no longer in its source.",
+  },
   conversationAccess: {
     title: "People & Access",
     add: "Add Participant",
@@ -3175,18 +3230,17 @@ export const defaultCopy = {
   /** A conversation's approval mode, a text control under the composer (DES-057). */
   approvals: {
     label: "Approvals",
+    /** The three modes, each with the one line its menu row says about the approval agent. */
     ask: "Ask Me",
-    askHint: "Every gated action waits for you.",
+    askHint: "You approve every gated action.",
     auto: "Run",
-    autoHint:
-      "The approval agent decides each action the policy asks about, and hands you anything it is unsure of. Every decision is audited.",
+    autoHint: "The approval agent decides gated actions and hands you any it is unsure of.",
     autoFor: (name: string) => `Run, chosen by ${name}`,
-    /** The secondary option beside Run: the approval agent also answers questions (DES-079). */
-    answers: "Answer Questions",
     decide: "Run and Answer",
-    decideHint:
-      "The approval agent also answers a question an agent asks you when the session already settles it, and hands you the rest. Each answer says it was the approval agent's, and is audited.",
+    decideHint: "It also answers an agent's question when the session already settles it.",
     decideFor: (name: string) => `Run and Answer, chosen by ${name}`,
+    /** Under the menu's rows, when someone else set the session's mode. */
+    chosenBy: (name: string) => `Chosen by ${name}.`,
     waiting: "No model is enabled for the approval agent yet, so every action waits for a person.",
     failed: "Could not change approvals. Try again.",
     /** In the menu of an approval waiting in a Slack thread: sets the conversation, not the call. */

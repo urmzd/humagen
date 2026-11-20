@@ -791,6 +791,7 @@ export function Chat({
     (threadId.startsWith("s_") ||
       room.thread.read_only ||
       room.thread.fork ||
+      room.thread.import ||
       room.turns.some((t) => t.message))
   ) {
     return (

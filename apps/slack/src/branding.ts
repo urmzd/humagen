@@ -106,14 +106,17 @@ export function readBranding(path: string): Branding {
   }
 }
 
-/** The shared copy, with the disclaimer this deployment gives. */
+/**
+ * The shared copy for Slack. Slack marks an app's messages with its AGENT
+ * badge, so answers carry no disclaimer line, and a failure says what to do
+ * without a line about retrying. A branded disclaimer still applies.
+ */
 export function brandedCopy(b: Branding): Copy {
-  const { disclaimer, name } = b;
-  if (!disclaimer && !name) return defaultCopy;
+  const { disclaimer } = b;
   return {
     ...defaultCopy,
-    disclaimer: (agent: string) =>
-      disclaimer ? disclaimer.replaceAll("{name}", agent) : defaultCopy.disclaimer(name ?? agent),
+    cantRetry: "",
+    disclaimer: (agent: string) => (disclaimer ? disclaimer.replaceAll("{name}", agent) : ""),
   };
 }
 

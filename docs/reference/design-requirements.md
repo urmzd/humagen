@@ -101,6 +101,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-065 | Sources shows the data catalog a reader sees: connectors, tables and columns, never data, with Crawl, Publish and Withdraw for the owner | Implemented: `CatalogBrowser` in `SourceCatalog.tsx`, on `GET /api/catalog` and the connector routes; web DOM test passes; screens not yet captured |
 | DES-066 | A spend limit says what happens when it is reached, block or ask for approval with a grant cap, and the Directory names a person's projects | Implemented: `Billing.tsx` (`action`, `max_grant`, `max_grant_tokens`), `Directory.tsx` (`projects`, `projects_more`); web typecheck and tests pass; screens not yet captured |
 | DES-068 | The agent editor controls the models and reasoning efforts people may choose per message | Removed 2026-11-07: people pick agents, not models; see DES-067 |
+| DES-076 | An imported session's document is continued from its row's menu, and the new conversation says where it came from and what it carries | Implemented: `Knowledge.tsx`, `ImportContext` in `ForkConversation.tsx`, `packages/adapter/src/imported.ts`, copy in `continueImport`; adapter and web DOM tests pass; before and after captures at 1280x800 and 390x844, light and dark |
 
 ### DES-001: Working integrations
 
@@ -2095,6 +2096,59 @@ and `home-made` pass at 1280x800 and 390x844 in light and dark. Artifact
 cards show no preview of their content. A strip that cannot be read says so in
 one line.
 
+### DES-076: Continue an imported conversation
+
+A document an import wrote from a session of another tool (its uri is
+`claude:`, `codex:`, `chatgpt:` or `claude-ai:` and an id) has a More menu on
+its row in the source's Documents tab with Continue Conversation, for a reader
+who may start runs. A document with no digest is not offered, and an excluded
+one's row cannot be chosen. A source filed in more than one project offers
+one row per project, Continue in NAME. Choosing it sends the document's
+digest, its structure's digest only when the listing records one, and the
+project the source is filed in (`~` for the workspace itself), says that the
+conversation is starting while it waits, and opens the new conversation.
+A narrow row puts its controls under the title rather than cutting the title
+short.
+
+A refusal is shown as an alert under the Documents heading. The route
+answers a status and a sentence with no stable reason, and 409 and 400 each
+have several causes, so for those the server's sentence is shown as given,
+and a 409 (something changed since the page was read) offers Reload
+Documents, which reads the documents and the source's projects again. A
+status with one meaning has the console's own words: not allowed (403), gone
+or no longer visible (404, with Reload Documents) and too large (413). No
+copy depends on the server's wording.
+
+The conversation shows, above its own turns and in Details, a heading naming
+the tool ("Imported from ChatGPT"), a `Reference` to the source and one to the
+document, and one row of facts with no separators between them: how many
+turns were sent of how many the import kept, Main path, how many were
+shortened to fit, the branches not continued, the turns whose files were not
+imported, and what the import itself left out. For a document whose structure
+was not kept it says the text was sent as one block, that the speakers are not
+known, and that what the import left out is not known. A second row gives the
+conversation's start and last turn in its tool and the pinned revision. When
+the source's listing now has another digest for the document, or no longer has
+it, one plain line says so. The imported turns use the fork's read-only
+rendering, each named as its speaker and the tool ("User, imported from
+ChatGPT"), never as a person or agent here. A continuation with no turns of
+its own yet takes focus at its heading when it opens.
+
+Evidence: `continue-import.dom.test.tsx` covers the row shown and hidden, the
+keyboard path, the request's digests and project, the omitted structure
+digest, a source filed nowhere, scoped or in two projects, the starting and
+disabled states, refusals mapped by status only (an unknown 409 or 400
+sentence is shown as given, with the reload only for a 409), the origin's
+references and facts, a
+structure not kept, the changed and removed document lines and the focus;
+`packages/adapter/src/imported.test.ts` covers the uri schemes, the body and
+the arithmetic. Captures of the source page with the menu open, the new
+conversation at its start and end, the document-changed refusal and a
+continuation whose document changed since, before and after, at 1280x800 and
+390x844 in light and dark, ran against a local server with development
+sign-in, memory state, no reachable model and generated ChatGPT and claude.ai
+exports. The other refusals were not captured in a browser.
+
 ### DES-076: The session workbench and what a person did by hand
 
 The pane a session's Details control opens is a workbench. Details (progress,
@@ -2346,9 +2400,11 @@ Rules:
   under the answer, or **Approval agent: Asked a person** with the reason
   above the options. The answer is recorded as the person's, so they see it
   and can correct the agent in the session.
-- The composer shows **Answer Questions** beside Run, a text control that is
-  pressed while Run and Answer is on, and absent in Ask Me. Someone else's
-  choice reads "Run and Answer, chosen by <name>".
+- The composer shows one approvals control, named for the mode. It opens a
+  menu of **Ask Me**, **Run** and **Run and Answer**, each with one line on
+  what the approval agent does in that mode and a check on the one in use.
+  Someone else's choice reads "Run and Answer, chosen by <name>", and the menu
+  says so; it also says when the approval agent has no model to run on.
 - A workspace's own output schema for the approval agent keeps working: the
   `answer` field is optional, and a schema without it decides calls only, so
   every question goes to a person.

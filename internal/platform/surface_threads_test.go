@@ -542,3 +542,20 @@ func forOf(heard []platform.SurfaceNotice) []platform.ActAs {
 	}
 	return out
 }
+
+// An alert addressed to a person reaches the Slack app for them, so it can
+// tell them in a direct message, as a mention does, and for nobody else.
+func TestAMachineHearsOfAnAlertForThePersonItMaps(t *testing.T) {
+	p, machine := slackRoom(t, nil)
+	m, _, err := p.Inbox.Raise(tenant, "knowledge-stale", inbox.Message{
+		Kind: inbox.KindAlert, Subject: "2 documents you own in HR policies are stale", Audience: []string{"ana"},
+		Parts: []inbox.Part{{Type: inbox.PartAlert, Alert: &inbox.AlertPart{ID: "al-1", Rule: "knowledge/stale/x", Kind: "knowledge", Severity: "warning", Title: "2 documents you own in HR policies are stale", Body: "Update or replace them."}}},
+	}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	heard := forOf(p.SurfaceNoticesFor(t.Context(), machine, inbox.Notice{ID: m.ID, Kind: inbox.KindAlert, State: inbox.Open}))
+	if want := []platform.ActAs{{Client: "app", User: "U0ANA"}}; !slices.Equal(heard, want) {
+		t.Fatalf("the machine hears of the alert for %+v, want %+v", heard, want)
+	}
+}
