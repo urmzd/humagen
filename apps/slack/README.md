@@ -39,6 +39,7 @@ Run `pnpm install` once from the repository root. The adapter and renderers are 
 | `/skill` or `/agent skills` | Lists this client's configured skills. `/skill name arguments` invokes one; code channels also offer each configured slash command dynamically. |
 | `/agent connections` | Opens your private provider status and connect/disconnect controls. Supply an allowed secret reference; keep tokens out of Slack. |
 | `/agent canvas RUN_ID` | Publishes a finished answer from this channel as a Slack canvas, shared with the channel (or just you in a DM). |
+| A plan, in a code channel | The turn's plan is kept as a checklist on one canvas, attached to the channel as the **Plan** tab, where people may comment and only the app writes. See [The plan tab](#the-plan-tab). |
 | Uploaded files and images | A mapped person's triggering message is reread through its client on the server and ingested as agent attachments, including file-only DMs. Unread files are explained to the agent. |
 | Stop button | Stops the run, confirms in the thread, sets the session to active. |
 | Home tab | For a person the client maps, the shared Home read as them: what needs them, what's new in their projects and their projects, with Ask a Question, Build an Agent and Search Context. Anyone else sees what is waiting on them in Humagen's inbox. |
@@ -78,6 +79,41 @@ gives the runs it starts that skill's instructions. Changes appear
 in a code channel on its next message after the client cache refreshes (30 seconds).
 Ordinary Slack channels use `/skill`; Slack's dynamic command API applies only to
 code channels. This does not install new agent skills or grant additional tools.
+
+## The plan tab
+
+In a Slack code channel, a turn that has a plan (a plan title and its steps)
+is written to one canvas per channel and attached as the **Plan** tab with
+comment access (`canvases.create`, then `agents.conversations.setView`). Each
+step is a checkbox: empty when not started, empty and marked *in progress*
+while it runs, ticked when done. One line above the steps says how the work
+stands. Later plans replace the canvas in place
+(`agents.conversations.setCanvasContent`), so a comment stays on a line that
+did not change.
+
+Before the next turn in that channel the app reads the open comments
+(`agents.conversations.getCanvas`) and puts the ones the agent has not been
+shown ahead of the question, each with who wrote it and the line it is on,
+between two lines that mark them as people's comments on the plan. A comment
+goes once: it is recorded as shown when the run starts. At most 20 comments
+and 4,000 characters go with one turn, oldest first; the rest go with the next.
+
+Two limits today:
+
+- A plan title comes from the shared turn model (`plan.updated`). Humagen's run
+  events do not carry one yet, so no run produces a plan tab until the adapter
+  maps one.
+- Comments reach a run the app starts itself. A person the client maps posts as
+  themselves through `POST /api/threads`, which takes only their own words and
+  a Slack message to anchor them; comments wait there until a turn can carry
+  them.
+
+Nothing here applies outside a code channel. A direct message is never asked
+about. Any other channel is asked once (`agents.conversations.listViews`,
+before any canvas is made, so an ordinary channel never gets a stray canvas),
+and a channel Slack refuses is left alone for an hour. A refusal never costs a
+turn: the plan still streams in the thread as before. It needs no scope beyond
+`canvases:write`.
 
 ## Thread history
 
@@ -220,7 +256,7 @@ Slack redelivery joins the run it started, and the app asks Humagen before
 starting it. The stop button asks Humagen which runs in the thread are still
 going.
 
-One thing is kept on disk: the Slack streams this process has open (channel,
+Two things are kept on disk. The first is the Slack streams this process has open (channel,
 message and thread, nothing else), in `SLACK_STREAM_JOURNAL`, by default
 `$XDG_STATE_HOME/warp-slack/streams-<team>.json` (`~/.local/state` when
 unset). A process that crashes or is killed mid-turn leaves its streams open;
@@ -228,6 +264,11 @@ the next one closes each with a note that the answer was cut off and asks
 again, and sets the thread's session to active, before it connects. A close
 that fails for want of the network is tried again at the next start. One
 journal file serves one process.
+
+Beside it, in `plan-canvases-<team>.json`, is which canvas is each code
+channel's plan and which of its comments the agent has been shown: Slack ids
+only. Without it the next plan takes up the channel's Plan tab again or makes a
+new canvas for it, and open comments are shown to the agent once more.
 
 Kept in memory, and lost on restart:
 
