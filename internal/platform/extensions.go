@@ -185,6 +185,7 @@ func (p *Platform) toolGroups(ctx context.Context) (runtime.ToolGroupSource, fun
 		_ = grants.Close()
 		return nil, nil, err
 	}
+	p.toolGrants = grants
 	return grants, grants.Close, nil
 }
 

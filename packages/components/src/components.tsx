@@ -18,6 +18,7 @@ import {
   isRetryable,
   type Judgement,
   type Notice,
+  paragraphsAtSteps,
   readAgentChange,
   readReview,
   SERVICE_TONE,
@@ -61,6 +62,8 @@ import { AgentChangeCards } from "./agent-change";
 import { type Copy, defaultCopy } from "./copy";
 import { AnswerText, reviewCountLine } from "./review";
 import { toolsLine } from "./timeline";
+import { ChangedFiles, turnSettled } from "./turn-changes";
+import { FailedCommands, workSummary } from "./work";
 
 interface WithCopy {
   copy?: Copy;
@@ -79,6 +82,12 @@ export interface TurnCapabilities {
   report?: boolean;
   /** Ask Follow-up on a review's findings, which puts words in the host's composer. */
   followUp?: boolean;
+  /**
+   * Run Details on a finished turn: what the run used, shown only to the
+   * person who asks. Unlike the others it is offered only when a host says
+   * it can answer (`true`), since usage is never shown on the turn itself.
+   */
+  runDetails?: boolean;
 }
 
 /** Fallback preview when a tool supplies none: scalar args as fields, never a JSON dump. */
@@ -121,6 +130,19 @@ function JudgementView({ judgement: j, copy }: { judgement: Judgement; copy: Cop
   const words = copy.judgement;
   const fields = (j.fields ?? []).map((f) => `**${untrusted(f.label)}:** ${untrusted(f.value)}`);
   const references = j.references ?? [];
+  // Slack reads it as one line under the call: the workspace's fields first
+  // (a risk level), then the decision and its reason, then what it rests on.
+  if (useSurface().surface === "slack") {
+    return (
+      <Context
+        items={[
+          ...fields,
+          withReason(`**${words.by}:** ${words.decision[j.decision]}`, untrusted(j.reason)),
+          ...(references.length > 0 ? [words.basedOn(references.map(untrusted))] : []),
+        ]}
+      />
+    );
+  }
   return (
     <>
       <Context
@@ -382,6 +404,19 @@ export function ClarificationCard({
         <Context
           items={[withReason(copy.declinedBy(answer.by, timeToken(answer.at)), answer.reason)]}
         />
+      </>
+    );
+  }
+  if (answer.kind === "expired" || answer.kind === "cancelled") {
+    // Nobody answered: say what happened instead, with no way left to answer.
+    const line =
+      answer.kind === "expired"
+        ? (answer.note ?? copy.questionExpired)
+        : copy.questionCancelled(answer.note);
+    return (
+      <>
+        <Text text={clarification.question} />
+        <Context items={[`${line} | ${timeToken(answer.at)}`]} />
       </>
     );
   }
@@ -679,23 +714,36 @@ export function toolsLineText(
 }
 
 /**
- * A turn's steps where a surface has room for one line each: every run of
- * tool calls between two parts of the answer as one context line, in the
- * order they came, and each call to another agent as its own row. Slack draws
- * this; the web opens each run in place.
+ * A turn's steps where a surface has room for one line each. While the turn
+ * is going: every run of tool calls between two parts of the answer as one
+ * context line, in the order they came, so the last line says what is
+ * happening now. Once it has ended: one line that counts the work by kind
+ * (`workSummary`). Each call to another agent keeps its own row either way.
+ * Slack draws this; the web opens each run in place.
  */
 export function ToolLines({ turn, copy = defaultCopy }: { turn: Turn } & WithCopy) {
   const { segments, rest } = timeline(turn);
   const edits = fileEdits(turn.tasks);
-  const runs = [...segments, ...rest].filter(
+  const all = [...segments, ...rest].filter(
     (s): s is Extract<Segment, { kind: "tools" | "call" }> =>
       s.kind === "tools" || s.kind === "call",
   );
-  if (runs.length === 0) return null;
+  if (all.length === 0) return null;
+  const ended = turn.status === "done" || turn.status === "failed" || turn.status === "stopped";
+  const own = turn.tasks.filter((t) => !t.subagent);
+  // A turn that made one call says what it was pointed at; more are counted.
+  const summary =
+    ended && own.length > 0
+      ? own.length === 1
+        ? toolsLineText(own, copy, edits)
+        : workSummary(turn.tasks, copy, edits)
+      : undefined;
+  const runs = ended ? all.filter((s) => s.kind === "call") : all;
   const shown = runs.length > MAX_TOOL_LINES ? runs.slice(0, MAX_TOOL_LINES - 1) : runs;
   const more = runs.slice(shown.length).flatMap((s) => (s.kind === "tools" ? s.tasks : [s.task]));
   return (
     <>
+      {summary && <Context key="work" items={[summary]} />}
       {shown.map((s) =>
         s.kind === "call" ? (
           <TaskList
@@ -791,6 +839,10 @@ export function TurnView({
     />
   ) : null;
   const disclaimer = turn.disclaimer ?? copy.disclaimer(turn.agent.name);
+  // Slack shows the answer as one text with its steps above it: words said
+  // before a call and after it are kept apart as paragraphs, as a stream does.
+  const words =
+    useSurface().surface === "slack" ? paragraphsAtSteps(turn.text, turn.tasks) : turn.text;
 
   return (
     <>
@@ -854,7 +906,7 @@ export function TurnView({
             turnId={turn.id}
             agent={turn.agent.name}
             text={turn.text}
-            markdown={linkCitations(turn.text, turn.citations)}
+            markdown={linkCitations(words, turn.citations)}
             streaming={turn.status === "working" && !turn.detached}
             pullRequestHint={turn.source?.url}
             followUp={capabilities?.followUp !== false}
@@ -864,6 +916,16 @@ export function TurnView({
       {turn.attachments?.map((a) => (
         <AttachmentView key={a.id} attachment={a} />
       ))}
+      {/* A command that failed is shown with its output; one that passed is a count in the steps. */}
+      <Only surface="slack">
+        <FailedCommands turn={turn} copy={copy} />
+      </Only>
+      {/* The web shows what a turn changed as its own card (`TurnChanges` in `@humagen/web`). */}
+      {turnSettled(turn.status) && (
+        <Only surface="slack">
+          <ChangedFiles tasks={turn.tasks} copy={copy} />
+        </Only>
+      )}
       <Only surface="slack">
         <AgentChangeCards tasks={turn.tasks} />
       </Only>
@@ -932,6 +994,17 @@ export function TurnView({
           blockId={`feedback:${turn.id}`}
         />
       )}
+      {capabilities?.runDetails === true &&
+        (final || turn.status === "failed" || turn.status === "stopped") && (
+          <Only surface="slack">
+            <Actions blockId={`details:${turn.id}`}>
+              <Button
+                label={copy.runDetails.button}
+                action={{ id: ActionId.runDetails, payload: { turnId: turn.id, target: turn.id } }}
+              />
+            </Actions>
+          </Only>
+        )}
       {/*
         Every message ends the same way, whatever happened in it: the references, then one
         line with the one link to the run, then the disclaimer. Nothing sits between them

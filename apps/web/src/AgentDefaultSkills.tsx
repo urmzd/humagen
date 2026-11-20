@@ -207,7 +207,12 @@ export function PublishedSkillPicker({
                     {row.name} {copy.version(row.version)}
                     <span className="block text-aui-xs text-aui-muted">{row.description}</span>
                     <span className="block text-aui-xs text-aui-muted">
-                      {copy.tools}: {row.tools.length ? row.tools.join(", ") : copy.noTools}
+                      {copy.tools}:{" "}
+                      {row.tools === undefined
+                        ? copy.agentTools
+                        : row.tools.length
+                          ? row.tools.join(", ")
+                          : copy.noTools}
                     </span>
                   </span>
                 </label>

@@ -226,6 +226,27 @@ describe("renderToSlack", () => {
     expect(JSON.stringify(custom.blocks.at(-1))).toContain("Beta.");
   });
 
+  it("posts the words said before a call and after it as two paragraphs", () => {
+    const turn: Turn = {
+      ...fx.doneTurn,
+      citations: [],
+      text: "I'll ask the researcher.Here is what it found.",
+      tasks: [
+        {
+          id: "c",
+          title: "researcher",
+          status: "complete",
+          at: 24,
+          subagent: { name: "researcher" },
+        },
+      ],
+    };
+    const md = renderToSlack(<TurnView turn={turn} />).blocks.find((b) => b.type === "markdown") as
+      | { text: string }
+      | undefined;
+    expect(md?.text).toBe("I'll ask the researcher.\n\nHere is what it found.");
+  });
+
   it("shares the markdown budget across blocks", () => {
     const big = "x".repeat(8000);
     const out = renderToSlack(
