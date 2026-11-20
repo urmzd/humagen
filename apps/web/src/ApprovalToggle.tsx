@@ -126,10 +126,9 @@ export function ApprovalToggle({
   // the menu and puts focus back on the control, as in every menu here.
   const keys = (close: () => void) => (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.key === "Escape" || e.key === "Tab") {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        e.stopPropagation();
-      }
+      // Focus goes back to the control, not on past it.
+      e.preventDefault();
+      e.stopPropagation();
       close();
       return;
     }
