@@ -107,7 +107,8 @@ export function follow(event: MouseEvent<HTMLAnchorElement>, onOpen?: () => void
  * projects, corpora and sources, Apps and MCPs. The whole card is its link
  * (a real `<a>` or button, with one focus ring); there is no Open button.
  *
- * Slots, top to bottom: a leading `mark` and the `title`, with one `status`
+ * Slots, top to bottom: an optional `media` picture of the thing, edge to
+ * edge; a leading `mark` and the `title`, with one `status`
  * (a Pill or a dot, never empty) or the `time` at the top right and the ⋯
  * `menu`; a one-line `description`; a `facts` row of Reference chips and
  * Pills; then anything else and the `actions` footer, which sits at the
@@ -116,6 +117,8 @@ export function follow(event: MouseEvent<HTMLAnchorElement>, onOpen?: () => void
  */
 export function ItemCard({
   title,
+  media,
+  current,
   mark,
   status,
   description,
@@ -129,6 +132,10 @@ export function ItemCard({
   children,
 }: {
   title: ReactNode;
+  /** A picture of the thing, across the top of the card. It is part of the card's link. */
+  media?: ReactNode;
+  /** This card's item is the one open beside the list. */
+  current?: boolean;
   /** A provider's mark or an icon, before the title. */
   mark?: ReactNode;
   /** One state at the top right, as a Pill or a dot. Leave it out rather than pass an empty one. */
@@ -151,16 +158,28 @@ export function ItemCard({
   const linked = !!href || !!onOpen;
   return (
     <article
-      className={`humagen-glass relative isolate flex h-full min-w-0 flex-col gap-3 rounded-aui-lg p-4 ${linked ? "hover:bg-aui-hover" : ""}`}
+      className={`humagen-glass relative isolate flex h-full min-w-0 flex-col gap-3 rounded-aui-lg p-4 ${linked ? "hover:bg-aui-hover" : ""} ${current ? "outline-2 outline-aui-accent -outline-offset-1" : ""}`}
+      data-current={current ? "true" : undefined}
     >
+      {media && <div className="-mx-4 -mt-4 overflow-hidden rounded-t-aui-lg">{media}</div>}
       <header className="flex min-w-0 items-start gap-3">
         {mark && <span className="flex size-6 shrink-0 items-center justify-center">{mark}</span>}
         {href ? (
-          <a href={href} onClick={(event) => follow(event, onOpen)} className={titleClass}>
+          <a
+            href={href}
+            onClick={(event) => follow(event, onOpen)}
+            aria-current={current ? "true" : undefined}
+            className={titleClass}
+          >
             {title}
           </a>
         ) : onOpen ? (
-          <button type="button" onClick={onOpen} className={titleClass}>
+          <button
+            type="button"
+            onClick={onOpen}
+            aria-current={current ? "true" : undefined}
+            className={titleClass}
+          >
             {title}
           </button>
         ) : (

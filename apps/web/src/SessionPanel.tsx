@@ -40,6 +40,7 @@ import {
 } from "./sessionSummary.ts";
 import type { Reference as Ref } from "./trace.ts";
 import { AgentMark, menuRow, SkeletonRows } from "./ui.tsx";
+import type { WorkbenchTabProps } from "./workbench.ts";
 import { workspaceFiles } from "./workspace-files.ts";
 
 const words = defaultCopy.details;
@@ -221,88 +222,142 @@ export function SessionPanel({
   messageId?: string;
 }) {
   const [view, setView] = useState<View>({ kind: "summary" });
+  return (
+    <Inspector open={!leaving} title={titleOf(view)} onClose={onClose}>
+      <SessionDetailsBody
+        view={view}
+        onView={setView}
+        responses={responses}
+        summary={summary}
+        origin={origin}
+        onOpenFile={onOpenFile}
+        messageId={messageId}
+      />
+    </Inspector>
+  );
+}
+
+/** What a view of Details is headed by: Details, or what a row opened. */
+function titleOf(view: View): string {
+  return view.kind === "summary"
+    ? words.title
+    : view.kind === "progress"
+      ? words.progress
+      : view.kind === "agent"
+        ? view.name
+        : view.key === "origin"
+          ? words.used.origin
+          : words.used[view.key];
+}
+
+/**
+ * Details as the workbench's first tab: the same rows, with what a row
+ * opened named above its Back, since the pane's header names the tab.
+ */
+export function DetailsTab({ responses, summary, origin, openFile }: WorkbenchTabProps) {
+  const [view, setView] = useState<View>({ kind: "summary" });
+  return (
+    <SessionDetailsBody
+      view={view}
+      onView={setView}
+      heading={view.kind === "summary" ? undefined : titleOf(view)}
+      responses={responses}
+      summary={summary}
+      origin={origin}
+      onOpenFile={openFile}
+    />
+  );
+}
+
+/** The body of Details, in a view the caller holds: the summary, or what one of its rows opened. */
+function SessionDetailsBody({
+  view,
+  onView: setView,
+  heading,
+  responses,
+  summary,
+  origin,
+  onOpenFile,
+  messageId,
+}: {
+  view: View;
+  onView: (view: View) => void;
+  heading?: string;
+  responses: ResponseState[] | undefined;
+  summary: SessionSummary | undefined;
+  origin?: Ref;
+  onOpenFile?: (artifactId: string) => void;
+  messageId?: string;
+}) {
   const current = responses?.[responses.length - 1];
   const back = () => setView({ kind: "summary" });
-  const title =
-    view.kind === "summary"
-      ? words.title
-      : view.kind === "progress"
-        ? words.progress
-        : view.kind === "agent"
-          ? view.name
-          : view.key === "origin"
-            ? words.used.origin
-            : words.used[view.key];
   return (
-    <Inspector open={!leaving} title={title} onClose={onClose}>
-      <div className="flex flex-col gap-4" data-testid="session-panel" data-view={view.kind}>
-        {view.kind !== "summary" && (
-          <button
-            type="button"
-            onClick={back}
-            className="inline-flex min-h-7 items-center gap-1 self-start rounded-aui px-1.5 text-aui-muted text-aui-xs hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
-          >
-            <ChevronRightIcon size={12} aria-hidden className="rotate-180" />
-            {words.back}
-          </button>
-        )}
-        {!summary || !responses ? (
-          <SkeletonRows count={4} />
-        ) : view.kind === "progress" && current ? (
-          <ActivityLanes state={current} messageId={messageId} />
-        ) : view.kind === "agent" ? (
-          <div className="flex flex-col gap-4">
-            {responses.flatMap((r) =>
-              allTools(r)
-                .filter((t) => t.kind === "agent" && (t.agent ?? t.name) === view.name)
-                .map((t) => <AgentCallLane key={t.id} tool={t} messageId={messageId ?? r.id} />),
-            )}
-          </div>
-        ) : view.kind === "used" ? (
-          <ul className="flex flex-col gap-1.5" data-testid="used-list">
-            {view.key === "origin" && origin ? (
-              <li>
+    <div className="flex flex-col gap-4" data-testid="session-panel" data-view={view.kind}>
+      {heading && <h3 className="font-medium text-aui-base text-aui-fg">{heading}</h3>}
+      {view.kind !== "summary" && (
+        <button
+          type="button"
+          onClick={back}
+          className="inline-flex min-h-7 items-center gap-1 self-start rounded-aui px-1.5 text-aui-muted text-aui-xs hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
+        >
+          <ChevronRightIcon size={12} aria-hidden className="rotate-180" />
+          {words.back}
+        </button>
+      )}
+      {!summary || !responses ? (
+        <SkeletonRows count={4} />
+      ) : view.kind === "progress" && current ? (
+        <ActivityLanes state={current} messageId={messageId} />
+      ) : view.kind === "agent" ? (
+        <div className="flex flex-col gap-4">
+          {responses.flatMap((r) =>
+            allTools(r)
+              .filter((t) => t.kind === "agent" && (t.agent ?? t.name) === view.name)
+              .map((t) => <AgentCallLane key={t.id} tool={t} messageId={messageId ?? r.id} />),
+          )}
+        </div>
+      ) : view.kind === "used" ? (
+        <ul className="flex flex-col gap-1.5" data-testid="used-list">
+          {view.key === "origin" && origin ? (
+            <li>
+              <Reference
+                kind={
+                  origin.kind === "slack" || origin.kind === "github" || origin.kind === "schedule"
+                    ? origin.kind
+                    : "url"
+                }
+                label={origin.label}
+                href={origin.url}
+              />
+            </li>
+          ) : view.key !== "origin" ? (
+            summary.used[view.key].map((item) => (
+              <li key={item.label}>
                 <Reference
                   kind={
-                    origin.kind === "slack" ||
-                    origin.kind === "github" ||
-                    origin.kind === "schedule"
-                      ? origin.kind
-                      : "url"
+                    view.key === "uploads" ? "file" : view.key === "knowledge" ? "corpus" : "url"
                   }
-                  label={origin.label}
-                  href={origin.url}
+                  label={
+                    item.detail && view.key === "memory"
+                      ? `${item.detail} · ${item.label}`
+                      : item.label
+                  }
+                  href={item.url}
                 />
               </li>
-            ) : view.key !== "origin" ? (
-              summary.used[view.key].map((item) => (
-                <li key={item.label}>
-                  <Reference
-                    kind={
-                      view.key === "uploads" ? "file" : view.key === "knowledge" ? "corpus" : "url"
-                    }
-                    label={
-                      item.detail && view.key === "memory"
-                        ? `${item.detail} · ${item.label}`
-                        : item.label
-                    }
-                    href={item.url}
-                  />
-                </li>
-              ))
-            ) : null}
-          </ul>
-        ) : (
-          <Summary
-            summary={summary}
-            current={current}
-            origin={origin}
-            onView={setView}
-            onOpenFile={onOpenFile}
-          />
-        )}
-      </div>
-    </Inspector>
+            ))
+          ) : null}
+        </ul>
+      ) : (
+        <Summary
+          summary={summary}
+          current={current}
+          origin={origin}
+          onView={setView}
+          onOpenFile={onOpenFile}
+        />
+      )}
+    </div>
   );
 }
 
@@ -433,6 +488,39 @@ export function SessionDetailsPanel({
   loader?: TraceLoader;
   files?: (thread: string) => Promise<{ files: SavedFile[]; sandbox?: string }>;
 }) {
+  const { responses, summary } = useSessionSummary({
+    runs,
+    thread,
+    uploads,
+    loader,
+    files: loadFiles,
+  });
+  return (
+    <SessionPanel
+      responses={responses}
+      summary={summary}
+      origin={origin}
+      leaving={leaving}
+      onClose={onClose}
+      onOpenFile={onOpenFile}
+    />
+  );
+}
+
+/** What Details and the workbench read once open: each answer's activity, and the session's summary. */
+export function useSessionSummary({
+  runs,
+  thread,
+  uploads,
+  loader,
+  files: loadFiles,
+}: {
+  runs: Run[];
+  thread?: string;
+  uploads?: string[];
+  loader?: TraceLoader;
+  files?: (thread: string) => Promise<{ files: SavedFile[]; sandbox?: string }>;
+}): { responses: ResponseState[] | undefined; summary: SessionSummary | undefined } {
   const responses = useSessionResponses(runs, loader);
   const [extra, setExtra] = useState<{ files: SavedFile[]; sandbox?: string }>();
   useEffect(() => {
@@ -449,16 +537,7 @@ export function SessionDetailsPanel({
     };
   }, [thread, loadFiles]);
   const summary = responses && extra ? summarize(responses, { ...extra, uploads }) : undefined;
-  return (
-    <SessionPanel
-      responses={responses}
-      summary={summary}
-      origin={origin}
-      leaving={leaving}
-      onClose={onClose}
-      onOpenFile={onOpenFile}
-    />
-  );
+  return { responses, summary };
 }
 
 /**

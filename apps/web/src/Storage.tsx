@@ -1,5 +1,7 @@
 import { defaultCopy } from "@humagen/components";
 import { useEffect, useState } from "react";
+import { ArtifactThumb } from "./ArtifactThumb.tsx";
+import { AgentTag, ItemCard, itemGrid, Tag } from "./cards.tsx";
 import {
   bytes,
   contentUrl,
@@ -20,7 +22,6 @@ import {
   agentOptions,
   ago,
   button,
-  Chip,
   Confirm,
   Empty,
   Menu,
@@ -265,7 +266,7 @@ export function StorageMore({
   );
 }
 
-/** The list of files, with the state it is in said plainly when there is nothing to list. */
+/** The grid of files, one card each with a picture of what it holds, with the state it is in said plainly when there is nothing to list. */
 export function StoredList({
   files,
   selected,
@@ -298,40 +299,26 @@ export function StoredList({
     );
   }
   return (
-    <ul className={rows} aria-label="Artifacts">
+    <ul className={itemGrid} aria-label="Artifacts">
       {files.map((f) => (
-        <li key={f.id} className="humagen-enter">
-          <button
-            type="button"
-            data-testid="stored-row"
-            aria-current={f.id === selected ? "true" : undefined}
-            onClick={() => onSelect(f.id)}
-            className="flex w-full items-center gap-3 px-1 py-2.5 text-left transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent focus-visible:-outline-offset-2 aria-[current=true]:bg-aui-hover"
-          >
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-aui-sm font-medium text-aui-fg">{f.title}</span>
-              {f.description && (
-                <span className="block truncate text-aui-xs text-aui-muted">{f.description}</span>
-              )}
-            </span>
-            <Chip>{kindWord[f.kind]}</Chip>
-            <span className="hidden w-14 shrink-0 text-right text-aui-xs text-aui-muted @xl:inline">
-              v{f.version}
-            </span>
-            <span className="hidden w-16 shrink-0 text-right text-aui-xs tabular-nums text-aui-muted @lg:inline">
-              {bytes(f.size)}
-            </span>
-            <span className="hidden w-32 shrink-0 items-center gap-1.5 truncate text-aui-xs text-aui-muted @2xl:inline-flex">
-              <AgentMark name={f.agent} size={12} />
-              <span className="truncate">{f.agent}</span>
-            </span>
-            <span className="hidden w-28 shrink-0 truncate text-aui-xs text-aui-muted @4xl:inline">
-              {f.project ?? ""}
-            </span>
-            <span className="w-24 shrink-0 text-right text-aui-xs text-aui-muted">
-              {ago(f.created_at)}
-            </span>
-          </button>
+        <li key={f.id} className="humagen-enter min-w-0" data-testid="stored-row">
+          <ItemCard
+            media={<ArtifactThumb file={f} />}
+            title={f.title}
+            current={f.id === selected}
+            time={ago(f.created_at)}
+            description={f.description}
+            facts={
+              <>
+                <Tag>{kindWord[f.kind]}</Tag>
+                <AgentTag name={f.agent} />
+                {f.project && <Tag>{f.project}</Tag>}
+                <Tag>v{f.version}</Tag>
+                <Tag>{bytes(f.size)}</Tag>
+              </>
+            }
+            onOpen={() => onSelect(f.id)}
+          />
         </li>
       ))}
     </ul>
@@ -425,7 +412,6 @@ export function Storage({
       // Named as the sidebar names it, with no line under it, as every list page is.
       title={defaultCopy.navigation.artifacts}
     >
-      {store.use && <StorageUsed use={store.use} />}
       {over && <Problem message={OVER_LIMIT} />}
       <Problem message={problem} />
 
@@ -493,6 +479,8 @@ export function Storage({
         failed={store.moreFailed}
         onMore={store.more}
       />
+
+      {store.use && <StorageUsed use={store.use} />}
     </Page>
   );
 }

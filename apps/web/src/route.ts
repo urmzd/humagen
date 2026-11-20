@@ -126,11 +126,32 @@ export const WORKSPACE_SECTIONS: WorkspaceSection[] = [
   "memories",
   "artifacts",
 ];
+/**
+ * The tabs of a session's workbench, the pane the Details panel opens
+ * (workbench.ts declares what each shows). Details is the default, at the
+ * panel's own address; every other tab is `?bench=`. All six are addresses
+ * from the start, so a tab's own change adds no route.
+ */
+export const WORKBENCH_TAB_IDS = [
+  "details",
+  "browser",
+  "terminal",
+  "changes",
+  "sidechat",
+  "search",
+] as const;
+export type WorkbenchTabId = (typeof WORKBENCH_TAB_IDS)[number];
+/** The most characters of a workbench tab's own selection an address carries. */
+export const MAX_BENCH_REF = 512;
 export type ArtifactTab = "preview" | "versions" | "provenance";
 const ARTIFACT_TABS: ArtifactTab[] = ["preview", "versions", "provenance"];
 export interface ConversationView {
   contextTab?: "sources" | "instructions";
   panel?: ConversationPanel;
+  /** The workbench tab open in Details; absent is Details itself. */
+  bench?: WorkbenchTabId;
+  /** What that tab has selected: its own business, such as a terminal, a file or a query. */
+  benchRef?: string;
   filter?: "all" | "handoffs" | "tools" | "decisions";
   showTools?: boolean;
   run?: string;
@@ -538,6 +559,11 @@ export function href(r: Route): string {
         "workspaceTab",
       ] as const)
         if (r[key]) q.set(key, r[key]);
+      // A workbench tab is an address of Details alone, and Details is its default.
+      if (r.panel === "details" && r.bench && r.bench !== "details") {
+        q.set("bench", r.bench);
+        if (r.benchRef) q.set("benchRef", r.benchRef);
+      }
       if (r.share) q.set("share", "1");
       if (r.showTools === false) q.set("tools", "0");
       if (r.tabs?.length) q.set("tabs", r.tabs.map(encodeURIComponent).join(","));
@@ -699,6 +725,17 @@ function queryText(q: URLSearchParams, key: string, max: number): string | undef
   return value !== null && value.length <= max && !/[\u0000\r\n]/.test(value) ? value : undefined;
 }
 
+/** The workbench tab an address names, and its selection: read for Details only. */
+function benchOf(
+  panel: ConversationPanel | undefined,
+  q: URLSearchParams,
+): Pick<ConversationView, "bench" | "benchRef"> {
+  const bench = panel === "details" ? oneOf(q.get("bench"), WORKBENCH_TAB_IDS) : undefined;
+  if (!bench || bench === "details") return {};
+  const benchRef = queryText(q, "benchRef", MAX_BENCH_REF);
+  return benchRef ? { bench, benchRef } : { bench };
+}
+
 function read(pathname: string, search: string): Route {
   const q = new URLSearchParams(search);
   const parts = pathname.split("/").filter(Boolean).map(dec);
@@ -772,6 +809,7 @@ function read(pathname: string, search: string): Route {
         split: q.get("split") === "1" || undefined,
         workspaceTab: oneOf(q.get("workspaceTab"), ["edit", "preview", "changes"] as const),
         slide: Number.isInteger(slide) && slide >= 1 && slide <= 80 ? slide : undefined,
+        ...benchOf(panels[q.get("panel") ?? ""], q),
       };
     }
     case "history":
@@ -922,6 +960,8 @@ function read(pathname: string, search: string): Route {
           ...(b === "context" && parts[3] === "instructions"
             ? { contextTab: "instructions" as const }
             : {}),
+          ...benchOf(b as ConversationPanel, q),
+          ...(b === "details" && q.get("full") === "1" ? { expanded: true } : {}),
           ...(b === "activity"
             ? {
                 run: parts[3],

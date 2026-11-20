@@ -21,6 +21,7 @@ import {
   type Turn,
   timeline,
 } from "@humagen/core";
+import * as fx from "@humagen/core/fixtures";
 import { decodeSlackAction, homeView, renderToSlack } from "@humagen/render-slack";
 import { WebSurface } from "@humagen/render-web";
 import type { ReactElement } from "react";
@@ -38,6 +39,7 @@ import {
   questionMail,
 } from "./harness.ts";
 import { homeModel } from "./home.ts";
+import { Presenter } from "./present.tsx";
 
 /**
  * One state, two renderers. A recorded run goes through the shared adapter
@@ -869,8 +871,57 @@ test("a Slack task links to the conversation rather than its individual run", ()
   const view = renderToSlack(
     <TurnView turn={f.settle({ ...record, status: "completed", answer: "Done" })} />,
   );
-  assert.match(
-    JSON.stringify(view),
-    /https:\/\/humagen\.test\/conversations\/shared-thread\|Open Conversation/,
+  // The answer's last line ends with the arrow to the conversation; no line says Open Conversation.
+  assert.ok(
+    JSON.stringify(view).includes(
+      "Done [\u2197\uFE0E](https://humagen.test/conversations/shared-thread)",
+    ),
   );
+  assert.ok(!JSON.stringify(view).includes("Open Conversation"));
+});
+
+test("a streamed Slack answer ends with the arrow to its conversation, and the final blocks do not repeat it", async () => {
+  const calls: { method: string; args: Record<string, unknown> }[] = [];
+  const slack = {
+    async call<T>(method: string, args: Record<string, unknown> = {}) {
+      calls.push({ method, args });
+      return { ts: "1.0001" } as T;
+    },
+    async respond() {},
+  };
+  const presenter = new Presenter(slack, {
+    channel: "C1",
+    threadTs: "1.0",
+    triggerTs: "1.0",
+    recipientUser: "U1",
+    recipientTeam: "T1",
+  });
+  const url = "https://humagen.test/conversations/shared-thread";
+  const turn = { ...fx.doneTurn, citations: [], sessionUrl: url, text: "Rolled back." };
+  await presenter.update({ ...turn, status: "working", text: "Rolled" });
+  await presenter.finish(turn);
+  const stop = calls.findIndex((c) => c.method === "chat.stopStream");
+  const last = calls[stop - 1];
+  assert.equal(last?.method, "chat.appendStream");
+  assert.deepEqual(last?.args.chunks, [{ type: "markdown_text", text: ` [\u2197\uFE0E](${url})` }]);
+  assert.ok(!JSON.stringify(calls[stop]?.args.blocks).includes(url));
+  // An answer ending in code keeps its code whole: the disclaimer carries the arrow instead.
+  calls.length = 0;
+  const coded = new Presenter(slack, {
+    channel: "C1",
+    threadTs: "1.0",
+    triggerTs: "1.0",
+    recipientUser: "U1",
+    recipientTeam: "T1",
+  });
+  const code = { ...turn, text: "Run:\n\n```sh\nmake\n```" };
+  await coded.update({ ...code, status: "working" });
+  await coded.finish(code);
+  const final = calls.find((c) => c.method === "chat.stopStream");
+  const blocks = final?.args.blocks as { elements?: { text: string }[] }[];
+  assert.match(
+    blocks.at(-1)?.elements?.[0]?.text ?? "",
+    /them\. <https:\/\/humagen\.test\/conversations\/shared-thread\|\u2197\uFE0E>$/,
+  );
+  assert.ok(!calls.some((c) => JSON.stringify(c.args.chunks ?? []).includes("\u2197")));
 });

@@ -57,7 +57,7 @@ metadata:
 spec:
   server:
     addr: 127.0.0.1:8080
-    public_url: http://localhost:8080
+    public_url: http://localhost:8080   # where browsers reach the server. Unset, $HUMAGEN_PUBLIC_URL, then this default
     webhook_addr: ""        # a second listener that serves only signed webhooks
     console: {enabled: true, dir: auto}      # auto finds a built apps/web
     drain_grace: 25s        # after SIGTERM, how long runs in flight may finish before they are handed back
@@ -237,6 +237,11 @@ follow-up turn sees what the last one wrote.
 | `docker` (default) | Containers with no network, a read-only root, no capabilities, a non-root user, a seccomp profile stricter than Docker's default and resource limits, on `runtime: runsc` (gVisor) unless it says `runc` with `insecure_development_runtime: true` | Production |
 | `local` | Host processes, with the server's privileges, in a directory laid out like an instance. The shell works | Development without Docker |
 | `unisolated` | This host, as before the sandbox: files in the conversation's directory, stdio servers as host processes. The shell is refused | Development and tests |
+
+A person's own command, from a session's Terminal tab, runs only on the
+`docker` kind, in an instance started for that one command. `local` and
+`unisolated` would run it on this host, so they refuse it and the console
+shows no command line.
 
 The server says at start which one it runs. `local` and `unisolated` are
 never chosen for you: name them in the spec or with `-sandbox`. The Docker

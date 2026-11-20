@@ -26,6 +26,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 
 | ID | Requirement | Status |
 | --- | --- | --- |
+| DES-076 | A session's Details pane is a workbench of tabs, and what a person does by hand in one goes with their next message | Implemented: the tab registry (`workbench.ts`), the pane (`Workbench.tsx`), six tab addresses (`?panel=details&bench=`), and the record, list and fold of what was done by hand (`human-activity.ts`, `humanActivity.tsx`). All six tabs are built: Details, Browser (`WorkbenchBrowser.tsx`, `POST /api/sessions/{id}/browser`), Terminal (`WorkbenchTerminal.tsx`, `POST /api/threads/{id}/sandboxes/commands` on a docker sandbox), Changes (`WorkbenchChanges.tsx`), Side Chat (`WorkbenchSidechat.tsx`, `GET /api/threads/{id}/forks`) and Search (`WorkbenchSearch.tsx`). Browser, Terminal, Changes, Side Chat and the Workspace file editor record what a person did; Search records nothing. Not built: the agent's own screenshots and live video in Browser, a persistent shell in Terminal, a baseline from before the session in Changes, and keeping the list of what was done by hand across a reload. The Details tab keeps its earlier 12px and 13px labels. Evidence: `workbench.dom.test.tsx`, `workbench-browser.dom.test.tsx`, `workbench-terminal.dom.test.tsx`, `workbench-changes.dom.test.tsx`, `workbench-sidechat.dom.test.tsx`, `workbench-search.dom.test.tsx`, `room.dom.test.tsx`, `route.test.ts`, core `human-activity.test.ts`, `TestWhatWasDoneByHandTagsNobody`, `TestAPersonActsOnTheSessionsBrowserByHand`, `TestAPersonsCommand*`, `TestSandboxCommandRouteRunsForItsPosterAndNobodyElse`; the six tabs seen together in a running console at 1280x800 and 390x844, light and dark, where five things done by hand in four tabs reached the agent in one message and the list then cleared. |
 | DES-069 | Conversation overview and visible work controls | Implemented: Overview, Workspace, Context and Activity header controls collapse into the menu below the conversation's 3xl breakpoint. The addressed overview folds environment, latest context, agents and run changes from existing APIs; delegated transcript calls share one collapsed disclosure. Evidence: `conversation-overview.dom.test.tsx`, `timeline.dom.test.tsx` and route round-trip tests. Live browser verification unavailable in this session. |
 | DES-059 | PR review evidence in two panes, with GitHub issue and pull request Workspace tabs | Implemented: `GitHubTab.tsx`, `github-ref.ts`, tenant-scoped `GET /api/github/pull` and `/api/github/issue`, bounded repository/SHA patch cache, workflow status, labels and comments; unit, DOM and endpoint regressions added; `conversation-review-workspace` screen registered for CI. |
 | DES-061 | Automations gather schedules and signed GitHub event rules with agent instructions | Implemented; focused Go/DOM tests and phone/desktop screen definitions; CI screens pending |
@@ -385,10 +386,21 @@ A starter is offered only for an agent the workspace has. Compatibility registry
 revisions, old schedules and existing grants. The `humagen-builtins` screen
 checks all three names at phone and desktop widths.
 
-A Slack task card exposes Open Conversation when the host has configured
-`HUMAGEN_PUBLIC_URL`. It points to the run's conversation, including a later
-run in an existing conversation, and remains attached throughout streaming
-and settlement. Adapter and Slack rendering regressions cover the link.
+A Slack answer links to its conversation when the host has configured
+`HUMAGEN_PUBLIC_URL`. The link is one arrow (↗, `copy.conversationLink`, held
+to text so Slack does not draw an emoji) on no line of its own: it ends the
+last line of a finished answer, streamed or posted, after any trailing blank
+lines are dropped. It ends the disclaimer instead when the answer ends in
+code, a table (with or without edge pipes), a rule, a heading's underline or
+a link reference definition, when a task card came after its words, when the
+turn failed, stopped or is still working, or when the arrow would push the
+answer into another message (past 12,000 characters of markdown). Only a
+queued turn, which has no disclaimer yet, shows it as a line. It points to
+the run's conversation, including a later run in an existing conversation.
+The fallback text never carries it. Slack gives a link no accessible label
+of its own, so a screen reader reads the arrow itself; whether Slack keeps a
+markdown link title (`[text](url "title")`) is not verified, so none is
+sent. Adapter and Slack rendering regressions cover the link.
 
 ### DES-007: Agent badge containment
 
@@ -2070,3 +2082,213 @@ continuation whose document changed since, before and after, at 1280x800 and
 390x844 in light and dark, ran against a local server with development
 sign-in, memory state, no reachable model and generated ChatGPT and claude.ai
 exports. The other refusals were not captured in a browser.
+
+### DES-076: The session workbench and what a person did by hand
+
+The pane a session's Details control opens is a workbench. Details (progress,
+agents, outputs, environment, what was used) is its first tab and keeps the
+pane's address; every other tab is `?bench=` with its own selection in
+`?benchRef=`. A tab is declared once in `apps/web/src/workbench.ts`: its view,
+read on first use, whether the session has anything for it, and whether it lays
+out its own height. A tab with nothing to show is left out of the strip, and
+with only Details to show there is no strip. Details is narrow; any other tab is
+wide, and the pane can fill the page. On a phone it is the Inspector's sheet with
+the same tabs. Files stay in the Workspace pane, which Details opens them in.
+
+Anything a person does by hand in a tab is recorded for the conversation, listed
+above the composer where each line can be removed, and folded into the next
+message they send as a section at its end, so the agent reads one message that
+covers it. Nothing is sent before they submit; the list is cleared once the
+message is posted and kept when the post fails. The API has no field for it, so
+it rides in the text, its entries in a code block that the platform never reads
+for tags. A thread draws the section closed under the person's words. At most
+50 records are kept per conversation; a summary is 200 characters, a detail 600,
+and the section 4000 or what the person's words leave of the API's 8000. What
+does not fit is said before sending and goes with the message after. A line
+with a detail opens in place, by a press or from the keyboard, so all of what
+is sent can be read first. A record that goes without its detail is marked in
+the list and counted under it, and the section says in the detail's place that
+it was left out. The list shows its newest four lines and counts the earlier
+ones on a button that shows them, and says how many of the oldest were dropped
+when it was full. A browser action whose answer never arrived is recorded as
+outcome unknown, not as failed.
+
+Text in the workbench and in both lists is 14px or larger, and secondary text
+is `text-aui-muted`. Details' own rows keep the sizes they had.
+
+#### Terminal tab
+
+The Terminal tab is a log of every shell command the session's agents ran:
+who ran it, the command, its output and how it ended, read from each answer's
+own stream (the `shell` tool's call and result, at every depth) and live while
+an answer works. Output longer than 40 lines is folded to its last 24 and
+opens. The log opens on its last line and follows it; it is one focusable
+scrolling region that Tab leaves, named for assistive technology, and it is
+not a live region: only the outcome of the reader's own command is announced.
+It is dark in both schemes, as the console's terminal tokens are, with every
+line 14px or larger and secondary text above 7:1.
+
+Where the deployment's sandbox is contained (the `docker` kind) and the reader
+may post, the tab has a command line. A command runs with `sh -c` in an
+instance started for it alone, with the session's files, no network, no
+memory and no tool servers, for at most 15 seconds, and only while no agent
+is working; what it changed is written back under the rules a run's copyback
+follows. Each command is recorded once it ends (the command, its exit status,
+the files it changed and the end of its output) and goes with the reader's
+next message. Nothing is sent to an agent before that. A `local` or
+`unisolated` deployment, whose commands would run on the server, has no
+command line and its route refuses. The tab is in the strip once a session
+has run a command or has a sandbox. A reader's commands are kept in the page
+and are gone on reload; the message that carried them keeps them.
+
+Evidence: `workbench-terminal.dom.test.tsx`, `TestAPersonsCommand*`
+(`internal/platform`), `TestSandboxCommandRouteRunsForItsPosterAndNobodyElse`
+and the contract test (`internal/httpapi`), `TestOnlyTheDockerSandboxIsContained`;
+seen in a browser against a docker sandbox at 1280x800 and 390x844, light and
+dark: empty, the agents' log, a reader's command running and ended, the list
+above the composer, the sent message, and an agent's command running.
+
+Evidence: `workbench.dom.test.tsx` covers the registry, the strip, addresses,
+lazy tabs, the list and the collapsed note; `room.dom.test.tsx` posts a message
+that carries what was done, checks a failed post keeps it and that the posted
+message shows it closed; `route.test.ts` round-trips the addresses; core
+`human-activity.test.ts` covers the store, the fold, the limits and the reader;
+`TestWhatWasDoneByHandTagsNobody` checks the platform reads no tag from the
+section. Seen in Chrome against a local server at 1440x900 and 390x844, light
+and dark: Details with no strip as shipped, and with a stand-in second tab (not
+committed) the strip, the wide and filled pane, the list above the composer, and
+the posted message closed and open. Not seen: a tab's failure to load, the
+overflow line, and Details before this change at the same size. The five tabs
+are separate changes. The contract for them is
+[workbench.md](../architecture/workbench.md).
+
+**Browser tab.** Built (`WorkbenchBrowser.tsx`, `WorkbenchBrowserCard.tsx`,
+`browserSteps.ts`, `browserShots.ts`). An answer that used browser tools has
+one card under it: where the browser was left, how many steps, and the tool
+provider it runs on; it opens the tab on the answer's last step. The tab lists
+the agent's steps from its tool calls, each with the page it left the browser
+on, and steps back through them at `?benchRef=<step>`. A person who may post
+acts on the same browser by hand through `POST /api/sessions/{id}/browser`
+(`runs:write`, `internal/platform/browser_view.go`): a screenshot, an address,
+back, and a click or typed text on an element picked on the screenshot or from
+the list under it. Each action is recorded for their next message; typed text
+is recorded as a count. The agent's own screenshots are not kept by the
+platform, since a tool result reaches a run's events as text only, so the tab
+shows no picture of an earlier step and the card shows one only after the
+console has been given one. No live video. The empty state is a title and one
+action.
+
+Evidence: `workbench-browser.dom.test.tsx` (20 tests: steps, addresses,
+actions and what each records, refusals, the empty state, the card);
+`TestAPersonActsOnTheSessionsBrowserByHand`,
+`TestABrowserActionIsRefusedBeforeItReachesTheBrowser` and the contract test
+in `internal/httpapi`. Seen in Chrome against a local server, a stand-in model
+and the pinned Playwright MCP worker driving a real headless browser, at
+1280x800 and 390x844, light and dark: the card, the steps, a screenshot, an
+element picked, the page after typing and clicking, the earlier screenshots,
+the pane filling the page, the list above the composer, the posted message
+open, the empty state, and a session with no browser. Smallest text measured
+14px; lowest contrast measured 8.3:1 (dark) and 10.6:1 (light). Not seen: a
+step still running, a browser that cannot be reached (502), a policy refusal
+(403), and a reader who may not post.
+
+Changes tab (`WorkbenchChanges.tsx`, `workbenchChanges.ts`): implemented. It
+lists the files the session's runs wrote or removed in its working files, from
+what each run recorded (`GET /api/threads/{id}/sandboxes`) and the files as they
+are now (`GET /api/threads/{id}/files`); no route was added. A file opens at
+`?bench=changes&benchRef=<path>` on its comparison: old and new line numbers, a
+plus or minus sign and a tint on each changed line, three unchanged lines around
+a change and longer runs folded to one row, 300 rows at a time. The platform
+keeps no copy of a file from before a write, so the text before is the one an
+earlier `file_write` of the same session wrote (Last Change), and otherwise
+nothing, in which case the whole file is drawn as added and the tab says so. A
+file over 256 KB is read only on request, a binary file says so with its size,
+and a comparison past the bound of `compareText` says why. Where the files are
+writable the reader can delete a file, or put it back to its earlier text when
+that text's hash is one a run recorded leaving there; both ask first, write at
+the revision read, and are recorded as `changes`. Edit File opens the Workspace
+pane's editor, whose saves and deletes are recorded as `files`
+(`fileActivity.ts`), one record per file against its text before the first
+unsent save. Not built: keeping a change (nothing on the server would hold it),
+comparisons of edits made by fragments or patches, and restoring a file a run
+or a person removed. Evidence: `workbench-changes.dom.test.tsx`; seen in Chrome
+against a local server with a stand-in model at 1280x800 and 390x844, light and
+dark: the list, a comparison, the whole file, a large file before and after it
+is compared, a binary file, the empty state, both confirmations, a removed file,
+and the list above the composer after a restore, a delete and a save in the
+editor, and the pane filling the page. Not seen: a refused write and a file
+that cannot be read.
+
+#### Side Chat tab
+
+Side Chat (`WorkbenchSidechat.tsx`, `sidechat.ts`) asks a question about the
+session beside it. A side chat is a private fork of the session
+(`POST /api/threads/{id}/fork`) through its newest saved turn: a finished answer,
+or the message an answer still being written replies to, so a working agent is
+left alone. The fork carries the session's history as read-only context, is
+answered by the session's own agents, and posts nothing in the session. With
+nothing selected the tab is a title and the box, over the reader's earlier side
+chats of the session (`GET /api/threads/{id}/forks`, added for this, `runs:read`,
+at most 50 and without their saved history). The first message starts the fork
+and takes its address (`?bench=sidechat&benchRef=<its id>`), so it opens again
+after a reload, and it is a conversation like any other at `/messages/{id}`.
+The thread is drawn with the shared `Thread`, `AgentMessage` and `Composer`.
+
+Add to Message on a finished answer records it as done by hand (source
+`other`): one record of the question and up to 600 characters of the answer, or
+up to three for a longer answer, each with a key so adding it twice keeps one
+copy. It shows above the session's composer and goes with the reader's next
+message there; pressing it again, or removing the line, takes it back. Nothing
+is posted in the session for them.
+
+Not built: a side chat is not listed under the session's Linked sessions,
+because `POST /api/sessions/{id}/links` takes only a session as its target and
+a fork is a thread without a session identity. A child session was not used
+instead, since it is given none of its parent's history.
+
+Evidence: `workbench-sidechat.dom.test.tsx` covers the registry entry, the empty
+states, the first question (the fork's turn, title and agents, and that nothing
+is posted in the session), reopening from the address, a fork that is not this
+session's, a refused fork, and Add to Message with the list above the composer;
+`TestForksOfListsOnlyTheReadersOwnLiveForksNewestFirst` and
+`internal/httpapi/openapi_test.go` cover the listing. Seen in Chrome against a
+local server with a stand-in model at 1280x800 and 390x844, light and dark:
+empty, the list of earlier side chats, an answer, the same after a reload, the
+answer added and listed above the composer, the pane filling the page, an
+address that names no side chat, and a side chat answered while the session's
+agent worked. Not seen: a refused fork, an answer long enough for three
+records, and an agent's question card inside a side chat.
+
+**Search tab** (`WorkbenchSearch.tsx`, `workbenchSearch.ts`). One field finds
+what belongs to the session and opens each thing where it lives. Results are
+grouped: files (the Workspace pane), pull requests and issues (their own
+address, in a new browser tab), links (Slack posts, where the session started,
+pages it read, the sessions it started or is linked to), commands, browser
+steps, tools and agents (the answer's activity at that call), and attachments
+(the message they came with). A command opens in the Terminal tab and a browser
+step in the Browser tab, on the call's id as the tab's selection, once those
+tabs are built; until then they open in the answer's activity. It searches what
+the page already holds (the session's summary and each answer's calls) and one
+read of `GET /api/sessions/{id}` for links and attachments; it asks the server
+to search nothing and adds no route. Ranking is the composer's (`fuzzy` in
+`commands.ts`), with letters in order counted only when nothing holds the query
+whole. The query is the tab's `benchRef`, written when the field is left or
+Enter is pressed. Command or Control with Shift and F puts the cursor in the
+field while the tab is open, and the field shows the keys; the arrow keys, Home
+and End move through the results, Enter opens one, and Escape returns to the
+field. With nothing to find the tab offers Details; with no match it offers to
+clear. If the session cannot be read it says so with Retry and still searches
+the rest. All text is 14px and secondary text is `text-aui-muted`. Search
+records nothing as done by hand: opening a thing is not an outcome an agent
+needs to read.
+
+Evidence: `workbench-search.dom.test.tsx` (the index and where each thing
+opens, ranking, the shortcut, keyboard movement, the address, the long group,
+the empty, no-match, loading and failed-read states). Seen in Chrome at 1280x800
+and 390x844, light and dark: against a local server with a stand-in model, a
+session with one real tool call and one real attachment, an empty session, a
+result opening the answer's activity, and the pane filling the page; and with
+fixture data in a harness that was not committed, every group, a query, no
+match, the failed read, and Terminal and Browser standing in as built. Not seen:
+a real pull request, file or browser step from a live run, and the real
+Terminal and Browser tabs taking a result.
