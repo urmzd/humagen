@@ -1577,8 +1577,15 @@ sidebar destinations; the tip card was removed.
   <path> +a". It links to `/conversations/<id>/workspace?file=<path>&tab=changes`.
 - A connector action the runtime hands back to the model as "action failed:"
   text is a failed call.
-- Slack draws each run as one context line, in order, at most eight a
-  message, the rest counted in the last.
+- Slack draws each run as one context line while the turn is going, in
+  order, at most eight a message, the rest counted in the last. Once the
+  turn has ended the lines become one, counted by kind (`workSummary`):
+  "Ran 3 commands (1 failed), read 2 files, updated 4 files (+120 -18)". A
+  command that exited non-zero and was not run again with success is shown
+  under the answer with its exit code and the end of its output
+  (`FailedCommands`, from `commandResult` in `@humagen/core`); a command that
+  passed stays a count. See docs/reference/slack.md, Steps, command output
+  and run details.
 - In a conversation the reader's own messages sit on the right as a compact
   bubble without a mark, decided by comparing the author with the signed-in
   person, so another person's are on the left under their mark and name. A

@@ -7,9 +7,9 @@
 | Where | Go, in `humagen serve` (`pkg/integrations/slack`) | TypeScript, `apps/slack`, a separate process |
 | How Slack reaches it | Signed webhooks to a public URL | Socket Mode, no public URL |
 | How it reaches Humagen | In process | The HTTP API, as a machine |
-| A run looks like | One plain message per run, edited with `chat.update` | Humagen components: native streaming, plans, tool steps, failures with Retry, files |
+| A run looks like | One plain message per run, edited with `chat.update` | Humagen components: native streaming, plans, tool steps, failures with Retry, files. See [steps, command output and run details](#steps-command-output-and-run-details) |
 | Agent session status and the stop button | Yes | Yes |
-| Code channel slash commands | Yes | No |
+| Code channel slash commands | Yes | Yes: each command in the client's `slack.commands`, registered with `agents.conversations.setCommands` when a message is accepted in the channel. Ordinary channels use `/skill` |
 | `/agent`, shortcuts, Home tab | No | Yes, from Humagen's sandbox manifest |
 | Inbox items about a run | No | In the run's thread, and on Home |
 | Several apps per workspace, as [clients](clients.md) | Yes: tenant, limits and allow-list come from the client | Reads one client's default agent and allow-list, in full as the client's `slack.machine`, though they name an agent that lives in a project the machine may not read. A mapped person's messages are the client's (threads with a surface, below); anyone else's runs are not yet recorded as the client's |
@@ -17,10 +17,10 @@
 | Mentions of a person | No | In their direct messages with the app, with Open Thread and Reply, unless they are in the Slack thread already (they wrote there or were mentioned there with `<@U…>`). Experts named by a role are each told |
 | Who asked | Recorded on the run, and the run acts for the person the team's clients map the Slack user to | Recorded as the person, and acts for them, when the app's client maps them (`act_as`): their message is theirs in the Humagen thread, and so are the runs it starts. Else as the app, acting for nobody. Tools that act as a person use the person's own credential |
 | Questions a run waits on | No | In the run's thread, answered for the person the client maps. See below |
-| Tokens and cost | No | No. See [usage on a turn](clients.md#usage-on-a-turn) |
+| Tokens and cost | No | Never on a turn. A finished turn offers **Run Details** to a person the client maps, answered to them alone. See [steps, command output and run details](#steps-command-output-and-run-details) |
 
-Use the connector for code channels, for several apps per workspace, and where
-a public URL is fine. Use the Slack app for the console's experience in Slack,
+Use the connector for several apps per workspace, and where a public URL is
+fine. Use the Slack app for the console's experience in Slack,
 or where nothing may listen on a public address. Do not point both at the same
 Slack app: both would answer.
 
@@ -40,6 +40,64 @@ The app works around each of these and says where in its README.
 | The run a retry started, in the resolve response | Retry from Slack starts its own run and acknowledges the inbox part | Return `{message, run}` from `POST /api/inbox/{id}/parts/{part}/resolve` |
 | Feedback with comments | Built: like and dislike open a comment modal and save the rating even when skipped | `PUT /api/runs/{id}/feedback` stores a run reference, rating, reason and comment; the run provides context; `GET` collects paginated records |
 | A modal to type a reply to a question | Built for a question in the inbox and a mention in a person's direct messages. Something Else on a run's own card still points to the console | Open the reply modal from the run's card too |
+
+### Steps, command output and run details
+
+What a turn's work looks like in Slack depends on how the turn was written.
+
+| | While the turn is going | Once it has ended |
+|---|---|---|
+| Streamed natively | Slack's own task cards, one per tool call, from `chat.appendStream` | The same cards stay. The final blocks add what is below |
+| Posted and edited (streaming refused, a bridged outcome, a run that ended while the app was away) | One line per run of tool calls, in order. The last says what is running now | One line that counts the work by kind: `Ran 3 commands (1 failed), read 2 files, updated 4 files (+120 -18), ran 2 searches` |
+
+The count uses the kinds every tool line uses (`lineKind` in
+`packages/components/src/timeline.ts`, and `fileEdits` for files written), in
+the order each kind first came. A turn that made one call still says what it
+was pointed at (`Read docker.go`). A call to another agent keeps its own row
+either way, and a turn with a plan keeps its plan.
+
+**Command output.** The platform's `shell` tool answers with `exit <code>` and
+then the end of the command's output, for a command that failed as for one that
+passed, so a non-zero exit arrives as a completed call
+(`run.delta.tool.done.v1`). The app reads the command from the call's arguments
+and the exit code from that first line (`commandResult` in
+`packages/core/src/command.ts`):
+
+- A command that passed stays a count. Its output is not shown.
+- A command that failed, and that no later call ran again with success, is
+  shown under the answer with its command, `exit <code>`, how long it took and
+  the last 40 lines of its output. This holds for a streamed turn too.
+- The newest three are shown. Earlier ones are counted in a line above them.
+- The exit code is shown only for a failure. A command tool that reports no
+  exit line is shown as failed only when the call itself failed, with no code.
+- The working directory is not shown: the stream does not carry it.
+
+A bridged outcome carries no steps, so it shows none of this.
+
+**Run details.** A turn never shows tokens or cost, since a whole channel reads
+it. A finished, failed or stopped turn offers **Run Details** instead, when the
+app's client names the app as its `slack.machine` and maps at least one person.
+A click answers the person who clicked, alone, in an ephemeral message in the
+thread:
+
+| Shown | From `GET /api/runs/{id}` |
+|-------|---------------------------|
+| Agent | `agent` |
+| Model | `usage.context.model`, the model of the run's latest call |
+| Input tokens, and how many came from cache | `usage.total.prompt_tokens`, `usage.total.cached_prompt_tokens` |
+| Output tokens | `usage.total.completion_tokens` |
+| Cost | `usage.total.cost`, in its own currency. "At least" when `unpriced_calls` is not zero or some calls were priced in another currency. "Not priced" when there are tokens and no cost, never zero |
+| Elapsed | `updated_at` less `created_at`, for a run that has ended. It includes time the run waited on a person |
+
+`total` counts the run's own model calls and the attached runs it waited on. A
+figure the run did not record has no row.
+
+The run is read as the person who clicked (`act_as_client` and `act_as_user`),
+never as the app's machine, so Humagen decides: a person sees a run's usage in
+Slack only where they may read the run. A person who may not is told they have
+no access, with no figures. A Slack user the client maps to nobody is told to
+ask an admin to connect their account, and Humagen is not asked. A bridged
+outcome does not offer the button.
 
 ### Questions a run waits on
 

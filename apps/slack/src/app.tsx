@@ -56,6 +56,7 @@ import {
 import { BUILDER, choose, mayRoute, type Routing } from "./agents.ts";
 import { type Branding, brandedCopy, brandedWords, DEFAULT_BRANDING } from "./branding.ts";
 import { bridgePolicy, subscribed } from "./bridge.ts";
+import { offersRunDetails, runDetailsReply } from "./details.tsx";
 import { inThread, Names, readThread, sinceLastTurn, withHistory } from "./history.ts";
 import { homeModel } from "./home.ts";
 import { askForm, buildForm, ENTRY, formKind, type words } from "./host.ts";
@@ -1002,6 +1003,7 @@ export class App {
       outcomesOnly: controls.policy.bound,
       canDeliver: async () => this.bridgeOutputAllowed(job.session.channel, outputRun),
       copy: this.copy,
+      capabilities: this.capabilities,
       log: (line) => this.log(line),
       ...(queued ? { shown: "queued" as const } : {}),
     });
@@ -1484,9 +1486,10 @@ export class App {
     if (run.status !== "stopped")
       this.log(`run ${run.id} ended ${run.status} before the stop reached it`);
     const turn = follow(run, { href: this.href }).settle(run);
-    await this.postView(session, renderToSlack(<TurnView copy={this.copy} turn={turn} />)).catch(
-      (e: Error) => this.log(`the end of run ${run.id} was not posted: ${e.message}`),
-    );
+    await this.postView(
+      session,
+      renderToSlack(<TurnView copy={this.copy} capabilities={this.capabilities} turn={turn} />),
+    ).catch((e: Error) => this.log(`the end of run ${run.id} was not posted: ${e.message}`));
   }
 
   /**
@@ -1565,6 +1568,7 @@ export class App {
     this.seen.set(dedupe, true);
 
     if (ui.id === ActionId.feedback) return this.onFeedback(ui, p);
+    if (ui.id === ActionId.runDetails) return this.onRunDetails(ui, p);
     // The Home tab's own controls, and Review on an item it shows.
     if (ui.payload.turnId === HOME_ID) return this.onHome(p, ui);
     if (ui.id === ActionId.open && (p.view?.type === "home" || p.container?.type === "view"))
@@ -1659,6 +1663,32 @@ export class App {
       again: { agent, after: after ?? run.id, as },
     });
     return "started";
+  }
+
+  /** What this app can act on from a turn: Run Details where its client maps people (see details.tsx). */
+  private get capabilities() {
+    return { runDetails: offersRunDetails(this.clientRecord?.client, this.opts.subject) };
+  }
+
+  /** What a run used, for the person who clicked alone, read as them (see details.tsx). */
+  private async onRunDetails(ui: UiAction, p: ActionPayload) {
+    const channel = p.channel?.id ?? p.container?.channel_id;
+    if (!channel) return;
+    const reply = await runDetailsReply(
+      { humagen: this.humagen, actAs: (user) => this.actAs(user), copy: this.copy },
+      ui.payload.turnId,
+      p.user.id,
+    );
+    if (reply.refused) this.log(`run details refused (${reply.refused}) for ${ui.payload.turnId}`);
+    await this.slack
+      .call("chat.postEphemeral", {
+        channel,
+        user: p.user.id,
+        ...(p.message?.thread_ts ? { thread_ts: p.message.thread_ts } : {}),
+        text: reply.text.slice(0, LIMITS.fallbackText),
+        ...(reply.blocks ? { blocks: reply.blocks } : {}),
+      })
+      .catch((e: Error) => this.log(`run details could not be shown: ${e.message}`));
   }
 
   /** Open while the trigger is fresh; a skipped modal still keeps the rating. */
