@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.146.1 (2026-11-20)
+
+### Bug Fixes
+
+- **slack**: keep an agent's card out of the middle of a sentence (#393) ([85c83d0](https://github.com/urmzd/humagen/commit/85c83d09c88fe97a7f26403c53d4bae04bc8725e))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.146.0...v0.146.1)
+
+
 ## 0.146.0 (2026-11-20)
 
 ### Features
