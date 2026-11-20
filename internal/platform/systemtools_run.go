@@ -22,10 +22,12 @@ import (
 // through reads them (operationTool). A tool's description and arguments
 // are its constructor's.
 //
-// Three names are also operations of the API contract, with their own
-// implementation: list_agents, list_alerts and run_eval_suite. A run is
-// offered the run tool and an MCP client the operation, so each run tool
-// has a registry key of its own (runToolKey) and is never listed over MCP.
+// Some names are also operations of the API contract: list_agents,
+// list_alerts and run_eval_suite, with their own implementation, and the
+// schedule tools (schedule_tools.go), which call their operation as the
+// person the run acts for. A run is offered the run tool and an MCP client
+// the operation, so each run tool has a registry key of its own
+// (runToolKey) and is never listed over MCP.
 
 // runToolKey is the registry key of a run tool whose name an operation of the
 // API contract also has.
@@ -161,6 +163,15 @@ func (p *Platform) registerRunTools() error {
 		{Name: ToolTaskStart, Category: other, Run: of(p.taskStartTool)},
 		reads(SystemTool{Name: ToolBackgroundList, Category: other, Run: of(p.backgroundListTool)}),
 		{Name: ToolBackgroundStop, Category: other, Idempotent: true, Run: of(p.backgroundStopTool)},
+
+		// Schedules from a conversation (schedule_tools.go): the API's own
+		// operations, as the person the run acts for, each call asked of
+		// that person whatever the policy allows.
+		{Name: ToolCreateSchedule, Key: runToolKey(ToolCreateSchedule), Category: other, Approval: p.scheduleApproval(p.createSchedulePrompt), Run: of(p.createScheduleTool)},
+		{Name: ToolUpdateSchedule, Key: runToolKey(ToolUpdateSchedule), Category: other, Idempotent: true, Approval: p.scheduleApproval(p.updateSchedulePrompt), Run: of(p.updateScheduleTool)},
+		{Name: ToolPauseSchedule, Key: runToolKey(ToolPauseSchedule), Category: other, Approval: p.scheduleApproval(pauseSchedulePrompt), Run: of(func(r runtime.Request) saigetypes.Tool { return p.pauseScheduleTool(r, true) })},
+		{Name: ToolResumeSchedule, Key: runToolKey(ToolResumeSchedule), Category: other, Approval: p.scheduleApproval(resumeSchedulePrompt), Run: of(func(r runtime.Request) saigetypes.Tool { return p.pauseScheduleTool(r, false) })},
+		{Name: ToolRunSchedule, Key: runToolKey(ToolRunSchedule), Category: other, Approval: p.scheduleApproval(runSchedulePrompt), Run: of(p.runScheduleTool)},
 
 		// Knowledge. The ones that use the reader's own access act for
 		// that person.

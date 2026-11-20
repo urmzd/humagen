@@ -3687,6 +3687,26 @@ export const defaultCopy = {
       weekends: (at: string) => `Weekends at ${at} UTC`,
       weekly: (day: number, at: string) =>
         `${["Sundays", "Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays"][day]} at ${at} UTC`,
+      everyMinutes: (n: number) => `Every ${n} minutes`,
+      everyHours: (n: number) => `Every ${n} hours`,
+    },
+    /**
+     * The fields of an approval card for a schedule an agent proposes from a
+     * conversation (create_schedule, update_schedule): what it checks, how
+     * often, which agent, where it posts, and when it runs next.
+     */
+    proposal: {
+      name: "Schedule",
+      checks: "Checks",
+      every: "How often",
+      agent: "Agent",
+      posts: "Posts",
+      nextRun: "Next run",
+      postsHere: "In this Slack channel, only when something fires",
+      postsSlack: (channel: string) => `In Slack channel ${channel}, only when something fires`,
+      postsGitHub: (issue: string) => `On ${issue}, only when something fires`,
+      postsInbox: "To your inbox, only when something fires",
+      postsNowhere: "Nowhere: each answer stays in its own session",
     },
   },
   /** The one-field form a Slack mention or an expert's question opens to reply. */

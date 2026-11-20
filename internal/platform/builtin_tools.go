@@ -54,7 +54,7 @@ const toolAskPerson = "ask_person"
 // tools still require the initiating person's reviewed connection and policy.
 // Never grant the builder's own tools, the analyst's, or calls to agents.
 func grantable() []string {
-	return append(append(append(FileTools(), WebTools()...), BackgroundTools()...), toolAskPerson, "person_tools")
+	return append(append(append(append(FileTools(), WebTools()...), BackgroundTools()...), ScheduleTools()...), toolAskPerson, "person_tools")
 }
 
 func builderGrantable(name string) bool {
