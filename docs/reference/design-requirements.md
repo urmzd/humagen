@@ -2045,3 +2045,43 @@ the posted message closed and open. Not seen: a tab's failure to load, the
 overflow line, and Details before this change at the same size. The five tabs
 are separate changes. The contract for them is
 [workbench.md](../architecture/workbench.md).
+
+#### Side Chat tab
+
+Side Chat (`WorkbenchSidechat.tsx`, `sidechat.ts`) asks a question about the
+session beside it. A side chat is a private fork of the session
+(`POST /api/threads/{id}/fork`) through its newest saved turn: a finished answer,
+or the message an answer still being written replies to, so a working agent is
+left alone. The fork carries the session's history as read-only context, is
+answered by the session's own agents, and posts nothing in the session. With
+nothing selected the tab is a title and the box, over the reader's earlier side
+chats of the session (`GET /api/threads/{id}/forks`, added for this, `runs:read`,
+at most 50 and without their saved history). The first message starts the fork
+and takes its address (`?bench=sidechat&benchRef=<its id>`), so it opens again
+after a reload, and it is a conversation like any other at `/messages/{id}`.
+The thread is drawn with the shared `Thread`, `AgentMessage` and `Composer`.
+
+Add to Message on a finished answer records it as done by hand (source
+`other`): one record of the question and up to 600 characters of the answer, or
+up to three for a longer answer, each with a key so adding it twice keeps one
+copy. It shows above the session's composer and goes with the reader's next
+message there; pressing it again, or removing the line, takes it back. Nothing
+is posted in the session for them.
+
+Not built: a side chat is not listed under the session's Linked sessions,
+because `POST /api/sessions/{id}/links` takes only a session as its target and
+a fork is a thread without a session identity. A child session was not used
+instead, since it is given none of its parent's history.
+
+Evidence: `workbench-sidechat.dom.test.tsx` covers the registry entry, the empty
+states, the first question (the fork's turn, title and agents, and that nothing
+is posted in the session), reopening from the address, a fork that is not this
+session's, a refused fork, and Add to Message with the list above the composer;
+`TestForksOfListsOnlyTheReadersOwnLiveForksNewestFirst` and
+`internal/httpapi/openapi_test.go` cover the listing. Seen in Chrome against a
+local server with a stand-in model at 1280x800 and 390x844, light and dark:
+empty, the list of earlier side chats, an answer, the same after a reload, the
+answer added and listed above the composer, the pane filling the page, an
+address that names no side chat, and a side chat answered while the session's
+agent worked. Not seen: a refused fork, an answer long enough for three
+records, and an agent's question card inside a side chat.
