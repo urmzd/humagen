@@ -92,6 +92,8 @@ export class Presenter {
       shown?: TurnStatus;
       /** The copy a turn is rendered with, for a branded disclaimer. */
       copy?: Copy;
+      /** Slack said the session here is the channel itself, as in a code channel. */
+      onCodeChannel?: () => void;
     } = {},
   ) {
     this.native = opts.outcomesOnly ? false : (opts.native ?? true);
@@ -136,6 +138,7 @@ export class Presenter {
     } catch (e) {
       if (e instanceof SlackError && e.code === "thread_ts_not_allowed" && !this.threadless) {
         this.threadless = true;
+        this.opts.onCodeChannel?.();
         await this.slack
           .call("agents.sessions.setStatus", args)
           .catch((again: Error) => this.log(`session status skipped: ${again.message}`));

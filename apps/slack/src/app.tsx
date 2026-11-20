@@ -56,6 +56,7 @@ import {
 import { BUILDER, choose, mayRoute, type Routing } from "./agents.ts";
 import { type Branding, brandedCopy, brandedWords, DEFAULT_BRANDING } from "./branding.ts";
 import { bridgePolicy, subscribed } from "./bridge.ts";
+import { CodeChannels } from "./codechannel.ts";
 import { inThread, Names, readThread, sinceLastTurn, withHistory } from "./history.ts";
 import { homeModel } from "./home.ts";
 import { askForm, buildForm, ENTRY, formKind, type words } from "./host.ts";
@@ -107,6 +108,8 @@ export interface AppOptions {
   publicUrl?: string;
   /** Name, tagline, disclaimer and suggested prompts. Left out, the defaults. */
   branding?: Branding;
+  /** How long to wait before each further look for a code channel session's title. */
+  titleWaits?: number[];
   /** The least time between two writes of one turn to Slack. */
   flushMs?: number;
   /** How often a run's record is read while it is being followed. */
@@ -489,6 +492,8 @@ export class App {
   private readonly words: typeof words;
   /** Display names for thread history, when the app may read them. */
   private readonly names: Names;
+  /** The context bar and session name of each code channel. */
+  private readonly chrome: CodeChannels;
 
   constructor(
     private readonly slack: SlackApi,
@@ -505,6 +510,13 @@ export class App {
     this.copy = brandedCopy(this.branding);
     this.words = brandedWords(this.branding);
     this.names = new Names(slack, (line) => this.log(line));
+    this.chrome = new CodeChannels(slack, {
+      title: (thread) => humagen.threadTitle(thread),
+      href: this.href,
+      copy: this.copy,
+      log: (line) => this.log(line),
+      ...(opts.titleWaits ? { titleWaits: opts.titleWaits } : {}),
+    });
   }
 
   private log(line: string) {
@@ -745,6 +757,11 @@ export class App {
     if (event.type === "assistant_thread_started") {
       const at = event.assistant_thread;
       if (at?.channel_id) await this.suggest(at.channel_id, at.thread_ts);
+      return;
+    }
+    if (event.type === "channel_archive" || event.type === "group_archive") {
+      // Not subscribed to today. When it is, an archived code channel is forgotten.
+      if (event.channel) this.chrome.forget(event.channel);
       return;
     }
     if (event.type === "agent_session_stopped") {
@@ -1004,6 +1021,10 @@ export class App {
       copy: this.copy,
       log: (line) => this.log(line),
       ...(queued ? { shown: "queued" as const } : {}),
+      // Slack said the session is the channel: its context bar and name follow the run.
+      onCodeChannel: () => {
+        if (live.run) this.track(this.chrome.sync(job.session.channel, live.run));
+      },
     });
 
     let placed: Awaited<ReturnType<App["place"]>>;
@@ -1134,6 +1155,7 @@ export class App {
     // stays processing and Stop stays available. Its end is posted when it comes.
     await presenter.finish(turn);
     this.native = this.native && presenter.streaming;
+    if (this.chrome.has(job.session.channel)) void this.chrome.settle(job.session.channel, run);
     if (stalled) {
       this.track(this.later(run, following, presenter));
       // The thread is not held for it. A later message follows it in the conversation,

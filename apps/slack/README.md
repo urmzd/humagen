@@ -48,6 +48,20 @@ the session status follows it: processing while it works, active when it ends.
 Where native streaming is refused, the turn is posted once and edited. A
 message sent while a turn is running waits for it, as in the console.
 
+In a code channel the session is the channel itself. There a turn also keeps
+the channel's context bar to what its run says (the project, the agent
+answering, and the conversation in the console when `HUMAGEN_PUBLIC_URL` is
+set) with `agents.conversations.setProperties`, and the session is named once
+after its conversation's title with `agents.sessions.rename`, when Humagen has
+one. A run names no repository, branch, pull request or check, so the bar
+shows none. An ordinary thread or direct message makes neither call, and a
+channel Slack refuses either for is not asked again; the answer never depends
+on them. `apps/slack/src/codechannel.ts` also holds the close of a code
+channel (post a summary, close the session, archive with the summary shared
+back to where the session began), which nothing calls yet: Humagen has no
+event that says a session is over, and the app never archives a channel on
+its own.
+
 Bot messages, the app's own messages, edits and joins never start a run.
 Deliveries from any team but `SLACK_TEAM_ID` are ignored.
 

@@ -405,6 +405,12 @@ export class FakeHumagen implements Humagen {
     return m ? structuredClone(m) : null;
   }
 
+  /** The title each conversation was given, by thread. */
+  readonly titles = new Map<string, string>();
+  async threadTitle(id: string) {
+    return this.titles.get(id) ?? null;
+  }
+
   /** The surface of each humagen thread the fake started from one. */
   async threadSurface(id: string) {
     for (const [where, thread] of this.surfaces) {
