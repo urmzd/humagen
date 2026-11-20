@@ -1300,28 +1300,28 @@ func importSessions(ctx context.Context, c importOptions, api importAPI, out io.
 		fmt.Fprintf(out, "Structures were not kept: %s. %d documents remain without a structure; a run that may import restores them.\n", res.StructuresNotKept, res.WithoutStructure)
 	}
 	if len(res.StructuresFull) > 0 {
-		fmt.Fprintf(out, "Structures were not restored in %s: each holds as many session structures as a source may (8 MiB). Their documents are present and unchanged, without a structure.\n", strings.Join(res.StructuresFull, ", "))
+		fmt.Fprintf(out, "Structures were not restored in %s: each holds as many session structures as a source may (8 MiB). Their documents are present and unchanged, without a structure.\n", inline(strings.Join(res.StructuresFull, ", ")))
 	}
 	if len(res.NotInCorpus) > 0 {
-		fmt.Fprintf(out, "Not put in a corpus: %s: %s.\n", strings.Join(res.NotInCorpus, ", "), res.NotInCorpusReason)
+		fmt.Fprintf(out, "Not put in a corpus: %s: %s.\n", inline(strings.Join(res.NotInCorpus, ", ")), inline(res.NotInCorpusReason))
 	}
 	for _, f := range res.CorpusFailed {
-		fmt.Fprintf(out, "Could not file the sources in a %s: %s. The sessions were sent.\n", f.Name, f.Reason)
+		fmt.Fprintf(out, "Could not file the sources in a %s: %s. The sessions were sent.\n", inline(f.Name), inline(f.Reason))
 	}
 	if len(res.Conflicts) > 0 {
-		fmt.Fprintf(out, "Left %d sessions as another import wrote them while this one ran; nothing of this run's was written over them: %s.\n", len(res.Conflicts), strings.Join(res.Conflicts, ", "))
+		fmt.Fprintf(out, "Left %d sessions as another import wrote them while this one ran; nothing of this run's was written over them: %s.\n", len(res.Conflicts), inline(strings.Join(res.Conflicts, ", ")))
 	}
 	for _, f := range res.Failed {
-		fmt.Fprintf(out, "  failed %s: %s\n", f.Name, f.Reason)
+		fmt.Fprintf(out, "  failed %s: %s\n", inline(f.Name), inline(f.Reason))
 	}
 	if len(res.Attached) > 0 {
-		fmt.Fprintf(out, "Attached to projects: %s.\n", strings.Join(res.Attached, ", "))
+		fmt.Fprintf(out, "Attached to projects: %s.\n", inline(strings.Join(res.Attached, ", ")))
 	}
 	if len(res.Unfiled) > 0 {
-		fmt.Fprintf(out, "No project is named for: %s. Their sessions are in the corpus; make the project and run this again to attach them.\n", strings.Join(res.Unfiled, ", "))
+		fmt.Fprintf(out, "No project is named for: %s. Their sessions are in the corpus; make the project and run this again to attach them.\n", inline(strings.Join(res.Unfiled, ", ")))
 	}
 	if c.dryRun && res.Project != "" {
-		fmt.Fprintf(out, "Would file the exports' sessions in %s and attach it to the project %s, if the workspace has one of that name; a dry run does not ask the server, so it does not know which are already imported.\n", res.ProjectSource, res.Project)
+		fmt.Fprintf(out, "Would file the exports' sessions in %s and attach it to the project %s, if the workspace has one of that name; a dry run does not ask the server, so it does not know which are already imported.\n", inline(res.ProjectSource), inline(res.Project))
 	}
 	if len(res.Elsewhere) > 0 {
 		in := map[string]bool{}
@@ -1333,7 +1333,7 @@ func importSessions(ctx context.Context, c importOptions, api importAPI, out io.
 			sources = append(sources, name)
 		}
 		sort.Strings(sources)
-		fmt.Fprintf(out, "%d sessions are already imported in another source and were left there, not filed in %s: %s. To refile them, remove their documents from that source and run this again.\n", len(res.Elsewhere), res.Project, strings.Join(sources, ", "))
+		fmt.Fprintf(out, "%d sessions are already imported in another source and were left there, not filed in %s: %s. To refile them, remove their documents from that source and run this again.\n", len(res.Elsewhere), inline(res.Project), inline(strings.Join(sources, ", ")))
 		if n := len(res.ElsewhereChanged); n > 0 {
 			fmt.Fprintf(out, "%d of them read differently in the export now and were not updated: a document in another source is left as it is. To bring them up to date, import the export again as it was first filed, or refile them.\n", n)
 		}
@@ -1900,10 +1900,10 @@ func importSkills(ctx context.Context, c importOptions, api importAPI, out io.Wr
 			return err
 		}
 		if len(res.Unknown) > 0 {
-			fmt.Fprintf(out, "  unknown: %s\n", strings.Join(res.Unknown, ", "))
+			fmt.Fprintf(out, "  unknown: %s\n", shownAll(res.Unknown))
 		}
 		for _, f := range res.Failed {
-			fmt.Fprintf(out, "  failed %s: %s\n", f.Name, f.Reason)
+			fmt.Fprintf(out, "  failed %s: %s\n", shown(f.Name), inline(f.Reason))
 		}
 		return leftErr()
 	}
@@ -1929,13 +1929,13 @@ func importSkills(ctx context.Context, c importOptions, api importAPI, out io.Wr
 		if u.Published > 0 {
 			stays = fmt.Sprintf("v%d stays published", u.Published)
 		}
-		fmt.Fprintf(out, "  updated %s: draft v%d (%s); %s\n", u.Name, u.Version, strings.Join(parts, "; "), stays)
+		fmt.Fprintf(out, "  updated %s: draft v%d (%s); %s\n", shown(u.Name), u.Version, inline(strings.Join(parts, "; ")), stays)
 	}
 	for _, f := range res.Conflicts {
-		fmt.Fprintf(out, "  conflict %s: %s\n", f.Name, f.Reason)
+		fmt.Fprintf(out, "  conflict %s: %s\n", shown(f.Name), inline(f.Reason))
 	}
 	for _, f := range res.Failed {
-		fmt.Fprintf(out, "  failed %s: %s\n", f.Name, f.Reason)
+		fmt.Fprintf(out, "  failed %s: %s\n", shown(f.Name), inline(f.Reason))
 	}
 	reduced := make([]string, 0, len(res.Reduced))
 	for n := range res.Reduced {
@@ -1943,10 +1943,10 @@ func importSkills(ctx context.Context, c importOptions, api importAPI, out io.Wr
 	}
 	sort.Strings(reduced)
 	for _, n := range reduced {
-		fmt.Fprintf(out, "  %s: drafted without frontmatter the library does not read: %s\n", n, strings.Join(res.Reduced[n], ", "))
+		fmt.Fprintf(out, "  %s: drafted without frontmatter the library does not read: %s\n", shown(n), shownList(res.Reduced[n], nil))
 	}
 	if len(res.NoRoom) > 0 {
-		fmt.Fprintf(out, "  no room for %d more: the %s library holds at most %d skills. Choose which with --only, or draft the rest in another scope: %s\n", len(res.NoRoom), c.scope, library.MaxSkills, strings.Join(res.NoRoom, ", "))
+		fmt.Fprintf(out, "  no room for %d more: the %s library holds at most %d skills. Choose which with --only, or draft the rest in another scope: %s\n", len(res.NoRoom), c.scope, library.MaxSkills, shownAll(res.NoRoom))
 	}
 	if len(res.Added)+len(res.Updated) > 0 && !c.dryRun {
 		fmt.Fprintln(out, "Next: test and publish each draft under Library, Skills. Until then agents keep the revision they use now.")
@@ -1976,238 +1976,6 @@ func frontmatter(data []byte) (meta map[string]any, body string, ok bool) {
 		body = ""
 	}
 	return meta, strings.TrimSpace(body), true
-}
-
-// agentsResult is what an import of agents did.
-type agentsResult struct {
-	Created []string       `json:"created"`
-	Present []string       `json:"present"`
-	Failed  []importFailed `json:"failed"`
-	// Reduced are the agents, created or already there, whose file holds
-	// fields the agent does not carry, each with those fields by name.
-	Reduced map[string][]string `json:"reduced"`
-	// NotEnforced are the hooks and permission rules among them, each as
-	// its field and the names under it, such as hooks.PreToolUse or
-	// permissions.deny. Humagen does not run or apply any of them.
-	NotEnforced map[string][]string `json:"not_enforced"`
-	DryRun      bool                `json:"dry_run,omitempty"`
-}
-
-// agentHooks and agentPermissions are the frontmatter fields with which
-// another assistant runs commands around an agent's tool calls, or allows and
-// denies its calls. Humagen enforces none of them.
-var (
-	agentHooks       = map[string]bool{"hooks": true}
-	agentPermissions = map[string]bool{"permissions": true, "permissionMode": true, "disallowedTools": true}
-)
-
-// agentFields reads what an agent file's frontmatter gives the agent: its
-// name and description, when each is text. Every other field, and a name or
-// description that is not text, is dropped, by name. Of those, hooks and
-// permissions are named again with the keys under them, never their values,
-// which may hold commands and paths.
-func agentFields(meta map[string]any) (name, description string, dropped, hooks, permissions []string) {
-	for key, value := range meta {
-		switch key {
-		case "name", "description":
-			text, ok := value.(string)
-			if !ok {
-				dropped = append(dropped, key)
-				continue
-			}
-			if key == "name" {
-				name = strings.TrimSpace(text)
-			} else {
-				description = text
-			}
-			continue
-		}
-		dropped = append(dropped, key)
-		var into *[]string
-		switch {
-		case agentHooks[key]:
-			into = &hooks
-		case agentPermissions[key]:
-			into = &permissions
-		default:
-			continue
-		}
-		under, ok := value.(map[string]any)
-		if !ok || len(under) == 0 {
-			*into = append(*into, key)
-			continue
-		}
-		for sub := range under {
-			*into = append(*into, key+"."+sub)
-		}
-	}
-	sort.Strings(dropped)
-	sort.Strings(hooks)
-	sort.Strings(permissions)
-	return name, description, dropped, hooks, permissions
-}
-
-// Each hook and permission rule an agent's file holds is reported in a line
-// of its own, saying Humagen does not enforce it and what in Humagen does the
-// nearest thing.
-const (
-	hooksNotEnforced       = "Humagen runs no hooks around an agent's tool calls, and has no equivalent."
-	permissionsNotEnforced = "No rule of the file is applied. The equivalent is set under Agents, on the agent (the tools it is granted, and which of them wait for a person's approval), and under Operations, Action Policies (Never or Ask for a kind of action). A rule on one command or path has no equivalent."
-)
-
-// importAgents creates an agent from each Markdown agent file: its name and
-// description from the frontmatter, its text as the system prompt. The tools
-// a file lists are another assistant's and name nothing here, so an agent
-// is created with none. Every other field is not carried, and the report
-// names it for each agent created or already there.
-func importAgents(ctx context.Context, c importOptions, api importAPI, out io.Writer) error {
-	entries, err := os.ReadDir(c.dir)
-	if err != nil {
-		return err
-	}
-	only := map[string]bool{}
-	for _, n := range strings.Split(c.only, ",") {
-		if n = strings.TrimSpace(n); n != "" {
-			only[n] = true
-		}
-	}
-	res := agentsResult{Created: []string{}, Present: []string{}, Failed: []importFailed{}, Reduced: map[string][]string{}, NotEnforced: map[string][]string{}, DryRun: c.dryRun}
-	have := map[string]bool{}
-	if !c.dryRun {
-		// Each agent is listed as its latest revision, which holds its spec.
-		var listed struct {
-			Agents []struct {
-				Spec struct {
-					Name string `json:"name"`
-				} `json:"spec"`
-			} `json:"agents"`
-		}
-		if err := api.do(ctx, http.MethodGet, "/api/agents", nil, &listed); err != nil {
-			return err
-		}
-		for _, a := range listed.Agents {
-			have[a.Spec.Name] = true
-		}
-	}
-	// files are the agent files of the agents reported as not carrying
-	// fields, by agent, for the text report.
-	files := map[string]string{}
-	seen := map[string]bool{}
-	for _, e := range entries {
-		file := e.Name()
-		if !strings.HasSuffix(file, ".md") || strings.HasPrefix(file, ".") {
-			continue
-		}
-		data, err := os.ReadFile(filepath.Join(c.dir, file))
-		if err != nil {
-			// A folder named like a file, or a link to nothing.
-			continue
-		}
-		name := strings.TrimSuffix(strings.TrimSuffix(file, ".md"), ".agent")
-		meta, body, ok := frontmatter(data)
-		own, description, dropped, hooks, permissions := agentFields(meta)
-		if own != "" {
-			name = own
-		}
-		if len(only) > 0 && !only[name] {
-			continue
-		}
-		seen[name] = true
-		// reduced names what the agent does not carry from its file. A
-		// present agent is named too: whether it was made from this file as
-		// it is now is not known here, and the file's fields are not carried
-		// either way.
-		reduced := func() {
-			if len(dropped) > 0 {
-				res.Reduced[name], files[name] = dropped, file
-			}
-			if len(hooks)+len(permissions) > 0 {
-				res.NotEnforced[name] = append(append([]string{}, hooks...), permissions...)
-			}
-		}
-		switch {
-		case !ok && strings.HasPrefix(strings.ReplaceAll(string(data), "\r\n", "\n"), "---\n"):
-			res.Failed = append(res.Failed, importFailed{Name: name, Reason: file + " has frontmatter that is not a YAML mapping, or that no closing --- line ends"})
-			continue
-		case !ok:
-			res.Failed = append(res.Failed, importFailed{Name: name, Reason: file + " does not start with YAML frontmatter"})
-			continue
-		case body == "":
-			res.Failed = append(res.Failed, importFailed{Name: name, Reason: file + " has no text to be the system prompt"})
-			continue
-		case have[name]:
-			res.Present = append(res.Present, name)
-			reduced()
-			continue
-		}
-		if !c.dryRun {
-			err := api.do(ctx, http.MethodPost, "/api/agents", map[string]any{
-				"name": name, "description": oneLineText(description), "provider": c.provider, "model": c.model,
-				"system_prompt": body, "tools": []string{},
-			}, nil)
-			if err != nil {
-				res.Failed = append(res.Failed, importFailed{Name: name, Reason: err.Error()})
-				continue
-			}
-		}
-		have[name] = true
-		res.Created = append(res.Created, name)
-		reduced()
-	}
-	for n := range only {
-		if !seen[n] {
-			res.Failed = append(res.Failed, importFailed{Name: n, Reason: "no agent file of that name in " + c.dir})
-		}
-	}
-	sort.Slice(res.Failed, func(i, j int) bool { return res.Failed[i].Name < res.Failed[j].Name })
-	failed := func() error {
-		if len(res.Failed) > 0 {
-			return fmt.Errorf("%d agents were not created", len(res.Failed))
-		}
-		return nil
-	}
-	if c.json {
-		if err := json.NewEncoder(out).Encode(res); err != nil {
-			return err
-		}
-		return failed()
-	}
-	verb := "Created"
-	if c.dryRun {
-		verb = "Would create"
-	}
-	if _, err := fmt.Fprintf(out, "%s %d agents on %s %s; %d already there, %d failed.\n", verb, len(res.Created), c.provider, c.model, len(res.Present), len(res.Failed)); err != nil {
-		return err
-	}
-	for _, f := range res.Failed {
-		fmt.Fprintf(out, "  failed %s: %s\n", f.Name, f.Reason)
-	}
-	reduced := make([]string, 0, len(res.Reduced))
-	for n := range res.Reduced {
-		reduced = append(reduced, n)
-	}
-	sort.Strings(reduced)
-	for _, n := range reduced {
-		fmt.Fprintf(out, "  %s: not carried from %s: %s\n", n, files[n], strings.Join(res.Reduced[n], ", "))
-		var hooks, permissions []string
-		for _, f := range res.NotEnforced[n] {
-			if agentHooks[strings.SplitN(f, ".", 2)[0]] {
-				hooks = append(hooks, f)
-			} else {
-				permissions = append(permissions, f)
-			}
-		}
-		if len(hooks) > 0 {
-			fmt.Fprintf(out, "  %s: not enforced by Humagen: %s. %s\n", n, strings.Join(hooks, ", "), hooksNotEnforced)
-		}
-		if len(permissions) > 0 {
-			fmt.Fprintf(out, "  %s: not enforced by Humagen: %s. %s\n", n, strings.Join(permissions, ", "), permissionsNotEnforced)
-		}
-	}
-	if len(res.Created) > 0 && !c.dryRun {
-		fmt.Fprintln(out, "Next: each agent has no tools. Grant what it needs under Agents.")
-	}
-	return failed()
 }
 
 func oneLineText(s string) string { return strings.Join(strings.Fields(s), " ") }

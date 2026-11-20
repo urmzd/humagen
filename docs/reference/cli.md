@@ -533,25 +533,63 @@ not sent.
 
 An agent carries its `name`, its `description` (on one line) and its text as
 the system prompt. Every other frontmatter field, and a `name` or
-`description` that is not text, is not carried, and the command names each
-one, by name and never by value, for every agent it creates or finds already
-there:
+`description` that is not text, is not carried. The command names those
+fields, by name and never by value, for each file it creates an agent from or
+finds the agent of already there, in one line a file, and a second line for
+the hooks and permission rules among them (`hooks`, `permissions`,
+`permissionMode`, `disallowedTools`, in any case or with `-` or `_`). It
+explains each kind once, at the end of the run:
 
 ```text
-  guarded: not carried from guarded.md: color, effort, hooks, model, permissionMode, permissions, tools
-  guarded: not enforced by Humagen: hooks.PreToolUse. Humagen runs no hooks around an agent's tool calls, and has no equivalent.
-  guarded: not enforced by Humagen: permissionMode, permissions.allow, permissions.deny. No rule of the file is applied. The equivalent is set under Agents, on the agent (the tools it is granted, and which of them wait for a person's approval), and under Operations, Action Policies (Never or Ask for a kind of action). A rule on one command or path has no equivalent.
+Created 3 agents on anthropic claude-sonnet-5-5; 0 already there, 0 failed.
+  guarded.md: not carried: color, effort, hooks, model, permissionMode,
+    permissions, tools
+  guarded.md: not enforced: hooks.PreToolUse, permissionMode,
+    permissions.allow, permissions.deny
+  reviewer.md: not carried: model, tools
+Hooks are not enforced: Humagen does not run a file's hook commands. A check
+  before a tool call is set with the agent's approvals, under Agents, and with
+  Ask or Never under Operations, Action Policies. Nothing stands in for a hook
+  that runs after a call or when a turn stops.
+Permission rules are not enforced: no rule of a file is applied. An agent has
+  only the tools granted to it under Agents, where its approvals are set, and
+  Ask or Never for a kind of action is set under Operations, Action Policies.
+  A rule on one command or path has no equivalent.
+Next: each agent has no tools. Grant what it needs under Agents.
 ```
 
-`hooks`, `permissions`, `permissionMode` and `disallowedTools` get the last two
-lines, with the names under each field (the hook events, the rule lists):
-Humagen does not run or apply any of them. A dry run prints the same lines. A
-second import prints them again for each agent already there, since whether
-that agent was made from the file as it now is is not known. A file that does
-not start with `---` fails with `does not start with YAML frontmatter`, and one
-whose frontmatter is not a YAML mapping, or has no closing `---` line, fails
-with `has frontmatter that is not a YAML mapping, or that no closing --- line
-ends`. Fields not carried do not change the exit code.
+(The command prints each file's line whole; it is wrapped here.) Under
+`hooks` and `permissions` only the known names are shown: the hook events,
+such as `PreToolUse`, and `allow`, `deny`, `ask`, `defaultMode` and
+`additionalDirectories`. Any other key is counted, as `1 other permissions
+entry`, since a rule or a command may be written as a key. A name that is not
+plain printable text, such as one holding an escape sequence or a line break,
+is printed quoted (`"\x1b[8mhidden"`); an empty one is `(empty)`; one longer
+than 64 characters is cut, with `...` after it; and a line names at most 40
+fields, then `and N more`. The skills import prints the names in its lines
+the same way. A dry run prints the same lines. A second import prints them
+again for each agent already there, since whether that agent was made from
+the file as it now is is not known.
+
+Two files that name one agent are not merged: the first, by file name, is
+the one imported, as for skills, and the other is reported as `skipped
+b.md: it names the agent same, which a.md gives`, with nothing sent for it.
+
+A file whose frontmatter cannot be read fails with the reason, which quotes
+nothing of the file:
+
+| Reason | When |
+| --- | --- |
+| `does not start with YAML frontmatter` | The first line is not `---` |
+| `has frontmatter with no closing --- line` | No later line is `---` alone, trailing spaces aside. A line such as `---x` does not close it |
+| `has empty frontmatter` | Nothing between the two lines |
+| `has more than one YAML document in its frontmatter` | A document end (`...`) followed by more |
+| `has frontmatter that repeats a key` | A key given twice |
+| `has frontmatter that is not a YAML mapping` | A list or a single value |
+| `has more than 1000 frontmatter fields` | |
+| `has frontmatter that is not valid YAML` | Anything else the parser refuses |
+
+Fields not carried and skipped files do not change the exit code.
 
 `sessions` needs `knowledge:read` and `knowledge:write`, and
 `knowledge:import` as well to keep each session's structure: an import
@@ -573,8 +611,11 @@ folder, as a dry run printed before it read the library: it equals
 `unknown`, `added` is empty, and `library_unread` holds the reason. New
 programs read `added` and `unknown`.
 
-With `--json`, `agents` prints `created`, `present`, `failed`, `reduced` (the
-fields not carried, by agent) and `not_enforced` (the hook and permission
-fields among them, as `hooks.PreToolUse` or `permissions.deny`, by agent).
+With `--json`, `agents` prints `created`, `present`, `skipped` (each with its
+`file`, the agent's `name` and the file it is `from`), `failed`, and by file:
+`reduced` (every field not carried), `not_enforced` (the hook and permission
+fields among them, as `hooks.PreToolUse` or `permissions.deny`) and
+`not_enforced_other` (the count of other entries under each such field). JSON
+holds each name as it is, with no cut and no cap.
 
 # CLI
