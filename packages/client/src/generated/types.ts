@@ -5646,6 +5646,58 @@ export interface SessionInput {
   post_only?: boolean;
 }
 
+/** What a person asks of a session's browser. */
+export interface BrowserAction {
+  /** The browser's tool provider, for a session whose agent holds more than one. Left out, the first. */
+  provider?: string;
+  /** `look` reads the page and changes nothing. The rest act on it. */
+  action: "look" | "navigate" | "back" | "click" | "type" | "press";
+  /** Where `navigate` goes. http or https. */
+  url?: string;
+  /** The element `click` and `type` act on, a `ref` from the last view's elements. Never a selector. */
+  target?: string;
+  /** How the person saw the target named, kept in the audit record. */
+  element?: string;
+  /** What `type` enters. It is not kept in the audit record. */
+  text?: string;
+  /** With `type`, press Enter afterwards. */
+  submit?: boolean;
+  /** What `press` presses, such as Enter, ArrowDown or Control+a. */
+  key?: string;
+}
+
+/** A screenshot of the page as it is now, in CSS pixels. */
+export interface BrowserImage {
+  media_type: string;
+  /** The image, base64. At most 8 MiB decoded. */
+  data: Blob;
+}
+
+/** One thing on the page a person can act on. */
+export interface BrowserElement {
+  /** What `click` and `type` take as their target. */
+  ref: string;
+  /** Its role in the page's tree, such as link, button or textbox. */
+  role: string;
+  name?: string;
+  /** Where it is in the screenshot, in CSS pixels: x, y, width, height. Absent for an element with no place on the screen. */
+  box?: number[];
+}
+
+/** A session's browser after an action. */
+export interface BrowserView {
+  /** The tool provider the browser is reached through. */
+  provider: string;
+  action: "look" | "navigate" | "back" | "click" | "type" | "press";
+  url?: string;
+  title?: string;
+  screenshot?: BrowserImage;
+  /** Links, buttons and fields, in the page's order. At most 400. */
+  elements: BrowserElement[];
+  /** How many elements were left out for being over the limit. */
+  more?: number;
+}
+
 /** A session message with optional routing to a mentioned agent. */
 export interface SessionPostInput {
   /** Inline uploaded files, at most 25 MiB decoded bytes in total. */

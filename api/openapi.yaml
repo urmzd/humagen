@@ -723,6 +723,50 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/ServerError"
+  /api/sessions/{id}/browser:
+    post:
+      operationId: "actOnSessionBrowser"
+      tags:
+        - "sessions"
+      summary: "Look at or act on the session's browser by hand"
+      description: |
+        The browser is the one the session's agent works in: an MCP tool
+        provider the agent holds a write grant on (`mcp:<name>:write`),
+        shared and reached over HTTP, whose accepted tools include a
+        screenshot. The caller must be a person allowed to post in the
+        session, and the action policy must allow that agent's browser
+        actions without review. Only accepted tools are called. Every action
+        but `look` is audited, without what was typed. The answer is the page
+        afterwards. Nothing is sent to the agent.
+      x-permission: "runs:write"
+      parameters:
+        - {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/BrowserAction"}
+      responses:
+        "200":
+          description: The page after the action.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BrowserView"}
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+        "502":
+          description: The browser could not be reached, or it refused the action. The message says which.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ErrorBody"}
   /api/sessions/{id}/messages:
     post:
       operationId: "postSessionMessage"
@@ -19693,6 +19737,82 @@ components:
         post_only:
           type: boolean
           description: "With surface: post the message without starting anything."
+    BrowserAction:
+      description: What a person asks of a session's browser.
+      type: object
+      additionalProperties: false
+      required: [action]
+      properties:
+        provider:
+          description: The browser's tool provider, for a session whose agent holds more than one. Left out, the first.
+          type: string
+          maxLength: 32
+        action:
+          description: "`look` reads the page and changes nothing. The rest act on it."
+          type: string
+          enum: [look, navigate, back, click, type, press]
+        url:
+          description: Where `navigate` goes. http or https.
+          type: string
+          maxLength: 2048
+        target:
+          description: The element `click` and `type` act on, a `ref` from the last view's elements. Never a selector.
+          type: string
+          maxLength: 64
+        element:
+          description: How the person saw the target named, kept in the audit record.
+          type: string
+          maxLength: 160
+        text:
+          description: What `type` enters. It is not kept in the audit record.
+          type: string
+          maxLength: 4000
+        submit:
+          description: With `type`, press Enter afterwards.
+          type: boolean
+        key:
+          description: What `press` presses, such as Enter, ArrowDown or Control+a.
+          type: string
+          maxLength: 99
+    BrowserImage:
+      description: A screenshot of the page as it is now, in CSS pixels.
+      type: object
+      required: [media_type, data]
+      properties:
+        media_type: {type: string}
+        data: {type: string, format: byte, description: "The image, base64. At most 8 MiB decoded."}
+    BrowserElement:
+      description: One thing on the page a person can act on.
+      type: object
+      required: [ref, role]
+      properties:
+        ref: {type: string, description: "What `click` and `type` take as their target."}
+        role: {type: string, description: "Its role in the page's tree, such as link, button or textbox."}
+        name: {type: string}
+        box:
+          description: "Where it is in the screenshot, in CSS pixels: x, y, width, height. Absent for an element with no place on the screen."
+          type: array
+          minItems: 4
+          maxItems: 4
+          items: {type: integer}
+    BrowserView:
+      description: A session's browser after an action.
+      type: object
+      required: [provider, action, elements]
+      properties:
+        provider: {type: string, description: "The tool provider the browser is reached through."}
+        action: {type: string, enum: [look, navigate, back, click, type, press]}
+        url: {type: string}
+        title: {type: string}
+        screenshot: {$ref: "#/components/schemas/BrowserImage"}
+        elements:
+          description: Links, buttons and fields, in the page's order. At most 400.
+          type: array
+          maxItems: 400
+          items: {$ref: "#/components/schemas/BrowserElement"}
+        more:
+          description: How many elements were left out for being over the limit.
+          type: integer
     SessionPostInput:
       description: A session message with optional routing to a mentioned agent.
       type: object
