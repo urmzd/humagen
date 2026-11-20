@@ -20,16 +20,12 @@ export function workspaceScreens(call: Call): Screen[] {
       const input = page.locator('form[aria-label="Message"] textarea');
       // Home's composer picks no project: a session from Home is filed in the person's own.
       assert.equal(await page.getByRole("button", { name: /^Select project/ }).count(), 0);
-      // A wide window says what else the bar takes; a phone keeps the short prompt.
-      assert.ok(
-        [defaultCopy.chat.placeholder, defaultCopy.chat.placeholderHint].includes(
-          (await input.getAttribute("placeholder")) ?? "",
-        ),
-      );
+      // The bar says only what it is for, on every width.
+      assert.equal(await input.getAttribute("placeholder"), defaultCopy.chat.placeholder);
       const suggestions = page.getByRole("list", { name: defaultCopy.chat.suggestions });
       await suggestions.waitFor();
-      // Analyst, builder, writer and code reviewer.
-      assert.equal(await suggestions.getByRole("button").count(), 4);
+      // Analyst, writer and code reviewer; building an agent is /agent-creator.
+      assert.equal(await suggestions.getByRole("button").count(), 3);
       const beforeTyping = await suggestions.boundingBox();
       await input.fill("Prepare the launch brief.");
       const afterTyping = await suggestions.boundingBox();
