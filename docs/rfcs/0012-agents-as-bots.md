@@ -101,52 +101,91 @@ entry, not a public route that would list agent names.
 
 ### 2. In Slack, one app that takes on whoever is answering
 
-There is one Slack app per workspace, and it has no personality of its own:
-every message it posts for a turn is posted as the agent that answered it,
-with `username: display_name` and `icon_url: mark` (`chat:write.customize`
-added to the manifest). There are no per-agent Slack apps. One install, one
-thing for an admin to approve, one name to mention.
+There is one Slack app per workspace, named for the workspace (its branding
+name, "Humagen" by default). It has no voice of its own: everything it says
+for a turn is said as the agent doing the work. One install, one thing for an
+admin to approve, one name to mention.
 
-Two ways to talk to it:
+#### How a message wears an agent
 
-- **The lead, by default.** A message to the app that names no agent (a
-  mention in a channel, a DM, the assistant pane) goes to the workspace's
-  entry agent, posted as the entry agent's identity. It answers simple asks
-  itself and brings specialists in with the `agent` tool, as it does in the
-  console. When a specialist's result is shown on its own (a mention of
-  several agents, a handoff), that part posts as the specialist, so a thread
-  where the lead asked `@researcher` and `@writer` reads as three faces, not
-  one bot quoting two.
+Slack lets an app with `chat:write.customize` set `username` and `icon_url`
+per message, and since May 2026 `chat.startStream` and
+`assistant.threads.setStatus` take the same authorship arguments. `apps/slack`
+calls those methods directly, so every place a turn shows can carry the
+agent:
+
+| What shows | Who it shows as |
+|------------|-----------------|
+| The streamed answer, its plan and its task rows | The agent answering |
+| The status line above the reply box ("is checking the rollout...") | The agent doing that step, so it changes face when the lead calls a specialist |
+| A question or an approval a run waits on | The agent that is waiting: "Barbara needs your approval" |
+| Background results and `notify` | The agent whose work it was |
+| The person's DM about a mention, Run Details | The agent named in it |
+| The reaction on the person's message (👀 ✅) | The app. A reaction has no author to change |
+| App Home, the app's DM header, its sidebar icon | The app, as the workspace |
+
+Slack still marks every one of these APP and, on hover, names the app, so a
+persona is never mistaken for a person. To keep it that way a
+`display_name` may not be a member's name in the workspace's directory, and
+is unique among its agents.
+
+#### Who answers
+
+- **The lead, by default.** A message that names no agent (a mention in a
+  channel, a DM, the assistant pane) goes to the workspace's entry agent and
+  shows as the lead. It answers simple asks itself and brings specialists in
+  with the `agent` tool. **One ask gets one answer**: a specialist the lead
+  calls shows in the status line and as a task row with its own face, but the
+  answer is the lead's, crediting who did what. Posting each specialist's
+  part as its own message would turn one question into three notifications.
+- **Several agents, when the person asks several.** `@app @rex @barbara ...`
+  gets one reply from each, each as itself, because the person asked each.
 - **One agent, when a person wants that.** A thread started for one agent is
-  that agent's: it answers every untagged reply in the thread until the
-  person tags the lead or another agent, or it hands back. Today a mention
-  picks the answering agent for one message only, and the next untagged reply
-  goes back to the default; the thread should remember instead. A person
-  starts one by tagging the agent (`@app @barbara ...`, or the agent's
-  display name first), from `/ask`, or from App Home.
+  that agent's: it answers every reply in the thread until the person names
+  the lead or another agent, or it hands back. A handoff shows as a context
+  line, "Barbara handed this to Rex", and Rex answers from there. Today a
+  mention picks the agent for one message only; the thread must remember it.
 
-Finding the agents:
+#### Following a thread without a mention
 
-- **`/ask`** opens a modal whose first field is an agent picker, the lead
-  first, then each agent the client routes to with its mark, display name and
-  greeting.
-- **App Home** shows the lead's greeting and starters at the top, then the
-  other agents as cards (mark, name, greeting, starters). Each card's Talk To
-  button opens a DM thread that is that agent's.
+In a channel the app hears only messages that mention it. Making people type
+`@Humagen` on every reply to an agent they are already talking to is the
+largest papercut in the flow, so the app also subscribes to
+`message.channels` and `message.groups`, and takes an unmentioned message only
+in a thread it has answered in, from a person the client maps. Anything else
+it hears that way it drops unread.
 
-What one shared app cannot do, and must not be papered over:
+#### Walkthrough
 
-- Every message still comes from the app's bot user: hovering the name shows
-  the app, and `@Barbara` does not autocomplete. The picker and App Home are
-  how agents are found.
-- The assistant pane, `agents.sessions.*` and native streaming
-  (`chat.startStream`) belong to the app. Whether streamed messages honour
-  `username` and `icon_url` must be checked in `apps/slack-sandbox` before this
-  is built. If they do not, a streamed turn opens with a `context` block of the
-  agent's mark and display name.
-- The App Home tab, the app's DM and its icon in the sidebar are the app's,
-  not any agent's. They should read as the workspace (its branding name),
-  since the lead speaks for it.
+1. **A channel ask.** Dana writes `@Humagen why did last night's deploy fail?`
+   👀 lands on her message. Above the reply box: *Lead is reading the deploy
+   logs*, then *Rex is checking the rollout* with Rex's face. The answer streams
+   as **Lead**: what failed, "Rex checked the rollout", and the fix. Dana
+   replies `can you roll it back?` with no mention; the lead answers, and asks
+   for approval on a card that says *Lead needs your approval*.
+2. **Going to one agent.** Dana writes `@Humagen @barbara refresh the perf
+   report`. Barbara answers as **Barbara**. Every reply in that thread now goes
+   to Barbara. `@lead what else is open?` in the same thread brings the lead
+   back, and the thread is the lead's again.
+3. **Finding someone.** Sam does not know who does what. `/ask` opens a modal:
+   the lead first, then each agent with its face, name and greeting. Picking
+   Barbara opens a DM thread that is Barbara's, with her starters as suggested
+   prompts.
+4. **The DM and the assistant pane.** A DM thread with no agent named is the
+   lead's. App Home shows the lead's greeting and starters, then the other
+   agents as cards, each with Talk To, which opens a DM thread that is that
+   agent's.
+5. **Later.** Work Barbara was asked to do in the background reports back in
+   the thread that asked, as Barbara.
+
+#### What one shared app cannot do
+
+- `@Barbara` does not autocomplete: the agents are not Slack users. `/ask`,
+  App Home, and typing the agent's handle after the app's mention are how
+  people reach them.
+- Slack's sidebar, App Home and DM list show one app. Several 1:1
+  conversations with different agents are threads in one DM, each headed by
+  its agent's first message.
 
 ### 3. An agent's page opens on its home
 
@@ -203,9 +242,9 @@ Small changes that make each agent read as itself:
    renderer and its route, display name and glyph in `AgentMark`. Nothing
    visible changes for agents that set none.
 2. **Console.** The Home tab, the regrouped tabs, the new setup steps.
-3. **Slack.** `chat:write.customize` and the answering agent's identity on
-   every post (verify streaming first), threads that stay with the agent they
-   were started for, `/ask` with the picker, the lead and the agents on App
+3. **Slack.** `chat:write.customize` and the agent's identity on every post,
+   stream and status line, threads that stay with the agent they
+   were started for and are followed without a mention, `/ask` with the picker, the lead and the agents on App
    Home.
 4. **GitHub and notifications.** The persona header and the waiting lines.
 
@@ -213,12 +252,13 @@ Each phase updates `docs/architecture/surfaces.md` and the status table.
 
 ## Open questions
 
-1. Does `chat.startStream` take `username` and `icon_url`? This decides
-   whether a streamed turn is fully in persona or opens with a context line.
+1. Does `chat.update` on a customized message keep its `username` and
+   `icon_url`, or must every update send them again? Check in
+   `apps/slack-sandbox`.
 2. Does a thread that is one agent's stay that agent's in the console too,
    so a Slack thread and its Humagen thread agree on who answers next?
-3. Is `display_name` unique in a workspace? Two "Barbara"s in one Slack
-   thread would be confusing; the handle already is unique.
+3. Should a person be able to turn following off for a channel, so the app
+   reads nothing there that does not mention it?
 4. Does the Home tab's one result come from the agent's definition (which
    metric it reports) or is it always sessions this week?
 5. For an agent installed from the store, are `identity` fields part of the
