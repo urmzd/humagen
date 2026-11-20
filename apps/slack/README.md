@@ -249,7 +249,12 @@ reason such a client never sends `auto`, as a tag or as its default, since
 
 ## Identity and permissions
 
-The app authenticates as a machine. Least privilege:
+The app authenticates as a machine. Under `tailscale` sign-in, where no
+process can sign in from outside, the server that starts the app makes its
+credential: a token new at every start, with the scopes below and the subject
+`slack-app:<team id>`
+([security](../../docs/architecture/security.md#the-slack-app-under-tailscale)).
+An app run by hand has no credential in that mode. Least privilege:
 
 | Scope | For |
 |-------|-----|

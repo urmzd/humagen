@@ -374,6 +374,11 @@ func serve(o Options, args []string, d serveDefaults) error {
 			return err
 		}
 		defer stopAuthn()
+		// Tailscale sign-in has no credential a process can be given from
+		// outside, so the server makes one for each Slack app it starts.
+		if err := mintSlackCredentials(*authMode, authn, slack); err != nil {
+			return err
+		}
 	}
 
 	refs, err := secretRefs(*secretRefsFlag, *tenant, getenv)

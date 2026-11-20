@@ -11,6 +11,7 @@ Report vulnerabilities as described in [SECURITY.md](https://github.com/urmzd/hu
 | A person through Tailscale Serve | Serve identity headers from a loopback peer at the configured HTTPS host | Roles, from subject or anyone grants |
 | A person in a CLI | An access token as `Authorization: Bearer` | Roles, from the policy's grants |
 | A machine | A client-credentials access token as `Authorization: Bearer` | Exactly the scopes on the token |
+| The Slack app the server starts, under Tailscale sign-in | A token the server made for it at start, as `Authorization: Bearer`, from a loopback peer at the loopback address | Exactly the scopes the server gives it |
 
 Every caller becomes a `Principal`, and every route asks it one question:
 `Can(permission)`.
@@ -544,13 +545,43 @@ also needs an explicit policy grant unless you grant a role to `anyone`.
 Trust all local processes on the Serve host: they can forge loopback identity
 headers. Never expose the backend through another proxy. Requests from remote
 peers, to another host, with bearer credentials, or without a user identity
-are refused. Funnel traffic and tagged devices carry no Serve user identity
-and cannot sign in. Display names support Serve's RFC 2047 encoding.
+are refused. The one bearer credential taken is the Slack app's, below. Funnel
+traffic and tagged devices carry no Serve user identity and cannot sign in.
+Display names support Serve's RFC 2047 encoding.
 
 Signing out clears Humagen cookies but cannot end the device's Tailscale
 identity. Reloading the console signs the user in again. Remove the policy
 grant or tailnet access to revoke access. This mode does not accept OIDC
 machine tokens; use OIDC mode for those deployments.
+
+### The Slack app under Tailscale
+
+The Slack app is a process, and a process cannot sign in through Serve. So
+under Tailscale sign-in the server makes a credential for each Slack app it
+starts (`surfaces.slack`):
+
+- **What it is.** 32 random bytes, made when the server starts and handed to
+  the app in its environment (`HUMAGEN_TOKEN`). The server keeps only its
+  hash, in memory. It is in no file, log line or error, and a restart makes a
+  new one. Each workspace's app has its own, and so does each replica.
+- **When it is taken.** Only from a loopback peer, at the loopback address the
+  server listens on, with one `Authorization: Bearer` header and no
+  `Tailscale-` header. A request that came through Serve names the Serve host
+  and is refused, so the token is of no use from the tailnet. A token together
+  with an identity header is refused. Tokens are compared in constant time.
+- **Who it is.** A machine in the surface's workspace, with the subject
+  `slack-app:<team id>` and no role. It holds `runs:read`, `runs:write`,
+  `agents:read`, `clients:read` and `projects:read`, the least the app asks an
+  identity provider for, and nothing else: no policy grant widens it. To let
+  it act for people, name that subject as a Slack client's `slack.machine`
+  ([clients](../reference/clients.md#people-a-slack-app-answers-for)).
+- **What is refused.** `humagen_client` or `humagen_token` on the surface:
+  nothing could verify them in this mode. An app run by hand has no
+  credential; only the one the server starts does.
+
+The token is as safe as the app's environment. Another process of the same
+user on the host can read it there, which gives it less than the identity
+headers it could already forge.
 
 ## Files agents make
 

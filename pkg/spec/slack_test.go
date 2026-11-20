@@ -27,7 +27,9 @@ func TestASlackSurfaceHasACredentialForTheSignIn(t *testing.T) {
 		"oidc with client creds":     {oidc, client, ""},
 		"oidc with a token":          {oidc, token, ""},
 		"mock with none":             {"{kind: mock}", "", "needs a credential"},
-		"tailscale with a token":     {"{kind: tailscale}", token, "Tailscale Serve"},
+		"tailscale needs none":       {"{kind: tailscale}", "", ""},
+		"tailscale with a token":     {"{kind: tailscale}", token, "remove humagen_client and humagen_token"},
+		"tailscale with a client":    {"{kind: tailscale}", client, "remove humagen_client and humagen_token"},
 		"both":                       {oidc, client + token, "not both"},
 		"a token url that is no url": {oidc, ", humagen_client: {token_url: login, client_id: c, client_secret: {ref: env:C}}", "token_url"},
 		"a client with no secret":    {oidc, ", humagen_client: {token_url: 'https://l.example.com/t', client_id: c}", "client_secret are required"},
@@ -56,12 +58,13 @@ func TestASlackSurfaceHasACredentialForTheSignIn(t *testing.T) {
 // one the server makes again with the kind it runs.
 func TestCheckSignInTakesTheKindTheServerRuns(t *testing.T) {
 	bare := Slack{Enabled: true, Team: "T1"}
-	for _, kind := range []string{"", "dev"} {
+	// Under tailscale the server gives the app it starts its credential.
+	for _, kind := range []string{"", "dev", "tailscale"} {
 		if err := bare.CheckSignIn(kind); err != nil {
 			t.Errorf("%q: %v", kind, err)
 		}
 	}
-	for _, kind := range []string{"oidc", "okta", "mock", "tailscale"} {
+	for _, kind := range []string{"oidc", "okta", "mock"} {
 		if err := bare.CheckSignIn(kind); err == nil {
 			t.Errorf("%q: a Slack app with no credential was let through", kind)
 		}
@@ -69,5 +72,9 @@ func TestCheckSignInTakesTheKindTheServerRuns(t *testing.T) {
 	withToken := Slack{Enabled: true, Team: "T1", HumagenToken: &Ref{Ref: "env:T"}}
 	if err := withToken.CheckSignIn("okta"); err != nil {
 		t.Errorf("okta with a token: %v", err)
+	}
+	// One in the file could not be verified, so it is refused, not ignored.
+	if err := withToken.CheckSignIn("tailscale"); err == nil {
+		t.Error("tailscale took a token nothing could verify")
 	}
 }

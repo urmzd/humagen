@@ -496,9 +496,6 @@ func (i installer) slack(o Options, args []string) error {
 		return err
 	}
 	sys, plat := &cfg.System, &cfg.Platforms[0]
-	if sys.Spec.Auth.Kind == "tailscale" {
-		return errors.New("the Slack app cannot sign in to Humagen through Tailscale Serve; use oidc, or dev on one machine")
-	}
 	sl := plat.Spec.Surfaces.Slack
 	if sl == nil {
 		sl = &spec.Slack{}

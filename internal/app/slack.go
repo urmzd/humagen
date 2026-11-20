@@ -16,10 +16,12 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/credref"
 	"github.com/urmzd/humagen/pkg/leader"
 	"github.com/urmzd/humagen/pkg/spec"
 
+	"github.com/urmzd/humagen/internal/httpapi"
 	"github.com/urmzd/humagen/internal/legacy"
 )
 
@@ -217,6 +219,37 @@ type slackApp struct {
 	keys   credref.Resolver
 	// dir is apps/slack. Empty means not found.
 	dir string
+	// token is the credential the server made for this app at start, under
+	// tailscale sign-in (httpapi.Authn.MintMachine). It lives in memory and in
+	// the app's environment only: never in a file, a log line or an error.
+	token string
+}
+
+// slackMachineSubject is who the Slack app the server starts is under
+// tailscale sign-in, where the server makes its credential. It is the same at
+// every start, so a client can name it as its slack.machine.
+func slackMachineSubject(team string) string { return "slack-app:" + team }
+
+// slackMachineScopes are what that credential may do: the least the app's
+// README asks an identity provider for, and no role.
+var slackMachineScopes = []auth.Permission{
+	auth.RunsRead, auth.RunsWrite, auth.AgentsRead, auth.ClientsRead, auth.ProjectsRead,
+}
+
+// mintSlackCredentials gives each Slack app the server will start a credential
+// of its own, under the one sign-in that has no other way to give it one.
+func mintSlackCredentials(mode string, authn *httpapi.Authn, apps []*slackApp) error {
+	if mode != "tailscale" || authn == nil {
+		return nil
+	}
+	for _, app := range apps {
+		token, err := authn.MintMachine(app.tenant, slackMachineSubject(app.choice.Team), "Slack app", slackMachineScopes)
+		if err != nil {
+			return fmt.Errorf("platform %q: surfaces.slack: %w", app.tenant, err)
+		}
+		app.token = token
+	}
+	return nil
 }
 
 // slackDir finds apps/slack: HUMAGEN_SLACK_APP_DIR, else under the working
@@ -291,6 +324,8 @@ func (s *slackApp) env(ctx context.Context, url, publicURL string, lookup func(s
 			return nil, fmt.Errorf("humagen_token: %w", err)
 		}
 		env = append(env, "HUMAGEN_TOKEN="+token)
+	} else if s.token != "" {
+		env = append(env, "HUMAGEN_TOKEN="+s.token)
 	}
 	// An app directory from before the rename reads only the old names, so
 	// they are passed too; HUMAGEN_OLD_NAMES_COPIED tells the new app they are

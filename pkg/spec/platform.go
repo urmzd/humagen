@@ -689,15 +689,19 @@ type ClientCredentials struct {
 }
 
 // CheckSignIn reports whether the app can call humagen's API under the sign-in
-// kind auth, where empty is dev, the default. Dev needs no credential, a
-// process cannot sign in through Tailscale Serve, and every other kind needs
-// humagen_client or humagen_token.
+// kind auth, where empty is dev, the default. Dev needs no credential. Under
+// tailscale the server gives the app it starts a credential of its own, new at
+// every start, so one in the file is refused: nothing could verify it. Every
+// other kind needs humagen_client or humagen_token.
 func (s Slack) CheckSignIn(auth string) error {
 	switch auth {
 	case "", "dev":
 		return nil
 	case "tailscale":
-		return errors.New("the Slack app cannot sign in through Tailscale Serve; use oidc, or dev on one machine")
+		if s.HumagenClient != nil || s.HumagenToken.Set() {
+			return errors.New("under tailscale sign-in the server gives the Slack app it starts its own credential, and nothing could verify another; remove humagen_client and humagen_token")
+		}
+		return nil
 	}
 	if s.HumagenClient == nil && !s.HumagenToken.Set() {
 		return fmt.Errorf("under %s sign-in the Slack app needs a credential for humagen's API: humagen_client (client credentials) or humagen_token", auth)
