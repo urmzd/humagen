@@ -9,6 +9,7 @@ import {
   renderToSlack,
   type StreamChunk,
   streamHeader,
+  streamLink,
   streamPages,
   streamStart,
   streamStopTitle,
@@ -103,11 +104,12 @@ export class TurnStream {
     this.opts.log?.(line);
   }
 
-  private view(turn: Turn, streamed: boolean) {
+  private view(turn: Turn, streamed: boolean, linked = false) {
     return renderToSlack(
       <TurnView
         turn={turn}
         streamed={streamed}
+        linked={linked}
         copy={this.copy}
         capabilities={this.opts.capabilities}
         viewer={this.opts.viewer}
@@ -324,8 +326,11 @@ export class TurnStream {
         // Words Slack already has were changed: a stream can't take that back.
         if (rewritten) throw new Error("the answer was rewritten after it streamed");
         if (chunks.length > 0) await this.append(turn, chunks);
+        // The answer ends with the arrow to its conversation when its last line can take it.
+        const link = streamLink(turn, this.budget, this.copy);
+        if (link) await this.append(turn, [link]);
         const title = streamStopTitle(turn);
-        final = this.view(turn, true);
+        final = this.view(turn, true, !!link);
         const [first = []] = final.pages;
         await this.slack.call("chat.stopStream", {
           channel: this.target.channel,
