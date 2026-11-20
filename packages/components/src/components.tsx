@@ -549,10 +549,10 @@ export function FailureAlert({
         ? []
         : failure.kind === "internal"
           ? [
-              { label: copy.retry, id: ActionId.retry },
+              { label: copy.retry, id: ActionId.retry, style: "primary" as const },
               { label: copy.report, id: ActionId.report },
             ]
-          : [{ label: copy.retry, id: ActionId.retry }];
+          : [{ label: copy.retry, id: ActionId.retry, style: "primary" as const }];
   // Someone else may retry it: the reader is told why they are not offered it.
   const notOffered = isRetryable(failure) ? failure.retryNotOffered : undefined;
   const offered = actions.filter(
@@ -570,7 +570,12 @@ export function FailureAlert({
       {offered.length > 0 && (
         <Actions blockId={`failure:${turnId}`}>
           {offered.map((a) => (
-            <Button key={a.id} label={a.label} action={{ id: a.id, payload }} />
+            <Button
+              key={a.id}
+              label={a.label}
+              action={{ id: a.id, payload }}
+              style={"style" in a ? a.style : undefined}
+            />
           ))}
         </Actions>
       )}
