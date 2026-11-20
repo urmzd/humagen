@@ -675,7 +675,14 @@ test("Plugins is MCPs and your skills, Apps is the workspace's installs, and eac
     assert.equal(screen.queryByText(words), null, String(words));
   }
   assert.equal(screen.queryByRole("alert"), null);
-  assert.equal(screen.queryByRole("tab"), null);
+  // The page's tabs are its kinds of plugin: MCPs, then your skills.
+  assert.deepEqual(
+    screen.getAllByRole("tab").map((tab) => tab.textContent),
+    ["MCPs", "Skills"],
+  );
+  fireEvent.click(screen.getByRole("tab", { name: "Skills" }));
+  assert.ok(await screen.findByText("No personal skills yet"));
+  assert.equal(screen.queryByRole("region", { name: "MCPs" }), null);
 });
 
 test("an item that is off says so on its card; an administrator sees Enable and how", async () => {

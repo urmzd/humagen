@@ -2993,7 +2993,11 @@ export const defaultCopy = {
     skills: "Skills",
     skillsLede: "Your personal skills.",
     manageSkills: "Manage Skills",
-    noSkills: "You have no personal skills yet.",
+    noSkills: "No personal skills yet",
+    noSkillsHint:
+      "A skill teaches the assistant how you do a task. Create one, or import a folder, in Manage Skills.",
+    /** The page's tabs: the kinds of plugin. */
+    kinds: "Kinds of plugin",
     apps: {
       title: "Apps",
       lede: "Installed once for the workspace by an administrator. Everyone in the workspace can then use them.",
@@ -3469,6 +3473,8 @@ export const defaultCopy = {
       `${agents.join(", ")} can't answer in this project. Pick another project, or mention another agent.`,
     /** The chat bar's prompt. */
     placeholder: "Ask anything",
+    /** The same prompt where there is room to say what else the bar takes. */
+    placeholderHint: "Ask anything, @ to mention, / for commands",
     /** Under an answer that went to an agent because it was selected, not tagged. */
     routedAll: (agent: string) => `Routed to ${agent}, with every agent selected`,
     routed: (agent: string) => `Routed to ${agent}`,

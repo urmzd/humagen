@@ -20,7 +20,12 @@ export function workspaceScreens(call: Call): Screen[] {
       const input = page.locator('form[aria-label="Message"] textarea');
       // Home's composer picks no project: a session from Home is filed in the person's own.
       assert.equal(await page.getByRole("button", { name: /^Select project/ }).count(), 0);
-      assert.equal(await input.getAttribute("placeholder"), defaultCopy.chat.placeholder);
+      // A wide window says what else the bar takes; a phone keeps the short prompt.
+      assert.ok(
+        [defaultCopy.chat.placeholder, defaultCopy.chat.placeholderHint].includes(
+          (await input.getAttribute("placeholder")) ?? "",
+        ),
+      );
       const suggestions = page.getByRole("list", { name: defaultCopy.chat.suggestions });
       await suggestions.waitFor();
       // Analyst, builder, writer and code reviewer.

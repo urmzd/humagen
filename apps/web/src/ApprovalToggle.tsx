@@ -114,9 +114,13 @@ export function ApprovalToggle({
         aria-label={`${words.label}: ${label}`}
         title={`${label}. ${hint}`}
         data-approval-mode={mode}
-        className="inline-flex size-8 pointer-coarse:size-11 shrink-0 items-center justify-center rounded-aui text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
+        className="inline-flex h-8 min-w-8 pointer-coarse:h-11 pointer-coarse:min-w-11 shrink-0 items-center justify-center gap-1.5 rounded-aui px-2 text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
       >
         <Icon size={16} />
+        {/* The mode in words where the bar has room; the icon alone in a narrow one. */}
+        <span aria-hidden className="humagen-approval-label text-aui-xs">
+          {mode === "ask" ? words.ask : words.auto}
+        </span>
       </button>
       {problem && (
         <span role="alert" className="text-aui-2xs text-aui-bad">

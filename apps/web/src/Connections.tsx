@@ -42,7 +42,19 @@ import { InstalledClientSetup } from "./InstalledClientSetup.tsx";
 import { href, type Route } from "./route.ts";
 import { AddToolServer, ToolList, YourToolServers } from "./ToolServers.tsx";
 import { credentialWords, hostOf, withoutToolServer } from "./toolServers.ts";
-import { button, card, field, Label, MoreMenu, Page, Problem, primary, Segmented } from "./ui.tsx";
+import {
+  button,
+  card,
+  Empty,
+  field,
+  Label,
+  MoreMenu,
+  Page,
+  Problem,
+  primary,
+  Segmented,
+  Tabs,
+} from "./ui.tsx";
 
 /** A plain click goes there in place; a modified one is the browser's. */
 const follow = (go: () => void) => (e: MouseEvent<HTMLAnchorElement>) => {
@@ -401,6 +413,7 @@ export function Connections({
   const [skills, setSkills] = useState<LibrarySkill[]>([]);
   const [tab, setTab] = useState<"catalog" | "installed">("catalog");
   const [query, setQuery] = useState("");
+  const [kind, setKind] = useState<"mcps" | "skills">("mcps");
   const [problem, setProblem] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | undefined>(
     provider === "callback" ? undefined : provider,
@@ -809,6 +822,19 @@ export function Connections({
     <Page
       title={scope === "apps" ? words.apps.title : words.title}
       lede={scope === "apps" ? words.apps.lede : words.lede}
+      tabs={
+        scope === "apps" ? undefined : (
+          <Tabs
+            label={words.kinds}
+            value={kind}
+            tabs={[
+              { id: "mcps", label: words.mcps },
+              { id: "skills", label: words.skills },
+            ]}
+            onChange={(next) => setKind(next === "skills" ? "skills" : "mcps")}
+          />
+        )
+      }
     >
       <Problem message={sheetOpen ? null : problem} />
       {busy && <output>Connecting…</output>}
@@ -903,7 +929,7 @@ export function Connections({
           })}
       {scope !== "apps" && (
         <>
-          <div className="flex min-w-0 flex-wrap items-center gap-3">
+          <div className={kind === "mcps" ? "flex min-w-0 flex-wrap items-center gap-3" : "hidden"}>
             <label className="flex h-9 min-w-0 flex-1 basis-56 items-center gap-2 rounded-aui border border-aui-border bg-aui-bg px-3 text-aui-muted transition-colors focus-within:border-aui-fg pointer-coarse:h-11">
               <SearchIcon size={14} />
               <input
@@ -930,8 +956,10 @@ export function Connections({
             const fits = (it: Item) =>
               (tab === "catalog" || it.installed) &&
               (!q || `${it.name} ${it.note ?? ""}`.toLowerCase().includes(q));
-            const mcps = items.filter((it) => it.group === "mcps" && fits(it));
-            const mine = items.filter((it) => it.group === "skills" && fits(it));
+            const mcps =
+              kind === "mcps" ? items.filter((it) => it.group === "mcps" && fits(it)) : [];
+            // Skills are all yours already, so their tab has no catalog to search.
+            const mine = kind === "skills" ? items.filter((it) => it.group === "skills") : [];
             const manage = !!onNavigate;
             const rows = (label: string, shown: Item[]) => (
               <ul aria-label={label} className="grid min-w-0 grid-cols-1 gap-x-8 @3xl:grid-cols-2">
@@ -1005,7 +1033,7 @@ export function Connections({
             );
             return (
               <>
-                {(mcps.length > 0 || (mayAdd && !q && tab === "catalog")) && (
+                {kind === "mcps" && (mcps.length > 0 || (mayAdd && !q && tab === "catalog")) && (
                   <section
                     aria-labelledby="connections-mcps"
                     className="@container flex min-w-0 flex-col gap-5"
@@ -1037,7 +1065,7 @@ export function Connections({
                     })}
                   </section>
                 )}
-                {(mine.length > 0 || (manage && !q)) && (
+                {kind === "skills" && (
                   <section
                     aria-labelledby="connections-skills"
                     className="@container flex min-w-0 flex-col gap-3"
@@ -1069,13 +1097,15 @@ export function Connections({
                       )}
                     </div>
                     {mine.length === 0 ? (
-                      <span className="text-aui-muted text-aui-sm">{words.noSkills}</span>
+                      <div className="humagen-glass rounded-aui-lg px-5">
+                        <Empty title={words.noSkills}>{words.noSkillsHint}</Empty>
+                      </div>
                     ) : (
                       rows(words.skills, mine)
                     )}
                   </section>
                 )}
-                {mcps.length === 0 && mine.length === 0 && (q || tab === "installed") && (
+                {kind === "mcps" && mcps.length === 0 && (q || tab === "installed") && (
                   <span role="status" className="text-aui-muted text-aui-sm">
                     {q ? words.noMatch : words.noneInstalled}
                   </span>
