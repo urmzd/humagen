@@ -925,7 +925,9 @@ export function Sidebar({
   // Archived here is the reader's own: the conversation leaves their lists
   // and stays for everyone else. Delete still asks an admin.
   const { marks, archive: setArchivedMark, read: markRead } = useMarks(can("runs:read"));
-  const [view, setView] = useState<ListView>("recents");
+  // Sessions are filed under the project they belong to, each a group that folds;
+  // the plain list by day is one choice away in the filter.
+  const [view, setView] = useState<ListView>("projects");
   const [note, setNote] = useState<{ id: string; archived: boolean } | null>(null);
   const [gone, setGone] = useState<Set<string>>(() => new Set());
   const [titles, setTitles] = useState<Record<string, string>>({});
@@ -1272,7 +1274,7 @@ export function Sidebar({
                       button={
                         <>
                           <SlidersIcon size={14} />
-                          {(filters > 0 || view !== "recents") && (
+                          {(filters > 0 || view !== "projects") && (
                             <span
                               aria-hidden
                               className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-aui-accent"
@@ -1287,8 +1289,8 @@ export function Sidebar({
                             title="View"
                             value={view}
                             options={[
-                              { value: "recents", label: defaultCopy.sidebar.recents },
                               { value: "projects", label: "By project" },
+                              { value: "recents", label: "By day" },
                               {
                                 value: "archived",
                                 label: `${defaultCopy.sidebar.archived}${marks.archived.length ? ` (${marks.archived.length})` : ""}`,
@@ -1321,12 +1323,12 @@ export function Sidebar({
                               onChange={setAgent}
                             />
                           )}
-                          {(filters > 0 || view !== "recents") && (
+                          {(filters > 0 || view !== "projects") && (
                             <button
                               type="button"
                               onClick={() => {
                                 clear();
-                                setView("recents");
+                                setView("projects");
                               }}
                               className="mt-1 rounded-aui border-[var(--humagen-rule)] border-t px-2.5 py-2 text-left text-aui-sm text-aui-fg hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
                             >
@@ -1339,11 +1341,9 @@ export function Sidebar({
                   }
                 >
                   <span className="py-1 text-aui-xs">
-                    {view === "recents"
-                      ? defaultCopy.sidebar.recents
-                      : view === "projects"
-                        ? defaultCopy.sidebar.projects
-                        : defaultCopy.sidebar.archived}
+                    {view === "archived"
+                      ? defaultCopy.sidebar.archived
+                      : defaultCopy.sidebar.recents}
                   </span>
                 </Label>
                 {note && (

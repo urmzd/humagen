@@ -296,7 +296,13 @@ function keepSplitsTogether(children: ReactNode): ReactNode[] {
       next.type === MenuPrimitive
     ) {
       out.push(
-        <span key={`split:${here.key ?? i}`} data-aui-split-group="" className="inline-flex">
+        <span
+          key={`split:${here.key ?? i}`}
+          data-aui-split-group=""
+          // The halves share one height and one seam: the button's right corners are
+          // squared here, as a utility, since the button's own rounding is one too.
+          className="inline-flex items-stretch [&>[data-aui=button]]:rounded-r-none [&>[data-aui=menu]>button]:h-auto [&>[data-aui=menu]]:ml-0"
+        >
           {here}
           {next}
         </span>,

@@ -3977,10 +3977,11 @@ export const defaultCopy = {
         failed: "The schedule could not be saved. Try again.",
       },
       slack: {
-        title: "Slack",
-        none: "No channels linked",
+        /** The card holds every link out of Humagen; Slack channels are the kind a project keeps today. */
+        title: "External references",
+        none: "No references linked",
         add: "Add",
-        addLabel: "Add Slack Channel",
+        addLabel: "Add External Reference",
         heading: "Link a Slack channel",
         client: "Slack app",
         channel: "Slack channel ID",

@@ -356,12 +356,13 @@
 }
 
 /*
- * A row of actions is a fieldset with none of a fieldset's own box. The reset
+ * A row of actions, and a checklist, is a fieldset with none of a fieldset's own box. The reset
  * is here, in this layer, rather than as utilities on the element: a utility
  * sits in a later layer and would beat the card rules below, which give the
  * row of a question or an approval its border, padding and place in the card.
  */
-[data-aui="actions"] {
+[data-aui="actions"],
+[data-aui="checkboxes"] {
   margin: 0;
   border: 0;
   padding: 0;

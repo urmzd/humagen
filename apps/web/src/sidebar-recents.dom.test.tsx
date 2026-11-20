@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { defaultCopy } from "@humagen/components";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import type { Me, Preferences, ThreadSummary } from "./api.ts";
 import { stubFetch } from "./dom.ts";
 import { unreadPrefs } from "./preferences.ts";
@@ -63,6 +63,18 @@ test("a day is Today, Yesterday or Earlier by the reader's own calendar", () => 
   assert.equal(recentDay(lastWeek, now), "earlier");
 });
 
+/** Sessions open filed under their projects; the list by day is a choice in the filter. */
+const byDay = async () => {
+  fireEvent.click(await screen.findByRole("button", { name: "Filter conversations" }));
+  const panel = within(await screen.findByRole("dialog", { name: "Filter conversations" }));
+  const disclosure = panel.getByRole("button", { name: /^View / });
+  fireEvent.click(disclosure);
+  fireEvent.click(
+    within(panel.getByRole("group", { name: "View" })).getByRole("button", { name: "By day" }),
+  );
+  fireEvent.keyDown(disclosure, { key: "Escape" });
+};
+
 test("Recents is one list: Today, Yesterday, Earlier, newest first, each session once, no alert-only sessions", async () => {
   const research = session("s_research", "@lead Have your researcher check", newest);
   const smoke = session("s_smoke", "Say hello for the smoke test.", earlierToday);
@@ -119,6 +131,7 @@ test("Recents is one list: Today, Yesterday, Earlier, newest first, each session
       sessionAlerts={[alert]}
     />,
   );
+  await byDay();
   const list = within(await screen.findByRole("list", { name: defaultCopy.sidebar.recents }));
   await list.findByText("Summarize the quarter");
   const groups = list.getAllByTestId("recents-group");
@@ -201,6 +214,7 @@ test("an agent's session under a listed one is shown as that row, not as a secon
       sessionAlerts={[]}
     />,
   );
+  await byDay();
   const list = within(await screen.findByRole("list", { name: defaultCopy.sidebar.recents }));
   const row = await list.findByRole("link", { current: "page" });
   assert.match(row.textContent ?? "", /Is MD5 fine for passwords\?/);
