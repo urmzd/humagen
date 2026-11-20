@@ -187,7 +187,7 @@ it hears that way it drops unread.
 #### Walkthrough
 
 1. **A channel ask.** Dana writes `@Humagen why did last night's deploy fail?`
-   👀 lands on her message. Above the reply box: *Lead is reading the deploy
+   👀 lands on Dana's message. Above the reply box: *Lead is reading the deploy
    logs*, then *Rex is checking the rollout* with Rex's face. The answer streams
    as **Lead**: what failed, "Rex checked the rollout", and the fix. Dana
    replies `can you roll it back?` with no mention; the lead answers, and asks
@@ -198,7 +198,7 @@ it hears that way it drops unread.
    back, and the thread is the lead's again.
 3. **Finding someone.** Sam does not know who does what. `/ask` opens a modal:
    the lead first, then each agent with its face, name and greeting. Picking
-   Barbara opens a DM thread that is Barbara's, with her starters as suggested
+   Barbara opens a DM thread that is Barbara's, with its starters as suggested
    prompts.
 4. **The DM and the assistant pane.** A DM thread with no agent named is the
    lead's. App Home shows the lead's greeting and starters, then the other
