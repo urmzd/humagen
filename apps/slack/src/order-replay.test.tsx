@@ -26,7 +26,11 @@ function fold(turn: Turn, op: Op): Turn {
   return reduce(turn, { type: "task.upserted", task });
 }
 
-type Shown = { kind: "text" | "task" | "trailer" | "start" | "stop"; v: string; id?: string };
+type Shown = {
+  kind: "text" | "task" | "trailer" | "start" | "stop" | "link";
+  v: string;
+  id?: string;
+};
 
 async function replay(s: Script, native = true) {
   const calls: { method: string; args: Record<string, unknown> }[] = [];
@@ -78,7 +82,9 @@ async function replay(s: Script, native = true) {
     }[]) {
       if (ch.type === "markdown_text") {
         const trailer = /^\n\n_Continues in the next message_$/.test(ch.text ?? "");
-        shown.push({ kind: trailer ? "trailer" : "text", v: ch.text ?? "" });
+        // The conversation arrow (#394) ends the answer; it is not the model's words.
+        const link = /^ \[\u2197\uFE0E\]\(/.test(ch.text ?? "");
+        shown.push({ kind: link ? "link" : trailer ? "trailer" : "text", v: ch.text ?? "" });
       }
       if (ch.type === "task_update") shown.push({ kind: "task", v: ch.title ?? "", id: ch.id });
     }
@@ -124,6 +130,9 @@ function audit(s: Script, r: Awaited<ReturnType<typeof replay>>): string[] {
         `card ${t.id} at ${t.at}: above it ${JSON.stringify(before)}, want ${JSON.stringify(want)}`,
       );
   }
+  // 5. The conversation arrow is sent once: ending the answer, or in the final blocks.
+  const arrows = (JSON.stringify(r.calls).match(/\\u2197|\u2197/g) ?? []).length;
+  if (arrows !== 1) problems.push(`the conversation arrow was sent ${arrows} times`);
   // 4. No run of three blank lines (four newlines).
   if (/\n[ \t]*\n[ \t]*\n[ \t]*\n/.test(words))
     problems.push("three newlines in a row (2+ blank lines)");

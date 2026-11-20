@@ -169,6 +169,13 @@ test("each artifact is a card with a picture of what it holds, and the open one 
     cards[0]?.querySelector('[data-thumb="text"]')?.textContent?.includes("Q4 launch plan"),
   );
   assert.ok(cards.some((card) => card.querySelector('[data-thumb="kind"]')));
+  // A picture is the file itself, asked for inline and only when its card comes into view.
+  const picture = cards
+    .map((card) => card.querySelector('[data-thumb="image"] img'))
+    .find((img) => img);
+  assert.match(picture?.getAttribute("src") ?? "", /^\/api\/artifacts\/[^/]+\/content\?inline=1$/);
+  assert.equal(picture?.getAttribute("loading"), "lazy");
+  assert.equal(picture?.getAttribute("alt"), "");
   // The picture repeats the card's words, so assistive technology skips it.
   for (const card of cards)
     assert.equal(card.querySelector("[data-thumb]")?.getAttribute("aria-hidden"), "true");

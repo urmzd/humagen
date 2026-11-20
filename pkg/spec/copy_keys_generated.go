@@ -673,6 +673,7 @@ var copyKeyList = []string{
 	"conversationAccess.sharedHint",
 	"conversationAccess.title",
 	"conversationAccess.updated",
+	"conversationLink",
 	"corpora.access.handOff",
 	"corpora.access.handOffTo",
 	"corpora.access.onlyOwner",
