@@ -827,6 +827,8 @@ export const defaultCopy = {
     title: "Knowledge",
     newCorpus: "New Corpus",
     empty: "No corpora yet",
+    emptyHint:
+      "A corpus is a named body of knowledge. Add sources to it, then give it to an agent.",
     loadFailed: "Knowledge could not be loaded.",
     edit: "Edit",
     delete: "Delete",
@@ -2064,6 +2066,8 @@ export const defaultCopy = {
       files: (n: number) => `Updated ${n} files`,
       running: (what: string) => `Running ${what}`,
       failed: (n: number) => `${n} failed`,
+      /** Every call in the run failed, so there is nothing done to name. */
+      allFailed: (n: number) => `${n} steps failed`,
       earlierFailed: (n: number) =>
         `${n} earlier failed ${n === 1 ? "command" : "commands"} not shown`,
       waiting: "waiting for you",
@@ -2290,7 +2294,8 @@ export const defaultCopy = {
     draft: "Draft",
     published: "Published",
     version: "Version",
-    empty: "No skills in this scope.",
+    empty: "No skills here yet",
+    emptyHint: "Create a skill, or import a folder that holds a SKILL.md.",
     failed: "The skill library could not be loaded or changed.",
     test: "Test Skill",
     agent: "Test Agent",
@@ -2946,11 +2951,82 @@ export const defaultCopy = {
     } as Record<"open" | "snoozed" | "resolved", string>,
     markDone: "Mark Done",
     markDoneNamed: (title: string) => `Mark ${title} done`,
+    /** The alerts table: its name, its column headings and what its header says once rows are ticked. */
+    table: {
+      label: "Alerts",
+      selectAll: "Select all alerts",
+      selected: (n: number) => `${n} selected`,
+      alert: "Alert",
+      source: "Source",
+      priority: "Priority",
+      when: "When",
+    },
     markSelectedDone: "Mark Selected Done",
     snooze: "Snooze 1h",
     snoozeSelected: "Snooze Selected for 1 Hour",
     doneWhen: (condition: string) => `Done when: ${condition}`,
     updated: (n: number) => `Updated ${n} ${n === 1 ? "alert" : "alerts"}.`,
+  },
+  /** The Artifacts page: what agents published, and tiles that start a new one. */
+  artifactsPage: {
+    makeNew: "Make something new",
+    /** One per file an agent writes natively. `ask` is the request the chat bar starts with. */
+    starters: [
+      { label: "Document", format: "Word, .docx", ask: "Create a document (.docx) about " },
+      { label: "Slides", format: "PowerPoint, .pptx", ask: "Create a slide deck (.pptx) about " },
+      { label: "Sheet", format: "Excel, .xlsx", ask: "Create a spreadsheet (.xlsx) of " },
+      { label: "Report", format: "PDF", ask: "Create a PDF report about " },
+    ],
+  },
+  /** Plugins, in your settings: what you add for your own work. Apps are the workspace's, on a page of their own. */
+  plugins: {
+    title: "Plugins",
+    lede: "What this workspace offers for your own work. What you add is yours alone: it is used when you ask directly, and an agent uses only what is set on that agent.",
+    /** The two views of the page: everything this deployment offers, and what you have added. */
+    view: "Plugins shown",
+    catalog: "Catalog",
+    installed: "Installed",
+    search: "Search plugins",
+    noMatch: "No plugin matches that search.",
+    noneInstalled: "You have not added any plugins yet. Add one from the catalog.",
+    mcps: "MCPs",
+    /** The shelves MCPs sit on. */
+    families: {
+      google: {
+        title: "Google Workspace",
+        lede: "Mail, calendar and files in your Google account.",
+      },
+      work: {
+        title: "Work tools",
+        lede: "Notes, issues and meetings from the tools your team uses.",
+      },
+      yours: { title: "Added by you", lede: "MCPs you added by address or key." },
+    } as Record<"google" | "work" | "yours", { title: string; lede: string }>,
+    /** One line on what each offered MCP does, by its id. */
+    about: {
+      notion: "Search, read and update pages in your Notion workspace.",
+      linear: "Find, create and update issues and projects.",
+      granola: "Read your meeting notes and transcripts.",
+      atlassian: "Search and update Jira and Confluence.",
+      gmail: "Search, read, draft and send email.",
+      "google-calendar": "Check availability and schedule events.",
+      "google-drive": "Search, upload and share files.",
+      "google-docs": "Read, draft and edit documents.",
+      "google-sheets": "Read, write and format spreadsheets.",
+      "google-slides": "Read, edit and export presentations.",
+    } as Record<string, string | undefined>,
+    skills: "Skills",
+    skillsLede: "Your personal skills.",
+    manageSkills: "Manage Skills",
+    noSkills: "No personal skills yet",
+    noSkillsHint:
+      "A skill teaches the assistant how you do a task. Create one, or import a folder, in Manage Skills.",
+    /** The page's tabs: the kinds of plugin. */
+    kinds: "Kinds of plugin",
+    apps: {
+      title: "Apps",
+      lede: "Installed once for the workspace by an administrator. Everyone in the workspace can then use them.",
+    },
   },
   /** The tag every message carries, in the list and above its parts. */
   partKind: {
@@ -3422,6 +3498,8 @@ export const defaultCopy = {
       `${agents.join(", ")} can't answer in this project. Pick another project, or mention another agent.`,
     /** The chat bar's prompt. */
     placeholder: "Ask anything",
+    /** The same prompt where there is room to say what else the bar takes. */
+    placeholderHint: "Ask anything, @ to mention, / for commands",
     /** Under an answer that went to an agent because it was selected, not tagged. */
     routedAll: (agent: string) => `Routed to ${agent}, with every agent selected`,
     routed: (agent: string) => `Routed to ${agent}`,
@@ -3638,11 +3716,8 @@ export const defaultCopy = {
       },
     } as Record<string, { label: string; description: string; slack?: string }>,
     needsYou: "Needs you",
-    /** The one quiet line under the chat bar on the web: how many alerts wait on the person, linking to them. */
-    waitingOnYou: (n: number) => `${n} waiting on you`,
     /** The strip under the chat bar on the web: the newest things the person's agents made. */
     recentlyMade: "Recently made",
-    allArtifacts: "All artifacts",
     /** In place of the strip when it could not be read. */
     madeFailed: "Recent artifacts could not be loaded.",
     nothingWaiting: "Nothing needs you right now, and no alerts are open.",
@@ -3707,7 +3782,7 @@ export const defaultCopy = {
     review: "Review",
     whoAnswers: "Who answers you",
     dmRouting: "In direct messages, send my questions to",
-    connections: "Connections",
+    connections: "Plugins",
     manageAll: "Manage all",
     connectedTo: (account: string) => `Connected to ${account}`,
     connectedHere: "Connected for this workspace.",
@@ -3989,10 +4064,11 @@ export const defaultCopy = {
         failed: "The schedule could not be saved. Try again.",
       },
       slack: {
-        title: "Slack",
-        none: "No channels linked",
+        /** The card holds every link out of Humagen; Slack channels are the kind a project keeps today. */
+        title: "External references",
+        none: "No references linked",
         add: "Add",
-        addLabel: "Add Slack Channel",
+        addLabel: "Add External Reference",
         heading: "Link a Slack channel",
         client: "Slack app",
         channel: "Slack channel ID",

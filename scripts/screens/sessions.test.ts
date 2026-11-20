@@ -63,7 +63,7 @@ test("the canonical session suite keeps 24 unique states at all five widths", ()
     sessions: "/sessions",
     alerts: "/alerts",
     agents: "/agents",
-    connections: "/connections",
+    connections: "/settings/apps",
     artifacts: "/artifacts",
     settings: "/settings/appearance",
   })) {
@@ -138,7 +138,8 @@ test("artifacts waits for loaded content and Connections waits for its MCPs", as
     { action: "wait", selector: "heading:Artifacts" },
     { action: "wait", selector: "searchbox:Search artifacts" },
     { action: "wait", selector: "list:Artifacts|text:No artifacts yet" },
-    { action: "wait", selector: "list:MCPs" },
+    { action: "wait", selector: "heading:Plugins" },
+    { action: "wait", selector: "region:MCPs" },
   ]);
 });
 

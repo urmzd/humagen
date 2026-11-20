@@ -94,8 +94,8 @@ test("an empty catalog leads to the canonical connection setup", async () => {
   const { restore } = stubFetch({ "GET /api/catalog": () => ({ connectors: [], entries: [] }) });
   try {
     render(<Catalog canWrite />);
-    const link = await screen.findByRole("link", { name: "Open Connections" });
-    assert.equal(link.getAttribute("href"), "/settings/connections");
+    const link = await screen.findByRole("link", { name: "Open Plugins" });
+    assert.equal(link.getAttribute("href"), "/settings/plugins");
     assert.ok(screen.getByText(defaultCopy.catalog.emptyHint));
   } finally {
     restore();

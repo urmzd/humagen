@@ -417,10 +417,20 @@ test("models are chosen per agent: old shared-chain addresses land on the agents
   assert.deepEqual(parse("/settings/models"), { page: "agents" });
 });
 
-test("Connections is a section of your settings with an address of its own; old links still open it", () => {
-  assert.equal(href({ page: "connections" }), "/settings/connections");
-  assert.equal(href({ page: "connections", provider: "notion" }), "/settings/connections/notion");
-  for (const path of ["/settings/connections", "/connections"]) {
+test("Plugins is a section of your settings and Apps one of the workspace's; old Connections links still open", () => {
+  assert.equal(href({ page: "connections" }), "/settings/plugins");
+  assert.equal(href({ page: "connections", provider: "notion" }), "/settings/plugins/notion");
+  assert.equal(href({ page: "connections", scope: "apps" }), "/settings/apps");
+  assert.equal(
+    href({ page: "connections", scope: "apps", provider: "github" }),
+    "/settings/apps/github",
+  );
+  assert.deepEqual(parse("/settings/apps/github"), {
+    page: "connections",
+    provider: "github",
+    scope: "apps",
+  });
+  for (const path of ["/settings/plugins", "/settings/connections", "/connections"]) {
     const route = parse(path);
     assert.equal(route.page, "connections", path);
     assert.equal("provider" in route ? route.provider : undefined, undefined, path);

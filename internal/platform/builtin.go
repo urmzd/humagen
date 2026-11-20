@@ -306,6 +306,9 @@ func (p *Platform) EnsureBuiltins(ctx context.Context, tenant string) error {
 			}
 		}
 	}
+	if err := p.ensureBuiltinSkills(tenant); err != nil {
+		return err
+	}
 	return p.EnsureAgentHomes(ctx, tenant)
 }
 

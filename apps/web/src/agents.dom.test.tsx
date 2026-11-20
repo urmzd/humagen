@@ -201,7 +201,7 @@ test("personal connection access stays off until the agent revision is explicitl
   assert.equal(body.expected_rev, 2);
   assert.deepEqual(body.spec.tools, ["file_read", "person_tools"]);
   assert.equal(
-    screen.getByRole("link", { name: "Review Connections" }).getAttribute("href"),
+    screen.getByRole("link", { name: "Review Plugins" }).getAttribute("href"),
     "/connections",
   );
 });

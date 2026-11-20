@@ -2009,14 +2009,21 @@ request totals remain open.
 
 ### DES-075: A calm Home and states that say whose move it is
 
-Home under the chat bar is one quiet line and one strip. The line says how many
-of the person's Urgent and Normal alerts are waiting ("2 waiting on you") and
-opens Alerts; it lists none of them and offers no decision. The strip, Recently
-made, shows the three newest artifacts the person may read from the existing
-`GET /api/artifacts`, each card opening it at `/artifacts/{id}`, with All
-artifacts beside the heading. With nothing waiting and nothing made, Home is the
+Home under the chat bar is one strip. Recently made shows the three newest
+artifacts the person may read from the existing `GET /api/artifacts`, each card
+opening it at `/artifacts/{id}`. Home does not say how many alerts are waiting:
+the Alerts entry in the menu carries that count as a badge, and the menu button
+carries a dot when the menu is closed. The strip has no link to all artifacts,
+because the Artifacts entry in the menu opens them. With nothing made, Home is the
 greeting and the chat bar. Home no longer lists alerts or recent sessions:
 sessions are in the sidebar's Recents and on Sessions.
+
+The alert center lists alerts as one table: a box to select, the alert and its
+agent, then its source, priority, age and actions in columns. The header holds
+one box that selects every row shown, and once a row is selected the header
+names how many and offers Mark Selected Done and Snooze Selected. Under 48rem a
+row stacks. The Skills list sits in the same column as the tabs above it, as a
+bordered list, and an empty scope says what to do next.
 
 An alert is named by whose move it is: Waiting, Snoozed or Done, with Mark Done
 in place of Resolve, in the alert center, on a session's alert card and in bulk

@@ -88,7 +88,7 @@ const view = async (name: "Recents" | "Projects" | RegExp) => {
   fireEvent.click(disclosure);
   fireEvent.click(
     within(panel.getByRole("group", { name: "View" })).getByRole("button", {
-      name: name === "Projects" ? "By project" : name,
+      name: name === "Projects" ? "By project" : name === "Recents" ? "By day" : name,
     }),
   );
   fireEvent.keyDown(disclosure, { key: "Escape" });
@@ -120,8 +120,10 @@ test("Recents lists every project newest first, each row one line with one dot",
   assert.ok(screen.getByRole("button", { name: "Filter conversations" }));
   assert.equal(
     screen.getByRole("region", { name: "Sessions" }).getAttribute("data-view"),
-    "recents",
+    "projects",
+    "sessions open filed under their projects",
   );
+  await view("Recents");
   const list = within(await screen.findByRole("list", { name: "Recents" }));
   const waiting = await list.findByRole("link", { name: /^Waiting on me/ });
   assert.doesNotMatch(waiting.textContent ?? "", /Spring launch/);
@@ -172,6 +174,7 @@ test("session rows show relative ages while unread replies retain their dot", as
     }),
   });
   render(<Bar sessionMode />);
+  await view("Recents");
   const list = within(await screen.findByRole("list", { name: "Recents" }));
   const read = await list.findByRole("link", { name: /^Read session/ });
   assert.equal(read.querySelector("[data-row-age]")?.textContent, "3h");
@@ -290,7 +293,7 @@ test("search has one way in: the Search row, with no tip card repeating it", asy
     />
   );
   render(bar());
-  await screen.findByRole("list", { name: "Recents" });
+  await screen.findByRole("list", { name: "Projects" });
   await new Promise((r) => setTimeout(r, 20));
   assert.equal(screen.queryByRole("complementary", { name: "Search across conversations" }), null);
   assert.ok(screen.getByRole("button", { name: "Search" }));

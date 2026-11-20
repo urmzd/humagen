@@ -187,7 +187,8 @@ const box = () => screen.getByLabelText("Message", { selector: "textarea" }) as 
 
 test("Home's chat bar has no menu of who answers and no line saying who does", async () => {
   openChat(workspace("lead"));
-  assert.ok(await screen.findByPlaceholderText(defaultCopy.chat.placeholder));
+  // A wide window says what else the bar takes: a mention, a command.
+  assert.ok(await screen.findByPlaceholderText(defaultCopy.chat.placeholderHint));
   assert.equal(screen.queryByRole("button", { name: /Choose who answers/ }), null);
   assert.equal(screen.queryByText("@lead answers"), null);
   assert.equal(screen.queryByText(/answers untagged messages/), null);

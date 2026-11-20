@@ -193,9 +193,8 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
           exact: true,
         });
         await strip.getByRole("link", { name: "Launch plan", exact: true }).waitFor();
-        await strip
-          .getByRole("link", { name: defaultCopy.home.allArtifacts, exact: true })
-          .waitFor();
+        // The menu's Artifacts entry opens the full list: the strip does not link to it again.
+        assert.equal(await strip.getByRole("link", { name: "All artifacts" }).count(), 0);
       },
     },
     {
@@ -264,18 +263,21 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
       },
     },
     {
+      // Apps are the workspace's installs, on an administrator's page of their own.
       name: "connections",
-      path: "/connections",
+      path: "/settings/apps",
       act: async (page) => {
-        await page.getByRole("heading", { name: "Connections", exact: true }).waitFor();
+        await page.getByRole("heading", { name: "Apps", exact: true, level: 1 }).waitFor();
         await page.getByRole("list", { name: "Apps", exact: true }).waitFor();
       },
     },
     {
       name: "connections-mcps",
-      path: "/connections",
+      path: "/settings/plugins",
       act: async (page) => {
-        await page.getByRole("list", { name: "MCPs", exact: true }).waitFor();
+        await page.getByRole("heading", { name: "Plugins", exact: true }).waitFor();
+        // The catalog is one region of shelves, each its own list.
+        await page.getByRole("region", { name: "MCPs", exact: true }).waitFor();
       },
     },
     {

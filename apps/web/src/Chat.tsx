@@ -697,7 +697,9 @@ export function Chat({
           (!threadId
             ? startChannel
               ? words.startThread
-              : defaultCopy.chat.placeholder
+              : wide
+                ? defaultCopy.chat.placeholderHint
+                : defaultCopy.chat.placeholder
             : words.message)
         }
         emptyText={placeholderFor}

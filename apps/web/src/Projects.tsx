@@ -1,9 +1,15 @@
 import { defaultCopy } from "@humagen/components";
 import {
+  BrainIcon,
+  CalendarIcon,
+  DatabaseIcon,
+  ExternalLinkIcon,
   FolderIcon,
   FolderPlusIcon,
   LayersIcon,
   PinIcon,
+  ScrollTextIcon,
+  SlackIcon,
   UserIcon,
   UsersIcon,
 } from "@humagen/render-web";
@@ -617,12 +623,15 @@ interface CardAction {
  */
 function SideCard({
   title,
+  icon,
   action,
   sheet,
   plain = false,
   children,
 }: {
   title: string;
+  /** The part's mark, before its heading. Decoration: the heading names the part. */
+  icon?: ReactNode;
   action?: CardAction;
   /** What the sheet holds, given a way to close it. Drawn only while it is open. */
   sheet?: (close: () => void) => ReactNode;
@@ -659,8 +668,16 @@ function SideCard({
       ) : (
         <>
           <div className="flex min-w-0 items-center justify-between gap-3">
-            <h2 id={id} className="text-aui-sm font-medium text-aui-fg">
-              {title}
+            <h2
+              id={id}
+              className="flex min-w-0 items-center gap-2 text-aui-sm font-medium text-aui-fg"
+            >
+              {icon && (
+                <span aria-hidden className="inline-flex shrink-0 text-aui-muted">
+                  {icon}
+                </span>
+              )}
+              <span className="min-w-0 truncate">{title}</span>
             </h2>
             {control}
           </div>
@@ -1420,6 +1437,7 @@ function ContextCard({
   return (
     <SideCard
       title={words.title}
+      icon={<DatabaseIcon size={16} />}
       action={
         canEdit && attached && corpora
           ? {
@@ -1493,6 +1511,7 @@ function ScheduledCard({
   return (
     <SideCard
       title={words.title}
+      icon={<CalendarIcon size={16} />}
       action={
         canAdd && agents.length > 0
           ? { text: words.add, label: words.addLabel, heading: words.heading }
@@ -1532,7 +1551,11 @@ function ScheduledCard({
   );
 }
 
-/** The Slack card: the Slack channels linked to the project, and a way to link or unlink one. */
+/**
+ * The External references card: what outside Humagen the project is linked
+ * to, each with the mark of where it lives. Slack channels are the links a
+ * project keeps today, with a way to link or unlink one.
+ */
 function SlackCard({
   project,
   tick,
@@ -1572,6 +1595,7 @@ function SlackCard({
   return (
     <SideCard
       title={words.title}
+      icon={<ExternalLinkIcon size={16} />}
       action={
         canLink ? { text: words.add, label: words.addLabel, heading: words.heading } : undefined
       }
@@ -1593,8 +1617,11 @@ function SlackCard({
         <ul className="flex min-w-0 flex-col gap-1">
           {links.map((c) => (
             <li key={c.name} className="flex min-w-0 items-center justify-between gap-3">
-              <span className={`${summary} break-words`}>
-                {words.via(c.slack.channel, clientName(c.slack.client))}
+              <span className={`${summary} inline-flex items-center gap-2`}>
+                <SlackIcon size={14} aria-hidden className="shrink-0" />
+                <span className="min-w-0 break-words">
+                  {words.via(c.slack.channel, clientName(c.slack.client))}
+                </span>
               </span>
               {canLink && (
                 <button
@@ -1631,7 +1658,7 @@ const VISIBILITY_ICON: Record<ProjectVisibility, ReactNode> = {
  * One project, the workspace included, as its owner looks after it: a
  * composer to try it and its recent sessions, and beside them what every
  * session in it is given (instructions, context, memory), what runs on a
- * timer, the Slack channels linked to it and who can see it. It has no tabs,
+ * timer, what outside Humagen it is linked to and who can see it. It has no tabs,
  * and no agents of its own: agents are independent of projects, so a session
  * names who answered it.
  */
@@ -1847,7 +1874,29 @@ export function ProjectPage({
         </div>
         <aside aria-label={here.side} className="flex min-w-0 flex-col gap-3">
           <SideCard
+            plain
+            title={here.visibility.title}
+            action={
+              may("edit")
+                ? {
+                    text: here.visibility.change,
+                    label: here.visibility.changeLabel,
+                    heading: here.visibility.heading,
+                  }
+                : undefined
+            }
+            sheet={() => (
+              <ProjectPeople key={`${p.name}:${p.version}`} project={p} onChanged={changed} />
+            )}
+          >
+            <span className="inline-flex min-w-0 items-center gap-2 text-aui-sm text-aui-muted">
+              {VISIBILITY_ICON[visibility]}
+              {here.visibility[visibility]}
+            </span>
+          </SideCard>
+          <SideCard
             title={here.instructions.title}
+            icon={<ScrollTextIcon size={16} />}
             action={
               canEdit
                 ? p.instructions
@@ -1881,6 +1930,7 @@ export function ProjectPage({
           <ContextCard project={p} tick={tick} canEdit={canEdit} canList={can("knowledge:read")} />
           <SideCard
             title={here.memory.title}
+            icon={<BrainIcon size={16} />}
             action={{
               text: here.memory.view,
               label: here.memory.viewLabel,
@@ -1916,27 +1966,6 @@ export function ProjectPage({
             canLink={canEdit && can("clients:write")}
             canReadClients={can("clients:read")}
           />
-          <SideCard
-            plain
-            title={here.visibility.title}
-            action={
-              may("edit")
-                ? {
-                    text: here.visibility.change,
-                    label: here.visibility.changeLabel,
-                    heading: here.visibility.heading,
-                  }
-                : undefined
-            }
-            sheet={() => (
-              <ProjectPeople key={`${p.name}:${p.version}`} project={p} onChanged={changed} />
-            )}
-          >
-            <span className="inline-flex min-w-0 items-center gap-2 text-aui-sm text-aui-muted">
-              {VISIBILITY_ICON[visibility]}
-              {here.visibility[visibility]}
-            </span>
-          </SideCard>
         </aside>
       </div>
       <Sheet open={editing} onOpenChange={(next) => !next && setEditing(false)}>
