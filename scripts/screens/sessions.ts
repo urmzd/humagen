@@ -111,6 +111,51 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
       },
     },
     {
+      // Nothing seeds an artifact (there is no model to publish one), so the
+      // strip is drawn from three answered here, as the list route answers.
+      name: "home-made",
+      path: "/",
+      act: async (page) => {
+        const at = (days: number) => new Date(Date.now() - days * 86_400_000).toISOString();
+        const made = (id: string, title: string, kind: string, days: number) => ({
+          id,
+          title,
+          kind,
+          mime: "text/markdown",
+          size: 2048,
+          sha256: id,
+          version: 1,
+          run: `run-${id}`,
+          thread: ids.work.id,
+          agent: "screens-native",
+          created_by: "screens-native",
+          created_at: at(days),
+        });
+        await page.route(/\/api\/artifacts\?limit=3$/, (route) =>
+          route.fulfill({
+            json: {
+              artifacts: [
+                made("a_plan", "Launch plan", "document", 0),
+                made("a_budget", "Briefing budget", "spreadsheet", 2),
+                made("a_deck", "Owner briefing deck", "presentation", 5),
+              ],
+              next: null,
+            },
+          }),
+        );
+        await page.reload({ waitUntil: "domcontentloaded" });
+        await composer(page).waitFor();
+        const strip = page.getByRole("region", {
+          name: defaultCopy.home.recentlyMade,
+          exact: true,
+        });
+        await strip.getByRole("link", { name: "Launch plan", exact: true }).waitFor();
+        await strip
+          .getByRole("link", { name: defaultCopy.home.allArtifacts, exact: true })
+          .waitFor();
+      },
+    },
+    {
       name: "navigation",
       path: "/",
       act: async (page) => {

@@ -111,7 +111,7 @@ export function NotificationFilters({
   onQuery: (query: string) => void;
   kind: string;
   onKind: (kind: string) => void;
-  /** Open, resolved or all. Left out where the reader's views say it instead. */
+  /** Waiting, done or all. Left out where the reader's views say it instead. */
   show?: MailboxShow;
   onShow?: (show: MailboxShow) => void;
 }) {
@@ -380,7 +380,7 @@ export function MailboxView({
 
 /**
  * The inbox. Alerts, failed runs, memory to review and limits that were
- * reached all arrive here as messages, and are resolved here where they can
+ * reached all arrive here as messages, and are handled here where they can
  * be. The mailbox is humagen's. This page loads it from the platform, keeps
  * it current, and sends each click back.
  */
