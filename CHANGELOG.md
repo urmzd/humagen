@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.160.0 (2026-11-20)
+
+### Features
+
+- **approvals**: Run and Answer, where the approval agent also answers what the session settles (stack 6/6) (#457) ([a0156ea](https://github.com/urmzd/humagen/commit/a0156ea3602e88b3e314c2419b424564e1a9e826))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.159.0...v0.160.0)
+
+
 ## 0.156.0 (2026-11-20)
 
 ### Features
