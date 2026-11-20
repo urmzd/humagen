@@ -260,22 +260,22 @@ Slack App**:
 The link is the record: removing the client unlinks the bot user, and
 renaming the agent moves the link with it.
 
-**3. A mention of a linked bot routes to its agent, through any app.** The
-Slack text grammar reads `<@U…>` through the `bots` of the client that
-received the message (`slackContext.Bots` in `internal/platform/surface_threads.go`).
-It reads instead through the bots of every enabled Slack client in the team,
-each still subject to the receiving client's allow-list. So:
+**3. Routing is by installation.** The native install works as it does
+today; a linked install is its agent's. A workspace has as many installs as
+it has linked agents, plus the native one.
 
-- In a thread the shared app is answering, `@Humagen ask @Barbara to refresh
-  the report` (Barbara's real Slack user) tags `@barbara`, exactly as typing
-  her handle does.
-- Who answers is the agent's own app when it can: a linked agent's turns post
-  through its app wherever that app is in the channel, and through the shared
-  app, in persona, where it is not. Either way it is the same name and mark.
-- A message that mentions both apps reaches both. Each Slack message is
-  posted once by its ts, so only one is accepted, and the rule decides which
-  without a race: the agent's own app takes a message that tags its agent,
-  and the shared app drops it.
+| A message reaches | Answered by |
+|-------------------|-------------|
+| The native install (a mention, a DM, its assistant pane), naming no agent | The native client's default, the lead, as today |
+| The native install, naming an agent by handle or by its linked bot user | That agent, posted by its own install where that install is in the channel, else by the native install in its persona |
+| A linked install (a mention, a DM, its assistant pane, its App Home) | Its agent, always. A linked install routes to nothing else, so naming another agent there is refused as it is for any client's allow-list |
+| Both, because the message mentions both bots | The linked install, for its agent. The native install drops it. Each Slack message is posted once by its ts, and this rule decides which install that is, so there is no race |
+
+For the second row, the Slack text grammar must read a `<@U…>` through the
+`bots` of every enabled Slack client in the team, not only the client that
+received the message (`slackContext.Bots` in
+`internal/platform/surface_threads.go`), each still subject to the receiving
+client's allow-list.
 
 `apps/slack` serves one client today (`HUMAGEN_CLIENT`). Serving linked apps
 means one process holding several: a Socket Mode connection, routing and
