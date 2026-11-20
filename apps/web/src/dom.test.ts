@@ -28,6 +28,7 @@ await loadTests([
   "/src/workbench.dom.test.tsx",
   "/src/workbench-browser.dom.test.tsx",
   "/src/workbench-terminal.dom.test.tsx",
+  "/src/workbench-changes.dom.test.tsx",
   "/src/session-center.dom.test.tsx",
   "/src/session-ux.dom.test.tsx",
   "/src/conversation-overview.dom.test.tsx",

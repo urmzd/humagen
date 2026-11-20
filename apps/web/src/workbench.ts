@@ -21,6 +21,7 @@ import { DetailsTab } from "./SessionPanel.tsx";
 import type { SessionSummary } from "./sessionSummary.ts";
 import type { Reference as Ref } from "./trace.ts";
 import { ranCommands } from "./workbenchTerminal.ts";
+import { changesAvailable } from "./workbenchChanges.ts";
 
 /*
  * The session's workbench: the pane Details opens, as tabs. The thread stays
@@ -140,7 +141,13 @@ const entries: Record<WorkbenchTabId, WorkbenchTabEntry | undefined> = {
     fill: true,
   },
   // Changes slot: what the session changed, to keep or discard (WorkbenchChanges.tsx).
-  changes: undefined,
+  changes: {
+    view: lazyView(
+      () => import("./WorkbenchChanges.tsx"),
+      (m) => m.WorkbenchChanges,
+    ),
+    available: changesAvailable,
+  },
   // Side chat slot: a chat beside the thread that does not post in it (WorkbenchSidechat.tsx).
   sidechat: undefined,
   // Search slot: pull requests, artifacts and tools (WorkbenchSearch.tsx).
