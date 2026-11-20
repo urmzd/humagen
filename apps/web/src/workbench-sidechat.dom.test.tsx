@@ -18,7 +18,7 @@ import {
   inParts,
   isSideChatOf,
   MAX_CONCLUSION_PARTS,
-  sideChatAgent,
+  sideChatRouting,
   sideChatTitle,
 } from "./sidechat.ts";
 import { WorkbenchSidechat } from "./WorkbenchSidechat.tsx";
@@ -150,6 +150,16 @@ test("the first question forks the session privately, asks there and takes the f
   });
   net = stubFetch({
     [`GET /api/threads/${session}/forks`]: () => ({ forks: [] }),
+    // The session's own record: its agent is lead, though helper's run is the newest.
+    [`GET /api/sessions/${session}`]: () => ({
+      id: session,
+      agent: "lead",
+      thread: { ...sideThread, id: session, fork: undefined, agents: ["lead"] },
+      messages: [],
+      children: [],
+      links: [],
+      people: [],
+    }),
     [`POST /api/threads/${session}/fork`]: () => sideThread,
     [`POST /api/threads/${side}/messages`]: (body) => ({
       thread: sideThread,
@@ -175,11 +185,11 @@ test("the first question forks the session privately, asks there and takes the f
   fireEvent.change(box, { target: { value: "Why did the test fail?" } });
   fireEvent.keyDown(box, { key: "Enter" });
   await waitFor(() => assert.deepEqual(selected, [side]));
-  // The fork runs through the message the working agent is answering, to the agent that answers the session.
+  // The fork runs through the message the working agent is answering, to the session's own agent.
   assert.deepEqual(net.seen.find((s) => s.path === `/api/threads/${session}/fork`)?.body, {
     through: "m-7",
     title: "Side chat: Why did the test fail?",
-    agents: ["helper"],
+    agents: ["lead"],
   });
   assert.equal(
     (net.seen.find((s) => s.path === `/api/threads/${side}/messages`)?.body as { text: string })
@@ -276,11 +286,25 @@ test("a side chat starts from the newest saved turn and leaves a working agent a
   // A run from before threads names no message, so the turn before it stands.
   assert.equal(forkPoint([run("r1", "stopped"), run("r2", "parked")]), "r1");
   assert.equal(forkPoint([run("r1", "accepted")]), undefined);
-  assert.equal(
-    sideChatAgent([run("r1", "completed"), run("r2", "running", { agent: "rev" })]),
-    "rev",
-  );
-  assert.equal(sideChatAgent([]), undefined);
+});
+
+test("a side chat is answered by the session's own agents, whoever answered last", () => {
+  const runs = [run("r1", "completed"), run("r2", "running", { agent: "rev" })];
+  const page = (thread: Partial<Thread>, agent?: string) => ({
+    thread: thread as Thread,
+    ...(agent ? { answers: { agent, from: "session" } } : {}),
+  });
+  assert.deepEqual(sideChatRouting(page({ agents: ["lead"] }, "other"), runs), {
+    agents: ["lead"],
+  });
+  assert.deepEqual(sideChatRouting(page({ agents: ["a", "b"], mode: "all" }), runs), {
+    agents: ["a", "b"],
+    mode: "all",
+  });
+  assert.deepEqual(sideChatRouting(page({}, "lead"), runs), { agents: ["lead"] });
+  // The session could not be read: the agent that answered last stands in.
+  assert.deepEqual(sideChatRouting(undefined, runs), { agents: ["rev"] });
+  assert.deepEqual(sideChatRouting(undefined, []), {});
 });
 
 test("a side chat is titled from its first question, within the platform's limit", () => {

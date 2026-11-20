@@ -1,6 +1,6 @@
 import { answerOfAction, answers as isAnswer } from "@humagen/adapter/question";
 import { defaultCopy } from "@humagen/components";
-import type { UiAction } from "@humagen/core";
+import { ActionId, type UiAction } from "@humagen/core";
 import {
   CheckIcon,
   ChevronRightIcon,
@@ -19,7 +19,6 @@ import { agentShown } from "./branding.ts";
 import { Composer } from "./Composer.tsx";
 import { useHumanActivity } from "./humanActivity.tsx";
 import { itemActions } from "./itemActions.tsx";
-import { MessageTime } from "./MessageTime.tsx";
 import { useRunStop } from "./RunStop.tsx";
 import { useRunTurn } from "./Runs.tsx";
 import { followRoom } from "./roomFollow.ts";
@@ -28,7 +27,7 @@ import {
   conclusionRecords,
   forkPoint,
   isSideChatOf,
-  sideChatAgent,
+  sideChatRouting,
   sideChats,
   sideChatTitle,
 } from "./sidechat.ts";
@@ -166,13 +165,13 @@ export function WorkbenchSidechat({
         let id = held.current;
         if (!id) {
           if (!through) throw new Error(words.failed.start);
-          const agent = sideChatAgent(runs);
+          // The session's own agents answer, whoever answered in it last.
+          const routing = sideChatRouting(
+            await coworking.thread(thread).catch(() => undefined),
+            runs,
+          );
           const forked = await coworking
-            .fork(thread, {
-              through,
-              title: sideChatTitle(m.text),
-              ...(agent ? { agents: [agent] } : {}),
-            })
+            .fork(thread, { through, title: sideChatTitle(m.text), ...routing })
             .catch((error: unknown) => {
               throw new Error(error instanceof ApiError ? error.message : words.failed.start);
             });
@@ -244,7 +243,20 @@ export function WorkbenchSidechat({
 
   // A question or an approval the side chat's agent raised is answered here, in the side chat.
   const onAction = (a: UiAction) => {
-    if (!isAnswer(a) || !chat) return;
+    if (!chat) return;
+    // Retry asks a failed answer's question again, here.
+    if (a.id === ActionId.retry) {
+      const failed = chatRuns.find((run) => run.id === a.payload.turnId);
+      if (!failed || !canPost) return;
+      setProblem(null);
+      coworking.post(chat.id, { text: failed.text }).then(
+        () => setHeard((n) => n + 1),
+        (error: unknown) =>
+          setProblem(error instanceof ApiError ? error.message : words.failed.post),
+      );
+      return;
+    }
+    if (!isAnswer(a)) return;
     const answer = answerOfAction(a);
     if (!answer) return;
     setProblem(null);
@@ -310,23 +322,26 @@ export function WorkbenchSidechat({
   const working = chatRuns.some((run) => isWorking(run.status));
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col" data-testid="sidechat">
-      <div className="flex min-w-0 flex-wrap items-center gap-x-1 gap-y-1 border-aui-border border-b px-2 py-1.5">
-        <button type="button" className={quiet} onClick={() => onSelection()}>
-          <ChevronRightIcon size={16} aria-hidden className="rotate-180" />
-          {words.all}
-        </button>
-        <span className="min-w-0 flex-1" />
-        <button type="button" className={quiet} onClick={() => onSelection()}>
-          <PlusIcon size={16} aria-hidden />
-          {words.fresh}
-        </button>
-        {chat && !chat.missing && (
-          <a className={quiet} href={href({ page: "conversation", id: chat.id })}>
-            <ExternalLinkIcon size={16} aria-hidden />
-            {words.openFull}
-          </a>
-        )}
-      </div>
+      {/* The side chat's own row: back to the list, a new one, and the conversation it is. */}
+      {!chat?.missing && (
+        <div className="flex min-w-0 flex-wrap items-center gap-x-1 gap-y-1 border-aui-border border-b px-2 py-1.5">
+          <button type="button" className={quiet} onClick={() => onSelection()}>
+            <ChevronRightIcon size={16} aria-hidden className="rotate-180" />
+            {words.all}
+          </button>
+          <span className="min-w-0 flex-1" />
+          <button type="button" className={quiet} onClick={() => onSelection()}>
+            <PlusIcon size={16} aria-hidden />
+            {words.fresh}
+          </button>
+          {chat && (
+            <a className={quiet} href={href({ page: "conversation", id: chat.id })}>
+              <ExternalLinkIcon size={16} aria-hidden />
+              {words.openFull}
+            </a>
+          )}
+        </div>
+      )}
       {chat?.missing ? (
         <div className="flex flex-1 flex-col items-start gap-4 px-4 py-6">
           <h3 className="humagen-display text-aui-lg font-medium text-aui-fg">{words.missing}</h3>
@@ -438,21 +453,21 @@ function SideAnswer({
     <article
       data-turn-id={run.id}
       aria-label={words.answeredBy(name)}
-      className="flex flex-col gap-2"
+      // The answer's own header is set a step up: nothing in the workbench is read under 14px.
+      className="flex flex-col gap-2 [&_header]:text-aui-base [&_header_span]:text-aui-base"
     >
       <AgentTint name={run.agent}>
         <AgentMessage
           turn={shown}
           stop={stop}
           disclaimer={false}
-          timestamp={<MessageTime at={run.created_at} />}
           copy={copyFor(ask)}
           itemActions={itemActions(run)}
           capabilities={{ regenerate: false, feedback: false, report: false, followUp: false }}
         />
       </AgentTint>
       {conclusion.length > 0 && (
-        <div className="pl-11">
+        <div>
           <button
             type="button"
             className={button}

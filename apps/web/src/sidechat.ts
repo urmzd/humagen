@@ -38,9 +38,21 @@ export function forkPoint(runs: readonly Run[]): string | undefined {
   return undefined;
 }
 
-/** The agent a side chat's messages go to: the one that answered the session last. */
-export function sideChatAgent(runs: readonly Run[]): string | undefined {
-  return runs[runs.length - 1]?.agent;
+/**
+ * Who answers a side chat's untagged messages: the session's own agents, as
+ * its record routes them, else whoever answers there, else the agent that
+ * answered last. `page` is the session as read, undefined when it could not
+ * be. Empty when nobody is known, and the platform then asks for a tag.
+ */
+export function sideChatRouting(
+  page: { thread: Thread; answers?: { agent: string } } | undefined,
+  runs: readonly Run[],
+): { agents?: string[]; mode?: "join" | "all" } {
+  const routed = page?.thread.agents ?? [];
+  if (routed.length > 1)
+    return { agents: routed, ...(page?.thread.mode ? { mode: page.thread.mode } : {}) };
+  const agent = routed[0] || page?.answers?.agent || runs[runs.length - 1]?.agent;
+  return agent ? { agents: [agent] } : {};
 }
 
 const oneLine = (text: string) => text.replace(/\s+/g, " ").trim();
