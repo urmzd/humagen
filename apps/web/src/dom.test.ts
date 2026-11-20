@@ -30,6 +30,7 @@ await loadTests([
   "/src/workbench-terminal.dom.test.tsx",
   "/src/workbench-changes.dom.test.tsx",
   "/src/workbench-sidechat.dom.test.tsx",
+  "/src/workbench-search.dom.test.tsx",
   "/src/session-center.dom.test.tsx",
   "/src/session-ux.dom.test.tsx",
   "/src/conversation-overview.dom.test.tsx",

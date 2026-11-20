@@ -2174,3 +2174,37 @@ answer added and listed above the composer, the pane filling the page, an
 address that names no side chat, and a side chat answered while the session's
 agent worked. Not seen: a refused fork, an answer long enough for three
 records, and an agent's question card inside a side chat.
+
+**Search tab** (`WorkbenchSearch.tsx`, `workbenchSearch.ts`). One field finds
+what belongs to the session and opens each thing where it lives. Results are
+grouped: files (the Workspace pane), pull requests and issues (their own
+address, in a new browser tab), links (Slack posts, where the session started,
+pages it read, the sessions it started or is linked to), commands, browser
+steps, tools and agents (the answer's activity at that call), and attachments
+(the message they came with). A command opens in the Terminal tab and a browser
+step in the Browser tab, on the call's id as the tab's selection, once those
+tabs are built; until then they open in the answer's activity. It searches what
+the page already holds (the session's summary and each answer's calls) and one
+read of `GET /api/sessions/{id}` for links and attachments; it asks the server
+to search nothing and adds no route. Ranking is the composer's (`fuzzy` in
+`commands.ts`), with letters in order counted only when nothing holds the query
+whole. The query is the tab's `benchRef`, written when the field is left or
+Enter is pressed. Command or Control with Shift and F puts the cursor in the
+field while the tab is open, and the field shows the keys; the arrow keys, Home
+and End move through the results, Enter opens one, and Escape returns to the
+field. With nothing to find the tab offers Details; with no match it offers to
+clear. If the session cannot be read it says so with Retry and still searches
+the rest. All text is 14px and secondary text is `text-aui-muted`. Search
+records nothing as done by hand: opening a thing is not an outcome an agent
+needs to read.
+
+Evidence: `workbench-search.dom.test.tsx` (the index and where each thing
+opens, ranking, the shortcut, keyboard movement, the address, the long group,
+the empty, no-match, loading and failed-read states). Seen in Chrome at 1280x800
+and 390x844, light and dark: against a local server with a stand-in model, a
+session with one real tool call and one real attachment, an empty session, a
+result opening the answer's activity, and the pane filling the page; and with
+fixture data in a harness that was not committed, every group, a query, no
+match, the failed read, and Terminal and Browser standing in as built. Not seen:
+a real pull request, file or browser step from a live run, and the real
+Terminal and Browser tabs taking a result.

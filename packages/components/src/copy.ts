@@ -4385,7 +4385,51 @@ export const defaultCopy = {
     },
   },
   /** The Search tab (WorkbenchSearch.tsx). */
-  workbenchSearch: {},
+  workbenchSearch: {
+    field: "Search this session",
+    /** The key that puts the cursor in the field, as the field shows it. */
+    shortcut: { mac: "⌘⇧F", other: "Ctrl Shift F" },
+    clear: "Clear Search",
+    results: "Results",
+    group: {
+      files: "Files",
+      pulls: "Pull requests and issues",
+      links: "Links",
+      commands: "Commands",
+      browser: "Browser steps",
+      tools: "Tools",
+      agents: "Agents",
+      attachments: "Attachments",
+    },
+    /** Where a result opens, at the end of its row. */
+    opens: {
+      workspace: "Workspace",
+      terminal: "Terminal",
+      browser: "Browser",
+      activity: "Activity",
+      session: "Session",
+      message: "Message",
+      page: "Page",
+      external: "New tab",
+    },
+    /** A link's second line. */
+    note: {
+      origin: "Where this session started",
+      child: "A session this one started",
+      context: "Linked for context",
+      evidence: "Linked as evidence",
+    },
+    calls: (n: number) => `${n} ${n === 1 ? "call" : "calls"}`,
+    count: (n: number) => `${n} ${n === 1 ? "result" : "results"}`,
+    showAll: (n: number) => `Show All ${n}`,
+    keys: "↑ ↓ to move, Enter to open",
+    empty: "Nothing in this session to find yet",
+    emptyAction: "Open Details",
+    none: (query: string) => `Nothing in this session matches "${query}"`,
+    /** The session's own record could not be read; the rest is still searched. */
+    partial: "Linked sessions and attachments could not be read.",
+    retry: "Retry",
+  },
   /** The control that returns to the end of a thread or of an answer's activity, named by what is there. */
   latest: {
     jump: "Jump to latest",

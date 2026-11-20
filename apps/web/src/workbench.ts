@@ -158,7 +158,13 @@ const entries: Record<WorkbenchTabId, WorkbenchTabEntry | undefined> = {
     fill: true,
   },
   // Search slot: pull requests, artifacts and tools (WorkbenchSearch.tsx).
-  search: undefined,
+  search: {
+    view: lazyView(
+      () => import("./WorkbenchSearch.tsx"),
+      (m) => m.WorkbenchSearch,
+    ),
+    fill: true,
+  },
 };
 
 /** Every tab that has been built, in the strip's order. */
