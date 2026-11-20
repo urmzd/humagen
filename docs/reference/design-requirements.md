@@ -379,7 +379,7 @@ and `humagen`, the entry agent, which builds agents. `code-reviewer`,
 `security-reviewer`, `architect-reviewer` and `qa-reviewer` review in an
 ordinary conversation. Every workspace has `humagen` and `approver`; the
 writer and the analyst come with the Core package and the reviewers with the
-Review package, which a workspace installs from the Store on the Agents page.
+Review package, which a workspace installs from the Store tab under Agents.
 A starter is offered only for an agent the workspace has. Compatibility registry definitions preserve saved
 revisions, old schedules and existing grants. The `humagen-builtins` screen
 checks all three names at phone and desktop widths.
