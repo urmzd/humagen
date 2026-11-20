@@ -1,5 +1,5 @@
 import "./react.ts";
-import { type Copy, defaultCopy, TurnView } from "@humagen/components";
+import { type Copy, defaultCopy, type TurnCapabilities, TurnView } from "@humagen/components";
 import type { Turn, TurnStatus } from "@humagen/core";
 import {
   type Block,
@@ -92,6 +92,8 @@ export class Presenter {
       shown?: TurnStatus;
       /** The copy a turn is rendered with, for a branded disclaimer. */
       copy?: Copy;
+      /** What this app can act on. A bridged outcome offers none of it. */
+      capabilities?: TurnCapabilities;
     } = {},
   ) {
     this.native = opts.outcomesOnly ? false : (opts.native ?? true);
@@ -104,6 +106,10 @@ export class Presenter {
 
   private get copy(): Copy {
     return this.opts.copy ?? defaultCopy;
+  }
+
+  private get caps(): TurnCapabilities | undefined {
+    return this.opts.outcomesOnly ? undefined : this.opts.capabilities;
   }
 
   /** Whether native streaming was still in use, so the caller can remember a refusal. */
@@ -276,7 +282,9 @@ export class Presenter {
           if (!this.refused(e)) throw e;
         }
       }
-      const view = renderToSlack(<TurnView copy={this.copy} turn={turn} />);
+      const view = renderToSlack(
+        <TurnView copy={this.copy} capabilities={this.caps} turn={turn} />,
+      );
       const [first = []] = view.pages;
       if (first.length === 0) return;
       if (!this.ts) await this.post(first, view.text);
@@ -303,7 +311,9 @@ export class Presenter {
     // A posted message is edited with the whole turn, buttons included.
     if (!this.native || !this.ts || this.degraded) return;
     try {
-      const final = renderToSlack(<TurnView copy={this.copy} turn={turn} streamed />);
+      const final = renderToSlack(
+        <TurnView copy={this.copy} capabilities={this.caps} turn={turn} streamed />,
+      );
       await this.slack.call("chat.stopStream", {
         channel: this.target.channel,
         ts: this.ts,
@@ -334,7 +344,9 @@ export class Presenter {
       interrupts: paused.turn.interrupts.map((i) => now.get(i.id) ?? i),
     };
     if (JSON.stringify(shown.interrupts) === JSON.stringify(paused.turn.interrupts)) return;
-    const view = renderToSlack(<TurnView copy={this.copy} turn={shown} streamed={this.native} />);
+    const view = renderToSlack(
+      <TurnView copy={this.copy} capabilities={this.caps} turn={shown} streamed={this.native} />,
+    );
     await this.slack
       .call("chat.update", {
         channel: this.target.channel,
@@ -377,7 +389,9 @@ export class Presenter {
         if (rewritten) throw new Error("the answer was rewritten after it streamed");
         if (chunks.length > 0) await this.append(turn, chunks);
         const title = streamStopTitle(turn);
-        const final = renderToSlack(<TurnView copy={this.copy} turn={turn} streamed />);
+        const final = renderToSlack(
+          <TurnView copy={this.copy} capabilities={this.caps} turn={turn} streamed />,
+        );
         const [first = [], ...rest] = final.pages;
         await this.slack.call("chat.stopStream", {
           channel: this.target.channel,
@@ -390,7 +404,9 @@ export class Presenter {
         for (const w of final.warnings) this.log(`render warning: ${w}`);
       } else {
         // Nothing was streamed, so the message carries the whole turn.
-        const final = renderToSlack(<TurnView copy={this.copy} turn={turn} />);
+        const final = renderToSlack(
+          <TurnView copy={this.copy} capabilities={this.caps} turn={turn} />,
+        );
         const [first = [], ...rest] = final.pages;
         if (!this.ts) await this.post(first, final.text);
         else await this.edit(first, final.text);
@@ -399,7 +415,9 @@ export class Presenter {
       }
     } catch (e) {
       this.log(`ending the turn as streamed failed: ${(e as Error).message}`);
-      const final = renderToSlack(<TurnView copy={this.copy} turn={turn} />);
+      const final = renderToSlack(
+        <TurnView copy={this.copy} capabilities={this.caps} turn={turn} />,
+      );
       const [first = [], ...rest] = final.pages;
       // The streamed message is closed with the whole turn as its final layout, so the
       // answer and its controls stay in one message.
@@ -438,7 +456,7 @@ export class Presenter {
   async conclude(turn: Turn): Promise<void> {
     if (this.opts.canDeliver && !(await this.opts.canDeliver())) return;
     if (this.opts.outcomesOnly) turn = bridgeOutcome(turn);
-    const final = renderToSlack(<TurnView copy={this.copy} turn={turn} />);
+    const final = renderToSlack(<TurnView copy={this.copy} capabilities={this.caps} turn={turn} />);
     try {
       const [first = [], ...rest] = final.pages;
       await this.post(first, final.text);

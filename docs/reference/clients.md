@@ -277,18 +277,24 @@ per client. Published files are not counted by client.
 ## Usage on a turn
 
 The console shows what a run used on its Activity page, the context gauge and
-Analytics, and not on the turn in the conversation. The Slack app shows none.
-The rule is that a surface shows usage on a turn only if every surface the
-shared adapter feeds can, and Humagen has no usage summary for Slack:
-`@humagen/web` renders `Turn.usage` as a chip, `@humagen/components` renders
-nothing. So the adapter leaves `Turn.usage` unset and the two agree. The run's
-`usage` is on the API for any client that wants it.
+Analytics, and not on the turn in the conversation. The Slack app shows none on
+a turn either. The rule is that a surface shows usage on a turn only if every
+surface the shared adapter feeds can: `@humagen/web` renders `Turn.usage` as a
+chip, and nothing in `@humagen/components` draws it on a turn. So the adapter
+leaves `Turn.usage` unset and the two agree. The run's `usage` is on the API
+for any client that wants it.
+
+On request is another matter. A finished turn in Slack offers Run Details to a
+person the client maps, and the answer (agent, model, tokens, cost, elapsed
+time) goes to that person alone, read from the run as them. See
+[steps, command output and run details](slack.md#steps-command-output-and-run-details).
 
 What Humagen should have for this:
 
-- A `RunUsage` summary in `@humagen/components` (Slack context line and web)
-  taking integer micros, a currency and an unpriced count, so neither surface
-  formats money itself. `Turn.usage.costUsd` is a float of dollars today.
+- The web's use of the `RunDetailsView` summary in `@humagen/components`,
+  which takes integer micros and a currency (`formatMicros` in
+  `@humagen/core`) so no surface formats money itself. Slack uses it for Run
+  Details. `Turn.usage.costUsd` is still a float of dollars.
 - A context gauge (`ContextWindow` exists in `@humagen/core` session state,
   with no component that renders it from a run).
 - A limit meter with a lower-bound state, for spend that left calls out.

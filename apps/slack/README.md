@@ -40,6 +40,7 @@ Run `pnpm install` once from the repository root. The adapter and renderers are 
 | `/agent connections` | Opens your private provider status and connect/disconnect controls. Supply an allowed secret reference; keep tokens out of Slack. |
 | `/agent canvas RUN_ID` | Publishes a finished answer from this channel as a Slack canvas, shared with the channel (or just you in a DM). |
 | Uploaded files and images | A mapped person's triggering message is reread through its client on the server and ingested as agent attachments, including file-only DMs. Unread files are explained to the agent. |
+| **Run Details** on a finished turn | Shows you alone, in an ephemeral message, the run's agent, model, tokens, cost and elapsed time. Offered when the app's client maps people; the run is read as you, so you see it only where you may read the run. |
 | Stop button | Stops the run, confirms in the thread, sets the session to active. |
 | Home tab | For a person the client maps, the shared Home read as them: what needs them, what's new in their projects and their projects, with Ask a Question, Build an Agent and Search Context. Anyone else sees what is waiting on them in Humagen's inbox. |
 
