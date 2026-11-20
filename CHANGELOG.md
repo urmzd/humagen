@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.150.0 (2026-11-20)
+
+### Features
+
+- **slack**: continue a conversation in a code channel, off by default (#406) ([b4e3d48](https://github.com/urmzd/humagen/commit/b4e3d48edbaab4ec7cf88cc07d4d0140a04b406e))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.149.0...v0.150.0)
+
+
 ## 0.146.0 (2026-11-20)
 
 ### Features
