@@ -66,10 +66,39 @@ shape people now expect:
   (Connections, Automations, Secrets, Outposts) and Behavior (Memory, Usage
   limits, Pull requests, Analytics), headed by its mark, its name and one
   result ("0 PRs merged").
-- **One product bot that takes on each bot's personality.** The bots are
-  reached through one product, not installed one by one.
+- **Slack is a row on the bot's own settings,** "Set up". Devin's docs say
+  to give a Bot its own Slack app so the team can @-mention it or DM it, with
+  a Who Can Message setting deciding who may DM it and whose thread replies it
+  reads. The main Devin stays one `@Devin` app.
 - **Work is listed by session and by who is waiting.** "Devin is waiting for
   your input" is the most common notification.
+
+### How others put bots in Slack (November 2026)
+
+| | Claude Tag | Devin Bots | Grok Team Bots |
+|---|---|---|---|
+| Slack identity | One `@Claude` per workspace. Admins make "separate Claude identities for different uses" by scope (organization, workspace, private channel), each inheriting the permissions and memory of the one above | `@Devin` is one app; each Bot may get its own Slack app, to be @-mentioned and DM'd by name | A bot is created, published, then "Bring to your team's Slack", which a Slack admin approves. A third-party guide says the bot's name is its handle; xAI's docs do not say |
+| Personas | None. Behaviour differs by channel: channel instructions, channel memory, a Configure link in each reply's footer, which also names the model | Each Bot is its own named bot with a mark | Each bot is its own named bot |
+| Threads | "Once mentioned in a thread, Claude follows the rest of that thread and may reply without another mention." Anyone in the channel can steer. Reads the channel's history and pinned items | Not checked: the docs host does not resolve from here | Not checked: the docs host does not resolve from here |
+| Progress | A working indicator with Stop in channel threads; a checklist edited in place for longer work | | |
+| Whose access | A channel uses the channel's connections set by an admin and acts as Claude's own accounts; a 1:1 DM uses the person's own connectors and acts as them | | Each teammate links their Slack account once |
+
+What this says for Humagen:
+
+- **Nobody does one app with personas.** Claude Tag keeps one identity and
+  varies it by place; Devin and Grok give a named bot a Slack app of its own.
+  One app that posts as each agent sits between them: the single install of
+  Claude Tag, and a face per agent like Devin's and Grok's, without a real
+  Slack user per agent.
+- **Place is a persona that costs nothing.** Claude Tag's scope model is
+  Humagen's channel binding: a Slack channel bound to a project whose
+  default is `barbara` makes Barbara the one who answers there. `#perf-reports`
+  can be Barbara's room without a second app.
+- **Following a thread after one mention is now expected.** Claude Tag does it
+  and lets anyone in the channel steer.
+- **The footer is where a reply says who and how.** Claude Tag names the model
+  and links to Configure there; Humagen's disclaimer line can name the agent and
+  link to its page.
 
 ## Decisions
 
@@ -263,3 +292,6 @@ Each phase updates `docs/architecture/surfaces.md` and the status table.
    metric it reports) or is it always sessions this week?
 5. For an agent installed from the store, are `identity` fields part of the
    package, so updating it can change the face people know?
+6. Devin and Grok give a named bot its own Slack app. If one agent ever needs
+   a real Slack user (autocomplete, its own DM, its own sidebar entry), is that
+   a client with that agent as its default, added later, or never?
