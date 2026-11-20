@@ -1999,6 +1999,13 @@ because the Artifacts entry in the menu opens them. With nothing made, Home is t
 greeting and the chat bar. Home no longer lists alerts or recent sessions:
 sessions are in the sidebar's Recents and on Sessions.
 
+The alert center lists alerts as one table: a box to select, the alert and its
+agent, then its source, priority, age and actions in columns. The header holds
+one box that selects every row shown, and once a row is selected the header
+names how many and offers Mark Selected Done and Snooze Selected. Under 48rem a
+row stacks. The Skills list sits in the same column as the tabs above it, as a
+bordered list, and an empty scope says what to do next.
+
 An alert is named by whose move it is: Waiting, Snoozed or Done, with Mark Done
 in place of Resolve, in the alert center, on a session's alert card and in bulk
 actions. A project's inbox switch reads Waiting, Done and All. The API, the

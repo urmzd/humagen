@@ -71,6 +71,11 @@ export function placeOfSession(s: AgentSessionSummary): SessionPlaceFilter | und
 
 /** How many of the newest artifacts Home shows. The rest are under Artifacts. */
 const HOME_MADE = 3;
+/** One alert row's tracks: a box to tick, the alert, then priority, age and actions once there is room. */
+const alertRow =
+  "grid grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-x-3 gap-y-2 px-4 @3xl:grid-cols-[1.5rem_minmax(0,1fr)_6.5rem_5rem_7.5rem_17rem]";
+const alertCheck =
+  "inline-flex size-6 items-center justify-center self-start pointer-coarse:size-11 @3xl:self-center";
 
 const failure = (error: unknown) =>
   error instanceof Error ? error.message : "This could not be loaded. Try again.";
@@ -451,6 +456,7 @@ export function AlertsPage({
     );
   };
   const shown = (rows ?? []).filter((a) => !route.source || a.kind === route.source);
+  const picked = shown.filter((a) => selected.has(a.id));
   return (
     <Page
       title="Alerts"
@@ -567,86 +573,125 @@ export function AlertsPage({
               />
             </div>
           </div>
-          {canWrite && selected.size > 0 && (
-            <div className="flex gap-2">
-              <button
-                type="button"
-                className={button}
-                disabled={busy}
-                onClick={() =>
-                  void change(
-                    shown.filter((a) => selected.has(a.id)),
-                    "resolved",
-                  )
-                }
-              >
-                {words.markSelectedDone}
-              </button>
-              <button
-                type="button"
-                className={button}
-                disabled={busy}
-                onClick={() =>
-                  void change(
-                    shown.filter((a) => selected.has(a.id)),
-                    "snoozed",
-                  )
-                }
-              >
-                {words.snoozeSelected}
-              </button>
-            </div>
-          )}
           {!rows && !problem ? (
             <SkeletonRows count={4} />
           ) : shown.length ? (
-            <ul className="flex flex-col gap-3">
-              {shown.map((a) => (
-                <li key={a.id}>
-                  <ItemCard
-                    title={a.title}
-                    // An alert with no session (maintenance before a workspace has a model) opens its page.
-                    href={alertDestination(a) && href(alertDestination(a)!)}
-                    time={ago(a.at)}
-                    onOpen={() => {
-                      const to = alertDestination(a);
-                      if (to) go(to);
-                    }}
-                    facts={
-                      <>
+            // Laid out as a table, so alerts line up: what it is, how pressing, when, and what to do.
+            // It is a list to a screen reader: each row is its own grid with the same tracks,
+            // and under 48rem a row stacks, which a real table cannot do.
+            <div className="humagen-glass overflow-hidden rounded-aui-lg">
+              <div
+                className={`${alertRow} min-h-11 border-aui-border border-b py-2 text-aui-2xs text-aui-muted`}
+              >
+                <span className={alertCheck}>
+                  {canWrite && (
+                    <input
+                      type="checkbox"
+                      aria-label={words.table.selectAll}
+                      checked={picked.length === shown.length}
+                      ref={(box) => {
+                        if (box)
+                          box.indeterminate = picked.length > 0 && picked.length < shown.length;
+                      }}
+                      onChange={(e) =>
+                        setSelected(e.target.checked ? new Set(shown.map((a) => a.id)) : new Set())
+                      }
+                    />
+                  )}
+                </span>
+                {picked.length > 0 ? (
+                  <span className="col-span-full col-start-2 flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1">
+                    <span className="text-aui-fg">{words.table.selected(picked.length)}</span>
+                    <button
+                      type="button"
+                      className={textAction}
+                      disabled={busy}
+                      onClick={() => void change(picked, "resolved")}
+                    >
+                      {words.markSelectedDone}
+                    </button>
+                    <button
+                      type="button"
+                      className={textAction}
+                      disabled={busy}
+                      onClick={() => void change(picked, "snoozed")}
+                    >
+                      {words.snoozeSelected}
+                    </button>
+                  </span>
+                ) : (
+                  <>
+                    <span aria-hidden>{words.table.alert}</span>
+                    <span aria-hidden className="hidden @3xl:block">
+                      {words.table.source}
+                    </span>
+                    <span aria-hidden className="hidden @3xl:block">
+                      {words.table.priority}
+                    </span>
+                    <span aria-hidden className="hidden @3xl:block">
+                      {words.table.when}
+                    </span>
+                  </>
+                )}
+              </div>
+              <ul aria-label={words.table.label}>
+                {shown.map((a) => {
+                  const to = alertDestination(a);
+                  const title = "min-w-0 font-medium text-aui-sm text-aui-fg line-clamp-2";
+                  return (
+                    <li
+                      key={a.id}
+                      className={`${alertRow} border-aui-border border-b py-3 last:border-b-0 ${selected.has(a.id) ? "bg-aui-hover" : ""}`}
+                    >
+                      <span className={alertCheck}>
                         {canWrite && (
-                          <label className="inline-flex size-6 shrink-0 cursor-pointer items-center justify-center pointer-coarse:size-11">
-                            <input
-                              type="checkbox"
-                              aria-label={`Select ${a.title}`}
-                              checked={selected.has(a.id)}
-                              onChange={(e) =>
-                                setSelected((old) => {
-                                  const next = new Set(old);
-                                  if (e.target.checked) next.add(a.id);
-                                  else next.delete(a.id);
-                                  return next;
-                                })
-                              }
-                            />
-                          </label>
+                          <input
+                            type="checkbox"
+                            aria-label={`Select ${a.title}`}
+                            checked={selected.has(a.id)}
+                            onChange={(e) =>
+                              setSelected((old) => {
+                                const next = new Set(old);
+                                if (e.target.checked) next.add(a.id);
+                                else next.delete(a.id);
+                                return next;
+                              })
+                            }
+                          />
                         )}
-                        <AlertMark alert={a} />
+                      </span>
+                      <span className="flex min-w-0 flex-col items-start gap-1">
+                        {to ? (
+                          // An alert with no session (maintenance before a workspace has a model) opens its page.
+                          <a
+                            href={href(to)}
+                            onClick={(event) => follow(event, () => go(to))}
+                            className={`${title} rounded-aui-sm underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent`}
+                          >
+                            {a.title}
+                          </a>
+                        ) : (
+                          <span className={title}>{a.title}</span>
+                        )}
                         {a.agent && <AgentTag name={a.agent} />}
-                        <Tag>
+                      </span>
+                      <span className="col-start-2 flex min-w-0 items-center gap-3 @3xl:contents">
+                        <span className="text-aui-xs text-aui-muted">
                           {a.kind[0]?.toUpperCase()}
                           {a.kind.slice(1).replaceAll("_", " ")}
-                        </Tag>
-                      </>
-                    }
-                    actions={
-                      <>
+                        </span>
+                        <span>
+                          <AlertMark alert={a} />
+                        </span>
+                        <span className="text-aui-xs text-aui-muted">{ago(a.at)}</span>
+                      </span>
+                      <span className="col-start-2 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 @3xl:col-start-auto @3xl:justify-end">
                         <button
                           type="button"
                           className={primary}
                           onClick={() => {
-                            const to = alertPage(a) ?? alertDestination(a);
-                            if (to) go(to);
+                            const page = alertPage(a) ?? to;
+                            if (page) go(page);
                           }}
                         >
                           {alertActionLabel(a)}
@@ -671,12 +716,12 @@ export function AlertsPage({
                             </button>
                           </>
                         )}
-                      </>
-                    }
-                  />
-                </li>
-              ))}
-            </ul>
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
           ) : (
             <p className="text-aui-sm text-aui-muted">{words.empty[route.state ?? "open"]}</p>
           )}

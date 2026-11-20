@@ -193,9 +193,8 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
           exact: true,
         });
         await strip.getByRole("link", { name: "Launch plan", exact: true }).waitFor();
-        await strip
-          .getByRole("link", { name: defaultCopy.home.allArtifacts, exact: true })
-          .waitFor();
+        // The menu's Artifacts entry opens the full list: the strip does not link to it again.
+        assert.equal(await strip.getByRole("link", { name: "All artifacts" }).count(), 0);
       },
     },
     {

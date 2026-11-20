@@ -276,6 +276,40 @@ test("Alerts resolves selected records and Undo reopens only successful changes"
   assert.equal(changed.length, 2);
   assert.ok(net.seen.some((r) => r.path.includes("state=open") && r.path.includes("mine=true")));
 });
+test("Alerts has one box that selects every row, and the bulk actions show only once a row is selected", async () => {
+  const rows = [alert("one"), alert("two", "urgent")];
+  const sent: string[] = [];
+  net = stubFetch({
+    "GET /api/alerts": () => ({ alerts: rows }),
+    "PATCH /api/alerts/one": () => {
+      sent.push("one");
+      return rows[0];
+    },
+    "PATCH /api/alerts/two": () => {
+      sent.push("two");
+      return rows[1];
+    },
+  });
+  render(
+    <AlertsPage route={{ page: "alerts" }} go={() => {}} canWrite onChanged={() => {}} tick={0} />,
+  );
+  const all = (await screen.findByRole("checkbox", {
+    name: "Select all alerts",
+  })) as HTMLInputElement;
+  assert.equal(screen.queryByRole("button", { name: "Mark Selected Done" }), null);
+  // One row selected: the header box is neither on nor off.
+  fireEvent.click(screen.getByRole("checkbox", { name: "Select Alert one" }));
+  assert.equal(all.indeterminate, true);
+  assert.ok(screen.getByText("1 selected"));
+  fireEvent.click(all);
+  assert.ok(screen.getByText("2 selected"));
+  assert.equal(
+    (screen.getByRole("checkbox", { name: "Select Alert two" }) as HTMLInputElement).checked,
+    true,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Mark Selected Done" }));
+  await waitFor(() => assert.deepEqual(sent.sort(), ["one", "two"]));
+});
 test("Sessions fetches mine roots, one card each, with nothing listed beneath a session", async () => {
   net = stubFetch({
     "GET /api/sessions": () => ({ sessions: [session("s_root")], next: "" }),

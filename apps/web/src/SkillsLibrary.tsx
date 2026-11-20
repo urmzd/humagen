@@ -34,7 +34,7 @@ import {
   textSkillFile,
   validSkillPath,
 } from "./skill-files.ts";
-import { AgentMark, Page, Problem, SkeletonRows } from "./ui.tsx";
+import { AgentMark, Empty, Page, Problem, SkeletonRows } from "./ui.tsx";
 
 type TestVerdict = NonNullable<LibrarySkill["test_results"]>[number];
 
@@ -560,7 +560,8 @@ export function SkillsLibrary({
     <Page
       title={copy.title}
       lede={copy.description}
-      wide
+      // The list sits in the same column as the tabs above it; only the editor takes the room.
+      wide={!!detail}
       actions={
         !detail && (
           <>
@@ -628,18 +629,22 @@ export function SkillsLibrary({
               ) : skills === null ? (
                 <SkeletonRows count={3} />
               ) : visible.length === 0 ? (
-                <p className="py-10 text-sm text-muted-foreground">
-                  {query ? copy.noMatches : copy.empty}
-                </p>
+                <div className="humagen-glass rounded-aui-lg px-5">
+                  {query ? (
+                    <p className="py-10 text-sm text-muted-foreground">{copy.noMatches}</p>
+                  ) : (
+                    <Empty title={copy.empty}>{copy.emptyHint}</Empty>
+                  )}
+                </div>
               ) : (
-                <ul className="divide-y divide-border">
+                <ul className="humagen-glass divide-y divide-border overflow-hidden rounded-aui-lg">
                   {visible.map((skill) => (
                     <li key={skill.id}>
                       <button
                         type="button"
                         disabled={busy}
                         onClick={() => void inspect(skill.id)}
-                        className="flex min-h-20 w-full items-center gap-4 rounded-md px-3 py-4 text-left hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
+                        className="flex min-h-20 w-full items-center gap-4 px-4 py-4 text-left hover:bg-accent focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
                       >
                         <span className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-border bg-card">
                           <FolderIcon size={20} />
