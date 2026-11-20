@@ -76,6 +76,7 @@ type continueFixture struct {
 	*fixture
 	ana, bo, cy string
 	model       *factModel
+	st          state.Store
 }
 
 func newContinueFixture(t *testing.T, st state.Store) continueFixture {
@@ -84,7 +85,7 @@ func newContinueFixture(t *testing.T, st state.Store) continueFixture {
 	f := newFixtureWith(t, platform.Config{Backends: platform.Backends{State: st}, Ext: platform.Extensions{Providers: map[string]native.ProviderFunc{
 		"generated": func(native.Spec) (saigetypes.Provider, error) { return model, nil },
 	}}})
-	c := continueFixture{fixture: f, model: model,
+	c := continueFixture{fixture: f, model: model, st: st,
 		ana: f.person(t, "acme", "00u-ana", "Ana", "humagen-admins"),
 		bo:  f.person(t, "acme", "00u-bo", "Bo", "humagen-operators"),
 		cy:  f.person(t, "acme", "00u-cy", "Cy", "humagen-operators"),
@@ -357,6 +358,7 @@ func TestAContinuationIsRefusedThroughItsRoute(t *testing.T) {
 		refused("too many agents", c.bo, doc.path, strings.Replace(doc.pins("Field"), `["coder"]`, `["a","b","c","d","e","f"]`, 1), http.StatusBadRequest, "")
 		refused("a body past the cap", c.bo, doc.path, strings.Replace(doc.pins("Field"), `{`, `{"title":"`+strings.Repeat("t", maxBody)+`",`, 1), http.StatusRequestEntityTooLarge, "too large")
 
+		refused("a wrong document digest alone", c.bo, doc.path, strings.Replace(doc.pins("Field"), doc.digest, strings.Repeat("0", 64), 1), http.StatusConflict, "changed since it was read")
 		refused("a stale structure digest", c.bo, doc.path, strings.Replace(doc.pins("Field"), doc.structure, strings.Repeat("0", 64), 1), http.StatusConflict, "changed since it was read")
 		refused("no structure digest for a kept structure", c.bo, doc.path, strings.Replace(doc.pins("Field"), `"structure_digest":"`+doc.structure+`",`, "", 1), http.StatusConflict, "changed since it was read")
 
@@ -526,5 +528,138 @@ func TestAStructuresDigestIsReadOnlyWithItsSource(t *testing.T) {
 		if got := c.listedDocument(t, c.ana, "vault-chats", vault.id); got["structure_digest"] != vault.structure {
 			t.Fatalf("the owner reads %v", got)
 		}
+	})
+}
+
+// earlier writes document id of source back as a release before documents
+// recorded their structure's digest kept it: its structure's size, and no
+// digest. change, when set, also rewrites the structure's record.
+func (c continueFixture) earlier(t *testing.T, source, id string, change func(record map[string]any)) {
+	t.Helper()
+	tab := state.NewTable[map[string]any](c.st, "knowledge")
+	rows, err := tab.All("acme", "doc/"+source+"/", 1000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range rows {
+		if obj(row.Value["document"])["id"] != id {
+			continue
+		}
+		if _, err := tab.Update("acme", row.Key, func(r map[string]any, _ bool) (map[string]any, error) {
+			delete(obj(r["document"]), "structure_digest")
+			return r, nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if change != nil {
+			key := "imported/" + source + "/" + row.Key[strings.LastIndexByte(row.Key, '/')+1:]
+			if _, err := tab.Update("acme", key, func(r map[string]any, _ bool) (map[string]any, error) {
+				change(obj(r["imported"]))
+				return r, nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return
+	}
+	t.Fatalf("no document %s in %s", id, source)
+}
+
+// A document whose structure an earlier release kept is listed with its
+// structure's size and no digest of it, and a client continues it through
+// the API alone by naming none: the continuation pins the digest of the
+// trusted structure. It is refused when its structure's record is not
+// trusted (another revision's, or malformed), and when a structure was
+// written for it since it was read, since that write records a digest.
+func TestADocumentFromAnEarlierReleaseIsContinuedWithoutAStructureDigest(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		c := newContinueFixture(t, open(t))
+		continued := func(t *testing.T) int {
+			t.Helper()
+			list, err := c.p.Threads.Records("acme", func(th threads.Thread) bool { return th.Import != nil })
+			if err != nil {
+				t.Fatal(err)
+			}
+			return len(list)
+		}
+		answered := want(t, c.fixture, c.ana, "POST", "/api/knowledge/chats/imports", `{"title":"A generated chat","uri":"chatgpt:generated-earlier","text":"generated text","session":`+sessionJSON("generated-earlier", portTurns)+`}`, http.StatusCreated)
+		id := fmt.Sprint(answered["id"])
+		c.earlier(t, "chats", id, nil)
+		read := c.listedDocument(t, c.bo, "chats", id)
+		if read["structure_digest"] != nil || read["structure_bytes"] == nil {
+			t.Fatalf("an earlier document is listed %v", read)
+		}
+		path := "/api/knowledge/chats/documents/" + id + "/continue"
+		body := fmt.Sprintf(`{"document_digest":%q,"project":"Field"}`, read["digest"])
+		th := want(t, c.fixture, c.bo, "POST", path, body, http.StatusCreated)
+		if im := obj(th["import"]); im["structure"] != threads.StructureKept || im["structure_digest"] != answered["structure_digest"] || im["document_digest"] != read["digest"] {
+			t.Fatalf("an earlier document continued as %v", im)
+		}
+
+		before := continued(t)
+		for name, change := range map[string]func(map[string]any){
+			"another revision's": func(r map[string]any) { r["document"] = strings.Repeat("0", 64) },
+			"malformed":          func(r map[string]any) { r["structure"] = strings.Repeat("0", 64) },
+		} {
+			doc := want(t, c.fixture, c.ana, "POST", "/api/knowledge/chats/imports", `{"title":"A generated chat","uri":"chatgpt:generated-`+name[:5]+`","text":"generated text","session":`+sessionJSON("generated-"+name[:5], portTurns)+`}`, http.StatusCreated)
+			c.earlier(t, "chats", fmt.Sprint(doc["id"]), change)
+			res, out := c.do(t, nil, "POST", "/api/knowledge/chats/documents/"+fmt.Sprint(doc["id"])+"/continue", c.bo, fmt.Sprintf(`{"document_digest":%q,"project":"Field"}`, doc["digest"]))
+			if res.StatusCode != http.StatusBadRequest || !strings.Contains(fmt.Sprint(out["error"]), "cannot be trusted") {
+				t.Errorf("a structure record that is %s: %d %v", name, res.StatusCode, out)
+			}
+		}
+		if after := continued(t); after != before {
+			t.Fatalf("an untrusted structure started %d conversations", after-before)
+		}
+
+		// Read without a digest, then edited back to the same text (so its
+		// structure is untrusted) and restored with another structure: the
+		// restore records the new structure's digest, so what was read is
+		// no longer so.
+		raced := want(t, c.fixture, c.ana, "POST", "/api/knowledge/chats/imports", `{"title":"A generated chat","uri":"chatgpt:generated-raced","text":"generated text","session":`+sessionJSON("generated-raced", portTurns)+`}`, http.StatusCreated)
+		rid := fmt.Sprint(raced["id"])
+		c.earlier(t, "chats", rid, nil)
+		seen := c.listedDocument(t, c.bo, "chats", rid)
+		edited := want(t, c.fixture, c.ana, "PUT", "/api/knowledge/chats/documents/"+rid+"/text", fmt.Sprintf(`{"title":"A generated chat","text":"generated text","digest":%q}`, seen["digest"]), http.StatusOK)
+		other := append(append([]generatedTurn{}, portTurns...), generatedTurn{"user", "generated other turn"})
+		restored := want(t, c.fixture, c.ana, "PUT", "/api/knowledge/chats/imports/"+rid, fmt.Sprintf(`{"title":"A generated chat","text":"generated text","digest":%q,"session":%s}`, edited["digest"], sessionJSON("generated-raced", other)), http.StatusOK)
+		if restored["digest"] != seen["digest"] || restored["structure_digest"] == nil {
+			t.Fatalf("the restore answered %v, read %v", restored, seen)
+		}
+		res, out := c.do(t, nil, "POST", "/api/knowledge/chats/documents/"+rid+"/continue", c.bo, fmt.Sprintf(`{"document_digest":%q,"project":"Field"}`, seen["digest"]))
+		if res.StatusCode != http.StatusConflict || !strings.Contains(fmt.Sprint(out["error"]), "changed since it was read") {
+			t.Fatalf("a structure restored since it was read: %d %v", res.StatusCode, out)
+		}
+	})
+}
+
+// The project named must be the one the source is filed in where the caller
+// may post: another project it is attached to that the caller only views
+// is theirs to read, not to continue in (403); the workspace itself, a
+// project the source is not attached to, and a name in another case are
+// not where it is filed (409). In Field, the continuation is the caller's
+// alone: another member of Field neither reads nor posts in it.
+func TestAContinuationIsFiledOnlyWhereTheCallerSawTheSource(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		c := newContinueFixture(t, open(t))
+		want(t, c.fixture, c.ana, "POST", "/api/projects", `{"name":"Ops"}`, http.StatusCreated)
+		want(t, c.fixture, c.ana, "PUT", "/api/projects/Ops/members", `{"version":1,"members":[{"who":"*","role":"viewer"},{"who":"00u-ana","role":"owner"}]}`, http.StatusOK)
+		want(t, c.fixture, c.ana, "PUT", "/api/knowledge/chats/attachment", `{"project":"Ops","channel":"general"}`, http.StatusOK)
+		doc := c.importSession(t, "chats", "generated-scoping", portTurns)
+		for _, tc := range []struct {
+			project string
+			code    int
+		}{{"Ops", http.StatusForbidden}, {"", http.StatusConflict}, {"~", http.StatusConflict}, {"Initech", http.StatusConflict}, {"field", http.StatusConflict}} {
+			if res, out := c.do(t, nil, "POST", doc.path, c.bo, doc.pins(tc.project)); res.StatusCode != tc.code {
+				t.Errorf("project %q: %d %v, want %d", tc.project, res.StatusCode, out, tc.code)
+			}
+		}
+		th := want(t, c.fixture, c.bo, "POST", doc.path, doc.pins("Field"), http.StatusCreated)
+		id := fmt.Sprint(th["id"])
+		if th["project"] != "Field" || th["visibility"] != "private" || obj(th["import"])["source_id"] == "" {
+			t.Fatalf("continued as %v", th)
+		}
+		want(t, c.fixture, c.cy, "GET", "/api/threads/"+id, "", http.StatusNotFound)
+		want(t, c.fixture, c.cy, "POST", "/api/threads/"+id+"/messages", `{"text":"generated reply"}`, http.StatusNotFound)
 	})
 }

@@ -583,7 +583,7 @@ against real exports of each tool, and file bytes are not imported
 Each imported session's document is kept with the session's structure,
 written through its own routes in the same write as the document
 (`pkg/knowledge/imported.go`, `internal/httpapi/import_documents.go`), with a digest of the structure
-itself, which the document listing gives as `structure_digest`, so a
+itself, recorded on the document as `structure_digest`, so a
 continuation pins source, document, document digest and structure digest
 together; a structure kept for a revision is never
 replaced in place (409). Each
@@ -625,12 +625,16 @@ refused (409) rather than continued elsewhere. It answers the new thread
 (201), whose `import` says how many turns were sent of how many the import
 kept, the branches not continued, the turns whose files were not imported and
 the pinned digest. No agent is started: the caller posts the first message.
-A client takes both digests from the document listing: a document whose
-structure is kept says `structure_digest` beside `structure_bytes`, set and
-cleared with it, and only to a reader who sees the source. A document whose
-structure was kept before documents held the digest is given it from the
-structure's record when it is read. The console's Continue Conversation is
-still to come.
+A client takes both digests from the document listing. A write that keeps a
+structure records its digest on the document as `structure_digest` beside
+`structure_bytes`, and an ordinary edit removes both; they are given only to a
+reader who sees the source. Listing never reads a structure, so a document
+whose structure an earlier release kept is listed with `structure_bytes` and
+no digest until it is imported again: a client continues it naming no
+structure digest, and the conversation pins the digest of the trusted
+structure it reads. Once a document records a digest, a continuation must
+name it, so a structure written after the person read the document refuses
+it. The console's Continue Conversation is still to come.
 It starts a private plain thread of the caller's, in the source's project
 (the one it is scoped to, else the one it is attached to, else the workspace
 itself), holding the conversation's origin (`Thread.import`, read only in the
@@ -700,9 +704,11 @@ fields against the Go types, and the route on memory and Postgres
 listing, a second continuation of the same document, the seed's bound, and a
 scripted model that answers a fact from the imported lines on the first turn
 and is sent only that conversation's turns on the second. A client that takes the
-digests only from the listing continues the document, and a reader who
-cannot see the source is given neither digest; the store keeps the listed
-digest with every write on memory and Postgres (`pkg/knowledge`). The console's
+digests only from the listing continues the document, one an earlier release
+imported included, an untrusted structure of such a document is refused, and
+a reader who cannot see the source is given neither digest; the store
+records the digest with every write, and a listing reads no structure (the
+reads are counted), on memory and Postgres (`pkg/knowledge`). The console's
 Continue Conversation is not built.
 
 `humagen import agents` carries an agent file's `name`, `description` and

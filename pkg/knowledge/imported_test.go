@@ -1,6 +1,7 @@
 package knowledge
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/urmzd/humagen/pkg/state"
+	"github.com/urmzd/humagen/pkg/state/statetest"
 )
 
 // Every session below is made up for these tests.
@@ -935,8 +937,9 @@ func TestARestoreKeepsTheSourceBoundExact(t *testing.T) {
 // exclusion, gone after an ordinary edit, back after a restore, and
 // another after a reimport of another structure. It is always the digest a
 // reader of the structure is given (Origin.StructureDigest). A document
-// whose structure was kept before documents held the digest is given it
-// when listed, and so is its exclusion's answer.
+// whose structure an earlier release kept records none: it is listed, and
+// its exclusion answers, without one, while a reader of its structure is
+// still given the trusted digest, and a reimport records it.
 func TestADocumentSaysItsKeptStructuresDigest(t *testing.T) {
 	eachSeeded(t, func(t *testing.T, s *Store) {
 		listed := func(id string) Document {
@@ -1010,18 +1013,223 @@ func TestADocumentSaysItsKeptStructuresDigest(t *testing.T) {
 		if err := b.Commit(); err != nil {
 			t.Fatal(err)
 		}
-		if got := listed(doc.ID); got.StructureDigest != StructureDigest(generated(4)) {
-			t.Fatalf("an earlier document is listed with %q", got.StructureDigest)
+		if got := listed(doc.ID); got.StructureDigest != "" || got.StructureBytes == 0 {
+			t.Fatalf("an earlier document is listed with %q (%d bytes)", got.StructureDigest, got.StructureBytes)
 		}
-		if got, err := s.SetExcluded("acme", "handbook", doc.ID, true, now); err != nil || got.StructureDigest != StructureDigest(generated(4)) {
+		if got, err := s.SetExcluded("acme", "handbook", doc.ID, true, now); err != nil || got.StructureDigest != "" {
 			t.Fatalf("an earlier document's exclusion answers %q: %v", got.StructureDigest, err)
 		}
+		if _, err := s.SetExcluded("acme", "handbook", doc.ID, false, now); err != nil {
+			t.Fatal(err)
+		}
+		if o := origin(t, s, doc.ID); o.StructureDigest != StructureDigest(generated(4)) || o.Document.StructureDigest != "" {
+			t.Fatalf("an earlier document's origin reads %q, recorded %q", o.StructureDigest, o.Document.StructureDigest)
+		}
+		again, err := s.ReplaceImportedForScope("acme", "handbook", doc.ID, title, "generated text, grown again", reimported.Digest, "bo", now.Add(4*time.Hour), nil, generated(4))
+		if err != nil {
+			t.Fatal(err)
+		}
+		agree("an earlier document reimported", again, StructureDigest(generated(4)))
 		// One whose record an edit left untrusted is given none.
-		if _, err := s.ReplaceForScope("acme", "handbook", doc.ID, title, "edited again", reimported.Digest, now.Add(4*time.Hour), nil); err != nil {
+		if _, err := s.ReplaceForScope("acme", "handbook", doc.ID, title, "edited again", again.Digest, now.Add(5*time.Hour), nil); err != nil {
 			t.Fatal(err)
 		}
 		if got := listed(doc.ID); got.StructureDigest != "" {
 			t.Fatalf("an edited document is listed with %q", got.StructureDigest)
 		}
 	})
+}
+
+// countingStore counts the records of imported structures a store is asked
+// for, by any read.
+type countingStore struct {
+	state.Store
+	structures atomic.Int64
+}
+
+func (c *countingStore) count(keys ...string) {
+	for _, k := range keys {
+		if strings.HasPrefix(k, "imported/") {
+			c.structures.Add(1)
+		}
+	}
+}
+
+func (c *countingStore) Get(ctx context.Context, ns, tenant, key string) ([]byte, error) {
+	c.count(key)
+	return c.Store.Get(ctx, ns, tenant, key)
+}
+
+func (c *countingStore) Lookup(ctx context.Context, ns, tenant, key string) (state.Record, error) {
+	c.count(key)
+	return c.Store.Lookup(ctx, ns, tenant, key)
+}
+
+func (c *countingStore) List(ctx context.Context, ns, tenant string, q state.Query) ([]state.Record, string, error) {
+	recs, next, err := c.Store.List(ctx, ns, tenant, q)
+	for _, r := range recs {
+		c.count(r.Key)
+	}
+	return recs, next, err
+}
+
+func (c *countingStore) Load(ctx context.Context, ns string) ([]state.Record, error) {
+	recs, err := c.Store.Load(ctx, ns)
+	for _, r := range recs {
+		c.count(r.Key)
+	}
+	return recs, err
+}
+
+// Listing a source's documents reads no imported structure, however many
+// it keeps and whether or not their documents record a digest: earlier
+// documents (structure_bytes and no digest) are listed without one rather
+// than read for it. Only a read of one document's origin reads its
+// structure.
+func TestListingDocumentsReadsNoStructure(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		counted := &countingStore{Store: open(t)}
+		s, err := Open(counted)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.Create("acme", "chats", "", "ada", now); err != nil {
+			t.Fatal(err)
+		}
+		var ids []string
+		for i := range 12 {
+			doc, err := s.AddImportedForScope("acme", "chats", "A generated chat", fmt.Sprintf("chatgpt:generated-%04d", i), "generated text", "ada", now, nil, generatedWithID(fmt.Sprintf("generated-%04d", i), 6))
+			if err != nil {
+				t.Fatal(err)
+			}
+			ids = append(ids, doc.ID)
+		}
+		// Half are written back as an earlier release kept them.
+		rows, err := s.docs("acme", "chats")
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, r := range rows[:6] {
+			old := r.doc
+			old.StructureDigest = ""
+			b := s.kept.Batch()
+			b.PutAt("acme", docKey("chats", r.seq), stored{Document: &old}, r.version)
+			if err := b.Commit(); err != nil {
+				t.Fatal(err)
+			}
+		}
+		counted.structures.Store(0)
+		for range 3 {
+			docs, err := s.Documents("acme", "chats")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := s.DocumentsForScope("acme", "chats", nil); err != nil {
+				t.Fatal(err)
+			}
+			recorded := 0
+			for _, d := range docs {
+				if d.StructureBytes == 0 {
+					t.Fatalf("%s lost its structure's size", d.ID)
+				}
+				if d.StructureDigest != "" {
+					recorded++
+				}
+			}
+			if recorded != 6 {
+				t.Fatalf("%d documents listed a digest, want the 6 that record one", recorded)
+			}
+		}
+		if n := counted.structures.Load(); n != 0 {
+			t.Fatalf("listing read %d structures", n)
+		}
+		// The count is real: one document's origin reads its structure.
+		if _, err := s.OriginForScope("acme", "chats", ids[0], nil); err != nil {
+			t.Fatal(err)
+		}
+		if counted.structures.Load() == 0 {
+			t.Fatal("reading an origin counted no structure read")
+		}
+	})
+}
+
+// While a document is edited, reimported and excluded over and over,
+// concurrent listings only ever give a structure digest that is the trusted
+// one of the revision they list, and an edited document lists none.
+func TestListedStructureDigestsAreTheTrustedOnesUnderWrites(t *testing.T) {
+	eachSeeded(t, func(t *testing.T, s *Store) {
+		im := generated(6)
+		cur, err := s.AddImportedForScope("acme", "handbook", "A generated chat", sessionURI, "generated text", "ada", now, nil, im)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var wg sync.WaitGroup
+		var bad atomic.Value
+		stop := make(chan struct{})
+		for range 4 {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for {
+					select {
+					case <-stop:
+						return
+					default:
+					}
+					list, err := s.Documents("acme", "handbook")
+					if err != nil {
+						continue
+					}
+					for _, d := range list {
+						if d.StructureDigest == "" {
+							continue
+						}
+						o, err := s.OriginForScope("acme", "handbook", d.ID, nil)
+						if err == nil && o.Document.Digest == d.Digest && o.StructureDigest != d.StructureDigest {
+							bad.Store(fmt.Sprintf("listed %s for revision %s, trusted %q", d.StructureDigest, d.Digest, o.StructureDigest))
+						}
+					}
+				}
+			}()
+		}
+		for i := range 20 {
+			if i%2 == 0 {
+				cur, err = s.ReplaceForScope("acme", "handbook", cur.ID, "A generated chat", fmt.Sprintf("edited %d", i), cur.Digest, now, nil)
+			} else {
+				cur, err = s.ReplaceImportedForScope("acme", "handbook", cur.ID, "A generated chat", fmt.Sprintf("reimported %d", i), cur.Digest, "ada", now, nil, im)
+			}
+			if err == nil {
+				_, err = s.SetExcluded("acme", "handbook", cur.ID, i%3 == 0, now)
+			}
+			if err != nil {
+				close(stop)
+				wg.Wait()
+				t.Fatal(err)
+			}
+		}
+		close(stop)
+		wg.Wait()
+		if b := bad.Load(); b != nil {
+			t.Fatal(b)
+		}
+		if _, err := s.ReplaceForScope("acme", "handbook", cur.ID, "A generated chat", "a last edit", cur.Digest, now, nil); err != nil {
+			t.Fatal(err)
+		}
+		list, err := s.Documents("acme", "handbook")
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, d := range list {
+			if d.ID == cur.ID && (d.StructureDigest != "" || d.StructureBytes != 0) {
+				t.Fatalf("an edited document lists %q, %d bytes", d.StructureDigest, d.StructureBytes)
+			}
+		}
+	})
+}
+
+// generatedWithID is generated, of the conversation id.
+func generatedWithID(id string, turns int) Imported {
+	im := generated(turns)
+	im.ID = id
+	return im
 }

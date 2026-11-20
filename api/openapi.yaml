@@ -7596,7 +7596,7 @@ paths:
                   type: string
                   pattern: "^[0-9a-f]{64}$"
                 structure_digest:
-                  description: The document's `structure_digest` as the caller read it. Required when a structure is kept, and absent when none is.
+                  description: The document's `structure_digest` as the caller read it, absent when the document had none. A document whose structure an earlier release kept has `structure_bytes` and no `structure_digest`; it is continued without one, and the conversation pins the digest of the structure read when it is started. Once a document records a digest, it must be named.
                   type: string
                   pattern: "^[0-9a-f]{64}$"
                 project:
@@ -17511,7 +17511,7 @@ components:
         structure_digest:
           type: string
           pattern: "^[0-9a-f]{64}$"
-          description: The digest of the imported session's structure kept with this revision, absent when `structure_bytes` is. With `digest`, it is what `POST /api/knowledge/{name}/documents/{id}/continue` pins.
+          description: The digest of the imported session's structure, recorded by the write that kept the structure with this revision and removed by an ordinary edit. Absent when `structure_bytes` is, and also on a document whose structure an earlier release kept, until it is imported again. With `digest`, it is what `POST /api/knowledge/{name}/documents/{id}/continue` pins. A recorded digest does not by itself make the structure trusted; the continuation checks it again.
     ImportedSession:
       type: object
       description: "The structure of a session `humagen import sessions` wrote a document from: its main path as data. It is the importer's assertion, kept with who sent it and when; the server cannot verify that the session came from the tool it names. It is trusted only for the revision of the document it was written with, and an ordinary edit leaves it untrusted. A structure past a bound is refused with the document (400): the importer cuts and counts what it cut."

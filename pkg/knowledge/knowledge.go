@@ -122,10 +122,12 @@ type Document struct {
 	// by MaxImportedSourceBytes.
 	StructureBytes int `json:"structure_bytes,omitempty"`
 	// StructureDigest is that structure's own digest (StructureDigest),
-	// set and cleared with StructureBytes: what a reader pins, with Digest,
+	// written with StructureBytes by every write that keeps a structure and
+	// cleared with it by an ordinary edit: what a reader pins, with Digest,
 	// to continue the conversation the document was imported from. A
-	// document whose structure was kept before the digest was written here
-	// is given it when read (Store.documents).
+	// document whose structure an earlier release kept has StructureBytes
+	// and no StructureDigest until it is imported again; listing documents
+	// never reads a structure to fill it in (Origin.StructureDigest does).
 	StructureDigest string `json:"structure_digest,omitempty"`
 }
 
@@ -732,11 +734,6 @@ func (s *Store) documents(tenant, name string, expected *SourceConfig, guard boo
 		if err != nil {
 			return nil, err
 		}
-		for i := range docs {
-			if err := s.backfillStructureDigest(tenant, name, &docs[i]); err != nil {
-				return nil, err
-			}
-		}
 		// The documents are the source's at the version its scope was
 		// checked at, or they are read again.
 		if _, again, err := s.meta(tenant, name); err != nil {
@@ -1116,9 +1113,6 @@ func (s *Store) setExcludedWithScope(tenant, name, id string, excluded bool, at 
 		i := slices.IndexFunc(docs, func(d docRow) bool { return d.doc.ID == id })
 		if i < 0 {
 			return fmt.Errorf("%w: document %q", ErrNotFound, id)
-		}
-		if err := s.backfillStructureDigest(tenant, name, &docs[i]); err != nil {
-			return err
 		}
 		row := docs[i]
 		changed := row.doc.Excluded != excluded

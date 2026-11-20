@@ -154,24 +154,6 @@ func newImportedRecord(session Imported, document, by string, at time.Time) *imp
 
 func importedKey(name string, seq int64) string { return "imported/" + name + "/" + state.Seq(seq) }
 
-// backfillStructureDigest gives a document whose structure was kept before
-// documents held its digest (StructureBytes set, StructureDigest not) the
-// digest of that structure, read from the record kept with it, when the
-// record is still trusted for the revision (originOf). Nothing is written:
-// the document is given it on every read until its next import.
-func (s *Store) backfillStructureDigest(tenant, name string, row *docRow) error {
-	if row.doc.StructureBytes == 0 || row.doc.StructureDigest != "" {
-		return nil
-	}
-	kept, err := s.kept.Lookup(tenant, importedKey(name, row.seq))
-	missing := errors.Is(err, state.ErrNotFound)
-	if err != nil && !missing {
-		return err
-	}
-	row.doc.StructureDigest = originOf(row.doc, kept.Value.Imported, missing).StructureDigest
-	return nil
-}
-
 // StructureUnknown is why a document has no trusted structure.
 type StructureUnknown string
 
