@@ -78,8 +78,9 @@ func (p *Platform) sourcesFor(tag event.Envelope, edge call.Edge, project string
 // revision, what the platform decides about it before fiber reads it: the
 // workspace's model policy for the one the agent names (resolveModel), the
 // knowledge sources the run was pinned with (withSources), and the skills it
-// was told to use, ahead of its text (withSkills). The pinned definition
-// itself is never changed.
+// was told to use, ahead of its text (withSkills), and the background tools
+// every agent's turn for a person has (withBackgroundTools). The pinned
+// definition itself is never changed.
 func (p *Platform) resolveRevision(req runtime.Request) (runtime.Request, error) {
 	var promptErr error
 	if req, promptErr = withPromptLayers(req); promptErr != nil {
@@ -95,6 +96,7 @@ func (p *Platform) resolveRevision(req runtime.Request) (runtime.Request, error)
 	if req, err = p.resolveModel(p.withEffort(req)); err != nil {
 		return req, err
 	}
+	req = p.withBackgroundTools(req)
 	if req, err = boundRunContext(req); err != nil {
 		return req, err
 	}

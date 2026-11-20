@@ -87,6 +87,35 @@ const (
 	MaxNotifyText    = 4000
 )
 
+// withBackgroundTools offers a turn the background tools, on the request's
+// copy of the revision: the pinned definition itself is never changed. They
+// are part of what every agent works with, as asking a person is, so no
+// definition has to name them: any agent a person talks to can be told "tell
+// me when" or "keep going until". Only a turn that can use them is offered
+// them: one an agent takes for a person, at the top of its tree. An
+// evaluation, a housekeeping run, a run for nobody, a run another agent
+// called and a run that is itself background work are offered nothing here,
+// and the tools refuse them besides (backgroundCaller, startBackground). A
+// workspace still takes them away with its run settings' tool ceiling, which
+// is applied after this (boundRunContext).
+func (p *Platform) withBackgroundTools(req runtime.Request) runtime.Request {
+	run, err := p.runRecordOf(req.Tenant, req.RunID)
+	if err != nil || IsEvaluation(run) || run.Origin == runs.OriginSystem || run.Parent != "" || personOf(run.Actor) == "" {
+		return req
+	}
+	if wire.Meta(run.Tag())[metaBackground] != "" {
+		return req
+	}
+	tools := slices.Clone(req.Definition.Spec.Tools)
+	for _, name := range BackgroundTools() {
+		if !slices.Contains(tools, name) {
+			tools = append(tools, name)
+		}
+	}
+	req.Definition.Spec.Tools = tools
+	return req
+}
+
 // backgroundCaller is who a background tool acts for: the person the run
 // acts for, in the conversation the run is in. An evaluation, a housekeeping
 // run and a run that acts for nobody tell nobody anything.
