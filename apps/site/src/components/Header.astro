@@ -1,5 +1,5 @@
 ---
-import { contact, pages, site } from "../content/site";
+import { docs, pages, site } from "../content/site";
 import { mark } from "../lib/console";
 
 const current = Astro.url.pathname.replace(/\/$/, "") || "/";
@@ -27,8 +27,8 @@ const link =
             aria-current={current === pages.deploy.path ? "page" : undefined}>Deploy guide</a
           >
         </li>
+        <li><a class={link} href={docs.href}>{docs.label}</a></li>
         <li><a class={link} href={site.repo}>GitHub</a></li>
-        <li><a class={link} href={contact.href}>Contact</a></li>
       </ul>
     </nav>
   </div>
