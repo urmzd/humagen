@@ -17,16 +17,23 @@ in all. Nothing is read from a folder on the host.
 
 | Attachment | Reaches the model |
 |------------|-------------------|
-| PDF | As the document itself, with its pages, on every provider in the profile (at most 20 MiB) |
-| PNG, JPEG, GIF, WebP | As the image itself, on every provider (at most 4 MiB each) |
-| MP3 or WAV | Heard by the Google (Gemini) models only (at most 20 MiB and 30 minutes) |
+| PDF | As the document itself, with its pages (at most 20 MiB) |
+| PNG, JPEG, GIF, WebP | As the image itself (at most 4 MiB each) |
+| MP3 or WAV | Heard (at most 20 MiB and 30 minutes) |
 | M4A (`audio/mp4`) | **Not as audio.** saige's model catalog lists only `audio/mpeg` and `audio/wav` as audio Gemini takes, so the model gets a note that the file could not be read |
 | MP4 video | Listed in the catalog as a type Gemini takes (at most 20 MiB and 10 minutes); not exercised |
 
+The table is for this profile's agent, which runs on Gemini
+(`gemini-pro-latest`, with `gemini-flash-latest` as its one fallback). Both
+names are matched in saige's catalog by their Gemini family, not as listed
+models. Anthropic and OpenAI models read PDFs and images and hear no audio.
+
 One run sends at most 24 MiB of media in all. A file a model cannot take
-reaches it as a note saying so, not as its content. That is why the profile
-names `google` first: a fallback to Anthropic or OpenAI hears no audio and
-sees no video.
+reaches it as a note saying so, not as its content. A fallback chain takes
+only the media types every model in it takes, so the agent has no fallback to
+Anthropic or OpenAI: one such model in the chain would turn every recording
+and video into a note. `TestMediaEvidenceAgentHearsAudio` builds this agent's
+chain and checks that a WAV reaches it as audio.
 
 ## What is gone, and what is left for transcription
 
@@ -37,7 +44,8 @@ sees no video.
   shell return text only, so a page or frame an agent renders with a tool
   never reaches the model as an image. This profile grants neither; its
   `unisolated` sandbox refuses the shell anyway.
-- **The model's own timestamps were unreliable** in the test. Treat any time
+- **Times a model gave for speech were unreliable** in the earlier live
+  check described below. Treat any time
   it gives as an estimate and check it against the original recording.
 - **The one transcription path left is a cloud speech provider.** Uncomment
   `speech: {kind: groq}` in the profile and set `GROQ_API_KEY`, or set up
@@ -53,8 +61,7 @@ sees no video.
 
 ## Start the analyst
 
-Set a provider key in the shell: `GOOGLE_API_KEY` to hear audio, or
-`ANTHROPIC_API_KEY` or `OPENAI_API_KEY` for documents and images only. Then:
+Set `GOOGLE_API_KEY` in the shell. Then:
 
 ```sh
 humagen config check -f examples/media-evidence/humagen.yaml
@@ -81,10 +88,20 @@ the clocks? Say exactly which pages and audio intervals you did not inspect.
 
 ## What was checked, and what was not
 
-In a live check on the native path at `main` after #383, an agent read PDF
-pages and images given as uploads, and heard a WAV and an MP3 on a Gemini
-model. An M4A did not reach the model as audio. The times the model gave for
-speech were unreliable.
+**This profile has not been run with a live model.** What is known of it
+comes from code: its agent's model chain, built with the real provider
+construction and fake keys, takes PDF, PNG, JPEG, GIF, WebP, MP3, WAV and MP4
+natively and not M4A, and a generated WAV resolves to native audio for it
+(`TestExampleAgentsReadTheMediaTheirGuidesSay`,
+`TestMediaEvidenceAgentHearsAudio`). Whether Gemini answers well about them
+is not shown.
+
+Separately, the live re-run of the acceptance matrix at `main` after #383
+used an agent of its own, on a Gemini model and not this profile. There an
+agent read PDF pages and images given as uploads and heard a WAV and an MP3;
+an M4A did not reach the model as audio; and the times the model gave for
+speech were unreliable. The first version of this profile, which fell back to
+Anthropic and OpenAI, could not have heard either recording.
 
 The [generated input set](https://raw.githubusercontent.com/urmzd/humagen/3f80e938d748cadb7f2a9e372af0a4f57a54dd1c/docs/assets/session-audit-2026-11-16/media-evidence-inputs/README.md)
 from the earlier check, with its [hash manifest](https://raw.githubusercontent.com/urmzd/humagen/3f80e938d748cadb7f2a9e372af0a4f57a54dd1c/docs/assets/session-audit-2026-11-16/media-evidence-inputs/sources.json),

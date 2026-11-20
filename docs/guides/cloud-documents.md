@@ -32,7 +32,9 @@ humagen start -f examples/cloud-documents/humagen.yaml
 ```
 
 The workspace's `run.ceilings.tool_servers` lists `docsmcp.googleapis.com`
-and `drivemcp.googleapis.com`, so only those two presets can be connected.
+and `drivemcp.googleapis.com`. Those are the only hosts a person's own tool
+server may be on here: the other Google presets are listed as unavailable, and
+Other MCP, which the presets list still offers, is refused for any other host.
 Connect Google Docs and Google Drive in **Settings › Connections**, sign in,
 review the tools each server offers, and approve the list. Each person
 consents to `documents` with `drive.readonly` for Docs, and to `drive` for

@@ -3,21 +3,25 @@
 # docs/guides/media-evidence.md.
 #
 # What the model reads is what the person attaches: at most five files and
-# 25 MiB in all a message. Every provider here reads PDF pages and images
-# (PNG, JPEG, GIF, WebP). Only the Google (Gemini) models hear audio, and only
-# MP3 and WAV: an M4A (audio/mp4) attachment does not reach the model as
-# audio, because saige's model catalog lists only audio/mpeg and audio/wav as
-# native for Gemini. The catalog also lists MP4 video for Gemini; that was not
-# exercised. So google is first here, and a fallback to Anthropic or OpenAI
-# hears nothing and sees no video.
+# 25 MiB in all a message. Gemini reads PDF pages and images (PNG, JPEG,
+# GIF, WebP) and hears MP3 and WAV. An M4A (audio/mp4) attachment does not
+# reach it as audio, because saige's model catalog lists only audio/mpeg and
+# audio/wav as audio Gemini takes. The catalog also lists MP4 video for
+# Gemini; that was not exercised. Anthropic and OpenAI models hear no audio.
+#
+# So the agent runs on Gemini only, with a second Gemini model as its one
+# fallback: a fallback chain accepts only the media types every member
+# accepts, so one Anthropic or OpenAI member would turn every audio and video
+# attachment into a note (TestMediaEvidenceAgentHearsAudio holds this).
 #
 # What is gone with #383: the local Whisper transcription (mlx-whisper), the
 # PDF page rendering and the video frame extraction that ran in the Claude
 # Code program's shell. Humagen has no local transcription. file_read and the
 # shell return text only, so a model cannot look at a frame or page it
 # extracts itself; this profile grants neither, and its unisolated sandbox
-# refuses the shell anyway. The model's own timestamps were unreliable in the
-# test: check every time it gives against the original.
+# refuses the shell anyway. Times a model gave for speech were unreliable in
+# an earlier live check on another setup: check every time it gives against
+# the original. This profile has not been run with a live model.
 #
 # The one transcription path left is a cloud speech provider: uncomment the
 # speech slot below (and set GROQ_API_KEY), or set up Workspace settings >
@@ -29,8 +33,7 @@
 # with its transcripts is cut at 8,000 characters. The audio is sent to that
 # provider.
 #
-# Providers: Google, then Anthropic, then OpenAI, each with its key from the
-# shell (set at least one; GOOGLE_API_KEY for audio).
+# Provider: Google (Gemini), with GOOGLE_API_KEY from the shell.
 api_version: humagen/v1
 kind: System
 metadata: {name: media-evidence-local}
@@ -49,12 +52,6 @@ spec:
     - name: google
       kind: google
       google: {key: {ref: env:GOOGLE_API_KEY}}
-    - name: anthropic
-      kind: anthropic
-      anthropic: {key: {ref: env:ANTHROPIC_API_KEY}}
-    - name: openai
-      kind: openai
-      openai: {key: {ref: env:OPENAI_API_KEY}}
   agents:
     - spec:
         name: analyst
@@ -62,8 +59,7 @@ spec:
         provider: google
         model: gemini-pro-latest
         fallbacks:
-          - {provider: anthropic, model: claude-sonnet-5-5}
-          - {provider: openai, model: gpt-5.1}
+          - {provider: google, model: gemini-flash-latest}
         fallback_on: [unavailable, rate_limit]
         tools: [file_write, publish_artifact]
         system_prompt: >-

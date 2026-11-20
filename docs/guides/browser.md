@@ -215,9 +215,22 @@ written to the capture directory. Open every before/after pair before approval.
 Disconnecting the fixture's CDP client resets its display emulation, so the
 helper keeps that connection attached while the MCP worker operates.
 
-Before #383 the helper ran the removed Claude Code profile, also had the
-agent read the CSV through that program's file tools, and checked that a
-read outside its download directory was refused. It passed all four cases
-then. The native version has not been run yet. Neither version establishes a
-third-party portal login, SSO/MFA, extension handoff, cross-host download
-mount, or an authorization boundary around a tab.
+Before #383 the helper ran the removed Claude Code profile and passed all
+four cases then. Moving it to the native profile dropped three assertions:
+
+- **The agent read the downloaded file.** That program's file tools read the
+  CSV in the download folder, and the helper required the record in that
+  read's result. A native agent has no tool that reads a host folder, so the
+  helper now checks the file's bytes itself.
+- **A read outside the download folder was refused.** That checked the
+  program's restricted mode, which the native profile does not have.
+- **The tab survived a restart of the MCP worker.** The worker was started
+  fresh for each case; it now starts once, before Humagen, because the server
+  accepts the pinned tools at start.
+
+**Gap:** the helper's byte check proves that the agent's click downloaded
+exactly the selected record. It does not show the agent reading or checking
+what it downloaded. A native agent sees a downloaded file only when a person
+attaches it to a message. The native version has not been run yet. Neither
+version establishes a third-party portal login, SSO/MFA, extension handoff,
+cross-host download mount, or an authorization boundary around a tab.

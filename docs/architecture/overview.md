@@ -758,7 +758,8 @@ their own; the profile has not been run with a live model.
 
 Removed with #383, with no native replacement and no example: raster image
 generation (Codex's image tool), reading and organizing a folder on the host
-in place, and editing an existing `.docx` or auditing `.xlsx` formulas (an
+in place (no confined way does that now; only the `local` sandbox kind's shell
+could, unconfined and with the server's privileges), and editing an existing `.docx` or auditing `.xlsx` formulas (an
 uploaded Office file reaches a model only as a note, and the native Office
 writer builds new files from a revision model). Their guides are gone.
 
@@ -784,7 +785,8 @@ a selected action and an exact-byte download, at both widths and themes, with
 wire receipts that verify inline PNG blocks, not just saved paths. It passed
 on the Claude Code profile before #383; it now builds from the native profile
 and has not been rerun. The native agent cannot read the download folder, so
-the helper checks the bytes itself. Third-party portal login, SSO/MFA and
+the helper checks the bytes itself, and the agent reading what it downloaded
+is no longer shown. Third-party portal login, SSO/MFA and
 extension handoff remain unverified. Prompts are not tab authorization boundaries; existing
 browser downloads follow Chrome settings and need explicit shared file access.
 
@@ -803,11 +805,14 @@ not establish a third-party portal, every-pixel comparison or the same workflow
 through the console.
 
 Mixed evidence has a [native profile](../guides/media-evidence.md) on
-attachments. In a live check after #383 a native agent read PDF pages and
-images given as uploads and, on a Gemini model, heard WAV and MP3; an M4A
-(`audio/mp4`) did not reach the model as audio, since saige's catalog lists
-only `audio/mpeg` and `audio/wav` for Gemini, and the model's own timestamps
-were unreliable. Local Whisper transcription and frame or page extraction
+attachments. Its agent runs on Gemini with no fallback to a model that cannot
+hear, since a fallback chain takes only the media every member takes; its
+chain takes PDF, images, MP3, WAV and MP4 and not M4A (`audio/mp4`), which
+`TestMediaEvidenceAgentHearsAudio` checks. The profile has not been run with
+a live model. In the live re-run of the acceptance matrix after #383, an
+agent of its own on a Gemini model (not this profile) read PDF pages and
+images given as uploads, heard WAV and MP3, did not receive an M4A as audio,
+and gave unreliable times for speech. Local Whisper transcription and frame or page extraction
 went with the Claude Code program: `file_read` and the shell return text only.
 The transcription left is a cloud speech provider (the `speech` slot or a
 workspace voice provider), which keeps words without timestamps; it was not

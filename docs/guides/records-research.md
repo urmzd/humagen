@@ -8,8 +8,10 @@ official pages for a rule or a fee with `web_search` and `web_fetch`. It
 reports what the records and the pages say. It gives no legal advice.
 
 Before #383 this example ran on the Claude Code program in a folder of records
-on the host. Nothing reads a host folder now: the records go into the
-conversation.
+on the host. No confined way reads a host folder in place now: only the
+`local` sandbox kind's shell could, unconfined and with the server's
+privileges, which is why the local-files example was removed rather than
+ported. So the records go into the conversation.
 
 ## Start the agent and add the records
 
@@ -92,26 +94,28 @@ started with no run, six records put, two fetched back byte for byte). It has
 not been run with a live model: rerun the prompt above and the checker before
 relying on it.
 
-Checked on six invented records from `examples/records-research/make-fixture.py`,
-an application with three traps: a request for evidence that an email mentions
-and the folder does not hold, a response whose mailing nothing proves, and a
-note that disagrees with a notice about a day.
+Before #383, the removed Claude Code profile was checked on six invented
+records from `examples/records-research/make-fixture.py`, an application with
+three traps: a request for evidence that an email mentions and the folder does
+not hold, a response whose mailing nothing proves, and a note that disagrees
+with a notice about a day.
 
-- 13 rows, each quote found word for word in its record, every record cited,
-  and every date stated by its own quote: eight full dates, three with a day
-  and month and no year, and two unknown.
-- The disagreement was reported with both records. The missing request, the
-  unproven mailing, the undated interview and the missing decision were listed
-  as unknown.
-- The fee sentence it quoted from the official page was on that page when
-  fetched separately, at the URL it gave.
-- A write outside `out/` was refused, and the records were unchanged. The
-  native profile has no such refusal: see above.
+- (Before #383, Claude Code profile) 13 rows, each quote found word for word
+  in its record, every record cited, and every date stated by its own quote:
+  eight full dates, three with a day and month and no year, and two unknown.
+- (Before #383, Claude Code profile) The disagreement was reported with both
+  records. The missing request, the unproven mailing, the undated interview
+  and the missing decision were listed as unknown.
+- (Before #383, Claude Code profile) The fee sentence it quoted from the
+  official page was on that page when fetched separately, at the URL it gave.
+- (Before #383, Claude Code profile) A write outside `out/` was refused, and
+  the records were unchanged. The native profile has no such refusal: see
+  above.
 
-An earlier run, before the checker read dates, gave a note that says "4/3" the
-date of the appointment the day before, and gave "June 6" the year of the
-records around it. Both now fail the checker, and the prompt now asks for
-`????-MM-DD`.
+An earlier run on that profile, before the checker read dates, gave a note
+that says "4/3" the date of the appointment the day before, and gave "June 6"
+the year of the records around it. Both now fail the checker, and the prompt
+now asks for `????-MM-DD`.
 
 Not checked:
 

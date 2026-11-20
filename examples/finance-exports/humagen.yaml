@@ -15,11 +15,13 @@
 # conversation only the exports it may read.
 #
 # Needs a running Docker daemon. runc shares the host's kernel and is for
-# trusted local trials only; the local and unisolated sandbox kinds do not
-# run this (the local kind's shell starts with an empty environment and no
-# PATH, and unisolated refuses the shell). Limits a person would otherwise
-# miss: the files API takes UTF-8 text only, at most 2 MiB a file; a native
-# turn makes at most 10 rounds of tool calls.
+# trusted local trials only. Do not swap in the local sandbox kind: it runs
+# the shell as host processes with the server's privileges, unconfined, with
+# an empty environment and only the shell's default search path
+# (/usr/local/bin, /bin, /usr/bin and the like). unisolated refuses the shell.
+#
+# Limits a person would otherwise miss: the files API takes UTF-8 text only,
+# at most 2 MiB a file; a native turn makes at most 10 rounds of tool calls.
 #
 # Providers in order of preference: Anthropic, OpenAI, then Google, each with
 # its key from the shell (set at least one). Nothing here reaches a bank or

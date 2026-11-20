@@ -69,9 +69,12 @@ What holds now:
   working directory. "Run only `python3 reconcile.py`", `authorized.txt` and
   "only under `out/`" are instructions in the prompt, not controls. A file the
   agent must not see should not be in the conversation.
-- The `local` and `unisolated` sandbox kinds do not run this: the local kind's
-  shell starts with an empty environment and no `PATH`, and unisolated refuses
-  the shell.
+- Do not swap in the `local` or `unisolated` sandbox kind. The local kind
+  runs the shell as host processes with the server's privileges, unconfined:
+  every export and anything else the server can read is in reach, its
+  environment is empty, and the shell's default search path finds only
+  commands in `/usr/local/bin`, `/bin`, `/usr/bin` and the like (not, for
+  example, `/opt/homebrew/bin`). Unisolated refuses the shell.
 - A native turn makes at most 10 rounds of tool calls.
 - The exports are sent to the model provider as the agent reads them.
 
@@ -123,33 +126,37 @@ the exports themselves.
 
 ## What was checked, and what was not
 
-The checks below ran before #383, on the Claude Code path this profile
-replaces. On the native profile: it starts and passes `humagen config check`;
-`reconcile.py` ran unchanged in `python:3.13-alpine` with no network (33
-transactions, 4 duplicate rows removed, the card export reported as not
-reconciling); and `regress.py` passes its 26 cases. It has not been run with a
-live model, so the agent running the script through the shell tool is not yet
-shown: rerun the prompt and the checker before relying on it.
+On this native profile:
 
-Checked on five invented exports from `examples/finance-exports/make-fixture.py`:
-two checking exports that overlap by two weeks, a card statement whose closing
-balance is 25.00 away from its rows, a loan, and a fifth export that is in the
-folder and not authorized.
+- It passes `humagen config check` and starts and stops with no provider key.
+- `reconcile.py` ran unchanged in `python:3.13-alpine` with no network, outside
+  Humagen: 33 transactions, 4 duplicate rows removed, the card export reported
+  as not reconciling.
+- `regress.py` passes its 26 cases, and `conversation-files.sh` put the four
+  authorized exports, `authorized.txt` and `reconcile.py` into a conversation
+  on a running server, leaving the fifth export out.
+- It has not been run with a live model. That the agent runs the script
+  through the shell tool, and anything it reports or writes, is not shown.
+  Rerun the prompt and the checker before relying on it.
 
-- 33 transactions after 4 duplicate rows were removed, all from the overlap.
-  The two coffees of one day stayed two.
-- The card statement was reported as not reconciling, by 2,500 cents, and not
-  explained away. The others reconciled.
-- The plan copied 26 amounts from the summary, each naming its line, and made
-  proposals with no amount, among them the debt with the higher rate first and
-  asking the card's issuer about the difference.
-- The export that is not authorized was not opened, and the exports were
-  unchanged.
-- On a copy in which one transaction's second copy has another amount, with
-  the balance adjusted so that the export still reconciles, the script stopped,
-  and the agent reported the two lines, chose neither and wrote no plan.
-- With the removed profile's allow rules, `python3 -c "print(1)"` and writes
-  outside `out/` were refused. The native profile refuses neither.
+Before #383, on the removed Claude Code profile, with five invented exports
+from `examples/finance-exports/make-fixture.py` (two checking exports that
+overlap by two weeks, a card statement whose closing balance is 25.00 away
+from its rows, a loan, and a fifth export in the folder and not authorized):
+
+- That agent reported 33 transactions after 4 duplicate rows were removed,
+  all from the overlap, and kept the two coffees of one day as two.
+- That agent reported the card statement as not reconciling, by 2,500 cents,
+  and did not explain it away.
+- That agent's plan copied 26 amounts from the summary, each naming its line,
+  and made proposals with no amount.
+- That agent did not open the export that is not authorized, and the exports
+  were unchanged.
+- On a copy in which one transaction's second copy has another amount, the
+  script stopped, and that agent reported the two lines, chose neither and
+  wrote no plan.
+- That profile's allow rules refused `python3 -c "print(1)"` and writes
+  outside `out/`. The native profile refuses neither.
 
 Not checked:
 

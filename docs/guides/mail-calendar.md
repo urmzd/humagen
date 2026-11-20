@@ -36,8 +36,10 @@ humagen start -f examples/mail-calendar/humagen.yaml
 ```
 
 The workspace's `run.ceilings.tool_servers` lists `gmailmcp.googleapis.com`
-and `calendarmcp.googleapis.com`, so only those two presets can be connected;
-the other Google presets say which hosts are allowed. Then connect Gmail and
+and `calendarmcp.googleapis.com`. Those are the only hosts a person's own tool
+server may be on here: the other Google presets are listed as unavailable and
+say which hosts are allowed, and Other MCP, which the presets list still
+offers, is refused for any other host. Then connect Gmail and
 Google Calendar in **Settings › Connections**, sign in with Google, review the
 tools each server offers, and approve the list.
 

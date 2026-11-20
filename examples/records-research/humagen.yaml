@@ -6,7 +6,9 @@
 # agent reads them with file_list and file_read, opens official pages with
 # web_search and web_fetch, and writes out/chronology.csv and out/unknowns.md
 # with file_write. Before #383 this profile ran on the Claude Code program and
-# read a folder on this host in place; nothing reads a host folder now.
+# read a folder on this host in place. No confined way does that now: only the
+# local sandbox kind's shell could, unconfined and with the server's
+# privileges, which is why the local-files example was removed, not ported.
 #
 # Limits a person would otherwise miss: the files API and file_read take UTF-8
 # text only, at most 2 MiB a file, so a scan, photo or PDF record is not read

@@ -108,42 +108,45 @@ not been run with a live model. `web_fetch` returns at most 40,000 characters
 of a page, so a long regulation comes back cut: rerun the prompts and the
 checker before relying on it.
 
-Checked on three invented records from `examples/travel-refund/make-fixture.py`:
-a booking, the airline's cancellation notice and the passenger's notes.
+Before #383, the removed Claude Code profiles were checked on three invented
+records from `examples/travel-refund/make-fixture.py`: a booking, the
+airline's cancellation notice and the passenger's notes.
 
-- `travel-research` quoted the itinerary from its records and named what they
-  do not show (no proof the rebooking was declined, no refund request, whether
-  the rule applies to this airline). Asked to save a request as well, it could
-  not, and said so.
-- In a first run it reported that the transport department's refunds page
-  refused it, read the rule's Federal Register publication in part, and said it
-  had not seen the codified text. The refusal was the same when fetched
-  separately.
-- With the fallback above, it opened only the 2026 annual edition of 14 CFR
-  Part 260 on govinfo.gov, said its dates read 2026-01-01 and that its source
-  note runs to an amendment of August 12, 2024, and quoted the sections on a
-  cancelled flight, a full and prompt refund, 7 business days for a credit card
-  and the original form of payment. Each quotation is in that text when fetched
-  separately. It ran no search and opened no other site.
-- An earlier answer led with a full refund as if it were settled, although the
-  records do not show that the rule covers this airline or who sold the
-  ticket, and it said that filing a request would settle the deadline's start,
-  which no passage it had read says: the rule's deadline refers to a section
-  that makes a refund due on events such as declining a rebooking. The prompt
-  now requires conditions first, a quoted passage for the period and for what
-  starts it, and a refund due on an event kept apart from a request filed.
-  The answer after that change named three conditions before any entitlement,
-  quoted the period and the section it refers to, and said it could not quote
-  what starts the clock. Its reader returns summaries with short quotations,
-  so long passages are not quoted in full. This is a limit of the output, not
-  a finding about the rule: read the cited text yourself.
-- `travel-clerk`, with the approval, wrote `out/refund-request.md` and nothing
-  else. Reference, flight, date, amount and ticket number matched the records,
-  and what the records do not state was left as TO FILL. The records were
-  unchanged.
-- No address either agent opened held the passenger's name, the reference or
-  the ticket number. The text of the first run's two searches was not
-  inspected.
+- (Before #383, Claude Code profile) `travel-research` quoted the itinerary
+  from its records and named what they do not show (no proof the rebooking was
+  declined, no refund request, whether the rule applies to this airline).
+  Asked to save a request as well, it could not, and said so.
+- (Before #383, Claude Code profile) In a first run it reported that the
+  transport department's refunds page refused it, read the rule's Federal
+  Register publication in part, and said it had not seen the codified text.
+  The refusal was the same when fetched separately.
+- (Before #383, Claude Code profile) With the fallback above, it opened only
+  the 2026 annual edition of 14 CFR Part 260 on govinfo.gov, said its dates
+  read 2026-01-01 and that its source note runs to an amendment of August 12,
+  2024, and quoted the sections on a cancelled flight, a full and prompt
+  refund, 7 business days for a credit card and the original form of payment.
+  Each quotation is in that text when fetched separately. It ran no search and
+  opened no other site.
+- (Before #383, Claude Code profile) An earlier answer led with a full refund
+  as if it were settled, although the records do not show that the rule covers
+  this airline or who sold the ticket, and it said that filing a request would
+  settle the deadline's start, which no passage it had read says: the rule's
+  deadline refers to a section that makes a refund due on events such as
+  declining a rebooking. The prompt now requires conditions first, a quoted
+  passage for the period and for what starts it, and a refund due on an event
+  kept apart from a request filed. The answer after that change named three
+  conditions before any entitlement, quoted the period and the section it
+  refers to, and said it could not quote what starts the clock. Its reader
+  returns summaries with short quotations, so long passages are not quoted in
+  full. This is a limit of the output, not a finding about the rule: read the
+  cited text yourself.
+- (Before #383, Claude Code profile) `travel-clerk`, with the approval, wrote
+  `out/refund-request.md` and nothing else. Reference, flight, date, amount
+  and ticket number matched the records, and what the records do not state was
+  left as TO FILL. The records were unchanged.
+- (Before #383, Claude Code profile) No address either agent opened held the
+  passenger's name, the reference or the ticket number. The text of the first
+  run's two searches was not inspected.
 
 Not checked:
 

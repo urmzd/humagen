@@ -67,13 +67,17 @@ not weakened or silently accepted. Text entry uses the supported `type` tool.
 
 ## Dotfiles, processes and printers
 
-Humagen has no tool that runs a command on this host for an agent. The shell
-runs in a run's isolated sandbox, which cannot see the host's dotfiles,
-processes or printers; the `local` sandbox kind runs it on this host for
-development only, with an empty environment and no `PATH`. Before #383 this
-section pointed to the Claude Code and Codex programs for host commands; that
-path is gone and has no replacement here. A diagnosis of the host is yours to
-run.
+Which host an agent's `shell` reaches depends on the sandbox kind. The
+`docker` kind runs it in a container of its own, which cannot see this host's
+dotfiles, processes or printers. The `local` kind runs it as host processes
+with the server's privileges, unconfined, for development only: its
+environment is empty (no `HOME` or other variables), and the shell's own
+default search path (`/usr/local/bin`, `/bin`, `/usr/bin` and the like) finds
+only commands installed there, so a tool under `/opt/homebrew/bin`, for
+example, is not found. `unisolated` refuses the shell. Before #383 this
+section pointed to the Claude Code and Codex programs and their allow rules
+for host commands; that path is gone, and no shipped profile replaces it with
+a confined one.
 
 ## Real native acceptance
 
