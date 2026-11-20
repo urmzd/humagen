@@ -1619,6 +1619,18 @@ export const api = {
     if (!res.ok) throw new ApiError(res.status, data.error ?? `Request failed (${res.status})`);
     return data as VoiceTranscript;
   },
+  /** Keep the picture the console drew of an agent, for surfaces that need an image, such as Slack. */
+  setAgentMark: async (name: string, png: Blob) => {
+    const res = await fetch(`/api/agents/${encodeURIComponent(name)}/mark`, {
+      method: "PUT",
+      credentials: "same-origin",
+      headers: { "Content-Type": "image/png" },
+      body: png,
+    });
+    const data = (await res.json().catch(() => ({}))) as AgentLookView & { error?: string };
+    if (!res.ok) throw new ApiError(res.status, data.error ?? `Request failed (${res.status})`);
+    return data as AgentLookView;
+  },
   removePhoto: () => call<Preferences>("DELETE", "/api/preferences/photo"),
   // The picture is sent as its own bytes. The server decides what it is.
   uploadPhoto: async (file: Blob) => {

@@ -1561,6 +1561,29 @@ afterwards. Nothing is sent to the agent.
     });
   }
 
+  /** Served to anyone with the address, since Slack fetches an icon
+without a credential: the address is the capability. `file` is the
+picture's 128-bit random token and `.png`, and a picture that was
+replaced is no longer served. Anything else is the same 404.
+ */
+  async getAgentMarkImage(tenant: string, file: string, options?: RequestOptions): Promise<Blob> {
+    let path = "/agent-marks/{tenant}/{file}";
+    path = path.replace("{tenant}", encodeURIComponent(String(tenant)));
+    path = path.replace("{file}", encodeURIComponent(String(file)));
+    return this.request<Blob>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getAgentMarkImageRaw(tenant: string, file: string, options?: RequestOptions): Promise<ApiResponse<Blob>> {
+    let path = "/agent-marks/{tenant}/{file}";
+    path = path.replace("{tenant}", encodeURIComponent(String(tenant)));
+    path = path.replace("{file}", encodeURIComponent(String(file)));
+    return this.rawRequest<Blob>("GET", path, {
+      ...options,
+    });
+  }
+
   /** Whether this process should be sent traffic. It is ready once it has finished starting, while its database and event bus answer, and until it starts draining to stop. A failed check is named, never explained; the reason is in the server's log. */
   async getReadiness(options?: RequestOptions): Promise<Readiness> {
     const path = "/readyz";
@@ -2449,6 +2472,32 @@ agents take a look too.
     return this.rawRequest<AgentLookView>("PUT", path, {
       body,
       contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** The console draws the agent's bot as a PNG and sends it here, so a
+surface that needs an image (Slack's icon for a message the agent
+posts) can show it. It is kept under a new random token and served
+at the look's `image_url`; the picture it replaces is deleted. At
+most 256 KiB. Takes the ownership changing the agent takes.
+ */
+  async setAgentMark(name: string, body: Blob, options?: RequestOptions): Promise<AgentLookView> {
+    let path = "/api/agents/{name}/mark";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<AgentLookView>("PUT", path, {
+      body,
+      contentType: "image/png",
+      ...options,
+    });
+  }
+
+  async setAgentMarkRaw(name: string, body: Blob, options?: RequestOptions): Promise<ApiResponse<AgentLookView>> {
+    let path = "/api/agents/{name}/mark";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<AgentLookView>("PUT", path, {
+      body,
+      contentType: "image/png",
       ...options,
     });
   }

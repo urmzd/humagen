@@ -263,6 +263,26 @@ use is not known here, so it could be one the list leaves out. For the same
 reason such a client never sends `auto`, as a tag or as its default, since
 `@auto` picks among every agent available where the run lands.
 
+## Each agent in its own name
+
+One app answers for every agent, and it posts each turn as the agent that
+answers it: the answer, its stream, and the status line above the reply box
+carry the agent's display name and its picture (`username` and `icon_url`,
+which Slack takes on `chat.postMessage`, `chat.startStream` and
+`assistant.threads.setStatus` with the `chat:write.customize` scope the
+manifest asks for). Slack still marks every one APP and names the app on
+hover. Both come from the agent's look, set on its Look tab in the console
+(`pkg/agentlooks`), which `GET /api/agents` carries: the picture is the one
+the console drew when the look was saved, served at an unguessable address
+under the console's public URL, so an agent shows a picture only where the
+server has a `public_url`. An agent nobody gave a look is posted as the app,
+as it always was. An install from before the scope, or a workspace that
+refuses it, has its call made again as the app, and the rest of that turn
+is the app's.
+
+Home's Meet your agents lists the agents this app may reach that someone
+gave a greeting or starters, each with how to ask it here.
+
 ## Identity and permissions
 
 The app authenticates as a machine. Under `tailscale` sign-in, where no

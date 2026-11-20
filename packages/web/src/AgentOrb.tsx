@@ -5,7 +5,14 @@ import {
   type BotAvatarHat,
   type BotAvatarType,
 } from "bot-avatars";
-import { type CSSProperties, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import {
+  type CSSProperties,
+  forwardRef,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { type OrbState as Motion, ThinkingOrb } from "thinking-orbs";
 
 /**
@@ -104,7 +111,7 @@ const themeKey = () => {
 let pixel: CanvasRenderingContext2D | null | undefined;
 const resolved = new Map<string, string | undefined>();
 /** Any CSS color as `rgb(r, g, b)`, which is what the canvas marks take. Undefined without a canvas. */
-function toRgb(css: string): string | undefined {
+export function toRgb(css: string): string | undefined {
   if (resolved.has(css)) return resolved.get(css);
   let out: string | undefined;
   try {
@@ -408,3 +415,34 @@ export function AgentInitials({
     </span>
   );
 }
+
+/**
+ * An agent's bot held still, for a picture of it: the look given, in the
+ * color given, with no motion and no pointer play, on a canvas the caller
+ * reads (the ref). The console draws one to a PNG when a look is saved, so a
+ * surface that shows images, such as Slack, shows the same bot.
+ */
+export const AgentStill = forwardRef<
+  HTMLCanvasElement,
+  { name: string; look?: BotLook; color: string; size?: number }
+>(function AgentStill({ name, look, color, size = 256 }, ref) {
+  return (
+    <BotAvatar
+      ref={ref}
+      type={look?.shape ?? agentBot(name)}
+      face={look?.face}
+      hat={look?.hat ?? "none"}
+      glasses={look?.glasses ?? "none"}
+      headphones={look?.headphones ?? false}
+      bowTie={look?.bowTie ?? false}
+      state="default"
+      size={size}
+      color={color}
+      theme="light"
+      shading={look?.finish ?? "fabric"}
+      interactive={false}
+      paused
+      seed={0.5}
+    />
+  );
+});

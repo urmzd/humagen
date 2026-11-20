@@ -30,6 +30,18 @@ export interface Agent {
   description?: string;
 }
 
+/**
+ * How an agent chose to look, as `GET /api/agents` gives it. Only the fields
+ * this app reads: the name its messages carry, its picture, and what it
+ * offers on Home.
+ */
+export interface AgentLook {
+  display_name?: string;
+  image_url?: string;
+  greeting?: string;
+  starters?: { title: string; prompt: string }[];
+}
+
 /** An agent revision, as `GET /api/agents` lists them. Only the fields this app reads. */
 export interface Revision {
   spec: Agent;
@@ -221,7 +233,9 @@ export interface Humagen {
   disconnect(provider: string, as: ActAs): Promise<void>;
   saveFeedback(run: string, body: FeedbackInput): Promise<unknown>;
   getMe(options?: CallOptions): Promise<Me>;
-  listAgents(options?: CallOptions): Promise<{ agents: Revision[]; builtin?: string[] }>;
+  listAgents(
+    options?: CallOptions,
+  ): Promise<{ agents: Revision[]; builtin?: string[]; looks?: Record<string, AgentLook> }>;
   /** One client record, or null when it does not exist for this caller. */
   getClient(id: string, options?: CallOptions): Promise<ClientRecord | null>;
   /** Start a conversation or continue one. The key goes only in the `Idempotency-Key` header. */
@@ -608,7 +622,11 @@ export function httpHumagen(cfg: {
         ),
       ),
     getMe: () => http<Me>("GET", "/api/me"),
-    listAgents: () => http<{ agents: Revision[]; builtin?: string[] }>("GET", "/api/agents"),
+    listAgents: () =>
+      http<{ agents: Revision[]; builtin?: string[]; looks?: Record<string, AgentLook> }>(
+        "GET",
+        "/api/agents",
+      ),
     getClient: (id) => orNull(http<ClientRecord>("GET", `/api/clients/${enc(id)}`)),
     createRun: (body, key) =>
       http<Run>("POST", "/api/runs", body, key ? { "Idempotency-Key": key } : undefined),

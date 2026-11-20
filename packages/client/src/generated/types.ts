@@ -2868,6 +2868,16 @@ export interface AgentLook {
   glasses?: "none" | "round" | "square" | "shades";
   headphones?: boolean;
   bow_tie?: boolean;
+  /** A sentence or two in the agent's voice, shown where people meet it. */
+  greeting?: string;
+  /** Up to three jobs people can hand the agent in one click. */
+  starters?: AgentLookStartersItem[];
+  /** Where the agent's drawn picture is served, to anyone with the
+address (Slack fetches it as the agent's icon). Set by the server
+once the console has drawn one and a canonical console URL is
+configured; never taken from a request.
+ */
+  image_url?: string;
 }
 
 /** An agent's look, its hue, and what a picker offers. */
@@ -6286,6 +6296,11 @@ export interface ProjectContext2 {
 export interface ProjectChangeChannel {
   before?: Channel;
   after?: Channel;
+}
+
+export interface AgentLookStartersItem {
+  title: string;
+  prompt: string;
 }
 
 export interface AgentLookViewChoices {

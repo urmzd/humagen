@@ -20,12 +20,12 @@ func TestSetGetAndReset(t *testing.T) {
 			t.Fatal(err)
 		}
 		want := Look{DisplayName: "Barbara", Shape: "ghost", Hat: "crown"}
-		if got != want {
+		if !got.Equal(want) {
 			t.Fatalf("kept %+v, want %+v", got, want)
 		}
 		reopened, _ := Open(st)
 		looks, err := reopened.Get("acme", []string{"barbara", "rex"})
-		if err != nil || len(looks) != 1 || looks["barbara"] != want {
+		if err != nil || len(looks) != 1 || !looks["barbara"].Equal(want) {
 			t.Fatalf("read %v, %v", looks, err)
 		}
 		if _, err := s.Set("acme", "barbara", Look{Face: "eyes"}, nil); err != nil {
@@ -83,4 +83,63 @@ func TestInvalidLooks(t *testing.T) {
 	if _, err := s.Set("acme", "#looks", Look{Hat: "crown"}, nil); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("the record's own key as a name: %v", err)
 	}
+}
+
+// Greetings and starters are trimmed and bounded; an empty starter is dropped.
+func TestGreetingAndStarters(t *testing.T) {
+	s, _ := Open(nil)
+	got, err := s.Set("acme", "barbara", Look{
+		Greeting: "  I keep the reports current. ",
+		Starters: []Starter{{Title: " Summarize ", Prompt: "Summarize the latest reports."}, {}},
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Greeting != "I keep the reports current." || len(got.Starters) != 1 || got.Starters[0].Title != "Summarize" {
+		t.Fatalf("kept %+v", got)
+	}
+	many := make([]Starter, MaxStarters+1)
+	for i := range many {
+		many[i] = Starter{Title: "t", Prompt: "p"}
+	}
+	for _, l := range []Look{
+		{Greeting: strings.Repeat("g", MaxGreeting+1)},
+		{Starters: many},
+		{Starters: []Starter{{Title: "only a title"}}},
+		{Starters: []Starter{{Title: strings.Repeat("t", MaxStarterName+1), Prompt: "p"}}},
+	} {
+		if _, err := s.Set("acme", "barbara", l, nil); !errors.Is(err, ErrInvalid) {
+			t.Errorf("%+v: %v, want ErrInvalid", l, err)
+		}
+	}
+}
+
+// A new mark replaces the old one, which is no longer served.
+func TestMarks(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		s, _ := Open(open(t))
+		first, second := strings.Repeat("a", 32), strings.Repeat("b", 32)
+		if old, err := s.SetMark("acme", "barbara", first); err != nil || old != "" {
+			t.Fatalf("first mark: %q, %v", old, err)
+		}
+		if old, err := s.SetMark("acme", "barbara", second); err != nil || old != first {
+			t.Fatalf("second mark replaces %q, %v; want %q", old, err, first)
+		}
+		if ok, _ := s.IsMark("acme", first); ok {
+			t.Fatal("a replaced mark is still served")
+		}
+		if ok, _ := s.IsMark("acme", second); !ok {
+			t.Fatal("the current mark is not served")
+		}
+		if ok, _ := s.IsMark("other", second); ok {
+			t.Fatal("another workspace serves the mark")
+		}
+		marks, err := s.Marks("acme", []string{"barbara", "rex"})
+		if err != nil || len(marks) != 1 || marks["barbara"] != second {
+			t.Fatalf("marks = %v, %v", marks, err)
+		}
+		if _, err := s.SetMark("acme", "barbara", "../etc"); !errors.Is(err, ErrInvalid) {
+			t.Fatalf("a bad token: %v", err)
+		}
+	})
 }

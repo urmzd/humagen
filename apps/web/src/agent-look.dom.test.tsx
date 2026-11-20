@@ -95,3 +95,40 @@ test("someone who may not change the agent sees its look, read only", async () =
     assert.ok((screen.getByLabelText("ghost") as HTMLButtonElement).closest("fieldset[disabled]")),
   );
 });
+
+test("a greeting and starters are kept with the look, blank starters left out", async () => {
+  const saved: { look: AgentLook }[] = [];
+  net = stubFetch({
+    "GET /api/agents/barbara/look": () => view({}),
+    "PUT /api/agents/barbara/look": (body) => {
+      saved.push(body as { look: AgentLook });
+      return view((body as { look: AgentLook }).look);
+    },
+  });
+  render(<AgentLookEditor name="barbara" canWrite />);
+  await screen.findByText("Default");
+  fireEvent.change(screen.getByLabelText(/^Greeting/), {
+    target: { value: " I keep customer performance reports current. " },
+  });
+  assert.equal(
+    screen.getByTestId("look-greeting").textContent,
+    "I keep customer performance reports current.",
+  );
+  fireEvent.change(screen.getByLabelText("Starter 1 title"), {
+    target: { value: "Summarize the latest reports" },
+  });
+  fireEvent.change(screen.getByLabelText("Starter 1 message"), {
+    target: { value: "Summarize the latest customer reports and flag gaps." },
+  });
+  fireEvent.click(screen.getByText("Save Look"));
+  await screen.findByText("Look saved");
+  assert.deepEqual(saved[0]?.look, {
+    greeting: "I keep customer performance reports current.",
+    starters: [
+      {
+        title: "Summarize the latest reports",
+        prompt: "Summarize the latest customer reports and flag gaps.",
+      },
+    ],
+  });
+});

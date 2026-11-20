@@ -66,10 +66,38 @@ type Look struct {
 	Glasses    string `json:"glasses,omitempty"`
 	Headphones bool   `json:"headphones,omitempty"`
 	BowTie     bool   `json:"bow_tie,omitempty"`
+	// Greeting is a sentence or two in the agent's voice, shown where people
+	// meet it: its Look tab, and the Slack app's Home.
+	Greeting string `json:"greeting,omitempty"`
+	// Starters are up to MaxStarters jobs people can hand it in one click.
+	Starters []Starter `json:"starters,omitempty"`
 }
 
+// Starter is one job an agent offers: a short title and the message it sends.
+type Starter struct {
+	Title  string `json:"title"`
+	Prompt string `json:"prompt"`
+}
+
+// Bounds on what a look says. Slack shows a suggested prompt's title in at
+// most 75 characters, so a title fits there.
+const (
+	MaxGreeting    = 280
+	MaxStarters    = 3
+	MaxStarterName = 60
+	MaxStarterText = 500
+)
+
 // IsZero reports whether the look is the default in every field.
-func (l Look) IsZero() bool { return l == Look{} }
+func (l Look) IsZero() bool { return l.Equal(Look{}) }
+
+// Equal reports whether two looks are the same.
+func (l Look) Equal(o Look) bool {
+	return l.DisplayName == o.DisplayName && l.Shape == o.Shape && l.Face == o.Face &&
+		l.Finish == o.Finish && l.Hat == o.Hat && l.Glasses == o.Glasses &&
+		l.Headphones == o.Headphones && l.BowTie == o.BowTie && l.Greeting == o.Greeting &&
+		slices.Equal(l.Starters, o.Starters)
+}
 
 // Normalize trims the display name and stores each default as empty, so the
 // same look written two ways is one look. It does not validate.
@@ -87,6 +115,16 @@ func (l Look) Normalize() Look {
 	l.Finish = clear(l.Finish, Finishes)
 	l.Hat = clear(l.Hat, Hats)
 	l.Glasses = clear(l.Glasses, Glasses)
+	l.Greeting = strings.TrimSpace(l.Greeting)
+	var starters []Starter
+	for _, st := range l.Starters {
+		st.Title = strings.Join(strings.Fields(st.Title), " ")
+		st.Prompt = strings.TrimSpace(st.Prompt)
+		if st.Title != "" || st.Prompt != "" {
+			starters = append(starters, st)
+		}
+	}
+	l.Starters = starters
 	return l
 }
 
@@ -109,6 +147,22 @@ func (l Look) Validate() error {
 	check("finish", l.Finish, Finishes)
 	check("hat", l.Hat, Hats)
 	check("glasses", l.Glasses, Glasses)
+	if utf8.RuneCountInString(l.Greeting) > MaxGreeting {
+		problems = append(problems, fmt.Sprintf("a greeting is at most %d characters", MaxGreeting))
+	}
+	if len(l.Starters) > MaxStarters {
+		problems = append(problems, fmt.Sprintf("an agent offers at most %d starters", MaxStarters))
+	}
+	for i, st := range l.Starters {
+		switch {
+		case st.Title == "" || st.Prompt == "":
+			problems = append(problems, fmt.Sprintf("starter %d needs a title and a message", i+1))
+		case utf8.RuneCountInString(st.Title) > MaxStarterName:
+			problems = append(problems, fmt.Sprintf("a starter's title is at most %d characters", MaxStarterName))
+		case utf8.RuneCountInString(st.Prompt) > MaxStarterText:
+			problems = append(problems, fmt.Sprintf("a starter's message is at most %d characters", MaxStarterText))
+		}
+	}
 	if len(problems) > 0 {
 		return fmt.Errorf("%w: %s", ErrInvalid, strings.Join(problems, "; "))
 	}
@@ -121,7 +175,8 @@ const key = "#looks"
 
 // Store keeps each workspace's looks.
 type Store struct {
-	t *state.Table[map[string]Look]
+	t     *state.Table[map[string]Look]
+	marks *state.Table[map[string]string]
 }
 
 // Open returns a store on st, which may be shared with other processes. A
@@ -130,7 +185,10 @@ func Open(st state.Store) (*Store, error) {
 	if st == nil {
 		st = state.NewMemory()
 	}
-	return &Store{t: state.NewTable[map[string]Look](st, "agent-looks")}, nil
+	return &Store{
+		t:     state.NewTable[map[string]Look](st, "agent-looks"),
+		marks: state.NewTable[map[string]string](st, "agent-looks"),
+	}, nil
 }
 
 // Get returns the looks of the named agents that have one. An agent with
@@ -183,7 +241,7 @@ func (s *Store) Set(tenant, name string, look Look, others []string) (Look, erro
 				return nil, fmt.Errorf("%w: %s is called %q", ErrNameTaken, k, v.DisplayName)
 			}
 		}
-		if all[name] == look {
+		if all[name].Equal(look) {
 			return nil, state.ErrUnchanged
 		}
 		if !look.IsZero() {
@@ -198,4 +256,92 @@ func (s *Store) Set(tenant, name string, look Look, others []string) (Look, erro
 		return Look{}, err
 	}
 	return look, nil
+}
+
+// marksKey is the record of each agent's drawn mark, by agent: the token
+// its picture is kept and served under (MarkPath). It is apart from the
+// looks so drawing a picture never moves a look's version.
+const marksKey = "#marks"
+
+// ErrNoMark reports a token no agent's picture is kept under.
+var ErrNoMark = errors.New("agentlooks: no such mark")
+
+// ValidToken reports whether s is the shape of a mark's token: 32 hex
+// digits, so it can stand in a path and a blob key as it is.
+func ValidToken(s string) bool {
+	if len(s) != 32 {
+		return false
+	}
+	for _, r := range s {
+		if !(r >= '0' && r <= '9' || r >= 'a' && r <= 'f') {
+			return false
+		}
+	}
+	return true
+}
+
+// MarkKey is the blob key an agent's picture is kept under in its tenant.
+func MarkKey(token string) string { return "agent-marks/" + token + ".png" }
+
+// Marks returns the token of each named agent that has a drawn mark.
+func (s *Store) Marks(tenant string, names []string) (map[string]string, error) {
+	all, err := s.marks.Lookup(tenant, marksKey)
+	if errors.Is(err, state.ErrNotFound) {
+		return map[string]string{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]string{}
+	for _, requested := range names {
+		if tok, ok := all.Value[legacy.BuiltinAgentKey(requested)]; ok {
+			out[requested] = tok
+		}
+	}
+	return out, nil
+}
+
+// SetMark records the token of an agent's newly drawn mark and returns the
+// one it replaces, empty when it had none, so the caller can delete the old
+// picture.
+func (s *Store) SetMark(tenant, name, token string) (string, error) {
+	name = legacy.BuiltinAgentKey(name)
+	if name == "" || strings.HasPrefix(name, "#") || !ValidToken(token) {
+		return "", fmt.Errorf("%w: a mark needs an agent and a token", ErrInvalid)
+	}
+	var old string
+	_, err := s.marks.Update(tenant, marksKey, func(all map[string]string, _ bool) (map[string]string, error) {
+		next := make(map[string]string, len(all)+1)
+		for k, v := range all {
+			next[k] = v
+		}
+		old = next[name]
+		if _, had := next[name]; !had && len(next) >= Limit {
+			return nil, fmt.Errorf("%w: a workspace keeps at most %d marks", ErrInvalid, Limit)
+		}
+		next[name] = token
+		return next, nil
+	})
+	return old, err
+}
+
+// IsMark reports whether token is an agent's current mark in tenant, so an
+// old picture is never served once it is replaced.
+func (s *Store) IsMark(tenant, token string) (bool, error) {
+	if !ValidToken(token) {
+		return false, nil
+	}
+	all, err := s.marks.Lookup(tenant, marksKey)
+	if errors.Is(err, state.ErrNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	for _, t := range all.Value {
+		if t == token {
+			return true, nil
+		}
+	}
+	return false, nil
 }

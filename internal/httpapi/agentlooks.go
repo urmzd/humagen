@@ -1,9 +1,14 @@
 package httpapi
 
 import (
+	"bytes"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
+	"io"
 	"net/http"
 	"slices"
+	"strings"
 
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/agentcolors"
@@ -13,9 +18,38 @@ import (
 
 // agentLookView is an agent's look, its hue, and what a picker needs to
 // offer the rest: the hues other agents hold, and every choice.
+// lookOut is a look as the API answers with it: the look, and where its
+// drawn picture is served when the console drew one.
+type lookOut struct {
+	agentlooks.Look
+	ImageURL string `json:"image_url,omitempty"`
+}
+
+// looksFor answers with the look of each named agent that has one, or a
+// drawn picture. An agent with neither is left out: its look is the default.
+func (s *Server) looksFor(tenant string, names []string) (map[string]lookOut, error) {
+	looks, err := s.P.AgentLooks.Get(tenant, names)
+	if err != nil {
+		return nil, err
+	}
+	marks, err := s.P.AgentLooks.Marks(tenant, names)
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]lookOut{}
+	for _, name := range names {
+		l, styled := looks[name]
+		image := s.P.MarkURL(tenant, marks[name])
+		if styled || image != "" {
+			out[name] = lookOut{Look: l, ImageURL: image}
+		}
+	}
+	return out, nil
+}
+
 type agentLookView struct {
 	Agent   string           `json:"agent"`
-	Look    agentlooks.Look  `json:"look"`
+	Look    lookOut          `json:"look"`
 	Hue     float64          `json:"hue"`
 	Taken   []float64        `json:"taken"`
 	Choices agentLookChoices `json:"choices"`
@@ -36,7 +70,7 @@ var lookChoices = agentLookChoices{
 
 // lookOf reads an agent's look, hue and the hues held by the others.
 func (s *Server) lookOf(who auth.Principal, name string) (agentLookView, error) {
-	looks, err := s.P.AgentLooks.Get(who.Tenant, []string{name})
+	looks, err := s.looksFor(who.Tenant, []string{name})
 	if err != nil {
 		return agentLookView{}, err
 	}
@@ -154,4 +188,91 @@ func (s *Server) putAgentLook(w http.ResponseWriter, r *http.Request, who auth.P
 		return
 	}
 	ok(w, http.StatusOK, view)
+}
+
+// MaxMarkBytes bounds a drawn picture. A 512 pixel PNG of a bot is far less.
+const MaxMarkBytes = 256 << 10
+
+var pngMagic = []byte("\x89PNG\r\n\x1a\n")
+
+// putAgentMark keeps the picture the console drew of an agent, as a PNG,
+// under a new random token, and serves it at MarkURL from then on. The
+// picture it replaces is deleted. It takes the ownership a look takes.
+func (s *Server) putAgentMark(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	name := r.PathValue("name")
+	if _, err := s.P.Catalog().Get(r.Context(), who.Tenant, name, 0); err != nil {
+		s.problem(w, err)
+		return
+	}
+	if err := s.P.OwnsHome(who, name); err != nil {
+		s.problem(w, err)
+		return
+	}
+	png, err := io.ReadAll(io.LimitReader(r.Body, MaxMarkBytes+1))
+	var tooBig *http.MaxBytesError
+	switch {
+	case errors.As(err, &tooBig) || len(png) > MaxMarkBytes:
+		fail(w, http.StatusRequestEntityTooLarge, "the picture is larger than 256 KiB")
+		return
+	case err != nil:
+		fail(w, http.StatusBadRequest, "the picture could not be read")
+		return
+	case !bytes.HasPrefix(png, pngMagic):
+		fail(w, http.StatusBadRequest, "the picture is not a PNG")
+		return
+	}
+	raw := make([]byte, 16)
+	if _, err := rand.Read(raw); err != nil {
+		s.problem(w, err)
+		return
+	}
+	token := hex.EncodeToString(raw)
+	if _, err := s.P.Blobs.Put(r.Context(), who.Tenant, agentlooks.MarkKey(token), bytes.NewReader(png), MaxMarkBytes); err != nil {
+		s.problem(w, err)
+		return
+	}
+	old, err := s.P.AgentLooks.SetMark(who.Tenant, name, token)
+	if err != nil {
+		_ = s.P.Blobs.Delete(r.Context(), who.Tenant, agentlooks.MarkKey(token))
+		s.problem(w, err)
+		return
+	}
+	if old != "" && old != token {
+		_ = s.P.Blobs.Delete(r.Context(), who.Tenant, agentlooks.MarkKey(old))
+	}
+	view, err := s.lookOf(who, name)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, view)
+}
+
+// agentMark serves an agent's drawn picture to anyone who has its address,
+// Slack's servers among them, which fetch an icon without a credential. The
+// address is the capability: its token is 128 random bits, and a replaced
+// picture is no longer served. Anything else is the same 404.
+func (s *Server) agentMark(w http.ResponseWriter, r *http.Request) {
+	tenant, file := r.PathValue("tenant"), r.PathValue("file")
+	token, isPNG := strings.CutSuffix(file, ".png")
+	if !isPNG || !agentlooks.ValidToken(token) {
+		http.NotFound(w, r)
+		return
+	}
+	if current, err := s.P.AgentLooks.IsMark(tenant, token); err != nil || !current {
+		http.NotFound(w, r)
+		return
+	}
+	body, _, err := s.P.Blobs.Get(r.Context(), tenant, agentlooks.MarkKey(token))
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	defer body.Close()
+	h := w.Header()
+	h.Set("Content-Type", "image/png")
+	h.Set("Cache-Control", "public, max-age=31536000, immutable")
+	h.Set("X-Content-Type-Options", "nosniff")
+	h.Set("Content-Security-Policy", "default-src 'none'")
+	_, _ = io.Copy(w, body)
 }

@@ -16,6 +16,7 @@ import (
 	"log/slog"
 	"maps"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
@@ -1817,4 +1818,21 @@ func commentID(id int64) string {
 		return ""
 	}
 	return strconv.FormatInt(id, 10)
+}
+
+// MarkURL is where Slack, or anyone, reads an agent's drawn picture: the
+// console's canonical address, then the tenant and the picture's token. It
+// is empty when no canonical address is configured, since a picture Slack
+// cannot reach is no use to it.
+func (p *Platform) MarkURL(tenant, token string) string {
+	if p.cfg.PublicURL == "" || token == "" {
+		return ""
+	}
+	base, err := url.Parse(p.cfg.PublicURL)
+	if err != nil || (base.Scheme != "https" && base.Scheme != "http") || base.Host == "" {
+		return ""
+	}
+	base.Path = strings.TrimRight(base.Path, "/") + "/agent-marks/" + url.PathEscape(tenant) + "/" + token + ".png"
+	base.RawQuery, base.Fragment = "", ""
+	return base.String()
 }

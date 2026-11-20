@@ -87,6 +87,9 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok\n")) })
 	mux.HandleFunc("GET /readyz", s.readyz)
+	// An agent's drawn picture, which Slack fetches without a credential: its
+	// unguessable address is what authorizes it (agentMark).
+	mux.HandleFunc("GET /agent-marks/{tenant}/{file}", s.agentMark)
 	// A client's own secret authorizes these routes, not a browser role. The
 	// request goes to the client whose secret verifies it, and takes its
 	// tenant from that client.
@@ -186,6 +189,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /api/agents/{name}/home", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.putAgentHome))))
 	mux.HandleFunc("GET /api/agents/{name}/look", s.authed(auth.AgentsRead, agentNamed(s.seenAgent(s.getAgentLook))))
 	mux.HandleFunc("PUT /api/agents/{name}/look", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.putAgentLook))))
+	mux.HandleFunc("PUT /api/agents/{name}/mark", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.putAgentMark))))
 	mux.HandleFunc("GET /api/agents/{name}/history", s.authed(auth.AgentsRead, agentNamed(s.seenAgent(s.agentHistory))))
 	mux.HandleFunc("GET /api/agents/{name}/skills", s.authed(auth.AgentsRead, agentNamed(s.seenAgent(s.getAgentSkillDefaults))))
 	mux.HandleFunc("PUT /api/agents/{name}/skills", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.putAgentSkillDefaults))))
@@ -517,7 +521,7 @@ func (s *Server) listAgents(w http.ResponseWriter, r *http.Request, who auth.Pri
 		s.problem(w, err)
 		return
 	}
-	looks, err := s.P.AgentLooks.Get(who.Tenant, names)
+	looks, err := s.looksFor(who.Tenant, names)
 	if err != nil {
 		s.problem(w, err)
 		return

@@ -1,6 +1,6 @@
 # Agents as bots: one identity on every surface
 
-Status: proposed. Looks (decision 1) are built; the rest is not.
+Status: partly built. Looks (decision 1), the one Slack app posting as each agent (decision 2's persona and Home's agents), greetings and starters, and a look chosen at New Agent are built. The rest is proposed.
 
 ## Goal
 
@@ -126,16 +126,17 @@ color, so no person's mark looks like an agent and no agent looks like a
 person. Shape, color, finish and what it wears give the range people want
 without breaking that.
 
-Still proposed: `greeting` and `starters` (one or two sentences in the
-agent's voice, and up to three jobs), for the agent's Home tab and Slack's
-App Home.
+A look also holds a `greeting` (up to 280 characters) and up to three
+`starters` (a title and the message it sends), shown on the Look tab and on
+Slack's Home under Meet your agents.
 
-The mark is drawn once, by `bot-avatars`, on every surface. Slack and GitHub
-need an image, so the server renders one:
-`GET /api/agents/{name}/mark.png?size=…`, cached by a hash of the identity,
-readable by whoever may read the agent. Slack fetches `icon_url` without a
-credential, so the Slack app gets a signed URL that expires with the cache
-entry, not a public route that would list agent names.
+The mark is drawn once, by `bot-avatars`, on every surface. Slack needs an
+image, and the server has no canvas, so the console draws it: saving a look
+draws the bot still, to a PNG, and sends it (`PUT /api/agents/{name}/mark`).
+It is kept under a 128-bit random token and served without a credential at
+`/agent-marks/{tenant}/{token}.png`, since Slack fetches `icon_url` without
+one: the address is the capability, it lists nothing, and a replaced picture
+is no longer served. It needs the server's `public_url`.
 
 ### 2. In Slack, one app that takes on whoever is answering
 
@@ -343,11 +344,13 @@ Small changes that make each agent read as itself:
 ## Phasing
 
 1. **Looks.** Built: `pkg/agentlooks`, `GET`/`PUT /api/agents/{name}/look`,
-   looks in every mark, display names through `agentShown`, the Look tab.
-   Still to do: the mark renderer and its route, for Slack and GitHub.
+   looks in every mark, display names through `agentShown`, the Look tab,
+   greetings and starters, the drawn picture and its public route, a look
+   at New Agent.
 2. **Console.** The Home tab, the regrouped tabs, the new setup steps.
-3. **Slack.** `chat:write.customize` and the agent's identity on every post,
-   stream and status line, threads that stay with the agent they
+3. **Slack.** Built: `chat:write.customize` and the agent's name and picture
+   on every post, stream and status line, and Home's Meet your agents.
+   Still to do: threads that stay with the agent they
    were started for and are followed without a mention, `/ask` with the picker, the lead and the agents on App
    Home.
 4. **Linked apps.** The manifest from the agent, the connect flow with
@@ -360,7 +363,7 @@ Each phase updates `docs/architecture/surfaces.md` and the status table.
 ## Open questions
 
 1. Does `chat.update` on a customized message keep its `username` and
-   `icon_url`, or must every update send them again? Check in
+   `icon_url`? The app relies on it (an update never sends them). Check in
    `apps/slack-sandbox`.
 2. Does a thread that is one agent's stay that agent's in the console too,
    so a Slack thread and its Humagen thread agree on who answers next?

@@ -46,7 +46,7 @@ func (s *Server) agentHues(w http.ResponseWriter, r *http.Request, who auth.Prin
 		s.problem(w, err)
 		return
 	}
-	looks, err := s.P.AgentLooks.Get(who.Tenant, visible)
+	looks, err := s.looksFor(who.Tenant, visible)
 	if err != nil {
 		s.problem(w, err)
 		return

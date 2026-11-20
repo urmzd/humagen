@@ -1,6 +1,6 @@
 import { defaultCopy } from "@humagen/components";
-import { AgentInitials, agentBot, type BotLook, botShapes } from "@humagen/web";
-import { type CSSProperties, useEffect, useState } from "react";
+import { AgentInitials, AgentStill, agentBot, type BotLook, botShapes, toRgb } from "@humagen/web";
+import { type CSSProperties, useEffect, useRef, useState } from "react";
 import { setAgentHues, setAgentLooks } from "./agentHues.ts";
 import { botLook } from "./agentLooks.ts";
 import { type AgentLook, type AgentLookView, ApiError, api } from "./api.ts";
@@ -29,6 +29,12 @@ export function trimLook(look: AgentLook): AgentLook {
   if (look.glasses && look.glasses !== "none") out.glasses = look.glasses;
   if (look.headphones) out.headphones = true;
   if (look.bow_tie) out.bow_tie = true;
+  const greeting = (look.greeting ?? "").trim();
+  if (greeting) out.greeting = greeting;
+  const starters = (look.starters ?? [])
+    .map((st) => ({ title: st.title.trim().replace(/\s+/g, " "), prompt: st.prompt.trim() }))
+    .filter((st) => st.title || st.prompt);
+  if (starters.length) out.starters = starters;
   return out;
 }
 
@@ -96,6 +102,17 @@ export function AgentLookEditor({
     };
   }, [name, seed]);
 
+  // A still of the bot, drawn off screen in the look being edited, is what a
+  // save sends as the agent's picture. Its color is read from the page, as a
+  // mark's is.
+  const tinted = useRef<HTMLSpanElement>(null);
+  const still = useRef<HTMLCanvasElement>(null);
+  const [ink, setInk] = useState<string>();
+  // biome-ignore lint/correctness/useExhaustiveDependencies: read again when the color changes
+  useEffect(() => {
+    if (tinted.current) setInk(toRgb(getComputedStyle(tinted.current).color));
+  }, [hue, view]);
+
   if (!view) return problem ? <Problem message={problem} /> : <SkeletonRows count={4} />;
 
   const base = brandShown(name);
@@ -127,6 +144,7 @@ export function AgentLookEditor({
         setAgentLooks(Object.keys(v.look).length ? { [name]: v.look } : {}, [name]);
         setAgentHues({ [name]: v.hue });
         setNotice(words.saved);
+        return drawPicture();
       })
       .catch((e) => {
         if (e instanceof ApiError && e.status === 409)
@@ -134,6 +152,40 @@ export function AgentLookEditor({
         else setProblem(e instanceof ApiError ? e.message : words.failed);
       })
       .finally(() => setSaving(false));
+  };
+
+  /**
+   * Send the still as the agent's picture. It is drawn after the saved look
+   * is on it, and a page that cannot draw one (no canvas) sends nothing: the
+   * look is saved either way, and Slack falls back to the app's own icon.
+   */
+  const drawPicture = async () => {
+    await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
+    const canvas = still.current;
+    if (!canvas || typeof canvas.toBlob !== "function") return;
+    const png = await new Promise<Blob | null>((done) => {
+      try {
+        canvas.toBlob(done, "image/png");
+      } catch {
+        done(null);
+      }
+    });
+    if (!png || png.size === 0) return;
+    try {
+      const v = await api.setAgentMark(name, png);
+      setAgentLooks(Object.keys(v.look).length ? { [name]: v.look } : {}, [name]);
+    } catch {
+      // The look is saved; only its picture for other surfaces is not.
+    }
+  };
+  const starters = look.starters ?? [];
+  const setStarter = (i: number, patch: Partial<{ title: string; prompt: string }>) => {
+    const next = [0, 1, 2].map((j) => ({
+      title: starters[j]?.title ?? "",
+      prompt: starters[j]?.prompt ?? "",
+    }));
+    next[i] = { ...next[i], ...patch } as (typeof next)[number];
+    set({ starters: next });
   };
 
   const shown = (look.display_name ?? "").trim() || base;
@@ -153,6 +205,27 @@ export function AgentLookEditor({
             </span>
             <span className="text-aui-xs text-aui-muted">@{name}</span>
           </div>
+          {look.greeting?.trim() && (
+            <p className="text-center text-aui-xs text-aui-muted" data-testid="look-greeting">
+              {look.greeting.trim()}
+            </p>
+          )}
+          <span
+            ref={tinted}
+            aria-hidden
+            data-accent="agent"
+            style={{
+              ...tint(hue),
+              color: "var(--aui-accent)",
+              position: "absolute",
+              left: -10000,
+              top: 0,
+            }}
+          >
+            {ink && (
+              <AgentStill ref={still} key={`${hue}`} name={base} look={drawn(look)} color={ink} />
+            )}
+          </span>
           {isDefault && hue === view.hue && (
             <span className="rounded-full bg-aui-hover px-2 py-0.5 text-aui-2xs text-aui-muted">
               {words.defaultBadge}
@@ -171,6 +244,48 @@ export function AgentLookEditor({
               onChange={(e) => set({ display_name: e.target.value })}
             />
           </Label>
+
+          <Label text={words.greeting} hint={words.greetingHint}>
+            <textarea
+              id="agent-look-greeting"
+              className={`${field} min-h-16`}
+              value={look.greeting ?? ""}
+              maxLength={280}
+              rows={2}
+              onChange={(e) => set({ greeting: e.target.value })}
+            />
+          </Label>
+
+          <fieldset className="flex min-w-0 flex-col gap-2">
+            <legend className="mb-2 text-aui-xs font-medium text-aui-muted">
+              {words.starters}
+            </legend>
+            {[0, 1, 2].map((i) => (
+              <div
+                key={i}
+                className="grid min-w-0 gap-2 sm:grid-cols-[minmax(0,12rem)_minmax(0,1fr)]"
+              >
+                <input
+                  id={`agent-look-starter-${i}-title`}
+                  aria-label={words.starterTitle(i + 1)}
+                  className={field}
+                  placeholder={words.starterTitlePlaceholder}
+                  maxLength={60}
+                  value={starters[i]?.title ?? ""}
+                  onChange={(e) => setStarter(i, { title: e.target.value })}
+                />
+                <input
+                  id={`agent-look-starter-${i}-prompt`}
+                  aria-label={words.starterPrompt(i + 1)}
+                  className={field}
+                  placeholder={words.starterPromptPlaceholder}
+                  maxLength={500}
+                  value={starters[i]?.prompt ?? ""}
+                  onChange={(e) => setStarter(i, { prompt: e.target.value })}
+                />
+              </div>
+            ))}
+          </fieldset>
 
           <fieldset className="flex min-w-0 flex-col gap-2">
             <legend className="mb-2 text-aui-xs font-medium text-aui-muted">{words.shape}</legend>

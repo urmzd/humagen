@@ -1378,6 +1378,30 @@ paths:
             text/plain:
               schema: {type: string}
 
+  /agent-marks/{tenant}/{file}:
+    get:
+      operationId: getAgentMarkImage
+      tags: [agents]
+      summary: An agent's drawn picture
+      description: |
+        Served to anyone with the address, since Slack fetches an icon
+        without a credential: the address is the capability. `file` is the
+        picture's 128-bit random token and `.png`, and a picture that was
+        replaced is no longer served. Anything else is the same 404.
+      x-permission: public
+      security: []
+      parameters:
+        - {name: tenant, in: path, required: true, schema: {type: string}}
+        - {name: file, in: path, required: true, schema: {type: string, pattern: "^[0-9a-f]{32}\\.png$"}}
+      responses:
+        "200":
+          description: The picture.
+          content:
+            image/png:
+              schema: {type: string, format: binary}
+        "404":
+          description: No current picture at that address.
+
   /readyz:
     get:
       operationId: getReadiness
@@ -2507,6 +2531,37 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
         "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/agents/{name}/mark:
+    put:
+      operationId: setAgentMark
+      tags: [agents]
+      summary: Keep the picture drawn of an agent
+      description: |
+        The console draws the agent's bot as a PNG and sends it here, so a
+        surface that needs an image (Slack's icon for a message the agent
+        posts) can show it. It is kept under a new random token and served
+        at the look's `image_url`; the picture it replaces is deleted. At
+        most 256 KiB. Takes the ownership changing the agent takes.
+      x-permission: agents:write
+      parameters:
+        - {$ref: "#/components/parameters/AgentName"}
+      requestBody:
+        required: true
+        content:
+          image/png:
+            schema: {type: string, format: binary}
+      responses:
+        "200":
+          description: The agent's look, with where its picture is served.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AgentLookView"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
         "413": {$ref: "#/components/responses/TooLarge"}
         "500": {$ref: "#/components/responses/ServerError"}
   /api/agents/{name}/history:
@@ -15924,6 +15979,29 @@ components:
         glasses: {type: string, enum: [none, round, square, shades]}
         headphones: {type: boolean}
         bow_tie: {type: boolean}
+        greeting:
+          description: A sentence or two in the agent's voice, shown where people meet it.
+          type: string
+          maxLength: 280
+        starters:
+          description: Up to three jobs people can hand the agent in one click.
+          type: array
+          maxItems: 3
+          items:
+            type: object
+            additionalProperties: false
+            required: [title, prompt]
+            properties:
+              title: {type: string, maxLength: 60}
+              prompt: {type: string, maxLength: 500}
+        image_url:
+          description: |
+            Where the agent's drawn picture is served, to anyone with the
+            address (Slack fetches it as the agent's icon). Set by the server
+            once the console has drawn one and a canonical console URL is
+            configured; never taken from a request.
+          type: string
+          readOnly: true
     AgentLookView:
       description: An agent's look, its hue, and what a picker offers.
       type: object
