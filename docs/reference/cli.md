@@ -391,7 +391,9 @@ listed, and its sessions stay in the corpus; make the project and run the
 command again to attach them. A session from an export has no directory and is
 kept by month as before, unless `--project` names a project for it. A session already imported by month is not moved. One that changed
 since is replaced where it is, in its monthly source. Imported sessions are
-references an agent searches and cites; they are not conversations to continue.
+references an agent searches and cites. The server can continue one as a new
+conversation of its own, but no route or console action offers that yet
+([status](../architecture/overview.md#status)).
 
 With `--project NAME`, which needs `--export`, the sessions of every export
 named go in a source named as `--by-project` names one for a directory called

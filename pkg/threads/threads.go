@@ -246,6 +246,10 @@ type Thread struct {
 	ReadOnly     bool   `json:"read_only,omitempty"`
 	// Fork is immutable passive history from another conversation.
 	Fork *Fork `json:"fork,omitempty"`
+	// Import is where a conversation continued from an imported one came
+	// from, and the passive turns of it the agent is sent. It is fixed when
+	// the thread is started, and a fork of the thread keeps it.
+	Import *Import `json:"import,omitempty"`
 	// Archive is set while the conversation is archived, and stays as a
 	// tombstone once an admin approves its deletion (SetArchive, Purge).
 	Archive *Archive `json:"archive,omitempty"`
@@ -436,6 +440,7 @@ func (t Thread) clone() Thread {
 		t.Session = &identity
 	}
 	t.Fork = t.Fork.clone()
+	t.Import = t.Import.clone()
 	t.Archive = t.Archive.clone()
 	t.Approval = t.Approval.clone()
 	if t.Surface != nil {
@@ -531,6 +536,9 @@ func (t Thread) validate() error {
 		return fmt.Errorf("%w: a thread is started by someone", ErrInvalid)
 	}
 	if err := t.Fork.validate(t.ID); err != nil {
+		return err
+	}
+	if err := t.Import.validate(t); err != nil {
 		return err
 	}
 	if t.Surface != nil {
