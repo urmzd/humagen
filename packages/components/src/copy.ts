@@ -2652,6 +2652,11 @@ export const defaultCopy = {
   /** A question answered in words, not by picking one of its options. */
   repliedBy: (by: string, text: string, time: string) => `${by} answered "${text}" | ${time}`,
   declinedBy: (by: string, time: string) => `Declined by ${by} | ${time}`,
+  /** A question nobody answered in time: what applied instead, as the platform words it. */
+  questionExpired: "Nobody answered in time",
+  /** A question whose run stopped or ended before anyone answered. `why` is the platform's words. */
+  questionCancelled: (why?: string) =>
+    why ? `Not answered. ${why}` : "Not answered. The run ended first",
   approvalNeeded: (summary: string) => `Approval needed: ${summary}`,
   /** The approval agent's view of a call, on its approval card. */
   judgement: {
