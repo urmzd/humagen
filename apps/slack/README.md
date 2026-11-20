@@ -95,6 +95,51 @@ in a code channel on its next message after the client cache refreshes (30 secon
 Ordinary Slack channels use `/skill`; Slack's dynamic command API applies only to
 code channels. This does not install new agent skills or grant additional tools.
 
+## Code channels
+
+Off by default. With `code_channels: true` on the Slack surface
+(`SLACK_CODE_CHANNELS=1` when the app is run by hand), a finished answer in a
+thread or a direct message carries a **Continue in a Code Channel** button.
+Nothing decides for the person that a request is coding work: the app knows an
+agent by its name and description and a run names no repository, so there is no
+signal to trust, and a channel is opened only when someone presses.
+
+Pressing it calls `agents.conversations.create` with a session id made from the
+thread (`<channel>-<thread ts>`), so a second press, a redelivery or a restart
+asks for the same channel and never a second one, and posts
+"Continuing in #channel. Follow along there." in the thread. The person who
+asked or an operator may press in a channel thread; in a direct message it is
+theirs already.
+
+The conversation does not change, only where it is shown. A mention in the code
+channel is keyed by the thread the channel was opened from, so it is the next
+turn of that same Humagen conversation, and the thread keeps working too. The
+link from the channel back to its thread is read from Slack
+(`conversations.info`, the channel's `agent_session.origin_link`), not stored.
+The first turn in the channel carries what people said in the thread since the
+app was last asked there, as [thread history](#thread-history) does. The
+channel's stop button stops the turn in flight in it, and Retry pressed there
+asks again there.
+
+Turning it on changes the manifest: `humagen slack manifest -f humagen.yaml`
+then adds the `code_channels` feature and the `code_channels:manage`,
+`channels:read` and `groups:read` scopes. Push the manifest and reinstall the
+app, or Slack refuses the call. Every refusal leaves things as they were:
+
+| Slack says | What happens |
+|---|---|
+| `agents.conversations.create` is refused for a reason that will not pass by itself (a missing scope, a plan or an app without code channels) | The person who pressed is told the thread carries on, nothing is posted, and the button is not offered again until the app restarts |
+| It is refused for a reason that may pass (rate limit, a Slack error) | The person is told, and the button stays |
+| `conversations.info` is refused | The channel is answered as an ordinary one, as before this setting; after a missing scope Slack is not asked again |
+| The thread cannot be read | The first turn in the channel goes without the thread's messages |
+
+Not moved: a thread in a channel bound to a project, and a thread a mapped
+person posts in as themselves (that conversation is the platform's, found by
+the Slack thread itself). In a code channel a mapped person asks through the
+app as themselves, and files attached there are refused, as they are for
+anyone who asks through the app. Inbox items of a moved conversation are still
+posted in the thread it started in.
+
 ## The plan tab
 
 In a Slack code channel, a turn that has a plan (a plan title and its steps)

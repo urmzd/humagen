@@ -93,6 +93,8 @@ export class Presenter {
       shown?: TurnStatus;
       /** The copy a turn is rendered with, for a branded disclaimer. */
       copy?: Copy;
+      /** Whether the finished answer offers Continue in a Code Channel. Left out, it never does. */
+      codeChannel?: () => boolean;
       /** Slack said the session here is the channel itself, as in a code channel. */
       onCodeChannel?: () => void;
       /** What this app can act on. A bridged outcome offers none of it. */
@@ -111,8 +113,15 @@ export class Presenter {
     return this.opts.copy ?? defaultCopy;
   }
 
+  /**
+   * What the host can act on beyond the defaults. Continue in a Code Channel
+   * is added only where a code channel may be opened here.
+   */
   private get caps(): TurnCapabilities | undefined {
-    return this.opts.outcomesOnly ? undefined : this.opts.capabilities;
+    if (this.opts.outcomesOnly) return undefined;
+    return this.opts.codeChannel?.()
+      ? { ...this.opts.capabilities, codeChannel: true }
+      : this.opts.capabilities;
   }
 
   /** Whether native streaming was still in use, so the caller can remember a refusal. */

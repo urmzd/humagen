@@ -515,6 +515,7 @@ var copyKeyList = []string{
 	"confirmDestructive.deny",
 	"confirmDestructive.text",
 	"confirmDestructive.title",
+	"continueInCodeChannel",
 	"conversation.activity",
 	"conversation.activityAgents",
 	"conversation.activityEmpty",

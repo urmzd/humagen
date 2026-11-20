@@ -685,6 +685,7 @@ spec:
       background_color: "#1a1a2e"
       command_description: Ask Acme's agents
       command_usage_hint: "[question]"
+      code_channels: false  # true offers Continue in a Code Channel; needs the manifest pushed and the app reinstalled
       humagen_client:          # how the app signs in to humagen's API. Dev sign-in needs none
         token_url: https://login.example.com/oauth2/v1/token
         client_id: humagen-slack
@@ -892,6 +893,13 @@ Humagen's environment reaches it.
 surface: its name (`app_name`, else the workspace's or deployment's
 `display_name`), `command`, `description`, `background_color`,
 `command_description` and `command_usage_hint`, each Humagen's when left out.
+`code_channels: true` adds the code channels feature and the
+`code_channels:manage`, `channels:read` and `groups:read` scopes to that
+manifest, and starts the app with `SLACK_CODE_CHANNELS=1`. It is off unless
+set, and the manifest is then the one every install already has. Turning it on
+changes the manifest, so push it and reinstall the app before the setting does
+anything: until then Slack refuses the call and conversations stay in their
+threads. See [the Slack app](https://github.com/urmzd/humagen/blob/main/apps/slack/README.md#code-channels).
 What the app says in Slack itself (its tagline, disclaimer and suggested
 prompts) is the `SLACK_BRANDING` file's. The app's icon and its bot's
 picture are set on the app's page at api.slack.com.

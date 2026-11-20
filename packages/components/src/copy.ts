@@ -2736,6 +2736,8 @@ export const defaultCopy = {
   runLink: (url: string) => `[${url}](${url})`,
   disclaimer: (name: string) =>
     `${name} is AI and can make mistakes. Double-check its answers before you rely on them.`,
+  /** Under an answer, where the host can move the conversation into a code channel. */
+  continueInCodeChannel: "Continue in a Code Channel",
   helpful: "Helpful",
   notHelpful: "Not helpful",
   /** Asked after a rating. Answering is optional; the rating is already recorded. */

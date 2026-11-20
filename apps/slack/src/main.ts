@@ -58,6 +58,7 @@ async function main() {
     defaultAgent: config.humagen.defaultAgent,
     publicUrl: config.humagen.publicUrl,
     branding: config.slack.branding,
+    codeChannels: config.slack.codeChannels,
     plans: filePlanStore(planStorePath(config.slack.streamJournal, config.slack.team), log),
     log,
   });

@@ -58,6 +58,7 @@ import { BUILDER, choose, mayRoute, type Routing } from "./agents.ts";
 import { type Branding, brandedCopy, brandedWords, DEFAULT_BRANDING } from "./branding.ts";
 import { bridgePolicy, subscribed } from "./bridge.ts";
 import { CodeChannels } from "./codechannel.ts";
+import { CodeChannels as CodeChannelOpener } from "./codechannel-open.ts";
 import { offersRunDetails, runDetailsReply } from "./details.tsx";
 import { inThread, Names, readThread, sinceLastTurn, withHistory } from "./history.ts";
 import { homeModel } from "./home.ts";
@@ -112,6 +113,8 @@ export interface AppOptions {
   publicUrl?: string;
   /** Name, tagline, disclaimer and suggested prompts. Left out, the defaults. */
   branding?: Branding;
+  /** Whether a person may move a conversation into a code channel of its own. Off when left out. */
+  codeChannels?: boolean;
   /** How long to wait before each further look for a code channel session's title. */
   titleWaits?: number[];
   /** The least time between two writes of one turn to Slack. */
@@ -143,6 +146,12 @@ export interface AppOptions {
 interface Job {
   files?: boolean;
   session: Session;
+  /**
+   * The thread that names the conversation, when that is not where this was
+   * asked: a message in a code channel continues the conversation of the
+   * thread the channel was opened from (`codechannel-open.ts`).
+   */
+  conversation?: Session;
   text: string;
   /** The message that asked. Lifecycle reactions go on it. */
   triggerTs: string;
@@ -498,6 +507,8 @@ export class App {
   private readonly words: typeof words;
   /** Display names for thread history, when the app may read them. */
   private readonly names: Names;
+  /** Moving a conversation into a code channel. Null unless the deployment turned it on. */
+  private readonly code: CodeChannelOpener | null;
   /** The context bar and session name of each code channel. */
   private readonly chrome: CodeChannels;
   /** The plan tab of each code channel, and people's comments on it. */
@@ -518,6 +529,15 @@ export class App {
     this.copy = brandedCopy(this.branding);
     this.words = brandedWords(this.branding);
     this.names = new Names(slack, (line) => this.log(line));
+    this.code = opts.codeChannels
+      ? new CodeChannelOpener(slack, {
+          team: opts.team,
+          botUser: opts.botUser,
+          subject: opts.subject,
+          names: this.names,
+          log: (line) => this.log(line),
+        })
+      : null;
     this.chrome = new CodeChannels(slack, {
       title: (thread) => humagen.threadTitle(thread),
       href: this.href,
@@ -780,6 +800,17 @@ export class App {
     }
     if (event.type === "agent_session_stopped") {
       const channel = event.channel ?? event.channel_id;
+      if (channel && !event.thread_ts && this.code) {
+        // A code channel is one session with no thread: every turn in flight in it stops.
+        const inChannel = `${this.opts.team}/${channel}/`;
+        for (const name of [...this.threads.keys()].filter((n) => n.startsWith(inChannel)))
+          await this.stop({
+            team: this.opts.team,
+            channel,
+            threadTs: name.slice(inChannel.length),
+          });
+        return;
+      }
       if (!channel || !event.thread_ts) return;
       await this.stop({ team: this.opts.team, channel, threadTs: event.thread_ts });
       return;
@@ -840,9 +871,13 @@ export class App {
     const text = (event.text ?? "").replaceAll(`<@${this.opts.botUser}>`, " ").trim();
     if (!text && !event.files?.length) return;
     await this.offerSkills(event.channel);
+    // A mention in a code channel continues the conversation of the thread it was opened from.
+    const conversation =
+      this.code && event.type === "app_mention" ? await this.code.originOf(event.channel) : null;
     this.enqueue({
       files: Boolean(event.files?.length),
       session,
+      ...(conversation ? { conversation } : {}),
       text: text || defaultCopy.attachedFilesPrompt,
       triggerTs: event.ts,
       user: event.user,
@@ -963,7 +998,9 @@ export class App {
    * Where a message sits in its conversation. The conversation's id follows
    * from the thread, so humagen is asked rather than a local record.
    */
-  private async place(job: Job): Promise<{ key: string; after?: string } | "duplicate"> {
+  private async place(
+    job: Job,
+  ): Promise<{ key: string; after?: string; turns?: Run[] } | "duplicate"> {
     // A turn asked again continues where again() found it, after the turn,
     // in its conversation: one this app started, or the humagen thread a mapped
     // person's Slack thread is. Asked again before by the same person, it is
@@ -974,7 +1011,7 @@ export class App {
         .catch(() => null);
       return again ? "duplicate" : { key: job.key, after: job.again.after };
     }
-    const first = threadKey(job.session);
+    const first = threadKey(job.conversation ?? job.session);
     const turns = (await this.humagen.getThread(runId(this.opts.tenant, this.opts.subject, first)))
       ?.turns;
     // The first run in a thread is keyed by the thread, which is what names the conversation.
@@ -986,7 +1023,7 @@ export class App {
       .filter((t) => !t.parent)
       .sort((a, b) => a.created_at.localeCompare(b.created_at))
       .at(-1);
-    return { key: job.key, after: latest?.id };
+    return { key: job.key, after: latest?.id, turns };
   }
 
   private target(job: Job) {
@@ -1025,6 +1062,8 @@ export class App {
       return "done" as const;
     }
     let outputRun = "";
+    // Continue in a Code Channel is offered under an answer this app keyed by its thread.
+    let movable = false;
     const items = new Mailbox<Item>();
     const live: Live = { stopped: false, wake: (item) => items.push(item) };
     thread.live = live;
@@ -1036,6 +1075,7 @@ export class App {
       capabilities: this.capabilities,
       log: (line) => this.log(line),
       ...(queued ? { shown: "queued" as const } : {}),
+      ...(this.code ? { codeChannel: () => movable && Boolean(this.code?.available) } : {}),
       // Slack said the session is the channel: its context bar and name follow the run.
       onCodeChannel: () => {
         if (live.run) this.track(this.chrome.sync(job.session.channel, live.run));
@@ -1055,7 +1095,9 @@ export class App {
       // asked again acts for whom again() decided, never for whoever else is
       // known, and someone else's words are asked for nobody.
       const asking = job.again ? job.again.as : job.notTheirs ? null : await this.actAs(job.user);
-      if (asking && !job.again) {
+      // In a code channel the conversation is its thread's, which the app
+      // names, so a mapped person asks through the app as themselves there.
+      if (asking && !job.again && !job.conversation) {
         if (live.stopped) {
           await presenter.finish(
             reduce(emptyTurn(job.key, { name: this.selfName }), { type: "turn.stopped" }),
@@ -1105,6 +1147,17 @@ export class App {
           return this.refuse(job, presenter, agent, NO_AGENT);
         }
         if (job.history) text = await this.withThread(job, text);
+        if (this.code && job.conversation)
+          text = await this.code.withOrigin(text, {
+            origin: job.conversation,
+            there: job.session,
+            turns: placed.turns ?? [],
+          });
+        movable =
+          !job.again &&
+          !job.conversation &&
+          !controls.policy.bound &&
+          Boolean(await this.code?.offers(job.session.channel));
         // What people wrote on the channel's plan canvas since the last turn goes first.
         const remarks = await this.plans.comments(job.session.channel);
         text = remarks.with(text);
@@ -1614,6 +1667,19 @@ export class App {
     if (ui.id === ActionId.runDetails) return this.onRunDetails(ui, p);
     // The Home tab's own controls, and Review on an item it shows.
     if (ui.payload.turnId === HOME_ID) return this.onHome(p, ui);
+    if (ui.id === ActionId.codeChannel) {
+      // A button from before the setting was turned off does nothing.
+      return this.code?.press(
+        { run: ui.payload.turnId, user: p.user.id, channel: at },
+        {
+          run: (id) => this.humagen.getRun(id),
+          mayMove: (run, user) =>
+            (this.opts.operators ?? []).includes(user) || this.requesters.get(run) === user,
+          bound: (channel) => this.isBound(channel),
+          whisper: (text) => this.whisper(p, text),
+        },
+      );
+    }
     if (ui.id === ActionId.open && (p.view?.type === "home" || p.container?.type === "view"))
       return this.review(p, ui.payload.turnId);
     const as = await this.actAs(p.user.id);
@@ -1635,7 +1701,12 @@ export class App {
     if (ui.id === ActionId.ask) return this.whisper(p, this.words.askNotYet);
     if (ui.id === ActionId.retry || ui.id === ActionId.resume) {
       const run = await this.humagen.getRun(ui.payload.turnId);
-      const outcome = run ? await this.again(run, p.user.id, p.message?.ts) : "elsewhere";
+      const outcome = run
+        ? await this.again(run, p.user.id, p.message?.ts, {
+            channel: at,
+            threadTs: p.message?.thread_ts,
+          })
+        : "elsewhere";
       if (outcome !== "started") await this.refuseRetry(p, outcome);
     }
     // Opening a called run, reporting and reconnecting have nowhere to go from Slack yet.
@@ -1677,9 +1748,20 @@ export class App {
    * person pressing twice joins their first. The routing rules are checked
    * again.
    */
-  private async again(run: Run, user: string, clickedTs?: string): Promise<Again> {
+  private async again(
+    run: Run,
+    user: string,
+    clickedTs?: string,
+    clicked?: { channel?: string; threadTs?: string },
+  ): Promise<Again> {
     const session = await this.sessionOfRun(run);
     if (!session || session.team !== this.opts.team) return "elsewhere";
+    // Pressed in the code channel the conversation moved to: it is asked again there.
+    const there =
+      (await this.code?.there(session, clicked?.channel, {
+        ts: clickedTs,
+        thread_ts: clicked?.threadTs,
+      })) ?? null;
     const owner = this.requesters.get(run.id);
     const acted = actedFor(run);
     // Asked through the app again, a turn the app asked as itself acts for the same one.
@@ -1696,7 +1778,8 @@ export class App {
     if (!mayRoute(await this.routing(), run.agent)) return "not-routed";
     const { agent, text, after } = retryOf(run);
     this.enqueue({
-      session,
+      session: there ?? session,
+      ...(there ? { conversation: session } : {}),
       text,
       triggerTs: clickedTs ?? session.threadTs,
       user,
