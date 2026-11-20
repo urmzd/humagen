@@ -91,7 +91,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-054 | The sidebar lists Recents newest first, Pinned on top, Projects and Archived as views; each row says its project, its age or an unread dot, and whether it waits on a person, runs or failed | Implemented: `conversationList.ts`, `marks.ts`, `Sidebar.tsx`, `pkg/marks`, `PATCH /api/threads/{id}/marks`, `waiting` and `last` on thread summaries; Go, web and DOM tests pass; `sidebar-recents`, `sidebar-row-actions`, `sidebar-projects` and `sidebar-archived` screens pass at 390x844 and 1280x800 |
 | DES-055 | A sidebar row previews itself on hover or a long press, and the wave's preview carries its author's mark | Implemented: `RowPreview.tsx`, `peek.ts`, `TurnRail.tsx`; web, DOM and screens pass (`sidebar-preview`, `conversation-wave-preview`) at 390x844 and 1280x800 |
 | DES-056 | A one-time tip teaches search, dismissed once per person | Evidence: `sidebar-search` checks the replacement Search navigation button; the tip card was removed |
-| DES-057 | Home files a new conversation from over its chat bar; a conversation's approval mode is a text control under the composer, Default or Approve for Me, within policy and audited | Implemented: `ApprovalModePicker.tsx`, `HomePage.tsx`, `pkg/threads/approval.go`, `internal/platform/approval_mode.go`, `PUT /api/threads/{id}/approval`; Go, DOM and screens pass (`home-project-above`, `composer-approval-mode`). Per-message model and effort were removed (DES-067) |
+| DES-057 | Home files a new conversation from over its chat bar; a conversation's approval mode is a text control under the composer, Default or Approve for Me, within policy and audited | Implemented: `ApprovalModePicker.tsx`, `HomePage.tsx`, `pkg/threads/approval.go`, `internal/platform/approval_mode.go`, `PUT /api/threads/{id}/approval`; Go, DOM and screens pass (`home-project-above`, `composer-approval-mode`). Per-message model and effort were removed (DES-067). In Slack: an approval's menu lets the approval agent decide the thread, set as the person through the same route with `act_as` and said in the thread with the way back; an agent-decided card shows its reason; Ask a Question asks the agent in the thread while the call waits. Go, adapter, render-slack and Slack app tests pass; live Slack not yet checked |
 | DES-053 | Notifications sort into the reader's own views: Inbox, Unread, Hidden and Done, with per-reader hide and delete | Implemented; per-reader marks and counters, bulk API with isolation tests, DOM and route tests, phone/desktop captures |
 | DES-050 | The Workspace is a pane of tabs beside the conversation: + opens items, tabs close, Expand and Show Two Tabs, tabs in the address, a full-screen sheet on a phone | Implemented: `Workspace.tsx`, `pane.ts`, `Inspector` `expanded`; web, pane and route tests pass; `workspace-pane-split`, `workspace-pane-expanded` and the other Workspace screens pass at 390x844 and 1280x800 |
 | DES-051 | Memories by scope: what a conversation, its session and each message used and wrote, read only | Implemented: `Memories.tsx`, `GET /api/threads/{id}/memory`, `Run.memory`; web, route and Go tests pass; `workspace-memories` screens pass at 390x844 and 1280x800 |
@@ -1688,6 +1688,39 @@ Evidence: `go test -race ./pkg/threads ./internal/platform ./internal/httpapi`
 `TestOnlyAPersonChoosesApproveForMe`, the contract tests); `cd apps/web &&
 pnpm test` (`approval-mode.dom.test.tsx`, `chat.dom.test.tsx`); `make
 screens` with `home-project-above` and `composer-approval-mode`.
+
+In Slack (the Slack app, `apps/slack`):
+
+- An approval waiting in a run's thread has a menu (Slack's overflow, after
+  its buttons) with one row, "Let the approval agent decide in this thread".
+  It is offered only where the app's client maps people
+  (`TurnCapabilities.approvalAgent`), never on a run held at a limit, and
+  never as a button, so it never reads as a decision on the call. It sets
+  the conversation through `PUT /api/threads/{id}/approval` with `act_as`,
+  so every check is the console's, made as the person who pressed; a
+  person the client maps to nobody is told so and Humagen is not asked, and
+  a refusal is said to the presser alone in Humagen's words. The change is
+  said in the thread, naming who made it, that the agent decides from the
+  next action on and that the action already waiting still waits, with one
+  button back (Ask Me Again, or Let the Approval Agent Decide).
+- An approval the approval agent decided says so on its card in the
+  thread, with its reason, as the inbox does: the run's answer carries the
+  agent's note (`judgementOfNote` in `packages/adapter/src/question.ts`).
+  What it said about a call it handed to a person reaches the card from the
+  inbox, while the app follows the run, and stays once a person decides.
+- Ask a Question on an approval in the thread opens a form; the question
+  is said in the thread and asked of the agent that made the call, as the
+  person's message in the conversation (as a message typed in the console
+  while a run waits), beside the waiting run: the call's card keeps its
+  buttons and the answer streams below it.
+
+Evidence (Slack): `go test -race ./internal/httpapi`
+(`TestASurfaceSetsApprovalModeOnlyAsTheMappedPerson`); `cd apps/slack &&
+pnpm test` (`questions.test.tsx`: the form, the question asked as the
+person and beside the waiting call, the menu, the note and its way back,
+refusals, the judgement on a waiting card); `packages/render-slack`
+`question-cards.test.tsx`; `packages/adapter` `question.test.ts`. Not yet
+checked in a live Slack workspace.
 
 ### DES-059: Review GitHub changes in context
 

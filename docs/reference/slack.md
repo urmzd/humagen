@@ -51,9 +51,8 @@ The app works around each of these and says where in its README.
 | The run a retry started, in the resolve response | Retry from Slack starts its own run and acknowledges the inbox part | Return `{message, run}` from `POST /api/inbox/{id}/parts/{part}/resolve` |
 | Feedback with comments | Built: like and dislike open a comment modal and save the rating even when skipped | `PUT /api/runs/{id}/feedback` stores a run reference, rating, reason and comment; the run provides context; `GET` collects paginated records |
 | A modal to type a reply to a question | Built for a question in the inbox, a mention in a person's direct messages, and Something Else on a run's own card in its thread | None |
-| A question about a call, asked instead of deciding | Ask a question on an approval says it is not available yet. The answer route takes a decision (`approve` or `deny`, with a note), a choice or a reply | An `ask` answer that keeps the call halted and hands the question to the agent |
 | A consequence and a recommended mark on a question's options | Not shown: `Question.options` is a list of labels | Options as objects with a label, an optional one-line consequence and an optional recommended flag |
-| The approval agent's reason and fields on the run's question | Shown as one line on an approval in the inbox; the question on `run.parked.v1` does not carry the judgement, so the card in the run's thread shows none | Carry `judgement` on the run's question as the inbox part does |
+| The approval agent's fields and references on the run's question | The card in the run's thread says what the agent decided and why: an allow or deny from the run's answer, and any judgement from the inbox while the app follows the run. A card the app no longer follows (after a restart, or a run that went quiet) shows only the reason from the answer | Carry `judgement` on the run's question as the inbox part does |
 
 ### Steps, command output and run details
 
@@ -132,6 +131,36 @@ credential and the people it answers for:
 
 Under `tailscale` sign-in the app's subject is `slack-app:<team id>`, such as
 `slack-app:T0123ABCD`, and a mapped person is `tailscale:<login>`.
+
+**Ask a Question** on an approval opens a form for one question. Sent, the
+question is said in the thread (who asked, about which action, and what)
+and asked of the agent that made the call, as a message typed in the
+console while a run waits is: by a mapped person as their own message in the
+conversation (`POST /api/threads` with `act_as`), by anyone else through the
+app, as a mention there would be. It is answered beside the call, not behind
+it: the call's card keeps waiting with its buttons, and the answer streams
+below it. Deciding stays with Approve and Decline. In a bound channel only a
+mapped person may ask.
+
+**The approval agent.** A conversation set to Run in the console has the
+approval agent decide its gated actions. In Slack, an approval waiting in a
+run's thread has a menu after its buttons with one row, **Let the approval
+agent decide in this thread**, where the app's client maps people. It sets
+the conversation the thread is (`PUT /api/threads/{id}/approval` with
+`act_as`), with the same checks as the console's toggle, made as the person
+who pressed: Humagen decides whether they may, and its refusal is said to
+them alone. A Slack user the client maps to nobody is told they cannot, and
+Humagen is not asked. The change is said in the thread, naming who made it:
+the agent decides from the next action on, as that person could, and an
+action already waiting still waits for a person. Under it, **Ask Me Again**
+sets the conversation back, and that change is said the same way, with
+**Let the Approval Agent Decide** under it.
+
+A call the approval agent decided settles its card with what it decided and
+why, as the inbox shows it (`Approval agent: Allowed: "<reason>"` beside who
+set the conversation to Run). What it said about a call it handed to a
+person is put on the card while it waits, from the inbox, when the app is
+following the run.
 
 The webhook connector shows a parked run as a suspended session and does not
 take answers.

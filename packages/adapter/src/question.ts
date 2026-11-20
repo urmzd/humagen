@@ -71,6 +71,30 @@ export function judgementOf(j: WireJudgement): Judgement | undefined {
   };
 }
 
+/**
+ * The note the platform answers an approval with when the approval agent
+ * decided it, in a conversation set to Run (`fileApproval` in
+ * internal/platform/approval_agent.go writes these words).
+ */
+const AGENT_NOTE = {
+  approve: { prefix: "Allowed by the approval agent: ", decision: "allow" },
+  deny: { prefix: "Denied by the approval agent: ", decision: "deny" },
+} as const;
+
+/**
+ * What the approval agent decided, read from the answer it settled a call
+ * with. The run's question does not carry the judgement the inbox part
+ * keeps, but the answer on `run.resumed.v1` carries the agent's reason, so
+ * a card shown on the run says who decided and why, as the inbox does.
+ * Undefined for an answer a person gave.
+ */
+export function judgementOfNote(s: Settled | undefined): Judgement | undefined {
+  if (!s || (s.action !== "approve" && s.action !== "deny") || !s.note) return undefined;
+  const { prefix, decision } = AGENT_NOTE[s.action];
+  const reason = s.note.startsWith(prefix) ? s.note.slice(prefix.length).trim() : "";
+  return reason ? { decision, reason } : undefined;
+}
+
 /** A run held at a limit: the scope and limit, where it stood, and the grant. Money is in micro-USD. */
 export interface WireBudget {
   scope_kind: string;
@@ -246,7 +270,7 @@ export function interruptOf(q: WireQuestion, settled?: Settled): Interrupt | nul
   switch (q.kind) {
     case "approval": {
       const args = argsOf(q);
-      const judgement = q.judgement ? judgementOf(q.judgement) : undefined;
+      const judgement = q.judgement ? judgementOf(q.judgement) : judgementOfNote(settled);
       // A schedule an agent proposes reads in words: what it checks, how often, where it posts, when it runs next.
       const preview = schedulePreview(q.tool?.name ?? "", args, q.agent);
       return {

@@ -6597,6 +6597,7 @@ export interface PublishThreadSummaryBody {
 
 export interface SetApprovalModeBody {
   mode: "ask" | "auto";
+  act_as?: ActAs;
 }
 
 export interface ListSchedulesResponse {

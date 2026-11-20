@@ -1,5 +1,6 @@
-import { ApprovalCard, ClarificationCard, defaultCopy } from "@humagen/components";
-import type { Answer, Approval, Clarification } from "@humagen/core";
+import { ApprovalCard, ClarificationCard, defaultCopy, TurnView } from "@humagen/components";
+import { ActionId, type Answer, type Approval, type Clarification } from "@humagen/core";
+import * as fx from "@humagen/core/fixtures";
 import { describe, expect, it } from "vitest";
 import { renderToSlack } from "./index";
 
@@ -31,7 +32,9 @@ const contexts = (blocks: Block[]) => blocks.filter((b) => b.type === "context")
 const buttons = (blocks: Block[]) =>
   blocks
     .filter((b) => b.type === "actions")
-    .flatMap((b) => (b.elements ?? []).map((e) => (e.text as { text: string }).text));
+    .flatMap((b) =>
+      (b.elements ?? []).filter((e) => e.text).map((e) => (e.text as { text: string }).text),
+    );
 
 describe("an approval's reason and risk", () => {
   it("are one line under the call, the workspace's fields first", () => {
@@ -88,6 +91,94 @@ describe("an approval's reason and risk", () => {
     expect(buttons(blocks)).toEqual([]);
     expect(contexts(blocks)).toHaveLength(2);
     expect(JSON.stringify(contexts(blocks)[1])).toContain("Approved by Olu Ade");
+  });
+
+  it.each([
+    ["allow", "approved", "Allowed", "Approved by Olu Ade"],
+    ["deny", "denied", "Denied", "Rejected by Olu Ade"],
+  ] as const)(
+    "says what the approval agent decided and why once it %ss, its note not repeated",
+    (decision, kind, said, record) => {
+      const reason = "The person asked for this deploy.";
+      const blocks = blocksOf(
+        <ApprovalCard
+          turnId="r1"
+          approval={{
+            ...approval,
+            judgement: { decision, reason },
+            decision: {
+              kind,
+              by: "Olu Ade",
+              at,
+              reason: `${said} by the approval agent: ${reason}`,
+            },
+          }}
+        />,
+      );
+      const said_ = JSON.stringify(contexts(blocks));
+      expect(said_).toContain(`*Approval agent:* ${said}: \\"${reason}\\"`);
+      expect(said_).toContain(record);
+      // The record keeps who and when: the reason is said once.
+      expect(said_.split(reason)).toHaveLength(2);
+      expect(buttons(blocks)).toEqual([]);
+    },
+  );
+});
+
+describe("an approval's menu", () => {
+  type Overflow = { type: string; options: { text: { text: string }; value: string }[] };
+  const overflows = (blocks: Block[]) =>
+    blocks
+      .filter((b) => b.type === "actions")
+      .flatMap((b) => (b.elements ?? []) as unknown as Overflow[])
+      .filter((e) => e.type === "overflow");
+
+  it("offers the approval agent for the thread only where the host says it can", () => {
+    expect(overflows(blocksOf(<ApprovalCard turnId="r1" approval={approval} />))).toEqual([]);
+    const [menu] = overflows(blocksOf(<ApprovalCard turnId="r1" approval={approval} offerAgent />));
+    expect(menu?.options.map((o) => o.text.text)).toEqual([defaultCopy.approvals.letAgentDecide]);
+    expect(JSON.parse(menu?.options[0]?.value ?? "{}")).toEqual({
+      id: ActionId.approvalMode,
+      p: { turnId: "r1", target: "auto" },
+    });
+    // The decision stays with the buttons; the menu sets the thread.
+    expect(buttons(blocksOf(<ApprovalCard turnId="r1" approval={approval} offerAgent />))).toEqual(
+      buttons(blocksOf(<ApprovalCard turnId="r1" approval={approval} />)),
+    );
+  });
+
+  it("is not offered once decided, on a run held at a limit, or to someone who may not decide", () => {
+    const decided = { ...approval, decision: { kind: "approved" as const, by: "Olu Ade", at } };
+    expect(overflows(blocksOf(<ApprovalCard turnId="r1" approval={decided} offerAgent />))).toEqual(
+      [],
+    );
+    const held = {
+      ...approval,
+      budget: {
+        scope: "the workspace",
+        limit: "spend" as const,
+        used: "$1",
+        max: "$1",
+        grant: "$1",
+      },
+    };
+    expect(overflows(blocksOf(<ApprovalCard turnId="r1" approval={held} offerAgent />))).toEqual(
+      [],
+    );
+    const theirs = { ...approval, initiator: "dana" };
+    expect(
+      overflows(blocksOf(<ApprovalCard turnId="r1" approval={theirs} viewer="olu" offerAgent />)),
+    ).toEqual([]);
+  });
+
+  it("is offered on a turn's waiting approval through the turn's capabilities", () => {
+    const turn = {
+      ...fx.skillApprovalTurn,
+    };
+    expect(overflows(blocksOf(<TurnView turn={turn} />))).toEqual([]);
+    expect(
+      overflows(blocksOf(<TurnView turn={turn} capabilities={{ approvalAgent: true }} />)),
+    ).toHaveLength(1);
   });
 });
 

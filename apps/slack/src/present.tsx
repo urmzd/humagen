@@ -1,6 +1,6 @@
 import "./react.ts";
 import { type Copy, defaultCopy, type TurnCapabilities, TurnView } from "@humagen/components";
-import type { Turn, TurnStatus } from "@humagen/core";
+import type { Interrupt, Judgement, Turn, TurnStatus } from "@humagen/core";
 import {
   type Block,
   emptyBudget,
@@ -59,6 +59,15 @@ export interface Presented {
  * is still shown once the time is up.
  */
 export const STATUS_LINE_EVERY_MS = 2500;
+
+/**
+ * A question as the run now has it, keeping what the approval agent said
+ * that the card was shown (`Presenter.judge`) when the run's own copy has none.
+ */
+function keepJudgement(shown: Interrupt, now: Interrupt): Interrupt {
+  if (shown.type !== "approval" || now.type !== "approval") return now;
+  return !now.judgement && shown.judgement ? { ...now, judgement: shown.judgement } : now;
+}
 
 /** Codes that mean the place itself is unusable, so falling back to a plain post would fail too. */
 const NO_PLACE =
@@ -461,8 +470,34 @@ export class Presenter {
     const now = new Map(turn.interrupts.map((i) => [i.id, i]));
     const shown: Turn = {
       ...paused.turn,
-      interrupts: paused.turn.interrupts.map((i) => now.get(i.id) ?? i),
+      interrupts: paused.turn.interrupts.map((i) => keepJudgement(i, now.get(i.id) ?? i)),
     };
+    await this.redrawPaused(shown);
+  }
+
+  /**
+   * Show what the approval agent said about a call on its card, once the
+   * inbox has it: the run's own events do not carry it, and an approval the
+   * agent handed to a person changes nothing on the run. The card keeps
+   * its buttons while it waits, and the judgement stays once it settles.
+   */
+  async judge(question: string, judgement: Judgement): Promise<void> {
+    if (this.opts.canDeliver && !(await this.opts.canDeliver())) return;
+    const paused = this.paused;
+    if (!paused) return;
+    const shown: Turn = {
+      ...paused.turn,
+      interrupts: paused.turn.interrupts.map((i) =>
+        i.id === question && i.type === "approval" ? { ...i, judgement } : i,
+      ),
+    };
+    await this.redrawPaused(this.opts.outcomesOnly ? bridgeOutcome(shown) : shown);
+  }
+
+  /** Draw the card a question was shown on again, as `shown` has it, when anything changed. */
+  private async redrawPaused(shown: Turn): Promise<void> {
+    const paused = this.paused;
+    if (!paused) return;
     if (JSON.stringify(shown.interrupts) === JSON.stringify(paused.turn.interrupts)) return;
     const view = renderToSlack(
       <TurnView

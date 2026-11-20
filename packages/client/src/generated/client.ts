@@ -4320,7 +4320,11 @@ answer: the approvers a question names, self-approval and the
 runtime's. A budget request, an action the agent always asks about,
 a run forced to ask and an action the policy does not ask about still
 go to a person. Each automatic approval and each change of mode is
-audited. Takes a person who may post in the conversation.
+audited. Takes a person who may post in the conversation. A surface
+that authenticated a person itself sets it for them with `act_as`:
+only the credential its client names, and only for a person its
+client maps; every check is then that person's, and `auto` approves
+as them.
  */
   async setApprovalMode(id: string, body: SetApprovalModeBody, options?: RequestOptions): Promise<Thread> {
     let path = "/api/threads/{id}/approval";
