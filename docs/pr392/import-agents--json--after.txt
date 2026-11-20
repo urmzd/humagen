@@ -1,0 +1,42 @@
+# generated agent files; after build (b34420435), second-or-later import, --json (exit code 1: one file failed)
+$ humagen import agents agents --provider anthropic --model claude-test --json
+{
+  "created": [],
+  "present": [
+    "guarded",
+    "plain"
+  ],
+  "skipped": [
+    {
+      "file": "zz-duplicate.md",
+      "name": "plain",
+      "from": "plain.md"
+    }
+  ],
+  "failed": [
+    {
+      "name": "broken",
+      "reason": "broken.md has frontmatter with no closing --- line"
+    }
+  ],
+  "reduced": {
+    "guarded.md": [
+      "color",
+      "effort",
+      "hooks",
+      "model",
+      "permissionMode",
+      "permissions",
+      "tools"
+    ]
+  },
+  "not_enforced": {
+    "guarded.md": [
+      "hooks.PreToolUse",
+      "permissionMode",
+      "permissions.allow",
+      "permissions.deny"
+    ]
+  },
+  "not_enforced_other": {}
+}
