@@ -214,7 +214,7 @@ func (p *Platform) builtinSpecs() []wire.AgentSpec {
 		Tools:        reviewTools(),
 	}, {
 		Name:         BuiltinApprover,
-		Description:  "Decides tool calls in sessions set to Run: allows, denies with a reason, or asks a person",
+		Description:  "Decides tool calls in sessions set to Run: allows, denies with a reason, or asks a person; in Run and Answer, also answers what the session already settles",
 		Provider:     chain[0].Provider,
 		Model:        chain[0].Model,
 		Fallbacks:    slices.Clone(chain[1:]),

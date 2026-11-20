@@ -1630,7 +1630,7 @@ not selected. Absent when none is selected.
   fork?: ThreadFork;
   import?: ThreadImport;
   archive?: ThreadArchive;
-  /** How the conversation's gated tool actions are approved, and who chose it. Absent asks a person. `auto` approves for that person what they may approve themselves, within policy; a budget request and an action the agent or the policy always asks about still go to a person. */
+  /** How the conversation's gated tool actions are approved, and who chose it. Absent asks a person. `auto` approves for that person what they may approve themselves, within policy; a budget request and an action the agent or the policy always asks about still go to a person. `decide` does that too, and also answers for them a question an agent asks a person when the session already settles it. */
   approval?: ThreadApproval;
   /** The inbox id of the announcement the thread was started from, a reply to its post on the thread's surface. It never changes, and the thread's turns start with it. */
   announcement?: string;
@@ -3474,7 +3474,9 @@ answering checks again.
 }
 
 /** What the approval agent said about an approval, once it was asked,
-whether it allowed the call, denied it or left it for a person.
+whether it allowed the call, denied it or left it for a person. On
+a choice or a reply, in a conversation set to `decide`, `allow` is
+an answer it gave and `ask` a question it left for a person.
  */
 export interface InboxJudgement {
   decision: "allow" | "ask" | "deny";
@@ -6200,7 +6202,7 @@ export interface PreparedCallInputMessagesItem {
 }
 
 export interface ThreadApproval {
-  mode: "auto";
+  mode: "auto" | "decide";
   by: string;
   roles?: string[];
   at: string;
@@ -6596,7 +6598,7 @@ export interface PublishThreadSummaryBody {
 }
 
 export interface SetApprovalModeBody {
-  mode: "ask" | "auto";
+  mode: "ask" | "auto" | "decide";
   act_as?: ActAs;
 }
 

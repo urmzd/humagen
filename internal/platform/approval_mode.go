@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/urmzd/saige/flow/event"
 
@@ -20,15 +21,17 @@ import (
 
 // SetApprovalMode sets how a conversation's gated tool actions are approved:
 // threads.ApprovalAuto approves for who what they may approve themselves,
-// within policy, and threads.ApprovalAsk asks a person again. It takes a
-// person who may post in the conversation, and it is audited.
+// within policy, threads.ApprovalDecide does that and also answers for them
+// a question the session already settles (approval_questions.go), and
+// threads.ApprovalAsk asks a person again. It takes a person who may post
+// in the conversation, and it is audited.
 func (p *Platform) SetApprovalMode(who auth.Principal, id, mode string) (threads.Thread, error) {
 	th, err := p.ThreadRecord(who.Tenant, id)
 	if err != nil {
 		return threads.Thread{}, err
 	}
-	if mode != threads.ApprovalAsk && mode != threads.ApprovalAuto {
-		return threads.Thread{}, fmt.Errorf("%w: an approval mode is %s or %s", threads.ErrInvalid, threads.ApprovalAsk, threads.ApprovalAuto)
+	if !slices.Contains(threads.ApprovalModes, mode) {
+		return threads.Thread{}, fmt.Errorf("%w: an approval mode is %s", threads.ErrInvalid, strings.Join(threads.ApprovalModes, ", "))
 	}
 	if err := p.changesThread(who, th); err != nil {
 		return threads.Thread{}, err
@@ -45,10 +48,7 @@ func (p *Platform) SetApprovalMode(who auth.Principal, id, mode string) (threads
 			return threads.Thread{}, err
 		}
 	}
-	before := threads.ApprovalAsk
-	if th.Approval.Auto() {
-		before = threads.ApprovalAuto
-	}
+	before := th.Approval.ModeOf()
 	attempt, err := p.BeginAudit(who, audit.Change{
 		Action: "conversation.approval_mode", Resource: "conversation", ID: id, Project: th.Project, Thread: id,
 		Before: map[string]string{"mode": before}, After: map[string]string{"mode": mode},
@@ -96,13 +96,18 @@ func autoApprovable(q event.Question, alwaysAsk []string, forced bool, level ope
 // the person who chose Run, through the path every answer takes, so
 // self-approval, the approvers the question names and the runtime's own
 // checks all hold. Whatever it may not decide stays in the inbox for a
-// person, and every decision is audited.
+// person, and every decision is audited. A question that is not an
+// approval goes to autoAnswer, which acts only in Run and Answer.
 func (p *Platform) autoApprove(ctx context.Context, run runs.Run, q event.Question, m inbox.Message) {
 	if run.Thread == "" || m.ID == "" {
 		return
 	}
 	th, err := p.Threads.Get(run.Tenant, run.Thread)
 	if err != nil || !th.Approval.Auto() {
+		return
+	}
+	if isPersonQuestion(q) {
+		p.autoAnswer(ctx, run, q, m, *th.Approval)
 		return
 	}
 	rev, err := p.Catalog().Get(ctx, run.Tenant, run.Agent, 0)

@@ -142,3 +142,49 @@ func TestTheCallIsDescribedWithItsPolicyAndNewestTurns(t *testing.T) {
 		t.Error("an empty session is not said")
 	}
 }
+
+// A question's answer is read as its own field; one that is not words is
+// kept as the workspace's field, and a call's answer has none.
+func TestAQuestionsAnswerIsReadBesideTheDecision(t *testing.T) {
+	d, err := Parse([]byte(`{"decision": "allow", "reason": "Ada said blue.", "references": ["ada: blue please"], "answer": "  blue  "}`))
+	if err != nil || d.Verdict != Allow || d.Answer != "blue" || len(d.Fields) != 0 {
+		t.Fatalf("answer = %+v, %v", d, err)
+	}
+	d, err = Parse([]byte(`{"decision": "allow", "reason": "ok", "answer": {"pick": "blue"}}`))
+	if err != nil || d.Answer != "" || len(d.Fields) != 1 || d.Fields[0].Name != FieldAnswer {
+		t.Fatalf("an answer that is not words = %+v, %v", d, err)
+	}
+	d, err = Parse([]byte(`{"decision": "allow", "reason": "ok", "answer": "` + strings.Repeat("x", 5000) + `"}`))
+	if err != nil || len(d.Answer) > maxAnswer+len("…") {
+		t.Fatalf("an answer past the bound kept %d bytes", len(d.Answer))
+	}
+	// The schema as it ships still holds the core, and offers the answer.
+	if err := CheckSchema(DefaultSchema); err != nil {
+		t.Fatal(err)
+	}
+	var s struct {
+		Required   []string                   `json:"required"`
+		Properties map[string]json.RawMessage `json:"properties"`
+	}
+	if err := json.Unmarshal(DefaultSchema, &s); err != nil || s.Properties[FieldAnswer] == nil || slices.Contains(s.Required, FieldAnswer) {
+		t.Fatalf("the default schema's answer = %+v, %v", s, err)
+	}
+}
+
+// A question is put with its options, whom it asked and whom the answer
+// would be given as, and the session, all as data.
+func TestAQuestionIsDescribedWithItsOptionsAndWhoItIsFor(t *testing.T) {
+	got := DescribeQuestion(Question{
+		Agent: "picker", Kind: "choice", Prompt: "Which region?", Options: []string{"eu-west", "us-east"},
+		AskedOf: "ada", For: "ada", Policy: []string{"Answer only what the session settles."},
+		Session: []Turn{{Who: "ada", Text: "Deploy to eu-west."}},
+	})
+	for _, want := range []string{"<question>", "kind: choice", "asks: Which region?", "- eu-west", "- us-east", "asked of: ada", "you would answer as: ada", "<policy>", "ada: Deploy to eu-west.", "</session>"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in\n%s", want, got)
+		}
+	}
+	if !strings.Contains(Instructions, "Never deny a question") {
+		t.Fatal("the instructions do not say how to answer a question")
+	}
+}

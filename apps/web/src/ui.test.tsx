@@ -670,6 +670,38 @@ test("an approval the approval agent judged shows its decision, reason and the w
   assert.doesNotMatch(plain, /Approval agent|Asked a person|Risk|Expires in|Based on/);
 });
 
+test("a question the approval agent answered in Run and Answer says so, and one it left says why", () => {
+  const [raw] = wireMail().filter((m) => m.id === "m-question");
+  assert.ok(raw);
+  const withQuestion = (change: (part: Record<string, unknown>) => Record<string, unknown>) =>
+    fromServer({ ...raw, parts: (raw.parts as Record<string, unknown>[]).map(change) });
+  const judged = (decision: string, reason: string) => (p: Record<string, unknown>) => ({
+    ...p,
+    question: { ...(p.question as object), judgement: { decision, reason, run: "api-j" } },
+  });
+
+  // Answered as the person: the record says what was chosen, and that the approval agent chose it.
+  const answered = withQuestion((p) => ({
+    ...judged("allow", "Ada asked for #launch.")(p),
+    state: "resolved",
+    actions: [],
+    outcome: { action: "choose", by: "ada", at: "2026-11-08T10:00:00Z", note: "#launch" },
+  }));
+  const done = mailbox(answered.id, [answered]);
+  assert.match(done, /chose #launch/);
+  assert.match(done, /Answered by the approval agent: &quot;Ada asked for #launch\.&quot;/);
+
+  // Left for the person: why, above the options, which stay.
+  const left = withQuestion(judged("ask", "Ada has not said which channel."));
+  const open = mailbox(left.id, [left]);
+  assert.match(open, /<strong>Approval agent:<\/strong> Asked a person: &quot;Ada has not said/);
+  assert.match(open, />#general</);
+
+  // Without a judgement the card is as it was.
+  const plain = mailbox("m-question");
+  assert.doesNotMatch(plain, /approval agent|Approval agent/);
+});
+
 test("the run's own approval of a call that acts as the person says so too, from its events and from its record", () => {
   const question = (acts: boolean) => ({
     id: "q1",

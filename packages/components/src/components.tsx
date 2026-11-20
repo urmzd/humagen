@@ -412,7 +412,21 @@ export function ClarificationCard({
   clarification,
   copy = defaultCopy,
 }: { turnId: string; clarification: Clarification } & WithCopy) {
-  const { answer, options } = clarification;
+  const { answer, options, judgement } = clarification;
+  // The approval agent's part, in Run and Answer: an answer it gave, which the person
+  // can tell from their own, or why it left the question for them.
+  const judged = judgement ? (
+    <Context
+      items={[
+        withReason(
+          judgement.decision === "allow"
+            ? copy.judgement.answered
+            : `**${copy.judgement.by}:** ${copy.judgement.decision[judgement.decision]}`,
+          untrusted(judgement.reason),
+        ),
+      ]}
+    />
+  ) : null;
   if (answer.kind === "answered") {
     const picked = options.filter((o) => answer.optionIds.includes(o.id)).map((o) => o.label);
     // Words typed instead of a pick read as an answer, not a choice.
@@ -428,6 +442,7 @@ export function ClarificationCard({
       <>
         <Text text={clarification.question} />
         <Context items={[line]} />
+        {judged}
       </>
     );
   }
@@ -480,6 +495,7 @@ export function ClarificationCard({
     <>
       <Summary text={copy.inputNeeded(clarification.question)} />
       <Text text={body} />
+      {judged}
       <Actions
         blockId={`clarification:${clarification.id}`}
         confirmChoice={{
