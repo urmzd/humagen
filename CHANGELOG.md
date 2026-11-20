@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.145.0 (2026-11-20)
+
+### Features
+
+- **slack**: answer a question in your own words, and show what was recorded on a card that no longer waits (#404) ([ed0eb2b](https://github.com/urmzd/humagen/commit/ed0eb2b5b836cd3f936718742642a2cfaa196d0c))
+- **slack**: a finished turn lists the files it changed (#401) ([ac01341](https://github.com/urmzd/humagen/commit/ac013410c67910c08a74afbe94e0d1e3bfff8921))
+- **site**: centre the hero on the product and drop the founder contact (#408) ([1296134](https://github.com/urmzd/humagen/commit/1296134384c39108c20d471592df26492b88781a))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.144.1...v0.145.0)
+
+
 ## 0.144.0 (2026-11-20)
 
 ### Breaking
