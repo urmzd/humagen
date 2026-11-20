@@ -190,8 +190,9 @@ That fails closed: the source's continuations are seen by no one, an admin
 included, and nothing is posted in them, from then on. A source it deletes
 and makes again has no id either, and an empty id matches no continuation,
 so none is revived. To avoid losing continuations, keep knowledge writes off
-older replicas until every replica runs this release. No route starts a
-continuation yet, so a deployment has none to lose today.
+older replicas until every replica runs this release. Continuations are
+started through `POST /api/knowledge/{name}/documents/{id}/continue`, so a
+deployment that has used that route has some to lose.
 
 ## The image
 
