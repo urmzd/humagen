@@ -1,0 +1,30 @@
+render tier: 10 screenshots in /Users/urmzd/github/humagen/.worktrees/hallmark-site/.hallmark/shots (1280x800, 1440x900, 1920x1080 folds; 1440 and 375 full pages)
+apps/site/src/layouts/Base.astro
+  FAIL 34 :1 no overflow-x: clip on html and body | fix: overflow-x: clip on both html and body
+http://localhost:4401/
+  FAIL 44d :1 [1920px] hero runs past the 1920x1080 screen (hero ends at 1193px) | fix: Cap vw-sized visuals and display sizes
+  WAIVED 39b :1 [1440px] control height outside 44 to 52px: a.inline-flex 40px, a.inline-flex 40px, a.inline-flex 40px
+  NOTE 44c :1 [1440px] hero runs past the 1440x900 fold (hero ends at 1193px) | fix: Size the display and the visual so the hero is one screen
+  NOTE 58 :1 [1440px] 308 words on one screen (from y=2450) | fix: One idea per screen: cut to about 80 words, make the section an object
+  NOTE 77 :1 [1440px] 2 sections, hero and footer included | fix: A landing strip, not a page: six to nine sections, five on a thin prompt (layout.md § 3)
+http://localhost:4401/deploy
+  FAIL 49a :1 [320px] control "2. Humagen, Postgres and Caddy i" wraps to 2 lines (a.flex.min-h-8) | fix: Shorten the label or set nowrap
+  FAIL 49a :1 [320px] control "7. CI applies Terraform and buil" wraps to 2 lines (a.flex.min-h-8)
+  NOTE 44c :1 [1440px] hero ends at 346px of a 900px screen | fix: Fill the first screen with the visual or the headline, not with copy
+  NOTE 58 :1 [1440px] 290 words on one screen (from y=200)
+  NOTE 58 :1 [1440px] hero carries 3 text blocks before its actions | fix: Headline, one sentence, actions; delete the rest
+  NOTE 59 :1 [1440px] smallest gap between sections is 100px (gaps: 100) | fix: 120px or more between sections, by the --section-gap steps
+  NOTE 77 :1 [1440px] 2 sections, hero and footer included
+  NOTE 79 :1 [1440px] 554px of nothing between the hero's last content (y 346) and the fold | fix: Centre the content in the screen and grow the visual or the head (layout.md § 6); never fill it with copy
+apps/site/src/pages/deploy.astro
+  FAIL 50 :173 display header word "{alternatives.heading}" with no overflow-wrap | fix: Add overflow-wrap: break-word and min-width: 0
+apps/site/src/pages/index.astro
+  FAIL 50 :86 display header word "{points.together.title}" with no overflow-wrap
+  FAIL 50 :119 display header word "{points.operate.title}" with no overflow-wrap
+apps/site/src/styles/global.css
+  WARN 3 :352 side stripe border-left: 5px solid var(--site-line) on .arch-conn[data-dir="right"] .arch-line[data-head]::after | fix: Hairline all round, none, or an accent square
+apps/site/src/components/Agent.astro
+  WAIVED 26b :1 no :disabled styling anywhere
+sloplint: 7 FAIL, 1 WARN, 2 WAIVED, 9 NOTE across 10 file(s) and 2 URL(s).
+kept: links 37/37, fields 1/2 (1 dropped on record), headings 25/25, figures 7/7; before 12 FAIL, 6 REFLEX, now 7 FAIL, 0 REFLEX
+compare: .hallmark/compare.html shows before and after side by side

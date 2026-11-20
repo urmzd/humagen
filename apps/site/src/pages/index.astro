@@ -80,7 +80,7 @@ const body = "site-text text-aui-base text-aui-muted";
     <section
       aria-labelledby="together-title"
       data-reveal-group
-      class={`${section} grid items-center gap-8 lg:grid-cols-[1fr_1.35fr] lg:gap-12`}
+      class={`${section} grid items-center gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)] lg:gap-12`}
     >
       <div data-reveal class="flex flex-col gap-3">
         <h2 id="together-title" class={h2}>{points.together.title}</h2>
@@ -113,7 +113,7 @@ const body = "site-text text-aui-base text-aui-muted";
     <section
       aria-labelledby="operate-title"
       data-reveal-group
-      class={`${section} grid items-center gap-8 lg:grid-cols-[1.35fr_1fr] lg:gap-12`}
+      class={`${section} grid items-center gap-8 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] lg:gap-12`}
     >
       <div data-reveal class="flex flex-col gap-3 lg:order-2">
         <h2 id="operate-title" class={h2}>{points.operate.title}</h2>
@@ -135,7 +135,7 @@ const body = "site-text text-aui-base text-aui-muted";
       >
         {
           points.grid.map((p) => (
-            <li class="site-cell flex flex-col gap-1.5 bg-aui-bg p-5">
+            <li class="flex flex-col gap-1.5 bg-aui-bg p-5">
               <span class="flex items-center gap-2 text-aui-base font-medium text-aui-fg">
                 <Icon name={p.icon as IconName} class="text-aui-muted" />
                 {p.title}
@@ -150,7 +150,7 @@ const body = "site-text text-aui-base text-aui-muted";
     <section
       aria-labelledby="why-title"
       data-reveal-group
-      class={`${section} grid gap-8 lg:grid-cols-[1fr_1.3fr] lg:gap-12`}
+      class={`${section} grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)] lg:gap-12`}
     >
       <div data-reveal class="flex flex-col gap-3">
         <h2 id="why-title" class={h2}>{why.heading}</h2>
@@ -195,7 +195,7 @@ const body = "site-text text-aui-base text-aui-muted";
       <ul class="mt-8 grid gap-3 md:grid-cols-3">
         {
           selfHost.points.map((p) => (
-            <li data-reveal class="glass site-card flex flex-col gap-1.5 rounded-aui-lg p-5">
+            <li data-reveal class="glass flex flex-col gap-1.5 rounded-aui-lg p-5">
               <span class="text-aui-base font-medium text-aui-fg">{p.title}</span>
               <span class="text-aui-sm text-aui-muted">{p.body}</span>
             </li>
@@ -205,7 +205,6 @@ const body = "site-text text-aui-base text-aui-muted";
       <div data-reveal class="mt-8">
         <a class={outlineButton} href={pages.deploy.path}>
           {actions.guide}
-          <Icon name="chevron" />
         </a>
       </div>
     </section>

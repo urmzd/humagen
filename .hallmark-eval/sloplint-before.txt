@@ -1,0 +1,19 @@
+render tier: failed on http://localhost:4401/404: HTTP 404 from http://localhost:4401/404
+render tier: 10 screenshots in /Users/urmzd/github/humagen/.worktrees/hallmark-site/.hallmark/before (1280x800, 1440x900, 1920x1080 folds; 1440 and 375 full pages)
+  FAIL 34 apps/site/src/layouts/Base.astro:1 no overflow-x: clip on html and body | fix: overflow-x: clip on both html and body
+  FAIL 44d http://localhost:4401/:1 [1920px] hero runs past the 1920x1080 screen (hero ends at 1193… | fix: Cap vw-sized visuals and display sizes
+  FAIL 48 apps/site/src/styles/global.css:87 colour literal #000 outside tokens (mask-image on body::before) | fix: Lift the value into the token block
+  FAIL 49a x2 http://localhost:4401/deploy:1 [320px] control "2. Humagen, Postgres and Caddy i" wraps to 2 l…; http://localhost:4401/deploy:1 [320px] control "7. CI applies Terraform and buil" wraps to 2 l… | fix: Shorten the label or set nowrap
+  FAIL 50 x3 apps/site/src/pages/deploy.astro:173 display header word "{alternatives.heading}" with no overflow-w…; apps/site/src/pages/index.astro:86 display header word "{points.together.title}" with no overflow-… | fix: Add overflow-wrap: break-word and min-width: 0
+  FAIL 58 x3 http://localhost:4401/:1 [1440px] 308 words on one screen (from y=2450); http://localhost:4401/deploy:1 [1440px] 290 words on one screen (from y=200) | fix: One idea per screen: cut to about 80 words, make the section an object
+  FAIL render http://localhost:4401/404:1 the page did not render (HTTP 404 from http://localhost:4401/40… | fix: Fix the page or the URL and rerun; an unrendered page is never a pass
+  REFLEX 26b apps/site/src/components/Agent.astro:1 no :disabled styling anywhere | fix: All eight states; guard: not a form control, no aria-disabled anywhere
+  REFLEX 39b http://localhost:4401/:1 [1440px] control height outside 44 to 52px: a.inline-flex 40px,… | fix: Marketing controls stand 44 to 52px; app UI 32 to 40px with a 44px hit target
+  REFLEX 44c x2 http://localhost:4401/:1 [1440px] hero runs past the 1440x900 fold (hero ends at 1193px); http://localhost:4401/deploy:1 [1440px] hero ends at 346px of a 900px screen | fix: Size the display and the visual so the hero is one screen
+  REFLEX 59 http://localhost:4401/deploy:1 [1440px] smallest gap between sections is 100px (gaps: 100) | fix: 120px or more between sections, by the --section-gap steps
+  REFLEX 79 http://localhost:4401/deploy:1 [1440px] 554px of nothing between the hero's last content (y 34… | fix: Centre the content in the screen and grow the visual or the head (layout.md § 6); never fill it with copy
+  WARN 3 apps/site/src/styles/global.css:375 side stripe border-left: 5px solid var(--site-line) on .arch-co… | fix: Hairline all round, none, or an accent square
+  WARN 77 x2 http://localhost:4401/:1 [1440px] 2 sections, hero and footer included; http://localhost:4401/deploy:1 [1440px] 2 sections, hero and footer included | fix: A landing strip, not a page: six to nine sections, five on a thin prompt (layout.md § 3)
+  WARN F26 http://localhost:4401/:1 [375px] h2 "Agents work together, and with p" ends on a stub | fix: text-wrap: balance on heads and pretty on body copy, or rewrite the line; a <br> goes only between phrases and is checked at 375
+sloplint: 12 FAIL, 6 REFLEX, 4 WARN across 10 file(s) and 3 URL(s), grouped by gate; every line is in .hallmark/before.txt.
+before: recorded 37 links, 2 fields, 0 handlers, 0 test hooks, 0 script hooks and 2 rendered page(s) in .hallmark/before.json; --kept checks a redesign against it

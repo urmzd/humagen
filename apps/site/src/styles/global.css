@@ -1,3 +1,9 @@
+/* Hallmark · checked: 2026-11-19 · genre: modern-minimal (inferred)
+ * floor: see the sweep · fixed: 8 (11, 34, 47c, 48, 50, 63, F3, F16) · structural: 6 printed (9, 44, 58, 59, 78, 79)
+ * built: the project · redesign: polish · v2.0.0 */
+/* Hallmark · waive 39b · buttons are the console's lg size, 40px with pointer-coarse:min-h-11 · the site wears the console button unchanged */
+/* Hallmark · dropped chevron · 63 names the arrow glued to the Read the Deploy Guide button; the link and its label stay */
+/* Hallmark · waive 26b · no form control and no aria-disabled on the site · every control here is a link or the menu button */
 /*
  * The site wears the console's design system: render-web's tokens, type and
  * utilities (bg-aui-bg, text-aui-muted, border-aui-border, rounded-aui-lg),
@@ -24,11 +30,24 @@ body {
 }
 
 .humagen-display {
+  min-width: 0;
+  overflow-wrap: break-word;
+  text-wrap: balance;
   font-family: var(--font-humagen-display);
   font-variation-settings: normal;
   font-optical-sizing: auto;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.012em;
+}
+
+html,
+body {
+  /* A wide child never scrolls the page sideways; clip keeps the sticky header. */
+  overflow-x: clip;
+}
+
+::selection {
+  background: color-mix(in oklab, var(--aui-accent) 24%, transparent);
 }
 
 html {
@@ -51,40 +70,16 @@ html {
   --site-glass-mix: 74%;
   --site-glass-inner: oklch(1 0 0 / 75%);
   --site-line: color-mix(in oklab, var(--aui-fg) 28%, transparent);
-  --site-grid: color-mix(in oklab, var(--aui-fg) 5%, transparent);
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --site-glass-inner: oklch(1 0 0 / 7%);
-    --site-grid: color-mix(in oklab, var(--aui-fg) 6%, transparent);
   }
 }
 
 [data-theme="dark"] {
   --site-glass-inner: oklch(1 0 0 / 7%);
-  --site-grid: color-mix(in oklab, var(--aui-fg) 6%, transparent);
-}
-
-body {
-  position: relative;
-  isolation: isolate;
-}
-
-/* A quiet grid behind the top of the page, fading out before the copy. */
-body::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto;
-  z-index: -1;
-  height: 46rem;
-  pointer-events: none;
-  background-image:
-    linear-gradient(to right, var(--site-grid) 1px, transparent 1px),
-    linear-gradient(to bottom, var(--site-grid) 1px, transparent 1px);
-  background-size: 48px 48px;
-  background-position: center top;
-  mask-image: radial-gradient(ellipse 70% 100% at 50% 0%, #000 30%, transparent 75%);
 }
 
 /* The page column, with hairline rails on either side from tablet up. */
@@ -151,7 +146,7 @@ body::before {
   border-radius: var(--radius-aui-lg);
 }
 
-/* Buttons and cards answer a pointer: a lift on hover, a press on click. */
+/* Buttons answer a pointer: a lift on hover, a press on click. */
 .site-btn {
   transition-property: color, background-color, border-color, box-shadow, transform;
   transition-duration: var(--aui-dur-press);
@@ -164,24 +159,6 @@ body::before {
 
 .site-btn:active {
   transform: scale(0.98);
-}
-
-.site-card {
-  transition:
-    border-color var(--aui-dur-row) var(--aui-ease-arrive),
-    background-color var(--aui-dur-row) var(--aui-ease-arrive);
-}
-
-.site-card:hover {
-  border-color: color-mix(in oklab, var(--aui-fg) 22%, transparent);
-}
-
-.site-cell {
-  transition: background-color var(--aui-dur-row) var(--aui-ease-arrive);
-}
-
-.site-cell:hover {
-  background-color: var(--aui-surface);
 }
 
 /*
