@@ -1652,10 +1652,11 @@ function Console({
                       ["connections", "tools"].includes(route.section))) && (
                     <Connections
                       provider={route.provider}
+                      scope={route.page === "connections" ? route.scope : undefined}
                       canConnect={can(CONNECT_PERMISSION)}
                       canWrite={can("clients:write")}
-                      onOpen={(provider) =>
-                        go({ page: "connections", provider }, { replace: true })
+                      onOpen={(provider, scope) =>
+                        go({ page: "connections", provider, scope }, { replace: true })
                       }
                       onNavigate={go}
                     />

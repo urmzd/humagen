@@ -824,7 +824,7 @@ export function AgentDetail({
               }
             />
             <a href="/connections" className={textLink}>
-              Review Connections
+              Review Plugins
             </a>
           </Section>
 

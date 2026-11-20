@@ -159,7 +159,7 @@ export function ClientSettings({ canWrite }: { canWrite: boolean }) {
               className="underline"
               href={`/connections?provider=client:${encodeURIComponent(c.id)}`}
             >
-              Configure installation in Connections
+              Configure installation in Apps
             </a>
           ) : c.managed ? (
             <p className="text-aui-xs text-aui-muted">

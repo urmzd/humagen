@@ -1,4 +1,5 @@
 import { defaultCopy } from "@humagen/components";
+import { PlusIcon, SearchIcon } from "@humagen/render-web";
 import {
   Sheet,
   SheetContent,
@@ -8,6 +9,7 @@ import {
 } from "@humagen/render-web/ui/sheet";
 import { toast } from "@humagen/render-web/ui/sonner";
 import { type FormEvent, type MouseEvent, useCallback, useEffect, useRef, useState } from "react";
+import type { LibrarySkill } from "../../../packages/client/src/generated/types.ts";
 import {
   ApiError,
   api,
@@ -40,7 +42,7 @@ import { InstalledClientSetup } from "./InstalledClientSetup.tsx";
 import { href, type Route } from "./route.ts";
 import { AddToolServer, ToolList, YourToolServers } from "./ToolServers.tsx";
 import { credentialWords, hostOf, withoutToolServer } from "./toolServers.ts";
-import { button, card, field, Label, Page, Problem, primary, Segmented } from "./ui.tsx";
+import { button, card, field, Label, MoreMenu, Page, Problem, primary, Segmented } from "./ui.tsx";
 
 /** A plain click goes there in place; a modified one is the browser's. */
 const follow = (go: () => void) => (e: MouseEvent<HTMLAnchorElement>) => {
@@ -321,12 +323,28 @@ export function ConnectForm({
 }
 
 /** The groups a connection belongs to, in the order the page shows them. */
-type Group = "apps" | "mcps";
+type Group = "apps" | "mcps" | "skills";
+const words = defaultCopy.plugins;
 
-const groups: { id: Group; title: string; lede?: string }[] = [
-  { id: "apps", title: "Apps", lede: "Installed once for the workspace." },
-  { id: "mcps", title: "MCPs" },
+/** Apps are the workspace's and have a page of their own; the rest are a person's plugins. */
+const groups: { id: Group; title: string; lede?: string; scope?: "apps" }[] = [
+  { id: "apps", title: words.apps.title, scope: "apps" },
+  { id: "mcps", title: words.mcps },
+  { id: "skills", title: words.skills, lede: words.skillsLede },
 ];
+
+/** The shelves of the catalog, in the order the page shows them. */
+type Family = "google" | "work" | "yours";
+const GOOGLE = new Set([
+  "gmail",
+  "google-calendar",
+  "google-drive",
+  "google-docs",
+  "google-sheets",
+  "google-slides",
+]);
+/** Verbs that add something, which a row shows as a plus rather than a word. */
+const ADDS = new Set(["Connect", "Enable", "Install"]);
 
 /** One item on the page: a logo, one status, one action, and the rest in a menu and the sheet. */
 type Item = {
@@ -338,6 +356,12 @@ type Item = {
   note?: string;
   pill?: { text: string; tone: Tone };
   action?: { label: string; run: () => void; disabled?: boolean };
+  /** Where the card goes instead of opening the sheet: a skill opens in the skill library. */
+  go?: () => void;
+  /** Already yours: connected, added or written by you. The Installed tab lists these. */
+  installed?: boolean;
+  /** Which shelf of the catalog it sits on. */
+  family?: Family;
   menu: { label: string; run: () => void; destructive?: boolean }[];
 };
 
@@ -355,15 +379,18 @@ function unavailable(reason?: string): { text: string; tone: Tone } {
  */
 export function Connections({
   provider,
+  scope,
   canConnect = true,
   canWrite = false,
   onOpen,
   onNavigate,
 }: {
   provider?: string;
+  /** "apps" is the workspace's Apps page; without it this is a person's Plugins. */
+  scope?: "apps";
   canConnect?: boolean;
   canWrite?: boolean;
-  onOpen?: (id?: string) => void;
+  onOpen?: (id?: string, scope?: "apps") => void;
   /** Goes to another page of the console, for links in the sheet. */
   onNavigate?: (route: Route) => void;
 }) {
@@ -371,6 +398,9 @@ export function Connections({
   const [creds, setCreds] = useState<ToolCredentials | null>(null);
   const [context, setContext] = useState<PersonContext | null>(null);
   const [clients, setClients] = useState<Client[]>([]);
+  const [skills, setSkills] = useState<LibrarySkill[]>([]);
+  const [tab, setTab] = useState<"catalog" | "installed">("catalog");
+  const [query, setQuery] = useState("");
   const [problem, setProblem] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | undefined>(
     provider === "callback" ? undefined : provider,
@@ -426,7 +456,13 @@ export function Connections({
       .clients()
       .then((r) => setClients(r.clients))
       .catch(() => setClients([]));
-  }, []);
+    // A person's own skills, which are theirs alone: an agent's are set on the agent.
+    if (scope !== "apps")
+      api
+        .librarySkills({ kind: "personal" })
+        .then(setSkills)
+        .catch(() => setSkills([]));
+  }, [scope]);
   useEffect(reload, [reload]);
   // An old address named a credential tool by its provider alone.
   const resolve = useCallback(
@@ -476,11 +512,11 @@ export function Connections({
   }, [reload, selectConnection]);
   const open = (id: string) => {
     selectConnection(id);
-    onOpen?.(id);
+    onOpen?.(id, scope);
   };
   const close = () => {
     selectConnection(undefined);
-    onOpen?.(undefined);
+    onOpen?.(undefined, scope);
   };
   const act = async (fn: () => Promise<unknown>) => {
     if (busy) return;
@@ -601,7 +637,9 @@ export function Connections({
         group: "mcps",
         name: preset.name,
         logo: preset.id,
-        note: preset.endpoint ? hostOf(preset.endpoint) : undefined,
+        note: words.about[preset.id] ?? (preset.endpoint ? hostOf(preset.endpoint) : undefined),
+        installed: preset.connected,
+        family: GOOGLE.has(preset.id) ? "google" : "work",
         pill: preset.reconnect_required
           ? { text: "Reconnect", tone: "warn" }
           : live
@@ -652,6 +690,8 @@ export function Connections({
       name: c.provider,
       logo: c.provider,
       note: c.endpoint ? hostOf(c.endpoint) : undefined,
+      installed: c.connected,
+      family: "yours",
       pill: c.connected
         ? { text: "Connected", tone: "ok" }
         : none
@@ -690,6 +730,8 @@ export function Connections({
       name: server.name,
       logo: server.name,
       note: hostOf(server.url),
+      installed: true,
+      family: "yours",
       pill: { text: "Added", tone: "ok" },
       action: canConnect
         ? { label: "Review Tools", disabled: busy, run: () => startReview(id, server) }
@@ -702,11 +744,37 @@ export function Connections({
     });
   }
   const other = presets.find((p) => p.id === "other");
+  if (scope !== "apps")
+    for (const skill of skills)
+      items.push({
+        id: `skill:${skill.id}`,
+        group: "skills",
+        name: skill.name,
+        logo: "skill",
+        note: skill.description,
+        installed: true,
+        pill: skill.published_at
+          ? { text: defaultCopy.skillsLibrary.published, tone: "ok" }
+          : { text: defaultCopy.skillsLibrary.draft, tone: "neutral" },
+        go: () =>
+          onNavigate?.({
+            page: "customize",
+            section: "skills",
+            scope: "personal",
+            skill: skill.id,
+          }),
+        menu: [],
+      });
   const mayAdd = canConnect && context !== null;
 
   const current = items.find((it) => it.id === selected);
   const currentPreset = presets.find((p) => p.id === selected);
   const adding = selected === "other";
+  // An old address may name an app under Plugins, or a plugin under Apps: it moves to its own page.
+  const home = current ? (current.group === "apps" ? "apps" : undefined) : scope;
+  useEffect(() => {
+    if (current && home !== scope) onOpen?.(current.id, home);
+  }, [current, home, scope, onOpen]);
   const sheetOpen = !!current || adding;
   const link = (route: Route, label: string) => (
     <a
@@ -738,74 +806,285 @@ export function Connections({
   };
 
   return (
-    <Page title="Connections">
+    <Page
+      title={scope === "apps" ? words.apps.title : words.title}
+      lede={scope === "apps" ? words.apps.lede : words.lede}
+    >
       <Problem message={sheetOpen ? null : problem} />
       {busy && <output>Connecting…</output>}
-      {groups.map((g) => {
-        const shown = items.filter((it) => it.group === g.id);
-        const add = g.id === "mcps" && mayAdd;
-        // A group with nothing in it and nothing to do is left out.
-        if (shown.length === 0 && !add) return null;
-        return (
-          <section
-            key={g.id}
-            aria-labelledby={`connections-${g.id}`}
-            className="flex min-w-0 flex-col gap-3"
-          >
-            <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1">
-              <div className="min-w-0">
-                <h2 id={`connections-${g.id}`} className="text-aui-base font-medium text-aui-fg">
-                  {g.title}
-                </h2>
-                {g.lede && <p className="text-aui-sm text-aui-muted">{g.lede}</p>}
-              </div>
-              {add && (
-                <button type="button" className={button} onClick={() => open("other")}>
-                  Add MCP
-                </button>
-              )}
-            </div>
-            {shown.length > 0 && (
-              <ul
-                aria-label={g.title}
-                className="grid min-w-0 grid-cols-[repeat(auto-fill,minmax(min(100%,16rem),1fr))] gap-3"
+      {scope === "apps" &&
+        groups
+          .filter((g) => g.scope === "apps")
+          .map((g) => {
+            const shown = items.filter((it) => it.group === g.id);
+            const add = g.id === "mcps" && mayAdd;
+            const manage = g.id === "skills" && !!onNavigate;
+            // A group with nothing in it and nothing to do is left out.
+            if (shown.length === 0 && !add && !manage) return null;
+            return (
+              <section
+                key={g.id}
+                aria-labelledby={`connections-${g.id}`}
+                className="flex min-w-0 flex-col gap-3"
               >
-                {shown.map((it) => (
-                  <li key={it.id} aria-label={it.name} className="min-w-0">
-                    <ItemCard
-                      mark={<ConnectionLogo id={it.logo} name={it.name} />}
-                      title={it.name}
-                      status={it.pill && <Pill tone={it.pill.tone}>{it.pill.text}</Pill>}
-                      description={it.note}
-                      menu={it.menu.map((m) => ({
-                        label: m.label,
-                        onSelect: m.run,
-                        destructive: m.destructive,
-                        disabled: busy && m.destructive,
-                      }))}
-                      menuLabel={`More for ${it.name}`}
-                      // The whole card opens its details, so the menu holds only what else it can do.
-                      onOpen={() => open(it.id)}
-                      actions={
-                        it.action && (
-                          <button
-                            type="button"
-                            className={button}
-                            disabled={it.action.disabled}
-                            onClick={it.action.run}
-                          >
-                            {it.action.label}
-                          </button>
-                        )
+                <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                  <div className="min-w-0">
+                    {/* Apps is the page's own title, so its one group is named for a screen reader only. */}
+                    <h2
+                      id={`connections-${g.id}`}
+                      className={
+                        g.scope === "apps" ? "sr-only" : "text-aui-base font-medium text-aui-fg"
                       }
-                    />
+                    >
+                      {g.title}
+                    </h2>
+                    {g.lede && <p className="text-aui-sm text-aui-muted">{g.lede}</p>}
+                  </div>
+                  {add && (
+                    <button type="button" className={button} onClick={() => open("other")}>
+                      Add MCP
+                    </button>
+                  )}
+                  {manage && (
+                    <button
+                      type="button"
+                      className={button}
+                      onClick={() =>
+                        onNavigate?.({ page: "customize", section: "skills", scope: "personal" })
+                      }
+                    >
+                      {words.manageSkills}
+                    </button>
+                  )}
+                </div>
+                {shown.length === 0 && manage && (
+                  <p className="text-aui-sm text-aui-muted">{words.noSkills}</p>
+                )}
+                {shown.length > 0 && (
+                  <ul
+                    aria-label={g.title}
+                    className="grid min-w-0 grid-cols-[repeat(auto-fill,minmax(min(100%,16rem),1fr))] gap-3"
+                  >
+                    {shown.map((it) => (
+                      <li key={it.id} aria-label={it.name} className="min-w-0">
+                        <ItemCard
+                          mark={<ConnectionLogo id={it.logo} name={it.name} />}
+                          title={it.name}
+                          status={it.pill && <Pill tone={it.pill.tone}>{it.pill.text}</Pill>}
+                          description={it.note}
+                          menu={it.menu.map((m) => ({
+                            label: m.label,
+                            onSelect: m.run,
+                            destructive: m.destructive,
+                            disabled: busy && m.destructive,
+                          }))}
+                          menuLabel={`More for ${it.name}`}
+                          // The whole card opens its details, so the menu holds only what else it can do.
+                          onOpen={() => (it.go ? it.go() : open(it.id))}
+                          actions={
+                            it.action && (
+                              <button
+                                type="button"
+                                className={button}
+                                disabled={it.action.disabled}
+                                onClick={it.action.run}
+                              >
+                                {it.action.label}
+                              </button>
+                            )
+                          }
+                        />
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+            );
+          })}
+      {scope !== "apps" && (
+        <>
+          <div className="flex min-w-0 flex-wrap items-center gap-3">
+            <label className="flex h-9 min-w-0 flex-1 basis-56 items-center gap-2 rounded-aui border border-aui-border bg-aui-bg px-3 text-aui-muted transition-colors focus-within:border-aui-fg pointer-coarse:h-11">
+              <SearchIcon size={14} />
+              <input
+                type="search"
+                aria-label={words.search}
+                placeholder={words.search}
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                className="min-w-0 flex-1 bg-transparent text-aui-sm text-aui-fg outline-none placeholder:text-aui-muted"
+              />
+            </label>
+            <Segmented<"catalog" | "installed">
+              label={words.view}
+              value={tab}
+              options={[
+                { id: "catalog", label: words.catalog },
+                { id: "installed", label: words.installed },
+              ]}
+              onChange={setTab}
+            />
+          </div>
+          {(() => {
+            const q = query.trim().toLowerCase();
+            const fits = (it: Item) =>
+              (tab === "catalog" || it.installed) &&
+              (!q || `${it.name} ${it.note ?? ""}`.toLowerCase().includes(q));
+            const mcps = items.filter((it) => it.group === "mcps" && fits(it));
+            const mine = items.filter((it) => it.group === "skills" && fits(it));
+            const manage = !!onNavigate;
+            const rows = (label: string, shown: Item[]) => (
+              <ul aria-label={label} className="grid min-w-0 grid-cols-1 gap-x-8 @3xl:grid-cols-2">
+                {shown.map((it) => (
+                  <li
+                    key={it.id}
+                    aria-label={it.name}
+                    className="group/row relative isolate flex min-h-16 min-w-0 items-center gap-3 border-aui-border border-b py-3 hover:bg-aui-hover"
+                  >
+                    <span className="flex size-9 shrink-0 items-center justify-center rounded-aui-lg border border-aui-border bg-aui-surface">
+                      <ConnectionLogo id={it.logo} name={it.name} />
+                    </span>
+                    <span className="flex min-w-0 flex-1 flex-col">
+                      {/* The whole row opens its details, so its other controls sit above it. */}
+                      <button
+                        type="button"
+                        onClick={() => (it.go ? it.go() : open(it.id))}
+                        className="min-w-0 truncate text-left font-medium text-aui-sm text-aui-fg outline-none after:absolute after:inset-0 focus-visible:after:outline-2 focus-visible:after:outline-aui-accent"
+                      >
+                        {it.name}
+                      </button>
+                      {it.note && (
+                        <span className="min-w-0 truncate text-aui-muted text-aui-xs">
+                          {it.note}
+                        </span>
+                      )}
+                    </span>
+                    {it.pill && (
+                      <span className="relative z-10 shrink-0">
+                        <Pill tone={it.pill.tone}>{it.pill.text}</Pill>
+                      </span>
+                    )}
+                    {it.action &&
+                      (ADDS.has(it.action.label) ? (
+                        <button
+                          type="button"
+                          aria-label={it.action.label}
+                          title={`${it.action.label} ${it.name}`}
+                          disabled={it.action.disabled}
+                          onClick={it.action.run}
+                          className="relative z-10 inline-flex size-8 shrink-0 items-center justify-center rounded-aui text-aui-muted transition-colors hover:bg-aui-bg hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent disabled:opacity-50 pointer-coarse:size-11"
+                        >
+                          <PlusIcon size={16} />
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          className={`${button} relative z-10 shrink-0`}
+                          disabled={it.action.disabled}
+                          onClick={it.action.run}
+                        >
+                          {it.action.label}
+                        </button>
+                      ))}
+                    {it.menu.length > 0 && (
+                      <span className="relative z-10 shrink-0">
+                        <MoreMenu
+                          items={it.menu.map((m) => ({
+                            label: m.label,
+                            onSelect: m.run,
+                            destructive: m.destructive,
+                            disabled: busy && m.destructive,
+                          }))}
+                          label={`More for ${it.name}`}
+                        />
+                      </span>
+                    )}
                   </li>
                 ))}
               </ul>
-            )}
-          </section>
-        );
-      })}
+            );
+            return (
+              <>
+                {(mcps.length > 0 || (mayAdd && !q && tab === "catalog")) && (
+                  <section
+                    aria-labelledby="connections-mcps"
+                    className="@container flex min-w-0 flex-col gap-5"
+                  >
+                    <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                      <h2 id="connections-mcps" className="text-aui-base font-medium text-aui-fg">
+                        {words.mcps}
+                      </h2>
+                      {mayAdd && (
+                        <button type="button" className={button} onClick={() => open("other")}>
+                          Add MCP
+                        </button>
+                      )}
+                    </div>
+                    {(["google", "work", "yours"] as const).map((family) => {
+                      const shown = mcps.filter((it) => it.family === family);
+                      if (shown.length === 0) return null;
+                      return (
+                        <div key={family} className="flex min-w-0 flex-col gap-1">
+                          <h3 className="font-medium text-aui-sm text-aui-fg">
+                            {words.families[family].title}
+                          </h3>
+                          <span className="pb-1 text-aui-muted text-aui-xs">
+                            {words.families[family].lede}
+                          </span>
+                          {rows(words.families[family].title, shown)}
+                        </div>
+                      );
+                    })}
+                  </section>
+                )}
+                {(mine.length > 0 || (manage && !q)) && (
+                  <section
+                    aria-labelledby="connections-skills"
+                    className="@container flex min-w-0 flex-col gap-3"
+                  >
+                    <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                      <div className="min-w-0">
+                        <h2
+                          id="connections-skills"
+                          className="text-aui-base font-medium text-aui-fg"
+                        >
+                          {words.skills}
+                        </h2>
+                        <span className="text-aui-muted text-aui-xs">{words.skillsLede}</span>
+                      </div>
+                      {manage && (
+                        <button
+                          type="button"
+                          className={button}
+                          onClick={() =>
+                            onNavigate?.({
+                              page: "customize",
+                              section: "skills",
+                              scope: "personal",
+                            })
+                          }
+                        >
+                          {words.manageSkills}
+                        </button>
+                      )}
+                    </div>
+                    {mine.length === 0 ? (
+                      <span className="text-aui-muted text-aui-sm">{words.noSkills}</span>
+                    ) : (
+                      rows(words.skills, mine)
+                    )}
+                  </section>
+                )}
+                {mcps.length === 0 && mine.length === 0 && (q || tab === "installed") && (
+                  <span role="status" className="text-aui-muted text-aui-sm">
+                    {q ? words.noMatch : words.noneInstalled}
+                  </span>
+                )}
+              </>
+            );
+          })()}
+        </>
+      )}
       <Sheet
         open={sheetOpen}
         onOpenChange={(next) => {
