@@ -122,8 +122,17 @@ export function ApprovalToggle({
     { mode: "auto", name: words.auto, hint: words.autoHint },
     { mode: "decide", name: words.decide, hint: words.decideHint },
   ];
-  // Arrow keys, Home and End move through the rows, as in every menu here.
-  const move = (e: KeyboardEvent<HTMLDivElement>) => {
+  // Arrow keys, Home and End move through the rows, and Escape or Tab closes
+  // the menu and puts focus back on the control, as in every menu here.
+  const keys = (close: () => void) => (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === "Escape" || e.key === "Tab") {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      close();
+      return;
+    }
     const rows = [...e.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')];
     const at = rows.indexOf(document.activeElement as HTMLButtonElement);
     const to =
@@ -163,7 +172,12 @@ export function ApprovalToggle({
         }
       >
         {(close) => (
-          <div role="menu" aria-label={words.label} onKeyDown={move} className="flex flex-col">
+          <div
+            role="menu"
+            aria-label={words.label}
+            onKeyDown={keys(close)}
+            className="flex flex-col"
+          >
             {options.map((o) => {
               const RowIcon = o.mode === "ask" ? HandIcon : FastForwardIcon;
               const on = o.mode === mode;

@@ -73,6 +73,15 @@ test("the control opens a menu of the three modes, each with a short description
   assert.equal(focused(), "decide");
   fireEvent.keyDown(menu, { key: "ArrowDown" });
   assert.equal(focused(), "ask");
+  // Escape closes it; so does Tab, which would otherwise leave it open behind the focus.
+  const expanded = () =>
+    screen.getByRole("button", { name: "Approvals: Ask Me" }).getAttribute("aria-expanded");
+  fireEvent.keyDown(menu, { key: "Escape" });
+  await waitFor(() => assert.equal(expanded(), "false"));
+  fireEvent.click(screen.getByRole("button", { name: "Approvals: Ask Me" }));
+  await waitFor(() => assert.equal(expanded(), "true"));
+  fireEvent.keyDown(await screen.findByRole("menu"), { key: "Tab" });
+  await waitFor(() => assert.equal(expanded(), "false"));
 });
 
 test("a mode picked from the menu is saved for the session, and the menu closes", async () => {
