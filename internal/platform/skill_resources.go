@@ -39,16 +39,17 @@ const maxSkillFileRead = 128 << 10
 //
 // It reads only the packages the run was admitted with (readPinnedSkillFile):
 // no conversation file, no other skill, no path outside a package, at most
-// maxSkillFileRead bytes a file and maxSkillFileReads files a turn. What it
-// can return is part of the skill the person chose for the turn, whose
-// instructions are already in the turn's text, so neither a skill's tool
-// list nor the action policy holds it and no person is asked. Each call is
+// maxSkillFileRead bytes a file and maxSkillFileReads files an attempt of a
+// turn. What it can return is part of the skill the person chose for the
+// turn, whose instructions are already in the turn's text, so neither a
+// skill's tool list, a workspace's tools ceiling nor the action policy holds
+// it and no person is asked. Each call is
 // recorded on the run's stream as every tool call is, and a paused agent or
 // workspace stops it as it stops every tool (operationAdmissionRequest).
 const ToolSkillFileRead = "skill_file_read"
 
-// maxSkillFileReads is how many supporting files one turn reads with
-// skill_file_read: one more than the files a turn's text lists for a skill
+// maxSkillFileReads is how many supporting files one attempt of a turn
+// reads with skill_file_read (a retried attempt counts again): one more than the files a turn's text lists for a skill
 // (maxListedSkillFiles), so a model can read every listed file and one the
 // instructions name.
 const maxSkillFileReads = maxListedSkillFiles + 1
@@ -100,7 +101,8 @@ func (p *Platform) readPinnedSkillFile(req runtime.Request, tool, requested stri
 	if !ok || req.RunID == "" {
 		return "", fmt.Errorf("%w: no pinned skill file", ErrSandbox)
 	}
-	run, err := p.Runs.Get(req.Tenant, req.RunID)
+	// A turn may read before its run's record is written (runRecordOf).
+	run, err := p.runRecordOf(req.Tenant, req.RunID)
 	if err != nil {
 		return "", fmt.Errorf("%w: no pinned skill file", ErrSandbox)
 	}

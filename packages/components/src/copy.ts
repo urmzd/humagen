@@ -2278,6 +2278,8 @@ export const defaultCopy = {
     toolsHint:
       "Exact tool names, one per line. Empty permits no tools. Agent and workspace restrictions still apply.",
     limitTools: "Limit the tools of a run that uses this skill",
+    toolsFromSkillFile:
+      "Imported: the limit is what SKILL.md declares in allowed-tools. Saving here sets it instead.",
     toolsUnlimited:
       "Not limited: a run that uses this skill keeps the agent's own tools. Its supporting files are always readable.",
     save: "Save Draft",
@@ -2289,7 +2291,8 @@ export const defaultCopy = {
     test: "Test Skill",
     agent: "Test Agent",
     request: "Test Request",
-    testHint: "Tests use the exact selected version. Every permitted action requires approval.",
+    testHint:
+      "Tests use the exact selected version. Every permitted action requires approval, except reading the skill's own files.",
     personalTestLocation: "This test runs in your personal project.",
     testProjectUnavailable:
       "Your personal test project is not available yet. Reload the library and try again.",
@@ -2301,8 +2304,10 @@ export const defaultCopy = {
     publish: "Publish Version",
     publishNeedsTest: "Complete a readable test for this exact revision before publishing.",
     publishNeedsCleanTest:
-      "A tool call failed in every finished test of this revision. Open the test, fix the skill and test again before publishing.",
-    testToolFailed: "A tool call failed",
+      "No finished test of this revision passed. Open a test to see why, fix the skill and test again before publishing.",
+    testFailed: "Test failed",
+    testUnknown: "Result unknown",
+    testWarned: "Passed with warnings",
     testPending:
       "A test for this revision is still waiting or running. Open its conversation to review progress.",
     promotion: "Promote to Another Scope",

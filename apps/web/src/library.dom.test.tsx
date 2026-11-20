@@ -454,8 +454,14 @@ test("publishing waits for a completed readable test of the selected exact revis
       ],
     }),
     "GET /api/library/skills": () => ({ skills: [second] }),
+    // The server judges a finished test, and answers its verdict.
     "GET /api/library/skills/sk-tested": () => ({
-      revisions: [first, second],
+      revisions: [
+        first,
+        status === "completed"
+          ? { ...second, test_results: [{ run: "native-test", verdict: "passed" }] }
+          : second,
+      ],
     }),
     "GET /api/projects/personal/agents": () => ({ available: { all: false, names: ["reviewer"] } }),
     "GET /api/library/skills/sk-tested/versions/1/agents": () => ({ agents: [], more: false }),
@@ -534,7 +540,7 @@ test("an unreadable recorded test cannot enable skill publication", async () => 
   );
 });
 
-test("a finished test with a failed tool call does not enable publication and says why", async () => {
+test("a finished test that failed does not enable publication and says why", async () => {
   const skill = {
     id: "sk-tool-failed",
     scope: { kind: "workspace" },
@@ -546,7 +552,13 @@ test("a finished test with a failed tool call does not enable publication and sa
     at: "2026-10-26T12:00:00Z",
     via: "import",
     tests: ["failed-test"],
-    failed_tests: ["failed-test"],
+    test_results: [
+      {
+        run: "failed-test",
+        verdict: "failed",
+        reason: "it called file_read, a tool the run did not have",
+      },
+    ],
   };
   net = stubFetch({
     "GET /api/me": () => me,
@@ -566,10 +578,59 @@ test("a finished test with a failed tool call does not enable publication and sa
   fireEvent.click(await screen.findByRole("button", { name: /tool-failed.*Version 1/s }));
   await skillTab("Versions");
   await screen.findByText(defaultCopy.skillsLibrary.publishNeedsCleanTest);
-  await screen.findByText(defaultCopy.skillsLibrary.testToolFailed);
+  await screen.findByText(defaultCopy.skillsLibrary.testFailed);
+  await screen.findByText("it called file_read, a tool the run did not have");
   assert.equal(
     (screen.getByRole("button", { name: "Publish Version" }) as HTMLButtonElement).disabled,
     true,
+  );
+});
+
+test("a test that passed with warnings enables publication and shows them", async () => {
+  const skill = {
+    id: "sk-warned",
+    scope: { kind: "workspace" },
+    name: "warned",
+    description: "Tested skill",
+    instructions: "Read references/guide.md",
+    version: 1,
+    by: "ada",
+    at: "2026-10-26T12:00:00Z",
+    tests: ["warned-test"],
+    test_results: [
+      {
+        run: "warned-test",
+        verdict: "passed",
+        warnings: ["file_read: operations: action denied: a person must approve this action"],
+      },
+    ],
+  };
+  net = stubFetch({
+    "GET /api/me": () => me,
+    "GET /api/projects": () => ({ projects: [], next: null }),
+    "GET /api/agents": () => ({ agents: [] }),
+    "GET /api/library/skills": () => ({ skills: [skill] }),
+    "GET /api/library/skills/sk-warned": () => ({ revisions: [skill] }),
+    "GET /api/library/skills/sk-warned/versions/1/agents": () => ({ agents: [], more: false }),
+    "GET /api/runs/warned-test": () => ({
+      id: "warned-test",
+      agent: "reader",
+      thread: "warned-thread",
+      status: "completed",
+    }),
+  });
+  render(<SkillsLibrary />);
+  fireEvent.click(await screen.findByRole("button", { name: /warned.*Version 1/s }));
+  await skillTab("Versions");
+  await screen.findByText(defaultCopy.skillsLibrary.testWarned);
+  await screen.findByText(
+    "file_read: operations: action denied: a person must approve this action",
+  );
+  await waitFor(() =>
+    assert.equal(
+      (screen.getByRole("button", { name: "Publish Version" }) as HTMLButtonElement).disabled,
+      false,
+    ),
   );
 });
 
@@ -602,6 +663,7 @@ test("a skill that does not limit tools says so and saves without a tool list", 
   fireEvent.click(await screen.findByRole("button", { name: /unlimited.*Version 1/s }));
   await skillTab("Contents");
   await screen.findByText(defaultCopy.skillsLibrary.toolsUnlimited);
+  await screen.findByText(defaultCopy.skillsLibrary.toolsFromSkillFile);
   const limit = screen.getByLabelText(defaultCopy.skillsLibrary.limitTools) as HTMLInputElement;
   assert.equal(limit.checked, false);
   fireEvent.click(screen.getByRole("button", { name: "Source" }));

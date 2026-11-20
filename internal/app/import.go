@@ -1487,6 +1487,9 @@ func skillFolder(dir, name string) (def library.Definition, dropped []string, er
 	if !whole.Valid() {
 		return whole, nil, errors.New("not a skill the library takes: check its name, description and instructions in SKILL.md")
 	}
+	// Checked above as the server derives it, and sent as none: an
+	// import's tool limit is what its SKILL.md declares (library.ImportTools).
+	whole.Tools = nil
 	return whole, dropped, nil
 }
 

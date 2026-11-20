@@ -36,6 +36,8 @@ import {
 } from "./skill-files.ts";
 import { AgentMark, Page, Problem, SkeletonRows } from "./ui.tsx";
 
+type TestVerdict = NonNullable<LibrarySkill["test_results"]>[number];
+
 const blank: LibrarySkillDefinition = {
   name: "",
   description: "",
@@ -135,7 +137,7 @@ export function SkillsLibrary({
   const [testPending, setTestPending] = useState(false);
   const [testFailed, setTestFailed] = useState(false);
   const [testUses, setTestUses] = useState<
-    { id: string; thread: string; agent: string; failed: boolean }[]
+    { id: string; thread: string; agent: string; verdict?: TestVerdict }[]
   >([]);
   const [testProject, setTestProject] = useState("");
   const [destination, setDestination] = useState<LibraryScope>({ kind: "project", project: "" });
@@ -245,18 +247,24 @@ export function SkillsLibrary({
           : api.librarySkill(selected.id).catch(() => [] as LibrarySkill[]),
       ]);
       if (!live) return;
-      const failed =
-        history.find((row) => row.version === selected.version)?.failed_tests ??
-        selected.failed_tests ??
-        [];
+      const verdicts = new Map(
+        (
+          history.find((row) => row.version === selected.version)?.test_results ??
+          selected.test_results ??
+          []
+        ).map((verdict) => [verdict.run, verdict]),
+      );
       const readable = results.flatMap((result) =>
         result.status === "fulfilled" ? [result.value] : [],
       );
-      const finished = readable.filter((run) => run.status === "completed");
-      setTestPassed(finished.some((run) => !failed.includes(run.id)));
-      setTestFailed(finished.some((run) => failed.includes(run.id)));
-      const pending = readable.some((run) =>
-        ["accepted", "running", "parked"].includes(run.status),
+      const judged = [...verdicts.values()];
+      setTestPassed(judged.some((verdict) => verdict.verdict === "passed"));
+      setTestFailed(judged.some((verdict) => verdict.verdict !== "passed"));
+      // A test that ended after the history was read is judged next time.
+      const pending = readable.some(
+        (run) =>
+          ["accepted", "running", "parked"].includes(run.status) ||
+          (!selected.published_at && run.status === "completed" && !verdicts.has(run.id)),
       );
       setTestPending(pending);
       setTestUses(
@@ -267,7 +275,7 @@ export function SkillsLibrary({
                   id: run.id,
                   thread: run.thread,
                   agent: run.agent,
-                  failed: failed.includes(run.id),
+                  verdict: verdicts.get(run.id),
                 },
               ]
             : [],
@@ -848,6 +856,9 @@ export function SkillsLibrary({
                   </FileBrowser>
                   <details className="mt-5 text-sm">
                     <summary className="cursor-pointer py-2 font-medium">{copy.tools}</summary>
+                    {selected?.via === "import" && !dirty && (
+                      <p className="mt-2 text-muted-foreground">{copy.toolsFromSkillFile}</p>
+                    )}
                     <label className="mt-2 flex items-center gap-2">
                       <input
                         type="checkbox"
@@ -1032,9 +1043,24 @@ export function SkillsLibrary({
                               >
                                 {copy.testRun}
                               </a>
-                              {run.failed && (
-                                <Badge variant="destructive">{copy.testToolFailed}</Badge>
+                              {run.verdict?.verdict === "failed" && (
+                                <Badge variant="destructive">{copy.testFailed}</Badge>
                               )}
+                              {run.verdict?.verdict === "unknown" && (
+                                <Badge variant="outline">{copy.testUnknown}</Badge>
+                              )}
+                              {run.verdict?.verdict === "passed" &&
+                                (run.verdict.warnings?.length ?? 0) > 0 && (
+                                  <Badge variant="outline">{copy.testWarned}</Badge>
+                                )}
+                              {[
+                                ...(run.verdict?.reason ? [run.verdict.reason] : []),
+                                ...(run.verdict?.warnings ?? []),
+                              ].map((line) => (
+                                <span key={line} className="basis-full text-muted-foreground">
+                                  {line}
+                                </span>
+                              ))}
                             </li>
                           ))}
                         </ul>

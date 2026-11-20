@@ -26,6 +26,7 @@ import (
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/call"
+	"github.com/urmzd/humagen/pkg/library"
 	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/humagen/pkg/state/statetest"
 )
@@ -214,10 +215,12 @@ func TestAnImportedSkillsSupportingFileReachesTheAnswer(t *testing.T) {
 		}
 		var history struct {
 			Revisions []struct {
-				FailedTests []string `json:"failed_tests"`
+				TestResults []struct {
+					Verdict string `json:"verdict"`
+				} `json:"test_results"`
 			} `json:"revisions"`
 		}
-		if api(t, server, "GET", "/api/library/skills/"+skill.ID, nil, &history); len(history.Revisions) != 1 || len(history.Revisions[0].FailedTests) != 0 {
+		if api(t, server, "GET", "/api/library/skills/"+skill.ID, nil, &history); len(history.Revisions) != 1 || len(history.Revisions[0].TestResults) != 1 || history.Revisions[0].TestResults[0].Verdict != "passed" {
 			t.Fatalf("history = %+v", history)
 		}
 		if code := api(t, server, "POST", fmt.Sprintf("/api/library/skills/%s/versions/%d/publish", skill.ID, skill.Version), nil, nil); code != 200 {
@@ -239,4 +242,85 @@ func TestAnImportedSkillsSupportingFileReachesTheAnswer(t *testing.T) {
 			}
 		}
 	})
+}
+
+// An import's tool limit is what its SKILL.md declares: the draft route
+// refuses a tool list with an import, and reads the empty one the CLI sent
+// before this release as none. A SKILL.md that declares more tools than a
+// skill may name, or a name past the bound, is named under failed with the
+// bound, by a dry run as by the real one, and nothing is written.
+func TestImportSkillsNamesAnAllowedToolsPastTheBound(t *testing.T) {
+	p, err := platform.New(platform.Config{Workspace: t.TempDir(), Limits: call.Limits{MaxDepth: 2, MaxFanOut: 4}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- p.Run(ctx) }()
+	dev := auth.Principal{Subject: "dev", Tenant: "acme", Kind: auth.User, Name: "Developer", Roles: []auth.Role{auth.Admin}}
+	server := httptest.NewServer((&httpapi.Server{P: p, Authn: &httpapi.Authn{Dev: &dev}, Log: slog.New(slog.DiscardHandler)}).Handler())
+	t.Cleanup(func() {
+		server.Close()
+		cancel()
+		if err := <-done; err != nil {
+			t.Errorf("platform shutdown: %v", err)
+		}
+	})
+
+	md := func(name, allowed string) string {
+		return "---\nname: " + name + "\ndescription: Generated fixture skill " + name + "\nallowed-tools: " + allowed + "\n---\n\nRead references/facts.md.\n"
+	}
+	names := func(n int) string {
+		var out []string
+		for i := range n {
+			out = append(out, fmt.Sprintf("mcp__fixture__tool_%d", i))
+		}
+		return strings.Join(out, " ")
+	}
+	dir := t.TempDir()
+	putFile(t, dir, "most/SKILL.md", md("most", names(library.MaxSkillTools)))
+	putFile(t, dir, "too-many/SKILL.md", md("too-many", names(library.MaxSkillTools+1)))
+	putFile(t, dir, "too-long/SKILL.md", md("too-long", strings.Repeat("x", library.MaxSkillToolName+1)))
+	for _, name := range []string{"most", "too-many", "too-long"} {
+		putFile(t, dir, name+"/references/facts.md", "Generated fixture fact")
+	}
+	want := []string{
+		"failed too-many: library: invalid: SKILL.md's allowed-tools names 129 tools; a skill names at most 128",
+		"failed too-long: library: invalid: SKILL.md's allowed-tools names a tool of 129 characters; a tool name holds at most 128",
+	}
+	for _, args := range [][]string{{"--dry-run"}, nil} {
+		out, err := runImport(t, append([]string{"skills", dir, "--scope", "workspace", "--server", server.URL}, args...)...)
+		if err == nil || err.Error() != "2 skills were not drafted" {
+			t.Fatalf("%v: err = %v\n%s", args, err, out)
+		}
+		for _, line := range want {
+			if !strings.Contains(out, line) {
+				t.Errorf("%v: out lacks %q:\n%s", args, line, out)
+			}
+		}
+	}
+	rows, _, err := p.SkillLibrary.List("acme", library.Scope{Kind: "workspace"})
+	if err != nil || len(rows) != 1 || rows[0].Name != "most" || len(rows[0].Tools) != library.MaxSkillTools {
+		t.Fatalf("library holds %+v, %v", rows, err)
+	}
+
+	// The draft route: what the CLI before this release sent, and a list.
+	def := func(tools []string) map[string]any {
+		d := map[string]any{"name": "routed", "description": "Generated fixture skill routed", "files": []map[string]any{
+			{"path": "SKILL.md", "data": []byte(md("routed", "file_read"))},
+		}}
+		if tools != nil {
+			d["tools"] = tools
+		}
+		return d
+	}
+	if code := api(t, server, "POST", "/api/library/skills", map[string]any{"scope": map[string]string{"kind": "workspace"}, "definition": def([]string{"file_list"}), "version": 0, "via": "import"}, nil); code != 400 {
+		t.Fatalf("an import with a tool list = %d", code)
+	}
+	var saved struct {
+		Tools *[]string `json:"tools"`
+	}
+	if code := api(t, server, "POST", "/api/library/skills", map[string]any{"scope": map[string]string{"kind": "workspace"}, "definition": def([]string{}), "version": 0, "via": "import"}, &saved); code != 201 || saved.Tools == nil || !slices.Equal(*saved.Tools, []string{"file_read"}) {
+		t.Fatalf("an import as the earlier CLI sent it = %d, tools %v", code, saved.Tools)
+	}
 }

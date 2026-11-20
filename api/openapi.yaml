@@ -1112,7 +1112,7 @@ paths:
                   type: integer
                   minimum: 0
                 via:
-                  description: "`import` for a draft read from a skill folder (`humagen import skills`), which the revision records. Left out for one saved in the editor. Any other value answers 400."
+                  description: "`import` for a draft read from a skill folder (`humagen import skills`), which the revision records. Left out for one saved in the editor. Any other value answers 400. An import's tool limit is what its `SKILL.md` declares: a non-empty `tools` with it answers 400, and an empty one, which imports before this release sent, reads as none."
                   type: string
                   maxLength: 6
       responses:
@@ -1207,7 +1207,7 @@ paths:
       operationId: publishLibrarySkill
       tags: [projects]
       summary: Publish a successfully tested immutable revision
-      description: A revision is published when a test of it the caller may read completed with no failed tool call. Otherwise the answer is 409, and it says when every finished test had a failed tool call.
+      description: A revision is published when a test of it the caller may read passed (see `test_results`). Otherwise the answer is 409, naming why the last finished test did not pass.
       x-permission: projects:write
       parameters:
         - {name: id, in: path, required: true, schema: {type: string}}
@@ -12471,9 +12471,9 @@ components:
           maxItems: 256
           items: {$ref: '#/components/schemas/LibrarySkillFile'}
         tools:
-          description: "The tools a run that uses the skill is limited to, intersected with the agent's grants. Absent does not limit them: the agent's own tools apply. Empty permits no tools. A package's `allowed-tools` narrows the list, and narrows an absent list to the tools it names. A revision drafted with `via: import` is limited only as its `SKILL.md` declares, and is answered so. Whatever the list, a run is offered `skill_file_read` to read the supporting files of the skills it uses."
+          description: "The tools a run that uses the skill is limited to, intersected with the agent's grants. Absent does not limit them: the agent's own tools apply. Empty permits no tools. A package's `allowed-tools` narrows the list, and narrows an absent list to the tools it names. A draft with `via: import` takes no list (400 for a non-empty one; an empty one reads as none): it is limited only as its `SKILL.md` declares, at most 128 names of at most 128 characters, and is stored and answered so. Whatever the list, a run is offered `skill_file_read` to read the supporting files of the skills it uses."
           type: array
-          maxItems: 32
+          maxItems: 128
           items: {type: string, maxLength: 128}
     LibrarySkillFile:
       type: object
@@ -12508,11 +12508,21 @@ components:
               type: array
               maxItems: 10
               items: {type: string}
-            failed_tests:
-              description: "Tests of an unpublished revision, among those the reader may read, whose run completed with a failed tool call: a tool the model was told of and not offered, a refused read, or a tool that erred. Such a test does not count as passing, so it does not let the revision be published. Only `GET /api/library/skills/{id}` carries it; absent when there are none."
+            test_results:
+              description: "The verdict of each finished test of an unpublished revision that the reader may read, in the order tested. Only `GET /api/library/skills/{id}` carries it. A test passes when its run completed, called no tool the run did not have and had no read of the skill's own files refused; `failed` says why one did not in `reason`. Any other failed tool call is a `warnings` entry and does not stop a test passing. The verdict is recorded when the test ends. A finished test whose events are still arriving is left out for up to two minutes; after that, one whose verdict was not recorded and whose events are no longer all kept is `unknown`. Neither counts as passed."
               type: array
               maxItems: 10
-              items: {type: string}
+              items:
+                type: object
+                required: [run, verdict]
+                properties:
+                  run: {type: string}
+                  verdict: {type: string, enum: [passed, failed, unknown]}
+                  reason: {type: string, maxLength: 300}
+                  warnings:
+                    type: array
+                    maxItems: 5
+                    items: {type: string, maxLength: 300}
             from: {$ref: '#/components/schemas/LibraryProvenance'}
             via:
               description: "`import` when the revision was drafted from a skill folder by `humagen import skills`. Absent for one saved in the editor, promoted, or imported by an earlier release. An import follows only a newest revision it wrote: any other is reported as a conflict, not written over."

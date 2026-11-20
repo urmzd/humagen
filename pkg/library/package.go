@@ -152,26 +152,66 @@ func (d Definition) Normalize() (Definition, error) {
 	switch {
 	case pkg.AllowedTools == nil:
 	case d.Tools == nil:
-		d.Tools = declaredTools(pkg.AllowedTools)
+		if d.Tools, err = declaredTools(pkg.AllowedTools); err != nil {
+			return Definition{}, err
+		}
 	default:
 		d.Tools = slices.DeleteFunc(slices.Clone(d.Tools), func(tool string) bool { return !slices.Contains(pkg.AllowedTools, tool) })
 	}
 	return d, nil
 }
 
+// MaxSkillTools is how many tools a skill's tool list, or its SKILL.md's
+// allowed-tools, may name, and MaxSkillToolName the longest name either may
+// hold. A list of one assistant's tools and a server's MCP tools fits; the
+// skills the import was checked with name at most a few.
+const (
+	MaxSkillTools    = 128
+	MaxSkillToolName = 128
+)
+
 // declaredTools is an allowed-tools list as a tool selection: each name
 // once, in the order declared; nil stays nil, and an empty list stays empty.
-func declaredTools(allowed []string) []string {
+// A list past MaxSkillTools names, or with a name past MaxSkillToolName
+// characters or one a list cannot hold, is refused, with the bound.
+func declaredTools(allowed []string) ([]string, error) {
 	if allowed == nil {
-		return nil
+		return nil, nil
 	}
 	out := []string{}
 	for _, tool := range allowed {
+		if tool == "" || len(tool) > MaxSkillToolName || strings.ContainsAny(tool, "\x00\r\n") {
+			return nil, fmt.Errorf("%w: SKILL.md's allowed-tools names a tool of %d characters; a tool name holds at most %d, on one line", ErrInvalid, len(tool), MaxSkillToolName)
+		}
 		if !slices.Contains(out, tool) {
 			out = append(out, tool)
 		}
 	}
-	return out
+	if len(out) > MaxSkillTools {
+		return nil, fmt.Errorf("%w: SKILL.md's allowed-tools names %d tools; a skill names at most %d", ErrInvalid, len(out), MaxSkillTools)
+	}
+	return out, nil
+}
+
+// ImportTools is the tool list of a draft read from a skill folder, before
+// it is normalized: none, so its limit is what its SKILL.md declares
+// (Normalize). An empty list, which an import before this release sent
+// whatever the folder said, is read as none, and so is the list the
+// SKILL.md declares. Any other list is refused: an imported skill's limit
+// comes from its SKILL.md, and a list the server would store and not apply
+// is not taken.
+func ImportTools(d Definition) (Definition, error) {
+	if len(d.Tools) > 0 {
+		declared := []string(nil)
+		if pkg, err := d.Package(); err == nil {
+			declared, _ = declaredTools(pkg.AllowedTools)
+		}
+		if !slices.Equal(d.Tools, declared) {
+			return Definition{}, fmt.Errorf("%w: an imported skill's tool limit comes from the allowed-tools of its SKILL.md; send no tools", ErrInvalid)
+		}
+	}
+	d.Tools = nil
+	return d, nil
 }
 
 // PackageFiles exposes old instruction-only revisions as a standard package.

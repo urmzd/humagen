@@ -74,7 +74,7 @@ type Definition struct {
 }
 
 func (d Definition) Valid() bool {
-	if !projects.ValidSkill(d.Name) || !d.validPackage() || strings.TrimSpace(d.Description) == "" || strings.TrimSpace(d.Instructions) == "" || utf8.RuneCountInString(d.Description) > projects.MaxSkillDescription || len(d.ArgumentHint) > projects.MaxArgumentHint || len(d.Inputs) > 4000 || len(d.Outputs) > 4000 || len(d.Tools) > 32 {
+	if !projects.ValidSkill(d.Name) || !d.validPackage() || strings.TrimSpace(d.Description) == "" || strings.TrimSpace(d.Instructions) == "" || utf8.RuneCountInString(d.Description) > projects.MaxSkillDescription || len(d.ArgumentHint) > projects.MaxArgumentHint || len(d.Inputs) > 4000 || len(d.Outputs) > 4000 || len(d.Tools) > MaxSkillTools {
 		return false
 	}
 	for _, value := range []string{d.Description, d.Instructions, d.ArgumentHint, d.Inputs, d.Outputs} {
@@ -111,14 +111,17 @@ type Revision struct {
 	// write over unasked.
 	Via string `json:"via,omitempty"`
 	Definition
-	Scope       Scope       `json:"scope"`
-	Version     int         `json:"version"`
-	By          string      `json:"by"`
-	At          time.Time   `json:"at"`
-	PublishedAt time.Time   `json:"published_at,omitzero"`
-	PublishedBy string      `json:"published_by,omitempty"`
-	Tests       []string    `json:"tests"`
-	From        *Provenance `json:"from,omitempty"`
+	Scope       Scope     `json:"scope"`
+	Version     int       `json:"version"`
+	By          string    `json:"by"`
+	At          time.Time `json:"at"`
+	PublishedAt time.Time `json:"published_at,omitzero"`
+	PublishedBy string    `json:"published_by,omitempty"`
+	Tests       []string  `json:"tests"`
+	// Results are the recorded results of its test runs, at most one a
+	// run and as many as Tests holds.
+	Results []TestResult `json:"results,omitempty"`
+	From    *Provenance  `json:"from,omitempty"`
 }
 
 // ToolLimit is the tools a run that uses r is limited to (Definition.Tools),
@@ -130,6 +133,11 @@ type Revision struct {
 // which records no one's choice and withdrew every tool from a run that
 // used the skill, so that stored list is not read. A person's own choice is
 // a revision saved in the editor, never ViaImport, and is read as stored.
+//
+// The store reads every revision this way (checkRows), so what it answers,
+// what it writes back and what limits a run are one list. One whose
+// allowed-tools is past the bounds (declaredTools) allows no tool: it is
+// never read as limiting nothing.
 func (r Revision) ToolLimit() []string {
 	if r.Via != ViaImport || r.Files == nil {
 		return slices.Clone(r.Tools)
@@ -138,13 +146,66 @@ func (r Revision) ToolLimit() []string {
 	if err != nil {
 		return slices.Clone(r.Tools)
 	}
-	return declaredTools(pkg.AllowedTools)
+	tools, err := declaredTools(pkg.AllowedTools)
+	if err != nil {
+		return []string{}
+	}
+	return tools
+}
+
+// TestResult is what one test run of a revision showed, recorded when the
+// run ended so it outlasts the run's events. A test passes when its run
+// completed and called no tool it did not have and no read of the skill's
+// own files was refused; Reason says why one did not. Warnings are the
+// other failed tool calls, which do not stop it passing.
+type TestResult struct {
+	Run      string   `json:"run"`
+	Passed   bool     `json:"passed"`
+	Reason   string   `json:"reason,omitempty"`
+	Warnings []string `json:"warnings,omitempty"`
+}
+
+// Bounds on a recorded test result: how many warnings it keeps, and the
+// characters of its reason and of each warning.
+const (
+	MaxTestWarnings = 5
+	MaxTestText     = 300
+)
+
+func (t TestResult) valid() bool {
+	if t.Run == "" || len(t.Run) > 128 || utf8.RuneCountInString(t.Reason) > MaxTestText || t.Passed != (t.Reason == "") || len(t.Warnings) > MaxTestWarnings {
+		return false
+	}
+	for _, w := range t.Warnings {
+		if w == "" || utf8.RuneCountInString(w) > MaxTestText {
+			return false
+		}
+	}
+	return true
+}
+
+// ResultOf is the recorded result of the test run, when there is one.
+func (r Revision) ResultOf(run string) (TestResult, bool) {
+	for _, t := range r.Results {
+		if t.Run == run {
+			return t, true
+		}
+	}
+	return TestResult{}, false
 }
 
 func clone(r Revision) Revision {
 	r.Tools = slices.Clone(r.Tools)
 	r.Files = cloneFiles(r.Files)
 	r.Tests = slices.Clone(r.Tests)
+	if r.Results != nil {
+		results := make([]TestResult, len(r.Results))
+		for i, t := range r.Results {
+			t.Warnings = slices.Clone(t.Warnings)
+			results[i] = t
+		}
+		r.Results = results
+	}
 	if r.From != nil {
 		from := *r.From
 		r.From = &from
@@ -212,8 +273,17 @@ func checkRows(key string, revisions []Revision) ([]Revision, error) {
 		if r.Via != "" && r.Via != ViaImport {
 			return nil, ErrInvalid
 		}
-		if !r.Valid() || r.Scope != first.Scope || r.Name != first.Name || r.Version != i+1 || r.By == "" || r.At.IsZero() || len(r.Tests) > 10 {
+		if !r.Valid() || r.Scope != first.Scope || r.Name != first.Name || r.Version != i+1 || r.By == "" || r.At.IsZero() || len(r.Tests) > 10 || len(r.Results) > 10 {
 			return nil, ErrInvalid
+		}
+		for _, t := range r.Results {
+			if !t.valid() {
+				return nil, ErrInvalid
+			}
+		}
+		// An import is read with the limit it is used with (ToolLimit).
+		if r.Via == ViaImport {
+			revisions[i].Tools = r.ToolLimit()
 		}
 	}
 	return revisions, nil
@@ -295,6 +365,11 @@ func (s *Store) Import(tenant, by string, scope Scope, d Definition, expected in
 
 func (s *Store) draft(tenant, by string, scope Scope, d Definition, expected int, from *Provenance, at time.Time, via string, trustedOrigin []string) (Revision, error) {
 	var err error
+	if via == ViaImport {
+		if d, err = ImportTools(d); err != nil {
+			return Revision{}, err
+		}
+	}
 	if d, err = d.Normalize(); err != nil {
 		return Revision{}, err
 	}
@@ -511,6 +586,31 @@ func (s *Store) Tested(tenant string, scope Scope, name string, version int, run
 			return ErrInvalid
 		}
 		r.Tests = append(r.Tests, run)
+		return nil
+	})
+	return err
+}
+
+// RecordTest keeps the result of one test run of a revision, replacing an
+// earlier one of the same run. A revision keeps at most 10.
+func (s *Store) RecordTest(tenant string, scope Scope, name string, version int, result TestResult) error {
+	if !result.valid() {
+		return ErrInvalid
+	}
+	_, err := s.change(tenant, scope, name, version, func(r *Revision) error {
+		for i, t := range r.Results {
+			if t.Run == result.Run {
+				if t.Passed == result.Passed && t.Reason == result.Reason && slices.Equal(t.Warnings, result.Warnings) {
+					return state.ErrUnchanged
+				}
+				r.Results[i] = result
+				return nil
+			}
+		}
+		if len(r.Results) >= 10 {
+			return ErrInvalid
+		}
+		r.Results = append(r.Results, result)
 		return nil
 	})
 	return err

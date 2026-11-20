@@ -981,6 +981,7 @@ func (p *Platform) pin(tag event.Envelope, edge call.Edge, project string, withi
 	// any other tag that carries the key is not believed.
 	if wire.Origin(tag) != runs.OriginAPI || edge.Parent != "" {
 		delete(meta, runs.MetaSkills)
+		delete(meta, metaSkillTest)
 	}
 	scheduled := (wire.Origin(tag) == cron.Name || wire.Origin(tag) == runs.OriginManual || wire.Origin(tag) == runs.OriginAssignment) && edge.Parent == ""
 	if scheduled {

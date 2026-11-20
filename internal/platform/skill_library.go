@@ -3,17 +3,23 @@ package platform
 import (
 	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
+	"time"
+
+	"github.com/urmzd/saige/flow/event"
+
+	"github.com/urmzd/humagen/internal/wire"
 
 	"github.com/urmzd/humagen/pkg/audit"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/library"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
-	"github.com/urmzd/humagen/pkg/signals"
 )
 
 func (p *Platform) LibraryScope(who auth.Principal, scope library.Scope, write bool) error {
@@ -69,6 +75,13 @@ func (p *Platform) ImportSkill(who auth.Principal, scope library.Scope, definiti
 func (p *Platform) draftSkill(who auth.Principal, scope library.Scope, definition library.Definition, expected int, from *library.Provenance, via string) (library.Revision, error) {
 	if err := p.LibraryScope(who, scope, true); err != nil {
 		return library.Revision{}, err
+	}
+	if via == library.ViaImport {
+		// An import's limit comes from its SKILL.md (library.ImportTools).
+		var err error
+		if definition, err = library.ImportTools(definition); err != nil {
+			return library.Revision{}, err
+		}
 	}
 	var normalizeErr error
 	if definition, normalizeErr = definition.Normalize(); normalizeErr != nil {
@@ -174,24 +187,13 @@ func (p *Platform) PublishSkill(who auth.Principal, id string, version int) (lib
 	if err != nil {
 		return library.Revision{}, err
 	}
-	passed, failedTools := false, false
-	for _, id := range r.Tests {
-		test, err := p.Runs.Get(who.Tenant, id)
-		if err != nil || test.Status != runs.Completed || !p.Seer(who).Run(test) {
-			continue
-		}
-		failed, err := p.skillTestToolFailures(who.Tenant, test.ID)
-		if err != nil {
-			return library.Revision{}, err
-		}
-		if failed == 0 {
-			passed = true
-		} else {
-			failedTools = true
-		}
+	results, err := p.SkillTestResults(who, r)
+	if err != nil {
+		return library.Revision{}, err
 	}
-	if !passed && failedTools {
-		return library.Revision{}, fmt.Errorf("%w: a tool call failed in every finished test of this revision; fix the skill and test it again before publishing", library.ErrConflict)
+	passed := slices.ContainsFunc(results, func(t SkillTestResult) bool { return t.Verdict == TestPassed })
+	if !passed && len(results) > 0 {
+		return library.Revision{}, fmt.Errorf("%w: no finished test of this revision passed (%s); fix the skill and test it again before publishing", library.ErrConflict, results[len(results)-1].Reason)
 	}
 	if !passed {
 		return library.Revision{}, fmt.Errorf("%w: a test must finish successfully before publishing", library.ErrConflict)
@@ -209,40 +211,177 @@ func (p *Platform) PublishSkill(who auth.Principal, id string, version int) (lib
 	return saved, err
 }
 
-// skillTestToolFailures is how many tool calls of a skill's test run failed:
-// a tool the model was told of and not offered, a read refused, a tool that
-// erred. A test passes only when its run completed and this is zero, the two
-// checks every evaluation makes of a run (evals.CheckSignals). A run whose
-// tool call failed may still complete, with an answer that only says it
-// could not do what the skill asks, which is no evidence the skill works.
-func (p *Platform) skillTestToolFailures(tenant, run string) (int, error) {
-	events, err := p.Journal.Events(tenant, []string{run})
-	if err != nil {
-		return 0, err
-	}
-	return signals.Fold(run, events, nil).ToolErrors, nil
+// metaSkillTest marks a skill's test run with the revision it tests,
+// "<id>@<version>", so its result is recorded with that revision when it
+// ends (recordSkillTest). It is private, and only Converse writes it: an
+// admission drops it from any other tag, as it drops runs.MetaSkills.
+const metaSkillTest = wire.PrivateMetaPrefix + "humagen.skill_test"
+
+func skillTestRef(r library.Revision) string { return r.ID + "@" + strconv.Itoa(r.Version) }
+
+// The verdicts of a skill's test (SkillTestResult).
+const (
+	TestPassed  = "passed"
+	TestFailed  = "failed"
+	TestUnknown = "unknown"
+)
+
+// SkillTestResult is the verdict of one finished test run of a skill
+// revision, as its reader may see it.
+type SkillTestResult struct {
+	Run      string   `json:"run"`
+	Verdict  string   `json:"verdict"`
+	Reason   string   `json:"reason,omitempty"`
+	Warnings []string `json:"warnings,omitempty"`
 }
 
-// FailedSkillTests is the tests of r its reader may see that completed with
-// a failed tool call (skillTestToolFailures), so do not count as passing.
-// It is read for an unpublished revision only: a published one passed.
-func (p *Platform) FailedSkillTests(who auth.Principal, r library.Revision) ([]string, error) {
+// skillTestSettle is how long after a skill's test ends its result waits for
+// events the bus has not delivered yet.
+const skillTestSettle = 2 * time.Minute
+
+// unknownResult is why a finished test whose result was never recorded and
+// whose events are no longer all kept does not count: it fails closed.
+const unknownResult = "its result was not recorded and its events are no longer kept; test it again"
+
+// judgeSkillTest is the result of a skill's test run from its events. A
+// test passes when its run completed, called no tool the run did not have
+// ("tool not found", the model told of a tool it was not offered) and had
+// no read of the skill's own files refused. Any other failed tool call, a
+// recoverable mistake or a denied approval, is a warning: it does not stop
+// the test passing. complete is false when the events do not hold the run
+// from its acceptance to its completion, so cannot be judged.
+func judgeSkillTest(run runs.Run, events []event.Envelope) (result library.TestResult, complete bool) {
+	result.Run = run.ID
+	accepted, completed := false, false
+	var reasons []string
+	// A run's events are numbered in order within each attempt (the high
+	// bits of Seq), and the bus may deliver them late and out of order: a
+	// gap means an event, perhaps a failed tool call, is not here yet.
+	seen := map[uint64][]uint64{}
+	for _, e := range events {
+		if e.Run != run.ID {
+			continue
+		}
+		seen[e.Seq>>20] = append(seen[e.Seq>>20], e.Seq&(1<<20-1))
+		switch b := e.Data.(type) {
+		case event.Accepted:
+			accepted = true
+		case event.Completed:
+			completed = true
+		case event.ToolDone:
+			if b.Error == "" {
+				continue
+			}
+			switch {
+			case strings.HasPrefix(b.Error, "tool not found"):
+				reasons = append(reasons, fmt.Sprintf("it called %s, a tool the run did not have", b.Name))
+			case b.Name == ToolSkillFileRead:
+				reasons = append(reasons, "a read of the skill's own file was refused: "+b.Error)
+			default:
+				if len(result.Warnings) < library.MaxTestWarnings {
+					result.Warnings = append(result.Warnings, clip(b.Name+": "+b.Error, library.MaxTestText))
+				}
+			}
+		}
+	}
+	if run.Status != runs.Completed {
+		reasons = append([]string{"the test did not complete"}, reasons...)
+	}
+	if len(reasons) > 0 {
+		result.Reason = clip(strings.Join(reasons, "; "), library.MaxTestText)
+	}
+	result.Passed = result.Reason == ""
+	return result, accepted && completed && contiguous(seen)
+}
+
+// contiguous reports whether each attempt's event numbers run without a gap
+// from its first, 0 or 1, to its last.
+func contiguous(seen map[uint64][]uint64) bool {
+	for _, lows := range seen {
+		slices.Sort(lows)
+		lows = slices.Compact(lows)
+		if lows[0] > 1 || lows[len(lows)-1]-lows[0] != uint64(len(lows)-1) {
+			return false
+		}
+	}
+	return true
+}
+
+// recordSkillTest records the result of a skill's test run with the
+// revision it tested, when the run ends, so the verdict outlasts the run's
+// events. A run whose events are not all there yet is left to be judged
+// when it is read (SkillTestResults).
+func (p *Platform) recordSkillTest(run runs.Run) error {
+	ref := wire.Meta(run.Tag())[metaSkillTest]
+	if ref == "" {
+		return nil
+	}
+	id, rawVersion, ok := strings.Cut(ref, "@")
+	version, err := strconv.Atoi(rawVersion)
+	if !ok || err != nil {
+		return nil
+	}
+	latest, err := p.SkillLibrary.Find(run.Tenant, id)
+	if errors.Is(err, library.ErrNotFound) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	events, err := p.Journal.Events(run.Tenant, []string{run.ID})
+	if err != nil {
+		return err
+	}
+	result, complete := judgeSkillTest(run, events)
+	if !complete {
+		// An event not delivered yet: try again while it may still come.
+		// Later, the result is judged when read, or is unknown.
+		if p.now().Sub(run.UpdatedAt) < skillTestSettle {
+			return fmt.Errorf("platform: the events of skill test %s are not all here yet", run.ID)
+		}
+		return nil
+	}
+	return p.SkillLibrary.RecordTest(run.Tenant, latest.Scope, latest.Name, version, result)
+}
+
+// SkillTestResults is the verdict of each finished test of an unpublished
+// revision that its reader may see, in the order tested: the result recorded
+// when the test ended, or, for one not recorded yet, what its events say.
+// One whose events are not all delivered yet is left out until they are, for
+// at most skillTestSettle; after that, a test with neither is unknown. Neither
+// counts as passed. A published
+// revision passed already and answers none.
+func (p *Platform) SkillTestResults(who auth.Principal, r library.Revision) ([]SkillTestResult, error) {
 	if !r.PublishedAt.IsZero() {
 		return nil, nil
 	}
-	var out []string
+	var out []SkillTestResult
 	for _, id := range r.Tests {
 		test, err := p.Runs.Get(who.Tenant, id)
-		if err != nil || test.Status != runs.Completed || !p.Seer(who).Run(test) {
+		if err != nil || !test.Status.Terminal() || !p.Seer(who).Run(test) {
 			continue
 		}
-		failed, err := p.skillTestToolFailures(who.Tenant, test.ID)
-		if err != nil {
-			return nil, err
+		result, recorded := r.ResultOf(test.ID)
+		if !recorded {
+			events, err := p.Journal.Events(who.Tenant, []string{test.ID})
+			if err != nil {
+				return nil, err
+			}
+			var complete bool
+			if result, complete = judgeSkillTest(test, events); !complete {
+				// Events still on their way are waited for: it has no
+				// verdict yet, and does not count as passed.
+				if p.now().Sub(test.UpdatedAt) < skillTestSettle {
+					continue
+				}
+				out = append(out, SkillTestResult{Run: test.ID, Verdict: TestUnknown, Reason: unknownResult})
+				continue
+			}
 		}
-		if failed > 0 {
-			out = append(out, test.ID)
+		view := SkillTestResult{Run: test.ID, Verdict: TestPassed, Reason: result.Reason, Warnings: result.Warnings}
+		if !result.Passed {
+			view.Verdict = TestFailed
 		}
+		out = append(out, view)
 	}
 	return out, nil
 }
@@ -308,8 +447,11 @@ func humanSubject(who auth.Principal) string {
 // revision. A public promotion never reveals the private source's owner.
 func (p *Platform) LibraryView(who auth.Principal, r library.Revision) library.Revision {
 	// Answered as it is used: an imported revision's stored empty list
-	// from before allowed-tools was read is not its limit.
+	// from before allowed-tools was read is not its limit. Recorded test
+	// results are answered as SkillTestResults, for the tests the reader
+	// may see.
 	r.Tools = r.ToolLimit()
+	r.Results = nil
 	if r.OriginRun != "" && !p.Seer(who).RunID(r.OriginRun) {
 		r.OriginRun = ""
 	}

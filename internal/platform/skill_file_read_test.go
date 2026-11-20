@@ -8,6 +8,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -15,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -25,9 +27,11 @@ import (
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/journal"
 	"github.com/urmzd/humagen/pkg/library"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/humagen/pkg/settings"
 	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/humagen/pkg/state/statetest"
 )
@@ -147,6 +151,9 @@ func (m *skillReader) Stream(_ context.Context, req saigetypes.Request) (<-chan 
 		if name, ok := strings.CutPrefix(word, "CALL:"); ok {
 			script = append(script, []saigetypes.ToolCallPart{call(name, map[string]any{})})
 		}
+		if name, ok := strings.CutPrefix(word, "CALLPATH:"); ok {
+			script = append(script, []saigetypes.ToolCallPart{call(name, map[string]any{"path": "absent.md"})})
+		}
 		if path, ok := strings.CutPrefix(word, "WITH:"); ok && guide != "" {
 			// path and the guide at once, so the round is not all failures.
 			first, second := call(tool, map[string]any{"path": path}), call(tool, map[string]any{"path": guide})
@@ -217,7 +224,10 @@ func (m *skillReader) take() (calls []readCall, told []string, offered [][]strin
 // import skills` drafts it; drafted, saved in the console's editor; and
 // other, a published skill no turn here is told to use.
 type skillShelf struct {
-	p      *platform.Platform
+	p     *platform.Platform
+	store state.Store
+	// skew moves the platform's clock ahead of the wall's.
+	skew   *atomic.Int64
 	who    auth.Principal
 	model  *skillReader
 	scope  library.Scope
@@ -227,8 +237,11 @@ type skillShelf struct {
 func skillShelfOf(t *testing.T, open func(*testing.T) state.Store) *skillShelf {
 	t.Helper()
 	model := &skillReader{}
+	store := open(t)
+	skew := &atomic.Int64{}
 	p := startWith(t, platform.Config{
-		Backends: platform.Backends{State: open(t)},
+		Now:      func() time.Time { return time.Now().Add(time.Duration(skew.Load())) },
+		Backends: platform.Backends{State: store},
 		Ext:      platform.Extensions{Providers: map[string]native.ProviderFunc{"reader": func(native.Spec) (saigetypes.Provider, error) { return model, nil }}},
 	})
 	// No agent here is granted a file tool. careful holds file_list
@@ -237,6 +250,7 @@ func skillShelfOf(t *testing.T, open func(*testing.T) state.Store) *skillShelf {
 		{Name: "reader", Provider: "reader", Model: "m", SystemPrompt: "Answer."},
 		{Name: "bound", Provider: "reader", Model: "m", SystemPrompt: "Answer."},
 		{Name: "careful", Provider: "reader", Model: "m", SystemPrompt: "Answer.", Tools: []string{platform.ToolFileList}, Approvals: []string{platform.ToolFileList}},
+		{Name: "handy", Provider: "reader", Model: "m", SystemPrompt: "Answer.", Tools: []string{platform.ToolFileRead}, Approvals: []string{platform.ToolFileRead}, Approvers: []string{"olu"}},
 	} {
 		if _, err := p.Agents.Create(t.Context(), tenant, spec, "test"); err != nil {
 			t.Fatal(err)
@@ -246,7 +260,7 @@ func skillShelfOf(t *testing.T, open func(*testing.T) state.Store) *skillShelf {
 	if _, err := p.CreateProject(t.Context(), tenant, govern, platform.ProjectInput{Name: "Shared"}); err != nil {
 		t.Fatal(err)
 	}
-	return &skillShelf{p: p, who: who, model: model, scope: library.Scope{Kind: "workspace"}, shared: "Shared"}
+	return &skillShelf{p: p, store: store, skew: skew, who: who, model: model, scope: library.Scope{Kind: "workspace"}, shared: "Shared"}
 }
 
 // generated is a skill package of SKILL.md and the files given, with the
@@ -304,9 +318,13 @@ func (s *skillShelf) tested(t *testing.T, d library.Definition, imported bool) l
 	if got := settle(t, s.p, test.ID); got.Status != runs.Completed {
 		t.Fatalf("the test of %s did not complete unasked: %s, question %+v", d.Name, got.Status, got.Question)
 	}
-	failed, err := s.p.FailedSkillTests(s.who, mustRevision(t, s.p, s.who, r))
-	if err != nil || len(failed) != 0 {
-		t.Fatalf("the test of %s failed a tool call: %v, %v", d.Name, failed, err)
+	var results []platform.SkillTestResult
+	within(t, "the test of "+d.Name+" is judged", func() bool {
+		results, err = s.p.SkillTestResults(s.who, mustRevision(t, s.p, s.who, r))
+		return err != nil || len(results) == 1
+	})
+	if err != nil || len(results) != 1 || results[0].Verdict != platform.TestPassed || len(results[0].Warnings) != 0 {
+		t.Fatalf("the test of %s did not pass cleanly: %+v, %v", d.Name, results, err)
 	}
 	if r, err = s.p.PublishSkill(s.who, r.ID, r.Version); err != nil {
 		t.Fatal(err)
@@ -400,16 +418,19 @@ func TestASkillsOwnFilesAreReadOnAnAgentWithNoFileTools(t *testing.T) {
 // is held: the tool's name, and the bytes it returned.
 func assertRecorded(t *testing.T, p *platform.Platform, run, tool, want string) {
 	t.Helper()
-	events, err := p.Journal.Events(tenant, []string{run})
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, e := range events {
-		if done, ok := e.Data.(event.ToolDone); ok && done.Name == tool && done.Error == "" && done.Result == want {
-			return
+	// The bus may deliver the call's events after the run reads completed.
+	within(t, "run "+run+" holds the "+tool+" call that returned the file", func() bool {
+		events, err := p.Journal.Events(tenant, []string{run})
+		if err != nil {
+			t.Fatal(err)
 		}
-	}
-	t.Fatalf("run %s holds no recorded %s call that returned the file", run, tool)
+		for _, e := range events {
+			if done, ok := e.Data.(event.ToolDone); ok && done.Name == tool && done.Error == "" && done.Result == want {
+				return true
+			}
+		}
+		return false
+	})
 }
 
 // skill_file_read reads only the files of the skills the turn uses: a path
@@ -483,16 +504,22 @@ func TestSkillFileReadReachesOnlyThePinnedPackages(t *testing.T) {
 				}
 			}
 		}
-		events, err := s.p.Journal.Events(tenant, []string{next.Runs[0].ID})
-		if err != nil {
-			t.Fatal(err)
-		}
+		// The bus delivers a run's events to the journal at least once and
+		// not in order, so the last may land after the run reads completed.
 		failed := 0
-		for _, e := range events {
-			if done, ok := e.Data.(event.ToolDone); ok && done.Name == platform.ToolSkillFileRead && done.Error != "" {
-				failed++
+		within(t, "every refusal is recorded", func() bool {
+			events, err := s.p.Journal.Events(tenant, []string{next.Runs[0].ID})
+			if err != nil {
+				t.Fatal(err)
 			}
-		}
+			failed = 0
+			for _, e := range events {
+				if done, ok := e.Data.(event.ToolDone); ok && done.Name == platform.ToolSkillFileRead && done.Error != "" {
+					failed++
+				}
+			}
+			return failed >= len(refused)
+		})
 		if failed != len(refused) {
 			t.Fatalf("%d refusals recorded, want %d", failed, len(refused))
 		}
@@ -622,65 +649,264 @@ func TestTheTurnTextAndTheTurnsToolsAgree(t *testing.T) {
 	}
 }
 
-// A skill's test that completed with a failed tool call, here a tool the
-// model was told of and not offered, is not a passing test: the revision is
-// not published on it, and its history says which test failed.
-func TestASkillTestWithAFailedToolCallDoesNotPass(t *testing.T) {
+// verdicts is the verdict of each finished test of a revision, by run,
+// once every finished test has one: the bus may deliver a test's last
+// events after the run reads completed.
+func (s *skillShelf) verdicts(t *testing.T, r library.Revision) map[string]platform.SkillTestResult {
+	t.Helper()
+	out := map[string]platform.SkillTestResult{}
+	within(t, "every finished test of "+r.Name+" is judged", func() bool {
+		saved := mustRevision(t, s.p, s.who, r)
+		results, err := s.p.SkillTestResults(s.who, saved)
+		if err != nil {
+			t.Fatal(err)
+		}
+		clear(out)
+		for _, v := range results {
+			out[v.Run] = v
+		}
+		return len(out) == len(saved.Tests)
+	})
+	return out
+}
+
+// testOf runs a skill's test of r on agent with text, answering each
+// approval it asks with answer, and waits for it to end.
+func (s *skillShelf) testOf(t *testing.T, r library.Revision, agent, text, answer string) runs.Run {
+	t.Helper()
+	test, err := s.p.TestSkill(t.Context(), s.who, r.ID, r.Version, agent, s.shared, text)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range 5 {
+		got := settle(t, s.p, test.ID)
+		if got.Status != runs.Parked {
+			s.model.take()
+			return got
+		}
+		if _, err := s.p.AnswerQuestion(t.Context(), olu, got.ID, got.Question.ID, platform.QuestionAnswer{Action: answer}); err != nil {
+			t.Fatal(err)
+		}
+		within(t, "the answered test moves on", func() bool {
+			now, _ := s.p.Runs.Get(tenant, test.ID)
+			return now.Status != runs.Parked || now.Question == nil || now.Question.ID != got.Question.ID
+		})
+	}
+	t.Fatalf("the test of %s kept asking", r.Name)
+	return runs.Run{}
+}
+
+// A skill's test fails when its run called a tool the run did not have,
+// the fault of a turn told of file_read without it, or when a read of the
+// skill's own file was refused: the revision is not published on it, and
+// its history says why. Any other failed tool call, an error a model may
+// recover from or an approval a person denied, is a warning that does not
+// stop the test passing.
+func TestASkillTestFailsOnAMissingToolOrARefusedReadAndWarnsOtherwise(t *testing.T) {
 	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
 		s := skillShelfOf(t, open)
 		r, err := s.p.ImportSkill(s.who, s.scope, generated("imported", importedGuide), 0)
 		if err != nil {
 			t.Fatal(err)
 		}
-		// The model calls a tool nobody offers, as it did when the text named
-		// file_read to a turn without it.
-		test, err := s.p.TestSkill(t.Context(), s.who, r.ID, r.Version, "reader", s.shared, "Try $imported READ:skill:imported/missing.md")
-		if err != nil {
-			t.Fatal(err)
+		missing := s.testOf(t, r, "reader", "Try $imported CALL:file_read", platform.ActApprove)
+		refused := s.testOf(t, r, "reader", "Try $imported READ:skill:imported/missing.md", platform.ActApprove)
+		got := s.verdicts(t, r)
+		if v := got[missing.ID]; v.Verdict != platform.TestFailed || !strings.Contains(v.Reason, "it called file_read, a tool the run did not have") {
+			t.Fatalf("a call of a tool the run did not have: %+v", v)
 		}
-		if got := settle(t, s.p, test.ID); got.Status != runs.Completed {
-			logEvents(t, s.p, test.ID)
-			t.Fatalf("the test did not complete: %s", got.Status)
+		if v := got[refused.ID]; v.Verdict != platform.TestFailed || !strings.Contains(v.Reason, "a read of the skill's own file was refused") || !strings.Contains(v.Reason, "missing.md") {
+			t.Fatalf("a refused read of the skill's own file: %+v", v)
 		}
-		s.model.take()
-		saved := mustRevision(t, s.p, s.who, r)
-		failed, err := s.p.FailedSkillTests(s.who, saved)
-		if err != nil || !slices.Equal(failed, []string{test.ID}) {
-			t.Fatalf("failed tests %v, %v; want %s", failed, err, test.ID)
+		if _, err := s.p.PublishSkill(s.who, r.ID, r.Version); !errors.Is(err, library.ErrConflict) || !strings.Contains(err.Error(), "no finished test of this revision passed") {
+			t.Fatalf("published on failed tests: %v", err)
 		}
-		if _, err := s.p.PublishSkill(s.who, r.ID, r.Version); !errors.Is(err, library.ErrConflict) || !strings.Contains(err.Error(), "a tool call failed in every finished test") {
-			t.Fatalf("published on a test with a failed tool call: %v", err)
+
+		// handy holds file_read, so a skill's test asks before each call.
+		// Denied, the call fails; approved, a read of a file the
+		// conversation does not hold fails in the sandbox; and a call with
+		// no path fails its arguments. Each is a warning.
+		denied := s.testOf(t, r, "handy", "Try $imported CALLPATH:file_read", platform.ActDeny)
+		erred := s.testOf(t, r, "handy", "Try $imported CALLPATH:file_read", platform.ActApprove)
+		malformed := s.testOf(t, r, "handy", "Try $imported CALL:file_read", platform.ActApprove)
+		got = s.verdicts(t, r)
+		for name, c := range map[string]struct {
+			run  runs.Run
+			want string
+		}{"denied": {denied, "declined"}, "erred": {erred, "sandbox"}, "malformed": {malformed, "missing required property"}} {
+			v := got[c.run.ID]
+			if c.run.Status != runs.Completed || v.Verdict != platform.TestPassed || v.Reason != "" || len(v.Warnings) != 1 || !strings.HasPrefix(v.Warnings[0], "file_read: ") || !strings.Contains(v.Warnings[0], c.want) {
+				t.Fatalf("%s: %s %+v", name, c.run.Status, v)
+			}
 		}
-		missing, err := s.p.TestSkill(t.Context(), s.who, r.ID, r.Version, "reader", s.shared, "Try $imported CALL:file_read")
-		if err != nil {
-			t.Fatal(err)
-		}
-		settle(t, s.p, missing.ID)
-		calls, _, _ := s.model.take()
-		if len(calls) != 2 || calls[1].tool != platform.ToolFileRead || !calls[1].isError || !strings.Contains(calls[1].result, "tool not found") {
-			t.Fatalf("the call of a tool not offered: %+v", calls)
-		}
-		if _, err := s.p.PublishSkill(s.who, r.ID, r.Version); !errors.Is(err, library.ErrConflict) {
-			t.Fatalf("published on a test with a tool not found: %v", err)
-		}
-		clean, err := s.p.TestSkill(t.Context(), s.who, r.ID, r.Version, "reader", s.shared, "Try $imported")
-		if err != nil {
-			t.Fatal(err)
-		}
-		if got := settle(t, s.p, clean.ID); got.Status != runs.Completed {
-			t.Fatalf("the clean test: %s", got.Status)
-		}
-		if failed, _ := s.p.FailedSkillTests(s.who, mustRevision(t, s.p, s.who, r)); len(failed) != 2 || slices.Contains(failed, clean.ID) {
-			t.Fatalf("failed tests after a clean one: %v", failed)
-		}
-		published, err := s.p.PublishSkill(s.who, r.ID, r.Version)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if failed, _ := s.p.FailedSkillTests(s.who, published); failed != nil {
-			t.Fatalf("a published revision lists failed tests: %v", failed)
+		if _, err := s.p.PublishSkill(s.who, r.ID, r.Version); err != nil {
+			t.Fatalf("a test with warnings only did not let the revision publish: %v", err)
 		}
 	})
+}
+
+// A test's verdict is recorded with the revision when the test ends, so it
+// outlasts the run's events, which the journal keeps only so long: a failed
+// test still fails once its events are gone. A finished test whose verdict
+// was never recorded is judged from its events while they are all kept, and
+// once they are not, it is unknown and does not count as passed.
+func TestASkillTestVerdictOutlastsItsEvents(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		s := skillShelfOf(t, open)
+		r, err := s.p.ImportSkill(s.who, s.scope, generated("evicted", importedGuide), 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		failed := s.testOf(t, r, "reader", "Try $evicted READ:skill:evicted/missing.md", platform.ActApprove)
+		clean := s.testOf(t, r, "reader", "Try $evicted", platform.ActApprove)
+		within(t, "both results are recorded", func() bool {
+			saved := mustRevision(t, s.p, s.who, r)
+			_, a := saved.ResultOf(failed.ID)
+			_, b := saved.ResultOf(clean.ID)
+			return a && b
+		})
+		// A second revision is told the clean run as its test, with no
+		// result recorded for it there.
+		d := generated("evicted", importedGuide+" (second)")
+		d.Tools = nil
+		second, err := s.p.ImportSkill(s.who, s.scope, d, 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := s.p.SkillLibrary.Tested(tenant, s.scope, second.Name, second.Version, clean.ID); err != nil {
+			t.Fatal(err)
+		}
+		if v := s.verdicts(t, second)[clean.ID]; v.Verdict != platform.TestPassed {
+			t.Fatalf("an unrecorded test whose events are kept: %+v", v)
+		}
+
+		// Drop the oldest events, as the journal does when a tenant holds
+		// as many as it keeps.
+		small, err := journal.Open(s.store, 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i := range 400 {
+			e := event.Envelope{ID: fmt.Sprintf("filler-%d", i), Tenant: tenant, Run: "filler", Seq: uint64(i + 1), Type: event.TypeFeedback, Source: "humagen://feedback", Channel: "humagen://" + tenant, Time: time.Now(), Data: event.Feedback{RunID: "filler", Rating: "up"}}
+			if err := small.Append(e, "test"); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if left, _ := s.p.Journal.Events(tenant, []string{failed.ID, clean.ID}); len(left) != 0 {
+			t.Fatalf("%d events of the tests are still kept", len(left))
+		}
+		// Past the time a test's late events are waited for.
+		s.skew.Store(int64(3 * time.Minute))
+		got := s.verdicts(t, r)
+		if v := got[failed.ID]; v.Verdict != platform.TestFailed || !strings.Contains(v.Reason, "missing.md") {
+			t.Fatalf("a failed test once its events are gone: %+v", v)
+		}
+		if v := got[clean.ID]; v.Verdict != platform.TestPassed {
+			t.Fatalf("a passed test once its events are gone: %+v", v)
+		}
+		if v := s.verdicts(t, second)[clean.ID]; v.Verdict != platform.TestUnknown || !strings.Contains(v.Reason, "not recorded") {
+			t.Fatalf("an unrecorded test once its events are gone: %+v", v)
+		}
+		if _, err := s.p.PublishSkill(s.who, second.ID, second.Version); !errors.Is(err, library.ErrConflict) || !strings.Contains(err.Error(), "not recorded") {
+			t.Fatalf("published on a test whose verdict is unknown: %v", err)
+		}
+		if _, err := s.p.PublishSkill(s.who, r.ID, r.Version); err != nil {
+			t.Fatalf("the revision with a recorded passed test: %v", err)
+		}
+	})
+}
+
+// An import takes no tool list: its limit is what its SKILL.md declares, so
+// what is stored, answered and applied are one list. The empty list the CLI
+// sent before this release reads as none; any other list is refused.
+func TestAnImportTakesNoToolList(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		s := skillShelfOf(t, open)
+		d := generated("forged", importedGuide)
+		d.Tools = []string{platform.ToolFileRead}
+		if _, err := s.p.ImportSkill(s.who, s.scope, d, 0); !errors.Is(err, library.ErrInvalid) || !strings.Contains(err.Error(), "allowed-tools of its SKILL.md") {
+			t.Fatalf("an import with a tool list: %v", err)
+		}
+		d.Tools = []string{}
+		old, err := s.p.ImportSkill(s.who, s.scope, d, 0)
+		if err != nil || old.Tools != nil {
+			t.Fatalf("an import as the earlier CLI sent it: %#v, %v", old.Tools, err)
+		}
+		declared := generated("declared", importedGuide)
+		declared.Files[0].Data = []byte("---\nname: declared\ndescription: Generated fixture\nallowed-tools: file_read file_list file_read\n---\nRead references/guide.md.\n")
+		declared.Tools = nil
+		r, err := s.p.ImportSkill(s.who, s.scope, declared, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		stored := mustRevision(t, s.p, s.who, r)
+		view := s.p.LibraryView(s.who, stored)
+		want := []string{platform.ToolFileRead, platform.ToolFileList}
+		if !slices.Equal(stored.Tools, want) || !slices.Equal(view.Tools, want) || !slices.Equal(stored.ToolLimit(), want) {
+			t.Fatalf("stored %v, answered %v, applied %v; want %v", stored.Tools, view.Tools, stored.ToolLimit(), want)
+		}
+	})
+}
+
+// A SKILL.md may declare as many tools in allowed-tools as a skill may name,
+// 128, each of at most 128 characters; past that its import is refused,
+// naming the bound.
+func TestAnImportDeclaresAtMost128Tools(t *testing.T) {
+	s := skillShelfOf(t, func(*testing.T) state.Store { return state.NewMemory() })
+	names := func(n int) string {
+		var out []string
+		for i := range n {
+			out = append(out, fmt.Sprintf("mcp__fixture__tool_%d", i))
+		}
+		return strings.Join(out, " ")
+	}
+	for _, c := range []struct {
+		name, allowed, refused string
+	}{
+		{"thirty-three", names(33), ""},
+		{"most", names(library.MaxSkillTools), ""},
+		{"too-many", names(library.MaxSkillTools + 1), "names 129 tools; a skill names at most 128"},
+		{"too-long", strings.Repeat("x", library.MaxSkillToolName+1), "a tool of 129 characters; a tool name holds at most 128"},
+	} {
+		d := generated(c.name, importedGuide)
+		d.Files[0].Data = []byte("---\nname: " + c.name + "\ndescription: Generated fixture\nallowed-tools: " + c.allowed + "\n---\nRead references/guide.md.\n")
+		d.Tools = nil
+		r, err := s.p.ImportSkill(s.who, s.scope, d, 0)
+		switch {
+		case c.refused == "" && err != nil:
+			t.Errorf("%s: %v", c.name, err)
+		case c.refused == "" && len(r.Tools) != len(strings.Fields(c.allowed)):
+			t.Errorf("%s: %d tools", c.name, len(r.Tools))
+		case c.refused != "" && (!errors.Is(err, library.ErrInvalid) || !strings.Contains(err.Error(), c.refused)):
+			t.Errorf("%s: %v, want %q", c.name, err, c.refused)
+		}
+	}
+}
+
+// A workspace's tools ceiling, even one that allows no tool, does not take
+// skill_file_read away: it reads only what the run was given, the files of
+// the skills it uses.
+func TestAToolsCeilingKeepsTheSkillsOwnFiles(t *testing.T) {
+	s := skillShelfOf(t, func(*testing.T) state.Store { return state.NewMemory() })
+	s.tested(t, generated("guarded", importedGuide), true)
+	s.model.take()
+	if _, err := s.p.Agents.Create(t.Context(), tenant, wire.AgentSpec{Name: "opener", Provider: "reader", Model: "m", SystemPrompt: "Answer.", Tools: []string{platform.ToolFileRead}}, "test"); err != nil {
+		t.Fatal(err)
+	}
+	for _, ceiling := range [][]string{{platform.ToolFileList}, {}} {
+		if err := s.p.SetRunSettings(tenant, settings.Layer{Ceilings: settings.Ceilings{Tools: ceiling}}, nil); err != nil {
+			t.Fatal(err)
+		}
+		posted, err := s.p.StartThread(t.Context(), s.who, platform.ThreadInput{Project: s.shared, Agents: []string{"opener"}, Text: "$guarded Go"})
+		if err != nil || len(posted.Runs) != 1 {
+			t.Fatalf("start: %v", err)
+		}
+		settle(t, s.p, posted.Runs[0].ID)
+		calls, _, offered := s.model.take()
+		if slices.Contains(offered[0], platform.ToolFileRead) || !slices.Contains(offered[0], platform.ToolSkillFileRead) || len(calls) != 1 || calls[0].isError || calls[0].result != importedGuide {
+			t.Fatalf("ceiling %v: offered %v, calls %+v", ceiling, offered[0], calls)
+		}
+	}
 }
 
 // An imported skill limits a run's tools only as its SKILL.md declares: one

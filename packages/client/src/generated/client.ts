@@ -1407,7 +1407,7 @@ visible older history pages on reset.
     });
   }
 
-  /** A revision is published when a test of it the caller may read completed with no failed tool call. Otherwise the answer is 409, and it says when every finished test had a failed tool call. */
+  /** A revision is published when a test of it the caller may read passed (see `test_results`). Otherwise the answer is 409, naming why the last finished test did not pass. */
   async publishLibrarySkill(id: string, version: number, options?: RequestOptions): Promise<LibrarySkill> {
     let path = "/api/library/skills/{id}/versions/{version}/publish";
     path = path.replace("{id}", encodeURIComponent(String(id)));

@@ -138,13 +138,25 @@ that uses it is limited to, intersected with the agent's own grants:
 
 A run that uses several skills is limited to what every limiting skill
 allows. `allowed-tools` narrows the list, and narrows an absent list to the
-tools it names. The editor shows an absent list as not limited, and its
-"Limit the tools" box sets an empty one. `humagen import skills` and a folder
+tools it names. A list or an `allowed-tools` holds at most 128 names of at
+most 128 characters. The editor shows an absent list as not limited, and its
+"Limit the tools" box sets an empty one; for an imported revision it says the
+limit is what `SKILL.md` declares. `humagen import skills` and a folder
 opened in the editor send no list, so an imported skill limits a run only as
-its `SKILL.md` declares; `allowed-tools: ""` allows none. A revision with
-`via: import` is read that way however it was stored: an import before this
-release wrote `[]` whatever the folder said, which withdrew every tool,
-`file_read` included, from a run that used the skill, and no person chose it.
+its `SKILL.md` declares; `allowed-tools: ""` allows none. The draft route
+refuses a tool list with `via: import`, other than the empty one an import
+before this release sent, which reads as none, so what is stored is what
+applies. A `SKILL.md` past the bounds is refused, naming them, by the import
+and its dry run alike.
+
+A revision with `via: import` (an import since v0.138.1) is read that way
+however it was stored: those imports wrote `[]` whatever the folder said,
+which withdrew every tool, `file_read` included, from a run that used the
+skill, and no person chose it. The store reads it with its `SKILL.md`'s
+limit, one past the bounds as allowing none, and answers that, and the next
+write of the record stores it. An import before v0.138.1 has no mark, keeps
+`[]` and gives a run no tool; clearing the box in the editor and publishing
+the new revision lifts it ([upgrade notes](../guides/deploy.md#upgrading-what-an-imported-skill-limits)).
 A choice saved in the editor is a revision without `via: import` and is read
 as stored. Promotion carries the limit a revision is used with.
 
@@ -160,9 +172,11 @@ each refused with the reason. It discloses nothing the person did not choose
 for the turn, whose instructions are already in its text, so neither a
 skill's tool list nor the action policy holds it and nobody is asked, in a
 skill's test too; a paused agent or workspace stops it, and each call is
-recorded on the run as any tool call is. A turn reads at most 64 files with
-it. `file_read` still reads `skill:` paths for an agent granted it, under its
-grant and the action policy.
+recorded on the run as any tool call is. Each attempt of a turn reads at
+most 64 files with it; a retried attempt counts again. A workspace's
+`ceilings.tools`, `[]` included, does not take it away: it reaches only what
+the run was given. `file_read` still reads `skill:` paths for an agent granted
+it, under its grant and the action policy.
 
 What a read returns enters the model's context, so it reads a supporting
 file of at most 128 KiB: a larger one is listed with its size and the words
@@ -177,15 +191,27 @@ says how many are listed and how many are not, and tells a native model that
 of the pinned package, listed or not, and a coding agent's directory holds
 every file.
 
-A skill's test passes when its run completed and none of its tool calls
-failed, the two checks every evaluation makes of a run. A tool the model was
-told of and not offered, a refused read or a tool that erred is a failed
-call: the run may still complete, with an answer that says it could not do
-what the skill asks. Publishing needs one passing test of the revision.
-`GET /api/library/skills/{id}` names an unpublished revision's finished tests
-with a failed tool call under `failed_tests`, the console marks each with "A
-tool call failed" and keeps Publish off, and a publish with no passing test
-answers 409 saying a tool call failed in every finished test.
+A skill's test passes when its run completed, called no tool the run did
+not have and had no read of the skill's own files refused. A call of a tool
+the run was not offered ("tool not found", what a turn told of `file_read`
+without it did) and a refused `skill_file_read` fail it: the run may still
+complete, with an answer that says it could not do what the skill asks. Any
+other failed tool call, an error a model may recover from or an approval a
+person denied, is a warning shown beside the test, which does not stop it
+passing. A skill's test asks before every other action, and reading the
+skill's own files asks nothing.
+
+The verdict is recorded with the revision when the test run ends (a
+completion step, retried like the others), on memory and on Postgres, so it
+outlasts the run's events, which the journal keeps only so long. A finished
+test not recorded yet is judged from its events while all of them are kept.
+One whose events are still arriving has no verdict yet, for up to two
+minutes; after that, with neither, its verdict is unknown and it does not
+count as passed: test it again. Publishing needs one passing test of the revision.
+`GET /api/library/skills/{id}` answers each finished test of an unpublished
+revision under `test_results` with its verdict, the reason it did not pass
+and its warnings; the console shows each beside the test and keeps Publish
+off until one passed, and a publish with none answers 409 with the reason.
 
 A skill record this release cannot read, such as one a later release wrote
 past these bounds, fails only itself: `GET /api/library/skills` lists the
