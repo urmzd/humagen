@@ -572,9 +572,14 @@ starts (`surfaces.slack`):
 - **Who it is.** A machine in the surface's workspace, with the subject
   `slack-app:<team id>` and no role. It holds `runs:read`, `runs:write`,
   `agents:read`, `clients:read` and `projects:read`, the least the app asks an
-  identity provider for, and nothing else: no policy grant widens it. To let
-  it act for people, name that subject as a Slack client's `slack.machine`
-  ([clients](../reference/clients.md#people-a-slack-app-answers-for)).
+  identity provider for, and nothing else: no policy grant widens it. It
+  acts for nobody until the Platform document maps people
+  (`surfaces.slack.people`): the server then keeps a Slack client that names
+  that subject as its `slack.machine`, and the token acts for exactly the
+  people mapped, each with what the policy grants their subject
+  ([the spec](../reference/spec.md#whom-the-slack-app-acts-for),
+  [clients](../reference/clients.md#people-a-slack-app-answers-for)). A
+  `machine` in the file is refused in this mode.
 - **What is refused.** `humagen_client` or `humagen_token` on the surface:
   nothing could verify them in this mode. An app run by hand has no
   credential; only the one the server starts does.

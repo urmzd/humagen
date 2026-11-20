@@ -24,6 +24,16 @@ fine. Use the Slack app for the console's experience in Slack,
 or where nothing may listen on a public address. Do not point both at the same
 Slack app: both would answer.
 
+The app acts for a person only as a client whose `slack.machine` is its
+credential and whose `slack.people` maps them. An app the server starts
+(`surfaces.slack`) gets that client from the Platform document: `people`, and
+under a sign-in other than `tailscale` also `machine`, make the server keep
+the record `slack-app-<team>` and start the app with `HUMAGEN_CLIENT` naming
+it. With no `people` there is no record and no `HUMAGEN_CLIENT`, and the app
+acts for nobody. That record has no bot token, so files attached in Slack are
+not read through it. See
+[the spec](spec.md#whom-the-slack-app-acts-for).
+
 The rest of this page describes the connector. The app is described in its
 [README](https://github.com/urmzd/humagen/blob/main/apps/slack/README.md).
 

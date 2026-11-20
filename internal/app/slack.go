@@ -17,12 +17,14 @@ import (
 	"time"
 
 	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/credref"
 	"github.com/urmzd/humagen/pkg/leader"
 	"github.com/urmzd/humagen/pkg/spec"
 
 	"github.com/urmzd/humagen/internal/httpapi"
 	"github.com/urmzd/humagen/internal/legacy"
+	"github.com/urmzd/humagen/internal/platform"
 )
 
 // SlackManifest is a Slack app manifest: what the Slack app asks Slack for.
@@ -223,6 +225,47 @@ type slackApp struct {
 	// tailscale sign-in (httpapi.Authn.MintMachine). It lives in memory and in
 	// the app's environment only: never in a file, a log line or an error.
 	token string
+	// client is the id of the client record the server keeps for this app,
+	// set once that record is in place (applySlackClients). Empty, the app is
+	// told of no client and acts for nobody.
+	client string
+}
+
+// slackMachine is the subject the app's credential signs in as: the one the
+// server makes under tailscale sign-in, else the one the file names.
+func slackMachine(mode string, s spec.Slack) string {
+	if mode == "tailscale" {
+		return slackMachineSubject(s.Team)
+	}
+	return s.Machine
+}
+
+// applySlackClients keeps, for each Slack app the Platform documents turn on
+// and map people for, the client record that makes it act for them, and
+// returns each workspace's record id. A workspace whose file maps nobody gets
+// no record, and one an earlier start kept loses its machine and its people.
+// A record that cannot be kept because another client holds its id is said
+// and left out: that app acts for nobody.
+func applySlackClients(ctx context.Context, p *platform.Platform, cfg spec.Config, mode string, log *slog.Logger) (map[string]string, error) {
+	kept := map[string]string{}
+	for _, doc := range cfg.Platforms {
+		tenant := doc.Metadata.Name
+		if s := doc.Spec.Surfaces.Slack; s != nil && s.Enabled && len(s.People) > 0 {
+			c, err := p.ApplySlackApp(ctx, tenant, "file", platform.SlackApp{Team: s.Team, Machine: slackMachine(mode, *s), People: s.People})
+			switch {
+			case errors.Is(err, clients.ErrExists):
+				log.Warn("slack app's client from the file not applied, so the app acts for nobody: another client has its id", "tenant", tenant, "error", err)
+			case err != nil:
+				return nil, fmt.Errorf("platform %q: surfaces.slack.people: %w", tenant, err)
+			default:
+				kept[tenant] = c.ID
+			}
+		}
+		if err := p.ClearSlackApps(ctx, tenant, "file", kept[tenant]); err != nil {
+			return nil, fmt.Errorf("platform %q: surfaces.slack: %w", tenant, err)
+		}
+	}
+	return kept, nil
 }
 
 // slackMachineSubject is who the Slack app the server starts is under
@@ -305,6 +348,10 @@ func (s *slackApp) env(ctx context.Context, url, publicURL string, lookup func(s
 	// Off, the name is not set at all, so the app starts exactly as it did.
 	if s.choice.CodeChannels {
 		env = append(env, "SLACK_CODE_CHANNELS=1")
+	}
+	// Which client record the app is, only once the server keeps one for it.
+	if s.client != "" {
+		env = append(env, "HUMAGEN_CLIENT="+s.client)
 	}
 	// How the app signs in to humagen's API (apps/slack/src/config.ts).
 	if c := s.choice.HumagenClient; c != nil {

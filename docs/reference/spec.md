@@ -690,9 +690,12 @@ spec:
         token_url: https://login.example.com/oauth2/v1/token
         client_id: humagen-slack
         client_secret: {ref: env:HUMAGEN_SLACK_CLIENT_SECRET}
-        scopes: [humagen:agents:read, humagen:runs:read, humagen:runs:write, humagen:billing:read, humagen:projects:read]
+        scopes: [humagen:agents:read, humagen:runs:read, humagen:runs:write, humagen:billing:read, humagen:projects:read, humagen:clients:read]
         audience: ""        # set when the provider needs one named
       # humagen_token: {ref: env:HUMAGEN_SLACK_API_TOKEN}   # instead: a bearer token that does not expire
+      machine: humagen-slack   # the subject that credential signs in as. Under tailscale leave it out
+      people:               # whom the app acts for: a Slack user id to their subject here. None is nobody
+        U0123456: "issuer|person-subject"
     github:
       enabled: false
       owners: [acme]
@@ -918,6 +921,54 @@ A `humagen_client` or `humagen_token` under `tailscale` is refused, since
 nothing could verify it. A spec that needs a credential and has none is
 refused when it is checked, and so is a start whose `-auth` flag needs one the
 file does not give.
+
+#### Whom the Slack app acts for
+
+By default the app acts for nobody: it answers, and every run it asks for is
+the app's own. `people` names who is who, a Slack user id (`U...` or `W...`)
+in `team` to the subject that person signs in to Humagen with. With it the
+server keeps a [client](clients.md#people-a-slack-app-answers-for) for the app
+and starts the app with `HUMAGEN_CLIENT` set to that client's id, so a mapped
+person's message, runs, Home tab and answers to a run's questions are theirs.
+A Slack user the map does not name stays nobody.
+
+| Field | Default | Meaning |
+|-------|---------|---------|
+| `people` | none: the app acts for nobody, with no client record and no `HUMAGEN_CLIENT` | At most 500 Slack user ids, each mapped to a subject of 1 to 200 characters. `team` must then be a team id of at most 30 characters |
+| `machine` | under `tailscale`, `slack-app:<team>`, the subject of the credential the server makes | The subject the app's own credential signs in as, the only credential that may act for `people`. Under `tailscale` it is refused, since the server knows it. Under every other sign-in it is required with `people`: the subject is the identity provider's to choose, so the server cannot know it |
+
+The record is `slack-app-<team id in lowercase>`, such as `slack-app-t0123456`,
+in the workspace the document names. It holds no secret and has no connector:
+Slack reaches the app over Socket Mode, never through the server, so the
+record is offered no webhook and `bot_token` is not on it. A client's secrets
+are `env:HUMAGEN_*` references given to its workspace, with a signing secret
+beside the token, and a Socket Mode app has neither to give. So files a person
+attaches in Slack are still not read: the server reads them through a client's
+own connector, which this record does not have, and a message with a file is
+refused as it is with no client.
+
+The file owns three things on that record: `team`, `machine` and `people`. At
+every start they are made what the file says, people added and removed, and a
+change to them through the API is not kept. Everything else is an
+administrator's, set through [the clients API](clients.md#api) and left alone
+at a start: `default_agent`, `agents`, `home`, `enabled` and the options under
+`slack`. The record starts with `agents: ["*"]` and no default agent, which is
+what the app does with no client: a message that names no agent is answered by
+the default where it lands (the workspace's entry agent, unless a project or a
+channel sets another), and a person may name any agent they may use. The record
+cannot be deleted through the API.
+
+A file that stops mapping people, or turns the surface off, takes the machine
+and the people off the record at the next start and starts the app with no
+`HUMAGEN_CLIENT`. When another client already has the record's id, the server
+says so in its log, leaves that client alone and starts the app acting for
+nobody.
+
+Under `oidc` or `mock` the app's credential also needs `humagen:clients:read`
+once `people` is set, to read its own record; without it the app refuses to
+start. The credential the server makes under `tailscale` has it. The credential
+named as `machine` can raise runs as every person mapped, so treat it as their
+sign-ins (see [clients](clients.md#people-a-slack-app-answers-for)).
 
 Model names are shared across the workspaces in one process: two workspaces
 may declare the same model, but not two different ones under one name.

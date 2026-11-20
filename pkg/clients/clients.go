@@ -99,6 +99,12 @@ const (
 	ManagedStatic = "static"
 	// ManagedFile is a client a Platform document declares.
 	ManagedFile = "file"
+	// ManagedApp is the Slack app a server starts itself, as a Platform
+	// document's surfaces.slack says (apps/slack). The file owns its team,
+	// its machine and its people; an administrator chooses the rest. Slack
+	// reaches that app over Socket Mode and never through this server, so the
+	// record holds no secret, has no connector and is offered no request.
+	ManagedApp = "app"
 	// ManagedInstall pins credentials and identity verified by native consent.
 	// Administrators may still choose its routes and connector capabilities.
 	ManagedInstall = "installation"
@@ -411,6 +417,11 @@ func (c Client) Claims(claim Claim) bool {
 // app they are.
 func (c Client) overlaps(o Client) bool {
 	either := func(a, b string) bool { return a == "" || b == "" || a == b }
+	// The app a server starts is offered no request, so none could be both
+	// its and another client's.
+	if c.Managed == ManagedApp || o.Managed == ManagedApp {
+		return false
+	}
 	if c.Surface != o.Surface || !either(c.Identity.AppID, o.Identity.AppID) {
 		return false
 	}
