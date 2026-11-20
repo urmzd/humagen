@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.141.2 (2026-11-20)
+
+### Performance
+
+- **console**: stop a thread re-parsing its markdown on every key and token (#389) ([29a9017](https://github.com/urmzd/humagen/commit/29a9017e57f0b6042df893df68fc35409e80aeae))
+
+### Misc
+
+- give each package 20 minutes under the race detector (#382) ([ab20120](https://github.com/urmzd/humagen/commit/ab201208771a6d34063d0ad3a3a0d47f9fee4575))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.141.1...v0.141.2)
+
+
 ## 0.141.1 (2026-11-19)
 
 ### Bug Fixes
