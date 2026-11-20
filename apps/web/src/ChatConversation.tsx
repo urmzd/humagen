@@ -1,6 +1,6 @@
 import { defaultCopy } from "@humagen/components";
 import { ActionId, type UiAction } from "@humagen/core";
-import { ForkIcon, WebSurface } from "@humagen/render-web";
+import { ChevronRightIcon, ForkIcon, WebSurface } from "@humagen/render-web";
 import { AgentMessage, messageActionButton, type railEntry, Thread } from "@humagen/web";
 import { type Dispatch, type ReactNode, type SetStateAction, useMemo } from "react";
 import { citationOf, type Run, turnOf } from "./adapter.ts";
@@ -138,7 +138,7 @@ function TurnView({
               onClick={() => onSwitch(siblings[index - 1]?.id ?? run.id)}
               className="inline-flex size-6 items-center justify-center rounded-aui hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent disabled:opacity-40"
             >
-              ‹
+              <ChevronRightIcon size={14} className="rotate-180" />
             </button>
             <span className="tabular-nums" title={siblings.map((s) => s.agent).join(", ")}>
               {index + 1} / {siblings.length}
@@ -150,7 +150,7 @@ function TurnView({
               onClick={() => onSwitch(siblings[index + 1]?.id ?? run.id)}
               className="inline-flex size-6 items-center justify-center rounded-aui hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent disabled:opacity-40"
             >
-              ›
+              <ChevronRightIcon size={14} />
             </button>
           </span>
         )}

@@ -1,0 +1,72 @@
+FAIL 10a apps/web/src/styles.css:550 transitioning width on .humagen-sidebar | fix: Animate transform or opacity instead
+FAIL 10a apps/web/src/styles.css:700 transitioning width on .humagen-inspector-dock | fix: Animate transform or opacity instead
+FAIL 10a packages/web/src/StatusLine.tsx:77 transition-[width] on <span class="absolute inset-y-0 left-0 round…"> | fix: Name the properties: transition-colors, transition-opacity or transition-transform
+FAIL 19 apps/web/src/Agents.tsx:273 dash "–" in copy | fix: A comma, a colon, a full stop or parentheses; never a dash
+FAIL 26a packages/components/src/agent-change.tsx:1 no :focus-visible styling anywhere | fix: A focus ring at 3:1 or better, instant
+FAIL 34 apps/web/src/styles.css:19 overflow-x: hidden on html, body, #root (breaks sticky) | fix: Use overflow-x: clip on both html and body, never hidden
+FAIL 34 apps/web/src/styles.css:276 width: min(20rem, calc(100vw - 8re… on .humagen-project-picker .humagen-glass-pop (scrollbar overflow) | fix: width: 100% with container padding
+FAIL 40 http://127.0.0.1:4402/:1 [1440px] a field's edge is under 3:1 against what surrounds it: textarea.humagen-composer-input 1.00:1 | fix: Draw the field in --color-muted, or fill it a step off the surface it sits on
+FAIL 40 http://127.0.0.1:4402/agents:1 [1440px] a field's edge is under 3:1 against what surrounds it: input.min-w-0 1.28:1 | fix: Draw the field in --color-muted, or fill it a step off the surface it sits on
+FAIL 40 http://127.0.0.1:4402/gallery.html:1 [1440px] a field's edge is under 3:1 against what surrounds it: textarea.humagen-composer-input 1.00:1, textarea.humage… | fix: Draw the field in --color-muted, or fill it a step off the surface it sits on
+FAIL 40 http://127.0.0.1:4402/projects:1 [1440px] a field's edge is under 3:1 against what surrounds it: input.min-w-0 1.28:1 | fix: Draw the field in --color-muted, or fill it a step off the surface it sits on
+FAIL 40 http://127.0.0.1:4402/sessions:1 [1440px] a field's edge is under 3:1 against what surrounds it: input.min-w-0 1.28:1 | fix: Draw the field in --color-muted, or fill it a step off the surface it sits on
+FAIL 40 http://127.0.0.1:4402/sessions/s_991d21d8ca53e88da10bd647cc2967e6:1 [1440px] a field's edge is under 3:1 against what surrounds it: textarea.humagen-composer-input 1.00:1 | fix: Draw the field in --color-muted, or fill it a step off the surface it sits on
+FAIL 48 apps/web/src/Deliverables.tsx:250 colour literal bg-[#11151b] in a class on <dialog class="fixed inset-0 m-0 h-dvh max-h-n…"> | fix: Lift the value into the token block (@theme or :root) and use its utility name
+FAIL 48 apps/web/src/SourceCatalog.tsx:200 colour literal text-[#4285F4] in a class on <GoogleDriveIcon class="text-[#4285F4]"> | fix: Lift the value into the token block (@theme or :root) and use its utility name
+FAIL 48 apps/web/src/styles.css:83 oklch literal oklch(0.205 0 0) outside tokens (--humagen-plane on html[data-theme="dark"], html…) | fix: Lift the value into the token block
+FAIL 48 apps/web/src/styles.css:84 oklch literal oklch(0.22 0 0) outside tokens (--humagen-panel on html[data-theme="dark"], html…) | fix: Lift the value into the token block
+FAIL 48 apps/web/src/styles.css:85 oklch literal oklch(1 0 0 / 9%) outside tokens (--humagen-rule on html[data-theme="dark"], html…) | fix: Lift the value into the token block
+FAIL 48 apps/web/src/styles.css:86 oklch literal oklch(1 0 0 / 46%) outside tokens (--humagen-ink on html[data-theme="dark"], html…) | fix: Lift the value into the token block
+FAIL 48 apps/web/src/styles.css:87 oklch literal oklch(1 0 0 / 13%) outside tokens (--humagen-ink-faint on html[data-theme="dark"], html…) | fix: Lift the value into the token block
+FAIL 48 apps/web/src/styles.css:88 oklch literal oklch(1 0 0 / 9%) outside tokens (--humagen-glass-border on html[data-theme="dark"], html…) | fix: Lift the value into the token block
+FAIL 48 apps/web/src/styles.css:89 oklch literal oklch(1 0 0 / 7%) outside tokens (--humagen-bevel on html[data-theme="dark"], html…) | fix: Lift the value into the token block
+FAIL 48 apps/web/src/styles.css:271 oklch literal oklch(0 0 0 / 0.22) outside tokens (box-shadow on .humagen-glass-pop) | fix: Lift the value into the token block
+FAIL 48 apps/web/src/styles.css:292 colour literal #000 outside tokens (-webkit-mask-image on .humagen-strip[data-more="end…) | fix: Lift the value into the token block
+FAIL 48 apps/web/src/styles.css:293 colour literal #000 outside tokens (mask-image on .humagen-strip[data-more="end…) | fix: Lift the value into the token block
+FAIL 48 apps/web/src/styles.css:296 colour literal #000 outside tokens (-webkit-mask-image on .humagen-strip[data-more="sta…) | fix: Lift the value into the token block
+FAIL 48 apps/web/src/styles.css:297 colour literal #000 outside tokens (mask-image on .humagen-strip[data-more="sta…) | fix: Lift the value into the token block
+FAIL 48 apps/web/src/styles.css:300 colour literal #000 outside tokens (-webkit-mask-image on .humagen-strip[data-more="bot…) | fix: Lift the value into the token block
+FAIL 48 apps/web/src/styles.css:301 colour literal #000 outside tokens (mask-image on .humagen-strip[data-more="bot…) | fix: Lift the value into the token block
+FAIL 48 apps/web/src/styles.css:840 oklch literal oklch(0 0 0 / 10%) outside tokens (box-shadow on .humagen-drawer-button) | fix: Lift the value into the token block
+FAIL 48 apps/web/src/styles.css:980 oklch literal oklch(0 0 0 / 0.22) outside tokens (box-shadow on .humagen-update) | fix: Lift the value into the token block
+FAIL 49a http://127.0.0.1:4402/gallery.html:1 [320px] control "Stopped after 3.0s · 1 of 1 agen" wraps to 2 lines (button.inline-flex.min-h-7) | fix: Shorten the label or set nowrap
+FAIL 63 apps/web/src/ChatConversation.tsx:146 arrow glued to the label "›" | fix: A verb as the label; the link already says it goes somewhere
+FAIL 63 apps/web/src/Deliverables.tsx:204 arrow glued to the label "›" | fix: A verb as the label; the link already says it goes somewhere
+FAIL 63 apps/web/src/Deliverables.tsx:848 arrow glued to the label "v ›" | fix: A verb as the label; the link already says it goes somewhere
+FAIL 73 http://127.0.0.1:4402/gallery.html:1 [1440px] text painted under another element: svg.shrink-0 over "2h"; svg.shrink-0 over "1h"; div.flex over "Checkout pa… | fix: Give the text its own space, or put it above what covers it on a surface of its own
+FAIL 73 http://127.0.0.1:4402/sessions/s_991d21d8ca53e88da10bd647cc2967e6:1 [1440px] text painted under another element: header.@container/conversation over "capture.png"; header.@container/conve… | fix: Give the text its own space, or put it above what covers it on a surface of its own
+REFLEX 26b packages/components/src/agent-change.tsx:1 no :active styling anywhere | fix: All eight states; guard: not a form control, no aria-disabled anywhere
+REFLEX 26b packages/components/src/agent-change.tsx:1 no :disabled styling anywhere | fix: All eight states; guard: not a form control, no aria-disabled anywhere
+REFLEX 39b http://127.0.0.1:4402/agents:1 [1440px] control height outside 32 to 52px: button.min-h-6 24px, button.min-h-6 24px, button.min-h-6 24px | fix: Marketing controls stand 44 to 52px; app UI 32 to 40px with a 44px hit target
+REFLEX 39b http://127.0.0.1:4402/gallery.html:1 [1440px] control height outside 32 to 52px: button.inline-flex 28px, button.inline-flex 28px, button.inline-flex 28px | fix: Marketing controls stand 44 to 52px; app UI 32 to 40px with a 44px hit target
+REFLEX 39b http://127.0.0.1:4402/sessions/s_991d21d8ca53e88da10bd647cc2967e6:1 [1440px] control height outside 32 to 52px: button.min-h-6 24px, button.group 27px, button.flex 24px | fix: Marketing controls stand 44 to 52px; app UI 32 to 40px with a 44px hit target
+REFLEX 47b apps/web/src/Deliverables.tsx:150 re-drawn chrome class "ide-frame" (class="humagen-slide-frame") | fix: Use a real screenshot in a figure
+REFLEX 47b apps/web/src/styles.css:731 re-drawn chrome selector .humagen-slide-frame | fix: Use a real screenshot in a figure
+REFLEX 71 http://127.0.0.1:4402/gallery.html:1 [1440px] heads nearer what precedes them than what they head: h3.text-aui-xs "Where the spend we" 12px over, 26px under… | fix: At least twice the space above a head as below it
+REFLEX 72 http://127.0.0.1:4402/:1 [1440px] text crowds the edge of its box: aside.aui-chrome right -33px | fix: Pad the box: max(8px, 0.5em) at the sides, max(4px, 0.3em) above and below
+REFLEX 72 http://127.0.0.1:4402/agents:1 [1440px] text crowds the edge of its box: aside.aui-chrome right -33px | fix: Pad the box: max(8px, 0.5em) at the sides, max(4px, 0.3em) above and below
+REFLEX 72 http://127.0.0.1:4402/gallery.html:1 [1440px] text crowds the edge of its box: div.humagen-glass bottom -71px; div.flex right -126px | fix: Pad the box: max(8px, 0.5em) at the sides, max(4px, 0.3em) above and below
+REFLEX 72 http://127.0.0.1:4402/projects:1 [1440px] text crowds the edge of its box: aside.aui-chrome right -33px | fix: Pad the box: max(8px, 0.5em) at the sides, max(4px, 0.3em) above and below
+REFLEX 72 http://127.0.0.1:4402/sessions:1 [1440px] text crowds the edge of its box: aside.aui-chrome right -33px | fix: Pad the box: max(8px, 0.5em) at the sides, max(4px, 0.3em) above and below
+REFLEX 72 http://127.0.0.1:4402/sessions/s_991d21d8ca53e88da10bd647cc2967e6:1 [1440px] text crowds the edge of its box: aside.aui-chrome right -33px | fix: Pad the box: max(8px, 0.5em) at the sides, max(4px, 0.3em) above and below
+REFLEX 72 http://127.0.0.1:4402/settings/appearance:1 [1440px] text crowds the edge of its box: aside.aui-chrome right -33px | fix: Pad the box: max(8px, 0.5em) at the sides, max(4px, 0.3em) above and below
+WARN 49 apps/web/src/ForkConversation.tsx:87 long clickable label "Bring result back to parent" without nowrap | fix: Shorten the label or set nowrap
+WARN 49 apps/web/src/ModelProviders.tsx:250 long clickable label "Add OpenAI-Compatible Server" without nowrap | fix: Shorten the label or set nowrap
+WARN F1 apps/web/src/AgentDetail.tsx:273 straight quote in prose x1 (first: Model's default) | fix: Use typographic quotes: “ ” ’
+WARN F1 apps/web/src/Clients.tsx:166 straight quote in prose x1 (first: red by the server's environment.) | fix: Use typographic quotes: “ ” ’
+WARN F1 apps/web/src/Connections.tsx:116 straight quote in prose x2 (first: Why can't I?) | fix: Use typographic quotes: “ ” ’
+WARN F1 apps/web/src/History.tsx:268 straight quote in prose x2 (first: HistoryStatus | "any">) | fix: Use typographic quotes: “ ” ’
+WARN F1 apps/web/src/ModelProviders.tsx:228 straight quote in prose x2 (first: in the deployment's spec) | fix: Use typographic quotes: “ ” ’
+WARN F1 apps/web/src/SessionCenter.tsx:257 straight quote in prose x20 (first: SessionState | "any">) | fix: Use typographic quotes: “ ” ’
+WARN F1 apps/web/src/SourceLifecycle.tsx:168 straight quote in prose x1 (first: Other people's accounts are) | fix: Use typographic quotes: “ ” ’
+WARN F1 apps/web/src/code-editor.dom.test.tsx:147 straight quote in prose x2 (first: " path="page.html" />) | fix: Use typographic quotes: “ ” ’
+WARN F18 http://127.0.0.1:4402/gallery.html:1 [375px] slot "native-select-wrapper" renders at 144 x 36px on a phone | fix: The slot collapsed: give it width: 100% and an aspect-ratio in the stacked layout
+WARN F18 http://127.0.0.1:4402/gallery.html:1 [1440px] slot "native-select-wrapper" renders at 144 x 36px | fix: The slot collapsed: give it a width from its track and a real aspect-ratio, never a percentage of a shrink-to-fit parent
+WARN F18 http://127.0.0.1:4402/projects:1 [375px] slot "select-trigger" renders at 128 x 36px on a phone | fix: The slot collapsed: give it width: 100% and an aspect-ratio in the stacked layout
+WARN F18 http://127.0.0.1:4402/projects:1 [1440px] slot "select-trigger" renders at 128 x 36px | fix: The slot collapsed: give it a width from its track and a real aspect-ratio, never a percentage of a shrink-to-fit parent
+WARN F18 http://127.0.0.1:4402/sessions:1 [375px] slot "select-trigger" renders at 128 x 36px on a phone | fix: The slot collapsed: give it width: 100% and an aspect-ratio in the stacked layout
+WARN F18 http://127.0.0.1:4402/sessions:1 [1440px] slot "select-trigger" renders at 128 x 36px | fix: The slot collapsed: give it a width from its track and a real aspect-ratio, never a percentage of a shrink-to-fit parent
+WARN F23 apps/web/gallery.html:1 the document lacks a meta description | fix: Name the language, title the page in its own words, and describe it in one sentence for link previews
+WARN F23 apps/web/store-gallery.html:1 the document lacks a meta description | fix: Name the language, title the page in its own words, and describe it in one sentence for link previews
+WARN F25 http://127.0.0.1:4402/agents:1 [375px] a table opens with 5 columns off-screen (from "Working") | fix: Keep the column that names the row and the one that acts on it in view: restack each row, or pin the first column
+WARN F26 http://127.0.0.1:4402/gallery.html:1 [375px] h2 "A session's Details: running, wa" ends on a stub; h2 "Inbox, held in memory with one m" ends on a stub | fix: text-wrap: balance on heads and pretty on body copy, or rewrite the line; a <br> goes only between phrases and is checked at 375

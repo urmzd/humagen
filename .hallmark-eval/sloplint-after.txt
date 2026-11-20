@@ -1,0 +1,96 @@
+render tier: 35 screenshots in /Users/urmzd/github/humagen/.worktrees/hallmark-web/.hallmark/shots (1280x800, 1440x900, 1920x1080 folds; 1440 and 375 full pages)
+apps/web/src/styles.css
+  FAIL 10a :564 transitioning width on .humagen-sidebar | fix: Animate transform or opacity instead
+  FAIL 10a :714 transitioning width on .humagen-inspector-dock
+  FAIL 34 :26 overflow-x: hidden on html, body, #root (breaks sticky) | fix: Use overflow-x: clip on both html and body, never hidden
+  FAIL 34 :290 width: min(20rem, calc(100vw - 8re… on .humagen-project-picker .humagen-glass-pop (scrollbar overflow) | fix: width: 100% with container padding
+  FAIL 48 :97 oklch literal oklch(0.205 0 0) outside tokens (--humagen-plane on html[data-theme="dark"], html…) | fix: Lift the value into the token block
+  FAIL 48 :98 oklch literal oklch(0.22 0 0) outside tokens (--humagen-panel on html[data-theme="dark"], html…)
+  FAIL 48 :99 oklch literal oklch(1 0 0 / 9%) outside tokens (--humagen-rule on html[data-theme="dark"], html…)
+  FAIL 48 :100 oklch literal oklch(1 0 0 / 46%) outside tokens (--humagen-ink on html[data-theme="dark"], html…)
+  FAIL 48 :101 oklch literal oklch(1 0 0 / 13%) outside tokens (--humagen-ink-faint on html[data-theme="dark"], html…)
+  FAIL 48 :102 oklch literal oklch(1 0 0 / 9%) outside tokens (--humagen-glass-border on html[data-theme="dark"], html…)
+  FAIL 48 :103 oklch literal oklch(1 0 0 / 7%) outside tokens (--humagen-bevel on html[data-theme="dark"], html…)
+  FAIL 48 :306 colour literal #000 outside tokens (-webkit-mask-image on .humagen-strip[data-more="end…)
+  FAIL 48 :307 colour literal #000 outside tokens (mask-image on .humagen-strip[data-more="end…)
+  FAIL 48 :310 colour literal #000 outside tokens (-webkit-mask-image on .humagen-strip[data-more="sta…)
+  FAIL 48 :311 colour literal #000 outside tokens (mask-image on .humagen-strip[data-more="sta…)
+  FAIL 48 :314 colour literal #000 outside tokens (-webkit-mask-image on .humagen-strip[data-more="bot…)
+  FAIL 48 :315 colour literal #000 outside tokens (mask-image on .humagen-strip[data-more="bot…)
+  WAIVED 47b :745 re-drawn chrome selector .humagen-slide-frame
+  NOTE waive :1 4 reflex gates waived (47b, 39b, 72, 71): that is a house style, not a … | fix: Lock it into a design.md so later pages inherit it instead of re-arguing it
+packages/web/src/StatusLine.tsx
+  FAIL 10a :77 transition-[width] on <span class="absolute inset-y-0 left-0 round…"> | fix: Name the properties: transition-colors, transition-opacity or transition-transform
+apps/web/src/Agents.tsx
+  FAIL 19 :273 dash "–" in copy | fix: A comma, a colon, a full stop or parentheses; never a dash
+packages/components/src/agent-change.tsx
+  FAIL 26a :1 no :focus-visible styling anywhere | fix: A focus ring at 3:1 or better, instant
+  REFLEX 26b :1 no :active styling anywhere | fix: All eight states; guard: not a form control, no aria-disabled anywhere
+  REFLEX 26b :1 no :disabled styling anywhere
+http://127.0.0.1:4402/
+  FAIL 40 :1 [1440px] a field's edge is under 3:1 against what surrounds it: textarea.humagen-composer-input 1.00:1 | fix: Draw the field in --color-muted, or fill it a step off the surface it sits on
+  WAIVED 72 :1 [1440px] text crowds the edge of its box: aside.aui-chrome right -33px
+http://127.0.0.1:4402/agents
+  FAIL 40 :1 [1440px] a field's edge is under 3:1 against what surrounds it: input.min-w-0 1.28:1
+  WARN F25 :1 [375px] a table opens with 5 columns off-screen (from "Working") | fix: Keep the column that names the row and the one that acts on it in view: restack each row, or pin the first column
+  WAIVED 39b :1 [1440px] control height outside 32 to 52px: button.min-h-6 24px, button.min-h-6 24px, button.min-h-6 24px
+  WAIVED 72 :1 [1440px] text crowds the edge of its box: aside.aui-chrome right -33px
+http://127.0.0.1:4402/gallery.html
+  FAIL 40 :1 [1440px] a field's edge is under 3:1 against what surrounds it: textarea.humagen-composer-input 1.00:1, textarea.humage…
+  FAIL 49a :1 [320px] control "Stopped after 3.0s · 1 of 1 agen" wraps to 2 lines (button.inline-flex.min-h-7) | fix: Shorten the label or set nowrap
+  FAIL 73 :1 [1440px] text painted under another element: svg.shrink-0 over "2h"; svg.shrink-0 over "1h"; div.flex over "Checkout pa… | fix: Give the text its own space, or put it above what covers it on a surface of its own
+  WARN F18 :1 [375px] slot "native-select-wrapper" renders at 144 x 36px on a phone | fix: The slot collapsed: give it width: 100% and an aspect-ratio in the stacked layout
+  WARN F18 :1 [1440px] slot "native-select-wrapper" renders at 144 x 36px | fix: The slot collapsed: give it a width from its track and a real aspect-ratio, never a percentage of a shrink-to-fit parent
+  WARN F26 :1 [375px] h2 "A session's Details: running, wa" ends on a stub; h2 "Inbox, held in memory with one m" ends on a stub | fix: text-wrap: balance on heads and pretty on body copy, or rewrite the line; a <br> goes only between phrases and is checked at 375
+  WAIVED 39b :1 [1440px] control height outside 32 to 52px: button.inline-flex 28px, button.inline-flex 28px, button.inline-flex 28px
+  WAIVED 71 :1 [1440px] heads nearer what precedes them than what they head: h3.text-aui-xs "Where the spend we" 12px over, 26px under…
+  WAIVED 72 :1 [1440px] text crowds the edge of its box: div.humagen-glass bottom -71px; div.flex right -126px
+http://127.0.0.1:4402/projects
+  FAIL 40 :1 [1440px] a field's edge is under 3:1 against what surrounds it: input.min-w-0 1.28:1
+  WARN F18 :1 [375px] slot "select-trigger" renders at 128 x 36px on a phone
+  WARN F18 :1 [1440px] slot "select-trigger" renders at 128 x 36px
+  WAIVED 72 :1 [1440px] text crowds the edge of its box: aside.aui-chrome right -33px
+http://127.0.0.1:4402/sessions
+  FAIL 40 :1 [1440px] a field's edge is under 3:1 against what surrounds it: input.min-w-0 1.28:1
+  WARN F18 :1 [375px] slot "select-trigger" renders at 128 x 36px on a phone
+  WARN F18 :1 [1440px] slot "select-trigger" renders at 128 x 36px
+  WAIVED 72 :1 [1440px] text crowds the edge of its box: aside.aui-chrome right -33px
+http://127.0.0.1:4402/sessions/s_991d21d8ca53e88da10bd647cc2967e6
+  FAIL 40 :1 [1440px] a field's edge is under 3:1 against what surrounds it: textarea.humagen-composer-input 1.00:1
+  FAIL 73 :1 [1440px] text painted under another element: header.@container/conversation over "capture.png"; header.@container/conve…
+  WAIVED 39b :1 [1440px] control height outside 32 to 52px: button.min-h-6 24px, button.group 27px, button.flex 24px
+  WAIVED 72 :1 [1440px] text crowds the edge of its box: aside.aui-chrome right -33px
+apps/web/src/SourceCatalog.tsx
+  FAIL 48 :200 colour literal text-[#4285F4] in a class on <GoogleDriveIcon class="text-[#4285F4]"> | fix: Lift the value into the token block (@theme or :root) and use its utility name
+apps/web/src/ForkConversation.tsx
+  WARN 49 :87 long clickable label "Bring result back to parent" without nowrap | fix: Shorten the label or set nowrap
+apps/web/src/ModelProviders.tsx
+  WARN 49 :250 long clickable label "Add OpenAI-Compatible Server" without nowrap
+  WARN F1 :228 straight quote in prose x2 (first: in the deployment's spec) | fix: Use typographic quotes: “ ” ’
+apps/web/src/AgentDetail.tsx
+  WARN F1 :273 straight quote in prose x1 (first: Model's default)
+apps/web/src/Clients.tsx
+  WARN F1 :166 straight quote in prose x1 (first: red by the server's environment.)
+apps/web/src/Connections.tsx
+  WARN F1 :116 straight quote in prose x2 (first: Why can't I?)
+apps/web/src/History.tsx
+  WARN F1 :268 straight quote in prose x2 (first: HistoryStatus | "any">)
+apps/web/src/SessionCenter.tsx
+  WARN F1 :257 straight quote in prose x20 (first: SessionState | "any">)
+apps/web/src/SourceLifecycle.tsx
+  WARN F1 :168 straight quote in prose x1 (first: Other people's accounts are)
+apps/web/src/code-editor.dom.test.tsx
+  WARN F1 :147 straight quote in prose x2 (first: " path="page.html" />)
+apps/web/gallery.html
+  WARN F23 :1 the document lacks a meta description | fix: Name the language, title the page in its own words, and describe it in one sentence for link previews
+apps/web/store-gallery.html
+  WARN F23 :1 the document lacks a meta description
+.hallmark/before.json
+  WARN kept :1 figures gone or reworded since the before record: 6minutes, 7minutes | fix: Restore it, or record it in the stamp: /* Hallmark · reworded "<old>" to "<new>" · <the gate that named it> */ or dropped <item> · <the reason>
+apps/web/src/Deliverables.tsx
+  WAIVED 47b :156 re-drawn chrome class "ide-frame" (class="humagen-slide-frame")
+http://127.0.0.1:4402/settings/appearance
+  WAIVED 72 :1 [1440px] text crowds the edge of its box: aside.aui-chrome right -33px
+sloplint: 30 FAIL, 2 REFLEX, 21 WARN, 13 WAIVED, 1 NOTE across 260 file(s) and 7 URL(s).
+kept: links 203/203, fields 24/24, handlers 1710/1710, test hooks 72/72, headings 31/31, figures 37/39; before 37 FAIL, 15 REFLEX, now 30 FAIL, 2 REFLEX
+compare: .hallmark/compare.html shows before and after side by side

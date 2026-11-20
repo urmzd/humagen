@@ -1,3 +1,10 @@
+/* Hallmark · checked: 2026-11-19 · genre: modern-minimal (inferred) · shape: app screen
+ * floor: see .hallmark-eval/sloplint-after.txt · fixed: 3 (7a, 48, 63) · structural: printed, not rebuilt
+ * built: the project · redesign: polish · v2.0.0 */
+/* Hallmark · waive 47b · one frame, a saved deck's own slide inside · the slide frame previews the deliverable a person opens */
+/* Hallmark · waive 39b · app UI at 24 to 28px that grows to 44px on a coarse pointer · inline links in table rows and thread meta */
+/* Hallmark · waive 72 · sidebar rows truncate with an ellipsis · the measured overflow is the clipped tail of a session title */
+/* Hallmark · waive 71 · gallery-only heads · the primitives gallery is a development page, not a console screen */
 @import "tailwindcss";
 @import "@humagen/render-web/theme.css";
 
@@ -57,6 +64,13 @@ body,
   --humagen-ink-faint: oklch(0.07 0 0 / 14%);
   --humagen-glass-border: oklch(0.2 0 0 / 12%);
   --humagen-bevel: inset 0 1px 0 oklch(1 0 0 / 60%);
+  /* The shadow under a menu or a notice, and the lighter one under a floating button. */
+  --humagen-shadow-pop: 0 18px 50px oklch(0 0 0 / 0.22);
+  --humagen-shadow-float: 0 4px 16px oklch(0 0 0 / 10%);
+  /* A deck being presented: its own dark stage in either theme. */
+  --humagen-stage: #11151b;
+  --humagen-stage-ink: oklch(1 0 0);
+  --humagen-stage-backdrop: oklch(0 0 0);
   /* Lightness of an agent's color, set so it reads on either surface. */
   --humagen-mark-l: 0.5;
   /*
@@ -268,7 +282,7 @@ body {
 .humagen-glass-pop {
   background: var(--aui-pop);
   border: var(--aui-hairline) solid var(--humagen-glass-border);
-  box-shadow: 0 18px 50px oklch(0 0 0 / 0.22), var(--humagen-bevel);
+  box-shadow: var(--humagen-shadow-pop), var(--humagen-bevel);
 }
 
 /* The project picker is taller than other panels, and scrolls. */
@@ -837,7 +851,7 @@ html[data-gallery], html[data-gallery] body, html[data-gallery] #root {
   background: color-mix(in oklch, var(--aui-bg) 82%, transparent);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  box-shadow: 0 4px 16px oklch(0 0 0 / 10%);
+  box-shadow: var(--humagen-shadow-float);
 }
 @media (max-width: 47.99rem) {
   .humagen-content { padding-top: calc(3.5rem + env(safe-area-inset-top)); }
@@ -977,7 +991,7 @@ body {
   bottom: calc(max(1rem, env(safe-area-inset-bottom)) + var(--humagen-keyboard, 0px));
   background: var(--aui-pop);
   border: var(--aui-hairline) solid var(--humagen-glass-border);
-  box-shadow: 0 18px 50px oklch(0 0 0 / 0.22), var(--humagen-bevel);
+  box-shadow: var(--humagen-shadow-pop), var(--humagen-bevel);
 }
 @media (max-width: 39.99rem) {
   .humagen-update { left: max(1rem, env(safe-area-inset-left)); }

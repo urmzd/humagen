@@ -1,6 +1,12 @@
 import { defaultCopy } from "@humagen/components";
 import { Markdown } from "@humagen/primitives";
-import { ArtifactIcon, DiffIcon, PencilIcon, WebSurface } from "@humagen/render-web";
+import {
+  ArtifactIcon,
+  ChevronRightIcon,
+  DiffIcon,
+  PencilIcon,
+  WebSurface,
+} from "@humagen/render-web";
 import { ChangeReview, HumagenMark, Inspector, type ReviewPin } from "@humagen/web";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { ArtifactPromotion, type ArtifactPromotionAccess } from "./ArtifactPromotion.tsx";
@@ -196,7 +202,7 @@ export function NativePreview({
             onClick={() => onSlide(slide - 1)}
             aria-label="Previous slide"
           >
-            ‹
+            <ChevronRightIcon size={16} className="rotate-180" />
           </button>
           <span className="text-aui-xs text-aui-muted">
             Slide {slide + 1} of {preview.slides.length}
@@ -208,7 +214,7 @@ export function NativePreview({
             onClick={() => onSlide(slide + 1)}
             aria-label="Next slide"
           >
-            ›
+            <ChevronRightIcon size={16} />
           </button>
         </div>
         <div className="flex max-w-full gap-1 overflow-x-auto" aria-label="Slides">
@@ -251,7 +257,7 @@ export function NativePreview({
           ref={presenting}
           data-layer="presentation"
           aria-label={words.artifactPresentation(file.title)}
-          className="fixed inset-0 m-0 h-dvh max-h-none w-screen max-w-none bg-[#11151b] p-4 pt-[max(1rem,env(safe-area-inset-top))] pr-[max(1rem,env(safe-area-inset-right))] pb-[max(1rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] text-white backdrop:bg-black lg:p-8"
+          className="fixed inset-0 m-0 h-dvh max-h-none w-screen max-w-none bg-(--humagen-stage) p-4 pt-[max(1rem,env(safe-area-inset-top))] pr-[max(1rem,env(safe-area-inset-right))] pb-[max(1rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] text-(--humagen-stage-ink) backdrop:bg-(--humagen-stage-backdrop) lg:p-8"
           onCancel={(event) => {
             event.preventDefault();
             event.stopPropagation();
@@ -859,7 +865,7 @@ export function Deliverables({
                         v{item.version} {item.agent || item.created_by}
                       </span>
                     </span>
-                    <span aria-hidden>›</span>
+                    <ChevronRightIcon size={16} className="text-aui-muted" />
                   </button>
                 </li>
               ))}
