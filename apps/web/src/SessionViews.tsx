@@ -12,9 +12,11 @@ import {
   TerminalIcon,
   ZapIcon,
 } from "@humagen/render-web";
-import { type ComponentType, useEffect, useRef } from "react";
+import { type ComponentType, useEffect, useRef, useState } from "react";
+import { ApiError, call } from "./api.ts";
 import { href } from "./route.ts";
 import { menuRow, Popover } from "./ui.tsx";
+import { workspaceFiles } from "./workspace-files.ts";
 
 const words = defaultCopy.sessionPanel;
 
@@ -115,7 +117,10 @@ export function SessionViews({
   onOpen,
   onClose,
   hidden = [],
+  disabled = {},
 }: {
+  /** Views that cannot open here, with why: said on hover and read out, and the control does nothing. */
+  disabled?: Partial<Record<SessionView, string>>;
   /** The view open beside the thread, if one of these is. */
   active?: SessionView;
   /** Calls running or waiting on a person, shown on Details; highlighted while working. */
@@ -126,7 +131,8 @@ export function SessionViews({
   hidden?: readonly SessionView[];
 }) {
   const shows = (v: SessionView) => !hidden.includes(v);
-  const toggle = (v: SessionView) => (active === v ? onClose() : onOpen(v));
+  const toggle = (v: SessionView) =>
+    disabled[v] ? undefined : active === v ? onClose() : onOpen(v);
   const mac = onMac();
   return (
     // biome-ignore lint/a11y/useSemanticElements: a fieldset would restyle the header; the group names the controls
@@ -151,9 +157,11 @@ export function SessionViews({
             key={v}
             type="button"
             data-session-view={v}
-            className={`${headerIcon} max-md:hidden`}
+            className={`${headerIcon} max-md:hidden aria-disabled:cursor-not-allowed aria-disabled:opacity-40 aria-disabled:hover:bg-transparent`}
             aria-label={words.view[v]}
-            title={words.view[v]}
+            title={disabled[v] ?? words.view[v]}
+            aria-description={disabled[v]}
+            aria-disabled={disabled[v] ? true : undefined}
             aria-pressed={active === v}
             onClick={() => toggle(v)}
           >
@@ -178,10 +186,14 @@ export function SessionViews({
                 v === "sidechat" || v === "search"
                   ? words.shortcut[v][mac ? "mac" : "other"]
                   : undefined;
+              const off = disabled[v];
               const body = (
                 <>
                   <Mark size={16} />
-                  <span className="flex-1">{words.view[v]}</span>
+                  <span className="flex min-w-0 flex-1 flex-col">
+                    <span>{words.view[v]}</span>
+                    {off && <span className="text-aui-muted text-aui-xs">{off}</span>}
+                  </span>
                   {keys && (
                     <kbd className="font-sans text-aui-muted text-aui-xs" aria-hidden>
                       {keys}
@@ -214,8 +226,10 @@ export function SessionViews({
                         ? "Meta+Shift+F Control+Shift+F"
                         : undefined
                   }
-                  className={cls}
+                  className={`${cls} aria-disabled:opacity-60`}
+                  aria-disabled={off ? true : undefined}
                   onClick={() => {
+                    if (off) return;
                     close();
                     onOpen(v);
                   }}
@@ -229,4 +243,62 @@ export function SessionViews({
       </Popover>
     </div>
   );
+}
+
+/** Whether a session's browser can be acted on (`GET /api/sessions/{id}/browser`). */
+export interface BrowserAvailability {
+  available: boolean;
+  providers?: string[];
+  reason?: string;
+}
+
+/**
+ * Which of the header's views cannot open for this session, and why: the
+ * Terminal where the deployment runs tools on the server or the sandbox
+ * cannot be reached, and the Browser where the session's agent has none.
+ * Read when the session's page opens.
+ */
+export function useUnavailableViews(
+  thread: string,
+  isSession: boolean,
+  api: {
+    sandboxes: (thread: string) => Promise<{ session: { isolated: boolean; commands: boolean } }>;
+    browser: (thread: string) => Promise<BrowserAvailability>;
+  } = {
+    sandboxes: workspaceFiles.sandboxes,
+    browser: (id) =>
+      call<BrowserAvailability>("GET", `/api/sessions/${encodeURIComponent(id)}/browser`),
+  },
+): Partial<Record<SessionView, string>> {
+  const [off, setOff] = useState<Partial<Record<SessionView, string>>>({});
+  const u = words.unavailable;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: read once per session.
+  useEffect(() => {
+    let on = true;
+    setOff({});
+    api.sandboxes(thread).then(
+      (b) =>
+        on &&
+        setOff((o) => ({
+          ...o,
+          terminal: !b.session.isolated && !b.session.commands ? u.terminalHost : undefined,
+        })),
+      () => on && setOff((o) => ({ ...o, terminal: u.terminalUnreachable })),
+    );
+    if (!isSession) setOff((o) => ({ ...o, browser: u.browser }));
+    else
+      api.browser(thread).then(
+        (b) => on && setOff((o) => ({ ...o, browser: b.available ? undefined : u.browser })),
+        (e) =>
+          on &&
+          setOff((o) => ({
+            ...o,
+            browser: e instanceof ApiError && e.status === 404 ? u.browser : u.browserUnknown,
+          })),
+      );
+    return () => {
+      on = false;
+    };
+  }, [thread, isSession]);
+  return off;
 }

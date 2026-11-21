@@ -61,6 +61,8 @@ export interface WorkbenchTabProps extends WorkbenchSession {
   openFile?: (artifactId: string) => void;
   /** Opens a tab of the Workspace pane: the session's files, its artifacts, a file. */
   openWorkspace?: (tab: PaneTab) => void;
+  /** What the session was set up with before its first message: its environment and repositories. */
+  chosen?: { environment?: string; repos?: string[] };
   /**
    * Records something the reader did by hand in the tab. It shows above the
    * composer and goes with their next message; nothing is sent before that.

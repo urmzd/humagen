@@ -4447,12 +4447,44 @@ export const defaultCopy = {
     },
     openOnGitHub: (what: string) => `Open ${what} on GitHub`,
     showMore: (n: number) => `Show ${n} More`,
+    /** What the session was set up with before its first message. */
+    chosenEnvironment: "Chosen environment",
+    chosenRepo: "Chosen repository",
+    /** The header's Terminal and Browser, when they cannot open, and why. */
+    unavailable: {
+      terminalHost:
+        "No terminal here: this deployment runs tools on the server, with no sandbox to open one in",
+      terminalUnreachable: "No terminal now: the sandbox could not be reached",
+      browser: "No browser: this session's agent has none",
+      browserUnknown: "No browser now: it could not be checked",
+    },
+    starting: "Starting environment…",
+    started: "Environment ready",
+    startFailed: (why: string) => `The environment could not start: ${why}`,
     /** Where it started, which replaced the header's Item link. */
     startedIn: "Started in",
     otherSessions: "Other Sessions Here",
     /** Expanding a section. */
     expand: (what: string) => `Show ${what}`,
     collapse: (what: string) => `Hide ${what}`,
+  },
+  /**
+   * A new session's setup beside the composer's plus (SessionPickers.tsx):
+   * where its tools run, and the repositories it works in.
+   */
+  sessionSetup: {
+    environment: "Environment",
+    auto: "Auto",
+    autoHint: "This workspace's default",
+    isolated: "Isolated sandbox",
+    onServer: "On this server",
+    terminal: "Terminal",
+    repo: "Repo",
+    repoLabel: "Repositories",
+    repos: (n: number) => `${n} repos`,
+    none: "None",
+    noRepos: "No repositories are connected.",
+    connectGitHub: "Connect GitHub",
   },
   /**
    * The session's workbench: the tabs of the pane Details opens, and what a

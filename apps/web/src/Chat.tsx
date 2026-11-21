@@ -26,6 +26,7 @@ import { emptySelection, mentionPicks, PlusMenu, type Selection } from "./Plus.t
 import { RunsConversation, ThreadRoom } from "./pages.ts";
 import type { ConversationPanel, ConversationView } from "./route.ts";
 import { Scroller } from "./Scroller.tsx";
+import { DEFAULT_SETUP, type SessionSetup, SessionSetupPickers } from "./SessionPickers.tsx";
 import { useThreadSelection } from "./selection.ts";
 import { mentionsIn } from "./tags.ts";
 import { topicsOf } from "./topics.ts";
@@ -580,6 +581,7 @@ export function Chat({
           text: m.text,
           uploads: m.uploads,
           visibility: startChannel ? "shared" : "private",
+          ...(startChannel ? {} : setup),
         })
         .then((p) => {
           // Run, chosen before the session started, is applied to it now.
@@ -713,6 +715,8 @@ export function Chat({
   // from a project's page in that project: the composer picks no project.
   // Its approval mode is held until the session starts.
   const [pendingApproval, setPendingApproval] = useState<ApprovalMode>("ask");
+  // So are its environment and repositories, sent with its first message.
+  const [setup, setSetup] = useState<SessionSetup>(DEFAULT_SETUP);
   // A message here is its text alone: the agent it goes to is the one its
   // tags or the conversation name, never a pick the composer carries.
   const sending: typeof queue = {
@@ -790,6 +794,12 @@ export function Chat({
         onDraft={(text) => {
           draft.current = text;
         }}
+        leading={
+          // Beside the plus, where the composer keeps a session's setting-up controls.
+          !threadId && !startChannel ? (
+            <SessionSetupPickers value={setup} onChange={setSetup} />
+          ) : undefined
+        }
         trailing={
           threadId ? (
             room?.thread && <ApprovalToggle thread={room.thread} me={handle || me} />

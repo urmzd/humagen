@@ -50,6 +50,7 @@ export function SessionWorkbench({
   onClose,
   onOpenFile,
   onOpenWorkspace,
+  chosen,
   onAsk,
   loader,
   files,
@@ -70,6 +71,8 @@ export function SessionWorkbench({
   onOpenFile?: (artifactId: string) => void;
   /** Opens a tab of the Workspace pane. */
   onOpenWorkspace?: (tab: PaneTab) => void;
+  /** What the session was set up with before its first message. */
+  chosen?: { environment?: string; repos?: string[] };
   /** Puts words in the composer for the reader to send. */
   onAsk?: (text: string) => void;
   loader?: TraceLoader;
@@ -97,6 +100,7 @@ export function SessionWorkbench({
         openTab={(id, ref) => onView(openBench(view, id, ref))}
         openFile={onOpenFile}
         openWorkspace={onOpenWorkspace}
+        chosen={chosen}
         record={record}
         ask={canPost ? onAsk : undefined}
         expanded={expanded}

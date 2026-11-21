@@ -77,7 +77,12 @@ import { alertAnchor, SessionAlerts, useSessionAlerts } from "./SessionAlerts.ts
 import { SessionDetailsProvider } from "./SessionDetails.tsx";
 import { sessionFiles, sessionProgress } from "./SessionPanel.tsx";
 import { OriginButton, referenceOfPlace, SessionPlace, usePlace } from "./SessionPlace.tsx";
-import { type SessionView, SessionViews, useViewShortcuts } from "./SessionViews.tsx";
+import {
+  type SessionView,
+  SessionViews,
+  useUnavailableViews,
+  useViewShortcuts,
+} from "./SessionViews.tsx";
 import { ShareDialog } from "./Share.tsx";
 import { useThreadSelection } from "./selection.ts";
 import { topicsOf } from "./topics.ts";
@@ -943,6 +948,7 @@ export function ThreadRoom({
   };
 
   useViewShortcuts(openView, (v) => v !== "sidechat" || posts);
+  const unavailable = useUnavailableViews(th.id, !!th.session);
   const activeView: SessionView | undefined =
     shownView.panel === "details"
       ? (shownView.bench ?? "details")
@@ -964,6 +970,7 @@ export function ThreadRoom({
                   onOpen={openView}
                   onClose={() => openPanel()}
                   hidden={posts ? [] : ["sidechat"]}
+                  disabled={unavailable}
                 />
               }
               titleControl={
@@ -1438,6 +1445,7 @@ export function ThreadRoom({
                     openPanel("workspace", openPane(shownView, { kind: "artifact", ref: id }))
                   }
                   onOpenWorkspace={(tab) => openPanel("workspace", openPane(shownView, tab))}
+                  chosen={th.session}
                   onAsk={posts ? (text) => setSeed({ text, mode: "prepend" }) : undefined}
                 />
               )}

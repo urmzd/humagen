@@ -2482,7 +2482,27 @@ under 60 characters. A session that starts with only a greeting ("howdy",
 "hi there", "good morning") takes its title from the first later message
 that asks for something, unless someone renamed it first.
 
-Evidence: `session-context-panel.dom.test.tsx` (each section, the rows that
+Terminal and Browser are in the header on every session, a new one
+included. Where they cannot open they say why, on hover and read out, and do
+nothing when pressed: the Terminal where the deployment runs tools on the
+server or the sandbox cannot be reached, the Browser where the session's
+agent has no browser (`GET /api/sessions/{id}/browser`). A terminal opened on
+a session whose sandbox has not started starts it first with a command that
+does nothing, saying Starting environment… and then Environment ready, and
+records nothing for the next message; a failure to start says why.
+
+A new private session is set up beside the composer's plus, before its first
+message: its environment (Auto, the workspace's default, or one the
+deployment offers, `GET /api/sessions/options`) and the repositories it
+works in, from those the workspace's GitHub apps may read (none to ten).
+They go with the first message (`environment` and `repos` on
+`POST /api/sessions`), are kept on the session (`session.environment`,
+`session.repos`), and show in the panel's Environment section. Auto is not
+sent. The pickers sit in the composer's `leading` slot; the composer's
+footer layout belongs to #474, and they move to its left footer slot when
+that lands.
+
+Evidence: `session-setup.dom.test.tsx` (the pickers, what a new session is started with, the panel showing it, the header saying why Terminal or Browser cannot open, the terminal starting a new session's sandbox); `session-context-panel.dom.test.tsx` (each section, the rows that
 open Terminal, Files and Changes, the header's views and More Views, the
 keys, the title menu and Rename, the meta line);
 `TestSessionTitleDropsLeadingMention`,

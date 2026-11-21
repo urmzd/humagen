@@ -149,6 +149,12 @@ export function Section({
   );
 }
 
+/** What a session was set up with before its first message (SessionPickers.tsx). */
+export interface SessionChoice {
+  environment?: string;
+  repos?: string[];
+}
+
 /** Where the panel's rows lead: a workbench tab, or a tab of the Workspace pane. */
 export interface PanelOpen {
   tab: (id: WorkbenchTabId, ref?: string) => void;
@@ -221,20 +227,32 @@ export function EnvironmentSection({
   pulls,
   facts,
   open,
+  chosen,
 }: {
   thread: string | undefined;
   summary: SessionSummary;
   pulls: readonly PullRef[];
   facts: Readonly<Record<string, PullFacts | null | undefined>>;
   open: PanelOpen;
+  /** What the session was set up with before its first message. */
+  chosen?: SessionChoice;
 }) {
   const { boxes, state, retry } = useSandboxes(thread);
   const browser = summary.environment.some((e) => e.kind === "browser");
-  const repos = reposOf(
+  const fromPulls = reposOf(
     pulls,
     Object.fromEntries(Object.entries(facts).map(([k, v]) => [k, v ?? undefined])),
   );
+  // The repositories chosen for the session come first, then those its pull requests name.
+  const repos = [
+    ...(chosen?.repos ?? [])
+      .filter((r) => !fromPulls.some((p) => p.repo === r))
+      .map((repo) => ({ repo, branches: [] as string[] })),
+    ...fromPulls,
+  ];
   const files = boxes?.session.files;
+  const environment =
+    chosen?.environment && chosen.environment !== "auto" ? chosen.environment : undefined;
   return (
     <Section label={defaultCopy.details.environment} testId="environment">
       <Row
@@ -246,7 +264,9 @@ export function EnvironmentSection({
             ? words.sandboxHint.none
             : state === "unreachable"
               ? words.sandboxHint.unreachable
-              : undefined
+              : environment
+                ? `${words.chosenEnvironment}: ${environment}`
+                : undefined
         }
         value={
           <span className="inline-flex items-center gap-1.5" data-state={state}>
@@ -632,7 +652,9 @@ export function SessionSections({
   summary,
   open,
   outputs,
+  chosen,
 }: {
+  chosen?: SessionChoice;
   thread: string | undefined;
   runs: readonly Run[];
   responses: readonly ResponseState[] | undefined;
@@ -651,6 +673,7 @@ export function SessionSections({
         pulls={pulls}
         facts={facts}
         open={open}
+        chosen={chosen}
       />
       <div className="-my-1 flex flex-col border-[var(--humagen-rule)] border-y py-1">
         <ContextSection runs={runs} />

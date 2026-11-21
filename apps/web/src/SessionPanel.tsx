@@ -29,7 +29,13 @@ import {
   followTraces,
   type TraceLoader,
 } from "./responseSource.ts";
-import { type PanelOpen, Row, Section, SessionSections } from "./SessionSections.tsx";
+import {
+  type PanelOpen,
+  Row,
+  Section,
+  type SessionChoice,
+  SessionSections,
+} from "./SessionSections.tsx";
 import {
   type Output,
   type SavedFile,
@@ -200,6 +206,7 @@ export function DetailsTab({
   openWorkspace,
   runs,
   thread,
+  chosen,
 }: WorkbenchTabProps) {
   const [view, setView] = useState<View>({ kind: "summary" });
   return (
@@ -211,7 +218,7 @@ export function DetailsTab({
       summary={summary}
       origin={origin}
       onOpenFile={openFile}
-      panel={{ thread, runs, open: { tab: openTab, workspace: openWorkspace } }}
+      panel={{ thread, runs, chosen, open: { tab: openTab, workspace: openWorkspace } }}
     />
   );
 }
@@ -231,7 +238,7 @@ function SessionDetailsBody({
   view: View;
   onView: (view: View) => void;
   /** The workbench's own: the sections that need the session's runs and its other views. */
-  panel?: { thread: string; runs: Run[]; open: PanelOpen };
+  panel?: { thread: string; runs: Run[]; open: PanelOpen; chosen?: SessionChoice };
   heading?: string;
   responses: ResponseState[] | undefined;
   summary: SessionSummary | undefined;
@@ -324,7 +331,7 @@ function Summary({
 }: {
   summary: SessionSummary;
   responses: ResponseState[];
-  panel?: { thread: string; runs: Run[]; open: PanelOpen };
+  panel?: { thread: string; runs: Run[]; open: PanelOpen; chosen?: SessionChoice };
   current?: ResponseState;
   origin?: Ref;
   onView: (v: View) => void;
@@ -377,6 +384,7 @@ function Summary({
           responses={responses}
           summary={summary}
           open={panel.open}
+          chosen={panel.chosen}
           outputs={
             outputs.length > 0 ? (
               <Section label={words.outputs} testId="outputs">
