@@ -75,10 +75,11 @@ The UI must say the actual expiry and whether a value is kept; a session
 finishing a single turn is not session end. Archive alone must not be described
 as deletion. The operator defines a bounded maximum session retention and a
 cleanup job; expire no later than that deadline even after worker or server
-failure. Revocation prevents future use immediately and deletes the value and
-binding, including on project membership removal, session deletion and owner
-removal. Cleanup must be idempotent and work across replicas. A project binding
-is an explicit choice, never the default, and must be separately revocable.
+failure. Revocation prevents future use immediately, including of any browser
+state the binding produced, and deletes the value and binding, including on
+project membership removal, session deletion and owner removal. Cleanup must be
+idempotent and work across replicas. A project binding is an explicit choice,
+never the default, and must be separately revocable.
 
 For shared roots and sessions, project files and other shared resources retain
 their existing access rules. A connector or vault action acts only as the
@@ -153,6 +154,18 @@ script or destination receives the value and may transform or exfiltrate it.
 The interface must identify the receiving destination and never promise that
 the destination itself cannot see the value.
 
+A fill also leaves signed-in state in the browser: cookies, storage and open
+pages. That state is a use of the binding and has the binding's owner and
+scope. The existing browser is the workspace's, not the session's
+([browser guide](../guides/browser.md)): any agent holding the provider's grant
+reaches the same pages, and so does a person acting by hand through
+`internal/platform/browser_view.go`. A masked fill therefore runs only in a
+browser context isolated to the binding's owner and the session that used it,
+which no other actor, session or by-hand view can reach. A project binding is
+filled again in each session rather than carrying signed-in state between them.
+Destroy the context and its storage at session end, expiry and revocation. A
+worker that cannot isolate and destroy the context fails closed.
+
 ## Interface and lifecycle
 
 Use the existing session setup and panel patterns when #475 and #486 settle.
@@ -196,8 +209,11 @@ implemented and visually verified.
    input and output, tool arguments and results, logs, errors, audit, ledger,
    API responses, terminal, files, DOM/accessibility snapshots, screenshots,
    recordings and traces; include echo, encoded/transformed output, redirect,
-   wrong origin, unauthorized actor and called run cases. If a boundary cannot
-   enforce the invariant, reject the operation instead of declaring it safe.
+   wrong origin, unauthorized actor and called run cases. Test that another
+   actor, another session, by-hand browser access and a use after session end,
+   expiry or revocation cannot reach the signed-in state a fill leaves. If a
+   boundary cannot enforce the invariant, reject the operation instead of
+   declaring it safe.
 5. Build the owner-only interface and exercise the full waiting, supply,
    decline, revoke and failure flow in light and dark at desktop and phone
    widths. Capture matched before/after screenshots and inspect them; document
