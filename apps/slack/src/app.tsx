@@ -88,6 +88,7 @@ import {
   type Run,
   type StreamItem,
   type SurfaceRef,
+  THREAD_BEFORE_SESSIONS,
   type ThreadPosted,
   type ThreadPostRequest,
   type WireMessage,
@@ -1447,9 +1448,20 @@ export class App {
     // threads, announcements and limits are the project's, so it posts as
     // before. Everywhere else, a direct message or a thread in any other
     // channel, the Slack thread is a session, which the console lists.
-    const bound = (await this.bridgeControls(job.session.channel)).policy.bound;
-    const post = (body: ThreadPostRequest) =>
-      bound ? this.humagen.postThread(body) : this.humagen.postSession(body);
+    // A thread there that began before sessions is a conversation still:
+    // humagen says so by code, with nothing kept, and it is posted to as one.
+    let conversation = (await this.bridgeControls(job.session.channel)).policy.bound;
+    const post = async (body: ThreadPostRequest) => {
+      if (!conversation) {
+        try {
+          return await this.humagen.postSession(body);
+        } catch (e) {
+          if (!(e instanceof HumagenError && e.code === THREAD_BEFORE_SESSIONS)) throw e;
+          conversation = true;
+        }
+      }
+      return this.humagen.postThread(body);
+    };
     if (job.history) {
       const at = {
         channel: job.session.channel,

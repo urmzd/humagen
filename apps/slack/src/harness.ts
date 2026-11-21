@@ -22,6 +22,7 @@ import {
   type Receipt,
   type RunRequest,
   type StreamItem,
+  THREAD_BEFORE_SESSIONS,
   type ThreadPosted,
   type ThreadPostRequest,
   type WireMessage,
@@ -363,11 +364,32 @@ export class FakeHumagen implements Humagen {
    */
   /** Which route each post came by, in order: the threads route or the sessions route. */
   readonly routes: ("thread" | "session")[] = [];
+  /** How many session posts were refused for a thread from before sessions. */
+  refusedSessions = 0;
 
-  /** As the platform does: the same post, kept as a root session. */
+  /** The Slack threads (`<client>/<channel>/<thread ts>`) that are root sessions. */
+  private readonly sessions = new Set<string>();
+
+  /**
+   * As the platform does: the same post, kept as a root session. A thread
+   * that started as a conversation stays one: it is refused with the code
+   * that says so, and nothing is kept.
+   */
   async postSession(body: ThreadPostRequest): Promise<ThreadPosted> {
+    const s = body.surface;
+    const where = `${s.client}/${s.channel}/${s.ts}`;
+    if (this.surfaces.has(where) && !this.sessions.has(where)) {
+      this.refusedSessions++;
+      throw new HumagenError(
+        409,
+        "this thread started before sessions; post to it as a conversation, or start a new thread",
+        undefined,
+        THREAD_BEFORE_SESSIONS,
+      );
+    }
     const posted = await this.postThread(body);
     this.routes[this.routes.length - 1] = "session";
+    this.sessions.add(where);
     return posted;
   }
 

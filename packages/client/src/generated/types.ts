@@ -577,6 +577,8 @@ export interface AgentNetwork {
 export interface ErrorBody {
   /** What went wrong, in words a person can be shown. */
   error: string;
+  /** Which failure it is, for a program to act on, where the status alone does not say. `thread_before_sessions` is the conflict of `POST /api/sessions` for a chat surface's thread that started as a conversation, which the chat service posts to `POST /api/threads` instead. A failure without one is told by its status. */
+  code?: string;
 }
 
 /** Why a limit refused a run. */

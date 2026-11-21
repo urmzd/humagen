@@ -2577,3 +2577,86 @@ test("a direct message and a thread in an unbound channel are sessions; a bound 
   await emit(b, "run.completed.v1", { text: "Ana has it." });
   await b.app.idle();
 });
+
+/**
+ * A Slack thread from before sessions: the app as it was posted its first
+ * message to the threads route, so Humagen holds it as a conversation, and
+ * it was answered.
+ */
+async function conversationThread(channel: string, text: string) {
+  const w = mapped();
+  await w.humagen.postThread({
+    text,
+    act_as: { client: CLIENT, user: USER },
+    surface: { client: CLIENT, channel, ts: TS, app_user: BOT },
+  });
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "The migration." });
+  return w;
+}
+
+/** What Slack was told in words, by any message posted, streamed or updated. */
+const toldSlack = (w: World) =>
+  w.slack.calls
+    .filter((c) => /postMessage|stopStream|chat\.update/.test(c.method))
+    .map((c) => String(c.args.text ?? c.args.markdown_text ?? ""));
+
+test("a channel thread from before sessions is still answered: a mention, and the listener's reply", async () => {
+  const w = await conversationThread(CHANNEL, `<@${BOT}> what broke the build?`);
+  await deliver(w, mention("and the invoice?", "1700000050.000200", { thread_ts: TS }));
+  assert.equal(w.humagen.started.length, 2, "the mention is answered");
+  assert.equal(w.humagen.refusedSessions, 1, "asked as a session once, and told it is not one");
+  assert.equal(w.humagen.routes.at(-1), "thread", "then posted as the conversation it is");
+  assert.notEqual(w.humagen.posts.at(-1)?.listen, true);
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "Paid." });
+  await w.app.idle();
+
+  // The thread listens to its asker, whose reply needs no mention.
+  w.humagen.callsFor = () => true;
+  await deliver(w, plain("and the terms?", "1700000060.000200", { thread_ts: TS }));
+  assert.equal(w.humagen.started.length, 3, "the listener's reply is answered");
+  assert.equal(w.humagen.posts.at(-1)?.listen, true);
+  assert.equal(w.humagen.routes.at(-1), "thread");
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "Net 30." });
+  await w.app.idle();
+  assert.deepEqual(
+    toldSlack(w).filter((t) => /not allowed|tag an agent|unavailable/i.test(t)),
+    [],
+    "nobody is told to tag an agent",
+  );
+});
+
+test("a direct message thread from before sessions is still answered", async () => {
+  const w = await conversationThread(DM, "what broke the build?");
+  await deliver(w, direct("and the invoice?", "1700000050.000200", { thread_ts: TS }));
+  assert.equal(w.humagen.started.length, 2, "the message is answered");
+  assert.equal(w.humagen.refusedSessions, 1);
+  assert.equal(w.humagen.routes.at(-1), "thread");
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "Paid." });
+  await w.app.idle();
+  assert.deepEqual(
+    toldSlack(w).filter((t) => /not allowed|tag an agent|unavailable/i.test(t)),
+    [],
+  );
+});
+
+test("any other conflict of the sessions route is not retried as a conversation", async () => {
+  const w = mapped();
+  let asked = 0;
+  w.humagen.postSession = async () => {
+    asked++;
+    // The same words, and no code: only the code says the thread is a conversation.
+    throw new HumagenError(
+      409,
+      "this thread started before sessions; post to it as a conversation, or start a new thread",
+    );
+  };
+  await deliver(w, mention("and the invoice?", "1700000050.000200", { thread_ts: TS }));
+  await w.app.idle();
+  assert.equal(asked >= 1, true);
+  assert.equal(w.humagen.routes.length, 0, "nothing went to the threads route");
+  assert.equal(w.humagen.started.length, 0);
+});

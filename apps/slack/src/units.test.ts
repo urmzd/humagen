@@ -9,6 +9,7 @@ import {
   type HumagenError,
   httpHumagen,
   staticToken,
+  THREAD_BEFORE_SESSIONS,
 } from "./humagen.ts";
 import { eventKey, runId, sessionOf, tagId, threadKey } from "./keys.ts";
 
@@ -314,6 +315,27 @@ test("a person's projects are read for them through the client, every page", asy
       "http://humagen.test/api/projects?act_as_client=app&act_as_user=U0ANA&limit=200",
       "http://humagen.test/api/projects?act_as_client=app&act_as_user=U0ANA&limit=200&before=c1",
     ],
+  );
+});
+
+test("a failure humagen gives a code for carries it, and one without has none", async () => {
+  const { fn } = fakeFetch([
+    json({ error: "this thread started before sessions", code: "thread_before_sessions" }, 409),
+    json({ error: "nobody is listening in this thread" }, 409),
+  ]);
+  const c = httpHumagen({ baseUrl: "http://humagen.test", token: staticToken(), fetch: fn });
+  const body = {
+    text: "and the invoice?",
+    act_as: { client: "app", user: "U0ANA" },
+    surface: { client: "app", channel: "C01", ts: "1.1", message: "1.2", app_user: "U0APP" },
+  };
+  await assert.rejects(
+    c.postSession(body),
+    (e: HumagenError) => e.status === 409 && e.code === THREAD_BEFORE_SESSIONS,
+  );
+  await assert.rejects(
+    c.postSession(body),
+    (e: HumagenError) => e.status === 409 && e.code === undefined,
   );
 });
 

@@ -210,10 +210,19 @@ export class HumagenError extends Error {
     message: string,
     /** Set when a limit refused the run (429 or 402). */
     readonly refusal?: Refusal,
+    /** Which failure it is, where humagen says (`ErrorBody.code`): the words may change, this does not. */
+    readonly code?: string,
   ) {
     super(message);
   }
 }
+
+/**
+ * The conflict `POST /api/sessions` answers for a Slack thread that started
+ * as a conversation, before threads outside a bound channel were sessions.
+ * The thread stays a conversation: it is posted to with `postThread`.
+ */
+export const THREAD_BEFORE_SESSIONS = "thread_before_sessions";
 
 /**
  * What this app asks of humagen. The names and shapes follow the generated
@@ -532,7 +541,10 @@ export function httpHumagen(cfg: {
   ): Promise<T> => {
     const res = await send(method, path, { json, headers });
     if (res.status === 204) return undefined as T;
-    const data = (await res.json().catch(() => ({}))) as { error?: string } & Refusal;
+    const data = (await res.json().catch(() => ({}))) as {
+      error?: string;
+      code?: string;
+    } & Refusal;
     if (!res.ok) {
       const refused = res.status === 429 || res.status === 402;
       throw new HumagenError(
@@ -546,6 +558,7 @@ export function httpHumagen(cfg: {
               policy: data.policy,
             }
           : undefined,
+        typeof data.code === "string" ? data.code : undefined,
       );
     }
     return data as T;

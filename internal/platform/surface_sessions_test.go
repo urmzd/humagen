@@ -1,6 +1,7 @@
 package platform_test
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -9,6 +10,7 @@ import (
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/clients"
+	"github.com/urmzd/humagen/pkg/join"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/threads"
 )
@@ -87,6 +89,53 @@ func TestAThreadThatStartedAsAConversationStaysOne(t *testing.T) {
 	}
 	if _, _, err := p.StartSurfaceSession(t.Context(), machine, slackSession("C01RENEW", "1700000000.000100", "1700000000.000200", "<@UAPP> and the invoice")); !errors.Is(err, platform.ErrSurfaceThreadBeforeSessions) {
 		t.Fatalf("a reply in a conversation thread = %v", err)
+	}
+}
+
+// A Slack thread a conversation started in before sessions, in a channel
+// bound to nothing or in a direct message, is refused as a session with the
+// one error that says so, for a mention and for a listened reply alike, and
+// the same message posted as a conversation is answered in that thread.
+func TestAThreadFromBeforeSessionsIsStillAnsweredAsAConversation(t *testing.T) {
+	p, machine := slackRoomOn(t, startWith(t, platform.Config{Router: func(string) join.Asker {
+		return join.AskerFunc(func(_ context.Context, c join.Candidate, _ string) (join.Decision, error) {
+			return join.Decision{Agent: c.Name, Join: true, Reason: "it would take anything"}, nil
+		})
+	}}), nil)
+	const root = "1700000000.000100"
+	for _, tc := range []struct{ name, channel string }{
+		{"a channel bound to nothing", "C0UNBOUND"},
+		{"a direct message", "D0ANA"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			first, err := p.StartThread(t.Context(), machine, fromSlack(tc.channel, root, "", "<@UAPP> @lead plan it"))
+			if err != nil || len(first.Runs) != 1 || first.Thread.Session != nil {
+				t.Fatalf("the conversation's first message: %d runs, session %v, %v", len(first.Runs), first.Thread.Session, err)
+			}
+			settle(t, p, first.Runs[0].ID)
+			both := func(ts, text string, listen bool) platform.Posted {
+				t.Helper()
+				in := slackSession(tc.channel, root, ts, text)
+				in.Listen = listen
+				if _, _, err := p.StartSurfaceSession(t.Context(), machine, in); !errors.Is(err, platform.ErrSurfaceThreadBeforeSessions) {
+					t.Fatalf("as a session = %v, want ErrSurfaceThreadBeforeSessions", err)
+				}
+				again := fromSlack(tc.channel, root, ts, text)
+				again.Listen = listen
+				got, err := p.StartThread(t.Context(), machine, again)
+				if err != nil || got.Thread.ID != first.Thread.ID || len(got.Runs) != 1 {
+					t.Fatalf("as a conversation: thread %s (want %s), %d runs, %v", got.Thread.ID, first.Thread.ID, len(got.Runs), err)
+				}
+				settle(t, p, got.Runs[0].ID)
+				return got
+			}
+			both("1700000000.000200", "<@UAPP> @lead and the invoice", false)
+			if directMessage := tc.channel[0] == 'D'; directMessage {
+				return // every message there is the app's: none is sent as heard
+			}
+			awaitListener(t, p, first.Thread.ID, "ana")
+			both("1700000000.000300", "and the terms?", true)
+		})
 	}
 }
 

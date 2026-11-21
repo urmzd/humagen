@@ -331,7 +331,7 @@ func threadProblem(w http.ResponseWriter, err error) bool {
 	case errors.Is(err, threads.ErrNotFound):
 		fail(w, http.StatusNotFound, "not found")
 	case errors.Is(err, platform.ErrSurfaceThreadBeforeSessions):
-		fail(w, http.StatusConflict, detail(err, threads.ErrExists))
+		failCode(w, http.StatusConflict, codeThreadBeforeSessions, detail(err, threads.ErrExists))
 	case errors.Is(err, threads.ErrExists):
 		fail(w, http.StatusConflict, "already exists")
 	case errors.Is(err, threads.ErrFull):
