@@ -303,6 +303,86 @@ test("a row's state is said in words: waiting on you in the warning color, a fai
     assert.doesNotMatch(row.innerHTML, /aui-accent/, "nothing in a row uses the accent");
 });
 
+test("a parent parked on its delegation to a child agent shows as working, never as waiting on someone", async () => {
+  // As the listing sends it: the run index counts the parked parent in
+  // waiting, and nothing names a person it waits on.
+  const delegating = {
+    ...task("s_parent", "Check every repository"),
+    active: 1,
+    waiting: 1,
+    waiting_on_you: false,
+  };
+  net = stubFetch({
+    "GET /api/marks": () => ({ archived: [], read: {}, tips: [] }),
+    "GET /api/sessions": () => ({
+      sessions: [
+        {
+          id: delegating.id,
+          parent: "console:ada",
+          agent: "lead",
+          title: delegating.title,
+          status: "waiting",
+          updated_at: delegating.updated_at,
+          conversation: delegating,
+        },
+      ],
+      next: "",
+    }),
+  });
+  render(<Bar sessionMode />);
+  const row = await within(await screen.findByRole("list", { name: "Recents" })).findByRole(
+    "link",
+    { name: /^Check every repository/ },
+  );
+  assert.equal(row.querySelector("[data-state]")?.textContent, "Working");
+  assert.equal(row.querySelector("[data-dot]"), null);
+  assert.doesNotMatch(row.textContent ?? "", /Waiting/);
+});
+
+test("a screen reader hears each row's source once, and Unread beside a state line", async () => {
+  const since = new Date(Date.now() - 24 * hour).toISOString();
+  const rows = [
+    task("s1", "Broke unread", {
+      source: "slack",
+      failed: 1,
+      failure: "timeout",
+      last_agent: true,
+      updated_at: new Date().toISOString(),
+    }),
+    task("s2", "Plain", { source: "slack" }),
+  ];
+  net = stubFetch({
+    "GET /api/marks": () => ({ archived: [], read: {}, tips: [], since }),
+    "GET /api/sessions": () => ({
+      sessions: rows.map((conversation) => ({
+        id: conversation.id,
+        parent: "console:ada",
+        agent: "lead",
+        title: conversation.title,
+        status: "idle",
+        updated_at: conversation.updated_at,
+        conversation,
+      })),
+      next: "",
+    }),
+  });
+  render(<Bar sessionMode />);
+  const list = within(await screen.findByRole("list", { name: "Recents" }));
+  // What a screen reader reads: the row's text without what is hidden from it.
+  const heard = (row: HTMLElement) => {
+    const copy = row.cloneNode(true) as HTMLElement;
+    for (const el of copy.querySelectorAll("[aria-hidden='true']")) el.remove();
+    return copy.textContent ?? "";
+  };
+  const plain = await list.findByRole("link", { name: /^Plain/ });
+  assert.equal((heard(plain).match(/Slack/g) ?? []).length, 1, "the source is said once");
+  assert.match(heard(plain), /, From a Slack thread$/);
+  const broke = list.getByRole("link", { name: /^Broke unread/ });
+  await waitFor(() => assert.ok(broke.querySelector("[data-dot]")));
+  assert.match(heard(broke), /Failed: timeout/);
+  assert.match(heard(broke), /, Unread$/, "unread is said beside the state line");
+});
+
 test("sessions someone else started that the reader joined have their own section, with a count", async () => {
   const rows = [
     task("s_mine", "My plan"),
@@ -432,7 +512,9 @@ test("a session waiting on someone else never reads as waiting for you, as the l
     list.getByRole("link", { name: /^Deploy the API/ }).querySelector("[data-dot]"),
     null,
   );
-  assert.equal((await line(/^An older listing/))?.textContent, "Waiting for someone");
+  // A listing that names nothing waited on is a run parked on its delegation
+  // to a child agent, which waits on nobody: it is working.
+  assert.equal((await line(/^An older listing/))?.textContent, "Working");
   assert.equal(
     list.getByRole("link", { name: /^An older listing/ }).querySelector("[data-dot]"),
     null,

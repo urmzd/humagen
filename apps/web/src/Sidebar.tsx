@@ -317,7 +317,10 @@ function SourceLabel({ source }: { source: RowSource }) {
       <span aria-hidden className="inline-flex size-3.5 shrink-0 items-center justify-center">
         {SOURCE_ICONS[source]}
       </span>
-      <span className="truncate">{defaultCopy.sidebar.sourceShort[source]}</span>
+      {/* Said in full after the title for a screen reader, so not twice. */}
+      <span aria-hidden className="truncate">
+        {defaultCopy.sidebar.sourceShort[source]}
+      </span>
     </span>
   );
 }
@@ -427,6 +430,16 @@ function TaskRow({
   const peek = usePeek();
   const peekId = `peek-${task.id}`;
   const dotSaid = state.dot ? words.state.dot[state.dot] : "";
+  // What a screen reader hears of the dot: unread even beside a state line,
+  // which already says when it waits on the reader.
+  const srDot =
+    state.dot === "you"
+      ? state.line
+        ? ""
+        : dotSaid
+      : state.dot && state.line
+        ? words.state.dot.unread
+        : dotSaid;
   return (
     // A row that is saying something sits over its neighbours and over the
     // section's label, which sticks above the first row, so the note shows.
@@ -501,7 +514,7 @@ function TaskRow({
           )}
           <span className="sr-only">
             , {words.sources[source]}
-            {dotSaid && !state.line && `, ${dotSaid}`}
+            {srDot && `, ${srDot}`}
           </span>
         </a>
       )}
@@ -1087,8 +1100,8 @@ export function Sidebar({
   // Archived here is the reader's own: the conversation leaves their lists
   // and stays for everyone else. Delete still asks an admin.
   const { marks, archive: setArchivedMark, read: markRead } = useMarks(can("runs:read"));
-  // Sessions are filed under the project they belong to, each a group that folds;
-  // the plain list by day is one choice away in the filter.
+  // Recent lists sessions newest first; By project, By day and Archived are
+  // groupings one choice away in the filter.
   const [view, setView] = useState<ListView>("flat");
   const [note, setNote] = useState<{ id: string; archived: boolean } | null>(null);
   const [gone, setGone] = useState<Set<string>>(() => new Set());

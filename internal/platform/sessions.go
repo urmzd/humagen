@@ -426,10 +426,18 @@ func sessionStatus(rr []runs.Run) string {
 // whether subject is the one asked. Only a question a person answers counts,
 // as askOf and questionParts decide it: a parent waiting on its delegation to
 // a child agent waits on nobody. A run's questions are read as Waits orders
-// them. A question that names nobody asks whoever takes part.
-func waitingOn(rr []runs.Run, subject string, takesPart bool) (what, kind string, you bool) {
+// them.
+//
+// subject is the one asked only when the question names them: as the person
+// it is asked of, or among its approvers, and not as the person who asked for
+// the run unless it allows self-approval. An approval whose approvers come
+// from the agent's spec names nobody on the question, so it is no one's here:
+// deciding who else may answer it needs askOf's reads, which a listing does
+// not make.
+func waitingOn(rr []runs.Run, subject string) (what, kind string, you bool) {
 	var at time.Time
 	var q *event.Question
+	var run *runs.Run
 	for i := range rr {
 		r := &rr[i]
 		if r.Status != runs.Parked || (q != nil && r.UpdatedAt.Before(at)) {
@@ -437,7 +445,7 @@ func waitingOn(rr []runs.Run, subject string, takesPart bool) (what, kind string
 		}
 		for _, w := range r.Waits() {
 			if _, _, ok := questionParts(partKind(w)); ok && w.ID != "" {
-				q, at = &w, r.UpdatedAt
+				q, at, run = &w, r.UpdatedAt, r
 				break
 			}
 		}
@@ -445,20 +453,21 @@ func waitingOn(rr []runs.Run, subject string, takesPart bool) (what, kind string
 	if q == nil {
 		return "", "", false
 	}
-	if part, _, _ := questionParts(partKind(*q)); part == inbox.PartApproval && q.Tool != nil {
+	part, _, _ := questionParts(partKind(*q))
+	switch {
+	case part == inbox.PartApproval && q.Tool != nil:
 		what, kind = firstWords(q.Tool.Name, MaxAttention), WaitingApproval
-	} else if part == inbox.PartApproval {
+	case part == inbox.PartApproval:
 		what, kind = firstWords(firstLineOf(q.Prompt), MaxAttention), WaitingApproval
-	} else {
+	default:
 		what, kind = firstWords(firstLineOf(q.Prompt), MaxAttention), WaitingQuestion
 	}
-	switch {
-	case q.AskedOf != "":
-		you = q.AskedOf == subject
-	case len(q.Approvers) > 0:
-		you = slices.Contains(q.Approvers, subject)
-	default:
-		you = takesPart
+	if subject == "" {
+		return what, kind, false
+	}
+	you = q.AskedOf == subject || slices.Contains(q.Approvers, subject)
+	if you && part == inbox.PartApproval && !q.SelfApproval && runs.AskedBy(*run) == subject {
+		you = false
 	}
 	return what, kind, you
 }
@@ -602,7 +611,7 @@ func (p *Platform) summarizeSession(who auth.Principal, row sessionRow, rr []run
 	conversation.Messages = row.head.Messages
 	conversation.Source = threadSource(th)
 	conversation.Joined = joinedSession(th, who.Subject)
-	conversation.WaitingFor, conversation.WaitingKind, conversation.WaitingOnYou = waitingOn(rr, who.Subject, sessionOf(th, who.Subject))
+	conversation.WaitingFor, conversation.WaitingKind, conversation.WaitingOnYou = waitingOn(rr, who.Subject)
 	conversation.Failure = latestFailure(rr, th)
 	if said {
 		lastAgent := time.Time{}

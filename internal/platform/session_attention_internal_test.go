@@ -35,20 +35,26 @@ func TestAWaitingSessionSaysWhatItWaitsForAndOnWhom(t *testing.T) {
 	question := runs.Run{Status: runs.Parked, UpdatedAt: at.Add(time.Minute), Questions: []event.Question{
 		{ID: "q2", Kind: event.QuestionReply, Prompt: "\n  Which repositories should I check?\nAll of them?"},
 	}}
-	if what, kind, you := waitingOn([]runs.Run{approval}, "ada", true); what != "file_write" || kind != WaitingApproval || !you {
+	if what, kind, you := waitingOn([]runs.Run{approval}, "ada"); what != "file_write" || kind != WaitingApproval || !you {
 		t.Fatalf("approval = %q %q %v", what, kind, you)
 	}
-	if _, _, you := waitingOn([]runs.Run{approval}, "bob", true); you {
+	if _, _, you := waitingOn([]runs.Run{approval}, "bob"); you {
 		t.Fatal("an approval names its approvers: bob is not asked")
 	}
-	what, kind, you := waitingOn([]runs.Run{approval, question}, "bob", true)
-	if what != "Which repositories should I check?" || kind != WaitingQuestion || !you {
+	what, kind, you := waitingOn([]runs.Run{approval, question}, "bob")
+	if what != "Which repositories should I check?" || kind != WaitingQuestion || you {
 		t.Fatalf("the latest parked run is a question that names nobody: %q %q %v", what, kind, you)
 	}
-	if _, _, you := waitingOn([]runs.Run{question}, "bob", false); you {
-		t.Fatal("a question that names nobody asks those taking part")
+	asked := runs.Run{Status: runs.Parked, UpdatedAt: at, Question: &event.Question{
+		ID: "q3", Kind: event.QuestionReply, Prompt: "Which one?", AskedOf: "bob",
+	}}
+	if _, _, you := waitingOn([]runs.Run{asked}, "bob"); !you {
+		t.Fatal("a question asked of bob waits on bob")
 	}
-	if what, kind, _ := waitingOn([]runs.Run{{Status: runs.Completed, UpdatedAt: at}}, "ada", true); what != "" || kind != "" {
+	if _, _, you := waitingOn([]runs.Run{asked}, "ada"); you {
+		t.Fatal("a question asked of bob does not wait on ada")
+	}
+	if what, kind, _ := waitingOn([]runs.Run{{Status: runs.Completed, UpdatedAt: at}}, "ada"); what != "" || kind != "" {
 		t.Fatalf("nothing waits: %q %q", what, kind)
 	}
 	// A run's questions are read as Waits orders them: Questions before Question.
@@ -56,8 +62,37 @@ func TestAWaitingSessionSaysWhatItWaitsForAndOnWhom(t *testing.T) {
 		Question:  &event.Question{ID: "old", Kind: event.QuestionReply, Prompt: "the single one"},
 		Questions: []event.Question{{ID: "a", Kind: event.QuestionReply, Prompt: "the first of the batch"}},
 	}
-	if what, _, _ := waitingOn([]runs.Run{both}, "ada", true); what != "the first of the batch" {
+	if what, _, _ := waitingOn([]runs.Run{both}, "ada"); what != "the first of the batch" {
 		t.Fatalf("read %q, not the first question Waits gives", what)
+	}
+}
+
+// An approval whose approvers come from the agent's spec names nobody on
+// the question, so it waits on no one a listing can name: not on someone
+// taking part who cannot approve, nor on the person who asked for the run.
+// The requester named as an approver is asked only when self-approval is on.
+func TestAnApprovalWaitsOnlyOnThoseItNames(t *testing.T) {
+	at := time.Date(2026, 11, 20, 9, 0, 0, 0, time.UTC)
+	unnamed := runs.Run{Status: runs.Parked, UpdatedAt: at, Actor: event.Actor{User: "ada"}, Question: &event.Question{
+		ID: "q1", Kind: event.QuestionApproval, Tool: &event.QuestionTool{Name: "deploy"},
+	}}
+	for _, who := range []string{"bob", "ada"} {
+		if what, kind, you := waitingOn([]runs.Run{unnamed}, who); what != "deploy" || kind != WaitingApproval || you {
+			t.Fatalf("an unnamed approval seen by %s = %q %q %v", who, what, kind, you)
+		}
+	}
+	named := unnamed
+	named.Question = &event.Question{ID: "q1", Kind: event.QuestionApproval, Tool: &event.QuestionTool{Name: "deploy"}, Approvers: []string{"ada", "carol"}}
+	if _, _, you := waitingOn([]runs.Run{named}, "carol"); !you {
+		t.Fatal("carol is a named approver")
+	}
+	if _, _, you := waitingOn([]runs.Run{named}, "ada"); you {
+		t.Fatal("ada asked for the run and may not approve it herself")
+	}
+	self := named
+	self.Question = &event.Question{ID: "q1", Kind: event.QuestionApproval, Tool: &event.QuestionTool{Name: "deploy"}, Approvers: []string{"ada"}, SelfApproval: true}
+	if _, _, you := waitingOn([]runs.Run{self}, "ada"); !you {
+		t.Fatal("with self-approval the requester named as an approver is asked")
 	}
 }
 
@@ -69,7 +104,7 @@ func TestADelegationWaitsOnNobody(t *testing.T) {
 		delegation := runs.Run{Status: runs.Parked, UpdatedAt: at, Question: &event.Question{
 			ID: "d1", Kind: event.QuestionDelegation, Tool: &event.QuestionTool{Name: tool},
 		}}
-		if what, kind, you := waitingOn([]runs.Run{delegation}, "ada", true); what != "" || kind != "" || you {
+		if what, kind, you := waitingOn([]runs.Run{delegation}, "ada"); what != "" || kind != "" || you {
 			t.Fatalf("a delegation through %s reads as %q %q %v", tool, what, kind, you)
 		}
 	}
@@ -78,11 +113,11 @@ func TestADelegationWaitsOnNobody(t *testing.T) {
 		{ID: "d1", Kind: event.QuestionDelegation, Tool: &event.QuestionTool{Name: "session_call"}},
 		{ID: "q1", Kind: event.QuestionApproval, Tool: &event.QuestionTool{Name: "deploy"}, Approvers: []string{"ada"}},
 	}}
-	if what, kind, you := waitingOn([]runs.Run{mixed}, "ada", true); what != "deploy" || kind != WaitingApproval || !you {
+	if what, kind, you := waitingOn([]runs.Run{mixed}, "ada"); what != "deploy" || kind != WaitingApproval || !you {
 		t.Fatalf("the approval beside a delegation = %q %q %v", what, kind, you)
 	}
 	// A question without an id cannot be answered, so it is not one.
-	if what, _, _ := waitingOn([]runs.Run{{Status: runs.Parked, UpdatedAt: at, Question: &event.Question{Kind: event.QuestionReply, Prompt: "?"}}}, "ada", true); what != "" {
+	if what, _, _ := waitingOn([]runs.Run{{Status: runs.Parked, UpdatedAt: at, Question: &event.Question{Kind: event.QuestionReply, Prompt: "?"}}}, "ada"); what != "" {
 		t.Fatalf("a question without an id reads as %q", what)
 	}
 }

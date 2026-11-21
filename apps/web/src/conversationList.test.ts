@@ -141,8 +141,13 @@ test("a row's state: waiting on the reader, then a failure, then working, then a
     }),
     { line: { tone: "warn", text: "you:approval:deploy" }, dot: "you" },
   );
+  assert.deepEqual(s({ active: 1, waiting: 1, waiting_kind: "question", waiting_on_you: false }), {
+    line: { tone: "muted", text: "other:question:" },
+    dot: undefined,
+  });
+  // A session listing that names no wait is a delegation: working, not waiting.
   assert.deepEqual(s({ active: 1, waiting: 1, waiting_on_you: false }), {
-    line: { tone: "muted", text: "other::" },
+    line: { tone: "muted", text: "working" },
     dot: undefined,
   });
   assert.deepEqual(s({ failed: 1, failure: "boom", last_agent: true }), {

@@ -1647,7 +1647,11 @@ Rules:
   for an open alert, in the warning color when urgent. A session listing
   carries `waiting_for`, `waiting_kind`, `waiting_on_you` and `failure` for
   this; `failure` is set only while the latest turn failed, so a failure a
-  later turn answered is not shown. No bare `!`, `•` or icon stands for a
+  later turn answered is not shown. **Waiting for you** is said only when the
+  question names the reader (asked of them, or among its approvers, and not
+  as the requester unless self-approval is on); an approval whose approvers
+  come from the agent's spec reads as waiting for approval. A run parked on
+  its delegation to a child agent waits on nobody and reads as Working. No bare `!`, `•` or icon stands for a
   state. **Red means failure only**; nothing in a row uses the accent.
 - A **dot** on the right of the title marks what is new to the reader, by
   meaning: waiting on them (the warning color), a failure they have not read
