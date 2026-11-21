@@ -188,3 +188,50 @@ test("the platform's own agent can be paused but never retired, and a reader cha
   assert.equal(screen.queryByRole("button", { name: "Rename" }), null);
   assert.ok(screen.getByText("Only the agent's owners can change these."));
 });
+
+test("Retire's confirmation takes keyboard focus, and Keep It gives it back", () => {
+  render(
+    <AgentGeneral
+      revision={barbara}
+      canWrite
+      onTab={() => {}}
+      onRetired={() => {}}
+      seed={{ completed: 0, control, slack: null }}
+    />,
+  );
+  // Nothing takes focus until the confirmation is asked for.
+  assert.equal(document.activeElement, document.body);
+  const retire = screen.getByRole("button", { name: "Retire" });
+  retire.focus();
+  fireEvent.click(retire);
+  // The answer that changes nothing holds focus, so Enter twice retires nothing.
+  assert.equal(document.activeElement, screen.getByRole("button", { name: "Keep It" }));
+  fireEvent.click(screen.getByRole("button", { name: "Keep It" }));
+  assert.equal(document.activeElement, screen.getByRole("button", { name: "Retire" }));
+});
+
+test("a failed read of whether it is paused says so, and Retry reads it again", async () => {
+  let reads = 0;
+  net = stubFetch({
+    "GET /api/agents/barbara/control": () =>
+      ++reads === 1 ? new Response(JSON.stringify({ error: "boom" }), { status: 503 }) : control,
+    "GET /api/agents/barbara/slack-app": () => ({ agent: "barbara" }),
+    "GET /api/analytics": () => ({ by_agent: [] }),
+  });
+  render(<AgentGeneral revision={barbara} canWrite onTab={() => {}} onRetired={() => {}} />);
+  const said = await screen.findByRole("alert");
+  assert.match(
+    said.textContent ?? "",
+    /^Whether barbara is paused could not be read, so it cannot be paused or resumed yet\./i,
+  );
+  assert.equal((screen.getByRole("button", { name: "Pause" }) as HTMLButtonElement).disabled, true);
+  fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+  await waitFor(() =>
+    assert.equal(
+      (screen.getByRole("button", { name: "Pause" }) as HTMLButtonElement).disabled,
+      false,
+    ),
+  );
+  assert.equal(screen.queryByRole("alert"), null);
+  assert.equal(reads, 2);
+});

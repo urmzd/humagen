@@ -2302,6 +2302,8 @@ export const defaultCopy = {
     keep: "Keep It",
     kept: "The platform writes this agent again, so it can be paused, not retired.",
     controlFailed: "Its state could not be changed. Try again.",
+    controlUnread: (name: string) =>
+      `Whether ${name} is paused could not be read, so it cannot be paused or resumed yet.`,
     readOnly: "Only the agent's owners can change these.",
   },
   agentSlackApp: {
