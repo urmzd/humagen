@@ -218,3 +218,83 @@ test("an address naming a template no longer offered falls back to the goal step
   );
   assert.ok(screen.getByText("That template is not offered any more. Pick another."));
 });
+
+test("a look that fails to save keeps the draft, says so, and is retried for the agent already made", async () => {
+  let creates = 0;
+  let looks = 0;
+  net = stubFetch({
+    "POST /api/agents": (body) => {
+      creates++;
+      return {
+        spec: body,
+        rev: 1,
+        hash: "h",
+        created_by: "ada",
+        created_at: "2026-11-20T00:00:00Z",
+      };
+    },
+    "PUT /api/agents/document-writer/look": (body) => {
+      looks++;
+      if (looks === 1)
+        return new Response(JSON.stringify({ error: "unavailable" }), { status: 503 });
+      const b = body as { look: Record<string, unknown>; hue?: number };
+      return { agent: "document-writer", look: b.look, hue: 60, taken: [], choices: {} };
+    },
+  });
+  const made: Revision[] = [];
+  render(
+    <AgentCreate
+      template="writer"
+      agents={[]}
+      seed={catalog}
+      onPick={() => {}}
+      onBack={() => {}}
+      onCreated={(r) => made.push(r)}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Create Agent" }));
+  const alert = await screen.findByRole("alert");
+  assert.equal(
+    alert.textContent,
+    "Document Writer was made, but its look, greeting and starters were not saved. Try again, or open it and set them in Look.",
+  );
+  assert.equal(made.length, 0);
+  // The draft is kept: the name stays, and the handle it was made with cannot change.
+  const name = screen.getByRole("textbox", { name: "Name" }) as HTMLInputElement;
+  assert.equal(name.value, "Document Writer");
+  assert.equal(name.readOnly, true);
+  assert.ok(screen.getByRole("button", { name: "Open Without Look" }));
+  fireEvent.click(screen.getByRole("button", { name: "Save Look Again" }));
+  await waitFor(() => assert.equal(made.length, 1));
+  assert.equal(creates, 1, "the agent is made once");
+  assert.equal(looks, 2);
+  assert.equal(screen.queryByRole("alert"), null);
+});
+
+test("a retired name is said as retired, not as someone else's", async () => {
+  net = stubFetch({
+    "POST /api/agents": () =>
+      new Response(
+        JSON.stringify({ error: "@document-writer was retired, and its name stays taken" }),
+        {
+          status: 409,
+        },
+      ),
+  });
+  render(
+    <AgentCreate
+      template="writer"
+      agents={[]}
+      seed={catalog}
+      onPick={() => {}}
+      onBack={() => {}}
+      onCreated={() => {}}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Create Agent" }));
+  assert.ok(
+    await screen.findByText(
+      "An agent with that name was retired, and its name stays taken. Try another.",
+    ),
+  );
+});

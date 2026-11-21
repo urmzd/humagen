@@ -7,19 +7,22 @@ import {
   splitHumanActivity,
   type UiAction,
 } from "@humagen/core";
-import { ForkIcon, WebSurface } from "@humagen/render-web";
+import { ForkIcon, GitHubRefKindsContext, githubRefKinds, WebSurface } from "@humagen/render-web";
 import {
   AgentMessage,
   FileLinkContext,
   type FileLinks,
   MessageActionRow,
   messageActionButton,
+  type RetryCall,
+  RetryCallContext,
+  type RetryCalls,
   railEntry,
   Thread as ThreadList,
   type TurnRailEntry,
   useQueue,
 } from "@humagen/web";
-import { Fragment, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, type ReactNode, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { ApprovalToggle } from "./ApprovalToggle.tsx";
 import { actedFor, citationOf, type Run, turnOf } from "./adapter.ts";
 import {
@@ -92,7 +95,6 @@ import {
   useViewShortcuts,
 } from "./SessionViews.tsx";
 import { ShareDialog } from "./Share.tsx";
-import { useThreadSelection } from "./selection.ts";
 import { useItemStops, useSessionBackground, useSessionStop } from "./stops.tsx";
 import { topicsOf } from "./topics.ts";
 import { mergeTurns } from "./turns.ts";
@@ -612,6 +614,10 @@ function AnswerView({
   actions?: ReactNode;
 }) {
   const { run, stop } = useRunStop(originalRun, canStop);
+  // What a run of someone else's needed, and asking its calls again, are theirs:
+  // another reader sees neither the Connect card nor Retry on it.
+  const ownsRun = !!me && actedFor(originalRun) === me;
+  const retryCalls = useContext(RetryCallContext);
   const itemStops = useItemStops({
     run,
     allowed: canStop,
@@ -655,21 +661,23 @@ function AnswerView({
       <AgentTint name={run.agent}>
         <RunFeedbackHost turn={shown}>
           {(rated) => (
-            <AgentMessage
-              actions={actions}
-              stop={stop}
-              itemStops={itemStops}
-              disclaimer={false}
-              activity={false}
-              timestamp={<MessageTime at={run.created_at} />}
-              turn={rated}
-              copy={copyFor(ask)}
-              itemActions={itemActions(run)}
-              capabilities={{ regenerate: false }}
-              onAskAgent={onAsk}
-              onReply={onReply}
-              onRedirect={onRedirect}
-            />
+            <RetryCallContext.Provider value={ownsRun ? retryCalls : null}>
+              <AgentMessage
+                actions={actions}
+                stop={stop}
+                itemStops={itemStops}
+                disclaimer={false}
+                activity={false}
+                timestamp={<MessageTime at={run.created_at} />}
+                turn={ownsRun ? rated : { ...rated, needsConnection: undefined }}
+                copy={copyFor(ask)}
+                itemActions={itemActions(run)}
+                capabilities={{ regenerate: false }}
+                onAskAgent={onAsk}
+                onReply={onReply}
+                onRedirect={onRedirect}
+              />
+            </RetryCallContext.Provider>
           )}
         </RunFeedbackHost>
       </AgentTint>
@@ -686,6 +694,39 @@ function AnswerView({
 
 /** No agent lives in a project, for a page not told where any does. */
 const noHomes: Record<string, string> = {};
+
+/**
+ * What an answer in the conversation reads from around it: where a file it
+ * wrote opens, what each GitHub number named in the session is, and how a
+ * failed call to another agent is asked again.
+ */
+function TranscriptContexts({
+  fileLinks,
+  refKinds,
+  retryCalls,
+  children,
+}: {
+  fileLinks: FileLinks;
+  refKinds: ReadonlyMap<string, "pull" | "issue">;
+  retryCalls: RetryCalls | null;
+  children: ReactNode;
+}) {
+  return (
+    <FileLinkContext.Provider value={fileLinks}>
+      <GitHubRefKindsContext.Provider value={refKinds}>
+        <RetryCallContext.Provider value={retryCalls}>{children}</RetryCallContext.Provider>
+      </GitHubRefKindsContext.Provider>
+    </FileLinkContext.Provider>
+  );
+}
+
+/** The most characters a message holds (threads.MaxText on the server). */
+const MESSAGE_MAX = 8000;
+
+/** What Retry posts: the call's agent, tagged, then its brief with every other tag made a word. */
+export function retryText({ agent, text }: RetryCall): string {
+  return `@${agent} ${text.replace(/(^|[^\w@])@(?=[\w.-])/g, "$1")}`;
+}
 
 /**
  * A shared thread: its people's messages and its agents' answers in the
@@ -777,6 +818,11 @@ export function ThreadRoom({
   );
   // The thread's wave: a tick per message and per answer, previewing what each says.
   const wave = useMemo(() => waveOf(turns), [turns]);
+  // A pull request or issue named by its address anywhere in the session reads that way in every answer.
+  const refKinds = useMemo(
+    () => githubRefKinds(turns.map((t) => t.run?.answer ?? "").join("\n")),
+    [turns],
+  );
   // The cursor for the turns before the oldest one read.
   const [before, setBefore] = useState<string | null>(initial.next);
   const [problem, setProblem] = useState<string | null>(null);
@@ -909,18 +955,6 @@ export function ThreadRoom({
   const shareable =
     posts && th.visibility === "private" && !th.surface && !!onSharing && (started || owner);
   const hasRuns = turns.some((t) => t.run);
-  // What the + menu selected for the conversation, shown at once and saved on the thread.
-  const { selection, select } = useThreadSelection(id, th, {
-    saved: (t) => {
-      setPage((p) => ({ ...p, thread: t }));
-      onChanged();
-    },
-    reread: (p) => {
-      setPage(p);
-      setTurns((t) => mergeTurns(t, p.turns));
-    },
-    problem: setProblem,
-  });
   const fixedWhy = hasRuns
     ? defaultCopy.threads.shareProjectFixed
     : th.surface
@@ -964,6 +998,25 @@ export function ThreadRoom({
   const asked = new Set(turns.flatMap((t) => (t.message?.answers ? [t.message.answers.run] : [])));
   // A run waiting on a person, such as an expert's answer, is shown still.
   const busy = turns.some((t) => t.run && isWorking(t.run.status));
+  // A delegated call that failed is asked again as the next message, tagging
+  // its own agent alone: other agents its brief names are words, not tags, so
+  // Retry wakes nobody the call did not. A refusal is said under the
+  // conversation, and Retry can be pressed again.
+  const retryCalls: RetryCalls = {
+    ask: async (call) => {
+      setProblem(null);
+      try {
+        await coworking.post(id, { text: retryText(call) });
+        onChanged();
+      } catch (error) {
+        setProblem(
+          error instanceof Error ? error.message : defaultCopy.conversation.callFailure.retryFailed,
+        );
+        throw error;
+      }
+    },
+    allows: (call) => [...retryText(call)].length <= MESSAGE_MAX,
+  };
   const onAction = (a: UiAction) => {
     if (a.id === ActionId.openRun)
       return openPanel("activity", { run: a.payload.target, step: a.payload.option });
@@ -1035,7 +1088,11 @@ export function ThreadRoom({
   return (
     <SessionDetailsProvider panel={shownView.panel} onPanel={(panel) => openPanel(panel)}>
       <WorkbenchOpen.Provider value={openWorkbench}>
-        <FileLinkContext.Provider value={fileLinks}>
+        <TranscriptContexts
+          fileLinks={fileLinks}
+          refKinds={refKinds}
+          retryCalls={posts ? retryCalls : null}
+        >
           <section className="flex min-h-0 min-w-0 flex-1">
             <ConversationPage
               views={
@@ -1246,8 +1303,6 @@ export function ThreadRoom({
                                 onSkill={(name) => {
                                   setSeed({ text: `/${name} `, mode: "prepend" });
                                 }}
-                                selection={selection}
-                                onChange={select}
                                 onAttach={attach}
                                 onClose={close}
                               />
@@ -1324,6 +1379,7 @@ export function ThreadRoom({
                         canWrite={!!alertAccess?.write}
                         agents={posts ? agents.map((a) => a.spec.name) : []}
                         onOpen={onOpenThread}
+                        beside
                       />
                       {t.announcement ? (
                         <AnnouncementView key={`a:${t.announcement.id}`} a={t.announcement} />
@@ -1589,7 +1645,7 @@ export function ThreadRoom({
               )}
             </Presence>
           </section>
-        </FileLinkContext.Provider>
+        </TranscriptContexts>
       </WorkbenchOpen.Provider>
     </SessionDetailsProvider>
   );
@@ -1793,8 +1849,6 @@ export function ChannelPage({
                 onSkill={(name) => {
                   setSeed({ text: `/${name} `, mode: "prepend" });
                 }}
-                selection={{ project, channel }}
-                onChange={() => {}}
                 onAttach={attach}
                 onClose={close}
                 onLeave={leave}

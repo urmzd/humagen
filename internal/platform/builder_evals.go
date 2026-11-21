@@ -59,10 +59,13 @@ func (p *Platform) builderLifecycleTool(req runtime.Request, retire bool) types.
 			return "", err
 		}
 		if retire {
-			if err := p.Agents.Delete(ctx, req.Tenant, name, rev.Rev); err != nil {
+			if err := p.retirable(ctx, req.Tenant, rev); err != nil {
 				return "", err
 			}
-			return "Retired " + name + ".", nil
+			if err := p.retireForGood(ctx, req.Tenant, name, rev.Rev, "agent:"+p.cfg.EntryAgent); err != nil {
+				return "", err
+			}
+			return "Retired " + name + ". Its name stays taken, and its schedules are paused.", nil
 		}
 		control, err := p.AgentControl(req.Tenant, name)
 		if err != nil {

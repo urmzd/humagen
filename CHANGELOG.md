@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.177.1 (2026-11-21)
+
+### Bug Fixes
+
+- **surfaces**: Slack sessions listen, read and list as people expect (stack 7/7) (#466) ([4a0ed23](https://github.com/urmzd/humagen/commit/4a0ed23ecb590e8dc38bc575febfc1976b8c9b58))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.177.0...v0.177.1)
+
+
+## 0.176.1 (2026-11-21)
+
+### Bug Fixes
+
+- **slack**: follow a thread only once Slack holds the app's answer (#469) ([4f35b63](https://github.com/urmzd/humagen/commit/4f35b63ead581b9c1838bb39f0206d77d23cd26e))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.176.0...v0.176.1)
+
+
+## 0.174.2 (2026-11-21)
+
+### Bug Fixes
+
+- **platform**: called runs get no caller person tool servers (#507) ([13ad1d9](https://github.com/urmzd/humagen/commit/13ad1d95858f07993b31b80119cd371a273ef5b9))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.174.1...v0.174.2)
+
+
+## 0.174.1 (2026-11-21)
+
+### Bug Fixes
+
+- **console**: stack workspace Apps as connection rows (#502) ([3541b4c](https://github.com/urmzd/humagen/commit/3541b4c34c7fc3e960f5b2b92f002d388d7c1b9e))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.174.0...v0.174.1)
+
+
 ## 0.169.0 (2026-11-21)
 
 ### Features

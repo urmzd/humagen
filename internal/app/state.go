@@ -121,6 +121,20 @@ func openElector(getenv func(string) string, opts ...leader.Option) (*leader.Pos
 	return leader.NewPostgres(cfg, opts...)
 }
 
+// registerFlagSpec is registerSpec for an -agent flag's spec: the flag owns
+// the agent as the platform file owns its own, so nobody retires it, and a
+// name retired before the flag named it is skipped, loudly, not revived and
+// not a failed start (retiredNameSkipped).
+func registerFlagSpec(ctx context.Context, p *platform.Platform, tenant string, spec wire.AgentSpec, log *slog.Logger) error {
+	p.DeclareFileAgent(tenant, spec.Name)
+	err := registerSpec(ctx, p.Agents, tenant, spec)
+	if errors.Is(err, wire.ErrRetired) {
+		retiredNameSkipped(log, tenant, spec.Name, "-agent")
+		return nil
+	}
+	return err
+}
+
 // registerSpec puts an agent spec from a file in the registry: a new agent,
 // or the next revision of one a kept registry already holds. A spec that has
 // not changed adds no revision.

@@ -303,6 +303,13 @@ func (s *Server) pauseSchedule(paused bool) handler {
 		if !s.filedBy(w, who, sc) {
 			return
 		}
+		// A retired agent's schedule resumes only once it asks another agent.
+		if !paused {
+			if err := s.P.ScheduleAgentRetired(r.Context(), who.Tenant, sc.Agent); err != nil {
+				s.problem(w, err)
+				return
+			}
+		}
 		if err := s.P.Schedules.SetPaused(who.Tenant, name, paused); err != nil {
 			s.problem(w, err)
 			return
@@ -329,6 +336,11 @@ func (s *Server) runSchedule(w http.ResponseWriter, r *http.Request, who auth.Pr
 		return
 	}
 	if !s.filedBy(w, who, sc) {
+		return
+	}
+	// A retired agent's schedule runs again only once it asks another agent.
+	if err := s.P.ScheduleAgentRetired(r.Context(), who.Tenant, sc.Agent); err != nil {
+		s.problem(w, err)
 		return
 	}
 	actor := platform.ActorOf(who)

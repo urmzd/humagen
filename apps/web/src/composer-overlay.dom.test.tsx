@@ -585,6 +585,27 @@ test("Esc puts the usage popover away and gives focus back to the ring", async (
   }
 });
 
+test("an Escape that is part of composing text leaves the usage popover open", async () => {
+  const { restore } = stubFetch({
+    "GET /api/threads/s1/usage": () => usage(),
+    "GET /api/usage": () => ({ scopes: [] }),
+  });
+  try {
+    render(<UsageRing thread="s1" agents={[]} version={1} />);
+    const ring = await screen.findByRole("button", { name: /Open usage$/ });
+    const pop = open();
+    // Escape here ends an input method's composition; it is not the reader putting the popover away.
+    assert.equal(fireEvent.keyDown(pop, { key: "Escape", isComposing: true }), true);
+    assert.equal(screen.getByRole("dialog", { name: dock.usage.title }), pop);
+    assert.equal(document.activeElement, pop, "focus stays in the popover");
+    fireEvent.keyDown(pop, { key: "Escape" });
+    assert.equal(screen.queryByRole("dialog"), null);
+    assert.equal(document.activeElement, ring);
+  } finally {
+    restore();
+  }
+});
+
 test("limitsFor keeps the limits that hold this session, fullest first; ringOf prefers a limit near its end", () => {
   const rows = limitsFor(
     [

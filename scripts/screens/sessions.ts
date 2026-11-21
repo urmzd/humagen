@@ -15,6 +15,8 @@ import {
   focusLog,
   hoverRow,
   hoverState,
+  previewReason,
+  resizeSidebar,
 } from "./sidebar-sources.ts";
 
 export interface SessionScreen {
@@ -517,11 +519,23 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
         await dressSources(page, ids.work.id);
         await assertSources(page);
         await hoverState(page);
+        await previewReason(page);
         if ((page.viewportSize()?.width ?? 0) >= 768) {
           await focusLog(page);
           await assertCalmFocus(page);
         }
         await hoverRow(page);
+      },
+    },
+    {
+      name: "sidebar-resized",
+      path: session,
+      // The sidebar's edge dragged 48px wider; on a phone it stays a drawer.
+      act: async (page) => {
+        await readySession(page);
+        await dressSources(page, ids.work.id);
+        await resizeSidebar(page);
+        await page.evaluate(() => localStorage.removeItem("humagen.sidebar.width"));
       },
     },
     {
@@ -577,7 +591,7 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
       path: `/messages/${ids.approval.id}`,
       act: async (page) => {
         await readySession(page);
-        await page.getByRole("button", { name: "Ask a question", exact: true }).first().waitFor();
+        await page.getByRole("button", { name: "Ask a Question", exact: true }).first().waitFor();
         await page
           .getByRole("button", { name: /^Approve(?::|$)/ })
           .first()

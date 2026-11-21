@@ -227,7 +227,7 @@ func (c *operationsCatalog) ToolGroup(name string) (native.ToolGroup, error) {
 		}
 		ctx := event.WithActor(execution.(context.Context), actor)
 		if name == personToolsGrant {
-			group, err := c.p.personalToolGroup(ctx, c.req)
+			group, err := c.p.personalToolGroup(ctx, c.req, actor)
 			if err != nil {
 				return group, err
 			}
@@ -235,6 +235,7 @@ func (c *operationsCatalog) ToolGroup(name string) (native.ToolGroup, error) {
 		}
 		ts, ok, err := c.groups.Expand(ctx, c.req.Tenant, name)
 		if err != nil {
+			c.p.noteConnectionNeed(c.req.Tenant, c.req.RunID, name, err)
 			return native.ToolGroup{}, err
 		}
 		if ok {

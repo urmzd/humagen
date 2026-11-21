@@ -1,12 +1,12 @@
 import { defaultCopy } from "@humagen/components";
 import { ChevronRightIcon, PencilIcon, SlackIcon } from "@humagen/render-web";
-import { useEffect, useId, useState, useSyncExternalStore } from "react";
+import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import { trimLook } from "./AgentLookEditor.tsx";
 import { agentLook, setAgentLooks, subscribeHues } from "./agentHues.ts";
 import { type AgentControl, type AgentLook, ApiError, api, type Revision } from "./api.ts";
 import { agentShown } from "./branding.ts";
 import { type AgentTab, href } from "./route.ts";
-import { AgentMark, button, field, Problem } from "./ui.tsx";
+import { AgentMark, button, field, Problem, textAction } from "./ui.tsx";
 
 const words = defaultCopy.agentSettings;
 
@@ -168,10 +168,6 @@ export function AgentGeneral({
       })
       .catch(() => live && setCompleted(null));
     api
-      .agentControl(name)
-      .then((c) => live && setControl(c))
-      .catch(() => {});
-    api
       .agentSlackApp(name)
       .then((a) => live && setSlack(a.client ?? null))
       .catch(() => live && setSlack(null));
@@ -179,6 +175,39 @@ export function AgentGeneral({
       live = false;
     };
   }, [name, seed]);
+
+  // Whether it is paused is read on its own, so a failed read is said, with
+  // Retry, beside the Pause it holds back.
+  const [controlFailed, setControlFailed] = useState(false);
+  const [controlRead, setControlRead] = useState(0);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: read again on Retry
+  useEffect(() => {
+    if (seed) return;
+    let live = true;
+    setControlFailed(false);
+    api
+      .agentControl(name)
+      .then((c) => live && setControl(c))
+      .catch(() => live && setControlFailed(true));
+    return () => {
+      live = false;
+    };
+  }, [name, seed, controlRead]);
+
+  // The confirmation replaces the button that opened it, so focus follows:
+  // to Keep It, the answer that changes nothing, and back to Retire.
+  const keepIt = useRef<HTMLButtonElement>(null);
+  const retireIt = useRef<HTMLButtonElement>(null);
+  const asked = useRef(false);
+  useEffect(() => {
+    if (confirming) {
+      asked.current = true;
+      keepIt.current?.focus();
+    } else if (asked.current) {
+      asked.current = false;
+      retireIt.current?.focus();
+    }
+  }, [confirming]);
 
   const paused = !!control?.paused;
   const setPaused = (next: boolean) => {
@@ -370,7 +399,12 @@ export function AgentGeneral({
             {!builtin &&
               (confirming ? (
                 <div className="flex flex-wrap gap-2">
-                  <button type="button" className={button} onClick={() => setConfirming(false)}>
+                  <button
+                    ref={keepIt}
+                    type="button"
+                    className={button}
+                    onClick={() => setConfirming(false)}
+                  >
                     {words.keep}
                   </button>
                   <button
@@ -384,6 +418,7 @@ export function AgentGeneral({
                 </div>
               ) : (
                 <button
+                  ref={retireIt}
                   type="button"
                   className={`${button} text-aui-bad`}
                   onClick={() => setConfirming(true)}
@@ -396,6 +431,14 @@ export function AgentGeneral({
       ) : (
         <p className="text-aui-xs text-aui-muted">{words.readOnly}</p>
       )}
+      <Problem
+        message={canWrite && controlFailed ? words.controlUnread(shown) : null}
+        action={
+          <button type="button" className={textAction} onClick={() => setControlRead((n) => n + 1)}>
+            {defaultCopy.retry}
+          </button>
+        }
+      />
       <Problem message={problem} />
     </div>
   );

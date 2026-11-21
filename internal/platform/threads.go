@@ -79,6 +79,13 @@ type ThreadInput struct {
 	// started, and filed from the binding: Project, Channel, Visibility and
 	// Default are then left out.
 	Surface *SurfaceRef `json:"surface,omitempty"`
+	// Listen, with Surface, posts a message that addressed nobody: a reply
+	// in a thread the app was not mentioned in this time. It starts no
+	// thread. In a thread that is listening (threads.Thread.Listening) the
+	// agent is asked whether the message calls for it, and answers it, or
+	// the message is kept as what was said and starts nothing. Anywhere
+	// else it is ErrNotListening, and nothing is kept.
+	Listen bool `json:"listen,omitempty"`
 }
 
 // MessageInput posts a message into a thread.
@@ -106,6 +113,9 @@ type MessageInput struct {
 	Spoken bool `json:"spoken,omitempty"`
 	// reply is a reply to a mention, from the inbox.
 	reply bool
+	// heard is a message on a surface that addressed nobody, posted with
+	// listen (threads.Message.Heard).
+	heard bool
 }
 
 // ThreadUpdate changes a thread's title, visibility, default and routing,
@@ -198,7 +208,43 @@ type ThreadSummary struct {
 	// from. A run's origin cannot say this: a Slack message posts to its
 	// thread through the API, so its runs' origin is the API's.
 	Source string `json:"source,omitempty"`
+	// Joined reports, on a session listing, that its reader takes part in
+	// the session without having started it: they posted in it, were
+	// mentioned or were added.
+	Joined bool `json:"joined,omitempty"`
+	// WaitingFor is what waits on a person in it, set on a session listing:
+	// the question waiting on the reader when there is one, else what the
+	// latest run parked on a person asks; the tool an approval asks about, or
+	// the first line of a question, at most MaxAttention runes. WaitingKind
+	// is WaitingApproval or WaitingQuestion. WaitingOnYou says an open
+	// question one of its runs waits on is the reader's to answer, as
+	// answering would decide it (openQuestions), whatever they did with its
+	// notification.
+	WaitingFor  string `json:"waiting_for,omitempty"`
+	WaitingKind string `json:"waiting_kind,omitempty"`
+	// WaitingOnYou is always sent, false included: a reader who is not
+	// asked must never be told they are.
+	WaitingOnYou bool `json:"waiting_on_you"`
+	// WaitingUnknown says it waits and whether on the reader could not be
+	// told: the workspace's inbox holds more live messages than a listing
+	// reads (inbox.MaxAsking) and no question of the reader's about it was
+	// among those read, or the inbox could not be read. WaitingOnYou is then
+	// false, which does not mean it waits on someone else.
+	WaitingUnknown bool `json:"waiting_unknown,omitempty"`
+	// Failure is why its latest turn failed, set on a session listing when
+	// it did: the first line of the run's error, at most MaxAttention runes.
+	// A run that failed before a later turn answered is not a failure here.
+	Failure string `json:"failure,omitempty"`
 }
+
+// What a waiting session waits on, as ThreadSummary.WaitingKind says it.
+const (
+	WaitingApproval = "approval"
+	WaitingQuestion = "question"
+)
+
+// MaxAttention bounds ThreadSummary.WaitingFor and Failure, in runes.
+const MaxAttention = 100
 
 // Where a conversation started, as ThreadSummary.Source says it.
 const (
@@ -849,6 +895,11 @@ func (p *Platform) startThread(ctx context.Context, who auth.Principal, in Threa
 		text, unmapped = p.surfaceText(who.Tenant, on.client, on.ref, in.Text)
 		sf := on.ref.surface(on.client.ID)
 		rec.Surface, rec.Announcement, first.SurfaceID, slack = &sf, on.announcement, on.ref.message(), nil
+		// A channel thread whose first message was addressed to the app is
+		// listened to once the app has answered there (listenOnAnswer). A
+		// direct message needs no listening: every message there is
+		// addressed to the app.
+		rec.Addressed = !in.PostOnly && !directMessage(on.ref.Channel) && on.ref.message() == on.ref.TS
 	}
 	mentions, err := threads.Parse(text, tagLookup{ctx: ctx, p: p, tenant: who.Tenant, slack: slack, sees: seer.Agent, tree: tree, project: project, person: humanSubject(person), console: on == nil})
 	if err != nil {
@@ -968,7 +1019,7 @@ func (p *Platform) PostMessage(ctx context.Context, who auth.Principal, id strin
 		return Posted{}, err
 	}
 	mentions = p.checkTags(who.Tenant, tree, th.Project, mentions)
-	msg := threads.Message{By: by, Name: name, Text: text, Mentions: mentions, Via: via, Prev: prev, SurfaceID: surfaceID, Spoken: in.Spoken}
+	msg := threads.Message{By: by, Name: name, Text: text, Mentions: mentions, Via: via, Prev: prev, SurfaceID: surfaceID, Spoken: in.Spoken, Heard: in.heard && on != nil}
 	if on != nil && len(in.Uploads) > 0 {
 		return Posted{}, fmt.Errorf("%w: surface files cannot be mixed with inline uploads", threads.ErrInvalid)
 	}

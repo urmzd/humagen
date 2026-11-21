@@ -2,7 +2,6 @@ import { defaultCopy } from "@humagen/components";
 import { useEffect, useState } from "react";
 import { api, type ReadAuditRecord } from "./api.ts";
 import { auditLimit } from "./audit.ts";
-import { MessageTime } from "./MessageTime.tsx";
 import { Problem, Section, SkeletonRows } from "./ui.tsx";
 
 /** The rows of the section, on hairlines, flush with its header. */
@@ -60,8 +59,9 @@ export function ReadAudit({
           {records.map((r, i) => (
             <li key={`${r.at}-${i}`} className={auditRow}>
               <div className="min-w-0 flex-1">
-                <p className="break-words text-aui-sm text-aui-fg">{r.subject}</p>
-                <p className="flex min-w-0 flex-wrap gap-x-3 text-aui-xs text-aui-muted">
+                <h3 className="break-words font-medium text-sm">{r.subject}</h3>
+                {/* The same line a workspace change has under it: where, how, and exactly when. */}
+                <p className="mt-1 flex min-w-0 flex-wrap gap-x-3 gap-y-1 text-aui-muted text-sm">
                   <span className="min-w-0 [overflow-wrap:anywhere]">
                     {r.project || "~"}
                     {r.thread ? ` / ${r.thread}` : ""}
@@ -71,11 +71,9 @@ export function ReadAudit({
                       {r.route}
                     </span>
                   )}
+                  <time dateTime={r.at}>{new Date(r.at).toLocaleString()}</time>
                 </p>
               </div>
-              <span className="shrink-0 text-aui-xs text-aui-muted">
-                <MessageTime at={r.at} />
-              </span>
             </li>
           ))}
         </ol>
