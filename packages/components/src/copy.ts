@@ -3573,6 +3573,14 @@ export const defaultCopy = {
       `${agents.join(", ")} can't answer in this project. Pick another project, or mention another agent.`,
     /** The chat bar's prompt. */
     placeholder: "Ask anything",
+    /** The chat bar is drawn before the agents are read: the @ menu's row, and what a screen reader hears, until they are. */
+    loadingAgents: "Loading agents",
+    /** A message sent before the agents are read stays in the bar, read-only, and is sent when they arrive. */
+    gettingReady: "Getting agents ready. Your message sends when they are.",
+    /** The tooltip of Cancel beside it, which gives the message back to edit. */
+    cancelHeldHint: "Keep editing instead (Esc)",
+    /** The agents could not be read. The draft stays in the bar. */
+    agentsFailed: "Agents could not be loaded.",
     /** Under an answer that went to an agent because it was selected, not tagged. */
     routedAll: (agent: string) => `Routed to ${agent}, with every agent selected`,
     routed: (agent: string) => `Routed to ${agent}`,
