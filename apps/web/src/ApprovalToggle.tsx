@@ -1,5 +1,5 @@
 import { defaultCopy } from "@humagen/components";
-import { CheckIcon, ChevronDownIcon, FastForwardIcon, HandIcon } from "@humagen/render-web";
+import { CheckIcon, FastForwardIcon, HandIcon } from "@humagen/render-web";
 import { type KeyboardEvent, useEffect, useState } from "react";
 import { ApiError, api, coworking, type Revision, type Thread } from "./api.ts";
 import { useConfiguredProviders } from "./ModelChain.tsx";
@@ -150,13 +150,7 @@ export function ApprovalToggle({
         tooltipSide="top"
         className="inline-flex h-8 min-w-8 pointer-coarse:h-11 pointer-coarse:min-w-11 shrink-0 items-center justify-center gap-1.5 rounded-aui px-2 text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-expanded:bg-aui-hover aria-expanded:text-aui-fg"
         button={
-          <>
-            <Icon size={16} />
-            {/* A small chevron says it opens a menu where the bar has room; the icon alone in a narrow one. */}
-            <span aria-hidden className="humagen-approval-label inline-flex items-center">
-              <ChevronDownIcon size={12} />
-            </span>
-          </>
+          <Icon size={16} />
         }
       >
         {(close) => (
