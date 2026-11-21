@@ -19,6 +19,8 @@ import (
 func (s *Server) sessionRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/sessions", s.authed(auth.RunsWrite, s.startSession))
 	mux.HandleFunc("GET /api/sessions", s.authed(auth.RunsRead, s.listSessions))
+	mux.HandleFunc("GET /api/sessions/options", s.authed(auth.RunsRead, s.sessionOptions))
+	mux.HandleFunc("GET /api/sessions/{id}/browser", s.authed(auth.RunsRead, s.seenSession(s.sessionBrowserAvailable)))
 	mux.HandleFunc("GET /api/sessions/{id}", s.authed(auth.RunsRead, s.seenSession(s.getSession)))
 	mux.HandleFunc("POST /api/sessions/{id}/messages", s.authed(auth.RunsWrite, s.seenSession(s.postSession)))
 	mux.HandleFunc("GET /api/sessions/{id}/stream", s.authed(auth.RunsRead, s.seenSession(s.sessionEvents)))
@@ -385,4 +387,20 @@ func (s *Server) sessionEvents(w http.ResponseWriter, r *http.Request, who auth.
 			}
 		}
 	}
+}
+
+// sessionOptions lists what a person may choose when starting a session. The
+// tenant is the principal's.
+func (s *Server) sessionOptions(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	ok(w, http.StatusOK, s.P.SessionOptions(r.Context(), who))
+}
+
+// sessionBrowserAvailable says whether the session has a browser to look at.
+func (s *Server) sessionBrowserAvailable(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	v, err := s.P.SessionBrowserAvailability(r.Context(), who, r.PathValue("id"))
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, v)
 }
