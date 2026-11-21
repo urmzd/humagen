@@ -4519,6 +4519,9 @@ export const defaultCopy = {
     connectorOff: "Not connected",
     manageConnectors: "Manage Connectors",
     connectorsFailed: "Connectors could not be read.",
+    /** Where the session is attached: the Slack thread it is, and the posts, issues and pull requests it made or follows. */
+    attached: "Attached to",
+    slackThread: "Slack thread",
     /** Outputs and changes. */
     outputs: "Outputs",
     artifact: "Artifact",
