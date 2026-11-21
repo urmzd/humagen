@@ -96,14 +96,17 @@ export function AgentCreate({
   const picked = catalog?.templates.find((t) => t.id === template);
   const body: ReactNode = !catalog ? (
     problem ? (
-      <div className="flex flex-col items-start gap-3 p-6" data-testid="agent-create-failed">
+      <div
+        className="flex flex-col items-start gap-3 p-6 md:col-span-2"
+        data-testid="agent-create-failed"
+      >
         <Problem message={problem} />
         <button type="button" className={button} onClick={() => setAttempt((n) => n + 1)}>
           {words.retry}
         </button>
       </div>
     ) : (
-      <div className="p-6">
+      <div className="p-6 md:col-span-2">
         <SkeletonRows count={6} />
       </div>
     )
