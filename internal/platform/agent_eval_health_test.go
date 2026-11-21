@@ -9,6 +9,8 @@ import (
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/evals"
 	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/humagen/pkg/state"
+	"github.com/urmzd/saige/flow/event"
 )
 
 // Flagged runs are counted from the runs a caller may read only: a
@@ -20,21 +22,32 @@ func TestFlaggedCountsOnlyTheRunsTheCallerMayRead(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = p.Close() }()
-	privateEvalTraceRun(t, p, "private-run", "ana")
+	// Many private runs in ana's private thread, and one public run.
+	privateEvalTraceRun(t, p, "private-0", "ana")
+	for i := 1; i < MaxFlagged+5; i++ {
+		id := fmt.Sprintf("private-%d", i)
+		tag := wire.NewEvent(wire.Raise{ID: id, Origin: runs.OriginAPI, Tenant: "acme", Agent: BuiltinBuilder, Actor: event.Actor{ID: "ana"}, At: time.Now(), Context: map[string]string{runs.MetaThread: "th-1234567890abcdef"}})
+		if err := p.Runs.Record(id, tag, 1); err != nil {
+			t.Fatal(err)
+		}
+	}
 	public := wire.NewEvent(wire.Raise{ID: "public-run", Origin: runs.OriginAPI, Tenant: "acme", Agent: BuiltinBuilder, At: time.Now()})
 	if err := p.Runs.Record("public-run", public, 1); err != nil {
 		t.Fatal(err)
 	}
-	flag := func(run string, n int) {
-		for i := range n {
+	flag := func(run string, raters int) {
+		for i := range raters {
 			c := evals.Candidate{Run: run, Agent: BuiltinBuilder, Input: "q", Reason: "wrong", At: time.Now()}
 			if err := p.Evals.SaveCandidate("acme", fmt.Sprintf("%s-rater-%d", run, i), c); err != nil {
 				t.Fatal(err)
 			}
 		}
 	}
-	flag("private-run", MaxFlagged+5)
-	flag("public-run", 3)
+	for i := range MaxFlagged + 5 {
+		flag(fmt.Sprintf("private-%d", i), 1)
+	}
+	// One run rated down by many people is one run.
+	flag("public-run", MaxFlagged+5)
 
 	owner := auth.Principal{Tenant: "acme", Subject: "ana", Kind: auth.User, Roles: []auth.Role{auth.Admin}}
 	stranger := auth.Principal{Tenant: "acme", Subject: "bob", Kind: auth.User, Roles: []auth.Role{auth.Operator}}
@@ -49,7 +62,7 @@ func TestFlaggedCountsOnlyTheRunsTheCallerMayRead(t *testing.T) {
 		more bool
 	}{
 		{"owner", owner, MaxFlagged, true},
-		{"same-tenant nonparticipant", stranger, 3, false},
+		{"same-tenant nonparticipant", stranger, 1, false},
 		{"no evals:read", noQueue, 0, false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -112,5 +125,45 @@ func TestScheduleIsReadFromTheRunsTheReaderMaySee(t *testing.T) {
 	// Nothing they may see has run, so it is due; nothing says a run is going.
 	if !schedule.Scheduled || schedule.Busy || schedule.Next.Before(before) || schedule.Next.After(time.Now()) {
 		t.Fatalf("stranger schedule = %+v", schedule)
+	}
+}
+
+// The count is of visible runs whatever the queue holds before them: a
+// thousand candidates on a private run leave a stranger's count of the one
+// run they may read where it was.
+func TestFlaggedCountIsStableUnderManyHiddenCandidates(t *testing.T) {
+	p, err := New(Config{Workspace: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = p.Close() }()
+	privateEvalTraceRun(t, p, "private-run", "ana")
+	public := wire.NewEvent(wire.Raise{ID: "public-run", Origin: runs.OriginAPI, Tenant: "acme", Agent: BuiltinBuilder, At: time.Now()})
+	if err := p.Runs.Record("public-run", public, 1); err != nil {
+		t.Fatal(err)
+	}
+	save := func(run, rater string) {
+		c := evals.Candidate{Run: run, Agent: BuiltinBuilder, Input: "q", Reason: "wrong", At: time.Now()}
+		if err := p.Evals.SaveCandidate("acme", rater, c); err != nil {
+			t.Fatal(err)
+		}
+	}
+	stranger := auth.Principal{Tenant: "acme", Subject: "bob", Kind: auth.User, Roles: []auth.Role{auth.Operator}}
+	count := func() (int, bool) {
+		h, err := p.AgentEvaluationHealth(stranger, BuiltinBuilder)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return h.Flagged, h.FlaggedMore
+	}
+	save("public-run", "bob")
+	if n, more := count(); n != 1 || more {
+		t.Fatalf("before: flagged = %d, more = %v", n, more)
+	}
+	for i := range state.MaxList {
+		save("private-run", fmt.Sprintf("rater-%d", i))
+	}
+	if n, more := count(); n != 1 || more {
+		t.Fatalf("after a thousand hidden candidates: flagged = %d, more = %v", n, more)
 	}
 }

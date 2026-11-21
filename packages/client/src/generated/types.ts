@@ -6067,9 +6067,9 @@ export interface AgentEvaluationHealth {
   passed: number;
   pass_rate: number;
   results: OnlineEvaluation[];
-  /** Runs rated down with a reason that wait in the review queue, of those the caller may read, up to 50. Absent for a caller without evals:read. */
+  /** Distinct runs rated down with a reason that wait in the review queue, of those the caller may read, up to 50. Absent for a caller without evals:read. */
   flagged?: number;
-  /** More runs the caller may read are flagged than flagged counts. */
+  /** More runs the caller may read are flagged than flagged counts, or the count stopped reading a very long queue, so it is a lower bound. */
   flagged_more?: boolean;
 }
 

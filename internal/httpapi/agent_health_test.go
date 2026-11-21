@@ -37,15 +37,14 @@ func TestAgentHealthCountsTheRunsFlaggedForReview(t *testing.T) {
 		t.Fatalf("health after dismissing = %v", got)
 	}
 
-	// The count stops at MaxFlagged and says there are more, reading no more
-	// than one candidate past it.
+	// Many ratings of one run are one flagged run.
 	for i := range platform.MaxFlagged + 5 {
 		if err := f.p.Evals.SaveCandidate("acme", fmt.Sprintf("rater-%d", i), evals.Candidate{Run: first["id"].(string), Agent: "helper", Input: "q", Reason: "wrong", At: time.Now()}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if got := want(t, f, admin, "GET", "/api/agents/helper/health", "", http.StatusOK); got["flagged"] != float64(platform.MaxFlagged) || got["flagged_more"] != true {
-		t.Fatalf("health with more candidates than it counts = %v", got)
+	if got := want(t, f, admin, "GET", "/api/agents/helper/health", "", http.StatusOK); got["flagged"] != float64(1) || got["flagged_more"] != nil {
+		t.Fatalf("health with one run rated down by many = %v", got)
 	}
 }
 

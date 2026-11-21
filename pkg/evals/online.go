@@ -127,6 +127,25 @@ func (s *Store) OpenCandidates(tenant, agent string) ([]Candidate, error) {
 	return out, nil
 }
 
+// CandidatePage is one page of an agent's open candidates, at most limit (1
+// to state.MaxList), after the cursor a previous page returned ("" for the
+// first). next is "" on the last page. Callers must apply the source run's
+// read policy to each.
+func (s *Store) CandidatePage(tenant, agent, after string, limit int) (page []Candidate, next string, err error) {
+	if tenant == "" || agent == "" || limit < 1 || limit > state.MaxList {
+		return nil, "", ErrInvalid
+	}
+	rows, next, err := s.candidates.List(tenant, state.Query{Prefix: agent + "/", After: after, Limit: limit})
+	if err != nil {
+		return nil, "", err
+	}
+	page = make([]Candidate, 0, len(rows))
+	for _, row := range rows {
+		page = append(page, row.Value)
+	}
+	return page, next, nil
+}
+
 // ResolveCandidate records a reviewer's decision and takes the candidate
 // out of the queue. The decision is written first, so a candidate is never
 // removed without it.
