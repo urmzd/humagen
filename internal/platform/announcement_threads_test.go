@@ -113,14 +113,15 @@ func TestAReplyToAnAnnouncementsSlackPostStartsAThreadSeededWithIt(t *testing.T)
 		t.Fatalf("the reply is shown as %q's", shown[1].Message.By)
 	}
 
-	// An untagged reply is answered as any message in the bound channel: by
-	// the workspace default, never the client's.
+	// An untagged reply is answered as any message in the bound channel's
+	// thread: by the agent the thread was asked for (@lead, kept by
+	// keepTagged), never the client's default.
 	setAgents(t, p, "~", platform.AgentsInput{Enable: []string{"*"}, Default: "lead"})
 	later, err := p.StartThread(t.Context(), machine, fromSlack(newsChannel, newsPost, "1700000000.000300", "<@UAPP> and the dates?"))
 	if err != nil || later.Thread.ID != th.ID || later.Message.ID != "m-2" {
 		t.Fatalf("a later reply = %+v, %v", later, err)
 	}
-	if later.Rule != threads.RuleDefault || len(later.Runs) != 1 || later.Runs[0].Agent != "lead" || later.Runs[0].Actor.User != "ana" {
+	if later.Rule != threads.RuleRouted || len(later.Runs) != 1 || later.Runs[0].Agent != "lead" || later.Runs[0].Actor.User != "ana" {
 		t.Fatalf("an untagged reply started %+v (%s)", later.Runs, later.Rule)
 	}
 	if text := wire.TextOf(later.Runs[0].Tag()); !strings.Contains(text, "\nAda (@ada): (announcement: Field offsite) Lisbon, in May. @helper book it\nAna (@ana): @lead what does it mean for renewals?\nlead (agent): ") {

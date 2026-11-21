@@ -3,7 +3,7 @@ import type { Page } from "playwright-core";
 
 /**
  * The sidebar's conversation list (DES-054): Recents grouped by day with each
- * row's dot, its hover actions, the Projects view and Archived. The seeded rows are
+ * row's state mark, its hover actions, the Projects view and Archived. The seeded rows are
  * dressed, in the browser only, with the states a live workspace has: one
  * waiting on a person, one running and one with an unread answer.
  */

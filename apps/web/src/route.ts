@@ -13,6 +13,7 @@ import { swap } from "./transition.ts";
 
 export type AgentTab =
   | "prompt"
+  | "look"
   | "model"
   | "access"
   | "queue"
@@ -23,6 +24,7 @@ export type AgentTab =
   | "revisions";
 export const AGENT_TABS: AgentTab[] = [
   "prompt",
+  "look",
   "model",
   "access",
   "queue",

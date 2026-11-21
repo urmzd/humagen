@@ -192,6 +192,50 @@ type ThreadSummary struct {
 	Visibility threads.Visibility `json:"visibility"`
 	// Messages is how many messages people have posted in it.
 	Messages int `json:"messages"`
+	// Source is where it started when that was not the console or the API:
+	// SourceSlack, SourceSlackDM, SourceGitHub or SourceScheduled, read from
+	// the Slack thread it lives on or the place its session was started
+	// from. A run's origin cannot say this: a Slack message posts to its
+	// thread through the API, so its runs' origin is the API's.
+	Source string `json:"source,omitempty"`
+}
+
+// Where a conversation started, as ThreadSummary.Source says it.
+const (
+	SourceSlack     = "slack"
+	SourceSlackDM   = "slack_dm"
+	SourceGitHub    = "github"
+	SourceScheduled = "scheduled"
+)
+
+// threadSource is where a thread started: the Slack thread or direct
+// message it lives on, or the Slack, GitHub or schedule place its session
+// was started from. "" is the console or the API, and a thread from before
+// either was kept.
+func threadSource(th threads.Thread) string {
+	if th.Surface != nil {
+		if directMessage(th.Surface.Channel) {
+			return SourceSlackDM
+		}
+		return SourceSlack
+	}
+	if th.Session == nil {
+		return ""
+	}
+	scheme, rest, _ := strings.Cut(th.Session.Parent, "://")
+	switch scheme {
+	case "slack":
+		// slack://team/channel/ts: a channel starting with D is a direct message.
+		if _, after, ok := strings.Cut(rest, "/"); ok && directMessage(after) {
+			return SourceSlackDM
+		}
+		return SourceSlack
+	case "github":
+		return SourceGitHub
+	case "schedule":
+		return SourceScheduled
+	}
+	return ""
 }
 
 // author is who a message is posted as: the caller, or the person a
@@ -1289,8 +1333,39 @@ func (p *Platform) carryOut(ctx context.Context, poster auth.Principal, tenant s
 			out.Refused = append(out.Refused, mn)
 		}
 	}
+	th = p.keepTagged(tenant, th, via, d, out.Runs, len(mentioned) > 0)
 	out.Thread, out.Message = th, m
 	return out, nil
+}
+
+// keepTagged makes the one agent a message on a client's surface tagged,
+// and that answered, the thread's selected agent, so the untagged replies
+// after it go to that agent (RFC 0012): a Slack thread started for one
+// agent stays that agent's until someone tags another. The console runs
+// only what a message tags, and a session answers by its own agent, so
+// neither changes here. A thread that moved on meanwhile keeps what it has.
+func (p *Platform) keepTagged(tenant string, th threads.Thread, via string, d threads.Decision, started []runs.Run, delegated bool) threads.Thread {
+	if via == "" || th.Session != nil || d.Rule != threads.RuleTagged || delegated {
+		return th
+	}
+	var tagged []string
+	for _, r := range started {
+		if !slices.Contains(tagged, r.Agent) {
+			tagged = append(tagged, r.Agent)
+		}
+	}
+	if len(tagged) != 1 || slices.Equal(th.Agents, tagged) {
+		return th
+	}
+	kept, err := p.Threads.Update(tenant, th.ID, th.Version, p.now(), func(t *threads.Thread) error {
+		t.Agents, t.Mode = tagged, ""
+		return nil
+	})
+	if err != nil {
+		p.log.Info("platform: a thread's tagged agent was not kept", "tenant", tenant, "thread", th.ID, "error", err)
+		return th
+	}
+	return kept
 }
 
 // mentionRefusal is why a mentioned agent is not asked in a conversation
@@ -2414,6 +2489,7 @@ func (p *Platform) threadPage(tenant string, q runs.ThreadQuery, keep func(Threa
 			order = append(order, sum)
 		}
 		sum.Project, sum.Channel, sum.Visibility, sum.Messages = rec.Project, rec.Channel, rec.Visibility, rec.Messages
+		sum.Source = threadSource(rec.Thread)
 		if rec.Title != "" {
 			sum.Title, sum.Named = rec.Title, true
 		}

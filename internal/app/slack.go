@@ -144,7 +144,7 @@ func slackManifest(name string, c slackCopy) SlackManifest {
 	m.Features.AgentView.Description = "Ask anything. " + name + " brings in the right agents and answers here."
 	m.Features.AgentView.SuggestedPrompts = []string{}
 	m.OAuth.Scopes.Bot = []string{
-		"app_mentions:read", "assistant:write", "channels:history", "chat:write", "commands",
+		"app_mentions:read", "assistant:write", "channels:history", "chat:write", "chat:write.customize", "commands",
 		"groups:history", "im:history", "mpim:history", "reactions:write", "users:read",
 		"files:read", "files:write", "canvases:write",
 	}
@@ -152,7 +152,7 @@ func slackManifest(name string, c slackCopy) SlackManifest {
 		m.Features.CodeChannels = &slackCodeChannels{Enabled: true}
 		m.OAuth.Scopes.Bot = append(m.OAuth.Scopes.Bot, slackCodeChannelScopes...)
 	}
-	m.Settings.Events.Bot = []string{"agent_session_stopped", "app_home_opened", "app_mention", "assistant_thread_started", "message.im"}
+	m.Settings.Events.Bot = []string{"agent_session_stopped", "app_home_opened", "app_mention", "assistant_thread_started", "message.channels", "message.groups", "message.im"}
 	m.Settings.Interactivity.Enabled = true
 	m.Settings.SocketMode = true
 	return m

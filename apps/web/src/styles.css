@@ -1014,32 +1014,27 @@ body {
 }
 
 /*
- * A conversation row's dot (DES-054). Waiting on a person is colored and
- * still; running is a ring that breathes slowly; a failed reply is solid
- * red; unread is the accent, solid and still.
+ * A conversation row's running mark (DES-054): a small neutral ring whose one
+ * arc turns, still with reduced motion. Waiting on a person and a failed
+ * reply are icons in the warning and failure colors; unread is the title's
+ * weight. The accent marks none of them.
  */
-.humagen-row-dot {
-  display: inline-block;
-  flex: none;
-  width: 6px;
-  height: 6px;
+.humagen-row-spinner {
+  display: block;
+  width: 10px;
+  height: 10px;
   border-radius: 9999px;
+  border: 1.5px solid var(--humagen-ink-faint);
+  border-top-color: var(--aui-fg);
+  animation: humagen-row-spin 0.9s linear infinite;
 }
-.humagen-row-dot[data-standing="needs"] {
-  background: var(--aui-warn);
-}
-.humagen-row-dot[data-standing="running"] {
-  box-shadow: inset 0 0 0 1.5px var(--aui-accent);
-  animation: humagen-tick-live 1.6s ease-in-out infinite;
-}
-.humagen-row-dot[data-standing="failed"] {
-  background: var(--aui-bad);
-}
-.humagen-row-dot[data-standing="unread"] {
-  background: var(--aui-accent);
+@keyframes humagen-row-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 @media (prefers-reduced-motion: reduce) {
-  .humagen-row-dot[data-standing="running"] {
+  .humagen-row-spinner {
     animation: none;
   }
 }
