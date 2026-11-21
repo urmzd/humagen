@@ -27,6 +27,7 @@ import {
 import { accentAttribute, brandCopy, servedBranding } from "./branding.ts";
 import { Chat } from "./Chat.tsx";
 import { CONNECT_PERMISSION } from "./connections.ts";
+import { HomeProjects } from "./HomePage.tsx";
 import type { Source as About } from "./mail.ts";
 import { useNotifications } from "./notificationDelivery.ts";
 import {
@@ -1198,12 +1199,22 @@ function Console({
                       personalProject={me.personal_project}
                       findHelp={can("projects:read") ? api.findHelp : undefined}
                       home={
-                        <HomeSessionGlance
-                          onHasSessions={setHasSessions}
-                          go={go}
-                          canArtifacts={can("artifacts:read")}
-                          tick={tick}
-                        />
+                        <>
+                          {can("projects:read") && (
+                            <HomeProjects
+                              projects={projects}
+                              personal={me.personal_project}
+                              pinned={prefs.pinned_projects}
+                              go={go}
+                            />
+                          )}
+                          <HomeSessionGlance
+                            onHasSessions={setHasSessions}
+                            go={go}
+                            canArtifacts={can("artifacts:read")}
+                            tick={tick}
+                          />
+                        </>
                       }
                       onProjectCreated={(project) => {
                         setProjects((current) => [
