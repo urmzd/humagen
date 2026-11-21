@@ -377,7 +377,11 @@ function groupStop(
   return {
     what: live.length === 1 ? (live[0]?.what ?? "") : live.map((s) => s.what).join(", "),
     pending: live.every((s) => s.pending),
-    onStop: press.length ? () => press.forEach((s) => s.onStop?.()) : undefined,
+    onStop: press.length
+      ? () => {
+          for (const s of press) s.onStop?.();
+        }
+      : undefined,
   };
 }
 

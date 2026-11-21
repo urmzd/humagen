@@ -78,6 +78,7 @@ import { alertAnchor, SessionAlerts, useSessionAlerts } from "./SessionAlerts.ts
 import { SessionDetailsProvider } from "./SessionDetails.tsx";
 import { sessionFiles, sessionProgress } from "./SessionPanel.tsx";
 import { OriginButton, referenceOfPlace, SessionPlace, usePlace } from "./SessionPlace.tsx";
+import { ComposerFooter, UsageRing } from "./SessionUsage.tsx";
 import { ShareDialog } from "./Share.tsx";
 import { useThreadSelection } from "./selection.ts";
 import { useItemStops, useSessionBackground, useSessionStop } from "./stops.tsx";
@@ -1134,7 +1135,26 @@ export function ThreadRoom({
                             turn.run && actedFor(turn.run) === me ? [turn.run] : [],
                           )}
                           thread={id}
-                          trailing={<ApprovalToggle thread={th} me={handle || me} />}
+                          footer={(() => {
+                            // Who answers is whoever answered last; the ring reads again as runs end.
+                            const runs = turns.flatMap((turn) => (turn.run ? [turn.run] : []));
+                            const latest = runs[runs.length - 1];
+                            return (
+                              <ComposerFooter
+                                agent={latest ? agentShown(latest.agent) : undefined}
+                                model={latest?.usage?.context?.model}
+                                approval={<ApprovalToggle thread={th} me={handle || me} />}
+                                usage={
+                                  <UsageRing
+                                    thread={id}
+                                    project={th.project}
+                                    agents={answering}
+                                    version={`${runs.length}:${runs.filter((r) => isWorking(r.status)).length}`}
+                                  />
+                                }
+                              />
+                            );
+                          })()}
                           seed={seed}
                           placeholder={words.message}
                           tags={tags}

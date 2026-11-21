@@ -11,6 +11,7 @@ export function ItemStopControl({ stop, words }: { stop: ItemStop; words: ItemSt
     return (
       <span
         data-aui="item-stopped"
+        role="status"
         aria-label={words.stoppedLabel(stop.what)}
         className="inline-flex shrink-0 items-center gap-1 px-1 text-aui-2xs text-aui-muted"
       >

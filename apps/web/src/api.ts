@@ -60,6 +60,7 @@ import type {
   ThreadFollowup,
   ThreadImport,
   ThreadShare,
+  ThreadUsage,
   VoiceSettings,
   VoiceTranscript,
 } from "../../../packages/client/src/generated/types.ts";
@@ -756,6 +757,7 @@ export interface PolicyChange {
 }
 
 export type Note = GeneratedNote;
+export type { ThreadUsage };
 
 /**
  * A tool that acts as you: an MCP provider reached with each person's own
@@ -1347,6 +1349,9 @@ export const api = {
     call<{ proposals: Proposal[] }>("GET", "/api/memory/pending").then((r) => r.proposals),
   /** Stop a run and everything attached to it. Runs it delegated keep going. */
   stopRun: (id: string) => call<Run>("POST", `/api/runs/${encodeURIComponent(id)}/stop`),
+  /** What a conversation's runs have used so far. */
+  threadUsage: (id: string) =>
+    call<ThreadUsage>("GET", `/api/threads/${encodeURIComponent(id)}/usage`),
   /** Stop every run in a session and in its child sessions. */
   stopSession: (id: string) =>
     call<void>("POST", `/api/sessions/${encodeURIComponent(id)}/stop`, { children: true }),
