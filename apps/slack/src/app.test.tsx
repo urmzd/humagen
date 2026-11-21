@@ -2061,3 +2061,31 @@ test("disabled installation event subscriptions do not post or start native work
   assert.equal(w.humagen.asked.length, 0);
   assert.equal(w.slack.calls.length, 0);
 });
+
+test("a thread asked for an agent by name keeps it: untagged replies there go to it, not the default", async () => {
+  const w = world();
+  await deliver(w, mention("@helper summarize this", TS));
+  assert.equal(w.humagen.started[0]?.agent, "helper");
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "ok" });
+  await w.app.idle();
+
+  await deliver(w, mention("and the risks?", "1700000500.000100", { thread_ts: TS }));
+  assert.equal(w.humagen.started[1]?.agent, "helper", "the thread stays with helper");
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "ok" });
+  await w.app.idle();
+
+  await deliver(w, mention("@lead take it from here", "1700000600.000100", { thread_ts: TS }));
+  assert.equal(w.humagen.started[2]?.agent, "lead");
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "ok" });
+  await w.app.idle();
+
+  // Another thread is not this one's: it gets the default.
+  await deliver(w, mention("unrelated", "1700000700.000100"));
+  assert.equal(w.humagen.started[3]?.agent, "lead");
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "ok" });
+  await w.app.idle();
+});

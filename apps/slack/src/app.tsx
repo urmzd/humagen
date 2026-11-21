@@ -212,6 +212,9 @@ interface Thread {
   live?: Live;
 }
 
+/** How many threads remember the agent they were asked for by name. The oldest is forgotten first. */
+const NAMED_THREADS = 5000;
+
 const terminal = (s: Run["status"]) => s === "completed" || s === "failed" || s === "stopped";
 
 /** A turn waiting on a person's answer to a question. */
@@ -466,6 +469,13 @@ const sentToThem = (p: ActionPayload): boolean => {
 
 export class App {
   private readonly threads = new Map<string, Thread>();
+  /**
+   * The agent each thread was last asked for by name. An untagged message in
+   * the thread goes to it instead of the default, as the platform does for a
+   * person the client maps (RFC 0012), until another is named. It outlives
+   * the thread's queue, and is forgotten on a restart.
+   */
+  private readonly named = new Map<string, string>();
   /** Slack deliveries already taken, so a redelivery in this process does nothing. */
   private readonly seen = new Recent<true>(10_000);
   /** Who asked for each run, by Slack user id. */
@@ -1186,8 +1196,19 @@ export class App {
         if (placed === "duplicate") return "done" as const;
         if (!job.again) {
           const choice = choose(job.text, await this.agents(), routing);
-          if (choice.agent === null) return this.refuse(job, presenter, "", NO_AGENT);
-          agent = choice.agent;
+          // A thread asked for an agent by name keeps it for the untagged messages after.
+          const where = sessionName(job.session);
+          const before = this.named.get(where);
+          const kept =
+            choice.how !== "named" && before && mayRoute(routing, before) ? before : null;
+          if (choice.how === "named") {
+            this.named.delete(where);
+            this.named.set(where, choice.agent);
+            const oldest = this.named.keys().next().value;
+            if (this.named.size > NAMED_THREADS && oldest !== undefined) this.named.delete(oldest);
+          }
+          if (!kept && choice.agent === null) return this.refuse(job, presenter, "", NO_AGENT);
+          agent = kept ?? (choice.agent as string);
           text = choice.text;
         } else if (!mayRoute(routing, agent)) {
           // Asked again after the client was disabled or the agent left its list.

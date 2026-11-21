@@ -241,8 +241,13 @@ events.
    reach it, or `@auto`, which picks among the agents available where the
    message lands, when the app may reach any agent. The name is taken out of
    the message.
-2. The client's default agent, or `HUMAGEN_DEFAULT_AGENT`.
-3. When the app may reach any agent, nobody is named: the app sends no agent,
+2. The agent the thread was last asked for by name: a thread started for
+   one agent stays that agent's until another is named. A person the client
+   maps posts into Humagen's thread, where the platform keeps the same rule;
+   for anyone else the app remembers it, for its last 5000 threads, until
+   it restarts.
+3. The client's default agent, or `HUMAGEN_DEFAULT_AGENT`.
+4. When the app may reach any agent, nobody is named: the app sends no agent,
    and the default the workspace's projects set answers. With none set, Humagen
    answers 409 and the app asks the person to tag an agent, naming one it may
    reach.
