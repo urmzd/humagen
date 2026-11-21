@@ -86,10 +86,14 @@ export function ImagePicker({
       tooltip={`${words.image}: ${name}`}
       className={control}
       button={
-        <span aria-hidden className="inline-flex items-center gap-1 text-aui-xs" data-label>
-          <span className="max-w-36 truncate">{name}</span>
-          <ChevronDownIcon size={12} />
-        </span>
+        <>
+          {/* The mark stays when a narrow composer hides the words. */}
+          <LayersIcon size={16} />
+          <span aria-hidden className="inline-flex items-center gap-1 text-aui-xs" data-label>
+            <span className="max-w-36 truncate">{name}</span>
+            <ChevronDownIcon size={12} />
+          </span>
+        </>
       }
     >
       {(close) => (
