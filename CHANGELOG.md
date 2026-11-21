@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.164.0 (2026-11-21)
+
+### Features
+
+- **web**: draw the Home composer with the page, before agents load (#462) ([5e5d814](https://github.com/urmzd/humagen/commit/5e5d814331ba95da325d7826275953a42a5de468))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.163.0...v0.164.0)
+
+
 ## 0.163.0 (2026-11-21)
 
 ### Features
