@@ -75,7 +75,12 @@ import {
   type WorkbenchTabId,
 } from "./route.ts";
 import { SessionActions } from "./SessionActions.tsx";
-import { alertAnchor, SessionAlerts, useSessionAlerts } from "./SessionAlerts.tsx";
+import {
+  alertAnchor,
+  duplicatesInlineApproval,
+  SessionAlerts,
+  useSessionAlerts,
+} from "./SessionAlerts.tsx";
 import { SessionDetailsProvider } from "./SessionDetails.tsx";
 import { sessionFiles, sessionProgress } from "./SessionPanel.tsx";
 import { OriginButton, referenceOfPlace, SessionPlace, usePlace } from "./SessionPlace.tsx";
@@ -752,6 +757,25 @@ export function ThreadRoom({
   // Every turn read so far, oldest first. A refresh reads the newest page,
   // which moves on as the thread grows; the turns it no longer holds stay.
   const [turns, setTurns] = useState<ThreadTurn[]>(initial.turns);
+  // Only on first open; subsequent arrivals and manual scrolling keep their usual behavior.
+  const [initialApproval] = useState(
+    () =>
+      [...initial.turns].reverse().flatMap((t) => {
+        if (!t.run) return [];
+        const asks = asksOf(t);
+        const approval = [...turnOf(t.run).interrupts]
+          .reverse()
+          .find(
+            (i) =>
+              i.type === "approval" &&
+              i.decision.kind === "pending" &&
+              (!asks.some((a) => a.question === i.id) ||
+                asks.some((a) => a.question === i.id && a.yours)),
+          );
+        return approval ? [{ run: t.run.id, question: approval.id }] : [];
+      })[0],
+  );
+  const visibleAlerts = attention.rows.filter((alert) => !duplicatesInlineApproval(alert, turns));
   // The thread's wave: a tick per message and per answer, previewing what each says.
   const wave = useMemo(() => waveOf(turns), [turns]);
   // A pull request or issue named by its address anywhere in the session reads that way in every answer.
@@ -1184,6 +1208,7 @@ export function ThreadRoom({
                     label="Thread"
                     turns={wave}
                     focus={focus}
+                    initialApproval={initialApproval}
                     footer={
                       <div
                         ref={dock}
@@ -1293,7 +1318,7 @@ export function ThreadRoom({
                       </p>
                     )}
                     <SessionAlerts
-                      alerts={attention.rows.filter(
+                      alerts={visibleAlerts.filter(
                         (a) =>
                           !alertAnchor(a) ||
                           !turns.some((t) => (t.message?.id ?? t.run?.id) === alertAnchor(a)),
@@ -1315,7 +1340,7 @@ export function ThreadRoom({
                     {turns.map((t, i) => (
                       <Fragment key={t.announcement?.id ?? t.message?.id ?? t.run?.id}>
                         <SessionAlerts
-                          alerts={attention.rows.filter(
+                          alerts={visibleAlerts.filter(
                             (a) =>
                               !!alertAnchor(a) && alertAnchor(a) === (t.message?.id ?? t.run?.id),
                           )}

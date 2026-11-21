@@ -344,6 +344,7 @@ export function Actions({ children, blockId, confirmChoice }: PrimitiveProps["Ac
       ref={row}
       data-aui="actions"
       data-aui-block={kind}
+      data-aui-block-id={blockId}
       aria-label={kind ? `${kind[0]?.toUpperCase()}${kind.slice(1)} actions` : "Actions"}
       className="flex min-w-0 flex-wrap items-center gap-1.5"
     >
