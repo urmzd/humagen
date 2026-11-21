@@ -207,15 +207,7 @@ export function Settings({
             ))}
 
           {section === "providers" && (
-            <>
-              <header className="pb-2">
-                <h1 className={pageTitle}>Model providers</h1>
-                <p className={pageLede}>
-                  What agents run on. An agent runs once a provider its models name is enabled.
-                </p>
-              </header>
-              <ModelProviderSettings canEdit={me.permissions.includes("clients:write")} />
-            </>
+            <ModelProviderSettings canEdit={me.permissions.includes("clients:write")} />
           )}
 
           {section === "profile" && (
@@ -597,7 +589,7 @@ export function SettingsNav({
   const workspaceEntries: Entry[] = admin
     ? [
         { id: "workspace", label: "Workspace", icon: <ServerIcon size={16} /> },
-        { id: "providers", label: "Model providers", icon: <BrainIcon size={16} /> },
+        { id: "providers", label: defaultCopy.modelProviders.title, icon: <BrainIcon size={16} /> },
         { id: "limits", label: "Limits", icon: <GaugeIcon size={16} /> },
         { id: "voice", label: defaultCopy.voiceSettings.title, icon: <MicIcon size={16} /> },
         { id: "access", label: "Access", icon: <ShieldIcon size={16} /> },

@@ -211,6 +211,9 @@ func TestDeleteModelProviderRefusesOneInUse(t *testing.T) {
 	if _, err := p.Agents.Create(ctx, "acme", wire.AgentSpec{Name: "writer", Provider: "team", Model: "claude-sonnet-5-5", SystemPrompt: "Write."}, "ada"); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := p.SetModelProviderEnabled(ctx, admin("acme"), "team", false); !errors.Is(err, ErrModelProviderInUse) || !strings.Contains(err.Error(), "@writer") {
+		t.Fatalf("turn off while an agent uses it = %v", err)
+	}
 	if err := p.DeleteModelProvider(ctx, admin("acme"), "team"); !errors.Is(err, ErrModelProviderInUse) || !strings.Contains(err.Error(), "@writer") {
 		t.Fatalf("delete while an agent uses it = %v", err)
 	}
@@ -222,6 +225,68 @@ func TestDeleteModelProviderRefusesOneInUse(t *testing.T) {
 	}
 	if _, ok := p.secrets.Get("acme", secretsOwner("team"), "key"); ok {
 		t.Fatal("the removed provider's key is still kept")
+	}
+}
+
+func TestTurningOffModelProviderKeepsTheKey(t *testing.T) {
+	p, seen := configured(t, Config{
+		Ext: Extensions{Providers: map[string]native.ProviderFunc{"declared": func(native.Spec) (saigetypes.Provider, error) {
+			return nil, nil
+		}}},
+	})
+	ctx := t.Context()
+	actor := admin("acme")
+	viewer := auth.Principal{Tenant: "acme", Subject: "vi", Roles: []auth.Role{auth.Viewer}}
+	in := ModelProviderInput{Kind: KindOpenAI, BaseURL: "https://proxy.example/v1", Key: "sk-team"}
+	m, err := p.SetModelProvider(ctx, actor, "team", in)
+	if err != nil || m.Disabled {
+		t.Fatalf("created provider = %+v, %v", m, err)
+	}
+	if _, err := p.SetModelProviderEnabled(ctx, viewer, "team", false); !errors.Is(err, auth.ErrForbidden) {
+		t.Fatalf("a viewer turned off a provider: %v", err)
+	}
+	if _, err := p.SetModelProviderEnabled(ctx, admin("globex"), "team", false); !errors.Is(err, wire.ErrNotFound) {
+		t.Fatalf("another workspace turned off a provider: %v", err)
+	}
+	if _, err := p.SetModelProviderEnabled(ctx, actor, "declared", false); !errors.Is(err, ErrModelProvider) {
+		t.Fatalf("the workspace turned off a deployment provider: %v", err)
+	}
+	for range 2 {
+		off, err := p.SetModelProviderEnabled(ctx, actor, "team", false)
+		if err != nil || !off.Disabled || !off.KeyStored || off.BaseURL != in.BaseURL {
+			t.Fatalf("disabled provider = %+v, %v", off, err)
+		}
+	}
+	ref := workspaceRef("acme", "team")
+	if _, ok := p.resolveProvider(ref); ok {
+		t.Fatal("a saved provider reference still resolves after turning it off")
+	}
+	if slices.ContainsFunc(p.ModelProviderChoices("acme"), func(c ModelProviderChoice) bool { return c.Name == "team" }) {
+		t.Fatal("a disabled provider is still offered")
+	}
+	if slices.ContainsFunc(p.HealthFor(ctx, "acme").Components, func(c HealthComponent) bool { return c.ID == "provider:team" }) {
+		t.Fatal("a disabled provider is still reported as operational")
+	}
+	if _, err := p.CheckModelProvider(ctx, actor, "team"); !errors.Is(err, ErrModelProvider) {
+		t.Fatalf("a disabled provider can be checked: %v", err)
+	}
+	updated, err := p.SetModelProvider(ctx, actor, "team", ModelProviderInput{Kind: KindOpenAI, BaseURL: "https://new.example/v1"})
+	if err != nil || !updated.Disabled || !updated.KeyStored {
+		t.Fatalf("editing a disabled provider = %+v, %v", updated, err)
+	}
+	on, err := p.SetModelProviderEnabled(ctx, actor, "team", true)
+	if err != nil || on.Disabled || on.BaseURL != updated.BaseURL {
+		t.Fatalf("re-enabled provider = %+v, %v", on, err)
+	}
+	fn, ok := p.resolveProvider(ref)
+	if !ok {
+		t.Fatal("the provider did not resolve after turning it on")
+	}
+	if _, err := fn(native.Spec{Name: "writer"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(*seen) != 1 || (*seen)[0].key != in.Key {
+		t.Fatal("turning the provider off and on lost its original key")
 	}
 }
 
@@ -282,6 +347,19 @@ func TestBuiltinsShipWithAChainAndRunOnWhatIsEnabled(t *testing.T) {
 	s, err = run()
 	if err != nil || s.Provider != workspaceRef("acme", "openai") || len(s.Fallbacks) != 1 || s.Fallbacks[0].Provider != workspaceRef("acme", "google") {
 		t.Fatalf("with openai and google enabled = %+v, %v", s, err)
+	}
+	if _, err := p.SetModelProviderEnabled(ctx, admin("acme"), KindOpenAI, false); err != nil {
+		t.Fatal(err)
+	}
+	s, err = run()
+	if err != nil || s.Provider != workspaceRef("acme", "google") || len(s.Fallbacks) != 0 {
+		t.Fatalf("with openai turned off = %+v, %v", s, err)
+	}
+	if _, err := p.SetModelProviderEnabled(ctx, admin("acme"), KindGoogle, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := run(); !errors.Is(err, ErrModelProvider) {
+		t.Fatalf("a run with all providers turned off = %v", err)
 	}
 	// A kind may be named before it is enabled; offline never.
 	for provider, ok := range map[string]bool{KindAnthropic: true, KindGoogle: true, wire.ProviderOffline: false} {
