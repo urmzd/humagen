@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.174.0 (2026-11-21)
+
+### Breaking
+
+- **console**: size composer controls consistently (#496) ([be8b70c](https://github.com/urmzd/humagen/commit/be8b70c4efdd35445fbd162f7d089674507c305c))
+
+### Features
+
+- **console**: give Home stable project shortcuts (#491) ([33faaa5](https://github.com/urmzd/humagen/commit/33faaa54abd95ded3d37f7451ac256db49acfba2))
+
+### Bug Fixes
+
+- **console**: combine workspace and read audit (#504) ([99c395c](https://github.com/urmzd/humagen/commit/99c395c2344fe5a788e8e6861a3fca11ded80f60))
+- **console**: keep approval decisions together (#493) ([67df6f3](https://github.com/urmzd/humagen/commit/67df6f3a22ba0118d317270e29f35f9348b87a8b))
+- **console**: remove duplicate session approval alerts (#499) ([7220092](https://github.com/urmzd/humagen/commit/7220092ee04ea75d3cd3c61f71b8e790e43366b5))
+- **console**: stabilize Alerts row actions (#490) ([ebd75f3](https://github.com/urmzd/humagen/commit/ebd75f3879eb35b4d5dac6a74f461936ca836ee0))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.173.0...v0.174.0)
+
+
 ## 0.169.0 (2026-11-21)
 
 ### Features
