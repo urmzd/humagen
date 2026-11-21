@@ -76,6 +76,7 @@ import (
 	"github.com/urmzd/humagen/pkg/evals"
 	"github.com/urmzd/humagen/pkg/feedback"
 	"github.com/urmzd/humagen/pkg/githubinstall"
+	"github.com/urmzd/humagen/pkg/images"
 	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/integrations/github"
 	"github.com/urmzd/humagen/pkg/integrations/slack"
@@ -224,6 +225,9 @@ type Config struct {
 	// run a command of their own in a conversation's sandbox
 	// (person_command.go). The zero value refuses.
 	SandboxContained bool
+	// SandboxImages lets workspaces add images of their own for sessions
+	// to run in (images.go). Nil: every session runs Sandbox's own image.
+	SandboxImages *ImageConfig
 	// Blobs holds the bytes of published files. Nil means a disk store in
 	// the workspace directory.
 	Blobs blob.Store
@@ -364,6 +368,9 @@ type Platform struct {
 	deliveries *state.Table[rootDelivery]
 	// health is the last health report and each component's recent checks.
 	health healthBook
+	// imageChecks are the image checks under way in this process
+	// (images.go).
+	imageChecks imageChecks
 
 	cfg                    Config
 	log                    *slog.Logger
@@ -427,6 +434,8 @@ type Platform struct {
 	AgentColors *agentcolors.Store
 	// AgentLooks keeps how each agent is drawn and the name people see.
 	AgentLooks *agentlooks.Store
+	// Images keeps the sandbox images each workspace added.
+	Images *images.Store
 	// Scratchpads keeps each conversation's named scratchpads.
 	Scratchpads *scratchpads.Store
 	// Projects is each tenant's tree of projects.
@@ -1438,6 +1447,8 @@ func (p *Platform) Run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	defer p.stopWakers()
+	// An image check started while the platform ran ends with it.
+	defer p.imageChecks.stop()
 	p.Knowledge.UseEmbedder(ctx, p.cfg.Embedder, p.log)
 	p.CatalogStore.UseEmbedder(ctx, p.cfg.Embedder, p.log)
 
@@ -1548,6 +1559,11 @@ func (p *Platform) Run(ctx context.Context) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		}
+	}
+	// Every process checks images and looks for the checks a dead one left:
+	// whichever finds one first starts it again.
+	if c := p.cfg.SandboxImages; c != nil && c.Puller != nil {
+		loop("images", func() error { return p.sweepImages(ctx) })
 	}
 	// The work done once per deployment runs on the elected leader only,
 	// and moves to another process when this one stops leading.

@@ -31,6 +31,7 @@ await loadTests([
   "/src/session-panel.dom.test.tsx",
   "/src/session-context-panel.dom.test.tsx",
   "/src/session-setup.dom.test.tsx",
+  "/src/image-settings.dom.test.tsx",
   "/src/workbench.dom.test.tsx",
   "/src/workbench-browser.dom.test.tsx",
   "/src/workbench-terminal.dom.test.tsx",

@@ -83,6 +83,7 @@ export type SettingsSection =
   | "workspace"
   | "providers"
   | "models"
+  | "images"
   | "limits"
   | "voice"
   | "connections"
@@ -95,6 +96,7 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
   "workspace",
   "providers",
   "models",
+  "images",
   "limits",
   "voice",
   "connections",

@@ -64,8 +64,13 @@ Set it as `github.login`: the login the app comments as, `humagen[bot]`, which
 people mention as `@Humagen`. With it set, and the app's login not in `bots`:
 
 - `@docs-bot summarize this` tags docs-bot.
-- `@Humagen @docs-bot summarize this` tags docs-bot. The app's mention is taken
-  out of the text.
+- `@Humagen @docs-bot summarize this` tags docs-bot, which reads `summarize
+  this`. The mentions that open a comment are its address and are taken out
+  of the text, the app's as an agent's.
+- `could @docs-bot take a look?` tags docs-bot too, and the agent reads the
+  comment as written. A mention after the first words is part of the sentence
+  and stays in the text. A name inside code, as in `` `@docs-bot help` ``,
+  tags nobody.
 - `@Humagen what changed?` names no agent, so it is answered as an untagged Slack
   message outside a bound channel is: by the client's `default_agent`, then by
   the default of the client's home channel and its chain. The client's
@@ -270,7 +275,10 @@ source PR must be open and its branch must be in the same repository. Fork PRs
 are read-only for this tool. Branch protections still apply.
 
 Fixes require an explicit `/fix` mention from a person with effective GitHub
-write permission. Permission is checked at acceptance and again before writing.
+write permission. The command is the first word after the address:
+`@github-fixer /fix the typo` asks for a fix, and a comment that puts words or
+a mention before the command, as `/check @github-fixer 123456789` does
+before the run id, grants nothing. Permission is checked at acceptance and again before writing.
 The connector signs a grant bound to the run ID, actor, repository, PR and head.
 The run ID is the runtime's, derived from the client's workspace and the
 delivery ID, so a connector that may commit is built with its workspace.

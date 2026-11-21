@@ -139,6 +139,7 @@ const everySection: SettingsSection[] = [
   "appearance",
   "workspace",
   "providers",
+  "images",
   "limits",
   "voice",
   "connections",

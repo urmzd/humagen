@@ -7,28 +7,63 @@ import type { ConversationSandboxes } from "../../../packages/client/src/generat
 import { coworking } from "./api.ts";
 import { stubFetch } from "./dom.ts";
 import { useHumanActivity } from "./humanActivity.tsx";
+import { PlusMenu } from "./Plus.tsx";
 import { ProjectPicker } from "./ProjectPicker.tsx";
-import {
-  DEFAULT_SETUP,
-  type SessionOptions,
-  type SessionSetup,
-  SessionSetupPickers,
-} from "./SessionPickers.tsx";
+import { type SessionOptions, type SessionSetup, SessionSetupPickers } from "./SessionPickers.tsx";
 import { EnvironmentSection } from "./SessionSections.tsx";
 import { type SessionView, SessionViews, useUnavailableViews } from "./SessionViews.tsx";
+import { DEFAULT_SETUP, useSessionOptions } from "./sessionOptions.ts";
 import { summarize } from "./sessionSummary.ts";
 import { type TerminalApi, WorkbenchTerminal } from "./WorkbenchTerminal.tsx";
 
 const words = defaultCopy.sessionSetup;
+const picker = defaultCopy.chat.picker;
 const panel = defaultCopy.sessionPanel;
 
 afterEach(() => cleanup());
 
+const digest = `ghcr.io/acme/agent@sha256:${"0f".repeat(32)}`;
 const options: SessionOptions = {
-  environments: [
-    { name: "auto", label: "Auto", isolated: true, terminal: true },
-    { name: "docker", label: "Docker sandbox", isolated: true, terminal: true },
+  images: [
+    {
+      id: "default",
+      name: "Default",
+      ref: "python:3.13-alpine",
+      status: "ready",
+      warm: true,
+      default: true,
+    },
+    {
+      id: "img_a",
+      name: "Agent tools",
+      ref: "ghcr.io/acme/agent:1.4",
+      digest,
+      status: "ready",
+      warm: true,
+      default: false,
+    },
+    {
+      id: "img_b",
+      name: "Nightly",
+      ref: "ghcr.io/acme/nightly:1",
+      status: "failed",
+      problem: "manifest unknown",
+      warm: false,
+      default: false,
+    },
+    {
+      id: "img_c",
+      name: "Next",
+      ref: "ghcr.io/acme/next:2",
+      status: "checking",
+      warm: false,
+      default: false,
+    },
   ],
+  imageRegistries: ["ghcr.io"],
+  sandbox: "docker/runsc",
+  isolated: true,
+  terminal: true,
   repos: ["acme/billing", "acme/web"],
 };
 
@@ -52,66 +87,163 @@ function Pickers({
   );
 }
 
-test("a new session's environment is Auto until another is picked from the deployment's", async () => {
+test("a new session runs the Default image until a ready one of the workspace's is picked", async () => {
   const seen: SessionSetup[] = [];
   render(<Pickers seen={seen} />);
-  const trigger = screen.getByRole("button", { name: `${words.environment}: ${words.auto}` });
-  fireEvent.click(trigger);
-  const menu = await screen.findByRole("menu", { name: words.environment });
+  fireEvent.click(screen.getByRole("button", { name: `${words.image}: ${words.defaultImage}` }));
+  const menu = await screen.findByRole("menu", { name: words.image });
   const rows = within(menu).getAllByRole("menuitemradio");
   assert.deepEqual(
-    rows.map((r) => r.getAttribute("data-environment")),
-    ["auto", "docker"],
+    rows.map((r) => r.getAttribute("data-image")),
+    ["default", "img_a", "img_b", "img_c"],
   );
   assert.equal(rows[0]?.getAttribute("aria-checked"), "true");
-  assert.match(rows[1]?.textContent ?? "", /Isolated sandbox · Terminal/);
+  assert.match(rows[0]?.textContent ?? "", /python:3\.13-alpine/);
+  assert.match(rows[1]?.textContent ?? "", new RegExp(words.warm));
+  // A failed image says why and a checking one says so; neither may be chosen.
+  assert.equal(rows[2]?.getAttribute("aria-disabled"), "true");
+  assert.match(rows[2]?.textContent ?? "", /manifest unknown/);
+  assert.equal(rows[3]?.getAttribute("aria-disabled"), "true");
+  fireEvent.click(rows[2] as HTMLElement);
+  assert.equal(seen.length, 0);
   fireEvent.click(rows[1] as HTMLElement);
-  assert.deepEqual(seen.at(-1), { environment: "docker", repos: [] });
-  assert.ok(screen.getByRole("button", { name: `${words.environment}: Docker sandbox` }));
+  assert.deepEqual(seen.at(-1), { image: "img_a", repos: [] });
+  assert.ok(screen.getByRole("button", { name: `${words.image}: Agent tools` }));
 });
 
-test("repositories are picked from those connected, any number, and said on the control", async () => {
-  const seen: SessionSetup[] = [];
-  render(<Pickers seen={seen} />);
-  fireEvent.click(screen.getByRole("button", { name: `${words.repoLabel}: ${words.none}` }));
-  const menu = await screen.findByRole("menu", { name: words.repoLabel });
-  fireEvent.click(within(menu).getByRole("menuitemcheckbox", { name: /acme\/billing/ }));
-  fireEvent.click(within(menu).getByRole("menuitemcheckbox", { name: /acme\/web/ }));
-  assert.deepEqual(seen.at(-1)?.repos, ["acme/billing", "acme/web"]);
-  // The menu stays open for more; a second press takes one off.
-  fireEvent.click(within(menu).getByRole("menuitemcheckbox", { name: /acme\/web/ }));
-  assert.deepEqual(seen.at(-1)?.repos, ["acme/billing"]);
-  assert.equal(
-    within(menu)
-      .getByRole("menuitemcheckbox", { name: /acme\/billing/ })
-      .getAttribute("aria-checked"),
-    "true",
+test("an image still checking when the options were read can be chosen once it is ready, with no reload", async () => {
+  // The server's answers: checking twice, then ready.
+  let reads = 0;
+  const read = async (): Promise<SessionOptions> => {
+    reads++;
+    const settled = reads > 2;
+    return {
+      ...options,
+      images: [
+        options.images[0] as SessionOptions["images"][number],
+        {
+          id: "img_new",
+          name: "Just added",
+          ref: "ghcr.io/acme/new:1",
+          status: settled ? "ready" : "checking",
+          warm: false,
+          default: false,
+        },
+      ],
+    };
+  };
+  function Statuses() {
+    const o = useSessionOptions(true, read, 10);
+    return <p data-testid="statuses">{o?.images.map((i) => `${i.id}:${i.status}`).join(" ")}</p>;
+  }
+  render(<Statuses />);
+  await waitFor(() =>
+    assert.equal(screen.getByTestId("statuses").textContent, "default:ready img_new:checking"),
   );
+  await waitFor(() =>
+    assert.equal(screen.getByTestId("statuses").textContent, "default:ready img_new:ready"),
+  );
+  // Once nothing is checking it is not read again.
+  const settledAt = reads;
+  await new Promise((r) => setTimeout(r, 60));
+  assert.equal(reads, settledAt);
 });
 
-test("with no repository connected the menu says so and leads to Connections; unread options draw nothing", async () => {
-  render(<Pickers seen={[]} given={{ ...options, repos: [] }} />);
-  fireEvent.click(screen.getByRole("button", { name: `${words.repoLabel}: ${words.none}` }));
-  const menu = await screen.findByRole("menu", { name: words.repoLabel });
-  assert.match(menu.textContent ?? "", new RegExp(words.noRepos));
-  assert.ok(within(menu).getByRole("link", { name: words.connectGitHub }));
+test("the image menu ends with a way to manage images where the workspace may add them", async () => {
+  render(<Pickers seen={[]} />);
+  fireEvent.click(screen.getByRole("button", { name: `${words.image}: ${words.defaultImage}` }));
+  const menu = await screen.findByRole("menu", { name: words.image });
+  assert.equal(
+    within(menu).getByRole("menuitem", { name: words.manage }).getAttribute("href"),
+    "/settings/images",
+  );
+  cleanup();
+  render(
+    <Pickers
+      seen={[]}
+      given={{ ...options, images: options.images.slice(0, 2), imageRegistries: [] }}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: `${words.image}: ${words.defaultImage}` }));
+  const plain = await screen.findByRole("menu", { name: words.image });
+  assert.equal(within(plain).queryByRole("menuitem"), null);
+});
+
+test("with the default alone and nothing to add, or options unread, the picker draws nothing", () => {
+  render(
+    <Pickers
+      seen={[]}
+      given={{ ...options, images: options.images.slice(0, 1), imageRegistries: [] }}
+    />,
+  );
+  assert.equal(screen.queryByTestId("session-setup"), null);
   cleanup();
   render(<Pickers seen={[]} given={null} />);
   assert.equal(screen.queryByTestId("session-setup"), null);
 });
 
-test("the project, environment and repository controls under Home's composer are its size", () => {
+function Plus({ repos, seen }: { repos: readonly string[] | null; seen: string[][] }) {
+  const [value, setValue] = useState<string[]>([]);
+  return (
+    <PlusMenu
+      agents={[]}
+      onAttach={() => {}}
+      onClose={() => {}}
+      repos={{
+        options: repos,
+        value,
+        onChange: (next) => {
+          seen.push(next);
+          setValue(next);
+        },
+        connectHref: "/settings/connections",
+        max: 2,
+      }}
+    />
+  );
+}
+
+test("repositories are context from the plus menu: any number up to the most, and said on its row", async () => {
+  const seen: string[][] = [];
+  render(<Plus repos={["acme/billing", "acme/web", "acme/infra"]} seen={seen} />);
+  fireEvent.click(screen.getByRole("button", { name: new RegExp(picker.repos) }));
+  const group = await screen.findByRole("group", { name: picker.repos });
+  fireEvent.click(within(group).getByRole("button", { name: /acme\/billing/ }));
+  fireEvent.click(within(group).getByRole("button", { name: /acme\/web/ }));
+  assert.deepEqual(seen.at(-1), ["acme/billing", "acme/web"]);
+  // At the most, another is not taken; a second press takes one off.
+  const infra = within(group).getByRole("button", { name: /acme\/infra/ });
+  assert.equal(infra.getAttribute("aria-disabled"), "true");
+  fireEvent.click(infra);
+  assert.deepEqual(seen.at(-1), ["acme/billing", "acme/web"]);
+  fireEvent.click(within(group).getByRole("button", { name: /acme\/web/ }));
+  assert.deepEqual(seen.at(-1), ["acme/billing"]);
+  assert.equal(
+    within(group)
+      .getByRole("button", { name: /acme\/billing/ })
+      .getAttribute("aria-pressed"),
+    "true",
+  );
+});
+
+test("with no repository connected the plus menu says so and leads to Connections", async () => {
+  render(<Plus repos={[]} seen={[]} />);
+  fireEvent.click(screen.getByRole("button", { name: new RegExp(picker.repos) }));
+  assert.ok(await screen.findByText(picker.noRepos));
+  assert.equal(
+    screen.getByRole("link", { name: picker.connectGitHub }).getAttribute("href"),
+    "/settings/connections",
+  );
+});
+
+test("the project and image controls under Home's composer are its size", () => {
   render(
     <>
       <ProjectPicker projects={[]} value="" onChange={() => {}} onCreated={() => {}} />
       <Pickers seen={[]} />
     </>,
   );
-  for (const name of [
-    "Select project: Workspace",
-    `${words.environment}: ${words.auto}`,
-    `${words.repoLabel}: ${words.none}`,
-  ]) {
+  for (const name of ["Select project: Workspace", `${words.image}: ${words.defaultImage}`]) {
     const trigger = screen.getByRole("button", { name });
     const classes = trigger.className.split(/\s+/);
     // 32px tall, 44px on a touch screen, as Attach, Send, the microphone, approval and usage are.
@@ -123,7 +255,7 @@ test("the project, environment and repository controls under Home's composer are
   }
 });
 
-test("a private session is started with its environment and repositories, and Auto is not sent", async () => {
+test("a private session is started with its image and repositories, and the default is not sent", async () => {
   const bodies: unknown[] = [];
   const net = stubFetch({
     "POST /api/sessions": (body) => {
@@ -137,7 +269,7 @@ test("a private session is started with its environment and repositories, and Au
       channel: "general",
       text: "Fix the rounding",
       visibility: "private",
-      environment: "docker",
+      image: "img_a",
       repos: ["acme/billing"],
     })
     .catch(() => undefined);
@@ -147,19 +279,20 @@ test("a private session is started with its environment and repositories, and Au
       channel: "general",
       text: "Hi",
       visibility: "private",
-      environment: "auto",
+      image: "default",
       repos: [],
     })
     .catch(() => undefined);
-  assert.equal((bodies[0] as { environment?: string }).environment, "docker");
+  assert.equal((bodies[0] as { image?: string }).image, "img_a");
   assert.deepEqual((bodies[0] as { repos?: string[] }).repos, ["acme/billing"]);
-  assert.equal("environment" in (bodies[1] as object), false);
+  assert.equal("image" in (bodies[1] as object), false);
   assert.equal("repos" in (bodies[1] as object), false);
   net.restore();
 });
 
-test("the panel's Environment shows the repositories and environment chosen for the session", async () => {
+test("the panel's Environment names the session's image, pinned, and where it runs", async () => {
   const net = stubFetch({
+    "GET /api/sessions/options": () => options,
     "GET /api/threads/s_set/sandboxes": () => ({
       session: {
         isolated: true,
@@ -192,16 +325,17 @@ test("the panel's Environment shows the repositories and environment chosen for 
         pulls={[]}
         facts={{}}
         open={{ tab: () => {} }}
-        chosen={{ environment: "docker", repos: ["acme/billing"] }}
+        chosen={{ image: "img_a", repos: ["acme/billing"] }}
       />
     </ul>,
   );
   await waitFor(() =>
     assert.match(
-      screen.getByTestId("panel-sandbox").textContent ?? "",
-      /Chosen environment: docker/,
+      screen.getByTestId("panel-image").textContent ?? "",
+      /Agent tools.*ghcr\.io\/acme\/agent@0f0f0f0f0f0f · docker\/runsc/,
     ),
   );
+  assert.equal(screen.getByTestId("panel-image").getAttribute("href"), "/settings/images");
   assert.equal(
     screen.getByTestId("panel-repo").getAttribute("href"),
     "https://github.com/acme/billing",

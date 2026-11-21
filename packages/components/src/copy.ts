@@ -3992,6 +3992,10 @@ export const defaultCopy = {
       skillsFailed: "Skills could not be loaded.",
       noSkills: "No skills are available in this project.",
       noSkillMatch: "No skill matches.",
+      repos: "Repositories",
+      reposLoading: "Loading repositories",
+      noRepos: "No repositories are connected.",
+      connectGitHub: "Connect GitHub",
     },
     /** Where the conversation is filed, in the composer's bar, as a list. */
     selected: "Selected for this conversation",
@@ -4893,7 +4897,9 @@ export const defaultCopy = {
     openOnGitHub: (what: string) => `Open ${what} on GitHub`,
     showMore: (n: number) => `Show ${n} More`,
     /** What the session was set up with before its first message. */
-    chosenEnvironment: "Chosen environment",
+    image: "Image",
+    imageSub: (ref: string, sandbox: string) => [ref, sandbox].filter(Boolean).join(" · "),
+    manageImages: "Manage images",
     chosenRepo: "Chosen repository",
     /** The header's Terminal and Browser, when they cannot open, and why. */
     unavailable: {
@@ -4918,19 +4924,42 @@ export const defaultCopy = {
    * where its tools run, and the repositories it works in.
    */
   sessionSetup: {
-    environment: "Environment",
-    auto: "Auto",
-    autoHint: "This workspace's default",
-    isolated: "Isolated sandbox",
-    onServer: "On this server",
-    terminal: "Terminal",
-    repo: "Repo",
-    repoLabel: "Repositories",
-    repos: (n: number) => `${n} repos`,
-    none: "None",
-    noRepos: "No repositories are connected.",
-    connectGitHub: "Connect GitHub",
+    image: "Image",
+    defaultImage: "Default",
+    defaultHint: (ref: string) => (ref ? `Everyone's · ${ref}` : "Everyone's"),
+    warm: "Ready now",
+    cold: "Starts on first use",
+    checking: "Checking",
+    failed: "Failed",
+    manage: "Manage Images",
   },
+  /** Settings → Images: the images a workspace's sessions may run in. */
+  images: {
+    title: "Images",
+    empty: "No images of your own yet",
+    add: "Add Image",
+    name: "Name",
+    namePlaceholder: "Agent tools",
+    ref: "Image",
+    refHint: (registries: string) => `From ${registries}. Pinned to its digest when it is checked.`,
+    credential: "Pull credential",
+    credentialHint: "user:token, for a private image. Kept apart and never shown again.",
+    warm: "Keep warm",
+    warmHint: "One instance stays started on each sandbox host, so a session does not wait.",
+    status: { checking: "Checking", ready: "Ready", failed: "Failed" },
+    /** A ready image being checked again: sessions still run it. */
+    rechecking: "Checking Again",
+    /** Why a ready image's latest check failed; it runs the digest it had. */
+    stillRuns: (problem: string) =>
+      `Last check failed: ${problem}. Sessions still run it as pinned.`,
+    checkAgain: "Check Again",
+    remove: "Remove",
+    off: "This deployment runs only its default image.",
+    defaultRow: "Default",
+    defaultSub: (ref: string) => `Everyone's image · ${ref}`,
+    pinned: (digest: string) => `Pinned ${digest}`,
+  },
+
   /**
    * The session's workbench: the tabs of the pane Details opens, and what a
    * person did by hand in them, which goes with their next message

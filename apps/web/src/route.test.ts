@@ -153,6 +153,9 @@ test("an unknown page stays visible as not found while legacy tabs fall back saf
 test("the legacy read audit address opens the shared Audit page", () => {
   assert.equal(href({ page: "settings", section: "voice" }), "/settings/voice");
   assert.deepEqual(at("/settings/voice"), { page: "settings", section: "voice" });
+  // The workspace's own sandbox images are a section of the workspace's settings.
+  assert.equal(href({ page: "settings", section: "images" }), "/settings/images");
+  assert.deepEqual(at("/settings/images"), { page: "settings", section: "images" });
   assert.deepEqual(at("/settings/read-audit"), { page: "audit" });
   assert.deepEqual(at("/settings/deletions"), { page: "settings", section: "deletions" });
   assert.equal(href({ page: "settings", section: "providers" }), "/settings/providers");

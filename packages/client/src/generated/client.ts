@@ -104,6 +104,8 @@ import type {
   HandoffUpdate,
   Health,
   HealthComponent,
+  ImageChange,
+  ImageInput,
   ImportKnowledgeDocumentBody,
   InboxCounts,
   InboxDeliveryInput,
@@ -307,6 +309,8 @@ import type {
   WorkspaceFileList,
   WorkspaceFilePublish,
   WorkspaceFileWrite,
+  WorkspaceImage,
+  WorkspaceImages,
 } from "./types.js";
 import { type SSEEvent, type SSEOptions, streamSse } from "./sse.js";
 
@@ -1033,9 +1037,10 @@ visible older history pages on reset.
     });
   }
 
-  /** The environments are this deployment's: `auto` (its default) and its
-configured sandbox. The repositories are those the caller's
-tenant's enabled GitHub clients may read or write, sorted, at most 100.
+  /** The images are the deployment's default, then the caller's
+workspace's own, oldest first; only a ready one may be chosen. The
+repositories are those the caller's tenant's enabled GitHub clients
+may read or write, sorted, at most 100.
  */
   async getSessionOptions(options?: RequestOptions): Promise<SessionOptions> {
     const path = "/api/sessions/options";
@@ -1047,6 +1052,85 @@ tenant's enabled GitHub clients may read or write, sorted, at most 100.
   async getSessionOptionsRaw(options?: RequestOptions): Promise<ApiResponse<SessionOptions>> {
     const path = "/api/sessions/options";
     return this.rawRequest<SessionOptions>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** The images the caller's workspace added for sessions to run in, oldest
+first, and the registries it may add them from. Empty in a deployment
+that runs only its default image.
+ */
+  async listImages(options?: RequestOptions): Promise<WorkspaceImages> {
+    const path = "/api/images";
+    return this.request<WorkspaceImages>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listImagesRaw(options?: RequestOptions): Promise<ApiResponse<WorkspaceImages>> {
+    const path = "/api/images";
+    return this.rawRequest<WorkspaceImages>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Keeps the image, checking, and checks it in the background: pulls it
+through the sandbox's Docker daemon, pins it to its digest, and runs
+sh in it as the sandbox's user. Poll GET /api/images for the outcome.
+A workspace keeps at most 20.
+ */
+  async addImage(body: ImageInput, options?: RequestOptions): Promise<WorkspaceImage> {
+    const path = "/api/images";
+    return this.request<WorkspaceImage>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async addImageRaw(body: ImageInput, options?: RequestOptions): Promise<ApiResponse<WorkspaceImage>> {
+    const path = "/api/images";
+    return this.rawRequest<WorkspaceImage>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** A session started in it is refused a sandbox from then on. */
+  async removeImage(id: string, options?: RequestOptions): Promise<void> {
+    let path = "/api/images/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    await this.request<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  async removeImageRaw(id: string, options?: RequestOptions): Promise<ApiResponse<void>> {
+    let path = "/api/images/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  /** Keep an image warm, or check it again */
+  async changeImage(id: string, body: ImageChange, options?: RequestOptions): Promise<WorkspaceImage> {
+    let path = "/api/images/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<WorkspaceImage>("PATCH", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async changeImageRaw(id: string, body: ImageChange, options?: RequestOptions): Promise<ApiResponse<WorkspaceImage>> {
+    let path = "/api/images/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<WorkspaceImage>("PATCH", path, {
+      body,
+      contentType: "application/json",
       ...options,
     });
   }

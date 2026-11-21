@@ -181,3 +181,41 @@ func (p *Platform) ReleaseTurn(req runtime.Request) { p.releaseTurn(req) }
 
 // SetPersonCommandTimeout shortens how long a person's command may run.
 func (p *Platform) SetPersonCommandTimeout(d time.Duration) { p.personCommands.timeout = d }
+
+// SetImageRepullTimeout bounds one pull of a ready image at start to d,
+// and returns what puts it back.
+func SetImageRepullTimeout(d time.Duration) (restore func()) {
+	was := imageRepullTimeout
+	imageRepullTimeout = d
+	return func() { imageRepullTimeout = was }
+}
+
+// SetImageCheckTimeout bounds one image's pull and first start to d, and
+// returns what puts it back.
+func SetImageCheckTimeout(d time.Duration) (restore func()) {
+	was := imageCheckTimeout
+	imageCheckTimeout = d
+	return func() { imageCheckTimeout = was }
+}
+
+// SetImageBeats sets how often a check under way says so, how long a
+// silent one is before it counts as stranded, and how often a process looks
+// for those. It returns what puts them back.
+func SetImageBeats(every, stale, sweep time.Duration) (restore func()) {
+	wasEvery, wasStale, wasSweep := imageBeatEvery, imageBeatStale, imageSweepEvery
+	imageBeatEvery, imageBeatStale, imageSweepEvery = every, stale, sweep
+	return func() { imageBeatEvery, imageBeatStale, imageSweepEvery = wasEvery, wasStale, wasSweep }
+}
+
+// SweepImages does one pass of the images sweep: checks no process is
+// running are started again, and what is kept warm is read again.
+func SweepImages(p *Platform) {
+	p.adoptStrandedChecks()
+	p.keepImagesWarm()
+}
+
+// SessionDigest is the digest a session's runs and a person's commands
+// lease, or why they are refused one.
+func SessionDigest(p *Platform, tenant, thread string) (string, error) {
+	return p.imageOf(tenant, thread)
+}

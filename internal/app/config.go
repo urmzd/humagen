@@ -266,6 +266,7 @@ func loadFiles(ctx context.Context, o Options, paths []string, keys credref.Reso
 		}
 		set("sandbox-image", b.Image)
 		set("sandbox-connectors-image", b.ConnectorsImage)
+		set("sandbox-image-registries", strings.Join(b.ImageRegistries, ","))
 		set("sandbox-work-root", b.WorkRoot)
 		set("sandbox-host", b.Host)
 		set("sandbox-tls-dir", b.TLSDir)

@@ -1,5 +1,13 @@
 import { defaultCopy } from "@humagen/components";
-import { BotIcon, CheckIcon, FileIcon, ProjectIcon, WrenchIcon, XIcon } from "@humagen/render-web";
+import {
+  BotIcon,
+  CheckIcon,
+  CodeIcon,
+  FileIcon,
+  ProjectIcon,
+  WrenchIcon,
+  XIcon,
+} from "@humagen/render-web";
 import { type KeyboardEvent, type ReactNode, useLayoutEffect, useRef, useState } from "react";
 import type { ProjectView } from "./api.ts";
 import { PaneMenu, type PaneMenuRow, paneMenuRow as row } from "./PaneMenu.tsx";
@@ -33,6 +41,7 @@ export function PlusMenu({
   skills,
   skillsFailed = false,
   onSkill,
+  repos,
 }: {
   /** The agents that may answer where the conversation lives. Null while they load. */
   agents: Choice[] | null;
@@ -52,6 +61,12 @@ export function PlusMenu({
   skillsFailed?: boolean;
   /** Prepares the message through the host's existing skill-tag insertion. */
   onSkill?: (name: string) => void;
+  /**
+   * The repositories a new session may work in, as context for its first
+   * message: those the workspace's GitHub apps may read, and the chosen ones.
+   * Left out where repositories are not chosen.
+   */
+  repos?: RepoChoice;
 }) {
   const c = words.picker;
   const [agentQuery, setAgentQuery] = useState("");
@@ -244,6 +259,14 @@ export function PlusMenu({
         ),
       },
     });
+  if (repos)
+    rows.push({
+      id: "repos",
+      label: c.repos,
+      icon: <CodeIcon size={16} className="text-aui-muted" />,
+      value: repos.value.length > 0 ? c.selected(repos.value.length) : undefined,
+      pane: { title: c.repos, body: <RepoChoices {...repos} /> },
+    });
 
   return (
     <PaneMenu
@@ -334,5 +357,69 @@ export function SelectionChips({
         )}
       </li>
     </ul>
+  );
+}
+
+/** The repositories a new session may be given as context, and those it was. */
+export interface RepoChoice {
+  /** Null while they load. */
+  options: readonly string[] | null;
+  value: readonly string[];
+  onChange: (repos: string[]) => void;
+  /** Where to connect GitHub when there are none. */
+  connectHref?: string;
+  max?: number;
+}
+
+/** Repositories as a list of checkable rows: any number up to max, none is fine. */
+function RepoChoices({ options, value, onChange, connectHref, max = 10 }: RepoChoice) {
+  const c = words.picker;
+  if (options === null)
+    return (
+      <p role="status" className="px-2.5 py-3 text-aui-xs text-aui-muted">
+        {c.reposLoading}
+      </p>
+    );
+  if (options.length === 0)
+    return (
+      <div className="flex flex-col items-start gap-2 px-2.5 py-3">
+        <p className="text-aui-xs text-aui-muted">{c.noRepos}</p>
+        {connectHref && (
+          <a
+            href={connectHref}
+            className="inline-flex min-h-9 items-center rounded-aui text-aui-sm text-aui-fg underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-aui-accent"
+          >
+            {c.connectGitHub}
+          </a>
+        )}
+      </div>
+    );
+  return (
+    <div role="group" aria-label={c.repos} className="flex flex-col" data-testid="plus-repos">
+      {options.map((r) => {
+        const on = value.includes(r);
+        const full = !on && value.length >= max;
+        return (
+          <button
+            key={r}
+            type="button"
+            data-pane-item="choice"
+            data-repo={r}
+            aria-pressed={on}
+            aria-disabled={full || undefined}
+            className={`${row} aria-disabled:opacity-50`}
+            onClick={() => {
+              if (full) return;
+              onChange(on ? value.filter((x) => x !== r) : [...value, r]);
+            }}
+          >
+            <span className="min-w-0 flex-1 truncate">{r}</span>
+            <span aria-hidden className="inline-flex size-4 shrink-0 items-center justify-center">
+              {on && <CheckIcon size={14} />}
+            </span>
+          </button>
+        );
+      })}
+    </div>
   );
 }

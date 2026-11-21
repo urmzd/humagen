@@ -208,21 +208,23 @@ type SessionIdentity struct {
 	Parent      string `json:"parent"`
 	Label       string `json:"label,omitempty"`
 	SourceAlert string `json:"source_alert,omitempty"`
-	// Environment and Repos are what the person chose when starting it.
-	Environment string   `json:"environment,omitempty"`
-	Repos       []string `json:"repos,omitempty"`
+	// Image and Repos are what the person chose when starting it: the id
+	// of the image its tools run in (pkg/images; empty or "default" is the
+	// deployment's own) and the repositories it works on.
+	Image string   `json:"image,omitempty"`
+	Repos []string `json:"repos,omitempty"`
 }
 
-// Bounds on a session's chosen environment and repositories.
+// Bounds on a session's chosen image and repositories.
 const (
-	MaxSessionRepos       = 10
-	MaxSessionEnvironment = 64
-	MaxSessionRepo        = 200
+	MaxSessionRepos = 10
+	MaxSessionImage = 64
+	MaxSessionRepo  = 200
 )
 
 // Check refuses a stored choice that is out of bounds.
 func (s SessionIdentity) Check() error {
-	if len(s.Environment) > MaxSessionEnvironment || len(s.Repos) > MaxSessionRepos {
+	if len(s.Image) > MaxSessionImage || len(s.Repos) > MaxSessionRepos {
 		return fmt.Errorf("%w: session environment or repos too long", ErrInvalid)
 	}
 	for _, r := range s.Repos {
@@ -676,7 +678,7 @@ func (m Message) validate() error {
 // same reports whether two identities are equal.
 func (s *SessionIdentity) same(o SessionIdentity) bool {
 	return s.Agent == o.Agent && s.Parent == o.Parent && s.Label == o.Label && s.SourceAlert == o.SourceAlert &&
-		s.Environment == o.Environment && slices.Equal(s.Repos, o.Repos)
+		s.Image == o.Image && slices.Equal(s.Repos, o.Repos)
 }
 
 // Listener is the person an addressed thread listens to, and their mention
