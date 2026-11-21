@@ -5807,6 +5807,8 @@ export interface SessionInput {
   surface_kind?: string;
   /** With surface: post the message without starting anything. */
   post_only?: boolean;
+  /** With surface: post a message that addressed nobody, such as a reply in a Slack thread that does not mention the app. It starts no session. In one that is `listening` the agent is asked whether the message calls for it, and answers it or the message is kept and starts nothing. Anywhere else the answer is 409 and nothing is kept. */
+  listen?: boolean;
 }
 
 /** What a person asks of a session's browser. */
