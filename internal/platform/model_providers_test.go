@@ -370,6 +370,46 @@ func TestBuiltinsShipWithAChainAndRunOnWhatIsEnabled(t *testing.T) {
 	}
 }
 
+// A deployment may rename the entry agent. It still ships on the platform's
+// chain, so it never holds a preset on; a person's own revision of it does.
+func TestARenamedEntryAgentDoesNotHoldAPresetOn(t *testing.T) {
+	p, _ := configured(t, Config{ShipBuiltins: true, EntryAgent: "acme-bot"})
+	ctx := t.Context()
+	for kind, key := range map[string]string{KindOpenAI: "sk-o", KindAnthropic: "sk-a"} {
+		if _, err := p.SetModelProvider(ctx, admin("acme"), kind, ModelProviderInput{Kind: kind, Key: key}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := p.EnsureBuiltins(ctx, "acme"); err != nil {
+		t.Fatal(err)
+	}
+	entry, err := p.Catalog().Get(ctx, "acme", "acme-bot", 0)
+	if err != nil || !p.isEntry(entry) || IsBuiltin(entry.Spec.Name) {
+		t.Fatalf("the renamed entry agent = %+v, %v", entry, err)
+	}
+	names := func(kind string) bool {
+		return entry.Spec.Provider == kind || slices.ContainsFunc(entry.Spec.Fallbacks, func(f wire.ModelRef) bool { return f.Provider == kind })
+	}
+	if !names(KindOpenAI) || !names(KindAnthropic) {
+		t.Fatalf("the entry agent's chain = %s %+v", entry.Spec.Provider, entry.Spec.Fallbacks)
+	}
+	for _, enabled := range []bool{false, true} {
+		if _, err := p.SetModelProviderEnabled(ctx, admin("acme"), KindOpenAI, enabled); err != nil {
+			t.Fatalf("openai enabled=%v with a renamed entry agent: %v", enabled, err)
+		}
+	}
+	if _, err := p.SetModelProviderEnabled(ctx, admin("acme"), KindAnthropic, false); err != nil {
+		t.Fatalf("turning anthropic off with a renamed entry agent: %v", err)
+	}
+	// A person who revises it has made an assignment of their own.
+	if _, err := p.Agents.Revise(ctx, "acme", entry.Spec, entry.Rev, "ada"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.SetModelProviderEnabled(ctx, admin("acme"), KindOpenAI, false); !errors.Is(err, ErrModelProviderInUse) || !strings.Contains(err.Error(), "@acme-bot") {
+		t.Fatalf("turning openai off under a person's own revision = %v", err)
+	}
+}
+
 func TestWorkspaceRefRoundTrips(t *testing.T) {
 	for _, tenant := range []string{"acme", "a-b/c:d", "ünïcode"} {
 		ref := workspaceRef(tenant, "team-1")

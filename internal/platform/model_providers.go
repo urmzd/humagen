@@ -466,7 +466,8 @@ func (p *Platform) providerUsers(ctx context.Context, tenant, name string, cfg S
 		}
 		for _, rev := range all {
 			// The platform's defaults already select from the available chain.
-			if skipShipped && rev.CreatedBy == "platform" && IsBuiltin(rev.Spec.Name) {
+			// The entry agent is one of them under whatever name it was given.
+			if skipShipped && rev.CreatedBy == "platform" && (IsBuiltin(rev.Spec.Name) || p.isEntry(rev)) {
 				continue
 			}
 			if names(rev.Spec) {
