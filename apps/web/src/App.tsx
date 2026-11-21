@@ -1242,12 +1242,13 @@ function Console({
                     <ProjectPage
                       key={route.name}
                       self={me.handle ?? ""}
-                      composer={(placeholder) => (
+                      composer={(placeholder, footer) => (
                         // Home's own composer, filing what it starts in this project.
                         <Chat
                           key={`project:${route.name}`}
                           composerOnly
                           placeholder={placeholder}
+                          composerFooter={footer}
                           threadId={null}
                           me={me.principal.subject}
                           handle={me.handle ?? ""}

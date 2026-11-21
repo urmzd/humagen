@@ -12,6 +12,7 @@ import { Chat } from "./Chat.tsx";
 import { stubEventSource, stubFetch } from "./dom.ts";
 import { forgetConfiguredProviders } from "./ModelChain.tsx";
 import { globex } from "./projects.fixtures.ts";
+import { ComposerFooter } from "./SessionUsage.tsx";
 
 const at = "2026-10-01T09:00:00Z";
 const agent = (name: string, description = ""): Revision => ({
@@ -1519,6 +1520,36 @@ test("composer only, as a project's page draws it: no greeting, its own words, a
   assert.equal(box().getAttribute("placeholder"), "New session in Globex");
   fireEvent.change(box(), { target: { value: "Draft the renewal note" } });
   fireEvent.keyDown(box(), { key: "Enter" });
+  await waitFor(() => assert.deepEqual(opened, ["th-00000000000000ab"]));
+  const started = net?.seen.find((s) => s.method === "POST");
+  assert.deepEqual(started?.body, { project: "Globex", text: "Draft the renewal note" });
+});
+
+test("a project's page puts the approval mode in the row under the box, beside where the session is filed, and still starts it in the project", async () => {
+  const { opened } = openChat(workspace("lead"), {
+    startIn: "Globex",
+    composerOnly: true,
+    placeholder: "New session in Globex",
+    composerFooter: (approval) => (
+      <ComposerFooter start={<span>Filed in Globex</span>} approval={approval} />
+    ),
+  });
+  const footer = screen.getByRole("group", { name: defaultCopy.dock.footer });
+  assert.ok(within(footer).getByText("Filed in Globex"));
+  const approval = within(footer).getAllByRole("button", { name: /Ask Me/ });
+  assert.ok(approval.length > 0, "the approval mode is in the footer");
+  const box = screen.getByLabelText("Message", { selector: "textarea" });
+  const bar = box.closest("form") as HTMLElement;
+  assert.ok(!footer.contains(box), "the footer is under the box, not in it");
+  assert.equal(
+    [...bar.querySelectorAll("button")].filter(
+      (b) => /Ask Me/.test(b.textContent ?? "") && !footer.contains(b),
+    ).length,
+    0,
+    "not in the box as well",
+  );
+  fireEvent.change(box, { target: { value: "Draft the renewal note" } });
+  fireEvent.keyDown(box, { key: "Enter" });
   await waitFor(() => assert.deepEqual(opened, ["th-00000000000000ab"]));
   const started = net?.seen.find((s) => s.method === "POST");
   assert.deepEqual(started?.body, { project: "Globex", text: "Draft the renewal note" });

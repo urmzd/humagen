@@ -236,7 +236,14 @@ export function Chat({
   findHelp,
   personalProject,
   starters: ownStarters,
+  composerFooter,
 }: {
+  /**
+   * The row under a new session's box, given its approval mode: a project's
+   * page says where the session is filed on its left. Left out, the approval
+   * mode sits in the box, as on Home.
+   */
+  composerFooter?: (approval: ReactNode) => ReactNode;
   /** The workspace's suggestions on an empty conversation. Null or left out is the console's own. */
   starters?: Starter[] | null;
   /**
@@ -720,6 +727,9 @@ export function Chat({
     send: (text, _pick, uploads) => queue.send(text, undefined, uploads),
     sendNow: (text, _pick, uploads) => queue.sendNow(text, undefined, uploads),
   };
+  const newApproval = (
+    <ApprovalToggle me={handle || me} pending={pendingApproval} onPending={setPendingApproval} />
+  );
   // Drawn with the page: only sending and mentions wait for the agents.
   const composer = canRun && (agents.length > 0 || !agentsRead || agentsFailed) && (
     <div
@@ -791,16 +801,14 @@ export function Chat({
           draft.current = text;
         }}
         trailing={
-          threadId ? (
-            room?.thread && <ApprovalToggle thread={room.thread} me={handle || me} />
-          ) : (
-            <ApprovalToggle
-              me={handle || me}
-              pending={pendingApproval}
-              onPending={setPendingApproval}
-            />
-          )
+          threadId
+            ? room?.thread && <ApprovalToggle thread={room.thread} me={handle || me} />
+            : composerFooter
+              ? undefined
+              : newApproval
         }
+        // A project's page puts the approval mode in the footer under the box, as a conversation does.
+        footer={!threadId && composerFooter ? composerFooter(newApproval) : undefined}
         // An agent the project picked does not offer is not kept for it.
         onAvailable={
           threadId
