@@ -680,3 +680,99 @@ grant operator to subject "vic"
 		t.Fatalf("the thread listens to %+v, want vic", th.Listener)
 	}
 }
+
+// Only a mention moves whom a thread listens to: the listener's own
+// unmentioned follow-up, answered, neither moves nor refreshes the anchor,
+// so a newer mention answered late still wins (F4). A follow-up that tags an
+// agent asks, as a mention does.
+func TestTheNewestAnsweredMentionWinsTheListener(t *testing.T) {
+	p, _ := slackRoomOn(t, startWith(t, platform.Config{Router: func(string) join.Asker {
+		return join.AskerFunc(func(_ context.Context, c join.Candidate, _ string) (join.Decision, error) {
+			return join.Decision{Agent: c.Name, Join: true, Reason: "it would take anything"}, nil
+		})
+	}}), nil)
+	pol, err := auth.ParsePolicy("test", `
+role viewer { allow read on * }
+role operator extends viewer { allow write on runs }
+grant operator to subject "ana"
+grant operator to subject "vic"
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	machine := auth.Principal{Subject: "svc-slack", Tenant: tenant, Kind: auth.Machine, Scopes: []auth.Permission{auth.RunsRead, auth.RunsWrite}}.WithPolicy(pol)
+	const root = "1700000000.000100"
+	say := func(user, ts, text string, listen bool) (platform.Posted, error) {
+		t.Helper()
+		in := fromSlack("C01RENEW", root, ts, text)
+		in.ActAs.User, in.Listen = user, listen
+		got, err := p.StartThread(t.Context(), machine, in)
+		for _, r := range got.Runs {
+			settle(t, p, r.ID)
+		}
+		return got, err
+	}
+	// awaitAnchor waits for the thread to listen to person's mention at ts.
+	awaitAnchor := func(id, person, ts string) {
+		t.Helper()
+		deadline := time.Now().Add(30 * time.Second)
+		for {
+			th, err := p.Threads.Get(tenant, id)
+			if err == nil && th.Listener != nil && th.Listener.Person == person && th.Listener.Message == ts {
+				return
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("thread %s listens to %+v, want %s at %s", id, th.Listener, person, ts)
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
+	// stays checks that the anchor is still person at ts once every completion step ran.
+	stays := func(id, person, ts string, ran platform.Posted) {
+		t.Helper()
+		for _, r := range ran.Runs {
+			if got := settle(t, p, r.ID); got.Status != runs.Completed || got.Answer == "" {
+				t.Fatalf("the follow-up's run ended %q with %q", got.Status, got.Answer)
+			}
+		}
+		// Its completion steps run just after it ends: give them time to move the anchor, if they would.
+		time.Sleep(500 * time.Millisecond)
+		th, err := p.Threads.Get(tenant, id)
+		if err != nil || th.Listener == nil || th.Listener.Person != person || th.Listener.Message != ts {
+			t.Fatalf("after an unmentioned follow-up the thread listens to %+v, want %s at %s, %v", th.Listener, person, ts, err)
+		}
+	}
+
+	first, err := say("U0ANA", "", "<@UAPP> @lead what changed in the renewal?", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := first.Thread.ID
+	awaitAnchor(id, "ana", root)
+
+	// Ana's own unmentioned follow-up is heard and answered, and moves nothing.
+	heard, err := say("U0ANA", "1700000000.000400", "and the terms?", true)
+	if err != nil || len(heard.Runs) != 1 || !heard.Message.Heard {
+		t.Fatalf("ana's follow-up: %d runs, heard %v, %v", len(heard.Runs), heard.Message.Heard, err)
+	}
+	stays(id, "ana", root, heard)
+
+	// Vic's mention at .300, newer than ana's mention and older than her
+	// follow-up, is answered late: it wins.
+	if _, err := p.Threads.Listen(tenant, id, "vic", "1700000000.000300", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	awaitAnchor(id, "vic", "1700000000.000300")
+	if got, err := say("U0ANA", "1700000000.000500", "and the terms again?", true); !errors.Is(err, platform.ErrNotListening) || len(got.Runs) != 0 {
+		t.Fatalf("ana after vic's late answer: %d runs, %v", len(got.Runs), err)
+	}
+	if got, err := say("U0VIC", "1700000000.000600", "and the discount?", true); err != nil || len(got.Runs) != 1 {
+		t.Fatalf("vic after his late answer: %d runs, %v", len(got.Runs), err)
+	}
+
+	// A follow-up that tags an agent asks: answered, it moves the anchor to itself.
+	if _, err := say("U0VIC", "1700000000.000700", "@lead and the rollout?", true); err != nil {
+		t.Fatal(err)
+	}
+	awaitAnchor(id, "vic", "1700000000.000700")
+}

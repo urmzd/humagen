@@ -141,9 +141,9 @@ func (s *Store) Purge(tenantName, id, by string, at time.Time) error {
 	return nil
 }
 
-// Listen records that the app answered person's message (its surface id)
+// Listen records that the app answered person's mention (its surface id)
 // in an addressed thread: the thread is listening, to that person
-// (Thread.Listener). An answer to a message older than the listener's own
+// (Thread.Listener). An answer to a mention older than the listener's own
 // changes nothing, so a late answer cannot take the thread back. A thread
 // that is not addressed is left as it is. Its version does not change: it is
 // the record of what the app has answered, not an edit.

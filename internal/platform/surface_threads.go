@@ -205,7 +205,7 @@ func (p *Platform) startFromSurface(ctx context.Context, who auth.Principal, in 
 	if err := sf.Validate(); err != nil {
 		return Posted{}, err
 	}
-	post := MessageInput{Text: in.Text, PostOnly: in.PostOnly, ActAs: in.ActAs, Surface: &ref}
+	post := MessageInput{Text: in.Text, PostOnly: in.PostOnly, ActAs: in.ActAs, Surface: &ref, heard: in.Listen}
 	if th, ok, err := p.Threads.BySurface(who.Tenant, sf); err != nil {
 		return Posted{}, err
 	} else if ok {
@@ -378,8 +378,8 @@ func (p *Platform) surfaceOfPost(who auth.Principal, th threads.Thread, in Messa
 // addresses nobody is not read until one does. A quiet run that answers
 // later starts it when it ends.
 //
-// It listens to the person whose message the run answered, and only an
-// answer to a newer message hands it to someone else.
+// It listens to the person whose mention the run answered, and only an
+// answer to a newer mention hands it to someone else (answered).
 func (p *Platform) listenOnAnswer(run runs.Run) error {
 	if run.Thread == "" || run.Status != runs.Completed || strings.TrimSpace(run.Answer) == "" {
 		return nil
@@ -387,11 +387,16 @@ func (p *Platform) listenOnAnswer(run runs.Run) error {
 	return p.answered(run.Tenant, run.Thread, wire.Meta(run.Tag())[runs.MetaMessage])
 }
 
-// answered records that the app answered message mid of a thread: an
-// addressed thread listens to its poster, unless it already listens to
-// someone's newer message.
+// answered records that the app answered message mid of a thread. Only a
+// mention moves whom an addressed thread listens to: it listens to the
+// poster of the newest mention answered there, by the mention's surface id.
+// A heard reply that tags no agent asked nothing, so the listener's own
+// unmentioned follow-ups neither move nor refresh it.
 func (p *Platform) answered(tenant, thread, mid string) error {
 	m, err := p.Threads.Message(tenant, thread, mid)
+	if err == nil && m.Heard && !tagsAgent(m) {
+		return nil
+	}
 	if err == nil {
 		_, err = p.Threads.Listen(tenant, thread, m.By, m.SurfaceID, p.now())
 	}
@@ -410,4 +415,10 @@ func (p *Platform) listensTo(who auth.Principal, th threads.Thread, as *ActAs) b
 	}
 	by, _, _, _, err := p.author(who, as)
 	return err == nil && by != "" && by == th.Listener.Person
+}
+
+// tagsAgent says whether a message tags an agent, which asks as a mention of
+// the app does.
+func tagsAgent(m threads.Message) bool {
+	return slices.ContainsFunc(m.Mentions, func(t threads.Mention) bool { return t.Kind == threads.Agent && t.Refused == "" })
 }

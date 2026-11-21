@@ -194,10 +194,11 @@ export class FakeHumagen implements Humagen {
   readonly addressed = new Set<string>();
   /**
    * Who each addressed Slack thread listens to, as the platform records it:
-   * the person whose message a run there answered most recently (completed
-   * with words in its answer), and that message's ts. A refused mention, a
-   * failed run, or one still quiet or parked answered nothing, and an answer
-   * to an older message than the listener's own changes nothing.
+   * the person whose mention a run there answered most recently (completed
+   * with words in its answer), and that mention's ts. A refused mention, a
+   * failed run, or one still quiet or parked answered nothing, an answer to
+   * an older mention than the listener's own changes nothing, and a heard
+   * reply that tags no agent never moves it.
    */
   readonly listening = new Map<string, { user: string; ts: string }>();
   /** Each run started from a Slack message: its thread, who asked and the message's ts. */
@@ -438,7 +439,10 @@ export class FakeHumagen implements Humagen {
         { agent, text: message.text, act_as: body.act_as },
         `thread-${thread}-${message.id}-${agent}`,
       );
-      this.askedIn.set(run.id, { where, user: body.act_as?.user ?? "", ts: s.message ?? s.ts });
+      // Only a mention (or a message that tags an agent) asks: a heard reply's
+      // answer does not move whom the thread listens to.
+      if (!body.listen || tagged)
+        this.askedIn.set(run.id, { where, user: body.act_as?.user ?? "", ts: s.message ?? s.ts });
       this.set(run.id, { thread, message: message.id });
       posted.runs = [this.runs.get(run.id) as Run];
     }

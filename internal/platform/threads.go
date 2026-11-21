@@ -113,6 +113,9 @@ type MessageInput struct {
 	Spoken bool `json:"spoken,omitempty"`
 	// reply is a reply to a mention, from the inbox.
 	reply bool
+	// heard is a message on a surface that addressed nobody, posted with
+	// listen (threads.Message.Heard).
+	heard bool
 }
 
 // ThreadUpdate changes a thread's title, visibility, default and routing,
@@ -980,7 +983,7 @@ func (p *Platform) PostMessage(ctx context.Context, who auth.Principal, id strin
 		return Posted{}, err
 	}
 	mentions = p.checkTags(who.Tenant, tree, th.Project, mentions)
-	msg := threads.Message{By: by, Name: name, Text: text, Mentions: mentions, Via: via, Prev: prev, SurfaceID: surfaceID, Spoken: in.Spoken}
+	msg := threads.Message{By: by, Name: name, Text: text, Mentions: mentions, Via: via, Prev: prev, SurfaceID: surfaceID, Spoken: in.Spoken, Heard: in.heard && on != nil}
 	if on != nil && len(in.Uploads) > 0 {
 		return Posted{}, fmt.Errorf("%w: surface files cannot be mixed with inline uploads", threads.ErrInvalid)
 	}

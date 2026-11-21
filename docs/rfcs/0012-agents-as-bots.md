@@ -198,6 +198,7 @@ refused mention, a failed run, or one still quiet or waiting on someone
 answered nothing and starts no listening. It listens only to the person whose
 mention the app answered most recently there, and only an answer to a newer
 mention hands it to someone else; anyone else mentions the app or an agent.
+The listener's own unmentioned follow-ups never move or refresh it.
 There the agent is asked whether the
 message calls for it: it answers, or the message is kept as what was said and
 nothing shows in Slack, so people talking to each other in the thread are not

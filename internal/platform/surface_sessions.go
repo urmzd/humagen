@@ -65,7 +65,7 @@ func (p *Platform) StartSurfaceSession(ctx context.Context, who auth.Principal, 
 	if err := sf.Validate(); err != nil {
 		return SessionView{}, false, err
 	}
-	post := MessageInput{Text: in.Text, ActAs: in.ActAs, Surface: &ref, PostOnly: in.PostOnly}
+	post := MessageInput{Text: in.Text, ActAs: in.ActAs, Surface: &ref, PostOnly: in.PostOnly, heard: in.Listen}
 	person, err := p.poster(who, in.ActAs)
 	if err != nil {
 		return SessionView{}, false, err

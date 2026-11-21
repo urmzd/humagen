@@ -1651,7 +1651,7 @@ not selected. Absent when none is selected.
   addressed?: boolean;
   /** An addressed thread the app has answered in. A refused mention, a failed run, or one still quiet or waiting on a person answered nothing and starts no listening. */
   listening?: boolean;
-  /** Whose later messages there that address nobody are read, when the thread is `listening`, and the agent decides of each whether it calls for it. It is the person whose message the app answered most recently; only an answer to a newer message changes it. Anyone else mentions the app or an agent to ask. */
+  /** Whose later messages there that address nobody are read, when the thread is `listening`, and the agent decides of each whether it calls for it. It is the person whose mention of the app or an agent the app answered most recently; only an answer to a newer mention changes it, and the listener's own unmentioned follow-ups never do. Anyone else mentions the app or an agent to ask. */
   listener?: ThreadListener;
   fork?: ThreadFork;
   import?: ThreadImport;
@@ -1922,6 +1922,8 @@ export interface ThreadMessage {
   surface_id?: string;
   /** Said in voice mode and transcribed. */
   spoken?: boolean;
+  /** A message on a surface that addressed nobody, read because the thread listens to its poster, such as a Slack reply with no mention of the app. Unless it tags an agent its answer does not change the thread's `listener`. */
+  heard?: boolean;
   /** When its author last corrected a spoken message's words. */
   edited_at?: string;
   at: string;

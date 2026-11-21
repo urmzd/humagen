@@ -2395,6 +2395,57 @@ test("a listened thread listens to the latest asker only, and a late older answe
   await w.app.idle();
 });
 
+test("the newest answered mention wins: the listener's unmentioned follow-up does not move the anchor", async () => {
+  const w = mapped({ stallMs: 30, slowPollMs: 40 });
+  const runs = () => w.humagen.started.length;
+  // Ana asks first, and is answered: the thread listens to her.
+  await deliver(w, mention("what broke the build?", TS));
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "The migration." });
+  await w.app.idle();
+
+  // Olu asks there with a mention, and his run goes quiet before it answers.
+  await deliver(
+    w,
+    mention("and the price?", "1700000030.000300", { thread_ts: TS, user: OTHER_USER }),
+  );
+  const newer = w.humagen.last.id;
+  await emit(w, "run.accepted.v1");
+  await pause(120);
+
+  // Ana's unmentioned follow-up, after Olu's mention, is heard and answered.
+  const at = runs();
+  await deliver(w, plain("and the rollback?", "1700000040.000400", { thread_ts: TS }));
+  assert.equal(runs() - at, 1, "the listener's follow-up is heard");
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "Rolled back." });
+  await pause(50);
+  assert.deepEqual(
+    w.humagen.listening.get(`${CLIENT}/${CHANNEL}/${TS}`),
+    { user: USER, ts: TS },
+    "the follow-up did not move the anchor",
+  );
+
+  // Olu's newer mention is answered late: the thread is his.
+  w.humagen.set(newer, { status: "completed", answer: "The price is fine." });
+  await w.app.idle();
+  await pause(100);
+  const mid = runs();
+  await deliver(w, plain("and the terms?", "1700000050.000500", { thread_ts: TS }));
+  await w.app.idle();
+  const ana = runs() - mid;
+  const last = runs();
+  await deliver(
+    w,
+    plain("and the discount?", "1700000060.000600", { thread_ts: TS, user: OTHER_USER }),
+  );
+  const olu = runs() - last;
+  assert.deepEqual({ ana, olu }, { ana: 0, olu: 1 });
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "No discount." });
+  await w.app.idle();
+});
+
 test("a message that mentions nobody outside a thread, or from someone the client does not map, is not heard", async () => {
   const w = mapped();
   await deliver(w, plain("anyone around?", "1700000200.000100"));
