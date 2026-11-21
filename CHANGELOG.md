@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.182.0 (2026-11-21)
+
+### Features
+
+- **site**: a terms page at withhumagen.com/terms (#512) ([f741b57](https://github.com/urmzd/humagen/commit/f741b5738f429506b19e1f80670770b80f6e70d0))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.181.0...v0.182.0)
+
+
 ## 0.181.0 (2026-11-21)
 
 ### Features
