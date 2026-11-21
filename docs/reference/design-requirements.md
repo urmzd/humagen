@@ -1645,14 +1645,27 @@ Rules:
   question>** in the warning color; waiting on someone else in muted ink;
   **Failed: <why>** in red; **Working** in muted ink; **Alert: <its title>**
   for an open alert, in the warning color when urgent. A session listing
-  carries `waiting_for`, `waiting_kind`, `waiting_on_you` and `failure` for
-  this; `failure` is set only while the latest turn failed, so a failure a
-  later turn answered is not shown. **Waiting for you** is said only when an open
-  question in the reader's own inbox, about that session, is addressed to
-  them as answering decides it (`Message.For`, the requester excluded) and
-  they may write runs; the listing reads the inbox once per page for this. A
-  question a called agent raises is filed under the calling session and
-  counts there. Anything else parked reads as waiting for someone, in muted
+  carries `waiting_for`, `waiting_kind`, `waiting_on_you`, `waiting_unknown`
+  and `failure` for this; `failure` is set only while the latest turn failed, so a failure a
+  later turn answered is not shown. **Waiting for you** is said only when an
+  open question one of the session's runs waits on is the reader's to answer,
+  by the one rule answering holds them to (`mayAnswer`): it is addressed to
+  them as it was raised (`Message.For`, the requester excluded), they may
+  write runs, and for a run held at a spend limit they hold `billing:write`.
+  The thread and the inbox offer an answer by the same rule, so a row never
+  says it waits on someone answering would refuse. The row reports the run,
+  not the reader's notifications: hiding, snoozing or deleting the inbox
+  message does not change whom the run waits on. A question a called agent
+  raises is filed under the calling session and counts there. The listing
+  reads this in one statement against the inbox for a whole page, and for one
+  session read alone: the workspace's newest 1000 live inbox messages
+  (`inbox.MaxAsking`), with no lookup for any message, and nothing at all when
+  no row waits. The inbox keeps no index by session, so the read cannot be
+  narrowed to one. When the workspace holds more live messages than that and
+  no question of the reader's about a waiting session was among those read,
+  the listing sets `waiting_unknown` and the row reads **Waiting: <what it
+  waits for>** in muted ink, with no dot: it says it waits and does not say on
+  whom. Anything else parked reads as waiting for someone, in muted
   ink, with what it waits for when the run says it. No bare `!`, `•` or icon stands for a
   state. **Red means failure only**; nothing in a row uses the accent.
 - A **dot** on the right of the title marks what is new to the reader, by
@@ -1670,7 +1683,11 @@ Rules:
   between 240px and 440px, and it is never drawn wider than a third of the
   window, so a tablet's page keeps its room; a double click puts it back. The width is kept in
   the browser beside whether the sidebar is open, since it follows the screen
-  it was set on. On a phone the sidebar stays a drawer.
+  it was set on. Only a width the person changed is kept: on a window too
+  narrow to draw the kept width, a press on the edge that moves nothing, a
+  key toward the bound it is already held at, or a drag let go where it
+  started leaves the kept width as it was, so it is drawn again on a wider
+  window. On a phone the sidebar stays a drawer.
 - **Alerts** stays a section of the sidebar with its count, which opens the
   Alerts page: Waiting, Snoozed and Done, each alert's title, source,
   priority, time and its action. A row with an open alert says it on its

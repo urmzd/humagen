@@ -470,41 +470,51 @@ func attentionOf(q inbox.QuestionPart) (what, kind string) {
 	return firstWords(firstLineOf(q.Prompt), MaxAttention), WaitingQuestion
 }
 
-// openQuestions is the questions open in the reader's own inbox that they
-// may answer, by the session they are about, for the sessions of one page:
-// one read of their inbox. A question is theirs only as answering decides it
-// from what it was raised with: addressed to them (Message.For, which
-// checkAnswer ends with), the person who asked for the work excluded, and
-// they may write runs. A question a called agent's run raised is filed under
-// the session that called it, so it counts there. Only sessions of the page,
-// which the reader was already found to read, are kept, so nothing else of
-// the inbox is read or shown. Answering checks again.
-func (p *Platform) openQuestions(who auth.Principal, sessions []string) map[string][]inbox.QuestionPart {
+// openQuestions is the open questions the runs of some sessions wait on
+// that the reader may answer, newest first, by the session each is about.
+// A question is the reader's as answering decides it from what it was raised
+// with and what they hold: mayAnswer, the rule checkAnswer holds every
+// answer to and the inbox offers a question's actions by, so a listing never
+// says a run waits on someone answering would refuse. A budget hold is
+// billing:write's, though it is addressed to everyone.
+//
+// It reports the run, not the reader's notifications: a reader who hid,
+// snoozed or deleted their copy of the message is still whom the run waits
+// on, so no reader's marks are read. A question a called agent's run raised
+// is filed under the session that called it, so it counts there. Only
+// sessions of the page, which the reader was already found to read, are
+// asked about.
+//
+// The cost is one statement, whatever the inbox holds and however many
+// sessions are asked about (inbox.Store.Asking: the tenant's newest
+// inbox.MaxAsking live messages, in one list, with no lookup for any; the
+// inbox keeps no index by session, so one session costs the same). known is
+// false when the tenant holds more live messages than that: a session with
+// no question here may still wait on the reader, and its row must say it
+// waits without saying on whom (ThreadSummary.WaitingUnknown). A reader who
+// may not write runs is asked nothing and nothing is read.
+func (p *Platform) openQuestions(who auth.Principal, sessions []string) (asks map[string][]inbox.QuestionPart, known bool) {
 	if !who.Can(auth.RunsWrite) || len(sessions) == 0 {
-		return nil
+		return nil, true
+	}
+	msgs, complete, err := p.Inbox.Asking(who.Tenant, sessions)
+	if err != nil {
+		p.log.Warn("platform: the questions waiting on a reader could not be read; sessions are listed without saying whom they wait on", "tenant", who.Tenant, "error", err)
+		return nil, false
 	}
 	reader := readerOf(who)
-	msgs, _, err := p.Inbox.Page(who.Tenant, inbox.Query{
-		Reader: reader.Subject, Roles: reader.Roles, Now: p.now(),
-		Kinds: []inbox.Kind{inbox.KindApproval, inbox.KindClarification},
-		Limit: inbox.MaxPage,
-	})
-	if err != nil {
-		p.log.Warn("platform: the questions waiting on a reader could not be read; sessions are listed without them", "tenant", who.Tenant, "error", err)
-		return nil
-	}
-	out := map[string][]inbox.QuestionPart{}
+	asks = map[string][]inbox.QuestionPart{}
 	for _, m := range msgs {
-		if !slices.Contains(sessions, m.Source.Thread) || !m.For(reader) {
-			continue
-		}
 		for _, part := range m.Parts {
-			if part.Question != nil && part.State == inbox.PartOpen {
-				out[m.Source.Thread] = append(out[m.Source.Thread], *part.Question)
+			if part.Question == nil || part.State != inbox.PartOpen {
+				continue
+			}
+			if _, err := p.mayAnswer(who, reader, m, *part.Question); err == nil {
+				asks[m.Source.Thread] = append(asks[m.Source.Thread], *part.Question)
 			}
 		}
 	}
-	return out
+	return asks, complete
 }
 
 // latestFailure is why the latest turn failed, or "" when it did not: a turn
@@ -607,12 +617,24 @@ func (p *Platform) summarizeSessions(who auth.Principal, rows []sessionRow, plac
 	if err != nil {
 		return nil, err
 	}
-	// One read of the reader's inbox says, for every row, what waits on them.
-	asks := p.openQuestions(who, ids)
+	// Whom the rows that wait on a person wait on is read once for all of
+	// them (openQuestions), and not at all when none waits.
+	var waiting []string
+	for _, row := range rows {
+		if row.kept.Waiting > 0 || slices.ContainsFunc(turns[row.head.ID], func(r runs.Run) bool { return r.Status == runs.Parked }) {
+			waiting = append(waiting, row.head.ID)
+		}
+	}
+	asks, known := p.openQuestions(who, waiting)
 	out := make([]SessionSummary, len(rows))
 	for i, row := range rows {
 		message, said := last[row.head.ID]
 		out[i] = p.summarizeSession(who, row, turns[row.head.ID], message, said, asks[row.head.ID])
+		if c := &out[i].Conversation; !known && !c.WaitingOnYou && (c.Waiting > 0 || c.WaitingFor != "") {
+			// Not found among what was read of the inbox, which is not all
+			// of it: it waits, and on whom is not known.
+			c.WaitingUnknown = true
+		}
 		if placed {
 			out[i].UpdatedAt, out[i].Conversation.UpdatedAt = row.at, row.at
 		}

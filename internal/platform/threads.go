@@ -207,13 +207,20 @@ type ThreadSummary struct {
 	// latest run parked on a person asks; the tool an approval asks about, or
 	// the first line of a question, at most MaxAttention runes. WaitingKind
 	// is WaitingApproval or WaitingQuestion. WaitingOnYou says an open
-	// question about it in the reader's own inbox is theirs to answer
-	// (openQuestions).
+	// question one of its runs waits on is the reader's to answer, as
+	// answering would decide it (openQuestions), whatever they did with its
+	// notification.
 	WaitingFor  string `json:"waiting_for,omitempty"`
 	WaitingKind string `json:"waiting_kind,omitempty"`
 	// WaitingOnYou is always sent, false included: a reader who is not
 	// asked must never be told they are.
 	WaitingOnYou bool `json:"waiting_on_you"`
+	// WaitingUnknown says it waits and whether on the reader could not be
+	// told: the workspace's inbox holds more live messages than a listing
+	// reads (inbox.MaxAsking) and no question of the reader's about it was
+	// among those read, or the inbox could not be read. WaitingOnYou is then
+	// false, which does not mean it waits on someone else.
+	WaitingUnknown bool `json:"waiting_unknown,omitempty"`
 	// Failure is why its latest turn failed, set on a session listing when
 	// it did: the first line of the run's error, at most MaxAttention runes.
 	// A run that failed before a later turn answered is not a failure here.

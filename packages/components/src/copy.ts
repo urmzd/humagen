@@ -3326,6 +3326,13 @@ export const defaultCopy = {
           : kind === "approval"
             ? `Waiting for approval: ${what}`
             : `Waiting for an answer: ${what}`,
+      /**
+       * It waits on a person and the listing could not tell whether that is
+       * the reader (waiting_unknown): said without naming whom, never as
+       * someone else.
+       */
+      waitingUnknown: (what: string, kind?: "approval" | "question") =>
+        !what ? "Waiting" : kind === "approval" ? `Waiting: approve ${what}` : `Waiting: ${what}`,
       failed: (reason: string) => (reason ? `Failed: ${reason}` : "Failed"),
       working: "Working",
       alert: (title: string) => `Alert: ${title}`,

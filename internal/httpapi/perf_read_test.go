@@ -14,9 +14,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/urmzd/saige/agent/agenttest"
+	saigetypes "github.com/urmzd/saige/agent/types"
+	"github.com/urmzd/saige/flow/turn/native"
+
 	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/call"
+	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/join"
 	"github.com/urmzd/humagen/pkg/readaudit"
 	"github.com/urmzd/humagen/pkg/state"
@@ -103,11 +109,19 @@ func (c *countingStore) during(fn func()) reads {
 // Each test checks that: the store must see nothing while no request is made.
 func quietFixture(t *testing.T, st state.Store, seed func(p *platform.Platform)) (*fixture, *countingStore) {
 	t.Helper()
+	return quietFixtureWith(t, st, nil, seed)
+}
+
+// quietFixtureWith is quietFixture whose agents run with options, such as a
+// scripted provider that parks a run on a question.
+func quietFixtureWith(t *testing.T, st state.Store, options []native.Option, seed func(p *platform.Platform)) (*fixture, *countingStore) {
+	t.Helper()
 	store := &countingStore{Store: st}
 	cfg := platform.Config{
 		Backends: platform.Backends{State: store}, Now: seedClock(),
 		Workspace: t.TempDir(), Limits: call.Limits{MaxDepth: 2, MaxFanOut: 4},
-		Router: func(string) join.Asker { return join.Words },
+		Router:       func(string) join.Asker { return join.Words },
+		AgentOptions: options,
 	}
 	writer, err := platform.New(cfg)
 	if err != nil {
@@ -876,33 +890,133 @@ func TestSessionPagesAreTheWholeListingInOrder(t *testing.T) {
 	}
 }
 
-// A page of sessions says what waits on its reader from one read of their
-// inbox, whatever the page's size: the questions open for them, kept to the
-// page's sessions, and nothing read per session or per message.
-func TestAPageOfSessionsReadsTheInboxOnce(t *testing.T) {
+// A page of sessions says whom its waiting rows wait on in one statement
+// against the inbox, whatever the inbox holds and however many rows the page
+// has: hundreds of other people's alerts and 250 open questions of the
+// reader's own cost what an empty inbox does, with no lookup for any
+// message. One session read alone costs the same for its summary, and a
+// page or a session in which nothing waits reads no inbox at all.
+func TestAPageOfSessionsReadsWhomItWaitsOnInOneStatementWhateverTheInboxHolds(t *testing.T) {
+	const others, mine = 600, 250
 	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
 		reader := auth.Principal{Subject: "ana", Tenant: "acme", Kind: auth.User, Name: "Ana", Roles: []auth.Role{auth.Operator}}
-		f, store := quietFixture(t, open(t), func(p *platform.Platform) {
-			seedVolume(t, p, reader, volume{Sessions: 30, Children: 4, Runs: 100, Alerts: 6, Parallel: 4})
+		asks := []native.Option{native.WithProvider(native.ProviderOpenAI, func(native.Spec) (saigetypes.Provider, error) {
+			return &agenttest.ScriptedProvider{Responses: [][]saigetypes.Delta{
+				agenttest.ToolCallResponse("call-ask", "ask_person", map[string]any{"question": "Which region?"}),
+				agenttest.TextResponse("Done."),
+			}}, nil
+		})}
+		var waiting, quiet string
+		f, store := quietFixtureWith(t, open(t), asks, func(p *platform.Platform) {
+			seedVolume(t, p, reader, volume{Sessions: 24, Children: 3, Runs: 60, Alerts: 6, Parallel: 4})
+			ctx := context.Background()
+			if _, err := p.Agents.Create(ctx, "acme", wire.AgentSpec{Name: "asker", Model: "x", Provider: "openai", SystemPrompt: "Ask.", Tools: []string{"ask_person"}, Answerers: []string{"ana"}}, "ana"); err != nil {
+				t.Fatal(err)
+			}
+			view, err := p.StartSession(ctx, reader, platform.SessionInput{Agent: "asker", Text: "Deploy it"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			waiting = view.ID
+			for deadline := time.Now().Add(time.Minute); ; time.Sleep(20 * time.Millisecond) {
+				msgs, _, err := p.Inbox.Asking("acme", []string{waiting})
+				if err == nil && len(msgs) == 1 {
+					break
+				}
+				if time.Now().After(deadline) {
+					t.Fatalf("the question did not reach the inbox: %v", err)
+				}
+			}
+			rows, _, err := p.SessionsPage(ctx, reader, platform.SessionQuery{}, 50, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, r := range rows {
+				if r.ID != waiting && r.Conversation.Waiting == 0 {
+					quiet = r.ID
+				}
+			}
+			// The question is the oldest of what follows: the inbox is read
+			// newest first.
+			at := time.Now()
+			for i := range others {
+				id := fmt.Sprintf("crowd-alert-%d", i)
+				if _, _, err := p.Inbox.Raise("acme", id, inbox.Message{Kind: inbox.KindAlert, To: "someone-else", Subject: "Alert", Parts: []inbox.Part{{Type: inbox.PartAlert, Alert: &inbox.AlertPart{ID: id, Rule: "rule", Kind: "run_failed", Severity: "warning", Title: "Alert"}}}}, at.Add(time.Duration(i+1)*time.Second)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			for i := range mine {
+				if _, _, err := p.Inbox.Raise("acme", fmt.Sprintf("crowd-question-%d", i), inbox.Message{
+					Kind: inbox.KindClarification, Subject: "A question", From: inbox.From{Kind: "agent", Name: "asker"},
+					Audience: []string{"ana"}, Source: inbox.Source{Thread: fmt.Sprintf("other-%d", i)},
+					Parts: []inbox.Part{{Type: inbox.PartReply, State: inbox.PartOpen, Question: &inbox.QuestionPart{Run: fmt.Sprintf("r-%d", i), ID: "q", Kind: "reply", Prompt: "?"}}},
+				}, at.Add(time.Duration(others+i+1)*time.Second)); err != nil {
+					t.Fatal(err)
+				}
+			}
 		})
+		if waiting == "" || quiet == "" {
+			t.Fatalf("seeded no waiting session (%q) or no quiet one (%q)", waiting, quiet)
+		}
 		tok := f.person(t, "acme", "ana", "Ana", "humagen-operators")
-		for _, path := range []string{"/api/sessions?limit=1", "/api/sessions?limit=20", "/api/sessions?roots=true&mine=true&limit=5"} {
+		// inboxReads is the statements one GET makes against the inbox, and
+		// what it answered.
+		inboxReads := func(path string) (map[string]any, int, map[string]int) {
+			t.Helper()
 			f.do(t, nil, "GET", path, tok, "")
 			store.idle(t)
+			var body map[string]any
 			got := store.during(func() {
-				if res, body := f.do(t, nil, "GET", path, tok, ""); res.StatusCode != http.StatusOK {
-					t.Fatalf("GET %s = %d %v", path, res.StatusCode, body)
+				res, answered := f.do(t, nil, "GET", path, tok, "")
+				if res.StatusCode != http.StatusOK {
+					t.Fatalf("GET %s = %d %v", path, res.StatusCode, answered)
 				}
+				body = answered
 			})
-			inbox := 0
-			for k, n := range got.by {
+			n := 0
+			for k, v := range got.by {
 				if strings.HasSuffix(k, " inbox") {
-					inbox += n
+					n += v
 				}
 			}
-			if got.by["list inbox"] != 1 || inbox != 1 {
-				t.Errorf("GET %s read the inbox %d times (%d lists): %v", path, inbox, got.by["list inbox"], got.by)
+			return body, n, got.by
+		}
+		// The waiting session leads no listing by itself, so pages are asked
+		// for until one holds it: each costs the inbox one list at most.
+		for _, path := range []string{"/api/sessions?limit=100", "/api/sessions?limit=20", "/api/sessions?roots=true&mine=true&limit=100"} {
+			body, n, by := inboxReads(path)
+			var row map[string]any
+			for _, s := range body["sessions"].([]any) {
+				if s.(map[string]any)["id"] == waiting {
+					row = s.(map[string]any)["conversation"].(map[string]any)
+				}
 			}
+			want := 0
+			if row != nil {
+				want = 1
+				if row["waiting_on_you"] != true || row["waiting_unknown"] != nil || row["waiting_for"] != "Which region?" {
+					t.Errorf("GET %s says the waiting session is %v", path, row)
+				}
+			} else if path != "/api/sessions?limit=20" {
+				t.Errorf("GET %s does not list the waiting session", path)
+			}
+			if n != want || by["list inbox"] != want {
+				t.Errorf("GET %s read the inbox with %d statements (%v), want %d list", path, n, by, want)
+			}
+		}
+		body, n, by := inboxReads("/api/sessions/" + waiting)
+		if row := body["conversation"].(map[string]any); row["waiting_on_you"] != true || row["waiting_unknown"] != nil {
+			t.Errorf("the waiting session read alone says %v", row)
+		}
+		// Its summary costs the one list. The view also says how the reader
+		// stands to the question its own turn waits on (AsksIn), which reads
+		// that one message by its key: three lookups a question on view,
+		// whatever else the inbox holds.
+		if by["list inbox"] != 1 || n != 1+3 {
+			t.Errorf("one waiting session read the inbox with %d statements (%v), want one list and its question by key", n, by)
+		}
+		if _, n, by := inboxReads("/api/sessions/" + quiet); n != 0 {
+			t.Errorf("a session in which nothing waits read the inbox with %d statements (%v), want none", n, by)
 		}
 	})
 }

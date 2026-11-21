@@ -66,7 +66,7 @@ export function standingOf(t: ThreadSummary, marks: Marks): RowStanding {
 /** The words a row's state is said in (defaultCopy.sidebar.state). */
 export type StateWords = Pick<
   typeof defaultCopy.sidebar.state,
-  "waitingYou" | "waitingOther" | "failed" | "working" | "alert"
+  "waitingYou" | "waitingOther" | "waitingUnknown" | "failed" | "working" | "alert"
 >;
 
 /** What a row says about its state: a line in words, a dot for what is new, and whether it runs. */
@@ -111,7 +111,10 @@ export function rowState(
         tone: you ? "warn" : "muted",
         text: you
           ? words.waitingYou(t.waiting_for ?? "", t.waiting_kind)
-          : words.waitingOther(t.waiting_for ?? "", t.waiting_kind),
+          : t.waiting_unknown === true
+            ? // The listing could not tell whom: said without naming anyone.
+              words.waitingUnknown(t.waiting_for ?? "", t.waiting_kind)
+            : words.waitingOther(t.waiting_for ?? "", t.waiting_kind),
       }
     : failure !== undefined
       ? { tone: "bad", text: words.failed(failure) }

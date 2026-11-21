@@ -481,10 +481,13 @@ export interface ThreadSummary {
   /**
    * On a session listing: what the latest parked run waits on, and whether it
    * asks the reader. waiting_on_you is always sent; a missing one reads as not.
+   * waiting_unknown says it waits and the listing could not tell whether on
+   * the reader: neither "you" nor "someone else" is then said.
    */
   waiting_for?: string;
   waiting_kind?: "approval" | "question";
   waiting_on_you?: boolean;
+  waiting_unknown?: boolean;
   /** On a session listing: why the latest turn failed, when it did. */
   failure?: string;
   turns: number;

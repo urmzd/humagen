@@ -119,10 +119,11 @@ test("an unnamed conversation is titled from its first message, as the server ti
   for (const [input, want] of cases) assert.equal(deriveTitle(input), want, input);
 });
 
-test("a row's state: waiting on the reader, then a failure, then working, then an alert, with a dot for what is new", () => {
+test("a row's state: waiting on the reader, then a failure, then working, then an alert, with a dot for what is new", async () => {
   const words = {
     waitingYou: (what: string, kind?: string) => `you:${kind ?? ""}:${what}`,
     waitingOther: (what: string, kind?: string) => `other:${kind ?? ""}:${what}`,
+    waitingUnknown: (what: string, kind?: string) => `unknown:${kind ?? ""}:${what}`,
     failed: (reason: string) => `failed:${reason}`,
     working: "working",
     alert: (title: string) => `alert:${title}`,
@@ -150,6 +151,31 @@ test("a row's state: waiting on the reader, then a failure, then working, then a
     line: { tone: "muted", text: "other::" },
     dot: undefined,
   });
+  // The listing could not tell whom it waits on: it is said to wait, in
+  // muted ink with no dot, and never on someone else or on the reader.
+  assert.deepEqual(
+    s({
+      active: 1,
+      waiting: 1,
+      waiting_for: "deploy",
+      waiting_kind: "approval",
+      waiting_on_you: false,
+      waiting_unknown: true,
+    }),
+    { line: { tone: "muted", text: "unknown:approval:deploy" }, dot: undefined },
+  );
+  // Told it is the reader's, that is what is said, whatever else is set.
+  assert.equal(
+    s({ waiting: 1, waiting_for: "deploy", waiting_on_you: true, waiting_unknown: true }).line
+      ?.text,
+    "you::deploy",
+  );
+  const said = (await import("@humagen/components/copy")).defaultCopy.sidebar.state;
+  assert.equal(said.waitingUnknown("file_write", "approval"), "Waiting: approve file_write");
+  assert.equal(said.waitingUnknown("Which region?", "question"), "Waiting: Which region?");
+  assert.equal(said.waitingUnknown(""), "Waiting");
+  for (const text of [said.waitingUnknown("x", "approval"), said.waitingUnknown("")])
+    assert.doesNotMatch(text, /you|someone|answer|approval:/i);
   assert.deepEqual(s({ failed: 1, failure: "boom", last_agent: true }), {
     line: { tone: "bad", text: "failed:boom" },
     dot: "failed",
