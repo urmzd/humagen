@@ -32,6 +32,15 @@ export function startedWork(tool: string | undefined, output: string | undefined
   }
 }
 
+/**
+ * A call whose agent was stopped, as the platform records it: the call ends
+ * in error with "<agent> was stopped: <why>" (internal/platform/delegate.go).
+ * Read after a reload, when nothing on this page asked for the stop.
+ */
+export function stoppedCall(agent: string, status: string, output: string | undefined): boolean {
+  return status === "error" && (output ?? "").startsWith(`${agent} was stopped`);
+}
+
 /** Background work still going: it is active, and either working now or due again. */
 export function workGoing(item: BackgroundTask): boolean {
   return item.state === "active";
@@ -149,7 +158,8 @@ export function useItemStops({
         const id = sub?.runId;
         if (!id || !sub) return null;
         const m = marks[id];
-        if (m === "stopped") return { what: sub.name, stopped: true };
+        if (m === "stopped" || stoppedCall(sub.name, task.status, task.output))
+          return { what: sub.name, stopped: true };
         const going =
           task.status === "in_progress" || task.status === "pending" || task.status === "waiting";
         if (!going) return null;

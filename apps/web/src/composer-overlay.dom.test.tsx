@@ -11,7 +11,7 @@ import type { BackgroundTask } from "./api.ts";
 import { Composer } from "./Composer.tsx";
 import { stubFetch } from "./dom.ts";
 import { limitsFor, ringOf, UsageRing } from "./SessionUsage.tsx";
-import { useItemStops, useSessionStop } from "./stops.tsx";
+import { stoppedCall, useItemStops, useSessionStop } from "./stops.tsx";
 
 afterEach(cleanup);
 
@@ -578,4 +578,10 @@ test("limitsFor keeps the limits that hold this session, fullest first; ringOf p
       ["Monthly tokens", true, false],
     ],
   );
+});
+
+test("a call stopped before this page opened reads Stopped from its record, and a real failure still reads Failed", () => {
+  assert.equal(stoppedCall("helper", "error", "helper was stopped: Stopped by Developer"), true);
+  assert.equal(stoppedCall("helper", "error", "helper failed: model unavailable"), false);
+  assert.equal(stoppedCall("helper", "complete", "helper was stopped: no"), false);
 });
