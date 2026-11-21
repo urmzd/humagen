@@ -253,6 +253,44 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
       act: async (page) => {
         await page.getByRole("heading", { name: "Alerts", exact: true }).waitFor();
         await page.getByText(ALERT_TITLE, { exact: true }).waitFor();
+        const alerts = page.getByRole("list", { name: "Alerts", exact: true });
+        await alerts.getByRole("button", { name: "Review Approval", exact: true }).waitFor();
+        const rows = alerts.getByRole("listitem");
+        assert.equal(await rows.count(), 2);
+        const layout = () =>
+          rows.evaluateAll((items) =>
+            items.map((item) => {
+              const { top, height: rowHeight, right } = item.getBoundingClientRect();
+              const buttons = [...item.querySelectorAll("button")].map((button) => {
+                const box = button.getBoundingClientRect();
+                return { x: box.x, y: box.y - top, width: box.width, right: box.right };
+              });
+              return { rowHeight, right, buttons };
+            }),
+          );
+
+        const initial = await layout();
+        assert.ok(Math.abs(initial[0].rowHeight - initial[1].rowHeight) <= 1, "equal row heights");
+        assert.equal(initial[0].buttons.length, 3, "the fixture can manage alerts");
+        assert.deepEqual(initial[0].buttons, initial[1].buttons, "the same three action slots");
+        assert.ok(
+          initial.every(({ buttons, right }) => buttons.every((button) => button.right < right)),
+          "every action stays inside the row",
+        );
+
+        // Dynamic content can be longer than either fixture, without shifting a control.
+        const secondRow = rows.nth(1);
+        await secondRow.evaluate((row) => {
+          const title = row.querySelector("a > span");
+          const action = row.querySelector("button > span");
+          if (title)
+            title.textContent = "A title for an alert with unusually long details ".repeat(5);
+          if (action)
+            action.textContent = "Review the very long approval details before continuing";
+        });
+        assert.deepEqual(await layout(), initial, "long labels do not resize rows or action slots");
+        await page.reload();
+        await alerts.getByRole("button", { name: "Review Approval", exact: true }).waitFor();
       },
     },
     {

@@ -3106,6 +3106,7 @@ export const defaultCopy = {
       snoozed: "Nothing is snoozed.",
       resolved: "Nothing is done yet.",
     } as Record<"open" | "snoozed" | "resolved", string>,
+    reviewApproval: "Review Approval",
     markDone: "Mark Done",
     markDoneNamed: (title: string) => `Mark ${title} done`,
     /** The alerts table: its name, its column headings and what its header says once rows are ticked. */
