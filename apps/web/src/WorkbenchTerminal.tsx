@@ -31,6 +31,9 @@ import {
 } from "./workbenchTerminal.ts";
 
 const words = defaultCopy.workbenchTerminal;
+const panelWords = defaultCopy.sessionPanel;
+/** The sessions whose sandbox this page has started, so it starts once. */
+const started = new Set<string>();
 
 // The tab's own button: the console's outline button, on the terminal's tokens and at 14px.
 const button =
@@ -40,6 +43,11 @@ const button =
 export interface TerminalApi {
   sandboxes: (thread: string) => Promise<ConversationSandboxes>;
   run: (thread: string, command: string) => Promise<SandboxCommandResult>;
+  /**
+   * Starts a session's sandbox before its first command, with a command
+   * that does nothing. Left out, the terminal waits for the reader's first.
+   */
+  start?: (thread: string) => Promise<SandboxCommandResult>;
 }
 
 async function ask<T>(method: string, path: string, body?: unknown): Promise<T> {
@@ -61,6 +69,8 @@ const server: TerminalApi = {
   sandboxes: (thread) => ask<ConversationSandboxes>("GET", at(thread)),
   run: (thread, command) =>
     ask<SandboxCommandResult>("POST", `${at(thread)}/commands`, { command }),
+  start: (thread) =>
+    ask<SandboxCommandResult>("POST", `${at(thread)}/commands`, { command: "true" }),
 };
 
 // More output than this is folded to its end, where a result and its errors are.
@@ -240,6 +250,36 @@ export function WorkbenchTerminal({
 
   const may = canPost && !!boxes?.session.commands;
   const open = may && !!boxes?.session.writable;
+  // A session whose sandbox has not started yet starts it when the terminal
+  // opens, with a command that does nothing, so the first command typed runs
+  // at once. It is not the reader's and goes with no message.
+  const [start, setStart] = useState<"starting" | "started" | string>();
+  const fresh = !!boxes && boxes.runs.length === 0 && boxes.session.files === 0;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: once per session, when it is known to be fresh.
+  useEffect(() => {
+    const begin = api.start;
+    if (!begin || !open || !fresh || started.has(thread)) return;
+    started.add(thread);
+    let on = true;
+    setStart("starting");
+    begin(thread).then(
+      (r) =>
+        on &&
+        setStart(
+          r.exit_code === 0
+            ? "started"
+            : panelWords.startFailed(r.output.trim() || String(r.exit_code)),
+        ),
+      (e) =>
+        on &&
+        setStart(
+          panelWords.startFailed(e instanceof Error && e.message ? e.message : words.failedToRun),
+        ),
+    );
+    return () => {
+      on = false;
+    };
+  }, [open, fresh, thread]);
   // A terminal opens on its last line, and stays there while the pane
   // settles: the list is measured before its font is read and before the
   // command line is drawn under it. Once the reader moves the log it is theirs.
@@ -349,6 +389,24 @@ export function WorkbenchTerminal({
             ) : log.length === 0 ? (
               <div className="flex flex-col items-start gap-3 px-4 py-6">
                 <h3 className="font-medium text-aui-fg text-aui-lg">{words.empty}</h3>
+                {start && (
+                  <p
+                    role="status"
+                    data-testid="terminal-start"
+                    data-start={start === "starting" || start === "started" ? start : "failed"}
+                    className="inline-flex items-center gap-2 text-aui-base text-aui-muted"
+                  >
+                    <span
+                      aria-hidden
+                      className={`size-2 rounded-full ${start === "starting" ? "bg-aui-accent" : start === "started" ? "bg-aui-ok" : "bg-aui-bad"}`}
+                    />
+                    {start === "starting"
+                      ? panelWords.starting
+                      : start === "started"
+                        ? panelWords.started
+                        : start}
+                  </p>
+                )}
                 {!may && (
                   <button type="button" className={button} onClick={() => openTab("details")}>
                     {words.toDetails}

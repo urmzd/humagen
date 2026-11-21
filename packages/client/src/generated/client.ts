@@ -40,6 +40,7 @@ import type {
   Branding,
   BringBackThreadResultBody,
   BrowserAction,
+  BrowserAvailability,
   BrowserView,
   CallPolicy,
   CallPolicyInput,
@@ -249,6 +250,7 @@ import type {
   SearchKnowledgeResponse,
   SearchMemoryResponse,
   SessionInput,
+  SessionOptions,
   SessionPostInput,
   SetAgentHomeBody,
   SetAgentLookBody,
@@ -1025,6 +1027,43 @@ visible older history pages on reset.
     return this.rawRequest<void>("POST", path, {
       body,
       contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** The environments are this deployment's: `auto` (its default) and its
+configured sandbox. The repositories are those the caller's
+tenant's enabled GitHub clients may read or write, sorted, at most 100.
+ */
+  async getSessionOptions(options?: RequestOptions): Promise<SessionOptions> {
+    const path = "/api/sessions/options";
+    return this.request<SessionOptions>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getSessionOptionsRaw(options?: RequestOptions): Promise<ApiResponse<SessionOptions>> {
+    const path = "/api/sessions/options";
+    return this.rawRequest<SessionOptions>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** True when the session's agent holds a write grant on at least one
+browser provider. Otherwise `reason` says why.
+ */
+  async getSessionBrowser(id: string, options?: RequestOptions): Promise<BrowserAvailability> {
+    let path = "/api/sessions/{id}/browser";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<BrowserAvailability>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getSessionBrowserRaw(id: string, options?: RequestOptions): Promise<ApiResponse<BrowserAvailability>> {
+    let path = "/api/sessions/{id}/browser";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<BrowserAvailability>("GET", path, {
       ...options,
     });
   }
