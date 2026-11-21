@@ -1384,6 +1384,12 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "POST", "/api/agents/{name}/reset", "/api/agents/humagen-writer/reset", `{"expected_rev":999}`, http.StatusConflict)
 	c.call(acme, "POST", "/api/agents/{name}/reset", "/api/agents/humagen-writer/reset", `{"expected_rev":"bad"}`, http.StatusBadRequest)
 	c.call(acme, "POST", "/api/agents/{name}/reset", "/api/agents/ghost/reset", `{"expected_rev":0}`, http.StatusNotFound)
+	c.call(acme, "GET", "/api/agent-templates", "/api/agent-templates", "", http.StatusOK)
+	c.call(acme, "POST", "/api/agents", "/api/agents", `{"name":"retiree","model":"offline","provider":"offline","system_prompt":"Leave."}`, http.StatusCreated)
+	c.call(acme, "DELETE", "/api/agents/{name}", "/api/agents/retiree?rev=x", "", http.StatusBadRequest)
+	c.call(acme, "DELETE", "/api/agents/{name}", "/api/agents/retiree?rev=9", "", http.StatusConflict)
+	c.call(acme, "DELETE", "/api/agents/{name}", "/api/agents/retiree?rev=1", "", http.StatusNoContent)
+	c.call(acme, "DELETE", "/api/agents/{name}", "/api/agents/ghost", "", http.StatusNotFound)
 
 	c.call(acme, "GET", "/api/agent-hues", "/api/agent-hues?names=missing", "", http.StatusOK)
 	c.call(acme, "GET", "/api/project-agent-hues", "/api/project-agent-hues?names=missing", "", http.StatusOK)

@@ -184,6 +184,8 @@ func (s *Server) Handler() http.Handler {
 	s.outcomeLearningRoutes(mux)
 	mux.HandleFunc("POST /api/agents", s.authed(auth.AgentsWrite, s.createAgent))
 	mux.HandleFunc("POST /api/agents/{name}/reset", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.resetAgent))))
+	mux.HandleFunc("DELETE /api/agents/{name}", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.retireAgent))))
+	mux.HandleFunc("GET /api/agent-templates", s.authed(auth.AgentsRead, s.listAgentTemplates))
 	s.storeRoutes(mux)
 	mux.HandleFunc("PUT /api/agents/{name}", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.reviseAgent))))
 	mux.HandleFunc("PUT /api/agents/{name}/home", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.putAgentHome))))
@@ -1437,6 +1439,8 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 		fail(w, http.StatusConflict, "The change did not pass its evaluation checks. Review its scores before trying again.")
 	case errors.Is(err, evals.ErrBusy):
 		fail(w, http.StatusConflict, "that suite is already running")
+	case errors.Is(err, platform.ErrAgentProtected):
+		fail(w, http.StatusConflict, "the platform keeps this agent: pause it instead")
 	case errors.Is(err, platform.ErrStoreConflict):
 		fail(w, http.StatusConflict, detail(err, platform.ErrStoreConflict))
 	case errors.Is(err, wire.ErrConflict):

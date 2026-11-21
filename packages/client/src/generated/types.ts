@@ -2880,6 +2880,32 @@ configured; never taken from a request.
   image_url?: string;
 }
 
+/** The goals a new agent can start from, and the model chain it starts on. */
+export interface AgentTemplateCatalog {
+  templates: AgentTemplate[];
+  /** The entry agent's model chain. Empty when the workspace has no entry agent. */
+  model: AgentTemplateCatalogModel;
+}
+
+/** One goal a new agent can start from. */
+export interface AgentTemplate {
+  /** The template's address in the console: /agents/new/{id}. */
+  id: string;
+  /** What the agent is. */
+  title: string;
+  /** What a person gets from it */
+  outcome: string;
+  /** The new agent's description. */
+  description: string;
+  /** What it says about itself */
+  greeting: string;
+  /** The bot it is drawn as */
+  shape: string;
+  system_prompt: string;
+  tools: string[];
+  starters: AgentTemplateStartersItem[];
+}
+
 /** An agent's look, its hue, and what a picker offers. */
 export interface AgentLookView {
   agent: string;
@@ -6313,6 +6339,18 @@ export interface ProjectChangeChannel {
 }
 
 export interface AgentLookStartersItem {
+  title: string;
+  prompt: string;
+}
+
+export interface AgentTemplateCatalogModel {
+  provider: string;
+  model: string;
+  fallbacks?: ModelRef[];
+  fallback_on?: string[];
+}
+
+export interface AgentTemplateStartersItem {
   title: string;
   prompt: string;
 }
