@@ -267,13 +267,13 @@ func TestImageWarmingFollowsTheImageAsItStands(t *testing.T) {
 
 // A check under way when the platform stops ends with it, and says so.
 func TestAnImageCheckEndsWithThePlatform(t *testing.T) {
-	ended := make(chan error, 1)
+	ended := make(chan struct{}, 1)
 	release := make(chan struct{})
 	t.Cleanup(func() { close(release) })
 	puller := platform.ImagePuller(pullFunc(func(ctx context.Context, _, _ string) (string, error) {
 		select {
 		case <-ctx.Done():
-			ended <- ctx.Err()
+			ended <- struct{}{}
 			return "", ctx.Err()
 		case <-release:
 			return "", errors.New("the test ended")
