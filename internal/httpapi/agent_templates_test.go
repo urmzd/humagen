@@ -88,6 +88,24 @@ func TestRetireRefusesAgentsThePlatformWrites(t *testing.T) {
 	want(t, f, owner, "GET", "/api/agents/humagen-writer/look", "", http.StatusOK)
 }
 
+// An agent the platform file declares is the file's, whoever wrote its
+// revisions: retiring it answers 409 saying where to remove it, and it stays.
+func TestRetireRefusesAnAgentThePlatformFileDeclares(t *testing.T) {
+	f := newFixture(t)
+	owner := f.machine(t, "acme", everything...)
+	want(t, f, owner, "POST", "/api/agents", helperSpec, http.StatusCreated)
+	f.p.DeclareFileAgent("acme", "helper")
+	got := want(t, f, owner, "DELETE", "/api/agents/helper", "", http.StatusConflict)
+	if msg, _ := got["error"].(string); !strings.Contains(msg, "declared in the platform file; remove it there") {
+		t.Fatalf("the refusal says %q", msg)
+	}
+	want(t, f, owner, "GET", "/api/agents/helper/look", "", http.StatusOK)
+	// Another workspace's file says nothing of this one.
+	f.p.DeclareFileAgent("globex", "spy")
+	want(t, f, owner, "POST", "/api/agents", spySpec, http.StatusCreated)
+	want(t, f, owner, "DELETE", "/api/agents/spy", "", http.StatusNoContent)
+}
+
 // Retiring keeps the name, so nothing the agent left keyed by it passes to a
 // new agent: not its memory, look, action policy, home, skills, Slack app or
 // control, each of which is gone with it, and its schedules are paused and

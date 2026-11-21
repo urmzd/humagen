@@ -233,6 +233,8 @@ func (p *Platform) retirable(ctx context.Context, tenant string, have wire.Revis
 		return fmt.Errorf("%w: @%s is the platform's own; pause it instead", ErrAgentProtected, name)
 	case have.Spec.Package != nil:
 		return fmt.Errorf("%w: @%s comes from a Store package; remove the package instead", ErrAgentProtected, name)
+	case p.fileDeclares(tenant, name):
+		return fmt.Errorf("%w: @%s is declared in the platform file; remove it there", ErrAgentProtected, name)
 	}
 	revs, err := p.Catalog().History(ctx, tenant, name)
 	if err != nil {
@@ -244,6 +246,30 @@ func (p *Platform) retirable(ctx context.Context, tenant string, have wire.Revis
 		}
 	}
 	return nil
+}
+
+// DeclareFileAgent records that the platform file declares name in tenant, so
+// nobody retires it from the console or the builder: the file owns it, and
+// would ask for it again at the next start. The file is read once, at start,
+// so what is recorded is what the file declares. A declaration whose content
+// is what a person already wrote adds no revision, so history alone does not
+// show it.
+func (p *Platform) DeclareFileAgent(tenant, name string) {
+	p.fileAgents.Store(fileAgentKey{tenant, wire.NormalizeName(name)}, struct{}{})
+}
+
+type fileAgentKey struct{ tenant, name string }
+
+func (p *Platform) fileDeclares(tenant, name string) bool {
+	_, ok := p.fileAgents.Load(fileAgentKey{tenant, wire.NormalizeName(name)})
+	return ok
+}
+
+// AgentRetired reports whether name in tenant was retired. A name it cannot
+// read is not reported as retired.
+func (p *Platform) AgentRetired(tenant, name string) bool {
+	retired, err := p.agentRetired(tenant, name)
+	return err == nil && retired
 }
 
 // retireForGood retires name at rev with its name kept from reuse, and

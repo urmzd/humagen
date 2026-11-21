@@ -29,7 +29,7 @@ func applyAll(t *testing.T, p *platform.Platform, tenant string, w spec.Workspac
 	if err := applyProjects(p, tenant, w); err != nil {
 		t.Fatal(err)
 	}
-	if err := applySchedules(p, tenant, w); err != nil {
+	if err := applySchedules(p, tenant, w, nil); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -101,7 +101,7 @@ func TestTheFileTakesOverAConsoleSchedule(t *testing.T) {
 	if err := applyProjects(p, "globex", fileWithRecap("x")); err != nil {
 		t.Fatal(err)
 	}
-	err := applySchedules(p, "globex", fileWithRecap("x"))
+	err := applySchedules(p, "globex", fileWithRecap("x"), nil)
 	if err == nil || !strings.Contains(err.Error(), "workspace.projects[0].schedules[0]") || !errors.Is(err, platform.ErrScheduleExists) {
 		t.Fatalf("another workspace's name = %v", err)
 	}
@@ -116,7 +116,7 @@ func TestAFileScheduleNeedsItsAgentAvailable(t *testing.T) {
 	if err := applyProjects(p, "acme", w); err != nil {
 		t.Fatal(err)
 	}
-	err := applySchedules(p, "acme", w)
+	err := applySchedules(p, "acme", w, nil)
 	if err == nil || !strings.Contains(err.Error(), "workspace.projects[0].schedules[0].agent") || !errors.Is(err, platform.ErrNotAvailable) {
 		t.Fatalf("an agent Field does not have = %v", err)
 	}
