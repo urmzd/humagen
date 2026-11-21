@@ -689,7 +689,15 @@ Profile, Notifications, Privacy and workspace administration share compact
 a direct Memory link and one aligned save action. Audit uses a shared
 Radix/react-day-picker calendar with local date/time inputs, host conversion to
 ISO timestamps and positive-range validation capped at 31 days. Compact event
-rows expand retained details; resource, Refresh and Export actions carry icons.
+rows expand retained details. Resource, Refresh and Export actions carry icons.
+Workspace changes and administrator-only break-glass reads share the Audit
+destination, and the former Read Audit address opens it. A break-glass read the
+reads section lists is left out of the changes list, so it shows once; a read
+that section does not list stays among the changes, and the CSV export keeps
+every row. Both are boxed `Section`s: a heading's count is hidden at zero, and a
+list as long as the server's 100-record cap says so in place of a count. Route
+and DOM tests cover the legacy address, the permission-gated read request, the
+single listing, the empty headings and the cap.
 Announcements use a compact card, one Open
 Announcement action and a labeled eye-with-slash Hide button with a busy guard.
 
@@ -956,8 +964,9 @@ project settings", with a clean outlook.
   `--aui-z-toast`. Code touched uses these, never a bare number.
 - The box is one lean row: + (attach, and the + menu) on the left, the words,
   then Send (a return glyph) and the microphone as plain icons of equal
-  weight, each a 44px target on touch. The row grows upward with the words and
-  the buttons stay on its last line. Both buttons are always there: empty, Send
+  weight. Attach, Send, microphone, approval mode and usage share 18px icons
+  and 32px targets on desktop or 44px targets on touch. The row grows upward
+  with the words and the buttons stay on its last line. Both buttons are always there: empty, Send
   is dimmed and the microphone is the action; with words, Send is ready and the
   microphone stays, so a person can switch between talking and typing. While
   it records or dictates, the microphone shows it live and is the stop in the
@@ -2137,6 +2146,9 @@ preserves routing; Delete requests administrator review and does not remove the
 record directly. Canonical sharing uses project access without a channel picker.
 Bring Back is offered inside Fork for a completed fork result and retains the
 existing consent review. Approval controls say Ask a question and Decline action.
+The console puts Approve and Decline together, then Ask a question; its Decline
+keeps Decline action in its accessible name.
+Approve reads the request's own verb on both surfaces when it has one.
 Failure debug references are kept out of the everyday response and remain in the
 explicit issue-report draft.
 
@@ -2194,21 +2206,31 @@ request totals remain open.
 
 ### DES-075: A calm Home and states that say whose move it is
 
-Home under the chat bar is one strip. Recently made shows the three newest
-artifacts the person may read from the existing `GET /api/artifacts`, each card
-opening it at `/artifacts/{id}`. Home does not say how many alerts are waiting:
-the Alerts entry in the menu carries that count as a badge, and the menu button
-carries a dot when the menu is closed. The strip has no link to all artifacts,
-because the Artifacts entry in the menu opens them. With nothing made, Home is the
-greeting and the chat bar. Home no longer lists alerts or recent sessions:
-sessions are in the sidebar's Recents and on Sessions.
+Home keeps the greeting and composer in place as project and artifact cards load. Its
+Projects strip shows up to three readable named projects using the Projects
+page order, with pinned projects first and then the latest activity. Each
+card opens its project. The workspace root and automatic Personal project are
+excluded. Loading, unavailable and empty project listings leave out the strip.
+Recently made shows the three newest artifacts the person may read from the
+existing `GET /api/artifacts`, each card opening it at `/artifacts/{id}`. The
+sidebar's Artifacts entry opens the full list. Alerts owns approvals and its
+sidebar badge carries the count. Recent sessions are in the sidebar's Recents
+and on Sessions.
 
 The alert center lists alerts as one table: a box to select, the alert and its
 agent, then its source, priority, age and actions in columns. The header holds
 one box that selects every row shown, and once a row is selected the header
-names how many and offers Mark Selected Done and Snooze Selected. Under 48rem a
-row stacks. The Skills list sits in the same column as the tabs above it, as a
-bordered list, and an empty scope says what to do next.
+names how many and offers Mark Selected Done and Snooze Selected. Primary
+actions stay on one line, and so do alert titles in the table; both keep their
+full names for tooltips and assistive technology. Each row reserves the same
+space for its actions. At narrow widths or on touch, the row stacks, labels
+Mark Done and Snooze next to their icons, and gives a title up to two lines,
+because a touch screen shows no tooltip. Review Approval opens the decision in
+its session. The Skills list sits in the same column as the tabs above it, as a
+bordered list, and an empty scope says what to do next. The `alerts` browser
+check compares action positions and widths with short and long labels at
+desktop and phone widths, holds table rows to one height, and expects a long
+title to take two lines in a stacked row.
 
 An alert is named by whose move it is: Waiting, Snoozed or Done, with Mark Done
 in place of Resolve, in the alert center, on a session's alert card and in bulk
@@ -2216,13 +2238,14 @@ actions. A project's inbox switch reads Waiting, Done and All. The API, the
 stored states and the addresses keep `open`, `snoozed` and `resolved`, so
 existing links hold. The words are in `copy.ts` (`attention`, `show`, `home`).
 
-Evidence: `session-center.dom.test.tsx` checks the single waiting link, the
-three-card strip and its destinations, and that nothing is drawn or asked for
+Evidence: `session-center.dom.test.tsx` checks the artifact strip and its
+destinations, and that nothing is drawn or asked for
 when there is nothing to show or no permission; `session-ux.dom.test.tsx` and
 `roles.dom.test.tsx` check the new words. Console screens `new` and `alerts`
-and `home-made` pass at 1280x800 and 390x844 in light and dark. Artifact
-cards show no preview of their content. A strip that cannot be read says so in
-one line.
+and `home-made` pass at 1280x800 and 390x844 in light and dark. The
+`home-projects` screen checks that the composer stays put when projects
+load. Home DOM tests cover omission, project order and links. Artifact cards show no preview
+of their content. An artifact strip that cannot be read says so in one line.
 
 ### DES-076: Continue an imported conversation
 

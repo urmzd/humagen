@@ -2764,9 +2764,17 @@ export const defaultCopy = {
     ],
 
     title: "Audit",
+    changes: "Workspace changes",
     description:
       "Workspace changes in the last 24 hours. Pending means completion could not yet be confirmed.",
     empty: "No recorded changes in this window.",
+    limited: "Showing at most 100 records, newest first.",
+    /** The server's 100 newest records include reads the section above lists, so fewer changes show. */
+    limitedByReads:
+      "Reads listed above count toward the 100 newest records. Narrow the date range or choose a domain to see more changes.",
+    /** Every one of those 100 records is a read listed above: changes may exist, and none is on view. */
+    hiddenByReads:
+      "The 100 newest records in this window are all reads listed above. Narrow the date range or choose a domain to see changes.",
     failed: "The audit could not be loaded.",
     before: "Before",
     after: "After",
@@ -3106,6 +3114,7 @@ export const defaultCopy = {
       snoozed: "Nothing is snoozed.",
       resolved: "Nothing is done yet.",
     } as Record<"open" | "snoozed" | "resolved", string>,
+    reviewApproval: "Review Approval",
     markDone: "Mark Done",
     markDoneNamed: (title: string) => `Mark ${title} done`,
     /** The alerts table: its name, its column headings and what its header says once rows are ticked. */
