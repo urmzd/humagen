@@ -16156,11 +16156,11 @@ components:
       required: [id, title, outcome, description, greeting, shape, system_prompt, tools, starters]
       properties:
         id: {type: string, description: "The template's address in the console: /agents/new/{id}."}
-        title: {type: string, description: What the agent is.}
-        outcome: {type: string, description: What a person gets from it, in a few words.}
-        description: {type: string, description: The new agent's description.}
-        greeting: {type: string, description: What it says about itself, in its own voice.}
-        shape: {type: string, description: The bot it is drawn as, one of the look's shapes.}
+        title: {type: string, description: "What the agent is."}
+        outcome: {type: string, description: "What a person gets from it, in a few words."}
+        description: {type: string, description: "The new agent's description."}
+        greeting: {type: string, description: "What it says about itself, in its own voice."}
+        shape: {type: string, description: "The bot it is drawn as, one of the look's shapes."}
         system_prompt: {type: string}
         tools:
           type: array
