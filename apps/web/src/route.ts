@@ -86,7 +86,9 @@ export type SettingsSection =
   | "limits"
   | "voice"
   | "connections"
-  | "access";
+  | "access"
+  | "read-audit"
+  | "deletions";
 export const SETTINGS_SECTIONS: SettingsSection[] = [
   "notifications",
   "profile",
@@ -98,6 +100,8 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
   "voice",
   "connections",
   "access",
+  "read-audit",
+  "deletions",
 ];
 
 export type ConversationPanel =
@@ -1108,8 +1112,7 @@ function read(pathname: string, search: string): Route {
       // Apps are the workspace's installs, under Workspace settings.
       if (a === "apps") return { page: "connections", provider: b, scope: "apps" };
       if (a === "health") return { page: "monitor", tab: "health" };
-      // Break-glass reads and the deletion queue are cards on the Audit page.
-      if (a === "audit" || a === "read-audit" || a === "deletions") return { page: "audit" };
+      if (a === "audit") return { page: "audit" };
       if (a === "usage") return read("/operations/usage", search);
       // Models are chosen per agent now; an old link lands on the agents.
       if (a === "models") return { page: "agents" };
