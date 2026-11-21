@@ -348,7 +348,26 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
       path: "/settings/apps",
       act: async (page) => {
         await page.getByRole("heading", { name: "Apps", exact: true, level: 1 }).waitFor();
-        await page.getByRole("list", { name: "Apps", exact: true }).waitFor();
+        const apps = page.getByRole("list", { name: "Apps", exact: true });
+        const slack = apps.getByRole("listitem", { name: "Slack", exact: true });
+        const github = apps.getByRole("listitem", { name: "GitHub", exact: true });
+        const enable = slack.getByRole("button", { name: "Enable", exact: true });
+        const manage = github.getByRole("button", { name: "Manage", exact: true });
+        await enable.waitFor();
+        await manage.waitFor();
+        const first = await slack.boundingBox();
+        const second = await github.boundingBox();
+        assert.ok(first && second);
+        assert.equal(first.x, second.x, "Apps share a column at every width");
+        assert.ok(first.y + first.height <= second.y, "Apps are stacked");
+        await manage.click();
+        const detail = page.getByRole("dialog", { name: "GitHub", exact: true });
+        await detail.waitFor();
+        await page.keyboard.press("Escape");
+        await detail.waitFor({ state: "hidden" });
+        await manage.and(page.locator("button:focus")).waitFor();
+        await manage.blur();
+        await page.mouse.move(0, 0);
       },
     },
     {
