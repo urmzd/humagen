@@ -82,7 +82,9 @@ test("a run of steps opens to one row per call, and a row to its arguments and r
   // The command, in a block of its own with Copy, and what it printed.
   const command = within(rows[3] as HTMLElement).getByTestId("command-block");
   assert.ok(
-    (command.textContent ?? "").includes("go test ./pkg/isolate/docker/... -run TestRemote -count=1"),
+    (command.textContent ?? "").includes(
+      "go test ./pkg/isolate/docker/... -run TestRemote -count=1",
+    ),
   );
   const blocks = within(rows[3] as HTMLElement).getAllByTestId("tool-block");
   assert.ok((blocks[0]?.textContent ?? "").startsWith("ok"));
