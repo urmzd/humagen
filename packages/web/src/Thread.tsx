@@ -80,7 +80,9 @@ export function Thread({
         // biome-ignore lint/a11y/noNoninteractiveTabindex: scrollable region must be keyboard reachable
         tabIndex={0}
         onScroll={onScroll}
-        className={`aui-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain outline-none focus-visible:ring-2 focus-visible:ring-aui-accent focus-visible:ring-inset [scrollbar-gutter:stable] ${wave ? "md:px-8" : ""}`}
+        // Reached by keyboard to scroll it, the log shows a thin neutral line inside
+        // its edge: the whole pane is the target, so an accent ring would frame the page.
+        className={`aui-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain outline-none focus-visible:ring-1 focus-visible:ring-aui-fg/50 focus-visible:ring-inset [scrollbar-gutter:stable] ${wave ? "md:px-8" : ""}`}
       >
         <div
           ref={content}

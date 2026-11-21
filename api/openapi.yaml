@@ -13892,6 +13892,10 @@ components:
         messages:
           description: How many messages people have posted in it.
           type: integer
+        source:
+          description: Where it started when that was not the console or the API, read from the Slack thread it lives on or the place its session was started from. Absent for the console and the API. A run's `origin` cannot say this, as a Slack message posts to its thread through the API.
+          type: string
+          enum: [slack, slack_dm, github, scheduled]
         turns: {type: integer}
         branches: {type: integer}
         active:

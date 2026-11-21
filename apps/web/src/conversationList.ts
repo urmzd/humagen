@@ -3,8 +3,32 @@ import type { Marks, ThreadSummary } from "./api.ts";
 /** How the sidebar lists conversations: newest first, by project, or the ones put away. */
 export type ListView = "recents" | "projects" | "archived";
 
-/** What a row's dot says, most urgent first. */
+/** What a row's state mark says, most urgent first. */
 export type RowStanding = "needs" | "running" | "failed" | "unread" | "";
+
+/** Where a session started, as its row's leading mark shows it. */
+export type RowSource = "console" | "slack" | "slack_dm" | "github" | "scheduled" | "assignment";
+
+/**
+ * Where a session started. The summary's own `source` names a Slack thread
+ * or direct message, a pull request or a schedule; a run's origin is the
+ * fallback, and anything else was started in the console or through the API.
+ */
+export function rowSource(t: Pick<ThreadSummary, "origin" | "source">): RowSource {
+  if (t.source) return t.source;
+  switch (t.origin) {
+    case "slack":
+      return "slack";
+    case "github":
+      return "github";
+    case "cron":
+    case "manual":
+      return "scheduled";
+    case "assignment":
+      return "assignment";
+  }
+  return "console";
+}
 
 /** A project group shows this many rows before "See All (N)". */
 export const GROUP_ROWS = 5;
