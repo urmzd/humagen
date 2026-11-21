@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.171.0 (2026-11-21)
+
+### Breaking
+
+- **console**: floating composer over one conversation surface, with stop at two levels (#474) ([ceece10](https://github.com/urmzd/humagen/commit/ceece10a8ff48de242741d38a89b6b57e83f9b89))
+
+### Bug Fixes
+
+- **console**: a page that did not load says so once, with Retry as an icon (#478) ([98145ba](https://github.com/urmzd/humagen/commit/98145bad9bebd7f9ae43cebe88b1de3ef011db1e))
+- **web**: a failing assert on a DOM node no longer takes the machine down (#485) ([97bcd91](https://github.com/urmzd/humagen/commit/97bcd91aa6242df92c809e67510b24a16b1d905e))
+- **brand**: the mark sits square and the name reads Humagen (#483) ([8323864](https://github.com/urmzd/humagen/commit/8323864ee0f9ce12af1bca1ec214f1f170f92554))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.170.0...v0.171.0)
+
+
 ## 0.169.0 (2026-11-21)
 
 ### Features
