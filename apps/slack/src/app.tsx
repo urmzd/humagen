@@ -1364,6 +1364,9 @@ export class App {
       }
     } catch (e) {
       this.log(`Humagen refused the turn: ${(e as Error).message}`);
+      // Nobody was asked, so nobody is told: a heard reply that could not be
+      // offered leaves nothing in Slack, whatever stopped it.
+      if (job.listen) return "failed" as const;
       // A reply under an announcement that was withdrawn starts nothing.
       if (e instanceof HumagenError && e.status === 410)
         return this.refuse(job, presenter, "", {

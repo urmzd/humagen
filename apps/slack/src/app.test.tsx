@@ -2660,3 +2660,39 @@ test("any other conflict of the sessions route is not retried as a conversation"
   assert.equal(w.humagen.routes.length, 0, "nothing went to the threads route");
   assert.equal(w.humagen.started.length, 0);
 });
+
+for (const [name, failure] of [
+  ["answers 500", () => new HumagenError(500, "internal error")],
+  ["cannot be reached", () => new TypeError("fetch failed")],
+  ["answers 400", () => new HumagenError(400, "text is too long")],
+  ["answers 403", () => new HumagenError(403, "that person may not post here")],
+] as const) {
+  test(`a reply nobody was asked about shows nothing in Slack when Humagen ${name}`, async () => {
+    const w = await listeningThread();
+    const fail = async () => {
+      throw failure();
+    };
+    w.humagen.postSession = fail;
+    w.humagen.postThread = fail;
+    const calls = w.slack.calls.length;
+    await deliver(w, plain("lunch at noon?", "1700000210.000200", { thread_ts: TS }));
+    // In a thread nobody listens in, too.
+    await deliver(w, plain("anyone?", "1700000310.000200", { thread_ts: "1700000300.000100" }));
+    await w.app.idle();
+    assert.deepEqual(
+      w.slack.calls.slice(calls).map((c) => c.method),
+      [],
+      "no notice, no reaction, no status",
+    );
+    assert.equal(w.humagen.started.length, 1);
+
+    // Someone who asked is still told.
+    await deliver(w, mention("and now?", "1700000410.000200", { thread_ts: TS }));
+    await w.app.idle();
+    assert.equal(
+      w.slack.calls.slice(calls).some((c) => c.method === "chat.postMessage"),
+      true,
+      "a mention that failed is answered with why",
+    );
+  });
+}
