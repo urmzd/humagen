@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.174.2 (2026-11-21)
+
+### Bug Fixes
+
+- **platform**: called runs get no caller person tool servers (#507) ([13ad1d9](https://github.com/urmzd/humagen/commit/13ad1d95858f07993b31b80119cd371a273ef5b9))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.174.1...v0.174.2)
+
+
 ## 0.174.1 (2026-11-21)
 
 ### Bug Fixes
