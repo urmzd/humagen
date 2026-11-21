@@ -1,7 +1,7 @@
 import { defaultCopy } from "@humagen/components";
 import { BotIcon, CheckIcon, FileIcon, ProjectIcon, WrenchIcon, XIcon } from "@humagen/render-web";
 import { type KeyboardEvent, type ReactNode, useLayoutEffect, useRef, useState } from "react";
-import type { ProjectKindSpec, ProjectView } from "./api.ts";
+import type { ProjectView } from "./api.ts";
 import { PaneMenu, type PaneMenuRow, paneMenuRow as row } from "./PaneMenu.tsx";
 import { above, titleOf } from "./projects.ts";
 import { AgentMark, SearchField, SearchIcon } from "./ui.tsx";
@@ -52,18 +52,6 @@ export function PlusMenu({
   skillsFailed?: boolean;
   /** Prepares the message through the host's existing skill-tag insertion. */
   onSkill?: (name: string) => void;
-  /*
-   * Where the conversation lives and what a project picker needed. The menu
-   * offers no project (the persistent folder does), so it reads none of
-   * these; its hosts still pass them.
-   */
-  selection: Selection;
-  onChange: (next: Selection) => void;
-  projects?: ProjectView[] | null;
-  personalProject?: string;
-  kinds?: ProjectKindSpec[];
-  canCreateProject?: boolean;
-  onProjectCreated?: (p: ProjectView) => void;
 }) {
   const c = words.picker;
   const [agentQuery, setAgentQuery] = useState("");
