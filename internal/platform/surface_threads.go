@@ -147,30 +147,6 @@ func (p *Platform) filedAt(tenant string, c clients.Client, channel string) (fil
 	return filing{project: h.Project, channel: h.Channel, vis: vis}, nil
 }
 
-// filedForPerson is filedAt for the person a thread is started for. A direct
-// message with a client that names no home is theirs alone, so it is filed
-// where a session they start in the console is: in their own project. Left in
-// the workspace's root it belongs to no project, and no project lists it. A
-// channel's thread is read by more than one person, so it stays where the
-// channel's binding or the client's home puts it, and so does anything
-// started for a machine.
-func (p *Platform) filedForPerson(tenant string, c clients.Client, channel string, person auth.Principal) (filing, error) {
-	at, err := p.filedAt(tenant, c, channel)
-	if err != nil || at.bound || at.vis != threads.Private || c.Home != nil {
-		return at, err
-	}
-	own, err := p.PersonalProject(person)
-	if err != nil {
-		return at, nil
-	}
-	ch, err := p.Projects.Channel(tenant, own.Name, projects.General)
-	if err != nil {
-		return at, nil
-	}
-	at.project, at.channel = own.Name, ch.Name
-	return at, nil
-}
-
 // surfaceText reads a Slack message in the one grammar, and says which of
 // its mentions tagged nobody.
 func (p *Platform) surfaceText(tenant string, c clients.Client, ref SurfaceRef, text string) (string, []threads.Mention) {
@@ -248,11 +224,7 @@ func (p *Platform) startFromSurface(ctx context.Context, who auth.Principal, in 
 			return Posted{}, err
 		}
 	}
-	person, err := p.poster(who, in.ActAs)
-	if err != nil {
-		return Posted{}, err
-	}
-	at, err := p.filedForPerson(who.Tenant, c, ref.Channel, person)
+	at, err := p.filedAt(who.Tenant, c, ref.Channel)
 	if err != nil {
 		return Posted{}, err
 	}

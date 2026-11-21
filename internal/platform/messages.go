@@ -541,7 +541,7 @@ func (p *Platform) rootAt(ctx context.Context, who auth.Principal, place string,
 	project, channel := "", ""
 	switch {
 	case c != nil && origin.Type == RefSlack:
-		at, err := p.filedForPerson(who.Tenant, *c, origin.Channel, who)
+		at, err := p.filedAt(who.Tenant, *c, origin.Channel)
 		if err != nil {
 			return threads.Thread{}, false, err
 		}

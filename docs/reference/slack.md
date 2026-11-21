@@ -203,9 +203,11 @@ call for me?" is the one a message that names no agent is routed by
 ([overview](../architecture/overview.md)): a no, a failure and no agent to ask
 all leave the message unanswered.
 
-A direct message with a client that names no `home` is filed in the person's
-own project, as a session they start in the console is. A channel's thread is
-filed where the channel is bound, else in the client's `home`.
+A thread is filed where its Slack channel is bound, else in the client's
+`home`. A client with no `home` files in the workspace's root, in no project,
+so no project lists its sessions: give it one (`PUT /api/clients/{id}`, or the
+client's page in the console). A person's own project is not a place a client
+can file in: a machine never reads one, so the app could not show the answer.
 
 For a person the client maps, the Slack app posts each message into the Humagen
 thread its Slack thread is, as that person (`POST /api/threads` with
