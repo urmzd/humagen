@@ -144,10 +144,7 @@ export function Composer({
   onCancelHeld,
   stopAll,
   footer,
-  aiNotice = true,
 }: {
-  /** The AI notice. Off beside the session's own composer, which says it. */
-  aiNotice?: boolean;
   /**
    * Everything running in the session, whoever started it. While anything
    * runs the bar shows Stop, which (as Esc in an empty box does) stops all of
@@ -1096,7 +1093,7 @@ export function Composer({
         )}
       </form>
       {footer}
-      {aiNotice && <AiNotice />}
+      <AiNotice />
     </div>
   );
 }
@@ -1117,7 +1114,7 @@ function AiNotice() {
       data-layer="ai-notice"
       className="min-h-6 px-2 text-center text-aui-xs leading-6 text-aui-muted"
     >
-      {defaultCopy.dock.aiNotice.replace("{name}", name)}
+      {defaultCopy.dock.aiNotice.split("{name}").join(name)}
       {terms && (
         <>
           {" "}

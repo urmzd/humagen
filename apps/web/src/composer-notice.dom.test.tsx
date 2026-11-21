@@ -23,16 +23,9 @@ afterEach(() => {
   defaultCopy.dock.aiNotice = sentence;
 });
 
-function Bar({ aiNotice }: { aiNotice?: boolean }) {
+function Bar() {
   const queue = useQueue({ onStart: () => {}, onInterrupt: () => {} });
-  return (
-    <Composer
-      placeholder="Reply"
-      queue={queue}
-      footer={<div data-testid="footer" />}
-      aiNotice={aiNotice}
-    />
-  );
+  return <Composer placeholder="Reply" queue={queue} footer={<div data-testid="footer" />} />;
 }
 
 const notice = (container: HTMLElement) =>
@@ -97,12 +90,25 @@ test("an address the browser would not open as https is never a link", () => {
   }
 });
 
-test("a composer beside the session's own leaves the notice to it", () => {
-  const { container } = render(<Bar aiNotice={false} />);
-  assert.equal(notice(container), null);
+test("a name with a dollar sign, and a sentence that names the product twice, are written as they are", () => {
+  // String.replace reads $$ and $& in a replacement, and fills one {name}.
+  brandCopy(defaultCopy, {
+    ...servedBranding("Cash$&Co"),
+    copy: { "dock.aiNotice": "{name} is AI. Check what {name} says." },
+  });
+  const { container } = render(<Bar />);
+  assert.equal(notice(container)?.textContent, "Cash$&Co is AI. Check what Cash$&Co says.");
 });
 
-test("the place kept for the composer while a session loads is as tall as the composer", () => {
+test("the Side Chat's composer says it too: on a phone, and with the workbench expanded, it is the only composer on view", () => {
+  const sidechat = readFileSync(new URL("./WorkbenchSidechat.tsx", import.meta.url), "utf8");
+  assert.match(sidechat, /<Composer /);
+  // No composer turns the line off: there is no option to.
+  const composer = readFileSync(new URL("./Composer.tsx", import.meta.url), "utf8");
+  assert.match(composer, /\{footer\}\s*<AiNotice \/>/);
+});
+
+test("the place kept for the composer while a session loads keeps a line for the notice", () => {
   // The placeholder keeps a line for the notice, of the height the notice has.
   const chat = readFileSync(new URL("./Chat.tsx", import.meta.url), "utf8");
   assert.match(chat, /data-layer="composer-placeholder-notice" className=\{aiNoticeHeight\}/);

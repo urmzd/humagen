@@ -100,8 +100,22 @@ func checkCopy(c map[string]string) error {
 		if err := checkText(v, 500, true); err != nil {
 			return fmt.Errorf("branding.copy.%s: %w", k, err)
 		}
+		// The console fills in what a key's own text names, and nothing else.
+		if allowed, ok := copyPlaceholders[k]; ok {
+			for _, p := range placeholder.FindAllString(v, -1) {
+				if !slices.Contains(allowed, p) {
+					return fmt.Errorf("branding.copy.%s: %s is not a placeholder here; it takes %s", k, p, strings.Join(allowed, " and "))
+				}
+			}
+		}
 	}
 	return nil
+}
+
+// copyPlaceholders are the console's texts that take a placeholder, and
+// which. A misspelled one would be shown to people as written.
+var copyPlaceholders = map[string][]string{
+	"dock.aiNotice": {"{name}"},
 }
 
 func checkEmail(e *EmailCopy) error {
