@@ -703,6 +703,7 @@ export function ThreadRoom({
   onView,
   onOpenChannel,
   onOpenThread,
+  footerStart,
   onChanged,
 }: {
   id: string;
@@ -734,6 +735,8 @@ export function ThreadRoom({
   view?: ConversationView;
   onView?: (view: ConversationView) => void;
   onOpenThread?: (id: string) => void;
+  /** The left of the row under the composer: where the session runs (environment, repository). */
+  footerStart?: ReactNode;
   onOpenChannel: (project: string, channel: string) => void;
   onChanged: () => void;
 }) {
@@ -1141,6 +1144,7 @@ export function ThreadRoom({
                             const latest = runs[runs.length - 1];
                             return (
                               <ComposerFooter
+                                start={footerStart}
                                 agent={latest ? agentShown(latest.agent) : undefined}
                                 model={latest?.usage?.context?.model}
                                 approval={<ApprovalToggle thread={th} me={handle || me} />}

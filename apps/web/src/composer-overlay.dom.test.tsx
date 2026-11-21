@@ -10,7 +10,7 @@ import type { Run } from "./adapter.ts";
 import type { BackgroundTask } from "./api.ts";
 import { Composer } from "./Composer.tsx";
 import { stubFetch } from "./dom.ts";
-import { limitsFor, ringOf, UsageRing } from "./SessionUsage.tsx";
+import { ComposerFooter, limitsFor, ringOf, UsageRing } from "./SessionUsage.tsx";
 import { stoppedCall, useItemStops, useSessionStop } from "./stops.tsx";
 
 afterEach(cleanup);
@@ -631,4 +631,32 @@ test("a call stopped before this page opened reads Stopped from its record, and 
   assert.equal(stoppedCall("helper", "error", "helper was stopped: Stopped by Developer"), true);
   assert.equal(stoppedCall("helper", "error", "helper failed: model unavailable"), false);
   assert.equal(stoppedCall("helper", "complete", "helper was stopped: no"), false);
+});
+
+test("the footer has a left slot for where the session runs; empty, the rest stays at the right", () => {
+  const { container, rerender } = render(
+    <ComposerFooter agent="lead" approval={<span>Ask</span>} usage={<span>ring</span>} />,
+  );
+  const left = container.querySelector<HTMLElement>('[data-layer="composer-footer-start"]');
+  assert.ok(left);
+  assert.equal(left.childElementCount, 0);
+  // The empty left group takes the free space, which pushes everything else right.
+  assert.match(left.className, /mr-auto/);
+  rerender(
+    <ComposerFooter
+      start={
+        <button type="button">
+          <span aria-hidden>☁</span>
+          <span data-label>Placeholder environment</span>
+        </button>
+      }
+      agent="lead"
+      usage={<span>ring</span>}
+    />,
+  );
+  assert.ok(within(left).getByRole("button", { name: /Placeholder environment/ }));
+  // On a phone an item keeps its icon and hides the words it marks.
+  assert.match(left.className, /\[data-label\]\]:sr-only/);
+  const row = left.parentElement as HTMLElement;
+  assert.equal(row.firstElementChild, left, "the left group comes first");
 });

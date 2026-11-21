@@ -472,11 +472,18 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
  * approval mode, the usage ring. One line; on a phone the agent is its mark.
  */
 export function ComposerFooter({
+  start,
   agent,
   model,
   approval,
   usage,
 }: {
+  /**
+   * The left of the row: where the session runs, such as an environment and a
+   * repository picker. Empty, the rest stays at the right. On a phone each
+   * item keeps its icon: mark its words with `data-label` and they are hidden.
+   */
+  start?: ReactNode;
   agent?: string;
   model?: string;
   approval?: ReactNode;
@@ -487,8 +494,14 @@ export function ComposerFooter({
       data-layer="composer-footer"
       aria-label={defaultCopy.dock.footer}
       role="group"
-      className="flex min-h-7 min-w-0 items-center justify-end gap-3 px-2 text-aui-xs text-aui-muted"
+      className="flex min-h-7 min-w-0 items-center gap-3 px-2 text-aui-xs text-aui-muted"
     >
+      <div
+        data-layer="composer-footer-start"
+        className="mr-auto flex min-w-0 items-center gap-3 max-[30rem]:[&_[data-label]]:sr-only"
+      >
+        {start}
+      </div>
       {agent && (
         <span
           className="inline-flex min-w-0 items-center gap-1.5"

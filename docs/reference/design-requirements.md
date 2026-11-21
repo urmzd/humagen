@@ -1579,8 +1579,8 @@ Rules:
   by a bar at its left edge, so hover and selection never read as one.
   Keyboard focus anywhere in the sidebar is a neutral ring drawn inside the
   control, never the accent. The conversation's scrolling log, reachable by
-  keyboard so it can be scrolled, shows focus as a 1px neutral line inside
-  its edge rather than a 2px accent frame around the page.
+  keyboard so it can be scrolled, shows focus as a thin neutral line along
+  its top edge (DES-080), never a frame around the page.
 - Unread: an agent said the last thing, after the reader last opened the
   conversation. Opening a conversation reads it, and so does staying in it
   while it moves. Before a reader's first mark nothing reads as unread, so
