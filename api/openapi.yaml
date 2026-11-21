@@ -2564,6 +2564,72 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
         "413": {$ref: "#/components/responses/TooLarge"}
         "500": {$ref: "#/components/responses/ServerError"}
+  /api/agents/{name}/slack-app:
+    get:
+      operationId: getAgentSlackApp
+      tags: [agents]
+      summary: An agent's own Slack app
+      description: |
+        The manifest of the agent's own Slack app, built from its look (its
+        display name, greeting, starters and color) on the shared app's
+        scopes and events; the link that creates it in Slack with the
+        manifest filled in; and the client it is linked as, when it is. Slack
+        takes no icon in a manifest: upload the agent's picture.
+      x-permission: agents:read
+      x-readonly: true
+      parameters:
+        - {$ref: "#/components/parameters/AgentName"}
+      responses:
+        "200":
+          description: The agent's own Slack app.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AgentSlackApp"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+    post:
+      operationId: linkAgentSlackApp
+      tags: [agents]
+      summary: Connect an agent's own Slack app
+      description: |
+        Links an installed Slack app as the agent's own, from its bot token
+        and signing secret. Slack is asked who the bot is (`auth.test`, then
+        `bots.info`), so nobody copies an id. The client made routes to the
+        agent alone, maps its bot user to the agent, and files and acts for
+        people as the team's other Slack client does. A mention of its bot
+        through any of the team's Slack apps names the agent, and is its own
+        app's to answer. A token Slack refuses is 400; an app already
+        connected is 409. Takes clients:write and the ownership changing the
+        agent takes.
+      x-permission: clients:write
+      parameters:
+        - {$ref: "#/components/parameters/AgentName"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [token]
+              properties:
+                token: {$ref: "#/components/schemas/SecretInput"}
+                signing_secret: {$ref: "#/components/schemas/SecretInput"}
+      responses:
+        "201":
+          description: Linked. The agent's own Slack app, with the client it is linked as.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AgentSlackApp"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
   /api/agents/{name}/history:
     get:
       operationId: listAgentRevisions
@@ -16095,6 +16161,25 @@ components:
             finishes: {type: array, items: {type: string}}
             hats: {type: array, items: {type: string}}
             glasses: {type: array, items: {type: string}}
+    AgentSlackApp:
+      description: An agent's own Slack app.
+      type: object
+      additionalProperties: false
+      required: [manifest, create_url]
+      properties:
+        manifest:
+          description: The Slack app manifest, as Slack's create-from-manifest page takes it.
+          type: object
+          additionalProperties: true
+        create_url:
+          description: Slack's create-from-manifest page, with the manifest filled in.
+          type: string
+        client:
+          description: The client the app is linked as. Absent until it is linked.
+          type: string
+        bot_user:
+          description: The linked app's bot user, which names the agent in any of the team's Slack apps.
+          type: string
     AgentHome:
       description: Who now sees an agent, as its home.
       allOf:

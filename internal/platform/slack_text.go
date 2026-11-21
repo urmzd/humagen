@@ -43,6 +43,10 @@ type slackContext struct {
 	// HandleOf is a subject's handle in the workspace's directory, if they
 	// have one.
 	HandleOf func(subject string) (string, bool)
+	// Deferred are the bots of agents' own apps other than this client: a
+	// mention of one is that app's to answer, so here it is the agent's name
+	// as a plain word, not a tag (RFC 0012).
+	Deferred map[string]bool
 }
 
 // slackRefusal is a Slack mention that tagged nobody, and why.
@@ -102,6 +106,9 @@ func slackWord(inner, label string, cx slackContext, tags *int, refused *[]slack
 			return ""
 		}
 		tag := ""
+		if agent, ok := cx.Bots[user]; ok && agent != "" && cx.Deferred[user] {
+			return agent
+		}
 		if agent, ok := cx.Bots[user]; ok && agent != "" {
 			tag = "@" + agent
 		} else if who, ok := cx.People[user]; ok && who != "" && cx.HandleOf != nil {
