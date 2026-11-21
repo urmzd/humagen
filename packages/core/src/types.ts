@@ -42,6 +42,12 @@ export interface Citation {
 }
 
 /** The agent a step was handed to, and the run it did the work in. */
+/** A connection a run needed: the provider's id, as Connections names it, and its display name. */
+export interface ConnectionNeed {
+  provider: string;
+  name: string;
+}
+
 export interface Subagent {
   name: string;
   /** The child run. With it the step is clickable: `openRun` carries it as the target. */
@@ -70,6 +76,11 @@ export interface Task {
   /** Bounded arguments for an explicit technical detail view. */
   input?: string;
   durationMs?: number;
+  /**
+   * When the call started running (ISO 8601), so a surface can count the
+   * time it has taken while it runs. Set once, from the first event that says so.
+   */
+  startedAt?: string;
   sources?: Citation[];
   /** The approval gating this call, when status is `waiting` or `denied`. */
   interruptId?: string;
@@ -473,6 +484,13 @@ export interface Turn {
   feedbackReason?: string;
   /** Set when status is "failed". */
   failure?: Failure;
+  /**
+   * Connections the run needed and the person has not made: the platform
+   * records each when a tool group could not be opened for want of the
+   * person's own credential (`needs_connection` on the run). A surface
+   * offers to connect each one.
+   */
+  needsConnection?: ConnectionNeed[];
   /** Set while or after a stop is in flight. */
   stop?: StopState;
   activity?: AgentActivity;

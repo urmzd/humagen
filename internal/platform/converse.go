@@ -80,8 +80,8 @@ type Settings struct {
 	// provider "policy" and the policy's name as its model.
 	ModelPolicies []ModelPolicy `json:"model_policies"`
 	// ModelProviders are the model providers the workspace's
-	// administrators set up. Only SetModelProvider and DeleteModelProvider
-	// change them; a settings write keeps them as they are.
+	// administrators set up. Dedicated provider operations change them; a
+	// settings write keeps them as they are.
 	ModelProviders []ModelProvider `json:"model_providers"`
 	// SetupAt and SetupBy record the first time an admin saved the
 	// workspace's settings. The server sets them once. A value sent by a
@@ -466,6 +466,9 @@ func (p *Platform) Converse(ctx context.Context, tenant string, t Turn) (runs.Ru
 		}
 		meta[runs.MetaThread] = path[0].Thread
 		meta[runs.MetaPrev] = t.After
+		if m := p.askedAgain(tenant, t); m != "" {
+			meta[runs.MetaMessage] = m
+		}
 		// A project deleted since is refused at admission (see placeOf),
 		// after a retry of a turn already let in has joined it.
 		meta[runs.MetaProject] = path[0].Project
@@ -592,4 +595,22 @@ func (p *Platform) threadOf(tenant string, first runs.Run) threads.Thread {
 		return th
 	}
 	return threads.Thread{ID: first.Thread, Project: first.Project, Channel: cmp.Or(first.Channel, projects.General), Visibility: threads.Shared}
+}
+
+// askedAgain is the thread message a follow-up turn answers: the message of
+// the run it follows, when that run answered nothing (failed or stopped) and
+// the turn is for the same person, as the Slack app's Retry asks it again
+// (POST /api/runs with after). Its answer is then that message's, so where
+// the message was a mention the thread listens to its asker (answered). ""
+// for any other turn. The inbox's Retry answers the message itself
+// (retryAnswer).
+func (p *Platform) askedAgain(tenant string, t Turn) string {
+	prev, err := p.Runs.Get(tenant, t.After)
+	if err != nil || (prev.Status != runs.Failed && prev.Status != runs.Stopped) {
+		return ""
+	}
+	if person := personOf(prev.Actor); person == "" || person != personOf(t.Actor) {
+		return ""
+	}
+	return wire.Meta(prev.Tag())[runs.MetaMessage]
 }

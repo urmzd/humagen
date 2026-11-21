@@ -16,6 +16,7 @@ import (
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/spec"
+	"github.com/urmzd/humagen/pkg/state"
 )
 
 // A workspace's model providers are the ones its administrators set up while
@@ -73,9 +74,11 @@ type ModelProvider struct {
 	// KeyRef is the key's reference, "env:NAME", when it is one.
 	KeyRef string `json:"key_ref,omitempty"`
 	// KeyStored says a value is kept for it in Secrets.
-	KeyStored bool      `json:"key_stored,omitempty"`
-	AddedBy   string    `json:"added_by,omitempty"`
-	AddedAt   time.Time `json:"added_at,omitzero"`
+	KeyStored bool `json:"key_stored,omitempty"`
+	// Disabled keeps the setup and key out of use until an admin turns it back on.
+	Disabled bool      `json:"disabled,omitempty"`
+	AddedBy  string    `json:"added_by,omitempty"`
+	AddedAt  time.Time `json:"added_at,omitzero"`
 }
 
 // ModelProviderInput is a provider as an administrator writes it. Key is a
@@ -177,7 +180,7 @@ func (p *Platform) resolveProvider(ref string) (native.ProviderFunc, bool) {
 		return nil, false
 	}
 	m, ok := p.workspaceProvider(tenant, name)
-	if !ok {
+	if !ok || m.Disabled {
 		return nil, false
 	}
 	return p.cfg.ModelKinds.Build(m.Kind, m.Name, m.block(), p.modelKey(tenant, m)), true
@@ -284,7 +287,9 @@ func (p *Platform) SetModelProvider(ctx context.Context, who auth.Principal, nam
 	}
 	err := p.settings.update(tenant, func(v *storedSettings) error {
 		list := v.ModelProviders
+		next.Disabled = false
 		if i := slices.IndexFunc(list, func(m ModelProvider) bool { return m.Name == name }); i >= 0 {
+			next.Disabled = list[i].Disabled
 			list[i] = next
 		} else {
 			if len(list) >= MaxModelProviders {
@@ -302,6 +307,57 @@ func (p *Platform) SetModelProvider(ctx context.Context, who auth.Principal, nam
 		_ = p.secrets.Drop(tenant, secretsOwner(name))
 	}
 	p.log.Info("platform: model provider set", "tenant", tenant, "provider", name, "kind", next.Kind, "by", who.Subject, "replaced", replacing)
+	return next, nil
+}
+
+// SetModelProviderEnabled changes whether a workspace's provider may run.
+// The stored connection and its key are kept when it is off.
+func (p *Platform) SetModelProviderEnabled(ctx context.Context, who auth.Principal, name string, enabled bool) (ModelProvider, error) {
+	if !who.Can(auth.ClientsWrite) {
+		return ModelProvider{}, auth.ErrForbidden
+	}
+	if err := p.checkProviderName(name); err != nil {
+		return ModelProvider{}, err
+	}
+	var next ModelProvider
+	changed := false
+	err := p.settings.update(who.Tenant, func(v *storedSettings) error {
+		i := slices.IndexFunc(v.ModelProviders, func(m ModelProvider) bool { return m.Name == name })
+		if i < 0 {
+			return wire.ErrNotFound
+		}
+		next = v.ModelProviders[i]
+		changed = next.Disabled == enabled
+		if !changed {
+			return state.ErrUnchanged
+		}
+		if !enabled {
+			users, err := p.providerUsers(ctx, who.Tenant, name, v.Settings, true)
+			if err != nil {
+				return err
+			}
+			if len(users) > 0 {
+				seer := p.Seer(who)
+				visible := slices.DeleteFunc(users, func(user string) bool {
+					agent, ok := strings.CutPrefix(user, "@")
+					return ok && !seer.Agent(agent)
+				})
+				if len(visible) < len(users) {
+					visible = append(visible, "agents in projects you may not read")
+				}
+				return fmt.Errorf("%w: %q is used by %s; move those assignments before turning it off", ErrModelProviderInUse, name, strings.Join(visible, ", "))
+			}
+		}
+		next.Disabled = !enabled
+		v.ModelProviders[i] = next
+		return nil
+	})
+	if err != nil {
+		return ModelProvider{}, err
+	}
+	if changed {
+		p.log.Info("platform: model provider availability changed", "tenant", who.Tenant, "provider", name, "enabled", enabled, "by", who.Subject)
+	}
 	return next, nil
 }
 
@@ -360,7 +416,9 @@ func checkProviderShape(m ModelProvider) error {
 
 // DeleteModelProvider removes one of who's workspace's providers and its
 // key. It is refused while an agent, a model policy or routing runs on it,
-// naming each, so nothing is left pointing at a provider that is gone.
+// naming each, so nothing is left pointing at a provider that is gone. The
+// platform's own agents do not hold it, as they do not hold it on: they ship
+// on a chain and answer on the next provider that is enabled.
 func (p *Platform) DeleteModelProvider(ctx context.Context, who auth.Principal, name string) error {
 	if !who.Can(auth.ClientsWrite) {
 		return auth.ErrForbidden
@@ -369,10 +427,14 @@ func (p *Platform) DeleteModelProvider(ctx context.Context, who auth.Principal, 
 	if _, ok := p.workspaceProvider(tenant, name); !ok {
 		return fmt.Errorf("%w: the workspace has no provider named %q", ErrModelProvider, name)
 	}
-	if users := p.providerUsers(ctx, tenant, name); len(users) > 0 {
+	users, err := p.providerUsers(ctx, tenant, name, p.Settings(tenant), true)
+	if err != nil {
+		return err
+	}
+	if len(users) > 0 {
 		return fmt.Errorf("%w: %q is used by %s; move them to another provider first", ErrModelProviderInUse, name, strings.Join(users, ", "))
 	}
-	err := p.settings.update(tenant, func(v *storedSettings) error {
+	err = p.settings.update(tenant, func(v *storedSettings) error {
 		v.ModelProviders = slices.DeleteFunc(v.ModelProviders, func(m ModelProvider) bool { return m.Name == name })
 		return nil
 	})
@@ -386,39 +448,48 @@ func (p *Platform) DeleteModelProvider(ctx context.Context, who auth.Principal, 
 	return nil
 }
 
-// providerUsers names what runs on a provider: each agent whose latest
-// revision names it, first or as a fallback, each model policy, and routing.
-func (p *Platform) providerUsers(ctx context.Context, tenant, name string) []string {
+// providerUsers names each agent or model policy whose model chain uses a provider.
+func (p *Platform) providerUsers(ctx context.Context, tenant, name string, cfg Settings, skipShipped bool) ([]string, error) {
 	var users []string
+	known := p.providersIn(cfg)
+	has := func(n string) bool { return slices.Contains(known, n) }
+	namesProvider := func(n string) bool { return p.readProvider(tenant, n, has) == name }
 	names := func(spec wire.AgentSpec) bool {
-		if spec.Provider == name {
+		if namesProvider(spec.Provider) {
 			return true
 		}
-		return slices.ContainsFunc(spec.Fallbacks, func(f wire.ModelRef) bool { return f.Provider == name })
+		return slices.ContainsFunc(spec.Fallbacks, func(f wire.ModelRef) bool { return namesProvider(f.Provider) })
 	}
 	page := wire.Page{}
 	for range 100 {
 		all, next, err := p.Catalog().List(ctx, tenant, page)
 		if err != nil {
-			break
+			return nil, err
 		}
 		for _, rev := range all {
+			// The platform's defaults already select from the available chain.
+			// The entry agent is one of them under whatever name it was given.
+			if skipShipped && rev.CreatedBy == "platform" && (IsBuiltin(rev.Spec.Name) || p.isEntry(rev)) {
+				continue
+			}
 			if names(rev.Spec) {
 				users = append(users, "@"+rev.Spec.Name)
 			}
 		}
-		if next == "" {
+		page.Token = next
+		if page.Token == "" {
 			break
 		}
-		page.Token = next
 	}
-	cfg := p.Settings(tenant)
+	if page.Token != "" {
+		return nil, fmt.Errorf("%w: could not verify all assignments for %q", ErrModelProviderInUse, name)
+	}
 	for _, m := range cfg.ModelPolicies {
-		if slices.ContainsFunc(m.Models, func(r wire.ModelRef) bool { return r.Provider == name }) {
+		if slices.ContainsFunc(m.Models, func(r wire.ModelRef) bool { return namesProvider(r.Provider) }) {
 			users = append(users, "the model policy "+m.Name)
 		}
 	}
-	return users
+	return users, nil
 }
 
 // CheckModelProvider asks a provider, with its key, whether it answers. It
@@ -432,6 +503,9 @@ func (p *Platform) CheckModelProvider(ctx context.Context, who auth.Principal, n
 	m, ok := p.workspaceProvider(who.Tenant, name)
 	if !ok {
 		return HealthComponent{}, fmt.Errorf("%w: the workspace has no provider named %q", ErrModelProvider, name)
+	}
+	if m.Disabled {
+		return HealthComponent{}, fmt.Errorf("%w: turn on %q before checking it", ErrModelProvider, name)
 	}
 	var probe Probe
 	if p.cfg.ModelKinds.Probe != nil {

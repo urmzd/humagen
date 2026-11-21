@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { fromServer } from "@humagen/adapter";
 import { defaultCopy, MessageView } from "@humagen/components";
 import { renderToSlack } from "@humagen/render-slack";
-import { echoed, forSlack } from "./app.tsx";
+import { echoed, forSlack, tagsSomeoneElse, wholeMessage } from "./app.tsx";
 import {
   alertMail,
   BOT,
@@ -25,7 +25,6 @@ import {
   questionMail,
   resultMail,
   SUBJECT,
-  said,
   settle,
   stopPressed,
   TEAM,
@@ -2091,37 +2090,6 @@ test("a thread asked for an agent by name keeps it: untagged replies there go to
   await w.app.idle();
 });
 
-test("a thread the app answered is followed: the asker's next reply needs no mention, and nobody else's starts anything", async () => {
-  const w = world();
-  await deliver(w, mention("@helper summarize this", TS));
-  assert.equal(w.humagen.started.length, 1);
-  await emit(w, "run.accepted.v1");
-  await emit(w, "run.completed.v1", { text: "ok" });
-  await w.app.idle();
-
-  // Someone else talking in the thread is not asking the app.
-  await deliver(
-    w,
-    said("I disagree with that", "1700000800.000100", { thread_ts: TS, user: OTHER_USER }),
-  );
-  await w.app.idle();
-  assert.equal(w.humagen.started.length, 1, "another person's reply starts nothing");
-
-  // The person who asked carries on without mentioning the app, and the thread keeps its agent.
-  await deliver(w, said("and the risks?", "1700000900.000100", { thread_ts: TS }));
-  assert.equal(w.humagen.started.length, 2);
-  assert.equal(w.humagen.started[1]?.agent, "helper");
-  await emit(w, "run.accepted.v1");
-  await emit(w, "run.completed.v1", { text: "ok" });
-  await w.app.idle();
-
-  // A channel message outside a followed thread is dropped unread.
-  await deliver(w, said("lunch?", "1700001000.000100"));
-  await deliver(w, said("hello", "1700001100.000100", { thread_ts: "1699999999.000100" }));
-  await w.app.idle();
-  assert.equal(w.humagen.started.length, 2);
-});
-
 test("/agent alone opens the ask form with a picker of who to ask, and the one picked answers", async () => {
   const w = world();
   await deliver(w, command(""));
@@ -2174,3 +2142,617 @@ test("/agent alone opens the ask form with a picker of who to ask, and the one p
   await emit(w, "run.completed.v1", { text: "ok" });
   await w.app.idle();
 });
+
+// When the app listens: only on a mention, and after one. A thread whose first
+// message mentioned it is listened to from then on, and the agent says of each
+// later message whether it calls for it. A mention in a later reply is
+// answered once. Nothing else is heard.
+
+/** A message in a channel that mentions nobody, as Slack's `message` event delivers it. */
+const plain = (text: string, ts: string, over: Record<string, unknown> = {}) =>
+  mention("", ts, { type: "message", channel_type: "channel", text, ...over });
+
+test("a thread that began with a mention is listened to, and the agent decides what calls for it", async () => {
+  const w = mapped();
+  await deliver(w, mention("what broke the build?", TS));
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "The migration." });
+  await w.app.idle();
+  assert.equal(w.humagen.started.length, 1);
+
+  // A reply that mentions nobody is read, and here the agent says it is for it.
+  await deliver(
+    w,
+    plain("can you confirm it was the migration?", "1700000050.000200", { thread_ts: TS }),
+  );
+  assert.equal(w.humagen.posts.at(-1)?.listen, true);
+  assert.equal(w.humagen.posts.at(-1)?.text, "can you confirm it was the migration?");
+  assert.equal(w.humagen.started.length, 2, "the agent answered what called for it");
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "Confirmed." });
+  await w.app.idle();
+
+  // One that is not for it is kept as what was said, and Slack hears nothing.
+  w.humagen.callsFor = () => false;
+  const calls = w.slack.calls.length;
+  await deliver(w, plain("lunch at noon?", "1700000060.000300", { thread_ts: TS }));
+  await w.app.idle();
+  assert.equal(w.humagen.posts.at(-1)?.text, "lunch at noon?");
+  assert.equal(w.humagen.started.length, 2, "nothing was started");
+  assert.equal(w.slack.calls.length, calls, "no reaction, status or message");
+  collect("listening", w.slack);
+});
+
+test("a mention in a later reply is answered once: the thread is not listened to", async () => {
+  const w = mapped();
+  const root = "1700000100.000100";
+  await deliver(
+    w,
+    mention("can you summarise this thread?", "1700000110.000200", { thread_ts: root }),
+  );
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "Summary." });
+  await w.app.idle();
+  assert.equal(w.humagen.started.length, 1);
+
+  const posts = w.humagen.posts.length;
+  const calls = w.slack.calls.length;
+  await deliver(w, plain("thanks, and the other one?", "1700000120.000300", { thread_ts: root }));
+  await w.app.idle();
+  assert.equal(w.humagen.posts.length, posts, "the message was not kept");
+  assert.equal(w.humagen.started.length, 1);
+  assert.equal(w.slack.calls.length, calls, "Slack hears nothing");
+
+  // Mentioned again there, it answers again.
+  await deliver(w, mention("and the other one?", "1700000130.000400", { thread_ts: root }));
+  assert.equal(w.humagen.started.length, 2);
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "The other one." });
+  await w.app.idle();
+});
+
+/** A listening thread: its first message mentioned the app and was answered. */
+async function listeningThread() {
+  const w = mapped();
+  await deliver(w, mention("what broke the build?", TS));
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "The migration." });
+  await w.app.idle();
+  return w;
+}
+
+test("in a listening thread, a reply that tags only someone else is theirs: nothing is offered or run", async () => {
+  const w = await listeningThread();
+  const posts = w.humagen.posts.length;
+  const calls = w.slack.calls.length;
+  // The router would take it, so only the tag keeps it out (Codex's probe).
+  w.humagen.callsFor = () => true;
+  await deliver(
+    w,
+    plain(`<@${OTHER_USER}> can you check the migration?`, "1700000050.000200", { thread_ts: TS }),
+  );
+  await deliver(
+    w,
+    plain(`<@${OTHER_USER}|olu> and the rollback?`, "1700000051.000200", { thread_ts: TS }),
+  );
+  await w.app.idle();
+  const probe = {
+    forwarded: w.humagen.posts.length - posts,
+    listen: w.humagen.posts.slice(posts).some((p) => p.listen),
+    runs: w.humagen.started.length - 1,
+  };
+  assert.deepEqual(probe, { forwarded: 0, listen: false, runs: 0 });
+  assert.equal(w.slack.calls.length, calls, "Slack hears nothing");
+});
+
+test("in a listening thread, a reply to a user group or to the whole channel is theirs: nothing is offered or run", async () => {
+  const w = await listeningThread();
+  const posts = w.humagen.posts.length;
+  const calls = w.slack.calls.length;
+  // The router would take any of them, so only the tag keeps them out.
+  w.humagen.callsFor = () => true;
+  const theirs = [
+    "<!subteam^S0123|@oncall> can you check the migration?",
+    "<!subteam^S0123> and the rollback?",
+    "<!here> lunch at noon?",
+    "<!channel|channel> the deploy is done",
+    "<!everyone> heads up",
+  ];
+  for (const [i, text] of theirs.entries())
+    await deliver(w, plain(text, `17000000${50 + i}.000200`, { thread_ts: TS }));
+  await w.app.idle();
+  assert.equal(w.humagen.posts.length - posts, 0, "nothing is offered");
+  assert.equal(w.humagen.started.length, 1, "nothing runs");
+  assert.equal(w.slack.calls.length, calls, "Slack hears nothing");
+
+  // A date Slack formats tags nobody: the listener's reply is offered as any other.
+  await deliver(
+    w,
+    plain("ship it <!date^1700000000^{date_short}|Nov 14>?", "1700000070.000200", {
+      thread_ts: TS,
+    }),
+  );
+  assert.equal(w.humagen.posts.at(-1)?.listen, true);
+  assert.equal(w.humagen.started.length, 2);
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "Shipping." });
+  await w.app.idle();
+});
+
+test("a tag of another user, a user group or the whole channel is someone else's; the app's own and a date are not", () => {
+  for (const text of [
+    `<@${OTHER_USER}> look`,
+    `<@${OTHER_USER}|olu> look`,
+    "<@W012ENTERPRISE> look",
+    `<@${BOT}> and <@${OTHER_USER}> look`,
+    "<!subteam^S0123|@oncall> look",
+    "<!subteam^S0123> look",
+    "<!here> look",
+    "<!here|here> look",
+    "<!channel> look",
+    "<!everyone> look",
+  ])
+    assert.equal(tagsSomeoneElse(text, BOT), true, text);
+  for (const text of [
+    "look",
+    `<@${BOT}> look`,
+    `<@${BOT}|humagen> look`,
+    "<!date^1700000000^{date_short}|Nov 14> look",
+    "<#C01ABCDEF|general> look",
+    "<https://example.com|here> look",
+    "!here and @channel as typed words",
+  ])
+    assert.equal(tagsSomeoneElse(text, BOT), false, text);
+});
+
+test("in a listening thread, a reply that tags someone else and the app is asked, with the whole message", async () => {
+  const w = await listeningThread();
+  const text = `<@${OTHER_USER}> FYI, <@${BOT}> can you confirm it was the migration?`;
+  // Slack sends the channel message and its app_mention: the mention is taken.
+  await deliver(w, plain(text, "1700000050.000200", { thread_ts: TS }));
+  await deliver(w, mention("", "1700000050.000200", { text, thread_ts: TS }));
+  assert.equal(w.humagen.started.length, 2, "the app was asked");
+  const asked = w.humagen.posts.at(-1);
+  assert.notEqual(asked?.listen, true, "asked, not offered to listening");
+  assert.match(String(asked?.text), new RegExp(`<@${OTHER_USER}> FYI, Humagen can you confirm`));
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "Confirmed." });
+  await w.app.idle();
+});
+
+test("in a listening thread, a reply that tags someone else and names an agent is offered", async () => {
+  const w = await listeningThread();
+  await deliver(
+    w,
+    plain(`<@${OTHER_USER}> let's ask @lead about the rollback`, "1700000050.000200", {
+      thread_ts: TS,
+    }),
+  );
+  assert.equal(w.humagen.posts.at(-1)?.listen, true);
+  assert.equal(w.humagen.posts.at(-1)?.text, `<@${OTHER_USER}> let's ask @lead about the rollback`);
+  assert.equal(w.humagen.started.length, 2, "the agent answered");
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "Rolled back." });
+  await w.app.idle();
+});
+
+test("a bound channel still mirrors a reply that tags someone else, passively", async () => {
+  const w = mapped();
+  const c = w.humagen.clients.get(CLIENT);
+  assert.ok(c);
+  c.capabilities = { events: ["app_mention", "message"], actions: [], deliver_outcomes: true };
+  w.humagen.bound.set(CLIENT, [{ slack_channel: CHANNEL, project: "Field", channel: "general" }]);
+  await deliver(
+    w,
+    plain(`<@${OTHER_USER}> the deploy is done`, "1700000050.000200", { thread_ts: TS }),
+  );
+  await w.app.idle();
+  assert.equal(w.humagen.posts.length, 1);
+  assert.equal(w.humagen.posts[0]?.post_only, true);
+  assert.notEqual(w.humagen.posts[0]?.listen, true);
+  assert.equal(w.humagen.posts[0]?.text, `<@${OTHER_USER}> the deploy is done`);
+  assert.equal(w.humagen.started.length, 0);
+  assert.equal(w.slack.calls.length, 0);
+});
+
+// A thread is listened to only once the app has answered there, so an
+// unmentioned reply after a mention that answered nothing runs nothing.
+const unmentioned = (w: World, ts: string) =>
+  deliver(w, plain("and the risks?", ts, { thread_ts: TS }));
+
+test("a refused mention starts no listening: an unmentioned reply there runs nothing", async () => {
+  const w = mapped();
+  w.humagen.refuse = new HumagenError(429, "the workspace reached 200 runs today", {
+    limit: "runs",
+    resets_at: new Date(Date.now() + 3_600_000).toISOString(),
+  });
+  await deliver(w, mention("what broke the build?", TS));
+  await w.app.idle();
+  assert.equal(w.humagen.started.length, 0, "the mention was refused");
+  await unmentioned(w, "1700000050.000200");
+  await w.app.idle();
+  assert.equal(w.humagen.started.length, 0, "a thread the app never answered is not listened to");
+});
+
+test("a failed mention starts no listening: an unmentioned reply there runs nothing", async () => {
+  const w = mapped();
+  await deliver(w, mention("what broke the build?", TS));
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.failed.v1", { error: "timeout", terminal: true });
+  await w.app.idle();
+  assert.equal(w.humagen.started.length, 1);
+  await unmentioned(w, "1700000050.000200");
+  await w.app.idle();
+  assert.equal(w.humagen.started.length, 1, "a failed turn answered nothing");
+});
+
+test("a quiet run with no answer text starts no listening, and starts it once its answer posts", async () => {
+  const w = mapped({ stallMs: 30, slowPollMs: 40 });
+  await deliver(w, mention("long job", TS));
+  const run = w.humagen.last.id;
+  await emit(w, "run.accepted.v1");
+  await pause(120);
+  assert.equal(w.slack.of("chat.appendStream").length, 0, "no answer words were streamed");
+
+  await unmentioned(w, "1700000050.000200");
+  await pause(50);
+  assert.equal(w.humagen.started.length, 1, "no reply starts a run until the app answers");
+
+  // The quiet run answers later: from then on the thread is listened to.
+  w.humagen.set(run, { status: "completed", answer: "Long job done." });
+  await w.app.idle();
+  await pause(100);
+  await unmentioned(w, "1700000060.000300");
+  assert.equal(w.humagen.started.length, 2, "the reply after the answer is heard");
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "ok" });
+  await w.app.idle();
+});
+
+test("a listened thread listens to the latest asker only, and a late older answer does not take it back", async () => {
+  const w = mapped({ stallMs: 30, slowPollMs: 40 });
+  const runs = () => w.humagen.started.length;
+  // Ana asks first, and her run goes quiet before it answers.
+  await deliver(w, mention("long job", TS));
+  const older = w.humagen.last.id;
+  await emit(w, "run.accepted.v1");
+  await pause(120);
+
+  // The quiet run is still followed slowly, so the app is not idle: wait instead.
+  // Olu asks there with a mention, and is answered: the thread is his.
+  await deliver(
+    w,
+    mention("and the price?", "1700000030.000300", { thread_ts: TS, user: OTHER_USER }),
+  );
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "The price is fine." });
+  await pause(50);
+  assert.equal(runs(), 2);
+
+  const at = runs();
+  await deliver(w, plain("and the terms?", "1700000040.000400", { thread_ts: TS }));
+  await pause(50);
+  const before = runs() - at;
+
+  // Ana's older run answers late.
+  w.humagen.set(older, { status: "completed", answer: "Long job done." });
+  await w.app.idle();
+  await pause(100);
+  const mid = runs();
+  await deliver(w, plain("and the terms again?", "1700000050.000500", { thread_ts: TS }));
+  await w.app.idle();
+  const after = runs() - mid;
+
+  const last = runs();
+  await deliver(
+    w,
+    plain("and the discount?", "1700000060.000600", { thread_ts: TS, user: OTHER_USER }),
+  );
+  const newer = runs() - last;
+  assert.deepEqual({ before, after, newer }, { before: 0, after: 0, newer: 1 });
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "No discount." });
+  await w.app.idle();
+});
+
+test("the newest answered mention wins: the listener's unmentioned follow-up does not move the anchor", async () => {
+  const w = mapped({ stallMs: 30, slowPollMs: 40 });
+  const runs = () => w.humagen.started.length;
+  // Ana asks first, and is answered: the thread listens to her.
+  await deliver(w, mention("what broke the build?", TS));
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "The migration." });
+  await w.app.idle();
+
+  // Olu asks there with a mention, and his run goes quiet before it answers.
+  await deliver(
+    w,
+    mention("and the price?", "1700000030.000300", { thread_ts: TS, user: OTHER_USER }),
+  );
+  const newer = w.humagen.last.id;
+  await emit(w, "run.accepted.v1");
+  await pause(120);
+
+  // Ana's unmentioned follow-up, after Olu's mention, is heard and answered.
+  const at = runs();
+  await deliver(w, plain("and the rollback?", "1700000040.000400", { thread_ts: TS }));
+  assert.equal(runs() - at, 1, "the listener's follow-up is heard");
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "Rolled back." });
+  await pause(50);
+  assert.deepEqual(
+    w.humagen.listening.get(`${CLIENT}/${CHANNEL}/${TS}`),
+    { user: USER, ts: TS },
+    "the follow-up did not move the anchor",
+  );
+
+  // Olu's newer mention is answered late: the thread is his.
+  w.humagen.set(newer, { status: "completed", answer: "The price is fine." });
+  await w.app.idle();
+  await pause(100);
+  const mid = runs();
+  await deliver(w, plain("and the terms?", "1700000050.000500", { thread_ts: TS }));
+  await w.app.idle();
+  const ana = runs() - mid;
+  const last = runs();
+  await deliver(
+    w,
+    plain("and the discount?", "1700000060.000600", { thread_ts: TS, user: OTHER_USER }),
+  );
+  const olu = runs() - last;
+  assert.deepEqual({ ana, olu }, { ana: 0, olu: 1 });
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "No discount." });
+  await w.app.idle();
+});
+
+test("a failed mention answered on Retry starts listening for that mention's asker", async () => {
+  const w = mapped();
+  await deliver(w, mention("deploy it", TS));
+  const failedRun = w.humagen.last.id;
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.failed.v1", { error: "provider: 529 overloaded", terminal: true });
+  await w.app.idle();
+  await unmentioned(w, "1700000050.000200");
+  await w.app.idle();
+  assert.equal(w.humagen.started.length, 1, "a failed mention starts no listening");
+
+  const final = w.slack.of("chat.stopStream")[0];
+  const ts = String(final?.ts);
+  await deliver(w, click(blocksOf(final), defaultCopy.retry, { ts, threadTs: TS }));
+  assert.equal(w.humagen.started.length, 2);
+  assert.equal(w.humagen.started[1]?.after, failedRun);
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "Deployed." });
+  await w.app.idle();
+
+  await unmentioned(w, "1700000060.000300");
+  assert.equal(w.humagen.started.length, 3, "the retry's answer started listening for the asker");
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "ok" });
+  await w.app.idle();
+});
+
+test("a listener's reply also sent to the channel is heard as a reply in the thread", async () => {
+  const w = mapped();
+  await deliver(w, mention("what broke the build?", TS));
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "The migration." });
+  await w.app.idle();
+  await deliver(
+    w,
+    plain("and the rollback?", "1700000050.000200", { thread_ts: TS, subtype: "thread_broadcast" }),
+  );
+  assert.equal(w.humagen.posts.at(-1)?.listen, true);
+  assert.equal(w.humagen.started.length, 2, "the broadcast reply was heard");
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "Rolled back." });
+  await w.app.idle();
+});
+
+test("a message that mentions nobody outside a thread, or from someone the client does not map, is not heard", async () => {
+  const w = mapped();
+  await deliver(w, plain("anyone around?", "1700000200.000100"));
+  await deliver(
+    w,
+    plain("in a thread nobody started", "1700000210.000200", { thread_ts: "1700000205.000100" }),
+  );
+  await deliver(w, mention("start one", "1700000300.000100"));
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "Started." });
+  await w.app.idle();
+  const posts = w.humagen.posts.length;
+  await deliver(
+    w,
+    plain("from a stranger", "1700000310.000200", {
+      thread_ts: "1700000300.000100",
+      user: "U09STRANGER",
+    }),
+  );
+  await w.app.idle();
+  assert.equal(w.humagen.posts.length, posts);
+  assert.equal(w.humagen.started.length, 1);
+});
+
+test("the whole message is sent: a mention anywhere asks, and the words around it stay", () => {
+  const say = (text: string) => wholeMessage(text, BOT, "Humagen");
+  // The address that opens a message is dropped, with its colon or comma.
+  assert.equal(say(`<@${BOT}> please check my repos`), "please check my repos");
+  assert.equal(say(`<@${BOT}>: summarise this`), "summarise this");
+  assert.equal(say(`  <@${BOT}|humagen>, summarise this`), "summarise this");
+  // Anywhere else the mention is part of the sentence, and nothing around it is lost.
+  assert.equal(
+    say(`Hey team, could <@${BOT}> take a look at this? Thanks`),
+    "Hey team, could Humagen take a look at this? Thanks",
+  );
+  assert.equal(
+    say(`The build broke after the merge.\n\nCan you find out why, <@${BOT}>`),
+    "The build broke after the merge.\n\nCan you find out why, Humagen",
+  );
+  assert.equal(
+    say(`First paragraph.\n\n<@${BOT}> second paragraph asks.\n\nThird adds a detail.`),
+    "First paragraph.\n\nHumagen second paragraph asks.\n\nThird adds a detail.",
+  );
+  // Someone else's mention is theirs, and stays as Slack wrote it.
+  assert.equal(say(`<@${BOT}> ask <@U09OTHER> about it`), "ask <@U09OTHER> about it");
+});
+
+test("a mention in the middle or at the end of a message asks with the whole message", async () => {
+  const w = mapped();
+  await deliver(
+    w,
+    mention("", TS, {
+      text: `Hey team, could <@${BOT}> take a look at the failing deploy? Thanks`,
+    }),
+  );
+  assert.equal(
+    w.humagen.posts[0]?.text,
+    "Hey team, could Humagen take a look at the failing deploy? Thanks",
+  );
+  assert.equal(w.humagen.started.length, 1);
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "Looking." });
+  await w.app.idle();
+});
+
+test("a direct message and a thread in an unbound channel are sessions; a bound channel stays the project's", async () => {
+  // Outside a bound channel the Slack thread is a session, which the console lists.
+  const w = mapped();
+  await deliver(w, direct("what is the status of my repos?", TS));
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "All green." });
+  await w.app.idle();
+  await deliver(w, mention("and the deploy?", "1700000400.000100"));
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "Deployed." });
+  await w.app.idle();
+  assert.deepEqual(w.humagen.routes, ["session", "session"]);
+
+  // A Slack channel bound to a project posts as the project's channel does.
+  const b = mapped();
+  b.humagen.bound.set(CLIENT, [{ slack_channel: CHANNEL, project: "Field", channel: "general" }]);
+  await deliver(b, mention("who has the PO?", TS));
+  assert.deepEqual(b.humagen.routes, ["thread"]);
+  await emit(b, "run.accepted.v1");
+  await emit(b, "run.completed.v1", { text: "Ana has it." });
+  await b.app.idle();
+});
+
+/**
+ * A Slack thread from before sessions: the app as it was posted its first
+ * message to the threads route, so Humagen holds it as a conversation, and
+ * it was answered.
+ */
+async function conversationThread(channel: string, text: string) {
+  const w = mapped();
+  await w.humagen.postThread({
+    text,
+    act_as: { client: CLIENT, user: USER },
+    surface: { client: CLIENT, channel, ts: TS, app_user: BOT },
+  });
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "The migration." });
+  return w;
+}
+
+/** What Slack was told in words, by any message posted, streamed or updated. */
+const toldSlack = (w: World) =>
+  w.slack.calls
+    .filter((c) => /postMessage|stopStream|chat\.update/.test(c.method))
+    .map((c) => String(c.args.text ?? c.args.markdown_text ?? ""));
+
+test("a channel thread from before sessions is still answered: a mention, and the listener's reply", async () => {
+  const w = await conversationThread(CHANNEL, `<@${BOT}> what broke the build?`);
+  await deliver(w, mention("and the invoice?", "1700000050.000200", { thread_ts: TS }));
+  assert.equal(w.humagen.started.length, 2, "the mention is answered");
+  assert.equal(w.humagen.refusedSessions, 1, "asked as a session once, and told it is not one");
+  assert.equal(w.humagen.routes.at(-1), "thread", "then posted as the conversation it is");
+  assert.notEqual(w.humagen.posts.at(-1)?.listen, true);
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "Paid." });
+  await w.app.idle();
+
+  // The thread listens to its asker, whose reply needs no mention.
+  w.humagen.callsFor = () => true;
+  await deliver(w, plain("and the terms?", "1700000060.000200", { thread_ts: TS }));
+  assert.equal(w.humagen.started.length, 3, "the listener's reply is answered");
+  assert.equal(w.humagen.posts.at(-1)?.listen, true);
+  assert.equal(w.humagen.routes.at(-1), "thread");
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "Net 30." });
+  await w.app.idle();
+  assert.deepEqual(
+    toldSlack(w).filter((t) => /not allowed|tag an agent|unavailable/i.test(t)),
+    [],
+    "nobody is told to tag an agent",
+  );
+});
+
+test("a direct message thread from before sessions is still answered", async () => {
+  const w = await conversationThread(DM, "what broke the build?");
+  await deliver(w, direct("and the invoice?", "1700000050.000200", { thread_ts: TS }));
+  assert.equal(w.humagen.started.length, 2, "the message is answered");
+  assert.equal(w.humagen.refusedSessions, 1);
+  assert.equal(w.humagen.routes.at(-1), "thread");
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "Paid." });
+  await w.app.idle();
+  assert.deepEqual(
+    toldSlack(w).filter((t) => /not allowed|tag an agent|unavailable/i.test(t)),
+    [],
+  );
+});
+
+test("any other conflict of the sessions route is not retried as a conversation", async () => {
+  const w = mapped();
+  let asked = 0;
+  w.humagen.postSession = async () => {
+    asked++;
+    // The same words, and no code: only the code says the thread is a conversation.
+    throw new HumagenError(
+      409,
+      "this thread started before sessions; post to it as a conversation, or start a new thread",
+    );
+  };
+  await deliver(w, mention("and the invoice?", "1700000050.000200", { thread_ts: TS }));
+  await w.app.idle();
+  assert.equal(asked >= 1, true);
+  assert.equal(w.humagen.routes.length, 0, "nothing went to the threads route");
+  assert.equal(w.humagen.started.length, 0);
+});
+
+for (const [name, failure] of [
+  ["answers 500", () => new HumagenError(500, "internal error")],
+  ["cannot be reached", () => new TypeError("fetch failed")],
+  ["answers 400", () => new HumagenError(400, "text is too long")],
+  ["answers 403", () => new HumagenError(403, "that person may not post here")],
+] as const) {
+  test(`a reply nobody was asked about shows nothing in Slack when Humagen ${name}`, async () => {
+    const w = await listeningThread();
+    const fail = async () => {
+      throw failure();
+    };
+    w.humagen.postSession = fail;
+    w.humagen.postThread = fail;
+    const calls = w.slack.calls.length;
+    await deliver(w, plain("lunch at noon?", "1700000210.000200", { thread_ts: TS }));
+    // In a thread nobody listens in, too.
+    await deliver(w, plain("anyone?", "1700000310.000200", { thread_ts: "1700000300.000100" }));
+    await w.app.idle();
+    assert.deepEqual(
+      w.slack.calls.slice(calls).map((c) => c.method),
+      [],
+      "no notice, no reaction, no status",
+    );
+    assert.equal(w.humagen.started.length, 1);
+
+    // Someone who asked is still told.
+    await deliver(w, mention("and now?", "1700000410.000200", { thread_ts: TS }));
+    await w.app.idle();
+    assert.equal(
+      w.slack.calls.slice(calls).some((c) => c.method === "chat.postMessage"),
+      true,
+      "a mention that failed is answered with why",
+    );
+  });
+}

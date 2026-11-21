@@ -22,6 +22,7 @@ import {
   type Receipt,
   type RunRequest,
   type StreamItem,
+  THREAD_BEFORE_SESSIONS,
   type ThreadPosted,
   type ThreadPostRequest,
   type WireMessage,
@@ -39,6 +40,15 @@ import { type Envelope, type SlackApi, SlackError } from "./slack.ts";
 export const TEAM = "T01ABCDEF";
 export const OTHER_TEAM = "T09ZZZZZZ";
 export const CHANNEL = "C01ABCDEF";
+
+/** Whether Slack ts a was posted before b: seconds, a dot, then microseconds. */
+function olderTs(a: string, b: string): boolean {
+  const key = (ts: string) => {
+    const [secs = "0", micros = ""] = ts.split(".");
+    return BigInt(secs) * 1_000_000n + BigInt(`${micros}000000`.slice(0, 6));
+  };
+  return key(a) < key(b);
+}
 export const DM = "D01ABCDEF";
 export const USER = "U01ABCDEF";
 export const OTHER_USER = "U02ABCDEF";
@@ -181,6 +191,21 @@ export class FakeHumagen implements Humagen {
   readonly answered: { answer: AnswerRequest; as: ActAs }[] = [];
   /** Every message posted from a Slack thread, in order. */
   readonly posts: ThreadPostRequest[] = [];
+  /** Slack threads that began with a message addressed to the app, as the platform records them. */
+  readonly addressed = new Set<string>();
+  /**
+   * Who each addressed Slack thread listens to, as the platform records it:
+   * the person whose mention a run there answered most recently (completed
+   * with words in its answer), and that mention's ts. A refused mention, a
+   * failed run, or one still quiet or parked answered nothing, an answer to
+   * an older mention than the listener's own changes nothing, and a heard
+   * reply that tags no agent never moves it.
+   */
+  readonly listening = new Map<string, { user: string; ts: string }>();
+  /** Each run started from a Slack message: its thread, who asked and the message's ts. */
+  private readonly askedIn = new Map<string, { where: string; user: string; ts: string }>();
+  /** Whether the agent says a message that addressed nobody calls for it. Tests set it. */
+  callsFor: (text: string) => boolean = () => true;
   /** The humagen thread each Slack thread is, by client, channel and ts. */
   private readonly surfaces = new Map<string, string>();
   /** Each message posted, by its ts: what it did. */
@@ -291,6 +316,16 @@ export class FakeHumagen implements Humagen {
     if (existing) return existing;
     const prev = t.after ? this.runs.get(t.after) : undefined;
     if (t.after && !prev) throw new HumagenError(404, "not found");
+    // As the platform does: a turn asked again after one that answered
+    // nothing, for the same person, answers that turn's message.
+    const was = t.after ? this.askedIn.get(t.after) : undefined;
+    if (
+      was &&
+      (prev?.status === "failed" || prev?.status === "stopped") &&
+      prev.actor?.user &&
+      prev.actor.user === actor.user
+    )
+      this.askedIn.set(id, was);
     const now = this.at();
     const run: Run = {
       id,
@@ -327,7 +362,39 @@ export class FakeHumagen implements Humagen {
    * humagen thread, each message is posted once by its ts, and a message tags
    * an agent by its name, a person by @handle, or else the default answers.
    */
+  /** Which route each post came by, in order: the threads route or the sessions route. */
+  readonly routes: ("thread" | "session")[] = [];
+  /** How many session posts were refused for a thread from before sessions. */
+  refusedSessions = 0;
+
+  /** The Slack threads (`<client>/<channel>/<thread ts>`) that are root sessions. */
+  private readonly sessions = new Set<string>();
+
+  /**
+   * As the platform does: the same post, kept as a root session. A thread
+   * that started as a conversation stays one: it is refused with the code
+   * that says so, and nothing is kept.
+   */
+  async postSession(body: ThreadPostRequest): Promise<ThreadPosted> {
+    const s = body.surface;
+    const where = `${s.client}/${s.channel}/${s.ts}`;
+    if (this.surfaces.has(where) && !this.sessions.has(where)) {
+      this.refusedSessions++;
+      throw new HumagenError(
+        409,
+        "this thread started before sessions; post to it as a conversation, or start a new thread",
+        undefined,
+        THREAD_BEFORE_SESSIONS,
+      );
+    }
+    const posted = await this.postThread(body);
+    this.routes[this.routes.length - 1] = "session";
+    this.sessions.add(where);
+    return posted;
+  }
+
   async postThread(body: ThreadPostRequest): Promise<ThreadPosted> {
+    this.routes.push("thread");
     const client = this.clients.get(body.surface.client);
     if (!client || client.slack?.machine !== SUBJECT) throw new HumagenError(404, "not found");
     if (!client.slack?.people?.[body.act_as.user]) {
@@ -341,6 +408,13 @@ export class FakeHumagen implements Humagen {
     const where = `${s.client}/${s.channel}/${s.ts}`;
     const bound = (this.bound.get(s.client) ?? []).find((b) => b.slack_channel === s.channel);
     let thread = this.surfaces.get(where);
+    // As the platform does: a message that addressed nobody is taken only in
+    // a thread that began with one addressed to the app, and starts none.
+    if (body.listen && (!thread || this.listening.get(where)?.user !== body.act_as?.user)) {
+      this.posts.pop();
+      this.routes.pop();
+      throw new HumagenError(409, "nobody is listening in this thread: mention the app to ask it");
+    }
     if (!thread) {
       // As the platform does: a Slack thread under a post this app recorded
       // is that announcement's while the Slack channel is bound to its
@@ -359,6 +433,8 @@ export class FakeHumagen implements Humagen {
       }
       thread = `th-${String(this.surfaces.size + 1).padStart(16, "0")}`;
       this.surfaces.set(where, thread);
+      if (!body.post_only && !s.channel.startsWith("D") && (s.message ?? s.ts) === s.ts)
+        this.addressed.add(where);
       if (receipt && seed) this.seeded.set(thread, receipt.message);
     }
     const n = [...this.postedOnce.keys()].filter((k) => k.startsWith(`${where}/`)).length + 1;
@@ -380,7 +456,7 @@ export class FakeHumagen implements Humagen {
       new RegExp(`(^|\\s)@${a.name}\\b`).test(message.text),
     );
     const person = /(^|\s)@([a-z][a-z0-9-]*)/.exec(message.text)?.[2];
-    if (body.post_only) posted.rule = "post_only";
+    if (body.post_only || (body.listen && !this.callsFor(message.text))) posted.rule = "post_only";
     else if (tagged) posted.rule = "tagged";
     else if (person) {
       posted.rule = "people";
@@ -395,6 +471,10 @@ export class FakeHumagen implements Humagen {
         { agent, text: message.text, act_as: body.act_as },
         `thread-${thread}-${message.id}-${agent}`,
       );
+      // Only a mention (or a message that tags an agent) asks: a heard reply's
+      // answer does not move whom the thread listens to.
+      if (!body.listen || tagged)
+        this.askedIn.set(run.id, { where, user: body.act_as?.user ?? "", ts: s.message ?? s.ts });
       this.set(run.id, { thread, message: message.id });
       posted.runs = [this.runs.get(run.id) as Run];
     }
@@ -724,7 +804,17 @@ export class FakeHumagen implements Humagen {
   /** Change a run's record, as the ledger would. */
   set(id: string, change: Partial<Run>) {
     const run = this.runs.get(id);
-    if (run) this.runs.set(id, { ...run, ...change, updated_at: this.at() });
+    if (!run) return;
+    const next = { ...run, ...change, updated_at: this.at() };
+    this.runs.set(id, next);
+    // As the platform does: an addressed thread listens to whose message a run
+    // there answered, unless it already listens to someone's newer one.
+    const asked = this.askedIn.get(id);
+    if (next.status === "completed" && next.answer?.trim() && asked?.user) {
+      const now = this.listening.get(asked.where);
+      if (this.addressed.has(asked.where) && (!now || olderTs(now.ts, asked.ts)))
+        this.listening.set(asked.where, { user: asked.user, ts: asked.ts });
+    }
   }
 
   /** Publish one event on a run's stream. */

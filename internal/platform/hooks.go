@@ -105,6 +105,7 @@ func (p *Platform) ended(ctx context.Context, run runs.Run) {
 		{"background", func() error { return p.settleBackgroundRun(ctx, run) }},
 		{"cascade", func() error { return p.cascade(ctx, run) }},
 		{"answer", func() error { return p.deliverAnswer(ctx, run) }},
+		{"listening", func() error { return p.listenOnAnswer(run) }},
 		{"followups", func() error {
 			if run.Parent != "" {
 				return nil

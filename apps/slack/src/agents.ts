@@ -61,6 +61,13 @@ export function mayRoute(routing: Routing, name: string): boolean {
 
 const NAMED = /(^|\s)@([A-Za-z0-9][A-Za-z0-9_-]*)(?=$|[\s,.:;!?])/g;
 
+/** Whether a message names one of these agents with `@name`, anywhere in it. */
+export function namesAgent(text: string, agents: Agent[]): boolean {
+  const known = new Set(agents.map((a) => a.name));
+  for (const m of text.matchAll(NAMED)) if (known.has(builtinAgent(m[2] as string))) return true;
+  return false;
+}
+
 export function choose(text: string, agents: Agent[], routing: Routing): Choice {
   const said = text.trim();
   const known = new Set(agents.map((a) => a.name));

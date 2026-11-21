@@ -39,7 +39,6 @@ import {
   LoadMore,
   Page,
   Problem,
-  primary,
   SearchField,
   Segmented,
   SkeletonRows,
@@ -739,7 +738,7 @@ export function AlertsPage({
                       <span className={alertActions}>
                         <button
                           type="button"
-                          className={`${primary} col-span-2 w-[9.5rem] max-w-full`}
+                          className={`${button} col-span-2 w-[9.5rem] max-w-full`}
                           title={label}
                           onClick={() => {
                             const page = alertPage(a) ?? to;

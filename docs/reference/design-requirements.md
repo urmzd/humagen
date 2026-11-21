@@ -26,6 +26,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 
 | ID | Requirement | Status |
 | --- | --- | --- |
+| DES-080 | A transcript says why work failed and what to do next: a failed step or delegated run shows its error's first line with Show Details, the failed count opens the steps at the failures, a failed delegated run offers Retry, a connection the run needed is a card with Connect, GitHub pull requests, issues and commits in an answer are chips, and an open run of steps is a card with each call's input as a table, a command with Copy and a running step's live time | Implemented: `StepGroup`, `ToolRow`, `Elapsed` and `WorkingMark` in `packages/web/src/WorkSteps.tsx`; `AgentCall` and `ConnectCards` in `packages/web/src/AgentMessage.tsx`; `packages/render-web/src/github-refs.tsx`; `ActionId.retryCall`, handled in `Room.tsx`; `needs_connection` on a run (`pkg/runs/connections.go`, recorded by `noteConnectionNeed` in `internal/platform/connection_need.go` when a tool group needs the person's own credential); `Task.startedAt` from the adapter. Evidence: `transcript.dom.test.tsx`, `timeline.dom.test.tsx`, `workspace.dom.test.tsx`, adapter `fold.test.ts` and `run.test.ts`, `TestARunRecordsEachConnectionItNeededOnceWithinBounds`, `TestAToolGroupWithoutThePersonsConnectionIsRecordedOnTheRunAndItsTurn`, `TestOtherExpansionFailuresNameNoConnection`; before and after captures of `transcript-gallery.html` at 1280x800 and 390x844, light and dark (`scripts/screens/transcript.ts`). Not built: Retry on a single tool call (no route runs one call again), a pull request's state and checks on its chip, and a connection named only in the agent's words. Not seen: a live run that records `needs_connection`, and `pnpm validate:slack`. |
 | DES-082 | A project's page is a chat landing page: one surface with a trail back to Projects and its menu at the top, its title and one-line description, and the conversation's floating composer pinned at the bottom. A project with no sessions leads with its setup as steps to get started, each done or not, with how many are done; once it has sessions it leads with Recents, and the setup is a summary beside them, folded above them on a phone. Setup and Recents are plain rows on hairlines, never boxed cards or "No ..." lines | Implemented: `ProjectPage`, `Setup`, `SetupRow`, `Recents` (`apps/web/src/Projects.tsx`), `ComposerDock` and `useComposerDock` shared with `Thread` (`packages/web/src/Thread.tsx`). Evidence: `projects.dom.test.tsx`; before and after captures at 1280x800 and 390x844, light and dark, on the pull request. |
 | DES-080 | A session has one panel, reached from its header, that shows where it runs, how full its context is, the connectors it may reach, what it made and what it changed, and each row opens the view it names; the header opens the workbench's views directly and the rest from More Views, and its title is the session's menu | Implemented: `SessionViews.tsx` (Details, Terminal, Changes, Browser and Files in the header; Artifacts, Side Chat ⌘;, Search ⌘⇧F, Background Tasks and Progress in More Views; on a phone all of them in More Views), `SessionSections.tsx` and `sessionContext.ts` (Environment, Context, Connectors, Changes), the title menu with Rename in place (`SessionActions.tsx`), the meta line said once (`SessionPlace.tsx`), and session titles without a leading mention, retitled after a greeting (`runs.SessionTitle`, `runs.Greeting`). No new route: the panel reads `GET /api/threads/{id}/sandboxes`, `GET /api/me/credentials`, `GET /api/github/pull` and each run's usage. Evidence: `session-context-panel.dom.test.tsx`, `TestSessionTitle*`, `TestGreeting`; before and after captures at 1280x800 and 390x844, light and dark, against a docker sandbox. |
 | DES-080 | A conversation is one surface with the composer floating over it, on a named z-index scale, and Stop works at two levels: the composer stops everything in the session, each running agent, call to another agent, step and background task stops from its own row; the composer's footer says who answers, the approval mode and a usage ring that opens the session's usage and the limits that hold it | Implemented: `Thread` `footer` (`packages/web/src/Thread.tsx`), the `--aui-z-*` scale (`packages/render-web/src/theme.css`), `ItemStopControl` and `ItemStopsContext` (render-web `stop.tsx`, `meta.tsx`), `Composer` `stopAll` and `footer`, `stops.tsx`, `SessionUsage.tsx`, `GET /api/threads/{id}/usage` (`internal/platform/session_usage.go`). Evidence: `composer-overlay.dom.test.tsx`, `TestThreadUsage*` and `foldUsage` tests; before and after captures at 1280x800 and 390x844, light and dark, on PR #474. Not done: Run in Background for a call already running (the runtime starts a call in the background only when the model asks, with `background: true`); a real iOS keyboard. |
@@ -74,7 +75,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-034 | A finished turn says how long it worked | Implemented: `turn.completed` carries `durationMs`, from the run's events or its record; adapter and core tests pass |
 | DES-035 | Agents are told apart by a bot in their color; a mention opens a profile on hover | Implemented: `AgentInitials` (drawn by `bot-avatars`, initials where there is no canvas), `MentionLink`; `ui.test.tsx` passes; marks checked in the browser on `/gallery.html`, dark and light |
 | DES-036 | The composer holds what is picked, and the first message posts before anything else runs | Implemented in `Composer.tsx` and `Chat.tsx`; web tests and the `home` screens pass |
-| DES-037 | Health is a status page of each model provider and dependency | Implemented: `GET /api/health`, `Health.tsx`; `health_test.go` and `health.test.tsx` pass; checked live |
+| DES-037 | Health reports active model providers and dependencies. Workspace settings group configured and available providers, put Add in the header and offer a reversible switch for workspace-managed providers | Implemented: `GET /api/health`, `Health.tsx`, `ModelProviders.tsx`, `PATCH /api/model-providers/{name}`; platform, HTTP and web DOM coverage |
 | DES-038 | Screens open ready to read, filter once, and keep message actions quiet at rest | Implemented in #112; web, core and Slack tests pass; phone and desktop screens pass |
 | DES-039 | Changing screens never blanks or jumps; chrome is glass on one app frame | Implemented: `transition.ts`, delayed skeletons, frame and chrome glass; web tests and Console screens pass; navigation CLS measured 0 at no added latency |
 | DES-040 | The console works on a phone and installs as an app: touch targets, the keyboard, safe areas, a modal drawer, an Inspector sheet, an offline screen and a prompt for new versions | Implemented: `styles.css`, `viewport.ts`, `pwa.ts`, `sw.ts`; web and Go tests pass; Console screens pass at 320, 375, 390, 430 and 844x390 with 44px touch targets and 16px fields; iOS keyboard and install need a real device |
@@ -1167,7 +1168,19 @@ agents, so a line under the prompt bar only cost a phone its height.
 - The Health tab (`/monitor/health`, behind `alerts:read`) is a status page: a banner for
   the whole deployment, then each model provider and dependency by group, with
   its status, latency, a bar per recent check and its uptime.
-- With no model provider configured, the deployment reads as down.
+- With no model provider enabled, the workspace reads as down.
+- **Model providers** in Workspace settings lists configured providers above
+  the providers that need setup. Its primary **Add OpenAI-Compatible Server**
+  action sits in the header and opens the same sheet as preset setup and
+  editing.
+- A workspace-managed provider stays in the configured list when switched
+  off. Its settings and key are kept. Off providers are unavailable to new
+  turns and excluded from Health checks. A provider in use by an explicit
+  agent model chain or model policy stays on and the row says what uses it.
+  Deployment-managed providers show their source without an editable switch.
+  Removing a provider is a separate action in the row's menu. It asks again
+  in place on the row, saying that it also deletes the stored key, with focus
+  on Keep It; a refusal is said on the row.
 - The page asks again every 30 seconds; the server reuses a report for 30
   seconds.
 - Acceptance: with Anthropic, OpenAI and Gemini keys set, each reads
@@ -2229,7 +2242,8 @@ post contract.
 Session alerts render beside their recorded message or above loaded history when
 the anchor is absent. Reading does not resolve them. Resolve and Snooze are
 permission-gated and offer Undo. Known actions lead to existing approval, answer,
-retry or connection controls; unknown actions open the session. A reviewed fix
+retry or connection controls; unknown actions open the session. A card beside its
+own message omits the link back to that session; page and connection links stay. A reviewed fix
 request carries `source_alert`, uses a permitted agent, and inherits its source
 audience. Alert-only sessions render before their first human message. An
 addressed older message uses a bounded `around` page read and scrolls only the
@@ -2240,15 +2254,16 @@ Rename, personal Archive/Undo and governed deletion according to access. Rename
 preserves routing; Delete requests administrator review and does not remove the
 record directly. Canonical sharing uses project access without a channel picker.
 Bring Back is offered inside Fork for a completed fork result and retains the
-existing consent review. Approval controls say Ask a question and Decline action.
-The console puts Approve and Decline together, then Ask a question; its Decline
-keeps Decline action in its accessible name.
+existing consent review. Approval controls say Ask a Question and Decline on
+both surfaces. The console puts Approve and Decline together, then Ask a
+Question; its Decline names the request in its accessible name.
 Approve reads the request's own verb on both surfaces when it has one.
 Failure debug references are kept out of the everyday response and remain in the
 explicit issue-report draft.
 
 Evidence: `session-ux.dom.test.tsx` covers continuation metadata, header writes,
-archive synchronization, explicit deletion review, alert resolution/undo, fix
+archive synchronization, explicit deletion review, alert resolution/undo, the
+alert card beside its own message without a link back to the session, fix
 review, canonical sharing and bounded old-anchor reads. `wave.dom.test.tsx` checks
 that addressed history scrolls only the transcript once. Existing fork, share,
 room and Slack interaction suites retain their governed approval checks. Browser
@@ -2605,6 +2620,44 @@ match, the failed read, and Terminal and Browser standing in as built. Not seen:
 a real pull request, file or browser step from a live run, and the real
 Terminal and Browser tabs taking a result.
 
+### DES-080: Failures, connections and references in a transcript
+
+- A failed step says why under its row: the first line of its error, without
+  the runtime's "action failed:" lead, in the bad tone, with Show Details for
+  the rest. A run of steps counts its failures beside its line; the count is
+  its own button that opens the run at the first failed step.
+- A failed call to another agent says why under its item, with Show Details,
+  which opens its run, and Retry where the host can post (`RetryCallContext`):
+  it asks the same agent the same brief as the conversation's next message,
+  tagging that agent alone (other agents the brief names become plain words).
+  Retry is offered only to the person the run acted for, never in a private
+  side chat (its brief would reach the shared session), and never for a brief
+  too long for one message. A refused post leaves Retry ready again; a sent
+  one reads "Asked again". There is no Retry on a single tool call, since no
+  route runs one call again.
+- The Connect card shows only to the person the run acted for: the
+  connection it needed is theirs.
+- A connection a run needed is said by the platform, not read from the
+  answer: when a tool group needs the person's own credential and they have
+  none (`ErrNoPersonCredential`), the run and the turn it belongs to record
+  `needs_connection`. A finished turn then ends with a card per connection:
+  "GitHub is not connected", a line on what to do, and Connect GitHub, which
+  opens `/settings/plugins/<provider>`.
+- A pull request, issue or commit address in an answer, and a written
+  `owner/repo#123`, is a chip: its mark and its short name, still a link. One
+  number reads one way: once an address anywhere in the answer, or in the
+  session around it, says it is a pull request or an issue
+  (`githubRefKinds`, `GitHubRefKindsContext`), every chip for it carries that
+  mark; named both ways, it is a pull request. A number nothing says the kind
+  of carries one neutral mark everywhere. Inline code is left as code.
+- Open, a run of steps is a card with one row per call. A call's input is a
+  table of names and values; a command is a block of its own with Copy. A
+  running step has a working mark that takes turns (still when motion is
+  reduced) and counts its time each second; a running command shows what it
+  runs. A finished step says how long it took.
+- The one-line summaries stay muted and the agent's words primary.
+
+### DES-079: Run and Answer
 ### DES-079: Auto answers questions
 
 Owner request: the approval agent that decides tool calls in a session set to
