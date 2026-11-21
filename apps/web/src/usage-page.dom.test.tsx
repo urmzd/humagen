@@ -3,7 +3,7 @@ import { afterEach, test } from "node:test";
 import { defaultCopy } from "@humagen/components";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { Group, Summary } from "./api.ts";
-import { stubFetch } from "./dom.ts";
+import { stubFetch, underTitle } from "./dom.ts";
 import { Usage } from "./Usage.tsx";
 
 const words = defaultCopy.usagePage;
@@ -82,6 +82,8 @@ test("Usage requests bounded UTC ranges with 24h buckets and switches chart/tabl
   rendered = true;
   render(<Usage agents={[]} tick={0} onOpenAgent={() => {}} onOpenRun={() => {}} />);
   await screen.findByRole("button", { name: "overview-agent" });
+  // The title heads the page alone: no line of explanation under it.
+  assert.deepEqual(underTitle(), []);
   for (const days of [14, 7, 30] as const) {
     if (days !== 14) {
       fireEvent.click(screen.getByRole("button", { name: words.days(days) }));

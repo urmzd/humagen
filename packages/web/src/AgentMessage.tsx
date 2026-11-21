@@ -164,11 +164,12 @@ export function StoppableMark({
   );
 }
 
-// A finished turn needs no word: a still mark and its answer say it.
+// A finished turn needs no word: a still mark and its answer say it. Waiting on
+// a person is the one amber the sidebar uses, never the agent's own color.
 const dot: Record<Exclude<Turn["status"], "done">, string> = {
   queued: "bg-aui-muted",
   working: "bg-aui-accent",
-  waiting: "bg-aui-accent",
+  waiting: "bg-aui-warn",
   failed: "bg-aui-bad",
   stopped: "bg-aui-muted",
 };
@@ -358,7 +359,7 @@ function AgentCall({
           </span>
           {word && (
             <span
-              className={`shrink-0 text-aui-xs ${task.status === "error" || task.status === "denied" ? "text-aui-bad" : "text-aui-accent"}`}
+              className={`shrink-0 text-aui-xs ${task.status === "error" || task.status === "denied" ? "text-aui-bad" : task.status === "waiting" ? "text-aui-warn" : "text-aui-accent"}`}
             >
               {word}
             </span>

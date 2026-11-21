@@ -22,7 +22,6 @@ import {
   Label,
   MoreMenu,
   Problem,
-  pageLede,
   pageTitle,
   primary,
   SkeletonRows,
@@ -319,7 +318,6 @@ export function ModelProviderSettings({
       <header className="flex flex-wrap items-start justify-between gap-x-5 gap-y-3 pb-2">
         <div className="min-w-0 flex-[1_1_18rem]">
           <h1 className={pageTitle}>{words.title}</h1>
-          <p className={pageLede}>{words.lede}</p>
         </div>
         {canEdit && (
           <button

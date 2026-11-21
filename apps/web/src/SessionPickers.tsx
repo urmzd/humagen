@@ -10,7 +10,7 @@ const words = defaultCopy.sessionSetup;
 
 export type { SessionImage, SessionOptions, SessionSetup };
 
-/** Text controls under the composer, as the approval mode is: no boxes. */
+/** Text controls under the composer, as the approval mode is: no boxes, the composer's sizes. */
 const control =
   "inline-flex h-8 min-w-8 pointer-coarse:h-11 pointer-coarse:min-w-11 shrink-0 items-center justify-center gap-1.5 rounded-aui px-2 text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-expanded:bg-aui-hover aria-expanded:text-aui-fg";
 const row =
@@ -88,7 +88,7 @@ export function ImagePicker({
       button={
         <>
           {/* The mark stays when a narrow composer hides the words. */}
-          <LayersIcon size={16} />
+          <LayersIcon size={18} />
           <span aria-hidden className="inline-flex items-center gap-1 text-aui-xs" data-label>
             <span className="max-w-36 truncate">{name}</span>
             <ChevronDownIcon size={12} />

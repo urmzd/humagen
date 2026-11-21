@@ -199,7 +199,7 @@ const kindLabel: Record<ArtifactKind, string> = {
 const iconTone: Record<ArtifactPhase, string> = {
   queued: "text-aui-muted",
   generating: "text-aui-accent",
-  waiting: "text-aui-accent/70",
+  waiting: "text-aui-warn",
   finalizing: "text-aui-accent",
   ready: "text-aui-fg",
   failed: "text-aui-bad",

@@ -701,6 +701,35 @@ every row. Both are boxed `Section`s: a heading's count is hidden at zero, and a
 list as long as the server's 100-record cap says so in place of a count. Route
 and DOM tests cover the legacy address, the permission-gated read request, the
 single listing, the empty headings and the cap.
+In a phone's window (narrower than 768px), or in a page column narrower than
+26rem (416px), the filters fold behind one Filter control in the changes header,
+so the first record is on the first screen. The column rule is what folds a 768
+window, whose column beside the sidebar and the settings list is 214px; a 1024
+window beside the default 296px sidebar has a 430px column and does not fold,
+and a sidebar dragged wide enough to leave less than 26rem folds it. One
+Tailwind variant, `filter-row` in `apps/web/src/styles.css`, states the rule
+for the fields, Filter and More together. Filter opens the
+same fields in place, Apply Filters folds them again and returns focus to
+Filter, and Filter counts the filters the list was read with ("Filter, 2").
+Refresh and Export CSV are under More there, so the header holds two controls.
+Where they do not fold the filter row is unchanged: two columns, and four in a
+column of 42rem or more, with Refresh and Export CSV in the header. The lines that say reads fill the
+100 records suggest a domain only when none is chosen: with Projects chosen they
+say to narrow the date range, since reads are project records. When a Refresh
+cannot read the reads again, the reads section says so, counts nothing, and the
+changes stop leaving out the reads it listed. DOM tests cover the fold, the
+count, focus, More, both lines and the failed refresh; the `audit` state in
+`scripts/screens/sessions.ts` captures the page over generated records.
+A settings page, yours or the workspace's, is headed by its title alone, with
+no line of explanation under it: Profile, Notifications, Appearance, Workspace,
+Model providers, Limits, Voice, Access, Deletion queue, Connections, Apps,
+People, Usage, Health, Policies and Audit. What such a line said is in the
+page's rows and controls. Two lines stay because they are not descriptions of
+the page: Workspace and Limits say "Only an admin can change these." to a
+reader who cannot change them, and Agent controls says what a pause does to
+work that is running. `settings.dom.test.tsx` covers every settings section
+and the read-only line; the Directory, Usage, action policy and Apps tests
+cover their pages.
 Announcements use a compact card, one Open
 Announcement action and a labeled eye-with-slash Hide button with a busy guard.
 
@@ -968,7 +997,9 @@ project settings", with a clean outlook.
 - The box is one lean row: + (attach, and the + menu) on the left, the words,
   then Send (a return glyph) and the microphone as plain icons of equal
   weight. Attach, Send, microphone, approval mode and usage share 18px icons
-  and 32px targets on desktop or 44px targets on touch. The row grows upward
+  and 32px targets on desktop or 44px targets on touch. The project
+  and image controls under Home's bar have the same icons
+  and are as tall, with their words beside them. The row grows upward
   with the words and the buttons stay on its last line. Both buttons are always there: empty, Send
   is dimmed and the microphone is the action; with words, Send is ready and the
   microphone stays, so a person can switch between talking and typing. While
@@ -1073,7 +1104,20 @@ a Stop for the whole session, and each running item has a Stop in words.
 - A turn that completed shows no status chip: a still mark and an answer say
   it. Status shows for working (the mark moves), waiting on a person, failed
   and stopped.
+- Waiting on a person is one amber everywhere, the warning color (`--aui-warn`),
+  never the accent or an agent's hue: the dot beside the agent's name, a step
+  line's "waiting for you", a waiting step's mark and its "Waiting for
+  approval", a waiting call to another agent, a file waiting for approval, the
+  rail down an approval, a batch of approvals and a question, the wave's tick,
+  and the dashed edge of a message or run that waits (`Stroke`). The sidebar,
+  Sessions, Home and a session's Details already used it. An agent's own color
+  stays on its mark, its name and its working state; failed stays red. Amber
+  text measures 6.03:1 on the page and 5.86:1 on a card in light, and 10.01:1
+  and 8.99:1 in dark, against the 4.5:1 that text needs.
 - Acceptance: a completed turn has no Done label; the other states still read.
+  `timeline.dom.test.tsx` checks the amber in a waiting turn of an agent with
+  its own hue, and that a working call keeps that hue; `ui.test.tsx` checks the
+  rails and the waiting edge in the stylesheets.
 
 ### DES-030: No AI disclaimer in the console
 
@@ -1850,7 +1894,8 @@ sidebar destinations; the tip card was removed.
   kind counts ("Read 3 files", "Ran 2 commands"), a mix names each kind in
   order ("Read 2 files, ran a command"), and more than three kinds count
   calls ("Used 6 tools"). A failed call adds "1 failed" in the same tone. A
-  call waiting on a person adds "waiting for you" and does not animate.
+  call waiting on a person adds "waiting for you" in the warning amber
+  (DES-029) and does not animate.
 - While a call runs, its run says "Running <tool>".
 - Open, each call is one compact row: an icon for its kind, its name, and
   its command or target in muted monospace, cut with an ellipsis, then its
@@ -2335,7 +2380,9 @@ agent, then its source, priority, age and actions in columns. The header holds
 one box that selects every row shown, and once a row is selected the header
 names how many and offers Mark Selected Done and Snooze Selected. Primary
 actions stay on one line, and so do alert titles in the table; both keep their
-full names for tooltips and assistive technology. Each row reserves the same
+full names for tooltips and assistive technology. A tooltip does not show on
+keyboard focus, so a title cut to one line shows whole while its link has it.
+Each row reserves the same
 space for its actions. At narrow widths or on touch, the row stacks, labels
 Mark Done and Snooze next to their icons, and gives a title up to two lines,
 because a touch screen shows no tooltip. Review Approval opens the decision in

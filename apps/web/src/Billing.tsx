@@ -474,10 +474,8 @@ export function BillingSettings({
     <div className="@container flex flex-col gap-4">
       <header className="pb-2">
         <h1 className={pageTitle}>Limits</h1>
-        <p className={pageLede}>
-          A run that would pass a limit is refused.{" "}
-          {canWrite ? "" : "Only an admin can change these."}
-        </p>
+        {/* Not a description of the page: why it has no forms. */}
+        {!canWrite && <p className={pageLede}>Only an admin can change these.</p>}
       </header>
       {!loaded && <SkeletonRows count={4} height="4rem" />}
       {loaded && (

@@ -347,7 +347,6 @@ export function Usage({
   return (
     <Page
       title={words.title}
-      lede={words.lede}
       actions={
         <fieldset className="flex flex-wrap gap-1">
           <legend className="sr-only">{words.range}</legend>

@@ -8,6 +8,7 @@ import { coworking } from "./api.ts";
 import { stubFetch } from "./dom.ts";
 import { useHumanActivity } from "./humanActivity.tsx";
 import { PlusMenu } from "./Plus.tsx";
+import { ProjectPicker } from "./ProjectPicker.tsx";
 import { type SessionOptions, type SessionSetup, SessionSetupPickers } from "./SessionPickers.tsx";
 import { EnvironmentSection } from "./SessionSections.tsx";
 import { type SessionView, SessionViews, useUnavailableViews } from "./SessionViews.tsx";
@@ -233,6 +234,25 @@ test("with no repository connected the plus menu says so and leads to Connection
     screen.getByRole("link", { name: picker.connectGitHub }).getAttribute("href"),
     "/settings/connections",
   );
+});
+
+test("the project and image controls under Home's composer are its size", () => {
+  render(
+    <>
+      <ProjectPicker projects={[]} value="" onChange={() => {}} onCreated={() => {}} />
+      <Pickers seen={[]} />
+    </>,
+  );
+  for (const name of ["Select project: Workspace", `${words.image}: ${words.defaultImage}`]) {
+    const trigger = screen.getByRole("button", { name });
+    const classes = trigger.className.split(/\s+/);
+    // 32px tall, 44px on a touch screen, as Attach, Send, the microphone, approval and usage are.
+    assert.ok(classes.includes("h-8"), `${name} is 32px tall: ${classes.join(" ")}`);
+    assert.ok(classes.includes("pointer-coarse:h-11"), `${name} is 44px tall on touch`);
+    const icon = trigger.querySelector("svg");
+    assert.equal(icon?.getAttribute("width"), "18", `${name} has an 18px icon`);
+    assert.equal(icon?.getAttribute("height"), "18", `${name} has an 18px icon`);
+  }
 });
 
 test("a private session is started with its image and repositories, and the default is not sent", async () => {
