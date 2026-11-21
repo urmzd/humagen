@@ -147,6 +147,7 @@ spec:
       insecure_development_runtime: false   # true accepts runc; without it runc is refused
       image: python:3.13-alpine           # the shell and the file tools; needs sh and sleep
       connectors_image: node:22-alpine    # stdio MCP servers; empty is image
+      image_registries: [ghcr.io]   # where a workspace may add images of its own; empty allows none
       work_root: ""         # empty is humagen/sandbox in the user cache directory
       host: ""              # a sandbox host's daemon: tcp://, ssh:// or unix://. Empty is the local daemon
       tls_dir: ""           # with a tcp:// host: ca.pem, cert.pem and key.pem
@@ -273,10 +274,19 @@ sandbox host needs Docker with `runsc` registered and nothing else worth
 taking. An instance has no network at all unless the
 `egress` slot is `gate` ([Egress](#egress)).
 
+`image` is every session's default. With `image_registries`, a workspace's
+administrators may also add images of their own from those registries
+(Settings, Images), and a person starting a session chooses one. Each image is
+checked when it is added: pulled through this daemon with the workspace's pull
+credential, pinned to the digest it resolved to, and started once to prove it
+has `sh` and `sleep`. Sessions run the digest, so every sandbox host runs the
+same bytes, and the server pulls every ready image again when it starts. An
+image may be kept warm, one started instance per host, within `max`.
+
 Flags override the block: `-sandbox`, `-sandbox-runtime`,
 `-sandbox-insecure-development-runtime`, `-sandbox-image`,
-`-sandbox-connectors-image`, `-sandbox-work-root`, `-sandbox-host` and
-`-sandbox-tls-dir`. A binary can register
+`-sandbox-image-registries`, `-sandbox-connectors-image`,
+`-sandbox-work-root`, `-sandbox-host` and `-sandbox-tls-dir`. A binary can register
 another kind with `humagen.WithKind(humagen.Sandbox, name, factory)`, whose
 factory returns an `isolation.Leaser` (`saige/flow/isolation`).
 

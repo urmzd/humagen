@@ -36,6 +36,7 @@ import (
 	"github.com/urmzd/humagen/pkg/egressguard"
 	"github.com/urmzd/humagen/pkg/evals"
 	"github.com/urmzd/humagen/pkg/feedback"
+	"github.com/urmzd/humagen/pkg/images"
 	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/journal"
 	"github.com/urmzd/humagen/pkg/knowledge"
@@ -217,6 +218,7 @@ func (p *Platform) openStores(cfg Config) error {
 	keep("agent colors", err)
 	p.AgentLooks, err = agentlooks.Open(perRequest)
 	keep("agent looks", err)
+	p.Images = images.Open(perRequest)
 	p.Scratchpads = scratchpads.Open(perRequest)
 	p.Runs, err = runs.Open(perRequest)
 	keep("runs", err)

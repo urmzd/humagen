@@ -40,6 +40,7 @@ import (
 	"github.com/urmzd/humagen/pkg/credentials"
 	"github.com/urmzd/humagen/pkg/evals"
 	"github.com/urmzd/humagen/pkg/graph"
+	"github.com/urmzd/humagen/pkg/images"
 	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/join"
 	"github.com/urmzd/humagen/pkg/knowledge"
@@ -1320,6 +1321,14 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 	case errors.Is(err, notifications.ErrInvalid):
 		fail(w, http.StatusBadRequest, "invalid native notification request")
 
+	case errors.Is(err, images.ErrNotFound):
+		notFound(w)
+	case errors.Is(err, images.ErrInvalid):
+		fail(w, http.StatusBadRequest, detail(err, images.ErrInvalid))
+	case errors.Is(err, images.ErrNameTaken):
+		fail(w, http.StatusConflict, detail(err, images.ErrNameTaken))
+	case errors.Is(err, platform.ErrImages):
+		fail(w, http.StatusConflict, detail(err, platform.ErrImages))
 	case errors.Is(err, library.ErrNotFound):
 		notFound(w)
 	case errors.Is(err, library.ErrInvalid):
@@ -1454,6 +1463,8 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 		fail(w, http.StatusConflict, err.Error())
 	case errors.Is(err, platform.ErrUnisolated):
 		fail(w, http.StatusConflict, "this deployment has no isolated sandbox to run a command in")
+	case errors.Is(err, platform.ErrImageGone):
+		fail(w, http.StatusConflict, "this session's image was removed or no longer passes its check; start a new session")
 	case errors.Is(err, platform.ErrSandboxUnavailable):
 		w.Header().Set("Retry-After", "5")
 		fail(w, http.StatusServiceUnavailable, "the sandbox could not run the command; try again")

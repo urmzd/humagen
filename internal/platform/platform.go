@@ -76,6 +76,7 @@ import (
 	"github.com/urmzd/humagen/pkg/evals"
 	"github.com/urmzd/humagen/pkg/feedback"
 	"github.com/urmzd/humagen/pkg/githubinstall"
+	"github.com/urmzd/humagen/pkg/images"
 	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/integrations/github"
 	"github.com/urmzd/humagen/pkg/integrations/slack"
@@ -224,6 +225,9 @@ type Config struct {
 	// run a command of their own in a conversation's sandbox
 	// (person_command.go). The zero value refuses.
 	SandboxContained bool
+	// SandboxImages lets workspaces add images of their own for sessions
+	// to run in (images.go). Nil: every session runs Sandbox's own image.
+	SandboxImages *ImageConfig
 	// Blobs holds the bytes of published files. Nil means a disk store in
 	// the workspace directory.
 	Blobs blob.Store
@@ -424,6 +428,8 @@ type Platform struct {
 	AgentColors *agentcolors.Store
 	// AgentLooks keeps how each agent is drawn and the name people see.
 	AgentLooks *agentlooks.Store
+	// Images keeps the sandbox images each workspace added.
+	Images *images.Store
 	// Scratchpads keeps each conversation's named scratchpads.
 	Scratchpads *scratchpads.Store
 	// Projects is each tenant's tree of projects.

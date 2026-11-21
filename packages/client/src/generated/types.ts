@@ -5499,8 +5499,8 @@ export interface SessionIdentity {
   label?: string;
   /** The readable session alert that anchors this fix conversation. */
   source_alert?: string;
-  /** Where the session runs. "" and "auto" are the deployment's default. */
-  environment?: string;
+  /** The id of the image the session's tools run in. "" and "default" are the deployment's own. */
+  image?: string;
   /** Repositories ("owner/name") the session works on. */
   repos?: string[];
 }
@@ -5825,8 +5825,8 @@ export interface SessionInput {
   surface_kind?: string;
   /** With surface: post the message without starting anything. */
   post_only?: boolean;
-  /** Where the session runs, from GET /api/sessions/options. "" and "auto" are the deployment's default. Refused with surface. */
-  environment?: string;
+  /** The id of a ready image from GET /api/sessions/options. "" and "default" are the deployment's own. Refused with surface. */
+  image?: string;
   /** Repositories ("owner/name") the session works on, each listed by GET /api/sessions/options. Refused with surface. */
   repos?: string[];
 }
@@ -5869,21 +5869,73 @@ export interface BrowserElement {
   box?: number[];
 }
 
-/** One place a session may run. */
-export interface SessionEnvironment {
-  /** What a session stores: auto or the sandbox's kind. */
+/** An image a session may run in. */
+export interface SessionImage {
+  /** "default" for the deployment's own, else the workspace image's id. */
+  id: string;
   name: string;
-  label: string;
-  /** Each run leases an instance of its own. */
-  isolated: boolean;
-  /** A person may run their own commands there. */
-  terminal: boolean;
+  /** The reference as it was added. */
+  ref: string;
+  status: "checking" | "ready" | "failed";
+  /** Why its check failed. */
+  problem?: string;
+  /** An instance is kept started, so a session does not wait for one. */
+  warm: boolean;
+  default: boolean;
 }
 
 /** What a session may be started with. */
 export interface SessionOptions {
-  environments: SessionEnvironment[];
+  images: SessionImage[];
+  /** Where the workspace may add images from; empty when it may add none. */
+  imageRegistries: string[];
+  /** Where images run, as the deployment names its sandbox ("docker/runsc"). */
+  sandbox: string;
+  /** Each run has an instance of its own. */
+  isolated: boolean;
+  /** A person may run commands in a session's sandbox. */
+  terminal: boolean;
   repos: string[];
+}
+
+/** An image a workspace added for its sessions to run in. */
+export interface WorkspaceImage {
+  id: string;
+  name: string;
+  ref: string;
+  /** The reference pinned, repo@sha256:..., once its check resolved it. */
+  digest?: string;
+  status: "checking" | "ready" | "failed";
+  problem?: string;
+  warm?: boolean;
+  /** A pull credential is kept for it. The credential is never shown. */
+  credential?: boolean;
+  createdBy: string;
+  createdAt: string;
+  checkedAt?: string;
+}
+
+/** A workspace's own images and where it may add them from. */
+export interface WorkspaceImages {
+  images: WorkspaceImage[];
+  registries: string[];
+}
+
+/** An image to add. */
+export interface ImageInput {
+  name: string;
+  /** A reference on a registry the deployment allows, "ghcr.io/acme/agent:1.4". */
+  ref: string;
+  /** The registry's pull secret, "user:token". Kept apart and never returned. */
+  credential?: string;
+  warm?: boolean;
+}
+
+/** A change to an image. */
+export interface ImageChange {
+  warm?: boolean;
+  /** Pull and check it again. */
+  check?: boolean;
 }
 
 /** Whether a session has a browser. */

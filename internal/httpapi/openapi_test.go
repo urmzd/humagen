@@ -1084,6 +1084,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	exerciseConnectionHealthContract(t, c)
 	exerciseBackgroundContract(t, c)
 	exerciseBigQueryContract(t, c)
+	exerciseImagesContract(t, c)
 	sessionContract := exerciseSessionContract(t, c)
 	exerciseBrowserContract(t, c, sessionContract["token"])
 	contractSource(t, f, c, sourceFake)
@@ -2915,6 +2916,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/corpora/{name}":              `{}`, "/api/corpora/{name}/members": `{"kind":"source","name":"handbook"}`,
 		"/api/catalog/connectors/{name}/login": `{"ref":"op://People/svc-globex/x"}`,
 		"/api/graph/nodes/{id}/owner":          `{"action":"confirm"}`,
+		"/api/images/{id}":                     `{"warm":true}`,
 	}
 	for _, op := range c.spec.ops {
 		params := pathParams(op.path)
@@ -3308,4 +3310,22 @@ func (contractSpeech) Transcribe(_ context.Context, audio io.Reader, _ string) (
 		return "", "", speech.ErrUnavailable
 	}
 	return "Ship it on Friday.", "english", nil
+}
+
+// exerciseImagesContract adds, changes and removes a workspace's own image
+// on a deployment that allows them, recording what it saw with c's, and
+// asks for one on c's own deployment, which allows none.
+func exerciseImagesContract(t *testing.T, c *contract) {
+	t.Helper()
+	c.call(c.f.person(t, "acme", "ivy", "Ivy", "humagen-admins"), "POST", "/api/images", "/api/images", `{"name":"Agent","ref":"ghcr.io/acme/agent:1"}`, http.StatusConflict)
+	f, owner, _ := imagesFixture(t)
+	on := &contract{t: t, f: f, spec: c.spec, seen: c.seen}
+	img := on.call(owner, "POST", "/api/images", "/api/images", `{"name":"Agent","ref":"ghcr.io/acme/agent:1","credential":"bot:token"}`, http.StatusCreated)
+	body, _ := img.body.(map[string]any)
+	id, _ := body["id"].(string)
+	settled(t, f, owner, id)
+	on.call(owner, "POST", "/api/images", "/api/images", `{"name":"agent","ref":"ghcr.io/acme/other:1"}`, http.StatusConflict)
+	on.call(owner, "GET", "/api/images", "/api/images", "", http.StatusOK)
+	on.call(owner, "PATCH", "/api/images/{id}", "/api/images/"+id, `{"warm":true}`, http.StatusOK)
+	on.call(owner, "DELETE", "/api/images/{id}", "/api/images/"+id, "", http.StatusNoContent)
 }

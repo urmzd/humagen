@@ -326,6 +326,11 @@ type DockerSandbox struct {
 	// ConnectorsImage is where stdio MCP servers run, which must have
 	// their commands. Empty is Image.
 	ConnectorsImage string `json:"connectors_image,omitempty"`
+	// ImageRegistries are the registries a workspace may add images of
+	// its own from ("ghcr.io"), each pulled through this daemon, pinned by
+	// digest and checked before a session may run it. Empty allows none:
+	// every session runs Image.
+	ImageRegistries []string `json:"image_registries,omitempty"`
 	// WorkRoot is the host directory the runs' work directories are made
 	// in, which the Docker daemon must be able to mount. Empty is
 	// humagen/sandbox in the user cache directory.
