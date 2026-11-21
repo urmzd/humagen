@@ -33,11 +33,12 @@ and credential storage. No choice in an environment widens those ceilings.
 - `internal/mcptools/secret.go` masks a credential when formatted and redacts
   its known value from MCP text, errors and logs. This is not a general
   browser, terminal, screenshot or arbitrary transformed-output secrecy boundary.
-- [PR #475](https://github.com/urmzd/humagen/pull/475) proposes session setup,
-  an environment choice and a session panel. [PR #486](https://github.com/urmzd/humagen/pull/486),
-  stacked on it, proposes workspace images pinned by digest and an image picker.
-  Both are active work, not prerequisites that have landed. #486's browser is
-  an HTTP tool server outside the image. Neither PR supplies this contract.
+- [PR #475](https://github.com/urmzd/humagen/pull/475), merged, added session
+  setup, an environment choice and a session panel.
+  [PR #486](https://github.com/urmzd/humagen/pull/486), still open, proposes
+  workspace images pinned by digest and an image picker. It is active work, not
+  a prerequisite that has landed. #486's browser is an HTTP tool server outside
+  the image. Neither PR supplies this contract.
 - `internal/platform/questions.go` and the runtime answer path persist ordinary
   questions and answers. They must never receive a secret as answer text.
 
@@ -85,14 +86,23 @@ For shared roots and sessions, project files and other shared resources retain
 their existing access rules. A connector or vault action acts only as the
 recorded person whose message or run requested it, never as the root creator,
 environment owner, another participant, or a machine with no mapped person.
-A called run acts for nobody, as today
+A called run is treated two ways today. For a workspace provider with
+person-scoped credentials it acts for nobody
 ([security, not built yet](../architecture/security.md#not-built-yet); the
-actor rules in `internal/platform/credentials.go`). It does not inherit its
-caller's person for a connector or vault action, even though its run context
-keeps that person (`pkg/runctx`), so a binding needed inside a called run fails
-closed with a reason and creates no request. Letting a called run use a person's
-binding is out of scope and needs its own rule: consent from that person for
-each call, naming the called agent, tool and destination. `ActorOf`, `personOf`,
+actor rules in `internal/platform/credentials.go`). For a person's own tool
+servers it does not: a called run's context keeps the caller's person and tool
+servers (`Narrow` in `pkg/runctx`), and `personalToolGroup` in
+`internal/platform/person_tools.go` connects with that person's credential when
+the called agent holds `mcp:person_tools:write`, without checking whether the
+run was called. This RFC does not build on that second path.
+
+The rule for a binding is the stricter one. A called run does not use its
+caller's person for a connector or vault action, so a binding needed inside a
+called run fails closed with a reason and creates no request. Letting a called
+run use a person's binding is out of scope and needs its own rule: consent from
+that person for each call, naming the called agent, tool and destination. The
+two existing paths must follow one rule before bindings ship; step 1 settles
+which, and step 4 tests the called-run case. `ActorOf`, `personOf`,
 `ownCredentialOf`, `steeredFor` and `personCredential` in
 `internal/platform/credentials.go` are the existing identity and steering
 boundaries to extend and verify. A shared thread must not make a private
@@ -119,8 +129,15 @@ again at submission and immediately before use. Reject stale, answered, expired,
 cancelled, mismatched and revoked requests. The secret store must support
 bounded writes, atomic one-time binding, idempotent retries, deletion and
 multi-replica recovery; a durable record cannot claim success before the value
-is available. The implementation must document its encryption or external
-vault guarantees rather than assume the current store encrypts values.
+is available.
+
+A person's durable binding is never kept in plain text. The backend encrypts
+values at rest with a key held outside the database, or keeps them in an
+external vault. The current value store does neither: a stored value is in the
+database as written ([security](../architecture/security.md)). Writing that
+limit down does not make it acceptable for a binding. Until such a backend
+exists, a durable binding stays behind `workspace.person_credentials.values`,
+which is off by default, and a session binding is held only for the session.
 
 On success, resume the parked action once. A retry must not run it twice.
 Decline, cancellation, expiry, a failed store write, lost authorization or an
@@ -168,7 +185,8 @@ worker that cannot isolate and destroy the context fails closed.
 
 ## Interface and lifecycle
 
-Use the existing session setup and panel patterns when #475 and #486 settle.
+Use the session setup and panel patterns #475 put on main, and #486's image
+picker once it settles.
 The environment selector lists the native default and authorized named
 environments, not images as if they were environments. A management view creates,
 edits and shares a definition and shows its revision, runtime and required
@@ -189,13 +207,17 @@ implemented and visually verified.
 
 ## Sequence and acceptance
 
-1. Reconcile #475's session selection and #486's pinned image API with this
-   definition; keep native/default available. Add versioned, tenant-scoped
+1. Reconcile #475's session selection, now on main, and #486's pinned image API
+   with this definition; keep native/default available. Put a called run's use
+   of a person's own tool servers and of a binding under one rule. Add versioned, tenant-scoped
    definitions and principal-authorized selection, OpenAPI and generated client.
    Test cross-tenant access, sharing, project membership, pinned revisions,
    revocation, legacy sessions and image policy.
-2. Add private binding metadata and a secret backend with explicit retention,
-   deletion and replica-safe atomic operations. Test session expiry, explicit
+2. Add private binding metadata and a secret backend that encrypts values at
+   rest with a key outside the database, or uses an external vault, with
+   explicit retention, deletion and replica-safe atomic operations. Refuse a
+   durable binding when the backend offers neither and
+   `workspace.person_credentials.values` is off. Test session expiry, explicit
    project reuse, owner isolation, removal, concurrent writes, crash recovery,
    stale requests and revocation. Exercise both memory and configured durable
    stores; do not expose secrets through read APIs.
