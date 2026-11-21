@@ -162,6 +162,39 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
       },
     },
     {
+      name: "home-projects",
+      path: "/",
+      act: async (page) => {
+        const load = Promise.withResolvers<void>();
+        await page.route(
+          (url) => url.pathname === "/api/projects" && url.searchParams.has("limit"),
+          async (route) => {
+            await load.promise;
+            await route.continue();
+          },
+        );
+        const projects = page.getByRole("region", {
+          name: defaultCopy.projects.title,
+          exact: true,
+        });
+        let before: { y: number } | null;
+        try {
+          await page.reload({ waitUntil: "domcontentloaded" });
+          await composer(page).waitFor();
+          await page.evaluate(() => document.fonts.ready);
+          assert.equal(await projects.count(), 0, "No section is drawn without project data");
+          before = await composer(page).boundingBox();
+        } finally {
+          load.resolve();
+        }
+        const project = projects.getByRole("link", { name: "Launch", exact: true });
+        await project.waitFor();
+        assert.equal(await project.getAttribute("href"), "/projects/Launch");
+        const after = await composer(page).boundingBox();
+        assert.ok(before && after && Math.abs(before.y - after.y) <= 1, "The composer stays put");
+      },
+    },
+    {
       // Nothing seeds an artifact (there is no model to publish one), so the
       // strip is drawn from three answered here, as the list route answers.
       name: "home-made",
@@ -252,6 +285,88 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
       act: async (page) => {
         await page.getByRole("heading", { name: "Alerts", exact: true }).waitFor();
         await page.getByText(ALERT_TITLE, { exact: true }).waitFor();
+        const alerts = page.getByRole("list", { name: "Alerts", exact: true });
+        await alerts.getByRole("button", { name: "Review Approval", exact: true }).waitFor();
+        const rows = alerts.getByRole("listitem");
+        assert.equal(await rows.count(), 2);
+        const layout = () =>
+          rows.evaluateAll((items) =>
+            items.map((item) => {
+              const { top, height: rowHeight, right } = item.getBoundingClientRect();
+              const boxes = [...item.querySelectorAll("button")].map((button) =>
+                button.getBoundingClientRect(),
+              );
+              const lead = boxes[0]?.y ?? top;
+              const title = item.querySelector("a > span");
+              return {
+                // The table has a track for each column; a stacked row has the box and the alert.
+                table: getComputedStyle(item).gridTemplateColumns.split(" ").length > 2,
+                rowHeight,
+                right,
+                titleLines: title
+                  ? Math.round(
+                      title.getBoundingClientRect().height /
+                        Number.parseFloat(getComputedStyle(title).lineHeight),
+                    )
+                  : 0,
+                buttons: boxes.map((box) => ({
+                  x: box.x,
+                  y: box.y - top,
+                  fromLead: box.y - lead,
+                  width: box.width,
+                  right: box.right,
+                })),
+              };
+            }),
+          );
+        type Row = Awaited<ReturnType<typeof layout>>[number];
+        // A stacked title may take a second line, which moves the actions down together.
+        const slots = (row: Row) =>
+          row.buttons.map(({ x, fromLead, width, right }) => ({ x, fromLead, width, right }));
+
+        const initial = await layout();
+        const [first, second] = initial;
+        assert.ok(first && second, "the fixture has two alerts");
+        const table = first.table;
+        assert.equal(second.table, table, "both rows use one layout");
+        assert.equal(first.buttons.length, 3, "the fixture can manage alerts");
+        if (table) {
+          assert.ok(Math.abs(first.rowHeight - second.rowHeight) <= 1, "equal row heights");
+          assert.deepEqual(first.buttons, second.buttons, "the same three action slots");
+        } else {
+          assert.deepEqual(slots(first), slots(second), "the same three action slots");
+        }
+        assert.ok(
+          initial.every(({ buttons, right }) => buttons.every((button) => button.right < right)),
+          "every action stays inside the row",
+        );
+
+        // Dynamic content can be longer than either fixture, without shifting a control.
+        const secondRow = rows.nth(1);
+        await secondRow.evaluate((row) => {
+          const title = row.querySelector("a > span");
+          const action = row.querySelector("button > span");
+          if (title)
+            title.textContent = "A title for an alert with unusually long details ".repeat(5);
+          if (action)
+            action.textContent = "Review the very long approval details before continuing";
+        });
+        const long = await layout();
+        const lengthened = long[1];
+        assert.ok(lengthened, "the lengthened alert is still listed");
+        if (table) {
+          assert.deepEqual(long, initial, "long labels do not resize rows or action slots");
+        } else {
+          // Touch has no tooltip, so a stacked row shows the second line of a long title.
+          assert.equal(lengthened.titleLines, 2, "a stacked title takes two lines");
+          assert.deepEqual(
+            slots(lengthened),
+            slots(second),
+            "long labels do not move action slots",
+          );
+        }
+        await page.reload();
+        await alerts.getByRole("button", { name: "Review Approval", exact: true }).waitFor();
       },
     },
     {
@@ -276,7 +391,51 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
       path: "/settings/apps",
       act: async (page) => {
         await page.getByRole("heading", { name: "Apps", exact: true, level: 1 }).waitFor();
-        await page.getByRole("list", { name: "Apps", exact: true }).waitFor();
+        const apps = page.getByRole("list", { name: "Apps", exact: true });
+        const slack = apps.getByRole("listitem", { name: "Slack", exact: true });
+        const github = apps.getByRole("listitem", { name: "GitHub", exact: true });
+        const enable = slack.getByRole("button", { name: "Enable", exact: true });
+        const manage = github.getByRole("button", { name: "Manage", exact: true });
+        await enable.waitFor();
+        await manage.waitFor();
+        const first = await slack.boundingBox();
+        const second = await github.boundingBox();
+        assert.ok(first && second);
+        assert.equal(first.x, second.x, "Apps share a column at every width");
+        assert.ok(first.y + first.height <= second.y, "Apps are stacked");
+        await manage.click();
+        const detail = page.getByRole("dialog", { name: "GitHub", exact: true });
+        await detail.waitFor();
+        await page.keyboard.press("Escape");
+        await detail.waitFor({ state: "hidden" });
+        await manage.and(page.locator("button:focus")).waitFor();
+        await manage.blur();
+        await page.mouse.move(0, 0);
+        // The fixture's GitHub is installed through a client, a row with no menu. Shown, in
+        // the browser only, as installed from this page, it gains the menu an administrator sees.
+        await page.route(/\/api\/connections\/presets(?:\?|$)/, async (route) => {
+          const response = await route.fetch();
+          const presets = await response.json();
+          for (const preset of presets) if (preset.id === "github") preset.connected = true;
+          await route.fulfill({ response, json: presets });
+        });
+        await page.reload();
+        const more = github.getByRole("button", { name: "More for GitHub", exact: true });
+        await more.waitFor();
+        await page.evaluate(() => document.fonts.ready);
+        const action = await manage.boundingBox();
+        const menu = await more.boundingBox();
+        const row = await github.boundingBox();
+        assert.ok(action && menu && row);
+        assert.ok(
+          Math.abs(menu.y + menu.height / 2 - (action.y + action.height / 2)) <= 1,
+          "the menu shares Manage's line at every width",
+        );
+        assert.ok(menu.x >= action.x + action.width, "the menu follows Manage");
+        assert.ok(
+          Math.abs(menu.x + menu.width - (row.x + row.width)) <= 1,
+          "the menu ends the row",
+        );
       },
     },
     {
@@ -314,6 +473,26 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
       path: session,
       act: async (page) => {
         await readySession(page);
+        const controls = page
+          .locator(".humagen-composer-row > button")
+          .or(page.getByRole("button", { name: /^Approval mode: / }))
+          .or(page.locator('[data-layer="usage-ring"]'));
+        await page.locator('[data-layer="usage-ring"]').waitFor();
+        const geometry = await controls.evaluateAll((buttons) => ({
+          target: matchMedia("(pointer: coarse)").matches ? 44 : 32,
+          buttons: buttons.map((button) => {
+            const { width, height } = button.getBoundingClientRect();
+            const icon = button.querySelector("svg")?.getBoundingClientRect();
+            return { width, height, icon: icon && { width: icon.width, height: icon.height } };
+          }),
+        }));
+        assert.ok(geometry.buttons.length >= 4, "Compose, approval and usage controls are visible");
+        for (const { width, height, icon } of geometry.buttons) {
+          assert.equal(width, geometry.target, "Composer controls share a target width");
+          assert.equal(height, geometry.target, "Composer controls share a target height");
+          if (icon)
+            assert.deepEqual(icon, { width: 18, height: 18 }, "Composer icons share a size");
+        }
         const worked = page.getByTestId("worked").first();
         await worked.scrollIntoViewIfNeeded();
         const bounds = await worked.boundingBox();
