@@ -211,6 +211,9 @@ func decodeHead(raw []byte) (head, error) {
 	if h.Mode == modeBestFit {
 		h.Mode = ModeJoin
 	}
+	if h.Approval != nil {
+		h.Approval.Mode = ApprovalModeOf(h.Approval.Mode)
+	}
 	return h, nil
 }
 

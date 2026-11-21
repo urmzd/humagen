@@ -219,7 +219,7 @@ export interface Clarification {
    */
   forOthers?: string;
   /**
-   * What the approval agent said about it, in a session set to Run and Answer:
+   * What the approval agent said about it, in a session set to Auto:
    * `allow` is an answer it gave as the person, `ask` a question it left for them.
    */
   judgement?: Judgement;

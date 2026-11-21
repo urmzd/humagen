@@ -2790,7 +2790,7 @@ export const defaultCopy = {
   judgement: {
     by: "Approval agent",
     decision: { allow: "Allowed", deny: "Denied", ask: "Asked a person" },
-    /** A question the approval agent answered in a session set to Run and Answer (DES-079). */
+    /** A question the approval agent answered in a session set to Auto (DES-079). */
     answered: "Answered by the approval agent",
     basedOn: (references: string[]) => `Based on: ${references.join("; ")}`,
   },
@@ -3308,33 +3308,31 @@ export const defaultCopy = {
       dismiss: "Dismiss",
     },
   },
-  /** A conversation's approval mode, a text control under the composer (DES-057). */
+  /** A conversation's approval mode, a text control under the composer (DES-057, DES-079). */
   approvals: {
-    label: "Approvals",
-    /** The three modes, each with the one line its menu row says about the approval agent. */
-    ask: "Ask Me",
+    /** The menu's heading, and the control's name for assistive technology. */
+    label: "Approval mode",
+    /** The two modes, each with the one line its menu row says. */
+    ask: "Ask",
     askHint: "You approve every gated action.",
-    auto: "Run",
-    autoHint: "The approval agent decides gated actions and hands you any it is unsure of.",
-    autoFor: (name: string) => `Run, chosen by ${name}`,
-    decide: "Run and Answer",
-    decideHint: "It also answers an agent's question when the session already settles it.",
-    decideFor: (name: string) => `Run and Answer, chosen by ${name}`,
+    auto: "Auto",
+    autoHint: "The approval agent approves and answers for you, and asks when unsure.",
+    autoFor: (name: string) => `Auto, chosen by ${name}`,
     /** Under the menu's rows, when someone else set the session's mode. */
     chosenBy: (name: string) => `Chosen by ${name}.`,
     waiting: "No model is enabled for the approval agent yet, so every action waits for a person.",
-    failed: "Could not change approvals. Try again.",
+    failed: "Could not change the approval mode. Try again.",
     /** In the menu of an approval waiting in a Slack thread: sets the conversation, not the call. */
-    letAgentDecide: "Let the approval agent decide in this thread",
-    /** Under the note that the approval agent decides, to set the thread back. */
-    askMeAgain: "Ask Me Again",
-    /** Under the note that a person decides again, to hand it back to the approval agent. */
-    letAgentDecideAgain: "Let the Approval Agent Decide",
+    letAgentDecide: "Set this thread to Auto",
+    /** Under the note that the thread is set to Auto, to set it back. */
+    switchToAsk: "Switch to Ask",
+    /** Under the note that the thread is set to Ask, to set it to Auto again. */
+    switchToAuto: "Switch to Auto",
     /** What changed in the thread, said where everyone in it reads it. */
     nowAuto: (who: string) =>
-      `${who} let the approval agent decide gated actions in this thread. It decides from the next action on, as ${who} could, and hands a person anything it is unsure of. An action already waiting still waits for a person.`,
+      `${who} set this thread to Auto. The approval agent now approves gated actions and answers questions the thread already settles, as ${who} could, and asks a person when unsure. An action already waiting still waits for a person.`,
     nowAsk: (who: string) =>
-      `${who} set this thread to ask a person about every gated action again.`,
+      `${who} set this thread to Ask. A person approves every gated action again.`,
   },
   /** Over Home's chat bar: the person's own project, where a conversation in no project is filed (DES-057). */
   noProject: "No project",
