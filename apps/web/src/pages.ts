@@ -22,6 +22,10 @@ export const AgentBuilderStart = lazyPage(
   () => import("./AgentBuilder.tsx"),
   (m) => m.AgentBuilderStart,
 );
+export const AgentCreate = lazyPage(
+  () => import("./AgentCreate.tsx"),
+  (m) => m.AgentCreate,
+);
 export const AgentControls = lazyPage(
   () => import("./AgentControls.tsx"),
   (m) => m.AgentControls,
@@ -254,6 +258,8 @@ function viewsOf(route: Route): Preloads {
       return [AgentDetail, AgentOperations];
     case "agent-setup":
       return [AgentBuilderStart];
+    case "agent-create":
+      return [AgentCreate];
     case "automations":
       return [Automations];
     case "schedules":

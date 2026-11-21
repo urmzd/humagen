@@ -62,6 +62,113 @@ export function shuffled(
   return { look: trimLook(look), hue: free.length ? pick(free) : undefined };
 }
 
+/** A hue drawn as an agent's color, for a mark or a swatch. */
+export const tintOf = (hue: number) => ({ "--aui-accent-h": hue }) as CSSProperties;
+
+/**
+ * The bots an agent may be drawn as, each in the look being edited without
+ * what it wears, and the one picked pressed. The look editor and a new
+ * agent's Customize step both pick from it.
+ */
+export function ShapePicker({
+  base,
+  look,
+  shape,
+  hue,
+  onPick,
+  label = words.shape,
+}: {
+  /** The name the bot's default shape and initials come from. */
+  base: string;
+  look: BotLook;
+  shape: string;
+  hue: number;
+  onPick: (shape: string) => void;
+  label?: string;
+}) {
+  return (
+    <fieldset className="flex min-w-0 flex-col gap-2">
+      <legend className="mb-2 text-aui-xs font-medium text-aui-muted">{label}</legend>
+      <div className="grid grid-cols-6 gap-2 sm:grid-cols-9">
+        {botShapes.map((s) => (
+          <button
+            key={s}
+            type="button"
+            aria-pressed={shape === s}
+            aria-label={s}
+            title={s}
+            data-shape={s}
+            onClick={() => onPick(s)}
+            className={`flex aspect-square items-center justify-center rounded-aui border ${
+              shape === s
+                ? "border-aui-accent bg-aui-accent-soft"
+                : "border-aui-border hover:bg-aui-hover"
+            }`}
+          >
+            <span key={hue} data-accent="agent" style={tintOf(hue)} className="inline-flex">
+              <AgentInitials
+                name={base}
+                look={{
+                  ...look,
+                  shape: s as BotLook["shape"],
+                  hat: "none",
+                  glasses: "none",
+                  headphones: false,
+                  bowTie: false,
+                }}
+                size={30}
+              />
+            </span>
+          </button>
+        ))}
+      </div>
+    </fieldset>
+  );
+}
+
+/** The colors an agent may take, one swatch each; another agent's is marked and cannot be picked. */
+export function HuePicker({
+  hues,
+  hue,
+  taken,
+  onPick,
+  label = words.color,
+}: {
+  hues: readonly number[];
+  hue: number | undefined;
+  taken: readonly number[];
+  onPick: (hue: number) => void;
+  label?: string;
+}) {
+  return (
+    <fieldset className="flex min-w-0 flex-col gap-2">
+      <legend className="mb-2 text-aui-xs font-medium text-aui-muted">{label}</legend>
+      <div className="flex flex-wrap gap-2">
+        {hues.map((h) => {
+          const held = taken.includes(h);
+          return (
+            <button
+              key={h}
+              type="button"
+              aria-pressed={hue === h}
+              aria-label={`Hue ${h}`}
+              title={held ? words.colorTaken : `Hue ${h}`}
+              disabled={held}
+              data-hue={h}
+              onClick={() => onPick(h)}
+              data-accent="agent"
+              className={`size-8 rounded-full border-2 bg-[var(--aui-accent)] disabled:cursor-not-allowed disabled:opacity-40 disabled:[background-image:linear-gradient(135deg,transparent_45%,var(--aui-fg)_45%,var(--aui-fg)_55%,transparent_55%)] ${
+                hue === h ? "border-aui-fg" : "border-transparent"
+              }`}
+              style={tintOf(h)}
+            />
+          );
+        })}
+      </div>
+    </fieldset>
+  );
+}
+
 /**
  * How an agent looks, and what people call it: a live preview beside the
  * choices. Every choice starts at the agent's default, so an agent nobody
@@ -287,71 +394,23 @@ export function AgentLookEditor({
             ))}
           </fieldset>
 
-          <fieldset className="flex min-w-0 flex-col gap-2">
-            <legend className="mb-2 text-aui-xs font-medium text-aui-muted">{words.shape}</legend>
-            <div className="grid grid-cols-6 gap-2 sm:grid-cols-9">
-              {botShapes.map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  aria-pressed={shape === s}
-                  aria-label={s}
-                  title={s}
-                  data-shape={s}
-                  onClick={() => set({ shape: s as AgentLook["shape"] })}
-                  className={`flex aspect-square items-center justify-center rounded-aui border ${
-                    shape === s
-                      ? "border-aui-accent bg-aui-accent-soft"
-                      : "border-aui-border hover:bg-aui-hover"
-                  }`}
-                >
-                  <span key={hue} data-accent="agent" style={tint(hue)} className="inline-flex">
-                    <AgentInitials
-                      name={base}
-                      look={{
-                        ...drawn(look),
-                        shape: s,
-                        hat: "none",
-                        glasses: "none",
-                        headphones: false,
-                        bowTie: false,
-                      }}
-                      size={30}
-                    />
-                  </span>
-                </button>
-              ))}
-            </div>
-          </fieldset>
+          <ShapePicker
+            base={base}
+            look={drawn(look)}
+            shape={shape}
+            hue={hue ?? view.hue}
+            onPick={(s) => set({ shape: s as AgentLook["shape"] })}
+          />
 
-          <fieldset className="flex min-w-0 flex-col gap-2">
-            <legend className="mb-2 text-aui-xs font-medium text-aui-muted">{words.color}</legend>
-            <div className="flex flex-wrap gap-2">
-              {swatches.map((h) => {
-                const taken = view.taken.includes(h);
-                return (
-                  <button
-                    key={h}
-                    type="button"
-                    aria-pressed={hue === h}
-                    aria-label={`Hue ${h}`}
-                    title={taken ? words.colorTaken : `Hue ${h}`}
-                    disabled={taken}
-                    data-hue={h}
-                    onClick={() => {
-                      setNotice(null);
-                      setHue(h);
-                    }}
-                    data-accent="agent"
-                    className={`size-8 rounded-full border-2 bg-[var(--aui-accent)] disabled:cursor-not-allowed disabled:opacity-40 disabled:[background-image:linear-gradient(135deg,transparent_45%,var(--aui-fg)_45%,var(--aui-fg)_55%,transparent_55%)] ${
-                      hue === h ? "border-aui-fg" : "border-transparent"
-                    }`}
-                    style={tint(h)}
-                  />
-                );
-              })}
-            </div>
-          </fieldset>
+          <HuePicker
+            hues={swatches}
+            hue={hue}
+            taken={view.taken}
+            onPick={(h) => {
+              setNotice(null);
+              setHue(h);
+            }}
+          />
 
           <div className="grid min-w-0 gap-4 sm:grid-cols-2">
             <div className="flex min-w-0 flex-col gap-1">
