@@ -20,6 +20,7 @@ import (
 	"github.com/urmzd/humagen/pkg/personctx"
 	"github.com/urmzd/humagen/pkg/runctx"
 	saigetypes "github.com/urmzd/saige/agent/types"
+	"github.com/urmzd/saige/flow/event"
 	"github.com/urmzd/saige/flow/runtime"
 )
 
@@ -144,7 +145,13 @@ func TestPersonalToolsTrustedWorkerSnapshotsAndRevocation(t *testing.T) {
 	req.Definition.Spec.Tools = []string{personToolsGrant}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	group, err := p.personalToolGroup(ctx, req)
+	for _, actor := range []event.Actor{{}, PersonActor("another-person")} {
+		group, err := p.personalToolGroup(ctx, req, actor)
+		if !errors.Is(err, mcptools.ErrNoPersonCredential) || len(group.Tools) != 0 {
+			t.Fatalf("group for actor %+v: got %d tools and %v, want no credential", actor, len(group.Tools), err)
+		}
+	}
+	group, err := p.personalToolGroup(ctx, req, PersonActor(who.Subject))
 	if err != nil {
 		t.Fatal(err)
 	}

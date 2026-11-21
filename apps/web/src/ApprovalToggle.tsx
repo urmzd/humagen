@@ -4,7 +4,7 @@ import { type KeyboardEvent, useEffect, useState } from "react";
 import { ApiError, api, coworking, type Revision, type Thread } from "./api.ts";
 import { useConfiguredProviders } from "./ModelChain.tsx";
 import { POLICY } from "./models.ts";
-import { Popover } from "./ui.tsx";
+import { composerIconControl, Popover } from "./ui.tsx";
 
 /**
  * How a session's gated actions are approved: ✋ Ask, a person, or ⏩ Auto,
@@ -56,7 +56,7 @@ export function useApproverReady(): boolean | null {
 
 /**
  * A session's approval mode under the composer, always shown: one control,
- * the mode's icon (✋ Ask or ⏩ Auto) with a small chevron, named "Approval
+ * the mode's icon (✋ Ask or ⏩ Auto), named "Approval
  * mode: <mode>" for assistive technology and in a tooltip on hover and
  * focus, that opens a menu of the two under an "Approval mode" heading. Each row says in one line what happens in that
  * mode (DES-057, DES-079), so the choice is read before it is made
@@ -148,8 +148,8 @@ export function ApprovalToggle({
         // The trigger is the mode's icon alone, so its name is said on hover and focus too.
         tooltip={`${words.label}: ${label}`}
         tooltipSide="top"
-        className="inline-flex h-8 min-w-8 pointer-coarse:h-11 pointer-coarse:min-w-11 shrink-0 items-center justify-center gap-1.5 rounded-aui px-2 text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-expanded:bg-aui-hover aria-expanded:text-aui-fg"
-        button={<Icon size={16} />}
+        className={`${composerIconControl} text-aui-muted hover:text-aui-fg aria-expanded:bg-aui-hover aria-expanded:text-aui-fg`}
+        button={<Icon size={18} />}
       >
         {(close) => (
           <div
