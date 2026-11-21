@@ -1,8 +1,7 @@
 import { defaultCopy } from "@humagen/components";
-import { type MouseEvent, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "./api.ts";
-import { inApp, OriginMark } from "./MessageRefs.tsx";
-import { href } from "./route.ts";
+import { OriginMark } from "./MessageRefs.tsx";
 import { type AudienceKind, type Place, placeOf, type Reference } from "./trace.ts";
 
 const words = defaultCopy.trace;
@@ -124,37 +123,29 @@ export function OriginButton({ place }: { place: Place | undefined }) {
 }
 
 /**
- * The root message in the header's meta line: where it came from and who
- * sent it, and who can read it there. "Slack thread · from Ana · Slack
- * channel". A session started on the web needs no line.
+ * The root message in the header's meta line, after the project: where it
+ * came from, by its mark and name, and who sent it, each said once. "· Slack
+ * DM · from Ana". Who can read it there is in the name's tooltip and read
+ * out. A session started on the web needs no line.
  */
-const link =
-  "min-h-6 rounded-aui underline decoration-aui-border underline-offset-2 hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent";
-
 export function SessionPlace({ place, sender }: { place: Place; sender?: string }) {
   if (place.kind === "console") return null;
+  const audience = defaultCopy.trace.audience[place.audience];
   return (
-    <span className="inline-flex flex-wrap items-center gap-x-2" data-testid="session-place">
+    <span className="inline-flex min-w-0 items-center gap-x-1.5" data-testid="session-place">
+      <span aria-hidden>·</span>
       <span className="sr-only">{words.place.label}</span>
-      <span>{place.label}</span>
+      <span className="inline-flex min-w-0 items-center gap-1" title={audience}>
+        <OriginMark kind={place.kind} size={12} />
+        <span className="truncate">{place.label}</span>
+        <span className="sr-only">
+          , {words.audience.label}: {audience}
+        </span>
+      </span>
       {sender && (
         <>
           <span aria-hidden>·</span>
-          <span>{words.place.from(sender)}</span>
-        </>
-      )}
-      <span aria-hidden>·</span>
-      <span>
-        <span className="sr-only">{words.audience.label}: </span>
-        {defaultCopy.trace.audience[place.audience]}
-      </span>
-      {place.origin && (
-        <>
-          <span aria-hidden>·</span>
-          {/* The session's item is where it started: its page lists every session on it and every place that mentioned it. */}
-          <a href={href({ page: "item", address: place.origin })} onClick={inApp} className={link}>
-            {defaultCopy.items.open}
-          </a>
+          <span className="truncate">{words.place.from(sender)}</span>
         </>
       )}
     </span>
