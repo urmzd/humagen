@@ -61,12 +61,12 @@ The rule is Slack's: an `@agent` in a comment is a tag; otherwise the client's d
 message only when it mentions the app, so on GitHub a comment that names no
 agent is addressed to the client only when it mentions the app's own login.
 Set it as `github.login`: the login the app comments as, `humagen[bot]`, which
-people mention as `@humagen`. With it set, and the app's login not in `bots`:
+people mention as `@Humagen`. With it set, and the app's login not in `bots`:
 
 - `@docs-bot summarize this` tags docs-bot.
-- `@humagen @docs-bot summarize this` tags docs-bot. The app's mention is taken
+- `@Humagen @docs-bot summarize this` tags docs-bot. The app's mention is taken
   out of the text.
-- `@humagen what changed?` names no agent, so it is answered as an untagged Slack
+- `@Humagen what changed?` names no agent, so it is answered as an untagged Slack
   message outside a bound channel is: by the client's `default_agent`, then by
   the default of the client's home channel and its chain. The client's
   `agents` list holds: a default it may not route to is refused, never swapped
@@ -78,8 +78,8 @@ people mention as `@humagen`. With it set, and the app's login not in `bots`:
 A login in the client's `bots` names its agent, as a Slack bot user in `bots`
 does, today as well. So when `bots` maps the app's own login to an agent, as
 `HUMAGEN_GITHUB_BOTS='humagen[bot]=ops'` does and the [PR guide's
-setup](#pr-guide-and-review-threads) does for its agent, `@humagen` is a tag for
-that agent: `@humagen what changed?` asks ops, and so does `@humagen @docs-bot
+setup](#pr-guide-and-review-threads) does for its agent, `@Humagen` is a tag for
+that agent: `@Humagen what changed?` asks ops, and so does `@Humagen @docs-bot
 summarize this`, since the first agent a comment names answers it. The
 client's `default_agent` is not asked.
 
@@ -127,8 +127,8 @@ starts its own request.
 Opening, reopening or leaving draft reviews the whole pull request. Each push
 after that reviews only the commits after the last one reviewed. Five pushes
 are reviewed; the sixth pauses automatic review on that pull request, and
-later pushes wait. A person who mentions the app (`@humagen`, such as
-`@humagen review`) or one of the client's agents on the pull request resumes
+later pushes wait. A person who mentions the app (`@Humagen`, such as
+`@Humagen review`) or one of the client's agents on the pull request resumes
 it: the count starts again, and the next push is reviewed from the last
 reviewed commit. Opening, reopening or leaving draft also starts the count
 again. The count and the pause are kept per pull request in the shared store

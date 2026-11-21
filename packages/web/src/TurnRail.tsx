@@ -238,7 +238,7 @@ export function TurnRail({
     <nav
       aria-label="Conversation wave"
       data-layer="wave"
-      className={`aui-wave absolute top-1/2 left-0 z-20 -translate-y-1/2 transition-opacity duration-(--aui-dur-page) focus-within:opacity-100 hover:opacity-100 ${lit ? "opacity-100" : "opacity-75"}`}
+      className={`aui-wave absolute top-1/2 left-0 z-(--aui-z-sticky) -translate-y-1/2 transition-opacity duration-(--aui-dur-page) focus-within:opacity-100 hover:opacity-100 ${lit ? "opacity-100" : "opacity-75"}`}
     >
       <div
         ref={rail}
@@ -297,7 +297,7 @@ export function TurnRail({
       {shown && hovered !== null && (
         <div
           role="tooltip"
-          className="aui-glass pointer-events-none absolute left-full z-30 ml-2 flex w-64 max-w-[70vw] -translate-y-1/2 flex-col gap-0.5 rounded-aui px-2.5 py-2 text-aui-xs shadow-md"
+          className="aui-glass pointer-events-none absolute left-full z-(--aui-z-popover) ml-2 flex w-64 max-w-[70vw] -translate-y-1/2 flex-col gap-0.5 rounded-aui px-2.5 py-2 text-aui-xs shadow-md"
           style={{ top: `${((hovered + 0.5) / turns.length) * 100}%` }}
         >
           <span className="flex items-center gap-1.5 text-aui-2xs text-aui-muted">

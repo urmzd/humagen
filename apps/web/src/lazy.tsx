@@ -1,4 +1,5 @@
 import { defaultCopy } from "@humagen/components";
+import { RefreshIcon } from "@humagen/render-web";
 import { toast } from "@humagen/render-web/ui/sonner";
 import {
   Component,
@@ -11,7 +12,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { track } from "./transition.ts";
-import { button, HubTabLabel, Page, Problem, SkeletonRows } from "./ui.tsx";
+import { HubTabLabel, Page, Problem, SkeletonRows } from "./ui.tsx";
 
 /*
  * Pages and heavy views the first screen does not show are loaded when they
@@ -274,21 +275,53 @@ export class LazyFrame extends Component<
       );
     if (!(error instanceof ViewLoadError)) throw error;
     if (this.props.instead !== undefined) return this.props.instead;
-    const words = defaultCopy.pageLoad;
-    const failure = (
-      <>
-        <Problem message={words.failed} />
-        <button type="button" className={`${button} self-start`} onClick={this.retry}>
-          {defaultCopy.retry}
-        </button>
-      </>
-    );
     return this.props.bare ? (
-      <div className="flex flex-col gap-3">{failure}</div>
+      <LoadFailure onRetry={this.retry} />
     ) : (
-      <Page title={words.title}>{failure}</Page>
+      <PageFailure onRetry={this.retry} />
     );
   }
+}
+
+/**
+ * A read that failed, said once: the message, with the way to try again at
+ * its end as an icon, named Retry for a screen reader and on hover. One line
+ * and one control, as an empty state is one title and one action.
+ */
+function LoadFailure({ onRetry, message }: { onRetry: () => void; message?: string }) {
+  return (
+    <Problem
+      message={message ?? defaultCopy.pageLoad.failed}
+      beside
+      action={
+        <button
+          type="button"
+          aria-label={defaultCopy.retry}
+          title={defaultCopy.retry}
+          onClick={onRetry}
+          className="inline-flex size-8 shrink-0 items-center justify-center rounded-aui text-aui-fg hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent pointer-coarse:size-11"
+        >
+          <RefreshIcon size={16} aria-hidden />
+        </button>
+      }
+    />
+  );
+}
+
+/**
+ * A page whose code could not be read. Under a hub's tabs the open tab heads
+ * it, as it heads the page itself, so nothing is titled twice and the failure
+ * says what happened. On its own the title says that, and the line under it
+ * only what to do.
+ */
+function PageFailure({ onRetry }: { onRetry: () => void }) {
+  const hub = useContext(HubTabLabel);
+  const words = defaultCopy.pageLoad;
+  return (
+    <Page title={hub ?? words.title}>
+      <LoadFailure onRetry={onRetry} message={hub ? words.failed : words.hint} />
+    </Page>
+  );
 }
 
 /**

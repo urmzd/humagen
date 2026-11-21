@@ -412,7 +412,7 @@ test("an empty question asks nothing, and a call whose thread is not here says w
   await end(w);
 });
 
-test("the approval agent is offered for the thread from a waiting call's menu, set as the person, said in the thread, and undone from there", async () => {
+test("Auto is offered for the thread from a waiting call's menu, set as the person, said in the thread, and undone from there", async () => {
   const w = mapped();
   const { run, blocks, ts } = await parkOn(w, "approval");
   const thread = w.humagen.runs.get(run)?.thread;
@@ -428,11 +428,16 @@ test("the approval agent is offered for the thread from a waiting call's menu, s
   const note = w.slack.of("chat.postMessage").at(-1);
   assert.equal(note?.thread_ts, TS);
   assert.equal(note?.text, defaultCopy.approvals.nowAuto(`<@${OTHER_USER}>`));
-  assert.deepEqual(buttons(note?.blocks as unknown[]), [defaultCopy.approvals.askMeAgain]);
+  // The note names the two modes as the console does.
+  assert.match(note?.text ?? "", /set this thread to Auto\. .* answers questions/);
+  assert.equal(defaultCopy.approvals.switchToAsk, "Switch to Ask");
+  assert.equal(defaultCopy.approvals.switchToAuto, "Switch to Auto");
+  assert.equal(defaultCopy.approvals.letAgentDecide, "Set this thread to Auto");
+  assert.deepEqual(buttons(note?.blocks as unknown[]), [defaultCopy.approvals.switchToAsk]);
 
   await deliver(
     w,
-    click(note?.blocks as unknown[], defaultCopy.approvals.askMeAgain, {
+    click(note?.blocks as unknown[], defaultCopy.approvals.switchToAsk, {
       ts: "1800000099.000100",
       threadTs: TS,
     }),
@@ -444,7 +449,7 @@ test("the approval agent is offered for the thread from a waiting call's menu, s
   });
   const back = w.slack.of("chat.postMessage").at(-1);
   assert.equal(back?.text, defaultCopy.approvals.nowAsk(`<@${USER}>`));
-  assert.deepEqual(buttons(back?.blocks as unknown[]), [defaultCopy.approvals.letAgentDecideAgain]);
+  assert.deepEqual(buttons(back?.blocks as unknown[]), [defaultCopy.approvals.switchToAuto]);
   collect("approval mode", w.slack);
   await end(w);
 });
