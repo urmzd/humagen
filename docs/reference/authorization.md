@@ -5,6 +5,23 @@ policy maps verified claims to roles, and roles to permissions, and every
 `Principal.Can` is answered by evaluating it. The language lives in
 `pkg/authz`; `pkg/auth` supplies the permissions and applies it.
 
+## How your access is decided
+
+Each time you try to do something, Humagen answers one question: does
+anything give you this permission, and does anything take it away?
+
+1. **Who you are.** Your identity provider signs you in and vouches for
+   claims about you: your subject, email and groups.
+2. **Your roles.** Each `grant` in the policy whose subject matches those
+   claims gives you its roles. No match, no role.
+3. **The rules.** A role's `allow` and `deny` rules, plus those of every role
+   it extends, decide the permission. Nothing allowed means no. A deny beats
+   every allow, from any role you hold.
+4. **The project.** Inside a project, your role there (viewer, member or
+   owner) can only narrow what step 3 allowed. It never adds to it.
+
+A machine skips steps 2 and 3: it holds exactly the scopes on its token.
+
 ## Grammar
 
 ```ebnf
@@ -198,8 +215,7 @@ not the grant.
 A signed-in person asks about themselves with
 `GET /api/access/explain?permission=agents:write`. It takes a permission and
 no subject, so nobody can ask about someone else, and any signed-in caller may
-call it. The console shows the answer under Access, reached from "Why can I do
-this?" on the home page.
+call it.
 
 From the command line, with the same environment and flags as `serve`:
 

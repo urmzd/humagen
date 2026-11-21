@@ -28,6 +28,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | --- | --- | --- |
 | DES-082 | A project's page is a chat landing page: one surface with a trail back to Projects and its menu at the top, its title and one-line description, and the conversation's floating composer pinned at the bottom. A project with no sessions leads with its setup as steps to get started, each done or not, with how many are done; once it has sessions it leads with Recents, and the setup is a summary beside them, folded above them on a phone. Setup and Recents are plain rows on hairlines, never boxed cards or "No ..." lines | Implemented: `ProjectPage`, `Setup`, `SetupRow`, `Recents` (`apps/web/src/Projects.tsx`), `ComposerDock` and `useComposerDock` shared with `Thread` (`packages/web/src/Thread.tsx`). Evidence: `projects.dom.test.tsx`; before and after captures at 1280x800 and 390x844, light and dark, on the pull request. |
 | DES-080 | A conversation is one surface with the composer floating over it, on a named z-index scale, and Stop works at two levels: the composer stops everything in the session, each running agent, call to another agent, step and background task stops from its own row; the composer's footer says who answers, the approval mode and a usage ring that opens the session's usage and the limits that hold it | Implemented: `Thread` `footer` (`packages/web/src/Thread.tsx`), the `--aui-z-*` scale (`packages/render-web/src/theme.css`), `ItemStopControl` and `ItemStopsContext` (render-web `stop.tsx`, `meta.tsx`), `Composer` `stopAll` and `footer`, `stops.tsx`, `SessionUsage.tsx`, `GET /api/threads/{id}/usage` (`internal/platform/session_usage.go`). Evidence: `composer-overlay.dom.test.tsx`, `TestThreadUsage*` and `foldUsage` tests; before and after captures at 1280x800 and 390x844, light and dark, on PR #474. Not done: Run in Background for a call already running (the runtime starts a call in the background only when the model asks, with `background: true`); a real iOS keyboard. |
+| DES-080 | A conversation is one surface with the composer floating over it, on a named z-index scale, and Stop works at two levels: the composer stops everything in the session, each running agent, call to another agent, step and background task stops from its own row; the composer's footer says who answers, the approval mode and a usage ring that opens the session's usage and the limits that hold it | Implemented: `Thread` `footer` (`packages/web/src/Thread.tsx`), the `--aui-z-*` scale (`packages/render-web/src/theme.css`), `ItemStopControl` and `ItemStopsContext` (render-web `stop.tsx`, `meta.tsx`), `Composer` `stopAll` and `footer`, `stops.tsx`, `SessionUsage.tsx`, `GET /api/threads/{id}/usage` (`internal/platform/session_usage.go`). Evidence: `composer-overlay.dom.test.tsx`, `TestThreadUsage*` and `foldUsage` tests; before and after captures at 1280x800 and 390x844, light and dark, on PR #474. Not done: Run in Background for a call already running (the runtime starts a call in the background only when the model asks, with `background: true`); a real iOS keyboard. |
 | DES-077 | Background work asked in Slack reports back where it was asked: a watch that fires or runs out, a goal or task that ends, and `notify` reply once in the app's Slack thread that asked, naming the person, with the result's one line and Open Session; anywhere else, or when a run behind it read private context, the person is told in their direct messages; work someone stopped tells nobody | Implemented: `SurfaceNoticesFor` forwards `result` notices only for background work and `notify` (`internal/platform/background_report.go`), with `reply_in` on the event stream (`InboxNotice.reply_in`, `InboxNoticeReply`); the Slack app's `report` in `app.tsx`. Evidence: `TestBackgroundWorkAskedInSlackRepliesInTheThread`, `TestABackgroundResultFromPrivateContextIsSentToThePersonAlone`, `TestBackgroundWorkAskedElsewhereIsSentToTheirDirectMessages`, and the three background tests in `apps/slack/src/dm.test.tsx`. Not yet seen in a live Slack workspace. |
 | DES-078 | An agent in a conversation, a Slack thread among them, proposes a schedule on a clear approval card ("Create a schedule: plaud-new, every 15 minutes, posts in this Slack channel (C0PLAUD) only when something fires", with what it checks, how often, the agent, where it posts and its next run), confirms the next run once approved, and Run once now is itself an approved action | Implemented: run tools `create_schedule`, `update_schedule`, `pause_schedule`, `resume_schedule` and `run_schedule` (`schedule_tools.go`) call the API's own routes as the person, every call asked of that person whatever the policy allows; the card's fields come from `schedulePreview` (`packages/adapter/src/schedule.ts`), words in `copy.schedules.proposal`. Evidence: `TestAnAgentSchedulesWorkForThePersonItWorksFor`, `TestEveryScheduleCallIsAskedOfThePerson`, `TestScheduleToolsRefuseRunsThatActForNoPerson`, adapter `schedule.test.ts`. Not checked: the card in a live Slack workspace or against Slack's validator (no network here), and a live model proposing one. See [schedules from a conversation](../guides/schedules-from-a-conversation.md) |
 | DES-079 | Auto answers questions: in a session set to Auto, the approval agent also answers a question an agent asks a person when the session already settles it, as the person who chose it, and hands them the rest. Two modes, Ask and Auto; Run and Answer folded into Auto | Implemented: `threads.ApprovalAuto` and `threads.ApprovalModeOf`, which reads a stored `decide` as `auto` (`pkg/threads/approval.go`), `internal/platform/approval_questions.go`, the `answer` field and `DescribeQuestion` in `pkg/approve`, `PUT /api/threads/{id}/approval` with `auto` (`decide` still taken as `auto`), the Ask and Auto menu in `ApprovalToggle.tsx`, and the judgement on a question's card (`ClarificationCard`). Evidence: `TestAutoAnswersAChoiceTheSessionSettles`, `TestAutoAnswersAReply`, `TestWhatAutoDoesNotSettleWaitsForAPerson`, `TestAutoNeverAnswersForSomeoneElse`, `TestAutoLeavesWhatSomeoneElseAskedFor`, `TestAskLeavesQuestionsForAPerson`, `TestDecideIsTakenAsAuto`, `TestAutoIsAModeAPersonChooses`, `TestApprovalModeIsSetOnItsOwnAndKept`, `TestStoredApprovalModesReadAsAuto`, `TestAQuestionsAnswerIsReadBesideTheDecision`; `approval-toggle.dom.test.tsx`, `ui.test.tsx`. Not run: `pnpm validate:slack` (needs the Slack bench) and a screen check in a running console. |
@@ -936,6 +937,62 @@ project settings", with a clean outlook.
 - The page is not drawn with `Page`'s plain layout: like a conversation, it
   needs a surface of its own under the title row for the composer to float
   over. Its loading and missing states still use `Page`.
+
+### DES-080: One surface, a floating composer, Stop at two levels
+
+- The conversation is one background with no box round it. The composer
+  floats over the bottom of it (`Thread` `footer`), and the messages scroll
+  underneath through a short fade. The list keeps room at its end for the
+  last message to clear the composer however tall it grows: a ResizeObserver
+  on the composer writes `--aui-thread-dock-h`, and a reader at the end stays
+  there. The dock stops short of the scrollbar. Reached by keyboard, the log
+  shows a line along its top, not a ring round the page.
+- Layers are named once in `theme.css`, lowest first: `--aui-z-content`,
+  `--aui-z-sticky` (busy bar, turn rail, jump control), `--aui-z-composer`,
+  `--aui-z-popover` (the @ and / lists, the + menu, preview cards, the usage
+  popover), `--aui-z-sheet` (drawers, the usage sheet on a phone) and
+  `--aui-z-toast`. Code touched uses these, never a bare number.
+- The box is one lean row: + (attach, and the + menu) on the left, the words,
+  then Send (a return glyph) and the microphone as plain icons of equal
+  weight, each a 44px target on touch. The row grows upward with the words and
+  the buttons stay on its last line. Both buttons are always there: empty, Send
+  is dimmed and the microphone is the action; with words, Send is ready and the
+  microphone stays, so a person can switch between talking and typing. While
+  it records or dictates, the microphone shows it live and is the stop in the
+  same place; the words land in the box to edit before sending, and Send stays
+  ready if there are words. Shift+Enter adds a line.
+- While anything in the session runs, whoever started it, Send is Stop (a
+  square) and the empty box says "↵ to send, ⌘↵ to queue for later". Stop, or Esc in an empty box, stops every run in the
+  session and its child sessions (`POST /api/sessions/{id}/stop` with
+  `children`) and the reader's background work started from it
+  (`POST /api/me/background/{id}/stop`). Enter sends now; Cmd+Enter
+  (Ctrl+Enter) queues behind what runs.
+- Each running item has its own Stop, a square and the word at the top of its
+  row, never in a menu or behind hover: the agent (beside its mark, which still
+  stops it), a call to another agent (`POST /api/runs/{child}/stop`),
+  background work a step started, and a step in flight (which stops its run).
+  A stopped item says Stopped in muted text, never Failed.
+- Under the box, one quiet line, on Home and in a conversation alike. On the
+  left, in order: the project (Home picks it here; it files the first
+  message), the environment and repository (`footerStart`, from the session
+  panel), then the approval mode. On the right: the agent that answered last
+  and its model, and a usage ring. On a phone the left items are icons only,
+  their words hidden but still their names.
+- Home's first message opens its conversation, and the bar and its footer
+  move down into it as one piece while the conversation's skeletons show:
+  Home remembers where they were and draws the same picture, inert, in the
+  loading screen's place, sliding with `--aui-dur-page` and
+  `--aui-ease-arrive` (`dockArrival.ts`). The footer never disappears, jumps
+  or reflows. With reduced motion it arrives in place. The ring shows the fullest of the context and every
+  limit that holds the session, and takes a color only near a limit (amber)
+  or over one (red); its name says which. It opens This Session (context,
+  tokens or spend, runs, the agents that used most, from
+  `GET /api/threads/{id}/usage`), then Limits (each limit's label, scope,
+  local reset time and a bar, from `GET /api/usage`), then See All. Loading
+  is skeleton bars; no limits says No Limits Set; a reader without billing
+  sees the session alone; a failure offers Retry; over a limit says what is
+  blocked and until when. Esc, a press outside and Close put it away and
+  give focus back to the ring. On a phone it is a sheet.
 
 ### DES-080: One surface, a floating composer, Stop at two levels
 
