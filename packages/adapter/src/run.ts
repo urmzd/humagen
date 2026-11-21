@@ -123,6 +123,11 @@ export interface Run {
    * nobody.
    */
   actor?: { id: string; display?: string; bot?: boolean; user?: string };
+  /**
+   * Connections the run, or an agent it called, needed and the person it
+   * acts for had not made, by provider.
+   */
+  needs_connection?: { provider: string; name?: string }[];
   root: string;
   parent?: string;
   depth: number;
@@ -398,7 +403,7 @@ export function adapter(
         if (t.phase === "executing" && Number.isFinite(Date.parse(e.time))) toolStarted.set(t.id, Date.parse(e.time));
         const out: TurnEvent[] = [
           { type: "activity", activity: doing(t.name) },
-          { type: "task.upserted", task: task(t.id, t.name, t.arguments === undefined ? {} : { input: JSON.stringify(t.arguments, null, 2).slice(0, 32_000) }) },
+          { type: "task.upserted", task: task(t.id, t.name, { ...(t.arguments === undefined ? {} : { input: JSON.stringify(t.arguments, null, 2).slice(0, 32_000) }), ...(toolStarted.has(t.id) ? { startedAt: new Date(toolStarted.get(t.id) as number).toISOString() } : {}) }) },
         ];
         if (t.name && (delegateOf(t.name) || CALL_AGENTS.has(t.name))) {
           const pending = calling.get(t.name) ?? [];
@@ -625,6 +630,7 @@ export function turnOf(run: Run): Turn {
       });
     })(),
     notices: [],
+    ...(run.needs_connection?.length ? { needsConnection: needsOf(run) } : {}),
     activity: run.status === "parked" ? "waiting" : undefined,
     // A finished run worked from its creation to its last change.
     ...(() => {
@@ -636,6 +642,16 @@ export function turnOf(run: Run): Turn {
         ? failureOf(run.error, run.id)
         : undefined,
   };
+}
+
+/** The connections a run's record says it needed, each named once, by its display name or else its provider. */
+export function needsOf(run: Pick<Run, "needs_connection">): NonNullable<Turn["needsConnection"]> {
+  const seen = new Set<string>();
+  return (run.needs_connection ?? []).flatMap((n) => {
+    if (!n.provider || seen.has(n.provider)) return [];
+    seen.add(n.provider);
+    return [{ provider: n.provider, name: n.name || n.provider }];
+  });
 }
 
 /** Classify known failure causes without copying credential paths into user-facing text. */

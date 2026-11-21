@@ -13,7 +13,8 @@ session, composer and session menus, feedback, all four Details sections, an
 actual parked approval and a review v2 answer. `sidebar-sources` dresses the
 sidebar, in the browser only, with sessions from Slack, GitHub, a schedule and the
 console, two pinned, one selected and one hovered, beside the keyboard-focused
-conversation; `session-log-focus` is that focus alone. A child session, alert and
+conversation; `sidebar-resized` drags the sidebar's edge wider; `session-log-focus` is that
+focus alone. A child session, alert and
 scratchpad files are created through the real session APIs. Details assertions
 check modal behavior below 1024 and composer reflow beside the desktop pane.
 The inline-code session replays the confirmed clipped message and a long path;

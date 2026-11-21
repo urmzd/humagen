@@ -15,6 +15,8 @@ import {
   focusLog,
   hoverRow,
   hoverState,
+  previewReason,
+  resizeSidebar,
 } from "./sidebar-sources.ts";
 
 export interface SessionScreen {
@@ -374,15 +376,17 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
       path: "/agents",
       act: async (page) => {
         await page.getByRole("heading", { name: "Agents", exact: true }).waitFor();
-        await page.getByRole("button", { name: "New agent", exact: true }).waitFor();
+        await page.getByRole("button", { name: "New Agent", exact: true }).waitFor();
       },
     },
     {
+      // A new agent starts from its goal (DES-081); describing it to the builder stays a choice.
       name: "agent-builder-entry",
       path: "/agents/new",
       act: async (page) => {
-        await page.getByRole("heading", { name: "New agent", exact: true }).waitFor();
-        await page.getByRole("button", { name: "New agent", exact: true }).waitFor();
+        await page.getByRole("heading", { name: "What's it for?", exact: true }).waitFor();
+        await page.getByRole("radio", { name: /^Start from scratch/ }).waitFor();
+        await page.getByRole("button", { name: /^Describe It to/ }).waitFor();
       },
     },
     {
@@ -626,11 +630,23 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
         await dressSources(page, ids.work.id);
         await assertSources(page);
         await hoverState(page);
+        await previewReason(page);
         if ((page.viewportSize()?.width ?? 0) >= 768) {
           await focusLog(page);
           await assertCalmFocus(page);
         }
         await hoverRow(page);
+      },
+    },
+    {
+      name: "sidebar-resized",
+      path: session,
+      // The sidebar's edge dragged 48px wider; on a phone it stays a drawer.
+      act: async (page) => {
+        await readySession(page);
+        await dressSources(page, ids.work.id);
+        await resizeSidebar(page);
+        await page.evaluate(() => localStorage.removeItem("humagen.sidebar.width"));
       },
     },
     {
@@ -686,7 +702,7 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
       path: `/messages/${ids.approval.id}`,
       act: async (page) => {
         await readySession(page);
-        await page.getByRole("button", { name: "Ask a question", exact: true }).first().waitFor();
+        await page.getByRole("button", { name: "Ask a Question", exact: true }).first().waitFor();
         await page
           .getByRole("button", { name: /^Approve(?::|$)/ })
           .first()

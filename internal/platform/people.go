@@ -23,13 +23,15 @@ import (
 var ErrNameTaken = errors.New("platform: name taken")
 
 // agentTaken reports whether a handle is an agent's name in a workspace, so
-// no person is given it.
+// no person is given it. A retired agent's name stays taken: nothing takes
+// it over, and the platform file may still name it, which a start checks
+// against people's handles.
 func (p *Platform) agentTaken(tenant, handle string) bool {
 	if IsBuiltin(handle) {
 		return true
 	}
 	_, err := p.Catalog().Get(context.Background(), tenant, handle, 0)
-	return err == nil
+	return err == nil || errors.Is(err, wire.ErrNotFound) && p.AgentRetired(tenant, handle)
 }
 
 // SeePerson records a person who signed in: their name and their roles now.

@@ -22,7 +22,9 @@ import { loadTests } from "./testload.ts";
 GlobalRegistrator.register({ url: "http://localhost:5173/" });
 await loadTests([
   "/src/composer-overlay.dom.test.tsx",
+  "/src/pane-menu.dom.test.tsx",
   "/src/bigquery-connection.dom.test.tsx",
+  "/src/transcript.dom.test.tsx",
   "/src/connection-flows.dom.test.tsx",
   "/src/sidebar-recents.dom.test.tsx",
   "/src/agent-builder.dom.test.tsx",
@@ -45,6 +47,8 @@ await loadTests([
   "/src/agent-look.dom.test.tsx",
   "/src/agent-slack-app.dom.test.tsx",
   "/src/agent-home.dom.test.tsx",
+  "/src/agent-create.dom.test.tsx",
+  "/src/agent-settings.dom.test.tsx",
   "/src/eval-candidates.dom.test.tsx",
   "/src/history.dom.test.tsx",
   "/src/voice-notes.dom.test.tsx",

@@ -9,10 +9,14 @@ import { PEEK_WIDTH, placePeek } from "./peek.ts";
 export const PEEK_MS = 450;
 export const HOLD_MS = 500;
 
+/** Closes the preview that is showing: one shows at a time, by pointer or by keyboard. */
+let closeShown: (() => void) | undefined;
+
 /**
- * Opens a preview of something on hover, after the pointer rests, or on a
- * long press with a finger. A long press does not also click: the click that
- * follows it is swallowed. Leaving, scrolling or Escape closes it.
+ * Opens a preview of something on hover, after the pointer rests, on a long
+ * press with a finger, or when keyboard focus rests on it. A long press does
+ * not also click: the click that follows it is swallowed. Leaving, scrolling
+ * or Escape closes it.
  */
 export function usePeek() {
   const [at, setAt] = useState<DOMRect | null>(null);
@@ -22,7 +26,16 @@ export function usePeek() {
   const close = useCallback(() => {
     stop();
     setAt(null);
+    if (closeShown === close) closeShown = undefined;
   }, [stop]);
+  const show = useCallback(
+    (el: HTMLElement) => {
+      if (closeShown !== close) closeShown?.();
+      closeShown = close;
+      setAt(el.getBoundingClientRect());
+    },
+    [close],
+  );
   useEffect(() => {
     if (!at) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && close();
@@ -35,24 +48,39 @@ export function usePeek() {
       document.removeEventListener("pointerdown", close, true);
     };
   }, [at, close]);
-  useEffect(() => stop, [stop]);
+  useEffect(
+    () => () => {
+      stop();
+      if (closeShown === close) closeShown = undefined;
+    },
+    [stop, close],
+  );
   const bind = {
     onPointerEnter: (e: React.PointerEvent<HTMLElement>) => {
       if (e.pointerType !== "mouse") return;
       const el = e.currentTarget;
       stop();
-      timer.current = window.setTimeout(() => setAt(el.getBoundingClientRect()), PEEK_MS);
+      timer.current = window.setTimeout(() => show(el), PEEK_MS);
     },
     onPointerLeave: (e: React.PointerEvent<HTMLElement>) => {
       if (e.pointerType === "mouse") close();
     },
+    onFocus: (e: React.FocusEvent<HTMLElement>) => {
+      // Keyboard focus only: a click or a tap focuses it too, and opens it.
+      const el = e.currentTarget;
+      if (!el.matches(":focus-visible")) return;
+      stop();
+      // After the rest, so the scroll that brings it into view does not close it.
+      timer.current = window.setTimeout(() => show(el), PEEK_MS);
+    },
+    onBlur: close,
     onTouchStart: (e: React.TouchEvent<HTMLElement>) => {
       const el = e.currentTarget;
       held.current = false;
       stop();
       timer.current = window.setTimeout(() => {
         held.current = true;
-        setAt(el.getBoundingClientRect());
+        show(el);
       }, HOLD_MS);
     },
     onTouchMove: stop,
@@ -62,7 +90,11 @@ export function usePeek() {
       if (held.current) e.preventDefault();
     },
     onClickCapture: (e: React.MouseEvent) => {
-      if (!held.current) return;
+      // Opening it, by a click or by Enter, puts the preview away.
+      if (!held.current) {
+        close();
+        return;
+      }
       held.current = false;
       e.preventDefault();
       e.stopPropagation();
@@ -114,8 +146,13 @@ export function PeekCard({
   );
 }
 
-/** What a sidebar row's preview says: its whole title and how long ago it moved. */
-export function ConversationPeek({ task }: { task: ThreadSummary }) {
+/**
+ * What a sidebar row's preview says: its whole title, its status in words when
+ * it has one, and how long ago it moved. The row's badge is a glyph alone, so
+ * this is where a finger or a keyboard reads why it failed or what it waits
+ * for. The row's own description already says it to a screen reader.
+ */
+export function ConversationPeek({ task, status }: { task: ThreadSummary; status?: string }) {
   const words = defaultCopy.sidebar;
   const when = age(task.updated_at, Date.now());
   return (
@@ -123,6 +160,11 @@ export function ConversationPeek({ task }: { task: ThreadSummary }) {
       <span className="line-clamp-3 break-words text-aui-sm text-aui-fg">
         {task.title || "Untitled conversation"}
       </span>
+      {status && (
+        <span aria-hidden data-peek-status className="break-words text-aui-xs text-aui-fg">
+          {status}
+        </span>
+      )}
       <span className="text-aui-xs text-aui-muted tabular-nums">{words.movedAgo(when)}</span>
     </>
   );

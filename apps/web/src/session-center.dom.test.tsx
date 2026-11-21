@@ -43,6 +43,7 @@ const session = (id: string, parent = "console:p"): AgentSessionSummary => ({
     messages: 1,
     turns: 1,
     branches: 0,
+    waiting_on_you: false,
     active: 1,
     waiting: 0,
     failed: 0,

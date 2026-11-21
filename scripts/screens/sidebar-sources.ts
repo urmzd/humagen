@@ -26,6 +26,8 @@ type Row = {
   waiting?: number;
   failed?: number;
   unread?: boolean;
+  /** What a session listing says of it for its reader (DES-054). */
+  extra?: Record<string, unknown>;
 };
 
 /** The ids the scene adds, so a test can find each row. */
@@ -38,6 +40,8 @@ export const SOURCE_ROWS = {
   needs: "s_screens_needs",
   pinnedSlack: "s_screens_pinned_slack",
   pinnedConsole: "s_screens_pinned_console",
+  joined: "s_screens_joined",
+  question: "s_screens_question",
 } as const;
 
 function rows(personal: string): Row[] {
@@ -70,6 +74,33 @@ function rows(personal: string): Row[] {
       minutes: 120,
       agent: "screens-reviewer",
       failed: 1,
+      unread: true,
+      extra: { failure: "github-reviewer could not read the repositories (401)" },
+    },
+    {
+      id: r.joined,
+      title: "Find the on-call rota for the payments team",
+      origin: "api",
+      source: "slack",
+      project: "",
+      minutes: 50,
+      agent: "screens-writer",
+      extra: { joined: true },
+    },
+    {
+      id: r.question,
+      title: "Triage this week's support backlog",
+      origin: "api",
+      project: "",
+      minutes: 14,
+      agent: "screens-writer",
+      active: 1,
+      waiting: 1,
+      extra: {
+        waiting_for: "Which of these three should I take on first?",
+        waiting_kind: "question",
+        waiting_on_you: true,
+      },
     },
     {
       id: r.scheduled,
@@ -97,6 +128,7 @@ function rows(personal: string): Row[] {
       agent: "screens-approval",
       active: 1,
       waiting: 1,
+      extra: { waiting_for: "file_write", waiting_kind: "approval", waiting_on_you: true },
     },
     {
       id: r.pinnedSlack,
@@ -164,6 +196,7 @@ export async function dressSources(page: Page, open: string): Promise<void> {
         waiting: row.waiting ?? 0,
         failed: row.failed ?? 0,
         last_agent: row.unread ?? false,
+        ...row.extra,
         messages: 1,
         updated_at: ago(row.minutes),
       },
@@ -214,28 +247,115 @@ export async function focusLog(page: Page): Promise<void> {
   if (!visible) throw new Error("The conversation log did not take visible keyboard focus");
 }
 
-/**
- * Rests the mouse on a row's state mark: the mark stays in view under the
- * pointer, where its tooltip shows, while the row's ⋮ button takes the age.
- */
+/** The failure badge and row menu share the row on hover and keyboard focus. */
 export async function hoverState(page: Page): Promise<void> {
   if ((page.viewportSize()?.width ?? 0) < 1024) return;
-  const mark = page.locator(`[data-thread-row="${SOURCE_ROWS.slackDM}"] [data-standing="failed"]`);
-  await mark.hover();
-  await page.getByRole("button", { name: /^Manage Please check my repos/ }).waitFor();
-  const seen = await mark.evaluate((el) => {
+  const row = page.locator(`[data-thread-row="${SOURCE_ROWS.slackDM}"]`);
+  const badge = row.locator('[data-state="failed"]');
+  const menu = page.getByRole("button", { name: /^Manage Please check my repos/ });
+
+  await badge.hover();
+  const hitBadge = await badge.evaluate((el) => {
     const box = el.getBoundingClientRect();
-    const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
-    return {
-      visible: getComputedStyle(el).visibility === "visible",
-      under: !!hit && el.contains(hit),
-      title: el.getAttribute("title"),
-    };
+    return el.contains(document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2));
   });
-  if (!seen.visible || !seen.under || seen.title !== "A reply failed")
+  if (!hitBadge) throw new Error("the failure badge must stay under the pointer when hovered");
+
+  for (const interaction of ["hover", "keyboard focus"]) {
+    if (interaction === "keyboard focus") {
+      await page.mouse.move(1, 1);
+      await row.focus();
+      await page.keyboard.press("Shift");
+      if (!(await row.evaluate((el) => el.matches(":focus-visible"))))
+        throw new Error("the failed row did not take visible keyboard focus");
+    }
+    const [badgeBox, menuBox, menuOpacity] = await Promise.all([
+      badge.boundingBox(),
+      menu.boundingBox(),
+      menu.evaluate((el) => getComputedStyle(el).opacity),
+    ]);
+    if (!badgeBox || !menuBox || menuOpacity === "0" || !(await badge.isVisible()))
+      throw new Error(`the failure badge and menu must both be visible on ${interaction}`);
+    const overlaps =
+      badgeBox.x < menuBox.x + menuBox.width &&
+      badgeBox.x + badgeBox.width > menuBox.x &&
+      badgeBox.y < menuBox.y + menuBox.height &&
+      badgeBox.y + badgeBox.height > menuBox.y;
+    if (overlaps) throw new Error(`the failure badge and menu overlap on ${interaction}`);
+  }
+}
+
+/**
+ * A row's badge is a glyph alone, so its preview says the reason in words to
+ * a reader with no mouse: under a held finger on a phone, and under keyboard
+ * focus on a wider screen. The preview is put away again.
+ */
+export async function previewReason(page: Page): Promise<void> {
+  const row = page.locator(`[data-thread-row="${SOURCE_ROWS.slackDM}"]`);
+  const reason = "Failed: github-reviewer could not read the repositories (401)";
+  const phone = (page.viewportSize()?.width ?? 0) < 768;
+  if (phone) {
+    const box = await row.boundingBox();
+    if (!box) throw new Error("the failed row is not drawn");
+    await row.dispatchEvent("touchstart", {
+      touches: [{ identifier: 1, clientX: box.x + 20, clientY: box.y + 10 }],
+    });
+  } else {
+    // Away and back by the keyboard, so the row takes focus as a keyboard gives it.
+    await page.mouse.move(1, 1);
+    await row.focus();
+    await page.keyboard.press("Shift+Tab");
+    await page.keyboard.press("Tab");
+    if (
+      !(await row.evaluate((el) => el === document.activeElement && el.matches(":focus-visible")))
+    )
+      throw new Error("the failed row did not take keyboard focus");
+  }
+  const how = phone ? "a long press" : "keyboard focus";
+  const card = page.locator("[data-peek]");
+  const status = card.locator("[data-peek-status]");
+  try {
+    await status.waitFor({ timeout: 5000 });
+  } catch {
+    throw new Error(`the failed row's preview must say its reason on ${how}`);
+  }
+  if ((await status.textContent())?.trim() !== reason)
     throw new Error(
-      `a hovered state mark must stay visible with its tooltip: ${JSON.stringify(seen)}`,
+      `the preview on ${how} must say the full reason, not: ${await status.textContent()}`,
     );
+  const [cardBox, view] = [await card.boundingBox(), page.viewportSize()];
+  if (!cardBox || !view || cardBox.x < 0 || cardBox.x + cardBox.width > view.width)
+    throw new Error(`the preview on ${how} must fit the window`);
+  if (phone) await row.dispatchEvent("touchend");
+  await card.dispatchEvent("pointerdown");
+  await card.waitFor({ state: "detached" });
+}
+
+/**
+ * Drags the sidebar's edge 48px wider on a wide screen and checks the
+ * sidebar follows and the width is kept.
+ */
+export async function resizeSidebar(page: Page): Promise<void> {
+  if ((page.viewportSize()?.width ?? 0) < 1024) return;
+  const edge = page.getByRole("separator", { name: "Resize sidebar" });
+  const box = await edge.boundingBox();
+  if (!box) throw new Error("the sidebar's edge is not drawn");
+  const x = box.x + box.width / 2;
+  const y = box.y + 300;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x + 24, y);
+  await page.mouse.move(x + 48, y);
+  await page.mouse.up();
+  const nav = page.getByRole("complementary", { name: "Navigation" });
+  const width = (await nav.boundingBox())?.width ?? 0;
+  // It is drawn no wider than a third of the window.
+  const want = Math.min(344, Math.floor((page.viewportSize()?.width ?? 0) / 3));
+  if (Math.abs(width - want) > 2)
+    throw new Error(`the dragged sidebar is ${width}px, want ${want}`);
+  // What is kept is what is drawn.
+  const kept = await page.evaluate(() => localStorage.getItem("humagen.sidebar.width"));
+  if (kept !== String(want)) throw new Error(`the dragged width is kept as ${kept}, want ${want}`);
 }
 
 /** Rests the mouse on a row that is not the open one, which shows its hover state and preview. */
@@ -246,12 +366,10 @@ export async function hoverRow(page: Page): Promise<void> {
   await page.locator("[data-peek]").waitFor();
 }
 
-/**
- * Each row leads with its source, said in words, and no row or the focused
- * log is drawn in the accent: red is kept for a failed reply.
- */
+/** Sources and state badges fit in the same two lines on wide and narrow screens. */
 export async function assertSources(page: Page): Promise<void> {
   const nav = page.getByRole("complementary", { name: "Navigation" });
+  const row = (id: string) => nav.locator(`[data-thread-row="${id}"]`);
   const expected: [string, string][] = [
     [SOURCE_ROWS.slackDM, "slack_dm"],
     [SOURCE_ROWS.slackThread, "slack"],
@@ -260,13 +378,71 @@ export async function assertSources(page: Page): Promise<void> {
     [SOURCE_ROWS.console, "console"],
   ];
   for (const [id, source] of expected) {
-    const mark = nav.locator(`[data-thread-row="${id}"] [data-source]`);
+    const mark = row(id).locator("[data-source]");
     if ((await mark.getAttribute("data-source")) !== source)
-      throw new Error(`${id} should lead with its ${source} mark`);
+      throw new Error(`${id} should show its ${source} mark`);
   }
-  const failed = nav.locator(`[data-thread-row="${SOURCE_ROWS.slackDM}"] [data-standing="failed"]`);
-  if ((await failed.getAttribute("title")) !== "A reply failed")
-    throw new Error("a failed reply is said in words");
+  const consoleMark = row(SOURCE_ROWS.console).locator('[data-source="console"]');
+  const consoleLabel = consoleMark.getByText("Web / Console", { exact: true });
+  if (!(await consoleLabel.isVisible()) || (await consoleMark.locator("svg").count()) !== 1)
+    throw new Error("the console source must show the Web / Console label and its glyph");
+
+  const states = [
+    [
+      SOURCE_ROWS.slackDM,
+      "failed",
+      "Failed: github-reviewer could not read the repositories (401)",
+      true,
+    ],
+    [SOURCE_ROWS.needs, "approval", "Waiting for you: approve file_write"],
+    [
+      SOURCE_ROWS.question,
+      "question",
+      "Waiting for you: Which of these three should I take on first?",
+    ],
+    [SOURCE_ROWS.slackThread, "working", "Working"],
+  ] as const;
+  for (const [id, state, reason, unread] of states) {
+    const link = row(id);
+    const badge = link.locator(`[data-state="${state}"]`);
+    if (
+      !(await badge.isVisible()) ||
+      (await badge.locator("svg").count()) !== 1 ||
+      (await badge.textContent())?.trim() !== "" ||
+      (await badge.getAttribute("title")) !== reason
+    )
+      throw new Error(
+        `the ${state} state must show an icon-only badge with the full reason as its tooltip`,
+      );
+    const described = await link.evaluate(
+      (el, text) =>
+        el
+          .getAttribute("aria-describedby")
+          ?.split(/\s+/)
+          .some((id) => {
+            const detail = document.getElementById(id);
+            return detail?.classList.contains("sr-only") && detail.textContent?.trim() === text;
+          }),
+      unread ? `${reason}, Unread` : reason,
+    );
+    if (!described)
+      throw new Error(`the ${state} row must describe its full reason to screen readers`);
+  }
+
+  const normal = row(SOURCE_ROWS.github);
+  if ((await normal.locator("[data-state]").count()) > 0)
+    throw new Error("an ordinary session must not show a status badge");
+  const normalHeight = (await normal.boundingBox())?.height;
+  if (!normalHeight) throw new Error("the ordinary session row is not drawn");
+  for (const [id, state] of states) {
+    const height = (await row(id).boundingBox())?.height;
+    if (!height || Math.abs(height - normalHeight) > 0.5)
+      throw new Error(`the ${state} row is ${height}px high, expected ${normalHeight}px`);
+  }
+  await nav
+    .getByRole("region", { name: "Participated" })
+    .locator(`[data-thread-row="${SOURCE_ROWS.joined}"]`)
+    .waitFor();
   if ((await nav.locator(".humagen-row-dot").count()) > 0)
     throw new Error("no row carries a bare dot");
 }

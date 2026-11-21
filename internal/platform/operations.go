@@ -235,6 +235,7 @@ func (c *operationsCatalog) ToolGroup(name string) (native.ToolGroup, error) {
 		}
 		ts, ok, err := c.groups.Expand(ctx, c.req.Tenant, name)
 		if err != nil {
+			c.p.noteConnectionNeed(c.req.Tenant, c.req.RunID, name, err)
 			return native.ToolGroup{}, err
 		}
 		if ok {

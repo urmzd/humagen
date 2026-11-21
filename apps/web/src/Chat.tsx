@@ -20,7 +20,6 @@ import {
   type ProjectView,
   type Revision,
   type ThreadPage,
-  type Thread as ThreadRecord,
   type ThreadSummary,
 } from "./api.ts";
 import { asksOf } from "./asks.ts";
@@ -38,7 +37,6 @@ import type { ConversationPanel, ConversationView } from "./route.ts";
 import { Scroller } from "./Scroller.tsx";
 import type { SessionSetup } from "./SessionPickers.tsx";
 import { ComposerFooter } from "./SessionUsage.tsx";
-import { useThreadSelection } from "./selection.ts";
 import { mentionsIn } from "./tags.ts";
 import { topicsOf } from "./topics.ts";
 import { readFromStart } from "./turns.ts";
@@ -47,18 +45,6 @@ import { useVoiceNotes } from "./useVoiceNotes.ts";
 
 const words = defaultCopy.threads;
 
-/** The thread a page holds before one is read: nothing selected, nowhere. */
-const noThread: ThreadRecord = {
-  id: "",
-  project: "",
-  channel: "general",
-  visibility: "private",
-  participants: [],
-  version: 0,
-  created_by: "",
-  created_at: "",
-  updated_at: "",
-};
 /** The answers to one point in the conversation, oldest first. */
 export function siblingsOf(turns: Run[], run: Run): Run[] {
   return turns.filter((t) => (t.prev ?? "") === (run.prev ?? ""));
@@ -318,15 +304,6 @@ export function Chat({
   const [turns, setTurns] = useState<Run[]>([]);
   // The thread as the platform reads it: its record, and its people's messages besides its runs.
   const [room, setRoom] = useState<ThreadPage | null>(null);
-  // The + selection of a conversation of runs, saved on its thread as a room's is.
-  const runs = useThreadSelection(threadId ?? "", room?.thread ?? noThread, {
-    saved: (t) => {
-      setRoom((r) => (r ? { ...r, thread: t } : r));
-      onChanged();
-    },
-    reread: (p) => setRoom((r) => (r ? { ...r, thread: p.thread } : r)),
-    problem: (why) => setProblem(why),
-  });
   const [chosen, setChosen] = useState<Record<string, string>>({});
   // An agent a link named is mentioned at the start of the draft, ahead of what it asks.
   const [seed, setSeed] = useState<ComposerSeed | undefined>(() =>
@@ -871,8 +848,6 @@ export function Chat({
                     onSkill={(name) => {
                       setSeed({ text: `/${name} `, mode: "prepend" });
                     }}
-                    selection={runs.selection}
-                    onChange={runs.select}
                     onAttach={attach}
                     onClose={close}
                   />
@@ -889,8 +864,6 @@ export function Chat({
                     onSkill={(name) => {
                       setSeed({ text: `/${name} `, mode: "prepend" });
                     }}
-                    selection={selection}
-                    onChange={select}
                     onAttach={attach}
                     onClose={close}
                     finder={

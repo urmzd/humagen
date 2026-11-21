@@ -180,6 +180,39 @@ and archiving a channel unbinds it. `GET /api/clients/{id}/bindings` lists a
 client's. A client's `home` (a project and one of its channels) is where
 everything else is filed.
 
+#### When the app listens
+
+The Slack app listens on a mention, and after one. Nothing else is heard.
+
+| In Slack | What the app does |
+|---|---|
+| A direct message | Answers. Every message there is addressed to it |
+| A message that mentions the app, anywhere in it | Answers that message |
+| A mention in a channel thread's first message | Answers, and once the answer is in, the thread is **listened to** (`listening` on the thread). A refused mention, a failed run, or one still quiet or waiting on someone starts no listening |
+| A later reply in a listened thread that mentions nobody, from the person whose mention the app answered most recently there | Reads it and asks the agent whether it calls for it (`POST /api/threads` with `listen`). The agent answers, or the message is kept as what was said and nothing shows in Slack |
+| A mention in a reply of a thread that did not begin with one | Answers once, with what was said in the thread since it was last asked. The thread is not listened to |
+| A reply that mentions nobody in a thread that is not listened to, or from anyone else in a listened one | Not heard, and not kept (409). A late answer to an older mention does not hand the thread back |
+| A reply that mentions nobody, which Humagen could not take (an error, or no answer from it) | Nothing shows in Slack: no notice, no reaction, no status. It is logged. A mention or a direct message that fails is told why |
+| A reply that tags only other people, a user group, or the whole channel (`@here`, `@channel`, `@everyone`) | Not offered: it is addressed to them. One that also mentions the app or names an agent is asked |
+| A channel message that mentions nobody, outside a thread | Not heard. In a Slack channel bound to a project it is recorded there, as every message in a bound channel is |
+| A message from the app itself, another bot, an edit or a join | Never starts anything |
+
+The whole message is sent, as the person wrote it. The app's own mention tags
+nobody: one that opens the message is the address and is dropped, with the
+colon or comma after it, and anywhere else it reads as the app's name, so
+"could @Humagen take a look" asks "could Humagen take a look".
+
+Only a person the client maps is listened to. The agent's answer to "does this
+call for me?" is the one a message that names no agent is routed by
+([overview](../architecture/overview.md)): a no, a failure and no agent to ask
+all leave the message unanswered.
+
+A thread is filed where its Slack channel is bound, else in the client's
+`home`. A client with no `home` files in the workspace's root, in no project,
+so no project lists its sessions: give it one (`PUT /api/clients/{id}`, or the
+client's page in the console). A person's own project is not a place a client
+can file in: a machine never reads one, so the app could not show the answer.
+
 For a person the client maps, the Slack app posts each message into the Humagen
 thread its Slack thread is, as that person (`POST /api/threads` with
 `surface {client, channel, ts, message, app_user}` and `act_as`). Only the
@@ -197,11 +230,15 @@ is their handle, and anyone else stays plain and is refused. When the app is
 mentioned in a thread, the people's messages since it was last asked there are
 posted first, each as its person and posted only, so the room in Humagen reads as
 it did in Slack. Each message is posted once by its ts: a redelivered event
-answers `repeated` and starts nothing again. The app follows a channel thread it answered: a reply there from the person
-who asked it last is taken as asked, with no mention, and replies from
-anyone else start nothing, so people talking to each other in the thread
-are never answered. A bound channel's messages are mirrored as before and
-never followed. A thread stays with the agent it was asked for: the one agent a
+answers `repeated` and starts nothing again. A channel thread whose first
+message mentioned the app is listened to once the app has answered there
+([When the app listens](#when-the-app-listens)): a reply that mentions nobody,
+from the person whose mention the app answered most recently there, is offered
+to the agent, and replies from anyone else start nothing, so people talking to
+each other in the thread are never answered. Only the newest answered mention
+moves whom the thread listens to; the listener's unmentioned replies never do.
+A bound channel whose client's own subscriptions name channel messages has
+them mirrored as before, and none is offered. A thread stays with the agent it was asked for: the one agent a
 message tags, once it answers, becomes the thread's selected agent, and the
 thread's selected agents answer its untagged messages ahead of any default,
 until a message tags another (RFC 0012). Outside a bound channel the
@@ -283,8 +320,8 @@ than posted again, while the app keeps running.
 
 A reply in an announcement's Slack thread starts a shared thread seeded with
 the announcement. The manifest subscribes to `message.channels` and
-`message.groups` so the app can follow a thread it answered (below), and
-the app drops every other channel message that does not mention it unread,
+`message.groups` so the app can listen in a thread that began with a mention
+([When the app listens](#when-the-app-listens)), and the app drops every other channel message that does not mention it unread,
 unless the client's own subscriptions name channel messages. So the reply
 that mentions the app is the one that reaches Humagen, and the replies before it that did not are posted
 ahead of it as the room, each as its person and posted only. The app posts
@@ -401,6 +438,7 @@ then create the app from the manifest at <https://api.slack.com/apps>.
 |----------------|----------------------------|
 | `app_mentions:read`, `app_mention` | A mention in a channel raises a run. |
 | `im:history`, `message.im` | A direct message raises a run. |
+| `channels:history`, `groups:history`, `mpim:history`, `message.channels`, `message.groups`, `message.mpim` | The replies in a thread that began with a mention, which the app listens to. |
 | `chat:write` | Post and edit the run's message; report session status. |
 | `reactions:write` | The `slack_add_reaction` action. |
 | `agent_view`, `assistant:write` | Declares the app an agent, which sessions require. |

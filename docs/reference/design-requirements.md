@@ -26,12 +26,15 @@ planned collections, browser, protocol and improvement work from this UI pass.
 
 | ID | Requirement | Status |
 | --- | --- | --- |
+| DES-080 | A transcript says why work failed and what to do next: a failed step or delegated run shows its error's first line with Show Details, the failed count opens the steps at the failures, a failed delegated run offers Retry, a connection the run needed is a card with Connect, GitHub pull requests, issues and commits in an answer are chips, and an open run of steps is a card with each call's input as a table, a command with Copy and a running step's live time | Implemented: `StepGroup`, `ToolRow`, `Elapsed` and `WorkingMark` in `packages/web/src/WorkSteps.tsx`; `AgentCall` and `ConnectCards` in `packages/web/src/AgentMessage.tsx`; `packages/render-web/src/github-refs.tsx`; `ActionId.retryCall`, handled in `Room.tsx`; `needs_connection` on a run (`pkg/runs/connections.go`, recorded by `noteConnectionNeed` in `internal/platform/connection_need.go` when a tool group needs the person's own credential); `Task.startedAt` from the adapter. Evidence: `transcript.dom.test.tsx`, `timeline.dom.test.tsx`, `workspace.dom.test.tsx`, adapter `fold.test.ts` and `run.test.ts`, `TestARunRecordsEachConnectionItNeededOnceWithinBounds`, `TestAToolGroupWithoutThePersonsConnectionIsRecordedOnTheRunAndItsTurn`, `TestOtherExpansionFailuresNameNoConnection`; before and after captures of `transcript-gallery.html` at 1280x800 and 390x844, light and dark (`scripts/screens/transcript.ts`). Not built: Retry on a single tool call (no route runs one call again), a pull request's state and checks on its chip, and a connection named only in the agent's words. Not seen: a live run that records `needs_connection`, and `pnpm validate:slack`. |
 | DES-082 | A project's page is a chat landing page: one surface with a trail back to Projects and its menu at the top, its title and one-line description, and the conversation's floating composer pinned at the bottom. A project with no sessions leads with its setup as steps to get started, each done or not, with how many are done; once it has sessions it leads with Recents, and the setup is a summary beside them, folded above them on a phone. Setup and Recents are plain rows on hairlines, never boxed cards or "No ..." lines | Implemented: `ProjectPage`, `Setup`, `SetupRow`, `Recents` (`apps/web/src/Projects.tsx`), `ComposerDock` and `useComposerDock` shared with `Thread` (`packages/web/src/Thread.tsx`). Evidence: `projects.dom.test.tsx`; before and after captures at 1280x800 and 390x844, light and dark, on the pull request. |
 | DES-080 | A session has one panel, reached from its header, that shows where it runs, how full its context is, the connectors it may reach, what it made and what it changed, and each row opens the view it names; the header opens the workbench's views directly and the rest from More Views, and its title is the session's menu | Implemented: `SessionViews.tsx` (Details, Terminal, Changes, Browser and Files in the header; Artifacts, Side Chat ⌘;, Search ⌘⇧F, Background Tasks and Progress in More Views; on a phone all of them in More Views), `SessionSections.tsx` and `sessionContext.ts` (Environment, Context, Connectors, Changes), the title menu with Rename in place (`SessionActions.tsx`), the meta line said once (`SessionPlace.tsx`), and session titles without a leading mention, retitled after a greeting (`runs.SessionTitle`, `runs.Greeting`). No new route: the panel reads `GET /api/threads/{id}/sandboxes`, `GET /api/me/credentials`, `GET /api/github/pull` and each run's usage. Evidence: `session-context-panel.dom.test.tsx`, `TestSessionTitle*`, `TestGreeting`; before and after captures at 1280x800 and 390x844, light and dark, against a docker sandbox. |
 | DES-080 | A conversation is one surface with the composer floating over it, on a named z-index scale, and Stop works at two levels: the composer stops everything in the session, each running agent, call to another agent, step and background task stops from its own row; the composer's footer says who answers, the approval mode and a usage ring that opens the session's usage and the limits that hold it | Implemented: `Thread` `footer` (`packages/web/src/Thread.tsx`), the `--aui-z-*` scale (`packages/render-web/src/theme.css`), `ItemStopControl` and `ItemStopsContext` (render-web `stop.tsx`, `meta.tsx`), `Composer` `stopAll` and `footer`, `stops.tsx`, `SessionUsage.tsx`, `GET /api/threads/{id}/usage` (`internal/platform/session_usage.go`). Evidence: `composer-overlay.dom.test.tsx`, `TestThreadUsage*` and `foldUsage` tests; before and after captures at 1280x800 and 390x844, light and dark, on PR #474. Not done: Run in Background for a call already running (the runtime starts a call in the background only when the model asks, with `background: true`); a real iOS keyboard. |
 | DES-080 | A conversation is one surface with the composer floating over it, on a named z-index scale, and Stop works at two levels: the composer stops everything in the session, each running agent, call to another agent, step and background task stops from its own row; the composer's footer says who answers, the approval mode and a usage ring that opens the session's usage and the limits that hold it | Implemented: `Thread` `footer` (`packages/web/src/Thread.tsx`), the `--aui-z-*` scale (`packages/render-web/src/theme.css`), `ItemStopControl` and `ItemStopsContext` (render-web `stop.tsx`, `meta.tsx`), `Composer` `stopAll` and `footer`, `stops.tsx`, `SessionUsage.tsx`, `GET /api/threads/{id}/usage` (`internal/platform/session_usage.go`). Evidence: `composer-overlay.dom.test.tsx`, `TestThreadUsage*` and `foldUsage` tests; before and after captures at 1280x800 and 390x844, light and dark, on PR #474. Not done: Run in Background for a call already running (the runtime starts a call in the background only when the model asks, with `background: true`); a real iOS keyboard. |
 | DES-077 | Background work asked in Slack reports back where it was asked: a watch that fires or runs out, a goal or task that ends, and `notify` reply once in the app's Slack thread that asked, naming the person, with the result's one line and Open Session; anywhere else, or when a run behind it read private context, the person is told in their direct messages; work someone stopped tells nobody | Implemented: `SurfaceNoticesFor` forwards `result` notices only for background work and `notify` (`internal/platform/background_report.go`), with `reply_in` on the event stream (`InboxNotice.reply_in`, `InboxNoticeReply`); the Slack app's `report` in `app.tsx`. Evidence: `TestBackgroundWorkAskedInSlackRepliesInTheThread`, `TestABackgroundResultFromPrivateContextIsSentToThePersonAlone`, `TestBackgroundWorkAskedElsewhereIsSentToTheirDirectMessages`, and the three background tests in `apps/slack/src/dm.test.tsx`. Not yet seen in a live Slack workspace. |
 | DES-078 | An agent in a conversation, a Slack thread among them, proposes a schedule on a clear approval card ("Create a schedule: plaud-new, every 15 minutes, posts in this Slack channel (C0PLAUD) only when something fires", with what it checks, how often, the agent, where it posts and its next run), confirms the next run once approved, and Run once now is itself an approved action | Implemented: run tools `create_schedule`, `update_schedule`, `pause_schedule`, `resume_schedule` and `run_schedule` (`schedule_tools.go`) call the API's own routes as the person, every call asked of that person whatever the policy allows; the card's fields come from `schedulePreview` (`packages/adapter/src/schedule.ts`), words in `copy.schedules.proposal`. Evidence: `TestAnAgentSchedulesWorkForThePersonItWorksFor`, `TestEveryScheduleCallIsAskedOfThePerson`, `TestScheduleToolsRefuseRunsThatActForNoPerson`, adapter `schedule.test.ts`. Not checked: the card in a live Slack workspace or against Slack's validator (no network here), and a live model proposing one. See [schedules from a conversation](../guides/schedules-from-a-conversation.md) |
+| DES-079 | Run and Answer: in a session set to it, the approval agent also answers a question an agent asks a person when the session already settles it, as the person who chose it, and hands them the rest | Implemented: `threads.ApprovalDecide` (`pkg/threads/approval.go`), `internal/platform/approval_questions.go`, the `answer` field and `DescribeQuestion` in `pkg/approve`, `PUT /api/threads/{id}/approval` with `decide`, Answer Questions beside Run in `ApprovalToggle.tsx`, and the judgement on a question's card (`ClarificationCard`). Evidence: `TestRunAndAnswerAnswersAChoiceTheSessionSettles`, `TestRunAndAnswerAnswersAReply`, `TestWhatRunAndAnswerDoesNotSettleWaitsForAPerson`, `TestRunAndAnswerNeverAnswersForSomeoneElse`, `TestRunAndAnswerLeavesWhatSomeoneElseAskedFor`, `TestRunLeavesQuestionsForAPerson`, `TestRunAndAnswerIsAModeAPersonChooses`, `TestApprovalModeIsSetOnItsOwnAndKept`, `TestAQuestionsAnswerIsReadBesideTheDecision`; `approval-toggle.dom.test.tsx`, `ui.test.tsx`. Not run: `pnpm validate:slack` (needs the Slack bench) and a screen check in a running console. |
+| DES-081 | An agent is made goal first and is met on its home: a new agent starts from a searchable list of outcomes (Start from scratch first), is given a name, a shape and a color with its bot drawn as it will be, and opens on a home where it introduces itself, offers jobs to hand it and takes a message addressed to it; its settings are grouped as General, Access, Tools and Behavior, and General shows what it completed this week, how it answers in Slack, Pause and Retire | Implemented: see [DES-081](#des-081-goal-first-agents-a-home-and-grouped-settings). |
 | DES-079 | Auto answers questions: in a session set to Auto, the approval agent also answers a question an agent asks a person when the session already settles it, as the person who chose it, and hands them the rest. Two modes, Ask and Auto; Run and Answer folded into Auto | Implemented: `threads.ApprovalAuto` and `threads.ApprovalModeOf`, which reads a stored `decide` as `auto` (`pkg/threads/approval.go`), `internal/platform/approval_questions.go`, the `answer` field and `DescribeQuestion` in `pkg/approve`, `PUT /api/threads/{id}/approval` with `auto` (`decide` still taken as `auto`), the Ask and Auto menu in `ApprovalToggle.tsx`, and the judgement on a question's card (`ClarificationCard`). Evidence: `TestAutoAnswersAChoiceTheSessionSettles`, `TestAutoAnswersAReply`, `TestWhatAutoDoesNotSettleWaitsForAPerson`, `TestAutoNeverAnswersForSomeoneElse`, `TestAutoLeavesWhatSomeoneElseAskedFor`, `TestAskLeavesQuestionsForAPerson`, `TestDecideIsTakenAsAuto`, `TestAutoIsAModeAPersonChooses`, `TestApprovalModeIsSetOnItsOwnAndKept`, `TestStoredApprovalModesReadAsAuto`, `TestAQuestionsAnswerIsReadBesideTheDecision`; `approval-toggle.dom.test.tsx`, `ui.test.tsx`. Not run: `pnpm validate:slack` (needs the Slack bench) and a screen check in a running console. |
 | DES-076 | A session's Details pane is a workbench of tabs, and what a person does by hand in one goes with their next message | Implemented: the tab registry (`workbench.ts`), the pane (`Workbench.tsx`), six tab addresses (`?panel=details&bench=`), and the record, list and fold of what was done by hand (`human-activity.ts`, `humanActivity.tsx`). All six tabs are built: Details, Browser (`WorkbenchBrowser.tsx`, `POST /api/sessions/{id}/browser`), Terminal (`WorkbenchTerminal.tsx`, `POST /api/threads/{id}/sandboxes/commands` on a docker sandbox), Changes (`WorkbenchChanges.tsx`), Side Chat (`WorkbenchSidechat.tsx`, `GET /api/threads/{id}/forks`) and Search (`WorkbenchSearch.tsx`). Browser, Terminal, Changes, Side Chat and the Workspace file editor record what a person did; Search records nothing. Not built: the agent's own screenshots and live video in Browser, a persistent shell in Terminal, a baseline from before the session in Changes, and keeping the list of what was done by hand across a reload. The Details tab keeps its earlier 12px and 13px labels. Evidence: `workbench.dom.test.tsx`, `workbench-browser.dom.test.tsx`, `workbench-terminal.dom.test.tsx`, `workbench-changes.dom.test.tsx`, `workbench-sidechat.dom.test.tsx`, `workbench-search.dom.test.tsx`, `room.dom.test.tsx`, `route.test.ts`, core `human-activity.test.ts`, `TestWhatWasDoneByHandTagsNobody`, `TestAPersonActsOnTheSessionsBrowserByHand`, `TestAPersonsCommand*`, `TestSandboxCommandRouteRunsForItsPosterAndNobodyElse`; the six tabs seen together in a running console at 1280x800 and 390x844, light and dark, where five things done by hand in four tabs reached the agent in one message and the list then cleared. |
 | DES-069 | Conversation overview and visible work controls | Implemented: Overview, Workspace, Context and Activity header controls collapse into the menu below the conversation's 3xl breakpoint. The addressed overview folds environment, latest context, agents and run changes from existing APIs; delegated transcript calls share one collapsed disclosure. Evidence: `conversation-overview.dom.test.tsx`, `timeline.dom.test.tsx` and route round-trip tests. Live browser verification unavailable in this session. |
@@ -74,7 +77,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-034 | A finished turn says how long it worked | Implemented: `turn.completed` carries `durationMs`, from the run's events or its record; adapter and core tests pass |
 | DES-035 | Agents are told apart by a bot in their color; a mention opens a profile on hover | Implemented: `AgentInitials` (drawn by `bot-avatars`, initials where there is no canvas), `MentionLink`; `ui.test.tsx` passes; marks checked in the browser on `/gallery.html`, dark and light |
 | DES-036 | The composer holds what is picked, and the first message posts before anything else runs | Implemented in `Composer.tsx` and `Chat.tsx`; web tests and the `home` screens pass |
-| DES-037 | Health is a status page of each model provider and dependency | Implemented: `GET /api/health`, `Health.tsx`; `health_test.go` and `health.test.tsx` pass; checked live |
+| DES-037 | Health reports active model providers and dependencies. Workspace settings group configured and available providers, put Add in the header and offer a reversible switch for workspace-managed providers | Implemented: `GET /api/health`, `Health.tsx`, `ModelProviders.tsx`, `PATCH /api/model-providers/{name}`; platform, HTTP and web DOM coverage |
 | DES-038 | Screens open ready to read, filter once, and keep message actions quiet at rest | Implemented in #112; web, core and Slack tests pass; phone and desktop screens pass |
 | DES-039 | Changing screens never blanks or jumps; chrome is glass on one app frame | Implemented: `transition.ts`, delayed skeletons, frame and chrome glass; web tests and Console screens pass; navigation CLS measured 0 at no added latency |
 | DES-040 | The console works on a phone and installs as an app: touch targets, the keyboard, safe areas, a modal drawer, an Inspector sheet, an offline screen and a prompt for new versions | Implemented: `styles.css`, `viewport.ts`, `pwa.ts`, `sw.ts`; web and Go tests pass; Console screens pass at 320, 375, 390, 430 and 844x390 with 44px touch targets and 16px fields; iOS keyboard and install need a real device |
@@ -93,8 +96,8 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-052 | Conversation files, scratchpads, code editing, change review and artifact publication, in one Workspace panel opened from Conversation Settings beside a compact header | Implemented: `WorkspaceFiles.tsx`, `Workspace.tsx`, `ConversationShell.tsx`, `/api/threads/{id}/files`, `GET /api/threads/{id}/sandboxes`; web, route, Go race and confinement suites pass; `conversation-header`, `workspace-*` and `ide-*` screens pass at 390x844 and 1280x800 |
 | DES-053 | Notifications sort into the reader's own views: Inbox, Unread, Hidden and Done, with per-reader hide and delete | Implemented; per-reader marks and counters, bulk API with isolation tests, DOM and route tests, phone/desktop captures |
 | DES-060 | Pull requests across workspace repositories, with board/list views and filters | Implemented; `pull_requests.go`, `History.tsx`, endpoint and DOM tests; `history-all` and `history-github` screens registered for CI |
-| DES-054 | The sidebar lists Recents newest first, Pinned on top, Projects and Archived as views; each row leads with where its session started (Slack, GitHub, a schedule, the console) and says its age and, as a labelled icon, whether it waits on a person, runs or failed; red means failure only | Implemented: `conversationList.ts`, `marks.ts`, `Sidebar.tsx`, `pkg/marks`, `PATCH /api/threads/{id}/marks`, `waiting` and `last` on thread summaries; Go, web and DOM tests pass; `sidebar-recents`, `sidebar-row-actions`, `sidebar-projects` and `sidebar-archived` screens pass at 390x844 and 1280x800 |
-| DES-055 | A sidebar row previews itself on hover or a long press, and the wave's preview carries its author's mark | Implemented: `RowPreview.tsx`, `peek.ts`, `TurnRail.tsx`; web, DOM and screens pass (`sidebar-preview` checks the card is centred on its row, `conversation-wave-preview`) at 390x844 and 1280x800 |
+| DES-054 | The sidebar lists Participated, Pinned and Recent with counts, Recent newest first with By project, By day and Archived as groupings; each row is its title, then its age and where it started (Slack, GitHub, a schedule, the console), with its status as a compact badge on that same line; red means failure only; the sidebar's edge resizes it | Implemented: `conversationList.ts`, `marks.ts`, `Sidebar.tsx`, `pkg/marks`, `PATCH /api/threads/{id}/marks`, `waiting` and `last` on thread summaries; Go, web and DOM tests pass; `sidebar-sources`, `sidebar-recents`, `sidebar-row-actions`, `sidebar-projects` and `sidebar-archived` screens pass at 390x844 and 1280x800 |
+| DES-055 | A sidebar row previews itself on hover, a long press or keyboard focus, with its status in words, and the wave's preview carries its author's mark | Implemented: `RowPreview.tsx`, `peek.ts`, `TurnRail.tsx`; web, DOM and screens pass (`sidebar-preview` checks the card is centred on its row, `conversation-wave-preview`) at 390x844 and 1280x800 |
 | DES-056 | A one-time tip teaches search, dismissed once per person | Evidence: `sidebar-search` checks the replacement Search navigation button; the tip card was removed |
 | DES-057 | Home files a new conversation from over its chat bar; a conversation's approval mode is a text control under the composer, Default or Approve for Me, within policy and audited | Implemented: `ApprovalModePicker.tsx`, `HomePage.tsx`, `pkg/threads/approval.go`, `internal/platform/approval_mode.go`, `PUT /api/threads/{id}/approval`; Go, DOM and screens pass (`home-project-above`, `composer-approval-mode`). Per-message model and effort were removed (DES-067). In Slack: an approval's menu lets the approval agent decide the thread, set as the person through the same route with `act_as` and said in the thread with the way back; an agent-decided card shows its reason; Ask a Question asks the agent in the thread while the call waits. Go, adapter, render-slack and Slack app tests pass; live Slack not yet checked |
 | DES-053 | Notifications sort into the reader's own views: Inbox, Unread, Hidden and Done, with per-reader hide and delete | Implemented; per-reader marks and counters, bulk API with isolation tests, DOM and route tests, phone/desktop captures |
@@ -1205,7 +1208,19 @@ agents, so a line under the prompt bar only cost a phone its height.
 - The Health tab (`/monitor/health`, behind `alerts:read`) is a status page: a banner for
   the whole deployment, then each model provider and dependency by group, with
   its status, latency, a bar per recent check and its uptime.
-- With no model provider configured, the deployment reads as down.
+- With no model provider enabled, the workspace reads as down.
+- **Model providers** in Workspace settings lists configured providers above
+  the providers that need setup. Its primary **Add OpenAI-Compatible Server**
+  action sits in the header and opens the same sheet as preset setup and
+  editing.
+- A workspace-managed provider stays in the configured list when switched
+  off. Its settings and key are kept. Off providers are unavailable to new
+  turns and excluded from Health checks. A provider in use by an explicit
+  agent model chain or model policy stays on and the row says what uses it.
+  Deployment-managed providers show their source without an editable switch.
+  Removing a provider is a separate action in the row's menu. It asks again
+  in place on the row, saying that it also deletes the stored key, with focus
+  on Keep It; a refusal is said on the row.
 - The page asks again every 30 seconds; the server reuses a report for 30
   seconds.
 - Acceptance: with Anthropic, OpenAI and Gemini keys set, each reads
@@ -1639,17 +1654,105 @@ and the posted text); `go test -race ./pkg/threads ./internal/platform`
 `TestSkillsAndMentionKinds` for the aliases); `make screens` with `chat-at`,
 `chat-slash`, `chat-slash-picked` and `composer-menu-skill-selection`.
 
-### DES-054: Recents, Pinned, Projects and Archived
+### DES-054: Participated, Pinned, Recent and Archived
 
 Owner request: a flat list of conversations across projects, each row its
 title, its project under it and its age or an unread dot, with Pinned on
 top; Projects kept as another view; pin and archive from the row; an
 Archived view; and dots for what is running and what needs the reader. A later request: show where each session came from (Slack, GitHub and so
 on) instead of unexplained red dots, make Recents, Pinned and the project
+groups easier to read, and calm the red hover, selection and focus. Then: rows like
+another product's, the title over "2 hours ago" and its source, sections for
+Participated, Pinned and Recent with counts, state in words instead of
+marks, and a wider sidebar that can be resized. The latest request keeps every row at two lines
+and shows status with a distinct badge.
+Archived view; and dots for what is running and what needs the reader. A later request: show where each session came from (Slack, GitHub and so
+on) instead of unexplained red dots, make Recents, Pinned and the project
 groups easier to read, and calm the red hover, selection and focus.
 
 Rules:
 
+- **Sections**, each headed by its name and how many it holds:
+  **Participated** (sessions someone else started that the reader joined: they
+  posted, were mentioned or were added), **Pinned**, then **Recent** (the
+  rest, newest first; "30+" while more pages are left). A session is listed
+  in one section only.
+- Recent's grouping is picked from its filter menu: **Recent** (the default,
+  one list newest first), **By project** (under each project's header), **By
+  day** (Today, Yesterday, Earlier) and **Archived**. Projects are a grouping
+  rather than always-on folders, since each row now says when and where it
+  started and the project is the conversation's own context. A project's
+  header is small, set in the foreground's weight with a chevron that folds
+  it; a group that started empty opens when its rows arrive, unless the
+  reader folded it.
+- A row has two lines: its **title** (cut with an ellipsis), then how long
+  ago it moved ("5m ago", "Just now"), **where it started**, and its badge
+  when it has a status. Sources have a glyph and a label: Slack, Slack DM,
+  GitHub, Schedule, Assignment or Web / Console. The tooltip says it in full ("From a Slack DM") and a
+  screen reader hears it after the title. Spacing, not a dot, separates them
+  (DES-002). The thread summary's `source` names a Slack thread or direct
+  message, a pull request or a schedule; a run's origin is the fallback,
+  since a Slack message posts through the API.
+- A compact **status badge** stays on the second line when the row menu
+  appears, one badge for the most pressing status: waiting, then a failure,
+  then work, then an open alert. Its glyph tells approval, question, other
+  waits, failure, work and alerts apart. The row's preview (DES-055) says the
+  full reason in words, on hover, a held finger or keyboard focus, so it does
+  not need a mouse; the badge's tooltip and the row's accessible description
+  carry it too: **Waiting for you: approve file_write** or **Waiting for you:
+  <the question>**, waiting for someone, **Failed: <why>**, **Working**,
+  **Alert: <its title>**. Waiting on the reader and urgent alerts use the
+  warning color; every other wait, work and a lesser alert are neutral.
+  **Red means failure only**; nothing in a row uses the accent.
+- A session listing carries `waiting_for`, `waiting_kind`, `waiting_on_you`,
+  `waiting_unknown` and `failure` for this; `failure` is set only while the
+  latest turn failed, so a failure a later turn answered is not shown.
+  **Waiting for you** is said, and the badge takes the warning color, only
+  when the listing says so (`waiting_on_you` is true; a listing that leaves
+  it out waits on no one in particular, never on the reader by default): an
+  open question one of the session's runs waits on is the reader's to answer,
+  by the one rule answering holds them to (`mayAnswer`): it is addressed to
+  them as it was raised (`Message.For`, the requester excluded), they may
+  write runs, and for a run held at a spend limit they hold `billing:write`.
+  The thread and the inbox offer an answer by the same rule, so a row never
+  says it waits on someone answering would refuse. The row reports the run,
+  not the reader's notifications: hiding, snoozing or deleting the inbox
+  message does not change whom the run waits on. A question a called agent
+  raises is filed under the calling session and counts there. The listing
+  reads this in one statement against the inbox for a whole page, and for one
+  session read alone: the workspace's newest 1000 live inbox messages
+  (`inbox.MaxAsking`), with no lookup for any message, and nothing at all when
+  no row waits. The inbox keeps no index by session, so the read cannot be
+  narrowed to one. When the workspace holds more live messages than that and
+  no question of the reader's about a waiting session was among those read,
+  the listing sets `waiting_unknown` and the badge is neutral and reads
+  **Waiting: <what it waits for>**: it says it waits and does not say on
+  whom. Anything else parked reads as waiting for someone, neutral, with what
+  it waits for when the run says it.
+- **Unread** sets the title in a heavier weight. A quiet dot marks an
+  unread row when it has no status badge; beside a badge the heavier title
+  and the row's description ("Failed: <why>, Unread") say it, so a wait on
+  the reader is the warning badge and an unread failure the red one.
+- Hover tints a row. The open row is filled and marked by a bar at its left
+  edge, so hover and selection never read as one. Keyboard focus anywhere in
+  the sidebar is a neutral ring drawn inside the control, never the accent.
+  The conversation's scrolling log, reachable by keyboard so it can be
+  scrolled, shows focus as a 1px neutral line inside its edge rather than a
+  2px accent frame around the page.
+- **Width**: the open sidebar is 296px on a wide screen. Its right edge is a
+  focusable separator: drag it, or use the arrow keys (16px), Home and End,
+  between 240px and 440px, and it is never drawn wider than a third of the
+  window, so a tablet's page keeps its room; a double click puts it back. The width is kept in
+  the browser beside whether the sidebar is open, since it follows the screen
+  it was set on. Only a width the person changed is kept: on a window too
+  narrow to draw the kept width, a press on the edge that moves nothing, a
+  key toward the bound it is already held at, or a drag let go where it
+  started leaves the kept width as it was, so it is drawn again on a wider
+  window. On a phone the sidebar stays a drawer.
+- **Alerts** stays a section of the sidebar with its count, which opens the
+  Alerts page: Waiting, Snoozed and Done, each alert's title, source,
+  priority, time and its action. A row with an open alert shows its badge
+  when the session has no more pressing status.
 - The list's views are picked from its filter menu: **Recents** (the
   default: every project, newest first), **Projects** (the conversations
   under their project's header) and **Archived**. Pinned sits above
@@ -1686,8 +1789,8 @@ Rules:
   conversation. Opening a conversation reads it, and so does staying in it
   while it moves. Before a reader's first mark nothing reads as unread, so
   the first release does not light up every older conversation.
-- Hover or focus trades the age for **Pin**, **Archive** and the ⋮ menu (Pin,
-  Rename, Archive, Delete). On a touch screen the ⋮ menu stays and holds
+- Hover or focus trades the dot for the ⋮ menu (Pin, Rename, Archive,
+  Delete); the row's words stay in view. On a touch screen the ⋮ menu stays and holds
   them all; every control is at least 32px, 44px on a touch screen.
 - **Archive is the reader's own**: the conversation leaves their Pinned and
   Recents and is listed under Archived, where Unarchive brings it back.
@@ -1731,6 +1834,13 @@ Rules:
   centred on the row: the whole title (up to three lines) and how long ago
   the conversation moved ("5h ago", "Just now"). Leaving, scrolling or Escape
   closes it. The row names the card with `aria-describedby` while it shows.
+- A row with a status (DES-054) adds it to the card in words, between the
+  title and the age ("Failed: provider: rate limited (429)"), since the
+  row's badge is a glyph alone. A screen reader hears the status from the
+  row's own description, so the card's line is hidden from it.
+- Keyboard focus resting on a row for 450ms opens the same card; a click or
+  a tap, which focus the row too, does not. Moving focus away, or opening
+  the conversation, closes it. One card shows at a time.
 - On a touch screen a 500ms hold opens the card under the row, across the
   screen, or over it near the bottom. The hold does not also open the
   conversation, and the browser's own menu does not open; the next tap does.
@@ -1743,8 +1853,9 @@ Rules:
 
 Evidence: `cd apps/web && pnpm test` (`peek.test.ts`,
 `sidebar-peek.dom.test.tsx`, `wave.dom.test.tsx`); `make screens` with
-`sidebar-preview` (a hover on desktop, a held finger on a phone) and
-`conversation-wave-preview`.
+`sidebar-preview` (a hover on desktop, a held finger on a phone),
+`sidebar-sources` (the failed row's reason in its card: a held finger on a
+phone, keyboard focus on a wider screen) and `conversation-wave-preview`.
 
 ### DES-056: A one-time tip for search
 
@@ -2172,7 +2283,8 @@ post contract.
 Session alerts render beside their recorded message or above loaded history when
 the anchor is absent. Reading does not resolve them. Resolve and Snooze are
 permission-gated and offer Undo. Known actions lead to existing approval, answer,
-retry or connection controls; unknown actions open the session. A reviewed fix
+retry or connection controls; unknown actions open the session. A card beside its
+own message omits the link back to that session; page and connection links stay. A reviewed fix
 request carries `source_alert`, uses a permitted agent, and inherits its source
 audience. Alert-only sessions render before their first human message. An
 addressed older message uses a bounded `around` page read and scrolls only the
@@ -2183,15 +2295,16 @@ Rename, personal Archive/Undo and governed deletion according to access. Rename
 preserves routing; Delete requests administrator review and does not remove the
 record directly. Canonical sharing uses project access without a channel picker.
 Bring Back is offered inside Fork for a completed fork result and retains the
-existing consent review. Approval controls say Ask a question and Decline action.
-The console puts Approve and Decline together, then Ask a question; its Decline
-keeps Decline action in its accessible name.
+existing consent review. Approval controls say Ask a Question and Decline on
+both surfaces. The console puts Approve and Decline together, then Ask a
+Question; its Decline names the request in its accessible name.
 Approve reads the request's own verb on both surfaces when it has one.
 Failure debug references are kept out of the everyday response and remain in the
 explicit issue-report draft.
 
 Evidence: `session-ux.dom.test.tsx` covers continuation metadata, header writes,
-archive synchronization, explicit deletion review, alert resolution/undo, fix
+archive synchronization, explicit deletion review, alert resolution/undo, the
+alert card beside its own message without a link back to the session, fix
 review, canonical sharing and bounded old-anchor reads. `wave.dom.test.tsx` checks
 that addressed history scrolls only the transcript once. Existing fork, share,
 room and Slack interaction suites retain their governed approval checks. Browser
@@ -2550,6 +2663,44 @@ match, the failed read, and Terminal and Browser standing in as built. Not seen:
 a real pull request, file or browser step from a live run, and the real
 Terminal and Browser tabs taking a result.
 
+### DES-080: Failures, connections and references in a transcript
+
+- A failed step says why under its row: the first line of its error, without
+  the runtime's "action failed:" lead, in the bad tone, with Show Details for
+  the rest. A run of steps counts its failures beside its line; the count is
+  its own button that opens the run at the first failed step.
+- A failed call to another agent says why under its item, with Show Details,
+  which opens its run, and Retry where the host can post (`RetryCallContext`):
+  it asks the same agent the same brief as the conversation's next message,
+  tagging that agent alone (other agents the brief names become plain words).
+  Retry is offered only to the person the run acted for, never in a private
+  side chat (its brief would reach the shared session), and never for a brief
+  too long for one message. A refused post leaves Retry ready again; a sent
+  one reads "Asked again". There is no Retry on a single tool call, since no
+  route runs one call again.
+- The Connect card shows only to the person the run acted for: the
+  connection it needed is theirs.
+- A connection a run needed is said by the platform, not read from the
+  answer: when a tool group needs the person's own credential and they have
+  none (`ErrNoPersonCredential`), the run and the turn it belongs to record
+  `needs_connection`. A finished turn then ends with a card per connection:
+  "GitHub is not connected", a line on what to do, and Connect GitHub, which
+  opens `/settings/plugins/<provider>`.
+- A pull request, issue or commit address in an answer, and a written
+  `owner/repo#123`, is a chip: its mark and its short name, still a link. One
+  number reads one way: once an address anywhere in the answer, or in the
+  session around it, says it is a pull request or an issue
+  (`githubRefKinds`, `GitHubRefKindsContext`), every chip for it carries that
+  mark; named both ways, it is a pull request. A number nothing says the kind
+  of carries one neutral mark everywhere. Inline code is left as code.
+- Open, a run of steps is a card with one row per call. A call's input is a
+  table of names and values; a command is a block of its own with Copy. A
+  running step has a working mark that takes turns (still when motion is
+  reduced) and counts its time each second; a running command shows what it
+  runs. A finished step says how long it took.
+- The one-line summaries stay muted and the agent's words primary.
+
+### DES-079: Run and Answer
 ### DES-079: Auto answers questions
 
 Owner request: the approval agent that decides tool calls in a session set to
@@ -2620,6 +2771,74 @@ Evidence: `go test -race ./pkg/threads ./pkg/approve ./internal/platform
 `TestAQuestionIsDescribedWithItsOptionsAndWhoItIsFor`); `cd apps/web && pnpm
 test` (`approval-toggle.dom.test.tsx`, `ui.test.tsx`). Not run:
 `pnpm validate:slack`, which needs the Slack bench, and a screen check.
+
+### DES-081: Goal-first agents, a home and grouped settings
+
+**Creation is goal first.** New Agent opens `/agents/new`: the outcomes a new
+agent can start from, each a title and what a person gets from it ("Document
+Writer: Documents you can publish"), searchable, with Start from scratch first
+and always listed. The templates come from `GET /api/agent-templates`
+(`internal/platform/agent_templates.go`), so the builder and any API client
+read the same list; each carries a description, a greeting, a shape, its
+instructions, the tools it grants (each one the builder may grant) and up to
+three starters. Describe It to the entry agent stays as the way to build one
+in a session. Continue opens `/agents/new/{template}`: a name (the handle
+people tag is derived and shown), the shape and color pickers of the Look tab
+(`ShapePicker`, `HuePicker`), Shuffle, and the bot drawn beside them as it
+will be. Create Agent makes an ordinary agent with `POST /api/agents` on the
+entry agent's model chain and keeps its look, greeting and starters with
+`PUT /api/agents/{name}/look`. A color another agent holds cannot be picked; a
+taken name is said plainly; a template the catalog no longer has falls back to
+the goal step; a failed read of the templates says so with Retry.
+
+**An agent opens on its home.** Its bot, then the agent introducing itself in
+its own voice ("Hi, I'm Lead." and its greeting, else its description), then
+Put {name} to work: its starters, or else one per skill it uses by default, run
+as that skill's slash command. Each starter opens a session with the agent and
+the message written. The composer under them is `Composer`, addressed to the
+agent ("Ask Lead to…"), and starts a session with it. A paused agent says so.
+There is no model picker: people pick agents, not models (DES-067). Settings
+and Manage with builder are the page's actions.
+
+**Settings are grouped.** An agent's settings are one page headed by one title
+(Settings, with the agent's mark and revision), with its sections in a grouped
+list beside them, and on a phone one Section picker: General (General, Look,
+Instructions), Access (Sharing and Calls, Slack, Approvals), Tools (Skills and
+Knowledge, Model) and Behavior (Memory, Evals, Rules, Revisions). Each section
+keeps the address its tab had (`/agents/{name}/{section}`); General and Slack
+are new (`/agents/{name}/general`, `/agents/{name}/slack`). This replaces the
+strip of eleven tabs: an agent's page is not headed by tabs.
+
+**General** shows the agent's bot and name, renamed in place (its look's
+display name), the runs it completed in the last seven days with a link to
+those sessions, how it answers in Slack (through the workspace's app, or its
+own app from #467) with Set Up, its instructions at a glance with Edit, and
+Stop or remove: Pause (reversible, `PUT /api/agents/{name}/control`, which
+admission already enforces) and Retire (`DELETE /api/agents/{name}`, the same
+as the builder's `retire_agent`). Retire asks first. A retired agent leaves the
+workspace, its sessions and revisions stay readable, and **its name stays
+taken**: a create with it is 409. Everything the platform keeps by an agent's
+name (memory, schedules, action policies, its Slack app, look and home
+project) would otherwise pass to whatever agent took the name next, so the
+name is kept rather than each store being detached one by one, which a new
+store could forget. Its schedules are paused on retiring, and Run Now or
+Resume on one is 409 until it is pointed at another agent; a schedule never
+runs a different agent unless someone chose that agent. The platform's own
+agents, a Store package's (removed with the package, which may install it
+again) and the platform file's (written again at every start) can be paused,
+never retired by a person (409). Pull requests merged are not shown: no route
+records them per agent.
+
+If the look, greeting and starters cannot be saved after the agent is made,
+Customize keeps the draft, says so, and offers Save Look Again (for the agent
+already made, never a second one) or Open Without Look.
+
+Evidence: `agent-create.dom.test.tsx`, `agent-home.dom.test.tsx`,
+`agent-settings.dom.test.tsx`, `route.test.ts`; `TestAgentTemplatesAreListed`,
+`TestRetireAgent`, `TestAgentTemplatesAreWellFormed` and the contract checks
+in `TestResponsesMatchTheSpec`. Before and after screens at 1280x800 and
+390x844, light and dark, in PR #476.
+
 
 ### DES-080: One session panel, reached from the header
 

@@ -543,7 +543,7 @@ func serve(o Options, args []string, d serveDefaults) error {
 		if err := checkNewAgentName(ctx, p, *tenant, spec.Name); err != nil {
 			return fmt.Errorf("agent spec %s: %w", path, err)
 		}
-		if err := registerSpec(ctx, p.Agents, *tenant, spec); err != nil {
+		if err := registerFlagSpec(ctx, p, *tenant, spec, log); err != nil {
 			return fmt.Errorf("agent spec %s: %w", path, err)
 		}
 	}

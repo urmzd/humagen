@@ -159,6 +159,7 @@ func (s *Server) Handler() http.Handler {
 	// A workspace's own providers: an administrator sets each up with its key,
 	// as a client is, and agents and routing run on them by name.
 	mux.HandleFunc("PUT /api/model-providers/{name}", s.authed(auth.ClientsWrite, s.putModelProvider))
+	mux.HandleFunc("PATCH /api/model-providers/{name}", s.authed(auth.ClientsWrite, s.patchModelProvider))
 	mux.HandleFunc("DELETE /api/model-providers/{name}", s.authed(auth.ClientsWrite, s.deleteModelProvider))
 	mux.HandleFunc("POST /api/model-providers/{name}/check", s.authed(auth.ClientsWrite, s.checkModelProvider))
 
@@ -184,6 +185,8 @@ func (s *Server) Handler() http.Handler {
 	s.outcomeLearningRoutes(mux)
 	mux.HandleFunc("POST /api/agents", s.authed(auth.AgentsWrite, s.createAgent))
 	mux.HandleFunc("POST /api/agents/{name}/reset", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.resetAgent))))
+	mux.HandleFunc("DELETE /api/agents/{name}", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.retireAgent))))
+	mux.HandleFunc("GET /api/agent-templates", s.authed(auth.AgentsRead, s.listAgentTemplates))
 	s.storeRoutes(mux)
 	mux.HandleFunc("PUT /api/agents/{name}", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.reviseAgent))))
 	mux.HandleFunc("PUT /api/agents/{name}/home", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.putAgentHome))))
@@ -1441,6 +1444,12 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 		fail(w, http.StatusConflict, "The change did not pass its evaluation checks. Review its scores before trying again.")
 	case errors.Is(err, evals.ErrBusy):
 		fail(w, http.StatusConflict, "that suite is already running")
+	case errors.Is(err, platform.ErrAgentProtected):
+		fail(w, http.StatusConflict, detail(err, platform.ErrAgentProtected))
+	case errors.Is(err, platform.ErrAgentRetired):
+		fail(w, http.StatusConflict, detail(err, platform.ErrAgentRetired))
+	case errors.Is(err, wire.ErrRetired):
+		fail(w, http.StatusConflict, detail(err, wire.ErrRetired))
 	case errors.Is(err, platform.ErrStoreConflict):
 		fail(w, http.StatusConflict, detail(err, platform.ErrStoreConflict))
 	case errors.Is(err, wire.ErrConflict):
@@ -1547,6 +1556,17 @@ func fail(w http.ResponseWriter, status int, msg string) {
 	ok(w, status, map[string]string{"error": msg})
 }
 
+// codeThreadBeforeSessions is the code of the conflict POST /api/sessions
+// answers for a surface thread that started as a conversation: the chat
+// service posts the message to POST /api/threads instead.
+const codeThreadBeforeSessions = "thread_before_sessions"
+
+// failCode is fail with a code a program acts on, where the status alone
+// does not say which failure it is. The words are for a person and may change.
+func failCode(w http.ResponseWriter, status int, code, msg string) {
+	ok(w, status, map[string]string{"error": msg, "code": code})
+}
+
 func orEmpty[T any](s []T) []T {
 	if s == nil {
 		return []T{}
@@ -1618,6 +1638,29 @@ func (s *Server) putModelProvider(w http.ResponseWriter, r *http.Request, who au
 		return
 	}
 	m, err := s.P.SetModelProvider(r.Context(), who, r.PathValue("name"), in)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, m)
+}
+
+func (s *Server) patchModelProvider(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	var in struct {
+		Enabled *bool `json:"enabled"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	if in.Enabled == nil {
+		fail(w, http.StatusBadRequest, "enabled is required")
+		return
+	}
+	m, err := s.P.SetModelProviderEnabled(r.Context(), who, r.PathValue("name"), *in.Enabled)
+	if errors.Is(err, platform.ErrModelProviderInUse) {
+		fail(w, http.StatusConflict, detail(err, platform.ErrModelProviderInUse))
+		return
+	}
 	if err != nil {
 		s.problem(w, err)
 		return
