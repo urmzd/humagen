@@ -3045,7 +3045,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 // it is documented anyway. Keep it short: an entry is a code the server can
 // send that is hard to provoke in a test, never a guess.
 var unexercised = map[string]string{
-	"POST /api/agents/{name}/slack-app 404": "an agent that does not exist, the same seenAgent and catalog read the GET covers",
+	"POST /api/agents/{name}/slack-app 404":              "an agent that does not exist, the same seenAgent and catalog read the GET covers",
 	"PUT /api/agents/{name}/home 409":                    "a home is refused only while the agent's default skills would not fit it; the guard is in platform.homeUsers",
 	"POST /api/sessions 409":                             "governed admission to a deleted project uses the same path tested by POST /api/runs deleted-project response",
 	"POST /api/sessions 200":                             "a chat surface's reply landing in its existing root, covered by TestAChatServiceFindsOrStartsASlackThreadsRootSession",
