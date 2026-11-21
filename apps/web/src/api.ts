@@ -478,7 +478,10 @@ export interface ThreadSummary {
   source?: "slack" | "slack_dm" | "github" | "scheduled";
   /** On a session listing: the reader takes part in a session someone else started. */
   joined?: boolean;
-  /** On a session listing: what the latest parked run waits on, and whether it asks the reader. */
+  /**
+   * On a session listing: what the latest parked run waits on, and whether it
+   * asks the reader. waiting_on_you is always sent; a missing one reads as not.
+   */
   waiting_for?: string;
   waiting_kind?: "approval" | "question";
   waiting_on_you?: boolean;

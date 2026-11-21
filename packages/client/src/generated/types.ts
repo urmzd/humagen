@@ -1568,8 +1568,8 @@ export interface ThreadSummary {
   waiting_for?: string;
   /** What `waiting_for` is. */
   waiting_kind?: "approval" | "question";
-  /** On a session listing, the caller is the one the parked run asks. They are named, an approver, or taking part when nobody is named. */
-  waiting_on_you?: boolean;
+  /** The caller is the one the latest parked run asks, on a session listing. They are named, an approver, or taking part when nobody is named. Always sent; false when nothing waits on the caller, so a client never assumes it does. A delegation to a child agent waits on nobody. */
+  waiting_on_you: boolean;
   /** On a session listing, why the latest turn failed, the first line of its error, at most 100 characters. Absent when the latest turn did not fail, so a failure a later turn answered is not shown. */
   failure?: string;
   turns: number;

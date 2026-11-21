@@ -100,7 +100,9 @@ export function rowState(
 ): RowState {
   const unread = isUnread(t, marks);
   const waiting = (t.waiting ?? 0) > 0;
-  const you = waiting && (t.waiting_on_you ?? true);
+  // Only a listing that says the reader is asked makes it theirs: a missing
+  // answer is no one's, never the reader's by default.
+  const you = waiting && t.waiting_on_you === true;
   const failure = t.failure ?? (!opts.session && t.failed > 0 ? "" : undefined);
   const line: RowState["line"] = waiting
     ? {

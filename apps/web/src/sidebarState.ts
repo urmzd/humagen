@@ -38,6 +38,11 @@ export const SIDEBAR_WIDTH_KEY = "humagen.sidebar.width";
  */
 export const SIDEBAR_WIDTH = { min: 240, initial: 296, max: 440 } as const;
 
+/** The widest the sidebar is drawn in this window: a third of it. */
+export function sidebarCap(): number {
+  return Math.floor((typeof window === "undefined" ? 1320 : window.innerWidth) / 3);
+}
+
 /** A width kept within the sidebar's bounds, whole pixels. */
 export function clampSidebarWidth(width: number): number {
   if (!Number.isFinite(width)) return SIDEBAR_WIDTH.initial;

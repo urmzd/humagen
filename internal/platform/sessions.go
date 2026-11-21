@@ -17,6 +17,7 @@ import (
 
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/state"
@@ -421,30 +422,33 @@ func sessionStatus(rr []runs.Run) string {
 }
 
 // waitingOn is what the latest run parked on a person waits for: the tool
-// an approval asks about or the first line of a question, its kind, and
-// whether subject is the one asked. A question that names nobody asks
-// whoever takes part.
+// an approval asks about, or the first line of a question, its kind, and
+// whether subject is the one asked. Only a question a person answers counts,
+// as askOf and questionParts decide it: a parent waiting on its delegation to
+// a child agent waits on nobody. A run's questions are read as Waits orders
+// them. A question that names nobody asks whoever takes part.
 func waitingOn(rr []runs.Run, subject string, takesPart bool) (what, kind string, you bool) {
 	var at time.Time
 	var q *event.Question
 	for i := range rr {
 		r := &rr[i]
-		if r.Status != runs.Parked || r.UpdatedAt.Before(at) {
+		if r.Status != runs.Parked || (q != nil && r.UpdatedAt.Before(at)) {
 			continue
 		}
-		asked := r.Question
-		if asked == nil && len(r.Questions) > 0 {
-			asked = &r.Questions[0]
-		}
-		if asked != nil {
-			q, at = asked, r.UpdatedAt
+		for _, w := range r.Waits() {
+			if _, _, ok := questionParts(partKind(w)); ok && w.ID != "" {
+				q, at = &w, r.UpdatedAt
+				break
+			}
 		}
 	}
 	if q == nil {
 		return "", "", false
 	}
-	if q.Tool != nil {
+	if part, _, _ := questionParts(partKind(*q)); part == inbox.PartApproval && q.Tool != nil {
 		what, kind = firstWords(q.Tool.Name, MaxAttention), WaitingApproval
+	} else if part == inbox.PartApproval {
+		what, kind = firstWords(firstLineOf(q.Prompt), MaxAttention), WaitingApproval
 	} else {
 		what, kind = firstWords(firstLineOf(q.Prompt), MaxAttention), WaitingQuestion
 	}
@@ -460,8 +464,10 @@ func waitingOn(rr []runs.Run, subject string, takesPart bool) (what, kind string
 }
 
 // latestFailure is why the latest turn failed, or "" when it did not: a turn
-// still going or answered since leaves an earlier failure behind.
-func latestFailure(rr []runs.Run) string {
+// still going or answered since leaves an earlier failure behind. Its error
+// is read as shownRun shows it in th, so a run moved out of a private project
+// does not name it.
+func latestFailure(rr []runs.Run, th threads.Thread) string {
 	var latest *runs.Run
 	for i := range rr {
 		r := &rr[i]
@@ -472,7 +478,8 @@ func latestFailure(rr []runs.Run) string {
 	if latest == nil || latest.Status != runs.Failed {
 		return ""
 	}
-	return cmp.Or(firstWords(firstLineOf(cmp.Or(latest.Error, latest.Reason)), MaxAttention), "No reason was recorded.")
+	shown := shownRun(*latest, th, nil)
+	return cmp.Or(firstWords(firstLineOf(cmp.Or(shown.Error, shown.Reason)), MaxAttention), "No reason was recorded.")
 }
 
 // firstLineOf is the first line of text that holds anything, trimmed.
@@ -596,7 +603,7 @@ func (p *Platform) summarizeSession(who auth.Principal, row sessionRow, rr []run
 	conversation.Source = threadSource(th)
 	conversation.Joined = joinedSession(th, who.Subject)
 	conversation.WaitingFor, conversation.WaitingKind, conversation.WaitingOnYou = waitingOn(rr, who.Subject, sessionOf(th, who.Subject))
-	conversation.Failure = latestFailure(rr)
+	conversation.Failure = latestFailure(rr, th)
 	if said {
 		lastAgent := time.Time{}
 		for _, run := range rr {

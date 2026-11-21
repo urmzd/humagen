@@ -58,7 +58,12 @@ import { type Standing, useRecents, useRecentsRow } from "./recents.ts";
 import { href, type Route, type Page as RoutePage } from "./route.ts";
 import { type Alert, holdsAnAlertOnly, openAlert, orderAlerts } from "./sessionCenter.ts";
 import { Avatar, workspaceSettingsRoute } from "./settingsLinks.tsx";
-import { applySidebarWidth, SIDEBAR_WIDTH, storedSidebarWidth } from "./sidebarState.ts";
+import {
+  applySidebarWidth,
+  SIDEBAR_WIDTH,
+  sidebarCap,
+  storedSidebarWidth,
+} from "./sidebarState.ts";
 import { AgentMark, type Flash, FlashNote, Popover, SkeletonRows, useFlash } from "./ui.tsx";
 import { workspaceHub } from "./workspace-navigation.ts";
 
@@ -720,8 +725,18 @@ function Label({
  */
 function ResizeHandle() {
   const [width, setWidth] = useState(storedSidebarWidth);
+  // The sidebar is never drawn wider than a third of the window, so the edge
+  // says and moves from the width that is drawn, not the one kept.
+  const [cap, setCap] = useState(() => sidebarCap());
+  useEffect(() => {
+    const resized = () => setCap(sidebarCap());
+    window.addEventListener("resize", resized);
+    return () => window.removeEventListener("resize", resized);
+  }, []);
+  const drawn = Math.min(width, cap);
   const drag = useRef<{ x: number; from: number } | null>(null);
-  const set = (next: number, keep: boolean) => setWidth(applySidebarWidth(next, keep));
+  const set = (next: number, keep: boolean) =>
+    setWidth(applySidebarWidth(Math.min(next, cap), keep));
   const step = 16;
   return (
     // biome-ignore lint/a11y/useSemanticElements: a vertical separator that moves is a focusable splitter, which <hr> is not
@@ -730,8 +745,8 @@ function ResizeHandle() {
       aria-orientation="vertical"
       aria-label={defaultCopy.sidebar.resize}
       aria-valuemin={SIDEBAR_WIDTH.min}
-      aria-valuemax={SIDEBAR_WIDTH.max}
-      aria-valuenow={width}
+      aria-valuemax={Math.max(SIDEBAR_WIDTH.min, Math.min(SIDEBAR_WIDTH.max, cap))}
+      aria-valuenow={drawn}
       tabIndex={0}
       data-sidebar-resize
       onPointerDown={(e) => {
@@ -739,7 +754,7 @@ function ResizeHandle() {
         e.preventDefault();
         // Kept while the pointer moves off the thin edge; a browser that cannot is still dragged.
         e.currentTarget.setPointerCapture?.(e.pointerId);
-        drag.current = { x: e.clientX, from: width };
+        drag.current = { x: e.clientX, from: drawn };
       }}
       onPointerMove={(e) => {
         const d = drag.current;
@@ -757,9 +772,9 @@ function ResizeHandle() {
       onKeyDown={(e) => {
         const next =
           e.key === "ArrowLeft"
-            ? width - step
+            ? drawn - step
             : e.key === "ArrowRight"
-              ? width + step
+              ? drawn + step
               : e.key === "Home"
                 ? SIDEBAR_WIDTH.min
                 : e.key === "End"
@@ -1584,8 +1599,11 @@ export function Sidebar({
                   )}
                   {view !== "archived" && listEmpty && loading !== "first" && !stalled && (
                     <li data-empty className="px-2.5 py-1.5 text-aui-xs text-aui-muted">
+                      {/* Said of every section: a session listed above is not "no session". */}
                       {filters > 0
-                        ? "No session matches these filters."
+                        ? participatedRows.length > 0
+                          ? "No other session matches these filters."
+                          : "No session matches these filters."
                         : pinnedRows.length > 0 || participatedRows.length > 0
                           ? "No other sessions yet."
                           : "Your sessions appear here. Start with New."}

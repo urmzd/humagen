@@ -207,9 +207,11 @@ type ThreadSummary struct {
 	// a question, at most MaxAttention runes. WaitingKind is WaitingApproval
 	// or WaitingQuestion, and WaitingOnYou says the listing's reader is the
 	// one asked: named, an approver, or taking part when nobody is named.
-	WaitingFor   string `json:"waiting_for,omitempty"`
-	WaitingKind  string `json:"waiting_kind,omitempty"`
-	WaitingOnYou bool   `json:"waiting_on_you,omitempty"`
+	WaitingFor  string `json:"waiting_for,omitempty"`
+	WaitingKind string `json:"waiting_kind,omitempty"`
+	// WaitingOnYou is always sent, false included: a reader who is not
+	// asked must never be told they are.
+	WaitingOnYou bool `json:"waiting_on_you"`
 	// Failure is why its latest turn failed, set on a session listing when
 	// it did: the first line of the run's error, at most MaxAttention runes.
 	// A run that failed before a later turn answered is not a failure here.

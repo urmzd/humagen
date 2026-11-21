@@ -13972,7 +13972,7 @@ components:
         One conversation: what its runs say, with what its record adds. A
         thread people started that no agent has answered yet is one too.
       type: object
-      required: [id, title, named, origin, channel, agents, people, turns, branches, active, waiting, failed, created_at, updated_at, visibility, messages]
+      required: [id, title, named, origin, channel, agents, people, turns, branches, active, waiting, waiting_on_you, failed, created_at, updated_at, visibility, messages]
       properties:
         id: {type: string}
         title: {type: string}
@@ -14011,7 +14011,7 @@ components:
           type: string
           enum: [approval, question]
         waiting_on_you:
-          description: On a session listing, the caller is the one the parked run asks. They are named, an approver, or taking part when nobody is named.
+          description: The caller is the one the latest parked run asks, on a session listing. They are named, an approver, or taking part when nobody is named. Always sent; false when nothing waits on the caller, so a client never assumes it does. A delegation to a child agent waits on nobody.
           type: boolean
         failure:
           description: On a session listing, why the latest turn failed, the first line of its error, at most 100 characters. Absent when the latest turn did not fail, so a failure a later turn answered is not shown.

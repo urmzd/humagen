@@ -101,7 +101,12 @@ test("Recent lists every session newest first: its title, then its time and wher
     "GET /api/marks": () => marks,
     "GET /api/threads": () => ({
       threads: [
-        task("t1", "Waiting on me", { project: "Launch", active: 1, waiting: 1 }),
+        task("t1", "Waiting on me", {
+          project: "Launch",
+          active: 1,
+          waiting: 1,
+          waiting_on_you: true,
+        }),
         task("t2", "Still going", { active: 1 }),
         task("t3", "Answered", { last_agent: true, updated_at: new Date().toISOString() }),
         task("t4", "Quiet", { project: "Launch", updated_at: "2026-01-01T00:00:00Z" }),
@@ -345,20 +350,28 @@ test("the sidebar's edge resizes it between its bounds, by drag or arrow keys, a
     "GET /api/threads": () => ({ threads: [], next: null }),
   });
   render(<Bar />);
+  // It is drawn no wider than a third of the window, and the edge says what is drawn.
+  const cap = Math.min(440, Math.floor(window.innerWidth / 3));
+  assert.ok(cap > 312, "the test window leaves room to widen it");
   const edge = await screen.findByRole("separator", { name: "Resize sidebar" });
   assert.equal(edge.getAttribute("aria-valuenow"), "296");
   assert.equal(edge.getAttribute("aria-valuemin"), "240");
-  assert.equal(edge.getAttribute("aria-valuemax"), "440");
+  assert.equal(edge.getAttribute("aria-valuemax"), String(cap));
   const width = () => document.documentElement.style.getPropertyValue("--humagen-sidebar-w");
   fireEvent.keyDown(edge, { key: "ArrowRight" });
   assert.equal(edge.getAttribute("aria-valuenow"), "312");
   assert.equal(width(), "312px");
   assert.equal(window.localStorage.getItem("humagen.sidebar.width"), "312");
   fireEvent.keyDown(edge, { key: "End" });
-  assert.equal(edge.getAttribute("aria-valuenow"), "440");
+  assert.equal(edge.getAttribute("aria-valuenow"), String(cap), "it stops at what can be drawn");
   fireEvent.keyDown(edge, { key: "ArrowRight" });
-  assert.equal(edge.getAttribute("aria-valuenow"), "440", "it stops at its widest");
-  fireEvent.pointerDown(edge, { button: 0, clientX: 440, pointerId: 1 });
+  assert.equal(edge.getAttribute("aria-valuenow"), String(cap), "it stops at its widest");
+  // Narrower from where it is drawn: the first pixel of a drag moves it.
+  fireEvent.keyDown(edge, { key: "ArrowLeft" });
+  assert.equal(edge.getAttribute("aria-valuenow"), String(cap - 16));
+  fireEvent.pointerDown(edge, { button: 0, clientX: 500, pointerId: 1 });
+  fireEvent.pointerMove(edge, { clientX: 490, pointerId: 1 });
+  assert.equal(edge.getAttribute("aria-valuenow"), String(cap - 26));
   fireEvent.pointerMove(edge, { clientX: 100, pointerId: 1 });
   fireEvent.pointerUp(edge, { clientX: 100, pointerId: 1 });
   assert.equal(edge.getAttribute("aria-valuenow"), "240", "it stops at its narrowest");
@@ -366,6 +379,68 @@ test("the sidebar's edge resizes it between its bounds, by drag or arrow keys, a
   fireEvent.doubleClick(edge);
   assert.equal(edge.getAttribute("aria-valuenow"), "296", "a double click puts it back");
   window.localStorage.removeItem("humagen.sidebar.width");
+});
+
+test("a session waiting on someone else never reads as waiting for you, as the listing sends it", async () => {
+  // The rows as the server's JSON has them: waiting_on_you always present, and
+  // one older row without it, which reads as not the reader's.
+  const json = [
+    {
+      ...task("s_bob", "Deploy the API"),
+      waiting: 1,
+      active: 1,
+      waiting_for: "deploy",
+      waiting_kind: "approval",
+      waiting_on_you: false,
+    },
+    { ...task("s_old", "An older listing"), waiting: 1, active: 1 },
+    {
+      ...task("s_ada", "Ship the docs"),
+      waiting: 1,
+      active: 1,
+      waiting_for: "publish",
+      waiting_kind: "approval",
+      waiting_on_you: true,
+    },
+  ];
+  net = stubFetch({
+    "GET /api/marks": () => ({ archived: [], read: {}, tips: [] }),
+    "GET /api/sessions": () =>
+      JSON.parse(
+        JSON.stringify({
+          sessions: json.map((conversation) => ({
+            id: conversation.id,
+            parent: "console:ada",
+            agent: "lead",
+            title: conversation.title,
+            status: "waiting",
+            updated_at: conversation.updated_at,
+            conversation,
+          })),
+          next: "",
+        }),
+      ),
+  });
+  render(<Bar sessionMode />);
+  const list = within(await screen.findByRole("list", { name: "Recents" }));
+  const line = async (name: RegExp) =>
+    (await list.findByRole("link", { name })).querySelector<HTMLElement>("[data-state]");
+  const bob = await line(/^Deploy the API/);
+  assert.equal(bob?.textContent, "Waiting for approval: deploy");
+  assert.match(bob?.className ?? "", /text-aui-muted/);
+  assert.equal(
+    list.getByRole("link", { name: /^Deploy the API/ }).querySelector("[data-dot]"),
+    null,
+  );
+  assert.equal((await line(/^An older listing/))?.textContent, "Waiting for someone");
+  assert.equal(
+    list.getByRole("link", { name: /^An older listing/ }).querySelector("[data-dot]"),
+    null,
+  );
+  assert.equal((await line(/^Ship the docs/))?.textContent, "Waiting for you: approve publish");
+  for (const row of document.querySelectorAll("[data-thread-row]"))
+    if (!row.textContent?.startsWith("Ship the docs"))
+      assert.doesNotMatch(row.textContent ?? "", /Waiting for you/);
 });
 
 test("the row menu archives a session, and Archived brings it back", async () => {
@@ -484,12 +559,27 @@ for (const c of [
     filter: true,
     says: "No session matches these filters.",
   },
-])
+  {
+    name: "a filter that matches only sessions the reader joined",
+    threads: [task("t1", "Joined and broke", { joined: true, failed: 1 })],
+    filtered: [task("t1", "Joined and broke", { joined: true, failed: 1 })],
+    pinned: [] as string[],
+    filter: true,
+    says: "No other session matches these filters.",
+  },
+] as {
+  name: string;
+  threads: ThreadSummary[];
+  filtered?: ThreadSummary[];
+  pinned: string[];
+  filter: boolean;
+  says: string;
+}[])
   test(`an empty Recents says one short, true thing and draws nothing else: ${c.name}`, async () => {
     net = stubFetch({
       "GET /api/marks": () => ({ archived: [], read: {}, tips: [] }),
       "GET /api/threads": (_body, query) => ({
-        threads: query.get("standing") ? [] : c.threads,
+        threads: query.get("standing") ? (c.filtered ?? []) : c.threads,
         next: null,
       }),
     });
