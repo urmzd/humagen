@@ -494,7 +494,7 @@ function TaskRow({
           </span>
           <span
             data-row-age
-            className={`inline-flex min-w-6 shrink-0 items-center justify-end gap-1.5 text-aui-2xs font-normal tabular-nums ${unread ? "text-aui-fg" : "text-aui-muted"} ${hasMenu ? "[@media(pointer:fine)]:group-focus-within/task:invisible [@media(pointer:fine)]:group-hover/task:invisible" : ""}`}
+            className={`inline-flex shrink-0 items-center justify-end gap-1.5 text-aui-2xs font-normal tabular-nums ${unread ? "text-aui-fg" : "text-aui-muted"}`}
           >
             {priority && (
               <span
@@ -507,7 +507,14 @@ function TaskRow({
               </span>
             )}
             <StateMark standing={standing} />
-            {ageText && <span>{ageText}</span>}
+            {/* Only the age gives way to the ⋮ button, which takes its width; the alert and
+                state marks stay in view, so their tooltips show under the pointer. */}
+            <span
+              data-row-time
+              className={`min-w-6 text-right ${hasMenu ? "[@media(pointer:fine)]:group-focus-within/task:invisible [@media(pointer:fine)]:group-hover/task:invisible" : ""}`}
+            >
+              {ageText}
+            </span>
           </span>
           <span className="sr-only">
             , {words.sources[source]}
