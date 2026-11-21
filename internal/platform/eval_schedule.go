@@ -44,7 +44,7 @@ func (p *Platform) runDueEvals(ctx context.Context) error {
 			for _, r := range prior {
 				busy = busy || r.Status == evals.Running
 			}
-			// The console shows the same next run (evalSchedule).
+			// A reader who sees every run is shown this same next run (evalSchedule).
 			if next, _ := evals.NextRun(suite, prior); busy || p.now().Before(next) {
 				continue
 			}

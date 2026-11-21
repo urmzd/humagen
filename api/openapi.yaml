@@ -17771,11 +17771,11 @@ components:
               description: What the person who last saved the suite is called. A schedule acts for them.
               type: string
             next_run_at:
-              description: When the schedule next starts the suite. Absent when it has no schedule.
+              description: When the schedule next starts the suite, read from the runs the caller may read. Absent when it has no schedule.
               type: string
               format: date-time
             schedule_busy:
-              description: A run of the scheduled suite is going; the schedule starts the next one after it ends.
+              description: A run of the scheduled suite that the caller may read is going; the schedule starts the next one after it ends.
               type: boolean
       properties: {}
 
@@ -20964,7 +20964,7 @@ components:
           description: Runs rated down with a reason that wait in the review queue, of those the caller may read, up to 50. Absent for a caller without evals:read.
           type: integer
         flagged_more:
-          description: The review queue holds candidates past those counted in flagged.
+          description: More runs the caller may read are flagged than flagged counts.
           type: boolean
       required:
         - agent

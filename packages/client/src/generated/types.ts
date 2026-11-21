@@ -6069,7 +6069,7 @@ export interface AgentEvaluationHealth {
   results: OnlineEvaluation[];
   /** Runs rated down with a reason that wait in the review queue, of those the caller may read, up to 50. Absent for a caller without evals:read. */
   flagged?: number;
-  /** The review queue holds candidates past those counted in flagged. */
+  /** More runs the caller may read are flagged than flagged counts. */
   flagged_more?: boolean;
 }
 

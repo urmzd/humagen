@@ -24,9 +24,8 @@ type AgentEvaluationHealth struct {
 	FlaggedMore bool `json:"flagged_more,omitempty"`
 }
 
-// MaxFlagged bounds the flagged count on agent health: it reads at most one
-// candidate past it, and each candidate's run once, to keep the queue's
-// read rule without listing the whole queue on every refresh.
+// MaxFlagged caps the flagged count on agent health; past it the count says
+// there are more.
 const MaxFlagged = 50
 
 func (p *Platform) AgentEvaluationHealth(who auth.Principal, name string) (AgentEvaluationHealth, error) {
@@ -65,24 +64,46 @@ func (p *Platform) AgentEvaluationHealth(who auth.Principal, name string) (Agent
 	return out, nil
 }
 
-// countFlagged counts an agent's open candidates the caller may read, as the
-// review queue shows them, reading at most MaxFlagged+1 candidates. The count
-// is of those read; more says the queue holds candidates past them.
+// countFlagged counts an agent's open candidates whose run the caller may
+// read, as the review queue shows them. It reads the queue once (bounded by
+// state.MaxList), their distinct runs in one batched read, and each run's
+// thread once, so a refresh costs a few reads whatever the queue holds.
+// Both the count and whether there are more come from the visible
+// candidates only: a candidate the caller may not read changes neither.
 func (p *Platform) countFlagged(who auth.Principal, agent string) (n int, more bool, err error) {
-	candidates, err := p.Evals.Candidates(who.Tenant, agent, MaxFlagged+1)
+	candidates, err := p.Evals.OpenCandidates(who.Tenant, agent)
 	if err != nil {
 		return 0, false, err
 	}
-	if len(candidates) > MaxFlagged {
-		candidates, more = candidates[:MaxFlagged], true
-	}
-	seer := p.Seer(who)
+	ids := make([]string, 0, len(candidates))
 	for _, c := range candidates {
-		if run, err := p.Runs.Get(who.Tenant, c.Run); err == nil && seer.Run(run) {
+		if !slices.Contains(ids, c.Run) {
+			ids = append(ids, c.Run)
+		}
+	}
+	found, err := p.Runs.Many(who.Tenant, ids)
+	if err != nil {
+		return 0, false, err
+	}
+	seer := p.Seer(who).Snapshot()
+	threads := make([]string, 0, len(found))
+	for _, r := range found {
+		threads = append(threads, placeOfRun(r).Thread)
+	}
+	seer.Read(threads...)
+	visible := map[string]bool{}
+	for id, r := range found {
+		visible[id] = seer.Run(r)
+	}
+	for _, c := range candidates {
+		if visible[c.Run] {
 			n++
 		}
 	}
-	return n, more, nil
+	if n > MaxFlagged {
+		return MaxFlagged, true, nil
+	}
+	return n, false, nil
 }
 
 func (p *Platform) AgentChangeScores(who auth.Principal, name string) ([]evals.Change, error) {

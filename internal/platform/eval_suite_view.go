@@ -107,9 +107,8 @@ type EvalSchedule struct {
 	Busy      bool
 }
 
-// evalSchedule reads the schedule from every run the loop reads, not only
-// those the caller may see, so the console and the loop agree. A due suite
-// starts within a minute, so its next run is no earlier than now.
+// evalSchedule reads a schedule from the runs given. A due suite starts
+// within a minute, so its next run is no earlier than now.
 func (p *Platform) evalSchedule(suite evals.Suite, runs []evals.Run) EvalSchedule {
 	next, scheduled := evals.NextRun(suite, runs)
 	if !scheduled {
@@ -125,20 +124,24 @@ func (p *Platform) evalSchedule(suite evals.Suite, runs []evals.Run) EvalSchedul
 // EvalSuiteListing is a suite's runs the caller may read and its schedule,
 // from one read of its history. The caller has already checked the suite is
 // theirs to see.
+//
+// The schedule a reader is shown comes from the runs they may read only:
+// a run they may not see (a replay of a private run, say) moves neither the
+// next run nor busy for them, so neither says such a run exists. For a reader
+// who sees every run it is what runDueEvals decides; for another it may say
+// the next run is due when the loop is waiting on a run they cannot see.
 func (p *Platform) EvalSuiteListing(who auth.Principal, suite evals.Suite) ([]evals.Run, EvalSchedule, error) {
 	records, err := p.Evals.History(who.Tenant, suite.Name)
 	if err != nil {
 		return nil, EvalSchedule{}, err
 	}
-	all := make([]evals.Run, 0, len(records))
 	out := make([]evals.Run, 0, len(records))
 	for _, record := range records {
-		all = append(all, record.Run)
 		if p.evalRunVisible(who, record) {
 			out = append(out, record.Run)
 		}
 	}
-	return out, p.evalSchedule(suite, all), nil
+	return out, p.evalSchedule(suite, out), nil
 }
 
 // MergeEvalSuiteReplay preserves server-owned snapshots on a public editing
