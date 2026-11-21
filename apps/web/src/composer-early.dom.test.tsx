@@ -160,14 +160,15 @@ function home(props: Partial<Parameters<typeof Chat>[0]> = {}) {
   };
 }
 
-test("Enter before the agents are read holds the message, says so, and sends it once when they arrive", async () => {
+test("Enter before the agents are read keeps the message on screen, read-only, and sends it once when they arrive", async () => {
   const chat = home();
   fireEvent.change(box(), { target: { value: "What changed this week?" } });
   fireEvent.keyDown(box(), { key: "Enter" });
   assert.ok(await screen.findByRole("status", { name: defaultCopy.chat.gettingReady }));
-  // Typing goes on while it waits.
-  fireEvent.change(box(), { target: { value: "and next week" } });
-  assert.equal(box().value, "and next week");
+  // The held words stay in the box, which cannot be edited while they wait.
+  await waitFor(() => assert.equal(box().value, "What changed this week?"));
+  assert.equal(box().readOnly, true);
+  fireEvent.keyDown(box(), { key: "Enter" });
   assert.equal(posts().length, 0, "nothing is sent before the agents are read");
   chat.rerender({ agents: [agent("lead")], agentsRead: true });
   await waitFor(() => assert.deepEqual(chat.opened, ["th-00000000000000ab"]));
@@ -176,6 +177,29 @@ test("Enter before the agents are read holds the message, says so, and sends it 
   assert.equal(sent[0]?.path, "/api/sessions");
   assert.equal((sent[0]?.body as { text: string }).text, "What changed this week?");
   assert.equal(screen.queryByRole("status", { name: defaultCopy.chat.gettingReady }), null);
+  await waitFor(() => assert.equal(box().value, ""));
+  assert.equal(box().readOnly, false);
+});
+
+test("a held message is given back to edit with Cancel or Escape, and is not sent", async () => {
+  const chat = home();
+  fireEvent.change(box(), { target: { value: "Second thoughts" } });
+  fireEvent.keyDown(box(), { key: "Enter" });
+  await screen.findByRole("status", { name: defaultCopy.chat.gettingReady });
+  fireEvent.click(screen.getByRole("button", { name: defaultCopy.cancel }));
+  await waitFor(() => assert.equal(box().readOnly, false));
+  assert.equal(box().value, "Second thoughts");
+  assert.equal(screen.queryByRole("status", { name: defaultCopy.chat.gettingReady }), null);
+  // Held again, Escape lets it go the same way.
+  fireEvent.keyDown(box(), { key: "Enter" });
+  await screen.findByRole("status", { name: defaultCopy.chat.gettingReady });
+  await waitFor(() => assert.equal(box().readOnly, true));
+  fireEvent.keyDown(box(), { key: "Escape" });
+  await waitFor(() => assert.equal(box().readOnly, false));
+  assert.equal(box().value, "Second thoughts");
+  chat.rerender({ agents: [agent("lead")], agentsRead: true });
+  await new Promise((done) => setTimeout(done, 50));
+  assert.equal(posts().length, 0, "a message given back is not sent when the agents arrive");
 });
 
 test("agents that could not be read are said with Retry, and a held message goes back in the box", async () => {

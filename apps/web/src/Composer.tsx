@@ -143,7 +143,15 @@ export function Composer({
   sessionAgents,
   plus,
   voice,
+  held = false,
+  onCancelHeld,
 }: {
+  /**
+   * The message in the box is sent and waits to go: it stays on screen,
+   * read-only and dimmed, until it goes. Escape gives it back to edit.
+   */
+  held?: boolean;
+  onCancelHeld?: () => void;
   /**
    * Voice notes, when the deployment transcribes them: the microphone
    * records, and the words come back into the draft, marked, to read and
@@ -450,7 +458,7 @@ export function Composer({
   const lit = String(asked);
 
   const send = (now: boolean) => {
-    if (!ready) return;
+    if (!ready || held) return;
     const text =
       withAttached(
         quote
@@ -479,6 +487,13 @@ export function Composer({
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (held) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onCancelHeld?.();
+      }
+      return;
+    }
     if (plus && e.key === "/" && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
       setTyping(null);
@@ -875,7 +890,7 @@ export function Composer({
             ref={backdrop}
             aria-hidden
             data-tokens
-            className="pointer-events-none absolute overflow-hidden break-words whitespace-pre-wrap text-transparent"
+            className={`pointer-events-none absolute overflow-hidden break-words whitespace-pre-wrap text-transparent${held ? " opacity-60" : ""}`}
           >
             {tokenRuns(value, tokens).map((run, i) =>
               run.token ? (
@@ -896,6 +911,8 @@ export function Composer({
           ref={input}
           rows={1}
           value={value}
+          readOnly={held}
+          aria-readonly={held || undefined}
           // Who a mention asks, else the caller's own words: never the default agent's token.
           placeholder={
             mentioned.length > 0
@@ -930,7 +947,7 @@ export function Composer({
           aria-activedescendant={
             tags && open && current >= 0 ? `composer-tag-${current}` : undefined
           }
-          className="humagen-composer-input relative max-h-[200px] min-h-10 pointer-coarse:min-h-11 w-full resize-none bg-transparent px-3 pt-2 text-aui-base text-aui-fg outline-none placeholder:text-aui-muted"
+          className={`humagen-composer-input relative max-h-[200px] min-h-10 pointer-coarse:min-h-11 w-full resize-none bg-transparent px-3 pt-2 text-aui-base text-aui-fg outline-none placeholder:text-aui-muted${held ? " opacity-60" : ""}`}
         />
         {tags && typing?.query && typing.sigil === "@" && !shown.length && !agentsPending && (
           <p role="status" className={floatNote}>

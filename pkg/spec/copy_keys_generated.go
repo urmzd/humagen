@@ -453,6 +453,7 @@ var copyKeyList = []string{
 	"chat.agentsFailed",
 	"chat.agentsLoading",
 	"chat.attach",
+	"chat.cancelHeldHint",
 	"chat.channel",
 	"chat.chooseProject",
 	"chat.findAgent",

@@ -490,25 +490,27 @@ export function Chat({
   // A message not sent goes back to the person: in the box on Home, where
   // the first message opens the conversation and nothing may queue behind
   // it, and held in the queue in a conversation, to send again.
+  const seedOf = (m: QueuedMessage): ComposerSeed => ({
+    text: m.text,
+    files: m.uploads?.map((f, i) => ({
+      id: `retry-${i}`,
+      name: f.name,
+      text: "",
+      data: f.data,
+    })),
+  });
   const giveBack = (m: QueuedMessage, why: string | null) => {
     setProblem(why);
     queue.reject();
     if (!threadId) {
       queue.clear();
-      setSeed({
-        text: m.text,
-        files: m.uploads?.map((f, i) => ({
-          id: `retry-${i}`,
-          name: f.name,
-          text: "",
-          data: f.data,
-        })),
-      });
+      setSeed(seedOf(m));
     }
   };
   // The chat bar is drawn before the agents are read, so a message sent
-  // then waits here, said under the bar, and goes once they arrive: the
-  // workspace's, and the ones that may answer where it goes.
+  // then waits here, and goes once they arrive: the workspace's, and the
+  // ones that may answer where it goes. It stays in the box, read-only,
+  // so it is never out of sight; Cancel or Escape gives it back to edit.
   const agentsReady = agentsRead && !agentsFailed && (threadId !== null || offered !== null);
   const held = useRef<QueuedMessage | null>(null);
   const [holding, setHolding] = useState(false);
@@ -516,19 +518,26 @@ export function Chat({
     held.current = m;
     setHolding(m !== null);
   };
+  // A held message let go unsent: its words are already in the box, now editable.
+  const unhold = () => {
+    hold(null);
+    queue.reject();
+    queue.clear();
+  };
   const queue = useQueue({
     onStart: (m) => {
       if (agentsFailed) return giveBack(m, null);
-      if (!agentsReady) return hold(m);
+      if (!agentsReady) {
+        hold(m);
+        // Sent, the box emptied: the words go back in it while they wait.
+        setSeed(seedOf(m));
+        return;
+      }
       begin(m);
     },
     onInterrupt: () => {
       // Stopped before it was sent: the message goes back, never lost.
-      const waiting = held.current;
-      if (waiting) {
-        hold(null);
-        return giveBack(waiting, null);
-      }
+      if (held.current) return unhold();
       replying.current = { ...replying.current, stop: true };
       if (replying.current.ids.length > 0) void stopRuns(replying.current.ids);
     },
@@ -537,14 +546,12 @@ export function Chat({
   useEffect(() => {
     const waiting = held.current;
     if (!waiting) return;
-    if (agentsFailed) {
+    // Failed, or no agent to answer it: the words stay in the box to edit.
+    if (agentsFailed || (agentsReady && agents.length === 0)) unhold();
+    else if (agentsReady) {
       hold(null);
-      giveBack(waiting, null);
-    } else if (agentsReady) {
-      hold(null);
-      // No agent to answer it: Home says so, and the words go back in the box.
-      if (agents.length === 0) giveBack(waiting, null);
-      else begin(waiting);
+      setSeed({ text: "", files: [] });
+      begin(waiting);
     }
   }, [agentsReady, agentsFailed]);
 
@@ -736,13 +743,19 @@ export function Chat({
         />
       )}
       {holding ? (
-        <p
-          role="status"
-          aria-label={defaultCopy.chat.gettingReady}
-          className="px-3 text-aui-xs text-aui-muted"
-        >
-          {defaultCopy.chat.gettingReady}
-        </p>
+        <div className="flex items-center justify-between gap-3 px-3 text-aui-xs text-aui-muted">
+          <p role="status" aria-label={defaultCopy.chat.gettingReady}>
+            {defaultCopy.chat.gettingReady}
+          </p>
+          <button
+            type="button"
+            className={textAction}
+            title={defaultCopy.chat.cancelHeldHint}
+            onClick={unhold}
+          >
+            {defaultCopy.cancel}
+          </button>
+        </div>
       ) : (
         !agentsReady &&
         !agentsFailed && (
@@ -770,6 +783,8 @@ export function Chat({
         }
         emptyText={placeholderFor}
         queue={sending}
+        held={holding}
+        onCancelHeld={unhold}
         autoFocus={!threadId}
         seed={seed}
         onDraft={(text) => {
