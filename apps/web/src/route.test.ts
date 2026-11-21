@@ -150,11 +150,11 @@ test("an unknown page stays visible as not found while legacy tabs fall back saf
   assert.deepEqual(at("/settings/bogus"), { page: "settings", section: "profile" });
 });
 
-test("the read audit has a Settings address", () => {
+test("the legacy read audit address opens the shared Audit page", () => {
   assert.equal(href({ page: "settings", section: "voice" }), "/settings/voice");
   assert.deepEqual(at("/settings/voice"), { page: "settings", section: "voice" });
-  assert.equal(href({ page: "settings", section: "read-audit" }), "/settings/read-audit");
-  assert.deepEqual(at("/settings/read-audit"), { page: "settings", section: "read-audit" });
+  assert.deepEqual(at("/settings/read-audit"), { page: "audit" });
+  assert.deepEqual(at("/settings/deletions"), { page: "settings", section: "deletions" });
   assert.equal(href({ page: "settings", section: "providers" }), "/settings/providers");
   assert.deepEqual(at("/settings/providers"), { page: "settings", section: "providers" });
   assert.deepEqual(at("/settings/routing"), { page: "settings", section: "providers" });

@@ -2823,9 +2823,17 @@ export const defaultCopy = {
     ],
 
     title: "Audit",
+    changes: "Workspace changes",
     description:
       "Workspace changes in the last 24 hours. Pending means completion could not yet be confirmed.",
     empty: "No recorded changes in this window.",
+    limited: "Showing at most 100 records, newest first.",
+    /** The server's 100 newest records include reads the section above lists, so fewer changes show. */
+    limitedByReads:
+      "Reads listed above count toward the 100 newest records. Narrow the date range or choose a domain to see more changes.",
+    /** Every one of those 100 records is a read listed above: changes may exist, and none is on view. */
+    hiddenByReads:
+      "The 100 newest records in this window are all reads listed above. Narrow the date range or choose a domain to see changes.",
     failed: "The audit could not be loaded.",
     before: "Before",
     after: "After",
@@ -2879,7 +2887,7 @@ export const defaultCopy = {
   judgement: {
     by: "Approval agent",
     decision: { allow: "Allowed", deny: "Denied", ask: "Asked a person" },
-    /** A question the approval agent answered in a session set to Run and Answer (DES-079). */
+    /** A question the approval agent answered in a session set to Auto (DES-079). */
     answered: "Answered by the approval agent",
     basedOn: (references: string[]) => `Based on: ${references.join("; ")}`,
   },
@@ -3222,6 +3230,8 @@ export const defaultCopy = {
   pageLoad: {
     title: "This page did not load",
     failed: "This page could not be loaded. Check your connection, then try again.",
+    /** Under the title, which already says the page did not load: only what to do. */
+    hint: "Check your connection, then try again.",
     /** Something that opens over the page, such as search, whose code could not be read. */
     partFailed: "That could not be opened. Check your connection, then try again.",
   },
@@ -3277,6 +3287,7 @@ export const defaultCopy = {
       snoozed: "Nothing is snoozed.",
       resolved: "Nothing is done yet.",
     } as Record<"open" | "snoozed" | "resolved", string>,
+    reviewApproval: "Review Approval",
     markDone: "Mark Done",
     markDoneNamed: (title: string) => `Mark ${title} done`,
     /** The alerts table: its name, its column headings and what its header says once rows are ticked. */
@@ -3479,12 +3490,27 @@ export const defaultCopy = {
     archiveFailed: "Could not archive. Try again.",
     unarchiveFailed: "Could not bring it back. Try again.",
     undo: "Undo",
-    /** What a row's dot says, for a screen reader and the row's tooltip. */
+    /** What a row's state mark says, for a screen reader and the mark's tooltip. */
     standing: {
       needs: "Needs you",
       running: "Running",
       failed: "A reply failed",
       unread: "Unread",
+    },
+    /** Where a session started, said by its row's leading mark and to a screen reader. */
+    sources: {
+      console: "Started in the console",
+      slack: "From a Slack thread",
+      slack_dm: "From a Slack DM",
+      github: "From GitHub",
+      scheduled: "From a schedule",
+      assignment: "From an assignment",
+    },
+    /** An open alert on a session, by how urgent it is. */
+    alert: {
+      urgent: "Urgent alert",
+      normal: "Alert",
+      low: "Low priority alert",
     },
     /** How long ago a conversation moved, from its row's age: "now", "5h", "2d". */
     movedAgo: (age: string) => (age === "now" ? "Just now" : `${age} ago`),
@@ -3496,33 +3522,31 @@ export const defaultCopy = {
       dismiss: "Dismiss",
     },
   },
-  /** A conversation's approval mode, a text control under the composer (DES-057). */
+  /** A conversation's approval mode, a text control under the composer (DES-057, DES-079). */
   approvals: {
-    label: "Approvals",
-    /** The three modes, each with the one line its menu row says about the approval agent. */
-    ask: "Ask Me",
+    /** The menu's heading, and the control's name for assistive technology. */
+    label: "Approval mode",
+    /** The two modes, each with the one line its menu row says. */
+    ask: "Ask",
     askHint: "You approve every gated action.",
-    auto: "Run",
-    autoHint: "The approval agent decides gated actions and hands you any it is unsure of.",
-    autoFor: (name: string) => `Run, chosen by ${name}`,
-    decide: "Run and Answer",
-    decideHint: "It also answers an agent's question when the session already settles it.",
-    decideFor: (name: string) => `Run and Answer, chosen by ${name}`,
+    auto: "Auto",
+    autoHint: "The approval agent approves and answers for you, and asks when unsure.",
+    autoFor: (name: string) => `Auto, chosen by ${name}`,
     /** Under the menu's rows, when someone else set the session's mode. */
     chosenBy: (name: string) => `Chosen by ${name}.`,
     waiting: "No model is enabled for the approval agent yet, so every action waits for a person.",
-    failed: "Could not change approvals. Try again.",
+    failed: "Could not change the approval mode. Try again.",
     /** In the menu of an approval waiting in a Slack thread: sets the conversation, not the call. */
-    letAgentDecide: "Let the approval agent decide in this thread",
-    /** Under the note that the approval agent decides, to set the thread back. */
-    askMeAgain: "Ask Me Again",
-    /** Under the note that a person decides again, to hand it back to the approval agent. */
-    letAgentDecideAgain: "Let the Approval Agent Decide",
+    letAgentDecide: "Set this thread to Auto",
+    /** Under the note that the thread is set to Auto, to set it back. */
+    switchToAsk: "Switch to Ask",
+    /** Under the note that the thread is set to Ask, to set it to Auto again. */
+    switchToAuto: "Switch to Auto",
     /** What changed in the thread, said where everyone in it reads it. */
     nowAuto: (who: string) =>
-      `${who} let the approval agent decide gated actions in this thread. It decides from the next action on, as ${who} could, and hands a person anything it is unsure of. An action already waiting still waits for a person.`,
+      `${who} set this thread to Auto. The approval agent now approves gated actions and answers questions the thread already settles, as ${who} could, and asks a person when unsure. An action already waiting still waits for a person.`,
     nowAsk: (who: string) =>
-      `${who} set this thread to ask a person about every gated action again.`,
+      `${who} set this thread to Ask. A person approves every gated action again.`,
   },
   /** Over Home's chat bar: the person's own project, where a conversation in no project is filed (DES-057). */
   noProject: "No project",
@@ -4371,17 +4395,19 @@ export const defaultCopy = {
     page: {
       /** The composer's placeholder: "New session in Globex". */
       composer: (title: string) => `New session in ${title}`,
+      /** The title row's trail, for assistive technology. */
+      where: "Breadcrumb",
       recents: "Recents",
-      /** A session in Recents: where it started. */
-      trace: {
-        slack: "Slack",
-        github: "GitHub",
-        console: "Console",
-        scheduled: "Scheduled",
-        /** A schedule's run: "Scheduled: weekly-recap". */
-        schedule: (name: string) => `Scheduled: ${name}`,
-        /** More agents or people than the row shows: "+2". */
-        more: (n: number) => `+${n}`,
+      /** The project's setup: steps to get started, or a summary beside Recents. */
+      setup: {
+        title: "Setup",
+        steps: "Get started",
+        /** How many steps are done: "2 of 5 set up". */
+        progress: (done: number, total: number) => `${done} of ${total} set up`,
+        done: "Done",
+        notDone: "Not set up",
+        show: "Show",
+        hide: "Hide",
       },
       noSessions: "No sessions yet",
       untitled: "Untitled session",
@@ -4397,25 +4423,29 @@ export const defaultCopy = {
       cancel: "Cancel",
       instructions: {
         title: "Instructions",
-        none: "No instructions",
         add: "Add",
         edit: "Edit",
+        view: "View",
         addLabel: "Add Instructions",
         editLabel: "Edit Instructions",
+        viewLabel: "View Instructions",
         /** Under the editor: "120 / 4,000". */
         count: (n: number) => `${n.toLocaleString()} / 4,000`,
         failed: "The instructions could not be saved. Try again.",
       },
       context: {
         title: "Context",
-        none: "No corpora",
-        /** A corpus on the card: "HR policies, 3 sources". */
+        /** How many corpora it attaches: "3 corpora". */
+        count: (n: number) => `${n} ${n === 1 ? "corpus" : "corpora"}`,
+        /** A corpus in the list a reader sees: "HR policies, 3 sources". */
         corpus: (title: string, sources: number) =>
           `${title}, ${sources} ${sources === 1 ? "source" : "sources"}`,
         add: "Add",
         edit: "Edit",
+        view: "View",
         addLabel: "Add Context",
         editLabel: "Edit Context",
+        viewLabel: "View Context",
         /** The sheet, when the reader may read no corpus. */
         noCorpora: "No corpora to attach",
         failed: "The context could not be saved. Try again.",
@@ -4432,6 +4462,9 @@ export const defaultCopy = {
           ].join(", "),
         view: "View",
         viewLabel: "View Memory",
+        /** The row's action while there are no notes yet. */
+        addRow: "Add",
+        addLabel: "Add Memory",
         none: "No notes",
         waiting: "Waiting for approval",
         kept: "Notes",
@@ -4448,10 +4481,12 @@ export const defaultCopy = {
       },
       scheduled: {
         title: "Scheduled",
-        none: "Nothing scheduled",
+        /** How many schedules it has: "2 schedules". */
+        count: (n: number) => `${n} ${n === 1 ? "schedule" : "schedules"}`,
         add: "Add",
+        view: "View",
         addLabel: "Add Schedule",
-        heading: "New schedule",
+        viewLabel: "View Schedules",
         name: "Name",
         when: "When",
         custom: "Custom",
@@ -4464,12 +4499,14 @@ export const defaultCopy = {
         failed: "The schedule could not be saved. Try again.",
       },
       slack: {
-        /** The card holds every link out of Humagen; Slack channels are the kind a project keeps today. */
+        /** Every link out of Humagen; Slack channels are the kind a project keeps today. */
         title: "External references",
-        none: "No references linked",
+        /** How many it links: "2 Slack channels". */
+        count: (n: number) => `${n} ${n === 1 ? "channel" : "channels"}`,
         add: "Add",
+        view: "View",
         addLabel: "Add External Reference",
-        heading: "Link a Slack channel",
+        viewLabel: "View External References",
         client: "Slack app",
         channel: "Slack channel ID",
         channelHint: "Starts with C, or G for a private channel",
@@ -4637,6 +4674,127 @@ export const defaultCopy = {
     wrote: "Wrote",
     back: "Back",
     files: (n: number) => `${n} ${n === 1 ? "file" : "files"}`,
+  },
+  /**
+   * The session panel's own sections and the header's view controls
+   * (SessionViews.tsx, SessionContext.tsx): where the session runs, how full
+   * its context is, the connectors it may reach, what it made and changed.
+   */
+  sessionPanel: {
+    /** The header's view controls. */
+    views: "Session views",
+    more: "More Views",
+    view: {
+      details: "Details",
+      terminal: "Terminal",
+      changes: "Changes",
+      browser: "Browser",
+      files: "Files",
+      artifacts: "Artifacts",
+      sidechat: "Side Chat",
+      search: "Search",
+      background: "Background Tasks",
+      progress: "Progress",
+    },
+    /** A view's key, as its menu row prints it. */
+    shortcut: {
+      sidechat: { mac: "⌘;", other: "Ctrl ;" },
+      search: { mac: "⌘⇧F", other: "Ctrl Shift F" },
+    },
+    /** Environment. */
+    sandbox: "Sandbox",
+    sandboxState: {
+      isolated: "Isolated",
+      host: "On this server",
+      none: "Not started",
+      unreachable: "Unreachable",
+      loading: "Checking",
+    },
+    sandboxHint: {
+      none: "Starts when a tool needs it",
+      unreachable: "Could not be reached",
+    },
+    retry: "Try Again",
+    openTerminal: "Open Terminal",
+    files: "Files",
+    browser: "Browser",
+    repo: (repo: string) => repo,
+    branch: "Branch",
+    /** Context. */
+    context: "Context",
+    contextOf: (percent: number) => `${percent}%`,
+    contextNone: "Not reported",
+    contextRows: {
+      window: "Window",
+      model: "Model",
+      prompt: "Prompt",
+      cached: "Cached",
+      output: "Output",
+      calls: "Model calls",
+      cost: "Cost",
+    },
+    contextUsed: (used: string, window: string) => `${used} of ${window} tokens`,
+    /** Connectors. */
+    connectors: "Connectors",
+    connected: (n: number) => `${n} connected`,
+    connectorUsed: "Used here",
+    connectorReady: "Connected",
+    connectorOff: "Not connected",
+    manageConnectors: "Manage Connectors",
+    connectorsFailed: "Connectors could not be read.",
+    /** Outputs and changes. */
+    outputs: "Outputs",
+    artifact: "Artifact",
+    changes: "Changes",
+    filesChanged: (n: number) => `${n} ${n === 1 ? "file" : "files"} changed`,
+    pull: (repo: string, n: number) => `${repo.split("/").pop() ?? repo} #${n}`,
+    ci: {
+      failing: (n: number) => `${n} failing`,
+      running: "Running",
+      passing: "Passing",
+      none: "No checks",
+      unknown: "CI unavailable",
+    },
+    openOnGitHub: (what: string) => `Open ${what} on GitHub`,
+    showMore: (n: number) => `Show ${n} More`,
+    /** What the session was set up with before its first message. */
+    chosenEnvironment: "Chosen environment",
+    chosenRepo: "Chosen repository",
+    /** The header's Terminal and Browser, when they cannot open, and why. */
+    unavailable: {
+      terminalHost:
+        "No terminal here: this deployment runs tools on the server, with no sandbox to open one in",
+      terminalUnreachable: "No terminal now: the sandbox could not be reached",
+      browser: "No browser: this session's agent has none",
+      browserUnknown: "No browser now: it could not be checked",
+    },
+    starting: "Starting environment…",
+    started: "Environment ready",
+    startFailed: (why: string) => `The environment could not start: ${why}`,
+    /** Where it started, which replaced the header's Item link. */
+    startedIn: "Started in",
+    otherSessions: "Other Sessions Here",
+    /** Expanding a section. */
+    expand: (what: string) => `Show ${what}`,
+    collapse: (what: string) => `Hide ${what}`,
+  },
+  /**
+   * A new session's setup beside the composer's plus (SessionPickers.tsx):
+   * where its tools run, and the repositories it works in.
+   */
+  sessionSetup: {
+    environment: "Environment",
+    auto: "Auto",
+    autoHint: "This workspace's default",
+    isolated: "Isolated sandbox",
+    onServer: "On this server",
+    terminal: "Terminal",
+    repo: "Repo",
+    repoLabel: "Repositories",
+    repos: (n: number) => `${n} repos`,
+    none: "None",
+    noRepos: "No repositories are connected.",
+    connectGitHub: "Connect GitHub",
   },
   /**
    * The session's workbench: the tabs of the pane Details opens, and what a
@@ -4984,6 +5142,79 @@ export const defaultCopy = {
     retry: "Retry",
   },
   /** The control that returns to the end of a thread or of an answer's activity, named by what is there. */
+  /** The composer that floats over a conversation: its keys, its two levels of Stop, its footer and usage. */
+  dock: {
+    /** Said in the empty box while anything in the session runs. */
+    hint: (mac: boolean) =>
+      mac ? "↵ to send, ⌘↵ to queue for later" : "↵ to send, Ctrl+↵ to queue for later",
+    sendNow: "Send now",
+    /** Send's tooltip: how to send, queue and add a line. */
+    sendHint: (mac: boolean) =>
+      mac
+        ? "Send (↵). ⌘↵ queues, Shift+↵ adds a line"
+        : "Send (Enter). Ctrl+Enter queues, Shift+Enter adds a line",
+    /** The composer's Stop: everything running in the session. */
+    stopAll: "Stop",
+    stopAllLabel: "Stop everything running in this session",
+    stopAllHint: "Stop everything running in this session (Esc)",
+    stoppingAll: "Stopping everything in this session",
+    stopAllFailed: "Some of the work could not be stopped. Try Stop again.",
+    /** One running item's own Stop: an agent, a call to another agent, a step or background work. */
+    stop: "Stop",
+    stopping: "Stopping",
+    stopped: "Stopped",
+    stopLabel: (what: string) => `Stop ${what}`,
+    stoppingLabel: (what: string) => `Stopping ${what}`,
+    stoppedLabel: (what: string) => `${what} stopped`,
+    backgroundWork: (kind: string, text: string) => `the ${kind} "${text}"`,
+    /** The footer under the composer: who answers, the approval mode and the usage ring. */
+    footer: "Session details",
+    answeredBy: (agent: string) => `Answered by ${agent}`,
+    more: "More session controls",
+    usage: {
+      open: "Usage",
+      ring: (what: string, pct: number) => `${what}: ${pct}% used. Open usage`,
+      ringIdle: "Usage. Open usage",
+      context: "Context",
+      title: "Usage",
+      session: "This session",
+      contextUsed: (tokens: string, window: string) => `${tokens} of ${window} tokens`,
+      spent: "Spent so far",
+      tokens: "Tokens so far",
+      tokenCount: (tokens: string) => `${tokens} tokens`,
+      runs: (n: number) => (n === 1 ? "1 run" : `${n} runs`),
+      topAgents: "Most used by",
+      atLeast: "At least this much: the oldest runs were not counted.",
+      nothingYet: "Nothing used yet.",
+      limits: "Limits",
+      noLimits: "No limits set",
+      limitsHidden: "Limits are shown to people who can read billing.",
+      seeAll: "See all",
+      resets: (when: string) => `Resets ${when}`,
+      failed: "Usage could not be read.",
+      retry: "Retry",
+      loading: "Loading usage",
+      close: "Close usage",
+      near: (what: string) => `Near the ${what} limit`,
+      over: (what: string, when: string) =>
+        `${what} is used up. New runs are blocked until ${when}.`,
+      overApprove: (what: string, when: string) =>
+        `${what} is used up. New runs need approval until ${when}.`,
+      measure: {
+        runs: "Runs",
+        tokens: "Tokens",
+        spend: "Spend",
+        concurrent: "Running at once",
+      } as Record<"runs" | "tokens" | "spend" | "concurrent", string>,
+      period: { day: "Daily", month: "Monthly" } as Record<"day" | "month", string>,
+      scope: {
+        tenant: "Workspace",
+        project: "Project",
+        agent: "Agent",
+        client: "Client",
+      } as Record<"tenant" | "project" | "agent" | "client", string>,
+    },
+  },
   latest: {
     jump: "Jump to latest",
     /** An answer is still being written out of view. */
@@ -5184,6 +5415,7 @@ export const defaultCopy = {
     answered: "Answered",
     /** An agent's answer, as a screen reader names it. */
     answeredBy: (agent: string) => `Answered by ${agent}`,
+    more: "More session controls",
     typeahead: "People and agents to tag",
     /** The `/` command menu, as a screen reader names it. */
     commands: "Slash commands",

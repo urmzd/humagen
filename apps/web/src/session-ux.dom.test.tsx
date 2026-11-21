@@ -669,3 +669,208 @@ test("an empty composer says its own words, never the default agent's token, and
   assert.equal(box.getAttribute("placeholder"), "Message @lead");
   cleanup();
 });
+
+test("only a projected approval with its pending inline decision is hidden", async () => {
+  const { duplicatesInlineApproval } = await import("./SessionAlerts.tsx");
+  const alert = { kind: "approval", action: "approve", run_id: "r1" } as never;
+  const run = {
+    id: "r1",
+    agent: "helper",
+    status: "parked",
+    created_at: "2026-01-01",
+    updated_at: "2026-01-01",
+    question: { id: "q1", kind: "approval", prompt: "Write file?", tool: { name: "file_write" } },
+  };
+  const turns = [{ kind: "run", run }] as never;
+  assert.equal(duplicatesInlineApproval(alert, turns), true);
+  assert.equal(
+    duplicatesInlineApproval({ ...(alert as object), kind: "alert" } as never, turns),
+    false,
+  );
+  assert.equal(
+    duplicatesInlineApproval({ ...(alert as object), run_id: "other" } as never, turns),
+    false,
+  );
+  assert.equal(
+    duplicatesInlineApproval(alert, [
+      { kind: "run", run: { ...run, status: "completed" } },
+    ] as never),
+    false,
+  );
+  assert.equal(
+    duplicatesInlineApproval(alert, [
+      { kind: "run", run: { ...run, question: { id: "q1", kind: "reply", prompt: "Question?" } } },
+    ] as never),
+    false,
+  );
+});
+
+// A parked run as the console draws it: the adapter's turn in AgentMessage, inside the run's article.
+async function parkedRun(ids: string[]) {
+  const { WebSurface } = await import("@humagen/render-web");
+  const { AgentMessage } = await import("@humagen/web");
+  const { turnOf } = await import("./adapter.ts");
+  const asks = ids.map((id) => ({
+    id,
+    kind: "approval",
+    prompt: `Write file ${id}?`,
+    tool: { name: "file_write", call_id: `call-${id}` },
+  }));
+  const run = {
+    id: "r1",
+    agent: "helper",
+    status: "parked",
+    created_at: "2026-01-01",
+    updated_at: "2026-01-01",
+    ...(asks.length > 1 ? { questions: asks } : { question: asks[0] }),
+  };
+  return (
+    <WebSurface onAction={() => {}}>
+      <article data-turn-id={run.id}>
+        <AgentMessage turn={turnOf(run as never)} />
+      </article>
+    </WebSurface>
+  );
+}
+
+test("initial approval positioning does not override a message link or later scrolling", async () => {
+  const { Thread } = await import("@humagen/web");
+  const oldScroll = HTMLElement.prototype.scrollTo;
+  const calls: ScrollToOptions[] = [];
+  HTMLElement.prototype.scrollTo = (options) => {
+    if (typeof options === "object") calls.push(options);
+  };
+  try {
+    const children = await parkedRun(["q1"]);
+    const view = render(
+      <Thread initialApproval={{ run: "r1", question: "q1" }}>{children}</Thread>,
+    );
+    assert.equal(
+      view.container.querySelector('[data-aui="actions"]')?.getAttribute("data-aui-block-id"),
+      "approval:q1:r0",
+      "one pending approval has its own action row",
+    );
+    assert.equal(calls.length, 1);
+    view.rerender(<Thread initialApproval={{ run: "r1", question: "q2" }}>{children}</Thread>);
+    assert.equal(calls.length, 1, "rerender must not reposition a reader");
+    view.unmount();
+    calls.length = 0;
+    render(
+      <Thread focus="linked" initialApproval={{ run: "r1", question: "q1" }}>
+        {children}
+      </Thread>,
+    );
+    assert.equal(calls.length, 0, "an explicit link wins over the initial approval");
+  } finally {
+    HTMLElement.prototype.scrollTo = oldScroll;
+  }
+});
+
+test("initial approval positioning finds the one action row several pending approvals share", async () => {
+  const { Thread } = await import("@humagen/web");
+  const oldScroll = HTMLElement.prototype.scrollTo;
+  const calls: ScrollToOptions[] = [];
+  HTMLElement.prototype.scrollTo = (options) => {
+    if (typeof options === "object") calls.push(options);
+  };
+  try {
+    // Room.tsx names the last pending approval; the console draws the run's approvals as one batch.
+    const view = render(
+      <Thread initialApproval={{ run: "r1", question: "q2" }}>
+        {await parkedRun(["q1", "q2"])}
+      </Thread>,
+    );
+    const rows = Array.from(view.container.querySelectorAll('[data-aui="actions"]'));
+    assert.deepEqual(
+      rows.map((row) => row.getAttribute("data-aui-block-id")),
+      ["batch:r1:actions"],
+      "several pending approvals share one action row and have none of their own",
+    );
+    assert.equal(calls.length, 1, "the batch's action row is positioned");
+    view.unmount();
+    calls.length = 0;
+    render(
+      <Thread initialApproval={{ run: "other", question: "q2" }}>
+        {await parkedRun(["q1", "q2"])}
+      </Thread>,
+    );
+    assert.equal(calls.length, 0, "another run's batch is not this approval's row");
+  } finally {
+    HTMLElement.prototype.scrollTo = oldScroll;
+  }
+});
+
+test("initial approval positioning stays at the end when the actions show there, and clears the composer and the jump control when they do not", async () => {
+  const { Thread } = await import("@humagen/web");
+  const proto = HTMLElement.prototype;
+  const oldScroll = proto.scrollTo;
+  const oldRect = proto.getBoundingClientRect;
+  const calls: ScrollToOptions[] = [];
+  proto.scrollTo = function (this: HTMLElement, options) {
+    if (typeof options !== "object") return;
+    calls.push(options);
+    this.scrollTop = options.top ?? 0;
+  };
+  // A list 600 tall holding 2000 of messages: its end is at 1400. The composer covers it from 450.
+  const tall = (name: "scrollHeight" | "clientHeight", size: number) =>
+    Object.defineProperty(proto, name, {
+      configurable: true,
+      get(this: HTMLElement) {
+        return this.getAttribute("role") === "log" ? size : 0;
+      },
+    });
+  tall("scrollHeight", 2000);
+  tall("clientHeight", 600);
+  // Where the action row sits in the list's content, top and bottom.
+  let row = [0, 0];
+  proto.getBoundingClientRect = function (this: HTMLElement) {
+    const edge = (top: number, bottom: number) => ({ top, bottom }) as DOMRect;
+    if (this.dataset.layer === "composer-dock") return edge(450, 600);
+    if (this.dataset.auiBlock === "approval") {
+      const scrolled = this.closest<HTMLElement>('[role="log"]')?.scrollTop ?? 0;
+      return edge(row[0]! - scrolled, row[1]! - scrolled);
+    }
+    return edge(0, 600);
+  };
+  const open = () =>
+    render(
+      <Thread initialApproval={{ run: "r1", question: "q1" }} footer={<div>Composer</div>}>
+        <div data-turn-id="r1">
+          <div data-aui-block="approval" data-aui-block-id="approval:q1:r0" />
+        </div>
+      </Thread>,
+    );
+  try {
+    // The latest run's approval: with the list at its end the row is on view above the composer.
+    row = [1700, 1760];
+    let view = open();
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0]?.top, 1400, "the list opens at its end");
+    assert.equal(
+      view.container.querySelector('[data-layer="thread-jump"]'),
+      null,
+      "at the end there is no Jump to latest control and the list keeps following",
+    );
+    view.unmount();
+    calls.length = 0;
+    // An approval with a screen of later messages under it: the list leaves the end for it.
+    row = [440, 500];
+    view = open();
+    assert.equal(calls.length, 1);
+    assert.equal(
+      calls[0]?.top,
+      130,
+      "the row ends 80px above the composer, clear of the jump control over it",
+    );
+    assert.ok(
+      view.container.querySelector('[data-layer="thread-jump"]'),
+      "away from the end the way back is offered",
+    );
+    view.unmount();
+  } finally {
+    proto.scrollTo = oldScroll;
+    proto.getBoundingClientRect = oldRect;
+    delete (proto as { scrollHeight?: number }).scrollHeight;
+    delete (proto as { clientHeight?: number }).clientHeight;
+  }
+});

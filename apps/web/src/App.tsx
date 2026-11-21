@@ -27,6 +27,7 @@ import {
 import { accentAttribute, agentShown, brandCopy, servedBranding } from "./branding.ts";
 import { Chat } from "./Chat.tsx";
 import { CONNECT_PERMISSION } from "./connections.ts";
+import { HomeProjects } from "./HomePage.tsx";
 import type { Source as About } from "./mail.ts";
 import { useNotifications } from "./notificationDelivery.ts";
 import {
@@ -996,7 +997,12 @@ function Console({
                     ))}
                   {route.page === "audit" &&
                     (can("projects:govern") ? (
-                      <Audit />
+                      <Audit
+                        reads={
+                          me.principal.kind !== "machine" &&
+                          me.principal.roles?.includes("admin") === true
+                        }
+                      />
                     ) : (
                       <Page title={defaultCopy.navigation.audit}>
                         <Problem message={defaultCopy.noPermission} />
@@ -1187,12 +1193,22 @@ function Console({
                       personalProject={me.personal_project}
                       findHelp={can("projects:read") ? api.findHelp : undefined}
                       home={
-                        <HomeSessionGlance
-                          onHasSessions={setHasSessions}
-                          go={go}
-                          canArtifacts={can("artifacts:read")}
-                          tick={tick}
-                        />
+                        <>
+                          {can("projects:read") && (
+                            <HomeProjects
+                              projects={projects}
+                              personal={me.personal_project}
+                              pinned={prefs.pinned_projects}
+                              go={go}
+                            />
+                          )}
+                          <HomeSessionGlance
+                            onHasSessions={setHasSessions}
+                            go={go}
+                            canArtifacts={can("artifacts:read")}
+                            tick={tick}
+                          />
+                        </>
                       }
                       onProjectCreated={(project) => {
                         setProjects((current) => [

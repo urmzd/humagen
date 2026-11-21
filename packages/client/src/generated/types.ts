@@ -101,6 +101,24 @@ export interface ScratchpadList {
   limit: 50;
 }
 
+/** What a conversation has used so far, read from its run index. A run
+called by another counted run is already in its caller's total and is
+not added again. When `truncated` is true the index read hit its cap and
+every figure is a lower bound.
+ */
+export interface ThreadUsage {
+  /** How many runs were counted. */
+  runs: number;
+  usage: Usage;
+  /** Each agent's own calls, the dearest first (cost, then tokens, then name), at most 20. */
+  agents: ThreadUsageAgentsItem[];
+  /** The context fill of the most recent run that reported one. */
+  context?: ThreadUsageContext;
+  /** How many counted runs have not ended. */
+  working: number;
+  truncated: boolean;
+}
+
 export interface ScratchpadInput {
   /** 1 to 80 printable characters without a slash, unique in the conversation in any case. */
   name: string;
@@ -1542,6 +1560,8 @@ export interface ThreadSummary {
   visibility: ThreadVisibility;
   /** How many messages people have posted in it. */
   messages: number;
+  /** Where it started when that was not the console or the API, read from the Slack thread it lives on or the place its session was started from. Absent for the console and the API. A run's `origin` cannot say this, as a Slack message posts to its thread through the API. */
+  source?: "slack" | "slack_dm" | "github" | "scheduled";
   turns: number;
   branches: number;
   /** How many of its runs are in flight. */
@@ -1630,7 +1650,7 @@ not selected. Absent when none is selected.
   fork?: ThreadFork;
   import?: ThreadImport;
   archive?: ThreadArchive;
-  /** How the conversation's gated tool actions are approved, and who chose it. Absent asks a person. `auto` approves for that person what they may approve themselves, within policy; a budget request and an action the agent or the policy always asks about still go to a person. `decide` does that too, and also answers for them a question an agent asks a person when the session already settles it. */
+  /** How the conversation's gated tool actions are approved, and who chose it. Absent asks a person (Ask). `auto` (Auto) lets the approval agent approve for that person what they may approve themselves, within policy, and answer for them a question an agent asks a person when the session already settles it; a budget request, an action the agent or the policy always asks about, and anything it is unsure of still go to a person. A conversation stored as `decide` (Run and Answer, before it became part of Auto) reads as `auto`. */
   approval?: ThreadApproval;
   /** The inbox id of the announcement the thread was started from, a reply to its post on the thread's surface. It never changes, and the thread's turns start with it. */
   announcement?: string;
@@ -5505,6 +5525,10 @@ export interface SessionIdentity {
   label?: string;
   /** The readable session alert that anchors this fix conversation. */
   source_alert?: string;
+  /** Where the session runs. "" and "auto" are the deployment's default. */
+  environment?: string;
+  /** Repositories ("owner/name") the session works on. */
+  repos?: string[];
 }
 
 export interface MessageFeedbackInput {
@@ -5827,6 +5851,10 @@ export interface SessionInput {
   surface_kind?: string;
   /** With surface: post the message without starting anything. */
   post_only?: boolean;
+  /** Where the session runs, from GET /api/sessions/options. "" and "auto" are the deployment's default. Refused with surface. */
+  environment?: string;
+  /** Repositories ("owner/name") the session works on, each listed by GET /api/sessions/options. Refused with surface. */
+  repos?: string[];
 }
 
 /** What a person asks of a session's browser. */
@@ -5865,6 +5893,31 @@ export interface BrowserElement {
   name?: string;
   /** Where it is in the screenshot, in CSS pixels: x, y, width, height. Absent for an element with no place on the screen. */
   box?: number[];
+}
+
+/** One place a session may run. */
+export interface SessionEnvironment {
+  /** What a session stores: auto or the sandbox's kind. */
+  name: string;
+  label: string;
+  /** Each run leases an instance of its own. */
+  isolated: boolean;
+  /** A person may run their own commands there. */
+  terminal: boolean;
+}
+
+/** What a session may be started with. */
+export interface SessionOptions {
+  environments: SessionEnvironment[];
+  repos: string[];
+}
+
+/** Whether a session has a browser. */
+export interface BrowserAvailability {
+  available: boolean;
+  providers: string[];
+  /** Why there is no browser; empty when there is one. */
+  reason: string;
 }
 
 /** A session's browser after an action. */
@@ -6214,6 +6267,20 @@ export interface BigQuerySetupView {
   credential_refs: string[];
 }
 
+export interface ThreadUsageAgentsItem {
+  agent: string;
+  runs: number;
+  usage: Usage;
+}
+
+export interface ThreadUsageContext {
+  run: string;
+  agent: string;
+  model?: string;
+  window?: number;
+  tokens?: number;
+}
+
 export interface GitHubSubjectPullRequest {
   url?: string;
 }
@@ -6281,7 +6348,7 @@ export interface PreparedCallInputMessagesItem {
 }
 
 export interface ThreadApproval {
-  mode: "auto" | "decide";
+  mode: "auto";
   by: string;
   roles?: string[];
   at: string;

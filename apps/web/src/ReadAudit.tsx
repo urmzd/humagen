@@ -1,10 +1,25 @@
 import { defaultCopy } from "@humagen/components";
 import { useEffect, useState } from "react";
 import { api, type ReadAuditRecord } from "./api.ts";
-import { card, Problem, pageLede, pageTitle, SkeletonRows } from "./ui.tsx";
+import { auditLimit } from "./audit.ts";
+import { MessageTime } from "./MessageTime.tsx";
+import { Problem, Section, SkeletonRows } from "./ui.tsx";
+
+/** The rows of the section, on hairlines, flush with its header. */
+const auditRows = "flex flex-col divide-y divide-[var(--humagen-rule)]";
+/** One row: what happened on the left, when on the right. */
+const auditRow = "flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2 py-3 first:pt-0 last:pb-0";
 
 /** The last day's recorded exceptional reads, bounded by the server. */
-export function ReadAudit() {
+export function ReadAudit({
+  onListed,
+  tick = 0,
+}: {
+  /** Told which reads the section lists, so the page does not repeat them. */
+  onListed?: (records: ReadAuditRecord[]) => void;
+  /** Changes when the page is refreshed, so the reads are read again with the changes. */
+  tick?: number;
+} = {}) {
   const [records, setRecords] = useState<ReadAuditRecord[] | null>(null);
   const [failed, setFailed] = useState(false);
   useEffect(() => {
@@ -12,7 +27,10 @@ export function ReadAudit() {
     api
       .readAudit()
       .then((rows) => {
-        if (live) setRecords(rows);
+        if (!live) return;
+        setFailed(false);
+        setRecords(rows);
+        onListed?.(rows);
       })
       .catch(() => {
         if (live) setFailed(true);
@@ -20,37 +38,48 @@ export function ReadAudit() {
     return () => {
       live = false;
     };
-  }, []);
+    // biome-ignore lint/correctness/useExhaustiveDependencies: a new tick is the request to read again.
+  }, [onListed, tick]);
   const copy = defaultCopy.readAudit;
+  const capped = (records?.length ?? 0) >= auditLimit;
   return (
-    <>
-      <header>
-        <h1 className={pageTitle}>{copy.title}</h1>
-        <p className={pageLede}>{copy.description}</p>
-      </header>
+    <Section
+      box
+      title={copy.title}
+      count={capped ? undefined : records?.length}
+      hint={capped ? defaultCopy.audit.limited : undefined}
+    >
       {failed ? (
         <Problem message={copy.failed} />
       ) : records === null ? (
-        <SkeletonRows count={3} />
+        <SkeletonRows count={2} />
       ) : records.length === 0 ? (
-        <p className="text-aui-muted">{copy.empty}</p>
+        <p className="text-aui-sm text-aui-muted">{copy.empty}</p>
       ) : (
-        <ol className="flex flex-col gap-3">
+        <ol className={auditRows}>
           {records.map((r, i) => (
-            <li key={`${r.at}-${i}`} className={`${card} min-w-0 break-words p-4`}>
-              <p>{r.subject}</p>
-              <p className="text-aui-muted">
-                {r.project || "~"}
-                {r.thread ? ` / ${r.thread}` : ""}
-              </p>
-              <p className="text-aui-sm text-aui-muted">{r.route}</p>
-              <time className="text-aui-sm text-aui-muted" dateTime={r.at}>
-                {new Date(r.at).toLocaleString()}
-              </time>
+            <li key={`${r.at}-${i}`} className={auditRow}>
+              <div className="min-w-0 flex-1">
+                <p className="break-words text-aui-sm text-aui-fg">{r.subject}</p>
+                <p className="flex min-w-0 flex-wrap gap-x-3 text-aui-xs text-aui-muted">
+                  <span className="min-w-0 [overflow-wrap:anywhere]">
+                    {r.project || "~"}
+                    {r.thread ? ` / ${r.thread}` : ""}
+                  </span>
+                  {r.route && (
+                    <span className="min-w-0 font-aui-mono [overflow-wrap:anywhere]">
+                      {r.route}
+                    </span>
+                  )}
+                </p>
+              </div>
+              <span className="shrink-0 text-aui-xs text-aui-muted">
+                <MessageTime at={r.at} />
+              </span>
             </li>
           ))}
         </ol>
       )}
-    </>
+    </Section>
   );
 }

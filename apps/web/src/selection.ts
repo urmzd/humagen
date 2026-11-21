@@ -2,7 +2,7 @@ import { defaultCopy } from "@humagen/components";
 import { useRef, useState } from "react";
 import { ApiError, coworking, type Thread, type ThreadPage } from "./api.ts";
 import { conflictOf } from "./conflicts.ts";
-import type { Selection } from "./Plus.tsx";
+import type { Selection } from "./plusSelection.ts";
 
 /**
  * Where a conversation lives, from its + menu, shown at once as it is

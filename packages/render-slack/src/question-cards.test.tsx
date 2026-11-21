@@ -139,10 +139,10 @@ describe("an approval's menu", () => {
       .flatMap((b) => (b.elements ?? []) as unknown as Overflow[])
       .filter((e) => e.type === "overflow");
 
-  it("offers the approval agent for the thread only where the host says it can", () => {
+  it("offers Auto for the thread only where the host says it can", () => {
     expect(overflows(blocksOf(<ApprovalCard turnId="r1" approval={approval} />))).toEqual([]);
     const [menu] = overflows(blocksOf(<ApprovalCard turnId="r1" approval={approval} offerAgent />));
-    expect(menu?.options.map((o) => o.text.text)).toEqual([defaultCopy.approvals.letAgentDecide]);
+    expect(menu?.options.map((o) => o.text.text)).toEqual(["Set this thread to Auto"]);
     expect(JSON.parse(menu?.options[0]?.value ?? "{}")).toEqual({
       id: ActionId.approvalMode,
       p: { turnId: "r1", target: "auto" },
@@ -153,7 +153,7 @@ describe("an approval's menu", () => {
     );
   });
 
-  it("offers the approval agent on several approvals at once too, beside approve all and deny all", () => {
+  it("offers Auto on several approvals at once too, beside approve all and deny all", () => {
     const several = [approval, { ...approval, id: "a2", summary: "Send the second one" }];
     const texts = (el: React.ReactNode) =>
       overflows(blocksOf(el)).flatMap((m) => m.options.map((o) => o.text.text));

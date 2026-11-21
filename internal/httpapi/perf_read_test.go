@@ -169,6 +169,7 @@ func TestListReadsAreBoundedByThePageNotTheWorkspace(t *testing.T) {
 		}{
 			// The newest 200 runs in one page, and their threads in one read.
 			{"/api/runs", 12, 8},
+			{"/api/threads", 22, 12},
 			// A page of 50: the turn keys of each session on it, and no more.
 			{"/api/sessions", 64, 8},
 			{"/api/sessions?roots=true&mine=true&limit=1", 14, 8},
@@ -705,6 +706,44 @@ func TestASessionShownWithoutItsRunsNamesPeopleAsTheDirectoryDoes(t *testing.T) 
 	if by, _ := without["last_by"].(string); strings.Contains(by, "auth0|7f3a") {
 		t.Errorf("without its runs the session says %q spoke last, a subject", by)
 	}
+}
+
+// A conversation list whose run activity index cannot be read answers 500,
+// not an empty list that says the workspace has no conversations.
+func TestAThreadListWhoseRunIndexCannotBeReadIsAnError(t *testing.T) {
+	store := &failingRunList{Store: state.NewMemory()}
+	f := newFixtureWith(t, platform.Config{Backends: platform.Backends{State: store}, Now: seedClock()})
+	tok := f.person(t, "acme", "ana", "Ana", "humagen-operators")
+	reader := auth.Principal{Subject: "ana", Tenant: "acme", Kind: auth.User, Name: "Ana", Roles: []auth.Role{auth.Operator}}
+	seedVolume(t, f.p, reader, volume{Sessions: 2, Children: 0, Runs: 3, Alerts: 0, Parallel: 1})
+	if res, body := f.do(t, nil, "GET", "/api/threads", tok, ""); res.StatusCode != http.StatusOK || len(body["threads"].([]any)) == 0 {
+		t.Fatalf("with its index readable, /api/threads = %d %v", res.StatusCode, body)
+	}
+	store.fail.Store(true)
+	res, body := f.do(t, nil, "GET", "/api/threads", tok, "")
+	store.fail.Store(false)
+	if store.failed.Load() == 0 {
+		t.Fatal("no list of the run activity index failed, so the error path was not taken")
+	}
+	if res.StatusCode != http.StatusInternalServerError {
+		t.Errorf("with its run index unreadable, /api/threads = %d %v; want 500", res.StatusCode, body)
+	}
+}
+
+// failingRunList fails lists of the run activity index while fail is set,
+// and only those: every other read of runs.v2 still answers.
+type failingRunList struct {
+	state.Store
+	fail   atomic.Bool
+	failed atomic.Int64
+}
+
+func (s *failingRunList) List(ctx context.Context, namespace, tenant string, q state.Query) ([]state.Record, string, error) {
+	if s.fail.Load() && namespace == "runs.v2" && q.Prefix == "u:" {
+		s.failed.Add(1)
+		return nil, "", errors.New("the statement was dropped")
+	}
+	return s.Store.List(ctx, namespace, tenant, q)
 }
 
 // failingRuns fails the reads of several runs at once while fail is set, as
