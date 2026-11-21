@@ -65,14 +65,16 @@ export function Label({
   );
 }
 
-export function Problem({ message }: { message: string | null }) {
+/** A problem said plainly, with a way out beside it when there is one, such as Retry. */
+export function Problem({ message, action }: { message: string | null; action?: ReactNode }) {
   if (!message) return null;
   return (
     <p
       role="alert"
-      className="rounded-aui border border-aui-bad/40 bg-aui-bad/10 px-3 py-2 text-aui-sm text-aui-fg"
+      className={`rounded-aui border border-aui-bad/40 bg-aui-bad/10 px-3 py-2 text-aui-sm text-aui-fg${action ? " flex flex-wrap items-center justify-between gap-x-3 gap-y-1" : ""}`}
     >
-      {message}
+      {action ? <span className="min-w-0">{message}</span> : message}
+      {action}
     </p>
   );
 }

@@ -1,6 +1,6 @@
 import { answerOfAction, answers } from "@humagen/adapter/question";
 import { defaultCopy } from "@humagen/components";
-import { ActionId, type UiAction } from "@humagen/core";
+import { ActionId, type QueuedMessage, type UiAction } from "@humagen/core";
 import { railEntry, useQueue } from "@humagen/web";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type ApprovalMode, ApprovalToggle } from "./ApprovalToggle.tsx";
@@ -30,7 +30,7 @@ import { useThreadSelection } from "./selection.ts";
 import { mentionsIn } from "./tags.ts";
 import { topicsOf } from "./topics.ts";
 import { readFromStart } from "./turns.ts";
-import { AgentMark, isWorking, Page, Problem } from "./ui.tsx";
+import { AgentMark, isWorking, Page, Problem, textAction } from "./ui.tsx";
 import { useVoiceNotes } from "./useVoiceNotes.ts";
 
 const words = defaultCopy.threads;
@@ -152,12 +152,15 @@ function ChatBar({
   handle,
   plus,
   onAvailable,
+  agentsRead,
   ...rest
 }: Omit<Parameters<typeof Composer>[0], "tags" | "plus"> & {
   /** Called with the agents that may answer in the project, once they are read. */
   onAvailable?: (available: { name: string }[]) => void;
   project: string;
   agents: Revision[];
+  /** Whether the workspace's agents are read. The bar is drawn before, and the project's list read beside them. */
+  agentsRead: boolean;
   homes: Record<string, string>;
   projects: ProjectView[] | null;
   root: ProjectView | null;
@@ -174,6 +177,7 @@ function ChatBar({
     topicsOf(projects ?? [], root, project),
     me,
     handle,
+    agentsRead,
   );
   // biome-ignore lint/correctness/useExhaustiveDependencies: once per list read
   useEffect(() => {
@@ -213,6 +217,8 @@ export function Chat({
   tick,
   agents,
   agentsRead = true,
+  agentsFailed = false,
+  onRetryAgents,
   homes = {},
   projects,
   canRun,
@@ -273,8 +279,14 @@ export function Chat({
   /** Changes whenever any run starts or ends. */
   tick: number;
   agents: Revision[];
-  /** Whether the agents have been read. Until they are, Home holds the composer's place rather than saying none are set up. */
+  /**
+   * Whether the agents have been read. Until they are, the chat bar is drawn
+   * and takes typing; a message sent waits for them, and @ says they are loading.
+   */
   agentsRead?: boolean;
+  /** The agents could not be read: the bar says so, keeps the draft, and offers Retry. */
+  agentsFailed?: boolean;
+  onRetryAgents?: () => void;
   /** Where each agent that lives in a project lives, so completion offers only what may answer here. */
   homes?: Record<string, string>;
   /** The project tree a new conversation can be filed in, or null while it loads. */
@@ -475,85 +487,124 @@ export function Chat({
     Promise.all(ids.map((id) => api.stopRun(id))).catch((e) =>
       setProblem(e instanceof ApiError ? e.message : defaultCopy.conversation.stopDelayed),
     );
+  // A message not sent goes back to the person: in the box on Home, where
+  // the first message opens the conversation and nothing may queue behind
+  // it, and held in the queue in a conversation, to send again.
+  const giveBack = (m: QueuedMessage, why: string | null) => {
+    setProblem(why);
+    queue.reject();
+    if (!threadId) {
+      queue.clear();
+      setSeed({
+        text: m.text,
+        files: m.uploads?.map((f, i) => ({
+          id: `retry-${i}`,
+          name: f.name,
+          text: "",
+          data: f.data,
+        })),
+      });
+    }
+  };
+  // The chat bar is drawn before the agents are read, so a message sent
+  // then waits here, said under the bar, and goes once they arrive: the
+  // workspace's, and the ones that may answer where it goes.
+  const agentsReady = agentsRead && !agentsFailed && (threadId !== null || offered !== null);
+  const held = useRef<QueuedMessage | null>(null);
+  const [holding, setHolding] = useState(false);
+  const hold = (m: QueuedMessage | null) => {
+    held.current = m;
+    setHolding(m !== null);
+  };
   const queue = useQueue({
     onStart: (m) => {
-      setProblem(null);
-      replying.current = { ids: [], stop: false };
-      const done = (runs: Run[] = []) => {
-        onChanged();
-        const ids = runs.filter((r) => isWorking(r.status)).map((r) => r.id);
-        if (ids.length === 0) return queue.turnEnded("done");
-        // Stop was asked while the message was being posted.
-        if (replying.current.stop) void stopRuns(ids);
-        replying.current = { ...replying.current, ids };
-        setAwaiting(ids);
-      };
-      const failed = (e: unknown) => {
-        setProblem(e instanceof ApiError ? e.message : words.failed.post);
-        queue.reject();
-        // The first message opens the conversation, so nothing may queue
-        // behind it: one that did not post goes back in the box to send again.
-        if (!threadId) {
-          queue.clear();
-          setSeed({
-            text: m.text,
-            files: m.uploads?.map((f, i) => ({
-              id: `retry-${i}`,
-              name: f.name,
-              text: "",
-              data: f.data,
-            })),
-          });
-        }
-      };
-      // Home starts a private conversation in the picked project, or a
-      // shared thread when it was opened from a channel. Either opens at
-      // its address, where the next message goes.
-      if (!threadId) {
-        coworking
-          .start({
-            project: project ?? "",
-            channel: selection.channel,
-            text: m.text,
-            uploads: m.uploads,
-            visibility: startChannel ? "shared" : "private",
-          })
-          .then((p) => {
-            // Run, chosen before the session started, is applied to it now.
-            if (pendingApproval !== "ask")
-              void coworking.setApprovalMode(p.thread.id, pendingApproval).catch(() => undefined);
-            onThread(p.thread.id);
-            done(p.runs);
-          })
-          .catch(failed);
-        return;
-      }
-      // A conversation of runs takes the message after the turn on screen.
-      // Posted, it is a room: the message, and any run its tags started.
-      coworking
-        .post(threadId, { text: m.text, uploads: m.uploads, ...(tail ? { after: tail.id } : {}) })
-        .then((p) => {
-          setRoom((r) =>
-            r
-              ? {
-                  ...r,
-                  turns: [
-                    ...r.turns,
-                    { kind: "message", message: p.message },
-                    ...p.runs.map((run) => ({ kind: "run" as const, run })),
-                  ],
-                }
-              : r,
-          );
-          done(p.runs);
-        })
-        .catch(failed);
+      if (agentsFailed) return giveBack(m, null);
+      if (!agentsReady) return hold(m);
+      begin(m);
     },
     onInterrupt: () => {
+      // Stopped before it was sent: the message goes back, never lost.
+      const waiting = held.current;
+      if (waiting) {
+        hold(null);
+        return giveBack(waiting, null);
+      }
       replying.current = { ...replying.current, stop: true };
       if (replying.current.ids.length > 0) void stopRuns(replying.current.ids);
     },
   });
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the held message is read, not watched
+  useEffect(() => {
+    const waiting = held.current;
+    if (!waiting) return;
+    if (agentsFailed) {
+      hold(null);
+      giveBack(waiting, null);
+    } else if (agentsReady) {
+      hold(null);
+      // No agent to answer it: Home says so, and the words go back in the box.
+      if (agents.length === 0) giveBack(waiting, null);
+      else begin(waiting);
+    }
+  }, [agentsReady, agentsFailed]);
+
+  function begin(m: QueuedMessage) {
+    setProblem(null);
+    replying.current = { ids: [], stop: false };
+    const done = (runs: Run[] = []) => {
+      onChanged();
+      const ids = runs.filter((r) => isWorking(r.status)).map((r) => r.id);
+      if (ids.length === 0) return queue.turnEnded("done");
+      // Stop was asked while the message was being posted.
+      if (replying.current.stop) void stopRuns(ids);
+      replying.current = { ...replying.current, ids };
+      setAwaiting(ids);
+    };
+    const failed = (e: unknown) =>
+      giveBack(m, e instanceof ApiError ? e.message : words.failed.post);
+    // Home starts a private conversation in the picked project, or a
+    // shared thread when it was opened from a channel. Either opens at
+    // its address, where the next message goes.
+    if (!threadId) {
+      coworking
+        .start({
+          project: project ?? "",
+          channel: selection.channel,
+          text: m.text,
+          uploads: m.uploads,
+          visibility: startChannel ? "shared" : "private",
+        })
+        .then((p) => {
+          // Run, chosen before the session started, is applied to it now.
+          if (pendingApproval !== "ask")
+            void coworking.setApprovalMode(p.thread.id, pendingApproval).catch(() => undefined);
+          onThread(p.thread.id);
+          done(p.runs);
+        })
+        .catch(failed);
+      return;
+    }
+    // A conversation of runs takes the message after the turn on screen.
+    // Posted, it is a room: the message, and any run its tags started.
+    coworking
+      .post(threadId, { text: m.text, uploads: m.uploads, ...(tail ? { after: tail.id } : {}) })
+      .then((p) => {
+        setRoom((r) =>
+          r
+            ? {
+                ...r,
+                turns: [
+                  ...r.turns,
+                  { kind: "message", message: p.message },
+                  ...p.runs.map((run) => ({ kind: "run" as const, run })),
+                ],
+              }
+            : r,
+        );
+        done(p.runs);
+      })
+      .catch(failed);
+  }
 
   // A reply already in flight when the conversation is read, such as the
   // first message sent from Home, is the running turn: new messages queue
@@ -662,7 +713,8 @@ export function Chat({
     send: (text, _pick, uploads) => queue.send(text, undefined, uploads),
     sendNow: (text, _pick, uploads) => queue.sendNow(text, undefined, uploads),
   };
-  const composer = canRun && agents.length > 0 && (
+  // Drawn with the page: only sending and mentions wait for the agents.
+  const composer = canRun && (agents.length > 0 || !agentsRead || agentsFailed) && (
     <div
       className={
         composerOnly
@@ -671,9 +723,38 @@ export function Chat({
       }
     >
       <Problem message={problem} />
+      {agentsFailed && (
+        <Problem
+          message={defaultCopy.chat.agentsFailed}
+          action={
+            onRetryAgents && (
+              <button type="button" className={textAction} onClick={onRetryAgents}>
+                {defaultCopy.retry}
+              </button>
+            )
+          }
+        />
+      )}
+      {holding ? (
+        <p
+          role="status"
+          aria-label={defaultCopy.chat.gettingReady}
+          className="px-3 text-aui-xs text-aui-muted"
+        >
+          {defaultCopy.chat.gettingReady}
+        </p>
+      ) : (
+        !agentsReady &&
+        !agentsFailed && (
+          <p role="status" aria-label={defaultCopy.chat.loadingAgents} className="sr-only">
+            {defaultCopy.chat.loadingAgents}
+          </p>
+        )
+      )}
       <ChatBar
         project={where}
         agents={agents}
+        agentsRead={agentsRead && !agentsFailed}
         homes={homes}
         projects={projects}
         root={root ?? null}
@@ -861,7 +942,7 @@ export function Chat({
         banner={banner}
         greeting={greeting}
         canRun={canRun}
-        hasAgents={!agentsRead || agents.length > 0}
+        hasAgents={!agentsRead || agentsFailed || agents.length > 0}
         below={home}
       >
         {composer}
