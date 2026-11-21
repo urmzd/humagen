@@ -3039,6 +3039,7 @@ export const defaultCopy = {
       more
         ? `${n}+ runs flagged for review`
         : `${n} ${n === 1 ? "run" : "runs"} flagged for review`,
+    flaggedUncounted: "Review queue, too long to count here",
     failures: "Failed checks",
     revisionAt: (rev: number, when: string) => `Revision ${rev}, ${when}`,
     changes: "Recent proposed changes",

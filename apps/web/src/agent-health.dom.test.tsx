@@ -371,3 +371,19 @@ test("a run past the flagged count says there are more", async () => {
   assert.ok(await screen.findByRole("link", { name: words.flagged(50, true) }));
   assert.equal(words.flagged(50, true), "50+ runs flagged for review");
 });
+
+test("a count the server stopped before finding a visible run links to the queue without a number", async () => {
+  net = stubFetch({
+    "GET /api/agents/writer/health": () => {
+      const h: Record<string, unknown> = health({ flagged_more: true });
+      delete h.flagged;
+      return h;
+    },
+    "GET /api/agents/writer/changes": () => [],
+  });
+  render(<AgentHealth name="writer" />);
+  const link = await screen.findByRole("link", { name: words.flaggedUncounted });
+  assert.equal(link.getAttribute("href"), "/agents/writer/evals#eval-feedback");
+  assert.ok(!/\d/.test(link.textContent ?? ""), link.textContent ?? "");
+  assert.equal(screen.queryByText(/flagged for review/), null);
+});

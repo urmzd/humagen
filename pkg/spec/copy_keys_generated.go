@@ -73,6 +73,7 @@ var copyKeyList = []string{
 	"agentHealth.failed",
 	"agentHealth.failures",
 	"agentHealth.feedback",
+	"agentHealth.flaggedUncounted",
 	"agentHealth.label",
 	"agentHealth.noFailing",
 	"agentHealth.noRuns",
