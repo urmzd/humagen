@@ -95,6 +95,8 @@ test("tool detail keeps bounded arguments and measures execution rather than app
   if (done?.type === "task.upserted") {
     assert.equal(done.task.input, '{\n  "q": "launch"\n}');
     assert.equal(done.task.durationMs, 1500);
+    // When it started running, so a surface can count while it runs.
+    assert.equal(done.task.startedAt, "2026-10-09T00:01:00.000Z");
   }
   const big = to(ev("run.delta.tool.call.v1", { id: "t2", name: "read", arguments: { text: "a".repeat(50_000) } })).find((e) => e.type === "task.upserted");
   if (big?.type === "task.upserted") assert.equal(big.task.input?.length, 32_000);

@@ -2135,6 +2135,37 @@ export const defaultCopy = {
       noResult: "No result",
       openFile: (path: string) => `Open ${path} in the Workspace`,
       details: (what: string) => `Details of ${what}`,
+      /** The failed count, as a button that opens the run of steps at its failures. */
+      showFailed: (n: number) => `${n} failed, show ${n === 1 ? "it" : "them"}`,
+      showDetails: "Show details",
+      hideDetails: "Hide details",
+      input: "Input",
+      copyCommand: "Copy command",
+      /** How long a step has run so far, for a reader of the screen. */
+      elapsed: (time: string) => `Running for ${time}`,
+    },
+    /** A delegated run that failed: why, the way to its run, and Retry. */
+    callFailure: {
+      details: "Show details",
+      retry: "Retry",
+      retrying: "Retrying",
+      /** Posted: the agent was asked again, in the conversation's next message. */
+      retried: "Asked again",
+      retryFailed: "Could not ask again. Try once more.",
+    },
+    /** A connection a run needed that the person has not made. */
+    connect: {
+      title: (name: string) => `${name} is not connected`,
+      body: (name: string) =>
+        `The agent needed your ${name} account and could not use it. Connect it, then ask again.`,
+      action: (name: string) => `Connect ${name}`,
+    },
+    /** A GitHub reference in an answer, as a chip. */
+    githubRef: {
+      pull: (ref: string) => `Pull request ${ref}`,
+      issue: (ref: string) => `Issue ${ref}`,
+      commit: (ref: string) => `Commit ${ref}`,
+      ref: (ref: string) => `GitHub ${ref}`,
     },
     /** The files a finished turn changed, as one card under it. */
     changes: {

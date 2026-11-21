@@ -94,6 +94,8 @@ export function useRunTurn(run: Run | undefined): Turn | undefined {
     ...turn,
     citations: [...citations.values()],
     ...(recorded.outcome ? { outcome: recorded.outcome } : {}),
+    // The record, not the stream, says which connection the run needed.
+    ...(recorded.needsConnection ? { needsConnection: recorded.needsConnection } : {}),
   };
 }
 

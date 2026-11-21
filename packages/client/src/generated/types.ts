@@ -20,6 +20,11 @@ export interface ArtifactSave {
   title?: string;
 }
 
+export interface RunConnectionNeed {
+  provider: string;
+  name?: string;
+}
+
 /** A memory tree a run's instance was given, and what the run kept of its changes. */
 export interface RunMemoryUse {
   kind: "person" | "project" | "agent";
@@ -1457,6 +1462,13 @@ the schema.
   outcome?: RunOutcome;
   sandbox?: RunSandboxRecord;
   memory?: RunMemoryUse[];
+  /** Connections the run needed and the person it acts for had not
+made: a tool group it was granted could not be opened without
+that person's own credential. A run that called another agent
+carries what that agent's run needed as well. `provider` is the
+provider's name as Connections names it.
+ */
+  needs_connection?: RunConnectionNeed[];
   citations: RunCitation[];
   error?: string;
   /** What a parked run is waiting for. */

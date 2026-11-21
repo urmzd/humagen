@@ -72,15 +72,22 @@ test("a run of steps opens to one row per call, and a row to its arguments and r
   const groups = screen.getAllByTestId("step-group");
   const mixed = groups.find((g) => (g.textContent ?? "").includes("Read 2 files")) as HTMLElement;
   assert.equal(within(mixed).queryAllByTestId("tool-row").length, 0, "folded at first");
-  fireEvent.click(within(mixed).getByRole("button", { expanded: false }));
+  // The line opens the run; beside it, its failed count opens it too.
+  fireEvent.click(within(mixed).getAllByRole("button", { expanded: false })[0] as HTMLElement);
   const rows = within(mixed).getAllByTestId("tool-row");
   assert.equal(rows.length, 4);
   assert.ok((rows[3]?.textContent ?? "").includes("go test ./pkg/isolate/docker/..."));
   // The command row opens to the command and what it printed.
   fireEvent.click(within(rows[3] as HTMLElement).getByRole("button", { expanded: false }));
+  // The command, in a block of its own with Copy, and what it printed.
+  const command = within(rows[3] as HTMLElement).getByTestId("command-block");
+  assert.ok(
+    (command.textContent ?? "").includes(
+      "go test ./pkg/isolate/docker/... -run TestRemote -count=1",
+    ),
+  );
   const blocks = within(rows[3] as HTMLElement).getAllByTestId("tool-block");
-  assert.equal(blocks[0]?.textContent, "go test ./pkg/isolate/docker/... -run TestRemote -count=1");
-  assert.ok((blocks[1]?.textContent ?? "").startsWith("ok"));
+  assert.ok((blocks[0]?.textContent ?? "").startsWith("ok"));
   fireEvent.click(within(rows[3] as HTMLElement).getByRole("button", { expanded: true }));
   assert.equal(within(rows[3] as HTMLElement).queryAllByTestId("tool-block").length, 0);
   // And the run folds again.
@@ -100,7 +107,7 @@ test("a long result shows a preview with Show more", () => {
   );
   const row = screen.getByTestId("tool-row");
   fireEvent.click(within(row).getByRole("button", { expanded: false }));
-  const result = () => within(row).getAllByTestId("tool-block")[1]?.textContent ?? "";
+  const result = () => within(row).getAllByTestId("tool-block").at(-1)?.textContent ?? "";
   assert.ok(!result().includes("line 39"));
   fireEvent.click(within(row).getByRole("button", { name: "Show more" }));
   assert.ok(result().includes("line 39"));
