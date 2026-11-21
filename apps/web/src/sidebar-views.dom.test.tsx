@@ -7,8 +7,8 @@ import { unreadPrefs } from "./preferences.ts";
 import type { Route } from "./route.ts";
 import { Sidebar } from "./Sidebar.tsx";
 
-// DES-054: Recents, Pinned, Projects and Archived, each row's dot and age,
-// and archiving a conversation for the reader alone.
+// DES-054: Recents, Pinned, Projects and Archived, each row's source, state
+// and age, and archiving a conversation for the reader alone.
 
 let net: ReturnType<typeof stubFetch> | undefined;
 afterEach(() => {
@@ -94,7 +94,7 @@ const view = async (name: "Recents" | "Projects" | RegExp) => {
   fireEvent.keyDown(disclosure, { key: "Escape" });
 };
 
-test("Recents lists every project newest first, each row one line with one dot", async () => {
+test("Recents lists every project newest first, each row one line with one state mark", async () => {
   const since = new Date(Date.now() - 24 * hour).toISOString();
   const marks: Marks = { archived: [], read: {}, tips: [], since };
   net = stubFetch({
@@ -131,7 +131,7 @@ test("Recents lists every project newest first, each row one line with one dot",
   assert.equal(
     waiting.querySelector("[data-standing]")?.getAttribute("data-standing"),
     "needs",
-    "waiting on a person has its own still dot",
+    "waiting on a person has its own still mark",
   );
   assert.equal(
     list
@@ -141,18 +141,21 @@ test("Recents lists every project newest first, each row one line with one dot",
     "running",
   );
   const answered = list.getByRole("link", { name: /^Answered/ });
+  // Unread is the title's weight, not a dot: nothing is marked in the accent.
   await waitFor(() =>
     assert.equal(
-      answered.querySelector("[data-row-age] [data-standing]")?.getAttribute("data-standing"),
+      answered.querySelector("[data-standing]")?.getAttribute("data-standing"),
       "unread",
     ),
   );
+  assert.equal(answered.querySelector("[data-row-age] [data-standing]"), null);
+  assert.match(answered.textContent ?? "", /, Unread$/);
   const quiet = list.getByRole("link", { name: /^Quiet/ });
   assert.equal(quiet.querySelector("[data-row-age]")?.textContent, "");
   assert.equal(quiet.querySelector("[data-standing]"), null);
 });
 
-test("session rows show relative ages while unread replies retain their dot", async () => {
+test("session rows show relative ages, and an unread reply keeps its age beside a heavier title", async () => {
   const since = new Date(Date.now() - 24 * hour).toISOString();
   const rows = [
     task("s_read", "Read session"),
@@ -179,8 +182,98 @@ test("session rows show relative ages while unread replies retain their dot", as
   const read = await list.findByRole("link", { name: /^Read session/ });
   assert.equal(read.querySelector("[data-row-age]")?.textContent, "3h");
   const unread = list.getByRole("link", { name: /^Unread reply/ });
-  await waitFor(() => assert.ok(unread.querySelector('[data-row-age] [data-standing="unread"]')));
-  assert.equal(unread.querySelector("[data-row-age]")?.textContent, "");
+  await waitFor(() => assert.ok(unread.querySelector('[data-standing="unread"]')));
+  assert.equal(unread.querySelector("[data-row-age]")?.textContent, "3h");
+  assert.match(unread.querySelector('[data-standing="unread"]')?.className ?? "", /font-semibold/);
+});
+
+test("every row leads with where its session started, said in words, never a bare dot", async () => {
+  const rows = [
+    task("s_dm", "Repo status", { source: "slack_dm" }),
+    task("s_thread", "Deploy rollback", { source: "slack" }),
+    task("s_pr", "Review PR 482", { origin: "github" }),
+    task("s_cron", "Weekly digest", { origin: "cron" }),
+    task("s_work", "Standing goal", { origin: "assignment" }),
+    task("s_web", "Launch plan"),
+  ];
+  net = stubFetch({
+    "GET /api/marks": () => ({ archived: [], read: {}, tips: [] }),
+    "GET /api/sessions": () => ({
+      sessions: rows.map((conversation) => ({
+        id: conversation.id,
+        parent: "console:ada",
+        agent: "lead",
+        title: conversation.title,
+        status: "idle",
+        updated_at: conversation.updated_at,
+        conversation,
+      })),
+      next: "",
+    }),
+  });
+  render(<Bar sessionMode />);
+  await view("Recents");
+  const list = within(await screen.findByRole("list", { name: "Recents" }));
+  const expected: [RegExp, string, string][] = [
+    [/^Repo status/, "slack_dm", "From a Slack DM"],
+    [/^Deploy rollback/, "slack", "From a Slack thread"],
+    [/^Review PR 482/, "github", "From GitHub"],
+    [/^Weekly digest/, "scheduled", "From a schedule"],
+    [/^Standing goal/, "assignment", "From an assignment"],
+    [/^Launch plan/, "console", "Started in the console"],
+  ];
+  for (const [name, source, words] of expected) {
+    const row = await list.findByRole("link", { name });
+    const mark = row.querySelector("[data-source]");
+    assert.equal(mark?.getAttribute("data-source"), source, `${name} leads with its source`);
+    assert.equal(mark?.getAttribute("title"), words, "a mouse reads the source on hover");
+    assert.equal(mark?.getAttribute("aria-hidden"), "true");
+    assert.ok(mark?.querySelector("svg"), "the source is a glyph");
+    // A screen reader hears it after the title, so the row is still found by its title.
+    assert.match(row.textContent ?? "", new RegExp(`, ${words}$`));
+    assert.equal(row.firstElementChild, mark, "the source leads the row");
+  }
+  assert.equal(document.querySelector(".humagen-row-dot"), null, "no row carries a dot");
+});
+
+test("a row's state is a labelled mark beside its age, red only when a reply failed", async () => {
+  const since = new Date(Date.now() - 24 * hour).toISOString();
+  net = stubFetch({
+    "GET /api/marks": () => ({ archived: [], read: {}, tips: [], since }),
+    "GET /api/threads": () => ({
+      threads: [
+        task("t1", "Approve contract", { active: 1, waiting: 1 }),
+        task("t2", "Deploying", { active: 1 }),
+        task("t3", "Broke", { failed: 1 }),
+        task("t4", "Fresh answer", { last_agent: true, updated_at: new Date().toISOString() }),
+        task("t5", "Nothing new"),
+      ],
+      next: null,
+    }),
+  });
+  render(<Bar />);
+  await view("Recents");
+  const list = within(await screen.findByRole("list", { name: "Recents" }));
+  const mark = async (name: RegExp) =>
+    (await list.findByRole("link", { name })).querySelector<HTMLElement>(
+      "[data-row-age] [data-standing]",
+    );
+  const needs = await mark(/^Approve contract/);
+  assert.equal(needs?.getAttribute("title"), "Needs you");
+  assert.match(needs?.className ?? "", /text-aui-warn/);
+  const running = await mark(/^Deploying/);
+  assert.equal(running?.getAttribute("title"), "Running");
+  assert.ok(running?.querySelector(".humagen-row-spinner"));
+  assert.doesNotMatch(running?.className ?? "", /aui-bad|aui-accent/);
+  const failed = await mark(/^Broke/);
+  assert.equal(failed?.getAttribute("title"), "A reply failed");
+  assert.match(failed?.className ?? "", /text-aui-bad/, "red says failure");
+  assert.match(list.getByRole("link", { name: /^Broke/ }).textContent ?? "", /, A reply failed$/);
+  await waitFor(async () => assert.equal(await mark(/^Fresh answer/), null));
+  assert.equal(await mark(/^Nothing new/), null);
+  // Nothing in a row is drawn in the accent.
+  for (const row of document.querySelectorAll("[data-thread-row]"))
+    assert.doesNotMatch(row.innerHTML, /aui-accent/);
 });
 
 test("the row menu archives a session, and Archived brings it back", async () => {
@@ -238,6 +331,26 @@ test("Projects groups by project, folds an empty one to No conversations, and ca
   const ops = list.getByText("Ops").closest("details");
   assert.equal(ops?.open, false, "an empty project starts folded");
   assert.match(ops?.textContent ?? "", /No conversations/);
+});
+
+test("a project group that rendered before its rows arrived opens when they do, unless the reader folded it", async () => {
+  net = stubFetch({
+    "GET /api/marks": () => ({ archived: [], read: {}, tips: [] }),
+    "GET /api/threads": () => ({
+      threads: [task("t1", "Ops review", { project: "Ops" })],
+      next: null,
+    }),
+  });
+  render(<Bar projects={[{ name: "Ops", title: "Ops" } as ProjectView]} />);
+  // Projects is the default view, so the group is drawn while the list is still loading.
+  const list = within(await screen.findByRole("list", { name: "Projects" }));
+  await list.findByRole("link", { name: /^Ops review/ });
+  const ops = list.getByText("Ops").closest("details");
+  await waitFor(() => assert.equal(ops?.open, true, "rows arriving open their group"));
+  fireEvent.click(ops?.querySelector("summary") as HTMLElement);
+  if (ops) ops.open = false;
+  fireEvent(ops as HTMLElement, new Event("toggle"));
+  await waitFor(() => assert.equal(ops?.open, false, "a group the reader folded stays folded"));
 });
 
 test("opening a conversation marks it read", async () => {

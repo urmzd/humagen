@@ -467,6 +467,8 @@ export interface ThreadSummary {
   visibility: "shared" | "private";
   /** How many messages people have posted in it. */
   messages: number;
+  /** Where it started when not the console or the API; its runs' origin cannot say a Slack thread. */
+  source?: "slack" | "slack_dm" | "github" | "scheduled";
   turns: number;
   branches: number;
   active: number;
