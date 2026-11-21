@@ -296,6 +296,37 @@ test("a shared thread shows people by name and agents by theirs and where it is 
   assert.deepEqual(opened, ["Globex/renewals"]);
 });
 
+test("a conversation's composer floats over it with its footer: the approval mode on the left, the usage ring on the right", async () => {
+  room({
+    "GET /api/threads/th-0123456789abcdef/usage": () => ({
+      runs: 0,
+      usage: {},
+      agents: [],
+      working: 0,
+      truncated: false,
+    }),
+    "GET /api/usage": () => ({ scopes: [] }),
+  });
+  await screen.findByRole("article", { name: "Message from Ana" });
+  const footer = screen.getByRole("group", { name: defaultCopy.dock.footer });
+  assert.ok(
+    footer.closest('[data-layer="composer-dock"]'),
+    "the footer rides in the floating dock",
+  );
+  const left = footer.querySelector<HTMLElement>('[data-layer="composer-footer-start"]');
+  assert.ok(left);
+  assert.ok(within(left).getByRole("button", { name: /^Approval mode/ }));
+  assert.equal(
+    within(screen.getByRole("form", { name: "Message" })).queryByRole("button", {
+      name: /^Approval mode/,
+    }),
+    null,
+    "the bar itself holds only +, the words, Send and the microphone",
+  );
+  const ring = within(footer).getByRole("button", { name: /Open usage$/ });
+  assert.ok(!left.contains(ring), "the ring is on the right");
+});
+
 test("the reader's messages sit on the right, everyone else's on the left under one name per run", async () => {
   const message = (id: string, by: string, name: string, text: string): ThreadTurn => ({
     kind: "message",

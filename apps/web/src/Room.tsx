@@ -25,6 +25,7 @@ import { actedFor, citationOf, type Run, turnOf } from "./adapter.ts";
 import {
   ApiError,
   api,
+  type BackgroundTask,
   type Channel,
   coworking,
   type ProjectView,
@@ -49,6 +50,7 @@ import { Reference } from "./cards.tsx";
 import { type Completion, useCompletion } from "./completion.ts";
 import { deriveTitle } from "./conversationList.ts";
 import { Deliverables, revisionPrompt } from "./Deliverables.tsx";
+import { useDockArrival } from "./dockArrival.ts";
 import { ForkContext, ImportContext } from "./ForkConversation.tsx";
 import { GitHubTab, reviewText, reviewView } from "./GitHubTab.tsx";
 import { HumanActivityList, HumanActivityNote } from "./humanActivity.tsx";
@@ -77,6 +79,7 @@ import { alertAnchor, SessionAlerts, useSessionAlerts } from "./SessionAlerts.ts
 import { SessionDetailsProvider } from "./SessionDetails.tsx";
 import { sessionFiles, sessionProgress } from "./SessionPanel.tsx";
 import { OriginButton, referenceOfPlace, SessionPlace, usePlace } from "./SessionPlace.tsx";
+import { ComposerFooter, UsageRing } from "./SessionUsage.tsx";
 import {
   type SessionView,
   SessionViews,
@@ -85,6 +88,7 @@ import {
 } from "./SessionViews.tsx";
 import { ShareDialog } from "./Share.tsx";
 import { useThreadSelection } from "./selection.ts";
+import { useItemStops, useSessionBackground, useSessionStop } from "./stops.tsx";
 import { topicsOf } from "./topics.ts";
 import { mergeTurns } from "./turns.ts";
 import {
@@ -224,9 +228,20 @@ function RoomComposer({
   onDraft,
   onPost,
   runs = [],
+  sessionRuns = [],
+  background = [],
+  onBackgroundChanged,
+  footer,
   sessionAgents,
 }: {
   runs?: Run[];
+  /** Every run in the session, whoever asked for it: the composer's Stop stops them all. */
+  sessionRuns?: Run[];
+  /** The reader's background work started from this session, which Stop also ends. */
+  background?: BackgroundTask[];
+  onBackgroundChanged?: () => void;
+  /** The row under the box. */
+  footer?: ReactNode;
   sessionAgents?: string[];
   /** Text controls in the bar, before Send: the conversation's approval mode. */
   trailing?: ReactNode;
@@ -252,6 +267,13 @@ function RoomComposer({
   const [draft, setDraft] = useState("");
   // People's messages never wait for an agent: each is posted as it is sent.
   const voice = useVoiceNotes();
+  const session = useSessionStop({
+    session: thread,
+    runs: sessionRuns,
+    background,
+    onBackgroundChanged,
+  });
+  const stopAll = session.stopAll;
   const queue = useQueue({
     onStart: (m) => {
       setProblem(null);
@@ -271,10 +293,14 @@ function RoomComposer({
           queue.reject();
         });
     },
+    // Stop, Esc and a message sent now stop everything in the session, not
+    // only the reply to this person's last message.
     onInterrupt: () => {
-      void Promise.all(waitingNow.current.map((id) => api.stopRun(id))).catch((error) =>
-        setProblem(error instanceof Error ? error.message : "Stop failed."),
-      );
+      if (thread) void stopAll();
+      else
+        void Promise.all(waitingNow.current.map((id) => api.stopRun(id))).catch((error) =>
+          setProblem(error instanceof Error ? error.message : "Stop failed."),
+        );
     },
   });
   useEffect(() => {
@@ -302,7 +328,7 @@ function RoomComposer({
   }, [runs, waiting, queue.running, queue.adopt, queue.turnEnded]);
   return (
     <div className="flex flex-col gap-2">
-      <Problem message={problem} />
+      <Problem message={problem ?? session.problem} />
       {thread && <HumanActivityList conversation={thread} draft={draft} />}
       <Composer
         placeholder={placeholder}
@@ -318,6 +344,12 @@ function RoomComposer({
         plus={plus}
         voice={voice}
         trailing={trailing}
+        footer={footer}
+        stopAll={
+          thread
+            ? { busy: session.busy, pending: session.pending, onStop: () => void stopAll() }
+            : undefined
+        }
       />
     </div>
   );
@@ -550,10 +582,15 @@ function AnswerView({
   actions,
   canStop = false,
   focused = false,
+  background = [],
+  onBackgroundChanged,
 }: {
   run: Run;
   canStop?: boolean;
   focused?: boolean;
+  /** The reader's background work from this session, which a step's own Stop ends. */
+  background?: BackgroundTask[];
+  onBackgroundChanged?: () => void;
   /** Open or close this answer's activity in Details. */
   onActivity?: (run: string) => void;
   /** This answer's activity is open in Details. */
@@ -570,6 +607,13 @@ function AnswerView({
   actions?: ReactNode;
 }) {
   const { run, stop } = useRunStop(originalRun, canStop);
+  const itemStops = useItemStops({
+    run,
+    allowed: canStop,
+    background,
+    onBackgroundChanged,
+    agentStop: stop ? { onStop: stop.onStop, pending: !!stop.pending } : undefined,
+  });
   const turn = useRunTurn(run);
   const name = agentShown(run.agent);
   const drawn = useMemo(() => {
@@ -609,6 +653,7 @@ function AnswerView({
             <AgentMessage
               actions={actions}
               stop={stop}
+              itemStops={itemStops}
               disclaimer={false}
               activity={false}
               timestamp={<MessageTime at={run.created_at} />}
@@ -665,6 +710,7 @@ export function ThreadRoom({
   onView,
   onOpenChannel,
   onOpenThread,
+  footerStart,
   onChanged,
 }: {
   id: string;
@@ -696,6 +742,8 @@ export function ThreadRoom({
   view?: ConversationView;
   onView?: (view: ConversationView) => void;
   onOpenThread?: (id: string) => void;
+  /** The left of the row under the composer: where the session runs (environment, repository). */
+  footerStart?: ReactNode;
   onOpenChannel: (project: string, channel: string) => void;
   onChanged: () => void;
 }) {
@@ -711,6 +759,10 @@ export function ThreadRoom({
   const [problem, setProblem] = useState<string | null>(null);
   const [localView, setLocalView] = useState<ConversationView>({});
   const [seed, setSeed] = useState<ComposerSeed>();
+  const background = useSessionBackground(id);
+  // Arriving from Home's first message, the bar slides down to its place.
+  const dock = useRef<HTMLDivElement>(null);
+  useDockArrival(dock);
   const shownView = onView ? (view ?? {}) : localView;
   const openPanel = (
     panel?: ConversationPanel,
@@ -1110,6 +1162,94 @@ export function ThreadRoom({
                   label="Thread"
                   turns={wave}
                   focus={focus}
+                  footer={
+                    <div
+                      ref={dock}
+                      className="mx-auto flex w-full max-w-4xl flex-col gap-2 px-4 pb-3"
+                    >
+                      <Problem message={problem} />
+                      {canRun && !posts && (
+                        <p className="text-aui-xs text-aui-muted">{words.viewerOnly}</p>
+                      )}
+                      {posts && (
+                        <RoomComposer
+                          sessionAgents={page.sessionAgents}
+                          sessionRuns={turns.flatMap((turn) => (turn.run ? [turn.run] : []))}
+                          background={background.items}
+                          onBackgroundChanged={background.refresh}
+                          runs={turns.flatMap((turn) =>
+                            turn.run && actedFor(turn.run) === me ? [turn.run] : [],
+                          )}
+                          thread={id}
+                          footer={(() => {
+                            // Who answers is whoever answered last; the ring reads again as runs end.
+                            const runs = turns.flatMap((turn) => (turn.run ? [turn.run] : []));
+                            const latest = runs[runs.length - 1];
+                            return (
+                              <ComposerFooter
+                                // Left, in order: project, environment and repository (footerStart), then approval.
+                                start={
+                                  <>
+                                    {footerStart}
+                                    <ApprovalToggle thread={th} me={handle || me} />
+                                  </>
+                                }
+                                agent={latest ? agentShown(latest.agent) : undefined}
+                                model={latest?.usage?.context?.model}
+                                usage={
+                                  <UsageRing
+                                    thread={id}
+                                    project={th.project}
+                                    agents={answering}
+                                    version={`${runs.length}:${runs.filter((r) => isWorking(r.status)).length}`}
+                                  />
+                                }
+                              />
+                            );
+                          })()}
+                          seed={seed}
+                          placeholder={words.message}
+                          tags={tags}
+                          plus={{
+                            // The draft's mentions are the + menu's agents.
+                            menu: (close, attach, leave, draft) => (
+                              <PlusMenu
+                                onLeave={leave}
+                                agents={tags.agents}
+                                {...mentionPicks(draft, tags.agents, setSeed)}
+                                skills={tags.skills}
+                                skillsFailed={tags.skillsFailed}
+                                onSkill={(name) => {
+                                  setSeed({ text: `/${name} `, mode: "prepend" });
+                                }}
+                                selection={selection}
+                                onChange={select}
+                                onAttach={attach}
+                                onClose={close}
+                              />
+                            ),
+                          }}
+                          autoFocus={sharing ? false : undefined}
+                          onPost={(text, pick, uploads) =>
+                            // It follows the newest message, so a run it starts reads the conversation so far.
+                            coworking
+                              .post(id, { text, ...pick, uploads })
+                              .then((p) => {
+                                // What was posted shows at once: the message, and any run its tags started.
+                                setTurns((t) =>
+                                  mergeTurns(t, [
+                                    { kind: "message", message: p.message },
+                                    ...p.runs.map((run) => ({ kind: "run" as const, run })),
+                                  ]),
+                                );
+                                onChanged();
+                                return p;
+                              })
+                          }
+                        />
+                      )}
+                    </div>
+                  }
                 >
                   <Problem message={attention.problem ?? null} />
                   {attention.problem && (
@@ -1208,6 +1348,8 @@ export function ThreadRoom({
                           key={t.run.id}
                           run={t.run}
                           canStop={posts}
+                          background={background.items}
+                          onBackgroundChanged={background.refresh}
                           actions={
                             !th.read_only && t.run.status === "completed" ? (
                               <>
@@ -1288,61 +1430,6 @@ export function ThreadRoom({
                   ))}
                 </ThreadList>
               </WebSurface>
-              <div className="mx-auto flex w-full max-w-4xl flex-col gap-2 px-4 pb-4">
-                <Problem message={problem} />
-                {canRun && !posts && (
-                  <p className="text-aui-xs text-aui-muted">{words.viewerOnly}</p>
-                )}
-                {posts && (
-                  <RoomComposer
-                    sessionAgents={page.sessionAgents}
-                    runs={turns.flatMap((turn) =>
-                      turn.run && actedFor(turn.run) === me ? [turn.run] : [],
-                    )}
-                    thread={id}
-                    trailing={<ApprovalToggle thread={th} me={handle || me} />}
-                    seed={seed}
-                    placeholder={words.message}
-                    tags={tags}
-                    plus={{
-                      // The draft's mentions are the + menu's agents.
-                      menu: (close, attach, leave, draft) => (
-                        <PlusMenu
-                          onLeave={leave}
-                          agents={tags.agents}
-                          {...mentionPicks(draft, tags.agents, setSeed)}
-                          skills={tags.skills}
-                          skillsFailed={tags.skillsFailed}
-                          onSkill={(name) => {
-                            setSeed({ text: `/${name} `, mode: "prepend" });
-                          }}
-                          selection={selection}
-                          onChange={select}
-                          onAttach={attach}
-                          onClose={close}
-                        />
-                      ),
-                    }}
-                    autoFocus={sharing ? false : undefined}
-                    onPost={(text, pick, uploads) =>
-                      // It follows the newest message, so a run it starts reads the conversation so far.
-                      coworking
-                        .post(id, { text, ...pick, uploads })
-                        .then((p) => {
-                          // What was posted shows at once: the message, and any run its tags started.
-                          setTurns((t) =>
-                            mergeTurns(t, [
-                              { kind: "message", message: p.message },
-                              ...p.runs.map((run) => ({ kind: "run" as const, run })),
-                            ]),
-                          );
-                          onChanged();
-                          return p;
-                        })
-                    }
-                  />
-                )}
-              </div>
             </ConversationPage>
             <ConversationInfo
               origin={referenceOfPlace(place)}

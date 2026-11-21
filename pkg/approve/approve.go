@@ -1,10 +1,10 @@
 // Package approve is what the approval agent reads and answers. The approval
 // agent is a built-in agent (internal/platform) that decides a tool call an
-// agent asks to make in a session set to Run: it allows the call, denies it
-// with a reason the agent is told, or asks a person. In a session set to Run
-// and Answer it is also shown a question an agent asks a person (a choice or
-// a reply), which it answers only when the session already settles the
-// answer, and otherwise hands to the person. Its instructions are
+// agent asks to make in a session set to Auto: it allows the call, denies it
+// with a reason the agent is told, or asks a person. It is also shown a
+// question an agent asks a person (a choice or a reply), which it answers
+// only when the session already settles the answer, and otherwise hands to
+// the person. Its instructions are
 // Instructions, a call is put to it as Describe writes it and a question as
 // DescribeQuestion does, and it answers with structured output: a JSON
 // object that its spec's output schema constrains (DefaultSchema as it
@@ -31,7 +31,7 @@ const (
 	// Allow lets the call run. For a question, it gives the Decision's
 	// Answer.
 	Allow Verdict = "allow"
-	// Ask hands the call to a person, as if the session were set to Ask me.
+	// Ask hands the call to a person, as if the session were set to Ask.
 	Ask Verdict = "ask"
 	// Deny stops the call; the agent is told the reason. A question is
 	// never denied: a denial of one hands it to a person.
@@ -75,7 +75,7 @@ type Question struct {
 	// may answer.
 	AskedOf string
 	// For is the person the answer would be given as: the session's owner,
-	// who chose Run and Answer.
+	// who chose Auto.
 	For string
 	// Policy is what the platform says about answering it, one rule per
 	// line.

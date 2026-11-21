@@ -527,6 +527,7 @@ func (p *Platform) summarizeSession(tenant string, row sessionRow, rr []runs.Run
 	}
 	conversation := ThreadSummary{ThreadSummary: summary, Visibility: th.Visibility}
 	conversation.Messages = row.head.Messages
+	conversation.Source = threadSource(th)
 	if said {
 		lastAgent := time.Time{}
 		for _, run := range rr {
