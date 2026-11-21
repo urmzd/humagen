@@ -211,7 +211,7 @@ function ShellLoading() {
       <span className="sr-only">Loading</span>
       <div
         aria-hidden
-        className={`aui-chrome humagen-glass-bar shrink-0 max-md:hidden ${sidebarStartsOpen(window.innerWidth) ? "w-[var(--humagen-sidebar-w)]" : "w-12"}`}
+        className={`aui-chrome humagen-glass-bar shrink-0 max-md:hidden ${sidebarStartsOpen(window.innerWidth) ? "w-[min(var(--humagen-sidebar-w),33.333vw)]" : "w-12"}`}
       />
       <main aria-hidden className="humagen-content flex min-h-0 min-w-0 flex-1 flex-col" />
     </div>

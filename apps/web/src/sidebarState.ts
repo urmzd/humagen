@@ -31,7 +31,11 @@ export function sidebarStartsOpen(width: number): boolean {
 /** Where this browser keeps the width the sidebar was dragged to. */
 export const SIDEBAR_WIDTH_KEY = "humagen.sidebar.width";
 
-/** The open sidebar's width, in pixels: by default, and the bounds a drag keeps to. */
+/**
+ * The open sidebar's width, in pixels: by default, and the bounds a drag
+ * keeps to. It is drawn no wider than a third of the window, so a tablet's
+ * page keeps its room.
+ */
 export const SIDEBAR_WIDTH = { min: 240, initial: 296, max: 440 } as const;
 
 /** A width kept within the sidebar's bounds, whole pixels. */

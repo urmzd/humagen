@@ -1287,7 +1287,7 @@ export function Sidebar({
         }
         className={`aui-chrome humagen-glass-bar humagen-sidebar flex h-full min-h-0 shrink-0 flex-col max-md:border-aui-border max-md:border-r ${
           open
-            ? "relative w-[var(--humagen-sidebar-w)] max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-50 max-md:w-[min(20rem,85vw)]"
+            ? "relative w-[min(var(--humagen-sidebar-w),33.333vw)] max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-50 max-md:w-[min(20rem,85vw)]"
             : "w-12 max-md:hidden"
         }`}
       >

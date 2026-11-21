@@ -1546,7 +1546,8 @@ Rules:
   2px accent frame around the page.
 - **Width**: the open sidebar is 296px on a wide screen. Its right edge is a
   focusable separator: drag it, or use the arrow keys (16px), Home and End,
-  between 240px and 440px; a double click puts it back. The width is kept in
+  between 240px and 440px, and it is never drawn wider than a third of the
+  window, so a tablet's page keeps its room; a double click puts it back. The width is kept in
   the browser beside whether the sidebar is open, since it follows the screen
   it was set on. On a phone the sidebar stays a drawer.
 - **Alerts** stays a section of the sidebar with its count, which opens the
