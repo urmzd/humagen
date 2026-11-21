@@ -11,6 +11,7 @@ import (
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/inbox"
+	"github.com/urmzd/humagen/pkg/join"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/threads"
 )
@@ -74,6 +75,11 @@ func (r SurfaceRef) message() string { return cmp.Or(r.Message, r.TS) }
 
 // ErrSurfacePlace is a surface's message that names where to file its thread.
 var ErrSurfacePlace = fmt.Errorf("%w: a surface's thread is filed where its channel is bound, never where the request says", threads.ErrInvalid)
+
+// ErrNotListening is a message that addressed nobody, posted where the app
+// is not listening: no thread is there, or the thread did not begin with a
+// message addressed to the app. Nothing of it is kept.
+var ErrNotListening = errors.New("platform: nobody is listening in this thread: mention the app to ask it")
 
 // ErrAnnouncementGone reports a reply to an announcement's post on a
 // client's surface that starts nothing: the announcement was withdrawn, or
@@ -225,7 +231,17 @@ func (p *Platform) startFromSurface(ctx context.Context, who auth.Principal, in 
 	if th, ok, err := p.Threads.BySurface(who.Tenant, sf); err != nil {
 		return Posted{}, err
 	} else if ok {
+		if in.Listen {
+			if !th.Listening {
+				return Posted{}, ErrNotListening
+			}
+			// Heard either way; answered only when the agent says it is for it.
+			post.PostOnly = post.PostOnly || !p.callsFor(ctx, who.Tenant, th, in.Text)
+		}
 		return p.PostMessage(ctx, who, th.ID, post)
+	}
+	if in.Listen {
+		return Posted{}, ErrNotListening
 	}
 	if resource, ok := slackResource(ref.Channel); ok {
 		if err := p.observeClientResource(c, resource); err != nil {
@@ -255,6 +271,27 @@ func (p *Platform) startFromSurface(ctx context.Context, who auth.Principal, in 
 		}
 	}
 	return got, err
+}
+
+// callsFor asks the agents that answer a thread whether a message that
+// addressed nobody calls for one of them: the question a message that names
+// no agent is routed by (join.Route), asked of the thread's own agents. No
+// agent to ask, an asker that fails, and a no all read the same: the message
+// is kept and nobody answers. An agent never joins by accident.
+func (p *Platform) callsFor(ctx context.Context, tenant string, th threads.Thread, message string) bool {
+	names := slices.Clone(th.Agents)
+	if th.Default != "" && th.Default != Open && !slices.Contains(names, th.Default) {
+		names = append(names, th.Default)
+	}
+	if th.Session != nil && th.Session.Agent != "" && !slices.Contains(names, th.Session.Agent) {
+		names = append(names, th.Session.Agent)
+	}
+	keep := func(name string) bool { return len(names) == 0 || slices.Contains(names, name) }
+	cs, err := p.candidates(ctx, tenant, p.Projects.Tree(tenant), th.Project, keep)
+	if err != nil || len(cs) == 0 {
+		return false
+	}
+	return len(join.Joined(join.Route(ctx, p.asker(tenant), cs, message))) > 0
 }
 
 // surfaced is a message's surface, as the platform has checked it, and the

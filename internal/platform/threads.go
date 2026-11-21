@@ -79,6 +79,13 @@ type ThreadInput struct {
 	// started, and filed from the binding: Project, Channel, Visibility and
 	// Default are then left out.
 	Surface *SurfaceRef `json:"surface,omitempty"`
+	// Listen, with Surface, posts a message that addressed nobody: a reply
+	// in a thread the app was not mentioned in this time. It starts no
+	// thread. In a thread that is listening (threads.Thread.Listening) the
+	// agent is asked whether the message calls for it, and answers it, or
+	// the message is kept as what was said and starts nothing. Anywhere
+	// else it is ErrNotListening, and nothing is kept.
+	Listen bool `json:"listen,omitempty"`
 }
 
 // MessageInput posts a message into a thread.
@@ -805,6 +812,10 @@ func (p *Platform) startThread(ctx context.Context, who auth.Principal, in Threa
 		text, unmapped = p.surfaceText(who.Tenant, on.client, on.ref, in.Text)
 		sf := on.ref.surface(on.client.ID)
 		rec.Surface, rec.Announcement, first.SurfaceID, slack = &sf, on.announcement, on.ref.message(), nil
+		// A channel thread whose first message was addressed to the app is
+		// listened to from then on. A direct message needs no listening:
+		// every message there is addressed to the app.
+		rec.Listening = !in.PostOnly && !directMessage(on.ref.Channel) && on.ref.message() == on.ref.TS
 	}
 	mentions, err := threads.Parse(text, tagLookup{ctx: ctx, p: p, tenant: who.Tenant, slack: slack, sees: seer.Agent, tree: tree, project: project, person: humanSubject(person), console: on == nil})
 	if err != nil {
