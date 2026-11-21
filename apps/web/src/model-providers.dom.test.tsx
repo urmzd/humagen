@@ -45,19 +45,19 @@ test("the three kinds are listed, and enabling one sends its key under its own n
     }),
   });
   render(<ModelProviderSettings canEdit />);
-  const list = await screen.findByRole("list", { name: "Model providers" });
+  const list = await screen.findByRole("list", { name: "Available providers" });
   assert.deepEqual(
     within(list)
       .getAllByRole("listitem")
       .map((li) => li.querySelector("span")?.textContent),
     ["Anthropic", "OpenAI", "Google"],
   );
-  assert.equal(within(list).getAllByText("Not enabled").length, 3);
-  fireEvent.click(within(list).getAllByRole("button", { name: "Enable" })[0] as HTMLElement);
+  assert.equal(within(list).getAllByText("Not set up").length, 3);
+  fireEvent.click(within(list).getByRole("button", { name: "Set Up Anthropic" }));
   const form = screen.getByRole("form", { name: "Model provider" });
   assert.equal(within(form).queryByLabelText(/^Name/), null, "a kind is enabled by its own name");
   fireEvent.change(within(form).getByLabelText(/^Value/), { target: { value: "sk-secret" } });
-  fireEvent.click(within(form).getByRole("button", { name: "Enable" }));
+  fireEvent.click(within(form).getByRole("button", { name: "Set Up" }));
   await screen.findByText("Answering");
   const put = net.seen.find((r) => r.method === "PUT");
   assert.equal(put?.path, "/api/model-providers/anthropic");
@@ -88,8 +88,12 @@ test("an OpenAI-compatible server is added by name and address", async () => {
     }),
   });
   render(<ModelProviderSettings canEdit />);
-  fireEvent.click(await screen.findByRole("button", { name: "Add OpenAI-Compatible Server" }));
-  const form = screen.getByRole("form", { name: "Model provider" });
+  const available = await screen.findByRole("list", { name: "Available providers" });
+  const add = screen.getByRole("button", { name: "Add OpenAI-Compatible Server" });
+  assert.ok(add.compareDocumentPosition(available) & Node.DOCUMENT_POSITION_FOLLOWING);
+  fireEvent.click(add);
+  const dialog = screen.getByRole("dialog", { name: "Add OpenAI-Compatible Server" });
+  const form = within(dialog).getByRole("form", { name: "Model provider" });
   fireEvent.change(within(form).getByLabelText(/^Name/), { target: { value: "groq" } });
   fireEvent.change(within(form).getByLabelText(/^Base URL/), {
     target: { value: "https://api.groq.com/openai/v1" },
@@ -97,6 +101,7 @@ test("an OpenAI-compatible server is added by name and address", async () => {
   fireEvent.change(within(form).getByLabelText(/^Value/), { target: { value: "gsk" } });
   fireEvent.click(within(form).getByRole("button", { name: "Add Server" }));
   await screen.findByText(/api\.groq\.com · key kept/);
+  await waitFor(() => assert.equal(document.activeElement, add));
   const put = net.seen.find((r) => r.method === "PUT");
   assert.deepEqual(put?.body, {
     kind: "openai",
@@ -109,7 +114,7 @@ test("a provider the deployment declares is read only, and turning one off names
   net = stubFetch({
     "GET /api/model-providers": () =>
       setup([{ name: "openai", kind: "openai", key_stored: true }], ["anthropic"]),
-    "DELETE /api/model-providers/openai": () =>
+    "PATCH /api/model-providers/openai": () =>
       new Response(
         JSON.stringify({ error: 'model provider in use: "openai" is used by @writer' }),
         {
@@ -118,13 +123,56 @@ test("a provider the deployment declares is read only, and turning one off names
       ),
   });
   render(<ModelProviderSettings canEdit />);
-  const list = await screen.findByRole("list", { name: "Model providers" });
+  const list = await screen.findByRole("list", { name: "Configured providers" });
   const anthropic = within(list).getAllByRole("listitem")[0] as HTMLElement;
   assert.ok(within(anthropic).getByText("Deployment"));
   assert.equal(within(anthropic).queryByRole("button"), null);
-  fireEvent.click(within(list).getByRole("button", { name: "Turn Off" }));
-  fireEvent.click(screen.getByRole("button", { name: "Turn Off openai" }));
+  assert.equal(within(anthropic).queryByRole("switch"), null);
+  const toggle = within(list).getByRole("switch", { name: "Enable OpenAI" });
+  fireEvent.click(toggle);
   await screen.findByText(/@writer/);
+  assert.equal(toggle.getAttribute("aria-checked"), "true");
+  assert.deepEqual(net.seen.find((r) => r.method === "PATCH")?.body, { enabled: false });
+});
+
+test("turning a configured provider off and on keeps its row and its key", async () => {
+  let provider: ModelProvider = {
+    name: "openai",
+    kind: "openai",
+    key_stored: true,
+  };
+  net = stubFetch({
+    "GET /api/model-providers": () => setup([provider], ["anthropic"]),
+    "PATCH /api/model-providers/openai": (body) => {
+      provider = { ...provider, disabled: !(body as { enabled: boolean }).enabled };
+      return provider;
+    },
+  });
+  render(<ModelProviderSettings canEdit />);
+  const toggle = await screen.findByRole("switch", { name: "Enable OpenAI" });
+  assert.equal(toggle.getAttribute("aria-checked"), "true");
+  fireEvent.click(toggle);
+  await waitFor(() => assert.equal(toggle.getAttribute("aria-checked"), "false"));
+  assert.ok(screen.getByText("OpenAI · key kept"));
+  assert.equal(screen.queryByRole("button", { name: "Set Up OpenAI" }), null);
+
+  fireEvent.click(screen.getByRole("button", { name: "Manage OpenAI" }));
+  const menu = screen.getByRole("menu", { name: "Manage OpenAI" });
+  assert.equal(within(menu).queryByRole("menuitem", { name: "Check" }), null);
+  fireEvent.click(within(menu).getByRole("menuitem", { name: "Remove" }));
+  const remove = screen.getByRole("dialog", { name: "Remove OpenAI" });
+  assert.ok(within(remove).getByText(/deletes the provider configuration and its stored key/));
+  fireEvent.click(within(remove).getByRole("button", { name: "Cancel" }));
+
+  fireEvent.click(toggle);
+  await waitFor(() => assert.equal(toggle.getAttribute("aria-checked"), "true"));
+  assert.deepEqual(
+    net.seen.filter((r) => r.method !== "GET").map((r) => [r.method, r.body]),
+    [
+      ["PATCH", { enabled: false }],
+      ["PATCH", { enabled: true }],
+    ],
+  );
 });
 
 test("a chain no enabled provider answers says which it needs", async () => {

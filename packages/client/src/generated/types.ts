@@ -890,6 +890,8 @@ export interface ModelProvider {
   key_ref?: string;
   /** A value is kept for it in the secret store. */
   key_stored?: boolean;
+  /** The provider is off and its configuration and key are retained. */
+  disabled?: boolean;
   added_by?: string;
   added_at?: string;
 }
@@ -6599,6 +6601,10 @@ export interface SetModelProviderBody {
   vertex?: ModelProviderVertex;
   key_ref?: string;
   key?: string;
+}
+
+export interface SetModelProviderEnabledBody {
+  enabled: boolean;
 }
 
 export interface ListAgentsResponse {
