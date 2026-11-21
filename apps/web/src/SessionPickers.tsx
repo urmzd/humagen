@@ -54,7 +54,8 @@ export function imageName(img: SessionImage): string {
 export function imageHint(img: SessionImage): string {
   if (img.default) return words.defaultHint(img.ref);
   if (img.status === "checking") return words.checking;
-  if (img.status === "failed") return img.problem ? `${words.failed}: ${img.problem}` : words.failed;
+  if (img.status === "failed")
+    return img.problem ? `${words.failed}: ${img.problem}` : words.failed;
   return `${img.ref} · ${img.warm ? words.warm : words.cold}`;
 }
 

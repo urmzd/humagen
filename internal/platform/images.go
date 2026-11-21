@@ -80,9 +80,11 @@ type ImageChange struct {
 
 // SessionImage is one image a session may run in, as SessionOptions offers it.
 type SessionImage struct {
-	ID      string        `json:"id"`
-	Name    string        `json:"name"`
-	Ref     string        `json:"ref"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Ref  string `json:"ref"`
+	// Digest is Ref pinned, once its check resolved it.
+	Digest  string        `json:"digest,omitempty"`
 	Status  images.Status `json:"status"`
 	Problem string        `json:"problem,omitempty"`
 	Warm    bool          `json:"warm"`
@@ -126,7 +128,7 @@ func (p *Platform) SessionImages(who auth.Principal) ([]SessionImage, error) {
 		return nil, err
 	}
 	for _, img := range own {
-		out = append(out, SessionImage{ID: img.ID, Name: img.Name, Ref: img.Ref, Status: img.Status, Problem: img.Problem, Warm: img.Warm})
+		out = append(out, SessionImage{ID: img.ID, Name: img.Name, Ref: img.Ref, Digest: img.Digest, Status: img.Status, Problem: img.Problem, Warm: img.Warm})
 	}
 	return out, nil
 }

@@ -5876,6 +5876,8 @@ export interface SessionImage {
   name: string;
   /** The reference as it was added. */
   ref: string;
+  /** The reference pinned, repo@sha256:..., once its check resolved it. */
+  digest?: string;
   status: "checking" | "ready" | "failed";
   /** Why its check failed. */
   problem?: string;
