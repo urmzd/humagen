@@ -185,6 +185,53 @@ test("while anything runs the box says how to send and queue, Enter sends now an
   assert.ok(screen.getByTestId("footer"), "the footer sits under the box");
 });
 
+test("the box is one row: + then the words, then Send and the microphone, both always there", () => {
+  const g = globalThis as Record<string, unknown>;
+  g.SpeechRecognition = class {};
+  try {
+    const seen: Seen = { sent: [], now: [], stops: 0 };
+    render(<Bar busy={false} seen={seen} />);
+    const box = screen.getByRole("textbox") as HTMLTextAreaElement;
+    const row = box.closest(".humagen-composer-row") as HTMLElement;
+    assert.ok(row, "the words sit in the row");
+    const order = [...row.querySelectorAll("button")].map((b) => b.getAttribute("aria-label"));
+    assert.deepEqual(order, ["Attach files", "Send message", "Dictate"]);
+    // Empty: the microphone is the action, Send waits dimmed.
+    const send = screen.getByRole("button", { name: "Send message" }) as HTMLButtonElement;
+    const mic = screen.getByRole("button", { name: "Dictate" }) as HTMLButtonElement;
+    assert.equal(send.disabled, true);
+    assert.equal(mic.disabled, false);
+    // Typed: Send is ready and the microphone stays, to switch between talking and typing.
+    fireEvent.change(box, { target: { value: "check the repos" } });
+    assert.equal(send.disabled, false);
+    assert.ok(screen.getByRole("button", { name: "Dictate" }));
+    // Shift+Enter is a new line, not a send.
+    fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
+    assert.deepEqual(seen.now, []);
+    fireEvent.click(send);
+    assert.deepEqual(seen.now, ["check the repos"]);
+  } finally {
+    delete g.SpeechRecognition;
+  }
+});
+
+test("while anything runs, Send is Stop in the same place, and the microphone stays", () => {
+  const g = globalThis as Record<string, unknown>;
+  g.SpeechRecognition = class {};
+  try {
+    const seen: Seen = { sent: [], now: [], stops: 0 };
+    render(<Bar busy seen={seen} />);
+    const row = (screen.getByRole("textbox") as HTMLElement).closest(
+      ".humagen-composer-row",
+    ) as HTMLElement;
+    const order = [...row.querySelectorAll("button")].map((b) => b.getAttribute("aria-label"));
+    assert.deepEqual(order, ["Attach files", dock.stopAllLabel, "Dictate"]);
+    assert.equal(screen.queryByRole("button", { name: "Send message" }), null);
+  } finally {
+    delete g.SpeechRecognition;
+  }
+});
+
 test("the session's Stop shows while anything runs and stops it all; Esc in an empty box does too", () => {
   const seen: Seen = { sent: [], now: [], stops: 0 };
   const { rerender } = render(<Bar busy={false} seen={seen} />);

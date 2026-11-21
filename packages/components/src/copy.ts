@@ -4774,6 +4774,11 @@ export const defaultCopy = {
     hint: (mac: boolean) =>
       mac ? "↵ to send, ⌘↵ to queue for later" : "↵ to send, Ctrl+↵ to queue for later",
     sendNow: "Send now",
+    /** Send's tooltip: how to send, queue and add a line. */
+    sendHint: (mac: boolean) =>
+      mac
+        ? "Send (↵). ⌘↵ queues, Shift+↵ adds a line"
+        : "Send (Enter). Ctrl+Enter queues, Shift+Enter adds a line",
     /** The composer's Stop: everything running in the session. */
     stopAll: "Stop",
     stopAllLabel: "Stop everything running in this session",
@@ -4791,6 +4796,7 @@ export const defaultCopy = {
     /** The footer under the composer: who answers, the approval mode and the usage ring. */
     footer: "Session details",
     answeredBy: (agent: string) => `Answered by ${agent}`,
+    more: "More session controls",
     usage: {
       open: "Usage",
       ring: (what: string, pct: number) => `${what}: ${pct}% used. Open usage`,
@@ -5035,6 +5041,7 @@ export const defaultCopy = {
     answered: "Answered",
     /** An agent's answer, as a screen reader names it. */
     answeredBy: (agent: string) => `Answered by ${agent}`,
+    more: "More session controls",
     typeahead: "People and agents to tag",
     /** The `/` command menu, as a screen reader names it. */
     commands: "Slash commands",

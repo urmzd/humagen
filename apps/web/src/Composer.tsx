@@ -1,5 +1,5 @@
 import { defaultCopy } from "@humagen/components";
-import { ArrowUpIcon, FileIcon, XIcon } from "@humagen/render-web";
+import { FileIcon, XIcon } from "@humagen/render-web";
 import { Modal, type QueueControls, QueueStrip } from "@humagen/web";
 import {
   type KeyboardEvent,
@@ -21,7 +21,7 @@ import {
   skillsIn,
 } from "./commands.ts";
 import { LazyFrame, sparing, whenIdle } from "./lazy.tsx";
-import { SendRing, VoiceLevel } from "./pages.ts";
+import { VoiceLevel } from "./pages.ts";
 import {
   insertTag,
   matching,
@@ -93,13 +93,9 @@ function Glyph({ d, size = 18 }: { d: string; size?: number }) {
   );
 }
 const PLUS = "M5 12h14M12 5v14";
+const RETURN = "M9 10l-5 5 5 5M20 4v7a4 4 0 0 1-4 4H4";
 const MIC =
   "M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3zM19 10v2a7 7 0 0 1-14 0v-2M12 19v3";
-
-// The send and speak buttons share one size and one place, so nothing moves
-// when one takes over from the other.
-const action =
-  "inline-flex size-9 pointer-coarse:size-11 shrink-0 items-center justify-center rounded-full transition-opacity focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aui-accent";
 
 const tool =
   "inline-flex size-9 pointer-coarse:size-11 items-center justify-center rounded-full text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent disabled:opacity-40";
@@ -710,7 +706,7 @@ export function Composer({
           e.preventDefault();
           send(true);
         }}
-        className="humagen-composer relative flex flex-col gap-1 rounded-[1.25rem] border border-aui-border bg-aui-surface p-2 transition-colors focus-within:border-aui-fg motion-reduce:transition-none"
+        className="humagen-composer relative flex flex-col gap-1 rounded-[1.25rem] border border-aui-border bg-aui-surface p-1.5 transition-colors focus-within:border-aui-fg motion-reduce:transition-none"
       >
         {mic && (
           <LazyFrame fallback={null} instead={null} resetKey={lit}>
@@ -926,51 +922,6 @@ export function Composer({
             {"\u200b"}
           </div>
         )}
-        <textarea
-          id="composer-input"
-          ref={input}
-          rows={1}
-          value={value}
-          readOnly={held}
-          aria-readonly={held || undefined}
-          // Who a mention asks, else the caller's own words: never the default agent's token.
-          placeholder={
-            mentioned.length > 0
-              ? `Message ${mentioned.map((name) => `@${name}`).join(", ")}`
-              : running
-                ? defaultCopy.dock.hint(mac)
-                : emptyText || placeholder || defaultCopy.chat.placeholder
-          }
-          onChange={(e) => {
-            change(e.target.value);
-            follow(e.target.value);
-          }}
-          onKeyDown={onKeyDown}
-          onKeyUp={(e) => {
-            if (
-              e.key === "ArrowLeft" ||
-              e.key === "ArrowRight" ||
-              e.key === "Home" ||
-              e.key === "End"
-            )
-              follow(value);
-          }}
-          onClick={() => follow(value)}
-          onBlur={() => setTyping(null)}
-          onScroll={(e) => {
-            if (backdrop.current) backdrop.current.scrollTop = e.currentTarget.scrollTop;
-          }}
-          // A multiline text box that completes from a list, not a combobox:
-          // a textarea may not take that role, and a combobox is one line.
-          // The open list is said by aria-controls and the active option.
-          aria-haspopup={tags ? "listbox" : undefined}
-          aria-controls={tags && listed ? "composer-tags" : undefined}
-          aria-autocomplete={tags ? "list" : undefined}
-          aria-activedescendant={
-            tags && open && current >= 0 ? `composer-tag-${current}` : undefined
-          }
-          className={`humagen-composer-input relative max-h-[200px] min-h-10 pointer-coarse:min-h-11 w-full resize-none bg-transparent px-3 pt-2 text-aui-base text-aui-fg outline-none placeholder:text-aui-muted${held ? " opacity-60" : ""}`}
-        />
         {tags && typing?.query && typing.sigil === "@" && !shown.length && !agentsPending && (
           <p role="status" className={floatNote}>
             No matching people or agents for @{typing.query}
@@ -995,7 +946,13 @@ export function Composer({
             {notice}
           </p>
         )}
-        <div className="humagen-composer-bar flex items-center gap-1">
+        {/*
+          One row: + on the left, the words, and on the right two plain icon
+          buttons of equal weight, Send (or Stop while anything runs) and the
+          microphone. The row grows upward with the words; the buttons stay
+          on its last line. Both are always there: talk or type at any time.
+        */}
+        <div className="humagen-composer-row flex items-end gap-1">
           <input
             ref={picker}
             type="file"
@@ -1012,7 +969,7 @@ export function Composer({
             <button
               type="button"
               data-plus-button
-              className={`${tool} humagen-composer-plus self-start`}
+              className={`${tool} humagen-composer-plus`}
               aria-label={defaultCopy.chat.plus}
               aria-haspopup="dialog"
               aria-expanded={menu}
@@ -1032,35 +989,83 @@ export function Composer({
               <Glyph d={PLUS} />
             </button>
           )}
-          {leading}
-          {/* What the + menu picked sits in the bar, beside +, so nothing under it moves. */}
-          <div className="humagen-composer-chips min-w-0 flex-1">{plus?.chips}</div>
-          {trailing}
-          {/* While anything in the session runs, Stop stops all of it. Esc does too. */}
-          {running && (
+          <textarea
+            id="composer-input"
+            ref={input}
+            rows={1}
+            value={value}
+            readOnly={held}
+            aria-readonly={held || undefined}
+            // Who a mention asks, else the caller's own words: never the default agent's token.
+            placeholder={
+              mentioned.length > 0
+                ? `Message ${mentioned.map((name) => `@${name}`).join(", ")}`
+                : running
+                  ? defaultCopy.dock.hint(mac)
+                  : emptyText || placeholder || defaultCopy.chat.placeholder
+            }
+            onChange={(e) => {
+              change(e.target.value);
+              follow(e.target.value);
+            }}
+            onKeyDown={onKeyDown}
+            onKeyUp={(e) => {
+              if (
+                e.key === "ArrowLeft" ||
+                e.key === "ArrowRight" ||
+                e.key === "Home" ||
+                e.key === "End"
+              )
+                follow(value);
+            }}
+            onClick={() => follow(value)}
+            onBlur={() => setTyping(null)}
+            onScroll={(e) => {
+              if (backdrop.current) backdrop.current.scrollTop = e.currentTarget.scrollTop;
+            }}
+            // A multiline text box that completes from a list, not a combobox:
+            // a textarea may not take that role, and a combobox is one line.
+            // The open list is said by aria-controls and the active option.
+            aria-haspopup={tags ? "listbox" : undefined}
+            aria-controls={tags && listed ? "composer-tags" : undefined}
+            aria-autocomplete={tags ? "list" : undefined}
+            aria-activedescendant={
+              tags && open && current >= 0 ? `composer-tag-${current}` : undefined
+            }
+            className={`humagen-composer-input relative max-h-[200px] min-h-9 pointer-coarse:min-h-11 min-w-0 flex-1 resize-none self-center bg-transparent px-1 py-1.5 text-aui-base text-aui-fg outline-none placeholder:text-aui-muted${held ? " opacity-60" : ""}`}
+          />
+          {running ? (
+            // While anything in the session runs, Send is Stop, for all of it. Esc does too.
             <button
               type="button"
               data-layer="stop-all"
-              className={`${action} humagen-composer-stop bg-aui-fg text-aui-bg hover:opacity-90 disabled:cursor-progress disabled:opacity-50`}
+              className={`${tool} humagen-composer-stop text-aui-fg disabled:cursor-progress`}
               aria-label={stopping ? defaultCopy.dock.stoppingAll : defaultCopy.dock.stopAllLabel}
               title={defaultCopy.dock.stopAllHint}
               disabled={stopping}
               onClick={stopEverything}
             >
-              <span aria-hidden className="size-2.5 rounded-[2px] bg-current" />
+              <span aria-hidden className="size-3 rounded-[2px] bg-current" />
+            </button>
+          ) : (
+            <button
+              type="submit"
+              data-layer="send"
+              disabled={!ready || held}
+              aria-label="Send message"
+              title={defaultCopy.dock.sendHint(mac)}
+              className={`${tool} humagen-composer-send text-aui-fg disabled:text-aui-muted`}
+            >
+              <Glyph d={RETURN} />
             </button>
           )}
-          {/*
-          One button in one place. With nothing to send it records a voice
-          note (or dictates, where the deployment does not transcribe), and
-          once there is something to send it sends. While it records or
-          listens it stays the stop button, even as words arrive, so it can
-          always be ended from where it was started.
-        */}
-          {listening || recording || transcribing || (!ready && canDictate) ? (
+          {canDictate && (
+            // Records a voice note (or dictates, where the deployment does not
+            // transcribe); while it records or listens it is the stop, in the same place.
             <button
               type="button"
-              className={`${action} humagen-composer-send ${listening || recording ? "bg-aui-accent text-aui-accent-fg" : "bg-aui-hover text-aui-fg"} disabled:opacity-40`}
+              data-layer="mic"
+              className={`${tool} humagen-composer-mic ${listening || recording ? "bg-aui-accent-soft text-aui-accent hover:bg-aui-accent-soft hover:text-aui-accent" : ""}`}
               aria-label={micLabel}
               aria-pressed={listening || recording}
               title={micLabel}
@@ -1068,44 +1073,24 @@ export function Composer({
               onClick={dictate}
             >
               {listening || recording ? (
-                <span aria-hidden className="size-2.5 rounded-[2px] bg-current" />
+                <span
+                  aria-hidden
+                  className="size-3 animate-pulse rounded-[2px] bg-current motion-reduce:animate-none"
+                />
               ) : (
                 <Glyph d={MIC} />
               )}
             </button>
-          ) : (
-            // The ring round Send is drawn once the composer's light is read; until
-            // then, and if it cannot be read, Send is the plain button in the same box.
-            (() => {
-              const send = (
-                <button
-                  type="submit"
-                  disabled={!ready}
-                  aria-label={running ? defaultCopy.dock.sendNow : "Send message"}
-                  title={running ? defaultCopy.dock.sendNow : "Send"}
-                  className={`${action} bg-aui-hover text-aui-fg hover:opacity-90 disabled:opacity-40`}
-                >
-                  <ArrowUpIcon size={16} strokeWidth={2.5} />
-                </button>
-              );
-              const plain = (
-                <div
-                  className="metal-fx-fallback humagen-composer-send shrink-0"
-                  style={{ display: "inline-flex" }}
-                >
-                  {send}
-                </div>
-              );
-              return light ? (
-                <LazyFrame fallback={plain} instead={plain} resetKey={lit}>
-                  <SendRing ready={ready}>{send}</SendRing>
-                </LazyFrame>
-              ) : (
-                plain
-              );
-            })()
           )}
         </div>
+        {(leading || plus?.chips || trailing) && (
+          <div className="humagen-composer-bar flex items-center gap-1">
+            {leading}
+            {/* What the + menu picked sits under the words, so the row keeps its size. */}
+            <div className="humagen-composer-chips min-w-0 flex-1">{plus?.chips}</div>
+            {trailing}
+          </div>
+        )}
       </form>
       {footer}
     </div>

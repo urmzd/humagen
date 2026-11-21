@@ -495,12 +495,59 @@ export function ComposerFooter({
           title={defaultCopy.dock.answeredBy(agent)}
         >
           <AgentMark name={agent} size={14} />
-          <span className="truncate text-aui-fg max-[30rem]:sr-only">{agent}</span>
+          <span className="truncate text-aui-fg">{agent}</span>
           {model && <span className="truncate max-[40rem]:hidden">{model}</span>}
         </span>
       )}
-      {approval}
+      {approval && <span className="inline-flex max-[30rem]:hidden">{approval}</span>}
+      {approval && <MoreControls>{approval}</MoreControls>}
       {usage}
     </div>
+  );
+}
+
+/** On a phone, the approval mode waits under ⋯, so the row stays the agent and the ring. */
+function MoreControls({ children }: { children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const button = useRef<HTMLButtonElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const down = (e: PointerEvent) => {
+      const t = e.target as Node;
+      if (!panel.current?.contains(t) && !button.current?.contains(t)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", down);
+    return () => document.removeEventListener("pointerdown", down);
+  }, [open]);
+  return (
+    <span className="relative inline-flex min-[30rem]:hidden">
+      <button
+        ref={button}
+        type="button"
+        aria-label={defaultCopy.dock.more}
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+        className="inline-flex size-7 pointer-coarse:size-11 items-center justify-center rounded-full text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
+      >
+        <span aria-hidden>⋯</span>
+      </button>
+      {open && (
+        // biome-ignore lint/a11y/noStaticElementInteractions: Escape closes what it opened
+        <div
+          ref={panel}
+          data-layer="composer-more"
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              setOpen(false);
+              button.current?.focus();
+            }
+          }}
+          className="humagen-glass-pop aui-pop-in absolute right-0 bottom-full z-(--aui-z-popover) mb-2 flex items-center rounded-aui-lg p-1.5"
+        >
+          {children}
+        </div>
+      )}
+    </span>
   );
 }
