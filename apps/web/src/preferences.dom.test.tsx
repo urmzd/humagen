@@ -447,7 +447,7 @@ test("a conversation row is its title, then when it moved and where it started: 
   assert.doesNotMatch(row.textContent ?? "", /lead|helper|ada|mira/);
   assert.match(
     row.querySelector("[data-row-age]")?.textContent ?? "",
-    /ago\s*Console$|^Just now\s*Console$/,
+    /(?:ago|Just now)\s*Web \/ Console$/,
     "each row says when it moved and where it started",
   );
   assert.equal(screen.queryByRole("group", { name: /^Agents:|^People:/ }), null);
