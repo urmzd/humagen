@@ -471,6 +471,13 @@ for (const c of [
     says: "No other sessions yet.",
   },
   {
+    name: "only sessions the reader joined",
+    threads: [task("t1", "Joined plan", { joined: true })],
+    pinned: [] as string[],
+    filter: false,
+    says: "No other sessions yet.",
+  },
+  {
     name: "a filter that matches nothing",
     threads: [] as ThreadSummary[],
     pinned: [] as string[],
@@ -495,6 +502,8 @@ for (const c of [
         ]}
       />,
     );
+    // By project is where folders could contradict the message.
+    await view("Projects");
     if (c.filter) {
       fireEvent.click(await screen.findByRole("button", { name: "Filter conversations" }));
       const panel = within(await screen.findByRole("dialog", { name: "Filter conversations" }));

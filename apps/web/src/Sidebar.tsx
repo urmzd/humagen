@@ -1197,7 +1197,7 @@ export function Sidebar({
   const noConversations = recents.length === 0 && unpinned.length === 0;
   // Nothing to list under Recents: it says so once, in words that fit why, and
   // draws no project folders that would contradict it.
-  const listEmpty = unpinned.length === 0;
+  const listEmpty = recentRows.length === 0;
   const isCurrent = (t: ThreadSummary) => t.id === openRow;
   const canPin = can("runs:read");
   const pinnedProjects = new Set(prefs?.pinned_projects ?? []);
@@ -1583,7 +1583,7 @@ export function Sidebar({
                     <li data-empty className="px-2.5 py-1.5 text-aui-xs text-aui-muted">
                       {filters > 0
                         ? "No session matches these filters."
-                        : pinnedRows.length > 0
+                        : pinnedRows.length > 0 || participatedRows.length > 0
                           ? "No other sessions yet."
                           : "Your sessions appear here. Start with New."}
                     </li>
