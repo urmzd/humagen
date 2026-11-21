@@ -2085,4 +2085,7 @@ test("a thread asked for an agent by name keeps it: untagged replies there go to
   // Another thread is not this one's: it gets the default.
   await deliver(w, mention("unrelated", "1700000700.000100"));
   assert.equal(w.humagen.started[3]?.agent, "lead");
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "ok" });
+  await w.app.idle();
 });
