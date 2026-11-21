@@ -56,7 +56,7 @@ import { GitHubTab, reviewText, reviewView } from "./GitHubTab.tsx";
 import { HumanActivityList, HumanActivityNote } from "./humanActivity.tsx";
 import { itemActions } from "./itemActions.tsx";
 import { OLD_SYSTEM_SENDER } from "./legacy.ts";
-import { AnswerRefs, OriginRef } from "./MessageRefs.tsx";
+import { AnswerRefs } from "./MessageRefs.tsx";
 import { MessageTime } from "./MessageTime.tsx";
 import { OutcomeActions } from "./OutcomeActions.tsx";
 import { PersonMark } from "./PersonMark.tsx";
@@ -85,6 +85,12 @@ import { SessionDetailsProvider } from "./SessionDetails.tsx";
 import { sessionFiles, sessionProgress } from "./SessionPanel.tsx";
 import { OriginButton, referenceOfPlace, SessionPlace, usePlace } from "./SessionPlace.tsx";
 import { ComposerFooter, UsageRing } from "./SessionUsage.tsx";
+import {
+  type SessionView,
+  SessionViews,
+  useUnavailableViews,
+  useViewShortcuts,
+} from "./SessionViews.tsx";
 import { ShareDialog } from "./Share.tsx";
 import { useThreadSelection } from "./selection.ts";
 import { useItemStops, useSessionBackground, useSessionStop } from "./stops.tsx";
@@ -795,6 +801,15 @@ export function ThreadRoom({
   // Opens a workbench tab, as a card in the thread does for the work it shows.
   const openWorkbench = (tab: WorkbenchTabId, ref?: string) =>
     openPanel("details", openBench(shownView, tab, ref));
+  // The header's views: the panel, a workbench tab, the Workspace pane, the progress.
+  const openView = (v: SessionView) => {
+    if (v === "details") return openPanel("details", openBench(shownView, "details"));
+    if (v === "files" || v === "artifacts")
+      return openPanel("workspace", openPane(shownView, { kind: v }));
+    if (v === "progress") return openPanel("activity");
+    if (v === "background") return;
+    openWorkbench(v);
+  };
   // A file named in the thread opens at its changes in the workbench beside it,
   // so a changed file can be opened without leaving the session.
   const fileLinks: FileLinks = {
@@ -1007,14 +1022,35 @@ export function ThreadRoom({
     );
   };
 
+  useViewShortcuts(openView, (v) => v !== "sidechat" || posts);
+  const unavailable = useUnavailableViews(th.id, !!th.session);
+  const activeView: SessionView | undefined =
+    shownView.panel === "details"
+      ? (shownView.bench ?? "details")
+      : shownView.panel === "workspace"
+        ? "files"
+        : shownView.panel === "activity"
+          ? "progress"
+          : undefined;
   return (
     <SessionDetailsProvider panel={shownView.panel} onPanel={(panel) => openPanel(panel)}>
       <WorkbenchOpen.Provider value={openWorkbench}>
         <FileLinkContext.Provider value={fileLinks}>
           <section className="flex min-h-0 min-w-0 flex-1">
             <ConversationPage
-              actions={
+              views={
+                <SessionViews
+                  active={activeView}
+                  progress={sessionProgress(turns.flatMap((t) => (t.run ? [t.run] : [])))}
+                  onOpen={openView}
+                  onClose={() => openPanel()}
+                  hidden={posts ? [] : ["sidechat"]}
+                  disabled={unavailable}
+                />
+              }
+              titleControl={
                 <SessionActions
+                  shownTitle={title}
                   thread={th}
                   canManage={
                     posts &&
@@ -1299,11 +1335,6 @@ export function ThreadRoom({
                           continued={turns[i - 1]?.message?.by === t.message.by}
                           focused={focus === t.message.id}
                           fromWeb={place?.kind !== "console" && t.message.via === "console"}
-                          refs={
-                            t.message.id === rootMessage?.id ? (
-                              <OriginRef origin={referenceOfPlace(place)} />
-                            ) : undefined
-                          }
                           actions={
                             posts ? (
                               <>
@@ -1527,6 +1558,8 @@ export function ThreadRoom({
                   onOpenFile={(id) =>
                     openPanel("workspace", openPane(shownView, { kind: "artifact", ref: id }))
                   }
+                  onOpenWorkspace={(tab) => openPanel("workspace", openPane(shownView, tab))}
+                  chosen={th.session}
                   onAsk={posts ? (text) => setSeed({ text, mode: "prepend" }) : undefined}
                 />
               )}
