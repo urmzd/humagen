@@ -288,6 +288,14 @@ own subscriptions name channel messages. Which threads it follows is kept
 in memory, for its last 5000, and forgotten on a restart. A bound channel is
 never followed.
 
+## An agent's own app
+
+An agent may have a Slack app of its own, made and connected from its Look
+tab in the console (see
+[clients](../../docs/reference/clients.md#an-agents-own-slack-app)). This
+process serves one client: run one more, with that client as
+`HUMAGEN_CLIENT`, for each agent's own app.
+
 ## Each agent in its own name
 
 One app answers for every agent, and it posts each turn as the agent that

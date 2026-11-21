@@ -4,6 +4,7 @@ import { BuilderButton } from "./AgentBuilder.tsx";
 import { AgentDefaultSkills } from "./AgentDefaultSkills.tsx";
 import { AgentHealth } from "./AgentHealth.tsx";
 import { AgentLookEditor } from "./AgentLookEditor.tsx";
+import { AgentSlackApp } from "./AgentSlackApp.tsx";
 import {
   type AgentSpec,
   type Alert,
@@ -327,6 +328,7 @@ export function AgentDetail({
   personalProject,
   canWrite,
   canGovern = false,
+  canLinkSlack = false,
   builtin = false,
   canEval,
   canAlert,
@@ -370,6 +372,8 @@ export function AgentDetail({
   canWrite: boolean;
   /** Holds projects:govern, which homing out of a company project needs. */
   canGovern?: boolean;
+  /** clients:write: may connect the agent's own Slack app. */
+  canLinkSlack?: boolean;
   /** Provided by the platform. It can be read and run, and its memory kept, but its spec is not saved here. */
   builtin?: boolean;
   canEval: boolean;
@@ -598,7 +602,12 @@ export function AgentDetail({
       tabs={<Tabs label="Agent sections" value={tab} onChange={setTab} tabs={tabs} />}
     >
       {operations}
-      {revision && tab === "look" && <AgentLookEditor name={name} canWrite={canWrite} />}
+      {revision && tab === "look" && (
+        <>
+          <AgentLookEditor name={name} canWrite={canWrite} />
+          <AgentSlackApp name={name} canLink={canLinkSlack} />
+        </>
+      )}
       {revision && (tab === "prompt" || tab === "evals") && <AgentHealth name={name} />}
       {revision && tab === "prompt" && (
         <dl className="grid grid-cols-2 gap-3 sm:grid-cols-5">
