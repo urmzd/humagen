@@ -18,6 +18,9 @@ const row = (name: string) => screen.getByRole("button", { name: new RegExp(`^${
 const press = (key: string, on: Element | null = document.activeElement) =>
   fireEvent.keyDown(on as Element, { key });
 const title = () => screen.queryByRole("heading")?.textContent ?? null;
+/** Which way the rows slide in: "forward", "back", or null when they do not slide. */
+const direction = () =>
+  screen.getByRole("dialog").firstElementChild?.getAttribute("data-direction") ?? null;
 
 function Menu({
   picked = [],
@@ -228,6 +231,16 @@ test("Escape goes back one step per press: a pane inside a pane, the pane, then 
   assert.equal(outer, 0, "no Escape reaches what is under the menu");
 });
 
+test("Escape at the root turns the rows back while a menu on the bar closes", () => {
+  let closed = 0;
+  // The host keeps the menu drawn while it leaves, as the composer does.
+  render(<Menu onClose={() => closed++} />);
+  assert.equal(direction(), "forward");
+  press("Escape");
+  assert.equal(closed, 1);
+  assert.equal(direction(), "back", "the rows slide back under the closing menu");
+});
+
 test("in a pane the arrows run from Back to its field, its choices and its rows", () => {
   render(<Menu />);
   fireEvent.click(row("Fruit"));
@@ -349,6 +362,7 @@ test("as a sheet it lies along the bottom over a dimmed page below sm, and a pre
   assert.equal(closed, 0);
   assert.equal(press("Escape", sheet), false);
   assert.equal(closed, 1);
+  assert.equal(direction(), null, "a sheet that closes slides nothing");
 });
 
 test("a menu its host places has no dimmed page and listens for no press outside", () => {
