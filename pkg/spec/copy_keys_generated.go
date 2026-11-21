@@ -2180,6 +2180,8 @@ var copyKeyList = []string{
 	"projects.page.context.noCorpora",
 	"projects.page.context.stale",
 	"projects.page.context.title",
+	"projects.page.context.view",
+	"projects.page.context.viewLabel",
 	"projects.page.editHeading",
 	"projects.page.instructions.add",
 	"projects.page.instructions.addLabel",

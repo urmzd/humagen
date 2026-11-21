@@ -1901,9 +1901,16 @@ export function ProjectPage({
                 heading: here.context.title,
               }
             : { text: here.context.add, label: here.context.addLabel, heading: here.context.title }
-          : undefined,
+          : corpora.length > 0
+            ? {
+                // Someone who may not change the context still reads what is attached.
+                text: here.context.view,
+                label: here.context.viewLabel,
+                heading: here.context.title,
+              }
+            : undefined,
       sheet:
-        context.attached && context.corpora
+        canEdit && context.attached && context.corpora
           ? (close) => (
               <ContextForm
                 project={p.name}
@@ -1917,7 +1924,17 @@ export function ProjectPage({
                 }}
               />
             )
-          : undefined,
+          : corpora.length > 0
+            ? () => (
+                <ul className="flex flex-col gap-1 text-aui-sm text-aui-fg">
+                  {corpora.map((c) => (
+                    <li key={c.name} className="break-words">
+                      {here.context.corpus(c.title || c.name, c.sources)}
+                    </li>
+                  ))}
+                </ul>
+              )
+            : undefined,
     },
     {
       key: "memory",

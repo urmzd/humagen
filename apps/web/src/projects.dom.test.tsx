@@ -785,6 +785,21 @@ test("a reader who may not edit the project sees what it holds and no way to cha
   assert.ok(!within(sheet).queryByRole("button", { name: "Add Note" }));
 });
 
+test("a reader who may not edit the project still reads which corpora it attaches", async () => {
+  open(
+    { ...globexDetail, project: projectView({ name: "Globex" }) },
+    {
+      can: ["projects:read", "runs:read", "knowledge:read"],
+      routes: { "GET /api/projects/Globex/corpora": () => globexCorpora },
+    },
+  );
+  fireEvent.click(await screen.findByRole("button", { name: "View Context" }));
+  const sheet = await screen.findByRole("dialog", { name: "Context" });
+  assert.ok(within(sheet).getByText("Globex contracts, 3 sources"));
+  assert.equal(within(sheet).queryByRole("checkbox"), null, "nothing to change");
+  assert.ok(!net.seen.some((r) => r.path === "/api/corpora"), "the corpus list is an editor's");
+});
+
 test("the workspace's page is titled with the workspace's name, and its title is not edited here", async () => {
   open(
     { project: workspace, ancestors: [], children: [field], limits: [] },

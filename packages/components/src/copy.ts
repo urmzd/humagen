@@ -4223,10 +4223,15 @@ export const defaultCopy = {
         title: "Context",
         /** How many corpora it attaches: "3 corpora". */
         count: (n: number) => `${n} ${n === 1 ? "corpus" : "corpora"}`,
+        /** A corpus in the list a reader sees: "HR policies, 3 sources". */
+        corpus: (title: string, sources: number) =>
+          `${title}, ${sources} ${sources === 1 ? "source" : "sources"}`,
         add: "Add",
         edit: "Edit",
+        view: "View",
         addLabel: "Add Context",
         editLabel: "Edit Context",
+        viewLabel: "View Context",
         /** The sheet, when the reader may read no corpus. */
         noCorpora: "No corpora to attach",
         failed: "The context could not be saved. Try again.",
