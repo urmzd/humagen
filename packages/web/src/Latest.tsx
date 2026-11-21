@@ -112,7 +112,10 @@ export function LatestButton({
   look,
   onJump,
   scroller,
+  fade = true,
 }: {
+  /** Fade the list's bottom edge under the button. Off where a composer's own fade is there. */
+  fade?: boolean;
   look: LatestLook | null;
   onJump: () => void;
   scroller: RefObject<HTMLElement | null>;
@@ -121,10 +124,12 @@ export function LatestButton({
   const name = look === "working" ? words.working : look === "unseen" ? words.unseen : words.jump;
   return (
     <>
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-aui-bg via-aui-bg/90 to-transparent"
-      />
+      {fade && (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-aui-bg via-aui-bg/90 to-transparent"
+        />
+      )}
       <button
         type="button"
         data-layer="thread-jump"
@@ -137,7 +142,7 @@ export function LatestButton({
             scroller.current?.focus({ preventScroll: true });
           onJump();
         }}
-        className="aui-pop-in aui-latest absolute bottom-3 left-1/2 z-10 inline-flex size-8 -translate-x-1/2 items-center justify-center rounded-full border border-aui-border bg-aui-bg text-aui-fg shadow-md transition-colors hover:bg-aui-surface focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-aui-accent"
+        className="aui-pop-in aui-latest pointer-events-auto absolute bottom-3 left-1/2 z-(--aui-z-sticky) inline-flex size-8 -translate-x-1/2 items-center justify-center rounded-full border border-aui-border bg-aui-bg text-aui-fg shadow-md transition-colors hover:bg-aui-surface focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-aui-accent"
       >
         {look === "working" ? (
           <span aria-hidden="true" className="aui-latest-dots">
