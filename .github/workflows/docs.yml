@@ -98,10 +98,11 @@ jobs:
             --exclude "*.min.js" --exclude "*.min.css"
       - name: Invalidate CloudFront
         run: |
-          id=$(aws cloudfront list-distributions \
-            --query "DistributionList.Items[?Aliases.Items && contains(Aliases.Items, '$DOMAIN')].Id | [0]" \
-            --output text)
-          if [ -z "$id" ] || [ "$id" = None ]; then
+          # JSON, not text: a JMESPath query runs per page, and text output
+          # would join one "None" per page that has no match.
+          id=$(aws cloudfront list-distributions --output json |
+            jq -r --arg d "$DOMAIN" '[.DistributionList.Items[]? | select((.Aliases.Items // []) | index($d)) | .Id][0] // empty')
+          if [ -z "$id" ]; then
             echo "::error::No CloudFront distribution has the alias $DOMAIN"
             exit 1
           fi
