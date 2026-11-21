@@ -5,8 +5,8 @@ site_url = "https://docs.withhumagen.com/"
 repo_url = "https://github.com/urmzd/humagen"
 repo_name = "urmzd/humagen"
 exclude_docs = "/assets/**"
-# The shared theme, copied from urmzd.com docs-site/public/brand/ so the
-# guide loads its fonts from its own domain.
+# Humagen's own theme, matching withhumagen.com (apps/site). The fonts are
+# self-hosted in brand/, so they load from the guide's own domain.
 extra_css = ["brand/zensical.css"]
 nav = [
   { "Start here" = "README.md" },
@@ -29,7 +29,6 @@ nav = [
     { "Permissions" = "reference/authorization.md" },
     { "Documentation index" = "catalog.md" },
   ] },
-  { "All project guides" = "https://docs.urmzd.com/" },
 ]
 
 [project.theme]
