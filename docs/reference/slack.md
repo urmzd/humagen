@@ -188,7 +188,7 @@ The Slack app listens on a mention, and after one. Nothing else is heard.
 |---|---|
 | A direct message | Answers. Every message there is addressed to it |
 | A message that mentions the app, anywhere in it | Answers that message |
-| A mention in a channel thread's first message | Answers, and the thread is **listened to** from then on (`listening` on the thread) |
+| A mention in a channel thread's first message | Answers, and once the answer is in, the thread is **listened to** (`listening` on the thread). A refused mention, a failed run, or one still quiet or waiting on someone starts no listening |
 | A later reply in a listened thread that mentions nobody | Reads it and asks the agent whether it calls for it (`POST /api/threads` with `listen`). The agent answers, or the message is kept as what was said and nothing shows in Slack |
 | A mention in a reply of a thread that did not begin with one | Answers once, with what was said in the thread since it was last asked. The thread is not listened to |
 | A reply that mentions nobody in a thread that is not listened to | Not heard, and not kept (409) |
