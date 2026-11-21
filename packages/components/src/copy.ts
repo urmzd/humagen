@@ -1553,8 +1553,6 @@ export const defaultCopy = {
     stopRules: "Stop rules and reminders",
     stopRulesHint: "Instructions for the agent. These do not replace the enforced action policy.",
     policies: "Action policy",
-    policiesHint:
-      "Control when agents may act in this context. Rules can tighten inherited limits.",
     policyScope: "Policy Scope",
     policySaved: "Policy saved.",
     policyDraft: "Unsaved changes",
@@ -1678,7 +1676,6 @@ export const defaultCopy = {
   },
   usagePage: {
     title: "Usage",
-    lede: "Agent work, human involvement and budgets, from the runs you can read.",
     range: "Time range",
     days: (n: number) => `${n} days`,
     runs: "Runs",
@@ -2514,12 +2511,6 @@ export const defaultCopy = {
     personalMemoryHint: "Let agents use your personal memory when responding to you in a project.",
     privateTitle: "Private by default",
     memorySettings: "Personal memory",
-    descriptions: {
-      profile: "Your identity and how you want agents to respond.",
-      notifications: "Choose which updates reach you and when.",
-      privacy: "Control what agents remember and where it can be used.",
-      agents: "Manage the agents that work with you.",
-    },
     privateDefault: "New conversations start private. Sharing requires an audience review.",
     priorities: { urgent: "Urgent alerts", normal: "Normal alerts", low: "Low-priority alerts" },
     priorityHint:
@@ -2676,7 +2667,6 @@ export const defaultCopy = {
   },
   health: {
     title: "Health",
-    lede: "Whether the platform and each model provider are working, checked every 30 seconds. Each bar is one check, oldest on the left.",
     loading: "Checking each component.",
     failed: "Health could not be loaded.",
     status: { operational: "Operational", degraded: "Degraded", down: "Down" },
@@ -3117,7 +3107,6 @@ export const defaultCopy = {
   /** Plugins, in your settings: what you add for your own work. Apps are the workspace's, on a page of their own. */
   plugins: {
     title: "Plugins",
-    lede: "What this workspace offers for your own work. What you add is yours alone: it is used when you ask directly, and an agent uses only what is set on that agent.",
     /** The two views of the page: everything this deployment offers, and what you have added. */
     view: "Plugins shown",
     catalog: "Catalog",
@@ -3161,7 +3150,6 @@ export const defaultCopy = {
     kinds: "Kinds of plugin",
     apps: {
       title: "Apps",
-      lede: "Installed once for the workspace by an administrator. Everyone in the workspace can then use them.",
     },
   },
   /** The tag every message carries, in the list and above its parts. */
@@ -3237,7 +3225,6 @@ export const defaultCopy = {
   },
   deletions: {
     title: "Deletion queue",
-    hint: "Archived conversations are deleted only when you approve. Each is due 30 days after it is archived, or at once when someone asks to delete it.",
     denied: "Only an admin approves deletions.",
     loadFailed: "The deletion queue could not be loaded.",
     deleteFailed: "Could not delete. Try again.",
@@ -3549,7 +3536,6 @@ export const defaultCopy = {
   voiceSettings: {
     /** The settings section and its nav entry. */
     title: "Voice",
-    lede: "The service that hears people and speaks agents' answers. With one set up, a voice clip sent in Slack is heard and answered out loud as well as in writing, and the console's microphone uses it too. Without one, the microphone uses the browser's own dictation.",
     /** The kinds, by name. */
     kinds: { groq: "Groq", openai: "OpenAI" } as Record<string, string>,
     off: "Not set up",
@@ -3734,7 +3720,6 @@ export const defaultCopy = {
   /** Who and what is in the workspace, readable by everyone in it. */
   directory: {
     title: "People",
-    lede: "Everyone in this workspace and their role.",
     tabs: { people: "People", agents: "Agents", projects: "Projects" },
     search: "Search the directory",
     empty: {

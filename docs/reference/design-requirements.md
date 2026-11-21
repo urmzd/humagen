@@ -697,6 +697,16 @@ every row. Both are boxed `Section`s: a heading's count is hidden at zero, and a
 list as long as the server's 100-record cap says so in place of a count. Route
 and DOM tests cover the legacy address, the permission-gated read request, the
 single listing, the empty headings and the cap.
+A settings page, yours or the workspace's, is headed by its title alone, with
+no line of explanation under it: Profile, Notifications, Appearance, Workspace,
+Model providers, Limits, Voice, Access, Deletion queue, Connections, Apps,
+People, Usage, Health, Policies and Audit. What such a line said is in the
+page's rows and controls. Two lines stay because they are not descriptions of
+the page: Workspace and Limits say "Only an admin can change these." to a
+reader who cannot change them, and Agent controls says what a pause does to
+work that is running. `settings.dom.test.tsx` covers every settings section
+and the read-only line; the Directory, Usage, action policy and Apps tests
+cover their pages.
 Announcements use a compact card, one Open
 Announcement action and a labeled eye-with-slash Hide button with a busy guard.
 

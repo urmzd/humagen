@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ApiError, api, type Client, type ClientCaps } from "./api.ts";
 import { ClientConnect } from "./ClientConnect.tsx";
 import { ConnectionHealth } from "./ConnectionHealth.tsx";
-import { button, Confirm, card, Problem, pageLede, pageTitle, Switch } from "./ui.tsx";
+import { button, Confirm, card, Problem, pageTitle, Switch } from "./ui.tsx";
 
 const surfaces: Record<Client["surface"], string> = { slack: "Slack", github: "GitHub" };
 
@@ -80,10 +80,6 @@ export function ClientSettings({ canWrite }: { canWrite: boolean }) {
     <>
       <header className="pb-2">
         <h1 className={pageTitle}>Connections</h1>
-        <p className={pageLede}>
-          The Slack apps and GitHub installations this workspace answers through. Each one reaches
-          only the agents it is given.
-        </p>
       </header>
       <Problem message={problem} />
       {canWrite && clients && !connecting && (

@@ -5,7 +5,7 @@ import type { Client, Source, ToolCredentials } from "./api.ts";
 import { ConnectionDetail } from "./ConnectionDetail.tsx";
 import { ConnectionHealth } from "./ConnectionHealth.tsx";
 import { Connections } from "./Connections.tsx";
-import { stubFetch } from "./dom.ts";
+import { stubFetch, underTitle } from "./dom.ts";
 import { InstalledClientSetup } from "./InstalledClientSetup.tsx";
 import { SourceLifecycle } from "./SourceLifecycle.tsx";
 
@@ -624,6 +624,8 @@ test("Plugins is MCPs and your skills, Apps is the workspace's installs, and eac
   );
   const workspace = render(<Connections scope="apps" canConnect canWrite />);
   assert.ok(await screen.findByRole("heading", { name: "Apps", level: 1 }));
+  // The title heads the page alone: no line of explanation under it.
+  assert.deepEqual(underTitle(), []);
   const apps = await screen.findByRole("list", { name: "Apps" });
   const slack = await within(apps).findByRole("listitem", { name: "Slack" });
   await within(slack).findByText("Installed");

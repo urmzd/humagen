@@ -919,7 +919,6 @@ export function Connections({
   return (
     <Page
       title={scope === "apps" ? words.apps.title : words.title}
-      lede={scope === "apps" ? words.apps.lede : words.lede}
       tabs={
         scope === "apps" ? undefined : (
           <Tabs

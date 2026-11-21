@@ -176,7 +176,6 @@ export function Settings({
             <>
               <header className="pb-2">
                 <h1 className={pageTitle}>{defaultCopy.voiceSettings.title}</h1>
-                <p className={pageLede}>{defaultCopy.voiceSettings.lede}</p>
               </header>
               <VoiceSettings canEdit={me.permissions.includes("clients:write")} />
             </>
@@ -196,9 +195,6 @@ export function Settings({
             <>
               <header className="pb-2">
                 <h1 className={pageTitle}>Model providers</h1>
-                <p className={pageLede}>
-                  What agents run on. An agent runs once a provider its models name is enabled.
-                </p>
               </header>
               <ModelProviderSettings canEdit={me.permissions.includes("clients:write")} />
             </>
@@ -208,9 +204,6 @@ export function Settings({
             <>
               <header className="pb-2">
                 <h1 className={pageTitle}>Profile</h1>
-                <p className={pageLede}>
-                  How you appear to yourself in this console. Only you see these.
-                </p>
               </header>
               <section className={`${card} flex flex-wrap items-center gap-4`}>
                 <Avatar name={shown} prefs={prefs} size={72} />
@@ -322,10 +315,8 @@ export function Settings({
             <>
               <header className="pb-2">
                 <h1 className={pageTitle}>Workspace</h1>
-                <p className={pageLede}>
-                  Shared by everyone in {who.tenant}.{" "}
-                  {canAdmin ? "" : "Only an admin can change these."}
-                </p>
+                {/* Not a description of the page: why every control on it is off. */}
+                {!canAdmin && <p className={pageLede}>Only an admin can change these.</p>}
               </header>
               <section className="flex items-start gap-3 rounded-aui-lg border border-aui-border bg-aui-surface p-4">
                 <ServerIcon size={20} className="mt-0.5 shrink-0 text-aui-muted" />
@@ -487,10 +478,6 @@ export function Settings({
             <>
               <header className="pb-2">
                 <h1 className={pageTitle}>Access</h1>
-                <p className={pageLede}>
-                  What you are signed in as and what you may do. Your identity provider decides
-                  this.
-                </p>
               </header>
               <section className={`${card} flex flex-col gap-2`}>
                 <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-1.5 text-aui-sm">
