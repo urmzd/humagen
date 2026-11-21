@@ -4,6 +4,7 @@ import {
   ChevronDownIcon,
   ChevronRightIcon,
   DiffIcon,
+  ExternalLinkIcon,
   FolderIcon,
   GitHubIcon,
   MonitorIcon,
@@ -74,7 +75,7 @@ export function Row({
           {sub && <span className="min-w-0 truncate text-aui-muted text-aui-xs">{sub}</span>}
         </span>
       </span>
-      <span className="flex min-w-0 shrink items-center gap-1 text-aui-muted text-aui-xs">
+      <span className="flex min-w-0 max-w-[55%] shrink-0 items-center gap-1 text-aui-muted text-aui-xs">
         {value !== undefined && <span className="min-w-0 truncate">{value}</span>}
         {toggles ? (
           <ChevronDownIcon
@@ -82,8 +83,10 @@ export function Row({
             aria-hidden
             className={`shrink-0 transition-transform motion-reduce:transition-none ${expanded ? "" : "-rotate-90"}`}
           />
+        ) : link ? (
+          <ExternalLinkIcon size={12} aria-hidden className="shrink-0" />
         ) : (
-          (onOpen || link) && <ChevronRightIcon size={12} aria-hidden className="shrink-0" />
+          onOpen && <ChevronRightIcon size={12} aria-hidden className="shrink-0" />
         )}
       </span>
     </>
@@ -125,10 +128,13 @@ export function Section({
   label,
   children,
   testId,
+  quiet = false,
 }: {
   label: string;
   children: ReactNode;
   testId?: string;
+  /** The rows name the section themselves, so its heading is for assistive technology only. */
+  quiet?: boolean;
 }) {
   return (
     <section
@@ -137,7 +143,7 @@ export function Section({
       data-testid="details-section"
       data-section={testId}
     >
-      <h3 className="px-2.5 pb-1 text-aui-muted text-aui-xs">{label}</h3>
+      <h3 className={quiet ? "sr-only" : "px-2.5 pb-1 text-aui-muted text-aui-xs"}>{label}</h3>
       <ul className="flex flex-col">{children}</ul>
     </section>
   );
@@ -251,11 +257,11 @@ export function EnvironmentSection({
         onOpen={() => open.tab("terminal")}
       />
       {state === "unreachable" && (
-        <li className="px-2.5">
+        <li className="pl-9.5">
           <button
             type="button"
             onClick={retry}
-            className="inline-flex min-h-9 items-center rounded-aui text-aui-sm text-aui-fg underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-aui-accent"
+            className="inline-flex min-h-9 pointer-coarse:min-h-11 items-center rounded-aui text-aui-sm text-aui-fg underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-aui-accent"
           >
             {words.retry}
           </button>
@@ -336,7 +342,7 @@ export function ContextSection({ runs }: { runs: readonly Run[] }) {
   const [expanded, setExpanded] = useState(false);
   const id = useId();
   return (
-    <Section label={words.context} testId="context">
+    <Section label={words.context} testId="context" quiet>
       <Row
         testId="panel-context"
         mark={<GaugeMark use={use} />}
@@ -453,7 +459,7 @@ export function ConnectorsSection({ summary }: { summary: SessionSummary }) {
   if (list === undefined && used.length === 0) return null;
   if (list !== null && list !== undefined && list.length === 0 && used.length === 0) return null;
   return (
-    <Section label={words.connectors} testId="connectors">
+    <Section label={words.connectors} testId="connectors" quiet>
       <Row
         testId="panel-connectors"
         mark={<PlugIcon size={16} />}
@@ -646,8 +652,10 @@ export function SessionSections({
         facts={facts}
         open={open}
       />
-      <ContextSection runs={runs} />
-      <ConnectorsSection summary={summary} />
+      <div className="-my-1 flex flex-col border-[var(--humagen-rule)] border-y py-1">
+        <ContextSection runs={runs} />
+        <ConnectorsSection summary={summary} />
+      </div>
       {outputs}
       <PanelChanges
         pulls={pulls}

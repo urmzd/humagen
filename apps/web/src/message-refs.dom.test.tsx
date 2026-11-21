@@ -604,8 +604,10 @@ test("the header points back to where the session started, and says nothing for 
   );
   assert.match(
     screen.getByTestId("session-place").textContent ?? "",
-    /Slack thread.*from Ana.*Slack channel/,
+    /Slack thread.*Slack channel.*from Ana/,
   );
+  // Said once, with no Item link: the place's own page is reached from its icon.
+  assert.equal(screen.getAllByRole("link").length, 1);
   cleanup();
   const web = placeOf({ visibility: "private" });
   render(

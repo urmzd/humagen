@@ -4401,8 +4401,8 @@ export const defaultCopy = {
       loading: "Checking",
     },
     sandboxHint: {
-      none: "Starts with the first tool that needs it",
-      unreachable: "The sandbox could not be reached. Try again.",
+      none: "Starts when a tool needs it",
+      unreachable: "Could not be reached",
     },
     retry: "Try Again",
     openTerminal: "Open Terminal",

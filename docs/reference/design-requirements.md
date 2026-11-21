@@ -26,6 +26,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 
 | ID | Requirement | Status |
 | --- | --- | --- |
+| DES-080 | A session has one panel, reached from its header, that shows where it runs, how full its context is, the connectors it may reach, what it made and what it changed, and each row opens the view it names; the header opens the workbench's views directly and the rest from More Views, and its title is the session's menu | Implemented: `SessionViews.tsx` (Details, Terminal, Changes, Browser and Files in the header; Artifacts, Side Chat ⌘;, Search ⌘⇧F, Background Tasks and Progress in More Views; on a phone all of them in More Views), `SessionSections.tsx` and `sessionContext.ts` (Environment, Context, Connectors, Changes), the title menu with Rename in place (`SessionActions.tsx`), the meta line said once (`SessionPlace.tsx`), and session titles without a leading mention, retitled after a greeting (`runs.SessionTitle`, `runs.Greeting`). No new route: the panel reads `GET /api/threads/{id}/sandboxes`, `GET /api/me/credentials`, `GET /api/github/pull` and each run's usage. Evidence: `session-context-panel.dom.test.tsx`, `TestSessionTitle*`, `TestGreeting`; before and after captures at 1280x800 and 390x844, light and dark, against a docker sandbox. |
 | DES-077 | Background work asked in Slack reports back where it was asked: a watch that fires or runs out, a goal or task that ends, and `notify` reply once in the app's Slack thread that asked, naming the person, with the result's one line and Open Session; anywhere else, or when a run behind it read private context, the person is told in their direct messages; work someone stopped tells nobody | Implemented: `SurfaceNoticesFor` forwards `result` notices only for background work and `notify` (`internal/platform/background_report.go`), with `reply_in` on the event stream (`InboxNotice.reply_in`, `InboxNoticeReply`); the Slack app's `report` in `app.tsx`. Evidence: `TestBackgroundWorkAskedInSlackRepliesInTheThread`, `TestABackgroundResultFromPrivateContextIsSentToThePersonAlone`, `TestBackgroundWorkAskedElsewhereIsSentToTheirDirectMessages`, and the three background tests in `apps/slack/src/dm.test.tsx`. Not yet seen in a live Slack workspace. |
 | DES-078 | An agent in a conversation, a Slack thread among them, proposes a schedule on a clear approval card ("Create a schedule: plaud-new, every 15 minutes, posts in this Slack channel (C0PLAUD) only when something fires", with what it checks, how often, the agent, where it posts and its next run), confirms the next run once approved, and Run once now is itself an approved action | Implemented: run tools `create_schedule`, `update_schedule`, `pause_schedule`, `resume_schedule` and `run_schedule` (`schedule_tools.go`) call the API's own routes as the person, every call asked of that person whatever the policy allows; the card's fields come from `schedulePreview` (`packages/adapter/src/schedule.ts`), words in `copy.schedules.proposal`. Evidence: `TestAnAgentSchedulesWorkForThePersonItWorksFor`, `TestEveryScheduleCallIsAskedOfThePerson`, `TestScheduleToolsRefuseRunsThatActForNoPerson`, adapter `schedule.test.ts`. Not checked: the card in a live Slack workspace or against Slack's validator (no network here), and a live model proposing one. See [schedules from a conversation](../guides/schedules-from-a-conversation.md) |
 | DES-079 | Run and Answer: in a session set to it, the approval agent also answers a question an agent asks a person when the session already settles it, as the person who chose it, and hands them the rest | Implemented: `threads.ApprovalDecide` (`pkg/threads/approval.go`), `internal/platform/approval_questions.go`, the `answer` field and `DescribeQuestion` in `pkg/approve`, `PUT /api/threads/{id}/approval` with `decide`, Answer Questions beside Run in `ApprovalToggle.tsx`, and the judgement on a question's card (`ClarificationCard`). Evidence: `TestRunAndAnswerAnswersAChoiceTheSessionSettles`, `TestRunAndAnswerAnswersAReply`, `TestWhatRunAndAnswerDoesNotSettleWaitsForAPerson`, `TestRunAndAnswerNeverAnswersForSomeoneElse`, `TestRunAndAnswerLeavesWhatSomeoneElseAskedFor`, `TestRunLeavesQuestionsForAPerson`, `TestRunAndAnswerIsAModeAPersonChooses`, `TestApprovalModeIsSetOnItsOwnAndKept`, `TestAQuestionsAnswerIsReadBesideTheDecision`; `approval-toggle.dom.test.tsx`, `ui.test.tsx`. Not run: `pnpm validate:slack` (needs the Slack bench) and a screen check in a running console. |
@@ -2418,3 +2419,82 @@ Evidence: `go test -race ./pkg/threads ./pkg/approve ./internal/platform
 `TestAQuestionIsDescribedWithItsOptionsAndWhoItIsFor`); `cd apps/web && pnpm
 test` (`approval-toggle.dom.test.tsx`, `ui.test.tsx`). Not run:
 `pnpm validate:slack`, which needs the Slack bench, and a screen check.
+
+### DES-080: One session panel, reached from the header
+
+The panel a session's header opens (the workbench's Details tab, DES-076)
+answers five questions in order, under Progress and Agents:
+
+- **Environment.** The sandbox and where it stands: Isolated (its runs
+  lease an instance), Not started (an isolated deployment whose runs have
+  not started one, "Starts when a tool needs it"), On this
+  server (a `local` or `unisolated` deployment), Checking, or Unreachable
+  with Try Again. The sandbox row opens the Terminal tab; Files, with how
+  many, opens the Workspace pane's files; Browser, when the session used
+  one, opens the Browser tab. The repositories its pull requests are in, and
+  their branches, link to GitHub. humagen has no repository attached to a
+  session, so these are the ones the session's pull requests name.
+- **Context.** How full the context was at the latest model call, as a
+  percent and a meter (`run.usage.context`). It opens in place to the window
+  and model, and what all of the session's answers used: prompt, cached and
+  output tokens, model calls and cost. A session that has reported nothing
+  says Not reported.
+- **Connectors.** How many are connected: the reader's own tool
+  credentials (`GET /api/me/credentials`) and the connectors this session
+  used that are not theirs, such as GitHub through the workspace's app. It
+  opens in place to each, marked Used here, Connected or Not connected,
+  and ends with Manage Connectors.
+- **Outputs.** What the session saved, each opening in the Workspace pane.
+- **Changes.** The files the session's calls wrote with the lines added and
+  removed, opening the Changes tab; then each pull request it made or read,
+  by its title, its repository and number, its lines, and how its checks
+  stand on the head commit (failing with a count, running, passing, no
+  checks, or CI unavailable when GitHub cannot be asked). Five show, then
+  Show More. A pull request opens on GitHub.
+
+Context and Connectors are rows that open in place, between rules; the
+other sections are headed. Rows that leave the console show an external
+mark; rows that open a view show a chevron.
+
+The header's view controls are, in order: Details (with how many calls are
+working), Terminal, Changes, Browser and Files, then More Views. More Views
+holds Artifacts, Side Chat (⌘; or Ctrl ;), Search (⌘⇧F or Ctrl Shift F),
+Background Tasks (the Scheduled page's Background tab) and Progress (the
+Activity panel), each with its key printed beside it. A control is pressed
+while its view is open, and pressing it again closes the pane. On a phone
+only Details and More Views show, and More Views holds every view. A reader
+who may not post has no Side Chat.
+
+The title is the session's menu (Share, Rename, Move to Project, Archive,
+Delete), opened from the title with a chevron. Rename edits the title in
+place: Enter or leaving the field saves, Escape keeps the old name.
+
+The meta line under the title says the project, then where the session
+started by its mark and name, then who sent it, each once and separated by
+a middle dot. Who could read it there is in the name's tooltip and read out.
+The line has no Item link, and the first message no longer repeats the
+origin as a chip under it.
+
+A session takes its title from the message that starts it, as
+`runs.SessionTitle`: the first line without the agents and people it tags
+at the start (Slack's `<@U…>` markup too), capitalized and cut at a word
+under 60 characters. A session that starts with only a greeting ("howdy",
+"hi there", "good morning") takes its title from the first later message
+that asks for something, unless someone renamed it first.
+
+Evidence: `session-context-panel.dom.test.tsx` (each section, the rows that
+open Terminal, Files and Changes, the header's views and More Views, the
+keys, the title menu and Rename, the meta line);
+`TestSessionTitleDropsLeadingMention`,
+`TestSessionTitleSubstantiveFirstMessageKeepsItsTitle`,
+`TestSessionTitleGreetingIsRetitledByFirstRequest`,
+`TestSessionTitleRenamedSessionIsNeverRetitled`, `TestSessionTitle` and
+`TestGreeting`. Seen in Chrome against a local server with a docker (runc)
+sandbox, an in-memory GitHub API holding two pull requests and their checks,
+and a scripted model that wrote files, ran a command in the sandbox, read
+both pull requests and published a file, at 1280x800 and 390x844, light and
+dark. The loading and unreachable states were captured with the sandboxes
+request held and refused in the browser, since the route reads records and
+does not fail when Docker does. Not seen: a session started in Slack (no
+Slack client locally), so the meta line was checked in tests only.
+

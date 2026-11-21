@@ -114,7 +114,6 @@ export function SessionActions({
               <span className="min-w-0 truncate" title={shownTitle}>
                 {shownTitle}
               </span>
-              <span className="sr-only">, Session actions</span>
               <ChevronDownIcon size={16} aria-hidden className="shrink-0 text-aui-muted" />
             </>
           ) : (
