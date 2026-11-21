@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.168.0 (2026-11-21)
+
+### Features
+
+- **slack**: /agent alone opens a picker of who to ask (stack 4/6) (#465) ([0f5f801](https://github.com/urmzd/humagen/commit/0f5f8012278689a286c8aa03b586ae960f2ccd4b))
+- **slack**: follow a thread the app answered, without a mention (stack 3/6) (#464) ([686664a](https://github.com/urmzd/humagen/commit/686664a000a1f986dde56d893378c3fa51d043ab))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.167.0...v0.168.0)
+
+
 ## 0.166.0 (2026-11-21)
 
 ### Features
