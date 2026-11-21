@@ -821,7 +821,9 @@ export function Connections({
           key={it.id}
           aria-label={it.name}
           // In a narrow column the status and the action drop under the name rather than squeeze it out.
-          className="group/row relative isolate flex min-h-16 min-w-0 flex-wrap items-center gap-x-3 gap-y-1 border-aui-border border-b py-3 hover:bg-aui-hover"
+          // A row whose menu is open rises over the rows after it, so the menu is not drawn
+          // under the next row and its items take the click.
+          className="group/row relative isolate flex min-h-16 min-w-0 flex-wrap items-center gap-x-3 gap-y-1 border-aui-border border-b py-3 hover:bg-aui-hover has-[[aria-expanded=true]]:z-20"
         >
           <span className="flex size-9 shrink-0 items-center justify-center rounded-aui-lg border border-aui-border bg-aui-surface">
             <ConnectionLogo id={it.logo} name={it.name} />
