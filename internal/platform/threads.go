@@ -198,7 +198,32 @@ type ThreadSummary struct {
 	// from. A run's origin cannot say this: a Slack message posts to its
 	// thread through the API, so its runs' origin is the API's.
 	Source string `json:"source,omitempty"`
+	// Joined reports, on a session listing, that its reader takes part in
+	// the session without having started it: they posted in it, were
+	// mentioned or were added.
+	Joined bool `json:"joined,omitempty"`
+	// WaitingFor is what a run parked in it waits on a person for, set on a
+	// session listing: the tool an approval asks about, or the first line of
+	// a question, at most MaxAttention runes. WaitingKind is WaitingApproval
+	// or WaitingQuestion, and WaitingOnYou says the listing's reader is the
+	// one asked: named, an approver, or taking part when nobody is named.
+	WaitingFor   string `json:"waiting_for,omitempty"`
+	WaitingKind  string `json:"waiting_kind,omitempty"`
+	WaitingOnYou bool   `json:"waiting_on_you,omitempty"`
+	// Failure is why its latest turn failed, set on a session listing when
+	// it did: the first line of the run's error, at most MaxAttention runes.
+	// A run that failed before a later turn answered is not a failure here.
+	Failure string `json:"failure,omitempty"`
 }
+
+// What a waiting session waits on, as ThreadSummary.WaitingKind says it.
+const (
+	WaitingApproval = "approval"
+	WaitingQuestion = "question"
+)
+
+// MaxAttention bounds ThreadSummary.WaitingFor and Failure, in runes.
+const MaxAttention = 100
 
 // Where a conversation started, as ThreadSummary.Source says it.
 const (

@@ -1,6 +1,7 @@
 package platform
 
 import (
+	"cmp"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -389,6 +390,71 @@ func sessionStatus(rr []runs.Run) string {
 	return status
 }
 
+// waitingOn is what the latest run parked on a person waits for: the tool
+// an approval asks about or the first line of a question, its kind, and
+// whether subject is the one asked. A question that names nobody asks
+// whoever takes part.
+func waitingOn(rr []runs.Run, subject string, takesPart bool) (what, kind string, you bool) {
+	var at time.Time
+	var q *event.Question
+	for i := range rr {
+		r := &rr[i]
+		if r.Status != runs.Parked || r.UpdatedAt.Before(at) {
+			continue
+		}
+		asked := r.Question
+		if asked == nil && len(r.Questions) > 0 {
+			asked = &r.Questions[0]
+		}
+		if asked != nil {
+			q, at = asked, r.UpdatedAt
+		}
+	}
+	if q == nil {
+		return "", "", false
+	}
+	if q.Tool != nil {
+		what, kind = firstWords(q.Tool.Name, MaxAttention), WaitingApproval
+	} else {
+		what, kind = firstWords(firstLineOf(q.Prompt), MaxAttention), WaitingQuestion
+	}
+	switch {
+	case q.AskedOf != "":
+		you = q.AskedOf == subject
+	case len(q.Approvers) > 0:
+		you = slices.Contains(q.Approvers, subject)
+	default:
+		you = takesPart
+	}
+	return what, kind, you
+}
+
+// latestFailure is why the latest turn failed, or "" when it did not: a turn
+// still going or answered since leaves an earlier failure behind.
+func latestFailure(rr []runs.Run) string {
+	var latest *runs.Run
+	for i := range rr {
+		r := &rr[i]
+		if latest == nil || r.UpdatedAt.After(latest.UpdatedAt) {
+			latest = r
+		}
+	}
+	if latest == nil || latest.Status != runs.Failed {
+		return ""
+	}
+	return cmp.Or(firstWords(firstLineOf(cmp.Or(latest.Error, latest.Reason)), MaxAttention), "No reason was recorded.")
+}
+
+// firstLineOf is the first line of text that holds anything, trimmed.
+func firstLineOf(text string) string {
+	for line := range strings.Lines(text) {
+		if t := strings.TrimSpace(line); t != "" {
+			return t
+		}
+	}
+	return ""
+}
+
 // sessionRow is a session placed in a listing before it is summarized: its
 // record, what the run index keeps of it, when it last changed and how far
 // the reader's open alerts raise it.
@@ -422,7 +488,7 @@ func (p *Platform) sessionSummary(who auth.Principal, th threads.Thread) Session
 	out, err := p.summarizeSessions(who, []sessionRow{row}, false)
 	if err != nil {
 		p.log.Warn("platform: a session's runs could not be read; it is shown without them", "session", th.ID, "error", err)
-		return p.shownSessions(who.Tenant, []SessionSummary{p.summarizeSession(who.Tenant, row, nil, threads.Message{}, false)})[0]
+		return p.shownSessions(who.Tenant, []SessionSummary{p.summarizeSession(who, row, nil, threads.Message{}, false)})[0]
 	}
 	return out[0]
 }
@@ -463,7 +529,7 @@ func (p *Platform) summarizeSessions(who auth.Principal, rows []sessionRow, plac
 	out := make([]SessionSummary, len(rows))
 	for i, row := range rows {
 		message, said := last[row.head.ID]
-		out[i] = p.summarizeSession(who.Tenant, row, turns[row.head.ID], message, said)
+		out[i] = p.summarizeSession(who, row, turns[row.head.ID], message, said)
 		if placed {
 			out[i].UpdatedAt, out[i].Conversation.UpdatedAt = row.at, row.at
 		}
@@ -475,7 +541,7 @@ func (p *Platform) summarizeSessions(who auth.Principal, rows []sessionRow, plac
 // message, said when it has one. The people in it are not yet named as the
 // directory names them: shownSessions does that, and nothing is returned
 // without it.
-func (p *Platform) summarizeSession(tenant string, row sessionRow, rr []runs.Run, message threads.Message, said bool) SessionSummary {
+func (p *Platform) summarizeSession(who auth.Principal, row sessionRow, rr []runs.Run, message threads.Message, said bool) SessionSummary {
 	th := row.head.Thread
 	at := row.at
 	for _, r := range rr {
@@ -498,6 +564,9 @@ func (p *Platform) summarizeSession(tenant string, row sessionRow, rr []runs.Run
 	conversation := ThreadSummary{ThreadSummary: summary, Visibility: th.Visibility}
 	conversation.Messages = row.head.Messages
 	conversation.Source = threadSource(th)
+	conversation.Joined = joinedSession(th, who.Subject)
+	conversation.WaitingFor, conversation.WaitingKind, conversation.WaitingOnYou = waitingOn(rr, who.Subject, sessionOf(th, who.Subject))
+	conversation.Failure = latestFailure(rr)
 	if said {
 		lastAgent := time.Time{}
 		for _, run := range rr {
@@ -625,6 +694,12 @@ func sessionOf(th threads.Thread, subject string) bool {
 		}
 	}
 	return false
+}
+
+// joinedSession reports that subject takes part in a session someone else
+// started: the sidebar's Participated.
+func joinedSession(th threads.Thread, subject string) bool {
+	return subject != "" && th.CreatedBy != subject && sessionOf(th, subject)
 }
 
 // ListSessions is every session a query selects that the reader may read, at

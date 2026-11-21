@@ -473,6 +473,14 @@ export interface ThreadSummary {
   messages: number;
   /** Where it started when not the console or the API; its runs' origin cannot say a Slack thread. */
   source?: "slack" | "slack_dm" | "github" | "scheduled";
+  /** On a session listing: the reader takes part in a session someone else started. */
+  joined?: boolean;
+  /** On a session listing: what the latest parked run waits on, and whether it asks the reader. */
+  waiting_for?: string;
+  waiting_kind?: "approval" | "question";
+  waiting_on_you?: boolean;
+  /** On a session listing: why the latest turn failed, when it did. */
+  failure?: string;
   turns: number;
   branches: number;
   active: number;

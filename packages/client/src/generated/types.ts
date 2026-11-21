@@ -1544,6 +1544,16 @@ export interface ThreadSummary {
   messages: number;
   /** Where it started when that was not the console or the API, read from the Slack thread it lives on or the place its session was started from. Absent for the console and the API. A run's `origin` cannot say this, as a Slack message posts to its thread through the API. */
   source?: "slack" | "slack_dm" | "github" | "scheduled";
+  /** On a session listing, the caller takes part in the session without having started it. They posted in it, were mentioned or were added. */
+  joined?: boolean;
+  /** On a session listing, what the latest run parked on a person waits for. For an approval it is the tool asked about; for a question, the first line of its prompt. At most 100 characters. */
+  waiting_for?: string;
+  /** What `waiting_for` is. */
+  waiting_kind?: "approval" | "question";
+  /** On a session listing, the caller is the one the parked run asks. They are named, an approver, or taking part when nobody is named. */
+  waiting_on_you?: boolean;
+  /** On a session listing, why the latest turn failed, the first line of its error, at most 100 characters. Absent when the latest turn did not fail, so a failure a later turn answered is not shown. */
+  failure?: string;
   turns: number;
   branches: number;
   /** How many of its runs are in flight. */

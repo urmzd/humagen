@@ -15,6 +15,7 @@ import {
   focusLog,
   hoverRow,
   hoverState,
+  resizeSidebar,
 } from "./sidebar-sources.ts";
 
 export interface SessionScreen {
@@ -341,6 +342,17 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
           await assertCalmFocus(page);
         }
         await hoverRow(page);
+      },
+    },
+    {
+      name: "sidebar-resized",
+      path: session,
+      // The sidebar's edge dragged 48px wider; on a phone it stays a drawer.
+      act: async (page) => {
+        await readySession(page);
+        await dressSources(page, ids.work.id);
+        await resizeSidebar(page);
+        await page.evaluate(() => localStorage.removeItem("humagen.sidebar.width"));
       },
     },
     {
