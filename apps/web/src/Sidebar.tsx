@@ -769,7 +769,7 @@ function ResizeHandle() {
         e.preventDefault();
         set(next, true);
       }}
-      className="group/resize absolute inset-y-0 -right-1 z-30 flex w-2 cursor-col-resize touch-none justify-center outline-none max-md:hidden"
+      className="group/resize absolute inset-y-0 right-0 z-30 flex w-1.5 cursor-col-resize touch-none justify-center outline-none max-md:hidden"
     >
       <span className="h-full w-px bg-transparent transition-colors group-hover/resize:bg-aui-fg/25 group-focus-visible/resize:w-0.5 group-focus-visible/resize:bg-aui-fg/50 group-active/resize:bg-aui-fg/40" />
     </div>
