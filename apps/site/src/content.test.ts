@@ -1,11 +1,12 @@
 // Checks the site's content: no em dashes anywhere in the copy (AGENTS.md),
 // and llms.txt carries every page and every guide step.
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { pages, site, steps } from "./content/site.ts";
-import { terms, termsDate } from "./content/terms.ts";
+import { terms, termsDate, termsFile } from "./content/terms.ts";
 import { llmsTxt } from "./lib/llms.ts";
 
 const files = (dir: string): string[] =>
@@ -48,12 +49,19 @@ test("app icons are the console's own files", () => {
   }
 });
 
+const termsText = () =>
+  [...terms.intro, ...terms.sections.flatMap((s) => [s.title, ...s.body])].join(" ");
+
 test("the terms name the license, say an AI answer can be wrong, and add no condition by use", () => {
-  const text = [...terms.intro, ...terms.sections.flatMap((s) => [s.title, ...s.body])].join(" ");
+  const text = termsText();
   assert.match(text, /Apache License 2\.0/);
   assert.match(text, /is AI and can make mistakes/);
-  // The license is the agreement for the software: the page binds nobody by use.
-  assert.doesNotMatch(text, /you agree|by using/i);
+  // The license is the agreement for the software: the page binds nobody by
+  // use. These are the usual ways to say that it does.
+  assert.doesNotMatch(
+    text,
+    /\byou (agree|accept|consent)|by (using|accessing|continuing)|your use\b.*\b(means|constitutes|is acceptance)|constitutes|\bbound by\b|must (agree|accept)/i,
+  );
   // Every section is addressable, and no two share an address.
   const ids = terms.sections.map((s) => s.id);
   assert.equal(new Set(ids).size, ids.length);
@@ -67,27 +75,53 @@ test("the terms show a real day, not one still to come", () => {
   assert.equal(termsDate("2026-11-21"), "November 21, 2026");
 });
 
-test("every link in the terms goes into the repository, and the history link names the terms' own file", () => {
-  const links = terms.sections.flatMap((s) => s.links ?? []);
-  assert.ok(links.length >= 4);
-  for (const l of links) assert.ok(l.href.startsWith(`${site.repo}/`), l.href);
-  const history = links.find((l) => l.href.includes("/commits/"));
-  assert.ok(history);
-  const file = history.href.split("/commits/main/")[1] ?? "";
-  assert.ok(existsSync(join(new URL("../../..", import.meta.url).pathname, file)), file);
-  for (const name of ["LICENSE", "SECURITY.md"]) {
-    assert.ok(
-      links.some((l) => l.href.endsWith(`/blob/main/${name}`)),
-      name,
-    );
-    assert.ok(existsSync(join(new URL("../../..", import.meta.url).pathname, name)), name);
-  }
+test("the day the terms show is the day this text was written", () => {
+  // The page says it shows the day it last changed. This holds the text to
+  // that day: when a word changes, set terms.updated to the day of the
+  // change, then put the new digest and that day here.
+  const digest = createHash("sha256")
+    .update(JSON.stringify([terms.intro, terms.sections]))
+    .digest("hex")
+    .slice(0, 16);
+  assert.deepEqual(
+    { digest, updated: terms.updated },
+    { digest: "8292c06d4f02e58f", updated: "2026-11-21" },
+    "the terms changed: set terms.updated to today, and this test's digest and day with it",
+  );
 });
 
-test("llms.txt carries the terms' text", () => {
+test("every link in the terms goes into the repository, and the history link is the terms' own file", () => {
+  const root = new URL("../../..", import.meta.url).pathname;
+  const links = terms.sections.flatMap((s) => s.links ?? []);
+  for (const l of links) assert.ok(l.href.startsWith(`${site.repo}/`), l.href);
+  // The terms are read from the file the history link names, and no other.
+  assert.equal(termsFile, "apps/site/src/content/terms.ts");
+  assert.equal(
+    new URL("./content/terms.ts", import.meta.url).pathname,
+    join(root, termsFile),
+    "termsFile is not the file the terms are in",
+  );
+  assert.deepEqual(
+    links.filter((l) => l.href.includes("/commits/")).map((l) => l.href),
+    [`${site.repo}/commits/main/${termsFile}`],
+  );
+  for (const name of ["LICENSE", "SECURITY.md"]) {
+    assert.ok(
+      links.some((l) => l.href === `${site.repo}/blob/main/${name}`),
+      name,
+    );
+    assert.ok(existsSync(join(root, name)), name);
+  }
+  assert.ok(links.some((l) => l.href === `${site.repo}/issues`));
+});
+
+test("llms.txt carries the whole of the terms: the day, every paragraph and every link", () => {
   const txt = llmsTxt();
+  assert.ok(txt.includes(`${terms.changed} ${termsDate()}.`));
+  for (const p of terms.intro) assert.ok(txt.includes(p), p);
   for (const s of terms.sections) {
-    assert.ok(txt.includes(s.title), s.title);
+    assert.ok(txt.includes(`### ${s.title}`), s.title);
     for (const p of s.body) assert.ok(txt.includes(p), p);
+    for (const l of s.links ?? []) assert.ok(txt.includes(`[${l.label}](${l.href})`), l.href);
   }
 });

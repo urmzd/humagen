@@ -83,9 +83,29 @@ for (const b of built) {
   }
 }
 
-test("the terms page shows its text and the day it changed", () => {
+/** Text as Astro writes it into HTML. */
+const escaped = (text: string) =>
+  text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+
+test("the terms page shows the whole of its text, its links and the day it changed", () => {
   const html = readFileSync(join(dist, "terms/index.html"), "utf8");
+  assert.ok(html.includes(`<title>${escaped(pages.terms.title)}</title>`), "title");
   assert.ok(html.includes(`<time datetime="${terms.updated}">${termsDate()}</time>`));
-  for (const s of terms.sections) assert.ok(html.includes(`id="${s.id}"`), s.id);
-  assert.match(html, /is AI and can make mistakes/);
+  const shows = (text: string) =>
+    assert.ok(html.includes(escaped(text)) || html.includes(text), `the page lacks: ${text}`);
+  for (const p of terms.intro) shows(p);
+  for (const s of terms.sections) {
+    assert.ok(html.includes(`id="${s.id}"`), s.id);
+    shows(s.title);
+    for (const p of s.body) shows(p);
+    for (const l of s.links ?? []) {
+      assert.ok(html.includes(`href="${l.href}"`), l.href);
+      shows(l.label);
+    }
+  }
 });
