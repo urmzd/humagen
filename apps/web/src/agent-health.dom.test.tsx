@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { defaultCopy } from "@humagen/components";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { AgentHealth, AgentStats } from "./AgentHealth.tsx";
+import { AgentHealth, AgentStats, healthStatus } from "./AgentHealth.tsx";
 import type { EvalRun, SuiteView } from "./api.ts";
 import { stubFetch } from "./dom.ts";
 import { Evals } from "./Evals.tsx";
@@ -84,8 +84,7 @@ test("an agent nobody has checked says what happens next, without separators", a
     "GET /api/agents/writer/changes": () => [],
   });
   render(<AgentHealth name="writer" suites={[]} canRun />);
-  await screen.findByText(words.none);
-  assert.ok(screen.getByText(words.status.untested));
+  await screen.findByText(words.status.untested);
   assert.ok(screen.getByText(words.noRuns));
   assert.ok(screen.getByText(words.noSuites));
   const add = screen.getByRole("link", { name: words.addSuite }) as HTMLAnchorElement;
@@ -294,4 +293,29 @@ test("pass-rate bars are neutral when a run reached its threshold, warn below it
   assert.deepEqual(bars, ["bg-aui-neutral", "bg-aui-warn", "bg-aui-bad"]);
   const labels = [...document.querySelectorAll("figure time")].map((el) => el.textContent);
   assert.deepEqual(labels, ["9h", "5h", "2h"]);
+});
+
+test("with no checked runs the pill is the neutral Not checked yet, whatever status the server sends", async () => {
+  // A suite that failed does not make the runs checked, and Healthy never sits over no runs.
+  net = stubFetch({
+    "GET /api/agents/writer/health": () => health({ status: "healthy", samples: 0, passed: 0 }),
+    "GET /api/agents/writer/changes": () => [],
+  });
+  render(
+    <AgentHealth
+      name="writer"
+      suites={[{ ...scheduled, runs: [{ ...(scheduled.runs[0] as EvalRun), status: "failed" }] }]}
+      canRun
+    />,
+  );
+  const pill = await screen.findByText(words.status.untested);
+  assert.ok(pill.className.includes("text-aui-muted"), pill.className);
+  assert.equal(screen.queryByText(words.status.healthy), null);
+  assert.equal(screen.queryByText(/recent runs passed their checks/), null);
+});
+
+test("the pill follows the checked runs: all passing is Healthy, any failing needs review", () => {
+  assert.equal(healthStatus({ samples: 0, passed: 0 }), "untested");
+  assert.equal(healthStatus({ samples: 3, passed: 3 }), "healthy");
+  assert.equal(healthStatus({ samples: 3, passed: 2 }), "needs_review");
 });

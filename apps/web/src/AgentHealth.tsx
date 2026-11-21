@@ -16,6 +16,18 @@ const words = defaultCopy.agentHealth;
 
 export const healthLabel = (status: AgentEvaluationHealth["status"]) => words.status[status];
 
+/**
+ * The state the pill shows, from the checked runs themselves: nothing checked
+ * is untested whatever else is said, all passing is healthy, any failing
+ * needs review. A pill can then never say Healthy over no runs.
+ */
+export function healthStatus(
+  health: Pick<AgentEvaluationHealth, "samples" | "passed">,
+): AgentEvaluationHealth["status"] {
+  if (health.samples <= 0) return "untested";
+  return health.passed < health.samples ? "needs_review" : "healthy";
+}
+
 const healthTone: Record<AgentEvaluationHealth["status"], Tone> = {
   untested: "neutral",
   healthy: "ok",
@@ -301,12 +313,14 @@ export function AgentHealth({
             </div>
           ) : (
             <>
-              <Pill tone={healthTone[health.status]}>{healthLabel(health.status)}</Pill>
-              <span className="text-aui-sm text-aui-muted tabular-nums">
-                {health.samples > 0
-                  ? words.summary(health.passed, health.samples, Math.round(health.pass_rate))
-                  : words.none}
-              </span>
+              <Pill tone={healthTone[healthStatus(health)]}>
+                {healthLabel(healthStatus(health))}
+              </Pill>
+              {health.samples > 0 && (
+                <span className="text-aui-sm text-aui-muted tabular-nums">
+                  {words.summary(health.passed, health.samples, Math.round(health.pass_rate))}
+                </span>
+              )}
             </>
           )}
         </div>

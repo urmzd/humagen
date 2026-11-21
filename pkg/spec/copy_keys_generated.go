@@ -77,7 +77,6 @@ var copyKeyList = []string{
 	"agentHealth.noFailing",
 	"agentHealth.noRuns",
 	"agentHealth.noSuites",
-	"agentHealth.none",
 	"agentHealth.notRun",
 	"agentHealth.outcome.errored",
 	"agentHealth.outcome.failed",

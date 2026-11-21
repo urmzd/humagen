@@ -2995,10 +2995,9 @@ export const defaultCopy = {
   },
   agentHealth: {
     label: "Agent health",
-    status: { untested: "Not checked", healthy: "Healthy", needs_review: "Needs review" },
+    status: { untested: "Not checked yet", healthy: "Healthy", needs_review: "Needs review" },
     summary: (passed: number, samples: number, rate: number) =>
       `${passed} of ${samples} recent ${samples === 1 ? "run" : "runs"} passed their checks (${rate}%)`,
-    none: "No runs checked yet",
     about: "How evaluation works",
     aboutRuns:
       "Each run is checked as it finishes: it completed, its tools worked, and a Slack answer kept to its word budget.",
