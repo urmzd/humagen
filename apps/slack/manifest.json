@@ -36,6 +36,7 @@
         "assistant:write",
         "channels:history",
         "chat:write",
+        "chat:write.customize",
         "commands",
         "groups:history",
         "im:history",

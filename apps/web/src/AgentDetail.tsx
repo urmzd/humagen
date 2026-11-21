@@ -3,6 +3,7 @@ import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { BuilderButton } from "./AgentBuilder.tsx";
 import { AgentDefaultSkills } from "./AgentDefaultSkills.tsx";
 import { AgentHealth } from "./AgentHealth.tsx";
+import { AgentLookEditor } from "./AgentLookEditor.tsx";
 import {
   type AgentSpec,
   type Alert,
@@ -535,6 +536,7 @@ export function AgentDetail({
 
   const tabs: { id: Tab; label: string; count?: number }[] = [
     { id: "prompt", label: "Prompt" },
+    ...(revision ? [{ id: "look" as const, label: defaultCopy.agentLook.tab }] : []),
     { id: "model", label: "Model" },
     { id: "access", label: "Access", count: spawn.length },
     ...(revision ? [{ id: "queue" as const, label: "Queue", count: waiting }] : []),
@@ -596,6 +598,7 @@ export function AgentDetail({
       tabs={<Tabs label="Agent sections" value={tab} onChange={setTab} tabs={tabs} />}
     >
       {operations}
+      {revision && tab === "look" && <AgentLookEditor name={name} canWrite={canWrite} />}
       {revision && (tab === "prompt" || tab === "evals") && <AgentHealth name={name} />}
       {revision && tab === "prompt" && (
         <dl className="grid grid-cols-2 gap-3 sm:grid-cols-5">

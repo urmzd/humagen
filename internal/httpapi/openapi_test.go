@@ -1709,6 +1709,20 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "PUT", home, "/api/agents/helper/home", `{"project":"~"}`, http.StatusOK)
 	c.call(acme, "PUT", home, "/api/agents/humagen-writer/home", `{"project":"Field"}`, http.StatusBadRequest)
 	c.call(acme, "PUT", home, "/api/agents/ghost/home", `{"project":"Field"}`, http.StatusNotFound)
+	look := "/api/agents/{name}/look"
+	c.call(acme, "GET", look, "/api/agents/helper/look", "", http.StatusOK)
+	c.call(acme, "PUT", look, "/api/agents/helper/look", `{"look":{"display_name":"Helpy","shape":"ghost","hat":"crown"}}`, http.StatusOK)
+	c.call(acme, "PUT", look, "/api/agents/fieldbot/look", `{"look":{"display_name":"helpy"}}`, http.StatusConflict)
+	c.call(acme, "PUT", look, "/api/agents/helper/look", `{"look":{"shape":"dragon"}}`, http.StatusBadRequest)
+	c.call(acme, "PUT", look, "/api/agents/ghost/look", `{"look":{}}`, http.StatusNotFound)
+	c.call(acme, "PUT", look, "/api/agents/helper/look", `{"look":{"greeting":"Hi.","starters":[{"title":"Help","prompt":"Help me."}]}}`, http.StatusOK)
+	c.call(acme, "PUT", look, "/api/agents/helper/look", `{"look":{}}`, http.StatusOK)
+	mark := "/api/agents/{name}/mark"
+	pngType := []string{"Content-Type", "image/png"}
+	c.call(acme, "PUT", mark, "/api/agents/helper/mark", "\x89PNG\r\n\x1a\nIHDR", http.StatusOK, pngType...)
+	c.call(acme, "PUT", mark, "/api/agents/helper/mark", "GIF89a", http.StatusBadRequest, pngType...)
+	c.call(acme, "PUT", mark, "/api/agents/ghost/mark", "\x89PNG\r\n\x1a\n", http.StatusNotFound, pngType...)
+	c.call(acme, "PUT", mark, "/api/agents/helper/mark", "\x89PNG\r\n\x1a\n"+strings.Repeat("x", MaxMarkBytes), http.StatusRequestEntityTooLarge, pngType...)
 
 	// The directory.
 	if _, err := f.p.Prefs.SetPhoto("acme", "okta|dana", []byte("\x89PNG\r\n\x1a\n"+strings.Repeat("\x00", 32))); err != nil {
@@ -2864,7 +2878,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/projects/{name}":                          `{"version":1}`, "/api/projects/{name}/memory": `{"text":"x"}`, "/api/projects/{name}/memory/approve": `{"ids":[]}`,
 		"/api/inbox/{id}/deliveries/{client}": `{"channel":"C0123ABC","ts":"1700000000.000100"}`, "/api/inbox/{id}/dismiss": ``, "/api/inbox/{id}/unhide": ``,
 		"/api/inbox/marks": `{"ids":["m-1"],"mark":"read"}`, "/api/inbox/read-all": `{"view":"inbox"}`,
-		"/api/projects/{name}/agents": `{"version":1}`, "/api/agents/{name}/home": `{"project":""}`,
+		"/api/projects/{name}/agents": `{"version":1}`, "/api/agents/{name}/home": `{"project":""}`, "/api/agents/{name}/look": `{"look":{}}`, "/api/agents/{name}/mark": "\x89PNG\r\n\x1a\n",
 		"/api/runs/{id}/calls":                       `{"key":"k9","agent":"helper","text":"hi","mode":"delegate"}`,
 		"/api/runs/{id}/questions/{question}/answer": `{"action":"choose","choice":"red"}`,
 		"/api/alert-rules/{name}":                    `{"kind":"run_failed","severity":"critical"}`,

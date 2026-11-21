@@ -214,6 +214,30 @@ export async function focusLog(page: Page): Promise<void> {
   if (!visible) throw new Error("The conversation log did not take visible keyboard focus");
 }
 
+/**
+ * Rests the mouse on a row's state mark: the mark stays in view under the
+ * pointer, where its tooltip shows, while the row's ⋮ button takes the age.
+ */
+export async function hoverState(page: Page): Promise<void> {
+  if ((page.viewportSize()?.width ?? 0) < 1024) return;
+  const mark = page.locator(`[data-thread-row="${SOURCE_ROWS.slackDM}"] [data-standing="failed"]`);
+  await mark.hover();
+  await page.getByRole("button", { name: /^Manage Please check my repos/ }).waitFor();
+  const seen = await mark.evaluate((el) => {
+    const box = el.getBoundingClientRect();
+    const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+    return {
+      visible: getComputedStyle(el).visibility === "visible",
+      under: !!hit && el.contains(hit),
+      title: el.getAttribute("title"),
+    };
+  });
+  if (!seen.visible || !seen.under || seen.title !== "A reply failed")
+    throw new Error(
+      `a hovered state mark must stay visible with its tooltip: ${JSON.stringify(seen)}`,
+    );
+}
+
 /** Rests the mouse on a row that is not the open one, which shows its hover state and preview. */
 export async function hoverRow(page: Page): Promise<void> {
   if ((page.viewportSize()?.width ?? 0) < 1024) return;

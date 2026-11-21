@@ -39,6 +39,7 @@ await loadTests([
   "/src/model-providers.dom.test.tsx",
   "/src/agent-store.dom.test.tsx",
   "/src/agent-effort.dom.test.tsx",
+  "/src/agent-look.dom.test.tsx",
   "/src/eval-candidates.dom.test.tsx",
   "/src/history.dom.test.tsx",
   "/src/voice-notes.dom.test.tsx",

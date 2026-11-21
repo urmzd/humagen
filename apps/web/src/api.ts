@@ -1,6 +1,8 @@
 import { type AnswerRequest, answerPath } from "@humagen/adapter/question";
 import type {
   AgentHome,
+  AgentLook,
+  AgentLookView,
   AgentSession,
   AgentSetup,
   AgentSetupPlan,
@@ -72,6 +74,8 @@ import { track } from "./transition.ts";
 // api/openapi.yaml, so this file cannot drift from the contract on them.
 export type {
   AgentHome,
+  AgentLook,
+  AgentLookView,
   AgentOffer,
   AgentPlace,
   Branding,
@@ -1231,7 +1235,7 @@ export const api = {
   agents: () => call<{ agents: Revision[] }>("GET", "/api/agents").then((r) => r.agents),
   /** Every agent, and the names of those the platform provides, which cannot be edited. */
   agentHues: (names: string[], path = "/api/agent-hues") =>
-    call<{ hues: Record<string, number> }>(
+    call<{ hues: Record<string, number>; looks?: Record<string, AgentLook> }>(
       "GET",
       `${path}?names=${encodeURIComponent(names.join(","))}`,
     ),
@@ -1266,7 +1270,17 @@ export const api = {
       homes?: Record<string, string>;
       enabled_in?: Record<string, string[]>;
       hues?: Record<string, number>;
+      looks?: Record<string, AgentLook>;
     }>("GET", "/api/agents"),
+  /** How an agent looks, its color, the colors others hold, and every choice. */
+  agentLook: (name: string) =>
+    call<AgentLookView>("GET", `/api/agents/${encodeURIComponent(name)}/look`),
+  /** Keep how an agent looks, and with `hue` move it to that color. */
+  setAgentLook: (name: string, look: AgentLook, hue?: number) =>
+    call<AgentLookView>("PUT", `/api/agents/${encodeURIComponent(name)}/look`, {
+      look,
+      ...(hue === undefined ? {} : { hue }),
+    }),
   /** The agent store's packages, and what the workspace has of each. */
   storePackages: () =>
     call<{ packages: StorePackage[] }>("GET", "/api/store/packages").then((r) => r.packages),
@@ -1622,6 +1636,18 @@ export const api = {
     const data = (await res.json().catch(() => ({}))) as VoiceTranscript & { error?: string };
     if (!res.ok) throw new ApiError(res.status, data.error ?? `Request failed (${res.status})`);
     return data as VoiceTranscript;
+  },
+  /** Keep the picture the console drew of an agent, for surfaces that need an image, such as Slack. */
+  setAgentMark: async (name: string, png: Blob) => {
+    const res = await fetch(`/api/agents/${encodeURIComponent(name)}/mark`, {
+      method: "PUT",
+      credentials: "same-origin",
+      headers: { "Content-Type": "image/png" },
+      body: png,
+    });
+    const data = (await res.json().catch(() => ({}))) as AgentLookView & { error?: string };
+    if (!res.ok) throw new ApiError(res.status, data.error ?? `Request failed (${res.status})`);
+    return data as AgentLookView;
   },
   removePhoto: () => call<Preferences>("DELETE", "/api/preferences/photo"),
   // The picture is sent as its own bytes. The server decides what it is.
