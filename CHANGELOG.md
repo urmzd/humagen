@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.167.0 (2026-11-21)
+
+### Features
+
+- **slack**: a thread stays with the agent it was asked for (stack 2/6) (#463) ([cf76152](https://github.com/urmzd/humagen/commit/cf76152e35ff6850b24835bdba49e6c995de8367))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.166.0...v0.167.0)
+
+
 ## 0.166.0 (2026-11-21)
 
 ### Features
