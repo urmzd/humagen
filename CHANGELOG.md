@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.164.1 (2026-11-21)
+
+### Bug Fixes
+
+- **console**: sidebar row preview card (#416) ([ae44611](https://github.com/urmzd/humagen/commit/ae44611277f8755246fbb642582c85c3b0fad75f))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.164.0...v0.164.1)
+
+
 ## 0.163.0 (2026-11-21)
 
 ### Features
