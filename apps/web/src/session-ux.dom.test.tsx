@@ -459,7 +459,7 @@ test("session UX alerts read without resolving, offer governed fix review, and k
   assert.equal(writes.length, 0);
   assert.equal(card.getAttribute("data-alert-message"), "r_failed");
   assert.equal(
-    within(card).getByRole("link", { name: "Review failed answer" }).getAttribute("href"),
+    within(card).getByRole("link", { name: "Review Failed Answer" }).getAttribute("href"),
     "/messages/s_controls?message=r_failed",
   );
   fireEvent.click(within(card).getByRole("button", { name: "Fix with @reviewer" }));
@@ -481,6 +481,64 @@ test("session UX alerts read without resolving, offer governed fix review, and k
   fireEvent.click(undo);
   await screen.findByRole("region", { name: "Alert: Review failed" });
   assert.deepEqual(writes, [{ state: "resolved" }, { state: "open" }]);
+});
+
+test("session UX an alert beside its own message keeps its actions and drops the link back to the session", async () => {
+  const { SessionAlerts, useSessionAlerts } = await import("./SessionAlerts.tsx");
+  const alert = {
+    id: "alert-here",
+    session: "s_here",
+    message: "m_here",
+    title: "Confirm the owner",
+    state: "open" as const,
+    priority: "normal" as const,
+    kind: "session" as const,
+    rule: "",
+    at: "2026-11-07T12:00:00Z",
+  };
+  const reconnect = {
+    ...alert,
+    id: "alert-reconnect",
+    title: "Reconnect GitHub",
+    action: "reconnect",
+  };
+  net = stubFetch({ "GET /api/alerts": () => ({ alerts: [alert, reconnect] }) });
+  function View({ beside, canWrite = true }: { beside: boolean; canWrite?: boolean }) {
+    const attention = useSessionAlerts("s_here", true, 0, () => {});
+    return (
+      <SessionAlerts
+        alerts={attention.rows}
+        attention={attention}
+        canWrite={canWrite}
+        agents={[]}
+        beside={beside}
+      />
+    );
+  }
+  const view = render(<View beside={false} />);
+  const above = await screen.findByRole("region", { name: "Alert: Confirm the owner" });
+  assert.equal(
+    within(above).getByRole("link", { name: "Open Session" }).getAttribute("href"),
+    "/messages/s_here?message=m_here",
+  );
+  view.rerender(<View beside />);
+  const card = await screen.findByRole("region", { name: "Alert: Confirm the owner" });
+  assert.equal(within(card).queryByRole("link"), null);
+  assert.ok(within(card).getByRole("button", { name: "Mark Done" }));
+  assert.ok(within(card).getByRole("button", { name: "Snooze 1h" }));
+  // A link that leads somewhere else stays.
+  const other = screen.getByRole("region", { name: "Alert: Reconnect GitHub" });
+  assert.equal(
+    within(other).getByRole("link", { name: "Open Connections" }).getAttribute("href"),
+    "/connections",
+  );
+  // A reader who may not change alerts is left no empty row of actions.
+  view.rerender(<View beside canWrite={false} />);
+  const read = await screen.findByRole("region", { name: "Alert: Confirm the owner" });
+  assert.equal(within(read).queryByRole("link"), null);
+  assert.equal(within(read).queryByRole("button"), null);
+  assert.equal(read.lastElementChild?.childElementCount, 0);
+  assert.match(read.lastElementChild?.className ?? "", /empty:hidden/);
 });
 
 test("session UX canonical sharing uses project access without a project channel picker", async () => {

@@ -125,7 +125,8 @@ export function toolsLine(
   const base = { failed, waiting, running: running !== undefined, counts };
   if (waiting) {
     const pending = tasks.find((task) => task.status === "waiting");
-    return { ...base, text: `Awaiting approval: ${pending?.title || "tool call"}` };
+    // The line names the call; "waiting for you" beside it says whose move it is.
+    return { ...base, text: pending?.title || w.waitingCall };
   }
   if (running) {
     const edit = edits.get(running.id);
