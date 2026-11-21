@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.175.0 (2026-11-21)
+
+### Features
+
+- **settings**: make model providers easy to add and pause (#492) ([55fb048](https://github.com/urmzd/humagen/commit/55fb048cf5522efba3cc0ecac53c10dc9ce185b2))
+
+### Bug Fixes
+
+- **console**: one voice for alerts, approvals and audit (#505) ([388b458](https://github.com/urmzd/humagen/commit/388b45836de387f7817dbddb5a7d3e3ae942ac10))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.174.3...v0.175.0)
+
+
 ## 0.174.2 (2026-11-21)
 
 ### Bug Fixes
