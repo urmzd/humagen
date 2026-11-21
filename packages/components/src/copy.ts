@@ -5338,6 +5338,10 @@ export const defaultCopy = {
     footer: "Session details",
     answeredBy: (agent: string) => `Answered by ${agent}`,
     more: "More session controls",
+    /** The line under a composer. {name} is the product's name. */
+    aiNotice: "{name} is AI and can make mistakes.",
+    /** The link at the end of that line, to the workspace's page of terms. */
+    terms: "Terms",
     usage: {
       open: "Usage",
       ring: (what: string, pct: number) => `${what}: ${pct}% used. Open usage`,

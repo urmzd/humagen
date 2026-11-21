@@ -9,6 +9,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { productName, termsUrl } from "./branding.ts";
 import {
   type Command,
   commandsFor,
@@ -34,7 +35,7 @@ import {
   withMention,
   withoutMention,
 } from "./tags.ts";
-import { AgentMark, button, composerIconControl, Presence, primary } from "./ui.tsx";
+import { AgentMark, button, composerIconControl, Presence, primary, textLink } from "./ui.tsx";
 import {
   canRecord,
   MAX_RECORDING_MS,
@@ -1092,11 +1093,40 @@ export function Composer({
         )}
       </form>
       {footer}
+      <AiNotice />
     </div>
   );
 }
 
-/** Text with the runs a query matched highlighted. */
+/**
+ * The line under a composer: the product is AI and can make mistakes, with
+ * a Terms link when the branding names a page (branding.terms_url). Its
+ * height is aiNoticeHeight, which DockPlaceholder keeps free while a
+ * session loads, so the bar does not jump.
+ */
+export const aiNoticeHeight = "h-6";
+
+function AiNotice() {
+  const terms = termsUrl();
+  const name = productName() || defaultCopy.product;
+  return (
+    <p
+      data-layer="ai-notice"
+      className="min-h-6 px-2 text-center text-aui-xs leading-6 text-aui-muted"
+    >
+      {defaultCopy.dock.aiNotice.split("{name}").join(name)}
+      {terms && (
+        <>
+          {" "}
+          <a className={textLink} href={terms} target="_blank" rel="noreferrer">
+            {defaultCopy.dock.terms}
+          </a>
+        </>
+      )}
+    </p>
+  );
+}
+
 function Marked({ text, hits }: { text: string; hits: Hit[] }) {
   return (
     <>
