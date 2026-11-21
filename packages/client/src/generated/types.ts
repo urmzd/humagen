@@ -1576,6 +1576,18 @@ export interface ThreadSummary {
   messages: number;
   /** Where it started when that was not the console or the API, read from the Slack thread it lives on or the place its session was started from. Absent for the console and the API. A run's `origin` cannot say this, as a Slack message posts to its thread through the API. */
   source?: "slack" | "slack_dm" | "github" | "scheduled";
+  /** On a session listing, the caller takes part in the session without having started it. They posted in it, were mentioned or were added. */
+  joined?: boolean;
+  /** On a session listing, what waits on a person. It is the question waiting on the caller when there is one, else the latest run parked on a person. For an approval it is the tool asked about; for a question, the first line of its prompt. At most 100 characters. */
+  waiting_for?: string;
+  /** What `waiting_for` is. */
+  waiting_kind?: "approval" | "question";
+  /** On a session listing, an open question one of the session's runs waits on is the caller's to answer, by the rule answering holds them to. The question is addressed to them as it was raised, with whoever asked for the work excluded; the caller may write runs; and for a run held at a spend limit the caller holds `billing:write`. It reports the run, not the caller's notifications, so it stays true when they hid, snoozed or deleted the inbox message. A question a called agent raised counts for the session that called it. Read in one statement against the inbox for the whole page, of the workspace's newest 1000 live inbox messages; no inbox is read when nothing on the page waits. Always sent; false otherwise, so a client never assumes it. */
+  waiting_on_you: boolean;
+  /** On a session listing, the session waits on a person and whether that is the caller could not be told. The workspace holds more than 1000 live inbox messages and no question of the caller's about this session was among the newest 1000, or the inbox could not be read. `waiting_on_you` is then false, which does not mean it waits on someone else. Absent when it is known. */
+  waiting_unknown?: boolean;
+  /** On a session listing, why the latest turn failed, the first line of its error, at most 100 characters. Absent when the latest turn did not fail, so a failure a later turn answered is not shown. */
+  failure?: string;
   turns: number;
   branches: number;
   /** How many of its runs are in flight. */

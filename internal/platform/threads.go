@@ -198,7 +198,43 @@ type ThreadSummary struct {
 	// from. A run's origin cannot say this: a Slack message posts to its
 	// thread through the API, so its runs' origin is the API's.
 	Source string `json:"source,omitempty"`
+	// Joined reports, on a session listing, that its reader takes part in
+	// the session without having started it: they posted in it, were
+	// mentioned or were added.
+	Joined bool `json:"joined,omitempty"`
+	// WaitingFor is what waits on a person in it, set on a session listing:
+	// the question waiting on the reader when there is one, else what the
+	// latest run parked on a person asks; the tool an approval asks about, or
+	// the first line of a question, at most MaxAttention runes. WaitingKind
+	// is WaitingApproval or WaitingQuestion. WaitingOnYou says an open
+	// question one of its runs waits on is the reader's to answer, as
+	// answering would decide it (openQuestions), whatever they did with its
+	// notification.
+	WaitingFor  string `json:"waiting_for,omitempty"`
+	WaitingKind string `json:"waiting_kind,omitempty"`
+	// WaitingOnYou is always sent, false included: a reader who is not
+	// asked must never be told they are.
+	WaitingOnYou bool `json:"waiting_on_you"`
+	// WaitingUnknown says it waits and whether on the reader could not be
+	// told: the workspace's inbox holds more live messages than a listing
+	// reads (inbox.MaxAsking) and no question of the reader's about it was
+	// among those read, or the inbox could not be read. WaitingOnYou is then
+	// false, which does not mean it waits on someone else.
+	WaitingUnknown bool `json:"waiting_unknown,omitempty"`
+	// Failure is why its latest turn failed, set on a session listing when
+	// it did: the first line of the run's error, at most MaxAttention runes.
+	// A run that failed before a later turn answered is not a failure here.
+	Failure string `json:"failure,omitempty"`
 }
+
+// What a waiting session waits on, as ThreadSummary.WaitingKind says it.
+const (
+	WaitingApproval = "approval"
+	WaitingQuestion = "question"
+)
+
+// MaxAttention bounds ThreadSummary.WaitingFor and Failure, in runes.
+const MaxAttention = 100
 
 // Where a conversation started, as ThreadSummary.Source says it.
 const (

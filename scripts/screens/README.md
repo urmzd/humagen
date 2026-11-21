@@ -5,14 +5,15 @@ sign-in and the deterministic local model, and captures the canonical session
 interface. No live OAuth connection or model provider is used.
 
 The `Console screens (light)` and `Console screens (dark)` CI jobs each capture
-26 focused states at 390, 480, 768, 1024 and 1280 pixels wide: the seven navigation
+28 focused states at 390, 480, 768, 1024 and 1280 pixels wide: the seven navigation
 entries, Home's strip of recent artifacts (answered in the browser, since nothing
 publishes one offline), the composer with attachments, retained uploads in a reloaded
 session, composer and session menus, feedback, all four Details sections, an
 actual parked approval and a review v2 answer. `sidebar-sources` dresses the
 sidebar, in the browser only, with sessions from Slack, GitHub, a schedule and the
 console, two pinned, one selected and one hovered, beside the keyboard-focused
-conversation; `session-log-focus` is that focus alone. A child session, alert and
+conversation; `sidebar-resized` drags the sidebar's edge wider; `session-log-focus` is that
+focus alone. A child session, alert and
 scratchpad files are created through the real session APIs. Details assertions
 check modal behavior below 1024 and composer reflow beside the desktop pane.
 The inline-code session replays the confirmed clipped message and a long path;

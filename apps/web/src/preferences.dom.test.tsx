@@ -431,7 +431,7 @@ test("overlapping project and conversation saves keep both lists", async () => {
   assert.deepEqual(result.current.prefs.pinned, ["t1", "t0"]);
 });
 
-test("a conversation row is its title alone: who took part, its project and its age are in the conversation, not the list", async () => {
+test("a conversation row is its title, then when it moved and where it started: who took part and its project are in the conversation, not the list", async () => {
   const conversation = {
     ...task("t1", "Launch checklist"),
     agents: ["lead", "helper"],
@@ -445,10 +445,10 @@ test("a conversation row is its title alone: who took part, its project and its 
   const row = await screen.findByRole("link", { name: /^Launch checklist/ });
   assert.match(row.textContent ?? "", /^Launch checklist/);
   assert.doesNotMatch(row.textContent ?? "", /lead|helper|ada|mira/);
-  assert.equal(
-    row.querySelector("[data-row-age]")?.textContent,
-    "",
-    "the day heading says when, not each row",
+  assert.match(
+    row.querySelector("[data-row-age]")?.textContent ?? "",
+    /ago\s*Console$|^Just now\s*Console$/,
+    "each row says when it moved and where it started",
   );
   assert.equal(screen.queryByRole("group", { name: /^Agents:|^People:/ }), null);
 });
