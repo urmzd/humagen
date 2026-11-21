@@ -11,6 +11,7 @@ import {
 import { type ComponentType, createContext, useContext } from "react";
 import type { Run } from "./adapter.ts";
 import { lazyView } from "./lazy.tsx";
+import type { PaneTab } from "./pane.ts";
 import {
   type ConversationView,
   MAX_BENCH_REF,
@@ -58,6 +59,10 @@ export interface WorkbenchTabProps extends WorkbenchSession {
   openTab: (id: WorkbenchTabId, ref?: string) => void;
   /** Opens a saved file in the Workspace pane. */
   openFile?: (artifactId: string) => void;
+  /** Opens a tab of the Workspace pane: the session's files, its artifacts, a file. */
+  openWorkspace?: (tab: PaneTab) => void;
+  /** What the session was set up with before its first message: its environment and repositories. */
+  chosen?: { environment?: string; repos?: string[] };
   /**
    * Records something the reader did by hand in the tab. It shows above the
    * composer and goes with their next message; nothing is sent before that.
