@@ -21,9 +21,12 @@ export function Thread({
   turns,
   busy = false,
   focus,
+  initialApproval,
 }: {
   /** An addressed message to reveal without scrolling the surrounding page. */
   focus?: string;
+  /** Latest actionable run on first open; an explicit message link takes precedence. */
+  initialApproval?: { run: string; question: string };
   children: ReactNode;
   label?: string;
   className?: string;
@@ -44,6 +47,29 @@ export function Thread({
     startAtEnd: !focus,
   });
   const revealed = useRef<string | undefined>(undefined);
+  const positioned = useRef(false);
+
+  useEffect(() => {
+    if (positioned.current) return;
+    positioned.current = true;
+    if (focus || !initialApproval) return;
+    const root = scroller.current;
+    const run = root?.querySelector<HTMLElement>(
+      `[data-turn-id="${CSS.escape(initialApproval.run)}"]`,
+    );
+    const cards = run?.querySelectorAll<HTMLElement>('[data-aui-block="approval"]');
+    const card = Array.from(cards ?? []).find((item) =>
+      item.dataset.auiBlockId?.startsWith(`approval:${initialApproval.question}:r`),
+    );
+    if (!root || !card) return;
+    const top =
+      root.scrollTop +
+      card.getBoundingClientRect().bottom -
+      root.getBoundingClientRect().bottom +
+      16;
+    root.scrollTo({ top, behavior: "auto" });
+    if (root.scrollHeight - root.scrollTop - root.clientHeight >= 48) release();
+  }, [focus, initialApproval, scroller, release]);
 
   useEffect(() => {
     if (!focus) {

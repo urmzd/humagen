@@ -669,3 +669,71 @@ test("an empty composer says its own words, never the default agent's token, and
   assert.equal(box.getAttribute("placeholder"), "Message @lead");
   cleanup();
 });
+
+test("only a projected approval with its pending inline decision is hidden", async () => {
+  const { duplicatesInlineApproval } = await import("./SessionAlerts.tsx");
+  const alert = { kind: "approval", action: "approve", run_id: "r1" } as never;
+  const run = {
+    id: "r1",
+    agent: "helper",
+    status: "parked",
+    created_at: "2026-01-01",
+    updated_at: "2026-01-01",
+    question: { id: "q1", kind: "approval", prompt: "Write file?", tool: { name: "file_write" } },
+  };
+  const turns = [{ kind: "run", run }] as never;
+  assert.equal(duplicatesInlineApproval(alert, turns), true);
+  assert.equal(
+    duplicatesInlineApproval({ ...(alert as object), kind: "alert" } as never, turns),
+    false,
+  );
+  assert.equal(
+    duplicatesInlineApproval({ ...(alert as object), run_id: "other" } as never, turns),
+    false,
+  );
+  assert.equal(
+    duplicatesInlineApproval(alert, [
+      { kind: "run", run: { ...run, status: "completed" } },
+    ] as never),
+    false,
+  );
+  assert.equal(
+    duplicatesInlineApproval(alert, [
+      { kind: "run", run: { ...run, question: { id: "q1", kind: "reply", prompt: "Question?" } } },
+    ] as never),
+    false,
+  );
+});
+
+test("initial approval positioning does not override a message link or later scrolling", async () => {
+  const { Thread } = await import("@humagen/web");
+  const oldScroll = HTMLElement.prototype.scrollTo;
+  const calls: ScrollToOptions[] = [];
+  HTMLElement.prototype.scrollTo = (options) => {
+    if (typeof options === "object") calls.push(options);
+  };
+  try {
+    const children = (
+      <div data-turn-id="r1">
+        <div data-aui-block="approval" data-aui-block-id="approval:q1:r0" />
+        <div data-aui-block="approval" data-aui-block-id="approval:q2:r0" />
+      </div>
+    );
+    const view = render(
+      <Thread initialApproval={{ run: "r1", question: "q1" }}>{children}</Thread>,
+    );
+    assert.equal(calls.length, 1);
+    view.rerender(<Thread initialApproval={{ run: "r1", question: "q2" }}>{children}</Thread>);
+    assert.equal(calls.length, 1, "rerender must not reposition a reader");
+    view.unmount();
+    calls.length = 0;
+    render(
+      <Thread focus="linked" initialApproval={{ run: "r1", question: "q1" }}>
+        {children}
+      </Thread>,
+    );
+    assert.equal(calls.length, 0, "an explicit link wins over the initial approval");
+  } finally {
+    HTMLElement.prototype.scrollTo = oldScroll;
+  }
+});
