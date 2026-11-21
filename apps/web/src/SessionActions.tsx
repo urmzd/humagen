@@ -1,4 +1,4 @@
-import { EllipsisIcon } from "@humagen/render-web";
+import { ChevronDownIcon, EllipsisIcon } from "@humagen/render-web";
 import { Modal } from "@humagen/web";
 import { useRef, useState } from "react";
 import { coworking, type ProjectView, type Thread } from "./api.ts";
@@ -15,7 +15,14 @@ export function SessionActions({
   onShare,
   projects,
   personalProject,
+  shownTitle,
 }: {
+  /**
+   * The session's title as the header shows it. Given, the menu opens from
+   * the title itself, with a chevron, and Rename edits the title in place.
+   * Without it the menu opens from a ⋯ button and Rename is a dialog.
+   */
+  shownTitle?: string;
   thread: Thread;
   canManage: boolean;
   onChanged: () => void;
@@ -52,12 +59,68 @@ export function SessionActions({
       publishMarks(marks);
       setArchived(!archived);
     });
+  const inTitle = shownTitle !== undefined;
+  const save = () =>
+    act(async () => {
+      const next = title.trim();
+      if (next && next !== (thread.title ?? "")) onUpdated(await coworking.rename(thread.id, next));
+      setMode(undefined);
+    });
+  if (inTitle && mode === "rename")
+    return (
+      <form
+        className="flex min-w-0 items-center"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void save();
+        }}
+      >
+        <input
+          // biome-ignore lint/a11y/noAutofocus: Rename was just chosen; the field is where the person types.
+          autoFocus
+          aria-label="Session name"
+          data-testid="session-title-input"
+          className="min-w-0 flex-1 rounded-aui border border-aui-border bg-aui-bg px-2 py-0.5 font-semibold text-aui-base text-aui-fg leading-6 focus-visible:outline-2 focus-visible:outline-aui-accent"
+          value={title}
+          maxLength={200}
+          disabled={busy}
+          onChange={(e) => setTitle(e.target.value)}
+          onFocus={(e) => e.currentTarget.select()}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              e.preventDefault();
+              setMode(undefined);
+            }
+          }}
+          onBlur={(e) => {
+            if (!busy && e.currentTarget.isConnected) void save();
+          }}
+        />
+        <Problem message={problem ?? null} />
+      </form>
+    );
   return (
     <>
       <Popover
-        label="Session actions"
-        className="inline-flex size-9 items-center justify-center rounded-aui hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
-        button={<EllipsisIcon size={18} />}
+        label={inTitle ? undefined : "Session actions"}
+        className={
+          inTitle
+            ? "-ml-1.5 inline-flex min-h-8 max-w-full min-w-0 items-center gap-1 rounded-aui px-1.5 max-md:min-h-11 pointer-coarse:min-h-11 text-left hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
+            : "inline-flex size-9 items-center justify-center rounded-aui hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
+        }
+        button={
+          inTitle ? (
+            <>
+              <span className="min-w-0 truncate" title={shownTitle}>
+                {shownTitle}
+              </span>
+              <ChevronDownIcon size={16} aria-hidden className="shrink-0 text-aui-muted" />
+            </>
+          ) : (
+            <EllipsisIcon size={18} />
+          )
+        }
+        popup={inTitle ? "menu" : undefined}
         narrow
         onOpen={() => {
           const generation = ++marksRequest.current;
@@ -193,7 +256,7 @@ export function SessionActions({
           </div>
         </Modal>
       )}
-      {mode && mode !== "move" && (
+      {mode && mode !== "move" && !(inTitle && mode === "rename") && (
         <Modal
           title={mode === "rename" ? "Rename session" : "Delete session"}
           onClose={() => {
