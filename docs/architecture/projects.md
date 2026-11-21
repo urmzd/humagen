@@ -2024,7 +2024,7 @@ and its total, What's new and Your projects to the same on both renderers.
   console. Someone the client maps to nobody keeps the mailbox.
 - **GitHub.** The same rule: `@agent` in a comment is a tag; otherwise the client's default; otherwise nothing. As Slack delivers
   only what mentions the app, a comment that names no agent asks the client
-  only when it mentions the app's own login (`github.login`): `@humagen what
+  only when it mentions the app's own login (`github.login`): `@Humagen what
   changed?`. One that mentions neither starts nothing, so a busy repository
   wakes no agent. Threads are filed in the client's home.
 

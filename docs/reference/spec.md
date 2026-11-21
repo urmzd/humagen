@@ -869,14 +869,14 @@ shown on the approval card. `humagen config check` refuses a schema without
 that core. An answer that is missing or does not hold to the schema leaves the
 call for a person.
 
-The schema as it ships also has an optional `answer`: in a session set to Run
-and Answer (approval mode `decide`), the approval agent is shown a question an
-agent asks a person, and answers it with `decision: allow` and `answer` (one of
+The schema as it ships also has an optional `answer`: in a session set to Auto
+(approval mode `auto`), the approval agent is shown a question an agent asks a
+person, and answers it with `decision: allow` and `answer` (one of
 the options for a choice, words for a reply) only when the session already
 settles it. A workspace schema without `answer` keeps working and decides calls
-only: every question goes to a person. Run and Answer is a person's choice for
-one session, made in the console, not a spec field; a session asks until
-someone chooses it.
+only: every question goes to a person. Auto is a person's choice for one
+session, made in the console or in Slack, not a spec field; a session asks
+until someone chooses it.
 
 A `choices` block
 from an older policy or agent spec is not read: a file that has one still

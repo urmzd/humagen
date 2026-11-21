@@ -1,5 +1,8 @@
 import { after } from "node:test";
 import { createServer } from "vite";
+// A failing assert or a log of a DOM node prints a few words, never the DOM.
+import "./test-assert.ts";
+import "./dom-print.ts";
 
 /**
  * Loads test files through Vite, so they may use JSX and the linked humagen

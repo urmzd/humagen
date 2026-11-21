@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
-    "test": "node --max-old-space-size=2048 --test --experimental-strip-types src/*.test.ts"
+    "test": "node scripts/test-guard.mjs node --import ./src/test-assert.ts --test --experimental-strip-types src/*.test.ts"
   },
   "dependencies": {
     "@humagen/adapter": "workspace:*",
