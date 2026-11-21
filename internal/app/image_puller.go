@@ -60,7 +60,8 @@ func (d dockerPuller) Pull(ctx context.Context, ref, credential string) (string,
 }
 
 // pinned picks the digest of ref's repository from the ones Docker holds
-// for it: repo@sha256:...
+// for it: repo@sha256:... Docker prints a Docker Hub repository by its
+// familiar name (python, acme/agent), so both sides are compared that way.
 func pinned(ref string, digests []string) (string, error) {
 	repo := ref
 	if i := strings.LastIndex(repo, ":"); i > strings.LastIndex(repo, "/") {
@@ -68,11 +69,29 @@ func pinned(ref string, digests []string) (string, error) {
 	}
 	for _, d := range digests {
 		name, _, ok := strings.Cut(d, "@")
-		if ok && (name == repo || name == "docker.io/"+repo || name == "docker.io/library/"+repo) {
+		if ok && familiar(name) == familiar(repo) {
 			return repo + d[len(name):], nil
 		}
 	}
 	return "", errors.New("the registry gave no digest for it")
+}
+
+// familiar is a repository as Docker prints it: one on Docker Hub without
+// docker.io, and an official one without library/ too.
+func familiar(repo string) string {
+	if images.Registry(repo) != "docker.io" {
+		return repo
+	}
+	for _, prefix := range []string{"docker.io/", "index.docker.io/"} {
+		if rest, ok := strings.CutPrefix(repo, prefix); ok {
+			repo = rest
+			break
+		}
+	}
+	if rest, ok := strings.CutPrefix(repo, "library/"); ok && !strings.Contains(rest, "/") {
+		repo = rest
+	}
+	return repo
 }
 
 // daemon is the Docker endpoint pulls go to: the sandbox host, else the

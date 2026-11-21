@@ -21,3 +21,26 @@ func TestPinnedPicksTheReferencesRepository(t *testing.T) {
 		t.Error("a digest of another repository was taken")
 	}
 }
+
+// Docker prints a Docker Hub repository by its familiar name in
+// RepoDigests (["python@sha256:..."]), however the reference spelled it.
+func TestPinnedReadsDockerHubsFamiliarNames(t *testing.T) {
+	d := "@sha256:" + "ab"
+	for _, c := range []struct {
+		ref, want, digest string
+	}{
+		{"docker.io/library/python:3.13-alpine", "docker.io/library/python" + d, "python" + d},
+		{"library/python:3", "library/python" + d, "python" + d},
+		{"docker.io/acme/agent:1", "docker.io/acme/agent" + d, "acme/agent" + d},
+		{"index.docker.io/acme/agent:1", "index.docker.io/acme/agent" + d, "acme/agent" + d},
+	} {
+		got, err := pinned(c.ref, []string{c.digest})
+		if err != nil || got != c.want {
+			t.Errorf("pinned(%q, [%s]) = %q %v, want %q", c.ref, c.digest, got, err, c.want)
+		}
+	}
+	// A Docker Hub name is not another registry's.
+	if _, err := pinned("ghcr.io/library/python:3", []string{"python" + d}); err == nil {
+		t.Error("ghcr.io/library/python took Docker Hub's python digest")
+	}
+}
