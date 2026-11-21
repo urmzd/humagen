@@ -102,15 +102,31 @@ func ValidID(s string) bool {
 	return err == nil
 }
 
-// Registry is the host a reference pulls from: the first part of its path
-// when it names a host (it holds a dot or a port, or is localhost), and
-// docker.io otherwise.
-func Registry(ref string) string {
+// host is a reference's registry part as written, when it has one. It
+// follows Docker's own rule (distribution/reference): the first part of the
+// path names a host when it holds a dot or a port, is localhost, or has an
+// upper-case letter. Anything else pulls from Docker Hub.
+func host(ref string) (string, bool) {
 	first, _, ok := strings.Cut(ref, "/")
-	if ok && (strings.ContainsAny(first, ".:") || first == "localhost") {
-		return strings.ToLower(first)
+	if ok && (strings.ContainsAny(first, ".:") || first == "localhost" || strings.ToLower(first) != first) {
+		return first, true
 	}
-	return "docker.io"
+	return "", false
+}
+
+// Registry is the host a reference pulls from, in lower case: the first
+// part of its path when it names a host, and docker.io otherwise. Docker's
+// legacy index.docker.io is docker.io.
+func Registry(ref string) string {
+	h, ok := host(ref)
+	if !ok {
+		return "docker.io"
+	}
+	h = strings.ToLower(h)
+	if h == "index.docker.io" {
+		return "docker.io"
+	}
+	return h
 }
 
 // CheckRef refuses a reference that is malformed or whose registry is not
@@ -128,6 +144,11 @@ func CheckRef(ref string, allowed []string) error {
 	}
 	if len(allowed) == 0 {
 		return fmt.Errorf("%w: this deployment allows no images of a workspace's own", ErrInvalid)
+	}
+	// A host written in capitals is still a host to Docker, and an
+	// allowlist compared on one spelling would let another through.
+	if h, ok := host(ref); ok && h != strings.ToLower(h) {
+		return fmt.Errorf("%w: write the registry %s in lower case", ErrInvalid, h)
 	}
 	if reg := Registry(ref); !slices.Contains(allowed, reg) {
 		return fmt.Errorf("%w: %s is not a registry this deployment allows (%s)", ErrInvalid, reg, strings.Join(allowed, ", "))

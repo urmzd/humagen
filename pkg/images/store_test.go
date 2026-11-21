@@ -96,3 +96,33 @@ func TestTheStoreKeepsEachWorkspacesImages(t *testing.T) {
 		t.Errorf("deleted: %v", err)
 	}
 }
+
+// Docker takes the first part of a path for a host when it has a dot, a
+// port, is localhost, or has a capital letter. The allowlist is checked
+// against the host Docker contacts, so a capital or a port is no way round
+// it, and an image from Docker Hub passes only when docker.io is allowed.
+func TestCheckRefAllowsOnlyTheHostDockerContacts(t *testing.T) {
+	for ref, want := range map[string]string{
+		"LOCALHOST/agent:1": "localhost", "EVILHOST/agent:1": "evilhost", "Metadata/x:1": "metadata",
+		"Ghcr.IO/x": "ghcr.io", "ghcr.io:443/x": "ghcr.io:443", "10.0.0.5/x": "10.0.0.5",
+		"index.docker.io/acme/x": "docker.io", "docker.io/library/python:3": "docker.io",
+	} {
+		if got := images.Registry(ref); got != want {
+			t.Errorf("Registry(%q) = %q, want %q", ref, got, want)
+		}
+	}
+	allowed := []string{"docker.io", "ghcr.io"}
+	for _, ref := range []string{
+		"LOCALHOST/agent:1", "EVILHOST/agent:1", "Metadata/x:1", "LOCALHOST/x", "Ghcr.IO/x", "GHCR.IO/acme/x",
+		"ghcr.io:443/x", "10.0.0.5/x", "127.0.0.1:5000/x", "[::1]:5000/x",
+	} {
+		if err := images.CheckRef(ref, allowed); !errors.Is(err, images.ErrInvalid) {
+			t.Errorf("CheckRef(%q, %v) = %v, want ErrInvalid (Docker pulls it from %s)", ref, allowed, err, images.Registry(ref))
+		}
+	}
+	for _, ref := range []string{"ghcr.io/x", "acme/agent:1", "python:3", "docker.io/acme/x", "index.docker.io/acme/x", "library/python:3"} {
+		if err := images.CheckRef(ref, allowed); err != nil {
+			t.Errorf("CheckRef(%q, %v): %v", ref, allowed, err)
+		}
+	}
+}
