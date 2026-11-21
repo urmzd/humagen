@@ -3,7 +3,7 @@ import type { Page } from "playwright-core";
 
 /**
  * The sidebar's conversation list (DES-054): Recents grouped by day with each
- * row's dot, its hover actions, the Projects view and Archived. The seeded rows are
+ * row's state mark, its hover actions, the Projects view and Archived. The seeded rows are
  * dressed, in the browser only, with the states a live workspace has: one
  * waiting on a person, one running and one with an unread answer.
  */
@@ -253,7 +253,7 @@ export function composerChrome(conversation: string): Scene[] {
         assert.equal(await page.locator("[data-home-above]").count(), 0);
         await page
           .locator(".humagen-home")
-          .getByRole("button", { name: /^Approvals: / })
+          .getByRole("button", { name: /^Approval mode: / })
           .waitFor();
         assert.equal(await page.getByRole("button", { name: /^Select project/ }).count(), 0);
       },
@@ -261,10 +261,10 @@ export function composerChrome(conversation: string): Scene[] {
     {
       name: "composer-approval-mode",
       path: `/conversations/${conversation}`,
-      // The menu open: the three modes, each with its one line.
+      // The menu open: Ask and Auto under their heading, each with its one line.
       act: async (page) => {
-        await page.getByRole("button", { name: /^Approvals: / }).click();
-        await page.getByRole("menu", { name: "Approvals" }).waitFor();
+        await page.getByRole("button", { name: /^Approval mode: / }).click();
+        await page.getByRole("menu", { name: "Approval mode" }).waitFor();
       },
     },
   ];

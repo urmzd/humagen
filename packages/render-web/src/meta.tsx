@@ -31,6 +31,38 @@ export type ItemActions = (item: TurnItem) => ReactNode;
 
 export const ItemActionsContext = createContext<ItemActions | null>(null);
 
+/**
+ * How a host stops one item a turn draws while it runs: the agent itself, a
+ * call to another agent, a step, or background work a step started. `what`
+ * names it for the button. A stopped item is drawn calmly, never as a failure.
+ */
+export interface ItemStop {
+  what: string;
+  /** Absent once it is stopped or can no longer be stopped. */
+  onStop?: () => void;
+  /** Asked to stop; the record has not said it ended yet. */
+  pending?: boolean;
+  stopped?: boolean;
+}
+
+/** The words of an item's Stop, from the host's copy (this package has none of its own). */
+export interface ItemStopWords {
+  stop: string;
+  stopping: string;
+  stopped: string;
+  stopLabel: (what: string) => string;
+  stoppingLabel: (what: string) => string;
+  stoppedLabel: (what: string) => string;
+}
+
+export interface ItemStops {
+  /** The Stop for an item, or null where it has none. */
+  of: (item: TurnItem) => ItemStop | null;
+  words: ItemStopWords;
+}
+
+export const ItemStopsContext = createContext<ItemStops | null>(null);
+
 /** Clock for countdowns. Stories pin it; apps leave it to the real time. */
 export const NowContext = createContext<number | null>(null);
 

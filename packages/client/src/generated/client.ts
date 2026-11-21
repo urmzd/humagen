@@ -41,6 +41,7 @@ import type {
   Branding,
   BringBackThreadResultBody,
   BrowserAction,
+  BrowserAvailability,
   BrowserView,
   CallPolicy,
   CallPolicyInput,
@@ -250,6 +251,7 @@ import type {
   SearchKnowledgeResponse,
   SearchMemoryResponse,
   SessionInput,
+  SessionOptions,
   SessionPostInput,
   SetAgentHomeBody,
   SetAgentLookBody,
@@ -287,6 +289,7 @@ import type {
   ThreadShare,
   ThreadShared,
   ThreadUpdate,
+  ThreadUsage,
   ToolCredential,
   ToolCredentialInput,
   ToolCredentials,
@@ -1025,6 +1028,43 @@ visible older history pages on reset.
     return this.rawRequest<void>("POST", path, {
       body,
       contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** The environments are this deployment's: `auto` (its default) and its
+configured sandbox. The repositories are those the caller's
+tenant's enabled GitHub clients may read or write, sorted, at most 100.
+ */
+  async getSessionOptions(options?: RequestOptions): Promise<SessionOptions> {
+    const path = "/api/sessions/options";
+    return this.request<SessionOptions>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getSessionOptionsRaw(options?: RequestOptions): Promise<ApiResponse<SessionOptions>> {
+    const path = "/api/sessions/options";
+    return this.rawRequest<SessionOptions>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** True when the session's agent holds a write grant on at least one
+browser provider. Otherwise `reason` says why.
+ */
+  async getSessionBrowser(id: string, options?: RequestOptions): Promise<BrowserAvailability> {
+    let path = "/api/sessions/{id}/browser";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<BrowserAvailability>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getSessionBrowserRaw(id: string, options?: RequestOptions): Promise<ApiResponse<BrowserAvailability>> {
+    let path = "/api/sessions/{id}/browser";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<BrowserAvailability>("GET", path, {
       ...options,
     });
   }
@@ -4519,22 +4559,23 @@ whoever started the thread or an owner of its project (403).
     });
   }
 
-  /** `ask` asks a person, the default. `auto` approves for the caller what
-they may approve themselves, through the same checks as their own
-answer: the approvers a question names, self-approval and the
-runtime's. A budget request, an action the agent always asks about,
-a run forced to ask and an action the policy does not ask about still
-go to a person. `decide` (Run and Answer) does what `auto` does,
-and the approval agent also answers, as the caller, a question an
-agent asks a person (a choice or a reply) when the session already
-settles the answer; anything else, anything asked of someone else,
-and anything in work someone else asked for still goes to a person.
-Each automatic approval and answer, each hand-off, and each change
-of mode is audited. Takes a person who may post in the conversation.
-A surface that authenticated a person itself sets it for them with
-`act_as`: only the credential its client names, and only for a person
-its client maps; every check is then that person's, and `auto` and
-`decide` act as them.
+  /** Two modes. `ask` (Ask) asks a person, the default. `auto` (Auto)
+lets the approval agent act for the caller: it approves what they may
+approve themselves, through the same checks as their own answer (the
+approvers a question names, self-approval and the runtime's), and it
+answers, as the caller, a question an agent asks a person (a choice
+or a reply) when the session already settles the answer. A budget
+request, an action the agent always asks about, a run forced to ask,
+an action the policy does not ask about, anything it is unsure of,
+anything asked of someone else and anything in work someone else
+asked for still go to a person. `decide`, what Run and Answer was set
+as before it became part of Auto, is still accepted and taken as
+`auto`; it is deprecated and will be removed. Each automatic approval
+and answer, each hand-off, and each change of mode is audited. Takes
+a person who may post in the conversation. A surface that
+authenticated a person itself sets it for them with `act_as`: only
+the credential its client names, and only for a person its client
+maps; every check is then that person's, and `auto` acts as them.
  */
   async setApprovalMode(id: string, body: SetApprovalModeBody, options?: RequestOptions): Promise<Thread> {
     let path = "/api/threads/{id}/approval";
@@ -5279,6 +5320,23 @@ to that machine only, wherever the message is read.
     return this.rawRequest<SandboxCommandResult>("POST", path, {
       body,
       contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** What the conversation has used so far, from its runs */
+  async getThreadUsage(id: string, options?: RequestOptions): Promise<ThreadUsage> {
+    let path = "/api/threads/{id}/usage";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<ThreadUsage>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getThreadUsageRaw(id: string, options?: RequestOptions): Promise<ApiResponse<ThreadUsage>> {
+    let path = "/api/threads/{id}/usage";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<ThreadUsage>("GET", path, {
       ...options,
     });
   }

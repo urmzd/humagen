@@ -63,6 +63,7 @@ import type {
   ThreadFollowup,
   ThreadImport,
   ThreadShare,
+  ThreadUsage,
   VoiceSettings,
   VoiceTranscript,
 } from "../../../packages/client/src/generated/types.ts";
@@ -458,6 +459,8 @@ export interface ThreadSummary {
   visibility: "shared" | "private";
   /** How many messages people have posted in it. */
   messages: number;
+  /** Where it started when not the console or the API; its runs' origin cannot say a Slack thread. */
+  source?: "slack" | "slack_dm" | "github" | "scheduled";
   turns: number;
   branches: number;
   active: number;
@@ -745,6 +748,7 @@ export interface PolicyChange {
 }
 
 export type Note = GeneratedNote;
+export type { ThreadUsage };
 
 /**
  * A tool that acts as you: an MCP provider reached with each person's own
@@ -1355,6 +1359,12 @@ export const api = {
     call<{ proposals: Proposal[] }>("GET", "/api/memory/pending").then((r) => r.proposals),
   /** Stop a run and everything attached to it. Runs it delegated keep going. */
   stopRun: (id: string) => call<Run>("POST", `/api/runs/${encodeURIComponent(id)}/stop`),
+  /** What a conversation's runs have used so far. */
+  threadUsage: (id: string) =>
+    call<ThreadUsage>("GET", `/api/threads/${encodeURIComponent(id)}/usage`),
+  /** Stop every run in a session and in its child sessions. */
+  stopSession: (id: string) =>
+    call<void>("POST", `/api/sessions/${encodeURIComponent(id)}/stop`, { children: true }),
   /** Answer the question a run is waiting on. Returns the question's inbox message, settled. */
   answer: (r: AnswerRequest) => call<unknown>("POST", answerPath(r), r.body),
   /** A message alone, without its children: who its root's place was asked in front of. */
@@ -2148,14 +2158,16 @@ export interface Thread {
   /** The imported conversation it continues: the pinned revision and the turns its agent is sent. */
   import?: ThreadImport;
   /**
-   * How its gated tool actions are approved: absent asks a person; auto approves for `by`
-   * (DES-057); decide does that and also answers what the session settles (DES-079).
+   * How its gated tool actions are approved: absent is Ask, a person; auto is Auto, where the
+   * approval agent approves and answers what the session settles for `by` (DES-057, DES-079).
    */
-  approval?: { mode: "auto" | "decide"; by: string; roles?: string[]; at: string };
+  approval?: { mode: "auto"; by: string; roles?: string[]; at: string };
   /** The inbox id of the announcement a reply to which, in Slack, started the thread. */
   announcement?: string;
   /** The Slack thread this thread is, when it was started from Slack. It never changes. */
   surface?: { client: string; channel: string; ts: string };
+  /** A session's own: its agent, and what it was set up with before its first message. */
+  session?: { agent: string; parent: string; environment?: string; repos?: string[] };
   version: number;
   created_by: string;
   created_at: string;
@@ -2524,6 +2536,9 @@ export const coworking = {
     visibility?: "shared" | "private";
     agents?: string[];
     mode?: "join" | "all";
+    /** A private session's environment and repositories, chosen before its first message. */
+    environment?: string;
+    repos?: string[];
   }) =>
     t.visibility === "shared"
       ? call<ThreadPosted>("POST", "/api/threads", t)
@@ -2532,6 +2547,8 @@ export const coworking = {
           uploads: t.uploads,
           project: t.project,
           agent: t.agents?.[0],
+          ...(t.environment && t.environment !== "auto" ? { environment: t.environment } : {}),
+          ...(t.repos?.length ? { repos: t.repos } : {}),
         }).then(sessionPosted),
   /**
    * Shares a private thread in a project's channel (general unless named)
@@ -2549,7 +2566,7 @@ export const coworking = {
   ) => call<Thread>("POST", `${threadPath(id)}/publication`, body),
   share: (id: string, s: ThreadShare) => call<ThreadShared>("POST", `${threadPath(id)}/share`, s),
   /** Sets how a conversation's gated tool actions are approved: ask, or auto or decide for the caller. */
-  setApprovalMode: (id: string, mode: "ask" | "auto" | "decide") =>
+  setApprovalMode: (id: string, mode: "ask" | "auto") =>
     call<Thread>("PUT", `${threadPath(id)}/approval`, { mode }),
   /** The skills a `$name` can pick in a project. */
   skills: (project: string) =>
