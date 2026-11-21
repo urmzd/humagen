@@ -27,7 +27,6 @@ import { ConnectionSection } from "./ConnectionSection.tsx";
 import { Pill, type Tone } from "./cards.tsx";
 import { type ConnectionPreset, connectionApi } from "./connectionApi.ts";
 import {
-  CONNECT_PERMISSION,
   cannotConnect,
   destination,
   offers,
@@ -73,7 +72,6 @@ export function YourConnections({
   section,
   onOpen,
   canConnect = true,
-  onWhy,
   embedded = false,
 }: {
   embedded?: boolean;
@@ -82,8 +80,6 @@ export function YourConnections({
   onOpen: (provider?: string) => void;
   /** May give or remove a credential, which the server holds to CONNECT_PERMISSION. */
   canConnect?: boolean;
-  /** Opens why the person may not connect, in Settings > Access. */
-  onWhy?: () => void;
 }) {
   const [state, setState] = useState<ToolCredentials | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
@@ -117,21 +113,7 @@ export function YourConnections({
     <ConnectionSection embedded={embedded} title="MCPs" narrow>
       <Problem message={problem} />
       {section !== "tools" && !canConnect && state && state.providers.length > 0 && (
-        <p className="text-aui-sm text-aui-muted">
-          {cannotConnect}
-          {onWhy && (
-            <>
-              {" "}
-              <a
-                href={href({ page: "settings", section: "access", permission: CONNECT_PERMISSION })}
-                onClick={follow(onWhy)}
-                className="rounded-aui text-aui-fg underline focus-visible:outline-2 focus-visible:outline-aui-accent"
-              >
-                Why can't I?
-              </a>
-            </>
-          )}
-        </p>
+        <p className="text-aui-sm text-aui-muted">{cannotConnect}</p>
       )}
       {section !== "tools" &&
         state?.providers.map((c) => (

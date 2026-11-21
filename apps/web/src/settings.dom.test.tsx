@@ -52,8 +52,6 @@ function page(
       canAdmin={false}
       section={section}
       onSection={noop}
-      explain="runs:read"
-      onExplain={noop}
       onPrefs={onPrefs}
       onWorkspace={noop}
       onOpenProjects={noop}

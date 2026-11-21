@@ -20,6 +20,7 @@ import type {
   AgentSkillDefaultsUpdate,
   AgentSlackApp,
   AgentSpec,
+  AgentTemplateCatalog,
   Alert,
   AlertCount,
   AlertRule,
@@ -2435,6 +2436,42 @@ they were not shown, and the approvals of calls to them, are kept.
     });
   }
 
+  /** Retires the agent for good: it leaves the workspace and stops
+answering, its sessions and revisions stay readable, its schedules
+are paused (they run again only once they ask another agent, and
+Run Now or Resume before that is 409), and its name stays taken, so
+a create with it is 409 and nothing it left keyed by its name (its
+memory, schedules, action policies, Slack app, look and home) passes
+to a new agent. Pausing it (`PUT /api/agents/{name}/control`) keeps
+it instead. `rev`, when given, is the revision the caller read; one
+written since is 409. The platform's own agents, a Store package's
+and the platform file's are never retired by a person (409). The
+builder's `retire_agent` tool does the same after approval.
+ */
+  async retireAgent(name: string, rev?: number, options?: RequestOptions): Promise<void> {
+    let path = "/api/agents/{name}";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    const _q = new URLSearchParams();
+    if (rev !== undefined && rev !== null) _q.set("rev", String(rev));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    await this.request<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  async retireAgentRaw(name: string, rev?: number, options?: RequestOptions): Promise<ApiResponse<void>> {
+    let path = "/api/agents/{name}";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    const _q = new URLSearchParams();
+    if (rev !== undefined && rev !== null) _q.set("rev", String(rev));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
   /** Reset a package agent to its current package specification */
   async resetAgent(name: string, body: ResetAgentBody, options?: RequestOptions): Promise<Revision> {
     let path = "/api/agents/{name}/reset";
@@ -4279,6 +4316,26 @@ here too (429).
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
     return this.rawRequest<DiscoverWorkspaceResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Each template is an outcome a person wants, with the instructions,
+tools, look and starters a new agent made from it begins with, and
+the model chain it starts on (the entry agent's). A template is a
+starting point: the agent made from one is an ordinary agent, created
+with `POST /api/agents` and styled with `PUT /api/agents/{name}/look`.
+ */
+  async listAgentTemplates(options?: RequestOptions): Promise<AgentTemplateCatalog> {
+    const path = "/api/agent-templates";
+    return this.request<AgentTemplateCatalog>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listAgentTemplatesRaw(options?: RequestOptions): Promise<ApiResponse<AgentTemplateCatalog>> {
+    const path = "/api/agent-templates";
+    return this.rawRequest<AgentTemplateCatalog>("GET", path, {
       ...options,
     });
   }

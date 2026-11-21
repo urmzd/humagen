@@ -21,7 +21,6 @@ import { Input } from "@humagen/render-web/ui/input";
 import { NativeSelect } from "@humagen/render-web/ui/native-select";
 import { Switch as SettingSwitch } from "@humagen/render-web/ui/switch";
 import { type FormEvent, Fragment, type MouseEvent, type ReactNode, useRef, useState } from "react";
-import { AccessExplain } from "./AccessExplain.tsx";
 import { doing } from "./access.ts";
 import {
   ApiError,
@@ -79,8 +78,6 @@ export function Settings({
   canAdmin,
   section,
   onSection,
-  explain,
-  onExplain,
   onPrefs,
   onWorkspace,
   onOpenProjects,
@@ -99,9 +96,6 @@ export function Settings({
   /** The section on screen. The sidebar links to some of them, so the caller holds it. */
   section: Section;
   onSection: (next: Section) => void;
-  /** The permission the Access section explains. */
-  explain: string;
-  onExplain: (permission: string) => void;
   onPrefs: (next: Preferences) => void;
   onWorkspace: (next: Workspace) => void;
   onOpenProjects: () => void;
@@ -527,12 +521,7 @@ export function Settings({
                     </li>
                   ))}
                 </ul>
-                <details className="text-aui-xs text-aui-muted">
-                  <summary className="cursor-pointer">Technical permission names</summary>
-                  <p className="mt-2 break-words font-aui-mono">{me.permissions.join(", ")}</p>
-                </details>
               </section>
-              <AccessExplain name={shown} permission={explain} onPermission={onExplain} />
             </>
           )}
         </div>

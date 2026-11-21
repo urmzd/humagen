@@ -15,6 +15,7 @@ import {
   focusLog,
   hoverRow,
   hoverState,
+  previewReason,
   resizeSidebar,
 } from "./sidebar-sources.ts";
 
@@ -375,15 +376,17 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
       path: "/agents",
       act: async (page) => {
         await page.getByRole("heading", { name: "Agents", exact: true }).waitFor();
-        await page.getByRole("button", { name: "New agent", exact: true }).waitFor();
+        await page.getByRole("button", { name: "New Agent", exact: true }).waitFor();
       },
     },
     {
+      // A new agent starts from its goal (DES-081); describing it to the builder stays a choice.
       name: "agent-builder-entry",
       path: "/agents/new",
       act: async (page) => {
-        await page.getByRole("heading", { name: "New agent", exact: true }).waitFor();
-        await page.getByRole("button", { name: "New agent", exact: true }).waitFor();
+        await page.getByRole("heading", { name: "What's it for?", exact: true }).waitFor();
+        await page.getByRole("radio", { name: /^Start from scratch/ }).waitFor();
+        await page.getByRole("button", { name: /^Describe It to/ }).waitFor();
       },
     },
     {
@@ -516,6 +519,7 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
         await dressSources(page, ids.work.id);
         await assertSources(page);
         await hoverState(page);
+        await previewReason(page);
         if ((page.viewportSize()?.width ?? 0) >= 768) {
           await focusLog(page);
           await assertCalmFocus(page);

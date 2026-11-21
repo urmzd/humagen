@@ -216,6 +216,12 @@ func (s *Seer) deciding(row string, decide func() bool) bool {
 	return decide()
 }
 
+// exceptional reports whether a row's decision on a holding seer rested on a
+// read granted by exception, which is kept back until the row is disclosed.
+func (s *Seer) exceptional(row string) bool {
+	return s.held != nil && len(s.held.by[row]) > 0
+}
+
 // Disclose records the exceptional reads the decisions of rows rested on,
 // now that the rows are to be shown, and reports whether they may be. The
 // records are one answer's: a request's are kept back with the rest of its

@@ -324,6 +324,9 @@ type Config struct {
 
 // Platform is the assembled system.
 type Platform struct {
+	// fileAgents is the agents the platform file (or an -agent flag)
+	// declares in this process, by workspace and name (DeclareFileAgent).
+	fileAgents sync.Map
 	// systemTools is the registry's own tools and how its API operations
 	// reach the routes (systemtools.go).
 	systemTools systemRegistry

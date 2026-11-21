@@ -13,10 +13,12 @@ import { swap } from "./transition.ts";
 
 export type AgentTab =
   | "home"
+  | "general"
   | "prompt"
   | "look"
   | "model"
   | "access"
+  | "slack"
   | "queue"
   | "context"
   | "memory"
@@ -25,10 +27,12 @@ export type AgentTab =
   | "revisions";
 export const AGENT_TABS: AgentTab[] = [
   "home",
+  "general",
   "prompt",
   "look",
   "model",
   "access",
+  "slack",
   "queue",
   "context",
   "memory",
@@ -280,6 +284,8 @@ export type Route =
   | { page: "usage"; days?: 7 | 14 | 30; day?: string; display?: "chart" | "table" }
   | { page: "you"; section: YouSection; provider?: string }
   | { page: "agent-setup"; name?: string }
+  /** A new agent: its goal, then with `template` how it looks. */
+  | { page: "agent-create"; template?: string }
   /** A new conversation, optionally with an agent picked and a first message written for it. */
   | { page: "new"; project?: string; channel?: string; agent?: string; ask?: string }
   /**
@@ -335,7 +341,7 @@ export type Route =
    */
   | { page: "connections"; provider?: string; scope?: "apps" }
   | { page: "directory"; tab: DirectoryTab }
-  | { page: "settings"; section: SettingsSection; permission?: string };
+  | { page: "settings"; section: SettingsSection };
 
 export type Page = Route["page"];
 
@@ -374,6 +380,7 @@ const PAGE_TITLES: Record<Page, string> = {
   usage: "Usage",
   you: "You",
   "agent-setup": "New Agent",
+  "agent-create": "New Agent",
   notifications: "Notifications",
   new: "New",
   conversation: "Session",
@@ -500,6 +507,8 @@ export function href(r: Route): string {
       return r.agent ? `/agents/${enc(r.agent)}/control` : "/agent-controls";
     case "agent-setup":
       return r.name ? `/agents/${enc(r.name)}/setup` : "/agents/new/setup";
+    case "agent-create":
+      return r.template ? `/agents/new/${enc(r.template)}` : "/agents/new";
     case "action-policy":
       return r.scope &&
         r.scope !== "workspace" &&
@@ -652,10 +661,7 @@ export function href(r: Route): string {
           : "/settings/people";
     case "settings": {
       if (r.section === "connections") return "/settings/plugins";
-      const base = `/settings/${r.section}`;
-      return r.section === "access" && r.permission
-        ? `${base}?permission=${enc(r.permission)}`
-        : base;
+      return `/settings/${r.section}`;
     }
   }
 }
@@ -705,7 +711,7 @@ function legacy(q: URLSearchParams): Route | null {
     case "limits":
       return { page: "settings", section: v };
     case "access":
-      return { page: "settings", section: "access", permission: q.get("permission") ?? undefined };
+      return { page: "settings", section: "access" };
     case "settings":
       return { page: "settings", section: "profile" };
     default:
@@ -1061,6 +1067,8 @@ function read(pathname: string, search: string): Route {
     }
     case "agents":
       if (b === "setup") return { page: "agent-setup", name: a === "new" ? undefined : a };
+      // A new agent starts from its goal, then is given its look.
+      if (a === "new") return { page: "agent-create", template: b || undefined };
       if (b === "control") return { page: "agent-control", agent: a };
       if (!a) return { page: "agents", state: queryText(q, "state", 80) };
       return {
@@ -1110,7 +1118,6 @@ function read(pathname: string, search: string): Route {
       return {
         page: "settings",
         section: pick(a, SETTINGS_SECTIONS, "profile"),
-        permission: q.get("permission") ?? undefined,
       };
     default:
       return { page: "not-found", path: `/${parts.map(enc).join("/")}` };
@@ -1142,6 +1149,8 @@ export function screenOf(r: Route): string {
     case "agent":
     case "agent-setup":
       return `${r.page}:${r.name ?? ""}`;
+    case "agent-create":
+      return "agent-create";
     case "agent-control":
       return `agent-control:${r.agent ?? ""}`;
     case "action-policy":

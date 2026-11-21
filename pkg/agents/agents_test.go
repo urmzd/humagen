@@ -107,3 +107,33 @@ func TestImportKeepsAuthorAndTime(t *testing.T) {
 		t.Fatalf("import with no time = %v", err)
 	}
 }
+
+// A kept retirement keeps the name: the store's revival is not offered for
+// it by the registry, and keeping a name the store retired keeps it too.
+func TestKeepRetiresForGood(t *testing.T) {
+	s := agents.New()
+	ctx := context.Background()
+	rec := definitiontest.Record("acme", "keeper", "1.0.0", "Keep.")
+	if _, err := s.Put(ctx, rec); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Retire(ctx, "acme", "keeper", "store"); err != nil {
+		t.Fatal(err)
+	}
+	if why, retired, _ := s.Retired("acme", "keeper"); !retired || why.Kept {
+		t.Fatalf("a store retirement = %+v, %v; want retired, not kept", why, retired)
+	}
+	if err := s.Keep(ctx, "acme", "keeper", "ada"); err != nil {
+		t.Fatal(err)
+	}
+	why, retired, _ := s.Retired("acme", "keeper")
+	if !retired || !why.Kept || why.By != "ada" {
+		t.Fatalf("a kept retirement = %+v, %v", why, retired)
+	}
+	if err := s.Keep(ctx, "acme", "missing", "ada"); !errors.Is(err, definition.ErrNotFound) {
+		t.Fatalf("keeping a name never used = %v", err)
+	}
+	if err := s.Keep(ctx, "acme", "keeper", " "); !errors.Is(err, definition.ErrInvalid) {
+		t.Fatalf("a retirement by nobody = %v", err)
+	}
+}

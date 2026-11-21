@@ -45,15 +45,20 @@ type AgentStore interface {
 	Revise(ctx context.Context, tenant string, spec AgentSpec, expectedRev int, by string) (Revision, error)
 	// Delete retires an agent. Its revisions stay readable.
 	Delete(ctx context.Context, tenant, name string, expectedRev int) error
+	// Retire retires an agent for good: its revisions stay readable and its
+	// name stays taken (ErrRetired on a create).
+	Retire(ctx context.Context, tenant, name string, expectedRev int, by string) error
 	// Resolver pins a run's definition from the store.
 	Resolver() *definition.Resolver
 }
 
 // Errors a store or a definition reports.
 var (
-	ErrNotFound    = errors.New("registry: not found")
-	ErrExists      = errors.New("registry: already exists")
-	ErrConflict    = errors.New("registry: conflict")
+	ErrNotFound = errors.New("registry: not found")
+	ErrExists   = errors.New("registry: already exists")
+	ErrConflict = errors.New("registry: conflict")
+	// ErrRetired reports a name a person retired: it stays taken.
+	ErrRetired     = errors.New("registry: retired")
 	ErrInvalidPage = errors.New("registry: invalid")
 )
 
@@ -138,12 +143,15 @@ func (a *Agents) Create(ctx context.Context, tenant string, spec AgentSpec, by s
 		return Revision{}, err
 	}
 	if len(all) > 0 {
-		_, retired, err := a.src.Retired(tenant, spec.Name)
+		why, retired, err := a.src.Retired(tenant, spec.Name)
 		if err != nil {
 			return Revision{}, err
 		}
 		if !retired {
 			return Revision{}, fmt.Errorf("%w: agent %q is already at revision %d", ErrExists, spec.Name, len(all))
+		}
+		if why.Kept {
+			return Revision{}, fmt.Errorf("%w: @%s was retired, and its name stays taken so nothing it left passes to a new agent; pick another name", ErrRetired, spec.Name)
 		}
 		if err := a.src.Revive(ctx, tenant, spec.Name); err != nil {
 			return Revision{}, err
@@ -224,6 +232,26 @@ func (a *Agents) Delete(ctx context.Context, tenant, name string, expectedRev in
 		return fmt.Errorf("%w: agent %q is at revision %d, not %d; re-read it before retiring it", ErrConflict, name, len(all), expectedRev)
 	}
 	return a.src.Retire(ctx, tenant, name, "humagen")
+}
+
+// Retire retires an agent for good: its name stays taken (agents.Store.Keep).
+// expectedRev, when not 0, is the revision the caller read.
+func (a *Agents) Retire(ctx context.Context, tenant, name string, expectedRev int, by string) error {
+	if expectedRev < 0 {
+		return fmt.Errorf("%w: expected revision %d is negative", ErrInvalidAgent, expectedRev)
+	}
+	name = NormalizeName(name)
+	if _, err := a.src.Latest(ctx, tenant, name); err != nil {
+		return catalogErr(err)
+	}
+	all, err := a.src.Versions(ctx, tenant, name)
+	if err != nil {
+		return catalogErr(err)
+	}
+	if expectedRev != 0 && expectedRev != len(all) {
+		return fmt.Errorf("%w: agent %q is at revision %d, not %d; re-read it before retiring it", ErrConflict, name, len(all), expectedRev)
+	}
+	return a.src.Keep(ctx, tenant, name, by)
 }
 
 // RecordOf converts a spec to the saige definition stored as revision rev.

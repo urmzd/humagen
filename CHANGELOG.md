@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.178.1 (2026-11-21)
+
+### Bug Fixes
+
+- **console**: clean up evals, drop dev and permission noise (#480) ([280843f](https://github.com/urmzd/humagen/commit/280843fcfdbef8ce05099416c5028327a2f69026))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.178.0...v0.178.1)
+
+
+## 0.178.0 (2026-11-21)
+
+### Features
+
+- **agents**: goal-first creation, grouped settings and an agent home (#476) ([53f88f5](https://github.com/urmzd/humagen/commit/53f88f5a501ebe988eee090d5a45bd00935e99fa))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.177.2...v0.178.0)
+
+
 ## 0.177.1 (2026-11-21)
 
 ### Bug Fixes

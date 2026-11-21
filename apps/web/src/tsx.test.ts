@@ -11,5 +11,6 @@ await loadTests([
   "/src/connections.test.tsx",
   "/src/availability.test.tsx",
   "/src/cron.test.tsx",
+  "/src/evalHealth.test.tsx",
   "/src/health.test.tsx",
 ]);

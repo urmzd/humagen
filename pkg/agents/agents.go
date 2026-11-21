@@ -64,6 +64,12 @@ func WithClock(now func() time.Time) Option {
 type Retirement struct {
 	By string    `json:"by"`
 	At time.Time `json:"at"`
+	// Kept is set when a person or the builder retired the agent: the name
+	// stays taken, so no new agent can take it and with it what the
+	// retired one left keyed by its name (its memory, schedules, policies,
+	// Slack app and home). Only the store's own retirements, of a package's
+	// agents, may be revived.
+	Kept bool `json:"kept,omitempty"`
 }
 
 // head is what is kept about one agent beside its versions: its highest
@@ -512,6 +518,25 @@ func (s *Store) Retire(_ context.Context, tenant, name, by string) error {
 			return state.ErrUnchanged
 		}
 		h.Retired = &Retirement{By: by, At: s.clock().UTC()}
+		return nil
+	}, true)
+}
+
+// Keep retires a name for good: Retire, with the name kept from reuse
+// (Retirement.Kept). A name already retired by the store is kept too.
+func (s *Store) Keep(_ context.Context, tenant, name, by string) error {
+	by = strings.TrimSpace(by)
+	if by == "" {
+		return fmt.Errorf("%w: a retirement must say who made it", definition.ErrInvalid)
+	}
+	if tenant == "" || !validName(name) {
+		return fmt.Errorf("%w: %s", definition.ErrNotFound, name)
+	}
+	return s.updateHead(tenant, name, func(h *head) error {
+		if h.Retired != nil && h.Retired.Kept {
+			return state.ErrUnchanged
+		}
+		h.Retired = &Retirement{By: by, At: s.clock().UTC(), Kept: true}
 		return nil
 	}, true)
 }

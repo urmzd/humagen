@@ -24,7 +24,7 @@ import {
   type ThreadSummary,
   type Settings as Workspace,
 } from "./api.ts";
-import { accentAttribute, brandCopy, servedBranding } from "./branding.ts";
+import { accentAttribute, agentShown, brandCopy, servedBranding } from "./branding.ts";
 import { Chat } from "./Chat.tsx";
 import { CONNECT_PERMISSION } from "./connections.ts";
 import { HomeProjects } from "./HomePage.tsx";
@@ -34,6 +34,7 @@ import {
   ActionPolicies,
   AgentBuilderStart,
   AgentControls,
+  AgentCreate,
   AgentDetail,
   AgentNetwork,
   AgentOperations,
@@ -683,7 +684,7 @@ function Console({
       ? me.principal.kind === "user"
       : can(policyScope === "project" ? "projects:write" : "agents:write");
   const openAgent = (name: string | null, tab: AgentTab = "prompt") =>
-    name ? go({ page: "agent", name, tab }) : go({ page: "agent-setup" });
+    name ? go({ page: "agent", name, tab }) : go({ page: "agent-create" });
   const openSettings = (section: SettingsSection) => go({ page: "settings", section });
   // What a message is about, opened where it lives.
   const openSource = (source: About) =>
@@ -1098,13 +1099,6 @@ function Console({
                             go({ page: "you", section: "connections", provider }, { replace: true })
                           }
                           canConnect={can(CONNECT_PERMISSION)}
-                          onWhy={() =>
-                            go({
-                              page: "settings",
-                              section: "access",
-                              permission: CONNECT_PERMISSION,
-                            })
-                          }
                         />
                       ) : (
                         <PersonalPreferences
@@ -1559,26 +1553,46 @@ function Console({
                       canWrite={can("agents:write")}
                       onOpen={(name) => openAgent(name)}
                       onNew={() => openAgent(null)}
-                      onBuilderSession={canAsk(BUILTIN_BUILDER) ? openThread : undefined}
-                      onBuild={
-                        canAsk(BUILTIN_BUILDER)
-                          ? () =>
-                              go({
-                                page: "new",
-                                agent: BUILTIN_BUILDER,
-                                ask: "/agent-creator ",
-                              })
-                          : undefined
-                      }
+                      onBuild={can("agents:write") ? () => openAgent(null) : undefined}
                     />
                   )}
-                  {(route.page === "agent-setup" ||
+                  {(route.page === "agent-create" ||
                     (route.page === "agent" && route.name === null)) &&
-                    (canAsk(BUILTIN_BUILDER) ? (
-                      <AgentBuilderStart
-                        name={route.page === "agent-setup" ? route.name : undefined}
-                        onOpen={openThread}
+                    (can("agents:write") ? (
+                      <AgentCreate
+                        template={route.page === "agent-create" ? route.template : undefined}
+                        agents={agents}
+                        builder={agentShown(BUILTIN_BUILDER)}
+                        onPick={(template) => go({ page: "agent-create", template })}
+                        onBack={() => go({ page: "agents" })}
+                        onCreated={(made) => {
+                          setAgents((all) => [
+                            ...all.filter((a) => a.spec.name !== made.spec.name),
+                            made,
+                          ]);
+                          setAgentRead("ready");
+                          loadAgents();
+                          go({ page: "agent", name: made.spec.name, tab: "home" });
+                        }}
+                        onDescribe={
+                          canAsk(BUILTIN_BUILDER)
+                            ? () =>
+                                go({
+                                  page: "new",
+                                  agent: BUILTIN_BUILDER,
+                                  ask: "/agent-creator ",
+                                })
+                            : undefined
+                        }
                       />
+                    ) : (
+                      <Page title={defaultCopy.agentCreate.title}>
+                        <Problem message={defaultCopy.noPermission} />
+                      </Page>
+                    ))}
+                  {route.page === "agent-setup" &&
+                    (canAsk(BUILTIN_BUILDER) ? (
+                      <AgentBuilderStart name={route.name} onOpen={openThread} />
                     ) : (
                       <Page title={defaultCopy.agentSetup.title}>
                         <Problem message={defaultCopy.noPermission} />
@@ -1658,6 +1672,12 @@ function Console({
                         onHomed={loadAgents}
                         policies={workspace?.model_policies ?? []}
                         viewer={me.principal.subject}
+                        onOpenThread={openThread}
+                        onRetired={() => {
+                          setAgents((all) => all.filter((a) => a.spec.name !== route.name));
+                          loadAgents();
+                          go({ page: "agents" });
+                        }}
                       />
                     ))}
                   {route.page === "directory" && <DirectoryPage can={can} />}
@@ -1714,10 +1734,6 @@ function Console({
                       canAdmin={can("agents:write")}
                       section={route.section}
                       onSection={openSettings}
-                      explain={route.permission ?? "runs:read"}
-                      onExplain={(permission) =>
-                        go({ page: "settings", section: "access", permission }, { replace: true })
-                      }
                       onPrefs={setPrefs}
                       onWorkspace={setWorkspace}
                       projects={projectNames}
