@@ -1378,10 +1378,14 @@ export class App {
     await this.plans.settle(run.id, turn);
     this.native = this.native && presenter.streaming;
     if (this.chrome.has(job.session.channel)) void this.chrome.settle(job.session.channel, run);
-    // Answered, or still answering after what it posted: the asker's next reply needs no mention.
-    if (job.follows && (stalled || turn.status === "done")) this.follow(job.session, job.user);
+    // Slack has the answer's words: the asker's next reply needs no mention.
+    const enroll = () => {
+      if (job.follows && presenter.answered) this.follow(job.session, job.user);
+    };
+    if (turn.status !== "failed" && turn.status !== "stopped") enroll();
     if (stalled) {
-      this.track(this.later(run, following, presenter));
+      // A quiet run that has said nothing yet is followed once its answer is posted.
+      this.track(this.later(run, following, presenter, enroll));
       // The thread is not held for it. A later message follows it in the conversation,
       // as humagen orders any turn sent after one that is still running.
       return "done" as const;
@@ -1507,7 +1511,12 @@ export class App {
    * Follow a quiet run by its record, less and less often, until it ends, then
    * post its end in the thread. A stop pressed meanwhile confirms it instead.
    */
-  private async later(run: Run, following: Follower, presenter: Presenter): Promise<void> {
+  private async later(
+    run: Run,
+    following: Follower,
+    presenter: Presenter,
+    answered?: () => void,
+  ): Promise<void> {
     let wait = this.pollMs;
     try {
       while (!this.closing.signal.aborted) {
@@ -1520,6 +1529,7 @@ export class App {
         if (!this.claim(run.id)) return;
         following.settle(record);
         await presenter.conclude(following.turn);
+        if (following.turn.status === "done") answered?.();
         await this.plans.settle(run.id, following.turn);
         this.log(`run ${run.id} ended ${following.turn.status}, after it went quiet`);
         return;
