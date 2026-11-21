@@ -20,7 +20,7 @@ test("the workspace accent, and no choice yet, draw with the branded accent", ()
 test("before the workspace's branding is read, the served name brands the console", () => {
   assert.deepEqual(servedBranding("Humagen"), {
     name: "Humagen",
-    wordmark: "humagen",
+    wordmark: "Humagen",
     title: "Humagen",
     logo: null,
     logo_dark: null,

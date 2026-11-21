@@ -14,7 +14,7 @@ function servedName(): string {
 export function servedBranding(name = servedName()): Branding {
   return {
     name,
-    wordmark: name === "Humagen" ? "humagen" : name,
+    wordmark: name,
     title: name,
     logo: null,
     logo_dark: null,
