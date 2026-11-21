@@ -303,9 +303,11 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
           );
 
         const initial = await layout();
-        assert.ok(Math.abs(initial[0].rowHeight - initial[1].rowHeight) <= 1, "equal row heights");
-        assert.equal(initial[0].buttons.length, 3, "the fixture can manage alerts");
-        assert.deepEqual(initial[0].buttons, initial[1].buttons, "the same three action slots");
+        const [first, second] = initial;
+        assert.ok(first && second, "the fixture has two alerts");
+        assert.ok(Math.abs(first.rowHeight - second.rowHeight) <= 1, "equal row heights");
+        assert.equal(first.buttons.length, 3, "the fixture can manage alerts");
+        assert.deepEqual(first.buttons, second.buttons, "the same three action slots");
         assert.ok(
           initial.every(({ buttons, right }) => buttons.every((button) => button.right < right)),
           "every action stays inside the row",

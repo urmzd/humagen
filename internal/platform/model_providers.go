@@ -345,7 +345,7 @@ func (p *Platform) SetModelProviderEnabled(ctx context.Context, who auth.Princip
 				if len(visible) < len(users) {
 					visible = append(visible, "agents in projects you may not read")
 				}
-				return fmt.Errorf("%w: %q is used by %s. Move those assignments before turning it off.", ErrModelProviderInUse, name, strings.Join(visible, ", "))
+				return fmt.Errorf("%w: %q is used by %s; move those assignments before turning it off", ErrModelProviderInUse, name, strings.Join(visible, ", "))
 			}
 		}
 		next.Disabled = !enabled
