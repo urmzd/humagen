@@ -19,19 +19,8 @@ import {
   scheduleLine,
   validEvery,
 } from "./evalHealth.ts";
-import {
-  ago,
-  button,
-  Chip,
-  card,
-  field,
-  Label,
-  Menu,
-  Problem,
-  primary,
-  Segmented,
-  took,
-} from "./ui.tsx";
+import { age } from "./format.ts";
+import { ago, button, Chip, card, field, Label, Menu, Problem, primary, took } from "./ui.tsx";
 
 const sched = defaultCopy.evalSchedule;
 
@@ -75,15 +64,21 @@ function ScheduleEditor({
       onSubmit={save}
       className="flex flex-col gap-3 rounded-aui border border-aui-border p-3"
     >
-      <Segmented
-        label={sched.label}
-        value={preset}
-        options={(["off", "hourly", "six", "daily", "weekly", "custom"] as const).map((id) => ({
-          id,
-          label: sched.presets[id],
-        }))}
-        onChange={setPreset}
-      />
+      {/* The presets wrap rather than scroll, so every one is in view at phone width. */}
+      <fieldset className="flex min-w-0 flex-wrap gap-1">
+        <legend className="sr-only">{sched.label}</legend>
+        {(["off", "hourly", "six", "daily", "weekly", "custom"] as const).map((id) => (
+          <button
+            key={id}
+            type="button"
+            aria-pressed={preset === id}
+            onClick={() => setPreset(id)}
+            className="inline-flex h-8 pointer-coarse:h-11 shrink-0 items-center whitespace-nowrap rounded-aui-sm border border-aui-border px-2.5 text-aui-xs text-aui-muted transition-colors hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-pressed:border-aui-fg aria-pressed:bg-aui-hover aria-pressed:text-aui-fg motion-reduce:transition-none"
+          >
+            {sched.presets[id]}
+          </button>
+        ))}
+      </fieldset>
       {preset === "custom" && (
         <Label text={sched.hours} hint={sched.hoursHint}>
           <input
@@ -141,17 +136,24 @@ function Outcome({ status }: { status: EvalRun["status"] | "pass" | "fail" }) {
     <span className="inline-flex items-center gap-1.5 text-aui-xs text-aui-muted">
       <span
         aria-hidden
-        className={`size-1.5 rounded-full ${running ? "bg-aui-neutral" : good ? "bg-aui-ok" : "bg-aui-bad"}`}
+        className={`size-1.5 rounded-full ${running ? "bg-aui-neutral" : good ? "bg-aui-ok" : status === "failed" ? "bg-aui-warn" : "bg-aui-bad"}`}
       />
       {running ? "Running" : good ? "Passed" : status === "errored" ? "Errored" : "Failed"}
     </span>
   );
 }
 
+/** A run's bar colour: neutral when it reached its threshold, warn below it, bad only when it could not run. */
+export function barTone(run: Pick<EvalRun, "status" | "pass_rate" | "threshold">): string {
+  if (run.status === "errored") return "bg-aui-bad";
+  return run.pass_rate >= run.threshold ? "bg-aui-neutral" : "bg-aui-warn";
+}
+
 /**
- * Pass rate across the last runs, oldest first, each labelled with the agent
- * revision it tested. Bars share one hue: the height is the measure, and the
- * line marks the rate a run has to reach.
+ * Pass rate across the last runs, oldest first, each labelled with how long
+ * ago it ran. The height is the measure and the line marks the rate a run has
+ * to reach; colour says only whether it reached it (neutral), fell short
+ * (warn) or could not run (bad).
  */
 function History({ runs, threshold }: { runs: EvalRun[]; threshold: number }) {
   const ended = runs
@@ -177,20 +179,18 @@ function History({ runs, threshold }: { runs: EvalRun[]; threshold: number }) {
             title={`${Math.round(r.pass_rate)}%${r.rev ? `, revision ${r.rev}` : ""}, ${ago(r.started_at)}`}
           >
             <span
-              className="w-full rounded-t-sm bg-aui-accent"
-              style={{
-                height: `${Math.max(r.pass_rate, 2)}%`,
-                opacity: r.pass_rate >= r.threshold ? 1 : 0.45,
-              }}
+              data-tone={barTone(r)}
+              className={`w-full rounded-t-sm ${barTone(r)}`}
+              style={{ height: `${Math.max(r.pass_rate, 2)}%` }}
             />
           </div>
         ))}
       </div>
       <div className="flex gap-1 text-aui-2xs tabular-nums text-aui-muted">
         {ended.map((r) => (
-          <span key={r.id} className="w-6 text-center">
-            {r.rev ? `r${r.rev}` : Math.round(r.pass_rate)}
-          </span>
+          <time key={r.id} dateTime={r.started_at} className="w-6 text-center">
+            {age(r.started_at)}
+          </time>
         ))}
       </div>
     </figure>

@@ -3,7 +3,7 @@ import { afterEach, test } from "node:test";
 import { defaultCopy } from "@humagen/components";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { AgentHealth, AgentStats } from "./AgentHealth.tsx";
-import type { SuiteView } from "./api.ts";
+import type { EvalRun, SuiteView } from "./api.ts";
 import { stubFetch } from "./dom.ts";
 import { Evals } from "./Evals.tsx";
 
@@ -258,4 +258,40 @@ test("a person sets, changes and turns off a suite's schedule within its bounds,
   fireEvent.click(screen.getByRole("button", { name: sched.save }));
   await waitFor(() => assert.equal(changed, 2));
   assert.equal((saved[1] as Record<string, unknown>).every_seconds, 0);
+});
+
+test("pass-rate bars are neutral when a run reached its threshold, warn below it, bad only when it could not run, and labelled by when it ran", () => {
+  const run = (
+    id: string,
+    status: "passed" | "failed" | "errored",
+    rate: number,
+    hoursAgo: number,
+  ) => ({
+    ...(scheduled.runs[0] as EvalRun),
+    id,
+    status,
+    pass_rate: rate,
+    threshold: 80,
+    started_at: iso(-hoursAgo * hour - 60_000),
+  });
+  render(
+    <Evals
+      target="agent"
+      subject="writer"
+      suites={[
+        {
+          ...scheduled,
+          runs: [run("c", "errored", 0, 2), run("b", "failed", 60, 5), run("a", "passed", 90, 9)],
+        },
+      ]}
+      canWrite={false}
+      onChanged={() => {}}
+    />,
+  );
+  const bars = [...document.querySelectorAll("[data-tone]")].map((el) =>
+    el.getAttribute("data-tone"),
+  );
+  assert.deepEqual(bars, ["bg-aui-neutral", "bg-aui-warn", "bg-aui-bad"]);
+  const labels = [...document.querySelectorAll("figure time")].map((el) => el.textContent);
+  assert.deepEqual(labels, ["9h", "5h", "2h"]);
 });
