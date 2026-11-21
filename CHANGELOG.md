@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.169.0 (2026-11-21)
+
+### Features
+
+- **web**: an agent's page opens on its home (stack 6/6) (#468) ([81da130](https://github.com/urmzd/humagen/commit/81da130c7c7610d6534107c13740c42141c5d3fb))
+- **agents**: an agent's own Slack app, from its manifest and linked by its token (stack 5/6) (#467) ([5034ce7](https://github.com/urmzd/humagen/commit/5034ce765bb7b53539bd018ea6c9e9b0438115ee))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.168.0...v0.169.0)
+
+
 ## 0.166.0 (2026-11-21)
 
 ### Features
