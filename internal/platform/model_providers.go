@@ -416,7 +416,9 @@ func checkProviderShape(m ModelProvider) error {
 
 // DeleteModelProvider removes one of who's workspace's providers and its
 // key. It is refused while an agent, a model policy or routing runs on it,
-// naming each, so nothing is left pointing at a provider that is gone.
+// naming each, so nothing is left pointing at a provider that is gone. The
+// platform's own agents do not hold it, as they do not hold it on: they ship
+// on a chain and answer on the next provider that is enabled.
 func (p *Platform) DeleteModelProvider(ctx context.Context, who auth.Principal, name string) error {
 	if !who.Can(auth.ClientsWrite) {
 		return auth.ErrForbidden
@@ -425,7 +427,7 @@ func (p *Platform) DeleteModelProvider(ctx context.Context, who auth.Principal, 
 	if _, ok := p.workspaceProvider(tenant, name); !ok {
 		return fmt.Errorf("%w: the workspace has no provider named %q", ErrModelProvider, name)
 	}
-	users, err := p.providerUsers(ctx, tenant, name, p.Settings(tenant), false)
+	users, err := p.providerUsers(ctx, tenant, name, p.Settings(tenant), true)
 	if err != nil {
 		return err
 	}

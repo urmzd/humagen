@@ -370,6 +370,71 @@ func TestBuiltinsShipWithAChainAndRunOnWhatIsEnabled(t *testing.T) {
 	}
 }
 
+// A preset the platform's own agents ship on can be removed, as it can be
+// turned off: they answer on the next provider, and say what they need when
+// none is left. A person's own agent on it still holds it.
+func TestRemovingAPresetTheShippedAgentsRunOn(t *testing.T) {
+	p, _ := configured(t, Config{ShipBuiltins: true})
+	ctx := t.Context()
+	for kind, key := range map[string]string{KindOpenAI: "sk-o", KindAnthropic: "sk-a"} {
+		if _, err := p.SetModelProvider(ctx, admin("acme"), kind, ModelProviderInput{Kind: kind, Key: key}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := p.EnsureBuiltins(ctx, "acme"); err != nil {
+		t.Fatal(err)
+	}
+	installForTest(t, p, "acme", "humagen/core")
+	writer, err := p.Catalog().Get(ctx, "acme", BuiltinWriter, 0)
+	if err != nil || writer.CreatedBy != "platform" {
+		t.Fatalf("writer = %+v, %v", writer.Spec, err)
+	}
+	run := func() (native.Spec, error) {
+		def := native.Revision{Spec: native.Spec{Name: writer.Spec.Name, Provider: writer.Spec.Provider, Model: writer.Spec.Model}}
+		for _, f := range writer.Spec.Fallbacks {
+			def.Spec.Fallbacks = append(def.Spec.Fallbacks, native.ModelRef{Provider: f.Provider, Model: f.Model})
+		}
+		got, err := p.resolveModel(runtime.Request{Tenant: "acme", Definition: def})
+		return got.Definition.Spec, err
+	}
+	if s, err := run(); err != nil || s.Provider != workspaceRef("acme", KindAnthropic) {
+		t.Fatalf("with both set up = %+v, %v", s, err)
+	}
+	// A person's own agent on the preset holds it.
+	if _, err := p.Agents.Create(ctx, "acme", wire.AgentSpec{Name: "mine", Provider: KindAnthropic, Model: "claude-sonnet-5-5", SystemPrompt: "Write."}, "ada"); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.DeleteModelProvider(ctx, admin("acme"), KindAnthropic); !errors.Is(err, ErrModelProviderInUse) || !strings.Contains(err.Error(), "@mine") || strings.Contains(err.Error(), "@"+BuiltinWriter) {
+		t.Fatalf("remove under a person's own agent = %v", err)
+	}
+	if _, err := p.Agents.Revise(ctx, "acme", wire.AgentSpec{Name: "mine", Provider: KindOpenAI, Model: "gpt-5.1", SystemPrompt: "Write."}, 1, "ada"); err != nil {
+		t.Fatal(err)
+	}
+	// Only the platform's agents name it now, so it goes, with its key.
+	if err := p.DeleteModelProvider(ctx, admin("acme"), KindAnthropic); err != nil {
+		t.Fatalf("remove a preset only shipped agents name = %v", err)
+	}
+	if _, ok := p.secrets.Get("acme", secretsOwner(KindAnthropic), "key"); ok {
+		t.Fatal("the removed preset's key is still kept")
+	}
+	if s, err := run(); err != nil || s.Provider != workspaceRef("acme", KindOpenAI) || s.Model != "gpt-5.1" {
+		t.Fatalf("a shipped agent after the removal = %+v, %v", s, err)
+	}
+	// The last one a shipped agent could use is held only by the person's agent.
+	if err := p.DeleteModelProvider(ctx, admin("acme"), KindOpenAI); !errors.Is(err, ErrModelProviderInUse) || !strings.Contains(err.Error(), "@mine") {
+		t.Fatalf("remove the last preset under a person's agent = %v", err)
+	}
+	if _, err := p.Agents.Revise(ctx, "acme", wire.AgentSpec{Name: "mine", Provider: "offline", Model: "offline", SystemPrompt: "Write."}, 2, "ada"); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.DeleteModelProvider(ctx, admin("acme"), KindOpenAI); err != nil {
+		t.Fatalf("remove the last preset = %v", err)
+	}
+	if _, err := run(); !errors.Is(err, ErrModelProvider) || !strings.Contains(err.Error(), "anthropic, openai, google") {
+		t.Fatalf("a shipped agent with nothing set up = %v", err)
+	}
+}
+
 // A deployment may rename the entry agent. It still ships on the platform's
 // chain, so it never holds a preset on; a person's own revision of it does.
 func TestARenamedEntryAgentDoesNotHoldAPresetOn(t *testing.T) {
