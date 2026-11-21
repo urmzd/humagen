@@ -15,6 +15,7 @@ import {
   focusLog,
   hoverRow,
   hoverState,
+  previewReason,
   resizeSidebar,
 } from "./sidebar-sources.ts";
 
@@ -337,6 +338,7 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
         await dressSources(page, ids.work.id);
         await assertSources(page);
         await hoverState(page);
+        await previewReason(page);
         if ((page.viewportSize()?.width ?? 0) >= 768) {
           await focusLog(page);
           await assertCalmFocus(page);

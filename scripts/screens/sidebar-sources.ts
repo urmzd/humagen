@@ -286,6 +286,52 @@ export async function hoverState(page: Page): Promise<void> {
 }
 
 /**
+ * A row's badge is a glyph alone, so its preview says the reason in words to
+ * a reader with no mouse: under a held finger on a phone, and under keyboard
+ * focus on a wider screen. The preview is put away again.
+ */
+export async function previewReason(page: Page): Promise<void> {
+  const row = page.locator(`[data-thread-row="${SOURCE_ROWS.slackDM}"]`);
+  const reason = "Failed: github-reviewer could not read the repositories (401)";
+  const phone = (page.viewportSize()?.width ?? 0) < 768;
+  if (phone) {
+    const box = await row.boundingBox();
+    if (!box) throw new Error("the failed row is not drawn");
+    await row.dispatchEvent("touchstart", {
+      touches: [{ identifier: 1, clientX: box.x + 20, clientY: box.y + 10 }],
+    });
+  } else {
+    // Away and back by the keyboard, so the row takes focus as a keyboard gives it.
+    await page.mouse.move(1, 1);
+    await row.focus();
+    await page.keyboard.press("Shift+Tab");
+    await page.keyboard.press("Tab");
+    if (
+      !(await row.evaluate((el) => el === document.activeElement && el.matches(":focus-visible")))
+    )
+      throw new Error("the failed row did not take keyboard focus");
+  }
+  const how = phone ? "a long press" : "keyboard focus";
+  const card = page.locator("[data-peek]");
+  const status = card.locator("[data-peek-status]");
+  try {
+    await status.waitFor({ timeout: 5000 });
+  } catch {
+    throw new Error(`the failed row's preview must say its reason on ${how}`);
+  }
+  if ((await status.textContent())?.trim() !== reason)
+    throw new Error(
+      `the preview on ${how} must say the full reason, not: ${await status.textContent()}`,
+    );
+  const [cardBox, view] = [await card.boundingBox(), page.viewportSize()];
+  if (!cardBox || !view || cardBox.x < 0 || cardBox.x + cardBox.width > view.width)
+    throw new Error(`the preview on ${how} must fit the window`);
+  if (phone) await row.dispatchEvent("touchend");
+  await card.dispatchEvent("pointerdown");
+  await card.waitFor({ state: "detached" });
+}
+
+/**
  * Drags the sidebar's edge 48px wider on a wide screen and checks the
  * sidebar follows and the width is kept.
  */

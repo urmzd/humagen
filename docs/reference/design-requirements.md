@@ -90,7 +90,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-053 | Notifications sort into the reader's own views: Inbox, Unread, Hidden and Done, with per-reader hide and delete | Implemented; per-reader marks and counters, bulk API with isolation tests, DOM and route tests, phone/desktop captures |
 | DES-060 | Pull requests across workspace repositories, with board/list views and filters | Implemented; `pull_requests.go`, `History.tsx`, endpoint and DOM tests; `history-all` and `history-github` screens registered for CI |
 | DES-054 | The sidebar lists Participated, Pinned and Recent with counts, Recent newest first with By project, By day and Archived as groupings; each row is its title, then its age and where it started (Slack, GitHub, a schedule, the console), with its status as a compact badge on that same line; red means failure only; the sidebar's edge resizes it | Implemented: `conversationList.ts`, `marks.ts`, `Sidebar.tsx`, `pkg/marks`, `PATCH /api/threads/{id}/marks`, `waiting` and `last` on thread summaries; Go, web and DOM tests pass; `sidebar-sources`, `sidebar-recents`, `sidebar-row-actions`, `sidebar-projects` and `sidebar-archived` screens pass at 390x844 and 1280x800 |
-| DES-055 | A sidebar row previews itself on hover or a long press, and the wave's preview carries its author's mark | Implemented: `RowPreview.tsx`, `peek.ts`, `TurnRail.tsx`; web, DOM and screens pass (`sidebar-preview` checks the card is centred on its row, `conversation-wave-preview`) at 390x844 and 1280x800 |
+| DES-055 | A sidebar row previews itself on hover, a long press or keyboard focus, with its status in words, and the wave's preview carries its author's mark | Implemented: `RowPreview.tsx`, `peek.ts`, `TurnRail.tsx`; web, DOM and screens pass (`sidebar-preview` checks the card is centred on its row, `conversation-wave-preview`) at 390x844 and 1280x800 |
 | DES-056 | A one-time tip teaches search, dismissed once per person | Evidence: `sidebar-search` checks the replacement Search navigation button; the tip card was removed |
 | DES-057 | Home files a new conversation from over its chat bar; a conversation's approval mode is a text control under the composer, Default or Approve for Me, within policy and audited | Implemented: `ApprovalModePicker.tsx`, `HomePage.tsx`, `pkg/threads/approval.go`, `internal/platform/approval_mode.go`, `PUT /api/threads/{id}/approval`; Go, DOM and screens pass (`home-project-above`, `composer-approval-mode`). Per-message model and effort were removed (DES-067). In Slack: an approval's menu lets the approval agent decide the thread, set as the person through the same route with `act_as` and said in the thread with the way back; an agent-decided card shows its reason; Ask a Question asks the agent in the thread while the call waits. Go, adapter, render-slack and Slack app tests pass; live Slack not yet checked |
 | DES-053 | Notifications sort into the reader's own views: Inbox, Unread, Hidden and Done, with per-reader hide and delete | Implemented; per-reader marks and counters, bulk API with isolation tests, DOM and route tests, phone/desktop captures |
@@ -1527,8 +1527,10 @@ Rules:
   since a Slack message posts through the API.
 - A compact **status badge** stays on the second line when the row menu
   appears. Its glyph tells approval, question, other waits, failure, work
-  and alerts apart. Its tooltip and the row's accessible description retain
-  the full reason. Waiting on the reader and urgent alerts use the warning
+  and alerts apart. The row's preview (DES-055) says the full reason in
+  words, on hover, a held finger or keyboard focus, so it does not need a
+  mouse; the badge's tooltip and the row's accessible description carry it
+  too. Waiting on the reader and urgent alerts use the warning
   color. **Red means failure only**. The session listing's `failure` is set
   only while the latest turn failed.
 - **Unread** sets the title in a heavier weight. A quiet dot marks an
@@ -1630,6 +1632,13 @@ Rules:
   centred on the row: the whole title (up to three lines) and how long ago
   the conversation moved ("5h ago", "Just now"). Leaving, scrolling or Escape
   closes it. The row names the card with `aria-describedby` while it shows.
+- A row with a status (DES-054) adds it to the card in words, between the
+  title and the age ("Failed: provider: rate limited (429)"), since the
+  row's badge is a glyph alone. A screen reader hears the status from the
+  row's own description, so the card's line is hidden from it.
+- Keyboard focus resting on a row for 450ms opens the same card; a click or
+  a tap, which focus the row too, does not. Moving focus away, or opening
+  the conversation, closes it. One card shows at a time.
 - On a touch screen a 500ms hold opens the card under the row, across the
   screen, or over it near the bottom. The hold does not also open the
   conversation, and the browser's own menu does not open; the next tap does.
@@ -1642,8 +1651,9 @@ Rules:
 
 Evidence: `cd apps/web && pnpm test` (`peek.test.ts`,
 `sidebar-peek.dom.test.tsx`, `wave.dom.test.tsx`); `make screens` with
-`sidebar-preview` (a hover on desktop, a held finger on a phone) and
-`conversation-wave-preview`.
+`sidebar-preview` (a hover on desktop, a held finger on a phone),
+`sidebar-sources` (the failed row's reason in its card: a held finger on a
+phone, keyboard focus on a wider screen) and `conversation-wave-preview`.
 
 ### DES-056: A one-time tip for search
 

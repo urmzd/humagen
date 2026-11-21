@@ -440,7 +440,8 @@ function TaskRow({
     if (t && t !== task.title) onRename?.(t);
     requestAnimationFrame(() => trigger()?.focus());
   };
-  // Resting the pointer on the row, or holding a finger on it, previews it.
+  // Resting the pointer or keyboard focus on the row, or holding a finger on
+  // it, previews it: the preview says the status the badge shows as a glyph.
   const peek = usePeek();
   const peekId = `peek-${task.id}`;
   const statusId = `row-status-${task.id}`;
@@ -572,7 +573,7 @@ function TaskRow({
       {hasMenu && <FlashNote flash={flash} align="right" />}
       {peek.at && !renaming && (
         <PeekCard at={peek.at} id={peekId} onClose={peek.close}>
-          <ConversationPeek task={task} />
+          <ConversationPeek task={task} status={state?.text} />
         </PeekCard>
       )}
     </li>
