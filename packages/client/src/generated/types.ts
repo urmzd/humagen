@@ -5200,7 +5200,7 @@ export interface CompactRequestPayload {
 
 /** What an ingress event asks of an agent. Every ingress body that can start a run carries it. */
 export interface EventRequest {
-  /** The request, with any agent mention taken out. */
+  /** The request as the person wrote it, whole. The mentions that open it are its address and are taken out; one inside a sentence stays where it was written. `mentions` says who was named. */
   text: string;
   actor?: Actor;
   /** The agents the request names, in order. */

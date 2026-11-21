@@ -19508,7 +19508,7 @@ components:
       required: [text]
       properties:
         text:
-          description: The request, with any agent mention taken out.
+          description: The request as the person wrote it, whole. The mentions that open it are its address and are taken out; one inside a sentence stays where it was written. `mentions` says who was named.
           type: string
         actor: {$ref: "#/components/schemas/Actor"}
         mentions:
