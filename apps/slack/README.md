@@ -268,6 +268,17 @@ use is not known here, so it could be one the list leaves out. For the same
 reason such a client never sends `auto`, as a tag or as its default, since
 `@auto` picks among every agent available where the run lands.
 
+## Following a thread
+
+In a channel thread it answered, the app takes the next reply from the
+person who asked it there last as asked, though it does not mention the
+app; anyone else's replies start nothing. It reads channel messages for
+this alone (`message.channels`, `message.groups`): any other channel
+message that does not mention it is dropped unread, unless the client's
+own subscriptions name channel messages. Which threads it follows is kept
+in memory, for its last 5000, and forgotten on a restart. A bound channel is
+never followed.
+
 ## Each agent in its own name
 
 One app answers for every agent, and it posts each turn as the agent that

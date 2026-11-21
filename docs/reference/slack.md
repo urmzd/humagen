@@ -195,7 +195,11 @@ is their handle, and anyone else stays plain and is refused. When the app is
 mentioned in a thread, the people's messages since it was last asked there are
 posted first, each as its person and posted only, so the room in Humagen reads as
 it did in Slack. Each message is posted once by its ts: a redelivered event
-answers `repeated` and starts nothing again. A thread stays with the agent it was asked for: the one agent a
+answers `repeated` and starts nothing again. The app follows a channel thread it answered: a reply there from the person
+who asked it last is taken as asked, with no mention, and replies from
+anyone else start nothing, so people talking to each other in the thread
+are never answered. A bound channel's messages are mirrored as before and
+never followed. A thread stays with the agent it was asked for: the one agent a
 message tags, once it answers, becomes the thread's selected agent, and the
 thread's selected agents answer its untagged messages ahead of any default,
 until a message tags another (RFC 0012). Outside a bound channel the
@@ -276,11 +280,11 @@ take, as when it went away just then, is recorded at the next look rather
 than posted again, while the app keeps running.
 
 A reply in an announcement's Slack thread starts a shared thread seeded with
-the announcement. Slack delivers a message in a channel thread to the app
-only when it mentions the app: the manifest subscribes to `app_mention`, and
-to `message.im` for direct messages alone, and adding `message.channels`
-would widen what the app reads. So the reply that mentions the app is the
-one that reaches Humagen, and the replies before it that did not are posted
+the announcement. The manifest subscribes to `message.channels` and
+`message.groups` so the app can follow a thread it answered (below), and
+the app drops every other channel message that does not mention it unread,
+unless the client's own subscriptions name channel messages. So the reply
+that mentions the app is the one that reaches Humagen, and the replies before it that did not are posted
 ahead of it as the room, each as its person and posted only. The app posts
 them as for any Slack thread, with the post's surface: the platform finds
 the announcement by the receipt the app recorded at that channel and ts, and

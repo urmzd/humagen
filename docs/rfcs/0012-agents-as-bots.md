@@ -191,8 +191,9 @@ In a channel the app hears only messages that mention it. Making people type
 `@Humagen` on every reply to an agent they are already talking to is the
 largest papercut in the flow, so the app also subscribes to
 `message.channels` and `message.groups`, and takes an unmentioned message only
-in a thread it has answered in, from a person the client maps. Anything else
-it hears that way it drops unread.
+in a thread it has answered in, from the person who asked it there last, so
+people talking to each other in the thread are never answered. Anything else
+it hears that way it drops unread. Built.
 
 #### Walkthrough
 
@@ -352,7 +353,8 @@ Small changes that make each agent read as itself:
    on every post, stream and status line, and Home's Meet your agents.
    Built: threads that stay with the agent they were started for
    (`keepTagged`, and `Decide` letting a thread's selection answer on a
-   surface). Still to do: threads followed without a mention, `/ask` with the picker, the lead and the agents on App
+   surface), and threads followed without a mention (replies from the person
+   who asked last). Still to do: `/ask` with the picker, the lead and the agents on App
    Home.
 4. **Linked apps.** The manifest from the agent, the connect flow with
    `auth.test`, team-wide resolution of linked bots, several clients in
