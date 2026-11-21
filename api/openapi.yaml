@@ -4255,6 +4255,11 @@ paths:
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
+        "409":
+          description: A message sent with `listen` where nobody is listening, a place with no thread or a thread that did not begin with a message addressed to the app. Nothing is kept.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ErrorBody"}
         "410":
           description: The surface's thread is under an announcement that was withdrawn, or under a draft, in the project its Slack channel is bound to, so a reply there starts nothing.
           content:
@@ -14014,6 +14019,9 @@ components:
           items: {type: string}
         mode: {$ref: "#/components/schemas/ThreadMode"}
         surface: {$ref: "#/components/schemas/ThreadSurface"}
+        listening:
+          description: The thread on its surface began with a message addressed to the app, a mention in a Slack channel thread's first message, so later messages there that address nobody are read too and the agent decides of each whether it calls for it. Absent for a thread a later mention started, where each mention is answered once, and for a direct message.
+          type: boolean
         fork: {$ref: "#/components/schemas/ThreadFork"}
         import: {$ref: "#/components/schemas/ThreadImport"}
         archive: {$ref: "#/components/schemas/ThreadArchive"}
@@ -14602,6 +14610,9 @@ components:
           type: boolean
         act_as: {$ref: "#/components/schemas/ActAs"}
         surface: {$ref: "#/components/schemas/SurfaceRef"}
+        listen:
+          description: With `surface`, posts a message that addressed nobody, such as a reply in a Slack thread that does not mention the app. It starts no thread. In a thread that is `listening` the agent is asked whether the message calls for it, and either answers it or the message is kept and starts nothing (`rule` is `post_only`). Anywhere else the answer is 409 and nothing is kept.
+          type: boolean
     HelpSuggestion:
       type: object
       required: [project, title, agent, reason]

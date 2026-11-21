@@ -1627,6 +1627,8 @@ not selected. Absent when none is selected.
   agents?: string[];
   mode?: ThreadMode;
   surface?: ThreadSurface;
+  /** The thread on its surface began with a message addressed to the app, a mention in a Slack channel thread's first message, so later messages there that address nobody are read too and the agent decides of each whether it calls for it. Absent for a thread a later mention started, where each mention is answered once, and for a direct message. */
+  listening?: boolean;
   fork?: ThreadFork;
   import?: ThreadImport;
   archive?: ThreadArchive;
@@ -2014,6 +2016,8 @@ export interface ThreadInput {
   post_only?: boolean;
   act_as?: ActAs;
   surface?: SurfaceRef;
+  /** With `surface`, posts a message that addressed nobody, such as a reply in a Slack thread that does not mention the app. It starts no thread. In a thread that is `listening` the agent is asked whether the message calls for it, and either answers it or the message is kept and starts nothing (`rule` is `post_only`). Anywhere else the answer is 409 and nothing is kept. */
+  listen?: boolean;
 }
 
 export interface HelpSuggestion {

@@ -2386,6 +2386,9 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "POST", "/api/threads", "/api/threads", surface, http.StatusForbidden)
 	c.call(ana, "POST", "/api/threads", "/api/threads", surface, http.StatusNotFound)
 	c.call(acme, "POST", "/api/threads", "/api/threads", strings.Replace(surface, `"surface"`, `"project":"Field","surface"`, 1), http.StatusBadRequest)
+	// A message that addressed nobody, sent where no thread is listening,
+	// starts nothing and is not kept.
+	c.call(acme, "POST", "/api/threads", "/api/threads", `{"text":"anyone around?","listen":true,"act_as":{"client":"app","user":"U01ANA"},"surface":{"client":"app","channel":"C01RENEW","ts":"1700000000.000900","message":"1700000000.000950","app_user":"UAPP"}}`, http.StatusConflict)
 	// A reply under the post of an announcement since withdrawn starts
 	// nothing, in a Slack channel bound to the announcement's project.
 	c.call(acme, "PUT", deliveries, "/api/inbox/"+news.str("id")+"/deliveries/app", `{"channel":"C01RENEW","ts":"1700000000.000300"}`, http.StatusNoContent)
