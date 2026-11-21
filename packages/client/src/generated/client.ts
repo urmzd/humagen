@@ -18,6 +18,7 @@ import type {
   AgentSetupTest,
   AgentSkillDefaults,
   AgentSkillDefaultsUpdate,
+  AgentSlackApp,
   AgentSpec,
   Alert,
   AlertCount,
@@ -114,6 +115,7 @@ import type {
   KnowledgeSourceConfig,
   KnowledgeVariant,
   LibrarySkill,
+  LinkAgentSlackAppBody,
   LinkSessionBody,
   ListAgentRevisionsResponse,
   ListAgentsResponse,
@@ -2538,6 +2540,58 @@ most 256 KiB. Takes the ownership changing the agent takes.
     return this.rawRequest<AgentLookView>("PUT", path, {
       body,
       contentType: "image/png",
+      ...options,
+    });
+  }
+
+  /** The manifest of the agent's own Slack app, built from its look (its
+display name, greeting, starters and color) on the shared app's
+scopes and events; the link that creates it in Slack with the
+manifest filled in; and the client it is linked as, when it is. Slack
+takes no icon in a manifest: upload the agent's picture.
+ */
+  async getAgentSlackApp(name: string, options?: RequestOptions): Promise<AgentSlackApp> {
+    let path = "/api/agents/{name}/slack-app";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<AgentSlackApp>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getAgentSlackAppRaw(name: string, options?: RequestOptions): Promise<ApiResponse<AgentSlackApp>> {
+    let path = "/api/agents/{name}/slack-app";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<AgentSlackApp>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Links an installed Slack app as the agent's own, from its bot token
+and signing secret. Slack is asked who the bot is (`auth.test`, then
+`bots.info`), so nobody copies an id. The client made routes to the
+agent alone, maps its bot user to the agent, and files and acts for
+people as the team's other Slack client does. A mention of its bot
+through any of the team's Slack apps names the agent, and is its own
+app's to answer. A token Slack refuses is 400; an app already
+connected is 409. Takes clients:write and the ownership changing the
+agent takes.
+ */
+  async linkAgentSlackApp(name: string, body: LinkAgentSlackAppBody, options?: RequestOptions): Promise<AgentSlackApp> {
+    let path = "/api/agents/{name}/slack-app";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<AgentSlackApp>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async linkAgentSlackAppRaw(name: string, body: LinkAgentSlackAppBody, options?: RequestOptions): Promise<ApiResponse<AgentSlackApp>> {
+    let path = "/api/agents/{name}/slack-app";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<AgentSlackApp>("POST", path, {
+      body,
+      contentType: "application/json",
       ...options,
     });
   }

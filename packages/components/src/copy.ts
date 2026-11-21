@@ -2228,6 +2228,34 @@ export const defaultCopy = {
     atCreate: "How it looks",
     notKeptAtCreate: "The agent was made, but its look was not kept. Set it on its Look tab.",
   },
+  agentHome: {
+    tab: "Home",
+    ask: (name: string) => `Ask ${name}`,
+    editLook: "Edit Look",
+    putToWork: (name: string) => `Put ${name} to work`,
+    noGreeting: "Nobody has written what this agent says about itself yet.",
+    noStarters: "It offers no starters yet.",
+    noStartersOwner: "It offers no starters yet. Add them on its Look tab.",
+    lastDay: (runs: number, failed: number) =>
+      `${runs} run${runs === 1 ? "" : "s"} in the last day${failed > 0 ? `, ${failed} failed` : ""}`,
+  },
+  agentSlackApp: {
+    title: "Its own Slack app",
+    connected: "Connected",
+    notConnected: "Not connected",
+    what: "Give this agent a Slack app of its own, so people can mention it and message it by name. The workspace's Slack app keeps answering for every agent.",
+    connectedAs: (client: string) =>
+      `Connected as ${client}. Mentioning it in any of the workspace's Slack apps asks this agent, and its own app answers.`,
+    step1: "Create the app in Slack. Its manifest is made from this agent's look.",
+    create: "Create in Slack",
+    step2: "Install it to your workspace, and upload this agent's picture as its icon.",
+    step3: "Paste its bot token and signing secret. Slack says which app and bot they are.",
+    token: "Bot token",
+    signing: "Signing secret",
+    connect: "Connect",
+    askAdmin: "Ask a workspace admin to connect one.",
+    failed: "The Slack app could not be read or connected.",
+  },
   clientConnect: {
     heading: "Connect a system",
     open: "Connect a System",
@@ -4231,17 +4259,19 @@ export const defaultCopy = {
     page: {
       /** The composer's placeholder: "New session in Globex". */
       composer: (title: string) => `New session in ${title}`,
+      /** The title row's trail, for assistive technology. */
+      where: "Breadcrumb",
       recents: "Recents",
-      /** A session in Recents: where it started. */
-      trace: {
-        slack: "Slack",
-        github: "GitHub",
-        console: "Console",
-        scheduled: "Scheduled",
-        /** A schedule's run: "Scheduled: weekly-recap". */
-        schedule: (name: string) => `Scheduled: ${name}`,
-        /** More agents or people than the row shows: "+2". */
-        more: (n: number) => `+${n}`,
+      /** The project's setup: steps to get started, or a summary beside Recents. */
+      setup: {
+        title: "Setup",
+        steps: "Get started",
+        /** How many steps are done: "2 of 5 set up". */
+        progress: (done: number, total: number) => `${done} of ${total} set up`,
+        done: "Done",
+        notDone: "Not set up",
+        show: "Show",
+        hide: "Hide",
       },
       noSessions: "No sessions yet",
       untitled: "Untitled session",
@@ -4257,21 +4287,20 @@ export const defaultCopy = {
       cancel: "Cancel",
       instructions: {
         title: "Instructions",
-        none: "No instructions",
         add: "Add",
         edit: "Edit",
+        view: "View",
         addLabel: "Add Instructions",
         editLabel: "Edit Instructions",
+        viewLabel: "View Instructions",
         /** Under the editor: "120 / 4,000". */
         count: (n: number) => `${n.toLocaleString()} / 4,000`,
         failed: "The instructions could not be saved. Try again.",
       },
       context: {
         title: "Context",
-        none: "No corpora",
-        /** A corpus on the card: "HR policies, 3 sources". */
-        corpus: (title: string, sources: number) =>
-          `${title}, ${sources} ${sources === 1 ? "source" : "sources"}`,
+        /** How many corpora it attaches: "3 corpora". */
+        count: (n: number) => `${n} ${n === 1 ? "corpus" : "corpora"}`,
         add: "Add",
         edit: "Edit",
         addLabel: "Add Context",
@@ -4292,6 +4321,9 @@ export const defaultCopy = {
           ].join(", "),
         view: "View",
         viewLabel: "View Memory",
+        /** The row's action while there are no notes yet. */
+        addRow: "Add",
+        addLabel: "Add Memory",
         none: "No notes",
         waiting: "Waiting for approval",
         kept: "Notes",
@@ -4308,10 +4340,12 @@ export const defaultCopy = {
       },
       scheduled: {
         title: "Scheduled",
-        none: "Nothing scheduled",
+        /** How many schedules it has: "2 schedules". */
+        count: (n: number) => `${n} ${n === 1 ? "schedule" : "schedules"}`,
         add: "Add",
+        view: "View",
         addLabel: "Add Schedule",
-        heading: "New schedule",
+        viewLabel: "View Schedules",
         name: "Name",
         when: "When",
         custom: "Custom",
@@ -4324,12 +4358,14 @@ export const defaultCopy = {
         failed: "The schedule could not be saved. Try again.",
       },
       slack: {
-        /** The card holds every link out of Humagen; Slack channels are the kind a project keeps today. */
+        /** Every link out of Humagen; Slack channels are the kind a project keeps today. */
         title: "External references",
-        none: "No references linked",
+        /** How many it links: "2 Slack channels". */
+        count: (n: number) => `${n} ${n === 1 ? "channel" : "channels"}`,
         add: "Add",
+        view: "View",
         addLabel: "Add External Reference",
-        heading: "Link a Slack channel",
+        viewLabel: "View External References",
         client: "Slack app",
         channel: "Slack channel ID",
         channelHint: "Starts with C, or G for a private channel",

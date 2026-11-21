@@ -25,6 +25,7 @@ import {
   questionMail,
   resultMail,
   SUBJECT,
+  said,
   settle,
   stopPressed,
   TEAM,
@@ -2085,6 +2086,90 @@ test("a thread asked for an agent by name keeps it: untagged replies there go to
   // Another thread is not this one's: it gets the default.
   await deliver(w, mention("unrelated", "1700000700.000100"));
   assert.equal(w.humagen.started[3]?.agent, "lead");
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "ok" });
+  await w.app.idle();
+});
+
+test("a thread the app answered is followed: the asker's next reply needs no mention, and nobody else's starts anything", async () => {
+  const w = world();
+  await deliver(w, mention("@helper summarize this", TS));
+  assert.equal(w.humagen.started.length, 1);
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "ok" });
+  await w.app.idle();
+
+  // Someone else talking in the thread is not asking the app.
+  await deliver(
+    w,
+    said("I disagree with that", "1700000800.000100", { thread_ts: TS, user: OTHER_USER }),
+  );
+  await w.app.idle();
+  assert.equal(w.humagen.started.length, 1, "another person's reply starts nothing");
+
+  // The person who asked carries on without mentioning the app, and the thread keeps its agent.
+  await deliver(w, said("and the risks?", "1700000900.000100", { thread_ts: TS }));
+  assert.equal(w.humagen.started.length, 2);
+  assert.equal(w.humagen.started[1]?.agent, "helper");
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "ok" });
+  await w.app.idle();
+
+  // A channel message outside a followed thread is dropped unread.
+  await deliver(w, said("lunch?", "1700001000.000100"));
+  await deliver(w, said("hello", "1700001100.000100", { thread_ts: "1699999999.000100" }));
+  await w.app.idle();
+  assert.equal(w.humagen.started.length, 2);
+});
+
+test("/agent alone opens the ask form with a picker of who to ask, and the one picked answers", async () => {
+  const w = world();
+  await deliver(w, command(""));
+  const opened = w.slack.of("views.open")[0]?.view as {
+    blocks: { block_id: string; element: { options?: { value: string }[] } }[];
+  };
+  const picker = opened.blocks.find((b) => b.block_id === "agent");
+  assert.ok(picker, "the form offers a picker");
+  const offered = (picker?.element.options ?? []).map((o) => o.value);
+  assert.equal(offered[0], "lead", "the default is offered first");
+  assert.ok(offered.includes("helper"));
+  collect("ask form with a picker", w.slack);
+
+  await deliver(
+    w,
+    interactive({
+      type: "view_submission",
+      view: {
+        callback_id: "aui_form",
+        private_metadata: '{"kind":"ask"}',
+        state: {
+          values: {
+            agent: { value: { selected_option: { value: "helper" } } },
+            text: { value: { value: "summarize my week" } },
+          },
+        },
+      },
+    }),
+  );
+  assert.equal(w.humagen.started[0]?.agent, "helper");
+  assert.equal(w.humagen.started[0]?.text, "summarize my week");
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "ok" });
+  await w.app.idle();
+
+  // Nobody picked: the default answers, as for any question.
+  await deliver(
+    w,
+    interactive({
+      type: "view_submission",
+      view: {
+        callback_id: "aui_form",
+        private_metadata: '{"kind":"ask"}',
+        state: { values: { text: { value: { value: "and next week?" } } } },
+      },
+    }),
+  );
+  assert.equal(w.humagen.started[1]?.agent, "lead");
   await emit(w, "run.accepted.v1");
   await emit(w, "run.completed.v1", { text: "ok" });
   await w.app.idle();

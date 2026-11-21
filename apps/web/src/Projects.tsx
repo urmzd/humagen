@@ -2,6 +2,8 @@ import { defaultCopy } from "@humagen/components";
 import {
   BrainIcon,
   CalendarIcon,
+  CheckCircleIcon,
+  CircleIcon,
   DatabaseIcon,
   ExternalLinkIcon,
   FolderIcon,
@@ -14,10 +16,12 @@ import {
   UsersIcon,
 } from "@humagen/render-web";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@humagen/render-web/ui/sheet";
+import { ComposerDock, useComposerDock } from "@humagen/web";
 import {
   type FormEvent,
   type MouseEvent,
   type ReactNode,
+  type RefObject,
   useEffect,
   useId,
   useRef,
@@ -42,15 +46,7 @@ import {
   type Revision,
   type ScheduleView,
 } from "./api.ts";
-import {
-  FilterSelect,
-  ItemCard,
-  itemGrid,
-  Pill,
-  Reference,
-  type ReferenceKind,
-  Tag,
-} from "./cards.tsx";
+import { FilterSelect, ItemCard, itemGrid, Tag } from "./cards.tsx";
 import { inWords, presets } from "./cron.ts";
 import { ProjectPeople } from "./ProjectTabs.tsx";
 import {
@@ -71,7 +67,6 @@ import {
 import { href, type ProjectSort } from "./route.ts";
 import { type AgentSessionSummary, isRootSession, sessionCenter } from "./sessionCenter.ts";
 import {
-  AgentMark,
   ago,
   button,
   Confirm,
@@ -82,6 +77,7 @@ import {
   Page,
   type PageAction,
   Problem,
+  pageLede,
   pageTitle,
   primary,
   rows,
@@ -599,109 +595,258 @@ function EditProject({
   );
 }
 
-/** A card in the project page's side column: a panel on a hairline, like the Projects grid's. */
-const sideCard =
-  "flex min-w-0 flex-col gap-2 rounded-aui-lg border border-[var(--humagen-rule)] bg-[var(--humagen-panel)] p-4";
-/** A card's one action: quiet text, no underline, a full hit area on touch. */
+/** A row's one action: quiet text, no underline, a full hit area on touch. */
 const quietAction =
-  "inline-flex min-h-8 pointer-coarse:min-h-11 items-center rounded-aui px-2 -mr-2 text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent motion-reduce:transition-none";
-/** A card's summary: a few short lines, muted. */
-const summary = "min-w-0 text-aui-sm text-aui-muted";
+  "inline-flex min-h-8 pointer-coarse:min-h-11 items-center rounded-aui px-2 -mr-2 text-aui-sm text-aui-muted transition-colors group-hover:text-aui-fg hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent motion-reduce:transition-none";
+/** Rows on hairlines, with no box round them. */
+const hairlines = "divide-y divide-[var(--humagen-rule)]";
 
-/** What a side card's one action says, what a screen reader hears, and the heading of the sheet it opens. */
+/** What a row's one action says, what a screen reader hears, and the heading of the sheet it opens. */
 interface CardAction {
   text: string;
   label: string;
   heading: string;
 }
 
-/**
- * One part of a project in its side column: a heading, one action at its
- * right, and a short summary under it. The action opens a sheet beside the
- * page; closing the sheet puts focus back on the action. `plain` draws it as
- * a line with no box, its heading for assistive technology only.
- */
-function SideCard({
-  title,
-  icon,
-  action,
-  sheet,
-  plain = false,
+/** A sheet beside the page. Closing it puts focus back on what opened it. */
+function SideSheet({
+  open,
+  onClose,
+  opener,
+  heading,
   children,
 }: {
+  open: boolean;
+  onClose: () => void;
+  opener: RefObject<HTMLButtonElement | null>;
+  heading: string;
+  children: () => ReactNode;
+}) {
+  return (
+    <Sheet open={open} onOpenChange={(next) => !next && onClose()}>
+      <SheetContent
+        aria-describedby={undefined}
+        onCloseAutoFocus={(event) => {
+          if (opener.current?.isConnected) {
+            event.preventDefault();
+            opener.current.focus();
+          }
+        }}
+      >
+        <SheetHeader>
+          <SheetTitle className="text-aui-base">{heading}</SheetTitle>
+        </SheetHeader>
+        {open && children()}
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+/**
+ * One part of a project's setup: what every session in it is given
+ * (instructions, context, memory), what runs on a timer and what outside
+ * Humagen it is linked to.
+ */
+interface SetupItem {
+  key: string;
   title: string;
-  /** The part's mark, before its heading. Decoration: the heading names the part. */
-  icon?: ReactNode;
+  icon: ReactNode;
+  /** One short line on what it holds. Left out while it holds nothing: the row says Add. */
+  state?: string;
+  /** Whether it is set up; undefined while it is read. */
+  done: boolean | undefined;
   action?: CardAction;
-  /** What the sheet holds, given a way to close it. Drawn only while it is open. */
   sheet?: (close: () => void) => ReactNode;
-  plain?: boolean;
-  children: ReactNode;
+}
+
+/**
+ * One row of the setup: its mark, its name, a muted line on what it holds,
+ * and its one action at the right, which opens a sheet beside the page. The
+ * whole row is the action's target. As a step, the mark says whether it is
+ * done.
+ */
+function SetupRow({ item, step }: { item: SetupItem; step: boolean }) {
+  const [open, setOpen] = useState(false);
+  const opener = useRef<HTMLButtonElement>(null);
+  const id = useId();
+  const { action, sheet } = item;
+  const done = item.done === true;
+  return (
+    <li
+      aria-labelledby={id}
+      data-setup={item.key}
+      data-done={item.done === undefined ? undefined : String(done)}
+      className="group relative flex min-h-12 min-w-0 items-center gap-3 py-2"
+    >
+      <span
+        aria-hidden
+        className={`inline-flex shrink-0 ${step && done ? "text-aui-accent" : "text-aui-muted"}`}
+      >
+        {step ? done ? <CheckCircleIcon size={16} /> : <CircleIcon size={16} /> : item.icon}
+      </span>
+      <span className="flex min-w-0 flex-1 items-baseline gap-2">
+        <span id={id} className="shrink-0 text-aui-sm text-aui-fg">
+          {item.title}
+        </span>
+        {step && item.done !== undefined && (
+          <span className="sr-only">{done ? here.setup.done : here.setup.notDone}</span>
+        )}
+        {item.state && (
+          <span className="min-w-0 truncate text-aui-xs text-aui-muted" title={item.state}>
+            {item.state}
+          </span>
+        )}
+      </span>
+      {action && sheet && (
+        <>
+          <button
+            ref={opener}
+            type="button"
+            aria-label={action.label}
+            // The row is the target: a press anywhere on it opens the sheet.
+            className={`${quietAction} shrink-0 after:absolute after:inset-0 after:content-['']`}
+            onClick={() => setOpen(true)}
+          >
+            {action.text}
+          </button>
+          <SideSheet
+            open={open}
+            onClose={() => setOpen(false)}
+            opener={opener}
+            heading={action.heading}
+          >
+            {() => sheet(() => setOpen(false))}
+          </SideSheet>
+        </>
+      )}
+    </li>
+  );
+}
+
+/**
+ * Who can see the project, as one muted line under the setup, with Change
+ * for whoever may edit it.
+ */
+function AccessLine({
+  visibility,
+  action,
+  sheet,
+}: {
+  visibility: ProjectVisibility;
+  action?: CardAction;
+  sheet: () => ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const opener = useRef<HTMLButtonElement>(null);
   const id = useId();
-  const control = action && sheet && (
-    <button
-      ref={opener}
-      type="button"
-      aria-label={action.label}
-      className={`${quietAction} shrink-0`}
-      onClick={() => setOpen(true)}
-    >
-      {action.text}
-    </button>
-  );
   return (
     <section
       aria-labelledby={id}
-      className={plain ? "flex min-w-0 items-center justify-between gap-3 px-1" : sideCard}
+      className="flex min-h-11 min-w-0 items-center justify-between gap-3"
     >
-      {plain ? (
+      <h3 id={id} className="sr-only">
+        {here.visibility.title}
+      </h3>
+      <span className="inline-flex min-w-0 items-center gap-2 text-aui-xs text-aui-muted">
+        <span aria-hidden className="inline-flex shrink-0">
+          {VISIBILITY_ICON[visibility]}
+        </span>
+        {here.visibility[visibility]}
+      </span>
+      {action && (
         <>
-          <h2 id={id} className="sr-only">
-            {title}
-          </h2>
-          {children}
-          {control}
-        </>
-      ) : (
-        <>
-          <div className="flex min-w-0 items-center justify-between gap-3">
-            <h2
-              id={id}
-              className="flex min-w-0 items-center gap-2 text-aui-sm font-medium text-aui-fg"
-            >
-              {icon && (
-                <span aria-hidden className="inline-flex shrink-0 text-aui-muted">
-                  {icon}
-                </span>
-              )}
-              <span className="min-w-0 truncate">{title}</span>
-            </h2>
-            {control}
-          </div>
-          {children}
-        </>
-      )}
-      {action && sheet && (
-        <Sheet open={open} onOpenChange={(next) => !next && setOpen(false)}>
-          <SheetContent
-            aria-describedby={undefined}
-            onCloseAutoFocus={(event) => {
-              if (opener.current?.isConnected) {
-                event.preventDefault();
-                opener.current.focus();
-              }
-            }}
+          <button
+            ref={opener}
+            type="button"
+            aria-label={action.label}
+            className={`${quietAction} shrink-0 text-aui-xs`}
+            onClick={() => setOpen(true)}
           >
-            <SheetHeader>
-              <SheetTitle className="text-aui-base">{action.heading}</SheetTitle>
-            </SheetHeader>
-            {open && sheet(() => setOpen(false))}
-          </SheetContent>
-        </Sheet>
+            {action.text}
+          </button>
+          <SideSheet
+            open={open}
+            onClose={() => setOpen(false)}
+            opener={opener}
+            heading={action.heading}
+          >
+            {sheet}
+          </SideSheet>
+        </>
       )}
+    </section>
+  );
+}
+
+/**
+ * The project's setup as rows on hairlines. A project with no sessions yet
+ * leads with it as steps to get started, each marked done or not, with how
+ * many are done; once it has sessions it is a summary beside them, which on
+ * a phone folds away above Recents until opened.
+ */
+function Setup({
+  items,
+  steps,
+  foldable,
+  children,
+}: {
+  items: SetupItem[];
+  /** Drawn as steps to get started, not as a summary. */
+  steps: boolean;
+  /** On a narrow page the rows fold away under the heading until opened. */
+  foldable: boolean;
+  /** What follows the rows: who can see the project. */
+  children?: ReactNode;
+}) {
+  const [unfolded, setUnfolded] = useState(false);
+  const id = useId();
+  const list = useId();
+  const done = items.filter((i) => i.done).length;
+  const read = items.every((i) => i.done !== undefined);
+  const progress =
+    read && items.length > 0 && (steps || done < items.length)
+      ? here.setup.progress(done, items.length)
+      : undefined;
+  return (
+    <section aria-labelledby={id} className="flex min-w-0 flex-col gap-1">
+      <div className="flex min-h-8 min-w-0 items-baseline justify-between gap-3">
+        <h2
+          id={id}
+          className={
+            steps
+              ? "text-aui-base font-semibold text-aui-fg"
+              : "text-aui-sm font-medium text-aui-muted"
+          }
+        >
+          {steps ? here.setup.steps : here.setup.title}
+        </h2>
+        <span className="flex shrink-0 items-baseline gap-3">
+          {progress && (
+            <span data-progress className="text-aui-xs text-aui-muted tabular-nums">
+              {progress}
+            </span>
+          )}
+          {foldable && (
+            <button
+              type="button"
+              aria-expanded={unfolded}
+              aria-controls={list}
+              className={`${quietAction} @3xl:hidden`}
+              onClick={() => setUnfolded((v) => !v)}
+            >
+              {unfolded ? here.setup.hide : here.setup.show}
+            </button>
+          )}
+        </span>
+      </div>
+      <div id={list} className={foldable && !unfolded ? "hidden @3xl:block" : undefined}>
+        <ul className={hairlines}>
+          {items.map((item) => (
+            <SetupRow key={item.key} item={item} step={steps} />
+          ))}
+        </ul>
+        {children}
+      </div>
     </section>
   );
 }
@@ -733,90 +878,27 @@ function SheetButtons({
 /** How many sessions Recents reads at a time. */
 const RECENT_PAGE = 20;
 
-/** Where a schedule's runs are filed: sessions under schedule://<name>. */
-const SCHEDULE_PARENT = "schedule://";
-
 /**
- * Where a session started, in words: a schedule's run by the schedule's name,
- * a Slack or GitHub conversation by where it came from, else the console. The
- * list carries no link back to the Slack thread or the pull request.
+ * One session in Recents: its title, and at the right when it last changed,
+ * with its state in words before it only when it needs a look (working,
+ * waiting on someone, failed). It opens the session.
  */
-function originOf(s: AgentSessionSummary): string {
-  const t = here.trace;
-  if (s.parent.startsWith(SCHEDULE_PARENT))
-    return t.schedule(s.parent.slice(SCHEDULE_PARENT.length));
-  const origin = s.conversation?.origin;
-  if (origin === "slack") return t.slack;
-  if (origin === "github") return t.github;
-  if (origin === "cron" || origin === "manual") return t.scheduled;
-  return t.console;
-}
-
-/** How many agents, then people, a row names before it counts the rest. */
-const SHOWN = 3;
-
-/** What a session's origin points at, which picks its Reference mark. */
-function originKind(s: AgentSessionSummary): ReferenceKind | undefined {
-  const origin = s.conversation?.origin;
-  if (s.parent.startsWith(SCHEDULE_PARENT) || origin === "cron" || origin === "manual")
-    return "schedule";
-  if (origin === "slack") return "slack";
-  if (origin === "github") return "github";
-  return undefined;
-}
-
-/**
- * One session in Recents: its title, then one quiet line: where it started,
- * the agents that answered and the people besides the reader, its state in
- * words, and when it last changed. It opens the session.
- */
-function SessionRow({
-  session: s,
-  self,
-  onOpen,
-}: {
-  session: AgentSessionSummary;
-  self?: string;
-  onOpen: () => void;
-}) {
-  const agents = s.conversation?.agents?.length ? s.conversation.agents : [s.agent];
-  const people = (s.conversation?.people ?? []).filter((name) => name !== self);
-  const who = [
-    ...agents.map((name) => ({ kind: "agent" as const, name })),
-    ...people.map((name) => ({ kind: "person" as const, name })),
-  ];
+function SessionRow({ session: s, onOpen }: { session: AgentSessionSummary; onOpen: () => void }) {
+  const notable = STATE_TINT[s.status];
   return (
     <li className="min-w-0">
       <Go
         to={href({ page: "conversation", id: s.id })}
         onGo={onOpen}
-        className="flex min-h-11 min-w-0 flex-col gap-1 rounded-aui px-2 py-2 transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-accent motion-reduce:transition-none"
+        className="-mx-2 flex min-h-12 min-w-0 items-center justify-between gap-4 rounded-aui px-2 py-2.5 transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-accent motion-reduce:transition-none"
       >
-        <span className="min-w-0 truncate text-aui-sm font-medium text-aui-fg">
-          {s.title || here.untitled}
-        </span>
-        <span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-aui-xs text-aui-muted">
-          <Reference kind={originKind(s)} label={originOf(s)} />
-          {who.slice(0, SHOWN).map((w) =>
-            w.kind === "agent" ? (
-              <span key={`a:${w.name}`} className="inline-flex min-w-0 items-center gap-1">
-                <AgentMark name={w.name} size={12} />
-                <span className="truncate">{w.name}</span>
-              </span>
-            ) : (
-              <span key={`p:${w.name}`} className="truncate">
-                @{w.name}
-              </span>
-            ),
+        <span className="min-w-0 truncate text-aui-sm text-aui-fg">{s.title || here.untitled}</span>
+        <span className="flex shrink-0 items-center gap-3 text-aui-xs text-aui-muted">
+          {notable !== undefined && (
+            <span data-status={s.status} className={notable}>
+              {statusWords(s.status)}
+            </span>
           )}
-          {who.length > SHOWN && <span>{here.trace.more(who.length - SHOWN)}</span>}
-          <span className="inline-flex items-center gap-1.5" data-status={s.status}>
-            <span
-              aria-hidden
-              className={`size-1.5 rounded-full ${statusDot[s.status] ?? "bg-aui-muted"}`}
-            />
-            {statusWords(s.status)}
-          </span>
           <time dateTime={s.updated_at}>{ago(s.updated_at)}</time>
         </span>
       </Go>
@@ -824,13 +906,11 @@ function SessionRow({
   );
 }
 
-/** A session's state as a small dot, not a pill: only trouble and waiting take a color. */
-const statusDot: Record<string, string> = {
-  working: "bg-aui-accent",
-  waiting: "bg-aui-warn",
-  failed: "bg-aui-bad",
-  done: "bg-aui-muted",
-  stopped: "bg-aui-muted",
+/** The states a row names, in words, each in its tone: only trouble and waiting take a color. */
+const STATE_TINT: Record<string, string> = {
+  working: "",
+  waiting: "text-aui-warn",
+  failed: "text-aui-bad",
 };
 
 /** A session's state in words, sentence case. */
@@ -841,13 +921,10 @@ function statusWords(status: string): string {
 /** The project's sessions, newest first, each opening where it lives. */
 function Recents({
   project,
-  self,
   tick,
   onOpen,
 }: {
   project: string;
-  /** The reader's handle: they are not named among who answered. */
-  self?: string;
   tick?: number;
   onOpen: (session: string) => void;
 }) {
@@ -895,8 +972,8 @@ function Recents({
   };
 
   return (
-    <section aria-labelledby={id} className="flex min-w-0 flex-col gap-2">
-      <h2 id={id} className="text-aui-sm font-medium text-aui-muted">
+    <section aria-labelledby={id} className="flex min-w-0 flex-col gap-1">
+      <h2 id={id} className="flex min-h-8 items-baseline text-aui-sm font-medium text-aui-muted">
         {here.recents}
       </h2>
       {failed ? (
@@ -912,14 +989,19 @@ function Recents({
       ) : list.sessions.length === 0 ? (
         <p className="text-aui-sm text-aui-muted">{here.noSessions}</p>
       ) : (
-        <ul className={rows}>
+        <ul className={hairlines}>
           {list.sessions.map((s) => (
-            <SessionRow key={s.id} session={s} self={self} onOpen={() => onOpen(s.id)} />
+            <SessionRow key={s.id} session={s} onOpen={() => onOpen(s.id)} />
           ))}
         </ul>
       )}
       {list?.next && (
-        <button type="button" className={`${button} self-start`} disabled={more} onClick={loadMore}>
+        <button
+          type="button"
+          className={`${button} mt-2 self-start`}
+          disabled={more}
+          onClick={loadMore}
+        >
           {more ? here.loadingMore : here.showMore}
         </button>
       )}
@@ -1398,21 +1480,14 @@ function SlackForm({
   );
 }
 
-/** The Context card: the corpora the project attaches, each with how many sources it holds. */
-function ContextCard({
-  project,
-  tick,
-  canEdit,
-  canList,
-}: {
-  project: ProjectView;
-  tick: number;
-  canEdit: boolean;
-  /** Holds knowledge:read, which listing the workspace's corpora takes. */
-  canList: boolean;
-}) {
-  const name = project.name;
+/**
+ * The corpora the project attaches, its context, and, for whoever may change
+ * them, the corpora they may attach. A server without corpora answers 404:
+ * the context stays empty, with nothing to add.
+ */
+function useProjectContext(name: string, tick: number, canEdit: boolean, canList: boolean) {
   const [attached, setAttached] = useState<ProjectCorpora | null>(null);
+  const [read, setRead] = useState(false);
   const [corpora, setCorpora] = useState<CorpusBrief[] | null>(null);
   const [reads, setReads] = useState(0);
   // biome-ignore lint/correctness/useExhaustiveDependencies: tick and reads are signals to read again
@@ -1421,83 +1496,27 @@ function ContextCard({
     api
       .projectCorpora(name)
       .then((v) => live && setAttached(v))
-      .catch(() => live && setAttached(null));
+      .catch(() => live && setAttached(null))
+      .finally(() => live && setRead(true));
     if (canEdit && canList)
       api
         .corpora()
         .then((list) => live && setCorpora(list))
-        // A server without corpora answers 404: the card stays empty, with nothing to add.
         .catch(() => live && setCorpora(null));
     return () => {
       live = false;
     };
   }, [name, tick, reads, canEdit, canList]);
-  const words = here.context;
-  const some = (attached?.corpora.length ?? 0) > 0;
-  return (
-    <SideCard
-      title={words.title}
-      icon={<DatabaseIcon size={16} />}
-      action={
-        canEdit && attached && corpora
-          ? {
-              text: some ? words.edit : words.add,
-              label: some ? words.editLabel : words.addLabel,
-              heading: words.title,
-            }
-          : undefined
-      }
-      sheet={
-        attached && corpora
-          ? (close) => (
-              <ContextForm
-                project={name}
-                attached={attached}
-                corpora={corpora}
-                onCancel={close}
-                onStale={() => setReads((n) => n + 1)}
-                onSaved={(next) => {
-                  setAttached(next);
-                  close();
-                }}
-              />
-            )
-          : undefined
-      }
-    >
-      {some ? (
-        <ul className={`${summary} flex flex-col gap-0.5`}>
-          {attached?.corpora.map((c) => (
-            <li key={c.name} className="break-words">
-              {words.corpus(c.title || c.name, c.sources)}
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className={summary}>{words.none}</p>
-      )}
-    </SideCard>
-  );
+  return { attached, read, corpora, setAttached, reread: () => setReads((n) => n + 1) };
 }
 
-/** The Scheduled card: what runs in the project on a timer. Each run is a session here. */
-function ScheduledCard({
-  project,
-  tick,
-  agents,
-  canAdd,
-  onChanged,
-}: {
-  project: string;
-  tick: number;
-  agents: Revision[];
-  canAdd: boolean;
-  onChanged: () => void;
-}) {
+/** What runs in the project on a timer. Each run is a session here. */
+function useProjectSchedules(project: string, tick: number, enabled: boolean) {
   const [schedules, setSchedules] = useState<ScheduleView[] | null>(null);
   const [reads, setReads] = useState(0);
   // biome-ignore lint/correctness/useExhaustiveDependencies: tick and reads are signals to read again
   useEffect(() => {
+    if (!enabled) return;
     let live = true;
     api
       .projectSchedules(project)
@@ -1506,71 +1525,20 @@ function ScheduledCard({
     return () => {
       live = false;
     };
-  }, [project, tick, reads]);
-  const words = here.scheduled;
-  return (
-    <SideCard
-      title={words.title}
-      icon={<CalendarIcon size={16} />}
-      action={
-        canAdd && agents.length > 0
-          ? { text: words.add, label: words.addLabel, heading: words.heading }
-          : undefined
-      }
-      sheet={(close) => (
-        <ScheduleForm
-          project={project}
-          agents={agents}
-          onCancel={close}
-          onCreated={() => {
-            setReads((n) => n + 1);
-            onChanged();
-            close();
-          }}
-        />
-      )}
-    >
-      {schedules === null ? null : schedules.length === 0 ? (
-        <p className={summary}>{words.none}</p>
-      ) : (
-        <ul className="flex min-w-0 flex-col gap-1.5">
-          {schedules.map((s) => (
-            <li key={s.name} className="min-w-0">
-              <span className="block break-words text-aui-sm text-aui-fg">
-                {s.description || s.name}
-              </span>
-              <span className="block text-aui-xs text-aui-muted">
-                <span title={s.expression}>{inWords(s.expression)}</span>
-                {s.paused ? `, ${words.paused.toLowerCase()}` : ""}
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </SideCard>
-  );
+  }, [project, tick, reads, enabled]);
+  return { schedules, reread: () => setReads((n) => n + 1) };
 }
 
+type SlackLink = Channel & { slack: NonNullable<Channel["slack"]> };
+
 /**
- * The External references card: what outside Humagen the project is linked
- * to, each with the mark of where it lives. Slack channels are the links a
- * project keeps today, with a way to link or unlink one.
+ * What outside Humagen the project is linked to. Slack channels are the
+ * links a project keeps today, each named with the app it comes through.
  */
-function SlackCard({
-  project,
-  tick,
-  canLink,
-  canReadClients,
-}: {
-  project: string;
-  tick: number;
-  canLink: boolean;
-  canReadClients: boolean;
-}) {
+function useProjectLinks(project: string, tick: number, canReadClients: boolean) {
   const [channels, setChannels] = useState<Channel[] | null>(null);
   const [clients, setClients] = useState<Client[]>([]);
   const [reads, setReads] = useState(0);
-  const [problem, setProblem] = useState<string | null>(null);
   // biome-ignore lint/correctness/useExhaustiveDependencies: tick and reads are signals to read again
   useEffect(() => {
     let live = true;
@@ -1587,37 +1555,80 @@ function SlackCard({
       live = false;
     };
   }, [project, tick, reads, canReadClients]);
-  const words = here.slack;
-  const links = (channels ?? []).filter(
-    (c): c is Channel & { slack: NonNullable<Channel["slack"]> } => !!c.slack && !c.archived,
+  const links =
+    channels === null ? null : channels.filter((c): c is SlackLink => !!c.slack && !c.archived);
+  return { links, clients, reread: () => setReads((n) => n + 1) };
+}
+
+/** The Scheduled sheet: this project's schedules in words, then a new one for whoever may add. */
+function ScheduledSheet({
+  project,
+  schedules,
+  agents,
+  canAdd,
+  onCreated,
+  onCancel,
+}: {
+  project: string;
+  schedules: ScheduleView[];
+  agents: Revision[];
+  canAdd: boolean;
+  onCreated: () => void;
+  onCancel: () => void;
+}) {
+  const words = here.scheduled;
+  return (
+    <div className="flex min-w-0 flex-col gap-5">
+      {schedules.length > 0 && (
+        <ul className={hairlines}>
+          {schedules.map((s) => (
+            <li key={s.name} className="min-w-0 py-2.5">
+              <span className="block break-words text-aui-sm text-aui-fg">
+                {s.description || s.name}
+              </span>
+              <span className="block text-aui-xs text-aui-muted">
+                <span title={s.expression}>{inWords(s.expression)}</span>
+                {s.paused ? `, ${words.paused.toLowerCase()}` : ""}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {canAdd && (
+        <ScheduleForm project={project} agents={agents} onCancel={onCancel} onCreated={onCreated} />
+      )}
+    </div>
   );
+}
+
+/** The External references sheet: each linked Slack channel, with Remove, then a way to link one. */
+function LinksSheet({
+  project,
+  links,
+  clients,
+  canLink,
+  onChanged,
+  onLinked,
+  onCancel,
+}: {
+  project: string;
+  links: SlackLink[];
+  clients: Client[];
+  canLink: boolean;
+  onChanged: () => void;
+  onLinked: () => void;
+  onCancel: () => void;
+}) {
+  const [problem, setProblem] = useState<string | null>(null);
+  const words = here.slack;
   const clientName = (id: string) => clients.find((c) => c.id === id)?.name || id;
   return (
-    <SideCard
-      title={words.title}
-      icon={<ExternalLinkIcon size={16} />}
-      action={
-        canLink ? { text: words.add, label: words.addLabel, heading: words.heading } : undefined
-      }
-      sheet={(close) => (
-        <SlackForm
-          project={project}
-          clients={clients}
-          onCancel={close}
-          onLinked={() => {
-            setReads((n) => n + 1);
-            close();
-          }}
-        />
-      )}
-    >
-      {channels === null ? null : links.length === 0 ? (
-        <p className={summary}>{words.none}</p>
-      ) : (
-        <ul className="flex min-w-0 flex-col gap-1">
+    <div className="flex min-w-0 flex-col gap-5">
+      {links.length > 0 && (
+        <ul className={hairlines}>
           {links.map((c) => (
-            <li key={c.name} className="flex min-w-0 items-center justify-between gap-3">
-              <span className={`${summary} inline-flex items-center gap-2`}>
+            <li key={c.name} className="flex min-h-11 min-w-0 items-center justify-between gap-3">
+              <span className="inline-flex min-w-0 items-center gap-2 text-aui-sm text-aui-fg">
                 <SlackIcon size={14} aria-hidden className="shrink-0" />
                 <span className="min-w-0 break-words">
                   {words.via(c.slack.channel, clientName(c.slack.client))}
@@ -1632,7 +1643,7 @@ function SlackCard({
                     setProblem(null);
                     coworking
                       .archiveChannel(project, c.name)
-                      .then(() => setReads((n) => n + 1))
+                      .then(onChanged)
                       .catch(fail(setProblem, words.removeFailed));
                   }}
                 >
@@ -1644,27 +1655,32 @@ function SlackCard({
         </ul>
       )}
       <Problem message={problem} />
-    </SideCard>
+      {canLink && (
+        <SlackForm project={project} clients={clients} onCancel={onCancel} onLinked={onLinked} />
+      )}
+    </div>
   );
 }
 
 const VISIBILITY_ICON: Record<ProjectVisibility, ReactNode> = {
-  private: <UserIcon size={16} />,
-  shared: <UsersIcon size={16} />,
-  workspace: <LayersIcon size={16} />,
+  private: <UserIcon size={14} />,
+  shared: <UsersIcon size={14} />,
+  workspace: <LayersIcon size={14} />,
 };
 
 /**
- * One project, the workspace included, as its owner looks after it: a
- * composer to try it and its recent sessions, and beside them what every
- * session in it is given (instructions, context, memory), what runs on a
- * timer, what outside Humagen it is linked to and who can see it. It has no tabs,
- * and no agents of its own: agents are independent of projects, so a session
- * names who answered it.
+ * One project, the workspace included, as a chat landing page: one surface
+ * with the project's title at the top and the composer floating over its
+ * bottom, as in a conversation. A project with no sessions leads with its
+ * setup as steps to get started; once it has sessions it leads with Recents,
+ * and its setup (instructions, context, memory, what runs on a timer, what
+ * outside Humagen it is linked to and who can see it) is a summary beside
+ * them, folded above them on a phone. Every row's action opens a sheet. It
+ * has no tabs, and no agents of its own: agents are independent of projects,
+ * so a session names who answered it.
  */
 export function ProjectPage({
   composer,
-  self,
   name,
   pinned = false,
   onPin,
@@ -1682,11 +1698,11 @@ export function ProjectPage({
   onFork,
 }: {
   /**
-   * The composer Home uses, drawn with the words given: a session started
-   * with it is filed in this project and opens once it exists.
+   * The composer Home uses, with its footer, drawn with the words given: a
+   * session started with it is filed in this project and opens once it exists.
    */
   composer?: (placeholder: string) => ReactNode;
-  /** The reader's handle, which Recents does not name among who answered. */
+  /** The reader's handle. Kept for callers. */
   self?: string;
   /** "" is the workspace. */
   name: string;
@@ -1719,6 +1735,9 @@ export function ProjectPage({
   const [deleting, setDeleting] = useState(false);
   // A pin that did not take says so beside the menu.
   const { flash, say, clear } = useFlash();
+  const host = useRef<HTMLDivElement>(null);
+  const scroller = useRef<HTMLDivElement>(null);
+  const dock = useRef<HTMLDivElement>(null);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: tick and reads are signals to read again
   useEffect(() => {
@@ -1738,6 +1757,16 @@ export function ProjectPage({
     };
   }, [name, tick, reads]);
 
+  const p = detail?.project;
+  // What the caller may do here is their permission and their role together, as the server says.
+  const may = (action: ProjectAction) => !!p?.actions.includes(action);
+  const canEdit = may("edit") && p?.managed !== "file";
+  const context = useProjectContext(name, tick, canEdit, can("knowledge:read"));
+  const timers = useProjectSchedules(name, tick, can("schedules:read"));
+  const linked = useProjectLinks(name, tick, can("clients:read"));
+  const composed = !!detail && !!composer;
+  useComposerDock({ enabled: composed, host, dock, scroller });
+
   const changed = () => {
     setReads((n) => n + 1);
     onChanged();
@@ -1754,8 +1783,8 @@ export function ProjectPage({
       </Page>
     );
   }
-  if (!detail) {
-    const listed = projects.find((p) => p.name === name);
+  if (!p) {
+    const listed = projects.find((l) => l.name === name);
     return (
       <Page
         back={{ label: words.title, onClick: onOpenAll }}
@@ -1766,12 +1795,8 @@ export function ProjectPage({
     );
   }
 
-  const p = detail.project;
   const root = p.name === "";
   const title = titleOf(p, workspaceName);
-  // What the caller may do here is their permission and their role together, as the server says.
-  const may = (action: ProjectAction) => p.actions.includes(action);
-  const canEdit = may("edit") && p.managed !== "file";
   const visibility = visibilityOf(p);
   const menu: PageAction[] = [
     ...(onPin
@@ -1812,161 +1837,310 @@ export function ProjectPage({
       : []),
   ];
 
-  return (
-    <Page
-      back={{ label: words.title, onClick: onOpenAll }}
-      title={<span className="block whitespace-normal break-words">{title}</span>}
-      meta={
-        p.fork?.ready ? (
-          <span>
-            {p.fork.source ? defaultCopy.projectFork.origin : defaultCopy.projectFork.originHidden}
-            {p.fork.source && (
-              <>
-                {" "}
-                <Go
-                  to={href({ page: "project", name: p.fork.source })}
-                  onGo={() => onOpen(p.fork?.source || "")}
-                  className="text-aui-accent underline"
-                >
-                  {p.fork.source}
-                </Go>
-              </>
-            )}
-          </span>
-        ) : undefined
-      }
-      actions={
-        menu.length > 0 ? (
-          <span className="relative inline-flex items-center">
-            <MoreMenu items={menu} />
-            <FlashNote flash={flash} align="right" />
-          </span>
-        ) : undefined
-      }
-    >
-      {(p.archived || p.managed || problem || deleting) && (
-        <div className="flex min-w-0 flex-col gap-2">
-          {p.archived && <p className="text-aui-xs text-aui-muted">{defaultCopy.roles.archived}</p>}
-          {p.managed && <p className="text-aui-xs text-aui-muted">{words.managed}</p>}
-          <Problem message={problem} />
-          {deleting && (
-            <Confirm
-              question={defaultCopy.confirm.ask(title)}
-              action={words.deleteProject}
-              onConfirm={() => {
-                setDeleting(false);
-                api
-                  .deleteProject(p.name)
-                  .then(onDeleted)
-                  .catch(fail(setProblem, words.failed.delete));
-              }}
-              onKeep={() => setDeleting(false)}
-            />
-          )}
-        </div>
-      )}
-      <div className="grid min-w-0 grid-cols-1 gap-8 @3xl:grid-cols-[minmax(0,1fr)_20rem]">
-        <div className="flex min-w-0 flex-col gap-8">
-          {composer?.(here.composer(title))}
-          {can("runs:read") && (
-            <Recents project={p.name} self={self} tick={tick} onOpen={onOpenThread} />
-          )}
-        </div>
-        <aside aria-label={here.side} className="flex min-w-0 flex-col gap-3">
-          <SideCard
-            plain
-            title={here.visibility.title}
-            action={
-              may("edit")
-                ? {
-                    text: here.visibility.change,
-                    label: here.visibility.changeLabel,
-                    heading: here.visibility.heading,
-                  }
-                : undefined
+  const corpora = context.attached?.corpora ?? [];
+  const schedules = timers.schedules;
+  const links = linked.links;
+  const notes = p.notes + p.proposed;
+  const mayNote = may("notes") || may("propose");
+  const canSchedule = canEdit && can("schedules:write") && agents.length > 0;
+  const canLink = canEdit && can("clients:write");
+  const items: SetupItem[] = [
+    {
+      key: "instructions",
+      title: here.instructions.title,
+      icon: <ScrollTextIcon size={16} />,
+      state: p.instructions?.split("\n").find((line) => line.trim()),
+      done: !!p.instructions?.trim(),
+      action: canEdit
+        ? p.instructions
+          ? {
+              text: here.instructions.edit,
+              label: here.instructions.editLabel,
+              heading: here.instructions.title,
             }
-            sheet={() => (
-              <ProjectPeople key={`${p.name}:${p.version}`} project={p} onChanged={changed} />
-            )}
-          >
-            <span className="inline-flex min-w-0 items-center gap-2 text-aui-sm text-aui-muted">
-              {VISIBILITY_ICON[visibility]}
-              {here.visibility[visibility]}
-            </span>
-          </SideCard>
-          <SideCard
-            title={here.instructions.title}
-            icon={<ScrollTextIcon size={16} />}
-            action={
-              canEdit
-                ? p.instructions
-                  ? {
-                      text: here.instructions.edit,
-                      label: here.instructions.editLabel,
-                      heading: here.instructions.title,
-                    }
-                  : {
-                      text: here.instructions.add,
-                      label: here.instructions.addLabel,
-                      heading: here.instructions.title,
-                    }
-                : undefined
+          : {
+              text: here.instructions.add,
+              label: here.instructions.addLabel,
+              heading: here.instructions.title,
             }
-            sheet={(close) => (
-              <InstructionsForm
-                project={p}
+        : p.instructions
+          ? {
+              text: here.instructions.view,
+              label: here.instructions.viewLabel,
+              heading: here.instructions.title,
+            }
+          : undefined,
+      sheet: (close) =>
+        canEdit ? (
+          <InstructionsForm
+            project={p}
+            onCancel={close}
+            onSaved={() => {
+              close();
+              changed();
+            }}
+          />
+        ) : (
+          <p className="whitespace-pre-line break-words text-aui-sm text-aui-fg">
+            {p.instructions}
+          </p>
+        ),
+    },
+    {
+      key: "context",
+      title: here.context.title,
+      icon: <DatabaseIcon size={16} />,
+      state: corpora.length > 0 ? here.context.count(corpora.length) : undefined,
+      done: context.read ? corpora.length > 0 : undefined,
+      action:
+        canEdit && context.attached && context.corpora
+          ? corpora.length > 0
+            ? {
+                text: here.context.edit,
+                label: here.context.editLabel,
+                heading: here.context.title,
+              }
+            : { text: here.context.add, label: here.context.addLabel, heading: here.context.title }
+          : undefined,
+      sheet:
+        context.attached && context.corpora
+          ? (close) => (
+              <ContextForm
+                project={p.name}
+                attached={context.attached as ProjectCorpora}
+                corpora={context.corpora as CorpusBrief[]}
                 onCancel={close}
-                onSaved={() => {
+                onStale={context.reread}
+                onSaved={(next) => {
+                  context.setAttached(next);
                   close();
-                  changed();
                 }}
               />
-            )}
-          >
-            <p className={`${summary} line-clamp-3 whitespace-pre-line break-words`}>
-              {p.instructions || here.instructions.none}
-            </p>
-          </SideCard>
-          <ContextCard project={p} tick={tick} canEdit={canEdit} canList={can("knowledge:read")} />
-          <SideCard
-            title={here.memory.title}
-            icon={<BrainIcon size={16} />}
-            action={{
-              text: here.memory.view,
-              label: here.memory.viewLabel,
-              heading: here.memory.title,
-            }}
-            sheet={() => (
-              <MemorySheet
+            )
+          : undefined,
+    },
+    {
+      key: "memory",
+      title: here.memory.title,
+      icon: <BrainIcon size={16} />,
+      state: notes > 0 ? here.memory.summary(p.notes, p.proposed) : undefined,
+      done: notes > 0,
+      action:
+        notes === 0 && mayNote
+          ? { text: here.memory.addRow, label: here.memory.addLabel, heading: here.memory.title }
+          : { text: here.memory.view, label: here.memory.viewLabel, heading: here.memory.title },
+      sheet: () => (
+        <MemorySheet
+          project={p.name}
+          canDecide={may("notes")}
+          canPropose={may("propose")}
+          onChanged={changed}
+        />
+      ),
+    },
+    ...(can("schedules:read")
+      ? [
+          {
+            key: "scheduled",
+            title: here.scheduled.title,
+            icon: <CalendarIcon size={16} />,
+            state:
+              schedules && schedules.length > 0
+                ? here.scheduled.count(schedules.length)
+                : undefined,
+            done: schedules ? schedules.length > 0 : undefined,
+            action: canSchedule
+              ? {
+                  text: here.scheduled.add,
+                  label: here.scheduled.addLabel,
+                  heading: here.scheduled.title,
+                }
+              : schedules && schedules.length > 0
+                ? {
+                    text: here.scheduled.view,
+                    label: here.scheduled.viewLabel,
+                    heading: here.scheduled.title,
+                  }
+                : undefined,
+            sheet: (close: () => void) => (
+              <ScheduledSheet
                 project={p.name}
-                canDecide={may("notes")}
-                canPropose={may("propose")}
-                onChanged={changed}
+                schedules={schedules ?? []}
+                agents={agents}
+                canAdd={canSchedule}
+                onCancel={close}
+                onCreated={() => {
+                  timers.reread();
+                  onSchedulesChanged();
+                  close();
+                }}
               />
-            )}
-          >
-            <p className={summary}>
-              {p.notes + p.proposed > 0
-                ? here.memory.summary(p.notes, p.proposed)
-                : here.memory.none}
-            </p>
-          </SideCard>
-          {can("schedules:read") && (
-            <ScheduledCard
-              project={p.name}
-              tick={tick}
-              agents={agents}
-              canAdd={canEdit && can("schedules:write")}
-              onChanged={onSchedulesChanged}
-            />
+            ),
+          } satisfies SetupItem,
+        ]
+      : []),
+    {
+      key: "references",
+      title: here.slack.title,
+      icon: <ExternalLinkIcon size={16} />,
+      state: links && links.length > 0 ? here.slack.count(links.length) : undefined,
+      done: links ? links.length > 0 : undefined,
+      action: canLink
+        ? { text: here.slack.add, label: here.slack.addLabel, heading: here.slack.title }
+        : links && links.length > 0
+          ? { text: here.slack.view, label: here.slack.viewLabel, heading: here.slack.title }
+          : undefined,
+      sheet: (close) => (
+        <LinksSheet
+          project={p.name}
+          links={links ?? []}
+          clients={linked.clients}
+          canLink={canLink}
+          onCancel={close}
+          onChanged={linked.reread}
+          onLinked={() => {
+            linked.reread();
+            close();
+          }}
+        />
+      ),
+    },
+  ];
+
+  // A project people have worked in leads with that work; a new one, with getting it ready.
+  const recents = can("runs:read") && p.conversations > 0;
+  const width = recents ? "max-w-[68rem]" : "max-w-3xl";
+  const columns = recents ? "@3xl:grid @3xl:grid-cols-[minmax(0,1fr)_17rem] @3xl:gap-x-12" : "";
+  const setup = (
+    <Setup items={items} steps={!recents} foldable={recents}>
+      <AccessLine
+        visibility={visibility}
+        action={
+          may("edit")
+            ? {
+                text: here.visibility.change,
+                label: here.visibility.changeLabel,
+                heading: here.visibility.heading,
+              }
+            : undefined
+        }
+        sheet={() => (
+          <ProjectPeople key={`${p.name}:${p.version}`} project={p} onChanged={changed} />
+        )}
+      />
+    </Setup>
+  );
+
+  return (
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      {/* The title's row, as a conversation's: where the page sits, and its menu. */}
+      <header className="humagen-conversation-header humagen-beside-drawer relative z-(--aui-z-sticky) grid shrink-0 items-center gap-x-4 border-aui-border border-b px-4 py-3 max-md:min-h-[3.75rem] md:px-6">
+        <nav aria-label={here.where} className="humagen-conversation-title min-w-0">
+          <ol className="flex min-w-0 items-center gap-2 text-aui-sm">
+            <li className="shrink-0">
+              <Go
+                to={href({ page: "projects" })}
+                onGo={onOpenAll}
+                className="rounded-aui text-aui-muted transition-colors hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
+              >
+                {words.title}
+              </Go>
+            </li>
+            <li aria-hidden className="shrink-0 text-aui-muted">
+              /
+            </li>
+            <li aria-current="page" className="min-w-0 truncate text-aui-fg">
+              {title}
+            </li>
+          </ol>
+        </nav>
+        <div className="humagen-conversation-actions flex min-w-0 items-center justify-end gap-1">
+          {menu.length > 0 && (
+            <span className="relative inline-flex items-center">
+              <MoreMenu items={menu} />
+              <FlashNote flash={flash} align="right" />
+            </span>
           )}
-          <SlackCard
-            project={p.name}
-            tick={tick}
-            canLink={canEdit && can("clients:write")}
-            canReadClients={can("clients:read")}
-          />
-        </aside>
+        </div>
+      </header>
+      <div ref={host} className="@container relative flex min-h-0 flex-1 flex-col">
+        <div
+          ref={scroller}
+          className="humagen-page aui-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain [scrollbar-gutter:stable]"
+        >
+          <div
+            className={`humagen-fade mx-auto flex w-full ${width} flex-col gap-8 px-5 pt-8 md:px-10 ${composed ? "pb-[calc(var(--aui-thread-dock-h,8rem)+1.5rem)]" : "pb-12"}`}
+          >
+            <div className="flex min-w-0 flex-col gap-1.5">
+              <h1 className={`${pageTitle} whitespace-normal break-words`}>{title}</h1>
+              {p.description && <p className={pageLede}>{p.description}</p>}
+              {p.fork?.ready && (
+                <p className="text-aui-xs text-aui-muted">
+                  {p.fork.source
+                    ? defaultCopy.projectFork.origin
+                    : defaultCopy.projectFork.originHidden}
+                  {p.fork.source && (
+                    <>
+                      {" "}
+                      <Go
+                        to={href({ page: "project", name: p.fork.source })}
+                        onGo={() => onOpen(p.fork?.source || "")}
+                        className="text-aui-accent underline"
+                      >
+                        {p.fork.source}
+                      </Go>
+                    </>
+                  )}
+                </p>
+              )}
+            </div>
+            {(p.archived || p.managed || problem || deleting) && (
+              <div className="flex min-w-0 flex-col gap-2">
+                {p.archived && (
+                  <p className="text-aui-xs text-aui-muted">{defaultCopy.roles.archived}</p>
+                )}
+                {p.managed && <p className="text-aui-xs text-aui-muted">{words.managed}</p>}
+                <Problem message={problem} />
+                {deleting && (
+                  <Confirm
+                    question={defaultCopy.confirm.ask(title)}
+                    action={words.deleteProject}
+                    onConfirm={() => {
+                      setDeleting(false);
+                      api
+                        .deleteProject(p.name)
+                        .then(onDeleted)
+                        .catch(fail(setProblem, words.failed.delete));
+                    }}
+                    onKeep={() => setDeleting(false)}
+                  />
+                )}
+              </div>
+            )}
+            {recents ? (
+              <div className={`flex min-w-0 flex-col gap-8 ${columns}`}>
+                {/* First on a phone, folded; beside Recents when there is room. */}
+                <aside aria-label={here.side} className="min-w-0 @3xl:col-start-2 @3xl:row-start-1">
+                  {setup}
+                </aside>
+                <div className="min-w-0 @3xl:col-start-1 @3xl:row-start-1">
+                  <Recents project={p.name} tick={tick} onOpen={onOpenThread} />
+                </div>
+              </div>
+            ) : (
+              <aside aria-label={here.side} className="min-w-0">
+                {setup}
+              </aside>
+            )}
+          </div>
+        </div>
+        {composed && (
+          <ComposerDock ref={dock}>
+            <div className={`mx-auto w-full ${width} px-5 pb-3 md:px-10 ${columns}`}>
+              <div className="min-w-0">{composer?.(here.composer(title))}</div>
+            </div>
+          </ComposerDock>
+        )}
       </div>
       <Sheet open={editing} onOpenChange={(next) => !next && setEditing(false)}>
         <SheetContent aria-describedby={undefined}>
@@ -1985,6 +2159,6 @@ export function ProjectPage({
           )}
         </SheetContent>
       </Sheet>
-    </Page>
+    </div>
   );
 }
