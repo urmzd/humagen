@@ -2094,6 +2094,7 @@ Bring Back is offered inside Fork for a completed fork result and retains the
 existing consent review. Approval controls say Ask a question and Decline action.
 The console puts Approve and Decline together, then Ask a question; its Decline
 keeps Decline action in its accessible name.
+Approve reads the request's own verb on both surfaces when it has one.
 Failure debug references are kept out of the everyday response and remain in the
 explicit issue-report draft.
 

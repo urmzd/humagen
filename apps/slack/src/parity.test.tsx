@@ -12,7 +12,14 @@ import {
   updatesOf,
   type WireProject,
 } from "@humagen/adapter";
-import { defaultCopy, Home, MessageView, TurnView, toolsLineText } from "@humagen/components";
+import {
+  ApprovalCard,
+  defaultCopy,
+  Home,
+  MessageView,
+  TurnView,
+  toolsLineText,
+} from "@humagen/components";
 import {
   ActionId,
   fileEdits,
@@ -627,6 +634,33 @@ for (const kind of ["approval", "choice", "reply"] as const) {
     }
   });
 }
+
+test("an approval's own verb is its approve button on both, and starts the name a screen reader says", () => {
+  const approval = { ...fx.pendingApproval, approveLabel: "Roll Back" };
+  const card = <ApprovalCard turnId={RUN} approval={approval} />;
+  const approve: Offered = {
+    id: ActionId.approve,
+    label: "Roll Back",
+    name: `Roll Back: ${approval.summary}`,
+  };
+  for (const [surface, offers] of [
+    ["Slack", slackOffers(card)],
+    ["the console", webOffers(card)],
+  ] as const) {
+    assert.deepEqual(
+      offers.find((o) => o.id === ActionId.approve),
+      approve,
+      `${surface} does not offer the approval's own verb`,
+    );
+  }
+  // The console still keeps the refusal beside it, ahead of every other action.
+  assert.deepEqual(
+    webOffers(card)
+      .slice(0, 2)
+      .map((o) => o.id),
+    [ActionId.approve, ActionId.deny],
+  );
+});
 
 test("an approval the approval agent judged shows its view in Slack, the workspace's own fields as label and value", () => {
   const judged = (judgement?: Record<string, unknown>) => {

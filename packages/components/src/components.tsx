@@ -243,7 +243,7 @@ export function ApprovalCard({
         {judged}
         <Actions blockId={`approval:${approval.id}:r${approval.revision ?? 0}`}>
           <Button
-            label={compactWebDecision ? copy.approve : approveLabel}
+            label={approveLabel}
             style={approval.destructive ? "danger" : "primary"}
             action={{ id: ActionId.approve, payload }}
             // A budget question's summary is long: its buttons say enough alone.
