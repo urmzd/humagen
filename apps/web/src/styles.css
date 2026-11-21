@@ -1008,7 +1008,6 @@ body {
 @container composer (max-width: 36rem) {
   .humagen-composer { border-radius: 1rem; }
   .humagen-composer-bar { gap: .125rem; }
-  .humagen-approval-label { display: none; }
   .humagen-composer-chips { flex: 1 1 8rem; }
   .humagen-composer-send { margin-left: auto; }
   .humagen-composer-bar .humagen-project-picker { max-width: 11rem; }
