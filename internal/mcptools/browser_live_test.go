@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"image/png"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -61,6 +63,35 @@ func browserAccepted(t *testing.T) []toolprovider.Tool {
 		t.Fatal(err)
 	}
 	return accepted
+}
+
+// The browser image (deploy/browser) runs the Playwright MCP release whose
+// tool schemas examples/browser accepts by hash. The launcher and the image
+// name the version apart, so this holds them to one.
+func TestBrowserImagePinsTheReviewedVersion(t *testing.T) {
+	read := func(path string) string {
+		t.Helper()
+		data, err := os.ReadFile(filepath.Join("..", "..", path))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(data)
+	}
+	launcher := regexp.MustCompile(`@playwright/mcp@([0-9][0-9A-Za-z.-]*)`).FindStringSubmatch(read("examples/browser/start.sh"))
+	image := regexp.MustCompile(`(?m)^ARG PLAYWRIGHT_MCP_VERSION=([0-9][0-9A-Za-z.-]*)$`).FindStringSubmatch(read("deploy/browser/Dockerfile"))
+	if len(launcher) != 2 || len(image) != 2 {
+		t.Fatalf("version not found: launcher=%v image=%v", launcher, image)
+	}
+	if launcher[1] != image[1] {
+		t.Fatalf("deploy/browser/Dockerfile runs Playwright MCP %s, examples/browser/start.sh %s: the accepted tool hashes are for one version", image[1], launcher[1])
+	}
+	// The image starts the same server the launcher's isolated mode does.
+	entry := read("deploy/browser/entrypoint.sh")
+	for _, flag := range []string{"--headless", "--isolated", "--no-webmcp", "--image-responses allow"} {
+		if !strings.Contains(entry, flag) {
+			t.Fatalf("deploy/browser/entrypoint.sh does not pass %s", flag)
+		}
+	}
 }
 
 // TestBrowserLive exercises the actual pinned Playwright MCP server, without
@@ -128,7 +159,7 @@ func TestBrowserLive(t *testing.T) {
 		return out
 	}
 	defer func() { call("browser_close", nil) }()
-	call("browser_navigate", map[string]any{"url": page.URL})
+	call("browser_navigate", map[string]any{"url": browserFixtureURL(t, page.URL)})
 	if size := os.Getenv("HUMAGEN_BROWSER_VIEWPORT"); size != "" {
 		var width, height int
 		if _, err := fmt.Sscanf(size, "%dx%d", &width, &height); err != nil || fmt.Sprintf("%dx%d", width, height) != size || width < 320 || width > 4096 || height < 320 || height > 4096 {
@@ -191,6 +222,25 @@ func TestBrowserLive(t *testing.T) {
 	}
 	capture("after")
 	t.Log("real navigation, changed page, downloaded CSV bytes, and before/after PNG pixels passed")
+}
+
+// browserFixtureURL is the address the browser worker opens this test's page
+// at. A worker on this host uses the listener's own. One in a container
+// reaches this host by another name, which HUMAGEN_BROWSER_FIXTURE_HOST
+// gives ("host.docker.internal", or "host.lima.internal" under Colima); the
+// port stays the listener's.
+func browserFixtureURL(t *testing.T, listener string) string {
+	t.Helper()
+	host := os.Getenv("HUMAGEN_BROWSER_FIXTURE_HOST")
+	if host == "" {
+		return listener
+	}
+	u, err := url.Parse(listener)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u.Host = net.JoinHostPort(host, u.Port())
+	return u.String()
 }
 
 func browserPixels(t *testing.T, ctx context.Context, tool saigetypes.Tool) []byte {
