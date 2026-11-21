@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.177.1 (2026-11-21)
+
+### Bug Fixes
+
+- **surfaces**: Slack sessions listen, read and list as people expect (stack 7/7) (#466) ([4a0ed23](https://github.com/urmzd/humagen/commit/4a0ed23ecb590e8dc38bc575febfc1976b8c9b58))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.177.0...v0.177.1)
+
+
 ## 0.176.1 (2026-11-21)
 
 ### Bug Fixes
