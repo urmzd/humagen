@@ -58,6 +58,10 @@ const (
 	MaxImageTenants = 10 * state.MaxList
 )
 
+// imageDisallowed is why an image shows as failed while its registry is
+// not one the deployment allows any more.
+const imageDisallowed = "this deployment no longer allows images from its registry"
+
 // imageRepullTimeout bounds one pull of a ready image at start, so a
 // registry that hangs holds up no other image. imageCheckTimeout is
 // ImageCheckTimeout, which a test shortens.
@@ -150,6 +154,27 @@ func (p *Platform) ImageRegistries() []string {
 	return append([]string(nil), p.cfg.SandboxImages.Registries...)
 }
 
+// imageAllowed reports whether img comes from a registry the deployment
+// allows now. The registries may have narrowed since it was added, so every
+// use of an image asks: it is a function of the reference and the
+// deployment's configuration, and reads nothing.
+func (p *Platform) imageAllowed(img images.Image) bool {
+	c := p.cfg.SandboxImages
+	return c != nil && images.CheckRef(img.Ref, c.Registries) == nil
+}
+
+// shownImage is img as a person sees it. One whose registry the deployment
+// no longer allows shows as failed, with why, whatever is kept of it: what
+// is kept does not change, so an image that was ready is ready again,
+// unchecked, if the deployment allows its registry again.
+func (p *Platform) shownImage(img images.Image) images.Image {
+	img = img.Shown()
+	if !p.imageAllowed(img) {
+		img.Status, img.Problem, img.Rechecking = images.Failed, imageDisallowed, false
+	}
+	return img
+}
+
 func (p *Platform) defaultImage() SessionImage {
 	ref := ""
 	if c := p.cfg.SandboxImages; c != nil {
@@ -159,8 +184,8 @@ func (p *Platform) defaultImage() SessionImage {
 }
 
 // SessionImages are the images the caller's workspace may start a session
-// in: the default first, then its own, oldest first, with those not ready
-// marked so.
+// in: the default first, then its own, oldest first, with those not ready,
+// or from a registry no longer allowed, marked so.
 func (p *Platform) SessionImages(who auth.Principal) ([]SessionImage, error) {
 	out := []SessionImage{p.defaultImage()}
 	if !p.imagesOn() {
@@ -171,6 +196,7 @@ func (p *Platform) SessionImages(who auth.Principal) ([]SessionImage, error) {
 		return nil, err
 	}
 	for _, img := range own {
+		img = p.shownImage(img)
 		out = append(out, SessionImage{ID: img.ID, Name: img.Name, Ref: img.Ref, Digest: img.Digest, Status: img.Status, Problem: img.Problem, Warm: img.Warm})
 	}
 	return out, nil
@@ -183,7 +209,7 @@ func (p *Platform) ListImages(who auth.Principal) ([]images.Image, error) {
 	}
 	imgs, err := p.Images.List(who.Tenant)
 	for i := range imgs {
-		imgs[i] = imgs[i].Shown()
+		imgs[i] = p.shownImage(imgs[i])
 	}
 	return imgs, err
 }
@@ -224,7 +250,7 @@ func (p *Platform) AddImage(ctx context.Context, who auth.Principal, in ImageInp
 	if p.imageChecks.claim(who.Tenant, saved.ID) {
 		p.checkImageLater(who.Tenant, saved.ID, saved.Checks)
 	}
-	return saved.Shown(), nil
+	return p.shownImage(saved), nil
 }
 
 // ChangeImage keeps an image warm or not, or checks it again. A check
@@ -270,13 +296,13 @@ func (p *Platform) ChangeImage(_ context.Context, who auth.Principal, id string,
 	case in.Warm != nil:
 		p.keepTenantWarm(who.Tenant)
 	}
-	return img.Shown(), nil
+	return p.shownImage(img), nil
 }
 
 // RemoveImage forgets an image and its credential. A session started in it
 // is refused a sandbox from then on: its image is gone. Removing it, and
-// the deployment no longer allowing its registry, are the only ways a
-// session loses an image that once passed its check.
+// the deployment no longer allowing its registry (imageAllowed), are the
+// only ways a session loses an image that once passed its check.
 func (p *Platform) RemoveImage(_ context.Context, who auth.Principal, id string) error {
 	if !p.imagesOn() {
 		return images.ErrNotFound
@@ -454,7 +480,7 @@ func (p *Platform) checkImage(ctx context.Context, tenant, id string, n int64) {
 	disallowed := false
 	if err = images.CheckRef(img.Ref, p.cfg.SandboxImages.Registries); err != nil {
 		disallowed = true
-		err = fmt.Errorf("this deployment no longer allows it: %s", strings.TrimPrefix(err.Error(), images.ErrInvalid.Error()+": "))
+		err = errors.New(imageDisallowed)
 	} else if done, perr := p.imageChecks.pull(ctx, tenant); perr != nil {
 		err = perr
 	} else {
@@ -749,7 +775,8 @@ func (p *Platform) keepImagesWarm() {
 
 // keepWarm reads the images of the workspaces which names, and tells the
 // sandbox every image to keep warm: each workspace's ready images marked
-// warm (at most images.MaxWarm of a workspace) that this process has pulled. A workspace whose images
+// warm (at most images.MaxWarm of a workspace), from a registry the
+// deployment allows, that this process has pulled. A workspace whose images
 // cannot be read keeps what it had until they can.
 func (p *Platform) keepWarm(which func(*imageChecks) []string) {
 	keeper, ok := p.cfg.Sandbox.Leaser.(imageKeeper)
@@ -776,7 +803,7 @@ func (p *Platform) keepWarm(which func(*imageChecks) []string) {
 				continue
 			}
 			held[img.Digest] = true
-			if img.Warm && img.Status == images.Ready {
+			if img.Warm && img.Status == images.Ready && p.imageAllowed(img) {
 				reqs = append(reqs, isolation.Request{Tenant: tenant, Image: img.Digest})
 			}
 		}
@@ -799,8 +826,10 @@ func (p *Platform) keepWarm(which func(*imageChecks) []string) {
 }
 
 // PullReadyImages fetches every workspace's ready image onto the sandbox
-// host by digest, and keeps warm those marked so. The workspaces are read
-// within eachTenantsImages' bound. The platform calls it
+// host by digest, and keeps warm those marked so. An image from a registry
+// the deployment no longer allows is not pulled, and its credential is not
+// read. The workspaces are read within eachTenantsImages' bound. The
+// platform calls it
 // when it starts, so a host that has never run an image has it before a
 // session asks; a failure is logged and the image stays ready for the next
 // host. Each pull has imageRepullTimeout, and an image is warmed only if it
@@ -816,7 +845,7 @@ func (p *Platform) PullReadyImages(ctx context.Context) {
 	var all []ready
 	p.eachTenantsImages(func(tenant string, imgs []images.Image) {
 		for _, img := range imgs {
-			if img.Status == images.Ready && img.Digest != "" {
+			if img.Status == images.Ready && img.Digest != "" && p.imageAllowed(img) {
 				all = append(all, ready{tenant, img})
 			}
 		}
@@ -853,8 +882,8 @@ func (p *Platform) repull(ctx context.Context, tenant string, img images.Image) 
 	return nil
 }
 
-// ErrImageGone reports a session whose image was removed, or is one the
-// deployment no longer allows. An image being checked again, or whose
+// ErrImageGone reports a session whose image was removed, or is from a
+// registry the deployment no longer allows. An image being checked again, or whose
 // latest check failed, is not gone: it runs the digest it had.
 var ErrImageGone = errors.New("platform: this session's image is not available")
 
@@ -875,7 +904,7 @@ func (p *Platform) imageOf(tenant, thread string) (string, error) {
 		return "", nil
 	}
 	img, err := p.Images.Get(tenant, th.Session.Image)
-	if err != nil || img.Status != images.Ready || img.Digest == "" || !p.imagesOn() {
+	if err != nil || img.Status != images.Ready || img.Digest == "" || !p.imagesOn() || !p.imageAllowed(img) {
 		return "", fmt.Errorf("%w: %s", ErrImageGone, th.Session.Image)
 	}
 	return img.Digest, nil

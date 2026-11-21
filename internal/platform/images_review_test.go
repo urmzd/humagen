@@ -351,7 +351,8 @@ func (f pullFunc) Pull(ctx context.Context, ref, credential string) (string, err
 }
 
 // Checking an image again checks its registry against the deployment's
-// list as it is now: one the operator stopped allowing fails.
+// list as it is now: one the operator stopped allowing fails, and is kept
+// as failed.
 func TestACheckAgainRefusesARegistryNoLongerAllowed(t *testing.T) {
 	cfg := &platform.ImageConfig{Registries: []string{"ghcr.io"}, Puller: &pinPuller{}}
 	p := startWith(t, platform.Config{
@@ -368,9 +369,15 @@ func TestACheckAgainRefusesARegistryNoLongerAllowed(t *testing.T) {
 	if _, err := p.ChangeImage(t.Context(), admin, img.ID, platform.ImageChange{Check: true}); err != nil {
 		t.Fatal(err)
 	}
-	got := readyImage(t, p, img.ID)
-	if got.Status != images.Failed || !strings.Contains(got.Problem, "ghcr.io") {
-		t.Errorf("a check against a narrowed list: %s %q, want failed naming ghcr.io", got.Status, got.Problem)
+	// It shows as failed at once; what is kept says so when the check ends.
+	var kept images.Image
+	for deadline := time.Now().Add(10 * time.Second); kept.Status != images.Failed && time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+		if kept, err = p.Images.Get(tenant, img.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if kept.Status != images.Failed || kept.Rechecking || kept.Problem != "this deployment no longer allows images from its registry" {
+		t.Errorf("a check against a narrowed list kept: %+v, want failed with the reason", kept)
 	}
 }
 

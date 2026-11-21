@@ -213,3 +213,9 @@ func SweepImages(p *Platform) {
 	p.adoptStrandedChecks()
 	p.keepImagesWarm()
 }
+
+// SessionDigest is the digest a session's runs and a person's commands
+// lease, or why they are refused one.
+func SessionDigest(p *Platform, tenant, thread string) (string, error) {
+	return p.imageOf(tenant, thread)
+}
