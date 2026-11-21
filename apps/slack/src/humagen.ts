@@ -283,6 +283,13 @@ export interface Humagen {
    */
   postThread(body: ThreadPostRequest, options?: CallOptions): Promise<ThreadPosted>;
   /**
+   * Post a Slack person's message into the root session its Slack thread
+   * is, started on the thread's first message. A session is what the console
+   * lists, so a conversation that starts in Slack is found there as one that
+   * starts in the console is. Same request and same answer as `postThread`.
+   */
+  postSession(body: ThreadPostRequest, options?: CallOptions): Promise<ThreadPosted>;
+  /**
    * Set how a humagen thread's gated actions are approved, for a person the
    * client maps: `auto`, the approval agent decides as them, or `ask`. The
    * console's toggle, with the same checks, made as that person.
@@ -472,6 +479,7 @@ const sleep = (ms: number, signal: AbortSignal) =>
  * | stopRun | `POST /api/runs/{id}/stop` |
  * | answerQuestion | `POST /api/runs/{id}/questions/{question}/answer` |
  * | postThread | `POST /api/threads` with a surface |
+ * | postSession | `POST /api/sessions` with a surface |
  * | setApprovalMode | `PUT /api/threads/{id}/approval` with `act_as` |
  * | getInboxMessage, inboxMessageFor | `GET /api/inbox/{id}`, for a person with `act_as_client` and `act_as_user` |
  * | resolveFor | `POST /api/inbox/{id}/parts/{part}/resolve` with `act_as` |
@@ -669,6 +677,22 @@ export function httpHumagen(cfg: {
       }
     },
     postThread: (body) => http<ThreadPosted>("POST", "/api/threads", body),
+    postSession: async (body) => {
+      // A session answers as itself, with what the post did under `posted`.
+      const view = await http<{
+        thread: ThreadPosted["thread"];
+        posted?: Omit<ThreadPosted, "thread">;
+      }>("POST", "/api/sessions", body);
+      return {
+        runs: [],
+        notified: [],
+        refused: [],
+        rule: "",
+        message: { id: "", text: body.text },
+        ...view.posted,
+        thread: view.thread,
+      };
+    },
     setApprovalMode: (thread, mode, actAs) =>
       http<unknown>("PUT", `/api/threads/${enc(thread)}/approval`, { mode, act_as: actAs }),
     threadSurface: (id) =>

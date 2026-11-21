@@ -331,7 +331,18 @@ export class FakeHumagen implements Humagen {
    * humagen thread, each message is posted once by its ts, and a message tags
    * an agent by its name, a person by @handle, or else the default answers.
    */
+  /** Which route each post came by, in order: the threads route or the sessions route. */
+  readonly routes: ("thread" | "session")[] = [];
+
+  /** As the platform does: the same post, kept as a root session. */
+  async postSession(body: ThreadPostRequest): Promise<ThreadPosted> {
+    const posted = await this.postThread(body);
+    this.routes[this.routes.length - 1] = "session";
+    return posted;
+  }
+
   async postThread(body: ThreadPostRequest): Promise<ThreadPosted> {
+    this.routes.push("thread");
     const client = this.clients.get(body.surface.client);
     if (!client || client.slack?.machine !== SUBJECT) throw new HumagenError(404, "not found");
     if (!client.slack?.people?.[body.act_as.user]) {
@@ -349,6 +360,7 @@ export class FakeHumagen implements Humagen {
     // a thread that began with one addressed to the app, and starts none.
     if (body.listen && (!thread || !this.listening.has(where))) {
       this.posts.pop();
+      this.routes.pop();
       throw new HumagenError(409, "nobody is listening in this thread: mention the app to ask it");
     }
     if (!thread) {

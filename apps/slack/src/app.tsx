@@ -89,6 +89,7 @@ import {
   type StreamItem,
   type SurfaceRef,
   type ThreadPosted,
+  type ThreadPostRequest,
   type WireMessage,
   type WireProject,
 } from "./humagen.ts";
@@ -1458,6 +1459,13 @@ export class App {
    * the announcement, ahead of these messages.
    */
   private async cowork(job: Job, asking: ActAs): Promise<ThreadPosted> {
+    // A Slack channel bound to a project is that project's channel: its
+    // threads, announcements and limits are the project's, so it posts as
+    // before. Everywhere else, a direct message or a thread in any other
+    // channel, the Slack thread is a session, which the console lists.
+    const bound = (await this.bridgeControls(job.session.channel)).policy.bound;
+    const post = (body: ThreadPostRequest) =>
+      bound ? this.humagen.postThread(body) : this.humagen.postSession(body);
     if (job.history) {
       const at = {
         channel: job.session.channel,
@@ -1472,7 +1480,7 @@ export class App {
         for (const m of said) {
           const as = m.user && m.ts ? await this.actAs(m.user) : null;
           if (!as || !m.ts || !(m.text ?? "").trim()) continue;
-          await this.humagen.postThread({
+          await post({
             text: m.text ?? "",
             act_as: as,
             surface: this.surfaceOf(job, m.ts),
@@ -1483,7 +1491,7 @@ export class App {
         this.log(`thread history skipped: ${(e as Error).message}`);
       }
     }
-    return this.humagen.postThread({
+    return post({
       text: job.text,
       act_as: asking,
       surface: this.surfaceOf(job, job.triggerTs),

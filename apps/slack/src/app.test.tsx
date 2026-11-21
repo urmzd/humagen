@@ -2308,3 +2308,26 @@ test("a mention in the middle or at the end of a message asks with the whole mes
   await emit(w, "run.completed.v1", { text: "Looking." });
   await w.app.idle();
 });
+
+test("a direct message and a thread in an unbound channel are sessions; a bound channel stays the project's", async () => {
+  // Outside a bound channel the Slack thread is a session, which the console lists.
+  const w = mapped();
+  await deliver(w, direct("what is the status of my repos?", TS));
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "All green." });
+  await w.app.idle();
+  await deliver(w, mention("and the deploy?", "1700000400.000100"));
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "Deployed." });
+  await w.app.idle();
+  assert.deepEqual(w.humagen.routes, ["session", "session"]);
+
+  // A Slack channel bound to a project posts as the project's channel does.
+  const b = mapped();
+  b.humagen.bound.set(CLIENT, [{ slack_channel: CHANNEL, project: "Field", channel: "general" }]);
+  await deliver(b, mention("who has the PO?", TS));
+  assert.deepEqual(b.humagen.routes, ["thread"]);
+  await emit(b, "run.accepted.v1");
+  await emit(b, "run.completed.v1", { text: "Ana has it." });
+  await b.app.idle();
+});

@@ -504,7 +504,8 @@ test("the README's least privilege and the app's own lists cover every route it 
     const m = /^ {4}(get|post|put|patch|delete):$/.exec(line);
     if (m) method = (m[1] ?? "").toUpperCase();
     const x = /^ {6}x-permission: (\S+)$/.exec(line);
-    if (x && path && method) need.set(`${method} ${path}`, x[1] ?? "");
+    // The spec writes a permission bare or quoted: both name the same one.
+    if (x && path && method) need.set(`${method} ${path}`, (x[1] ?? "").replace(/^"|"$/g, ""));
   }
   // The routes the app calls, as httpHumagen's table says.
   const routes = [
