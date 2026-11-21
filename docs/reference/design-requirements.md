@@ -2579,6 +2579,7 @@ Terminal and Browser tabs taking a result.
 - The one-line summaries stay muted and the agent's words primary.
 
 ### DES-079: Run and Answer
+### DES-079: Auto answers questions
 
 Owner request: the approval agent that decides tool calls in a session set to
 Auto can decide the questions an agent puts to a person too: "anything that
@@ -2751,3 +2752,7 @@ request held and refused in the browser, since the route reads records and
 does not fail when Docker does. Not seen: a session started in Slack (no
 Slack client locally), so the meta line was checked in tests only.
 
+test` (`approval-toggle.dom.test.tsx`, `chat.dom.test.tsx`, `ui.test.tsx`);
+`cd apps/slack && pnpm test` (`questions.test.tsx`); `packages/render-slack`
+`question-cards.test.tsx`. Not run: `pnpm validate:slack` against a real
+Slack bench.
