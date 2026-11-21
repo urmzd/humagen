@@ -296,6 +296,173 @@ test("a key the menu does not take is handed to its host with the open pane", ()
   ]);
 });
 
+test("inside a pane's own pane the host is handed the inner row, not the outer", () => {
+  const got: [string, string | null][] = [];
+  render(
+    <PaneMenu
+      label="Options"
+      onClose={() => {}}
+      onKey={(event, pane) => got.push([event.key, pane])}
+      rows={[
+        {
+          id: "outer",
+          label: "Outer",
+          pane: {
+            title: "Outer",
+            rows: [{ id: "inner", label: "Inner", pane: { title: "Inner" } }],
+          },
+        },
+      ]}
+    />,
+  );
+  fireEvent.click(row("Outer"));
+  press("Enter");
+  fireEvent.click(row("Inner"));
+  assert.equal(title(), "Inner");
+  press("Enter");
+  assert.deepEqual(got, [
+    ["Enter", "outer"],
+    ["Enter", "inner"],
+  ]);
+});
+
+test("the rows slide forward into a pane and back out of it", () => {
+  render(<Menu />);
+  assert.equal(direction(), "forward", "a menu on the bar slides its first rows in");
+  fireEvent.click(row("Size"));
+  assert.equal(direction(), "forward");
+  press("Escape");
+  assert.equal(title(), null);
+  assert.equal(direction(), "back");
+  fireEvent.click(row("Fruit"));
+  assert.equal(direction(), "forward", "forward again into the next pane");
+  fireEvent.click(screen.getByRole("button", { name: "Back" }));
+  assert.equal(direction(), "back");
+});
+
+test("a row that opens a pane may leave its chevron out", () => {
+  render(
+    <PaneMenu
+      label="Options"
+      onClose={() => {}}
+      rows={[{ id: "quiet", label: "Quiet", chevron: false, pane: { title: "Quiet" } }]}
+    />,
+  );
+  assert.equal(row("Quiet").querySelectorAll("svg").length, 0);
+  assert.equal(row("Quiet").getAttribute("aria-haspopup"), "dialog");
+  fireEvent.click(row("Quiet"));
+  assert.equal(title(), "Quiet", "it opens its pane all the same");
+});
+
+test("Down from a field that lists no choice goes to Back", () => {
+  render(<Menu />);
+  fireEvent.click(row("Fruit"));
+  const search = screen.getByRole("searchbox", { name: "Find a fruit" });
+  fireEvent.change(search, { target: { value: "kiwi" } });
+  assert.equal(screen.queryByRole("button", { name: "apple" }), null);
+  assert.equal(focused(), "Find a fruit");
+  assert.equal(press("ArrowDown"), false);
+  assert.equal(focused(), "Back");
+  press("ArrowDown");
+  assert.equal(focused(), "Find a fruit", "and Down from Back is the field again");
+});
+
+test("the arrows pass over a control that is disabled", () => {
+  render(
+    <PaneMenu
+      label="Options"
+      onClose={() => {}}
+      rows={[
+        {
+          id: "tone",
+          label: "Tone",
+          pane: {
+            title: "Tone",
+            body: ["Loud", "Calm", "Flat", "Warm"].map((tone) => (
+              <button
+                key={tone}
+                type="button"
+                data-pane-item="choice"
+                disabled={tone === "Loud" || tone === "Flat"}
+              >
+                {tone}
+              </button>
+            )),
+          },
+        },
+      ]}
+    />,
+  );
+  fireEvent.click(row("Tone"));
+  assert.equal(focused(), "Back");
+  const seen: string[] = [];
+  for (let i = 0; i < 3; i++) {
+    press("ArrowDown");
+    seen.push(focused());
+  }
+  assert.deepEqual(seen, ["Calm", "Warm", "Back"]);
+  press("ArrowUp");
+  assert.equal(focused(), "Warm");
+  press("ArrowUp");
+  assert.equal(focused(), "Calm");
+});
+
+test("a key that is composing text, or that a control inside already took, is left alone", () => {
+  let closed = 0;
+  const got: string[] = [];
+  render(
+    <PaneMenu
+      label="Options"
+      onClose={() => closed++}
+      onKey={(event) => got.push(event.key)}
+      rows={[
+        {
+          id: "note",
+          label: "Note",
+          pane: {
+            title: "Note",
+            body: (
+              <button
+                type="button"
+                data-pane-item="action"
+                onKeyDown={(event) => event.preventDefault()}
+              >
+                Own
+              </button>
+            ),
+          },
+        },
+        { id: "last", label: "Last" },
+      ]}
+    />,
+  );
+  // Composing: the key belongs to the input method, at the root and in a pane.
+  const composing = (key: string) =>
+    fireEvent.keyDown(document.activeElement as Element, { key, isComposing: true });
+  assert.equal(composing("Escape"), true);
+  assert.equal(closed, 0);
+  assert.equal(composing("ArrowDown"), true);
+  assert.equal(focused(), "Note");
+  assert.equal(composing("ArrowRight"), true);
+  assert.equal(title(), null);
+  composing("Enter");
+  fireEvent.click(row("Note"));
+  assert.equal(composing("Escape"), true);
+  assert.equal(title(), "Note");
+  // Taken: the control cancelled the key before the menu saw it.
+  const own = screen.getByRole("button", { name: "Own" });
+  own.focus();
+  for (const key of ["Escape", "ArrowLeft", "ArrowDown", "Enter"]) {
+    assert.equal(press(key), false, "the control took the key");
+    assert.equal(title(), "Note", `${key} does not leave the pane`);
+    assert.equal(focused(), "Own", `${key} does not move focus`);
+  }
+  assert.deepEqual(got, [], "and the host hears none of them");
+  press("Escape", screen.getByRole("button", { name: "Back" }));
+  assert.equal(title(), null, "a plain Escape still goes back");
+  assert.equal(closed, 0);
+});
+
 test("a row that goes away takes its open pane with it", () => {
   const { rerender } = render(<Menu />);
   fireEvent.click(row("Size"));
@@ -353,6 +520,8 @@ test("as a sheet it lies along the bottom over a dimmed page below sm, and a pre
     "the page is dimmed on a phone only",
   );
   assert.equal(document.activeElement === sheet, true, "with no row, focus is on the sheet");
+  assert.equal(sheet.getAttribute("tabindex"), "-1", "which a browser focuses only with this");
+  assert.equal(direction(), null, "a sheet arrives whole: nothing slides in");
   assert.ok(screen.getByRole("link", { name: "See all" }));
   fireEvent.pointerDown(screen.getByRole("link", { name: "See all" }));
   fireEvent.pointerDown(screen.getByRole("button", { name: "Open" }));
