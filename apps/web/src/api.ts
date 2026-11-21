@@ -2173,7 +2173,7 @@ export interface Thread {
   /** The Slack thread this thread is, when it was started from Slack. It never changes. */
   surface?: { client: string; channel: string; ts: string };
   /** A session's own: its agent, and what it was set up with before its first message. */
-  session?: { agent: string; parent: string; environment?: string; repos?: string[] };
+  session?: { agent: string; parent: string; image?: string; repos?: string[] };
   version: number;
   created_by: string;
   created_at: string;
@@ -2542,8 +2542,8 @@ export const coworking = {
     visibility?: "shared" | "private";
     agents?: string[];
     mode?: "join" | "all";
-    /** A private session's environment and repositories, chosen before its first message. */
-    environment?: string;
+    /** A private session's image and repositories, chosen before its first message. */
+    image?: string;
     repos?: string[];
   }) =>
     t.visibility === "shared"
@@ -2553,7 +2553,7 @@ export const coworking = {
           uploads: t.uploads,
           project: t.project,
           agent: t.agents?.[0],
-          ...(t.environment && t.environment !== "auto" ? { environment: t.environment } : {}),
+          ...(t.image && t.image !== "default" ? { image: t.image } : {}),
           ...(t.repos?.length ? { repos: t.repos } : {}),
         }).then(sessionPosted),
   /**

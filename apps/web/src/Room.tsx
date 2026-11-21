@@ -742,7 +742,7 @@ export function ThreadRoom({
   view?: ConversationView;
   onView?: (view: ConversationView) => void;
   onOpenThread?: (id: string) => void;
-  /** The left of the row under the composer: where the session runs (environment, repository). */
+  /** The left of the row under the composer: where the session runs (its image). */
   footerStart?: ReactNode;
   onOpenChannel: (project: string, channel: string) => void;
   onChanged: () => void;
@@ -1187,7 +1187,7 @@ export function ThreadRoom({
                             const latest = runs[runs.length - 1];
                             return (
                               <ComposerFooter
-                                // Left, in order: project, environment and repository (footerStart), then approval.
+                                // Left, in order: project, image (footerStart), then approval.
                                 start={
                                   <>
                                     {footerStart}

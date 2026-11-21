@@ -72,7 +72,7 @@ export function SessionWorkbench({
   /** Opens a tab of the Workspace pane. */
   onOpenWorkspace?: (tab: PaneTab) => void;
   /** What the session was set up with before its first message. */
-  chosen?: { environment?: string; repos?: string[] };
+  chosen?: { image?: string; repos?: string[] };
   /** Puts words in the composer for the reader to send. */
   onAsk?: (text: string) => void;
   loader?: TraceLoader;

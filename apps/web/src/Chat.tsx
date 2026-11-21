@@ -34,9 +34,9 @@ import { LazyFrame } from "./lazy.tsx";
 import { ProjectPicker } from "./ProjectPicker.tsx";
 import { PlusMenu, RunsConversation, SessionSetupPickers, ThreadRoom } from "./pages.ts";
 import { emptySelection, mentionPicks, type Selection } from "./plusSelection.ts";
-import type { ConversationPanel, ConversationView } from "./route.ts";
+import { type ConversationPanel, type ConversationView, href } from "./route.ts";
 import { Scroller } from "./Scroller.tsx";
-import type { SessionSetup } from "./SessionPickers.tsx";
+import { DEFAULT_SETUP, type SessionSetup, useSessionOptions } from "./sessionOptions.ts";
 import { ComposerFooter } from "./SessionUsage.tsx";
 import { useThreadSelection } from "./selection.ts";
 import { mentionsIn } from "./tags.ts";
@@ -730,8 +730,10 @@ export function Chat({
   // from a project's page in that project: the composer picks no project.
   // Its approval mode is held until the session starts.
   const [pendingApproval, setPendingApproval] = useState<ApprovalMode>("ask");
-  // So are its environment and repositories, sent with its first message.
-  const [setup, setSetup] = useState<SessionSetup>({ environment: "auto", repos: [] });
+  // So are its image and repositories, sent with its first message: the
+  // image beside the plus, the repositories as context from the plus menu.
+  const [setup, setSetup] = useState<SessionSetup>(DEFAULT_SETUP);
+  const sessionOptions = useSessionOptions(!startChannel);
   // A message here is its text alone: the agent it goes to is the one its
   // tags or the conversation name, never a pick the composer carries.
   const sending: typeof queue = {
@@ -829,7 +831,7 @@ export function Chat({
                     onChange={(name) => select({ ...selection, project: name, channel: "general" })}
                     onCreated={onProjectCreated}
                   />
-                  {/* Where a new session runs: its environment and repository. */}
+                  {/* The image a new session runs in. */}
                   {!startChannel && <SessionSetupPickers value={setup} onChange={setSetup} />}
                   <ApprovalToggle
                     me={handle || me}
@@ -893,6 +895,16 @@ export function Chat({
                     onChange={select}
                     onAttach={attach}
                     onClose={close}
+                    repos={
+                      startChannel || sessionOptions === null
+                        ? undefined
+                        : {
+                            options: sessionOptions?.repos ?? null,
+                            value: setup.repos,
+                            onChange: (repos) => setSetup({ ...setup, repos }),
+                            connectHref: href({ page: "settings", section: "connections" }),
+                          }
+                    }
                     finder={
                       findHelp ? (
                         <FindHelp

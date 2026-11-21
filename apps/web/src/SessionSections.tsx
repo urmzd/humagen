@@ -151,7 +151,8 @@ export function Section({
 
 /** What a session was set up with before its first message (SessionPickers.tsx). */
 export interface SessionChoice {
-  environment?: string;
+  /** The image's id; "default" or none is the deployment's own. */
+  image?: string;
   repos?: string[];
 }
 

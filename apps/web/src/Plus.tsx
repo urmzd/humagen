@@ -3,6 +3,7 @@ import {
   BotIcon,
   CheckIcon,
   ChevronRightIcon,
+  CodeIcon,
   FileIcon,
   ProjectIcon,
   WrenchIcon,
@@ -37,10 +38,10 @@ const ITEM = "[data-plus-item]:not(:disabled)";
 const row =
   "flex min-h-11 w-full min-w-0 items-center gap-2.5 rounded-aui px-2.5 py-2 text-left text-aui-sm text-aui-fg hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent aria-checked:bg-aui-hover disabled:cursor-default disabled:text-aui-muted disabled:hover:bg-transparent";
 
-type Pane = "root" | "agents" | "projects" | "channels" | "skills" | "finder";
+type Pane = "root" | "agents" | "projects" | "channels" | "skills" | "repos" | "finder";
 type Choice = { name: string; description?: string };
 type Channels = { project: string; state: "loading" | "ready" | "failed"; names: string[] };
-type ReturnFocus = "agents" | "projects" | "skills" | "finder" | "selected-project";
+type ReturnFocus = "agents" | "projects" | "skills" | "repos" | "finder" | "selected-project";
 
 /** The composer groups choices by intent; channels belong to a chosen project. */
 export function PlusMenu({
@@ -62,9 +63,16 @@ export function PlusMenu({
   skills,
   skillsFailed = false,
   onSkill,
+  repos,
 }: {
   /** The agents that may answer where the conversation lives. Null while they load. */
   agents: Choice[] | null;
+  /**
+   * The repositories a new session may work in, as context for its first
+   * message: those the workspace's GitHub apps may read, and the chosen ones.
+   * Left out where repositories are not chosen.
+   */
+  repos?: RepoChoice;
   /** The agents the draft mentions, each shown as picked. */
   mentioned?: string[];
   /** Mentions an agent in the draft, or takes its mention out when it is mentioned. */
@@ -103,7 +111,7 @@ export function PlusMenu({
   const backButton = useRef<HTMLButtonElement>(null);
   const finderButton = useRef<HTMLButtonElement>(null);
   const categoryButtons = useRef<
-    Partial<Record<"agents" | "projects" | "skills", HTMLButtonElement | null>>
+    Partial<Record<"agents" | "projects" | "skills" | "repos", HTMLButtonElement | null>>
   >({});
   const returnFocus = useRef<ReturnFocus | undefined>(undefined);
   const offersProject = projects !== undefined;
@@ -340,6 +348,8 @@ export function PlusMenu({
         ? defaultCopy.navigation.projects
         : pane === "skills"
           ? defaultCopy.navigation.skills
+          : pane === "repos"
+            ? c.repos
           : pane === "channels"
             ? c.channelsIn(projectName(channelProject))
             : undefined;
@@ -427,8 +437,31 @@ export function PlusMenu({
                 <ChevronRightIcon size={16} className="text-aui-muted" />
               </button>
             )}
+            {repos && (
+              <button
+                type="button"
+                ref={(button) => {
+                  categoryButtons.current.repos = button;
+                }}
+                data-plus-item="action"
+                data-category="repos"
+                aria-haspopup="dialog"
+                className={row}
+                onClick={() => open("repos")}
+              >
+                <CodeIcon size={16} className="text-aui-muted" />
+                <span className="min-w-0 flex-1">{c.repos}</span>
+                {repos.value.length > 0 && (
+                  <span className="truncate text-aui-xs text-aui-muted">
+                    {c.selected(repos.value.length)}
+                  </span>
+                )}
+                <ChevronRightIcon size={16} className="text-aui-muted" />
+              </button>
+            )}
           </>
         )}
+        {pane === "repos" && repos && <RepoChoices {...repos} />}
         {pane === "agents" && (
           <>
             <div className="p-1">
@@ -632,6 +665,70 @@ export function PlusMenu({
         )}
         {pane === "finder" && finder && <div data-plus-discovery>{finder}</div>}
       </div>
+    </div>
+  );
+}
+
+/** The repositories a new session may be given as context, and those it was. */
+export interface RepoChoice {
+  /** Null while they load. */
+  options: readonly string[] | null;
+  value: readonly string[];
+  onChange: (repos: string[]) => void;
+  /** Where to connect GitHub when there are none. */
+  connectHref?: string;
+  max?: number;
+}
+
+/** Repositories as a list of checkable rows: any number up to max, none is fine. */
+function RepoChoices({ options, value, onChange, connectHref, max = 10 }: RepoChoice) {
+  const c = words.picker;
+  if (options === null)
+    return (
+      <p role="status" className="px-2.5 py-3 text-aui-xs text-aui-muted">
+        {c.reposLoading}
+      </p>
+    );
+  if (options.length === 0)
+    return (
+      <div className="flex flex-col items-start gap-2 px-2.5 py-3">
+        <p className="text-aui-xs text-aui-muted">{c.noRepos}</p>
+        {connectHref && (
+          <a
+            href={connectHref}
+            className="inline-flex min-h-9 items-center rounded-aui text-aui-sm text-aui-fg underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-aui-accent"
+          >
+            {c.connectGitHub}
+          </a>
+        )}
+      </div>
+    );
+  return (
+    <div role="group" aria-label={c.repos} className="flex flex-col" data-testid="plus-repos">
+      {options.map((r) => {
+        const on = value.includes(r);
+        const full = !on && value.length >= max;
+        return (
+          <button
+            key={r}
+            type="button"
+            data-plus-item="repo"
+            data-repo={r}
+            aria-pressed={on}
+            aria-disabled={full || undefined}
+            className={`${row} aria-disabled:opacity-50`}
+            onClick={() => {
+              if (full) return;
+              onChange(on ? value.filter((x) => x !== r) : [...value, r]);
+            }}
+          >
+            <span className="min-w-0 flex-1 truncate">{r}</span>
+            <span aria-hidden className="inline-flex size-4 shrink-0 items-center justify-center">
+              {on && <CheckIcon size={14} />}
+            </span>
+          </button>
+        );
+      })}
     </div>
   );
 }
