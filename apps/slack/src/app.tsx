@@ -961,9 +961,7 @@ export class App {
     }
     if (this.listenTo(event)) return;
     const asked =
-      event.type === "app_mention" ||
-      (event.type === "message" && event.channel_type === "im") ||
-      following;
+      event.type === "app_mention" || (event.type === "message" && event.channel_type === "im");
     // Loop prevention: a bot's message, this app's own, an edit or a join never starts a run.
     if (!asked || (event.subtype && event.subtype !== "file_share") || event.bot_id || !event.user)
       return;
@@ -988,9 +986,8 @@ export class App {
       user: event.user,
       key: eventKey(session, event.ts),
       // A direct message is always addressed to the app, so only a channel thread has more to read.
-      history: (event.type === "app_mention" || following) && session.threadTs !== event.ts,
+      history: event.type === "app_mention" && session.threadTs !== event.ts,
     });
-    if (event.type === "app_mention" || following) this.follow(session, event.user);
   }
 
   /**
