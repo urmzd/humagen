@@ -96,9 +96,8 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-052 | Conversation files, scratchpads, code editing, change review and artifact publication, in one Workspace panel opened from Conversation Settings beside a compact header | Implemented: `WorkspaceFiles.tsx`, `Workspace.tsx`, `ConversationShell.tsx`, `/api/threads/{id}/files`, `GET /api/threads/{id}/sandboxes`; web, route, Go race and confinement suites pass; `conversation-header`, `workspace-*` and `ide-*` screens pass at 390x844 and 1280x800 |
 | DES-053 | Notifications sort into the reader's own views: Inbox, Unread, Hidden and Done, with per-reader hide and delete | Implemented; per-reader marks and counters, bulk API with isolation tests, DOM and route tests, phone/desktop captures |
 | DES-060 | Pull requests across workspace repositories, with board/list views and filters | Implemented; `pull_requests.go`, `History.tsx`, endpoint and DOM tests; `history-all` and `history-github` screens registered for CI |
-| DES-054 | The sidebar lists Participated, Pinned and Recent with counts, Recent newest first with By project, By day and Archived as groupings; each row is its title, then its age and where it started (Slack, GitHub, a schedule, the console), then its state in words; red means failure only; the sidebar's edge resizes it | Implemented: `conversationList.ts`, `marks.ts`, `Sidebar.tsx`, `pkg/marks`, `PATCH /api/threads/{id}/marks`, `waiting` and `last` on thread summaries; Go, web and DOM tests pass; `sidebar-recents`, `sidebar-row-actions`, `sidebar-projects` and `sidebar-archived` screens pass at 390x844 and 1280x800 |
-| DES-054 | The sidebar lists Recents newest first, Pinned on top, Projects and Archived as views; each row leads with where its session started (Slack, GitHub, a schedule, the console) and says its age and, as a labelled icon, whether it waits on a person, runs or failed; red means failure only | Implemented: `conversationList.ts`, `marks.ts`, `Sidebar.tsx`, `pkg/marks`, `PATCH /api/threads/{id}/marks`, `waiting` and `last` on thread summaries; Go, web and DOM tests pass; `sidebar-recents`, `sidebar-row-actions`, `sidebar-projects` and `sidebar-archived` screens pass at 390x844 and 1280x800 |
-| DES-055 | A sidebar row previews itself on hover or a long press, and the wave's preview carries its author's mark | Implemented: `RowPreview.tsx`, `peek.ts`, `TurnRail.tsx`; web, DOM and screens pass (`sidebar-preview` checks the card is centred on its row, `conversation-wave-preview`) at 390x844 and 1280x800 |
+| DES-054 | The sidebar lists Participated, Pinned and Recent with counts, Recent newest first with By project, By day and Archived as groupings; each row is its title, then its age and where it started (Slack, GitHub, a schedule, the console), with its status as a compact badge on that same line; red means failure only; the sidebar's edge resizes it | Implemented: `conversationList.ts`, `marks.ts`, `Sidebar.tsx`, `pkg/marks`, `PATCH /api/threads/{id}/marks`, `waiting` and `last` on thread summaries; Go, web and DOM tests pass; `sidebar-sources`, `sidebar-recents`, `sidebar-row-actions`, `sidebar-projects` and `sidebar-archived` screens pass at 390x844 and 1280x800 |
+| DES-055 | A sidebar row previews itself on hover, a long press or keyboard focus, with its status in words, and the wave's preview carries its author's mark | Implemented: `RowPreview.tsx`, `peek.ts`, `TurnRail.tsx`; web, DOM and screens pass (`sidebar-preview` checks the card is centred on its row, `conversation-wave-preview`) at 390x844 and 1280x800 |
 | DES-056 | A one-time tip teaches search, dismissed once per person | Evidence: `sidebar-search` checks the replacement Search navigation button; the tip card was removed |
 | DES-057 | Home files a new conversation from over its chat bar; a conversation's approval mode is a text control under the composer, Default or Approve for Me, within policy and audited | Implemented: `ApprovalModePicker.tsx`, `HomePage.tsx`, `pkg/threads/approval.go`, `internal/platform/approval_mode.go`, `PUT /api/threads/{id}/approval`; Go, DOM and screens pass (`home-project-above`, `composer-approval-mode`). Per-message model and effort were removed (DES-067). In Slack: an approval's menu lets the approval agent decide the thread, set as the person through the same route with `act_as` and said in the thread with the way back; an agent-decided card shows its reason; Ask a Question asks the agent in the thread while the call waits. Go, adapter, render-slack and Slack app tests pass; live Slack not yet checked |
 | DES-053 | Notifications sort into the reader's own views: Inbox, Unread, Hidden and Done, with per-reader hide and delete | Implemented; per-reader marks and counters, bulk API with isolation tests, DOM and route tests, phone/desktop captures |
@@ -1627,7 +1626,8 @@ on) instead of unexplained red dots, make Recents, Pinned and the project
 groups easier to read, and calm the red hover, selection and focus. Then: rows like
 another product's, the title over "2 hours ago" and its source, sections for
 Participated, Pinned and Recent with counts, state in words instead of
-marks, and a wider sidebar that can be resized.
+marks, and a wider sidebar that can be resized. The latest request keeps every row at two lines
+and shows status with a distinct badge.
 Archived view; and dots for what is running and what needs the reader. A later request: show where each session came from (Slack, GitHub and so
 on) instead of unexplained red dots, make Recents, Pinned and the project
 groups easier to read, and calm the red hover, selection and focus.
@@ -1647,22 +1647,31 @@ Rules:
   header is small, set in the foreground's weight with a chevron that folds
   it; a group that started empty opens when its rows arrive, unless the
   reader folded it.
-- A row is two lines, three when it has a state: its **title** (cut with an
-  ellipsis), then how long ago it moved ("5m ago", "Just now") and **where it
-  started** as a glyph and a word: Slack, Slack DM, GitHub, Schedule,
-  Assignment or Console. The tooltip says it in full ("From a Slack DM") and a
+- A row has two lines: its **title** (cut with an ellipsis), then how long
+  ago it moved ("5m ago", "Just now"), **where it started**, and its badge
+  when it has a status. Sources have a glyph and a label: Slack, Slack DM,
+  GitHub, Schedule, Assignment or Web / Console. The tooltip says it in full ("From a Slack DM") and a
   screen reader hears it after the title. Spacing, not a dot, separates them
   (DES-002). The thread summary's `source` names a Slack thread or direct
   message, a pull request or a schedule; a run's origin is the fallback,
   since a Slack message posts through the API.
-- **State is said in words** on the row's third line, most pressing first:
-  **Waiting for you: approve file_write** or **Waiting for you: <the
-  question>** in the warning color; waiting on someone else in muted ink;
-  **Failed: <why>** in red; **Working** in muted ink; **Alert: <its title>**
-  for an open alert, in the warning color when urgent. A session listing
-  carries `waiting_for`, `waiting_kind`, `waiting_on_you`, `waiting_unknown`
-  and `failure` for this; `failure` is set only while the latest turn failed, so a failure a
-  later turn answered is not shown. **Waiting for you** is said only when an
+- A compact **status badge** stays on the second line when the row menu
+  appears, one badge for the most pressing status: waiting, then a failure,
+  then work, then an open alert. Its glyph tells approval, question, other
+  waits, failure, work and alerts apart. The row's preview (DES-055) says the
+  full reason in words, on hover, a held finger or keyboard focus, so it does
+  not need a mouse; the badge's tooltip and the row's accessible description
+  carry it too: **Waiting for you: approve file_write** or **Waiting for you:
+  <the question>**, waiting for someone, **Failed: <why>**, **Working**,
+  **Alert: <its title>**. Waiting on the reader and urgent alerts use the
+  warning color; every other wait, work and a lesser alert are neutral.
+  **Red means failure only**; nothing in a row uses the accent.
+- A session listing carries `waiting_for`, `waiting_kind`, `waiting_on_you`,
+  `waiting_unknown` and `failure` for this; `failure` is set only while the
+  latest turn failed, so a failure a later turn answered is not shown.
+  **Waiting for you** is said, and the badge takes the warning color, only
+  when the listing says so (`waiting_on_you` is true; a listing that leaves
+  it out waits on no one in particular, never on the reader by default): an
   open question one of the session's runs waits on is the reader's to answer,
   by the one rule answering holds them to (`mayAnswer`): it is addressed to
   them as it was raised (`Message.For`, the requester excluded), they may
@@ -1678,15 +1687,14 @@ Rules:
   no row waits. The inbox keeps no index by session, so the read cannot be
   narrowed to one. When the workspace holds more live messages than that and
   no question of the reader's about a waiting session was among those read,
-  the listing sets `waiting_unknown` and the row reads **Waiting: <what it
-  waits for>** in muted ink, with no dot: it says it waits and does not say on
-  whom. Anything else parked reads as waiting for someone, in muted
-  ink, with what it waits for when the run says it. No bare `!`, `•` or icon stands for a
-  state. **Red means failure only**; nothing in a row uses the accent.
-- A **dot** on the right of the title marks what is new to the reader, by
-  meaning: waiting on them (the warning color), a failure they have not read
-  (red), or an answer they have not read (a calm blue). Unread also sets the
-  title in a heavier weight.
+  the listing sets `waiting_unknown` and the badge is neutral and reads
+  **Waiting: <what it waits for>**: it says it waits and does not say on
+  whom. Anything else parked reads as waiting for someone, neutral, with what
+  it waits for when the run says it.
+- **Unread** sets the title in a heavier weight. A quiet dot marks an
+  unread row when it has no status badge; beside a badge the heavier title
+  and the row's description ("Failed: <why>, Unread") say it, so a wait on
+  the reader is the warning badge and an unread failure the red one.
 - Hover tints a row. The open row is filled and marked by a bar at its left
   edge, so hover and selection never read as one. Keyboard focus anywhere in
   the sidebar is a neutral ring drawn inside the control, never the accent.
@@ -1705,8 +1713,8 @@ Rules:
   window. On a phone the sidebar stays a drawer.
 - **Alerts** stays a section of the sidebar with its count, which opens the
   Alerts page: Waiting, Snoozed and Done, each alert's title, source,
-  priority, time and its action. A row with an open alert says it on its
-  state line.
+  priority, time and its action. A row with an open alert shows its badge
+  when the session has no more pressing status.
 - The list's views are picked from its filter menu: **Recents** (the
   default: every project, newest first), **Projects** (the conversations
   under their project's header) and **Archived**. Pinned sits above
@@ -1788,6 +1796,13 @@ Rules:
   centred on the row: the whole title (up to three lines) and how long ago
   the conversation moved ("5h ago", "Just now"). Leaving, scrolling or Escape
   closes it. The row names the card with `aria-describedby` while it shows.
+- A row with a status (DES-054) adds it to the card in words, between the
+  title and the age ("Failed: provider: rate limited (429)"), since the
+  row's badge is a glyph alone. A screen reader hears the status from the
+  row's own description, so the card's line is hidden from it.
+- Keyboard focus resting on a row for 450ms opens the same card; a click or
+  a tap, which focus the row too, does not. Moving focus away, or opening
+  the conversation, closes it. One card shows at a time.
 - On a touch screen a 500ms hold opens the card under the row, across the
   screen, or over it near the bottom. The hold does not also open the
   conversation, and the browser's own menu does not open; the next tap does.
@@ -1800,8 +1815,9 @@ Rules:
 
 Evidence: `cd apps/web && pnpm test` (`peek.test.ts`,
 `sidebar-peek.dom.test.tsx`, `wave.dom.test.tsx`); `make screens` with
-`sidebar-preview` (a hover on desktop, a held finger on a phone) and
-`conversation-wave-preview`.
+`sidebar-preview` (a hover on desktop, a held finger on a phone),
+`sidebar-sources` (the failed row's reason in its card: a held finger on a
+phone, keyboard focus on a wider screen) and `conversation-wave-preview`.
 
 ### DES-056: A one-time tip for search
 
