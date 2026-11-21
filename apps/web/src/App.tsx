@@ -433,6 +433,8 @@ function Console({
 
   const loadAgents = useCallback(() => {
     if (!can("agents:read")) return;
+    // Read again after a failure, the agents are loading once more; a refresh of read ones is not.
+    setAgentRead((was) => (was === "error" ? "loading" : was));
     api
       .agentList()
       .then((r) => {
@@ -1175,6 +1177,8 @@ function Console({
                       tick={tick}
                       agents={agents}
                       agentsRead={agentRead !== "loading"}
+                      agentsFailed={agentRead === "error"}
+                      onRetryAgents={loadAgents}
                       homes={homes}
                       projects={can("projects:read") ? projects : []}
                       canRun={can("runs:write")}
@@ -1254,6 +1258,8 @@ function Console({
                           tick={tick}
                           agents={agents}
                           agentsRead={agentRead !== "loading"}
+                          agentsFailed={agentRead === "error"}
+                          onRetryAgents={loadAgents}
                           homes={homes}
                           projects={can("projects:read") ? projects : []}
                           canRun={can("runs:write")}

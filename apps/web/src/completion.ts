@@ -19,6 +19,8 @@ export interface Completion {
   onQuery: (typing: Typing) => void;
   /** The agents that may answer in the project, for the + menu; null while they load. */
   agents: { name: string; description?: string }[] | null;
+  /** Whether the agents are still being read, for the @ menu's row that says so. */
+  agentsLoading: boolean;
   /** Skills loaded for this exact project, also used by the composer picker. */
   skills: { name: string; description?: string }[] | null;
   skillsFailed: boolean;
@@ -45,6 +47,12 @@ export function useCompletion(
   me: string,
   /** How the platform names the reader, which a person's subject may not show. */
   handle = "",
+  /**
+   * Whether the workspace's agents have been read. The project's own list is
+   * read beside them, not after, so a chat bar drawn early completes as soon
+   * as both arrive.
+   */
+  agentsRead = true,
 ): Completion {
   // undefined while it loads, null when it could not be read.
   const [names, setNames] = useState<{ all: boolean; names: string[] } | null | undefined>(
@@ -203,7 +211,8 @@ export function useCompletion(
     defaultAgent,
     options,
     onQuery,
-    agents: names === undefined ? null : here,
+    agents: names === undefined || !agentsRead ? null : here,
+    agentsLoading: names === undefined || !agentsRead,
     skills: scopedSkills ? skillOptions : null,
     skillsFailed: scopedSkills?.failed ?? false,
   };
