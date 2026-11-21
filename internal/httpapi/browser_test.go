@@ -134,6 +134,10 @@ func exerciseBrowserContract(t *testing.T, c *contract, token string) {
 	if view.str("title") != "Fixture page" || obj(view.field("screenshot"))["media_type"] != "image/png" {
 		t.Fatalf("the page was not read: %s", view.raw)
 	}
+	avail := c.call(token, "GET", route, path, "", 200)
+	if avail.field("available") != true {
+		t.Fatalf("the browser was not found: %s", avail.raw)
+	}
 	c.call(token, "POST", route, path, `{"action":"click","target":"gone"}`, 502)
 	c.call(token, "POST", route, path, `{"action":"navigate","url":"file:///etc/passwd"}`, 400)
 }
