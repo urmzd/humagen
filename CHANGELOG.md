@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.180.0 (2026-11-21)
+
+### Features
+
+- **sessions**: a session runs in an image, the default or the workspace's own (#486) ([de422c5](https://github.com/urmzd/humagen/commit/de422c50228b76edd03279987fd3399417519fdb))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.179.1...v0.180.0)
+
+
 ## 0.179.1 (2026-11-21)
 
 ### Bug Fixes
