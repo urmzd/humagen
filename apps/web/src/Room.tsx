@@ -1348,6 +1348,7 @@ export function ThreadRoom({
                           canWrite={!!alertAccess?.write}
                           agents={posts ? agents.map((a) => a.spec.name) : []}
                           onOpen={onOpenThread}
+                          beside
                         />
                         {t.announcement ? (
                           <AnnouncementView key={`a:${t.announcement.id}`} a={t.announcement} />

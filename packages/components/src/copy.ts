@@ -2126,6 +2126,8 @@ export const defaultCopy = {
       earlierFailed: (n: number) =>
         `${n} earlier failed ${n === 1 ? "command" : "commands"} not shown`,
       waiting: "waiting for you",
+      /** A call waiting on a person, when it has no title of its own. */
+      waitingCall: "A tool call",
       showMore: "Show more",
       showLess: "Show less",
       arguments: "Arguments",
@@ -2785,8 +2787,8 @@ export const defaultCopy = {
     failed: "The read audit could not be loaded.",
   },
   approve: "Approve",
-  askApproval: "Ask a question",
-  declineAction: "Decline action",
+  askApproval: "Ask a Question",
+  declineAction: "Decline",
   cancel: "Cancel",
   edit: "Edit",
   confirmDestructive: {
@@ -3108,6 +3110,14 @@ export const defaultCopy = {
       resolved: "Nothing is done yet.",
     } as Record<"open" | "snoozed" | "resolved", string>,
     reviewApproval: "Review Approval",
+    /** What an alert's card in a session opens, by the alert's action. */
+    open: {
+      answer: "Open Question",
+      approve: "Review Approval",
+      retry: "Review Failed Answer",
+      reconnect: "Open Connections",
+      session: "Open Session",
+    },
     markDone: "Mark Done",
     markDoneNamed: (title: string) => `Mark ${title} done`,
     /** The alerts table: its name, its column headings and what its header says once rows are ticked. */

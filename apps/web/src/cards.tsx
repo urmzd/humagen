@@ -164,8 +164,10 @@ export function ItemCard({
   href?: string;
   children?: ReactNode;
 }) {
+  // The whole card is the title's target (its ::after), so the title itself stays one
+  // line tall and level with its mark, on a touch screen too.
   const titleClass =
-    "line-clamp-2 min-h-6 min-w-0 flex-1 text-left font-medium text-aui-sm text-aui-fg outline-none after:absolute after:inset-0 after:rounded-aui-lg focus-visible:after:outline-2 focus-visible:after:outline-aui-accent pointer-coarse:min-h-11";
+    "line-clamp-2 min-h-6 min-w-0 flex-1 text-left font-medium text-aui-sm text-aui-fg leading-6 outline-none after:absolute after:inset-0 after:rounded-aui-lg focus-visible:after:outline-2 focus-visible:after:outline-aui-accent";
   const linked = !!href || !!onOpen;
   return (
     <article
