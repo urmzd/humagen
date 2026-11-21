@@ -14,7 +14,7 @@ import {
   type Revision,
 } from "./api.ts";
 import { href } from "./route.ts";
-import { button, field, Label, Page, Problem, primary, SearchField, SkeletonRows } from "./ui.tsx";
+import { button, field, Page, Problem, primary, SearchField, SkeletonRows } from "./ui.tsx";
 
 const words = defaultCopy.agentCreate;
 
@@ -384,6 +384,18 @@ function Customize({
           </span>
           {handle && <span className="text-aui-xs text-aui-muted">@{handle}</span>}
           <p className="text-aui-sm text-aui-muted">{template.description}</p>
+          <button
+            type="button"
+            className={`${button} mt-1`}
+            onClick={() => {
+              const next = shuffled(taken);
+              setLook(next.look);
+              if (next.hue !== undefined) setHue(next.hue);
+            }}
+          >
+            <RefreshIcon aria-hidden className="size-4" />
+            {defaultCopy.agentLook.shuffle}
+          </button>
         </div>
       </div>
       <form
@@ -397,15 +409,23 @@ function Customize({
           <h2 className="font-semibold text-aui-base text-aui-fg">{words.customize}</h2>
           <p className="text-aui-sm text-aui-muted">{words.customizeHint}</p>
         </div>
-        <Label text={words.name} hint={handle ? words.handle(handle) : undefined}>
+        <div className="flex flex-col gap-1">
+          <label htmlFor="agent-create-name" className="text-aui-xs font-medium text-aui-muted">
+            {words.name}
+          </label>
           <input
+            id="agent-create-name"
             className={field}
             value={name}
             maxLength={40}
             placeholder={template.title}
+            aria-describedby="agent-create-handle"
             onChange={(e) => setName(e.target.value)}
           />
-        </Label>
+          <span id="agent-create-handle" className="min-h-4 text-aui-2xs text-aui-muted">
+            {handle ? words.handle(handle) : ""}
+          </span>
+        </div>
         <ShapePicker
           base={shown}
           look={drawn}
@@ -413,21 +433,7 @@ function Customize({
           hue={hue ?? 0}
           onPick={(s) => setLook((l) => ({ ...l, shape: s as AgentLook["shape"] }))}
         />
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <HuePicker hues={SWATCHES} hue={hue} taken={taken} onPick={setHue} />
-          <button
-            type="button"
-            className={button}
-            onClick={() => {
-              const next = shuffled(taken);
-              setLook(next.look);
-              if (next.hue !== undefined) setHue(next.hue);
-            }}
-          >
-            <RefreshIcon aria-hidden className="size-4" />
-            {defaultCopy.agentLook.shuffle}
-          </button>
-        </div>
+        <HuePicker hues={SWATCHES} hue={hue} taken={taken} onPick={setHue} />
         <p className="text-aui-xs text-aui-muted">
           {model.provider ? words.startsOn(model.provider, model.model) : words.noModel}
         </p>
