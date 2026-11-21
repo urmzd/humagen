@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.162.1 (2026-11-21)
+
+### Bug Fixes
+
+- **deps**: saige v0.46.1, which stops retrying a write GitHub will never take (#460) ([da1bacf](https://github.com/urmzd/humagen/commit/da1bacf2a481b9444a6b42749dd434694001a962))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.162.0...v0.162.1)
+
+
 ## 0.161.0 (2026-11-20)
 
 ### Features
