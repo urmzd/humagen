@@ -469,6 +469,113 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
       },
     },
     {
+      // Generated records, not ones a run made: nothing seeds a break-glass read, so
+      // both lists are answered here, as the two audit routes answer. The reads are
+      // among the changes too, as the server returns them, and must show once.
+      name: "audit",
+      path: "/settings/audit",
+      act: async (page) => {
+        const at = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();
+        const generatedReads = [
+          { subject: "ana", project: "Launch", route: "GET /api/projects/{name}", at: at(12) },
+          {
+            subject: "ana",
+            project: "Launch",
+            thread: ids.work.id,
+            route: "GET /api/threads/{id}",
+            at: at(95),
+          },
+        ];
+        const change = (
+          n: number,
+          actor: string,
+          action: string,
+          resource: string,
+          minutes: number,
+          rest: Record<string, unknown> = {},
+        ) => ({
+          id: `generated-audit-${n}`,
+          actor,
+          at: at(minutes),
+          action,
+          resource,
+          resource_id: `generated-${resource}-${n}`,
+          scope: "workspace",
+          outcome: "succeeded",
+          ...rest,
+        });
+        const generatedChanges = [
+          ...generatedReads.map((read, n) =>
+            change(n, read.subject, "project.break_glass_read", "project", 0, {
+              ...read,
+              resource_id: read.project,
+              scope: "project",
+              rule: "projects:govern",
+            }),
+          ),
+          change(2, "developer", "memory.edit", "memory", 31, {
+            scope: "personal",
+            before: { text: "Review the draft on Friday" },
+            after: { text: "Review the draft on Monday" },
+          }),
+          change(3, "ana", "skill.publish", "skill", 48, {
+            scope: "project",
+            project: "Launch",
+          }),
+          change(4, "developer", "source.create", "source", 140, { outcome: "failed" }),
+          change(5, "ana", "policy.action", "action_policy", 215, { outcome: "pending" }),
+          change(6, "developer", "connection.connect", "credential", 380),
+        ];
+        await page.route(
+          (url) => url.pathname === "/api/read-audit",
+          (route) => route.fulfill({ json: { records: generatedReads } }),
+        );
+        await page.route(
+          (url) => url.pathname === "/api/audit",
+          (route) => route.fulfill({ json: { records: generatedChanges } }),
+        );
+        await page.reload({ waitUntil: "domcontentloaded" });
+        const copy = defaultCopy.audit;
+        await page.getByRole("heading", { name: copy.title, exact: true, level: 1 }).waitFor();
+        const reads = page.getByRole("region", { name: defaultCopy.readAudit.title });
+        const changes = page.getByRole("region", { name: copy.changes });
+        const first = changes.getByRole("listitem").first();
+        await first.getByRole("heading", { name: "Memory edit", exact: true }).waitFor();
+        await reads.getByRole("listitem").first().waitFor();
+        assert.equal(await reads.getByRole("listitem").count(), 2);
+        assert.equal(await changes.getByRole("listitem").count(), 5, "A read is listed once");
+        const fields = changes.getByRole("textbox", { name: copy.actor, exact: true });
+        const apply = changes.getByRole("button", { name: copy.apply, exact: true });
+        const viewport = page.viewportSize();
+        assert.ok(viewport);
+        if (viewport.width >= 768) {
+          await fields.waitFor();
+          await apply.waitFor();
+          await changes.getByRole("button", { name: copy.refresh, exact: true }).waitFor();
+          await changes.getByRole("button", { name: copy.export, exact: true }).waitFor();
+          return;
+        }
+        // On a phone the filters fold behind one control, and the first record is on the first screen.
+        const filter = changes.getByRole("button", { name: copy.filter, exact: true });
+        await filter.waitFor();
+        await changes.getByRole("button", { name: defaultCopy.more, exact: true }).waitFor();
+        assert.equal(await fields.count(), 0, "The filters are folded");
+        const box = await first.boundingBox();
+        assert.ok(
+          box && box.y + box.height <= viewport.height,
+          "The first record is on the first screen",
+        );
+        await filter.click();
+        await fields.waitFor();
+        await apply.click();
+        await fields.waitFor({ state: "detached" });
+        await filter.and(page.locator("button:focus")).waitFor();
+        await filter.blur();
+        await page.mouse.move(0, 0);
+        await first.waitFor();
+      },
+    },
+    {
       name: "session",
       path: session,
       act: async (page) => {

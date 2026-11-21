@@ -2706,6 +2706,8 @@ export const defaultCopy = {
     from: "From",
     to: "To",
     apply: "Apply Filters",
+    /** The one control the filters fold behind on a phone. */
+    filter: "Filter",
     export: "Export CSV",
     open: "Open Resource",
     allDomains: "All Domains",
@@ -2735,6 +2737,11 @@ export const defaultCopy = {
     /** Every one of those 100 records is a read listed above: changes may exist, and none is on view. */
     hiddenByReads:
       "The 100 newest records in this window are all reads listed above. Narrow the date range or choose a domain to see changes.",
+    /** The same two lines with Projects chosen: reads are project records, so only a shorter window helps. */
+    limitedByProjectReads:
+      "Reads listed above count toward the 100 newest records. Narrow the date range to see more changes.",
+    hiddenByProjectReads:
+      "The 100 newest records in this window are all reads listed above. Narrow the date range to see changes.",
     failed: "The audit could not be loaded.",
     before: "Before",
     after: "After",
