@@ -32,3 +32,28 @@ jobs:
           python-version: "3.13"
       - run: python -m pip install zensical==0.1.2
       - run: zensical build --strict --clean
+      - uses: actions/upload-pages-artifact@v4
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        with:
+          path: site
+
+  # Publishes the guide at docs.humagen.com, the Pages custom domain of this
+  # repository. docs.urmzd.com/humagen/ redirects here.
+  deploy:
+    name: Deploy documentation
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    steps:
+      - name: Publish to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
