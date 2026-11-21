@@ -24,6 +24,7 @@ import {
   type RefObject,
   useEffect,
   useId,
+  useLayoutEffect,
   useRef,
   useState,
 } from "react";
@@ -1766,6 +1767,21 @@ export function ProjectPage({
   const linked = useProjectLinks(name, tick, can("clients:read"));
   const composed = !!detail && !!composer;
   useComposerDock({ enabled: composed, host, dock, scroller });
+  // The composer draws nothing for someone who may not start a run, or with
+  // no agent to ask: then there is no dock, and no room kept for one.
+  const slot = useRef<HTMLDivElement>(null);
+  const [filled, setFilled] = useState(true);
+  useLayoutEffect(() => {
+    const el = slot.current;
+    if (!composed || !el) return;
+    const read = () => setFilled(el.childNodes.length > 0);
+    read();
+    if (typeof MutationObserver === "undefined") return;
+    const observer = new MutationObserver(read);
+    observer.observe(el, { childList: true });
+    return () => observer.disconnect();
+  }, [composed]);
+  const docked = composed && filled;
 
   const changed = () => {
     setReads((n) => n + 1);
@@ -2086,7 +2102,7 @@ export function ProjectPage({
           className="humagen-page aui-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain [scrollbar-gutter:stable]"
         >
           <div
-            className={`humagen-fade mx-auto flex w-full ${width} flex-col gap-8 px-5 pt-8 md:px-10 ${composed ? "pb-[calc(var(--aui-thread-dock-h,8rem)+1.5rem)]" : "pb-12"}`}
+            className={`humagen-fade mx-auto flex w-full ${width} flex-col gap-8 px-5 pt-8 md:px-10 ${docked ? "pb-[calc(var(--aui-thread-dock-h,8rem)+1.5rem)]" : "pb-12"}`}
           >
             <div className="flex min-w-0 flex-col gap-1.5">
               <h1 className={`${pageTitle} whitespace-normal break-words`}>{title}</h1>
@@ -2152,11 +2168,15 @@ export function ProjectPage({
           </div>
         </div>
         {composed && (
-          <ComposerDock ref={dock}>
-            <div className={`mx-auto w-full ${width} px-5 pb-3 md:px-10 ${columns}`}>
-              <div className="min-w-0">{composer?.(here.composer(title))}</div>
-            </div>
-          </ComposerDock>
+          <div className={filled ? "contents" : "hidden"}>
+            <ComposerDock ref={dock}>
+              <div className={`mx-auto w-full ${width} px-5 pb-3 md:px-10 ${columns}`}>
+                <div ref={slot} className="min-w-0">
+                  {composer?.(here.composer(title))}
+                </div>
+              </div>
+            </ComposerDock>
+          </div>
         )}
       </div>
       <Sheet open={editing} onOpenChange={(next) => !next && setEditing(false)}>

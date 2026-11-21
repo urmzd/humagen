@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { setAgentHues } from "./agentHues.ts";
 import type { Note, ProjectDetail, Revision, ScheduleView } from "./api.ts";
 import { stubFetch } from "./dom.ts";
@@ -112,6 +113,8 @@ function open(
     onPin?: (project: string, pinned: boolean) => Promise<void>;
     pinned?: boolean;
     onFork?: () => void;
+    /** What the composer draws; nothing for someone who may not start a run. */
+    composer?: () => ReactNode;
   } = {},
 ) {
   const address = detail.project.name === "" ? "~" : encodeURIComponent(detail.project.name);
@@ -139,7 +142,7 @@ function open(
     <ProjectPage
       composer={(placeholder) => {
         placeholders.push(placeholder);
-        return <form aria-label="Home composer" />;
+        return opts.composer ? opts.composer() : <form aria-label="Home composer" />;
       }}
       self="ada"
       name={detail.project.name}
@@ -446,6 +449,19 @@ test("the composer floats over the bottom of the page: Home's own, saying it sta
   assert.ok(dock.querySelector("[data-layer='composer-fade']"));
   assert.ok(
     document.querySelector(".pb-\\[calc\\(var\\(--aui-thread-dock-h\\,8rem\\)\\+1\\.5rem\\)\\]"),
+  );
+});
+
+test("a composer that draws nothing leaves no dock and keeps no room for one", async () => {
+  open(globexDetail, { composer: () => null });
+  await screen.findByRole("heading", { level: 1, name: "Globex" });
+  const dock = document.querySelector("[data-layer='composer-dock']") as HTMLElement;
+  await waitFor(() => assert.equal(dock.parentElement?.className, "hidden"));
+  assert.equal(
+    document.querySelector(".pb-\\[calc\\(var\\(--aui-thread-dock-h\\,8rem\\)\\+1\\.5rem\\)\\]") ===
+      null,
+    true,
+    "the page is not padded for a composer",
   );
 });
 
