@@ -1478,8 +1478,19 @@ func decodeCursor(c string) (at int64, id string, err error) {
 }
 
 // Threads returns a tenant's conversations, most recently active first. A limit
-// of zero returns them all.
+// of zero returns them all. A store error is logged and what was read before
+// it is returned; a caller that must not answer from a partial list uses
+// ListThreads.
 func (x *Index) Threads(tenant string, limit int) []ThreadSummary {
+	out, err := x.ListThreads(tenant, limit)
+	if err != nil {
+		x.log.Error("runs: could not list conversations", "tenant", tenant, "error", err)
+	}
+	return out
+}
+
+// ListThreads is Threads with the store's error returned to the caller.
+func (x *Index) ListThreads(tenant string, limit int) ([]ThreadSummary, error) {
 	if limit <= 0 {
 		limit = MaxThreadScan
 	}
@@ -1488,10 +1499,7 @@ func (x *Index) Threads(tenant string, limit int) []ThreadSummary {
 		out = append(out, s.summary())
 		return len(out) < limit
 	})
-	if err != nil {
-		x.log.Error("runs: could not list conversations", "tenant", tenant, "error", err)
-	}
-	return out
+	return out, err
 }
 
 // eachThread calls fn for a tenant's conversations, most recently active
