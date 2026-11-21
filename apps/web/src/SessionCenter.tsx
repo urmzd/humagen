@@ -114,6 +114,11 @@ function RowAction({
     </button>
   );
 }
+/**
+ * An alert's title: up to two lines in a stacked row, where touch has no
+ * tooltip to carry the rest, and one line in the table, where rows keep one height.
+ */
+const alertTitleLines = "line-clamp-2 break-words @3xl:pointer-fine:line-clamp-1";
 const alertCheck =
   "inline-flex size-6 items-center justify-center self-start pointer-coarse:size-11 @3xl:pointer-fine:self-center";
 
@@ -711,10 +716,10 @@ export function AlertsPage({
                             className={`${title} rounded-aui-sm underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent inline-flex min-h-6 items-center pointer-coarse:min-h-11`}
                             title={a.title}
                           >
-                            <span className="truncate">{a.title}</span>
+                            <span className={alertTitleLines}>{a.title}</span>
                           </a>
                         ) : (
-                          <span className={`${title} truncate`} title={a.title}>
+                          <span className={`${title} ${alertTitleLines}`} title={a.title}>
                             {a.title}
                           </span>
                         )}

@@ -260,20 +260,49 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
           rows.evaluateAll((items) =>
             items.map((item) => {
               const { top, height: rowHeight, right } = item.getBoundingClientRect();
-              const buttons = [...item.querySelectorAll("button")].map((button) => {
-                const box = button.getBoundingClientRect();
-                return { x: box.x, y: box.y - top, width: box.width, right: box.right };
-              });
-              return { rowHeight, right, buttons };
+              const boxes = [...item.querySelectorAll("button")].map((button) =>
+                button.getBoundingClientRect(),
+              );
+              const lead = boxes[0]?.y ?? top;
+              const title = item.querySelector("a > span");
+              return {
+                // The table has a track for each column; a stacked row has the box and the alert.
+                table: getComputedStyle(item).gridTemplateColumns.split(" ").length > 2,
+                rowHeight,
+                right,
+                titleLines: title
+                  ? Math.round(
+                      title.getBoundingClientRect().height /
+                        Number.parseFloat(getComputedStyle(title).lineHeight),
+                    )
+                  : 0,
+                buttons: boxes.map((box) => ({
+                  x: box.x,
+                  y: box.y - top,
+                  fromLead: box.y - lead,
+                  width: box.width,
+                  right: box.right,
+                })),
+              };
             }),
           );
+        type Row = Awaited<ReturnType<typeof layout>>[number];
+        // A stacked title may take a second line, which moves the actions down together.
+        const slots = (row: Row) =>
+          row.buttons.map(({ x, fromLead, width, right }) => ({ x, fromLead, width, right }));
 
         const initial = await layout();
         const [first, second] = initial;
         assert.ok(first && second, "the fixture has two alerts");
-        assert.ok(Math.abs(first.rowHeight - second.rowHeight) <= 1, "equal row heights");
+        const table = first.table;
+        assert.equal(second.table, table, "both rows use one layout");
         assert.equal(first.buttons.length, 3, "the fixture can manage alerts");
-        assert.deepEqual(first.buttons, second.buttons, "the same three action slots");
+        if (table) {
+          assert.ok(Math.abs(first.rowHeight - second.rowHeight) <= 1, "equal row heights");
+          assert.deepEqual(first.buttons, second.buttons, "the same three action slots");
+        } else {
+          assert.deepEqual(slots(first), slots(second), "the same three action slots");
+        }
         assert.ok(
           initial.every(({ buttons, right }) => buttons.every((button) => button.right < right)),
           "every action stays inside the row",
@@ -289,7 +318,20 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
           if (action)
             action.textContent = "Review the very long approval details before continuing";
         });
-        assert.deepEqual(await layout(), initial, "long labels do not resize rows or action slots");
+        const long = await layout();
+        const lengthened = long[1];
+        assert.ok(lengthened, "the lengthened alert is still listed");
+        if (table) {
+          assert.deepEqual(long, initial, "long labels do not resize rows or action slots");
+        } else {
+          // Touch has no tooltip, so a stacked row shows the second line of a long title.
+          assert.equal(lengthened.titleLines, 2, "a stacked title takes two lines");
+          assert.deepEqual(
+            slots(lengthened),
+            slots(second),
+            "long labels do not move action slots",
+          );
+        }
         await page.reload();
         await alerts.getByRole("button", { name: "Review Approval", exact: true }).waitFor();
       },

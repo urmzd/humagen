@@ -270,6 +270,23 @@ test("Alerts opens the decision for review", async () => {
   );
 });
 
+test("an alert title takes two lines in a stacked row and one in the table", async () => {
+  const title = "Spend for launch is a lower bound: some model calls have no price in US dollars";
+  net = stubFetch({ "GET /api/alerts": () => ({ alerts: [{ ...alert("long"), title }] }) });
+  render(
+    <AlertsPage route={{ page: "alerts" }} go={() => {}} canWrite onChanged={() => {}} tick={0} />,
+  );
+  // A touch screen shows no tooltip, so a stacked row must show the second line itself.
+  const link = await screen.findByRole("link", { name: title });
+  const classes = link.firstElementChild?.className.split(/\s+/) ?? [];
+  assert.ok(classes.includes("line-clamp-2"), `two lines when stacked: ${classes.join(" ")}`);
+  assert.ok(
+    classes.includes("@3xl:pointer-fine:line-clamp-1"),
+    `one line in the table: ${classes.join(" ")}`,
+  );
+  assert.ok(!classes.includes("truncate"), `not one line everywhere: ${classes.join(" ")}`);
+});
+
 test("Alerts resolves selected records and Undo reopens only successful changes", async () => {
   let rows = [alert("one"), alert("two", "urgent")];
   const sent: unknown[] = [];
