@@ -13,13 +13,15 @@ import { loadTests } from "./testload.ts";
 // To add one, name it something.dom.test.tsx and list it here.
 //
 // Assert on what an element says or is (assert.ok(!queryByText(...)),
-// el.disabled), not on the element itself: a failing assertion prints its
-// values, and printing a happy-dom node does not finish.
+// el.disabled), not on the element itself. Printed in full, a happy-dom node
+// walks its whole window; ./test-assert.ts and ./dom-print.ts make a failing
+// assert or a log print it in a few words instead.
 //
 // The DOM stays registered for the life of the process, because node:test
 // may still be running the tests after this module returns.
 GlobalRegistrator.register({ url: "http://localhost:5173/" });
 await loadTests([
+  "/src/composer-overlay.dom.test.tsx",
   "/src/bigquery-connection.dom.test.tsx",
   "/src/connection-flows.dom.test.tsx",
   "/src/sidebar-recents.dom.test.tsx",

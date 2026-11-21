@@ -3020,6 +3020,8 @@ export const defaultCopy = {
   pageLoad: {
     title: "This page did not load",
     failed: "This page could not be loaded. Check your connection, then try again.",
+    /** Under the title, which already says the page did not load: only what to do. */
+    hint: "Check your connection, then try again.",
     /** Something that opens over the page, such as search, whose code could not be read. */
     partFailed: "That could not be opened. Check your connection, then try again.",
   },
@@ -4795,6 +4797,79 @@ export const defaultCopy = {
     retry: "Retry",
   },
   /** The control that returns to the end of a thread or of an answer's activity, named by what is there. */
+  /** The composer that floats over a conversation: its keys, its two levels of Stop, its footer and usage. */
+  dock: {
+    /** Said in the empty box while anything in the session runs. */
+    hint: (mac: boolean) =>
+      mac ? "↵ to send, ⌘↵ to queue for later" : "↵ to send, Ctrl+↵ to queue for later",
+    sendNow: "Send now",
+    /** Send's tooltip: how to send, queue and add a line. */
+    sendHint: (mac: boolean) =>
+      mac
+        ? "Send (↵). ⌘↵ queues, Shift+↵ adds a line"
+        : "Send (Enter). Ctrl+Enter queues, Shift+Enter adds a line",
+    /** The composer's Stop: everything running in the session. */
+    stopAll: "Stop",
+    stopAllLabel: "Stop everything running in this session",
+    stopAllHint: "Stop everything running in this session (Esc)",
+    stoppingAll: "Stopping everything in this session",
+    stopAllFailed: "Some of the work could not be stopped. Try Stop again.",
+    /** One running item's own Stop: an agent, a call to another agent, a step or background work. */
+    stop: "Stop",
+    stopping: "Stopping",
+    stopped: "Stopped",
+    stopLabel: (what: string) => `Stop ${what}`,
+    stoppingLabel: (what: string) => `Stopping ${what}`,
+    stoppedLabel: (what: string) => `${what} stopped`,
+    backgroundWork: (kind: string, text: string) => `the ${kind} "${text}"`,
+    /** The footer under the composer: who answers, the approval mode and the usage ring. */
+    footer: "Session details",
+    answeredBy: (agent: string) => `Answered by ${agent}`,
+    more: "More session controls",
+    usage: {
+      open: "Usage",
+      ring: (what: string, pct: number) => `${what}: ${pct}% used. Open usage`,
+      ringIdle: "Usage. Open usage",
+      context: "Context",
+      title: "Usage",
+      session: "This session",
+      contextUsed: (tokens: string, window: string) => `${tokens} of ${window} tokens`,
+      spent: "Spent so far",
+      tokens: "Tokens so far",
+      tokenCount: (tokens: string) => `${tokens} tokens`,
+      runs: (n: number) => (n === 1 ? "1 run" : `${n} runs`),
+      topAgents: "Most used by",
+      atLeast: "At least this much: the oldest runs were not counted.",
+      nothingYet: "Nothing used yet.",
+      limits: "Limits",
+      noLimits: "No limits set",
+      limitsHidden: "Limits are shown to people who can read billing.",
+      seeAll: "See all",
+      resets: (when: string) => `Resets ${when}`,
+      failed: "Usage could not be read.",
+      retry: "Retry",
+      loading: "Loading usage",
+      close: "Close usage",
+      near: (what: string) => `Near the ${what} limit`,
+      over: (what: string, when: string) =>
+        `${what} is used up. New runs are blocked until ${when}.`,
+      overApprove: (what: string, when: string) =>
+        `${what} is used up. New runs need approval until ${when}.`,
+      measure: {
+        runs: "Runs",
+        tokens: "Tokens",
+        spend: "Spend",
+        concurrent: "Running at once",
+      } as Record<"runs" | "tokens" | "spend" | "concurrent", string>,
+      period: { day: "Daily", month: "Monthly" } as Record<"day" | "month", string>,
+      scope: {
+        tenant: "Workspace",
+        project: "Project",
+        agent: "Agent",
+        client: "Client",
+      } as Record<"tenant" | "project" | "agent" | "client", string>,
+    },
+  },
   latest: {
     jump: "Jump to latest",
     /** An answer is still being written out of view. */
@@ -4995,6 +5070,7 @@ export const defaultCopy = {
     answered: "Answered",
     /** An agent's answer, as a screen reader names it. */
     answeredBy: (agent: string) => `Answered by ${agent}`,
+    more: "More session controls",
     typeahead: "People and agents to tag",
     /** The `/` command menu, as a screen reader names it. */
     commands: "Slash commands",

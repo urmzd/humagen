@@ -89,6 +89,7 @@ and evidence when implementing a requirement.
 | Develop with API, hot-reloading console and Postgres | `make tilt` (docs/guides/develop.md) |
 | Preview on a local Kubernetes cluster | `tilt up` (docs/guides/deploy.md#local-kubernetes-with-tilt) |
 | Web checks | `cd apps/web && pnpm typecheck && pnpm test` |
+| One web test file | `cd apps/web && node scripts/test-guard.mjs node --import ./src/test-assert.ts --test --experimental-strip-types src/<file>.test.ts`: the guard caps memory and time and lets two runs go at once on a machine. Never run a bare `node --test`: one failing assert on a DOM node without the guard grew past 70 GB and stopped the machine |
 | Adapter checks | `cd packages/adapter && pnpm typecheck && pnpm test` |
 | Slack app checks | `cd apps/slack && pnpm exec biome check && pnpm typecheck && pnpm test` |
 | Regenerate the client | `make client` (oag version pinned in the `Makefile`) |

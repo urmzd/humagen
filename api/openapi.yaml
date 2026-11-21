@@ -5943,6 +5943,24 @@ paths:
         "413": {$ref: "#/components/responses/TooLarge"}
         "500": {$ref: "#/components/responses/ServerError"}
         "503": {$ref: "#/components/responses/Unavailable"}
+  /api/threads/{id}/usage:
+    get:
+      operationId: getThreadUsage
+      tags: [threads]
+      summary: What the conversation has used so far, from its runs
+      x-permission: runs:read
+      parameters:
+        - {$ref: "#/components/parameters/ThreadID"}
+      responses:
+        "200":
+          description: The conversation's usage. A conversation with no runs answers zeros.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ThreadUsage"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
   /api/threads/{id}/scratchpads:
     get:
       operationId: listScratchpads
@@ -11572,6 +11590,40 @@ components:
         writable: {type: boolean}
         reason: {type: string}
         limit: {type: integer, const: 50}
+    ThreadUsage:
+      description: |
+        What a conversation has used so far, read from its run index. A run
+        called by another counted run is already in its caller's total and is
+        not added again. When `truncated` is true the index read hit its cap and
+        every figure is a lower bound.
+      type: object
+      required: [runs, usage, agents, working, truncated]
+      properties:
+        runs: {type: integer, minimum: 0, description: How many runs were counted.}
+        usage: {$ref: "#/components/schemas/Usage"}
+        agents:
+          description: Each agent's own calls, the dearest first (cost, then tokens, then name), at most 20.
+          type: array
+          maxItems: 20
+          items:
+            type: object
+            required: [agent, runs, usage]
+            properties:
+              agent: {type: string}
+              runs: {type: integer, minimum: 1}
+              usage: {$ref: "#/components/schemas/Usage"}
+        context:
+          description: The context fill of the most recent run that reported one.
+          type: object
+          required: [run, agent]
+          properties:
+            run: {type: string}
+            agent: {type: string}
+            model: {type: string}
+            window: {type: integer}
+            tokens: {type: integer}
+        working: {type: integer, minimum: 0, description: How many counted runs have not ended.}
+        truncated: {type: boolean}
     ScratchpadInput:
       type: object
       required: [name, content]

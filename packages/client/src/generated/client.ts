@@ -286,6 +286,7 @@ import type {
   ThreadShare,
   ThreadShared,
   ThreadUpdate,
+  ThreadUsage,
   ToolCredential,
   ToolCredentialInput,
   ToolCredentials,
@@ -5228,6 +5229,23 @@ to that machine only, wherever the message is read.
     return this.rawRequest<SandboxCommandResult>("POST", path, {
       body,
       contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** What the conversation has used so far, from its runs */
+  async getThreadUsage(id: string, options?: RequestOptions): Promise<ThreadUsage> {
+    let path = "/api/threads/{id}/usage";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<ThreadUsage>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getThreadUsageRaw(id: string, options?: RequestOptions): Promise<ApiResponse<ThreadUsage>> {
+    let path = "/api/threads/{id}/usage";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<ThreadUsage>("GET", path, {
       ...options,
     });
   }
