@@ -2205,9 +2205,17 @@ sessions are in the sidebar's Recents and on Sessions.
 The alert center lists alerts as one table: a box to select, the alert and its
 agent, then its source, priority, age and actions in columns. The header holds
 one box that selects every row shown, and once a row is selected the header
-names how many and offers Mark Selected Done and Snooze Selected. Under 48rem a
-row stacks. The Skills list sits in the same column as the tabs above it, as a
-bordered list, and an empty scope says what to do next.
+names how many and offers Mark Selected Done and Snooze Selected. Primary
+actions stay on one line, and so do alert titles in the table; both keep their
+full names for tooltips and assistive technology. Each row reserves the same
+space for its actions. At narrow widths or on touch, the row stacks, labels
+Mark Done and Snooze next to their icons, and gives a title up to two lines,
+because a touch screen shows no tooltip. Review Approval opens the decision in
+its session. The Skills list sits in the same column as the tabs above it, as a
+bordered list, and an empty scope says what to do next. The `alerts` browser
+check compares action positions and widths with short and long labels at
+desktop and phone widths, holds table rows to one height, and expects a long
+title to take two lines in a stacked row.
 
 An alert is named by whose move it is: Waiting, Snoozed or Done, with Mark Done
 in place of Resolve, in the alert center, on a session's alert card and in bulk
