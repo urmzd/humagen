@@ -31,11 +31,12 @@ import { rememberDock, useDockArrival } from "./dockArrival.ts";
 import { FindHelp, type HelpSuggestion } from "./FindHelp.tsx";
 import { type HomeAnnouncement, HomePage } from "./HomePage.tsx";
 import { LazyFrame } from "./lazy.tsx";
-import { emptySelection, mentionPicks, PlusMenu, type Selection } from "./Plus.tsx";
 import { ProjectPicker } from "./ProjectPicker.tsx";
-import { RunsConversation, ThreadRoom } from "./pages.ts";
+import { PlusMenu, RunsConversation, SessionSetupPickers, ThreadRoom } from "./pages.ts";
+import { emptySelection, mentionPicks, type Selection } from "./plusSelection.ts";
 import type { ConversationPanel, ConversationView } from "./route.ts";
 import { Scroller } from "./Scroller.tsx";
+import type { SessionSetup } from "./SessionPickers.tsx";
 import { ComposerFooter } from "./SessionUsage.tsx";
 import { useThreadSelection } from "./selection.ts";
 import { mentionsIn } from "./tags.ts";
@@ -593,6 +594,7 @@ export function Chat({
           text: m.text,
           uploads: m.uploads,
           visibility: startChannel ? "shared" : "private",
+          ...(startChannel ? {} : setup),
         })
         .then((p) => {
           // Run, chosen before the session started, is applied to it now.
@@ -728,6 +730,8 @@ export function Chat({
   // from a project's page in that project: the composer picks no project.
   // Its approval mode is held until the session starts.
   const [pendingApproval, setPendingApproval] = useState<ApprovalMode>("ask");
+  // So are its environment and repositories, sent with its first message.
+  const [setup, setSetup] = useState<SessionSetup>({ environment: "auto", repos: [] });
   // A message here is its text alone: the agent it goes to is the one its
   // tags or the conversation name, never a pick the composer carries.
   const sending: typeof queue = {
@@ -825,6 +829,8 @@ export function Chat({
                     onChange={(name) => select({ ...selection, project: name, channel: "general" })}
                     onCreated={onProjectCreated}
                   />
+                  {/* Where a new session runs: its environment and repository. */}
+                  {!startChannel && <SessionSetupPickers value={setup} onChange={setSetup} />}
                   <ApprovalToggle
                     me={handle || me}
                     pending={pendingApproval}
