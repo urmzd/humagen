@@ -91,7 +91,7 @@ func (p *Platform) StartSurfaceSession(ctx context.Context, who auth.Principal, 
 		out, err := p.surfacePost(ctx, who, th, post)
 		return out, false, err
 	}
-	at, err := p.filedAt(who.Tenant, c, ref.Channel)
+	at, err := p.filedForPerson(who.Tenant, c, ref.Channel, person)
 	if err != nil {
 		return SessionView{}, false, err
 	}
