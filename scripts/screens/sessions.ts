@@ -553,20 +553,41 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
         const filter = changes.getByRole("button", { name: copy.filter, exact: true });
         const viewport = page.viewportSize();
         assert.ok(viewport);
-        // The fold follows the column: beside the sidebar and the settings list, a 768
-        // window leaves a column narrower than a phone's.
+        // The filters fold in a phone's window (under 768), and in a column too narrow for
+        // two fields side by side (under 26rem): the one a 768 window leaves beside the
+        // sidebar and the settings list. Beside the default sidebar a 1024 window does not.
         if (viewport.width >= 1024) {
           await fields.waitFor();
           await apply.waitFor();
           await changes.getByRole("button", { name: copy.refresh, exact: true }).waitFor();
           await changes.getByRole("button", { name: copy.export, exact: true }).waitFor();
           assert.equal(await filter.count(), 0, "The filters are not folded");
+          assert.equal(
+            await changes.getByRole("button", { name: defaultCopy.more, exact: true }).count(),
+            0,
+            "Refresh and Export CSV are in the header, not under More",
+          );
+          const columns = await apply.evaluate(
+            (button) =>
+              getComputedStyle(button.closest("form") as HTMLFormElement).gridTemplateColumns,
+          );
+          assert.equal(
+            columns.split(" ").length,
+            viewport.width >= 1280 ? 4 : 2,
+            "The filter row keeps its columns",
+          );
           return;
         }
         // Folded, the header holds two controls and the first record is on the first screen.
         await filter.waitFor();
         await changes.getByRole("button", { name: defaultCopy.more, exact: true }).waitFor();
         assert.equal(await fields.count(), 0, "The filters are folded");
+        for (const name of [copy.refresh, copy.export])
+          assert.equal(
+            await changes.getByRole("button", { name, exact: true }).count(),
+            0,
+            "Folded, Refresh and Export CSV are under More",
+          );
         const box = await first.boundingBox();
         assert.ok(
           box && box.y + box.height <= viewport.height,

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { afterEach, test } from "node:test";
 import { defaultCopy } from "@humagen/components";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -306,11 +307,23 @@ test("Filter unfolds the same fields, says how many were applied and takes focus
   const fields = screen.getByLabelText(copy.actor).closest("form");
   assert.ok(fields);
   assert.equal(filter.getAttribute("aria-controls"), fields.id);
-  // Folded in a column as narrow as a phone's; the stylesheet shows the row in a wider one.
+  // Folded on a phone or in a narrow column; the stylesheet's `filter-row` shows the row
+  // anywhere else, and the fields, Filter's header and the wide header all follow that one rule.
   assert.equal(filter.getAttribute("aria-expanded"), "false");
   assert.ok(fields.classList.contains("hidden"));
-  assert.ok(fields.classList.contains("@md:grid"));
-  assert.ok(filter.parentElement?.classList.contains("@md:hidden"));
+  assert.ok(fields.classList.contains("filter-row:grid"));
+  assert.ok(filter.parentElement?.classList.contains("filter-row:hidden"));
+  const wide = screen.getByRole("button", { name: copy.refresh }).parentElement;
+  assert.ok(wide?.classList.contains("hidden"));
+  assert.ok(wide?.classList.contains("filter-row:flex"));
+  // No other breakpoint shows or hides any of the three.
+  for (const element of [fields, filter.parentElement, wide])
+    assert.deepEqual(
+      [...(element?.classList ?? [])].filter((name) => /:(hidden|grid|flex)$/.test(name)),
+      [...(element?.classList ?? [])].filter((name) =>
+        /^filter-row:(hidden|grid|flex)$/.test(name),
+      ),
+    );
 
   fireEvent.click(filter);
   assert.equal(filter.getAttribute("aria-expanded"), "true");
@@ -334,6 +347,23 @@ test("Filter unfolds the same fields, says how many were applied and takes focus
   fireEvent.click(screen.getByRole("button", { name: copy.apply }));
   await screen.findByText(copy.invalidRange);
   assert.equal(filter.getAttribute("aria-expanded"), "true");
+});
+
+test("the filters fold in a phone's window or a narrow column, and not beside the default sidebar", () => {
+  const css = readFileSync(new URL("./styles.css", import.meta.url), "utf8");
+  const rule = css.match(
+    /@custom-variant filter-row \{\s*@media \(width >= ([\d.]+)rem\) \{\s*@container \(width >= ([\d.]+)rem\) \{\s*@slot;/,
+  );
+  assert.ok(rule, "filter-row is a window width and a column width together");
+  // Tailwind's md: under it the window is a phone's.
+  assert.equal(Number(rule[1]) * 16, 768);
+  const column = Number(rule[2]) * 16;
+  // A 1024 window beside the default sidebar and the settings list leaves a 430px column,
+  // which keeps the row; the 214px one a 768 window leaves does not.
+  const sidebar = Number(css.match(/--humagen-sidebar-w: (\d+)px/)?.[1]);
+  assert.equal(sidebar, 296);
+  assert.ok(column <= 430 - 8, "the default 1024 window keeps the row, with room to spare");
+  assert.ok(column > 214, "a 768 window beside the sidebar folds");
 });
 
 test("folded, Refresh and Export CSV are under More", async () => {

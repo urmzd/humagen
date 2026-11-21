@@ -700,13 +700,19 @@ every row. Both are boxed `Section`s: a heading's count is hidden at zero, and a
 list as long as the server's 100-record cap says so in place of a count. Route
 and DOM tests cover the legacy address, the permission-gated read request, the
 single listing, the empty headings and the cap.
-In a column narrower than 28rem, a phone's or the one a 768 window leaves beside
-the sidebar and the settings list, the filters fold behind one Filter control in
-the changes header, so the first record is on the first screen. Filter opens the
+In a phone's window (narrower than 768px), or in a page column narrower than
+26rem (416px), the filters fold behind one Filter control in the changes header,
+so the first record is on the first screen. The column rule is what folds a 768
+window, whose column beside the sidebar and the settings list is 214px; a 1024
+window beside the default 296px sidebar has a 430px column and does not fold,
+and a sidebar dragged wide enough to leave less than 26rem folds it. One
+Tailwind variant, `filter-row` in `apps/web/src/styles.css`, states the rule
+for the fields, Filter and More together. Filter opens the
 same fields in place, Apply Filters folds them again and returns focus to
 Filter, and Filter counts the filters the list was read with ("Filter, 2").
 Refresh and Export CSV are under More there, so the header holds two controls.
-In a wider column the filter row is unchanged. The lines that say reads fill the
+Where they do not fold the filter row is unchanged: two columns, and four in a
+column of 42rem or more, with Refresh and Export CSV in the header. The lines that say reads fill the
 100 records suggest a domain only when none is chosen: with Projects chosen they
 say to narrow the date range, since reads are project records. When a Refresh
 cannot read the reads again, the reads section says so, counts nothing, and the

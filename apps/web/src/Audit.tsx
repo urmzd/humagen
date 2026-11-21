@@ -33,8 +33,9 @@ export function Audit({
   const [to, setTo] = useState("");
   const [invalidRange, setInvalidRange] = useState(false);
   const [refresh, setRefresh] = useState(0);
-  // In a column as narrow as a phone's the filters fold behind one control, so the first
-  // record is on the first screen. The fold follows the column, as a project's setup list does.
+  // On a phone, or in a column too narrow for two fields side by side, the filters fold behind
+  // one control, so the first record is on the first screen. `filter-row` (styles.css) is the
+  // one rule for where they stand open: the fields, Filter and More all follow it.
   const [unfolded, setUnfolded] = useState(false);
   const filter = useRef<HTMLButtonElement>(null);
   const fields = useId();
@@ -136,7 +137,7 @@ export function Audit({
         }
         actions={
           <>
-            <span className="flex items-center gap-2 @md:hidden">
+            <span className="flex items-center gap-2 filter-row:hidden">
               <Button
                 ref={filter}
                 variant="outline"
@@ -161,7 +162,7 @@ export function Audit({
                 ]}
               />
             </span>
-            <span className="hidden items-center gap-2 @md:flex">
+            <span className="hidden items-center gap-2 filter-row:flex">
               <Button variant="ghost" size="sm" onClick={reload}>
                 <RefreshIcon aria-hidden="true" />
                 {copy.refresh}
@@ -180,7 +181,7 @@ export function Audit({
             event.preventDefault();
             apply();
           }}
-          className={`${unfolded ? "grid" : "hidden @md:grid"} grid-cols-1 gap-3 @md:grid-cols-2 @2xl:grid-cols-[1fr_1fr_1.5fr_auto] @2xl:items-end`}
+          className={`${unfolded ? "grid" : "hidden filter-row:grid"} grid-cols-1 gap-3 filter-row:grid-cols-2 filter-row:@2xl:grid-cols-[1fr_1fr_1.5fr_auto] filter-row:@2xl:items-end`}
         >
           <div className="space-y-2">
             <Label htmlFor="audit-actor">{copy.actor}</Label>

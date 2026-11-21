@@ -51,6 +51,19 @@ body {
 }
 
 /*
+ * Where a page's filters stand open as a row: a window wider than a phone's, and a page
+ * column with room for two fields side by side. Anywhere else they fold behind one control.
+ * One variant says both halves, so what folds and what takes its place cannot disagree.
+ */
+@custom-variant filter-row {
+  @media (width >= 48rem) {
+    @container (width >= 26rem) {
+      @slot;
+    }
+  }
+}
+
+/*
  * The console's own layer. humagen owns the tokens for what it renders. The
  * console adds three things: a display face for titles and figures, neutral
  * glass for its chrome and panels, and the run tape.
