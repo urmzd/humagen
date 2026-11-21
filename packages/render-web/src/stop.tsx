@@ -9,15 +9,14 @@ import type { ItemStop, ItemStopWords } from "./meta";
 export function ItemStopControl({ stop, words }: { stop: ItemStop; words: ItemStopWords }) {
   if (stop.stopped)
     return (
-      <span
+      <output
         data-aui="item-stopped"
-        role="status"
         aria-label={words.stoppedLabel(stop.what)}
         className="inline-flex shrink-0 items-center gap-1 px-1 text-aui-2xs text-aui-muted"
       >
         <span aria-hidden className="size-2 rounded-[2px] border border-current" />
         {words.stopped}
-      </span>
+      </output>
     );
   if (!stop.onStop) return null;
   const onStop = stop.onStop;
