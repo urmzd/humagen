@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.177.0 (2026-11-21)
+
+### Features
+
+- **console**: sidebar v2: two-line rows, Participated, Pinned and Recent, a resizable sidebar (#472) ([27db4f0](https://github.com/urmzd/humagen/commit/27db4f085898b17a1d589925b75c50e6411bd2c1))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.176.1...v0.177.0)
+
+
 ## 0.176.1 (2026-11-21)
 
 ### Bug Fixes
