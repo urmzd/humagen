@@ -560,4 +560,22 @@ test("limitsFor keeps the limits that hold this session, fullest first; ringOf p
   const ring = ringOf(usage() as never, rows);
   assert.equal(ring?.what, "Project Launch Monthly runs");
   assert.equal(ringOf(usage() as never, [])?.what, dock.usage.context);
+  // A scope over one of its limits does not make its other measures over.
+  const mixed = limitsFor(
+    [
+      scope({
+        state: "over",
+        runs: { used: 10, limit: 10 },
+        tokens: { used: 860, limit: 1000 },
+      }),
+    ] as never,
+    { agents: [] },
+  );
+  assert.deepEqual(
+    mixed.map((r) => [r.label, r.near, r.over]),
+    [
+      ["Monthly runs", true, true],
+      ["Monthly tokens", true, false],
+    ],
+  );
 });

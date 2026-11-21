@@ -90,7 +90,7 @@ export function limitsFor(
             : `${count(measure.used)} of ${count(measure.limit)}`,
         resets: resetTime(s.period_end),
         near: fraction >= warn,
-        over: fraction >= 1 || (s.state === "over" && fraction >= warn),
+        over: fraction >= 1,
         action: s.action,
       });
     }
