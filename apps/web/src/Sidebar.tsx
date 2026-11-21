@@ -1,5 +1,6 @@
 import { defaultCopy } from "@humagen/components";
 import {
+  AlertTriangleIcon,
   ArchiveIcon,
   BellIcon,
   BotIcon,
@@ -7,14 +8,14 @@ import {
   CheckIcon,
   ChevronDownIcon,
   ChevronRightIcon,
-  CodeIcon,
   EllipsisIcon,
-  FolderIcon,
-  FolderOpenIcon,
+  GitHubIcon,
+  HandIcon,
   HistoryIcon,
   LayersIcon,
+  ListChecksIcon,
   LogOutIcon,
-  MessageSquareIcon,
+  MessageIcon,
   PanelLeftCloseIcon,
   PanelLeftOpenIcon,
   PencilIcon,
@@ -23,6 +24,7 @@ import {
   ProjectIcon,
   SearchIcon,
   SettingsIcon,
+  SlackIcon,
   SlidersIcon,
   Tooltip,
   TrashIcon,
@@ -45,11 +47,12 @@ import {
   type ListView,
   partition,
   projectOrder,
+  type RowSource,
   type RowStanding,
+  rowSource,
   standingOf,
 } from "./conversationList.ts";
 import { daysAgo } from "./format.ts";
-import { sourceOf } from "./History.tsx";
 import { useMarks } from "./marks.ts";
 import { ConversationPeek, PeekCard, usePeek } from "./RowPreview.tsx";
 import { type Standing, useRecents, useRecentsRow } from "./recents.ts";
@@ -95,7 +98,7 @@ export function SidebarItem({
       aria-label={
         open ? undefined : count ? (badgeLabel ?? defaultCopy.sidebar.needYou(label, count)) : label
       }
-      className={`relative flex h-9 pointer-coarse:h-11 items-center gap-2.5 [&>svg]:size-[18px] [&>svg]:[stroke-width:1.75] rounded-aui text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover/60 hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-hover aria-[current=page]:font-medium aria-[current=page]:text-aui-fg ${
+      className={`relative flex h-9 pointer-coarse:h-11 items-center gap-2.5 [&>svg]:size-[18px] [&>svg]:[stroke-width:1.75] rounded-aui text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover/60 hover:text-aui-fg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-fg/50 aria-[current=page]:bg-aui-hover aria-[current=page]:font-medium aria-[current=page]:text-aui-fg ${
         open ? "px-2.5" : "w-9 justify-center"
       }`}
     >
@@ -143,7 +146,7 @@ function Choices<T extends string>({
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
-        className="flex h-8 items-center gap-2 rounded-aui px-2.5 text-left text-aui-sm text-aui-fg transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
+        className="flex h-8 items-center gap-2 rounded-aui px-2.5 text-left text-aui-sm text-aui-fg transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-fg/50"
       >
         <span className="min-w-0 flex-1 truncate">{title}</span>
         <span className="truncate text-aui-muted">{current}</span>
@@ -165,7 +168,7 @@ function Choices<T extends string>({
                 setOpen(false);
                 trigger.current?.focus();
               }}
-              className="flex h-8 items-center gap-2 rounded-aui px-2.5 text-left text-aui-sm text-aui-fg transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
+              className="flex h-8 items-center gap-2 rounded-aui px-2.5 text-left text-aui-sm text-aui-fg transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-fg/50"
             >
               {o.mark}
               <span className="min-w-0 flex-1 truncate">{o.label}</span>
@@ -203,7 +206,7 @@ function PinButton({
       aria-label={label}
       aria-pressed={pinned}
       title={label}
-      className={`absolute top-1 right-1 inline-flex size-8 items-center justify-center rounded-aui text-aui-muted transition-opacity hover:bg-aui-hover hover:text-aui-fg focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-aui-accent [@media(pointer:coarse)]:top-0.5 [@media(pointer:coarse)]:size-11 [@media(pointer:coarse)]:opacity-100 ${project ? "group-hover/project:opacity-100 group-focus-within/project:opacity-100" : "group-hover/task:opacity-100 group-focus-within/task:opacity-100"} ${pinned ? "opacity-100" : "opacity-0"}`}
+      className={`absolute top-1 right-1 inline-flex size-8 items-center justify-center rounded-aui text-aui-muted transition-opacity hover:bg-aui-hover hover:text-aui-fg focus-visible:opacity-100 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-fg/50 [@media(pointer:coarse)]:top-0.5 [@media(pointer:coarse)]:size-11 [@media(pointer:coarse)]:opacity-100 ${project ? "group-hover/project:opacity-100 group-focus-within/project:opacity-100" : "group-hover/task:opacity-100 group-focus-within/task:opacity-100"} ${pinned ? "opacity-100" : "opacity-0"}`}
     >
       <PinIcon size={14} fill={pinned ? "currentColor" : "none"} />
     </button>
@@ -211,10 +214,12 @@ function PinButton({
 }
 
 /**
- * A project's conversations under a header that folds them. The chevron says
- * which way it is; the group opens itself when the open conversation is in
- * it, and while folded over the open conversation the header carries the
- * selection, so where you are never disappears.
+ * A project's conversations under a header that folds them. The header is
+ * set in the foreground's weight so it reads above its rows, which carry the
+ * icons. The chevron says which way it is. A group opens itself when the
+ * open conversation is in it, and when rows arrive in one that started empty
+ * unless the reader folded it; while folded over the open conversation the
+ * header carries the selection, so where you are never disappears.
  */
 function ProjectGroup({
   title,
@@ -228,15 +233,22 @@ function ProjectGroup({
   startsOpen?: boolean;
   children: ReactNode;
 }) {
-  const [open, setOpen] = useState(startsOpen);
+  // What the reader chose by folding or unfolding, null until they do.
+  const [chosen, setChosen] = useState<boolean | null>(null);
   useEffect(() => {
-    if (holdsCurrent) setOpen(true);
+    if (holdsCurrent) setChosen(true);
   }, [holdsCurrent]);
+  const open = chosen ?? startsOpen;
   return (
-    <details open={open} onToggle={(e) => setOpen(e.currentTarget.open)}>
+    <details
+      open={open}
+      onToggle={(e) => {
+        if (e.currentTarget.open !== open) setChosen(e.currentTarget.open);
+      }}
+    >
       <summary
         aria-current={!open && holdsCurrent ? "true" : undefined}
-        className="flex min-h-10 cursor-pointer list-none items-center gap-1.5 rounded-aui pr-12 pl-1.5 text-aui-xs font-medium text-aui-muted transition-colors hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current]:bg-aui-subtle aria-[current]:text-aui-fg [&::-webkit-details-marker]:hidden"
+        className="flex min-h-8 pointer-coarse:min-h-11 cursor-pointer list-none items-center gap-1.5 rounded-aui pr-12 pl-2.5 text-aui-xs font-semibold text-aui-fg transition-colors hover:bg-aui-hover/60 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-fg/50 aria-[current]:bg-aui-hover [&::-webkit-details-marker]:hidden"
       >
         <svg
           aria-hidden="true"
@@ -249,11 +261,10 @@ function ProjectGroup({
           strokeWidth={2.25}
           strokeLinecap="round"
           strokeLinejoin="round"
-          className={`shrink-0 transition-transform duration-150 motion-reduce:transition-none ${open ? "rotate-90" : ""}`}
+          className={`shrink-0 text-aui-muted transition-transform duration-150 motion-reduce:transition-none ${open ? "rotate-90" : ""}`}
         >
           <path d="M9 6l6 6-6 6" />
         </svg>
-        {open ? <FolderOpenIcon size={14} /> : <FolderIcon size={14} />}
         <span className="min-w-0 flex-1 truncate">{title}</span>
       </summary>
       {children}
@@ -263,35 +274,80 @@ function ProjectGroup({
 
 /** The one-time tip that teaches search; dismissed once per person (pkg/marks). */
 
+/**
+ * A conversation row's link. Hover tints it; the open row is filled, set in
+ * the foreground's weight and marked at its left edge, so the two never read
+ * as one. Keyboard focus is a neutral ring drawn inside the row.
+ */
+const rowLink =
+  "relative flex h-9 pointer-coarse:h-11 w-full items-center gap-2.5 rounded-aui pr-2 pl-2 text-left text-aui-sm text-aui-fg transition-colors hover:bg-aui-hover/60 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-fg/50 aria-[current=page]:bg-aui-hover aria-[current=page]:font-medium before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full aria-[current=page]:before:bg-aui-fg";
+
 /** A quiet icon button in a row's hover actions. */
 const rowAction =
-  "inline-flex size-8 items-center justify-center rounded-aui text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent";
+  "inline-flex size-8 items-center justify-center rounded-aui text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-fg/50";
+
+/** One glyph per place a session can start, drawn in the row's muted ink. */
+const SOURCE_ICONS: Record<RowSource, ReactNode> = {
+  console: <MessageIcon size={14} />,
+  slack: <SlackIcon size={13} />,
+  slack_dm: <SlackIcon size={13} />,
+  github: <GitHubIcon size={14} />,
+  scheduled: <CalendarIcon size={14} />,
+  assignment: <ListChecksIcon size={14} />,
+};
 
 /**
- * One conversation: its title, the project it is in under it, and on the
- * right how long ago it moved or a dot when an agent said something unread.
- * A dot before the title says it waits on a person (still), is running, or
- * a reply failed. Hover or focus trades the age for Pin, Archive and the ⋮
- * menu; on a touch screen the ⋮ menu stays and holds them all.
+ * A row's leading mark: where the session started. Every row has one, so
+ * titles start on the same line. Its words are the row's, after the title,
+ * for a screen reader, and its tooltip for a mouse.
  */
-/** A row's mark for where a conversation started; the chat itself has none. */
-function sourceGlyph(origin: string): ReactNode {
-  const source = sourceOf(origin);
-  const icon =
-    source === "github" ? (
-      <CodeIcon size={13} />
-    ) : source === "slack" ? (
-      <MessageSquareIcon size={13} />
-    ) : source === "scheduled" ? (
-      <CalendarIcon size={13} />
-    ) : null;
-  return icon ? (
-    <span className="mt-0.5 block" title={defaultCopy.history.sources[source]}>
-      {icon}
+function SourceMark({ source }: { source: RowSource }) {
+  return (
+    <span
+      aria-hidden
+      data-source={source}
+      title={defaultCopy.sidebar.sources[source]}
+      className="inline-flex size-4 shrink-0 items-center justify-center text-aui-muted"
+    >
+      {SOURCE_ICONS[source]}
     </span>
-  ) : undefined;
+  );
 }
 
+/**
+ * What a row's state asks of the reader, beside its age: waiting on a person,
+ * running, or a reply that failed. Red is kept for failure. Unread is the
+ * title's weight, not a mark.
+ */
+function StateMark({ standing }: { standing: RowStanding }) {
+  if (standing !== "needs" && standing !== "running" && standing !== "failed") return null;
+  const label = defaultCopy.sidebar.standing[standing];
+  return (
+    <span
+      aria-hidden
+      data-standing={standing}
+      title={label}
+      className={`inline-flex size-3.5 shrink-0 items-center justify-center ${
+        standing === "needs" ? "text-aui-warn" : standing === "failed" ? "text-aui-bad" : ""
+      }`}
+    >
+      {standing === "needs" ? (
+        <HandIcon size={13} />
+      ) : standing === "failed" ? (
+        <AlertTriangleIcon size={12} />
+      ) : (
+        <span className="humagen-row-spinner" />
+      )}
+    </span>
+  );
+}
+
+/**
+ * One conversation on one line: where it started, its title, then what it
+ * asks of the reader and how long ago it moved. Hover or focus trades the
+ * right side for the ⋮ menu; on a touch screen the ⋮ menu stays and holds
+ * Pin, Rename, Archive and Delete.
+ */
 /** Today, Yesterday or Earlier, by the reader's own calendar day. */
 export function recentDay(iso: string, now: Date): "today" | "yesterday" | "earlier" {
   const days = daysAgo(iso, now.getTime());
@@ -333,14 +389,13 @@ export function recentGroups(
 function TaskRow({
   task,
   projectLabel,
-  projectTitle,
   priority,
   current,
   pinned,
   archived = false,
   standing = "",
   ageText = "",
-  glyph,
+  source = "console",
   to,
   onSelect,
   onPin,
@@ -352,16 +407,14 @@ function TaskRow({
   task: ThreadSummary;
   /** The project it is in, shown under its title; left out inside a project's group. */
   projectLabel?: string;
-  /** The project's title for its preview card, shown even inside a group. */
-  projectTitle?: string;
   priority?: "urgent" | "normal" | "low";
   current: boolean;
   pinned: boolean;
   archived?: boolean;
   standing?: RowStanding;
   ageText?: string;
-  /** Where it came from, when not the chat itself: a small mark on the right. */
-  glyph?: ReactNode;
+  /** Where it started: the row's leading mark. */
+  source?: RowSource;
   /** Its address, so it opens in a new tab as a link does. */
   to: string;
   onSelect: () => void;
@@ -387,10 +440,11 @@ function TaskRow({
     requestAnimationFrame(() => trigger()?.focus());
   };
   const said = standing ? words.standing[standing] : "";
+  const alertSaid = priority ? words.alert[priority] : "";
   // Resting the pointer on the row, or holding a finger on it, previews it.
   const peek = usePeek();
   const peekId = `peek-${task.id}`;
-  const dot = standing === "needs" || standing === "running" || standing === "failed";
+  const unread = standing === "unread";
   return (
     // A row that is saying something sits over its neighbours and over the
     // section's label, which sticks above the first row, so the note shows.
@@ -411,7 +465,7 @@ function TaskRow({
               setRenaming(false);
             }
           }}
-          className="h-9 w-full rounded-aui border border-aui-accent bg-transparent px-2.5 text-aui-sm text-aui-fg outline-none"
+          className="h-9 w-full rounded-aui border border-aui-fg/40 bg-transparent px-2.5 text-aui-sm text-aui-fg outline-none"
         />
       ) : (
         <a
@@ -426,54 +480,47 @@ function TaskRow({
           aria-describedby={peek.at ? peekId : undefined}
           data-thread-row={task.id}
           aria-current={current ? "page" : undefined}
-          // The age keeps the width the menu button takes, so a title is cut at the same place at rest and under the pointer.
-          className={`relative flex min-h-9 pointer-coarse:min-h-11 w-full items-center gap-2 rounded-aui py-1 pr-2 pl-2.5 text-left text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover/60 hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-hover aria-[current=page]:font-medium aria-[current=page]:text-aui-fg ${current || peek.at ? "[@media(pointer:coarse)]:pr-12" : ""}`}
+          // One line at one height. The age keeps the width the menu button takes, so a
+          // title is cut at the same place at rest and under the pointer. The open row
+          // is filled and marked at its edge; a hovered one is only tinted.
+          className={`${rowLink} ${current || peek.at ? "[@media(pointer:coarse)]:pr-12" : ""}`}
         >
-          {priority && (
-            <span
-              title={`${priority} alert`}
-              aria-label={`${priority} alert`}
-              className={`text-aui-xs ${priority === "urgent" ? "text-aui-bad" : "text-aui-muted"}`}
-            >
-              {priority === "urgent" ? "!" : priority === "normal" ? "•" : "|"}
-            </span>
-          )}
-          {!priority && dot && (
-            // In the gutter, so a title starts on the same line whether or not its row has a dot.
-            <span aria-hidden className="absolute inset-y-0 left-0.5 flex items-center">
-              <span data-standing={standing} className="humagen-row-dot" />
-            </span>
-          )}
-          <span className="flex min-w-0 flex-1 flex-col">
-            <span className="flex min-w-0 items-center gap-1.5">
-              <span className={`truncate ${standing === "unread" ? "text-aui-fg" : ""}`}>
-                {title}
-              </span>
-              {pinned && (
-                <PinIcon
-                  size={11}
-                  fill="currentColor"
-                  className="shrink-0 text-aui-muted"
-                  aria-hidden
-                />
-              )}
-            </span>
+          <SourceMark source={source} />
+          <span
+            data-standing={unread ? "unread" : undefined}
+            className={`min-w-0 flex-1 truncate ${unread ? "font-semibold" : ""}`}
+          >
+            {title}
           </span>
           <span
             data-row-age
-            // One line: where it came from, then its age, so every row is the same height.
-            className={`inline-flex min-w-6 shrink-0 items-center justify-end gap-1 text-aui-2xs font-normal text-aui-muted tabular-nums ${standing === "unread" ? "" : "mt-0.5"} ${hasMenu ? "[@media(pointer:fine)]:group-focus-within/task:invisible [@media(pointer:fine)]:group-hover/task:invisible" : ""}`}
+            className={`inline-flex shrink-0 items-center justify-end gap-1.5 text-aui-2xs font-normal tabular-nums ${unread ? "text-aui-fg" : "text-aui-muted"}`}
           >
-            {standing === "unread" ? (
-              <span aria-hidden data-standing="unread" className="humagen-row-dot block" />
-            ) : (
-              <>
-                {glyph}
-                {ageText && <span>{ageText}</span>}
-              </>
+            {priority && (
+              <span
+                aria-hidden
+                data-alert={priority}
+                title={alertSaid}
+                className={`inline-flex ${priority === "urgent" ? "text-aui-warn" : ""}`}
+              >
+                <BellIcon size={12} />
+              </span>
             )}
+            <StateMark standing={standing} />
+            {/* Only the age gives way to the ⋮ button, which takes its width; the alert and
+                state marks stay in view, so their tooltips show under the pointer. */}
+            <span
+              data-row-time
+              className={`min-w-6 text-right ${hasMenu ? "[@media(pointer:fine)]:group-focus-within/task:invisible [@media(pointer:fine)]:group-hover/task:invisible" : ""}`}
+            >
+              {ageText}
+            </span>
           </span>
-          {said && <span className="sr-only">, {said}</span>}
+          <span className="sr-only">
+            , {words.sources[source]}
+            {alertSaid && `, ${alertSaid}`}
+            {said && `, ${said}`}
+          </span>
         </a>
       )}
       {hasMenu && !renaming && (
@@ -533,7 +580,7 @@ function TaskRow({
       {hasMenu && <FlashNote flash={flash} align="right" />}
       {peek.at && !renaming && (
         <PeekCard at={peek.at} id={peekId} onClose={peek.close}>
-          <ConversationPeek task={task} project={projectTitle ?? projectLabel} />
+          <ConversationPeek task={task} />
         </PeekCard>
       )}
     </li>
@@ -541,7 +588,7 @@ function TaskRow({
 }
 
 const menuItem =
-  "flex h-8 w-full items-center gap-2.5 rounded-aui px-2.5 text-left text-aui-sm text-aui-fg transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent";
+  "flex h-8 w-full items-center gap-2.5 rounded-aui px-2.5 text-left text-aui-sm text-aui-fg transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-fg/50";
 
 /**
  * What a conversation's ⋯ menu offers. Each item has a letter that works while
@@ -596,14 +643,14 @@ function RowMenu({
           <button
             type="button"
             onClick={() => setConfirming(false)}
-            className="h-7 rounded-aui px-2.5 text-aui-sm text-aui-fg hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
+            className="h-7 rounded-aui px-2.5 text-aui-sm text-aui-fg hover:bg-aui-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-fg/50"
           >
             Cancel
           </button>
           <button
             type="button"
             onClick={onDelete}
-            className="h-7 rounded-aui bg-aui-bad px-2.5 text-aui-sm text-white hover:opacity-90 focus-visible:outline-2 focus-visible:outline-aui-accent"
+            className="h-7 rounded-aui bg-aui-bad px-2.5 text-aui-sm text-white hover:opacity-90 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-fg/50"
           >
             Delete
           </button>
@@ -667,7 +714,7 @@ function Label({
           data-fold
           aria-expanded={fold.open}
           onClick={fold.onToggle}
-          className="inline-flex min-h-7 min-w-0 items-center gap-1 rounded-aui px-2.5 text-aui-xs text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent pointer-coarse:min-h-11"
+          className="inline-flex min-h-7 min-w-0 items-center gap-1 rounded-aui px-2.5 text-aui-xs text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-fg/50 pointer-coarse:min-h-11"
         >
           <span className="min-w-0 truncate">{children}</span>
           {fold.open ? <ChevronDownIcon size={12} /> : <ChevronRightIcon size={12} />}
@@ -1087,6 +1134,9 @@ export function Sidebar({
     if (selected && can("runs:read")) markRead(selected);
   }, [selected, selectedUpdated, markRead, can]);
   const noConversations = recents.length === 0 && unpinned.length === 0;
+  // Nothing to list under Recents: it says so once, in words that fit why, and
+  // draws no project folders that would contradict it.
+  const listEmpty = unpinned.length === 0;
   const isCurrent = (t: ThreadSummary) => t.id === openRow;
   const canPin = can("runs:read");
   const pinnedProjects = new Set(prefs?.pinned_projects ?? []);
@@ -1106,8 +1156,7 @@ export function Sidebar({
       key={t.id}
       task={t}
       projectLabel={sessionMode && opts.label ? projectTitle(t.project) : undefined}
-      glyph={sourceGlyph(t.origin)}
-      projectTitle={projectTitle(t.project)}
+      source={rowSource(t)}
       priority={priorityBySession.get(t.id)}
       current={isCurrent(t)}
       pinned={opts.pinned ?? false}
@@ -1194,7 +1243,7 @@ export function Sidebar({
             onClick={onToggle}
             aria-expanded={open}
             aria-label={open ? "Close sidebar" : "Open sidebar"}
-            className="inline-flex size-8 pointer-coarse:size-11 items-center justify-center rounded-aui text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
+            className="inline-flex size-8 pointer-coarse:size-11 items-center justify-center rounded-aui text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-fg/50"
           >
             {open ? (
               <PanelLeftCloseIcon size={18} strokeWidth={1.75} />
@@ -1225,7 +1274,7 @@ export function Sidebar({
                 type="button"
                 onClick={onSearch}
                 aria-label={nav.search}
-                className={`group/search flex h-9 pointer-coarse:h-11 items-center gap-2.5 [&>svg]:[stroke-width:1.75] rounded-aui text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover/60 hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent ${open ? "px-2.5" : "w-9 justify-center"}`}
+                className={`group/search flex h-9 pointer-coarse:h-11 items-center gap-2.5 [&>svg]:[stroke-width:1.75] rounded-aui text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover/60 hover:text-aui-fg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-fg/50 ${open ? "px-2.5" : "w-9 justify-center"}`}
               >
                 <SearchIcon size={18} />
                 {open && (
@@ -1321,14 +1370,14 @@ export function Sidebar({
                       narrow
                       align="right"
                       label={defaultCopy.chat.filter(filters)}
-                      className="relative inline-flex size-8 pointer-coarse:size-11 items-center justify-center rounded-aui text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-expanded:bg-aui-hover aria-expanded:text-aui-fg"
+                      className="relative inline-flex size-8 pointer-coarse:size-11 items-center justify-center rounded-aui text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-fg/50 aria-expanded:bg-aui-hover aria-expanded:text-aui-fg"
                       button={
                         <>
                           <SlidersIcon size={14} />
                           {(filters > 0 || view !== "projects") && (
                             <span
                               aria-hidden
-                              className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-aui-accent"
+                              className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-aui-fg"
                             />
                           )}
                         </>
@@ -1381,7 +1430,7 @@ export function Sidebar({
                                 clear();
                                 setView("projects");
                               }}
-                              className="mt-1 rounded-aui border-[var(--humagen-rule)] border-t px-2.5 py-2 text-left text-aui-sm text-aui-fg hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
+                              className="mt-1 rounded-aui border-[var(--humagen-rule)] border-t px-2.5 py-2 text-left text-aui-sm text-aui-fg hover:bg-aui-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-fg/50"
                             >
                               Reset to defaults
                             </button>
@@ -1410,7 +1459,7 @@ export function Sidebar({
                     <button
                       type="button"
                       onClick={undoArchive}
-                      className="shrink-0 rounded-aui px-1.5 font-medium text-aui-fg hover:bg-aui-bg focus-visible:outline-2 focus-visible:outline-aui-accent"
+                      className="shrink-0 rounded-aui px-1.5 font-medium text-aui-fg hover:bg-aui-bg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-fg/50"
                     >
                       {defaultCopy.sidebar.undo}
                     </button>
@@ -1418,7 +1467,7 @@ export function Sidebar({
                       type="button"
                       onClick={() => setNote(null)}
                       aria-label="Dismiss"
-                      className="shrink-0 rounded-aui px-1 text-aui-muted hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
+                      className="shrink-0 rounded-aui px-1 text-aui-muted hover:text-aui-fg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-fg/50"
                     >
                       ×
                     </button>
@@ -1441,17 +1490,19 @@ export function Sidebar({
                       <button
                         type="button"
                         onClick={retry}
-                        className="humagen-press inline-flex h-6 items-center rounded-full border border-[var(--humagen-rule)] px-2.5 text-aui-fg hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
+                        className="humagen-press inline-flex h-6 items-center rounded-full border border-[var(--humagen-rule)] px-2.5 text-aui-fg hover:bg-aui-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-fg/50"
                       >
                         Try Again
                       </button>
                     </li>
                   )}
-                  {view !== "archived" && noConversations && loading !== "first" && !stalled && (
-                    <li className="px-2.5 py-1.5 text-aui-xs text-aui-muted">
+                  {view !== "archived" && listEmpty && loading !== "first" && !stalled && (
+                    <li data-empty className="px-2.5 py-1.5 text-aui-xs text-aui-muted">
                       {filters > 0
                         ? "No session matches these filters."
-                        : "Your sessions appear here. Start with New."}
+                        : pinnedRows.length > 0
+                          ? "No other sessions yet."
+                          : "Your sessions appear here. Start with New."}
                     </li>
                   )}
                   {view === "recents" &&
@@ -1478,6 +1529,7 @@ export function Sidebar({
                       lists.archived.map((t) => row(t, { label: true }))
                     ))}
                   {view === "projects" &&
+                    !listEmpty &&
                     projectGroups.map((project) => {
                       const inGroup = unpinned.filter((t) => (t.project || "~") === project);
                       const all = expanded.has(project);
@@ -1485,14 +1537,14 @@ export function Sidebar({
                       return (
                         <li
                           key={project}
-                          className={`group/project relative min-w-0 pt-2 ${flashed === `project:${project}` && flash ? "z-20" : ""}`}
+                          className={`group/project relative min-w-0 pt-3 ${flashed === `project:${project}` && flash ? "z-20" : ""}`}
                         >
                           <ProjectGroup
                             title={projectTitle(project)}
                             startsOpen={inGroup.length > 0}
                             holdsCurrent={inGroup.some(isCurrent)}
                           >
-                            <ul className="ml-2 border-aui-border border-l pl-1">
+                            <ul className="mt-0.5">
                               {inGroup.length === 0 && (
                                 <li className="px-2.5 py-1.5 text-aui-xs text-aui-muted">
                                   {defaultCopy.sidebar.noConversations}
@@ -1512,7 +1564,7 @@ export function Sidebar({
                                         return n;
                                       })
                                     }
-                                    className="flex h-8 w-full items-center rounded-aui px-2.5 text-left text-aui-xs text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
+                                    className="flex h-8 w-full items-center rounded-aui px-2.5 text-left text-aui-xs text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-fg/50"
                                   >
                                     {all
                                       ? defaultCopy.sidebar.showFewer
@@ -1523,7 +1575,7 @@ export function Sidebar({
                             </ul>
                           </ProjectGroup>
                           {onPinProject && can("projects:read") && (
-                            <div className="absolute top-2 right-0 h-10 w-10">
+                            <div className="absolute top-2 right-0 h-9 w-10">
                               <PinButton
                                 project
                                 projectId={project}
@@ -1552,7 +1604,7 @@ export function Sidebar({
                         type="button"
                         onClick={more}
                         disabled={loading === "more"}
-                        className="inline-flex h-6 items-center rounded-full border border-[var(--humagen-rule)] px-2.5 text-aui-xs text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent disabled:cursor-default"
+                        className="inline-flex h-6 items-center rounded-full border border-[var(--humagen-rule)] px-2.5 text-aui-xs text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-fg/50 disabled:cursor-default"
                       >
                         {loading === "more" ? (
                           <span className="aui-shimmer">Loading</span>
@@ -1586,20 +1638,30 @@ export function Sidebar({
               // Open, the button is named by the name it shows, then what it opens.
               label={open ? undefined : defaultCopy.preferences.openFor(name)}
               tooltip={open ? undefined : name}
-              className={`flex w-full min-w-0 items-center gap-2 rounded-aui p-1 text-left transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent aria-expanded:bg-aui-hover ${
+              className={`flex w-full min-w-0 items-center gap-2 rounded-aui p-1 text-left transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-fg/50 aria-expanded:bg-aui-hover ${
                 open ? "" : "size-9 justify-center"
               }`}
               button={
                 <>
                   <Avatar name={name} prefs={prefs} size={26} />
                   {open && (
-                    <span className="humagen-sidebar-reveal flex min-w-0 flex-1 items-baseline gap-1.5 truncate">
-                      <span className="truncate text-aui-sm text-aui-fg">{name}</span>
-                      {subtitle && (
-                        <span className="truncate text-aui-xs text-aui-muted">| {subtitle}</span>
-                      )}
-                      <span className="sr-only">, {defaultCopy.preferences.open}</span>
-                    </span>
+                    <>
+                      <span className="humagen-sidebar-reveal flex min-w-0 items-baseline gap-1.5 truncate">
+                        {/* The name keeps its width; the subtitle gives way first. */}
+                        <span className="max-w-full shrink-0 truncate text-aui-sm text-aui-fg">
+                          {name}
+                        </span>
+                        {subtitle && (
+                          <span className="truncate text-aui-xs text-aui-muted">| {subtitle}</span>
+                        )}
+                        <span className="sr-only">, {defaultCopy.preferences.open}</span>
+                      </span>
+                      <ChevronDownIcon
+                        size={14}
+                        aria-hidden
+                        className="humagen-sidebar-reveal shrink-0 text-aui-muted"
+                      />
+                    </>
                   )}
                 </>
               }
@@ -1637,7 +1699,7 @@ export function Sidebar({
                         close();
                         go(item.to);
                       }}
-                      className="flex h-8 items-center gap-2 rounded-aui px-2.5 text-left text-aui-sm text-aui-fg transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
+                      className="flex h-8 items-center gap-2 rounded-aui px-2.5 text-left text-aui-sm text-aui-fg transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-fg/50"
                     >
                       {item.icon}
                       <span className="min-w-0 flex-1 truncate">{item.label}</span>
@@ -1652,7 +1714,7 @@ export function Sidebar({
                           close();
                           onSignOut();
                         }}
-                        className="flex h-8 items-center gap-2 rounded-aui px-2.5 text-left text-aui-sm text-aui-fg transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
+                        className="flex h-8 items-center gap-2 rounded-aui px-2.5 text-left text-aui-sm text-aui-fg transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-fg/50"
                       >
                         <LogOutIcon size={14} />
                         <span className="min-w-0 flex-1 truncate">Sign out</span>
@@ -1690,13 +1752,13 @@ export function DrawerButton({
       data-testid="drawer-button"
       onClick={onOpen}
       aria-label={inboxCount > 0 ? `Open sidebar, ${inboxCount} unread` : "Open sidebar"}
-      className="humagen-drawer-button fixed top-[calc(0.5rem+env(safe-area-inset-top))] left-[max(1rem,env(safe-area-inset-left))] z-30 inline-flex size-11 items-center justify-center rounded-full border border-aui-border text-aui-fg transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent md:hidden"
+      className="humagen-drawer-button fixed top-[calc(0.5rem+env(safe-area-inset-top))] left-[max(1rem,env(safe-area-inset-left))] z-30 inline-flex size-11 items-center justify-center rounded-full border border-aui-border text-aui-fg transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-fg/50 md:hidden"
     >
       <PanelLeftOpenIcon size={20} />
       {inboxCount > 0 && (
         <span
           aria-hidden
-          className="absolute top-2 right-2 size-2 rounded-full bg-aui-accent ring-2 ring-aui-bg"
+          className="absolute top-2 right-2 size-2 rounded-full bg-aui-fg ring-2 ring-aui-bg"
         />
       )}
     </button>
