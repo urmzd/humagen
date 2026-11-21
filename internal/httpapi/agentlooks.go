@@ -10,10 +10,12 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/agentcolors"
 	"github.com/urmzd/humagen/pkg/agentlooks"
 	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/clients"
 )
 
 // agentLookView is an agent's look, its hue, and what a picker needs to
@@ -275,4 +277,52 @@ func (s *Server) agentMark(w http.ResponseWriter, r *http.Request) {
 	h.Set("X-Content-Type-Options", "nosniff")
 	h.Set("Content-Security-Policy", "default-src 'none'")
 	_, _ = io.Copy(w, body)
+}
+
+// getAgentSlackApp answers with the manifest of an agent's own Slack app,
+// built from its look, the link that creates it in Slack, and the client it
+// is linked as when it is (RFC 0012).
+func (s *Server) getAgentSlackApp(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	app, err := s.P.AgentSlackApp(r.Context(), who.Tenant, r.PathValue("name"))
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, app)
+}
+
+// linkAgentSlackApp connects an agent's own Slack app from its bot token and
+// signing secret: Slack says who the bot is, so nobody copies an id. It
+// takes clients:write, as making any client does, and the ownership
+// changing the agent takes.
+func (s *Server) linkAgentSlackApp(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	var body struct {
+		Token         clients.SecretInput `json:"token"`
+		SigningSecret clients.SecretInput `json:"signing_secret"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	name := r.PathValue("name")
+	if err := s.P.OwnsHome(who, name); err != nil {
+		s.problem(w, err)
+		return
+	}
+	if _, err := s.P.LinkAgentSlack(r.Context(), who, name, body.Token, body.SigningSecret); err != nil {
+		switch {
+		case errors.Is(err, platform.ErrSlackRefused):
+			fail(w, http.StatusBadRequest, "Slack did not accept the bot token: "+strings.TrimPrefix(err.Error(), platform.ErrSlackRefused.Error()+": "))
+		case errors.Is(err, platform.ErrAlreadyLinked):
+			fail(w, http.StatusConflict, "that Slack app is already connected")
+		default:
+			s.problem(w, err)
+		}
+		return
+	}
+	app, err := s.P.AgentSlackApp(r.Context(), who.Tenant, name)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusCreated, app)
 }

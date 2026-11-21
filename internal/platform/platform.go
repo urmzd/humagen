@@ -193,8 +193,11 @@ type Config struct {
 	MentionKinds map[string][]MentionKind
 	// SlackAPI and GitHubAPI build the API a client writes through from its
 	// token. Nil means the real one over HTTP.
-	SlackAPI  func(token string) slack.API
-	GitHubAPI func(token string) github.API
+	SlackAPI func(token string) slack.API
+	// SlackWebAPI is the root of Slack's Web API that linking an agent's own
+	// Slack app asks who a bot token is. Empty means https://slack.com/api.
+	SlackWebAPI string
+	GitHubAPI   func(token string) github.API
 	// PersonalHTTP is the client a person's own tool servers are reached
 	// through. Nil means the default client over HTTP.
 	PersonalHTTP *http.Client

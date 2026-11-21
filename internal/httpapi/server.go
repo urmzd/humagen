@@ -191,6 +191,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/agents/{name}/look", s.authed(auth.AgentsRead, agentNamed(s.seenAgent(s.getAgentLook))))
 	mux.HandleFunc("PUT /api/agents/{name}/look", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.putAgentLook))))
 	mux.HandleFunc("PUT /api/agents/{name}/mark", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.putAgentMark))))
+	mux.HandleFunc("GET /api/agents/{name}/slack-app", s.authed(auth.AgentsRead, agentNamed(s.seenAgent(s.getAgentSlackApp))))
+	mux.HandleFunc("POST /api/agents/{name}/slack-app", s.authed(auth.ClientsWrite, agentNamed(s.seenAgent(s.linkAgentSlackApp))))
 	mux.HandleFunc("GET /api/agents/{name}/history", s.authed(auth.AgentsRead, agentNamed(s.seenAgent(s.agentHistory))))
 	mux.HandleFunc("GET /api/agents/{name}/skills", s.authed(auth.AgentsRead, agentNamed(s.seenAgent(s.getAgentSkillDefaults))))
 	mux.HandleFunc("PUT /api/agents/{name}/skills", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.putAgentSkillDefaults))))

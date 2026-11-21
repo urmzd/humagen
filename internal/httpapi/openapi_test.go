@@ -1029,7 +1029,19 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		return time.Now()
 	}
 	contractBrowser := newBrowserFake(t)
-	f := newFixtureWith(t, platform.Config{Now: now, TestBuiltinProvider: "offline", TestBuiltinModel: "offline", PersonalHTTP: notesServer.Client(), AgentOptions: []native.Option{
+	// Slack's Web API as linking an agent's own app asks it who a bot token is.
+	slackWeb := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/auth.test":
+			_, _ = w.Write([]byte(`{"ok":true,"team_id":"T0CONTRACT","user_id":"U0HELPER","bot_id":"B0HELPER"}`))
+		case "/bots.info":
+			_, _ = w.Write([]byte(`{"ok":true,"bot":{"app_id":"A0HELPER"}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(slackWeb.Close)
+	f := newFixtureWith(t, platform.Config{SlackWebAPI: slackWeb.URL, Now: now, TestBuiltinProvider: "offline", TestBuiltinModel: "offline", PersonalHTTP: notesServer.Client(), AgentOptions: []native.Option{
 		native.WithProvider(native.ProviderOpenAI, func(native.Spec) (saigetypes.Provider, error) {
 			return &agenttest.ScriptedProvider{Responses: [][]saigetypes.Delta{agenttest.TextResponse("Completed the configured setup check.")}}, nil
 		}),
@@ -1718,6 +1730,12 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "PUT", look, "/api/agents/ghost/look", `{"look":{}}`, http.StatusNotFound)
 	c.call(acme, "PUT", look, "/api/agents/helper/look", `{"look":{"greeting":"Hi.","starters":[{"title":"Help","prompt":"Help me."}]}}`, http.StatusOK)
 	c.call(acme, "PUT", look, "/api/agents/helper/look", `{"look":{}}`, http.StatusOK)
+	slackApp := "/api/agents/{name}/slack-app"
+	c.call(acme, "GET", slackApp, "/api/agents/helper/slack-app", "", http.StatusOK)
+	c.call(acme, "GET", slackApp, "/api/agents/ghost/slack-app", "", http.StatusNotFound)
+	c.call(acme, "POST", slackApp, "/api/agents/helper/slack-app", `{"token":{"ref":"env:SLACK_BOT"}}`, http.StatusBadRequest)
+	c.call(acme, "POST", slackApp, "/api/agents/helper/slack-app", `{"token":{"value":"xoxb-helper"},"signing_secret":{"value":"s"}}`, http.StatusCreated)
+	c.call(acme, "POST", slackApp, "/api/agents/helper/slack-app", `{"token":{"value":"xoxb-helper"},"signing_secret":{"value":"s"}}`, http.StatusConflict)
 	mark := "/api/agents/{name}/mark"
 	pngType := []string{"Content-Type", "image/png"}
 	c.call(acme, "PUT", mark, "/api/agents/helper/mark", "\x89PNG\r\n\x1a\nIHDR", http.StatusOK, pngType...)
@@ -2879,7 +2897,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/projects/{name}":                          `{"version":1}`, "/api/projects/{name}/memory": `{"text":"x"}`, "/api/projects/{name}/memory/approve": `{"ids":[]}`,
 		"/api/inbox/{id}/deliveries/{client}": `{"channel":"C0123ABC","ts":"1700000000.000100"}`, "/api/inbox/{id}/dismiss": ``, "/api/inbox/{id}/unhide": ``,
 		"/api/inbox/marks": `{"ids":["m-1"],"mark":"read"}`, "/api/inbox/read-all": `{"view":"inbox"}`,
-		"/api/projects/{name}/agents": `{"version":1}`, "/api/agents/{name}/home": `{"project":""}`, "/api/agents/{name}/look": `{"look":{}}`, "/api/agents/{name}/mark": "\x89PNG\r\n\x1a\n",
+		"/api/projects/{name}/agents": `{"version":1}`, "/api/agents/{name}/home": `{"project":""}`, "/api/agents/{name}/look": `{"look":{}}`, "/api/agents/{name}/slack-app": `{"token":{"value":"xoxb-x"}}`, "/api/agents/{name}/mark": "\x89PNG\r\n\x1a\n",
 		"/api/runs/{id}/calls":                       `{"key":"k9","agent":"helper","text":"hi","mode":"delegate"}`,
 		"/api/runs/{id}/questions/{question}/answer": `{"action":"choose","choice":"red"}`,
 		"/api/alert-rules/{name}":                    `{"kind":"run_failed","severity":"critical"}`,
@@ -3032,6 +3050,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 // it is documented anyway. Keep it short: an entry is a code the server can
 // send that is hard to provoke in a test, never a guess.
 var unexercised = map[string]string{
+	"POST /api/agents/{name}/slack-app 404":              "an agent that does not exist, the same seenAgent and catalog read the GET covers",
 	"PUT /api/agents/{name}/home 409":                    "a home is refused only while the agent's default skills would not fit it; the guard is in platform.homeUsers",
 	"POST /api/sessions 409":                             "governed admission to a deleted project uses the same path tested by POST /api/runs deleted-project response",
 	"POST /api/sessions 200":                             "a chat surface's reply landing in its existing root, covered by TestAChatServiceFindsOrStartsASlackThreadsRootSession",

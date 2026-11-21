@@ -57,6 +57,8 @@
         "app_home_opened",
         "app_mention",
         "assistant_thread_started",
+        "message.channels",
+        "message.groups",
         "message.im"
       ]
     },

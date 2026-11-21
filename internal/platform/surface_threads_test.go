@@ -559,3 +559,34 @@ func TestAMachineHearsOfAnAlertForThePersonItMaps(t *testing.T) {
 		t.Fatalf("the machine hears of the alert for %+v, want %+v", heard, want)
 	}
 }
+
+// A Slack thread stays with the agent it was started for: the one agent a
+// message tags becomes the thread's, the untagged replies after it go to
+// that agent, and tagging another hands the thread to it (RFC 0012).
+func TestASlackThreadStaysWithTheAgentItTagged(t *testing.T) {
+	p, machine := slackRoom(t, nil)
+	const ts = "1700000000.000100"
+	first, err := p.StartThread(t.Context(), machine, fromSlack("D0ANA", ts, "", "<@UAPP> @lead plan the renewal"))
+	if err != nil || len(first.Runs) != 1 || first.Runs[0].Agent != "lead" {
+		t.Fatalf("the first message started %+v, %v", first.Runs, err)
+	}
+	if !slices.Equal(first.Thread.Agents, []string{"lead"}) {
+		t.Fatalf("the thread's agents are %v, want lead", first.Thread.Agents)
+	}
+	// Each reply waits for the answer before it, so none is a follow-up.
+	settle(t, p, first.Runs[0].ID)
+	next, err := p.StartThread(t.Context(), machine, fromSlack("D0ANA", ts, "1700000000.000200", "<@UAPP> and the timeline?"))
+	if err != nil || len(next.Runs) != 1 || next.Runs[0].Agent != "lead" {
+		t.Fatalf("an untagged reply started %+v (%s: %s), %v; want lead", next.Runs, next.Rule, next.Reason, err)
+	}
+	settle(t, p, next.Runs[0].ID)
+	handed, err := p.StartThread(t.Context(), machine, fromSlack("D0ANA", ts, "1700000000.000300", "<@UAPP> @helper take it from here"))
+	if err != nil || len(handed.Runs) != 1 || handed.Runs[0].Agent != "helper" || !slices.Equal(handed.Thread.Agents, []string{"helper"}) {
+		t.Fatalf("tagging another started %+v with agents %v, %v", handed.Runs, handed.Thread.Agents, err)
+	}
+	settle(t, p, handed.Runs[0].ID)
+	after, err := p.StartThread(t.Context(), machine, fromSlack("D0ANA", ts, "1700000000.000400", "<@UAPP> thanks, what next?"))
+	if err != nil || len(after.Runs) != 1 || after.Runs[0].Agent != "helper" {
+		t.Fatalf("after the handover an untagged reply started %+v, %v", after.Runs, err)
+	}
+}
