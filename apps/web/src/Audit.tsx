@@ -8,12 +8,11 @@ import { Label } from "@humagen/render-web/ui/label";
 import { NativeSelect } from "@humagen/render-web/ui/native-select";
 import { useEffect, useState } from "react";
 import type { AuditRecord } from "../../../packages/client/src/generated/types.ts";
-import { AuditSection } from "./AuditSection.tsx";
 import { api, type ReadAuditRecord } from "./api.ts";
-import { auditCSV, changesBeside } from "./audit.ts";
+import { auditCSV, auditLimit, changesBeside } from "./audit.ts";
 import { ReadAudit } from "./ReadAudit.tsx";
 import { href } from "./route.ts";
-import { Page, Problem, SkeletonRows } from "./ui.tsx";
+import { Page, Problem, Section, SkeletonRows } from "./ui.tsx";
 
 /**
  * Workspace changes and authorized break-glass reads on one Audit page.
@@ -71,6 +70,7 @@ export function Audit({
   };
   // A read the section above lists is not a second row here. The export keeps every row.
   const changes = rows && reads ? changesBeside(rows, listed) : rows;
+  const capped = (rows?.length ?? 0) >= auditLimit;
   const download = () => {
     if (!rows) return;
     const url = URL.createObjectURL(
@@ -101,10 +101,11 @@ export function Audit({
   return (
     <Page title={copy.title}>
       {reads && <ReadAudit onListed={setListed} />}
-      <AuditSection
-        id="changes"
+      <Section
+        box
         title={copy.changes}
-        count={changes?.length}
+        count={capped ? undefined : changes?.length}
+        hint={capped ? copy.limited : undefined}
         actions={
           <>
             <Button variant="ghost" size="sm" onClick={() => setRefresh((value) => value + 1)}>
@@ -275,7 +276,7 @@ export function Audit({
             ))}
           </ol>
         )}
-      </AuditSection>
+      </Section>
     </Page>
   );
 }

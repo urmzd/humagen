@@ -2738,6 +2738,7 @@ export const defaultCopy = {
     description:
       "Workspace changes in the last 24 hours. Pending means completion could not yet be confirmed.",
     empty: "No recorded changes in this window.",
+    limited: "Showing at most 100 records, newest first.",
     failed: "The audit could not be loaded.",
     before: "Before",
     after: "After",

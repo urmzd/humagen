@@ -51,8 +51,42 @@ test("Audit loads break-glass records only when authorized", async () => {
   cleanup();
   render(<Audit reads />);
   await screen.findByText(defaultCopy.readAudit.empty);
-  assert.ok(screen.getByRole("heading", { name: /^Workspace changes/ }));
-  assert.ok(screen.getByRole("heading", { name: /^Break-glass reads/ }));
+  // An empty section is headed by its name alone: a count is hidden at zero.
+  assert.ok(screen.getByRole("heading", { name: defaultCopy.audit.changes }));
+  assert.ok(screen.getByRole("heading", { name: defaultCopy.readAudit.title }));
+  assert.equal(screen.queryByText("0"), null);
+  assert.equal(screen.queryByText(defaultCopy.audit.limited), null);
+});
+
+test("a section as long as the server's cap says so and is not counted", async () => {
+  const at = Date.parse("2026-10-22T10:00:00Z");
+  net = stubFetch({
+    "GET /api/audit": () => ({
+      records: Array.from({ length: 100 }, (_, n) => ({
+        id: `audit-${n}`,
+        actor: "ana",
+        at: new Date(at - n * 60_000).toISOString(),
+        action: "memory.edit",
+        resource: "memory",
+        resource_id: `note-${n}`,
+        scope: "personal",
+        outcome: "succeeded",
+      })),
+    }),
+    "GET /api/read-audit": () => ({
+      records: Array.from({ length: 100 }, (_, n) => ({
+        subject: "governor",
+        project: "Secret",
+        route: "GET /api/projects/{name}",
+        at: new Date(at - n * 60_000).toISOString(),
+      })),
+    }),
+  });
+  render(<Audit reads />);
+  await waitFor(() => assert.equal(screen.getAllByText(defaultCopy.audit.limited).length, 2));
+  assert.ok(screen.getByRole("heading", { name: defaultCopy.audit.changes }));
+  assert.ok(screen.getByRole("heading", { name: defaultCopy.readAudit.title }));
+  assert.equal(screen.queryByText("100"), null);
 });
 
 const governorRead = {
@@ -99,7 +133,10 @@ test("a break-glass read is listed once when both sections show", async () => {
   // The reader is named by the reads section alone, and the changes hold the one change.
   assert.equal(screen.getAllByText("governor").length, 1);
   assert.equal(screen.getAllByText("GET /api/projects/{name}").length, 1);
-  const changes = screen.getByRole("region", { name: /^Workspace changes/ });
+  // Each heading carries its own count, read after a pause: "Workspace changes, 1".
+  assert.ok(screen.getByRole("heading", { name: `${defaultCopy.readAudit.title} , 1` }));
+  assert.ok(screen.getByRole("heading", { name: `${defaultCopy.audit.changes} , 1` }));
+  const changes = screen.getByRole("region", { name: `${defaultCopy.audit.changes} , 1` });
   assert.equal(within(changes).getAllByRole("listitem").length, 1);
 });
 

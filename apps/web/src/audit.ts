@@ -1,6 +1,12 @@
 import type { AuditRecord } from "../../../packages/client/src/generated/types.ts";
 import type { ReadAuditRecord } from "./api.ts";
 
+/**
+ * The most records either audit endpoint returns when no limit is asked for.
+ * A list this long may not be all there is, so it is not counted in a heading.
+ */
+export const auditLimit = 100;
+
 /** The action GET /api/audit gives a break-glass read, which GET /api/read-audit also returns. */
 const breakGlassRead = "project.break_glass_read";
 

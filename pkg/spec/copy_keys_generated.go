@@ -369,6 +369,7 @@ var copyKeyList = []string{
 	"audit.failed",
 	"audit.from",
 	"audit.invalidRange",
+	"audit.limited",
 	"audit.open",
 	"audit.outcomes.failed",
 	"audit.outcomes.pending",

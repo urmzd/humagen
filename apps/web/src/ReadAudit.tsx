@@ -1,9 +1,14 @@
 import { defaultCopy } from "@humagen/components";
 import { useEffect, useState } from "react";
-import { AuditSection, auditRow, auditRows } from "./AuditSection.tsx";
 import { api, type ReadAuditRecord } from "./api.ts";
+import { auditLimit } from "./audit.ts";
 import { MessageTime } from "./MessageTime.tsx";
-import { Problem, SkeletonRows } from "./ui.tsx";
+import { Problem, Section, SkeletonRows } from "./ui.tsx";
+
+/** The rows of the section, on hairlines, flush with its header. */
+const auditRows = "flex flex-col divide-y divide-[var(--humagen-rule)]";
+/** One row: what happened on the left, when on the right. */
+const auditRow = "flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2 py-3 first:pt-0 last:pb-0";
 
 /** The last day's recorded exceptional reads, bounded by the server. */
 export function ReadAudit({
@@ -31,8 +36,14 @@ export function ReadAudit({
     };
   }, [onListed]);
   const copy = defaultCopy.readAudit;
+  const capped = (records?.length ?? 0) >= auditLimit;
   return (
-    <AuditSection id="read-audit" title={copy.title} count={records?.length}>
+    <Section
+      box
+      title={copy.title}
+      count={capped ? undefined : records?.length}
+      hint={capped ? defaultCopy.audit.limited : undefined}
+    >
       {failed ? (
         <Problem message={copy.failed} />
       ) : records === null ? (
@@ -64,6 +75,6 @@ export function ReadAudit({
           ))}
         </ol>
       )}
-    </AuditSection>
+    </Section>
   );
 }
