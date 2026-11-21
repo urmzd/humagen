@@ -125,8 +125,9 @@ func TestACheckAskedForWhileOneRunsStartsNone(t *testing.T) {
 	}
 }
 
-// However many images a workspace checks at once, at most MaxImagePulls
-// pull at a time: they share the sandbox host's Docker daemon.
+// However many images a workspace checks at once, at most
+// MaxTenantImagePulls of its own pull at a time: they share the sandbox
+// host's Docker daemon with every other workspace's.
 func TestImagePullsAreBoundedAcrossImages(t *testing.T) {
 	g := newGatePuller(func(int, string) bool { return true })
 	p := imagesPlatform(t, &isolationtest.Leaser{Dir: t.TempDir()}, g)
@@ -138,12 +139,12 @@ func TestImagePullsAreBoundedAcrossImages(t *testing.T) {
 		}
 		ids = append(ids, img.ID)
 	}
-	for range min(platform.MaxImagePulls, len(ids)) {
+	for range min(platform.MaxTenantImagePulls, len(ids)) {
 		g.waitStarted(t)
 	}
 	time.Sleep(300 * time.Millisecond)
-	if peak := g.peak.Load(); peak > platform.MaxImagePulls {
-		t.Errorf("%d pulls ran at once, want at most %d", peak, platform.MaxImagePulls)
+	if peak := g.peak.Load(); peak != platform.MaxTenantImagePulls {
+		t.Errorf("%d pulls ran at once, want %d", peak, platform.MaxTenantImagePulls)
 	}
 	close(g.gate)
 	for _, id := range ids {

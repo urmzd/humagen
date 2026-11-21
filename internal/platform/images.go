@@ -43,6 +43,9 @@ const (
 	// MaxImagePulls bounds the pulls this process runs at once, for every
 	// workspace: they share the sandbox host's Docker daemon.
 	MaxImagePulls = 3
+	// MaxTenantImagePulls bounds how many of them one workspace has, so
+	// one workspace's slow pulls never hold every place.
+	MaxTenantImagePulls = MaxImagePulls - 1
 )
 
 // imageRepullTimeout bounds one pull of a ready image at start, so a
@@ -245,23 +248,31 @@ func (p *Platform) RemoveImage(_ context.Context, who auth.Principal, id string)
 }
 
 // imageChecks are the image checks under way in this process: at most one
-// per image, at most MaxImagePulls pulling at once, and all of them ended
-// when the platform stops.
+// per image, at most MaxImagePulls pulling at once and MaxTenantImagePulls
+// of one workspace, and all of them ended when the platform stops.
 type imageChecks struct {
 	mu      sync.Mutex
 	ctx     context.Context // every check's; cancelled by stop
 	cancel  context.CancelFunc
 	stopped bool
 	running map[string]bool // tenant and image id
-	pulls   chan struct{}
+	pulling map[string]int  // the pulls under way, by tenant
+	pulls   int             // all of them
+	waiting []*pullWaiter   // the pulls waiting for a place, oldest first
 	wg      sync.WaitGroup
+}
+
+// pullWaiter is one pull waiting for a place; ready closes when it has one.
+type pullWaiter struct {
+	tenant string
+	ready  chan struct{}
 }
 
 func (c *imageChecks) initLocked() {
 	if c.ctx == nil {
 		c.ctx, c.cancel = context.WithCancel(context.Background())
 		c.running = map[string]bool{}
-		c.pulls = make(chan struct{}, MaxImagePulls)
+		c.pulling = map[string]int{}
 	}
 }
 
@@ -295,17 +306,62 @@ func (c *imageChecks) context() context.Context {
 	return c.ctx
 }
 
-// pull waits for room to pull, and returns what gives it back.
-func (c *imageChecks) pull(ctx context.Context) (func(), error) {
+// pull waits for a place to pull in, and returns what gives it back. A
+// place that frees goes to the waiting workspace with the fewest pulls
+// under way, the longest waiting first among equals, and never to one that
+// already has MaxTenantImagePulls: a workspace with many slow pulls waits
+// behind its own, not in front of everyone else's.
+func (c *imageChecks) pull(ctx context.Context, tenant string) (func(), error) {
+	w := &pullWaiter{tenant: tenant, ready: make(chan struct{})}
 	c.mu.Lock()
 	c.initLocked()
-	pulls := c.pulls
+	c.waiting = append(c.waiting, w)
+	c.placeLocked()
 	c.mu.Unlock()
+	done := sync.OnceFunc(func() {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		c.pulling[tenant]--
+		if c.pulling[tenant] == 0 {
+			delete(c.pulling, tenant)
+		}
+		c.pulls--
+		c.placeLocked()
+	})
 	select {
-	case pulls <- struct{}{}:
-		return func() { <-pulls }, nil
+	case <-w.ready:
+		return done, nil
 	case <-ctx.Done():
-		return nil, ctx.Err()
+	}
+	c.mu.Lock()
+	i := slices.Index(c.waiting, w)
+	if i >= 0 {
+		c.waiting = slices.Delete(c.waiting, i, i+1)
+	}
+	c.mu.Unlock()
+	if i < 0 {
+		done() // it was given a place as ctx ended
+	}
+	return nil, ctx.Err()
+}
+
+// placeLocked gives the free places to those waiting.
+func (c *imageChecks) placeLocked() {
+	for c.pulls < MaxImagePulls {
+		next := -1
+		for i, w := range c.waiting {
+			if c.pulling[w.tenant] < MaxTenantImagePulls && (next < 0 || c.pulling[w.tenant] < c.pulling[c.waiting[next].tenant]) {
+				next = i
+			}
+		}
+		if next < 0 {
+			return
+		}
+		w := c.waiting[next]
+		c.waiting = slices.Delete(c.waiting, next, next+1)
+		c.pulling[w.tenant]++
+		c.pulls++
+		close(w.ready)
 	}
 }
 
@@ -325,9 +381,7 @@ func (c *imageChecks) stop() {
 func (p *Platform) checkImageLater(tenant, id string, n int64) {
 	go func() {
 		defer p.imageChecks.release(tenant, id)
-		ctx, cancel := context.WithTimeout(p.imageChecks.context(), imageCheckTimeout)
-		defer cancel()
-		p.checkImage(ctx, tenant, id, n)
+		p.checkImage(p.imageChecks.context(), tenant, id, n)
 	}()
 }
 
@@ -335,7 +389,9 @@ func (p *Platform) checkImageLater(tenant, id string, n int64) {
 var errStopped = errors.New("the server stopped before the check finished; check it again")
 
 // checkImage pulls an image, pins it and starts it once, and keeps what
-// came of it while it is the image's latest check, n.
+// came of it while it is the image's latest check, n. Its ImageCheckTimeout
+// starts when it has a place to pull in, not while it waits for one: a
+// check is never failed for the time other pulls took.
 func (p *Platform) checkImage(ctx context.Context, tenant, id string, n int64) {
 	img, err := p.Images.Get(tenant, id)
 	if err != nil || img.Checks != n {
@@ -345,10 +401,12 @@ func (p *Platform) checkImage(ctx context.Context, tenant, id string, n int64) {
 	// The registries allowed may have narrowed since it was added.
 	if err = images.CheckRef(img.Ref, p.cfg.SandboxImages.Registries); err != nil {
 		err = fmt.Errorf("this deployment no longer allows it: %s", strings.TrimPrefix(err.Error(), images.ErrInvalid.Error()+": "))
-	} else if done, perr := p.imageChecks.pull(ctx); perr != nil {
+	} else if done, perr := p.imageChecks.pull(ctx, tenant); perr != nil {
 		err = perr
 	} else {
-		digest, err = p.probeImage(ctx, tenant, img)
+		timed, cancel := context.WithTimeout(ctx, imageCheckTimeout)
+		digest, err = p.probeImage(timed, tenant, img)
+		cancel()
 		done()
 	}
 	if err != nil && p.imageChecks.context().Err() != nil {
@@ -522,15 +580,16 @@ func (p *Platform) PullReadyImages(ctx context.Context) {
 	})
 }
 
-// repull pulls a ready image by its digest, within imageRepullTimeout.
+// repull pulls a ready image by its digest, within imageRepullTimeout of
+// having a place to pull in.
 func (p *Platform) repull(ctx context.Context, tenant string, img images.Image) error {
-	ctx, cancel := context.WithTimeout(ctx, imageRepullTimeout)
-	defer cancel()
-	done, err := p.imageChecks.pull(ctx)
+	done, err := p.imageChecks.pull(ctx, tenant)
 	if err != nil {
 		return err
 	}
 	defer done()
+	ctx, cancel := context.WithTimeout(ctx, imageRepullTimeout)
+	defer cancel()
 	cred, _ := p.secrets.Get(tenant, imageOwner(img.ID), "pull")
 	if _, err = p.cfg.SandboxImages.Puller.Pull(ctx, img.Digest, cred); err != nil {
 		return errors.New(redact(err.Error(), cred))
