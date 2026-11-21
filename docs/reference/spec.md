@@ -282,9 +282,28 @@ credential, pinned to the digest it resolved to, and started once to prove it
 has `sh` and `sleep`. Sessions run the digest, so every sandbox host runs the
 same bytes, and the server pulls every ready image again when it starts.
 
-A pull is given the workspace's credential or none: never a registry login
-of the machine the server runs on (its Docker configuration, credential
-helpers and `DOCKER_AUTH_CONFIG` are kept from it). A registry mirror with
+Taking a registry out of `image_registries` stops every image from it, from
+the next start: it is not pulled, so the workspace's credential is sent
+nowhere, it is not kept warm, and it shows as failed with the reason in
+Settings and beside the composer. A new session in it is refused, and a
+session already in it is refused its next sandbox (409). Nothing kept of the
+image changes, so putting the registry back brings back, unchecked, an image
+that was ready. One an administrator checked again while its registry was
+not allowed is kept as failed, and needs a check that passes.
+
+The pulls the server makes (an image's check, and a ready image when the
+server starts) are given the workspace's credential or none: never a
+registry login of the machine the server runs on (its Docker configuration,
+credential helpers and `DOCKER_AUTH_CONFIG` are kept from them). Starting an
+instance is different. When a sandbox host does not hold the digest a
+session runs (another replica's daemon, images pruned from the host, a pull
+at start that failed), the `docker run` that starts the instance fetches it,
+and that uses the machine's Docker configuration, its logins included. It
+can fetch only a digest the workspace's own pull already resolved and its
+check passed, never an image the workspace could not read; and where the
+machine has no login for the registry, a private image does not start on
+such a host. The follow-up is in saige: start instances with `--pull=never`,
+or with a configuration of their own. A registry mirror with
 credentials of its own in the daemon's configuration is the daemon's, and
 serves every workspace. At most three pulls run at once, two of one
 workspace, and a check has ten minutes from when its pull starts. A check
@@ -294,7 +313,14 @@ in the server's log only.
 Checking a ready image again never takes it away: sessions run the digest
 its last good check pinned until a check passes and moves it, and a check
 again that fails says why beside the image. A check whose process died is
-started again by another within a few minutes.
+started again by another within a few minutes, and one a server was stopped
+in the middle of (a deploy) is not failed: the next process to look, within a
+minute, starts it again. A check says it is alive every 20 seconds and
+counts as dead after 90, by the clocks of the servers, so they must agree to
+within about a minute. Past that a check still running on one server is
+started once more on another; the later one's result is the one kept. The
+look across workspaces reads at most 10,000 that have added an image, and
+logs a warning past that.
 
 A workspace keeps at most three of its images warm. Only those have idle
 instances: `warm` of them (one by default) for each shape of instance the
@@ -303,7 +329,11 @@ servers. Unmarking an image, removing it, or a check moving it to another
 digest destroys them, on every server process within a minute. Any other
 image starts when a session's tool first needs it, and checking an image
 leaves nothing started. Instances of workspaces' images leased at once are
-bounded by `max`, apart from the default image's own `max`.
+bounded by `max`, apart from the default image's own `max`. Idle warm
+instances are outside both, and nothing caps them across the deployment:
+they grow with the number of workspaces, up to three warm images times
+`warm` times the two shapes for each. Size a sandbox host for twice `max`
+plus those.
 
 Flags override the block: `-sandbox`, `-sandbox-runtime`,
 `-sandbox-insecure-development-runtime`, `-sandbox-image`,
