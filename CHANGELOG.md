@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.176.1 (2026-11-21)
+
+### Bug Fixes
+
+- **slack**: follow a thread only once Slack holds the app's answer (#469) ([4f35b63](https://github.com/urmzd/humagen/commit/4f35b63ead581b9c1838bb39f0206d77d23cd26e))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.176.0...v0.176.1)
+
+
 ## 0.174.2 (2026-11-21)
 
 ### Bug Fixes
