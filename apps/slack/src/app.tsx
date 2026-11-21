@@ -190,6 +190,12 @@ interface Job {
   notTheirs?: boolean;
   /** A mention in a channel thread: what people said there since the app was last asked goes with it. */
   history?: boolean;
+  /**
+   * A mention, or a reply in a followed thread: once the app has answered it,
+   * the thread is followed for the person who asked. A refusal, a failure or
+   * a turn that never ran answered nothing, so it follows nothing.
+   */
+  follows?: boolean;
 }
 
 type Item =
@@ -479,7 +485,7 @@ export class App {
   private readonly named = new Map<string, string>();
   /**
    * The channel threads this app answered a mention in, and who asked it
-   * there last. A reply from that person in such a thread is taken as asked,
+   * there last. A thread is followed only once an answer is posted there. A reply from that person in such a thread is taken as asked,
    * without a mention (RFC 0012): someone talking to the agent need not
    * mention the app on every reply, and people talking to each other in the
    * thread are never answered. Forgotten on a restart.
@@ -1007,8 +1013,8 @@ export class App {
       key: eventKey(session, event.ts),
       // A direct message is always addressed to the app, so only a channel thread has more to read.
       history: (event.type === "app_mention" || following) && session.threadTs !== event.ts,
+      follows: event.type === "app_mention" || following,
     });
-    if (event.type === "app_mention" || following) this.follow(session, event.user);
   }
 
   private readonly skillChannels = new Map<string, string>();
@@ -1372,6 +1378,8 @@ export class App {
     await this.plans.settle(run.id, turn);
     this.native = this.native && presenter.streaming;
     if (this.chrome.has(job.session.channel)) void this.chrome.settle(job.session.channel, run);
+    // Answered, or still answering after what it posted: the asker's next reply needs no mention.
+    if (job.follows && (stalled || turn.status === "done")) this.follow(job.session, job.user);
     if (stalled) {
       this.track(this.later(run, following, presenter));
       // The thread is not held for it. A later message follows it in the conversation,
