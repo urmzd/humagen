@@ -850,11 +850,15 @@ export function Connections({
           {/*
             An app's status and controls wrap as one, to the row's end, so its menu never
             drops alone under the logo. The group takes no clicks: its gaps still open the row.
+            In a column narrower than the group it wraps inside the row, the status first, so the
+            menu still ends the row beside its action.
           */}
           {(it.pill || it.action || it.menu.length > 0) && (
             <span
               className={
-                scope === "apps" ? "ml-auto flex shrink-0 items-center gap-x-3" : "contents"
+                scope === "apps"
+                  ? "ml-auto flex max-w-full shrink-0 flex-wrap items-center justify-end gap-x-3 gap-y-1"
+                  : "contents"
               }
             >
               {it.pill && (
@@ -862,41 +866,48 @@ export function Connections({
                   <Pill tone={it.pill.tone}>{it.pill.text}</Pill>
                 </span>
               )}
-              {it.action &&
-                (scope !== "apps" && ADDS.has(it.action.label) ? (
-                  <button
-                    type="button"
-                    aria-label={it.action.label}
-                    title={`${it.action.label} ${it.name}`}
-                    disabled={it.action.disabled}
-                    onClick={it.action.run}
-                    className="relative z-10 inline-flex size-8 shrink-0 items-center justify-center rounded-aui text-aui-muted transition-colors hover:bg-aui-bg hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent disabled:opacity-50 pointer-coarse:size-11"
-                  >
-                    <PlusIcon size={16} />
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    className={`${button} relative z-10 shrink-0`}
-                    disabled={it.action.disabled}
-                    onClick={it.action.run}
-                  >
-                    {it.action.label}
-                  </button>
-                ))}
-              {it.menu.length > 0 && (
-                <span className="relative z-10 shrink-0">
-                  <MoreMenu
-                    items={it.menu.map((m) => ({
-                      label: m.label,
-                      onSelect: m.run,
-                      destructive: m.destructive,
-                      disabled: busy && m.destructive,
-                    }))}
-                    label={`More for ${it.name}`}
-                  />
-                </span>
-              )}
+              {/* The action and its menu stay on one line; elsewhere they are plain row items. */}
+              <span
+                className={
+                  scope === "apps" ? "flex shrink-0 items-center gap-x-3 empty:hidden" : "contents"
+                }
+              >
+                {it.action &&
+                  (scope !== "apps" && ADDS.has(it.action.label) ? (
+                    <button
+                      type="button"
+                      aria-label={it.action.label}
+                      title={`${it.action.label} ${it.name}`}
+                      disabled={it.action.disabled}
+                      onClick={it.action.run}
+                      className="relative z-10 inline-flex size-8 shrink-0 items-center justify-center rounded-aui text-aui-muted transition-colors hover:bg-aui-bg hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent disabled:opacity-50 pointer-coarse:size-11"
+                    >
+                      <PlusIcon size={16} />
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className={`${button} relative z-10 shrink-0`}
+                      disabled={it.action.disabled}
+                      onClick={it.action.run}
+                    >
+                      {it.action.label}
+                    </button>
+                  ))}
+                {it.menu.length > 0 && (
+                  <span className="relative z-10 shrink-0">
+                    <MoreMenu
+                      items={it.menu.map((m) => ({
+                        label: m.label,
+                        onSelect: m.run,
+                        destructive: m.destructive,
+                        disabled: busy && m.destructive,
+                      }))}
+                      label={`More for ${it.name}`}
+                    />
+                  </span>
+                )}
+              </span>
             </span>
           )}
         </li>
