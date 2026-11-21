@@ -35,6 +35,7 @@ import {
   Section,
   type SessionChoice,
   SessionSections,
+  ShowMoreList,
 } from "./SessionSections.tsx";
 import {
   type Output,
@@ -385,24 +386,27 @@ function Summary({
           summary={summary}
           open={panel.open}
           chosen={panel.chosen}
+          origin={origin}
           outputs={
             outputs.length > 0 ? (
               <Section label={words.outputs} testId="outputs">
-                {outputs.map((o) => (
-                  <Row
-                    key={o.key}
-                    testId="details-output"
-                    mark={outputMark[o.kind]}
-                    label={o.title}
-                    value={o.type}
-                    href={o.url}
-                    onOpen={
-                      o.artifactId && onOpenFile
-                        ? () => onOpenFile(o.artifactId as string)
-                        : undefined
-                    }
-                  />
-                ))}
+                <ShowMoreList items={outputs}>
+                  {(o) => (
+                    <Row
+                      key={o.key}
+                      testId="details-output"
+                      mark={outputMark[o.kind]}
+                      label={o.title}
+                      value={o.type}
+                      href={o.url}
+                      onOpen={
+                        o.artifactId && onOpenFile
+                          ? () => onOpenFile(o.artifactId as string)
+                          : undefined
+                      }
+                    />
+                  )}
+                </ShowMoreList>
               </Section>
             ) : null
           }
