@@ -6,6 +6,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { pages, site } from "../src/content/site.ts";
+import { terms, termsDate } from "../src/content/terms.ts";
 
 const dist = new URL("../dist", import.meta.url).pathname;
 const built = [
@@ -55,8 +56,13 @@ for (const b of built) {
     assert.equal(meta(html, "og:image:width"), "1200");
     assert.equal(meta(html, "og:image:height"), "630");
     if (b.page) {
-      assert.equal(meta(html, "og:url"), new URL(b.page.path, site.url).href);
+      const canonical = new URL(b.page.path, site.url).href;
+      assert.equal(meta(html, "og:url"), canonical);
       assert.equal(meta(html, "og:title"), b.page.title);
+      assert.ok(html.includes(`<link rel="canonical" href="${canonical}">`), "canonical");
+      assert.ok(
+        readFileSync(join(dist, "sitemap.xml"), "utf8").includes(`<loc>${canonical}</loc>`),
+      );
     }
   });
 
@@ -76,3 +82,10 @@ for (const b of built) {
     });
   }
 }
+
+test("the terms page shows its text and the day it changed", () => {
+  const html = readFileSync(join(dist, "terms/index.html"), "utf8");
+  assert.ok(html.includes(`<time datetime="${terms.updated}">${termsDate()}</time>`));
+  for (const s of terms.sections) assert.ok(html.includes(`id="${s.id}"`), s.id);
+  assert.match(html, /is AI and can make mistakes/);
+});

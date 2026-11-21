@@ -25,13 +25,13 @@ pnpm --filter @humagen/site typecheck
 
 ## Where things live
 
-- `src/content/site.ts`: every fact and every line of copy. Pages, metadata and `llms.txt` read it, so change copy there, not in a page. Inline code is written in backticks and bold in `**`, rendered by `src/lib/inline.ts`.
+- `src/content/site.ts`: every fact and every line of copy, but the terms page's, which is in `src/content/terms.ts` so that page's history is its own. Pages, metadata and `llms.txt` read it, so change copy there, not in a page. Inline code is written in backticks and bold in `**`, rendered by `src/lib/inline.ts`.
 - `src/lib/llms.ts`: builds `llms.txt` from the content module.
 - `src/lib/og.ts`: draws each page's social preview from its `card` in the content module, the Humagen mark, the console's light tokens (read from render-web's `theme.css`) and the IBM Plex `.woff` files, with satori and resvg. The file name carries a hash of the image, because the deploy caches images as immutable. `src/layouts/Base.astro` writes the Open Graph and Twitter tags.
 - `src/styles/global.css`: imports the console's theme and fonts, and adds the few rules a document page needs.
 - `src/assets/console/` and `public/demo/`: real console screens and the hero recording, light and dark, written by `make showcase` from a live preview on real models (`scripts/screens/showcase-live.ts`). Astro converts the screens to WebP at build.
 
-Facts come from the repository: the README, `docs/guides/deploy.md`, `docs/reference/spec.md` and the status table in `docs/architecture/overview.md`. When one of those changes, change the content module with it. Do not add a claim the repository does not support.
+Facts come from the repository: the README, `docs/guides/deploy.md`, `docs/reference/spec.md` and the status table in `docs/architecture/overview.md`; the terms also from `LICENSE` and `SECURITY.md`. When one of those changes, change the content module with it. Do not add a claim the repository does not support.
 
 ## Design
 

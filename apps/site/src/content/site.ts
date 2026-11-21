@@ -2,7 +2,8 @@
 // llms.txt say the same thing. Inline code is written in backticks and
 // rendered by src/lib/inline.ts. The repository is the source of truth:
 // README.md, docs/guides/deploy.md, docs/reference/spec.md and the status
-// table in docs/architecture/overview.md.
+// table in docs/architecture/overview.md. The terms page's text is in
+// terms.ts, beside this file, so its history is its own.
 
 export const site = {
   name: "Humagen",
@@ -47,89 +48,13 @@ export const pages = {
     path: "/terms",
     title: "Terms | Humagen",
     description:
-      "The terms for Humagen: open source under the Apache License 2.0, run by you, with agents on AI models whose answers can be wrong.",
+      "What the Apache License 2.0 gives you, what an AI answer is, and who answers for a Humagen deployment.",
     card: {
       title: "Terms",
-      line: "Open source under the Apache License 2.0, run by you. AI answers can be wrong.",
+      line: "Open source under the Apache License 2.0, self-hosted. AI answers can be wrong.",
     },
   },
 } satisfies Record<string, Page>;
-
-/**
- * The terms page. Plain statements of what the repository supports: the
- * license, who runs a deployment and what an AI answer is. It names no
- * company, court or contact the project does not have.
- */
-export const terms = {
-  heading: "Terms",
-  /** The day the text last changed, shown on the page. */
-  updated: { iso: "2026-11-21", label: "November 21, 2026" },
-  intro: [
-    "Humagen is open source software that you run yourself. These terms cover the software, this website and the documentation.",
-    "By using any of them you agree to these terms. If you do not agree, do not use them.",
-  ],
-  sections: [
-    {
-      id: "license",
-      title: "The software is under the Apache License 2.0",
-      body: [
-        "You may use, change and share Humagen as the Apache License 2.0 allows. The license is the agreement for the software. Where these terms and the license differ, the license decides.",
-        "The software comes as is, with no warranty of any kind. The license also limits what its contributors are liable for. Read both parts before you depend on Humagen.",
-      ],
-      link: { label: "Read the Apache License 2.0", href: `${site.repo}/blob/main/LICENSE` },
-    },
-    {
-      id: "ai",
-      title: "Humagen is AI and can make mistakes",
-      body: [
-        "Agents in Humagen answer with AI models. An answer can be wrong, incomplete or out of date, and it can sound sure when it is wrong.",
-        "Check an answer before you rely on it. Humagen does not give legal, medical, financial or other professional advice.",
-        "An agent can act with the tools and permissions it is given. You are responsible for what you ask an agent to do, what you approve, and what you do with its work.",
-      ],
-    },
-    {
-      id: "deployment",
-      title: "Each deployment has its own operator",
-      body: [
-        "The person or organization that sets up a Humagen deployment is its operator. The Humagen project does not run your deployment.",
-        "The operator decides who may sign in, which models and tools agents use, what is recorded and how long it is kept. If you use a deployment that someone else runs, their terms and policies apply to you there.",
-      ],
-    },
-    {
-      id: "services",
-      title: "Other services have their own terms",
-      body: [
-        "A deployment calls the model providers and the services its operator connects, such as Slack or GitHub. Each of those has its own terms and prices. The operator is responsible for following them and for the cost.",
-      ],
-    },
-    {
-      id: "site",
-      title: "This website and the documentation",
-      body: [
-        "This website and the documentation describe the software as well as we can, and they can be wrong or out of date. They also come as is, with no warranty.",
-      ],
-    },
-    {
-      id: "changes",
-      title: "Changes to these terms",
-      body: [
-        "These terms can change. This page shows the day they last changed, and the repository keeps every earlier version.",
-      ],
-      link: {
-        label: "See the history of this page",
-        href: `${site.repo}/commits/main/apps/site/src/content/site.ts`,
-      },
-    },
-    {
-      id: "questions",
-      title: "Questions",
-      body: [
-        "Ask a question or report a problem on GitHub. Report a security problem privately, as the security policy says.",
-      ],
-      link: { label: "Ask on GitHub", href: `${site.repo}/issues` },
-    },
-  ],
-};
 
 /** The published guides, and where questions go. */
 export const docs = { label: "Docs", href: "https://docs.withhumagen.com/" };

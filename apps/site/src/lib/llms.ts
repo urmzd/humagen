@@ -19,6 +19,7 @@ import {
   steps,
   why,
 } from "../content/site.ts";
+import { terms, termsDate } from "../content/terms.ts";
 
 const url = (path: string) => new URL(path, site.url).href;
 const fence = (lang: string, text: string) => `\`\`\`${lang}\n${text}\n\`\`\``;
@@ -76,5 +77,12 @@ export function llmsTxt(): string {
   out.push(`## ${limits.heading}`, "", limits.intro, "");
   for (const l of limits.items) out.push(`- ${l}`);
   out.push("", `[${limits.link.label}](${limits.link.href})`, "");
+
+  out.push(`## ${terms.heading}`, "", `${terms.changed} ${termsDate()}.`, "");
+  out.push(...terms.intro.flatMap((p) => [p, ""]));
+  for (const t of terms.sections) {
+    out.push(`### ${t.title}`, "", ...t.body.flatMap((p) => [p, ""]));
+    for (const l of t.links ?? []) out.push(`[${l.label}](${l.href})`, "");
+  }
   return out.join("\n");
 }

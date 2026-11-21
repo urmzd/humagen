@@ -1,5 +1,6 @@
 ---
-import { pages, terms } from "../content/site";
+import { pages } from "../content/site";
+import { terms, termsDate } from "../content/terms";
 import Base from "../layouts/Base.astro";
 import { inline } from "../lib/inline";
 
@@ -14,7 +15,7 @@ const section = "flex min-w-0 flex-col gap-4 border-t border-aui-border pt-10";
         {terms.heading}
       </h1>
       <p class="text-aui-sm text-aui-muted">
-        Last changed <time datetime={terms.updated.iso}>{terms.updated.label}</time>
+        {terms.changed} <time datetime={terms.updated}>{termsDate()}</time>
       </p>
       <div class="flex max-w-[70ch] flex-col gap-3 text-aui-base text-aui-muted">
         {terms.intro.map((p) => <p>{p}</p>)}
@@ -30,11 +31,11 @@ const section = "flex min-w-0 flex-col gap-4 border-t border-aui-border pt-10";
             {s.body.map((p) => (
               <p set:html={inline(p)} />
             ))}
-            {s.link && (
+            {s.links?.map((l) => (
               <p>
-                <a href={s.link.href}>{s.link.label}</a>
+                <a href={l.href}>{l.label}</a>
               </p>
-            )}
+            ))}
           </div>
         </section>
       ))
