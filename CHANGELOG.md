@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.173.0 (2026-11-21)
+
+### Breaking
+
+- **console**: a project's page is a chat landing page (#484) ([d066269](https://github.com/urmzd/humagen/commit/d066269c514a7cf2064f0469ba763ec27f7fad98))
+
+### Performance
+
+- **api**: read a conversation list's first runs in batches, stop when the page is full (#417) ([e217141](https://github.com/urmzd/humagen/commit/e217141e94c79774b56c1bb44ecdf98da1a49a48))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.172.0...v0.173.0)
+
+
 ## 0.169.0 (2026-11-21)
 
 ### Features
