@@ -653,7 +653,15 @@ export function AgentDetail({
               <AgentGeneral
                 revision={revision}
                 canWrite={editable || (canWrite && builtin)}
-                builtin={builtin}
+                // The platform writes it again (its own, a Store package's, the
+                // platform file's), so it is paused, never retired.
+                builtin={
+                  builtin ||
+                  !!revision.package ||
+                  [revision, ...history].some(
+                    (r) => r.created_by === "file" || r.created_by === "startup",
+                  )
+                }
                 onTab={setTab}
                 onRetired={() => onRetired?.()}
               />
