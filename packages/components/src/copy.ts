@@ -3226,6 +3226,52 @@ export const defaultCopy = {
       scheduled: "From a schedule",
       assignment: "From an assignment",
     },
+    /** Where a session started, short, on the row's second line beside its time. */
+    sourceShort: {
+      console: "Console",
+      slack: "Slack",
+      slack_dm: "Slack DM",
+      github: "GitHub",
+      scheduled: "Schedule",
+      assignment: "Assignment",
+    },
+    /** A row's state in words, on its own line (DES-054). */
+    state: {
+      waitingYou: (what: string, kind?: "approval" | "question") =>
+        !what
+          ? "Waiting for you"
+          : kind === "approval"
+            ? `Waiting for you: approve ${what}`
+            : `Waiting for you: ${what}`,
+      waitingOther: (what: string, kind?: "approval" | "question") =>
+        !what
+          ? "Waiting for someone"
+          : kind === "approval"
+            ? `Waiting for approval: ${what}`
+            : `Waiting for an answer: ${what}`,
+      failed: (reason: string) => (reason ? `Failed: ${reason}` : "Failed"),
+      working: "Working",
+      alert: (title: string) => `Alert: ${title}`,
+      /** The dot on the right, for a screen reader and its tooltip. */
+      dot: {
+        you: "Waiting for you",
+        failed: "Failed, not yet read",
+        unread: "Unread",
+      },
+    },
+    /** The sections of the sidebar's list, each with its count. */
+    participated: "Participated",
+    recent: "Recent",
+    /** A count of sessions when more are left to load. */
+    countMore: (count: number) => `${count}+`,
+    /** The list's views, in its filter menu. */
+    views: {
+      flat: "Recent",
+      recents: "By day",
+      projects: "By project",
+    },
+    /** The handle on the sidebar's edge. */
+    resize: "Resize sidebar",
     /** An open alert on a session, by how urgent it is. */
     alert: {
       urgent: "Urgent alert",

@@ -1,6 +1,5 @@
 import { defaultCopy } from "@humagen/components";
 import {
-  AlertTriangleIcon,
   ArchiveIcon,
   BellIcon,
   BotIcon,
@@ -10,7 +9,6 @@ import {
   ChevronRightIcon,
   EllipsisIcon,
   GitHubIcon,
-  HandIcon,
   HistoryIcon,
   LayersIcon,
   ListChecksIcon,
@@ -44,13 +42,14 @@ import { agentShown, type Branding, servedBranding } from "./branding.ts";
 import {
   age,
   GROUP_ROWS,
+  isUnread,
   type ListView,
   partition,
   projectOrder,
   type RowSource,
-  type RowStanding,
+  type RowState,
   rowSource,
-  standingOf,
+  rowState,
 } from "./conversationList.ts";
 import { daysAgo } from "./format.ts";
 import { useMarks } from "./marks.ts";
@@ -59,6 +58,7 @@ import { type Standing, useRecents, useRecentsRow } from "./recents.ts";
 import { href, type Route, type Page as RoutePage } from "./route.ts";
 import { type Alert, holdsAnAlertOnly, openAlert, orderAlerts } from "./sessionCenter.ts";
 import { Avatar, workspaceSettingsRoute } from "./settingsLinks.tsx";
+import { applySidebarWidth, SIDEBAR_WIDTH, storedSidebarWidth } from "./sidebarState.ts";
 import { AgentMark, type Flash, FlashNote, Popover, SkeletonRows, useFlash } from "./ui.tsx";
 import { workspaceHub } from "./workspace-navigation.ts";
 
@@ -275,12 +275,14 @@ function ProjectGroup({
 /** The one-time tip that teaches search; dismissed once per person (pkg/marks). */
 
 /**
- * A conversation row's link. Hover tints it; the open row is filled, set in
- * the foreground's weight and marked at its left edge, so the two never read
- * as one. Keyboard focus is a neutral ring drawn inside the row.
+ * A conversation row's link: its title on the first line, when it moved and
+ * where it started on the second, and a line of state when it has one. Hover
+ * tints it; the open row is filled, set in medium weight and marked at its
+ * left edge, so the two never read as one. Keyboard focus is a neutral ring
+ * drawn inside the row.
  */
 const rowLink =
-  "relative flex h-9 pointer-coarse:h-11 w-full items-center gap-2.5 rounded-aui pr-2 pl-2 text-left text-aui-sm text-aui-fg transition-colors hover:bg-aui-hover/60 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-fg/50 aria-[current=page]:bg-aui-hover aria-[current=page]:font-medium before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full aria-[current=page]:before:bg-aui-fg";
+  "relative flex w-full min-w-0 flex-col gap-0.5 rounded-aui py-1.5 pr-1.5 pl-2.5 pointer-coarse:py-2 text-left text-aui-sm text-aui-fg transition-colors hover:bg-aui-hover/60 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-fg/50 aria-[current=page]:bg-aui-hover before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full aria-[current=page]:before:bg-aui-fg";
 
 /** A quiet icon button in a row's hover actions. */
 const rowAction =
@@ -297,57 +299,34 @@ const SOURCE_ICONS: Record<RowSource, ReactNode> = {
 };
 
 /**
- * A row's leading mark: where the session started. Every row has one, so
- * titles start on the same line. Its words are the row's, after the title,
- * for a screen reader, and its tooltip for a mouse.
+ * Where a session started, on its row's second line beside its time: the
+ * place's glyph and its short name, so it reads without a tooltip.
  */
-function SourceMark({ source }: { source: RowSource }) {
+function SourceLabel({ source }: { source: RowSource }) {
   return (
     <span
-      aria-hidden
       data-source={source}
       title={defaultCopy.sidebar.sources[source]}
-      className="inline-flex size-4 shrink-0 items-center justify-center text-aui-muted"
+      className="inline-flex min-w-0 items-center gap-1"
     >
-      {SOURCE_ICONS[source]}
+      <span aria-hidden className="inline-flex size-3.5 shrink-0 items-center justify-center">
+        {SOURCE_ICONS[source]}
+      </span>
+      <span className="truncate">{defaultCopy.sidebar.sourceShort[source]}</span>
     </span>
   );
 }
 
-/**
- * What a row's state asks of the reader, beside its age: waiting on a person,
- * running, or a reply that failed. Red is kept for failure. Unread is the
- * title's weight, not a mark.
- */
-function StateMark({ standing }: { standing: RowStanding }) {
-  if (standing !== "needs" && standing !== "running" && standing !== "failed") return null;
-  const label = defaultCopy.sidebar.standing[standing];
-  return (
-    <span
-      aria-hidden
-      data-standing={standing}
-      title={label}
-      className={`inline-flex size-3.5 shrink-0 items-center justify-center ${
-        standing === "needs" ? "text-aui-warn" : standing === "failed" ? "text-aui-bad" : ""
-      }`}
-    >
-      {standing === "needs" ? (
-        <HandIcon size={13} />
-      ) : standing === "failed" ? (
-        <AlertTriangleIcon size={12} />
-      ) : (
-        <span className="humagen-row-spinner" />
-      )}
-    </span>
-  );
-}
+/** The dot's color: the warning for waiting on the reader, red for an unread failure. */
+const DOT_TONE: Record<NonNullable<RowState["dot"]>, string> = {
+  you: "bg-aui-warn",
+  failed: "bg-aui-bad",
+  unread: "bg-[var(--humagen-unread)]",
+};
 
-/**
- * One conversation on one line: where it started, its title, then what it
- * asks of the reader and how long ago it moved. Hover or focus trades the
- * right side for the ⋮ menu; on a touch screen the ⋮ menu stays and holds
- * Pin, Rename, Archive and Delete.
- */
+/** The state line's color: red says failure, the warning says it waits on someone. */
+const LINE_TONE = { warn: "text-aui-warn", bad: "text-aui-bad", muted: "text-aui-muted" };
+
 /** Today, Yesterday or Earlier, by the reader's own calendar day. */
 export function recentDay(iso: string, now: Date): "today" | "yesterday" | "earlier" {
   const days = daysAgo(iso, now.getTime());
@@ -388,12 +367,11 @@ export function recentGroups(
 
 function TaskRow({
   task,
-  projectLabel,
-  priority,
   current,
   pinned,
   archived = false,
-  standing = "",
+  state = {},
+  unread = false,
   ageText = "",
   source = "console",
   to,
@@ -405,15 +383,16 @@ function TaskRow({
   flash = null,
 }: {
   task: ThreadSummary;
-  /** The project it is in, shown under its title; left out inside a project's group. */
-  projectLabel?: string;
-  priority?: "urgent" | "normal" | "low";
   current: boolean;
   pinned: boolean;
   archived?: boolean;
-  standing?: RowStanding;
+  /** What it says about its state, in words, and its dot. */
+  state?: RowState;
+  /** An agent said something the reader has not read: the title is heavier. */
+  unread?: boolean;
+  /** How long ago it moved, as the second line says it ("5m ago"). */
   ageText?: string;
-  /** Where it started: the row's leading mark. */
+  /** Where it started, on the second line. */
   source?: RowSource;
   /** Its address, so it opens in a new tab as a link does. */
   to: string;
@@ -439,12 +418,10 @@ function TaskRow({
     if (t && t !== task.title) onRename?.(t);
     requestAnimationFrame(() => trigger()?.focus());
   };
-  const said = standing ? words.standing[standing] : "";
-  const alertSaid = priority ? words.alert[priority] : "";
   // Resting the pointer on the row, or holding a finger on it, previews it.
   const peek = usePeek();
   const peekId = `peek-${task.id}`;
-  const unread = standing === "unread";
+  const dotSaid = state.dot ? words.state.dot[state.dot] : "";
   return (
     // A row that is saying something sits over its neighbours and over the
     // section's label, which sticks above the first row, so the note shows.
@@ -480,46 +457,46 @@ function TaskRow({
           aria-describedby={peek.at ? peekId : undefined}
           data-thread-row={task.id}
           aria-current={current ? "page" : undefined}
-          // One line at one height. The age keeps the width the menu button takes, so a
-          // title is cut at the same place at rest and under the pointer. The open row
-          // is filled and marked at its edge; a hovered one is only tinted.
-          className={`${rowLink} ${current || peek.at ? "[@media(pointer:coarse)]:pr-12" : ""}`}
+          // The first line keeps the width the menu button takes at its end, so a title
+          // is cut at the same place at rest and under the pointer.
+          className={rowLink}
         >
-          <SourceMark source={source} />
-          <span
-            data-standing={unread ? "unread" : undefined}
-            className={`min-w-0 flex-1 truncate ${unread ? "font-semibold" : ""}`}
-          >
-            {title}
+          <span className="flex min-w-0 items-center gap-2">
+            <span
+              data-standing={unread ? "unread" : undefined}
+              className={`min-w-0 flex-1 truncate ${unread ? "font-semibold" : ""} ${current ? "font-medium" : ""}`}
+            >
+              {title}
+            </span>
+            <span className="flex h-5 w-7 shrink-0 items-center justify-center">
+              {state.dot && (
+                <span
+                  aria-hidden
+                  data-dot={state.dot}
+                  title={dotSaid}
+                  className={`block size-2 rounded-full ${DOT_TONE[state.dot]} ${hasMenu ? "[@media(pointer:fine)]:group-focus-within/task:invisible [@media(pointer:fine)]:group-hover/task:invisible" : ""}`}
+                />
+              )}
+            </span>
           </span>
           <span
             data-row-age
-            className={`inline-flex shrink-0 items-center justify-end gap-1.5 text-aui-2xs font-normal tabular-nums ${unread ? "text-aui-fg" : "text-aui-muted"}`}
+            className="flex min-w-0 items-center gap-2 pr-7 text-aui-2xs text-aui-muted tabular-nums"
           >
-            {priority && (
-              <span
-                aria-hidden
-                data-alert={priority}
-                title={alertSaid}
-                className={`inline-flex ${priority === "urgent" ? "text-aui-warn" : ""}`}
-              >
-                <BellIcon size={12} />
-              </span>
-            )}
-            <StateMark standing={standing} />
-            {/* Only the age gives way to the ⋮ button, which takes its width; the alert and
-                state marks stay in view, so their tooltips show under the pointer. */}
-            <span
-              data-row-time
-              className={`min-w-6 text-right ${hasMenu ? "[@media(pointer:fine)]:group-focus-within/task:invisible [@media(pointer:fine)]:group-hover/task:invisible" : ""}`}
-            >
-              {ageText}
-            </span>
+            {ageText && <span className="shrink-0">{ageText}</span>}
+            <SourceLabel source={source} />
           </span>
+          {state.line && (
+            <span
+              data-state={state.line.tone}
+              className={`truncate pr-1 text-aui-2xs ${LINE_TONE[state.line.tone]}`}
+            >
+              {state.line.text}
+            </span>
+          )}
           <span className="sr-only">
             , {words.sources[source]}
-            {alertSaid && `, ${alertSaid}`}
-            {said && `, ${said}`}
+            {dotSaid && !state.line && `, ${dotSaid}`}
           </span>
         </a>
       )}
@@ -527,7 +504,7 @@ function TaskRow({
         <div
           ref={actions}
           data-pin-thread={task.id}
-          className="absolute inset-y-0 right-0 flex items-center"
+          className="absolute top-0.5 right-0.5 flex items-center pointer-coarse:top-1"
         >
           <div data-row-menu onPointerDown={peek.close} onFocus={peek.close}>
             <Popover
@@ -699,9 +676,12 @@ function Label({
   children,
   action,
   fold,
+  count,
 }: {
   children: ReactNode;
   action?: ReactNode;
+  /** How many the section holds, after its name ("Pinned 2"). */
+  count?: string | number;
   /** Makes the heading a button that folds its section away and brings it back. */
   fold?: { open: boolean; onToggle: () => void };
 }) {
@@ -714,15 +694,84 @@ function Label({
           data-fold
           aria-expanded={fold.open}
           onClick={fold.onToggle}
-          className="inline-flex min-h-7 min-w-0 items-center gap-1 rounded-aui px-2.5 text-aui-xs text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-fg/50 pointer-coarse:min-h-11"
+          className="inline-flex min-h-7 min-w-0 items-center gap-1.5 rounded-aui px-2.5 text-aui-xs font-medium text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-fg/50 pointer-coarse:min-h-11"
         >
           <span className="min-w-0 truncate">{children}</span>
+          {count !== undefined && (
+            <span data-count className="font-normal tabular-nums">
+              {count}
+            </span>
+          )}
           {fold.open ? <ChevronDownIcon size={12} /> : <ChevronRightIcon size={12} />}
         </button>
       ) : (
         <p className="px-2.5 text-aui-xs text-aui-muted">{children}</p>
       )}
       {action}
+    </div>
+  );
+}
+
+/**
+ * The open sidebar's edge on a wide screen, dragged to make the sidebar wider
+ * or narrower between its bounds. With the keyboard it is a separator whose
+ * arrow keys move it 16px, Home and End to its bounds; a double click puts it
+ * back. The width is kept in this browser (sidebarState.ts).
+ */
+function ResizeHandle() {
+  const [width, setWidth] = useState(storedSidebarWidth);
+  const drag = useRef<{ x: number; from: number } | null>(null);
+  const set = (next: number, keep: boolean) => setWidth(applySidebarWidth(next, keep));
+  const step = 16;
+  return (
+    // biome-ignore lint/a11y/useSemanticElements: a vertical separator that moves is a focusable splitter, which <hr> is not
+    <div
+      role="separator"
+      aria-orientation="vertical"
+      aria-label={defaultCopy.sidebar.resize}
+      aria-valuemin={SIDEBAR_WIDTH.min}
+      aria-valuemax={SIDEBAR_WIDTH.max}
+      aria-valuenow={width}
+      tabIndex={0}
+      data-sidebar-resize
+      onPointerDown={(e) => {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        // Kept while the pointer moves off the thin edge; a browser that cannot is still dragged.
+        e.currentTarget.setPointerCapture?.(e.pointerId);
+        drag.current = { x: e.clientX, from: width };
+      }}
+      onPointerMove={(e) => {
+        const d = drag.current;
+        if (d) set(d.from + e.clientX - d.x, false);
+      }}
+      onPointerUp={(e) => {
+        const d = drag.current;
+        drag.current = null;
+        if (d) set(d.from + e.clientX - d.x, true);
+      }}
+      onPointerCancel={() => {
+        drag.current = null;
+      }}
+      onDoubleClick={() => set(SIDEBAR_WIDTH.initial, true)}
+      onKeyDown={(e) => {
+        const next =
+          e.key === "ArrowLeft"
+            ? width - step
+            : e.key === "ArrowRight"
+              ? width + step
+              : e.key === "Home"
+                ? SIDEBAR_WIDTH.min
+                : e.key === "End"
+                  ? SIDEBAR_WIDTH.max
+                  : null;
+        if (next === null) return;
+        e.preventDefault();
+        set(next, true);
+      }}
+      className="group/resize absolute inset-y-0 -right-1 z-30 flex w-2 cursor-col-resize touch-none justify-center outline-none max-md:hidden"
+    >
+      <span className="h-full w-px bg-transparent transition-colors group-hover/resize:bg-aui-fg/25 group-focus-visible/resize:w-0.5 group-focus-visible/resize:bg-aui-fg/50 group-active/resize:bg-aui-fg/40" />
     </div>
   );
 }
@@ -965,6 +1014,7 @@ export function Sidebar({
   // menu answers with a refusal. Work comes first, then what watches it, then
   // what it is built from. A task keeps its own runs, evals live on what they
   // test, and trends live with alerts, so none of those needs a page here.
+  const participatedFold = useFold("humagen.sidebar.participated");
   const pinnedFold = useFold("humagen.sidebar.pinned");
   const recentsFold = useFold("humagen.sidebar.recents");
   const selected = route.page === "conversation" ? route.id : null;
@@ -1024,7 +1074,7 @@ export function Sidebar({
   const { marks, archive: setArchivedMark, read: markRead } = useMarks(can("runs:read"));
   // Sessions are filed under the project they belong to, each a group that folds;
   // the plain list by day is one choice away in the filter.
-  const [view, setView] = useState<ListView>("projects");
+  const [view, setView] = useState<ListView>("flat");
   const [note, setNote] = useState<{ id: string; archived: boolean } | null>(null);
   const [gone, setGone] = useState<Set<string>>(() => new Set());
   const [titles, setTitles] = useState<Record<string, string>>({});
@@ -1099,10 +1149,17 @@ export function Sidebar({
   // Recents is the paged list, so a filter narrows it; the open conversation
   // stays in it even when it is older than what is loaded.
   const archivedSet = new Set(marks.archived);
-  const priorityBySession = new Map<string, Alert["priority"]>();
+  // The most pressing open alert on each session, which its row says in words.
+  const alertBySession = new Map<
+    string,
+    { priority: "urgent" | "normal" | "low"; title: string }
+  >();
   for (const alert of orderAlerts(sessionAlerts.filter(openAlert)))
-    if (alert.session && !priorityBySession.has(alert.session))
-      priorityBySession.set(alert.session, alert.priority ?? "normal");
+    if (alert.session && !alertBySession.has(alert.session))
+      alertBySession.set(alert.session, {
+        priority: alert.priority ?? "normal",
+        title: alert.title,
+      });
   // Recents is newest first. An alert marks its session's row; it does not move
   // it, and a session that only holds an alert is in Alerts, not here.
   const unpinned = [
@@ -1127,6 +1184,10 @@ export function Sidebar({
   ) {
     unpinned.push(currentThread);
   }
+  // Sessions someone else started that the reader joined have their own
+  // section above Pinned; Recent is the rest.
+  const participatedRows = unpinned.filter((t) => t.joined);
+  const recentRows = unpinned.filter((t) => !t.joined);
   // Opening a conversation reads it, and so does staying in it while it moves.
   const selectedUpdated = (selected ? known.get(selected) : undefined)?.updated_at;
   // biome-ignore lint/correctness/useExhaustiveDependencies: a newer update is the reason to mark it read again
@@ -1145,21 +1206,20 @@ export function Sidebar({
   // reader's others, which open to "No conversations". Bounded, as the
   // sidebar is not the project list.
   const projectGroups = projectOrder(
-    unpinned,
+    recentRows,
     projects.slice(0, 12).map((p) => p.name),
   );
-  const row = (t: ThreadSummary, opts: { label: boolean; pinned?: boolean }) => (
+  const row = (t: ThreadSummary, opts: { pinned?: boolean } = {}) => (
     <TaskRow
       key={t.id}
       task={t}
-      projectLabel={sessionMode && opts.label ? projectTitle(t.project) : undefined}
       source={rowSource(t)}
-      priority={priorityBySession.get(t.id)}
       current={isCurrent(t)}
       pinned={opts.pinned ?? false}
       archived={archivedSet.has(t.id)}
-      standing={standingOf(t, marks)}
-      ageText={sessionMode ? age(t.updated_at, now) : ""}
+      state={rowState(t, marks, { session: sessionMode, alert: alertBySession.get(t.id) })}
+      unread={isUnread(t, marks)}
+      ageText={defaultCopy.sidebar.movedAgo(age(t.updated_at, now))}
       to={href({ page: "conversation", id: t.id })}
       onSelect={() => go({ page: "conversation", id: t.id })}
       onPin={
@@ -1221,10 +1281,11 @@ export function Sidebar({
         }
         className={`aui-chrome humagen-glass-bar humagen-sidebar flex h-full min-h-0 shrink-0 flex-col max-md:border-aui-border max-md:border-r ${
           open
-            ? "w-64 max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-50 max-md:w-[min(20rem,85vw)]"
+            ? "relative w-[var(--humagen-sidebar-w)] max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-50 max-md:w-[min(20rem,85vw)]"
             : "w-12 max-md:hidden"
         }`}
       >
+        {open && !drawer && <ResizeHandle />}
         <div
           className={`flex h-12 shrink-0 items-center ${open ? "justify-between pr-2 pl-4.5" : "justify-center"}`}
         >
@@ -1306,12 +1367,28 @@ export function Sidebar({
                 ))}
             </div>
 
+            {open && view !== "archived" && participatedRows.length > 0 && (
+              <section
+                aria-label={defaultCopy.sidebar.participated}
+                className="humagen-sidebar-reveal flex shrink-0 flex-col pt-6"
+              >
+                <Label fold={participatedFold} count={participatedRows.length}>
+                  {defaultCopy.sidebar.participated}
+                </Label>
+                <ul className="px-2" hidden={!participatedFold.open}>
+                  {participatedRows.map((t) => row(t))}
+                </ul>
+              </section>
+            )}
+
             {open && (pinnedRows.length > 0 || readableProjectPins.length > 0) && (
               <section
                 aria-label="Pinned"
                 className="humagen-sidebar-reveal flex shrink-0 flex-col pt-6"
               >
-                <Label fold={pinnedFold}>{defaultCopy.sidebar.pinned}</Label>
+                <Label fold={pinnedFold} count={pinnedRows.length + readableProjectPins.length}>
+                  {defaultCopy.sidebar.pinned}
+                </Label>
                 <ul className="px-2" hidden={!pinnedFold.open}>
                   {readableProjectPins.map((project) => (
                     <li
@@ -1348,7 +1425,7 @@ export function Sidebar({
                       />
                     </li>
                   ))}
-                  {pinnedRows.map((t) => row(t, { label: true, pinned: true }))}
+                  {pinnedRows.map((t) => row(t, { pinned: true }))}
                 </ul>
               </section>
             )}
@@ -1371,7 +1448,7 @@ export function Sidebar({
                       button={
                         <>
                           <SlidersIcon size={14} />
-                          {(filters > 0 || view !== "projects") && (
+                          {(filters > 0 || view !== "flat") && (
                             <span
                               aria-hidden
                               className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-aui-fg"
@@ -1386,8 +1463,9 @@ export function Sidebar({
                             title="View"
                             value={view}
                             options={[
-                              { value: "projects", label: "By project" },
-                              { value: "recents", label: "By day" },
+                              { value: "flat", label: defaultCopy.sidebar.views.flat },
+                              { value: "projects", label: defaultCopy.sidebar.views.projects },
+                              { value: "recents", label: defaultCopy.sidebar.views.recents },
                               {
                                 value: "archived",
                                 label: `${defaultCopy.sidebar.archived}${marks.archived.length ? ` (${marks.archived.length})` : ""}`,
@@ -1420,12 +1498,12 @@ export function Sidebar({
                               onChange={setAgent}
                             />
                           )}
-                          {(filters > 0 || view !== "projects") && (
+                          {(filters > 0 || view !== "flat") && (
                             <button
                               type="button"
                               onClick={() => {
                                 clear();
-                                setView("projects");
+                                setView("flat");
                               }}
                               className="mt-1 rounded-aui border-[var(--humagen-rule)] border-t px-2.5 py-2 text-left text-aui-sm text-aui-fg hover:bg-aui-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-fg/50"
                             >
@@ -1436,12 +1514,17 @@ export function Sidebar({
                       )}
                     </Popover>
                   }
+                  count={
+                    view === "archived"
+                      ? lists.archived.length
+                      : loading === "first" && noConversations
+                        ? undefined
+                        : hasMore
+                          ? defaultCopy.sidebar.countMore(recentRows.length)
+                          : recentRows.length
+                  }
                 >
-                  <span className="py-1 text-aui-xs">
-                    {view === "archived"
-                      ? defaultCopy.sidebar.archived
-                      : defaultCopy.sidebar.recents}
-                  </span>
+                  {view === "archived" ? defaultCopy.sidebar.archived : defaultCopy.sidebar.recent}
                 </Label>
                 {note && (
                   <p
@@ -1500,8 +1583,9 @@ export function Sidebar({
                         : "Your sessions appear here. Start with New."}
                     </li>
                   )}
+                  {view === "flat" && recentRows.map((t) => row(t))}
                   {view === "recents" &&
-                    recentGroups(unpinned, new Date(now)).map((g, i) => (
+                    recentGroups(recentRows, new Date(now)).map((g, i) => (
                       <li
                         key={g.day}
                         className={i === 0 ? "" : "pt-3"}
@@ -1512,7 +1596,7 @@ export function Sidebar({
                         {g.day !== "today" && (
                           <p className="px-2.5 pb-1 text-aui-xs text-aui-muted">{g.label}</p>
                         )}
-                        <ul>{g.items.map((t) => row(t, { label: true }))}</ul>
+                        <ul>{g.items.map((t) => row(t))}</ul>
                       </li>
                     ))}
                   {view === "archived" &&
@@ -1521,11 +1605,11 @@ export function Sidebar({
                         {defaultCopy.sidebar.noArchived}
                       </li>
                     ) : (
-                      lists.archived.map((t) => row(t, { label: true }))
+                      lists.archived.map((t) => row(t))
                     ))}
                   {view === "projects" &&
                     projectGroups.map((project) => {
-                      const inGroup = unpinned.filter((t) => (t.project || "~") === project);
+                      const inGroup = recentRows.filter((t) => (t.project || "~") === project);
                       const all = expanded.has(project);
                       const rows = all ? inGroup : inGroup.slice(0, GROUP_ROWS);
                       return (
@@ -1544,7 +1628,7 @@ export function Sidebar({
                                   {defaultCopy.sidebar.noConversations}
                                 </li>
                               )}
-                              {rows.map((t) => row(t, { label: false }))}
+                              {rows.map((t) => row(t))}
                               {inGroup.length > GROUP_ROWS && (
                                 <li>
                                   <button

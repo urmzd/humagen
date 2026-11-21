@@ -94,7 +94,7 @@ const view = async (name: "Recents" | "Projects" | RegExp) => {
   fireEvent.keyDown(disclosure, { key: "Escape" });
 };
 
-test("Recents lists every project newest first, each row one line with one state mark", async () => {
+test("Recent lists every session newest first: its title, then its time and where it started, and its state in words", async () => {
   const since = new Date(Date.now() - 24 * hour).toISOString();
   const marks: Marks = { archived: [], read: {}, tips: [], since };
   net = stubFetch({
@@ -120,74 +120,38 @@ test("Recents lists every project newest first, each row one line with one state
   assert.ok(screen.getByRole("button", { name: "Filter conversations" }));
   assert.equal(
     screen.getByRole("region", { name: "Sessions" }).getAttribute("data-view"),
-    "projects",
-    "sessions open filed under their projects",
+    "flat",
+    "sessions open newest first; projects are a grouping in the filter",
   );
-  await view("Recents");
   const list = within(await screen.findByRole("list", { name: "Recents" }));
-  const waiting = await list.findByRole("link", { name: /^Waiting on me/ });
+  const names = (await list.findAllByRole("link")).map((a) => a.textContent?.split(/\d|Just/)[0]);
+  assert.deepEqual(names, ["Answered", "Waiting on me", "Still going", "Quiet"]);
+  const waiting = list.getByRole("link", { name: /^Waiting on me/ });
   assert.doesNotMatch(waiting.textContent ?? "", /Spring launch/);
-  assert.match(waiting.textContent ?? "", /Needs you/);
+  assert.equal(waiting.querySelector("[data-state]")?.textContent, "Waiting for you");
+  assert.equal(waiting.querySelector("[data-dot]")?.getAttribute("data-dot"), "you");
   assert.equal(
-    waiting.querySelector("[data-standing]")?.getAttribute("data-standing"),
-    "needs",
-    "waiting on a person has its own still mark",
-  );
-  assert.equal(
-    list
-      .getByRole("link", { name: /^Still going/ })
-      .querySelector("[data-standing]")
-      ?.getAttribute("data-standing"),
-    "running",
+    list.getByRole("link", { name: /^Still going/ }).querySelector("[data-state]")?.textContent,
+    "Working",
   );
   const answered = list.getByRole("link", { name: /^Answered/ });
-  // Unread is the title's weight, not a dot: nothing is marked in the accent.
   await waitFor(() =>
-    assert.equal(
-      answered.querySelector("[data-standing]")?.getAttribute("data-standing"),
-      "unread",
-    ),
+    assert.equal(answered.querySelector("[data-dot]")?.getAttribute("data-dot"), "unread"),
   );
-  assert.equal(answered.querySelector("[data-row-age] [data-standing]"), null);
+  assert.match(answered.querySelector("[data-standing]")?.className ?? "", /font-semibold/);
   assert.match(answered.textContent ?? "", /, Unread$/);
   const quiet = list.getByRole("link", { name: /^Quiet/ });
-  assert.equal(quiet.querySelector("[data-row-age]")?.textContent, "");
-  assert.equal(quiet.querySelector("[data-standing]"), null);
+  assert.match(quiet.querySelector("[data-row-age]")?.textContent ?? "", /ago\s*Console$/);
+  assert.equal(quiet.querySelector("[data-state]"), null);
+  assert.equal(quiet.querySelector("[data-dot]"), null);
+  // The header says how many each section holds.
+  assert.equal(
+    screen.getByRole("button", { name: /^Recent/ }).querySelector("[data-count]")?.textContent,
+    "4",
+  );
 });
 
-test("session rows show relative ages, and an unread reply keeps its age beside a heavier title", async () => {
-  const since = new Date(Date.now() - 24 * hour).toISOString();
-  const rows = [
-    task("s_read", "Read session"),
-    task("s_unread", "Unread reply", { last_agent: true }),
-  ];
-  net = stubFetch({
-    "GET /api/marks": () => ({ archived: [], read: {}, tips: [], since }),
-    "GET /api/sessions": () => ({
-      sessions: rows.map((conversation) => ({
-        id: conversation.id,
-        parent: "console:ada",
-        agent: "lead",
-        title: conversation.title,
-        status: "idle",
-        updated_at: conversation.updated_at,
-        conversation,
-      })),
-      next: "",
-    }),
-  });
-  render(<Bar sessionMode />);
-  await view("Recents");
-  const list = within(await screen.findByRole("list", { name: "Recents" }));
-  const read = await list.findByRole("link", { name: /^Read session/ });
-  assert.equal(read.querySelector("[data-row-age]")?.textContent, "3h");
-  const unread = list.getByRole("link", { name: /^Unread reply/ });
-  await waitFor(() => assert.ok(unread.querySelector('[data-standing="unread"]')));
-  assert.equal(unread.querySelector("[data-row-age]")?.textContent, "3h");
-  assert.match(unread.querySelector('[data-standing="unread"]')?.className ?? "", /font-semibold/);
-});
-
-test("every row leads with where its session started, said in words, never a bare dot", async () => {
+test("a row's second line says how long ago it moved and where it started, in words with its glyph", async () => {
   const rows = [
     task("s_dm", "Repo status", { source: "slack_dm" }),
     task("s_thread", "Deploy rollback", { source: "slack" }),
@@ -212,81 +176,196 @@ test("every row leads with where its session started, said in words, never a bar
     }),
   });
   render(<Bar sessionMode />);
-  await view("Recents");
   const list = within(await screen.findByRole("list", { name: "Recents" }));
-  const expected: [RegExp, string, string][] = [
-    [/^Repo status/, "slack_dm", "From a Slack DM"],
-    [/^Deploy rollback/, "slack", "From a Slack thread"],
-    [/^Review PR 482/, "github", "From GitHub"],
-    [/^Weekly digest/, "scheduled", "From a schedule"],
-    [/^Standing goal/, "assignment", "From an assignment"],
-    [/^Launch plan/, "console", "Started in the console"],
+  const expected: [RegExp, string, string, string][] = [
+    [/^Repo status/, "slack_dm", "Slack DM", "From a Slack DM"],
+    [/^Deploy rollback/, "slack", "Slack", "From a Slack thread"],
+    [/^Review PR 482/, "github", "GitHub", "From GitHub"],
+    [/^Weekly digest/, "scheduled", "Schedule", "From a schedule"],
+    [/^Standing goal/, "assignment", "Assignment", "From an assignment"],
+    [/^Launch plan/, "console", "Console", "Started in the console"],
   ];
-  for (const [name, source, words] of expected) {
+  for (const [name, source, short, words] of expected) {
     const row = await list.findByRole("link", { name });
-    const mark = row.querySelector("[data-source]");
-    assert.equal(mark?.getAttribute("data-source"), source, `${name} leads with its source`);
-    assert.equal(mark?.getAttribute("title"), words, "a mouse reads the source on hover");
-    assert.equal(mark?.getAttribute("aria-hidden"), "true");
-    assert.ok(mark?.querySelector("svg"), "the source is a glyph");
-    // A screen reader hears it after the title, so the row is still found by its title.
+    const meta = row.querySelector("[data-row-age]");
+    const mark = meta?.querySelector("[data-source]");
+    assert.equal(mark?.getAttribute("data-source"), source, `${name} says where it started`);
+    assert.equal(mark?.textContent, short, "the source is written, not only drawn");
+    assert.equal(mark?.getAttribute("title"), words);
+    assert.ok(mark?.querySelector("svg"), "beside its glyph");
+    assert.equal(meta?.textContent, `3h ago${short}`, "after how long ago it moved");
     assert.match(row.textContent ?? "", new RegExp(`, ${words}$`));
-    assert.equal(row.firstElementChild, mark, "the source leads the row");
   }
-  assert.equal(document.querySelector(".humagen-row-dot"), null, "no row carries a dot");
+  for (const glyph of ["!", "•", "|"])
+    assert.ok(
+      ![...document.querySelectorAll("[data-thread-row]")].some((r) =>
+        r.textContent?.includes(glyph),
+      ),
+      `no row carries a bare ${glyph}`,
+    );
 });
 
-test("a row's state is a labelled mark beside its age, red only when a reply failed", async () => {
+test("a row's state is said in words: waiting on you in the warning color, a failure with why in red", async () => {
   const since = new Date(Date.now() - 24 * hour).toISOString();
+  const fresh = new Date().toISOString();
+  const rows = [
+    task("s1", "Approve contract", {
+      active: 1,
+      waiting: 1,
+      waiting_for: "file_write",
+      waiting_kind: "approval",
+      waiting_on_you: true,
+    }),
+    task("s2", "Pick a scope", {
+      active: 1,
+      waiting: 1,
+      waiting_for: "Which repositories should I check?",
+      waiting_kind: "question",
+      waiting_on_you: true,
+    }),
+    task("s3", "Someone else's call", {
+      active: 1,
+      waiting: 1,
+      waiting_for: "deploy",
+      waiting_kind: "approval",
+      waiting_on_you: false,
+    }),
+    task("s4", "Broke", {
+      failed: 1,
+      failure: "provider: rate limited (429)",
+      last_agent: true,
+      updated_at: fresh,
+    }),
+    task("s5", "Recovered", { failed: 1 }),
+    task("s6", "Deploying", { active: 1 }),
+  ];
   net = stubFetch({
     "GET /api/marks": () => ({ archived: [], read: {}, tips: [], since }),
-    "GET /api/threads": () => ({
-      threads: [
-        task("t1", "Approve contract", { active: 1, waiting: 1 }),
-        task("t2", "Deploying", { active: 1 }),
-        task("t3", "Broke", { failed: 1 }),
-        task("t4", "Fresh answer", { last_agent: true, updated_at: new Date().toISOString() }),
-        task("t5", "Nothing new"),
-      ],
-      next: null,
+    "GET /api/sessions": () => ({
+      sessions: rows.map((conversation) => ({
+        id: conversation.id,
+        parent: "console:ada",
+        agent: "lead",
+        title: conversation.title,
+        status: "idle",
+        updated_at: conversation.updated_at,
+        conversation,
+      })),
+      next: "",
     }),
   });
-  render(<Bar />);
-  await view("Recents");
+  render(<Bar sessionMode />);
   const list = within(await screen.findByRole("list", { name: "Recents" }));
-  const mark = async (name: RegExp) =>
-    (await list.findByRole("link", { name })).querySelector<HTMLElement>(
-      "[data-row-age] [data-standing]",
-    );
-  const needs = await mark(/^Approve contract/);
-  assert.equal(needs?.getAttribute("title"), "Needs you");
-  assert.match(needs?.className ?? "", /text-aui-warn/);
-  const running = await mark(/^Deploying/);
-  assert.equal(running?.getAttribute("title"), "Running");
-  assert.ok(running?.querySelector(".humagen-row-spinner"));
-  assert.doesNotMatch(running?.className ?? "", /aui-bad|aui-accent/);
-  const failed = await mark(/^Broke/);
-  assert.equal(failed?.getAttribute("title"), "A reply failed");
-  assert.match(failed?.className ?? "", /text-aui-bad/, "red says failure");
-  assert.match(list.getByRole("link", { name: /^Broke/ }).textContent ?? "", /, A reply failed$/);
-  await waitFor(async () => assert.equal(await mark(/^Fresh answer/), null));
-  assert.equal(await mark(/^Nothing new/), null);
-  // Hovering a row trades only its age for the ⋮ button: every state mark stays
-  // in view, so its tooltip can show under the pointer.
-  for (const name of [/^Approve contract/, /^Deploying/, /^Broke/]) {
+  const state = async (name: RegExp) =>
+    (await list.findByRole("link", { name })).querySelector<HTMLElement>("[data-state]");
+  const dot = (name: RegExp) =>
+    list.getByRole("link", { name }).querySelector<HTMLElement>("[data-dot]");
+  const approve = await state(/^Approve contract/);
+  assert.equal(approve?.textContent, "Waiting for you: approve file_write");
+  assert.match(approve?.className ?? "", /text-aui-warn/);
+  assert.equal(dot(/^Approve contract/)?.getAttribute("data-dot"), "you");
+  assert.match(dot(/^Approve contract/)?.className ?? "", /bg-aui-warn/);
+  assert.equal(
+    (await state(/^Pick a scope/))?.textContent,
+    "Waiting for you: Which repositories should I check?",
+  );
+  const other = await state(/^Someone else's call/);
+  assert.equal(other?.textContent, "Waiting for approval: deploy");
+  assert.match(other?.className ?? "", /text-aui-muted/);
+  assert.equal(dot(/^Someone else's call/), null, "it does not wait on the reader");
+  const broke = await state(/^Broke/);
+  assert.equal(broke?.textContent, "Failed: provider: rate limited (429)");
+  assert.match(broke?.className ?? "", /text-aui-bad/, "red says failure");
+  await waitFor(() => assert.equal(dot(/^Broke/)?.getAttribute("data-dot"), "failed"));
+  assert.match(dot(/^Broke/)?.className ?? "", /bg-aui-bad/);
+  assert.equal(
+    await state(/^Recovered/),
+    null,
+    "a failure a later turn answered is not one: the session listing names none",
+  );
+  assert.equal((await state(/^Deploying/))?.textContent, "Working");
+  // Hovering a row trades only its dot for the ⋮ button: its words stay.
+  for (const name of [/^Approve contract/, /^Broke/]) {
     const row = list.getByRole("link", { name });
-    const state = row.querySelector<HTMLElement>("[data-standing]");
-    for (let el: HTMLElement | null = state; el && el !== row.parentElement; el = el.parentElement)
-      assert.doesNotMatch(el.className, /:invisible/, `${name} keeps its state mark on hover`);
-    assert.match(
-      row.querySelector<HTMLElement>("[data-row-time]")?.className ?? "",
-      /group-hover\/task:invisible/,
-      "the age gives way to the menu",
-    );
+    for (
+      let el = row.querySelector<HTMLElement>("[data-state]");
+      el && el !== row.parentElement;
+      el = el.parentElement
+    )
+      assert.doesNotMatch(el.className, /:invisible/, `${name} keeps its state on hover`);
   }
-  // Nothing in a row is drawn in the accent.
   for (const row of document.querySelectorAll("[data-thread-row]"))
-    assert.doesNotMatch(row.innerHTML, /aui-accent/);
+    assert.doesNotMatch(row.innerHTML, /aui-accent/, "nothing in a row uses the accent");
+});
+
+test("sessions someone else started that the reader joined have their own section, with a count", async () => {
+  const rows = [
+    task("s_mine", "My plan"),
+    task("s_joined", "Vignesh's org lookup", { joined: true }),
+    task("s_pin", "Pinned review"),
+  ];
+  net = stubFetch({
+    "GET /api/marks": () => ({ archived: [], read: {}, tips: [] }),
+    "GET /api/sessions": () => ({
+      sessions: rows.map((conversation) => ({
+        id: conversation.id,
+        parent: "console:ada",
+        agent: "lead",
+        title: conversation.title,
+        status: "idle",
+        updated_at: conversation.updated_at,
+        conversation,
+      })),
+      next: "",
+    }),
+  });
+  render(<Bar sessionMode pinned={["s_pin"]} />);
+  const joined = await screen.findByRole("region", { name: "Participated" });
+  await within(joined).findByRole("link", { name: /^Vignesh's org lookup/ });
+  const recent = within(await screen.findByRole("list", { name: "Recents" }));
+  await recent.findByRole("link", { name: /^My plan/ });
+  assert.equal(recent.queryByRole("link", { name: /^Vignesh's/ }), null, "listed once");
+  assert.equal(recent.queryByRole("link", { name: /^Pinned review/ }), null);
+  const count = (name: RegExp) =>
+    screen.getByRole("button", { name }).querySelector("[data-count]")?.textContent;
+  assert.equal(count(/^Participated/), "1");
+  assert.equal(count(/^Pinned/), "1");
+  assert.equal(count(/^Recent/), "1");
+  // Participated sits above Pinned, which sits above Recent.
+  const order = [...document.querySelectorAll("section[aria-label]")].map((s) =>
+    s.getAttribute("aria-label"),
+  );
+  assert.deepEqual(order, ["Participated", "Pinned", "Sessions"]);
+});
+
+test("the sidebar's edge resizes it between its bounds, by drag or arrow keys, and remembers the width", async () => {
+  window.localStorage.removeItem("humagen.sidebar.width");
+  net = stubFetch({
+    "GET /api/marks": () => ({ archived: [], read: {}, tips: [] }),
+    "GET /api/threads": () => ({ threads: [], next: null }),
+  });
+  render(<Bar />);
+  const edge = await screen.findByRole("separator", { name: "Resize sidebar" });
+  assert.equal(edge.getAttribute("aria-valuenow"), "296");
+  assert.equal(edge.getAttribute("aria-valuemin"), "240");
+  assert.equal(edge.getAttribute("aria-valuemax"), "440");
+  const width = () => document.documentElement.style.getPropertyValue("--humagen-sidebar-w");
+  fireEvent.keyDown(edge, { key: "ArrowRight" });
+  assert.equal(edge.getAttribute("aria-valuenow"), "312");
+  assert.equal(width(), "312px");
+  assert.equal(window.localStorage.getItem("humagen.sidebar.width"), "312");
+  fireEvent.keyDown(edge, { key: "End" });
+  assert.equal(edge.getAttribute("aria-valuenow"), "440");
+  fireEvent.keyDown(edge, { key: "ArrowRight" });
+  assert.equal(edge.getAttribute("aria-valuenow"), "440", "it stops at its widest");
+  fireEvent.pointerDown(edge, { button: 0, clientX: 440, pointerId: 1 });
+  fireEvent.pointerMove(edge, { clientX: 100, pointerId: 1 });
+  fireEvent.pointerUp(edge, { clientX: 100, pointerId: 1 });
+  assert.equal(edge.getAttribute("aria-valuenow"), "240", "it stops at its narrowest");
+  assert.equal(window.localStorage.getItem("humagen.sidebar.width"), "240");
+  fireEvent.doubleClick(edge);
+  assert.equal(edge.getAttribute("aria-valuenow"), "296", "a double click puts it back");
+  window.localStorage.removeItem("humagen.sidebar.width");
 });
 
 test("the row menu archives a session, and Archived brings it back", async () => {
@@ -349,13 +428,14 @@ test("Projects groups by project, folds an empty one to No conversations, and ca
 test("a project group that rendered before its rows arrived opens when they do, unless the reader folded it", async () => {
   net = stubFetch({
     "GET /api/marks": () => ({ archived: [], read: {}, tips: [] }),
-    "GET /api/threads": () => ({
-      threads: [task("t1", "Ops review", { project: "Ops" })],
-      next: null,
-    }),
+    // The rows arrive after the Projects view has drawn its groups.
+    "GET /api/threads": async () => {
+      await new Promise((r) => setTimeout(r, 50));
+      return { threads: [task("t1", "Ops review", { project: "Ops" })], next: null };
+    },
   });
   render(<Bar projects={[{ name: "Ops", title: "Ops" } as ProjectView]} />);
-  // Projects is the default view, so the group is drawn while the list is still loading.
+  await view("Projects");
   const list = within(await screen.findByRole("list", { name: "Projects" }));
   await list.findByRole("link", { name: /^Ops review/ });
   const ops = list.getByText("Ops").closest("details");
@@ -419,7 +499,7 @@ test("search has one way in: the Search row, with no tip card repeating it", asy
     />
   );
   render(bar());
-  await screen.findByRole("list", { name: "Projects" });
+  await screen.findByRole("list", { name: "Recents" });
   await new Promise((r) => setTimeout(r, 20));
   assert.equal(screen.queryByRole("complementary", { name: "Search across conversations" }), null);
   assert.ok(screen.getByRole("button", { name: "Search" }));

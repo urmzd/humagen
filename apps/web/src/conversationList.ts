@@ -1,7 +1,12 @@
+import { defaultCopy } from "@humagen/components";
 import type { Marks, ThreadSummary } from "./api.ts";
 
-/** How the sidebar lists conversations: newest first, by project, or the ones put away. */
-export type ListView = "recents" | "projects" | "archived";
+/**
+ * How the sidebar lists conversations: newest first ("flat", the default),
+ * under Today, Yesterday and Earlier ("recents"), by project, or the ones
+ * put away.
+ */
+export type ListView = "flat" | "recents" | "projects" | "archived";
 
 /** What a row's state mark says, most urgent first. */
 export type RowStanding = "needs" | "running" | "failed" | "unread" | "";
@@ -56,6 +61,65 @@ export function standingOf(t: ThreadSummary, marks: Marks): RowStanding {
   if (t.active > 0) return "running";
   if (t.failed > 0) return "failed";
   return isUnread(t, marks) ? "unread" : "";
+}
+
+/** What a row says about its state: a line in words, a dot for what is new, and whether it runs. */
+export type RowState = {
+  /** A line under the row's time and source, in its tone: warn waits on someone, bad failed. */
+  line?: { tone: "warn" | "bad" | "muted"; text: string };
+  /** The dot on the right, by meaning: it waits on the reader, it failed unread, or it is unread. */
+  dot?: "you" | "failed" | "unread";
+};
+
+/**
+ * A row's state, said in words, most pressing first: it waits on someone
+ * (the reader, in the warning color), its latest turn failed (in red, with
+ * why), it is working, or it holds an open alert. The dot on the right marks
+ * what is new to the reader: waiting on them, a failure they have not read,
+ * or an answer they have not read.
+ *
+ * A session listing says why the latest turn failed (`failure`); an earlier
+ * failure a later turn answered is not one. Other listings only count
+ * failed runs, so any is said as "Failed".
+ */
+export function rowState(
+  t: ThreadSummary,
+  marks: Marks,
+  opts: {
+    session?: boolean;
+    alert?: { priority: "urgent" | "normal" | "low"; title: string };
+  } = {},
+): RowState {
+  const words = defaultCopy.sidebar.state;
+  const unread = isUnread(t, marks);
+  const waiting = (t.waiting ?? 0) > 0;
+  const you = waiting && (t.waiting_on_you ?? true);
+  const failure = t.failure ?? (!opts.session && t.failed > 0 ? "" : undefined);
+  const line: RowState["line"] = waiting
+    ? {
+        tone: you ? "warn" : "muted",
+        text: you
+          ? words.waitingYou(t.waiting_for ?? "", t.waiting_kind)
+          : words.waitingOther(t.waiting_for ?? "", t.waiting_kind),
+      }
+    : failure !== undefined
+      ? { tone: "bad", text: words.failed(failure) }
+      : t.active > 0
+        ? { tone: "muted", text: words.working }
+        : opts.alert
+          ? {
+              tone: opts.alert.priority === "urgent" ? "warn" : "muted",
+              text: words.alert(opts.alert.title),
+            }
+          : undefined;
+  const dot: RowState["dot"] = you
+    ? "you"
+    : unread
+      ? failure !== undefined
+        ? "failed"
+        : "unread"
+      : undefined;
+  return { line, dot };
 }
 
 // One rule for every age and relative time in the console: format.ts.

@@ -13697,6 +13697,22 @@ components:
           description: Where it started when that was not the console or the API, read from the Slack thread it lives on or the place its session was started from. Absent for the console and the API. A run's `origin` cannot say this, as a Slack message posts to its thread through the API.
           type: string
           enum: [slack, slack_dm, github, scheduled]
+        joined:
+          description: On a session listing, the caller takes part in the session without having started it. They posted in it, were mentioned or were added.
+          type: boolean
+        waiting_for:
+          description: On a session listing, what the latest run parked on a person waits for. For an approval it is the tool asked about; for a question, the first line of its prompt. At most 100 characters.
+          type: string
+        waiting_kind:
+          description: What `waiting_for` is.
+          type: string
+          enum: [approval, question]
+        waiting_on_you:
+          description: On a session listing, the caller is the one the parked run asks. They are named, an approver, or taking part when nobody is named.
+          type: boolean
+        failure:
+          description: On a session listing, why the latest turn failed, the first line of its error, at most 100 characters. Absent when the latest turn did not fail, so a failure a later turn answered is not shown.
+          type: string
         turns: {type: integer}
         branches: {type: integer}
         active:
