@@ -14139,7 +14139,7 @@ components:
           required: [person]
           properties:
             person:
-              description: The person's subject.
+              description: The person's handle, shown as created_by is.
               type: string
             message:
               description: Their mention the app answered, by its surface id (a Slack ts).
