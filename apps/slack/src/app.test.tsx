@@ -2121,3 +2121,56 @@ test("a thread the app answered is followed: the asker's next reply needs no men
   await w.app.idle();
   assert.equal(w.humagen.started.length, 2);
 });
+
+test("/agent alone opens the ask form with a picker of who to ask, and the one picked answers", async () => {
+  const w = world();
+  await deliver(w, command(""));
+  const opened = w.slack.of("views.open")[0]?.view as {
+    blocks: { block_id: string; element: { options?: { value: string }[] } }[];
+  };
+  const picker = opened.blocks.find((b) => b.block_id === "agent");
+  assert.ok(picker, "the form offers a picker");
+  const offered = (picker?.element.options ?? []).map((o) => o.value);
+  assert.equal(offered[0], "lead", "the default is offered first");
+  assert.ok(offered.includes("helper"));
+  collect("ask form with a picker", w.slack);
+
+  await deliver(
+    w,
+    interactive({
+      type: "view_submission",
+      view: {
+        callback_id: "aui_form",
+        private_metadata: '{"kind":"ask"}',
+        state: {
+          values: {
+            agent: { value: { selected_option: { value: "helper" } } },
+            text: { value: { value: "summarize my week" } },
+          },
+        },
+      },
+    }),
+  );
+  assert.equal(w.humagen.started[0]?.agent, "helper");
+  assert.equal(w.humagen.started[0]?.text, "summarize my week");
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "ok" });
+  await w.app.idle();
+
+  // Nobody picked: the default answers, as for any question.
+  await deliver(
+    w,
+    interactive({
+      type: "view_submission",
+      view: {
+        callback_id: "aui_form",
+        private_metadata: '{"kind":"ask"}',
+        state: { values: { text: { value: { value: "and next week?" } } } },
+      },
+    }),
+  );
+  assert.equal(w.humagen.started[1]?.agent, "lead");
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "ok" });
+  await w.app.idle();
+});

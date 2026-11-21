@@ -66,6 +66,7 @@ import { inThread, Names, readThread, sinceLastTurn, withHistory } from "./histo
 import { homeModel } from "./home.ts";
 import {
   type AskCall,
+  type AskFormAgent,
   askCallForm,
   askCallOf,
   askForm,
@@ -798,6 +799,28 @@ export class App {
     this.agentList = { at: Date.now(), agents };
     this.agentLooks = listed.looks ?? {};
     return agents;
+  }
+
+  /**
+   * The agents `/agent` offers to ask: those this app may reach by name, the
+   * client's default first, each by the name people call it and its
+   * greeting or description.
+   */
+  private async pickable(): Promise<AskFormAgent[]> {
+    const routing = await this.routing().catch(() => undefined);
+    const first = routing?.client?.default_agent || this.opts.defaultAgent || "";
+    return (await this.agents().catch(() => [] as Agent[]))
+      .filter((a) => !routing || choose(`@${a.name}`, [a], routing).how === "named")
+      .map((a) => {
+        const look = this.agentLooks[a.name];
+        const about = look?.greeting || a.description;
+        return {
+          id: a.name,
+          name: look?.display_name || a.name,
+          ...(about ? { description: about } : {}),
+        };
+      })
+      .sort((x, y) => (x.id === first ? -1 : y.id === first ? 1 : x.name.localeCompare(y.name)));
   }
 
   /** Each agent's look, as the agent list last gave it. */
@@ -3077,6 +3100,14 @@ export class App {
     }
     if (text === "connections") return this.openConnections(c);
     if (text.startsWith("canvas ")) return this.publishCanvas(c, text.slice(7).trim());
+    if (!text && c.trigger_id) {
+      // `/agent` alone opens the ask form with a picker of who to ask.
+      await this.slack.call("views.open", {
+        trigger_id: c.trigger_id,
+        view: askForm(this.words, await this.pickable()),
+      });
+      return;
+    }
     if (!text || text === "help") {
       // Who can be asked, in the platform's own words.
       // humagen: needs an AgentList component (name, description), as the console's agent menu shows.
@@ -3232,8 +3263,14 @@ export class App {
     if (p.type !== "view_submission" || p.view?.callback_id !== ENTRY.form) return;
     const said = p.view.state?.values?.text?.value?.value?.trim() ?? "";
     if (!said) return;
+    // The agent picked in the form is tagged as anyone would tag it, when this app may reach it.
+    const picked = (
+      p.view.state?.values?.agent?.value as { selected_option?: { value?: string } } | undefined
+    )?.selected_option?.value;
+    const routing = picked ? await this.routing().catch(() => undefined) : undefined;
+    const asked = picked && routing && mayRoute(routing, picked) ? `@${picked} ${said}` : said;
     // Build an Agent's words go to the builder, tagged as anyone would tag it.
-    const text = formKind(p.view.private_metadata) === "build" ? `@${BUILDER} ${said}` : said;
+    const text = formKind(p.view.private_metadata) === "build" ? `@${BUILDER} ${said}` : asked;
     // A global shortcut or the Home tab has no channel: answer in the app's own messages with this person.
     await this.start({ channel: p.user.id, user: p.user.id }, text);
   }

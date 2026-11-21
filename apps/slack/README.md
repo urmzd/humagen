@@ -32,6 +32,7 @@ Run `pnpm install` once from the repository root. The adapter and renderers are 
 |-------|-----------------------|
 | A direct message | A thread under that message. Each top-level message starts a conversation. |
 | A mention in a channel | The mention's thread. |
+| `/agent` | Opens the ask form with a picker of who to ask. |
 | `/agent <question>` | A new thread in the channel. `/agent help` lists who can be asked. |
 | **Ask the agent** shortcut | The app's messages with you. |
 | **Ask agent about this** on a message | That message's thread. On your own message it asks as you; on anyone else's, or a bot's, it asks through the app, for nobody, so their words are never run as you. Under a dev sign-in, where the app's own credential is the person `dev`, asking through the app acts for `dev`. |
@@ -267,6 +268,14 @@ that lists agents and names no default answers nothing: the default Humagen woul
 use is not known here, so it could be one the list leaves out. For the same
 reason such a client never sends `auto`, as a tag or as its default, since
 `@auto` picks among every agent available where the run lands.
+
+## Picking who to ask
+
+`/agent` alone opens the ask form with a picker of who to ask: the agents
+this app may reach by name, the client's default first, each by the name
+people call it and its greeting or description. Left unpicked, the default
+answers, as for any question. `/agent` with words asks at once, as before,
+and `/agent help` lists the agents.
 
 ## Following a thread
 
