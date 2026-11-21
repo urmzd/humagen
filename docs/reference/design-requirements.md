@@ -907,9 +907,17 @@ approval, disabled early approval, restoration, refusal and the combined menu.
   `--aui-z-popover` (the @ and / lists, the + menu, preview cards, the usage
   popover), `--aui-z-sheet` (drawers, the usage sheet on a phone) and
   `--aui-z-toast`. Code touched uses these, never a bare number.
-- While anything in the session runs, whoever started it, the composer shows
-  Stop beside the microphone or Send, and the empty box says "↵ to send, ⌘↵ to
-  queue for later". Stop, or Esc in an empty box, stops every run in the
+- The box is one lean row: + (attach, and the + menu) on the left, the words,
+  then Send (a return glyph) and the microphone as plain icons of equal
+  weight, each a 44px target on touch. The row grows upward with the words and
+  the buttons stay on its last line. Both buttons are always there: empty, Send
+  is dimmed and the microphone is the action; with words, Send is ready and the
+  microphone stays, so a person can switch between talking and typing. While
+  it records or dictates, the microphone shows it live and is the stop in the
+  same place; the words land in the box to edit before sending, and Send stays
+  ready if there are words. Shift+Enter adds a line.
+- While anything in the session runs, whoever started it, Send is Stop (a
+  square) and the empty box says "↵ to send, ⌘↵ to queue for later". Stop, or Esc in an empty box, stops every run in the
   session and its child sessions (`POST /api/sessions/{id}/stop` with
   `children`) and the reader's background work started from it
   (`POST /api/me/background/{id}/stop`). Enter sends now; Cmd+Enter
@@ -919,9 +927,10 @@ approval, disabled early approval, restoration, refusal and the combined menu.
   stops it), a call to another agent (`POST /api/runs/{child}/stop`),
   background work a step started, and a step in flight (which stops its run).
   A stopped item says Stopped in muted text, never Failed.
-- Under the composer, one quiet line: the agent that answered last and its
-  model, the approval mode as its own control, and a usage ring. On a phone
-  the agent is its mark. The ring shows the fullest of the context and every
+- Under the box, one quiet right-aligned line: the agent that answered last
+  and its model, the approval mode as its own control, and a usage ring. On a
+  phone the line is the agent and the ring, and the approval mode waits under
+  a ⋯ button. The ring shows the fullest of the context and every
   limit that holds the session, and takes a color only near a limit (amber)
   or over one (red); its name says which. It opens This Session (context,
   tokens or spend, runs, the agents that used most, from
