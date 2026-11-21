@@ -697,6 +697,19 @@ every row. Both are boxed `Section`s: a heading's count is hidden at zero, and a
 list as long as the server's 100-record cap says so in place of a count. Route
 and DOM tests cover the legacy address, the permission-gated read request, the
 single listing, the empty headings and the cap.
+In a column narrower than 28rem, a phone's or the one a 768 window leaves beside
+the sidebar and the settings list, the filters fold behind one Filter control in
+the changes header, so the first record is on the first screen. Filter opens the
+same fields in place, Apply Filters folds them again and returns focus to
+Filter, and Filter counts the filters the list was read with ("Filter, 2").
+Refresh and Export CSV are under More there, so the header holds two controls.
+In a wider column the filter row is unchanged. The lines that say reads fill the
+100 records suggest a domain only when none is chosen: with Projects chosen they
+say to narrow the date range, since reads are project records. When a Refresh
+cannot read the reads again, the reads section says so, counts nothing, and the
+changes stop leaving out the reads it listed. DOM tests cover the fold, the
+count, focus, More, both lines and the failed refresh; the `audit` state in
+`scripts/screens/sessions.ts` captures the page over generated records.
 A settings page, yours or the workspace's, is headed by its title alone, with
 no line of explanation under it: Profile, Notifications, Appearance, Workspace,
 Model providers, Limits, Voice, Access, Deletion queue, Connections, Apps,

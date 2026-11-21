@@ -546,17 +546,20 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
         assert.equal(await changes.getByRole("listitem").count(), 5, "A read is listed once");
         const fields = changes.getByRole("textbox", { name: copy.actor, exact: true });
         const apply = changes.getByRole("button", { name: copy.apply, exact: true });
+        const filter = changes.getByRole("button", { name: copy.filter, exact: true });
         const viewport = page.viewportSize();
         assert.ok(viewport);
-        if (viewport.width >= 768) {
+        // The fold follows the column: beside the sidebar and the settings list, a 768
+        // window leaves a column narrower than a phone's.
+        if (viewport.width >= 1024) {
           await fields.waitFor();
           await apply.waitFor();
           await changes.getByRole("button", { name: copy.refresh, exact: true }).waitFor();
           await changes.getByRole("button", { name: copy.export, exact: true }).waitFor();
+          assert.equal(await filter.count(), 0, "The filters are not folded");
           return;
         }
-        // On a phone the filters fold behind one control, and the first record is on the first screen.
-        const filter = changes.getByRole("button", { name: copy.filter, exact: true });
+        // Folded, the header holds two controls and the first record is on the first screen.
         await filter.waitFor();
         await changes.getByRole("button", { name: defaultCopy.more, exact: true }).waitFor();
         assert.equal(await fields.count(), 0, "The filters are folded");
@@ -565,10 +568,11 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
           box && box.y + box.height <= viewport.height,
           "The first record is on the first screen",
         );
+        // Apply Filters folds the fields again and hands focus back to Filter.
         await filter.click();
         await fields.waitFor();
         await apply.click();
-        await fields.waitFor({ state: "detached" });
+        await fields.waitFor({ state: "hidden" });
         await filter.and(page.locator("button:focus")).waitFor();
         await filter.blur();
         await page.mouse.move(0, 0);
