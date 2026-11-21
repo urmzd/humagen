@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.170.0 (2026-11-21)
+
+### Breaking
+
+- **approvals**: two approval modes, Ask and Auto (#477) ([4b2a7ab](https://github.com/urmzd/humagen/commit/4b2a7ab30115e18fd8e3bf3d2ec0de1be124321e))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.169.0...v0.170.0)
+
+
 ## 0.169.0 (2026-11-21)
 
 ### Features
