@@ -26,6 +26,7 @@ func (s *Server) threadRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /api/projects/{name}/experts", s.authed(auth.ProjectsWrite, s.seenProject(s.putExperts)))
 	mux.HandleFunc("POST /api/threads/{id}/fork", s.authed(auth.RunsWrite, s.seenThread(s.forkThread)))
 	mux.HandleFunc("GET /api/threads/{id}/forks", s.authed(auth.RunsRead, s.seenThread(s.listForks)))
+	mux.HandleFunc("GET /api/threads/{id}/usage", s.authed(auth.RunsRead, s.seenThread(s.threadUsage)))
 	mux.HandleFunc("POST /api/threads/{id}/bring-back", s.authed(auth.RunsWrite, s.seenThread(s.bringBackResult)))
 	mux.HandleFunc("POST /api/threads", s.authed(auth.RunsWrite, s.startThread))
 	mux.HandleFunc("PUT /api/threads/{id}", s.authed(auth.RunsWrite, s.seenThread(s.updateThread)))
@@ -392,4 +393,13 @@ func (s *Server) publishSummary(w http.ResponseWriter, r *http.Request, who auth
 		return
 	}
 	ok(w, http.StatusCreated, s.P.Seer(who).Thread(s.P.ShowThread(who.Tenant, th)))
+}
+
+func (s *Server) threadUsage(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	out, err := s.P.SessionUsage(r.Context(), who, r.PathValue("id"))
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, out)
 }

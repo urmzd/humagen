@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useRef } from "react";
+import { type ReactNode, useEffect, useLayoutEffect, useRef } from "react";
 import { LatestButton, useLatest } from "./Latest.tsx";
 import { TurnRail, type TurnRailEntry } from "./TurnRail";
 
@@ -22,7 +22,15 @@ export function Thread({
   busy = false,
   focus,
   initialApproval,
+  footer,
 }: {
+  /**
+   * What floats over the bottom of the conversation: its composer. The
+   * messages are one surface that scrolls underneath it, behind a soft fade,
+   * and the list keeps enough room at its end for the last message to clear
+   * it as it grows (`--aui-thread-dock-h`).
+   */
+  footer?: ReactNode;
   /** An addressed message to reveal without scrolling the surrounding page. */
   focus?: string;
   /** Latest actionable run on first open; an explicit message link takes precedence. */
@@ -41,13 +49,37 @@ export function Thread({
   /** Shows a thin indeterminate bar at the top while a turn is in flight. */
   busy?: boolean;
 }) {
-  const { scroller, content, look, onScroll, jump, release } = useLatest({
+  const { scroller, content, look, onScroll, jump, release, stuck } = useLatest({
     working: busy,
     follow: true,
     startAtEnd: !focus,
   });
   const revealed = useRef<string | undefined>(undefined);
   const positioned = useRef(false);
+  const root = useRef<HTMLDivElement>(null);
+  const dock = useRef<HTMLDivElement>(null);
+  const docked = footer !== undefined && footer !== null && footer !== false;
+
+  // The composer's height, and the scrollbar's width it must not cover, as
+  // variables on the thread: the list's end clears the composer however tall
+  // it grows, and a reader at the end stays there as it does.
+  useLayoutEffect(() => {
+    const el = dock.current;
+    const host = root.current;
+    if (!docked || !el || !host) return;
+    const measure = () => {
+      const list = scroller.current;
+      host.style.setProperty("--aui-thread-dock-h", `${Math.ceil(el.offsetHeight)}px`);
+      if (list)
+        host.style.setProperty("--aui-thread-gutter", `${list.offsetWidth - list.clientWidth}px`);
+      if (list && stuck.current) list.scrollTop = list.scrollHeight;
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [docked, scroller, stuck]);
 
   useEffect(() => {
     if (positioned.current) return;
@@ -95,8 +127,14 @@ export function Thread({
   // The rail is a way around a long conversation; a short one needs none.
   const wave = turns && turns.length >= RAIL_MIN_TURNS ? turns : null;
   return (
-    <div className={`relative flex min-h-0 flex-col ${className ?? ""}`}>
-      {busy && <div aria-hidden className="aui-busy-bar absolute inset-x-0 top-0 z-10" />}
+    <div
+      ref={root}
+      data-docked={docked || undefined}
+      className={`relative flex min-h-0 flex-col ${className ?? ""}`}
+    >
+      {busy && (
+        <div aria-hidden className="aui-busy-bar absolute inset-x-0 top-0 z-(--aui-z-sticky)" />
+      )}
       {wave && <TurnRail turns={wave} scroller={scroller} />}
       <div
         ref={scroller}
@@ -106,18 +144,40 @@ export function Thread({
         // biome-ignore lint/a11y/noNoninteractiveTabindex: scrollable region must be keyboard reachable
         tabIndex={0}
         onScroll={onScroll}
-        // Reached by keyboard to scroll it, the log shows a thin neutral line inside
-        // its edge: the whole pane is the target, so an accent ring would frame the page.
-        className={`aui-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain outline-none focus-visible:ring-1 focus-visible:ring-aui-fg/50 focus-visible:ring-inset [scrollbar-gutter:stable] ${wave ? "md:px-8" : ""}`}
+        // Reached by keyboard to scroll it, the log shows a thin neutral line along
+        // its top edge: the conversation is one surface under the composer, so a
+        // ring round the whole log would box the page in again.
+        className={`aui-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain outline-none focus-visible:shadow-[inset_0_2px_0_0_color-mix(in_oklab,var(--aui-fg)_45%,transparent)] [scrollbar-gutter:stable] ${wave ? "md:px-8" : ""}`}
       >
         <div
           ref={content}
-          className={`aui-thread-turns flex flex-col gap-5 pt-4 pb-12 ${column ?? "px-1"}`}
+          className={`aui-thread-turns flex flex-col gap-5 pt-4 ${docked ? "pb-[calc(var(--aui-thread-dock-h,8rem)+1.5rem)]" : "pb-12"} ${column ?? "px-1"}`}
         >
           {children}
         </div>
       </div>
-      <LatestButton look={look} onJump={jump} scroller={scroller} />
+      {docked && (
+        <div
+          ref={dock}
+          data-layer="composer-dock"
+          // Over the list and clear of its scrollbar, so the bar stays reachable.
+          className="pointer-events-none absolute bottom-0 left-0 z-(--aui-z-composer) right-[var(--aui-thread-gutter,0px)]"
+        >
+          {/* Words pass under the composer through a fade, not against a hard edge. */}
+          <div
+            aria-hidden
+            className="h-8 bg-gradient-to-t from-aui-bg to-transparent"
+            data-layer="composer-fade"
+          />
+          <div className="pointer-events-auto bg-aui-bg">{footer}</div>
+        </div>
+      )}
+      <div
+        className="pointer-events-none absolute inset-x-0 top-0 z-(--aui-z-composer)"
+        style={{ bottom: docked ? "var(--aui-thread-dock-h, 0px)" : 0 }}
+      >
+        <LatestButton look={look} onJump={jump} scroller={scroller} fade={!docked} />
+      </div>
     </div>
   );
 }
