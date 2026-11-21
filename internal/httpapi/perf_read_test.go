@@ -169,6 +169,7 @@ func TestListReadsAreBoundedByThePageNotTheWorkspace(t *testing.T) {
 		}{
 			// The newest 200 runs in one page, and their threads in one read.
 			{"/api/runs", 12, 8},
+			{"/api/threads", 22, 12},
 			// A page of 50: the turn keys of each session on it, and no more.
 			{"/api/sessions", 64, 8},
 			{"/api/sessions?roots=true&mine=true&limit=1", 14, 8},
