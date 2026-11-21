@@ -1557,6 +1557,11 @@ func (p *Platform) Run(ctx context.Context) error {
 			return ctx.Err()
 		}
 	}
+	// Every process checks images and looks for the checks a dead one left:
+	// whichever finds one first starts it again.
+	if p.imagesOn() {
+		loop("images", func() error { return p.sweepImages(ctx) })
+	}
 	// The work done once per deployment runs on the elected leader only,
 	// and moves to another process when this one stops leading.
 	singletons := map[string]func(context.Context) error{

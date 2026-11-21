@@ -102,12 +102,23 @@ type Image struct {
 	// only while it is the latest, so a slow one never replaces a newer
 	// one's result. It is kept, not shown: Shown leaves it out.
 	Checks int64 `json:"checks,omitempty"`
+	// Beat is when the process running its check last said it still was.
+	// A check whose beat is old has no process left: it died mid-check,
+	// and another starts the check again. Kept, not shown.
+	Beat time.Time `json:"beat,omitzero"`
 }
 
-// Shown is img as a person sees it: without its count of checks.
+// Shown is img as a person sees it: without its count of checks and its
+// check's beat.
 func (img Image) Shown() Image {
-	img.Checks = 0
+	img.Checks, img.Beat = 0, time.Time{}
 	return img
+}
+
+// BeingChecked reports whether a check of img is under way: its first, or
+// a ready image's check again.
+func (img Image) BeingChecked() bool {
+	return img.Status == Checking || img.Rechecking
 }
 
 // warm counts the images in all kept warm.
@@ -274,6 +285,7 @@ func (s *Store) Create(tenant string, img Image) (Image, error) {
 		return Image{}, err
 	}
 	img.Status, img.Digest, img.Problem, img.Checks, img.Rechecking = Checking, "", "", 1, false
+	img.Beat = time.Now().UTC()
 	_, err := s.t.Update(tenant, key, func(all map[string]Image, _ bool) (map[string]Image, error) {
 		if len(all) >= Limit {
 			return nil, fmt.Errorf("%w: a workspace keeps at most %d images", ErrInvalid, Limit)

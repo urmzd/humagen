@@ -126,7 +126,7 @@ func TestOneWorkspacesPullsLeaveRoomForAnothers(t *testing.T) {
 // A check's time starts when it has a place to pull in. One that waited
 // for others' slow pulls still pulls, and is never failed unpulled.
 func TestACheckIsNotTimedWhileItWaitsForAPlace(t *testing.T) {
-	defer platform.SetImageCheckTimeout(400 * time.Millisecond)()
+	t.Cleanup(platform.SetImageCheckTimeout(400 * time.Millisecond))
 	g := newGatePuller(func(int, string) bool { return true }) // every pull runs out its time
 	defer close(g.gate)
 	p := imagesPlatform(t, &isolationtest.Leaser{Dir: t.TempDir()}, g)

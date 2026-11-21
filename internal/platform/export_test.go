@@ -197,3 +197,12 @@ func SetImageCheckTimeout(d time.Duration) (restore func()) {
 	imageCheckTimeout = d
 	return func() { imageCheckTimeout = was }
 }
+
+// SetImageBeats sets how often a check under way says so, how long a
+// silent one is before it counts as stranded, and how often a process looks
+// for those. It returns what puts them back.
+func SetImageBeats(every, stale, sweep time.Duration) (restore func()) {
+	wasEvery, wasStale, wasSweep := imageBeatEvery, imageBeatStale, imageSweepEvery
+	imageBeatEvery, imageBeatStale, imageSweepEvery = every, stale, sweep
+	return func() { imageBeatEvery, imageBeatStale, imageSweepEvery = wasEvery, wasStale, wasSweep }
+}

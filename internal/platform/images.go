@@ -56,6 +56,22 @@ var (
 	imageCheckTimeout  = ImageCheckTimeout
 )
 
+// A check under way says so on the image every imageBeatEvery (its beat).
+// One silent for imageBeatStale has no process left, and every process
+// looks for those each imageSweepEvery and starts the check again. Stale is
+// several beats, so a slow write is not a dead process; the clocks of two
+// processes on one database may differ by less than that.
+var (
+	imageBeatEvery  = 20 * time.Second
+	imageBeatStale  = 90 * time.Second
+	imageSweepEvery = time.Minute
+)
+
+// stranded reports a check under way that no process is running any more.
+func stranded(img images.Image) bool {
+	return img.BeingChecked() && time.Since(img.Beat) > imageBeatStale
+}
+
 // ImagePuller fetches images onto the sandbox host.
 type ImagePuller interface {
 	// Pull fetches ref, with credential when it is not empty, and returns
@@ -202,20 +218,26 @@ func (p *Platform) AddImage(ctx context.Context, who auth.Principal, in ImageInp
 }
 
 // ChangeImage keeps an image warm or not, or checks it again. A check
-// asked for while one is under way starts none: the image is answered as
-// it stands, checking. A ready image stays ready while it is checked again,
-// on the digest it has: its sessions go on running.
+// asked for while one is under way, in this process or another, starts
+// none: the image is answered as it stands, checking. One asked for while
+// the image's check is stranded (its process died) starts it again. A ready
+// image stays ready while it is checked again, on the digest it has: its
+// sessions go on running.
 func (p *Platform) ChangeImage(_ context.Context, who auth.Principal, id string, in ImageChange) (images.Image, error) {
 	if !p.imagesOn() {
 		// Nothing is kept where nothing may be added.
 		return images.Image{}, images.ErrNotFound
 	}
-	check := in.Check && p.imageChecks.claim(who.Tenant, id)
+	claimed := in.Check && p.imageChecks.claim(who.Tenant, id)
+	check := false
 	img, err := p.Images.Update(who.Tenant, id, func(img images.Image) images.Image {
 		if in.Warm != nil {
 			img.Warm = *in.Warm
 		}
+		// Another process's check that still beats is left to finish.
+		check = claimed && (!img.BeingChecked() || stranded(img))
 		if check {
+			img.Beat = time.Now().UTC()
 			if img.Status == images.Ready && img.Digest != "" {
 				img.Rechecking = true
 			} else {
@@ -226,10 +248,10 @@ func (p *Platform) ChangeImage(_ context.Context, who auth.Principal, id string,
 		}
 		return img
 	})
+	if claimed && (err != nil || !check) {
+		p.imageChecks.release(who.Tenant, id)
+	}
 	if err != nil {
-		if check {
-			p.imageChecks.release(who.Tenant, id)
-		}
 		return images.Image{}, err
 	}
 	switch {
@@ -405,6 +427,9 @@ func (p *Platform) checkImage(ctx context.Context, tenant, id string, n int64) {
 	if err != nil || img.Checks != n {
 		return
 	}
+	ctx, superseded := context.WithCancel(ctx)
+	defer superseded()
+	defer p.beatImage(ctx, tenant, id, n, superseded)()
 	var digest string
 	// The registries allowed may have narrowed since it was added. That
 	// is the deployment's decision, not a check that went wrong: the image
@@ -461,6 +486,94 @@ func (p *Platform) checkImage(ctx context.Context, tenant, id string, n int64) {
 	}
 	if saved.Warm {
 		p.warmImage(tenant, saved)
+	}
+}
+
+// beatImage says on the image, every imageBeatEvery until the returned stop
+// is called, that its check n is still under way here, so no other process
+// takes it for stranded. When the image has a newer check, or is gone, it
+// calls superseded: this check's result would be dropped, so its pull ends.
+func (p *Platform) beatImage(ctx context.Context, tenant, id string, n int64, superseded func()) (stop func()) {
+	done := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		tick := time.NewTicker(imageBeatEvery)
+		defer tick.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ctx.Done():
+				return
+			case <-tick.C:
+			}
+			current := false
+			_, err := p.Images.Update(tenant, id, func(cur images.Image) images.Image {
+				current = cur.Checks == n && cur.BeingChecked()
+				if current {
+					cur.Beat = time.Now().UTC()
+				}
+				return cur
+			})
+			if errors.Is(err, images.ErrNotFound) || (err == nil && !current) {
+				superseded()
+				return
+			}
+		}
+	})
+	return func() { close(done); wg.Wait() }
+}
+
+// adoptStrandedChecks starts again every check that no process is running:
+// one whose process died mid-check, on this database's every workspace. The
+// check it starts is a new one (the image's count of checks goes up), so
+// whatever the dead check's process might still write is dropped, and of
+// two processes that find the same stranded check only the first starts it:
+// the second finds its beat fresh.
+func (p *Platform) adoptStrandedChecks() {
+	type found struct{ tenant, id string }
+	var all []found
+	_ = p.Images.Tenants(func(tenant string, imgs []images.Image) error {
+		for _, img := range imgs {
+			if stranded(img) {
+				all = append(all, found{tenant, img.ID})
+			}
+		}
+		return nil
+	})
+	for _, f := range all {
+		if !p.imageChecks.claim(f.tenant, f.id) {
+			continue
+		}
+		adopted := false
+		img, err := p.Images.Update(f.tenant, f.id, func(cur images.Image) images.Image {
+			if adopted = stranded(cur); adopted {
+				cur.Checks++
+				cur.Beat = time.Now().UTC()
+			}
+			return cur
+		})
+		if err != nil || !adopted {
+			p.imageChecks.release(f.tenant, f.id)
+			continue
+		}
+		slog.Info("images: a check no process was running starts again", "tenant", f.tenant, "image", f.id)
+		p.checkImageLater(f.tenant, f.id, img.Checks)
+	}
+}
+
+// sweepImages looks, when the platform starts and every imageSweepEvery
+// after, for what a process that died left behind.
+func (p *Platform) sweepImages(ctx context.Context) error {
+	tick := time.NewTicker(imageSweepEvery)
+	defer tick.Stop()
+	for {
+		p.adoptStrandedChecks()
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-tick.C:
+		}
 	}
 }
 

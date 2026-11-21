@@ -177,6 +177,9 @@ func (s *seqPuller) Pull(ctx context.Context, ref, _ string) (string, error) {
 // A slow check that ends after a newer one, here on another process on
 // the same database, keeps nothing: the newer check's digest stands.
 func TestAnOlderCheckNeverReplacesANewerOne(t *testing.T) {
+	// The second process takes the first's check for stranded at once, as
+	// it would one whose process stopped beating, and starts a newer one.
+	t.Cleanup(platform.SetImageBeats(time.Hour, time.Nanosecond, time.Hour))
 	shared := state.NewMemory()
 	on := func(puller platform.ImagePuller) *platform.Platform {
 		return startWith(t, platform.Config{
