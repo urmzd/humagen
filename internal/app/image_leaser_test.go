@@ -175,7 +175,12 @@ func TestAWorkspaceHoldsWarmInstancesOnlyOfItsWarmImages(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	stopped := make(chan error, 1)
 	go func() { stopped <- p.Run(ctx) }()
-	t.Cleanup(func() { cancel(); <-stopped })
+	t.Cleanup(func() {
+		cancel()
+		if err := <-stopped; err != nil {
+			t.Errorf("platform stopped with %v", err)
+		}
+	})
 	admin := auth.Principal{Subject: "ana", Tenant: "acme", Kind: auth.User, Roles: []auth.Role{auth.Admin}}
 	ready := func(id string) images.Image {
 		t.Helper()
