@@ -190,10 +190,14 @@ is unique among its agents.
 In a channel the app hears only messages that mention it. Making people type
 `@Humagen` on every reply to an agent they are already talking to is the
 largest papercut in the flow, so the app also subscribes to
-`message.channels` and `message.groups`, and takes an unmentioned message only
-in a thread it has answered in, from the person who asked it there last, so
-people talking to each other in the thread are never answered. Anything else
-it hears that way it drops unread. Built.
+`message.channels`, `message.groups` and `message.mpim`, and offers an
+unmentioned reply to the platform (`listen`). The platform takes it only in a
+thread whose first message mentioned the app, which it records on the thread
+(`listening`), so it survives a restart. There the agent is asked whether the
+message calls for it: it answers, or the message is kept as what was said and
+nothing shows in Slack, so people talking to each other in the thread are not
+answered. A thread a later mention started is answered once and not listened
+to. Anything else the app hears that way is dropped unread. Built.
 
 #### Walkthrough
 

@@ -485,22 +485,6 @@ export class App {
    * the thread's queue, and is forgotten on a restart.
    */
   private readonly named = new Map<string, string>();
-  /**
-   * The channel threads this app answered a mention in, and who asked it
-   * there last. A reply from that person in such a thread is taken as asked,
-   * without a mention (RFC 0012): someone talking to the agent need not
-   * mention the app on every reply, and people talking to each other in the
-   * thread are never answered. Forgotten on a restart.
-   */
-  private readonly followed = new Map<string, string>();
-
-  private follow(session: Session, user: string) {
-    const key = sessionName(session);
-    this.followed.delete(key);
-    this.followed.set(key, user);
-    const oldest = this.followed.keys().next().value;
-    if (this.followed.size > NAMED_THREADS && oldest !== undefined) this.followed.delete(oldest);
-  }
   /** Slack deliveries already taken, so a redelivery in this process does nothing. */
   private readonly seen = new Recent<true>(10_000);
   /** Who asked for each run, by Slack user id. */
@@ -915,35 +899,24 @@ export class App {
       await this.stop({ team: this.opts.team, channel, threadTs: event.thread_ts });
       return;
     }
-    // A reply in a channel thread this app answered, from the person who asked
-    // it there last, is asked though it names nobody. A message that mentions
-    // the app arrives as its own app_mention as well, and is taken from there.
-    const following =
-      event.type === "message" &&
-      event.channel_type !== "im" &&
-      Boolean(event.thread_ts && event.channel && event.user) &&
-      !(event.text ?? "").includes(`<@${this.opts.botUser}>`) &&
-      this.followed.get(
-        sessionName({
-          team: this.opts.team,
-          channel: event.channel ?? "",
-          threadTs: event.thread_ts ?? "",
-        }),
-      ) === event.user;
-    // The manifest asks for channel messages only so the app can follow a
-    // thread: any other channel message that does not mention the app is
-    // dropped unread here, unless the client's own subscriptions name
-    // channel messages (a bridge that mirrors a bound channel).
+    // The manifest asks for channel messages only so the app can listen in a
+    // thread that began with a mention. A channel message that does not
+    // mention the app is offered to that rule and otherwise dropped unread,
+    // unless the client's own subscriptions name channel messages (a bridge
+    // that mirrors a bound channel). One that mentions the app arrives as its
+    // own app_mention as well, and is taken from there.
     if (
       event.type === "message" &&
       event.channel_type !== "im" &&
-      !following &&
+      !mentionsApp(event.text ?? "", this.opts.botUser) &&
       !(
         event.channel &&
         (await this.bridgeControls(event.channel)).client?.capabilities?.events.includes("message")
       )
-    )
+    ) {
+      this.listenTo(event);
       return;
+    }
     if (
       (event.type === "message" || event.type === "app_mention") &&
       event.channel &&
@@ -986,45 +959,9 @@ export class App {
         return;
       }
     }
-    // A reply in a channel thread that mentions nobody. Whether anyone is
-    // listening there is the platform's to say (`listen`): it is, where the
-    // thread's first message mentioned the app, and then the agent decides
-    // whether this message calls for it. A thread a later mention started was
-    // answered once, and a message outside a thread is nobody's.
-    if (
-      event.type === "message" &&
-      event.channel_type !== "im" &&
-      event.channel &&
-      event.ts &&
-      event.user &&
-      !event.bot_id &&
-      (!event.subtype || event.subtype === "file_share") &&
-      event.user !== this.opts.botUser &&
-      event.thread_ts &&
-      event.thread_ts !== event.ts &&
-      !mentionsApp(event.text ?? "", this.opts.botUser)
-    ) {
-      const text = (event.text ?? "").trim();
-      if (!text) return;
-      const session: Session = {
-        team: this.opts.team,
-        channel: event.channel,
-        threadTs: event.thread_ts,
-      };
-      this.enqueue({
-        session,
-        text,
-        triggerTs: event.ts,
-        user: event.user,
-        key: eventKey(session, event.ts),
-        listen: true,
-      });
-      return;
-    }
+    if (this.listenTo(event)) return;
     const asked =
-      event.type === "app_mention" ||
-      (event.type === "message" && event.channel_type === "im") ||
-      following;
+      event.type === "app_mention" || (event.type === "message" && event.channel_type === "im");
     // Loop prevention: a bot's message, this app's own, an edit or a join never starts a run.
     if (!asked || (event.subtype && event.subtype !== "file_share") || event.bot_id || !event.user)
       return;
@@ -1049,9 +986,49 @@ export class App {
       user: event.user,
       key: eventKey(session, event.ts),
       // A direct message is always addressed to the app, so only a channel thread has more to read.
-      history: (event.type === "app_mention" || following) && session.threadTs !== event.ts,
+      history: event.type === "app_mention" && session.threadTs !== event.ts,
     });
-    if (event.type === "app_mention" || following) this.follow(session, event.user);
+  }
+
+  /**
+   * A reply in a channel thread that mentions nobody. Whether anyone is
+   * listening there is the platform's to say (`listen`): it is, where the
+   * thread's first message mentioned the app, and then the agent decides
+   * whether this message calls for it. A thread a later mention started was
+   * answered once, and a message outside a thread is nobody's. Reports
+   * whether the message was offered.
+   */
+  private listenTo(event: SlackEvent): boolean {
+    if (
+      event.type !== "message" ||
+      event.channel_type === "im" ||
+      !event.channel ||
+      !event.ts ||
+      !event.user ||
+      event.bot_id ||
+      (event.subtype && event.subtype !== "file_share") ||
+      event.user === this.opts.botUser ||
+      !event.thread_ts ||
+      event.thread_ts === event.ts ||
+      mentionsApp(event.text ?? "", this.opts.botUser)
+    )
+      return false;
+    const text = (event.text ?? "").trim();
+    if (!text) return false;
+    const session: Session = {
+      team: this.opts.team,
+      channel: event.channel,
+      threadTs: event.thread_ts,
+    };
+    this.enqueue({
+      session,
+      text,
+      triggerTs: event.ts,
+      user: event.user,
+      key: eventKey(session, event.ts),
+      listen: true,
+    });
+    return true;
   }
 
   private readonly skillChannels = new Map<string, string>();
