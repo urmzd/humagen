@@ -22,9 +22,11 @@ export { ArtifactIcon, FileTile, phaseLabel } from "./file";
 export { Checkboxes, FormContext, FormStore, useGroup } from "./form";
 export {
   type GitHubRef,
+  GitHubRefKindsContext,
   GitHubRefLink,
   type GitHubRefWords,
   GitHubRefWordsContext,
+  githubRefKinds,
   githubRefOf,
   remarkGitHubRefs,
 } from "./github-refs";

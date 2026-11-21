@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { defaultCopy } from "@humagen/components";
 import { ActionId, type UiAction } from "@humagen/core";
-import { NowContext, WebSurface } from "@humagen/render-web";
+import { GitHubRefKindsContext, githubRefKinds, NowContext, WebSurface } from "@humagen/render-web";
 import { AgentMessage, ConnectLinkContext } from "@humagen/web";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import type { ReactNode } from "react";
@@ -122,8 +122,9 @@ test("pull requests, issues and commits in an answer are chips with their mark",
     a.textContent,
     a.getAttribute("href"),
   ]);
+  // #461 is a pull request by its address, so every chip for it is one, written out or not.
   assert.deepEqual(refs, [
-    ["ref", "urmzd/humagen#461", "https://github.com/urmzd/humagen/issues/461"],
+    ["pull", "urmzd/humagen#461", "https://github.com/urmzd/humagen/issues/461"],
     ["pull", "urmzd/humagen#461", "https://github.com/urmzd/humagen/pull/461"],
     ["issue", "urmzd/humagen#402", "https://github.com/urmzd/humagen/issues/402"],
     [
@@ -131,16 +132,69 @@ test("pull requests, issues and commits in an answer are chips with their mark",
       "urmzd/humagen@9f2c4e1",
       "https://github.com/urmzd/humagen/commit/9f2c4e1a7b3d5c6e8f0a1b2c3d4e5f6a7b8c9d0e",
     ],
-    ["ref", "urmzd/humagen#461", "https://github.com/urmzd/humagen/issues/461"],
+    ["pull", "urmzd/humagen#461", "https://github.com/urmzd/humagen/issues/461"],
   ]);
-  assert.ok(
-    screen.getByRole("link", {
+  assert.equal(
+    screen.getAllByRole("link", {
       name: defaultCopy.conversation.githubRef.pull("urmzd/humagen#461"),
-    }),
+    }).length,
+    3,
   );
   // Inline code is left as code.
   assert.ok(
     [...container.querySelectorAll("code")].some((c) => c.textContent === "pnpm welcome-copy"),
+  );
+});
+
+test("one number reads one way: known from anywhere in the answer, else one neutral mark", () => {
+  const kinds = (text: string) => {
+    const { container } = show(
+      <AgentMessage turn={{ ...referencesTurn(), text }} disclaimer={false} />,
+    );
+    const out = [...container.querySelectorAll("a[data-github-ref]")].map((a) => [
+      a.textContent,
+      a.getAttribute("data-github-ref"),
+      a.querySelector("svg")?.getAttribute("data-ref-kind"),
+    ]);
+    cleanup();
+    return out;
+  };
+  // Named as an issue after it is first written out: the earlier chip is an issue too.
+  assert.deepEqual(
+    kinds("See a/b#7, then a/b#7 again, tracked at https://github.com/a/b/issues/7."),
+    [
+      ["a/b#7", "issue", "issue"],
+      ["a/b#7", "issue", "issue"],
+      ["a/b#7", "issue", "issue"],
+    ],
+  );
+  // An issue's address and a pull request's for one number: GitHub sends the first on to the second.
+  assert.deepEqual(
+    kinds("https://github.com/a/b/issues/8 is https://github.com/a/b/pull/8, and a/b#8."),
+    [
+      ["a/b#8", "pull", "pull"],
+      ["a/b#8", "pull", "pull"],
+      ["a/b#8", "pull", "pull"],
+    ],
+  );
+  // Nothing says what a/b#9 is: every chip for it has the same neutral mark.
+  assert.deepEqual(kinds("a/b#9 and a/b#9."), [
+    ["a/b#9", "ref", "ref"],
+    ["a/b#9", "ref", "ref"],
+  ]);
+});
+
+test("a session's pull request reads as one in a later answer that only writes its number", () => {
+  const { container } = render(
+    <GitHubRefKindsContext.Provider value={githubRefKinds("https://github.com/a/b/pull/5")}>
+      <WebSurface>
+        <AgentMessage turn={{ ...referencesTurn(), text: "Merged a/b#5." }} disclaimer={false} />
+      </WebSurface>
+    </GitHubRefKindsContext.Provider>,
+  );
+  assert.equal(
+    container.querySelector("a[data-github-ref]")?.getAttribute("data-github-ref"),
+    "pull",
   );
 });
 

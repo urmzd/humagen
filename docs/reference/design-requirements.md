@@ -2375,9 +2375,12 @@ Terminal and Browser tabs taking a result.
   "GitHub is not connected", a line on what to do, and Connect GitHub, which
   opens `/settings/plugins/<provider>`.
 - A pull request, issue or commit address in an answer, and a written
-  `owner/repo#123`, is a chip: its mark and its short name, still a link. A
-  written reference does not say whether it is a pull request or an issue, so
-  it carries GitHub's mark. Inline code is left as code.
+  `owner/repo#123`, is a chip: its mark and its short name, still a link. One
+  number reads one way: once an address anywhere in the answer, or in the
+  session around it, says it is a pull request or an issue
+  (`githubRefKinds`, `GitHubRefKindsContext`), every chip for it carries that
+  mark; named both ways, it is a pull request. A number nothing says the kind
+  of carries one neutral mark everywhere. Inline code is left as code.
 - Open, a run of steps is a card with one row per call. A call's input is a
   table of names and values; a command is a block of its own with Copy. A
   running step has a working mark that takes turns (still when motion is

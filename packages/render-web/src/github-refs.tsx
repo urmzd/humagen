@@ -1,12 +1,13 @@
 import { createContext, type ReactNode, useContext } from "react";
-import { GitHubIcon } from "./brand-icons";
 
 /**
  * GitHub references in an answer, drawn as chips: a pull request, an issue
  * or a commit by its address, and `owner/repo#123` written out. A chip is
- * the reference's mark and its short name, still a link to GitHub. A bare
- * `owner/repo#123` does not say whether it is a pull request or an issue,
- * so it carries GitHub's mark rather than guess.
+ * the reference's mark and its short name, still a link to GitHub. One
+ * number reads one way everywhere it is named: once an address says it is a
+ * pull request or an issue (`githubRefKinds`, given through
+ * `GitHubRefKindsContext`), every chip for it carries that mark. A number
+ * nothing says the kind of carries one neutral mark, rather than a guess.
  */
 export type GitHubRefKind = "pull" | "issue" | "commit" | "ref";
 
@@ -34,6 +35,30 @@ export const GitHubRefWordsContext = createContext<GitHubRefWords>({
 const ADDRESS =
   /^https:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/(pull|issues|commit)\/([1-9]\d{0,9}|[0-9a-f]{7,40})\/?(?:[?#].*)?$/i;
 const BARE = /(^|[^\w/.#@-])([A-Za-z\d][\w.-]*\/[\w.-]*\w)#([1-9]\d{0,9})(?![\w#])/g;
+
+const ADDRESSES =
+  /https:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/(pull|issues)\/([1-9]\d{0,9})(?![\w])/gi;
+
+/**
+ * What each `owner/repo#123` named by its address in text is: a pull
+ * request or an issue. A number named both ways is a pull request, since
+ * GitHub sends an issue's address on to the pull request of that number.
+ */
+export function githubRefKinds(text: string): Map<string, "pull" | "issue"> {
+  const kinds = new Map<string, "pull" | "issue">();
+  ADDRESSES.lastIndex = 0;
+  for (let m = ADDRESSES.exec(text); m; m = ADDRESSES.exec(text)) {
+    const label = `${m[1]}#${m[3]}`;
+    if (m[2]?.toLowerCase() === "pull") kinds.set(label, "pull");
+    else if (!kinds.has(label)) kinds.set(label, "issue");
+  }
+  return kinds;
+}
+
+/** The kinds known where a chip is drawn: in its answer, and in the session around it when a host knows. */
+export const GitHubRefKindsContext = createContext<ReadonlyMap<string, "pull" | "issue">>(
+  new Map(),
+);
 
 /** The reference a link's address names, or undefined for any other address. */
 export function githubRefOf(href: string | undefined): GitHubRef | undefined {
@@ -112,8 +137,9 @@ const commitIcon = (
   </>
 );
 
+const refIcon = <path d="M9 4 7 20M17 4l-2 16M4.5 9h15M4 15h15" />;
+
 function RefMark({ kind }: { kind: GitHubRefKind }) {
-  if (kind === "ref") return <GitHubIcon size={13} className="shrink-0 self-center" />;
   return (
     <svg
       aria-hidden="true"
@@ -129,7 +155,13 @@ function RefMark({ kind }: { kind: GitHubRefKind }) {
       className="shrink-0 self-center"
       data-ref-kind={kind}
     >
-      {kind === "pull" ? pullIcon : kind === "issue" ? issueIcon : commitIcon}
+      {kind === "pull"
+        ? pullIcon
+        : kind === "issue"
+          ? issueIcon
+          : kind === "commit"
+            ? commitIcon
+            : refIcon}
     </svg>
   );
 }
@@ -152,9 +184,13 @@ export function GitHubRefLink({
   bare?: boolean;
 }) {
   const words = useContext(GitHubRefWordsContext);
+  const known = useContext(GitHubRefKindsContext);
   const ref = githubRefOf(href);
   if (!ref) return null;
-  const kind: GitHubRefKind = bare ? "ref" : ref.kind;
+  // What the answer says this number is, wherever it says it, else what this
+  // link's own address says, else the neutral mark.
+  const kind: GitHubRefKind =
+    ref.kind === "commit" ? "commit" : (known.get(ref.label) ?? (bare ? "ref" : ref.kind));
   const own = label.trim() === href || label.trim() === ref.label;
   const name = words[kind](ref.label);
   return (

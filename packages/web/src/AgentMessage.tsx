@@ -23,7 +23,9 @@ import {
   FeedbackPromptContext,
   GaugeIcon,
   GitHubIcon,
+  GitHubRefKindsContext,
   GitHubRefWordsContext,
+  githubRefKinds,
   type ItemActions,
   ItemActionsContext,
   Rating,
@@ -647,6 +649,14 @@ export function AgentMessage({
     disclaimer,
     copy,
   ]);
+  // A number reads one way in the whole answer, and in the session when the host says more.
+  const sessionKinds = useContext(GitHubRefKindsContext);
+  const refKinds = useMemo(() => {
+    const kinds = new Map(sessionKinds);
+    for (const [label, kind] of githubRefKinds(turn.text))
+      if (kind === "pull" || !kinds.has(label)) kinds.set(label, kind);
+    return kinds;
+  }, [sessionKinds, turn.text]);
   const doing = useTurnActivity(turn);
   const activity = sayActivity ? doing : null;
   const orb = turn.detached ? "idle" : turnOrbState(turn);
@@ -748,41 +758,43 @@ export function AgentMessage({
         )}
         <ItemActionsContext.Provider value={itemActions ?? inherited}>
           <GitHubRefWordsContext.Provider value={copy.conversation.githubRef}>
-            <TurnMetaContext.Provider value={turn}>
-              <SuppressContext.Provider value={suppressed}>
-                <div className="aui-stack">
-                  {settledTurn && blocks.length > 0 && (
-                    <WorkedFor
-                      ms={turn.durationMs}
-                      open={traceOpen}
-                      onToggle={() => setTraceOpen((o) => !o)}
+            <GitHubRefKindsContext.Provider value={refKinds}>
+              <TurnMetaContext.Provider value={turn}>
+                <SuppressContext.Provider value={suppressed}>
+                  <div className="aui-stack">
+                    {settledTurn && blocks.length > 0 && (
+                      <WorkedFor
+                        ms={turn.durationMs}
+                        open={traceOpen}
+                        onToggle={() => setTraceOpen((o) => !o)}
+                        copy={copy}
+                      />
+                    )}
+                    {(!settledTurn || traceOpen) && blocks.map(block)}
+                    <TurnView
+                      turn={{ ...turn, text: tail }}
                       copy={copy}
+                      capabilities={{ ...capabilities, followUp }}
+                      hideTasks
                     />
-                  )}
-                  {(!settledTurn || traceOpen) && blocks.map(block)}
-                  <TurnView
-                    turn={{ ...turn, text: tail }}
-                    copy={copy}
-                    capabilities={{ ...capabilities, followUp }}
-                    hideTasks
-                  />
-                  <AgentChangeCards tasks={turn.tasks} />
-                  {settledTurn && turn.needsConnection?.length ? (
-                    <ConnectCards needs={turn.needsConnection} copy={copy} />
-                  ) : null}
-                  {rest.map(block)}
-                  {turn.status === "stopped" && turn.stop && (
-                    <StopBanner
-                      turnId={turn.id}
-                      stop={turn.stop}
-                      label={copy.stopPhase[turn.stop]}
-                    />
-                  )}
-                  {/* What the turn changed, once it is over: a card that opens each file. */}
-                  {settledTurn && <TurnChanges tasks={turn.tasks} copy={copy} />}
-                </div>
-              </SuppressContext.Provider>
-            </TurnMetaContext.Provider>
+                    <AgentChangeCards tasks={turn.tasks} />
+                    {settledTurn && turn.needsConnection?.length ? (
+                      <ConnectCards needs={turn.needsConnection} copy={copy} />
+                    ) : null}
+                    {rest.map(block)}
+                    {turn.status === "stopped" && turn.stop && (
+                      <StopBanner
+                        turnId={turn.id}
+                        stop={turn.stop}
+                        label={copy.stopPhase[turn.stop]}
+                      />
+                    )}
+                    {/* What the turn changed, once it is over: a card that opens each file. */}
+                    {settledTurn && <TurnChanges tasks={turn.tasks} copy={copy} />}
+                  </div>
+                </SuppressContext.Provider>
+              </TurnMetaContext.Provider>
+            </GitHubRefKindsContext.Provider>
           </GitHubRefWordsContext.Provider>
           {(settledTurn || actions) && (
             <FeedbackPromptContext.Provider value={feedbackPrompt}>
