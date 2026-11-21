@@ -381,6 +381,12 @@
   padding: 0;
 }
 
+/* An approval's two decisions share a minimum width, so short labels line up. */
+[data-aui-block="approval"] > [data-aui-action="aui.approve"],
+[data-aui-block="approval"] > [data-aui-action="aui.deny"] {
+  min-width: 6rem;
+}
+
 /* Interrupt cards: the prompt text, its preview, the buttons, and the meta line read as one card. */
 .aui-stack > [data-aui="text"]:has(+ [data-aui-block="approval"], + [data-aui-block="clarification"]),
 .aui-stack > [data-aui="text"]:has(+ [data-aui="fields"] + [data-aui-block="approval"]) {

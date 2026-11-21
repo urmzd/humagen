@@ -524,6 +524,8 @@ export interface VertexLocation {
 export interface ModelProvider {
   name: string;
   kind: ModelProviderKind;
+  /** Configured and kept with its key, but unavailable to agents. */
+  disabled?: boolean;
   base_url?: string;
   vertex?: VertexLocation;
   /** The key's env:NAME reference, when it is one. */
@@ -1257,6 +1259,8 @@ export const api = {
   modelProviderSetup: () => call<ModelProviderSetup>("GET", "/api/model-providers"),
   setModelProvider: (name: string, input: ModelProviderInput) =>
     call<ModelProvider>("PUT", `/api/model-providers/${encodeURIComponent(name)}`, input),
+  setModelProviderEnabled: (name: string, enabled: boolean) =>
+    call<ModelProvider>("PATCH", `/api/model-providers/${encodeURIComponent(name)}`, { enabled }),
   deleteModelProvider: (name: string) =>
     call<void>("DELETE", `/api/model-providers/${encodeURIComponent(name)}`),
   checkModelProvider: (name: string) =>

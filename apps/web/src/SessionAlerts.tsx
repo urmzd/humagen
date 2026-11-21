@@ -2,7 +2,8 @@ import { defaultCopy } from "@humagen/components";
 import { Modal } from "@humagen/web";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AgentSession } from "../../../packages/client/src/generated/types.ts";
-import { call } from "./api.ts";
+import { turnOf } from "./adapter.ts";
+import { call, type ThreadTurn } from "./api.ts";
 import { href } from "./route.ts";
 import { AlertMark } from "./SessionCenter.tsx";
 import {
@@ -82,6 +83,18 @@ export function useSessionAlerts(
 export type SessionAttention = ReturnType<typeof useSessionAlerts>;
 export const alertAnchor = (alert: Alert) => alert.message || alert.run_id;
 
+/** Suppress only projected approvals whose run actually renders a pending approval. */
+export function duplicatesInlineApproval(alert: Alert, turns: ThreadTurn[]): boolean {
+  if (alert.kind !== "approval" || alert.action !== "approve" || !alert.run_id) return false;
+  const run = turns.find((turn) => turn.run?.id === alert.run_id)?.run;
+  return (
+    !!run &&
+    turnOf(run).interrupts.some(
+      (item) => item.type === "approval" && item.decision.kind === "pending",
+    )
+  );
+}
+
 /** Recorded alerts sit beside their message; old or session-wide anchors stay above history. */
 export function SessionAlerts({
   alerts,
@@ -89,12 +102,15 @@ export function SessionAlerts({
   canWrite,
   agents,
   onOpen,
+  beside = false,
 }: {
   alerts: Alert[];
   attention: SessionAttention;
   canWrite: boolean;
   agents: string[];
   onOpen?: (id: string) => void;
+  /** The cards sit beside the message they are about, in the session itself. */
+  beside?: boolean;
 }) {
   const [fix, setFix] = useState<{ alert: Alert; agent: string }>();
   const [text, setText] = useState("");
@@ -125,16 +141,12 @@ export function SessionAlerts({
         const agent = alert.kind === "eval_below" ? "humagen" : alert.agent;
         // A knowledge alert's action is the page it is about, such as its corpus.
         const page = alertPage(alert);
+        const opens = defaultCopy.attention.open;
         const action = page
           ? alertActionLabel(alert)
-          : ((
-              {
-                answer: "Open question",
-                approve: "Review approval",
-                retry: "Review failed answer",
-                reconnect: "Open connections",
-              } as Record<string, string>
-            )[alert.action ?? ""] ?? "Open session");
+          : ((opens as Record<string, string>)[alert.action ?? ""] ?? opens.session);
+        // Beside its own message, a link back into this session goes nowhere new.
+        const link = !!page || alert.action === "reconnect" || !beside;
         return (
           <section
             key={alert.id}
@@ -152,23 +164,26 @@ export function SessionAlerts({
                 {defaultCopy.attention.doneWhen(alert.resolve_when)}
               </p>
             )}
-            <div className="flex flex-wrap gap-2">
-              <a
-                className={button}
-                href={
-                  page
-                    ? href(page)
-                    : alert.action === "reconnect"
-                      ? "/connections"
-                      : href({
-                          page: "conversation",
-                          id: alert.session!,
-                          ...(anchor ? { message: anchor } : {}),
-                        })
-                }
-              >
-                {action}
-              </a>
+            {/* A reader who may not change alerts has nothing here beside a message. */}
+            <div className="flex flex-wrap gap-2 empty:hidden">
+              {link && (
+                <a
+                  className={button}
+                  href={
+                    page
+                      ? href(page)
+                      : alert.action === "reconnect"
+                        ? "/connections"
+                        : href({
+                            page: "conversation",
+                            id: alert.session!,
+                            ...(anchor ? { message: anchor } : {}),
+                          })
+                  }
+                >
+                  {action}
+                </a>
+              )}
               {canWrite && (
                 <>
                   <button

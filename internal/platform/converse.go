@@ -80,8 +80,8 @@ type Settings struct {
 	// provider "policy" and the policy's name as its model.
 	ModelPolicies []ModelPolicy `json:"model_policies"`
 	// ModelProviders are the model providers the workspace's
-	// administrators set up. Only SetModelProvider and DeleteModelProvider
-	// change them; a settings write keeps them as they are.
+	// administrators set up. Dedicated provider operations change them; a
+	// settings write keeps them as they are.
 	ModelProviders []ModelProvider `json:"model_providers"`
 	// SetupAt and SetupBy record the first time an admin saved the
 	// workspace's settings. The server sets them once. A value sent by a

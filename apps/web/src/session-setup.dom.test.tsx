@@ -7,7 +7,7 @@ import type { ConversationSandboxes } from "../../../packages/client/src/generat
 import { coworking } from "./api.ts";
 import { stubFetch } from "./dom.ts";
 import { useHumanActivity } from "./humanActivity.tsx";
-import { emptySelection, PlusMenu } from "./Plus.tsx";
+import { PlusMenu } from "./Plus.tsx";
 import { type SessionOptions, type SessionSetup, SessionSetupPickers } from "./SessionPickers.tsx";
 import { EnvironmentSection } from "./SessionSections.tsx";
 import { type SessionView, SessionViews, useUnavailableViews } from "./SessionViews.tsx";
@@ -148,8 +148,6 @@ function Plus({ repos, seen }: { repos: readonly string[] | null; seen: string[]
   return (
     <PlusMenu
       agents={[]}
-      selection={emptySelection}
-      onChange={() => {}}
       onAttach={() => {}}
       onClose={() => {}}
       repos={{

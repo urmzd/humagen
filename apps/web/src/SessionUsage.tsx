@@ -2,8 +2,9 @@ import { defaultCopy } from "@humagen/components";
 import { type ReactNode, useCallback, useEffect, useId, useRef, useState } from "react";
 import { ApiError, api, type ScopeUsage, type ThreadUsage } from "./api.ts";
 import { usd } from "./format.ts";
+import { PaneMenu } from "./PaneMenu.tsx";
 import { href } from "./route.ts";
-import { AgentMark } from "./ui.tsx";
+import { AgentMark, composerIconControl } from "./ui.tsx";
 
 /*
  * The quiet row under a conversation's composer: the agent answering (and
@@ -176,7 +177,7 @@ function Ring({ fraction, tone }: { fraction: number; tone: "plain" | "near" | "
   const around = 2 * Math.PI * r;
   const filled = Math.max(0, Math.min(1, fraction)) * around;
   return (
-    <svg aria-hidden width="16" height="16" viewBox="0 0 16 16" className="shrink-0 -rotate-90">
+    <svg aria-hidden width="18" height="18" viewBox="0 0 16 16" className="shrink-0 -rotate-90">
       <circle
         cx="8"
         cy="8"
@@ -356,7 +357,6 @@ export function UsageRing({
   const { usage, limits, reload } = useSessionUsage(thread, version);
   const [open, setOpen] = useState(false);
   const ring = useRef<HTMLButtonElement>(null);
-  const panel = useRef<HTMLDivElement>(null);
   const id = useId();
   const rows = limits.state === "ok" ? limitsFor(limits.value, { project, agents }) : [];
   const shown = ringOf(usage.state === "ok" ? usage.value : null, rows);
@@ -365,16 +365,7 @@ export function UsageRing({
     setOpen(false);
     if (refocus) ring.current?.focus();
   }, []);
-  useEffect(() => {
-    if (!open) return;
-    panel.current?.focus();
-    const down = (e: PointerEvent) => {
-      const t = e.target as Node;
-      if (!panel.current?.contains(t) && !ring.current?.contains(t)) close(false);
-    };
-    document.addEventListener("pointerdown", down);
-    return () => document.removeEventListener("pointerdown", down);
-  }, [open, close]);
+  const leave = useCallback(() => close(false), [close]);
   const label = shown ? words.ring(shown.what, pct(shown.fraction)) : words.ringIdle;
   return (
     <span className="relative inline-flex">
@@ -389,28 +380,22 @@ export function UsageRing({
         aria-expanded={open}
         aria-controls={open ? id : undefined}
         onClick={() => (open ? close() : setOpen(true))}
-        className={`inline-flex size-7 pointer-coarse:size-11 items-center justify-center rounded-full hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent ${shown?.over ? "text-aui-bad" : shown?.near ? "text-aui-warn" : "text-aui-muted"}`}
+        className={`${composerIconControl} ${shown?.over ? "text-aui-bad" : shown?.near ? "text-aui-warn" : "text-aui-muted"}`}
       >
         <Ring fraction={shown?.fraction ?? 0} tone={shown ? toneOf(shown) : "plain"} />
       </button>
       {open && (
-        <>
-          <div aria-hidden className="fixed inset-0 z-(--aui-z-sheet) bg-black/30 sm:hidden" />
-          <div
-            ref={panel}
-            id={id}
-            role="dialog"
-            aria-label={words.title}
-            tabIndex={-1}
-            data-layer="usage-popover"
-            onKeyDown={(e) => {
-              if (e.key === "Escape") {
-                e.stopPropagation();
-                close();
-              }
-            }}
-            className="humagen-glass-pop aui-pop-in flex flex-col gap-4 rounded-aui-lg p-4 text-left outline-none max-sm:fixed max-sm:inset-x-0 max-sm:bottom-0 max-sm:z-(--aui-z-sheet) max-sm:rounded-b-none max-sm:pb-[max(1rem,env(safe-area-inset-bottom))] sm:absolute sm:right-0 sm:bottom-full sm:z-(--aui-z-popover) sm:mb-2 sm:w-80"
-          >
+        <PaneMenu
+          sheet
+          anchor={ring}
+          id={id}
+          label={words.title}
+          data-layer="usage-popover"
+          onClose={close}
+          onLeave={leave}
+          className="p-4 sm:right-0 sm:bottom-full sm:mb-2 sm:w-80"
+        >
+          <div className="flex flex-col gap-4">
             <header className="flex items-center justify-between gap-3">
               <h2 className="text-aui-sm font-medium text-aui-fg">{words.title}</h2>
               <span className="flex items-center gap-1">
@@ -452,7 +437,7 @@ export function UsageRing({
               </>
             )}
           </div>
-        </>
+        </PaneMenu>
       )}
     </span>
   );
@@ -541,7 +526,7 @@ function MoreControls({ children }: { children: ReactNode }) {
         aria-label={defaultCopy.dock.more}
         aria-expanded={open}
         onClick={() => setOpen(!open)}
-        className="inline-flex size-7 pointer-coarse:size-11 items-center justify-center rounded-full text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
+        className={`${composerIconControl} text-aui-muted hover:text-aui-fg`}
       >
         <span aria-hidden>⋯</span>
       </button>

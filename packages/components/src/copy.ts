@@ -2126,6 +2126,8 @@ export const defaultCopy = {
       earlierFailed: (n: number) =>
         `${n} earlier failed ${n === 1 ? "command" : "commands"} not shown`,
       waiting: "waiting for you",
+      /** A call waiting on a person, when it has no title of its own. */
+      waitingCall: "A tool call",
       showMore: "Show more",
       showLess: "Show less",
       arguments: "Arguments",
@@ -2690,7 +2692,7 @@ export const defaultCopy = {
       `${percent}% working over the last ${checks} ${checks === 1 ? "check" : "checks"}`,
   },
   audit: {
-    dateRange: "Date Range",
+    dateRange: "Date range",
     rangeDefault: "Last 24 Hours",
     clearRange: "Reset Range",
     invalidRange: "Choose a valid time window of no more than 31 days.",
@@ -2707,9 +2709,9 @@ export const defaultCopy = {
       memory: "Memory",
       source: "Sources",
       credential: "Credentials",
-      action_policy: "Action Policies",
+      action_policy: "Action policies",
       assignment: "Assignments",
-      call_policy: "Agent Call Policies",
+      call_policy: "Agent call policies",
     },
     actor: "Actor",
     domain: "Domain",
@@ -2718,7 +2720,7 @@ export const defaultCopy = {
     apply: "Apply Filters",
     export: "Export CSV",
     open: "Open Resource",
-    allDomains: "All Domains",
+    allDomains: "All domains",
     csvColumns: [
       "ID",
       "When",
@@ -2734,9 +2736,17 @@ export const defaultCopy = {
     ],
 
     title: "Audit",
+    changes: "Workspace changes",
     description:
       "Workspace changes in the last 24 hours. Pending means completion could not yet be confirmed.",
     empty: "No recorded changes in this window.",
+    limited: "Showing at most 100 records, newest first.",
+    /** The server's 100 newest records include reads the section above lists, so fewer changes show. */
+    limitedByReads:
+      "Reads listed above count toward the 100 newest records. Narrow the date range or choose a domain to see more changes.",
+    /** Every one of those 100 records is a read listed above: changes may exist, and none is on view. */
+    hiddenByReads:
+      "The 100 newest records in this window are all reads listed above. Narrow the date range or choose a domain to see changes.",
     failed: "The audit could not be loaded.",
     before: "Before",
     after: "After",
@@ -2754,8 +2764,8 @@ export const defaultCopy = {
     failed: "The read audit could not be loaded.",
   },
   approve: "Approve",
-  askApproval: "Ask a question",
-  declineAction: "Decline action",
+  askApproval: "Ask a Question",
+  declineAction: "Decline",
   cancel: "Cancel",
   edit: "Edit",
   confirmDestructive: {
@@ -3076,8 +3086,17 @@ export const defaultCopy = {
       snoozed: "Nothing is snoozed.",
       resolved: "Nothing is done yet.",
     } as Record<"open" | "snoozed" | "resolved", string>,
+    reviewApproval: "Review Approval",
     markDone: "Mark Done",
     markDoneNamed: (title: string) => `Mark ${title} done`,
+    /** What an alert's card in a session opens, by the alert's action. */
+    open: {
+      answer: "Open Question",
+      approve: "Review Approval",
+      retry: "Review Failed Answer",
+      reconnect: "Open Connections",
+      session: "Open Session",
+    },
     /** The alerts table: its name, its column headings and what its header says once rows are ticked. */
     table: {
       label: "Alerts",
@@ -3534,6 +3553,38 @@ export const defaultCopy = {
     noDescription: "No description",
     empty: "No agent can be asked here yet.",
     handle: (name: string) => `@${name}`,
+  },
+  modelProviders: {
+    title: "Model providers",
+    lede: "Workspace providers make models available. Choose a model for each agent in its settings.",
+    add: "Add OpenAI-Compatible Server",
+    configured: "Configured providers",
+    available: "Available providers",
+    empty: "No providers configured.",
+    deployment: "Deployment",
+    deploymentHint: "Managed by the deployment",
+    workspaceHint: "Managed by the workspace",
+    unconfigured: "Not set up",
+    setup: "Set Up",
+    setupProvider: (name: string) => `Set Up ${name}`,
+    enabled: "On",
+    activation: (name: string) => `Enable ${name}`,
+    manage: (name: string) => `Manage ${name}`,
+    status: {
+      checking: "Checking",
+      operational: "Answering",
+      degraded: "Slow",
+      down: "Failing",
+    },
+    check: "Check",
+    edit: "Edit",
+    remove: "Remove",
+    removeProvider: (name: string) => `Remove ${name}`,
+    removeHint: "This deletes the provider configuration and its stored key.",
+    readFailed: "The providers could not be read.",
+    checkFailed: "The provider could not be checked.",
+    updateFailed: (name: string) => `The setting for ${name} could not be saved.`,
+    removeFailed: "The provider could not be removed.",
   },
   /** The chat bar's + menu and what it selects for a conversation. */
   /** Voice notes recorded in the composer and transcribed by the deployment's speech kind. */
@@ -4187,17 +4238,19 @@ export const defaultCopy = {
     page: {
       /** The composer's placeholder: "New session in Globex". */
       composer: (title: string) => `New session in ${title}`,
+      /** The title row's trail, for assistive technology. */
+      where: "Breadcrumb",
       recents: "Recents",
-      /** A session in Recents: where it started. */
-      trace: {
-        slack: "Slack",
-        github: "GitHub",
-        console: "Console",
-        scheduled: "Scheduled",
-        /** A schedule's run: "Scheduled: weekly-recap". */
-        schedule: (name: string) => `Scheduled: ${name}`,
-        /** More agents or people than the row shows: "+2". */
-        more: (n: number) => `+${n}`,
+      /** The project's setup: steps to get started, or a summary beside Recents. */
+      setup: {
+        title: "Setup",
+        steps: "Get started",
+        /** How many steps are done: "2 of 5 set up". */
+        progress: (done: number, total: number) => `${done} of ${total} set up`,
+        done: "Done",
+        notDone: "Not set up",
+        show: "Show",
+        hide: "Hide",
       },
       noSessions: "No sessions yet",
       untitled: "Untitled session",
@@ -4213,25 +4266,29 @@ export const defaultCopy = {
       cancel: "Cancel",
       instructions: {
         title: "Instructions",
-        none: "No instructions",
         add: "Add",
         edit: "Edit",
+        view: "View",
         addLabel: "Add Instructions",
         editLabel: "Edit Instructions",
+        viewLabel: "View Instructions",
         /** Under the editor: "120 / 4,000". */
         count: (n: number) => `${n.toLocaleString()} / 4,000`,
         failed: "The instructions could not be saved. Try again.",
       },
       context: {
         title: "Context",
-        none: "No corpora",
-        /** A corpus on the card: "HR policies, 3 sources". */
+        /** How many corpora it attaches: "3 corpora". */
+        count: (n: number) => `${n} ${n === 1 ? "corpus" : "corpora"}`,
+        /** A corpus in the list a reader sees: "HR policies, 3 sources". */
         corpus: (title: string, sources: number) =>
           `${title}, ${sources} ${sources === 1 ? "source" : "sources"}`,
         add: "Add",
         edit: "Edit",
+        view: "View",
         addLabel: "Add Context",
         editLabel: "Edit Context",
+        viewLabel: "View Context",
         /** The sheet, when the reader may read no corpus. */
         noCorpora: "No corpora to attach",
         failed: "The context could not be saved. Try again.",
@@ -4248,6 +4305,9 @@ export const defaultCopy = {
           ].join(", "),
         view: "View",
         viewLabel: "View Memory",
+        /** The row's action while there are no notes yet. */
+        addRow: "Add",
+        addLabel: "Add Memory",
         none: "No notes",
         waiting: "Waiting for approval",
         kept: "Notes",
@@ -4264,10 +4324,12 @@ export const defaultCopy = {
       },
       scheduled: {
         title: "Scheduled",
-        none: "Nothing scheduled",
+        /** How many schedules it has: "2 schedules". */
+        count: (n: number) => `${n} ${n === 1 ? "schedule" : "schedules"}`,
         add: "Add",
+        view: "View",
         addLabel: "Add Schedule",
-        heading: "New schedule",
+        viewLabel: "View Schedules",
         name: "Name",
         when: "When",
         custom: "Custom",
@@ -4280,12 +4342,14 @@ export const defaultCopy = {
         failed: "The schedule could not be saved. Try again.",
       },
       slack: {
-        /** The card holds every link out of Humagen; Slack channels are the kind a project keeps today. */
+        /** Every link out of Humagen; Slack channels are the kind a project keeps today. */
         title: "External references",
-        none: "No references linked",
+        /** How many it links: "2 Slack channels". */
+        count: (n: number) => `${n} ${n === 1 ? "channel" : "channels"}`,
         add: "Add",
+        view: "View",
         addLabel: "Add External Reference",
-        heading: "Link a Slack channel",
+        viewLabel: "View External References",
         client: "Slack app",
         channel: "Slack channel ID",
         channelHint: "Starts with C, or G for a private channel",

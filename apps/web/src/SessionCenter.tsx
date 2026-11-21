@@ -39,7 +39,6 @@ import {
   LoadMore,
   Page,
   Problem,
-  primary,
   SearchField,
   Segmented,
   SkeletonRows,
@@ -72,9 +71,11 @@ export function placeOfSession(s: AgentSessionSummary): SessionPlaceFilter | und
 
 /** How many of the newest artifacts Home shows. The rest are under Artifacts. */
 const HOME_MADE = 3;
-/** One alert row's tracks: a box to tick, the alert, then priority, age and actions once there is room. */
+/** One set of tracks for the header and rows. The action column fits all three controls. */
 const alertRow =
-  "grid grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-x-3 gap-y-2 px-4 @3xl:grid-cols-[1.5rem_minmax(0,1fr)_6.5rem_5rem_7.5rem_11rem]";
+  "grid grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-x-3 gap-y-2 px-4 @3xl:pointer-fine:grid-cols-[1.5rem_minmax(0,1fr)_6.5rem_4.25rem_5.5rem_14.5rem]";
+const alertActions =
+  "col-start-2 grid min-w-0 grid-cols-[repeat(2,minmax(0,max-content))] items-center gap-2 @lg:flex @3xl:pointer-fine:col-start-auto @3xl:pointer-fine:justify-end";
 /**
  * A row's lesser action. In the table it is its icon, named by a label that
  * shows on hover and on keyboard focus; in a stacked row, and on touch where
@@ -97,23 +98,28 @@ function RowAction({
       aria-label={label}
       disabled={disabled}
       onClick={onClick}
-      className="group/action relative inline-flex min-h-8 min-w-8 items-center justify-center gap-1.5 rounded-aui px-2 text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent disabled:opacity-50 pointer-coarse:min-h-11 pointer-coarse:min-w-11"
+      className="group/action relative inline-flex min-h-8 min-w-8 items-center justify-center gap-1.5 whitespace-nowrap rounded-aui px-1.5 text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent disabled:opacity-50 pointer-coarse:min-h-11 pointer-coarse:min-w-11 @3xl:pointer-fine:size-8"
     >
       {icon}
-      <span aria-hidden className="@3xl:hidden pointer-coarse:inline">
+      <span aria-hidden className="truncate @3xl:pointer-fine:hidden">
         {label}
       </span>
       <span
         aria-hidden
-        className="humagen-glass-pop pointer-events-none absolute right-0 bottom-full z-20 mb-1 hidden whitespace-nowrap rounded-aui px-2 py-1 text-aui-2xs text-aui-fg @3xl:group-hover/action:block @3xl:group-focus-visible/action:block pointer-coarse:!hidden"
+        className="humagen-glass-pop pointer-events-none absolute right-0 bottom-full z-20 mb-1 hidden whitespace-nowrap rounded-aui px-2 py-1 text-aui-2xs text-aui-fg @3xl:pointer-fine:group-hover/action:block @3xl:pointer-fine:group-focus-visible/action:block"
       >
         {label}
       </span>
     </button>
   );
 }
+/**
+ * An alert's title: up to two lines in a stacked row, where touch has no
+ * tooltip to carry the rest, and one line in the table, where rows keep one height.
+ */
+const alertTitleLines = "line-clamp-2 break-words @3xl:pointer-fine:line-clamp-1";
 const alertCheck =
-  "inline-flex size-6 items-center justify-center self-start pointer-coarse:size-11 @3xl:self-center";
+  "inline-flex size-6 items-center justify-center self-start pointer-coarse:size-11 @3xl:pointer-fine:self-center";
 
 const failure = (error: unknown) =>
   error instanceof Error ? error.message : "This could not be loaded. Try again.";
@@ -616,7 +622,7 @@ export function AlertsPage({
           ) : shown.length ? (
             // Laid out as a table, so alerts line up: what it is, how pressing, when, and what to do.
             // It is a list to a screen reader: each row is its own grid with the same tracks,
-            // and under 48rem a row stacks, which a real table cannot do.
+            // and a narrow or touch row stacks, which a real table cannot do.
             <div className="humagen-glass overflow-hidden rounded-aui-lg">
               <div
                 className={`${alertRow} min-h-11 border-aui-border border-b py-2 text-aui-2xs text-aui-muted`}
@@ -660,13 +666,13 @@ export function AlertsPage({
                 ) : (
                   <>
                     <span aria-hidden>{words.table.alert}</span>
-                    <span aria-hidden className="hidden @3xl:block">
+                    <span aria-hidden className="hidden @3xl:pointer-fine:block">
                       {words.table.source}
                     </span>
-                    <span aria-hidden className="hidden @3xl:block">
+                    <span aria-hidden className="hidden @3xl:pointer-fine:block">
                       {words.table.priority}
                     </span>
-                    <span aria-hidden className="hidden @3xl:block">
+                    <span aria-hidden className="hidden @3xl:pointer-fine:block">
                       {words.table.when}
                     </span>
                   </>
@@ -675,7 +681,8 @@ export function AlertsPage({
               <ul aria-label={words.table.label}>
                 {shown.map((a) => {
                   const to = alertDestination(a);
-                  const title = "min-w-0 font-medium text-aui-sm text-aui-fg line-clamp-2";
+                  const label = alertActionLabel(a);
+                  const title = "min-w-0 max-w-full font-medium text-aui-sm text-aui-fg";
                   return (
                     <li
                       key={a.id}
@@ -706,33 +713,39 @@ export function AlertsPage({
                             onClick={(event) => follow(event, () => go(to))}
                             // The title is as tall as a pointer needs, and on a touch screen as a finger does.
                             className={`${title} rounded-aui-sm underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent inline-flex min-h-6 items-center pointer-coarse:min-h-11`}
+                            title={a.title}
                           >
-                            {a.title}
+                            <span className={alertTitleLines}>{a.title}</span>
                           </a>
                         ) : (
-                          <span className={title}>{a.title}</span>
+                          <span className={`${title} ${alertTitleLines}`} title={a.title}>
+                            {a.title}
+                          </span>
                         )}
                       </span>
-                      <span className="col-start-2 flex min-w-0 items-center gap-3 @3xl:contents">
-                        <span className="text-aui-xs text-aui-muted">
+                      <span className="col-start-2 flex min-w-0 items-center gap-3 @3xl:pointer-fine:contents">
+                        <span className="min-w-0 truncate text-aui-xs text-aui-muted">
                           {a.kind[0]?.toUpperCase()}
                           {a.kind.slice(1).replaceAll("_", " ")}
                         </span>
-                        <span>
+                        <span className="shrink-0">
                           <AlertMark alert={a} />
                         </span>
-                        <span className="text-aui-xs text-aui-muted">{ago(a.at)}</span>
+                        <span className="shrink-0 truncate text-aui-xs text-aui-muted">
+                          {ago(a.at)}
+                        </span>
                       </span>
-                      <span className="col-start-2 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 @3xl:col-start-auto @3xl:justify-end">
+                      <span className={alertActions}>
                         <button
                           type="button"
-                          className={primary}
+                          className={`${button} col-span-2 w-[9.5rem] max-w-full`}
+                          title={label}
                           onClick={() => {
                             const page = alertPage(a) ?? to;
                             if (page) go(page);
                           }}
                         >
-                          {alertActionLabel(a)}
+                          <span className="min-w-0 truncate">{label}</span>
                         </button>
                         {canWrite && (
                           <>

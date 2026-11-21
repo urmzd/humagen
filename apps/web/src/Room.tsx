@@ -75,7 +75,12 @@ import {
   type WorkbenchTabId,
 } from "./route.ts";
 import { SessionActions } from "./SessionActions.tsx";
-import { alertAnchor, SessionAlerts, useSessionAlerts } from "./SessionAlerts.tsx";
+import {
+  alertAnchor,
+  duplicatesInlineApproval,
+  SessionAlerts,
+  useSessionAlerts,
+} from "./SessionAlerts.tsx";
 import { SessionDetailsProvider } from "./SessionDetails.tsx";
 import { sessionFiles, sessionProgress } from "./SessionPanel.tsx";
 import { OriginButton, referenceOfPlace, SessionPlace, usePlace } from "./SessionPlace.tsx";
@@ -87,7 +92,6 @@ import {
   useViewShortcuts,
 } from "./SessionViews.tsx";
 import { ShareDialog } from "./Share.tsx";
-import { useThreadSelection } from "./selection.ts";
 import { useItemStops, useSessionBackground, useSessionStop } from "./stops.tsx";
 import { topicsOf } from "./topics.ts";
 import { mergeTurns } from "./turns.ts";
@@ -752,6 +756,24 @@ export function ThreadRoom({
   // Every turn read so far, oldest first. A refresh reads the newest page,
   // which moves on as the thread grows; the turns it no longer holds stay.
   const [turns, setTurns] = useState<ThreadTurn[]>(initial.turns);
+  // Only on first open; subsequent arrivals and manual scrolling keep their usual behavior.
+  const [initialApproval] = useState(
+    () =>
+      [...initial.turns].reverse().flatMap((t) => {
+        if (!t.run) return [];
+        const asks = asksOf(t);
+        const approval = [...turnOf(t.run).interrupts]
+          .reverse()
+          .find(
+            (i) =>
+              i.type === "approval" &&
+              i.decision.kind === "pending" &&
+              (!asks.some((a) => a.question === i.id) ||
+                asks.some((a) => a.question === i.id && a.yours)),
+          );
+        return approval ? [{ run: t.run.id, question: approval.id }] : [];
+      })[0],
+  );
   // The thread's wave: a tick per message and per answer, previewing what each says.
   const wave = useMemo(() => waveOf(turns), [turns]);
   // The cursor for the turns before the oldest one read.
@@ -886,18 +908,6 @@ export function ThreadRoom({
   const shareable =
     posts && th.visibility === "private" && !th.surface && !!onSharing && (started || owner);
   const hasRuns = turns.some((t) => t.run);
-  // What the + menu selected for the conversation, shown at once and saved on the thread.
-  const { selection, select } = useThreadSelection(id, th, {
-    saved: (t) => {
-      setPage((p) => ({ ...p, thread: t }));
-      onChanged();
-    },
-    reread: (p) => {
-      setPage(p);
-      setTurns((t) => mergeTurns(t, p.turns));
-    },
-    problem: setProblem,
-  });
   const fixedWhy = hasRuns
     ? defaultCopy.threads.shareProjectFixed
     : th.surface
@@ -1162,6 +1172,7 @@ export function ThreadRoom({
                   label="Thread"
                   turns={wave}
                   focus={focus}
+                  initialApproval={initialApproval}
                   footer={
                     <div
                       ref={dock}
@@ -1222,8 +1233,6 @@ export function ThreadRoom({
                                 onSkill={(name) => {
                                   setSeed({ text: `/${name} `, mode: "prepend" });
                                 }}
-                                selection={selection}
-                                onChange={select}
                                 onAttach={attach}
                                 onClose={close}
                               />
@@ -1273,8 +1282,9 @@ export function ThreadRoom({
                   <SessionAlerts
                     alerts={attention.rows.filter(
                       (a) =>
-                        !alertAnchor(a) ||
-                        !turns.some((t) => (t.message?.id ?? t.run?.id) === alertAnchor(a)),
+                        !duplicatesInlineApproval(a, turns) &&
+                        (!alertAnchor(a) ||
+                          !turns.some((t) => (t.message?.id ?? t.run?.id) === alertAnchor(a))),
                     )}
                     attention={attention}
                     canWrite={!!alertAccess?.write}
@@ -1291,12 +1301,15 @@ export function ThreadRoom({
                       <SessionAlerts
                         alerts={attention.rows.filter(
                           (a) =>
-                            !!alertAnchor(a) && alertAnchor(a) === (t.message?.id ?? t.run?.id),
+                            !duplicatesInlineApproval(a, turns) &&
+                            !!alertAnchor(a) &&
+                            alertAnchor(a) === (t.message?.id ?? t.run?.id),
                         )}
                         attention={attention}
                         canWrite={!!alertAccess?.write}
                         agents={posts ? agents.map((a) => a.spec.name) : []}
                         onOpen={onOpenThread}
+                        beside
                       />
                       {t.announcement ? (
                         <AnnouncementView key={`a:${t.announcement.id}`} a={t.announcement} />
@@ -1766,8 +1779,6 @@ export function ChannelPage({
                 onSkill={(name) => {
                   setSeed({ text: `/${name} `, mode: "prepend" });
                 }}
-                selection={{ project, channel }}
-                onChange={() => {}}
                 onAttach={attach}
                 onClose={close}
                 onLeave={leave}
