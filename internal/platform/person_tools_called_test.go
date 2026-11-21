@@ -7,11 +7,14 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	saigetypes "github.com/urmzd/saige/agent/types"
 	"github.com/urmzd/saige/flow/event"
 	"github.com/urmzd/saige/flow/runtime"
+	"github.com/urmzd/saige/flow/turn/native"
 
 	"github.com/urmzd/humagen/internal/mcptools"
 	"github.com/urmzd/humagen/internal/wire"
@@ -20,6 +23,8 @@ import (
 	"github.com/urmzd/humagen/pkg/personctx"
 	"github.com/urmzd/humagen/pkg/runs"
 	runsettings "github.com/urmzd/humagen/pkg/settings"
+	"github.com/urmzd/humagen/pkg/state"
+	"github.com/urmzd/humagen/pkg/state/statetest"
 )
 
 // A run another agent called acts for nobody, so it is offered none of the
@@ -168,5 +173,152 @@ func TestACalledRunGetsNoneOfItsCallersPersonTools(t *testing.T) {
 	}
 	if n := seen(); n != 0 {
 		t.Errorf("the called helper reached ana's server with her token %d times", n)
+	}
+}
+
+// runsFault fails every read of the run index once failRuns is set, as a
+// replayed or still-admitting run whose record cannot be read.
+type runsFault struct {
+	state.Store
+	failRuns atomic.Bool
+}
+
+func (s *runsFault) Get(ctx context.Context, ns, tenant, key string) ([]byte, error) {
+	if ns == runsNamespace && s.failRuns.Load() {
+		return nil, statetest.ErrInjected
+	}
+	return s.Store.Get(ctx, ns, tenant, key)
+}
+
+func (s *runsFault) Lookup(ctx context.Context, ns, tenant, key string) (state.Record, error) {
+	if ns == runsNamespace && s.failRuns.Load() {
+		return state.Record{}, statetest.ErrInjected
+	}
+	return s.Store.Lookup(ctx, ns, tenant, key)
+}
+
+func (s *runsFault) List(ctx context.Context, ns, tenant string, q state.Query) ([]state.Record, string, error) {
+	if ns == runsNamespace && s.failRuns.Load() {
+		return nil, "", statetest.ErrInjected
+	}
+	return s.Store.List(ctx, ns, tenant, q)
+}
+
+const runsNamespace = "runs.v2"
+
+type noGroups struct{}
+
+func (noGroups) Expand(context.Context, string, string) ([]saigetypes.Tool, bool, error) {
+	return nil, false, nil
+}
+
+// A called run whose record cannot be read is still a bot's run. The
+// catalog resolves its actor from admission, and personal tools follow that
+// actor: the caller's pinned servers are never discovered and her credential
+// is never sent.
+func TestACalledRunWithAnUnreadableRecordGetsNoPersonTools(t *testing.T) {
+	const secret = "ana-notes-token"
+	t.Setenv("HUMAGEN_PERSON_ANA_NOTES", secret)
+
+	var mu sync.Mutex
+	var requests, bearers int
+	server := mcp.NewServer(&mcp.Implementation{Name: "notes", Version: "1"}, nil)
+	server.AddTool(&mcp.Tool{Name: "lookup", Description: "Read notes", InputSchema: map[string]any{"type": "object"}, Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true}}, func(context.Context, *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: "a private note"}}}, nil
+	})
+	handler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return server }, nil)
+	httpServer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		requests++
+		if r.Header.Get("Authorization") == "Bearer "+secret {
+			bearers++
+		}
+		mu.Unlock()
+		handler.ServeHTTP(w, r)
+	}))
+	t.Cleanup(httpServer.Close)
+	reset := func() {
+		mu.Lock()
+		defer mu.Unlock()
+		requests, bearers = 0, 0
+	}
+	counts := func() (int, int) {
+		mu.Lock()
+		defer mu.Unlock()
+		return requests, bearers
+	}
+
+	fault := &runsFault{Store: state.NewMemory()}
+	p, err := New(Config{
+		Workspace:      t.TempDir(),
+		Backends:       Backends{State: fault},
+		PersonalHTTP:   httpServer.Client(),
+		CredentialRefs: map[string][]string{"acme": {"env:HUMAGEN_PERSON_{subject}_"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = p.Close() })
+	host := personctx.ToolServer{Name: "notes", URL: httpServer.URL, Credential: "env:HUMAGEN_PERSON_ANA_NOTES"}
+	if err := p.SetRunSettings("acme", runsettings.Layer{Ceilings: runsettings.Ceilings{ToolServers: []string{host.Host()}}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	ana := auth.Principal{Tenant: "acme", Subject: "ana"}
+	tools, err := p.DiscoverPersonTools(t.Context(), ana, host)
+	if err != nil {
+		t.Fatal(err)
+	}
+	host.Tools = tools
+	if _, err := p.SetPersonContext(t.Context(), ana, personctx.Input{ToolServers: []personctx.ToolServer{host}}); err != nil {
+		t.Fatal(err)
+	}
+	// The context ana's own run was pinned with, servers and all.
+	pinned, err := p.newRunContext("acme", "", nil, "ana")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pinned.ToolServers) != 1 {
+		t.Fatalf("ana's pinned context: %+v", pinned.ToolServers)
+	}
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	groupFor := func(runID string, actor event.Actor) (native.ToolGroup, error) {
+		t.Helper()
+		req := requestWith(t, pinned)
+		req.Tenant, req.RunID = "acme", runID
+		req.Definition.Spec.Tools = []string{personToolsGrant}
+		p.admitting.Store(runID, admitted{tenant: "acme", person: "ana", actor: actor})
+		p.operationContexts.Store(operationExecutionKey{"acme", runID, 0}, ctx)
+		defer p.admitting.Delete(runID)
+		defer p.operationContexts.Delete(operationExecutionKey{"acme", runID, 0})
+		c := &operationsCatalog{p: p, req: req, groups: noGroups{}}
+		return c.ToolGroup(personToolsGrant)
+	}
+
+	fault.failRuns.Store(true)
+	if _, err := p.Runs.Get("acme", "called"); !errors.Is(err, statetest.ErrInjected) {
+		t.Fatalf("run index read = %v, want the injected failure", err)
+	}
+
+	// The fault leaves ana's own run working: it is her actor, so it reaches
+	// her server with her token. This proves the fixture can discover.
+	reset()
+	group, err := groupFor("own", PersonActor("ana"))
+	if err != nil || len(group.Tools) != 1 {
+		t.Fatalf("ana's own run: %d tools, %v", len(group.Tools), err)
+	}
+	if _, n := counts(); n == 0 {
+		t.Fatal("ana's own run never sent her credential")
+	}
+
+	// A run lead called acts for nobody, and its record cannot be read.
+	reset()
+	group, err = groupFor("called", event.Actor{ID: "lead", Display: "lead", Bot: true})
+	if !errors.Is(err, mcptools.ErrNoPersonCredential) || len(group.Tools) != 0 {
+		t.Errorf("the called run was offered %d of ana's personal tools, err %v", len(group.Tools), err)
+	}
+	if r, n := counts(); r != 0 || n != 0 {
+		t.Errorf("the called run reached ana's server %d times, %d with her token", r, n)
 	}
 }

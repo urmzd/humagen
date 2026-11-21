@@ -65,7 +65,7 @@ func TestACalledRunOnlyNarrows(t *testing.T) {
 	parent := sample()
 	zero := 0
 	child := parent.Narrow(settings.Ceilings{ToolServers: []string{"x.test", "wider.test"}, CallDepth: &zero, Tools: []string{"file_read"}})
-	if child.Person != parent.Person || child.Memory != "" {
+	if parent.Memory == "" || child.Person != parent.Person || child.Memory != "" {
 		t.Fatalf("child = %+v", child)
 	}
 	// A called run acts for nobody: none of the person's own servers reach
