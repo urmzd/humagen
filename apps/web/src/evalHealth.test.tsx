@@ -36,6 +36,10 @@ test("a schedule reads as its period, its next run and its last run", () => {
     "Every 3 days",
   );
   assert.equal(scheduleLine({ ...suite, every_seconds: 0 }, now), "Not scheduled");
+  assert.equal(
+    scheduleLine({ ...suite, schedule_busy: true }, now),
+    "Every 6 hours, next after the current run, last run 3 hours ago",
+  );
 });
 
 test("the online summary counts passes, the oldest run and the check that fails most", () => {

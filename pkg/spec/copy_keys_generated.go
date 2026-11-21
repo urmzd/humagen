@@ -1245,6 +1245,7 @@ var copyKeyList = []string{
 	"evalCandidates.suite",
 	"evalCandidates.title",
 	"evalSchedule.actsForYou",
+	"evalSchedule.afterCurrent",
 	"evalSchedule.cancel",
 	"evalSchedule.dueNow",
 	"evalSchedule.edit",

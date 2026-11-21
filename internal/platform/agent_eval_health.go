@@ -17,9 +17,17 @@ type AgentEvaluationHealth struct {
 	PassRate float64        `json:"pass_rate"`
 	Results  []evals.Online `json:"results"`
 	// Flagged counts the runs rated down with a reason that wait in the
-	// review queue, of those the caller may read.
-	Flagged int `json:"flagged"`
+	// review queue, of those the caller may read, up to MaxFlagged;
+	// FlaggedMore says there may be more. Both are left out for a caller
+	// who may not read the queue (evals:read).
+	Flagged     int  `json:"flagged,omitempty"`
+	FlaggedMore bool `json:"flagged_more,omitempty"`
 }
+
+// MaxFlagged bounds the flagged count on agent health: it reads at most one
+// candidate past it, and each candidate's run once, to keep the queue's
+// read rule without listing the whole queue on every refresh.
+const MaxFlagged = 50
 
 func (p *Platform) AgentEvaluationHealth(who auth.Principal, name string) (AgentEvaluationHealth, error) {
 	out := AgentEvaluationHealth{Agent: name, Status: "untested", Results: []evals.Online{}}
@@ -42,11 +50,11 @@ func (p *Platform) AgentEvaluationHealth(who auth.Principal, name string) (Agent
 			out.Passed++
 		}
 	}
-	flagged, err := p.openEvalCandidates(who, name)
-	if err != nil {
-		return out, err
+	if who.Can(auth.EvalsRead) {
+		if out.Flagged, out.FlaggedMore, err = p.countFlagged(who, name); err != nil {
+			return out, err
+		}
 	}
-	out.Flagged = len(flagged)
 	if out.Samples > 0 {
 		out.PassRate = 100 * float64(out.Passed) / float64(out.Samples)
 		out.Status = "healthy"
@@ -56,6 +64,27 @@ func (p *Platform) AgentEvaluationHealth(who auth.Principal, name string) (Agent
 	}
 	return out, nil
 }
+
+// countFlagged counts an agent's open candidates the caller may read, as the
+// review queue shows them, reading at most MaxFlagged+1 candidates. The count
+// is of those read; more says the queue holds candidates past them.
+func (p *Platform) countFlagged(who auth.Principal, agent string) (n int, more bool, err error) {
+	candidates, err := p.Evals.Candidates(who.Tenant, agent, MaxFlagged+1)
+	if err != nil {
+		return 0, false, err
+	}
+	if len(candidates) > MaxFlagged {
+		candidates, more = candidates[:MaxFlagged], true
+	}
+	seer := p.Seer(who)
+	for _, c := range candidates {
+		if run, err := p.Runs.Get(who.Tenant, c.Run); err == nil && seer.Run(run) {
+			n++
+		}
+	}
+	return n, more, nil
+}
+
 func (p *Platform) AgentChangeScores(who auth.Principal, name string) ([]evals.Change, error) {
 	if !p.Seer(who).Agent(name) {
 		return nil, operations.ErrNotFound

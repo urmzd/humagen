@@ -789,6 +789,9 @@ type suiteView struct {
 	// NextRunAt is when the schedule next starts the suite; absent when it
 	// has no schedule.
 	NextRunAt time.Time `json:"next_run_at,omitzero"`
+	// ScheduleBusy is true while a run of a scheduled suite is going: the
+	// schedule starts the next one after it ends.
+	ScheduleBusy bool `json:"schedule_busy,omitempty"`
 }
 
 func (s *Server) listSuites(w http.ResponseWriter, _ *http.Request, who auth.Principal) {
@@ -804,7 +807,11 @@ func (s *Server) listSuites(w http.ResponseWriter, _ *http.Request, who auth.Pri
 		if !seer.Suite(suite) {
 			continue
 		}
-		runs, _ := s.P.EvalRunsView(who, suite.Name)
+		runs, schedule, err := s.P.EvalSuiteListing(who, suite)
+		if err != nil {
+			s.problem(w, err)
+			return
+		}
 		if len(runs) > 20 {
 			runs = runs[:20]
 		}
@@ -814,11 +821,8 @@ func (s *Server) listSuites(w http.ResponseWriter, _ *http.Request, who auth.Pri
 			}
 		}
 		view := suiteView{Suite: s.P.EvalSuiteView(suite), Runs: orEmpty(runs), CreatedByName: names.Of(suite.CreatedBy)}
-		if next, scheduled, err := s.P.EvalNextRun(who.Tenant, suite); err != nil {
-			s.problem(w, err)
-			return
-		} else if scheduled {
-			view.NextRunAt = next
+		if schedule.Scheduled {
+			view.NextRunAt, view.ScheduleBusy = schedule.Next, schedule.Busy
 		}
 		out = append(out, view)
 	}

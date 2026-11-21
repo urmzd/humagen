@@ -3,6 +3,7 @@ package platform
 import (
 	"fmt"
 	"slices"
+	"time"
 
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/evals"
@@ -93,17 +94,51 @@ func (p *Platform) EvalRunsView(who auth.Principal, name string) ([]evals.Run, e
 	if !p.Seer(who).Suite(suite) {
 		return nil, auth.ErrForbidden
 	}
-	records, err := p.Evals.History(who.Tenant, name)
-	if err != nil {
-		return nil, err
+	runs, _, err := p.EvalSuiteListing(who, suite)
+	return runs, err
+}
+
+// EvalSchedule is when a suite's schedule next starts it, as runDueEvals
+// decides it. Busy means a run of the suite is going: the loop skips the
+// suite until it ends, so the next run comes after it.
+type EvalSchedule struct {
+	Scheduled bool
+	Next      time.Time
+	Busy      bool
+}
+
+// evalSchedule reads the schedule from every run the loop reads, not only
+// those the caller may see, so the console and the loop agree. A due suite
+// starts within a minute, so its next run is no earlier than now.
+func (p *Platform) evalSchedule(suite evals.Suite, runs []evals.Run) EvalSchedule {
+	next, scheduled := evals.NextRun(suite, runs)
+	if !scheduled {
+		return EvalSchedule{}
 	}
+	if now := p.now(); next.Before(now) {
+		next = now
+	}
+	busy := slices.ContainsFunc(runs, func(r evals.Run) bool { return r.Status == evals.Running })
+	return EvalSchedule{Scheduled: true, Next: next, Busy: busy}
+}
+
+// EvalSuiteListing is a suite's runs the caller may read and its schedule,
+// from one read of its history. The caller has already checked the suite is
+// theirs to see.
+func (p *Platform) EvalSuiteListing(who auth.Principal, suite evals.Suite) ([]evals.Run, EvalSchedule, error) {
+	records, err := p.Evals.History(who.Tenant, suite.Name)
+	if err != nil {
+		return nil, EvalSchedule{}, err
+	}
+	all := make([]evals.Run, 0, len(records))
 	out := make([]evals.Run, 0, len(records))
 	for _, record := range records {
+		all = append(all, record.Run)
 		if p.evalRunVisible(who, record) {
 			out = append(out, record.Run)
 		}
 	}
-	return out, nil
+	return out, p.evalSchedule(suite, all), nil
 }
 
 // MergeEvalSuiteReplay preserves server-owned snapshots on a public editing

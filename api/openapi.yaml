@@ -17774,6 +17774,9 @@ components:
               description: When the schedule next starts the suite. Absent when it has no schedule.
               type: string
               format: date-time
+            schedule_busy:
+              description: A run of the scheduled suite is going; the schedule starts the next one after it ends.
+              type: boolean
       properties: {}
 
     KnowledgeVariant:
@@ -20958,8 +20961,11 @@ components:
           items:
             $ref: "#/components/schemas/OnlineEvaluation"
         flagged:
-          description: Runs rated down with a reason that wait in the review queue, of those the caller may read.
+          description: Runs rated down with a reason that wait in the review queue, of those the caller may read, up to 50. Absent for a caller without evals:read.
           type: integer
+        flagged_more:
+          description: The review queue holds candidates past those counted in flagged.
+          type: boolean
       required:
         - agent
         - status
@@ -20967,7 +20973,6 @@ components:
         - passed
         - pass_rate
         - results
-        - flagged
     AgentChangeScore:
       type: object
       properties:

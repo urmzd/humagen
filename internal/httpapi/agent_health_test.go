@@ -5,6 +5,9 @@ import (
 	"net/http"
 	"testing"
 	"time"
+
+	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/pkg/evals"
 )
 
 // An agent's health counts the runs rated down that wait for review, so the
@@ -13,20 +16,36 @@ func TestAgentHealthCountsTheRunsFlaggedForReview(t *testing.T) {
 	f := newFixture(t)
 	admin := f.machine(t, "acme", everything...)
 	want(t, f, admin, "POST", "/api/agents", helperSpec, http.StatusCreated)
-	if got := want(t, f, admin, "GET", "/api/agents/helper/health", "", http.StatusOK); got["flagged"] != float64(0) {
+	if got := want(t, f, admin, "GET", "/api/agents/helper/health", "", http.StatusOK); got["flagged"] != nil {
 		t.Fatalf("health before any rating = %v", got)
 	}
 	first := f.ask(t, admin, `{"agent":"helper","text":"Where is the first report?"}`)
 	second := f.ask(t, admin, `{"agent":"helper","text":"Where is the second report?"}`)
 	want(t, f, admin, "PUT", "/api/runs/"+first["id"].(string)+"/feedback", `{"rating":"down","reason":"wrong"}`, http.StatusOK)
 	want(t, f, admin, "PUT", "/api/runs/"+second["id"].(string)+"/feedback", `{"rating":"up"}`, http.StatusOK)
-	if got := want(t, f, admin, "GET", "/api/agents/helper/health", "", http.StatusOK); got["flagged"] != float64(1) {
+	if got := want(t, f, admin, "GET", "/api/agents/helper/health", "", http.StatusOK); got["flagged"] != float64(1) || got["flagged_more"] != nil {
 		t.Fatalf("health with one run rated down = %v", got)
+	}
+	// Health needs only agents:read; the queue's count is for those who may read the queue.
+	viewer := f.machineAs(t, "viewer", "acme", "humagen:agents:read")
+	if got := want(t, f, viewer, "GET", "/api/agents/helper/health", "", http.StatusOK); got["flagged"] != nil {
+		t.Fatalf("health for a caller without evals:read = %v", got)
 	}
 	page := want(t, f, admin, "GET", "/api/eval-candidates?agent=helper", "", http.StatusOK)
 	want(t, f, admin, "DELETE", "/api/eval-candidates/"+candidateIDs(page)[0], "", http.StatusNoContent)
-	if got := want(t, f, admin, "GET", "/api/agents/helper/health", "", http.StatusOK); got["flagged"] != float64(0) {
+	if got := want(t, f, admin, "GET", "/api/agents/helper/health", "", http.StatusOK); got["flagged"] != nil {
 		t.Fatalf("health after dismissing = %v", got)
+	}
+
+	// The count stops at MaxFlagged and says there are more, reading no more
+	// than one candidate past it.
+	for i := range platform.MaxFlagged + 5 {
+		if err := f.p.Evals.SaveCandidate("acme", fmt.Sprintf("rater-%d", i), evals.Candidate{Run: first["id"].(string), Agent: "helper", Input: "q", Reason: "wrong", At: time.Now()}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := want(t, f, admin, "GET", "/api/agents/helper/health", "", http.StatusOK); got["flagged"] != float64(platform.MaxFlagged) || got["flagged_more"] != true {
+		t.Fatalf("health with more candidates than it counts = %v", got)
 	}
 }
 
@@ -69,6 +88,24 @@ func TestASuiteListingSaysWhenItsScheduleNextRunsAndForWhom(t *testing.T) {
 			if _, has := s["next_run_at"]; has {
 				t.Fatalf("a schedule turned off still has a next run: %v", s)
 			}
+		}
+	}
+
+	// While a run is going the loop skips the suite, and the listing says so.
+	want(t, f, admin, "PUT", "/api/evals/timed", suite("timed", `"every_seconds":21600,`), http.StatusOK)
+	kept, err := f.p.Evals.Get("acme", "timed")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.p.Evals.Begin("acme", kept, 0, "someone", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range want(t, f, admin, "GET", "/api/evals", "", http.StatusOK)["suites"].([]any) {
+		if s := s.(map[string]any); s["name"] == "timed" && s["schedule_busy"] != true {
+			t.Fatalf("a scheduled suite with a run going is not busy: %v", s)
+		}
+		if s := s.(map[string]any); s["name"] == "plain" && s["schedule_busy"] != nil {
+			t.Fatalf("a suite without a schedule is busy: %v", s)
 		}
 	}
 }

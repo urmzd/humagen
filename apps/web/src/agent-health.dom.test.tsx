@@ -319,3 +319,55 @@ test("the pill follows the checked runs: all passing is Healthy, any failing nee
   assert.equal(healthStatus({ samples: 3, passed: 3 }), "healthy");
   assert.equal(healthStatus({ samples: 3, passed: 2 }), "needs_review");
 });
+
+test("a custom period that is not whole hours opens as it is and saves unchanged", async () => {
+  const saved: Record<string, unknown>[] = [];
+  net = stubFetch({
+    "PUT /api/evals/smoke": (body) => {
+      saved.push(body as Record<string, unknown>);
+      return body;
+    },
+    "GET /api/eval-candidates": () => ({ candidates: [], next: "" }),
+  });
+  let changed = 0;
+  render(
+    <Evals
+      target="agent"
+      subject="writer"
+      suites={[{ ...scheduled, every_seconds: 5400 }]}
+      canWrite
+      onChanged={() => changed++}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: sched.edit }));
+  const editor = screen.getByRole("form", { name: sched.editFor("smoke") });
+  assert.equal(
+    within(editor).getByRole("button", { name: sched.presets.custom }).getAttribute("aria-pressed"),
+    "true",
+  );
+  const hours = within(editor).getByRole("spinbutton", {
+    name: /^Every \(hours\)/,
+  }) as HTMLInputElement;
+  assert.equal(hours.value, "1.5");
+  fireEvent.click(within(editor).getByRole("button", { name: sched.save }));
+  await waitFor(() => assert.equal(changed, 1));
+  assert.equal(saved[0]?.every_seconds, 5400);
+});
+
+test("a run past the flagged count says there are more", async () => {
+  net = stubFetch({
+    "GET /api/agents/writer/health": () =>
+      health({
+        samples: 1,
+        passed: 1,
+        pass_rate: 100,
+        results: [result("r1")],
+        flagged: 50,
+        flagged_more: true,
+      }),
+    "GET /api/agents/writer/changes": () => [],
+  });
+  render(<AgentHealth name="writer" />);
+  assert.ok(await screen.findByRole("link", { name: words.flagged(50, true) }));
+  assert.equal(words.flagged(50, true), "50+ runs flagged for review");
+});

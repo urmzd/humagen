@@ -130,10 +130,10 @@ function RecentRuns({ health, agent }: { health: AgentEvaluationHealth; agent: s
           </Fact>
         </dl>
       )}
-      {health.flagged > 0 && (
+      {(health.flagged ?? 0) > 0 && (
         <p className="text-aui-sm">
           <TabLink agent={agent} part="eval-feedback">
-            {words.flagged(health.flagged)}
+            {words.flagged(health.flagged ?? 0, health.flagged_more)}
           </TabLink>
         </p>
       )}

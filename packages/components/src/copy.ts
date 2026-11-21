@@ -3035,7 +3035,10 @@ export const defaultCopy = {
     runNowFor: (suite: string) => `Run ${suite} now`,
     runFailed: "The suite could not be started.",
     feedback: "Feedback",
-    flagged: (n: number) => `${n} ${n === 1 ? "run" : "runs"} flagged for review`,
+    flagged: (n: number, more = false) =>
+      more
+        ? `${n}+ runs flagged for review`
+        : `${n} ${n === 1 ? "run" : "runs"} flagged for review`,
     failures: "Failed checks",
     revisionAt: (rev: number, when: string) => `Revision ${rev}, ${when}`,
     changes: "Recent proposed changes",
@@ -3076,7 +3079,7 @@ export const defaultCopy = {
       custom: "Custom",
     },
     hours: "Every (hours)",
-    hoursHint: "From 1 to 720 hours.",
+    hoursHint: "From 1 to 720 hours. Halves and quarters are fine.",
     invalid: "A schedule runs from every hour to every 30 days.",
     actsFor: (name: string) => `Runs as ${name}, who saved it last.`,
     runsAs: (name: string) => `runs as ${name}`,
@@ -3098,6 +3101,7 @@ export const defaultCopy = {
     },
     next: (when: string) => `next ${when}`,
     dueNow: "next within a minute",
+    afterCurrent: "next after the current run",
     last: (when: string) => `last run ${when}`,
     never: "not run yet",
   },

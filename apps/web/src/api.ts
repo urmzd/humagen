@@ -890,6 +890,8 @@ export interface SuiteView extends Suite {
   created_by_name?: string;
   /** When the schedule next starts the suite; absent without a schedule. */
   next_run_at?: string;
+  /** A run of the scheduled suite is going; the next starts after it ends. */
+  schedule_busy?: boolean;
 }
 
 /** A suite as it is saved: what a listing adds to it left off, as the server takes no unknown field. */

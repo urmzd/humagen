@@ -37,8 +37,9 @@ export function validEvery(seconds: number): boolean {
 /** A suite's schedule in one line: "Every 6 hours, next in 2 hours, last run 3 hours ago". */
 export function scheduleLine(suite: SuiteView, now: number = Date.now()): string {
   if (!suite.every_seconds) return words.off;
-  const next =
-    !suite.next_run_at || Date.parse(suite.next_run_at) - now < 60_000
+  const next = suite.schedule_busy
+    ? words.afterCurrent
+    : !suite.next_run_at || Date.parse(suite.next_run_at) - now < 60_000
       ? words.dueNow
       : words.next(ago(suite.next_run_at, now));
   const started = suite.runs[0]?.started_at;

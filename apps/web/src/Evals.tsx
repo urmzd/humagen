@@ -39,10 +39,15 @@ function ScheduleEditor({
   onSaved: () => void;
 }) {
   const [preset, setPreset] = useState<Preset>(presetOf(suite.every_seconds));
-  const [hours, setHours] = useState(String(Math.round((suite.every_seconds || 2 * 3600) / 3600)));
+  // The saved period shows in hours as it is (5400 s is 1.5), and is kept to
+  // the second unless the person types a new one.
+  const saved = suite.every_seconds || 2 * 3600;
+  const [hours, setHours] = useState(String(Number((saved / 3600).toFixed(4))));
+  const [typed, setTyped] = useState(false);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
-  const seconds = preset === "custom" ? Math.round(Number(hours) * 3600) : PRESETS[preset];
+  const seconds =
+    preset !== "custom" ? PRESETS[preset] : typed ? Math.round(Number(hours) * 3600) : saved;
   const valid = validEvery(seconds) && !(preset === "custom" && seconds === 0);
   const save = (e: FormEvent) => {
     e.preventDefault();
@@ -87,10 +92,13 @@ function ScheduleEditor({
             inputMode="numeric"
             min={MIN_EVERY / 3600}
             max={MAX_EVERY / 3600}
-            step={1}
+            step="any"
             value={hours}
             aria-invalid={!valid}
-            onChange={(e) => setHours(e.target.value)}
+            onChange={(e) => {
+              setHours(e.target.value);
+              setTyped(true);
+            }}
           />
         </Label>
       )}

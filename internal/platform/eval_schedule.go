@@ -7,24 +7,6 @@ import (
 	"time"
 )
 
-// EvalNextRun is when the schedule next starts a suite, as runDueEvals
-// decides it, and whether the suite has a schedule. A scheduled suite that is
-// due starts within a minute, so its next run is no earlier than now.
-func (p *Platform) EvalNextRun(tenant string, suite evals.Suite) (time.Time, bool, error) {
-	if suite.EverySeconds <= 0 {
-		return time.Time{}, false, nil
-	}
-	prior, err := p.Evals.Runs(tenant, suite.Name)
-	if err != nil {
-		return time.Time{}, false, err
-	}
-	next, _ := evals.NextRun(suite, prior)
-	if now := p.now(); next.Before(now) {
-		next = now
-	}
-	return next, true, nil
-}
-
 // runEvalSchedule is a leader loop. Begin's stored suite guard also prevents
 // duplicate execution while a previous leader's bounded work is finishing.
 func (p *Platform) runEvalSchedule(ctx context.Context) error {
@@ -62,7 +44,7 @@ func (p *Platform) runDueEvals(ctx context.Context) error {
 			for _, r := range prior {
 				busy = busy || r.Status == evals.Running
 			}
-			// The console shows the same next run (EvalNextRun).
+			// The console shows the same next run (evalSchedule).
 			if next, _ := evals.NextRun(suite, prior); busy || p.now().Before(next) {
 				continue
 			}
