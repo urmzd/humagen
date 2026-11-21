@@ -209,6 +209,10 @@ test("manifest: the app asks for what it uses, thread history included", async (
   for (const e of [
     "app_mention",
     "message.im",
+    // The replies of a thread that began with a mention, which the app listens to.
+    "message.channels",
+    "message.groups",
+    "message.mpim",
     "app_home_opened",
     "agent_session_stopped",
     "assistant_thread_started",

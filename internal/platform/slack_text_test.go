@@ -78,3 +78,29 @@ func TestASlackMessageTagsAtMostTen(t *testing.T) {
 		t.Fatalf("refused = %v", refused)
 	}
 }
+
+// The app's own mention may sit anywhere, and the whole message is kept: the
+// address that opens it is dropped, and inside a sentence it reads as the
+// app's name, so the words around it are not left broken.
+func TestSlackTextKeepsTheWholeMessageAroundTheAppsMention(t *testing.T) {
+	cx := slackFixture()
+	cx.AppName = "Humagen"
+	app := "<@" + cx.AppUser + ">"
+	for in, want := range map[string]string{
+		app + " please check my repos":                            "please check my repos",
+		app + ": summarise this":                                  "summarise this",
+		"Hey team, could " + app + " take a look at this? Thanks": "Hey team, could Humagen take a look at this? Thanks",
+		"The build broke.\n\nCan you find out why, " + app:        "The build broke.\n\nCan you find out why, Humagen",
+		"First.\n\n" + app + " second paragraph asks.\n\nThird.":  "First.\n\nHumagen second paragraph asks.\n\nThird.",
+		"see `" + app + "` in code":                               "see `" + app + "` in code",
+	} {
+		if got, _ := slackText(in, cx); got != want {
+			t.Errorf("%q\n got %q\nwant %q", in, got, want)
+		}
+	}
+	// With no name to say, the mention is dropped as before.
+	cx.AppName = ""
+	if got, _ := slackText("could "+app+" take a look", cx); got != "could take a look" {
+		t.Errorf("with no name: %q", got)
+	}
+}

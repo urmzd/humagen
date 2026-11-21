@@ -1559,6 +1559,17 @@ func fail(w http.ResponseWriter, status int, msg string) {
 	ok(w, status, map[string]string{"error": msg})
 }
 
+// codeThreadBeforeSessions is the code of the conflict POST /api/sessions
+// answers for a surface thread that started as a conversation: the chat
+// service posts the message to POST /api/threads instead.
+const codeThreadBeforeSessions = "thread_before_sessions"
+
+// failCode is fail with a code a program acts on, where the status alone
+// does not say which failure it is. The words are for a person and may change.
+func failCode(w http.ResponseWriter, status int, code, msg string) {
+	ok(w, status, map[string]string{"error": msg, "code": code})
+}
+
 func orEmpty[T any](s []T) []T {
 	if s == nil {
 		return []T{}

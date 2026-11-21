@@ -1,7 +1,12 @@
+import type { defaultCopy } from "@humagen/components";
 import type { Marks, ThreadSummary } from "./api.ts";
 
-/** How the sidebar lists conversations: newest first, by project, or the ones put away. */
-export type ListView = "recents" | "projects" | "archived";
+/**
+ * How the sidebar lists conversations: newest first ("flat", the default),
+ * under Today, Yesterday and Earlier ("recents"), by project, or the ones
+ * put away.
+ */
+export type ListView = "flat" | "recents" | "projects" | "archived";
 
 /** What a row's state mark says, most urgent first. */
 export type RowStanding = "needs" | "running" | "failed" | "unread" | "";
@@ -56,6 +61,79 @@ export function standingOf(t: ThreadSummary, marks: Marks): RowStanding {
   if (t.active > 0) return "running";
   if (t.failed > 0) return "failed";
   return isUnread(t, marks) ? "unread" : "";
+}
+
+/** The words a row's state is said in (defaultCopy.sidebar.state). */
+export type StateWords = Pick<
+  typeof defaultCopy.sidebar.state,
+  "waitingYou" | "waitingOther" | "waitingUnknown" | "failed" | "working" | "alert"
+>;
+
+/** What a row says about its state: a line in words, a dot for what is new, and whether it runs. */
+export type RowState = {
+  /** A line under the row's time and source, in its tone: warn waits on someone, bad failed. */
+  line?: { tone: "warn" | "bad" | "muted"; text: string };
+  /** The dot on the right, by meaning: it waits on the reader, it failed unread, or it is unread. */
+  dot?: "you" | "failed" | "unread";
+};
+
+/**
+ * A row's state, said in words, most pressing first: it waits on someone
+ * (the reader, in the warning color), its latest turn failed (in red, with
+ * why), it is working, or it holds an open alert. The dot on the right marks
+ * what is new to the reader: waiting on them, a failure they have not read,
+ * or an answer they have not read.
+ *
+ * A session listing says why the latest turn failed (`failure`); an earlier
+ * failure a later turn answered is not one. Other listings only count
+ * failed runs, so any is said as "Failed".
+ */
+export function rowState(
+  t: ThreadSummary,
+  marks: Marks,
+  /** The words for each state: defaultCopy.sidebar.state, passed in so this module stays plain TypeScript. */
+  words: StateWords,
+  opts: {
+    session?: boolean;
+    alert?: { priority: "urgent" | "normal" | "low"; title: string };
+  } = {},
+): RowState {
+  const unread = isUnread(t, marks);
+  // Something in it is parked. Whom on is the listing's to say, from the
+  // reader's own inbox; without that it waits on someone.
+  const waiting = (t.waiting ?? 0) > 0;
+  // Only a listing that says the reader is asked makes it theirs: a missing
+  // answer is no one's, never the reader's by default.
+  const you = waiting && t.waiting_on_you === true;
+  const failure = t.failure ?? (!opts.session && t.failed > 0 ? "" : undefined);
+  const line: RowState["line"] = waiting
+    ? {
+        tone: you ? "warn" : "muted",
+        text: you
+          ? words.waitingYou(t.waiting_for ?? "", t.waiting_kind)
+          : t.waiting_unknown === true
+            ? // The listing could not tell whom: said without naming anyone.
+              words.waitingUnknown(t.waiting_for ?? "", t.waiting_kind)
+            : words.waitingOther(t.waiting_for ?? "", t.waiting_kind),
+      }
+    : failure !== undefined
+      ? { tone: "bad", text: words.failed(failure) }
+      : t.active > 0
+        ? { tone: "muted", text: words.working }
+        : opts.alert
+          ? {
+              tone: opts.alert.priority === "urgent" ? "warn" : "muted",
+              text: words.alert(opts.alert.title),
+            }
+          : undefined;
+  const dot: RowState["dot"] = you
+    ? "you"
+    : unread
+      ? failure !== undefined
+        ? "failed"
+        : "unread"
+      : undefined;
+  return { line, dot };
 }
 
 // One rule for every age and relative time in the console: format.ts.

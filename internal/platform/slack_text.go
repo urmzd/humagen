@@ -35,6 +35,12 @@ const (
 type slackContext struct {
 	// AppUser is the app's own bot user id.
 	AppUser string
+	// AppName is what the app is called in words. Its own mention is how a
+	// message reached it and tags nobody: one that opens the message is the
+	// address and is dropped, and anywhere else it is part of the sentence
+	// and reads as this name, so the words around it are not left broken.
+	// Empty drops it there too.
+	AppName string
 	// Bots maps a bot user id to the agent it stands for: the client's Bots.
 	Bots map[string]string
 	// People maps a Slack user id to the subject it is here: the client's
@@ -82,9 +88,18 @@ func slackText(text string, cx slackContext) (string, []slackRefusal) {
 				label = s[m[4]:m[5]]
 			}
 			out := slackWord(inner, label, cx, &tags, &refused)
+			if out == "" && cx.AppName != "" && strings.TrimSpace(b.String()) != "" {
+				// The app's own mention inside a sentence: its name, in words.
+				out = cx.AppName
+			}
 			if out == "" {
-				// A dropped mention takes one space with it.
-				if last < len(s) && s[last] == ' ' {
+				// The address that opens a message goes with the colon or
+				// comma after it; any other dropped mention takes one space.
+				if strings.TrimSpace(b.String()) == "" {
+					rest := strings.TrimLeft(s[last:], " \t")
+					rest = strings.TrimLeft(strings.TrimPrefix(strings.TrimPrefix(rest, ":"), ","), " \t")
+					last = len(s) - len(rest)
+				} else if last < len(s) && s[last] == ' ' {
 					last++
 				}
 				continue

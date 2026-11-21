@@ -56,7 +56,7 @@ import {
   type SerializeResult,
   suggestedPrompts,
 } from "@humagen/render-slack";
-import { BUILDER, choose, mayRoute, type Routing } from "./agents.ts";
+import { BUILDER, choose, mayRoute, namesAgent, type Routing } from "./agents.ts";
 import { type Branding, brandedCopy, brandedWords, DEFAULT_BRANDING } from "./branding.ts";
 import { bridgePolicy, subscribed } from "./bridge.ts";
 import { CodeChannels } from "./codechannel.ts";
@@ -88,7 +88,9 @@ import {
   type Run,
   type StreamItem,
   type SurfaceRef,
+  THREAD_BEFORE_SESSIONS,
   type ThreadPosted,
+  type ThreadPostRequest,
   type WireMessage,
   type WireProject,
 } from "./humagen.ts";
@@ -190,6 +192,13 @@ interface Job {
   notTheirs?: boolean;
   /** A mention in a channel thread: what people said there since the app was last asked goes with it. */
   history?: boolean;
+  /**
+   * The message addressed nobody: a reply, with no mention, in a channel
+   * thread. Humagen takes it only where the thread began with a mention, and
+   * answers only when the agent says it calls for it. Until a run starts
+   * nothing is shown: no reaction, no status, no notice.
+   */
+  listen?: boolean;
 }
 
 type Item =
@@ -477,22 +486,6 @@ export class App {
    * the thread's queue, and is forgotten on a restart.
    */
   private readonly named = new Map<string, string>();
-  /**
-   * The channel threads this app answered a mention in, and who asked it
-   * there last. A reply from that person in such a thread is taken as asked,
-   * without a mention (RFC 0012): someone talking to the agent need not
-   * mention the app on every reply, and people talking to each other in the
-   * thread are never answered. Forgotten on a restart.
-   */
-  private readonly followed = new Map<string, string>();
-
-  private follow(session: Session, user: string) {
-    const key = sessionName(session);
-    this.followed.delete(key);
-    this.followed.set(key, user);
-    const oldest = this.followed.keys().next().value;
-    if (this.followed.size > NAMED_THREADS && oldest !== undefined) this.followed.delete(oldest);
-  }
   /** Slack deliveries already taken, so a redelivery in this process does nothing. */
   private readonly seen = new Recent<true>(10_000);
   /** Who asked for each run, by Slack user id. */
@@ -907,35 +900,24 @@ export class App {
       await this.stop({ team: this.opts.team, channel, threadTs: event.thread_ts });
       return;
     }
-    // A reply in a channel thread this app answered, from the person who asked
-    // it there last, is asked though it names nobody. A message that mentions
-    // the app arrives as its own app_mention as well, and is taken from there.
-    const following =
-      event.type === "message" &&
-      event.channel_type !== "im" &&
-      Boolean(event.thread_ts && event.channel && event.user) &&
-      !(event.text ?? "").includes(`<@${this.opts.botUser}>`) &&
-      this.followed.get(
-        sessionName({
-          team: this.opts.team,
-          channel: event.channel ?? "",
-          threadTs: event.thread_ts ?? "",
-        }),
-      ) === event.user;
-    // The manifest asks for channel messages only so the app can follow a
-    // thread: any other channel message that does not mention the app is
-    // dropped unread here, unless the client's own subscriptions name
-    // channel messages (a bridge that mirrors a bound channel).
+    // The manifest asks for channel messages only so the app can listen in a
+    // thread that began with a mention. A channel message that does not
+    // mention the app is offered to that rule and otherwise dropped unread,
+    // unless the client's own subscriptions name channel messages (a bridge
+    // that mirrors a bound channel). One that mentions the app arrives as its
+    // own app_mention as well, and is taken from there.
     if (
       event.type === "message" &&
       event.channel_type !== "im" &&
-      !following &&
+      !mentionsApp(event.text ?? "", this.opts.botUser) &&
       !(
         event.channel &&
         (await this.bridgeControls(event.channel)).client?.capabilities?.events.includes("message")
       )
-    )
+    ) {
+      await this.listenTo(event);
       return;
+    }
     if (
       (event.type === "message" || event.type === "app_mention") &&
       event.channel &&
@@ -960,7 +942,7 @@ export class App {
           channel: event.channel,
           threadTs: event.thread_ts ?? event.ts,
         };
-        const text = (event.text ?? "").replaceAll(`<@${this.opts.botUser}>`, " ").trim();
+        const text = wholeMessage(event.text ?? "", this.opts.botUser, this.selfName);
         if (!text && !event.files?.length) return;
         await this.humagen.postThread({
           text: text || defaultCopy.attachedFilesPrompt,
@@ -978,10 +960,9 @@ export class App {
         return;
       }
     }
+    if (await this.listenTo(event)) return;
     const asked =
-      event.type === "app_mention" ||
-      (event.type === "message" && event.channel_type === "im") ||
-      following;
+      event.type === "app_mention" || (event.type === "message" && event.channel_type === "im");
     // Loop prevention: a bot's message, this app's own, an edit or a join never starts a run.
     if (!asked || (event.subtype && event.subtype !== "file_share") || event.bot_id || !event.user)
       return;
@@ -991,7 +972,7 @@ export class App {
       channel: event.channel,
       threadTs: event.thread_ts ?? event.ts,
     };
-    const text = (event.text ?? "").replaceAll(`<@${this.opts.botUser}>`, " ").trim();
+    const text = wholeMessage(event.text ?? "", this.opts.botUser, this.selfName);
     if (!text && !event.files?.length) return;
     await this.offerSkills(event.channel);
     // A mention in a code channel continues the conversation of the thread it was opened from.
@@ -1006,9 +987,56 @@ export class App {
       user: event.user,
       key: eventKey(session, event.ts),
       // A direct message is always addressed to the app, so only a channel thread has more to read.
-      history: (event.type === "app_mention" || following) && session.threadTs !== event.ts,
+      history: event.type === "app_mention" && session.threadTs !== event.ts,
     });
-    if (event.type === "app_mention" || following) this.follow(session, event.user);
+  }
+
+  /**
+   * A reply in a channel thread that mentions nobody. Whether anyone is
+   * listening there is the platform's to say (`listen`): it is, where the
+   * thread's first message mentioned the app, and then the agent decides
+   * whether this message calls for it. A thread a later mention started was
+   * answered once, and a message outside a thread is nobody's. A reply that
+   * tags someone else and names no agent is addressed to them, not to the
+   * agent, so it is not offered. Reports whether the message was offered.
+   */
+  private async listenTo(event: SlackEvent): Promise<boolean> {
+    if (
+      event.type !== "message" ||
+      event.channel_type === "im" ||
+      !event.channel ||
+      !event.ts ||
+      !event.user ||
+      event.bot_id ||
+      // A reply also sent to the channel is still a reply in the thread.
+      (event.subtype && event.subtype !== "file_share" && event.subtype !== "thread_broadcast") ||
+      event.user === this.opts.botUser ||
+      !event.thread_ts ||
+      event.thread_ts === event.ts ||
+      mentionsApp(event.text ?? "", this.opts.botUser)
+    )
+      return false;
+    const text = (event.text ?? "").trim();
+    if (!text) return false;
+    if (
+      tagsSomeoneElse(text, this.opts.botUser) &&
+      !namesAgent(text, await this.agents().catch(() => [] as Agent[]))
+    )
+      return false;
+    const session: Session = {
+      team: this.opts.team,
+      channel: event.channel,
+      threadTs: event.thread_ts,
+    };
+    this.enqueue({
+      session,
+      text,
+      triggerTs: event.ts,
+      user: event.user,
+      key: eventKey(session, event.ts),
+      listen: true,
+    });
+    return true;
   }
 
   private readonly skillChannels = new Map<string, string>();
@@ -1069,8 +1097,9 @@ export class App {
       this.track(this.drive(thread, job, false));
       return;
     }
-    // It waits behind the turn in flight. The reaction says it was seen.
-    this.track(this.react(job, null, "queued"));
+    // It waits behind the turn in flight. The reaction says it was seen: a
+    // message nobody was asked about gets none until someone answers it.
+    if (!job.listen) this.track(this.react(job, null, "queued"));
   }
 
   private async react(job: Job, prev: Turn["status"] | null, next: Turn["status"]) {
@@ -1223,6 +1252,8 @@ export class App {
       // asked again acts for whom again() decided, never for whoever else is
       // known, and someone else's words are asked for nobody.
       const asking = job.again ? job.again.as : job.notTheirs ? null : await this.actAs(job.user);
+      // Only a person the client maps is listened to: nobody else's words are posted for them.
+      if (job.listen && !asking) return "done" as const;
       // In a code channel the conversation is its thread's, which the app
       // names, so a mapped person asks through the app as themselves there.
       if (asking && !job.again && !job.conversation) {
@@ -1232,10 +1263,19 @@ export class App {
           );
           return "stopped" as const;
         }
-        const posted = await this.cowork(job, asking);
+        let posted: ThreadPosted;
+        try {
+          posted = await this.cowork(job, asking);
+        } catch (e) {
+          // Nobody is listening in that thread: the message was nobody's.
+          if (job.listen && e instanceof HumagenError && e.status === 409) return "done" as const;
+          throw e;
+        }
         // Humagen already has this message: it was answered before a restart.
         if (posted.repeated) return "done" as const;
         const first = posted.runs[0];
+        // Heard, and not for the agent: kept as what was said, with nothing shown.
+        if (!first && job.listen) return "done" as const;
         if (!first) return this.unanswered(job, presenter, posted, routing);
         if (posted.runs.length > 1) {
           this.log(
@@ -1324,6 +1364,9 @@ export class App {
       }
     } catch (e) {
       this.log(`Humagen refused the turn: ${(e as Error).message}`);
+      // Nobody was asked, so nobody is told: a heard reply that could not be
+      // offered leaves nothing in Slack, whatever stopped it.
+      if (job.listen) return "failed" as const;
       // A reply under an announcement that was withdrawn starts nothing.
       if (e instanceof HumagenError && e.status === 410)
         return this.refuse(job, presenter, "", {
@@ -1404,6 +1447,24 @@ export class App {
    * the announcement, ahead of these messages.
    */
   private async cowork(job: Job, asking: ActAs): Promise<ThreadPosted> {
+    // A Slack channel bound to a project is that project's channel: its
+    // threads, announcements and limits are the project's, so it posts as
+    // before. Everywhere else, a direct message or a thread in any other
+    // channel, the Slack thread is a session, which the console lists.
+    // A thread there that began before sessions is a conversation still:
+    // humagen says so by code, with nothing kept, and it is posted to as one.
+    let conversation = (await this.bridgeControls(job.session.channel)).policy.bound;
+    const post = async (body: ThreadPostRequest) => {
+      if (!conversation) {
+        try {
+          return await this.humagen.postSession(body);
+        } catch (e) {
+          if (!(e instanceof HumagenError && e.code === THREAD_BEFORE_SESSIONS)) throw e;
+          conversation = true;
+        }
+      }
+      return this.humagen.postThread(body);
+    };
     if (job.history) {
       const at = {
         channel: job.session.channel,
@@ -1418,7 +1479,7 @@ export class App {
         for (const m of said) {
           const as = m.user && m.ts ? await this.actAs(m.user) : null;
           if (!as || !m.ts || !(m.text ?? "").trim()) continue;
-          await this.humagen.postThread({
+          await post({
             text: m.text ?? "",
             act_as: as,
             surface: this.surfaceOf(job, m.ts),
@@ -1429,10 +1490,11 @@ export class App {
         this.log(`thread history skipped: ${(e as Error).message}`);
       }
     }
-    return this.humagen.postThread({
+    return post({
       text: job.text,
       act_as: asking,
       surface: this.surfaceOf(job, job.triggerTs),
+      ...(job.listen ? { listen: true } : {}),
     });
   }
 
@@ -3275,6 +3337,37 @@ export class App {
     // A global shortcut or the Home tab has no channel: answer in the app's own messages with this person.
     await this.start({ channel: p.user.id, user: p.user.id }, text);
   }
+}
+
+/**
+ * A Slack message as it is sent on: the whole message, as the person wrote
+ * it. The app's own mention is how the message reached it and tags nobody,
+ * so one that opens the message is the address and is dropped, with the
+ * colon or comma after it ("<@app>: summarise" asks "summarise"). Anywhere
+ * else the mention is part of the sentence and reads as the app's name
+ * ("could <@app> take a look" asks "could Humagen take a look"): cut out, it
+ * would leave "could take a look".
+ */
+export function wholeMessage(text: string, botUser: string, name: string): string {
+  const own = new RegExp(`<@${botUser}(?:\\|[^<>]*)?>`, "g");
+  const opened = new RegExp(`^\\s*<@${botUser}(?:\\|[^<>]*)?>[ \\t]*[:,]?[ \\t]*`);
+  return text.replace(opened, "").replace(own, name).trim();
+}
+
+/** Whether Slack text mentions the app, wherever in it: `<@U…>` or `<@U…|name>`. */
+export function mentionsApp(text: string, botUser: string): boolean {
+  return text.includes(`<@${botUser}>`) || text.includes(`<@${botUser}|`);
+}
+
+/**
+ * Whether a message tags someone other than this app: it is addressed to
+ * them. Someone is a Slack user or bot, a user group (`<!subteam^S…>`), or
+ * everyone in the channel (`<!here>`, `<!channel>`, `<!everyone>`). Any other
+ * `<!…>`, such as a date, tags nobody.
+ */
+export function tagsSomeoneElse(text: string, botUser: string): boolean {
+  for (const m of text.matchAll(/<@([A-Z0-9]+)(?:\|[^>]*)?>/g)) if (m[1] !== botUser) return true;
+  return /<!(?:subteam\^[A-Z0-9]+|here|channel|everyone)(?:\|[^>]*)?>/.test(text);
 }
 
 /** Words for Slack's mrkdwn with nothing in them read as markup: no mention, link or broadcast. */

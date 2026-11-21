@@ -26,6 +26,8 @@ type Row = {
   waiting?: number;
   failed?: number;
   unread?: boolean;
+  /** What a session listing says of it for its reader (DES-054). */
+  extra?: Record<string, unknown>;
 };
 
 /** The ids the scene adds, so a test can find each row. */
@@ -38,6 +40,8 @@ export const SOURCE_ROWS = {
   needs: "s_screens_needs",
   pinnedSlack: "s_screens_pinned_slack",
   pinnedConsole: "s_screens_pinned_console",
+  joined: "s_screens_joined",
+  question: "s_screens_question",
 } as const;
 
 function rows(personal: string): Row[] {
@@ -70,6 +74,33 @@ function rows(personal: string): Row[] {
       minutes: 120,
       agent: "screens-reviewer",
       failed: 1,
+      unread: true,
+      extra: { failure: "github-reviewer could not read the repositories (401)" },
+    },
+    {
+      id: r.joined,
+      title: "Find the on-call rota for the payments team",
+      origin: "api",
+      source: "slack",
+      project: "",
+      minutes: 50,
+      agent: "screens-writer",
+      extra: { joined: true },
+    },
+    {
+      id: r.question,
+      title: "Triage this week's support backlog",
+      origin: "api",
+      project: "",
+      minutes: 14,
+      agent: "screens-writer",
+      active: 1,
+      waiting: 1,
+      extra: {
+        waiting_for: "Which of these three should I take on first?",
+        waiting_kind: "question",
+        waiting_on_you: true,
+      },
     },
     {
       id: r.scheduled,
@@ -97,6 +128,7 @@ function rows(personal: string): Row[] {
       agent: "screens-approval",
       active: 1,
       waiting: 1,
+      extra: { waiting_for: "file_write", waiting_kind: "approval", waiting_on_you: true },
     },
     {
       id: r.pinnedSlack,
@@ -164,6 +196,7 @@ export async function dressSources(page: Page, open: string): Promise<void> {
         waiting: row.waiting ?? 0,
         failed: row.failed ?? 0,
         last_agent: row.unread ?? false,
+        ...row.extra,
         messages: 1,
         updated_at: ago(row.minutes),
       },
@@ -215,27 +248,52 @@ export async function focusLog(page: Page): Promise<void> {
 }
 
 /**
- * Rests the mouse on a row's state mark: the mark stays in view under the
- * pointer, where its tooltip shows, while the row's ⋮ button takes the age.
+ * Rests the mouse on a failed row's state line: its words stay in view under
+ * the pointer while the row's ⋮ button takes the dot's place.
  */
 export async function hoverState(page: Page): Promise<void> {
   if ((page.viewportSize()?.width ?? 0) < 1024) return;
-  const mark = page.locator(`[data-thread-row="${SOURCE_ROWS.slackDM}"] [data-standing="failed"]`);
-  await mark.hover();
+  const line = page.locator(`[data-thread-row="${SOURCE_ROWS.slackDM}"] [data-state="bad"]`);
+  await line.hover();
   await page.getByRole("button", { name: /^Manage Please check my repos/ }).waitFor();
-  const seen = await mark.evaluate((el) => {
+  const seen = await line.evaluate((el) => {
     const box = el.getBoundingClientRect();
-    const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+    const hit = document.elementFromPoint(box.x + 8, box.y + box.height / 2);
     return {
       visible: getComputedStyle(el).visibility === "visible",
       under: !!hit && el.contains(hit),
-      title: el.getAttribute("title"),
+      text: el.textContent,
     };
   });
-  if (!seen.visible || !seen.under || seen.title !== "A reply failed")
-    throw new Error(
-      `a hovered state mark must stay visible with its tooltip: ${JSON.stringify(seen)}`,
-    );
+  if (!seen.visible || !seen.under || !seen.text?.startsWith("Failed: "))
+    throw new Error(`a hovered row's state must stay in view: ${JSON.stringify(seen)}`);
+}
+
+/**
+ * Drags the sidebar's edge 48px wider on a wide screen and checks the
+ * sidebar follows and the width is kept.
+ */
+export async function resizeSidebar(page: Page): Promise<void> {
+  if ((page.viewportSize()?.width ?? 0) < 1024) return;
+  const edge = page.getByRole("separator", { name: "Resize sidebar" });
+  const box = await edge.boundingBox();
+  if (!box) throw new Error("the sidebar's edge is not drawn");
+  const x = box.x + box.width / 2;
+  const y = box.y + 300;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x + 24, y);
+  await page.mouse.move(x + 48, y);
+  await page.mouse.up();
+  const nav = page.getByRole("complementary", { name: "Navigation" });
+  const width = (await nav.boundingBox())?.width ?? 0;
+  // It is drawn no wider than a third of the window.
+  const want = Math.min(344, Math.floor((page.viewportSize()?.width ?? 0) / 3));
+  if (Math.abs(width - want) > 2)
+    throw new Error(`the dragged sidebar is ${width}px, want ${want}`);
+  // What is kept is what is drawn.
+  const kept = await page.evaluate(() => localStorage.getItem("humagen.sidebar.width"));
+  if (kept !== String(want)) throw new Error(`the dragged width is kept as ${kept}, want ${want}`);
 }
 
 /** Rests the mouse on a row that is not the open one, which shows its hover state and preview. */
@@ -264,9 +322,18 @@ export async function assertSources(page: Page): Promise<void> {
     if ((await mark.getAttribute("data-source")) !== source)
       throw new Error(`${id} should lead with its ${source} mark`);
   }
-  const failed = nav.locator(`[data-thread-row="${SOURCE_ROWS.slackDM}"] [data-standing="failed"]`);
-  if ((await failed.getAttribute("title")) !== "A reply failed")
-    throw new Error("a failed reply is said in words");
+  const failed = nav.locator(`[data-thread-row="${SOURCE_ROWS.slackDM}"] [data-state="bad"]`);
+  if (
+    (await failed.textContent()) !== "Failed: github-reviewer could not read the repositories (401)"
+  )
+    throw new Error("a failed reply is said in words, with why");
+  const waiting = nav.locator(`[data-thread-row="${SOURCE_ROWS.needs}"] [data-state="warn"]`);
+  if ((await waiting.textContent()) !== "Waiting for you: approve file_write")
+    throw new Error("a session waiting on the reader says what for");
+  await nav
+    .getByRole("region", { name: "Participated" })
+    .locator(`[data-thread-row="${SOURCE_ROWS.joined}"]`)
+    .waitFor();
   if ((await nav.locator(".humagen-row-dot").count()) > 0)
     throw new Error("no row carries a bare dot");
 }

@@ -24,6 +24,7 @@ await loadTests([
   "/src/composer-overlay.dom.test.tsx",
   "/src/pane-menu.dom.test.tsx",
   "/src/bigquery-connection.dom.test.tsx",
+  "/src/transcript.dom.test.tsx",
   "/src/connection-flows.dom.test.tsx",
   "/src/sidebar-recents.dom.test.tsx",
   "/src/agent-builder.dom.test.tsx",

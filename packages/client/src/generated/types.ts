@@ -20,6 +20,11 @@ export interface ArtifactSave {
   title?: string;
 }
 
+export interface RunConnectionNeed {
+  provider: string;
+  name?: string;
+}
+
 /** A memory tree a run's instance was given, and what the run kept of its changes. */
 export interface RunMemoryUse {
   kind: "person" | "project" | "agent";
@@ -572,6 +577,8 @@ export interface AgentNetwork {
 export interface ErrorBody {
   /** What went wrong, in words a person can be shown. */
   error: string;
+  /** Which failure it is, for a program to act on, where the status alone does not say. `thread_before_sessions` is the conflict of `POST /api/sessions` for a chat surface's thread that started as a conversation, which the chat service posts to `POST /api/threads` instead. A failure without one is told by its status. */
+  code?: string;
 }
 
 /** Why a limit refused a run. */
@@ -1457,6 +1464,13 @@ the schema.
   outcome?: RunOutcome;
   sandbox?: RunSandboxRecord;
   memory?: RunMemoryUse[];
+  /** Connections the run needed and the person it acts for had not
+made: a tool group it was granted could not be opened without
+that person's own credential. A run that called another agent
+carries what that agent's run needed as well. `provider` is the
+provider's name as Connections names it.
+ */
+  needs_connection?: RunConnectionNeed[];
   citations: RunCitation[];
   error?: string;
   /** What a parked run is waiting for. */
@@ -1564,6 +1578,18 @@ export interface ThreadSummary {
   messages: number;
   /** Where it started when that was not the console or the API, read from the Slack thread it lives on or the place its session was started from. Absent for the console and the API. A run's `origin` cannot say this, as a Slack message posts to its thread through the API. */
   source?: "slack" | "slack_dm" | "github" | "scheduled";
+  /** On a session listing, the caller takes part in the session without having started it. They posted in it, were mentioned or were added. */
+  joined?: boolean;
+  /** On a session listing, what waits on a person. It is the question waiting on the caller when there is one, else the latest run parked on a person. For an approval it is the tool asked about; for a question, the first line of its prompt. At most 100 characters. */
+  waiting_for?: string;
+  /** What `waiting_for` is. */
+  waiting_kind?: "approval" | "question";
+  /** On a session listing, an open question one of the session's runs waits on is the caller's to answer, by the rule answering holds them to. The question is addressed to them as it was raised, with whoever asked for the work excluded; the caller may write runs; and for a run held at a spend limit the caller holds `billing:write`. It reports the run, not the caller's notifications, so it stays true when they hid, snoozed or deleted the inbox message. A question a called agent raised counts for the session that called it. Read in one statement against the inbox for the whole page, of the workspace's newest 1000 live inbox messages; no inbox is read when nothing on the page waits. Always sent; false otherwise, so a client never assumes it. */
+  waiting_on_you: boolean;
+  /** On a session listing, the session waits on a person and whether that is the caller could not be told. The workspace holds more than 1000 live inbox messages and no question of the caller's about this session was among the newest 1000, or the inbox could not be read. `waiting_on_you` is then false, which does not mean it waits on someone else. Absent when it is known. */
+  waiting_unknown?: boolean;
+  /** On a session listing, why the latest turn failed, the first line of its error, at most 100 characters. Absent when the latest turn did not fail, so a failure a later turn answered is not shown. */
+  failure?: string;
   turns: number;
   branches: number;
   /** How many of its runs are in flight. */
@@ -1649,6 +1675,12 @@ not selected. Absent when none is selected.
   agents?: string[];
   mode?: ThreadMode;
   surface?: ThreadSurface;
+  /** The thread on its surface began with a message addressed to the app, a mention in a Slack channel thread's first message. It is listened to once the app has answered there. Absent for a thread a later mention started, where each mention is answered once, and for a direct message. */
+  addressed?: boolean;
+  /** An addressed thread the app has answered in. A refused mention, a failed run, or one still quiet or waiting on a person answered nothing and starts no listening. */
+  listening?: boolean;
+  /** Whose later messages there that address nobody are read, when the thread is `listening`, and the agent decides of each whether it calls for it. It is the person whose mention of the app or an agent the app answered most recently; only an answer to a newer mention changes it, and the listener's own unmentioned follow-ups never do. Anyone else mentions the app or an agent to ask. */
+  listener?: ThreadListener;
   fork?: ThreadFork;
   import?: ThreadImport;
   archive?: ThreadArchive;
@@ -1918,6 +1950,8 @@ export interface ThreadMessage {
   surface_id?: string;
   /** Said in voice mode and transcribed. */
   spoken?: boolean;
+  /** A message on a surface that addressed nobody, read because the thread listens to its poster, such as a Slack reply with no mention of the app. Unless it tags an agent its answer does not change the thread's `listener`. */
+  heard?: boolean;
   /** When its author last corrected a spoken message's words. */
   edited_at?: string;
   at: string;
@@ -2036,6 +2070,8 @@ export interface ThreadInput {
   post_only?: boolean;
   act_as?: ActAs;
   surface?: SurfaceRef;
+  /** With `surface`, posts a message that addressed nobody, such as a reply in a Slack thread that does not mention the app. It starts no thread. In a thread that is `listening` the agent is asked whether the message calls for it, and either answers it or the message is kept and starts nothing (`rule` is `post_only`). Anywhere else the answer is 409 and nothing is kept. */
+  listen?: boolean;
 }
 
 export interface HelpSuggestion {
@@ -5531,6 +5567,8 @@ export interface MessagesInput {
   act_as?: ActAs;
   /** With act_as, record the message and start nothing, for what people said in the thread before the app was asked. */
   post_only?: boolean;
+  /** With act_as, post a message that addressed nobody, such as a reply in a Slack thread that does not mention the app. It starts no session. In a thread that is `listening` the agent is asked whether the message calls for it, and answers it or the message is kept and starts nothing (`posted.rule` is `post_only`). Anywhere else the answer is 409 and nothing is kept. */
+  listen?: boolean;
 }
 
 /** One person's message. role is user; the platform writes the agents' messages. */
@@ -5827,6 +5865,8 @@ export interface SessionInput {
   surface_kind?: string;
   /** With surface: post the message without starting anything. */
   post_only?: boolean;
+  /** With surface: post a message that addressed nobody, such as a reply in a Slack thread that does not mention the app. It starts no session. In one that is `listening` the agent is asked whether the message calls for it, and answers it or the message is kept and starts nothing. Anywhere else the answer is 409 and nothing is kept. */
+  listen?: boolean;
   /** The id of a ready image from GET /api/sessions/options. "" and "default" are the deployment's own. Refused with surface. */
   image?: string;
   /** Repositories ("owner/name") the session works on, each listed by GET /api/sessions/options. Refused with surface. */
@@ -6375,6 +6415,11 @@ export interface AgentSetupPlanAssignment {
 export interface PreparedCallInputMessagesItem {
   role: "user" | "assistant";
   text: string;
+}
+
+export interface ThreadListener {
+  person: string;
+  message?: string;
 }
 
 export interface ThreadApproval {

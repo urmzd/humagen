@@ -26,6 +26,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 
 | ID | Requirement | Status |
 | --- | --- | --- |
+| DES-080 | A transcript says why work failed and what to do next: a failed step or delegated run shows its error's first line with Show Details, the failed count opens the steps at the failures, a failed delegated run offers Retry, a connection the run needed is a card with Connect, GitHub pull requests, issues and commits in an answer are chips, and an open run of steps is a card with each call's input as a table, a command with Copy and a running step's live time | Implemented: `StepGroup`, `ToolRow`, `Elapsed` and `WorkingMark` in `packages/web/src/WorkSteps.tsx`; `AgentCall` and `ConnectCards` in `packages/web/src/AgentMessage.tsx`; `packages/render-web/src/github-refs.tsx`; `ActionId.retryCall`, handled in `Room.tsx`; `needs_connection` on a run (`pkg/runs/connections.go`, recorded by `noteConnectionNeed` in `internal/platform/connection_need.go` when a tool group needs the person's own credential); `Task.startedAt` from the adapter. Evidence: `transcript.dom.test.tsx`, `timeline.dom.test.tsx`, `workspace.dom.test.tsx`, adapter `fold.test.ts` and `run.test.ts`, `TestARunRecordsEachConnectionItNeededOnceWithinBounds`, `TestAToolGroupWithoutThePersonsConnectionIsRecordedOnTheRunAndItsTurn`, `TestOtherExpansionFailuresNameNoConnection`; before and after captures of `transcript-gallery.html` at 1280x800 and 390x844, light and dark (`scripts/screens/transcript.ts`). Not built: Retry on a single tool call (no route runs one call again), a pull request's state and checks on its chip, and a connection named only in the agent's words. Not seen: a live run that records `needs_connection`, and `pnpm validate:slack`. |
 | DES-082 | A project's page is a chat landing page: one surface with a trail back to Projects and its menu at the top, its title and one-line description, and the conversation's floating composer pinned at the bottom. A project with no sessions leads with its setup as steps to get started, each done or not, with how many are done; once it has sessions it leads with Recents, and the setup is a summary beside them, folded above them on a phone. Setup and Recents are plain rows on hairlines, never boxed cards or "No ..." lines | Implemented: `ProjectPage`, `Setup`, `SetupRow`, `Recents` (`apps/web/src/Projects.tsx`), `ComposerDock` and `useComposerDock` shared with `Thread` (`packages/web/src/Thread.tsx`). Evidence: `projects.dom.test.tsx`; before and after captures at 1280x800 and 390x844, light and dark, on the pull request. |
 | DES-080 | A session has one panel, reached from its header, that shows where it runs, how full its context is, the connectors it may reach, what it made and what it changed, and each row opens the view it names; the header opens the workbench's views directly and the rest from More Views, and its title is the session's menu | Implemented: `SessionViews.tsx` (Details, Terminal, Changes, Browser and Files in the header; Artifacts, Side Chat ⌘;, Search ⌘⇧F, Background Tasks and Progress in More Views; on a phone all of them in More Views), `SessionSections.tsx` and `sessionContext.ts` (Environment, Context, Connectors, Changes), the title menu with Rename in place (`SessionActions.tsx`), the meta line said once (`SessionPlace.tsx`), and session titles without a leading mention, retitled after a greeting (`runs.SessionTitle`, `runs.Greeting`). No new route: the panel reads `GET /api/threads/{id}/sandboxes`, `GET /api/me/credentials`, `GET /api/github/pull` and each run's usage. Evidence: `session-context-panel.dom.test.tsx`, `TestSessionTitle*`, `TestGreeting`; before and after captures at 1280x800 and 390x844, light and dark, against a docker sandbox. |
 | DES-080 | A conversation is one surface with the composer floating over it, on a named z-index scale, and Stop works at two levels: the composer stops everything in the session, each running agent, call to another agent, step and background task stops from its own row; the composer's footer says who answers, the approval mode and a usage ring that opens the session's usage and the limits that hold it | Implemented: `Thread` `footer` (`packages/web/src/Thread.tsx`), the `--aui-z-*` scale (`packages/render-web/src/theme.css`), `ItemStopControl` and `ItemStopsContext` (render-web `stop.tsx`, `meta.tsx`), `Composer` `stopAll` and `footer`, `stops.tsx`, `SessionUsage.tsx`, `GET /api/threads/{id}/usage` (`internal/platform/session_usage.go`). Evidence: `composer-overlay.dom.test.tsx`, `TestThreadUsage*` and `foldUsage` tests; before and after captures at 1280x800 and 390x844, light and dark, on PR #474. Not done: Run in Background for a call already running (the runtime starts a call in the background only when the model asks, with `background: true`); a real iOS keyboard. |
@@ -93,6 +94,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-052 | Conversation files, scratchpads, code editing, change review and artifact publication, in one Workspace panel opened from Conversation Settings beside a compact header | Implemented: `WorkspaceFiles.tsx`, `Workspace.tsx`, `ConversationShell.tsx`, `/api/threads/{id}/files`, `GET /api/threads/{id}/sandboxes`; web, route, Go race and confinement suites pass; `conversation-header`, `workspace-*` and `ide-*` screens pass at 390x844 and 1280x800 |
 | DES-053 | Notifications sort into the reader's own views: Inbox, Unread, Hidden and Done, with per-reader hide and delete | Implemented; per-reader marks and counters, bulk API with isolation tests, DOM and route tests, phone/desktop captures |
 | DES-060 | Pull requests across workspace repositories, with board/list views and filters | Implemented; `pull_requests.go`, `History.tsx`, endpoint and DOM tests; `history-all` and `history-github` screens registered for CI |
+| DES-054 | The sidebar lists Participated, Pinned and Recent with counts, Recent newest first with By project, By day and Archived as groupings; each row is its title, then its age and where it started (Slack, GitHub, a schedule, the console), then its state in words; red means failure only; the sidebar's edge resizes it | Implemented: `conversationList.ts`, `marks.ts`, `Sidebar.tsx`, `pkg/marks`, `PATCH /api/threads/{id}/marks`, `waiting` and `last` on thread summaries; Go, web and DOM tests pass; `sidebar-recents`, `sidebar-row-actions`, `sidebar-projects` and `sidebar-archived` screens pass at 390x844 and 1280x800 |
 | DES-054 | The sidebar lists Recents newest first, Pinned on top, Projects and Archived as views; each row leads with where its session started (Slack, GitHub, a schedule, the console) and says its age and, as a labelled icon, whether it waits on a person, runs or failed; red means failure only | Implemented: `conversationList.ts`, `marks.ts`, `Sidebar.tsx`, `pkg/marks`, `PATCH /api/threads/{id}/marks`, `waiting` and `last` on thread summaries; Go, web and DOM tests pass; `sidebar-recents`, `sidebar-row-actions`, `sidebar-projects` and `sidebar-archived` screens pass at 390x844 and 1280x800 |
 | DES-055 | A sidebar row previews itself on hover or a long press, and the wave's preview carries its author's mark | Implemented: `RowPreview.tsx`, `peek.ts`, `TurnRail.tsx`; web, DOM and screens pass (`sidebar-preview` checks the card is centred on its row, `conversation-wave-preview`) at 390x844 and 1280x800 |
 | DES-056 | A one-time tip teaches search, dismissed once per person | Evidence: `sidebar-search` checks the replacement Search navigation button; the tip card was removed |
@@ -1613,17 +1615,96 @@ and the posted text); `go test -race ./pkg/threads ./internal/platform`
 `TestSkillsAndMentionKinds` for the aliases); `make screens` with `chat-at`,
 `chat-slash`, `chat-slash-picked` and `composer-menu-skill-selection`.
 
-### DES-054: Recents, Pinned, Projects and Archived
+### DES-054: Participated, Pinned, Recent and Archived
 
 Owner request: a flat list of conversations across projects, each row its
 title, its project under it and its age or an unread dot, with Pinned on
 top; Projects kept as another view; pin and archive from the row; an
 Archived view; and dots for what is running and what needs the reader. A later request: show where each session came from (Slack, GitHub and so
 on) instead of unexplained red dots, make Recents, Pinned and the project
+groups easier to read, and calm the red hover, selection and focus. Then: rows like
+another product's, the title over "2 hours ago" and its source, sections for
+Participated, Pinned and Recent with counts, state in words instead of
+marks, and a wider sidebar that can be resized.
+Archived view; and dots for what is running and what needs the reader. A later request: show where each session came from (Slack, GitHub and so
+on) instead of unexplained red dots, make Recents, Pinned and the project
 groups easier to read, and calm the red hover, selection and focus.
 
 Rules:
 
+- **Sections**, each headed by its name and how many it holds:
+  **Participated** (sessions someone else started that the reader joined: they
+  posted, were mentioned or were added), **Pinned**, then **Recent** (the
+  rest, newest first; "30+" while more pages are left). A session is listed
+  in one section only.
+- Recent's grouping is picked from its filter menu: **Recent** (the default,
+  one list newest first), **By project** (under each project's header), **By
+  day** (Today, Yesterday, Earlier) and **Archived**. Projects are a grouping
+  rather than always-on folders, since each row now says when and where it
+  started and the project is the conversation's own context. A project's
+  header is small, set in the foreground's weight with a chevron that folds
+  it; a group that started empty opens when its rows arrive, unless the
+  reader folded it.
+- A row is two lines, three when it has a state: its **title** (cut with an
+  ellipsis), then how long ago it moved ("5m ago", "Just now") and **where it
+  started** as a glyph and a word: Slack, Slack DM, GitHub, Schedule,
+  Assignment or Console. The tooltip says it in full ("From a Slack DM") and a
+  screen reader hears it after the title. Spacing, not a dot, separates them
+  (DES-002). The thread summary's `source` names a Slack thread or direct
+  message, a pull request or a schedule; a run's origin is the fallback,
+  since a Slack message posts through the API.
+- **State is said in words** on the row's third line, most pressing first:
+  **Waiting for you: approve file_write** or **Waiting for you: <the
+  question>** in the warning color; waiting on someone else in muted ink;
+  **Failed: <why>** in red; **Working** in muted ink; **Alert: <its title>**
+  for an open alert, in the warning color when urgent. A session listing
+  carries `waiting_for`, `waiting_kind`, `waiting_on_you`, `waiting_unknown`
+  and `failure` for this; `failure` is set only while the latest turn failed, so a failure a
+  later turn answered is not shown. **Waiting for you** is said only when an
+  open question one of the session's runs waits on is the reader's to answer,
+  by the one rule answering holds them to (`mayAnswer`): it is addressed to
+  them as it was raised (`Message.For`, the requester excluded), they may
+  write runs, and for a run held at a spend limit they hold `billing:write`.
+  The thread and the inbox offer an answer by the same rule, so a row never
+  says it waits on someone answering would refuse. The row reports the run,
+  not the reader's notifications: hiding, snoozing or deleting the inbox
+  message does not change whom the run waits on. A question a called agent
+  raises is filed under the calling session and counts there. The listing
+  reads this in one statement against the inbox for a whole page, and for one
+  session read alone: the workspace's newest 1000 live inbox messages
+  (`inbox.MaxAsking`), with no lookup for any message, and nothing at all when
+  no row waits. The inbox keeps no index by session, so the read cannot be
+  narrowed to one. When the workspace holds more live messages than that and
+  no question of the reader's about a waiting session was among those read,
+  the listing sets `waiting_unknown` and the row reads **Waiting: <what it
+  waits for>** in muted ink, with no dot: it says it waits and does not say on
+  whom. Anything else parked reads as waiting for someone, in muted
+  ink, with what it waits for when the run says it. No bare `!`, `•` or icon stands for a
+  state. **Red means failure only**; nothing in a row uses the accent.
+- A **dot** on the right of the title marks what is new to the reader, by
+  meaning: waiting on them (the warning color), a failure they have not read
+  (red), or an answer they have not read (a calm blue). Unread also sets the
+  title in a heavier weight.
+- Hover tints a row. The open row is filled and marked by a bar at its left
+  edge, so hover and selection never read as one. Keyboard focus anywhere in
+  the sidebar is a neutral ring drawn inside the control, never the accent.
+  The conversation's scrolling log, reachable by keyboard so it can be
+  scrolled, shows focus as a 1px neutral line inside its edge rather than a
+  2px accent frame around the page.
+- **Width**: the open sidebar is 296px on a wide screen. Its right edge is a
+  focusable separator: drag it, or use the arrow keys (16px), Home and End,
+  between 240px and 440px, and it is never drawn wider than a third of the
+  window, so a tablet's page keeps its room; a double click puts it back. The width is kept in
+  the browser beside whether the sidebar is open, since it follows the screen
+  it was set on. Only a width the person changed is kept: on a window too
+  narrow to draw the kept width, a press on the edge that moves nothing, a
+  key toward the bound it is already held at, or a drag let go where it
+  started leaves the kept width as it was, so it is drawn again on a wider
+  window. On a phone the sidebar stays a drawer.
+- **Alerts** stays a section of the sidebar with its count, which opens the
+  Alerts page: Waiting, Snoozed and Done, each alert's title, source,
+  priority, time and its action. A row with an open alert says it on its
+  state line.
 - The list's views are picked from its filter menu: **Recents** (the
   default: every project, newest first), **Projects** (the conversations
   under their project's header) and **Archived**. Pinned sits above
@@ -1660,8 +1741,8 @@ Rules:
   conversation. Opening a conversation reads it, and so does staying in it
   while it moves. Before a reader's first mark nothing reads as unread, so
   the first release does not light up every older conversation.
-- Hover or focus trades the age for **Pin**, **Archive** and the ⋮ menu (Pin,
-  Rename, Archive, Delete). On a touch screen the ⋮ menu stays and holds
+- Hover or focus trades the dot for the ⋮ menu (Pin, Rename, Archive,
+  Delete); the row's words stay in view. On a touch screen the ⋮ menu stays and holds
   them all; every control is at least 32px, 44px on a touch screen.
 - **Archive is the reader's own**: the conversation leaves their Pinned and
   Recents and is listed under Archived, where Unarchive brings it back.
@@ -2523,6 +2604,44 @@ match, the failed read, and Terminal and Browser standing in as built. Not seen:
 a real pull request, file or browser step from a live run, and the real
 Terminal and Browser tabs taking a result.
 
+### DES-080: Failures, connections and references in a transcript
+
+- A failed step says why under its row: the first line of its error, without
+  the runtime's "action failed:" lead, in the bad tone, with Show Details for
+  the rest. A run of steps counts its failures beside its line; the count is
+  its own button that opens the run at the first failed step.
+- A failed call to another agent says why under its item, with Show Details,
+  which opens its run, and Retry where the host can post (`RetryCallContext`):
+  it asks the same agent the same brief as the conversation's next message,
+  tagging that agent alone (other agents the brief names become plain words).
+  Retry is offered only to the person the run acted for, never in a private
+  side chat (its brief would reach the shared session), and never for a brief
+  too long for one message. A refused post leaves Retry ready again; a sent
+  one reads "Asked again". There is no Retry on a single tool call, since no
+  route runs one call again.
+- The Connect card shows only to the person the run acted for: the
+  connection it needed is theirs.
+- A connection a run needed is said by the platform, not read from the
+  answer: when a tool group needs the person's own credential and they have
+  none (`ErrNoPersonCredential`), the run and the turn it belongs to record
+  `needs_connection`. A finished turn then ends with a card per connection:
+  "GitHub is not connected", a line on what to do, and Connect GitHub, which
+  opens `/settings/plugins/<provider>`.
+- A pull request, issue or commit address in an answer, and a written
+  `owner/repo#123`, is a chip: its mark and its short name, still a link. One
+  number reads one way: once an address anywhere in the answer, or in the
+  session around it, says it is a pull request or an issue
+  (`githubRefKinds`, `GitHubRefKindsContext`), every chip for it carries that
+  mark; named both ways, it is a pull request. A number nothing says the kind
+  of carries one neutral mark everywhere. Inline code is left as code.
+- Open, a run of steps is a card with one row per call. A call's input is a
+  table of names and values; a command is a block of its own with Copy. A
+  running step has a working mark that takes turns (still when motion is
+  reduced) and counts its time each second; a running command shows what it
+  runs. A finished step says how long it took.
+- The one-line summaries stay muted and the agent's words primary.
+
+### DES-079: Run and Answer
 ### DES-079: Auto answers questions
 
 Owner request: the approval agent that decides tool calls in a session set to

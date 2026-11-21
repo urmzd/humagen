@@ -9,6 +9,7 @@ import {
   type HumagenError,
   httpHumagen,
   staticToken,
+  THREAD_BEFORE_SESSIONS,
 } from "./humagen.ts";
 import { eventKey, runId, sessionOf, tagId, threadKey } from "./keys.ts";
 
@@ -317,6 +318,27 @@ test("a person's projects are read for them through the client, every page", asy
   );
 });
 
+test("a failure humagen gives a code for carries it, and one without has none", async () => {
+  const { fn } = fakeFetch([
+    json({ error: "this thread started before sessions", code: "thread_before_sessions" }, 409),
+    json({ error: "nobody is listening in this thread" }, 409),
+  ]);
+  const c = httpHumagen({ baseUrl: "http://humagen.test", token: staticToken(), fetch: fn });
+  const body = {
+    text: "and the invoice?",
+    act_as: { client: "app", user: "U0ANA" },
+    surface: { client: "app", channel: "C01", ts: "1.1", message: "1.2", app_user: "U0APP" },
+  };
+  await assert.rejects(
+    c.postSession(body),
+    (e: HumagenError) => e.status === 409 && e.code === THREAD_BEFORE_SESSIONS,
+  );
+  await assert.rejects(
+    c.postSession(body),
+    (e: HumagenError) => e.status === 409 && e.code === undefined,
+  );
+});
+
 test("a refusal carries the limit, a missing object is null, and an error keeps its status", async () => {
   const { fn } = fakeFetch([
     json(
@@ -504,7 +526,8 @@ test("the README's least privilege and the app's own lists cover every route it 
     const m = /^ {4}(get|post|put|patch|delete):$/.exec(line);
     if (m) method = (m[1] ?? "").toUpperCase();
     const x = /^ {6}x-permission: (\S+)$/.exec(line);
-    if (x && path && method) need.set(`${method} ${path}`, x[1] ?? "");
+    // The spec writes a permission bare or quoted: both name the same one.
+    if (x && path && method) need.set(`${method} ${path}`, (x[1] ?? "").replace(/^"|"$/g, ""));
   }
   // The routes the app calls, as httpHumagen's table says.
   const routes = [
