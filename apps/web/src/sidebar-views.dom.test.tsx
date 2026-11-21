@@ -271,6 +271,19 @@ test("a row's state is a labelled mark beside its age, red only when a reply fai
   assert.match(list.getByRole("link", { name: /^Broke/ }).textContent ?? "", /, A reply failed$/);
   await waitFor(async () => assert.equal(await mark(/^Fresh answer/), null));
   assert.equal(await mark(/^Nothing new/), null);
+  // Hovering a row trades only its age for the ⋮ button: every state mark stays
+  // in view, so its tooltip can show under the pointer.
+  for (const name of [/^Approve contract/, /^Deploying/, /^Broke/]) {
+    const row = list.getByRole("link", { name });
+    const state = row.querySelector<HTMLElement>("[data-standing]");
+    for (let el: HTMLElement | null = state; el && el !== row.parentElement; el = el.parentElement)
+      assert.doesNotMatch(el.className, /:invisible/, `${name} keeps its state mark on hover`);
+    assert.match(
+      row.querySelector<HTMLElement>("[data-row-time]")?.className ?? "",
+      /group-hover\/task:invisible/,
+      "the age gives way to the menu",
+    );
+  }
   // Nothing in a row is drawn in the accent.
   for (const row of document.querySelectorAll("[data-thread-row]"))
     assert.doesNotMatch(row.innerHTML, /aui-accent/);
