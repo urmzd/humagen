@@ -670,7 +670,7 @@ test("an approval the approval agent judged shows its decision, reason and the w
   assert.doesNotMatch(plain, /Approval agent|Asked a person|Risk|Expires in|Based on/);
 });
 
-test("a question the approval agent answered in Run and Answer says so, and one it left says why", () => {
+test("a question the approval agent answered in Auto says so, and one it left says why", () => {
   const [raw] = wireMail().filter((m) => m.id === "m-question");
   assert.ok(raw);
   const withQuestion = (change: (part: Record<string, unknown>) => Record<string, unknown>) =>

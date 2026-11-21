@@ -253,7 +253,7 @@ export function composerChrome(conversation: string): Scene[] {
         assert.equal(await page.locator("[data-home-above]").count(), 0);
         await page
           .locator(".humagen-home")
-          .getByRole("button", { name: /^Approvals: / })
+          .getByRole("button", { name: /^Approval mode: / })
           .waitFor();
         assert.equal(await page.getByRole("button", { name: /^Select project/ }).count(), 0);
       },
@@ -261,10 +261,10 @@ export function composerChrome(conversation: string): Scene[] {
     {
       name: "composer-approval-mode",
       path: `/conversations/${conversation}`,
-      // The menu open: the three modes, each with its one line.
+      // The menu open: Ask and Auto under their heading, each with its one line.
       act: async (page) => {
-        await page.getByRole("button", { name: /^Approvals: / }).click();
-        await page.getByRole("menu", { name: "Approvals" }).waitFor();
+        await page.getByRole("button", { name: /^Approval mode: / }).click();
+        await page.getByRole("menu", { name: "Approval mode" }).waitFor();
       },
     },
   ];
