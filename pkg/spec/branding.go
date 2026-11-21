@@ -379,6 +379,13 @@ func (b Branding) check(system bool) error {
 // MaxTermsURL is the longest address branding.terms_url may be.
 const MaxTermsURL = 500
 
+// termsURL is what a terms address looks like: https in lower case, as the
+// console tests it, a host name of letters, digits, dots and dashes, a port
+// if any, and a path, query and fragment of the characters a URL may hold
+// unescaped. Anything else, a name in another script included, is written
+// in its encoded form.
+var termsURL = regexp.MustCompile("^https://[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?(:[0-9]{1,5})?([/?#][A-Za-z0-9._~:/?#@!$&'()*+,;=%-]*)?$")
+
 // checkTermsURL checks the address of a page of terms: an https address
 // with a host and no credentials, since the console opens it for a person.
 func checkTermsURL(s string) error {
@@ -388,9 +395,18 @@ func checkTermsURL(s string) error {
 	if err := checkText(s, MaxTermsURL, false); err != nil {
 		return err
 	}
+	bad := fmt.Errorf("%q is not an https address in plain ASCII, such as https://example.com/terms", s)
+	if !termsURL.MatchString(s) {
+		return bad
+	}
 	u, err := url.Parse(s)
-	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil {
-		return fmt.Errorf("%q is not an https address, such as https://example.com/terms", s)
+	if err != nil || u.Scheme != "https" || u.Hostname() == "" || u.User != nil {
+		return bad
+	}
+	if port := u.Port(); port != "" {
+		if n, err := strconv.Atoi(port); err != nil || n < 1 || n > 65535 {
+			return bad
+		}
 	}
 	return nil
 }

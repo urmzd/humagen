@@ -1,26 +1,38 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { afterEach, test } from "node:test";
 import { defaultCopy } from "@humagen/components";
 import { useQueue } from "@humagen/web";
 import { cleanup, render } from "@testing-library/react";
-import { brandCopy, servedBranding, setTermsUrl } from "./branding.ts";
-import { Composer } from "./Composer.tsx";
+import { brandCopy, servedBranding, setBrand, setEntryAgent } from "./branding.ts";
+import { aiNoticeHeight, Composer } from "./Composer.tsx";
 
-// Under every composer, one line says the product is AI and can make
-// mistakes. It links to the workspace's page of terms only when its branding
-// names one (branding.terms_url).
+// Under a composer, one line says the product is AI and can make mistakes
+// (DES-085). It links to the workspace's page of terms only when its
+// branding names one (branding.terms_url).
 
 const product = defaultCopy.product;
+const sentence = defaultCopy.dock.aiNotice;
 
 afterEach(() => {
   cleanup();
-  setTermsUrl(null);
+  // Everything brandCopy sets, so no test after this one reads another's brand.
+  setBrand("", null);
+  setEntryAgent("", "");
   defaultCopy.product = product;
+  defaultCopy.dock.aiNotice = sentence;
 });
 
-function Bar() {
+function Bar({ aiNotice }: { aiNotice?: boolean }) {
   const queue = useQueue({ onStart: () => {}, onInterrupt: () => {} });
-  return <Composer placeholder="Reply" queue={queue} footer={<div data-testid="footer" />} />;
+  return (
+    <Composer
+      placeholder="Reply"
+      queue={queue}
+      footer={<div data-testid="footer" />}
+      aiNotice={aiNotice}
+    />
+  );
 }
 
 const notice = (container: HTMLElement) =>
@@ -36,10 +48,11 @@ test("the composer says the product is AI and can make mistakes, with no link wh
   assert.equal(line.previousElementSibling?.getAttribute("data-testid"), "footer");
 });
 
-test("the notice is in the branded product's name and links to the workspace's terms", () => {
-  const copy = { product: "Humagen" };
-  brandCopy(copy, { ...servedBranding("Acme"), terms_url: "https://acme.example/terms" });
-  defaultCopy.product = copy.product;
+test("branding gives the notice the product's name and the workspace's terms", () => {
+  brandCopy(defaultCopy, {
+    ...servedBranding("Acme"),
+    terms_url: "https://acme.example/terms",
+  });
   const { container } = render(<Bar />);
   const line = notice(container);
   assert.ok(line);
@@ -51,11 +64,50 @@ test("the notice is in the branded product's name and links to the workspace's t
   assert.equal(link.getAttribute("rel"), "noreferrer");
 });
 
-test("an address that is not https is never a link", () => {
-  for (const url of ["javascript:alert(1)", "http://acme.example/terms", "/terms", ""]) {
-    setTermsUrl(url);
+test("the name is the product's, whatever a workspace calls the sender of its messages", () => {
+  // The copy key `product` names who the product's own messages are from.
+  brandCopy(defaultCopy, { ...servedBranding("Acme"), copy: { product: "Updates" } });
+  assert.equal(defaultCopy.product, "Updates");
+  const { container } = render(<Bar />);
+  assert.equal(notice(container)?.textContent, "Acme is AI and can make mistakes.");
+});
+
+test("a workspace may reword the sentence, and the name still goes where it says", () => {
+  brandCopy(defaultCopy, {
+    ...servedBranding("Acme"),
+    copy: { "dock.aiNotice": "Check what {name} tells you." },
+  });
+  const { container } = render(<Bar />);
+  assert.equal(notice(container)?.textContent, "Check what Acme tells you.");
+});
+
+test("an address the browser would not open as https is never a link", () => {
+  for (const url of [
+    "javascript:alert(1)",
+    "http://acme.example/terms",
+    "HTTPS://acme.example/terms",
+    "https://:443/terms",
+    "/terms",
+    "",
+  ]) {
+    setBrand("Acme", url);
     const { container } = render(<Bar />);
     assert.equal(notice(container)?.querySelector("a"), null, url);
     cleanup();
   }
+});
+
+test("a composer beside the session's own leaves the notice to it", () => {
+  const { container } = render(<Bar aiNotice={false} />);
+  assert.equal(notice(container), null);
+});
+
+test("the place kept for the composer while a session loads is as tall as the composer", () => {
+  // The placeholder keeps a line for the notice, of the height the notice has.
+  const chat = readFileSync(new URL("./Chat.tsx", import.meta.url), "utf8");
+  assert.match(chat, /data-layer="composer-placeholder-notice" className=\{aiNoticeHeight\}/);
+  assert.equal(aiNoticeHeight, "h-6");
+  const { container } = render(<Bar />);
+  assert.match(notice(container)?.className ?? "", /\bmin-h-6\b/);
+  assert.match(notice(container)?.className ?? "", /\bleading-6\b/);
 });

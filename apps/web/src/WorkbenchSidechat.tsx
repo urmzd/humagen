@@ -273,7 +273,13 @@ export function WorkbenchSidechat({
   const box = canPost && !chat?.missing && (chat || through) && (
     <div className="flex flex-col gap-2 px-4 pb-4" data-testid="sidechat-composer">
       <Problem message={problem} />
-      <Composer placeholder={words.placeholder} emptyText={words.placeholder} queue={queue} />
+      {/* The session's own composer, beside this one, carries the AI notice. */}
+      <Composer
+        placeholder={words.placeholder}
+        emptyText={words.placeholder}
+        queue={queue}
+        aiNotice={false}
+      />
     </div>
   );
 

@@ -9,7 +9,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { termsUrl } from "./branding.ts";
+import { productName, termsUrl } from "./branding.ts";
 import {
   type Command,
   commandsFor,
@@ -144,7 +144,10 @@ export function Composer({
   onCancelHeld,
   stopAll,
   footer,
+  aiNotice = true,
 }: {
+  /** The AI notice. Off beside the session's own composer, which says it. */
+  aiNotice?: boolean;
   /**
    * Everything running in the session, whoever started it. While anything
    * runs the bar shows Stop, which (as Esc in an empty box does) stops all of
@@ -1093,22 +1096,28 @@ export function Composer({
         )}
       </form>
       {footer}
-      <AiNotice />
+      {aiNotice && <AiNotice />}
     </div>
   );
 }
 
 /**
- * The line under every composer: the product is AI and can make mistakes,
- * with a link to the workspace's page of terms when its branding names one
- * (branding.terms_url). A line of its own, so it reads the same at every
- * width and nothing in the footer row moves for it.
+ * The line under a composer: the product is AI and can make mistakes, with
+ * a Terms link when the branding names a page (branding.terms_url). Its
+ * height is aiNoticeHeight, which DockPlaceholder keeps free while a
+ * session loads, so the bar does not jump.
  */
+export const aiNoticeHeight = "h-6";
+
 function AiNotice() {
   const terms = termsUrl();
+  const name = productName() || defaultCopy.product;
   return (
-    <p data-layer="ai-notice" className="px-2 text-center text-aui-xs leading-6 text-aui-muted">
-      {defaultCopy.dock.aiNotice(defaultCopy.product)}
+    <p
+      data-layer="ai-notice"
+      className="min-h-6 px-2 text-center text-aui-xs leading-6 text-aui-muted"
+    >
+      {defaultCopy.dock.aiNotice.replace("{name}", name)}
       {terms && (
         <>
           {" "}
@@ -1121,7 +1130,6 @@ function AiNotice() {
   );
 }
 
-/** Text with the runs a query matched highlighted. */
 function Marked({ text, hits }: { text: string; hits: Hit[] }) {
   return (
     <>

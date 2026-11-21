@@ -27,21 +27,32 @@ export function servedBranding(name = servedName()): Branding {
   };
 }
 
-/** The workspace's page of terms, once branding is applied. Null is none. */
-let terms: string | null = null;
+/** The product's name and the workspace's page of terms, once branding is applied. */
+let brand: { name: string; terms: string | null } = { name: "", terms: null };
 
-/**
- * The page of terms the composer's notice links to, or null for no link.
- * Only an https address is a link: the server checks it, and this keeps any
- * other scheme out of an href.
- */
-export function termsUrl(): string | null {
-  return terms;
+/** The product's name from the branding, "" before it is applied. Not the copy key `product`. */
+export function productName(): string {
+  return brand.name;
 }
 
-/** Remember the workspace's page of terms. Anything but an https address forgets it. */
-export function setTermsUrl(url: string | null | undefined): void {
-  terms = url?.startsWith("https://") ? url : null;
+/** The page of terms the composer's notice links to, or null. Only https with a host is a link. */
+export function termsUrl(): string | null {
+  return brand.terms;
+}
+
+/** Remember the product's name and its page of terms. Anything but an https address is no page. */
+export function setBrand(name: string, terms?: string | null): void {
+  brand = { name, terms: httpsAddress(terms) };
+}
+
+function httpsAddress(address: string | null | undefined): string | null {
+  if (!address?.startsWith("https://")) return null;
+  try {
+    const url = new URL(address);
+    return url.protocol === "https:" && url.hostname ? address : null;
+  } catch {
+    return null;
+  }
 }
 
 /** The entry agent's own name, and the name people see it by, once branding is applied. */
@@ -110,6 +121,6 @@ export function accentAttribute(accent?: string): string {
 export function brandCopy(target: { product?: unknown }, branding: Branding): void {
   if (typeof target.product === "string") target.product = branding.name;
   setEntryAgent(branding.entry_agent || "", branding.name);
-  setTermsUrl(branding.terms_url);
+  setBrand(branding.name, branding.terms_url);
   applyCopy(target, branding.copy ?? {});
 }

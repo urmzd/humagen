@@ -59,18 +59,25 @@ func TestBrandingRefuses(t *testing.T) {
 			want: "accent.dark on surface.dark"},
 		"a font that ends its declaration": {system: `fonts: {ui: "Inter; } body { color: red"}`,
 			want: "branding.fonts.ui is a CSS font-family list"},
-		"a logo that is not an image": {system: `logo: {path: ./logo.html}`, want: "branding.logo.path is an .svg"},
-		"a font file of another type": {system: `fonts: {files: [{family: Inter, path: ./inter.css}]}`, want: "files[0].path is a .woff2"},
-		"a font family with a quote":  {system: `fonts: {files: [{family: "In'ter", path: ./inter.woff2}]}`, want: "files[0].family"},
-		"a font weight out of range":  {system: `fonts: {files: [{family: Inter, path: ./inter.woff2, weight: bold}]}`, want: "files[0].weight"},
-		"a font style of its own":     {system: `fonts: {files: [{family: Inter, path: ./inter.woff2, style: oblique}]}`, want: "normal or italic"},
-		"a logo with no path":         {system: `logo: {alt: Acme}`, want: "branding.logo.path is required"},
-		"markup in a name":            {system: `name: "<b>Acme</b>"`, want: "branding.name: plain text"},
-		"an unknown field":            {system: `favicon_dir: ./icons`, want: "favicon_dir"},
-		"terms that are not https":    {system: `terms_url: http://acme.example/terms`, want: "branding.terms_url"},
-		"terms that are a script":     {platform: `terms_url: "javascript:alert(1)"`, want: "branding.terms_url"},
-		"terms with no host":          {system: `terms_url: "https:///terms"`, want: "branding.terms_url"},
-		"terms with a password":       {system: `terms_url: "https://a:b@acme.example/terms"`, want: "branding.terms_url"},
+		"a logo that is not an image":     {system: `logo: {path: ./logo.html}`, want: "branding.logo.path is an .svg"},
+		"a font file of another type":     {system: `fonts: {files: [{family: Inter, path: ./inter.css}]}`, want: "files[0].path is a .woff2"},
+		"a font family with a quote":      {system: `fonts: {files: [{family: "In'ter", path: ./inter.woff2}]}`, want: "files[0].family"},
+		"a font weight out of range":      {system: `fonts: {files: [{family: Inter, path: ./inter.woff2, weight: bold}]}`, want: "files[0].weight"},
+		"a font style of its own":         {system: `fonts: {files: [{family: Inter, path: ./inter.woff2, style: oblique}]}`, want: "normal or italic"},
+		"a logo with no path":             {system: `logo: {alt: Acme}`, want: "branding.logo.path is required"},
+		"markup in a name":                {system: `name: "<b>Acme</b>"`, want: "branding.name: plain text"},
+		"an unknown field":                {system: `favicon_dir: ./icons`, want: "favicon_dir"},
+		"terms that are not https":        {system: `terms_url: http://acme.example/terms`, want: "branding.terms_url"},
+		"terms that are a script":         {platform: `terms_url: "javascript:alert(1)"`, want: "branding.terms_url"},
+		"terms with no host":              {system: `terms_url: "https:///terms"`, want: "branding.terms_url"},
+		"terms with a password":           {system: `terms_url: "https://a:b@acme.example/terms"`, want: "branding.terms_url"},
+		"terms with a scheme in capitals": {system: `terms_url: "HTTPS://acme.example/terms"`, want: "branding.terms_url"},
+		"terms with only a port":          {system: `terms_url: "https://:443/terms"`, want: "branding.terms_url"},
+		"terms with a port out of range":  {system: `terms_url: "https://acme.example:99999/terms"`, want: "branding.terms_url"},
+		"terms with markup for a host":    {system: `terms_url: "https://<script>alert(1)</script>/x"`, want: "branding.terms_url"},
+		"terms with a space after":        {system: `terms_url: "https://acme.example/terms "`, want: "branding.terms_url"},
+		"terms with a hidden character":   {system: "terms_url: \"https://acme\u200b.example/terms\"", want: "branding.terms_url"},
+		"terms with a dash for a host":    {system: `terms_url: "https://-/terms"`, want: "branding.terms_url"},
 		"a workspace accent lost on the deployment's surface": {system: `palette: {surface: {dark: "#000000"}, text: {dark: "#ffffff"}}`,
 			platform: `palette: {accent: {dark: "#101010"}}`, want: "over the System document's"},
 	} {
@@ -120,6 +127,11 @@ spec:
 	}
 	if got := MergeBranding(sys, Branding{TermsURL: "https://north.example/terms"}).TermsURL; got != "https://north.example/terms" {
 		t.Fatalf("a workspace's terms win: %q", got)
+	}
+	for _, ok := range []string{"https://acme.example", "https://acme.example/", "https://docs.acme.example:8443/legal/terms?v=2#ai", "https://xn--bcher-kva.example/terms", "https://acme.example/a%20b"} {
+		if err := checkTermsURL(ok); err != nil {
+			t.Fatalf("%s: %v", ok, err)
+		}
 	}
 	if got := MergeBranding(Branding{}, Branding{}).TermsURL; got != "" {
 		t.Fatalf("no terms are Humagen's own: %q", got)

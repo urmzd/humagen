@@ -1202,6 +1202,7 @@ var copyKeyList = []string{
 	"discardAll",
 	"discardDraft",
 	"dismiss",
+	"dock.aiNotice",
 	"dock.footer",
 	"dock.more",
 	"dock.sendNow",

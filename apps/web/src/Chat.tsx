@@ -23,7 +23,7 @@ import {
   type ThreadSummary,
 } from "./api.ts";
 import { asksOf } from "./asks.ts";
-import { Composer, type ComposerSeed } from "./Composer.tsx";
+import { aiNoticeHeight, Composer, type ComposerSeed } from "./Composer.tsx";
 import type { ConversationForkActions } from "./ConversationForkPanels.tsx";
 import { type Completion, useCompletion } from "./completion.ts";
 import { rememberDock, useDockArrival } from "./dockArrival.ts";
@@ -1114,6 +1114,8 @@ function DockPlaceholder() {
             className="aui-skeleton-delay h-[var(--humagen-composer-h)] rounded-[1.25rem] border border-aui-border"
           />
           <div aria-hidden className="h-7" />
+          {/* The AI notice's line. */}
+          <div aria-hidden data-layer="composer-placeholder-notice" className={aiNoticeHeight} />
         </>
       )}
     </div>
