@@ -160,11 +160,13 @@ func (p *Platform) identifySlackBot(ctx context.Context, token string) (SlackBot
 // what it starts where the team's other Slack client does, and acts for the
 // people it does. The caller holds clients:write and owns the agent's home.
 func (p *Platform) LinkAgentSlack(ctx context.Context, who auth.Principal, agent string, token, signing clients.SecretInput) (clients.Client, error) {
-	if token.Value == "" {
-		return clients.Client{}, fmt.Errorf("%w: the bot token is needed to ask Slack who the app is", clients.ErrInvalid)
-	}
+	// The agent first: one that does not exist answers as one the caller may
+	// not see does, whatever the body says.
 	if _, err := p.Catalog().Get(ctx, who.Tenant, agent, 0); err != nil {
 		return clients.Client{}, err
+	}
+	if token.Value == "" {
+		return clients.Client{}, fmt.Errorf("%w: the bot token is needed to ask Slack who the app is", clients.ErrInvalid)
 	}
 	bot, err := p.identifySlackBot(ctx, token.Value)
 	if err != nil {
