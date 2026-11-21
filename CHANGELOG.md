@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.165.0 (2026-11-21)
+
+### Features
+
+- **agents**: choose how each agent looks, and Slack posts as each agent (stack 1/6) (#461) ([b7fc936](https://github.com/urmzd/humagen/commit/b7fc9368f4e372cf2c8ebfeda8471cf5d6e655a1))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.164.1...v0.165.0)
+
+
 ## 0.164.1 (2026-11-21)
 
 ### Bug Fixes
