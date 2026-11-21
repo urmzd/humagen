@@ -184,6 +184,7 @@ export function ApprovalCard({
   /** Offer to let the approval agent decide the conversation's next actions (`TurnCapabilities.approvalAgent`). */
   offerAgent?: boolean;
 } & WithCopy) {
+  const compactWebDecision = useSurface().surface === "web" && !approval.budget;
   const { decision } = approval;
   const fields = previewFields(approval, copy);
   // A run held at a limit is granted more or stopped, not approved or cancelled.
@@ -242,7 +243,7 @@ export function ApprovalCard({
         {judged}
         <Actions blockId={`approval:${approval.id}:r${approval.revision ?? 0}`}>
           <Button
-            label={approveLabel}
+            label={compactWebDecision ? copy.approve : approveLabel}
             style={approval.destructive ? "danger" : "primary"}
             action={{ id: ActionId.approve, payload }}
             // A budget question's summary is long: its buttons say enough alone.
@@ -251,6 +252,13 @@ export function ApprovalCard({
             }
             confirm={approval.destructive ? copy.confirmDestructive : undefined}
           />
+          {compactWebDecision && (
+            <Button
+              label={copy.decline}
+              action={{ id: ActionId.deny, payload }}
+              accessibilityLabel={`${denyLabel}: ${approval.summary}`}
+            />
+          )}
           {approval.editable && !approval.actsForPerson && (
             <Button label={copy.edit} action={{ id: ActionId.edit, payload }} />
           )}
@@ -263,11 +271,13 @@ export function ApprovalCard({
               action={{ id: ActionId.remember, payload }}
             />
           )}
-          <Button
-            label={denyLabel}
-            action={{ id: ActionId.deny, payload }}
-            accessibilityLabel={approval.budget ? undefined : `${denyLabel}: ${approval.summary}`}
-          />
+          {!compactWebDecision && (
+            <Button
+              label={denyLabel}
+              action={{ id: ActionId.deny, payload }}
+              accessibilityLabel={approval.budget ? undefined : `${denyLabel}: ${approval.summary}`}
+            />
+          )}
           {/* The conversation's mode, not this call: a menu, so it never reads as a decision. */}
           {offerAgent && !approval.budget && (
             <Menu
