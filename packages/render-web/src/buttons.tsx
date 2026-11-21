@@ -188,6 +188,7 @@ export function Button({
       <button
         type="button"
         data-aui="button"
+        data-aui-action={action?.id}
         data-style={style ?? "default"}
         className={cls}
         aria-label={accessibilityLabel ?? (shown !== label ? shown : undefined)}
