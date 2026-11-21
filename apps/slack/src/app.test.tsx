@@ -2446,6 +2446,50 @@ test("the newest answered mention wins: the listener's unmentioned follow-up doe
   await w.app.idle();
 });
 
+test("a failed mention answered on Retry starts listening for that mention's asker", async () => {
+  const w = mapped();
+  await deliver(w, mention("deploy it", TS));
+  const failedRun = w.humagen.last.id;
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.failed.v1", { error: "provider: 529 overloaded", terminal: true });
+  await w.app.idle();
+  await unmentioned(w, "1700000050.000200");
+  await w.app.idle();
+  assert.equal(w.humagen.started.length, 1, "a failed mention starts no listening");
+
+  const final = w.slack.of("chat.stopStream")[0];
+  const ts = String(final?.ts);
+  await deliver(w, click(blocksOf(final), defaultCopy.retry, { ts, threadTs: TS }));
+  assert.equal(w.humagen.started.length, 2);
+  assert.equal(w.humagen.started[1]?.after, failedRun);
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "Deployed." });
+  await w.app.idle();
+
+  await unmentioned(w, "1700000060.000300");
+  assert.equal(w.humagen.started.length, 3, "the retry's answer started listening for the asker");
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "ok" });
+  await w.app.idle();
+});
+
+test("a listener's reply also sent to the channel is heard as a reply in the thread", async () => {
+  const w = mapped();
+  await deliver(w, mention("what broke the build?", TS));
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "The migration." });
+  await w.app.idle();
+  await deliver(
+    w,
+    plain("and the rollback?", "1700000050.000200", { thread_ts: TS, subtype: "thread_broadcast" }),
+  );
+  assert.equal(w.humagen.posts.at(-1)?.listen, true);
+  assert.equal(w.humagen.started.length, 2, "the broadcast reply was heard");
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "Rolled back." });
+  await w.app.idle();
+});
+
 test("a message that mentions nobody outside a thread, or from someone the client does not map, is not heard", async () => {
   const w = mapped();
   await deliver(w, plain("anyone around?", "1700000200.000100"));

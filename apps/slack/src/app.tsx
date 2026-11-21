@@ -1007,7 +1007,8 @@ export class App {
       !event.ts ||
       !event.user ||
       event.bot_id ||
-      (event.subtype && event.subtype !== "file_share") ||
+      // A reply also sent to the channel is still a reply in the thread.
+      (event.subtype && event.subtype !== "file_share" && event.subtype !== "thread_broadcast") ||
       event.user === this.opts.botUser ||
       !event.thread_ts ||
       event.thread_ts === event.ts ||
