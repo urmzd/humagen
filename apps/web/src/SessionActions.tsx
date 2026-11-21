@@ -105,7 +105,7 @@ export function SessionActions({
         label={inTitle ? undefined : "Session actions"}
         className={
           inTitle
-            ? "-ml-1.5 inline-flex min-h-8 max-w-full min-w-0 items-center gap-1 rounded-aui px-1.5 text-left hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
+            ? "-ml-1.5 inline-flex min-h-8 max-w-full min-w-0 items-center gap-1 rounded-aui px-1.5 max-md:min-h-11 pointer-coarse:min-h-11 text-left hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
             : "inline-flex size-9 items-center justify-center rounded-aui hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
         }
         button={
