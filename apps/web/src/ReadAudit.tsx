@@ -13,9 +13,12 @@ const auditRow = "flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2 py-3 first
 /** The last day's recorded exceptional reads, bounded by the server. */
 export function ReadAudit({
   onListed,
+  tick = 0,
 }: {
   /** Told which reads the section lists, so the page does not repeat them. */
   onListed?: (records: ReadAuditRecord[]) => void;
+  /** Changes when the page is refreshed, so the reads are read again with the changes. */
+  tick?: number;
 } = {}) {
   const [records, setRecords] = useState<ReadAuditRecord[] | null>(null);
   const [failed, setFailed] = useState(false);
@@ -25,6 +28,7 @@ export function ReadAudit({
       .readAudit()
       .then((rows) => {
         if (!live) return;
+        setFailed(false);
         setRecords(rows);
         onListed?.(rows);
       })
@@ -34,7 +38,8 @@ export function ReadAudit({
     return () => {
       live = false;
     };
-  }, [onListed]);
+    // biome-ignore lint/correctness/useExhaustiveDependencies: a new tick is the request to read again.
+  }, [onListed, tick]);
   const copy = defaultCopy.readAudit;
   const capped = (records?.length ?? 0) >= auditLimit;
   return (

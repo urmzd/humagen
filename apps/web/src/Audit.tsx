@@ -71,6 +71,8 @@ export function Audit({
   // A read the section above lists is not a second row here. The export keeps every row.
   const changes = rows && reads ? changesBeside(rows, listed) : rows;
   const capped = (rows?.length ?? 0) >= auditLimit;
+  // The server caps reads and changes together, so reads taken out here may have hidden older changes.
+  const crowded = capped && !!rows && !!changes && changes.length < rows.length;
   const download = () => {
     if (!rows) return;
     const url = URL.createObjectURL(
@@ -100,12 +102,18 @@ export function Audit({
     value.replace(/[_.:-]+/g, " ").replace(/^./, (letter) => letter.toUpperCase());
   return (
     <Page title={copy.title}>
-      {reads && <ReadAudit onListed={setListed} />}
+      {reads && <ReadAudit onListed={setListed} tick={refresh} />}
       <Section
         box
         title={copy.changes}
         count={capped ? undefined : changes?.length}
-        hint={capped ? copy.limited : undefined}
+        hint={
+          !capped || changes?.length === 0
+            ? undefined
+            : crowded
+              ? copy.limitedByReads
+              : copy.limited
+        }
         actions={
           <>
             <Button variant="ghost" size="sm" onClick={() => setRefresh((value) => value + 1)}>
@@ -183,7 +191,7 @@ export function Audit({
         ) : !changes ? (
           <SkeletonRows count={3} />
         ) : changes.length === 0 ? (
-          <p className="text-aui-muted">{copy.empty}</p>
+          <p className="text-aui-muted">{crowded ? copy.hiddenByReads : copy.empty}</p>
         ) : (
           <ol className="-mx-4 divide-y divide-[var(--humagen-rule)] border-[var(--humagen-rule)] border-t">
             {changes.map((row) => (

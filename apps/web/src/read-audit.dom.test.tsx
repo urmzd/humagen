@@ -156,6 +156,100 @@ test("a break-glass read the reads section does not list stays among the changes
   await screen.findByText("Project break glass read");
 });
 
+test("when the server's 100 records are all reads listed above, the page does not say there are no changes", async () => {
+  const at = Date.parse("2026-10-22T10:00:00Z");
+  const reads = Array.from({ length: 100 }, (_, n) => ({
+    subject: "governor",
+    project: "Secret",
+    route: "GET /api/projects/{name}",
+    at: new Date(at - n * 60_000).toISOString(),
+  }));
+  net = stubFetch({
+    "GET /api/audit": () => ({
+      records: reads.map((read, n) => ({
+        id: `read-${n}`,
+        actor: read.subject,
+        at: read.at,
+        action: "project.break_glass_read",
+        resource: "project",
+        resource_id: read.project,
+        scope: "project",
+        project: read.project,
+        route: read.route,
+        rule: "projects:govern",
+        outcome: "succeeded",
+      })),
+    }),
+    "GET /api/read-audit": () => ({ records: reads }),
+  });
+  render(<Audit reads />);
+  await screen.findByText(defaultCopy.audit.hiddenByReads);
+  assert.equal(screen.queryByText(defaultCopy.audit.empty), null);
+  // The line stands alone: the hint that a list is capped is not repeated over no list.
+  const changes = screen.getByRole("region", { name: defaultCopy.audit.changes });
+  assert.equal(within(changes).queryByText(defaultCopy.audit.limited), null);
+  assert.equal(within(changes).queryByText(defaultCopy.audit.limitedByReads), null);
+});
+
+test("a capped list shortened by reads says why it is short", async () => {
+  const at = Date.parse("2026-10-22T10:00:00Z");
+  const reads = Array.from({ length: 97 }, (_, n) => ({
+    subject: "governor",
+    project: "Secret",
+    route: "GET /api/projects/{name}",
+    at: new Date(at - n * 60_000).toISOString(),
+  }));
+  net = stubFetch({
+    "GET /api/audit": () => ({
+      records: [
+        ...reads.map((read, n) => ({
+          id: `read-${n}`,
+          actor: read.subject,
+          at: read.at,
+          action: "project.break_glass_read",
+          resource: "project",
+          resource_id: read.project,
+          scope: "project",
+          project: read.project,
+          route: read.route,
+          rule: "projects:govern",
+          outcome: "succeeded",
+        })),
+        ...Array.from({ length: 3 }, (_, n) => ({
+          id: `audit-${n}`,
+          actor: "ana",
+          at: new Date(at - (200 + n) * 60_000).toISOString(),
+          action: "memory.edit",
+          resource: "memory",
+          resource_id: `note-${n}`,
+          scope: "personal",
+          outcome: "succeeded",
+        })),
+      ],
+    }),
+    "GET /api/read-audit": () => ({ records: reads }),
+  });
+  render(<Audit reads />);
+  const changes = await screen.findByRole("region", { name: defaultCopy.audit.changes });
+  await within(changes).findByText(defaultCopy.audit.limitedByReads);
+  assert.equal(within(changes).getAllByRole("listitem").length, 3);
+  assert.equal(within(changes).queryByText(defaultCopy.audit.limited), null);
+});
+
+test("Refresh reads the break-glass reads again with the changes", async () => {
+  net = stubFetch({
+    "GET /api/audit": () => ({ records: changesWithTheRead }),
+    "GET /api/read-audit": () => ({ records: [governorRead] }),
+  });
+  render(<Audit reads />);
+  await screen.findByText("Project created");
+  const count = (path: string) => net?.seen.filter((request) => request.path === path).length;
+  assert.equal(count("/api/read-audit"), 1);
+  fireEvent.click(screen.getByRole("button", { name: defaultCopy.audit.refresh }));
+  await waitFor(() => assert.equal(count("/api/read-audit"), 2));
+  await waitFor(() => assert.equal(count("/api/audit"), 2));
+});
+
 test("a failed read says the audit could not load", async () => {
   net = stubFetch({});
   render(<ReadAudit />);
