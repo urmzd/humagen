@@ -3,12 +3,13 @@ import type { Page } from "playwright-core";
 
 /**
  * The sidebar's conversation list (DES-054): Recents grouped by day with each
- * row's dot, its hover actions, the Projects view and Archived. The seeded rows are
+ * row's state mark, its hover actions, the Projects view and Archived. The seeded rows are
  * dressed, in the browser only, with the states a live workspace has: one
  * waiting on a person, one running and one with an unread answer.
  */
 const THREADS = /\/api\/threads(?:\?|$)/;
 const MARKS = /\/api\/marks$/;
+const SESSIONS = /\/api\/sessions\?/;
 
 async function dress(page: Page, tips: string[] = ["search"]) {
   const since = new Date(Date.now() - 30 * 24 * 3_600_000).toISOString();
@@ -39,6 +40,16 @@ async function dress(page: Page, tips: string[] = ["search"]) {
     await route.fulfill({ response, json: body });
     listed();
   });
+  // The sidebar lists sessions (#436). The seeded ones are failed runs with
+  // nothing said in them, which the sidebar leaves to Alerts, so each is
+  // dressed as holding one message to be listed under its project.
+  await page.route(SESSIONS, async (route) => {
+    const response = await route.fetch();
+    const body = await response.json();
+    for (const session of (body.sessions ?? []) as { conversation?: Record<string, unknown> }[])
+      if (session.conversation && !session.conversation.messages) session.conversation.messages = 1;
+    await route.fulfill({ response, json: body });
+  });
   // The marks name the last listed row as archived, so they wait for the list.
   await page.route(MARKS, async (route) => {
     await seen;
@@ -56,6 +67,7 @@ async function dress(page: Page, tips: string[] = ["search"]) {
 async function undress(page: Page) {
   await page.unroute(THREADS);
   await page.unroute(MARKS);
+  await page.unroute(SESSIONS);
 }
 
 async function openSidebar(page: Page) {
@@ -123,7 +135,18 @@ export function sidebarViews(): Scene[] {
     // DES-055: a row's preview, on hover with a mouse and a long press on a phone.
     scene("sidebar-preview", async (page) => {
       const nav = await openSidebar(page);
-      const row = nav.getByRole("list", { name: "Recents" }).locator("[data-thread-row]").nth(2);
+      // Sessions are grouped by project (#436), and a group can start folded:
+      // unfold the first group that holds a session and preview its first row.
+      const group = nav
+        .getByRole("list", { name: "Projects" })
+        .locator("details")
+        .filter({ has: page.locator("[data-thread-row]") })
+        .first();
+      await group.waitFor({ state: "attached" });
+      if (!(await group.evaluate((el) => (el as HTMLDetailsElement).open)))
+        await group.locator("summary").click();
+      const row = group.locator("[data-thread-row]").first();
+      await row.waitFor();
       if ((page.viewportSize()?.width ?? 0) >= 768) {
         await row.hover();
       } else {
@@ -135,7 +158,20 @@ export function sidebarViews(): Scene[] {
       }
       const card = page.locator("[data-peek]");
       await card.waitFor();
-      assert.match((await card.textContent()) ?? "", /Updated/);
+      assert.match((await card.textContent()) ?? "", /(ago|Just now)$/);
+      assert.equal(
+        await row.getAttribute("aria-describedby"),
+        await card.getAttribute("id"),
+        "the row names its card while it shows",
+      );
+      if ((page.viewportSize()?.width ?? 0) >= 768) {
+        const [r, c] = await Promise.all([row.boundingBox(), card.boundingBox()]);
+        assert.ok(r && c);
+        assert.ok(
+          Math.abs(r.y + r.height / 2 - (c.y + c.height / 2)) <= 1,
+          "the card is centred on its row",
+        );
+      }
     }),
     scene("sidebar-recents", async (page) => {
       const nav = await openSidebar(page);

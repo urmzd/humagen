@@ -88,6 +88,7 @@ await loadTests([
   "/src/preferences.dom.test.tsx",
   "/src/home.dom.test.tsx",
   "/src/home-runs.dom.test.tsx",
+  "/src/composer-early.dom.test.tsx",
   "/src/library.dom.test.tsx",
   "/src/agent-setup.dom.test.tsx",
   "/src/conversation-sources.dom.test.tsx",
