@@ -20,22 +20,13 @@ const healthTone: Record<AgentEvaluationHealth["status"], Tone> = {
 /**
  * An agent's evaluation health: one line with its state and recent pass rate,
  * the page's action at the right of it, then what failed and what changed.
- * It reads again when `version` changes, as it does when an eval runs.
  */
-export function AgentHealth({
-  name,
-  version,
-  actions,
-}: {
-  name: string;
-  version?: string;
-  actions?: ReactNode;
-}) {
+export function AgentHealth({ name, actions }: { name: string; actions?: ReactNode }) {
   const [health, setHealth] = useState<AgentEvaluationHealth>();
   const [changes, setChanges] = useState<AgentChange[]>([]);
   const [problem, setProblem] = useState("");
   const [tick, setTick] = useState(0);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: version and tick only say when to read again
+  // biome-ignore lint/correctness/useExhaustiveDependencies: tick only says when to read again
   useEffect(() => {
     let live = true;
     setProblem("");
@@ -57,7 +48,7 @@ export function AgentHealth({
     return () => {
       live = false;
     };
-  }, [name, version, tick]);
+  }, [name, tick]);
   const failures = (health?.results ?? []).filter((result) => !result.passed).slice(0, 3);
   return (
     <section aria-label="Agent health" className="flex min-w-0 flex-col gap-3">

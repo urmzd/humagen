@@ -1236,13 +1236,7 @@ export function AgentDetail({
                 canWrite={canEval}
                 onChanged={onSuitesChanged}
                 onOpenRun={onOpenRun}
-                header={(action) => (
-                  <AgentHealth
-                    name={name}
-                    version={mySuites.map((s) => s.runs[0]?.id ?? "").join()}
-                    actions={action}
-                  />
-                )}
+                header={(action) => <AgentHealth name={name} actions={action} />}
               />
             )}
 
