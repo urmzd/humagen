@@ -138,7 +138,7 @@ func (p *Platform) Discover(ctx context.Context, who auth.Principal, q Discovery
 		if q.Project != nil {
 			query.Projects = []string{*q.Project}
 		}
-		rows, _, err := p.threadPage(who.Tenant, query, func(th ThreadSummary) bool { return matches(th.Title) && seer.Conversation(th.ID, th.Project) })
+		rows, _, err := p.threadPage(who.Tenant, query, seer.Snapshot(), func(th ThreadSummary) bool { return matches(th.Title) })
 		if err != nil {
 			return nil, err
 		}
