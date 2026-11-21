@@ -74,7 +74,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-034 | A finished turn says how long it worked | Implemented: `turn.completed` carries `durationMs`, from the run's events or its record; adapter and core tests pass |
 | DES-035 | Agents are told apart by a bot in their color; a mention opens a profile on hover | Implemented: `AgentInitials` (drawn by `bot-avatars`, initials where there is no canvas), `MentionLink`; `ui.test.tsx` passes; marks checked in the browser on `/gallery.html`, dark and light |
 | DES-036 | The composer holds what is picked, and the first message posts before anything else runs | Implemented in `Composer.tsx` and `Chat.tsx`; web tests and the `home` screens pass |
-| DES-037 | Health is a status page of each model provider and dependency | Implemented: `GET /api/health`, `Health.tsx`; `health_test.go` and `health.test.tsx` pass; checked live |
+| DES-037 | Health reports active model providers and dependencies. Workspace settings group configured and available providers, put Add in the header and offer a reversible switch for workspace-managed providers | Implemented: `GET /api/health`, `Health.tsx`, `ModelProviders.tsx`, `PATCH /api/model-providers/{name}`; platform, HTTP and web DOM coverage |
 | DES-038 | Screens open ready to read, filter once, and keep message actions quiet at rest | Implemented in #112; web, core and Slack tests pass; phone and desktop screens pass |
 | DES-039 | Changing screens never blanks or jumps; chrome is glass on one app frame | Implemented: `transition.ts`, delayed skeletons, frame and chrome glass; web tests and Console screens pass; navigation CLS measured 0 at no added latency |
 | DES-040 | The console works on a phone and installs as an app: touch targets, the keyboard, safe areas, a modal drawer, an Inspector sheet, an offline screen and a prompt for new versions | Implemented: `styles.css`, `viewport.ts`, `pwa.ts`, `sw.ts`; web and Go tests pass; Console screens pass at 320, 375, 390, 430 and 844x390 with 44px touch targets and 16px fields; iOS keyboard and install need a real device |
@@ -1167,7 +1167,19 @@ agents, so a line under the prompt bar only cost a phone its height.
 - The Health tab (`/monitor/health`, behind `alerts:read`) is a status page: a banner for
   the whole deployment, then each model provider and dependency by group, with
   its status, latency, a bar per recent check and its uptime.
-- With no model provider configured, the deployment reads as down.
+- With no model provider enabled, the workspace reads as down.
+- **Model providers** in Workspace settings lists configured providers above
+  the providers that need setup. Its primary **Add OpenAI-Compatible Server**
+  action sits in the header and opens the same sheet as preset setup and
+  editing.
+- A workspace-managed provider stays in the configured list when switched
+  off. Its settings and key are kept. Off providers are unavailable to new
+  turns and excluded from Health checks. A provider in use by an explicit
+  agent model chain or model policy stays on and the row says what uses it.
+  Deployment-managed providers show their source without an editable switch.
+  Removing a provider is a separate action in the row's menu. It asks again
+  in place on the row, saying that it also deletes the stored key, with focus
+  on Keep It; a refusal is said on the row.
 - The page asks again every 30 seconds; the server reuses a report for 30
   seconds.
 - Acceptance: with Anthropic, OpenAI and Gemini keys set, each reads

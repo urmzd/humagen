@@ -110,13 +110,13 @@ func (p *Platform) providerHealth(ctx context.Context) []HealthComponent {
 }
 
 // HealthFor is Health as tenant's workspace reads it: each provider its
-// administrators set up is listed, unchecked (Check on the provider asks
-// it), and a workspace with no provider at all, declared or its own, is told
-// so as an outage, since no agent of its can answer.
+// administrators enabled is listed, unchecked (Check on the provider asks
+// it). A workspace with no enabled provider is told so as an outage, since
+// no agent of its can answer.
 func (p *Platform) HealthFor(ctx context.Context, tenant string) Health {
 	h := p.Health(ctx)
 	h.Components = slices.Clone(h.Components)
-	own := p.ModelProviders(tenant)
+	own := slices.DeleteFunc(p.ModelProviders(tenant), func(m ModelProvider) bool { return m.Disabled })
 	for _, m := range own {
 		h.Components = append(h.Components, HealthComponent{
 			ID: "provider:" + m.Name, Name: m.Name, Group: "Model providers", Status: HealthOperational,
@@ -127,7 +127,7 @@ func (p *Platform) HealthFor(ctx context.Context, tenant string) Health {
 	if len(own) == 0 && len(p.cfg.Ext.ProviderNames()) == 0 {
 		h.Components = append(h.Components, HealthComponent{
 			ID: "provider:none", Name: "Model providers", Group: "Model providers", Status: HealthDown,
-			Detail:  "No model provider is set up, so agents cannot answer. An administrator adds one in Settings, under Model providers.",
+			Detail:  "No model provider is enabled, so agents cannot answer. An administrator enables one in Settings, under Model providers.",
 			History: []HealthSample{{At: h.CheckedAt, Status: HealthDown}},
 		})
 		h.Status = worse(h.Status, HealthDown)
