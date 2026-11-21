@@ -503,6 +503,11 @@ func (s *Store) open(tenantName string, in Thread, m *Message, at time.Time) (Th
 // conversation from before threads may name nobody: one no person asked in,
 // changed first by someone who may not own it.
 func (s *Store) Create(tenantName string, t Thread, at time.Time) (Thread, error) {
+	if t.Session != nil {
+		if err := t.Session.Check(); err != nil {
+			return Thread{}, err
+		}
+	}
 	th, _, err := s.open(tenantName, t, nil, at)
 	return th, err
 }
@@ -920,7 +925,7 @@ func (s *Store) update(tenantName, id string, version int, at time.Time, fn func
 		}
 		moves := next.Project != cur.Project || next.Channel != cur.Channel
 		switch {
-		case (next.Session == nil) != (cur.Session == nil) || next.Session != nil && *next.Session != *cur.Session:
+		case (next.Session == nil) != (cur.Session == nil) || next.Session != nil && !next.Session.same(*cur.Session):
 			return fmt.Errorf("%w: session identity is immutable", ErrInvalid)
 		case next.ReadOnly != cur.ReadOnly:
 			return fmt.Errorf("%w: archive status is immutable", ErrInvalid)

@@ -131,12 +131,34 @@ export function SessionViews({
   hidden?: readonly SessionView[];
 }) {
   const shows = (v: SessionView) => !hidden.includes(v);
-  const toggle = (v: SessionView) =>
-    disabled[v] ? undefined : active === v ? onClose() : onOpen(v);
+  // A control that cannot open says why when pressed, as a touch screen has no hover.
+  const [said, setSaid] = useState<string>();
+  useEffect(() => {
+    if (!said) return;
+    const t = setTimeout(() => setSaid(undefined), 6000);
+    return () => clearTimeout(t);
+  }, [said]);
+  const toggle = (v: SessionView) => {
+    const off = disabled[v];
+    if (off) return setSaid(off);
+    setSaid(undefined);
+    return active === v ? onClose() : onOpen(v);
+  };
   const mac = onMac();
   return (
     // biome-ignore lint/a11y/useSemanticElements: a fieldset would restyle the header; the group names the controls
-    <div role="group" aria-label={words.views} className="flex items-center gap-1">
+    <div role="group" aria-label={words.views} className="relative flex items-center gap-1">
+      <p
+        role="status"
+        data-testid="view-unavailable"
+        className={
+          said
+            ? "absolute top-full right-0 z-30 mt-2 w-72 max-w-[calc(100vw-2rem)] rounded-aui border border-aui-border bg-aui-bg px-3 py-2 text-aui-sm text-aui-fg shadow-lg"
+            : "sr-only"
+        }
+      >
+        {said}
+      </p>
       <button
         type="button"
         data-session-details
@@ -229,8 +251,8 @@ export function SessionViews({
                   className={`${cls} aria-disabled:opacity-60`}
                   aria-disabled={off ? true : undefined}
                   onClick={() => {
-                    if (off) return;
                     close();
+                    if (off) return setSaid(off);
                     onOpen(v);
                   }}
                 >

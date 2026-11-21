@@ -217,7 +217,10 @@ test("Terminal and Browser are always in the header, and say why when they canno
   assert.equal(terminal.getAttribute("title"), panel.unavailable.terminalHost);
   await waitFor(() => assert.equal(browser.getAttribute("title"), panel.unavailable.browser));
   fireEvent.click(terminal);
+  // Pressed, it says why where a touch screen can read it, and opens nothing.
+  assert.equal(screen.getByTestId("view-unavailable").textContent, panel.unavailable.terminalHost);
   fireEvent.click(browser);
+  assert.equal(screen.getByTestId("view-unavailable").textContent, panel.unavailable.browser);
   assert.equal(screen.getByTestId("opened").textContent, "");
 });
 

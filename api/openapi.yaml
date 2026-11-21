@@ -727,7 +727,55 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/ServerError"
+  /api/sessions/options:
+    get:
+      operationId: "getSessionOptions"
+      tags:
+        - "sessions"
+      summary: "List the environments and repositories a session may be started with"
+      description: |
+        The environments are this deployment's: `auto` (its default) and its
+        configured sandbox. The repositories are those the caller's
+        tenant's enabled GitHub clients may read or write, sorted, at most 100.
+      x-permission: "runs:read"
+      responses:
+        "200":
+          description: What a session may be started with.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/SessionOptions"}
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/ServerError"
   /api/sessions/{id}/browser:
+    get:
+      operationId: "getSessionBrowser"
+      tags:
+        - "sessions"
+      summary: "Say whether the session has a browser"
+      description: |
+        True when the session's agent holds a write grant on at least one
+        browser provider. Otherwise `reason` says why.
+      x-permission: "runs:read"
+      parameters:
+        - {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}
+      responses:
+        "200":
+          description: Whether the session has a browser.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BrowserAvailability"}
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
     post:
       operationId: "actOnSessionBrowser"
       tags:
@@ -19702,6 +19750,15 @@ components:
         source_alert:
           type: string
           description: The readable session alert that anchors this fix conversation.
+        environment:
+          type: string
+          maxLength: 64
+          description: Where the session runs. "" and "auto" are the deployment's default.
+        repos:
+          type: array
+          maxItems: 10
+          items: {type: string, maxLength: 200}
+          description: Repositories ("owner/name") the session works on.
     MessageFeedbackInput:
       type: object
       additionalProperties: false
@@ -20087,6 +20144,15 @@ components:
         post_only:
           type: boolean
           description: "With surface: post the message without starting anything."
+        environment:
+          type: string
+          maxLength: 64
+          description: Where the session runs, from GET /api/sessions/options. "" and "auto" are the deployment's default. Refused with surface.
+        repos:
+          type: array
+          maxItems: 10
+          items: {type: string, maxLength: 200}
+          description: Repositories ("owner/name") the session works on, each listed by GET /api/sessions/options. Refused with surface.
     BrowserAction:
       description: What a person asks of a session's browser.
       type: object
@@ -20145,6 +20211,40 @@ components:
           minItems: 4
           maxItems: 4
           items: {type: integer}
+    SessionEnvironment:
+      description: One place a session may run.
+      type: object
+      additionalProperties: false
+      required: [name, label, isolated, terminal]
+      properties:
+        name: {type: string, description: "What a session stores: auto or the sandbox's kind."}
+        label: {type: string}
+        isolated: {type: boolean, description: Each run leases an instance of its own.}
+        terminal: {type: boolean, description: A person may run their own commands there.}
+    SessionOptions:
+      description: What a session may be started with.
+      type: object
+      additionalProperties: false
+      required: [environments, repos]
+      properties:
+        environments:
+          type: array
+          items: {$ref: "#/components/schemas/SessionEnvironment"}
+        repos:
+          type: array
+          maxItems: 100
+          items: {type: string}
+    BrowserAvailability:
+      description: Whether a session has a browser.
+      type: object
+      additionalProperties: false
+      required: [available, providers, reason]
+      properties:
+        available: {type: boolean}
+        providers:
+          type: array
+          items: {type: string}
+        reason: {type: string, description: Why there is no browser; empty when there is one.}
     BrowserView:
       description: A session's browser after an action.
       type: object

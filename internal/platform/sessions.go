@@ -35,6 +35,10 @@ type SessionInput struct {
 	Fresh       bool     `json:"fresh,omitempty"`
 	Project     string   `json:"project,omitempty"`
 	SourceAlert string   `json:"source_alert,omitempty"`
+	// Environment and Repos are the place the session runs and the
+	// repositories it works on, chosen from SessionOptions.
+	Environment string   `json:"environment,omitempty"`
+	Repos       []string `json:"repos,omitempty"`
 	// Surface and ActAs are a chat surface's thread and the person a
 	// message from it is posted for: only that client's machine sends them,
 	// and the place's root session is found or started (surface_sessions.go).
@@ -188,6 +192,9 @@ func (p *Platform) sessionAgent(ctx context.Context, who auth.Principal, project
 	return explicit, picked, nil
 }
 func (p *Platform) StartSession(ctx context.Context, who auth.Principal, in SessionInput) (SessionView, error) {
+	if err := p.checkSessionChoice(ctx, who, in); err != nil {
+		return SessionView{}, err
+	}
 	if err := checkUploads(in.Uploads); err != nil {
 		return SessionView{}, err
 	}
@@ -272,7 +279,7 @@ func (p *Platform) StartSession(ctx context.Context, who auth.Principal, in Sess
 	if err != nil {
 		return SessionView{}, err
 	}
-	th := threads.Thread{ID: rec.ID, Project: project, Channel: ch.Name, Title: runs.SessionTitle(in.Text), Visibility: threads.Private, Default: agent, Agents: []string{agent}, CreatedBy: who.Subject, Session: &threads.SessionIdentity{Agent: agent, Parent: rec.Key.Parent, Label: rec.Key.Label, SourceAlert: in.SourceAlert}}
+	th := threads.Thread{ID: rec.ID, Project: project, Channel: ch.Name, Title: runs.SessionTitle(in.Text), Visibility: threads.Private, Default: agent, Agents: []string{agent}, CreatedBy: who.Subject, Session: &threads.SessionIdentity{Agent: agent, Parent: rec.Key.Parent, Label: rec.Key.Label, SourceAlert: in.SourceAlert, Environment: in.Environment, Repos: slices.Clone(in.Repos)}}
 	if parent.ID != "" {
 		th.Participants = slices.Clone(parent.Participants)
 		th.Visibility = parent.Visibility
