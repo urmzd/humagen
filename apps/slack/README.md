@@ -268,6 +268,14 @@ use is not known here, so it could be one the list leaves out. For the same
 reason such a client never sends `auto`, as a tag or as its default, since
 `@auto` picks among every agent available where the run lands.
 
+## Picking who to ask
+
+`/agent` alone opens the ask form with a picker of who to ask: the agents
+this app may reach by name, the client's default first, each by the name
+people call it and its greeting or description. Left unpicked, the default
+answers, as for any question. `/agent` with words asks at once, as before,
+and `/agent help` lists the agents.
+
 ## Following a thread
 
 In a channel thread it answered, the app takes the next reply from the

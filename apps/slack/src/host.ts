@@ -25,6 +25,9 @@ export const ENTRY = {
 
 export const words = {
   askTitle: "Ask the agent",
+  /** The ask form's picker of who to ask, and what it says while nobody is picked. */
+  askWho: "Who to ask",
+  askAnyone: "The lead decides",
   askLabel: "What do you need?",
   // The form Build an Agent opens on Home. A modal title holds 24 characters.
   buildTitle: "Build an agent",
@@ -67,8 +70,19 @@ export const words = {
 export type FormKind = "ask" | "build";
 
 /** The form the global shortcut and Ask a Question open. Its text comes back on submit. */
-export function askForm(w: typeof words = words) {
-  return form("ask", w.askTitle, w.askLabel, w);
+/** An agent the ask form offers: its handle, the name people call it, and one line about it. */
+export interface AskFormAgent {
+  id: string;
+  name: string;
+  description?: string;
+}
+
+/** Slack's `static_select` holds at most 100 options. */
+export const ASK_FORM_AGENTS = 100;
+
+/** The ask form, with a picker of who to ask when `agents` are given (`/agent` alone). */
+export function askForm(w: typeof words = words, agents: AskFormAgent[] = []) {
+  return form("ask", w.askTitle, w.askLabel, w, agents);
 }
 
 /** The form Build an Agent opens on Home: what the agent should do, for the builder. */
@@ -76,7 +90,18 @@ export function buildForm(w: typeof words = words) {
   return form("build", w.buildTitle, w.buildLabel, w);
 }
 
-function form(kind: FormKind, title: string, label: string, w: typeof words) {
+const plainText = (text: string, max: number) => ({
+  type: "plain_text",
+  text: text.length <= max ? text : `${text.slice(0, max - 1)}…`,
+});
+
+function form(
+  kind: FormKind,
+  title: string,
+  label: string,
+  w: typeof words,
+  agents: AskFormAgent[] = [],
+) {
   return {
     type: "modal",
     callback_id: ENTRY.form,
@@ -85,6 +110,26 @@ function form(kind: FormKind, title: string, label: string, w: typeof words) {
     submit: { type: "plain_text", text: w.send },
     close: { type: "plain_text", text: w.cancel },
     blocks: [
+      ...(agents.length > 0
+        ? [
+            {
+              type: "input",
+              block_id: "agent",
+              optional: true,
+              label: plainText(w.askWho, 2000),
+              element: {
+                type: "static_select",
+                action_id: "value",
+                placeholder: plainText(w.askAnyone, 150),
+                options: agents.slice(0, ASK_FORM_AGENTS).map((a) => ({
+                  text: plainText(a.name, 75),
+                  value: a.id,
+                  ...(a.description ? { description: plainText(a.description, 75) } : {}),
+                })),
+              },
+            },
+          ]
+        : []),
       {
         type: "input",
         block_id: "text",
