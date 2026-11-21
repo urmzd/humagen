@@ -17,49 +17,14 @@ import {
   useState,
 } from "react";
 import { coworking, type ProjectKindSpec, type ProjectView } from "./api.ts";
-import type { ComposerSeed } from "./Composer.tsx";
 import { ProjectChoices } from "./ProjectPicker.tsx";
+import type { Selection } from "./plusSelection.ts";
 import { above, titleOf } from "./projects.ts";
-import { mentionsIn } from "./tags.ts";
 import { AgentMark, SearchField, SearchIcon } from "./ui.tsx";
 
+export { emptySelection, mentionPicks, type Selection } from "./plusSelection.ts";
+
 const words = defaultCopy.chat;
-
-/**
- * Where a conversation the + menu sets up lives: `project` null is not
- * chosen yet, "" is the workspace. Its agents are not kept here: they are
- * the agents its draft mentions (`mentionsIn`), so the words are the one
- * place they are kept.
- */
-export interface Selection {
-  project: string | null;
-  channel: string;
-}
-
-export const emptySelection: Selection = {
-  project: null,
-  channel: "general",
-};
-
-/**
- * The + menu's agents, read from the draft: the agents it mentions are the
- * ones picked, a pick mentions one at the cursor, and picking a mentioned
- * one takes its mention out.
- */
-export function mentionPicks(
-  draft: string,
-  available: { name: string }[] | null,
-  seed: (next: ComposerSeed) => void,
-): { mentioned: string[]; onMention: (name: string) => void } {
-  const mentioned = mentionsIn(
-    draft,
-    (available ?? []).map((a) => a.name),
-  );
-  return {
-    mentioned,
-    onMention: (name) => seed({ mention: name, remove: mentioned.includes(name) }),
-  };
-}
 
 /** Every item the arrow keys move between inside the active pane. */
 const ITEM = "[data-plus-item]:not(:disabled)";

@@ -225,6 +225,13 @@ export const SendRing = lazyView(
   (m) => m.SendRing,
 );
 
+/** The composer's + menu is drawn only once opened. */
+export const PlusMenu = lazyPage(
+  () => import("./Plus.tsx"),
+  (m) => m.PlusMenu,
+  { frame: "none" },
+);
+
 // A conversation's two views. Chat frames them itself, in the conversation's own loading state.
 export const ThreadRoom = lazyView(
   () => import("./Room.tsx"),

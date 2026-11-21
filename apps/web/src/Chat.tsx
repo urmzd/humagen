@@ -31,13 +31,13 @@ import { rememberDock, useDockArrival } from "./dockArrival.ts";
 import { FindHelp, type HelpSuggestion } from "./FindHelp.tsx";
 import { type HomeAnnouncement, HomePage } from "./HomePage.tsx";
 import { LazyFrame } from "./lazy.tsx";
-import { emptySelection, mentionPicks, PlusMenu, type Selection } from "./Plus.tsx";
 import { ProjectPicker } from "./ProjectPicker.tsx";
-import { RunsConversation, ThreadRoom } from "./pages.ts";
+import { PlusMenu, RunsConversation, ThreadRoom } from "./pages.ts";
+import { emptySelection, mentionPicks, type Selection } from "./plusSelection.ts";
 import type { ConversationPanel, ConversationView } from "./route.ts";
 import { Scroller } from "./Scroller.tsx";
-import { ComposerFooter } from "./SessionUsage.tsx";
 import { DEFAULT_SETUP, type SessionSetup, SessionSetupPickers } from "./SessionPickers.tsx";
+import { ComposerFooter } from "./SessionUsage.tsx";
 import { useThreadSelection } from "./selection.ts";
 import { mentionsIn } from "./tags.ts";
 import { topicsOf } from "./topics.ts";
@@ -875,6 +875,7 @@ export function Chat({
                     onChange={runs.select}
                     onAttach={attach}
                     onClose={close}
+                    onUnavailable={close}
                   />
                 ),
               })
@@ -893,6 +894,7 @@ export function Chat({
                     onChange={select}
                     onAttach={attach}
                     onClose={close}
+                    onUnavailable={close}
                     finder={
                       findHelp ? (
                         <FindHelp
