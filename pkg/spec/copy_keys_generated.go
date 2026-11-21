@@ -416,6 +416,7 @@ var copyKeyList = []string{
 	"audit.allDomains",
 	"audit.apply",
 	"audit.before",
+	"audit.changes",
 	"audit.clearRange",
 	"audit.dateRange",
 	"audit.description",
