@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.179.0 (2026-11-21)
+
+### Features
+
+- **console**: agent health shows online checks beside eval suites and their schedules (#482) ([7b5400e](https://github.com/urmzd/humagen/commit/7b5400eef2d222e56a41f88cde20fd3382dc01e6))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.178.1...v0.179.0)
+
+
 ## 0.178.1 (2026-11-21)
 
 ### Bug Fixes
