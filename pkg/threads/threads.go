@@ -260,6 +260,21 @@ type Thread struct {
 	// thread: a client, its channel there and the thread's own id. It is
 	// fixed when the thread is started, and one surface is one thread.
 	Surface *Surface `json:"surface,omitempty"`
+	// Addressed says the thread on its surface began with a message addressed
+	// to the app: a mention in a channel thread's first message. Such a
+	// thread is listened to once the app has answered there. A thread a later
+	// mention started is not addressed: each mention there is answered once.
+	Addressed bool `json:"addressed,omitempty"`
+	// Listening says an addressed thread has had an answer from the app. A
+	// refused mention, a failed run, or one still quiet or waiting on a
+	// person answered nothing, and starts no listening (Store.Listen).
+	Listening bool `json:"listening,omitempty"`
+	// Listener is whose later messages that address nobody are read there:
+	// the person whose mention the app answered most recently. The agent
+	// decides of each whether it calls for it. Anyone else mentions the app
+	// or an agent to ask, and their mention, once answered, makes them the
+	// listener. An unmentioned follow-up never moves it.
+	Listener *Listener `json:"listener,omitempty"`
 	// Announcement is the inbox id of the announcement the thread was
 	// started from: its surface is the announcement's post there, and a
 	// reply to it started the thread. It is fixed when the thread is
@@ -420,6 +435,11 @@ type Message struct {
 	Via string `json:"via"`
 	// Spoken is a message said in voice mode and transcribed.
 	Spoken bool `json:"spoken,omitempty"`
+	// Heard is a message on a surface that addressed nobody, read because
+	// the thread listens to its poster: a reply with no mention of the app.
+	// Unless it tags an agent it asked nothing, so its answer does not move
+	// whom the thread listens to (Store.Listen).
+	Heard bool `json:"heard,omitempty"`
 	// EditedAt is when its author last corrected a spoken message's words.
 	EditedAt *time.Time `json:"edited_at,omitempty"`
 	// SurfaceID is the surface's own id for it, such as a Slack ts. A second
@@ -657,4 +677,13 @@ func (m Message) validate() error {
 func (s *SessionIdentity) same(o SessionIdentity) bool {
 	return s.Agent == o.Agent && s.Parent == o.Parent && s.Label == o.Label && s.SourceAlert == o.SourceAlert &&
 		s.Environment == o.Environment && slices.Equal(s.Repos, o.Repos)
+}
+
+// Listener is the person an addressed thread listens to, and their mention
+// the app answered there, by its surface id (a Slack ts). Only an answer to
+// a newer mention changes it, so a late answer to an older one does not take
+// the thread back.
+type Listener struct {
+	Person  string `json:"person"`
+	Message string `json:"message,omitempty"`
 }

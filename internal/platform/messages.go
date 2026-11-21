@@ -285,6 +285,11 @@ type MessagesInput struct {
 	// PostOnly, with ActAs, records the message and starts nothing: what
 	// people said in the thread before the app was asked.
 	PostOnly bool `json:"post_only,omitempty"`
+	// Listen, with ActAs, posts a message that addressed nobody: a reply in
+	// a thread that does not mention the app. It starts no session; in one
+	// that is listening the agent decides whether it calls for it, and
+	// anywhere else it is refused and nothing is kept.
+	Listen bool `json:"listen,omitempty"`
 	// surface is set only by a surface built into the server, which verified
 	// the person and the place (SendSurfaceMessages): its runs answer on the
 	// surface, and its refs' User is believed. No request can set it.
@@ -343,6 +348,9 @@ func (p *Platform) SendMessages(ctx context.Context, who auth.Principal, in Mess
 	}
 	if in.PostOnly {
 		return MessageView{}, fmt.Errorf("%w: post_only is for a client's machine posting for a person (act_as)", threads.ErrInvalid)
+	}
+	if in.Listen {
+		return MessageView{}, fmt.Errorf("%w: listen is for a client's machine posting for a person (act_as)", threads.ErrInvalid)
 	}
 	if !in.surface {
 		in.dropUnverified()
@@ -420,7 +428,7 @@ func (p *Platform) sendForSurfacePerson(ctx context.Context, who auth.Principal,
 		return bad(fmt.Sprintf("ref: client %q is not team %s's", c.ID, ref.Team))
 	}
 	v, started, err := p.StartSurfaceSession(ctx, who, SessionInput{
-		Text: text, ActAs: in.ActAs, PostOnly: in.PostOnly,
+		Text: text, ActAs: in.ActAs, PostOnly: in.PostOnly, Listen: in.Listen,
 		Surface: &SurfaceRef{Client: ref.Client, Channel: ref.Channel, TS: cmpOr(ref.ThreadTS, ref.TS), Message: ref.TS, AppUser: ref.AppUser, Audience: ref.Audience, Files: ref.Files},
 	})
 	if err != nil {

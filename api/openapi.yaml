@@ -4339,6 +4339,11 @@ paths:
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
+        "409":
+          description: A message sent with `listen` where nobody is listening, a place with no thread or a thread that did not begin with a message addressed to the app. Nothing is kept.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ErrorBody"}
         "410":
           description: The surface's thread is under an announcement that was withdrawn, or under a draft, in the project its Slack channel is bound to, so a reply there starts nothing.
           content:
@@ -12511,6 +12516,9 @@ components:
         error:
           description: What went wrong, in words a person can be shown.
           type: string
+        code:
+          description: Which failure it is, for a program to act on, where the status alone does not say. `thread_before_sessions` is the conflict of `POST /api/sessions` for a chat surface's thread that started as a conversation, which the chat service posts to `POST /api/threads` instead. A failure without one is told by its status.
+          type: string
     Refusal:
       description: Why a limit refused a run.
       type: object
@@ -14194,6 +14202,23 @@ components:
           items: {type: string}
         mode: {$ref: "#/components/schemas/ThreadMode"}
         surface: {$ref: "#/components/schemas/ThreadSurface"}
+        addressed:
+          description: The thread on its surface began with a message addressed to the app, a mention in a Slack channel thread's first message. It is listened to once the app has answered there. Absent for a thread a later mention started, where each mention is answered once, and for a direct message.
+          type: boolean
+        listening:
+          description: An addressed thread the app has answered in. A refused mention, a failed run, or one still quiet or waiting on a person answered nothing and starts no listening.
+          type: boolean
+        listener:
+          description: Whose later messages there that address nobody are read, when the thread is `listening`, and the agent decides of each whether it calls for it. It is the person whose mention of the app or an agent the app answered most recently; only an answer to a newer mention changes it, and the listener's own unmentioned follow-ups never do. Anyone else mentions the app or an agent to ask.
+          type: object
+          required: [person]
+          properties:
+            person:
+              description: The person's handle, shown as created_by is.
+              type: string
+            message:
+              description: Their mention the app answered, by its surface id (a Slack ts).
+              type: string
         fork: {$ref: "#/components/schemas/ThreadFork"}
         import: {$ref: "#/components/schemas/ThreadImport"}
         archive: {$ref: "#/components/schemas/ThreadArchive"}
@@ -14624,6 +14649,9 @@ components:
         spoken:
           description: Said in voice mode and transcribed.
           type: boolean
+        heard:
+          description: A message on a surface that addressed nobody, read because the thread listens to its poster, such as a Slack reply with no mention of the app. Unless it tags an agent its answer does not change the thread's `listener`.
+          type: boolean
         edited_at:
           description: When its author last corrected a spoken message's words.
           type: string
@@ -14782,6 +14810,9 @@ components:
           type: boolean
         act_as: {$ref: "#/components/schemas/ActAs"}
         surface: {$ref: "#/components/schemas/SurfaceRef"}
+        listen:
+          description: With `surface`, posts a message that addressed nobody, such as a reply in a Slack thread that does not mention the app. It starts no thread. In a thread that is `listening` the agent is asked whether the message calls for it, and either answers it or the message is kept and starts nothing (`rule` is `post_only`). Anywhere else the answer is 409 and nothing is kept.
+          type: boolean
     HelpSuggestion:
       type: object
       required: [project, title, agent, reason]
@@ -20222,6 +20253,9 @@ components:
         post_only:
           type: boolean
           description: With act_as, record the message and start nothing, for what people said in the thread before the app was asked.
+        listen:
+          type: boolean
+          description: With act_as, post a message that addressed nobody, such as a reply in a Slack thread that does not mention the app. It starts no session. In a thread that is `listening` the agent is asked whether the message calls for it, and answers it or the message is kept and starts nothing (`posted.rule` is `post_only`). Anywhere else the answer is 409 and nothing is kept.
     InMessage:
       description: One person's message. role is user; the platform writes the agents' messages.
       type: object
@@ -20560,6 +20594,9 @@ components:
         post_only:
           type: boolean
           description: "With surface: post the message without starting anything."
+        listen:
+          type: boolean
+          description: "With surface: post a message that addressed nobody, such as a reply in a Slack thread that does not mention the app. It starts no session. In one that is `listening` the agent is asked whether the message calls for it, and answers it or the message is kept and starts nothing. Anywhere else the answer is 409 and nothing is kept."
         environment:
           type: string
           maxLength: 64
