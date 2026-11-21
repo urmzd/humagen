@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { afterEach, test } from "node:test";
 import { defaultCopy } from "@humagen/components";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -236,6 +237,161 @@ test("a capped list shortened by reads says why it is short", async () => {
   assert.equal(within(changes).queryByText(defaultCopy.audit.limited), null);
 });
 
+test("with Projects chosen the capped lines do not send a person to choose a domain", async () => {
+  const at = Date.parse("2026-10-22T10:00:00Z");
+  const reads = Array.from({ length: 100 }, (_, n) => ({
+    subject: "governor",
+    project: "Secret",
+    route: "GET /api/projects/{name}",
+    at: new Date(at - n * 60_000).toISOString(),
+  }));
+  const asChanges = reads.map((read, n) => ({
+    id: `read-${n}`,
+    actor: read.subject,
+    at: read.at,
+    action: "project.break_glass_read",
+    resource: "project",
+    resource_id: read.project,
+    scope: "project",
+    project: read.project,
+    route: read.route,
+    rule: "projects:govern",
+    outcome: "succeeded",
+  }));
+  const created = {
+    id: "audit-1",
+    actor: "ana",
+    at: new Date(at - 200 * 60_000).toISOString(),
+    action: "project.created",
+    resource: "project",
+    resource_id: "Secret",
+    scope: "project",
+    project: "Secret",
+    outcome: "succeeded",
+  };
+  let records = [...asChanges.slice(0, 99), created];
+  net = stubFetch({
+    "GET /api/audit": () => ({ records }),
+    "GET /api/read-audit": () => ({ records: reads }),
+  });
+  render(<Audit reads />);
+  const copy = defaultCopy.audit;
+  // With every domain on view, another domain is a way to more changes.
+  await screen.findByText(copy.limitedByReads);
+  fireEvent.change(screen.getByLabelText(copy.domain), { target: { value: "project" } });
+  fireEvent.click(screen.getByRole("button", { name: copy.apply }));
+  // Reads are project records: with Projects chosen only a shorter window helps.
+  await screen.findByText(copy.limitedByProjectReads);
+  assert.equal(screen.queryByText(copy.limitedByReads), null);
+  assert.ok(!copy.limitedByProjectReads.includes("domain"));
+
+  records = asChanges;
+  fireEvent.click(screen.getByRole("button", { name: copy.refresh }));
+  await screen.findByText(copy.hiddenByProjectReads);
+  assert.equal(screen.queryByText(copy.hiddenByReads), null);
+  assert.ok(!copy.hiddenByProjectReads.includes("domain"));
+});
+
+test("Filter unfolds the same fields, says how many were applied and takes focus back", async () => {
+  const queries: URLSearchParams[] = [];
+  net = stubFetch({
+    "GET /api/audit": (_body, query) => {
+      queries.push(query);
+      return { records: [] };
+    },
+  });
+  render(<Audit />);
+  const copy = defaultCopy.audit;
+  await screen.findByText(copy.empty);
+  const filter = screen.getByRole("button", { name: copy.filter });
+  const fields = screen.getByLabelText(copy.actor).closest("form");
+  assert.ok(fields);
+  assert.equal(filter.getAttribute("aria-controls"), fields.id);
+  // Folded on a phone or in a narrow column; the stylesheet's `filter-row` shows the row
+  // anywhere else, and the fields, Filter's header and the wide header all follow that one rule.
+  assert.equal(filter.getAttribute("aria-expanded"), "false");
+  assert.ok(fields.classList.contains("hidden"));
+  assert.ok(fields.classList.contains("filter-row:grid"));
+  assert.ok(filter.parentElement?.classList.contains("filter-row:hidden"));
+  const wide = screen.getByRole("button", { name: copy.refresh }).parentElement;
+  assert.ok(wide?.classList.contains("hidden"));
+  assert.ok(wide?.classList.contains("filter-row:flex"));
+  // No other breakpoint shows or hides any of the three.
+  for (const element of [fields, filter.parentElement, wide])
+    assert.deepEqual(
+      [...(element?.classList ?? [])].filter((name) => /:(hidden|grid|flex)$/.test(name)),
+      [...(element?.classList ?? [])].filter((name) =>
+        /^filter-row:(hidden|grid|flex)$/.test(name),
+      ),
+    );
+
+  fireEvent.click(filter);
+  assert.equal(filter.getAttribute("aria-expanded"), "true");
+  assert.ok(!fields.classList.contains("hidden"));
+  fireEvent.change(screen.getByLabelText(copy.actor), { target: { value: "ana" } });
+  fireEvent.change(screen.getByLabelText(copy.domain), { target: { value: "memory" } });
+  fireEvent.click(screen.getByRole("button", { name: copy.apply }));
+  await waitFor(() => assert.equal(queries.length, 2));
+  assert.equal(queries[1]?.get("actor"), "ana");
+  // Applied, the fields fold again, focus is back on Filter and it counts the two set.
+  assert.equal(filter.getAttribute("aria-expanded"), "false");
+  assert.ok(fields.classList.contains("hidden"));
+  assert.ok(document.activeElement === filter);
+  assert.match(filter.textContent ?? "", /^Filter\s*,\s*2$/);
+
+  // A window that is not valid keeps the fields open, where the reason shows.
+  fireEvent.click(filter);
+  fireEvent.click(screen.getByRole("button", { name: copy.dateRange }));
+  fireEvent.change(await screen.findByLabelText(copy.from), { target: { value: "2026-10-20" } });
+  fireEvent.change(screen.getByLabelText(copy.to), { target: { value: "2026-10-19" } });
+  fireEvent.click(screen.getByRole("button", { name: copy.apply }));
+  await screen.findByText(copy.invalidRange);
+  assert.equal(filter.getAttribute("aria-expanded"), "true");
+});
+
+test("the filters fold in a phone's window or a narrow column, and not beside the default sidebar", () => {
+  const css = readFileSync(new URL("./styles.css", import.meta.url), "utf8");
+  const rule = css.match(
+    /@custom-variant filter-row \{\s*@media \(width >= ([\d.]+)rem\) \{\s*@container \(width >= ([\d.]+)rem\) \{\s*@slot;/,
+  );
+  assert.ok(rule, "filter-row is a window width and a column width together");
+  // Tailwind's md: under it the window is a phone's.
+  assert.equal(Number(rule[1]) * 16, 768);
+  const column = Number(rule[2]) * 16;
+  // A 1024 window beside the default sidebar and the settings list leaves a 430px column,
+  // which keeps the row; the 214px one a 768 window leaves does not.
+  const sidebar = Number(css.match(/--humagen-sidebar-w: (\d+)px/)?.[1]);
+  assert.equal(sidebar, 296);
+  assert.ok(column <= 430 - 8, "the default 1024 window keeps the row, with room to spare");
+  assert.ok(column > 214, "a 768 window beside the sidebar folds");
+});
+
+test("folded, Refresh and Export CSV are under More", async () => {
+  net = stubFetch({ "GET /api/audit": () => ({ records: [] }) });
+  render(<Audit />);
+  const copy = defaultCopy.audit;
+  await screen.findByText(copy.empty);
+  const more = screen.getByRole("button", { name: defaultCopy.more });
+  // The folded header holds two controls: Filter and More.
+  assert.equal(more.parentElement?.parentElement?.querySelectorAll(":scope > button").length, 1);
+  fireEvent.click(more);
+  const menu = screen.getByRole("menu", { name: defaultCopy.more });
+  assert.deepEqual(
+    within(menu)
+      .getAllByRole("menuitem")
+      .map((item) => item.textContent),
+    [copy.refresh, copy.export],
+  );
+  // Nothing to export yet, as on the wide header.
+  const exportRow = within(menu).getByRole("menuitem", { name: copy.export }) as HTMLButtonElement;
+  assert.equal(exportRow.disabled, true);
+  fireEvent.click(within(menu).getByRole("menuitem", { name: copy.refresh }));
+  await waitFor(() =>
+    assert.equal(net?.seen.filter((request) => request.path.startsWith("/api/audit")).length, 2),
+  );
+  assert.equal(screen.queryByRole("menu"), null);
+});
+
 test("Refresh reads the break-glass reads again with the changes", async () => {
   net = stubFetch({
     "GET /api/audit": () => ({ records: changesWithTheRead }),
@@ -248,6 +404,26 @@ test("Refresh reads the break-glass reads again with the changes", async () => {
   fireEvent.click(screen.getByRole("button", { name: defaultCopy.audit.refresh }));
   await waitFor(() => assert.equal(count("/api/read-audit"), 2));
   await waitFor(() => assert.equal(count("/api/audit"), 2));
+});
+
+test("a failed refresh of the reads says so and stops leaving them out of the changes", async () => {
+  let refuse = false;
+  net = stubFetch({
+    "GET /api/audit": () => ({ records: changesWithTheRead }),
+    "GET /api/read-audit": () =>
+      refuse ? new Response(null, { status: 500 }) : { records: [governorRead] },
+  });
+  render(<Audit reads />);
+  await screen.findByText("Project created");
+  await waitFor(() => assert.equal(screen.queryByText("Project break glass read"), null));
+  refuse = true;
+  fireEvent.click(screen.getByRole("button", { name: defaultCopy.audit.refresh }));
+  await screen.findByText(defaultCopy.readAudit.failed);
+  // The list read earlier is not shown as if current: its heading counts nothing.
+  assert.ok(screen.getByRole("heading", { name: defaultCopy.readAudit.title }));
+  // The read is among the changes again, so it is still on the page.
+  await screen.findByText("Project break glass read");
+  assert.ok(screen.getByText("Project created"));
 });
 
 test("a failed read says the audit could not load", async () => {

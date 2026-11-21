@@ -174,7 +174,8 @@ the model and ordering in `packages/core` (such as `HomeModel`,
 | Error | What could not be done, and where to look instead | `Problem` for a failed action, a quiet line in a box for a failed read | Toasts that vanish before they are read |
 
 Agents are told apart by color (`AgentMark`), never by letters in boxes.
-Anything waiting on a person does not animate.
+Anything waiting on a person does not animate, and is marked in the warning
+amber (`--aui-warn`) wherever it is said, never in the agent's color.
 
 ## Home under the chat bar
 

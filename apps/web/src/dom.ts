@@ -44,6 +44,18 @@ export function stubFetch(
 }
 
 /**
+ * The paragraphs a page draws directly under its title. A page is headed by
+ * its title alone, so this is empty unless the line says why the reader
+ * cannot act on the page.
+ */
+export function underTitle(): string[] {
+  const title = document.querySelector("h1");
+  return [...(title?.parentElement?.children ?? [])]
+    .filter((el) => el.tagName === "P")
+    .map((el) => el.textContent ?? "");
+}
+
+/**
  * Installs an EventSource that never delivers anything, for a page that
  * follows a run's events while a test looks at it. Returns a way to put back
  * whatever was there.

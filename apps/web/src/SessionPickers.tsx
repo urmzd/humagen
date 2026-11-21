@@ -58,7 +58,7 @@ export function useSessionOptions(
   return options;
 }
 
-/** Text controls under the composer, as the approval mode is: no boxes. */
+/** Text controls under the composer, as the approval mode is: no boxes, the composer's sizes. */
 const control =
   "inline-flex h-8 min-w-8 pointer-coarse:h-11 pointer-coarse:min-w-11 shrink-0 items-center justify-center gap-1.5 rounded-aui px-2 text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-expanded:bg-aui-hover aria-expanded:text-aui-fg";
 const row =
@@ -122,7 +122,7 @@ export function EnvironmentPicker({
       className={control}
       button={
         <>
-          <CloudIcon size={16} />
+          <CloudIcon size={18} />
           <span aria-hidden className="inline-flex items-center gap-1 text-aui-xs" data-label>
             <span className="max-w-32 truncate">{name}</span>
             <ChevronDownIcon size={12} />
@@ -208,7 +208,7 @@ export function RepoPicker({
       className={control}
       button={
         <>
-          <GitHubIcon size={16} />
+          <GitHubIcon size={18} />
           <span aria-hidden className="inline-flex items-center gap-1 text-aui-xs" data-label>
             <span className="max-w-40 truncate">{name}</span>
             <ChevronDownIcon size={12} />

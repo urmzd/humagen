@@ -32,7 +32,12 @@ export function ReadAudit({
         onListed?.(rows);
       })
       .catch(() => {
-        if (live) setFailed(true);
+        if (!live) return;
+        // A list read before this failure is no longer known to be current: it is not
+        // shown, and the page stops leaving its reads out of the changes.
+        setFailed(true);
+        setRecords(null);
+        onListed?.([]);
       });
     return () => {
       live = false;

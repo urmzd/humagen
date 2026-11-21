@@ -156,6 +156,51 @@ test("while a call runs, its run says which, and a call waiting on a person does
   assert.ok(within(group).getByText("Waiting for approval"));
 });
 
+test("waiting on a person is one amber wherever a turn says it, and working keeps the agent's color", () => {
+  const call = (id: string, status: "waiting" | "in_progress"): Turn["tasks"][number] => ({
+    ...(delegatingTurn.tasks[3] as Turn["tasks"][number]),
+    id,
+    status,
+  });
+  show({
+    ...multiStepTurn,
+    status: "waiting",
+    tasks: [
+      {
+        ...(multiStepTurn.tasks[4] as Turn["tasks"][number]),
+        status: "waiting",
+        output: undefined,
+      },
+      call("waits", "waiting"),
+      call("works", "in_progress"),
+    ],
+  });
+  const article = screen.getByRole("article");
+  const amber = (node: Element | null | undefined, what: string) => {
+    assert.match(node?.getAttribute("class") ?? "", /\b(text|bg)-aui-warn\b/, `${what} is amber`);
+    assert.doesNotMatch(
+      node?.getAttribute("class") ?? "",
+      /aui-accent/,
+      `${what} is not the accent`,
+    );
+  };
+  // Beside the agent's name: the dot. The name itself keeps its own color.
+  const says = within(article.querySelector("header") as HTMLElement).getAllByText(
+    "Needs your input",
+  )[0];
+  amber(says?.previousElementSibling, "the header's dot");
+  // The step line, the step's own row and its mark.
+  const group = screen.getByTestId("step-group");
+  amber(within(group).getAllByText("waiting for you")[0], "the step line's words");
+  const row = within(group).getByText("Waiting for approval");
+  amber(row, "the waiting row's words");
+  amber(row.closest('[data-aui="task"]')?.querySelector("span[aria-hidden]"), "the waiting mark");
+  // A call to another agent: waiting is amber, working is still that agent's color.
+  const [waits, works] = [...article.querySelectorAll('[data-aui="agent-call"]')];
+  amber(within(waits as HTMLElement).getByText("Waiting for you"), "a waiting call's word");
+  assert.match(within(works as HTMLElement).getByText("Working").className, /text-aui-accent/);
+});
+
 test("a finished turn that changed files ends with a card of them, each opening its changes", () => {
   const opened: string[] = [];
   const edit = (id: string, path: string, old_string: string, new_string: string) => ({

@@ -7,6 +7,7 @@ import type { ConversationSandboxes } from "../../../packages/client/src/generat
 import { coworking } from "./api.ts";
 import { stubFetch } from "./dom.ts";
 import { useHumanActivity } from "./humanActivity.tsx";
+import { ProjectPicker } from "./ProjectPicker.tsx";
 import {
   DEFAULT_SETUP,
   type SessionOptions,
@@ -97,6 +98,29 @@ test("with no repository connected the menu says so and leads to Connections; un
   cleanup();
   render(<Pickers seen={[]} given={null} />);
   assert.equal(screen.queryByTestId("session-setup"), null);
+});
+
+test("the project, environment and repository controls under Home's composer are its size", () => {
+  render(
+    <>
+      <ProjectPicker projects={[]} value="" onChange={() => {}} onCreated={() => {}} />
+      <Pickers seen={[]} />
+    </>,
+  );
+  for (const name of [
+    "Select project: Workspace",
+    `${words.environment}: ${words.auto}`,
+    `${words.repoLabel}: ${words.none}`,
+  ]) {
+    const trigger = screen.getByRole("button", { name });
+    const classes = trigger.className.split(/\s+/);
+    // 32px tall, 44px on a touch screen, as Attach, Send, the microphone, approval and usage are.
+    assert.ok(classes.includes("h-8"), `${name} is 32px tall: ${classes.join(" ")}`);
+    assert.ok(classes.includes("pointer-coarse:h-11"), `${name} is 44px tall on touch`);
+    const icon = trigger.querySelector("svg");
+    assert.equal(icon?.getAttribute("width"), "18", `${name} has an 18px icon`);
+    assert.equal(icon?.getAttribute("height"), "18", `${name} has an 18px icon`);
+  }
 });
 
 test("a private session is started with its environment and repositories, and Auto is not sent", async () => {

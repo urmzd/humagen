@@ -359,6 +359,30 @@ test("Stroke: waiting never animates, in markup or in the stylesheet", () => {
   );
 });
 
+test("waiting on a person is the warning amber in the stylesheets, never the accent or an agent's hue", () => {
+  const rulesOf = (file: string) =>
+    [...readFileSync(new URL(file, import.meta.url), "utf8").matchAll(/([^{}]+)\{([^{}]*)\}/g)].map(
+      ([, selector = "", body = ""]) => ({ selector, body }),
+    );
+  // The edge of what an agent owns: its hue, until it waits on a person.
+  const edge = rulesOf("./styles.css").filter(
+    ({ selector }) => selector.trim() === '.humagen-stroke[data-state="waiting"]',
+  );
+  assert.equal(edge.length, 1);
+  assert.match(edge[0]?.body ?? "", /--humagen-stroke-color:\s*var\(--aui-warn\)/);
+  // The rail down an approval, a question and a batch of approvals.
+  const rails = rulesOf("../../../packages/render-web/src/theme.css").filter(
+    ({ selector, body }) =>
+      /data-aui-block="(approval|clarification|batch)"|data-aui="checkboxes"/.test(selector) &&
+      /(background|box-shadow):[^;]*var\(--aui-(accent|warn)\)/.test(body),
+  );
+  assert.equal(rails.length, 6, "three parts of a card, and three of a batch");
+  for (const { selector, body } of rails) {
+    assert.match(body, /var\(--aui-warn\)/, selector.trim());
+    assert.doesNotMatch(body, /var\(--aui-accent\)/, selector.trim());
+  }
+});
+
 test("parseDollars: amounts become micro-USD", () => {
   assert.equal(parseDollars("49.50"), 49_500_000);
   assert.equal(parseDollars("49.5"), 49_500_000);

@@ -63,7 +63,7 @@ export function ActionPolicies({
     }
   };
   return (
-    <Page title={words.policies} lede={words.policiesHint} narrow>
+    <Page title={words.policies} narrow>
       <div className="flex flex-wrap items-center gap-3 text-sm">
         <span className="text-muted-foreground">{words.policyScope}</span>
         <Badge variant="secondary">

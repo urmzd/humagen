@@ -11,7 +11,7 @@ const words = defaultCopy.directory;
  */
 export function DirectoryPage({ can }: { can: (permission: string) => boolean }) {
   return (
-    <Page title={words.title} lede={words.lede}>
+    <Page title={words.title}>
       {can("people:read") ? (
         <People />
       ) : (

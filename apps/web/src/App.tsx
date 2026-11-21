@@ -1358,7 +1358,7 @@ function Console({
                     />
                   )}
                   {route.page === "monitor" && route.tab === "health" && (
-                    <Page title={defaultCopy.health.title} lede={defaultCopy.health.lede}>
+                    <Page title={defaultCopy.health.title}>
                       <Health />
                     </Page>
                   )}

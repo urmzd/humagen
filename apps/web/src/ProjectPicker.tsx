@@ -317,7 +317,8 @@ export function ProjectPicker({
         onClick={() => {
           if (!locked) setOpen(!open);
         }}
-        className="inline-flex min-h-9 pointer-coarse:min-h-11 max-w-full items-center gap-2 rounded-aui px-1.5 text-aui-sm text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
+        // As tall as the controls beside it under the composer.
+        className="inline-flex h-8 pointer-coarse:h-11 max-w-full items-center gap-2 rounded-aui px-1.5 text-aui-sm text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
       >
         <ProjectIcon size={18} />
         <span className="truncate" data-label>

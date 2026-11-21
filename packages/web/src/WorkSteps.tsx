@@ -423,7 +423,7 @@ function ToolRow({
   }, [arrive]);
   const status = (
     <>
-      {task.status === "waiting" && <span className="shrink-0 text-aui-accent">{w.waiting}</span>}
+      {task.status === "waiting" && <span className="shrink-0 text-aui-warn">{w.waiting}</span>}
       {failed && <span className="shrink-0 text-aui-bad">{w.failed(1)}</span>}
       {running && <Elapsed since={task.startedAt} copy={copy} />}
       {took && !running && (
@@ -599,7 +599,7 @@ export function StepGroup({
       </span>
       {line.running && runningTask && <Elapsed since={runningTask.startedAt} copy={copy} />}
       {line.counts && !line.running && line.file && <Counts edit={line.file} />}
-      {line.waiting && <span className="shrink-0 text-aui-accent">{w.waiting}</span>}
+      {line.waiting && <span className="shrink-0 text-aui-warn">{w.waiting}</span>}
     </>
   );
   const lineClass =

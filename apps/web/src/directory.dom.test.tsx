@@ -3,7 +3,7 @@ import { afterEach, test } from "node:test";
 import { cleanup, render, screen } from "@testing-library/react";
 import type { Person } from "./api.ts";
 import { DirectoryPage } from "./Directory.tsx";
-import { stubFetch } from "./dom.ts";
+import { stubFetch, underTitle } from "./dom.ts";
 
 // The loader imports every DOM file into one process, where a top-level hook
 // runs after other files' tests too, so it acts only on what this file set up.
@@ -32,6 +32,8 @@ function openPeople(can = ["people:read"]) {
 test("People: each by name and handle with their own picture, and no letter in a box for one without", async () => {
   openPeople();
   assert.ok(screen.getByRole("heading", { name: "People" }));
+  // The title heads the page alone: no line of explanation under it.
+  assert.deepEqual(underTitle(), []);
   await screen.findByText("Dana Scully");
   assert.ok(screen.getByText(/@dana-scully | operator/));
   assert.ok(screen.getByText(/@fox | No role/));

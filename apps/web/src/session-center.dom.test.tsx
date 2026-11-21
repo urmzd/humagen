@@ -286,6 +286,15 @@ test("an alert title takes two lines in a stacked row and one in the table", asy
     `one line in the table: ${classes.join(" ")}`,
   );
   assert.ok(!classes.includes("truncate"), `not one line everywhere: ${classes.join(" ")}`);
+  // A tooltip does not show on keyboard focus, so the table's one line opens while its link has it.
+  assert.ok(
+    classes.includes("@3xl:pointer-fine:group-focus-visible/title:line-clamp-none"),
+    `whole on keyboard focus in the table: ${classes.join(" ")}`,
+  );
+  assert.ok(
+    link.className.split(/\s+/).includes("group/title"),
+    "the link is what takes the focus",
+  );
 });
 
 test("Alerts resolves selected records and Undo reopens only successful changes", async () => {

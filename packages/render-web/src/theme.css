@@ -12,6 +12,7 @@
  *
  * Status tones (ok/warn/bad/info/neutral) identify labeled state. Green marks
  * success, gold marks attention and red marks failure. `info` follows the accent.
+ * Waiting on a person is always `warn`, never the accent or an agent's hue.
  *
  * Theme: data-theme="light|dark" on any ancestor, else the OS preference.
  */
@@ -399,13 +400,13 @@
 }
 .aui-stack > [data-aui="text"]:has(+ [data-aui-block="approval"], + [data-aui="fields"] + [data-aui-block="approval"])::before,
 .aui-stack > [data-aui="text"]:has(+ [data-aui-block="clarification"])::before {
-  /* An accent rail marks "this is waiting on you". */
+  /* An amber rail marks "this is waiting on you", the same amber wherever that is said. */
   content: "";
   position: absolute;
   inset: -1px auto 0 -1px;
   width: 3px;
   border-radius: var(--radius-aui-lg) 0 0 0;
-  background: var(--aui-accent);
+  background: var(--aui-warn);
 }
 .aui-stack > [data-aui="fields"]:has(+ [data-aui-block="approval"]) {
   margin-top: calc(-1 * var(--aui-gap));
@@ -419,7 +420,7 @@
   position: absolute;
   inset: 0 auto 0 -1px;
   width: 3px;
-  background: var(--aui-accent);
+  background: var(--aui-warn);
 }
 .aui-stack > [data-aui="text"] + [data-aui-block="approval"],
 .aui-stack > [data-aui="fields"] + [data-aui-block="approval"],
@@ -440,7 +441,7 @@
   inset: 0 auto -1px -1px;
   width: 3px;
   border-radius: 0 0 0 var(--radius-aui-lg);
-  background: var(--aui-accent);
+  background: var(--aui-warn);
 }
 /* The meta line ("Will run as", "Expires") tucks under the card. */
 .aui-stack > [data-aui-block="approval"] + [data-aui="context"] {
@@ -888,14 +889,14 @@
     border-radius: var(--radius-aui-lg) var(--radius-aui-lg) 0 0;
     background: var(--aui-surface);
     padding: 0.625rem 0.75rem 0;
-    box-shadow: inset 3px 0 0 var(--aui-accent);
+    box-shadow: inset 3px 0 0 var(--aui-warn);
   }
   .aui-stack > [data-aui="text"] + [data-aui="checkboxes"] {
     margin-top: calc(-1 * var(--aui-gap));
     border-inline: 1px solid var(--aui-border);
     background: var(--aui-surface);
     padding: 0.25rem 0.75rem 0.25rem 1rem;
-    box-shadow: inset 3px 0 0 var(--aui-accent);
+    box-shadow: inset 3px 0 0 var(--aui-warn);
   }
   .aui-stack > [data-aui="checkboxes"] + [data-aui-block="batch"] {
     margin-top: calc(-1 * var(--aui-gap));
@@ -904,7 +905,7 @@
     border-radius: 0 0 var(--radius-aui-lg) var(--radius-aui-lg);
     background: var(--aui-surface);
     padding: 0.375rem 0.75rem 0.625rem 1rem;
-    box-shadow: inset 3px 0 0 var(--aui-accent);
+    box-shadow: inset 3px 0 0 var(--aui-warn);
   }
 
   /* Files stack into one list. */
