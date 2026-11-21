@@ -5,7 +5,7 @@ sign-in and the deterministic local model, and captures the canonical session
 interface. No live OAuth connection or model provider is used.
 
 The `Console screens (light)` and `Console screens (dark)` CI jobs each capture
-28 focused states at 390, 480, 768, 1024 and 1280 pixels wide: the seven navigation
+29 focused states at 390, 480, 768, 1024 and 1280 pixels wide: the seven navigation
 entries, Home's strip of recent artifacts (answered in the browser, since nothing
 publishes one offline), the Audit page over generated records (changes and break-glass
 reads, answered in the browser, since nothing seeds a read), the composer with attachments, retained uploads in a reloaded
