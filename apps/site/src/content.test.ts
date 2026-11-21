@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
-import { pages, steps } from "./content/site.ts";
+import { pages, steps, terms } from "./content/site.ts";
 import { llmsTxt } from "./lib/llms.ts";
 
 const files = (dir: string): string[] =>
@@ -44,5 +44,18 @@ test("app icons are the console's own files", () => {
     const ours = readFileSync(join(root, "public", f));
     const theirs = readFileSync(join(root, "../web/public", f));
     assert.ok(ours.equals(theirs), `public/${f} differs from apps/web/public/${f}`);
+  }
+});
+
+test("the terms name the license and say an AI answer can be wrong", () => {
+  const text = [...terms.intro, ...terms.sections.flatMap((s) => [s.title, ...s.body])].join(" ");
+  assert.match(text, /Apache License 2\.0/);
+  assert.match(text, /is AI and can make mistakes/);
+  assert.match(terms.updated.iso, /^\d{4}-\d{2}-\d{2}$/);
+  // Every section is addressable, and no two share an address.
+  const ids = terms.sections.map((s) => s.id);
+  assert.equal(new Set(ids).size, ids.length);
+  for (const s of terms.sections) {
+    if (s.link) assert.ok(s.link.href.startsWith("https://"), s.link.href);
   }
 });

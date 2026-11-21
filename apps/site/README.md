@@ -1,11 +1,12 @@
 # @humagen/site
 
-The public website at https://withhumagen.com: the product page and the deploy guide. Astro, static HTML. The only client JavaScript is Astro's link prefetch and a short inline script for arrival animations; every page renders complete without it.
+The public website at https://withhumagen.com: the product page, the deploy guide and the terms. Astro, static HTML. The only client JavaScript is Astro's link prefetch and a short inline script for arrival animations; every page renders complete without it.
 
 | Path | What it is |
 |------|------------|
 | `/` | The product page |
 | `/deploy` | The recommended deployment, step by step, then the alternatives and current limits |
+| `/terms` | The terms: the license, who runs a deployment, and that an AI answer can be wrong |
 | `/llms.txt` | The same content for agents, generated from the content module |
 | `/sitemap.xml`, `/robots.txt` | For crawlers |
 | `/og/<page>-<hash>.png` | Each page's 1200x630 social preview, drawn at build time |

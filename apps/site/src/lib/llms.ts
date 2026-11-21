@@ -30,6 +30,7 @@ export function llmsTxt(): string {
   out.push("## Pages", "");
   out.push(`- [${pages.home.title}](${url(pages.home.path)}): ${pages.home.description}`);
   out.push(`- [${pages.deploy.title}](${url(pages.deploy.path)}): ${pages.deploy.description}`);
+  out.push(`- [${pages.terms.title}](${url(pages.terms.path)}): ${pages.terms.description}`);
   out.push(`- [Source on GitHub](${site.repo}): code, docs and issues, ${site.license}`);
   out.push(`- [Spec reference](${doc("docs/reference/spec.md")}): every setting`);
   out.push(`- [Documentation](${docs.href}): guides, architecture and reference`);

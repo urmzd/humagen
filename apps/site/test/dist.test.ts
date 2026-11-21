@@ -11,6 +11,7 @@ const dist = new URL("../dist", import.meta.url).pathname;
 const built = [
   { file: "index.html", page: pages.home, ld: "SoftwareApplication" },
   { file: "deploy/index.html", page: pages.deploy, ld: "TechArticle" },
+  { file: "terms/index.html", page: pages.terms },
   { file: "404.html" },
 ];
 
