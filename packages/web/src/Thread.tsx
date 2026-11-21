@@ -13,6 +13,9 @@ import { TurnRail, type TurnRailEntry } from "./TurnRail";
 /** The fewest turns a conversation has before its turn rail shows. */
 export const RAIL_MIN_TURNS = 6;
 
+/** The Jump to latest control and the fade under it (`h-16`), plus 16px of air. */
+const JUMP_CLEAR_PX = 80;
+
 export function Thread({
   children,
   label = "Conversation",
@@ -94,12 +97,19 @@ export function Thread({
       item.dataset.auiBlockId?.startsWith(`approval:${initialApproval.question}:r`),
     );
     if (!root || !card) return;
-    // The composer floats over the list's end, so the card clears its top edge.
-    const viewportBottom = root.getBoundingClientRect().bottom;
-    const dockTop = dock.current?.getBoundingClientRect().top ?? viewportBottom;
-    const top =
-      root.scrollTop + card.getBoundingClientRect().bottom - Math.min(viewportBottom, dockTop) + 16;
-    root.scrollTo({ top, behavior: "auto" });
+    const end = root.scrollHeight - root.clientHeight;
+    const view = root.getBoundingClientRect();
+    const box = card.getBoundingClientRect();
+    // The list's end keeps room for the composer, so a row that starts on view
+    // there is clear of it: stay at the end and keep following.
+    if (root.scrollTop + box.top - view.top >= end) {
+      root.scrollTo({ top: end, behavior: "auto" });
+      return;
+    }
+    // Earlier in the list, the row stops clear of the composer that floats over
+    // the list's end and of the Jump to latest control drawn above it.
+    const edge = Math.min(view.bottom, dock.current?.getBoundingClientRect().top ?? view.bottom);
+    root.scrollTo({ top: root.scrollTop + box.bottom - edge + JUMP_CLEAR_PX, behavior: "auto" });
     if (root.scrollHeight - root.scrollTop - root.clientHeight >= 48) release();
   }, [focus, initialApproval, scroller, release]);
 

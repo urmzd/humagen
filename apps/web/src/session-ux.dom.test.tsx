@@ -738,34 +738,77 @@ test("initial approval positioning does not override a message link or later scr
   }
 });
 
-test("initial approval positioning clears the composer that floats over the thread", async () => {
+test("initial approval positioning stays at the end when the actions show there, and clears the composer and the jump control when they do not", async () => {
   const { Thread } = await import("@humagen/web");
-  const oldScroll = HTMLElement.prototype.scrollTo;
-  const oldRect = HTMLElement.prototype.getBoundingClientRect;
+  const proto = HTMLElement.prototype;
+  const oldScroll = proto.scrollTo;
+  const oldRect = proto.getBoundingClientRect;
   const calls: ScrollToOptions[] = [];
-  HTMLElement.prototype.scrollTo = (options) => {
-    if (typeof options === "object") calls.push(options);
+  proto.scrollTo = function (this: HTMLElement, options) {
+    if (typeof options !== "object") return;
+    calls.push(options);
+    this.scrollTop = options.top ?? 0;
   };
-  // The list ends at 600, the composer covers it from 450, and the card ends at 500.
-  HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
+  // A list 600 tall holding 2000 of messages: its end is at 1400. The composer covers it from 450.
+  const tall = (name: "scrollHeight" | "clientHeight", size: number) =>
+    Object.defineProperty(proto, name, {
+      configurable: true,
+      get(this: HTMLElement) {
+        return this.getAttribute("role") === "log" ? size : 0;
+      },
+    });
+  tall("scrollHeight", 2000);
+  tall("clientHeight", 600);
+  // Where the action row sits in the list's content, top and bottom.
+  let row = [0, 0];
+  proto.getBoundingClientRect = function (this: HTMLElement) {
     const edge = (top: number, bottom: number) => ({ top, bottom }) as DOMRect;
     if (this.dataset.layer === "composer-dock") return edge(450, 600);
-    if (this.dataset.auiBlock === "approval") return edge(440, 500);
+    if (this.dataset.auiBlock === "approval") {
+      const scrolled = this.closest<HTMLElement>('[role="log"]')?.scrollTop ?? 0;
+      return edge(row[0]! - scrolled, row[1]! - scrolled);
+    }
     return edge(0, 600);
   };
-  try {
-    const view = render(
+  const open = () =>
+    render(
       <Thread initialApproval={{ run: "r1", question: "q1" }} footer={<div>Composer</div>}>
         <div data-turn-id="r1">
           <div data-aui-block="approval" data-aui-block-id="approval:q1:r0" />
         </div>
       </Thread>,
     );
+  try {
+    // The latest run's approval: with the list at its end the row is on view above the composer.
+    row = [1700, 1760];
+    let view = open();
     assert.equal(calls.length, 1);
-    assert.equal(calls[0]?.top, 66, "the card ends 16px above the composer, not behind it");
+    assert.equal(calls[0]?.top, 1400, "the list opens at its end");
+    assert.equal(
+      view.container.querySelector('[data-layer="thread-jump"]'),
+      null,
+      "at the end there is no Jump to latest control and the list keeps following",
+    );
+    view.unmount();
+    calls.length = 0;
+    // An approval with a screen of later messages under it: the list leaves the end for it.
+    row = [440, 500];
+    view = open();
+    assert.equal(calls.length, 1);
+    assert.equal(
+      calls[0]?.top,
+      130,
+      "the row ends 80px above the composer, clear of the jump control over it",
+    );
+    assert.ok(
+      view.container.querySelector('[data-layer="thread-jump"]'),
+      "away from the end the way back is offered",
+    );
     view.unmount();
   } finally {
-    HTMLElement.prototype.scrollTo = oldScroll;
-    HTMLElement.prototype.getBoundingClientRect = oldRect;
+    proto.scrollTo = oldScroll;
+    proto.getBoundingClientRect = oldRect;
+    delete (proto as { scrollHeight?: number }).scrollHeight;
+    delete (proto as { clientHeight?: number }).clientHeight;
   }
 });
