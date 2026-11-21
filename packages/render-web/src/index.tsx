@@ -20,6 +20,16 @@ export { CodeBlock, CopyButton, Terminal } from "./code";
 export { Feedback, FeedbackPromptContext, Rating, RatingSelectionContext } from "./feedback";
 export { ArtifactIcon, FileTile, phaseLabel } from "./file";
 export { Checkboxes, FormContext, FormStore, useGroup } from "./form";
+export {
+  type GitHubRef,
+  GitHubRefKindsContext,
+  GitHubRefLink,
+  type GitHubRefWords,
+  GitHubRefWordsContext,
+  githubRefKinds,
+  githubRefOf,
+  remarkGitHubRefs,
+} from "./github-refs";
 export * from "./icons";
 export { localizeTimes, MarkdownHeadingContext, webImpls } from "./impls";
 export {

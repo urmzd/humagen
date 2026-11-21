@@ -9,6 +9,7 @@ import {
 } from "@humagen/components";
 import {
   ActionId,
+  type ConnectionNeed,
   formatTokens,
   formatUsd,
   readReview,
@@ -21,6 +22,10 @@ import {
   ChevronRightIcon,
   FeedbackPromptContext,
   GaugeIcon,
+  GitHubIcon,
+  GitHubRefKindsContext,
+  GitHubRefWordsContext,
+  githubRefKinds,
   type ItemActions,
   ItemActionsContext,
   ItemStopControl,
@@ -40,6 +45,7 @@ import {
 import {
   Children,
   type CSSProperties,
+  createContext,
   type ReactNode,
   useContext,
   useMemo,
@@ -53,7 +59,7 @@ import { MessageActionRow, messageActionButton } from "./MessageActionRow";
 import { MessageMore } from "./MessageMore";
 import { Reasoning } from "./Reasoning";
 import { TurnChanges } from "./TurnChanges";
-import { type Block, interleave, StepGroup, WorkedFor } from "./WorkSteps";
+import { type Block, Elapsed, failureLine, interleave, StepGroup, WorkedFor } from "./WorkSteps";
 
 function seconds(ms?: number) {
   if (ms === undefined) return null;
@@ -295,11 +301,14 @@ function AgentCall({
   caller,
   turnId,
   copy,
+  retry,
 }: {
   task: Task;
   caller: string;
   turnId: string;
   copy: Copy;
+  /** Offer Retry when the call failed: the host can ask the agent again. */
+  retry?: boolean;
 }) {
   const onAction = useContext(ActionContext);
   const stops = useContext(ItemStopsContext);
@@ -309,6 +318,9 @@ function AgentCall({
   const stopped = Boolean(stop?.stopped);
   const live = task.status === "in_progress" && !stopped;
   const [open, setOpen] = useState(false);
+  const [retried, setRetried] = useState(false);
+  const failed = task.status === "error";
+  const reason = failed ? (failureLine(task.output) ?? sub.summary) : undefined;
   const prompt = callPrompt(task);
   const title = callTitle(task);
   const answer = task.status === "complete" ? task.output?.trim() : undefined;
@@ -351,6 +363,11 @@ function AgentCall({
             </span>
           )}
           <span className="min-w-0 flex-1 truncate text-aui-xs text-aui-muted">{title}</span>
+          {live && task.startedAt && (
+            <span className="text-aui-2xs">
+              <Elapsed since={task.startedAt} copy={copy} />
+            </span>
+          )}
           {!live && ms !== undefined && ms > 0 && (
             <span className="shrink-0 text-aui-2xs text-aui-muted tabular-nums">{seconds(ms)}</span>
           )}
@@ -362,6 +379,50 @@ function AgentCall({
         </button>
         {stop && stops && <ItemStopControl stop={stop} words={stops.words} />}
       </div>
+      {reason && (
+        <div
+          data-testid="call-failure"
+          className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1 px-2.5 pt-1.5 text-aui-xs"
+        >
+          <span className="min-w-0 flex-1 basis-60 text-aui-bad [overflow-wrap:anywhere]">
+            {reason}
+          </span>
+          <span className="flex shrink-0 items-center gap-1">
+            <button
+              type="button"
+              {...(runId ? { "aria-haspopup": "dialog" as const } : { "aria-expanded": open })}
+              onClick={() =>
+                runId
+                  ? onAction({ id: ActionId.openRun, payload: { turnId, target: runId } })
+                  : setOpen(!open)
+              }
+              className={callAction}
+            >
+              {copy.conversation.callFailure.details}
+            </button>
+            {retry && prompt && (
+              <button
+                type="button"
+                disabled={retried}
+                aria-label={copy.conversation.callFailure.retryLabel(sub.name)}
+                onClick={() => {
+                  setRetried(true);
+                  onAction({
+                    id: ActionId.retryCall,
+                    payload: { turnId, target: sub.name, text: prompt },
+                  });
+                }}
+                className={`${callAction} gap-1 text-aui-fg`}
+              >
+                <RefreshIcon size={12} aria-hidden />
+                {retried
+                  ? copy.conversation.callFailure.retrying
+                  : copy.conversation.callFailure.retry}
+              </button>
+            )}
+          </span>
+        </div>
+      )}
       {!runId && open && (
         <div className="flex min-w-0 flex-col gap-2 px-2.5 pt-2 pb-1">
           {prompt && (
@@ -371,13 +432,79 @@ function AgentCall({
           )}
           {answer && <p className="whitespace-pre-wrap text-aui-sm text-aui-fg">{answer}</p>}
           {task.status === "error" && task.output ? (
-            <p className="whitespace-pre-wrap text-aui-bad text-aui-xs">{task.output}</p>
+            <pre className="m-0 max-h-64 overflow-auto whitespace-pre-wrap rounded-aui-sm bg-aui-hover px-2.5 py-1.5 font-mono text-aui-2xs text-aui-fg/85">
+              {task.output}
+            </pre>
           ) : (
             !answer && sub.summary && <p className="text-aui-xs text-aui-muted">{sub.summary}</p>
           )}
         </div>
       )}
     </div>
+  );
+}
+
+const callAction =
+  "inline-flex min-h-6 pointer-coarse:min-h-11 items-center rounded-aui-sm px-1.5 text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent disabled:opacity-60";
+
+/**
+ * A connection the run needed and the person has not made, as a card under
+ * the answer: what is missing, and Connect, which opens that connection.
+ */
+export const ConnectLinkContext = createContext<(provider: string) => string>(
+  (provider) => `/settings/plugins/${encodeURIComponent(provider)}`,
+);
+
+function ConnectCards({ needs, copy }: { needs: ConnectionNeed[]; copy: Copy }) {
+  const link = useContext(ConnectLinkContext);
+  const w = copy.conversation.connect;
+  return (
+    <ul className="m-0 flex list-none flex-col gap-2 p-0">
+      {needs.map((n) => (
+        <li
+          key={n.provider}
+          data-testid="connect-card"
+          data-provider={n.provider}
+          className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2 rounded-aui border border-aui-border bg-aui-surface px-3 py-2.5"
+        >
+          <span
+            aria-hidden
+            className="flex size-8 shrink-0 items-center justify-center rounded-aui-sm border border-aui-border text-aui-fg"
+          >
+            {n.provider === "github" ? <GitHubIcon size={16} /> : <PlugIcon />}
+          </span>
+          <span className="flex min-w-0 flex-1 basis-48 flex-col">
+            <span className="font-medium text-aui-fg text-aui-sm">{w.title(n.name)}</span>
+            <span className="text-aui-muted text-aui-xs">{w.body(n.name)}</span>
+          </span>
+          <a
+            href={link(n.provider)}
+            className="inline-flex h-8 pointer-coarse:h-11 shrink-0 items-center rounded-aui bg-aui-fg px-3 font-medium text-aui-bg text-aui-xs hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aui-accent"
+          >
+            {w.action(n.name)}
+          </a>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function PlugIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      focusable="false"
+      width={16}
+      height={16}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.75}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M9 2v6M15 2v6M6 8h12v4a6 6 0 0 1-12 0zM12 18v4" />
+    </svg>
   );
 }
 
@@ -560,6 +687,14 @@ export function AgentMessage({
     disclaimer,
     copy,
   ]);
+  // A number reads one way in the whole answer, and in the session when the host says more.
+  const sessionKinds = useContext(GitHubRefKindsContext);
+  const refKinds = useMemo(() => {
+    const kinds = new Map(sessionKinds);
+    for (const [label, kind] of githubRefKinds(turn.text))
+      if (kind === "pull" || !kinds.has(label)) kinds.set(label, kind);
+    return kinds;
+  }, [sessionKinds, turn.text]);
   const doing = useTurnActivity(turn);
   const activity = sayActivity ? doing : null;
   const orb = turn.detached ? "idle" : turnOrbState(turn);
@@ -598,7 +733,14 @@ export function AgentMessage({
     ) : b.kind === "tools" ? (
       <StepGroup key={b.key} turn={turn} tasks={b.tasks} copy={copy} />
     ) : (
-      <AgentCall key={b.key} task={b.task} caller={turn.agent.name} turnId={turn.id} copy={copy} />
+      <AgentCall
+        key={b.key}
+        task={b.task}
+        caller={turn.agent.name}
+        turnId={turn.id}
+        copy={copy}
+        retry={capabilities?.retryCall}
+      />
     );
 
   return (
@@ -663,38 +805,45 @@ export function AgentMessage({
         )}
         <ItemActionsContext.Provider value={itemActions ?? inherited}>
           <ItemStopsContext.Provider value={stops}>
-            <TurnMetaContext.Provider value={turn}>
-              <SuppressContext.Provider value={suppressed}>
-                <div className="aui-stack">
-                  {settledTurn && blocks.length > 0 && (
-                    <WorkedFor
-                      ms={turn.durationMs}
-                      open={traceOpen}
-                      onToggle={() => setTraceOpen((o) => !o)}
-                      copy={copy}
-                    />
-                  )}
-                  {(!settledTurn || traceOpen) && blocks.map(block)}
-                  <TurnView
-                    turn={{ ...turn, text: tail }}
-                    copy={copy}
-                    capabilities={{ ...capabilities, followUp }}
-                    hideTasks
-                  />
-                  <AgentChangeCards tasks={turn.tasks} />
-                  {rest.map(block)}
-                  {turn.status === "stopped" && turn.stop && (
-                    <StopBanner
-                      turnId={turn.id}
-                      stop={turn.stop}
-                      label={copy.stopPhase[turn.stop]}
-                    />
-                  )}
-                  {/* What the turn changed, once it is over: a card that opens each file. */}
-                  {settledTurn && <TurnChanges tasks={turn.tasks} copy={copy} />}
-                </div>
-              </SuppressContext.Provider>
-            </TurnMetaContext.Provider>
+            <GitHubRefWordsContext.Provider value={copy.conversation.githubRef}>
+              <GitHubRefKindsContext.Provider value={refKinds}>
+                <TurnMetaContext.Provider value={turn}>
+                  <SuppressContext.Provider value={suppressed}>
+                    <div className="aui-stack">
+                      {settledTurn && blocks.length > 0 && (
+                        <WorkedFor
+                          ms={turn.durationMs}
+                          open={traceOpen}
+                          onToggle={() => setTraceOpen((o) => !o)}
+                          copy={copy}
+                        />
+                      )}
+                      {(!settledTurn || traceOpen) && blocks.map(block)}
+                      <TurnView
+                        turn={{ ...turn, text: tail }}
+                        copy={copy}
+                        capabilities={{ ...capabilities, followUp }}
+                        hideTasks
+                      />
+                      <AgentChangeCards tasks={turn.tasks} />
+                      {settledTurn && turn.needsConnection?.length ? (
+                        <ConnectCards needs={turn.needsConnection} copy={copy} />
+                      ) : null}
+                      {rest.map(block)}
+                      {turn.status === "stopped" && turn.stop && (
+                        <StopBanner
+                          turnId={turn.id}
+                          stop={turn.stop}
+                          label={copy.stopPhase[turn.stop]}
+                        />
+                      )}
+                      {/* What the turn changed, once it is over: a card that opens each file. */}
+                      {settledTurn && <TurnChanges tasks={turn.tasks} copy={copy} />}
+                    </div>
+                  </SuppressContext.Provider>
+                </TurnMetaContext.Provider>
+              </GitHubRefKindsContext.Provider>
+            </GitHubRefWordsContext.Provider>
           </ItemStopsContext.Provider>
           {(settledTurn || actions) && (
             <FeedbackPromptContext.Provider value={feedbackPrompt}>

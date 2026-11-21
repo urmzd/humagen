@@ -11466,6 +11466,12 @@ components:
         source: {type: string, enum: [run, message, scratchpad]}
         id: {type: string, minLength: 1}
         title: {type: string, maxLength: 120}
+    RunConnectionNeed:
+      type: object
+      required: [provider]
+      properties:
+        provider: {type: string}
+        name: {type: string}
     RunMemoryUse:
       description: A memory tree a run's instance was given, and what the run kept of its changes.
       type: object
@@ -13725,6 +13731,16 @@ components:
         outcome: {$ref: "#/components/schemas/RunOutcome"}
         sandbox: {$ref: "#/components/schemas/RunSandboxRecord"}
         memory: {type: array, maxItems: 16, items: {$ref: "#/components/schemas/RunMemoryUse"}}
+        needs_connection:
+          description: |
+            Connections the run needed and the person it acts for had not
+            made: a tool group it was granted could not be opened without
+            that person's own credential. A run that called another agent
+            carries what that agent's run needed as well. `provider` is the
+            provider's name as Connections names it.
+          type: array
+          maxItems: 8
+          items: {$ref: "#/components/schemas/RunConnectionNeed"}
         citations:
           type: array
           maxItems: 64

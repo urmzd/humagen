@@ -83,6 +83,11 @@ export interface TurnCapabilities {
   /** Ask Follow-up on a review's findings, which puts words in the host's composer. */
   followUp?: boolean;
   /**
+   * Retry on a delegated call that failed, which asks that agent again
+   * (`ActionId.retryCall`). Left out unless the host can post the next turn.
+   */
+  retryCall?: boolean;
+  /**
    * Continue in a Code Channel on a finished answer. Unlike the others it is
    * left out unless a host turns it on: only Slack has the place, and only
    * where the workspace opted in.
