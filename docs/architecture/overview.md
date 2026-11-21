@@ -861,10 +861,13 @@ snapshots, interactions, selected downloads, and image results. The local
 connector acceptance uses a real isolated browser. The worker also comes as
 an image, `deploy/browser`, which the Helm chart runs as one pod with
 `browser.enabled` and Compose with the `browser` profile: one browser every
-Humagen process shares, reached only by the release's own pods and kept off
-private addresses by a network policy. CI runs the acceptance against the
-image, and a second check that two clients see one page and one sign-in. The
-chart's pod and policy are rendered and checked, and not yet run on a cluster. The connected acceptance
+Humagen process shares, kept open for as long as its container runs, reached
+only by the release's own pods and kept off private addresses by a network
+policy. A tool server that is not up when Humagen starts is asked again until
+it answers. CI runs the acceptance against the image, a check that two
+clients share the sign-ins and the page, and a check that the page outlives
+every client. Each connection keeps its own current tab. The chart's pod and
+policy are rendered and checked, and not yet run on a cluster. The connected acceptance
 helper exercises an independently launched, signed-in local fixture through an
 explicit CDP endpoint: model screenshot interpretation, the same retained tab,
 a selected action and an exact-byte download, at both widths and themes, with

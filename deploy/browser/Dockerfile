@@ -28,14 +28,18 @@ ENV NODE_ENV=production \
 WORKDIR /opt/browser
 
 # The server with the Playwright it depends on, then the Chromium build that
-# Playwright names and the system libraries Chromium needs. One layer, so
-# the package lists and npm's cache are not kept.
+# Playwright names and the system libraries Chromium needs, without the
+# headless shell, which this image never starts. tini is the container's
+# first process: Chromium leaves children behind when it stops, and node
+# does not collect them. One layer, so the package lists and npm's cache are
+# not kept.
 RUN npm install --omit=dev --no-audit --no-fund --no-update-notifier \
       "@playwright/mcp@${PLAYWRIGHT_MCP_VERSION}" \
-    && node node_modules/playwright/cli.js install --with-deps chromium \
+    && node node_modules/playwright/cli.js install --with-deps --no-shell chromium \
+    && apt-get install -y --no-install-recommends tini \
     && rm -rf /var/lib/apt/lists/* /root/.npm /tmp/*
 
-COPY entrypoint.sh /opt/browser/entrypoint.sh
+COPY entrypoint.sh anchor.mjs /opt/browser/
 
 # Not root. /home/browser holds the browser's profile (its sign-ins) and
 # /var/lib/humagen-browser its downloads and capture files: mount a volume at
@@ -43,8 +47,8 @@ COPY entrypoint.sh /opt/browser/entrypoint.sh
 RUN useradd --uid 10001 --create-home --shell /usr/sbin/nologin browser \
     && mkdir -p /var/lib/humagen-browser \
     && chown browser:browser /var/lib/humagen-browser \
-    && chmod 0555 /opt/browser/entrypoint.sh
+    && chmod 0555 /opt/browser/entrypoint.sh && chmod 0444 /opt/browser/anchor.mjs
 USER 10001:10001
 
 EXPOSE 8931
-ENTRYPOINT ["/opt/browser/entrypoint.sh"]
+ENTRYPOINT ["/usr/bin/tini", "--", "/opt/browser/entrypoint.sh"]

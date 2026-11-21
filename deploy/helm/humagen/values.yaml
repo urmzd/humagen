@@ -432,60 +432,87 @@ tailscale:
 # -- A browser for agents: one pod with Chromium and the Playwright MCP server
 # (deploy/browser), reached only by this release's own pods. Turning it on
 # also gives one workspace the tool server, named `tool`, with the thirteen
-# browser tools accepted (files/browser-tools.yaml); grant an agent
+# reviewed browser tools accepted (files/browser-tools.yaml); grant an agent
 # `mcp:browser:write` to let it use them (docs/guides/browser.md).
 #
 # It is one browser, shared: every agent with the grant, and every person who
-# opens a session's Browser tab, sees the same page and the same sign-ins. So
-# it belongs to one workspace. Its profile lasts as long as the pod.
+# opens a session's Browser tab, has the same sign-ins and the same tabs. So
+# it belongs to one workspace. The page and the sign-ins last as long as the
+# pod: the chart keeps them in the pod and has no volume for them.
 browser:
   enabled: false
   # -- The workspace (a platform's metadata.name) the browser belongs to.
   # Empty means the only one; with several platforms it must be named.
   workspace: ""
-  # -- The tool server's name in that workspace's spec, and so in the grant.
+  # -- The tool server's name in that workspace's spec, and so in the grant:
+  # a lowercase letter, then letters, digits and dashes, at most 32 in all.
   tool: browser
   image:
-    # Releases do not publish an image yet: build one from deploy/browser and
-    # push it here.
-    repository: ghcr.io/urmzd/humagen-browser
-    # Empty means the chart's appVersion.
+    # Releases do not publish an image: build one from deploy/browser at the
+    # same commit as this chart, push it, and name it here. Both are required.
+    repository: ""
     tag: ""
     pullPolicy: IfNotPresent
   port: 8931
   # -- Further arguments for the Playwright MCP server, such as
-  # ["--viewport-size", "1440x900"].
+  # ["--viewport-size", "1440x900"]. They come after the image's own, so
+  # they win: `--allowed-hosts '*'` here turns off the check of the name the
+  # server is reached by, and `--isolated` gives each Humagen process a
+  # browser of its own. Pass neither.
   extraArgs: []
-  # Chromium is the cost: a gigabyte holds a few ordinary pages.
+  # Chromium is the cost: a gigabyte holds a few ordinary pages. The disk is
+  # the profile, the page cache and the output files together; a pod that
+  # passes its limit is evicted, and its sign-ins go with it.
   resources:
     requests:
       cpu: 250m
       memory: 1Gi
+      ephemeral-storage: 2Gi
     limits:
       memory: 2Gi
-  # -- Chromium's shared memory, which a pod's default 64Mi starves.
-  shmSize: 512Mi
-  # -- Downloads and capture files, kept as long as the pod.
-  outputSize: 1Gi
+      ephemeral-storage: 2Gi
+  # -- The most downloads and capture files kept, in bytes: the oldest go
+  # first. Every snapshot and screenshot writes one, so without a bound they
+  # only grow.
+  outputMaxBytes: 268435456
   podLabels: {}
   podAnnotations: {}
-  # -- Who may reach the browser, and what it may reach. On, only this
-  # release's server and worker pods reach its port, and it reaches DNS and
-  # the internet on `ports`: nothing in `blockedCIDRs`, which are the private
-  # ranges a cluster, its nodes and its metadata server live in. A page an
-  # agent opens is not trusted, so this is what keeps it from the cluster.
-  # It needs a network plugin that enforces NetworkPolicy; with one that does
+  # -- Who may reach the browser, and what it may reach. A page an agent
+  # opens is not trusted, so this is what keeps it from the cluster. It
+  # needs a network plugin that enforces NetworkPolicy; with one that does
   # not, the policy is accepted and does nothing.
+  #
+  # In: only this release's server and worker pods, on the browser's port.
+  # Out: names from the cluster's DNS, and the internet on `ports`, but for
+  # `blockedCIDRs`. That is a list of what to refuse, not of what to allow:
+  # it covers the private, link-local, shared and reserved ranges, and the
+  # addresses clouds serve metadata on. If your cluster's pods, services or
+  # nodes have addresses outside them, such as public ones, add those
+  # ranges, or the browser reaches the cluster. IPv6 is not allowed out at
+  # all, so an IPv6-only cluster has no browser.
   networkPolicy:
     enabled: true
     ports: [80, 443]
+    # -- Where names are asked: every pod of `namespace`, and the node-local
+    # and metadata resolvers at `cidrs`, on `ports` only. OpenShift's DNS
+    # pods listen on 5353.
+    dns:
+      namespace: kube-system
+      cidrs:
+        - 169.254.20.10/32
+        - 169.254.169.254/32
+      ports: [53]
     blockedCIDRs:
+      - 0.0.0.0/8
       - 10.0.0.0/8
+      - 100.64.0.0/10
+      - 127.0.0.0/8
+      - 168.63.129.16/32
+      - 169.254.0.0/16
       - 172.16.0.0/12
       - 192.168.0.0/16
-      - 100.64.0.0/10
-      - 169.254.0.0/16
-      - 127.0.0.0/8
+      - 198.18.0.0/15
+      - 240.0.0.0/4
 
 nodeSelector: {}
 tolerations: []

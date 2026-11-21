@@ -60,56 +60,88 @@ release, so a deployment needs no Node or Chrome on a worker:
 docker build -t humagen-browser deploy/browser
 ```
 
-It serves the thirteen tools over MCP at `/mcp` on port 8931, headless, as a
-user with no privileges. Run it where only Humagen reaches it. It has no
-sign-in of its own.
+It serves MCP at `/mcp` on port 8931, headless, as a user with no privileges.
+Run it where only Humagen reaches it. It has no sign-in of its own, and it
+offers more tools than the thirteen Humagen accepts: whatever can reach its
+port can call any of them, with no grant and no audit record.
 
 | Where | How |
 |-------|-----|
 | Kubernetes | `browser.enabled: true` in the Helm chart, with `browser.image` naming the image you pushed. The chart adds the pod, a Service, a network policy and the `browser` tool server in one workspace's spec, with the thirteen tools accepted |
 | Docker Compose | `docker compose --profile browser up -d --build` in `deploy/compose`. Add the tool server from `examples/browser/humagen.yaml` to your Platform document with `endpoint: http://browser:8931/mcp` |
 
-Then grant an agent `mcp:browser:write`.
+Then grant an agent `mcp:browser:write`. Humagen and the browser may start in
+either order: a tool server that is not up yet is asked again until it
+answers, and its tools are accepted then.
 
 What the image and the chart hold to:
 
 - **One browser for every Humagen process.** A server pod's Browser tab and a
-  worker pod's run see the same page and the same sign-ins. A browser started
-  with `--isolated`, as the local worker above is, gives each process its own,
+  worker pod's run share the sign-ins and the tabs. A browser started with
+  `--isolated`, as the local worker above is, gives each process its own,
   which is right for one process and wrong for several. No client may close
   the shared browser.
-- **One workspace.** It is one page and one set of sign-ins, so the chart
-  gives it to one workspace: `browser.workspace` names it when there are
-  several.
-- **The name it is reached by.** The server answers only requests for the
+- **Each connection has its own current tab.** An agent that opens a second
+  tab moves only itself there. The console's Browser tab, on another
+  connection, stays on the tab it was on, and has no action to change tab.
+  While everything stays in one tab, every connection sees the same page.
+- **It lasts as long as its container.** The server closes the browser when
+  its last client leaves, so the image keeps a client of its own connected
+  (`anchor.mjs`), and never closes an idle browser. A restart of every
+  Humagen pod then leaves the page and the sign-ins where they were. A
+  restart of the browser's own pod loses both: the chart keeps the profile in
+  the pod and has no volume for it. With `docker run` or Compose, a volume at
+  `/home/browser` keeps the profile.
+- **One workspace.** It is one set of sign-ins, so the chart gives it to one
+  workspace: `browser.workspace` names it when there are several.
+- **The name it is reached by.** The server answers a request that names the
   host and port in `HUMAGEN_BROWSER_ALLOWED_HOSTS`, exactly as the endpoint
-  names them (`browser:8931`), and any other with 403. A health check that
-  sends a request is refused the same way: check the port.
-- **No way into the cluster.** A page an agent opens is not trusted. The
-  chart's network policy lets only this release's server and worker pods reach
-  the browser, and lets the browser reach DNS and the internet on ports 80
-  and 443: no private range, so not the cluster, its nodes or the cloud's
-  metadata server. This needs a network plugin that enforces NetworkPolicy.
-  The pod holds no service account token. Under Compose there is no such
-  policy: the browser reaches the compose network.
-- **A profile that lasts as long as the pod.** Sign-ins are in
-  `/home/browser/profile` and downloads in `/var/lib/humagen-browser`. Both are
-  gone when the container is; mount a volume to keep either.
+  names them (`browser:8931`), and answers one that names another with 403. A
+  health check that sends a request is refused the same way: check the port.
+- **No way into the cluster, by a list of what to refuse.** A page an agent
+  opens is not trusted. The chart's network policy lets only this release's
+  server and worker pods reach the browser. It lets the browser ask the
+  cluster's DNS for names, and reach the internet on ports 80 and 443, but
+  for the private, link-local, shared and reserved ranges and the addresses
+  clouds serve metadata on. If your cluster's pods, services or nodes have
+  addresses outside those ranges, add them to
+  `browser.networkPolicy.blockedCIDRs`, or the browser reaches the cluster.
+  IPv6 is not let out. All of this needs a network plugin that enforces
+  NetworkPolicy. The pod holds no service account token.
+- **Under Compose, a network of its own.** The browser shares a network with
+  the server only, not with Postgres or MinIO. The server's API is within its
+  reach.
+- **Bounded output.** Every snapshot and screenshot writes a file. The oldest
+  go when the directory passes `HUMAGEN_BROWSER_OUTPUT_MAX_BYTES`, 256 MiB
+  unless set, so the files cannot fill the pod's disk and evict it.
 - **Chromium runs without its own sandbox.** A container without extra
   privileges has no user namespaces for it. The container is the boundary:
   read-only, no capabilities, no privilege escalation.
 
 To check an image, start it and run the acceptance below with
-`HUMAGEN_BROWSER_SHARED=1`, which adds the check that two clients share one
-browser. When the browser is in a container and the test is not, name this
-host as the container sees it in `HUMAGEN_BROWSER_FIXTURE_HOST`
-(`host.docker.internal`, or `host.lima.internal` under Colima), and the
-address you reach the browser at in `HUMAGEN_BROWSER_ALLOWED_HOSTS`:
+`HUMAGEN_BROWSER_SHARED=1`, which adds two checks: that two clients share one
+browser, and that the page outlives every client. On Linux, put the container
+on the host's network, as CI does, so the browser reaches the page the test
+serves:
 
 ```sh
-out="$HOME/.cache/humagen/browser-image-test" && mkdir -p "$out"
+out="$HOME/.cache/humagen/browser-image-test" && mkdir -p "$out" && chmod 777 "$out"
+docker run -d --name humagen-browser --network host --read-only --cap-drop ALL \
+  --security-opt no-new-privileges \
+  --tmpfs /tmp --tmpfs /home/browser:uid=10001,gid=10001 \
+  -v "$out:/var/lib/humagen-browser" humagen-browser
+HUMAGEN_BROWSER_MCP_URL=http://127.0.0.1:8931/mcp HUMAGEN_BROWSER_OUTPUT_DIR="$out" \
+  HUMAGEN_BROWSER_SHARED=1 go test -race ./internal/mcptools -run '^TestBrowser' -v
+```
+
+On a Mac the container is in a virtual machine and has no host network.
+Publish the port, tell the image the address you reach it at, and name this
+host as the container sees it (`host.docker.internal`, or
+`host.lima.internal` under Colima):
+
+```sh
 docker run -d --name humagen-browser --read-only --cap-drop ALL \
-  --security-opt no-new-privileges --shm-size 512m \
+  --security-opt no-new-privileges \
   --tmpfs /tmp --tmpfs /home/browser:uid=10001,gid=10001 \
   -e HUMAGEN_BROWSER_ALLOWED_HOSTS=127.0.0.1:18931 \
   -v "$out:/var/lib/humagen-browser" -p 127.0.0.1:18931:8931 humagen-browser

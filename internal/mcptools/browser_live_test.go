@@ -86,14 +86,20 @@ func TestBrowserImagePinsTheReviewedVersion(t *testing.T) {
 	if launcher[1] != image[1] {
 		t.Fatalf("deploy/browser/Dockerfile runs Playwright MCP %s, examples/browser/start.sh %s: the accepted tool hashes are for one version", image[1], launcher[1])
 	}
-	entry := read("deploy/browser/entrypoint.sh")
+	// What the script runs, without its comments.
+	var entry string
+	for _, line := range strings.Split(read("deploy/browser/entrypoint.sh"), "\n") {
+		if !strings.HasPrefix(strings.TrimSpace(line), "#") {
+			entry += line + "\n"
+		}
+	}
 	// The image serves images to the model as the launcher does, and one
 	// browser to every client (TestBrowserLiveIsOneBrowserForEveryClient).
 	// With --isolated, this version gives each client a browser of its own.
 	if strings.Contains(entry, "--isolated") {
 		t.Fatal("deploy/browser/entrypoint.sh passes --isolated: each Humagen process would then have a browser of its own")
 	}
-	for _, flag := range []string{"--headless", "--shared-browser-context", "--no-webmcp", "--image-responses allow"} {
+	for _, flag := range []string{"--headless", "--shared-browser-context", "--idle-timeout 0", "--no-webmcp", "--image-responses allow", "anchor.mjs"} {
 		if !strings.Contains(entry, flag) {
 			t.Fatalf("deploy/browser/entrypoint.sh does not pass %s", flag)
 		}
@@ -113,6 +119,13 @@ func TestBrowserChartAcceptsTheReviewedTools(t *testing.T) {
 	for _, m := range regexp.MustCompile(`(?m)^- \{name: (\S+), schema_hash: ([0-9a-f]{64}), class: (\w+)\}$`).FindAllStringSubmatch(string(data), -1) {
 		chart = append(chart, tool{m[1], m[2], m[3]})
 	}
+	// Every line that is not a comment is a tool in that form: an entry
+	// written another way would be rendered and not read here.
+	for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+		if !strings.HasPrefix(line, "#") && !strings.HasPrefix(line, "- {name: ") {
+			t.Fatalf("a line of the chart's file is neither a comment nor a tool in the reviewed form: %q", line)
+		}
+	}
 	var reviewed []tool
 	for _, a := range browserAccepted(t) {
 		reviewed = append(reviewed, tool{a.Name, a.SchemaHash, string(a.Class)})
@@ -121,7 +134,7 @@ func TestBrowserChartAcceptsTheReviewedTools(t *testing.T) {
 		t.Fatalf("deploy/helm/humagen/files/browser-tools.yaml accepts %v, examples/browser/accepted.json %v", chart, reviewed)
 	}
 	// And every line of the chart's file that names a tool was read.
-	if n := strings.Count(string(data), "\n- "); n != len(chart) {
+	if n := len(regexp.MustCompile(`(?m)^- `).FindAllString(string(data), -1)); n != len(chart) {
 		t.Fatalf("%d tool lines in the chart's file, %d read", n, len(chart))
 	}
 }
@@ -190,11 +203,18 @@ func TestBrowserLive(t *testing.T) {
 		}
 		return out
 	}
-	// The browser image's one browser is every client's, and no client may
-	// close it (TestBrowserLiveIsOneBrowserForEveryClient).
-	if os.Getenv("HUMAGEN_BROWSER_SHARED") == "" {
-		defer func() { call("browser_close", nil) }()
-	}
+	// A worker of one client is closed at the end. The browser image's one
+	// browser is every client's and refuses, which is not this test's to
+	// fail on (TestBrowserLiveIsOneBrowserForEveryClient checks it).
+	defer func() {
+		tool, err := set.Lookup("browser__browser_close")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tool.Execute(ctx, nil); err != nil && !strings.Contains(err.Error(), "shared between clients") {
+			t.Fatal(err)
+		}
+	}()
 	call("browser_navigate", map[string]any{"url": browserFixtureURL(t, page.URL)})
 	if size := os.Getenv("HUMAGEN_BROWSER_VIEWPORT"); size != "" {
 		var width, height int
@@ -334,6 +354,78 @@ func TestBrowserLiveIsOneBrowserForEveryClient(t *testing.T) {
 	}
 	if seen := worker("browser_snapshot", nil); !strings.Contains(seen, "Account: still signed in") {
 		t.Fatalf("the page did not survive a refused close: %s", seen)
+	}
+}
+
+// TestBrowserLiveKeepsItsPageWhenEveryClientLeaves checks that the browser
+// image's browser outlives its clients. The server closes the browser when
+// the last client disconnects, which a restart of every Humagen process is;
+// the image keeps a client of its own connected (deploy/browser/anchor.mjs).
+// So what a person signed in to, and the page they left, are still there
+// for whoever connects next.
+func TestBrowserLiveKeepsItsPageWhenEveryClientLeaves(t *testing.T) {
+	endpoint := os.Getenv("HUMAGEN_BROWSER_MCP_URL")
+	if endpoint == "" || os.Getenv("HUMAGEN_BROWSER_SHARED") == "" {
+		t.Skip("set HUMAGEN_BROWSER_MCP_URL and HUMAGEN_BROWSER_SHARED=1 for a running browser image")
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
+	defer cancel()
+	page := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		if r.URL.Path == "/sign-in" {
+			// No expiry: a session cookie, which a closed browser forgets.
+			http.SetCookie(w, &http.Cookie{Name: "kept", Value: "yes", Path: "/"})
+			_, _ = w.Write([]byte(`<!doctype html><title>Sign in</title><h1>Signed in before everyone left</h1>`))
+			return
+		}
+		state := "forgotten"
+		if c, err := r.Cookie("kept"); err == nil && c.Value == "yes" {
+			state = "kept"
+		}
+		_, _ = w.Write([]byte(`<!doctype html><title>Account</title><h1>Session ` + state + `</h1>`))
+	}))
+	defer page.Close()
+	accepted := browserAccepted(t)
+	provider := toolprovider.Provider{Tenant: "browser-test", Name: "browser", Transport: toolprovider.TransportHTTP, Endpoint: endpoint}
+	connect := func() (*mcptools.Session, func(string, map[string]any) string) {
+		t.Helper()
+		session, err := mcptools.Connect(ctx, provider)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = session.Close() })
+		set, err := session.Toolset(ctx, toolprovider.Snapshot{Tenant: provider.Tenant, Provider: provider.Name, Tools: accepted}, toolprovider.GrantWrite)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return session, func(name string, args map[string]any) string {
+			t.Helper()
+			tool, err := set.Lookup("browser__" + name)
+			if err != nil {
+				t.Fatal(err)
+			}
+			out, err := tool.Execute(ctx, args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return out
+		}
+	}
+	base := browserFixtureURL(t, page.URL)
+	first, call := connect()
+	call("browser_navigate", map[string]any{"url": base + "/sign-in"})
+	// Every Humagen client leaves: this test is the only one.
+	if err := first.Close(); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(2 * time.Second)
+	_, later := connect()
+	if seen := later("browser_snapshot", nil); !strings.Contains(seen, "Signed in before everyone left") {
+		t.Fatalf("the page did not outlive its clients: %s", seen)
+	}
+	later("browser_navigate", map[string]any{"url": base + "/account"})
+	if seen := later("browser_snapshot", nil); !strings.Contains(seen, "Session kept") {
+		t.Fatalf("the session did not outlive its clients: %s", seen)
 	}
 }
 

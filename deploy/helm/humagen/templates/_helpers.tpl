@@ -96,14 +96,14 @@ kind: System
 mutate the release's values. */}}
 {{- $p = deepCopy $p -}}
 {{- $pspec := $p.spec | default dict -}}
-{{- $name := $browser.tool | default "browser" -}}
+{{- $name := include "humagen.browserTool" $ -}}
 {{- range $t := ($pspec.tools | default list) -}}
 {{- if eq ($t.name | default "") $name -}}
 {{- fail (printf "browser.enabled adds the tool server %q to workspace %q, which already has one of that name: rename it, or set browser.tool" $name $browserWorkspace) -}}
 {{- end -}}
 {{- end -}}
 {{- $accept := $.Files.Get "files/browser-tools.yaml" | fromYamlArray -}}
-{{- $tool := dict "name" $name "kind" "mcp" "mcp" (dict "transport" "http" "endpoint" (printf "http://%s:%d/mcp" (include "humagen.browserFullname" $) (int ($browser.port | default 8931))) "accept" $accept) -}}
+{{- $tool := dict "name" $name "kind" "mcp" "mcp" (dict "transport" "http" "endpoint" (printf "http://%s:%s/mcp" (include "humagen.browserFullname" $) (include "humagen.browserPort" $)) "accept" $accept) -}}
 {{- $_ := set $pspec "tools" (append ($pspec.tools | default list) $tool) -}}
 {{- $_ := set $p "spec" $pspec -}}
 {{- end }}
@@ -117,12 +117,52 @@ kind: Platform
 {{/* The browser pod's names and labels: a name of its own, so the server's
 selector and Service never match it. */}}
 {{- define "humagen.browserFullname" -}}
-{{- printf "%s-browser" (include "humagen.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- /* The base is cut first, so a long name still ends in -browser and
+never becomes the server's own. */ -}}
+{{- printf "%s-browser" (include "humagen.fullname" . | trunc 55 | trimSuffix "-") -}}
 {{- end -}}
 
 {{- define "humagen.browserSelectorLabels" -}}
-app.kubernetes.io/name: {{ printf "%s-browser" (include "humagen.name" .) | trunc 63 | trimSuffix "-" }}
+app.kubernetes.io/name: {{ printf "%s-browser" (include "humagen.name" . | trunc 55 | trimSuffix "-") }}
 app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end -}}
+
+{{/* The browser's port: a number a port can be. */}}
+{{- define "humagen.browserPort" -}}
+{{- $raw := (.Values.browser | default dict).port | default 8931 -}}
+{{- $port := int $raw -}}
+{{- if or (lt $port 1) (gt $port 65535) (ne (toString $port) (toString $raw | trimSuffix ".0")) -}}
+{{- fail (printf "browser.port %v is not a port: a whole number from 1 to 65535" $raw) -}}
+{{- end -}}
+{{- $port -}}
+{{- end -}}
+
+{{/* The tool server's name, as Humagen takes a provider's name. */}}
+{{- define "humagen.browserTool" -}}
+{{- $name := (.Values.browser | default dict).tool | default "browser" | toString -}}
+{{- if not (regexMatch "^[a-z][a-z0-9-]{0,31}$" $name) -}}
+{{- fail (printf "browser.tool %q is not a tool server's name: a lowercase letter, then lowercase letters, digits and dashes, at most 32 in all" $name) -}}
+{{- end -}}
+{{- $name -}}
+{{- end -}}
+
+{{/*
+What the browser may not reach when the values name no list: the private,
+link-local, shared and reserved ranges, and the addresses clouds serve
+metadata on. A release whose reused values predate the browser has no list,
+and gets this one.
+*/}}
+{{- define "humagen.browserBlockedCIDRs" -}}
+- 0.0.0.0/8
+- 10.0.0.0/8
+- 100.64.0.0/10
+- 127.0.0.0/8
+- 168.63.129.16/32
+- 169.254.0.0/16
+- 172.16.0.0/12
+- 192.168.0.0/16
+- 198.18.0.0/15
+- 240.0.0.0/4
 {{- end -}}
 
 {{- define "humagen.browserLabels" -}}

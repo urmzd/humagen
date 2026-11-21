@@ -58,6 +58,9 @@ services:
       timeout: 3s
       start_period: 10s
       retries: 3
+    # The browser profile's network too, so the server reaches the browser.
+    # Nothing else is on it.
+    networks: ["default", "browser"]
 
   postgres:
     image: postgres:17-alpine
@@ -96,12 +99,15 @@ services:
       retries: 10
 
   # A browser for agents: Chromium and the Playwright MCP server in one
-  # container (deploy/browser), with no published port: only this project's
-  # services reach it, at http://browser:8931/mcp. Add the tool server to your
-  # Platform document and grant an agent mcp:browser:write
-  # (docs/guides/browser.md#run-the-bundled-browser-image). It reaches the
-  # internet and this compose network: keep nothing on the network that a page
-  # an agent opens should not reach.
+  # container (deploy/browser), with no published port. It is on a network of
+  # its own that only the server joins, so it reaches the server and the
+  # internet and not Postgres or MinIO. A page an agent opens is not trusted:
+  # the server's API is still within its reach, which is one reason the server
+  # signs people in with OIDC. Add the tool server to your Platform document
+  # with endpoint http://browser:8931/mcp and grant an agent mcp:browser:write
+  # (docs/guides/browser.md#run-the-bundled-browser-image). Not for
+  # compose.dev.yaml, whose server is on the host's network and cannot reach
+  # this one by name.
   browser:
     profiles: ["browser"]
     build:
@@ -111,7 +117,7 @@ services:
     read_only: true
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]
-    shm_size: 512m
+    networks: ["browser"]
     environment:
       # The name and port the server reaches it by: any other Host is refused.
       HUMAGEN_BROWSER_ALLOWED_HOSTS: browser:8931
@@ -158,6 +164,10 @@ services:
       interval: 2s
       timeout: 3s
       retries: 30
+
+networks:
+  # The browser and the server, and nothing else: see the browser service.
+  browser: {}
 
 volumes:
   warp-data:

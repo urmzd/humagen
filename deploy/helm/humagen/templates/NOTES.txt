@@ -18,7 +18,7 @@ To try it without an ingress:
 {{- if (.Values.browser | default dict).enabled }}
 
 A browser for agents runs as {{ include "humagen.browserFullname" . }}, and the workspace
-{{ include "humagen.browserWorkspace" . }} has its tool server, {{ .Values.browser.tool | default "browser" }}. Grant an agent
-mcp:{{ .Values.browser.tool | default "browser" }}:write to let it use the browser. It is one browser: every
-agent with the grant sees the same page and sign-ins.
+{{ include "humagen.browserWorkspace" . }} has its tool server, {{ include "humagen.browserTool" . }}. Grant an agent
+mcp:{{ include "humagen.browserTool" . }}:write to let it use the browser. It is one browser: every
+agent with the grant has the same sign-ins and tabs.
 {{- end }}

@@ -5,8 +5,29 @@ humagen.spec). */}}
 {{- $b := .Values.browser | default dict -}}
 {{- if $b.enabled }}
 {{- $name := include "humagen.browserFullname" . -}}
-{{- $port := int ($b.port | default 8931) -}}
+{{- $port := int (include "humagen.browserPort" .) -}}
+{{- $image := $b.image | default dict -}}
+{{- $_ := required "browser.image.repository is required with browser.enabled: build deploy/browser and push it" $image.repository -}}
+{{- $_ := required "browser.image.tag is required with browser.enabled: the image is not the chart's version" $image.tag -}}
+{{/* Reused values from before the browser have none of these keys. What
+keeps a page out of the cluster is on unless it is turned off by name, and
+every bound has its default: nothing here is open because a key is absent. */}}
 {{- $np := $b.networkPolicy | default dict -}}
+{{- $policy := true -}}
+{{- if hasKey $np "enabled" }}{{- $policy = ne (toString $np.enabled) "false" -}}{{- end -}}
+{{- $ports := $np.ports | default (list 80 443) -}}
+{{- $blocked := include "humagen.browserBlockedCIDRs" . | fromYamlArray -}}
+{{- if kindIs "slice" $np.blockedCIDRs }}{{- $blocked = $np.blockedCIDRs -}}{{- end -}}
+{{- $dns := $np.dns | default dict -}}
+{{- $dnsNamespace := "kube-system" -}}
+{{- if hasKey $dns "namespace" }}{{- $dnsNamespace = $dns.namespace | default "" -}}{{- end -}}
+{{- $dnsCIDRs := list "169.254.20.10/32" "169.254.169.254/32" -}}
+{{- if kindIs "slice" $dns.cidrs }}{{- $dnsCIDRs = $dns.cidrs -}}{{- end -}}
+{{- $dnsPorts := $dns.ports | default (list 53) -}}
+{{- if and $policy (not $dnsNamespace) (not $dnsCIDRs) -}}
+{{- fail "browser.networkPolicy.dns names nowhere to ask for names: set its namespace or its cidrs" -}}
+{{- end -}}
+{{- $resources := $b.resources | default (dict "requests" (dict "cpu" "250m" "memory" "1Gi" "ephemeral-storage" "2Gi") "limits" (dict "memory" "2Gi" "ephemeral-storage" "2Gi")) -}}
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -70,8 +91,8 @@ spec:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
         - name: browser
-          image: "{{ $b.image.repository }}:{{ $b.image.tag | default .Chart.AppVersion }}"
-          imagePullPolicy: {{ $b.image.pullPolicy | default "IfNotPresent" }}
+          image: "{{ $image.repository }}:{{ $image.tag }}"
+          imagePullPolicy: {{ $image.pullPolicy | default "IfNotPresent" }}
           {{- with $b.extraArgs }}
           args:
             {{- toYaml . | nindent 12 }}
@@ -81,6 +102,8 @@ spec:
               value: /home/browser
             - name: HUMAGEN_BROWSER_MCP_PORT
               value: {{ $port | quote }}
+            - name: HUMAGEN_BROWSER_OUTPUT_MAX_BYTES
+              value: {{ int64 ($b.outputMaxBytes | default 268435456) | quote }}
             # The names this release's pods reach the Service by. The server
             # answers a request for any other Host with 403, so a page the
             # browser opens cannot reach it by a name of its own.
@@ -106,7 +129,7 @@ spec:
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
           resources:
-            {{- toYaml $b.resources | nindent 12 }}
+            {{- toYaml $resources | nindent 12 }}
           volumeMounts:
             - name: home
               mountPath: /home/browser
@@ -114,21 +137,15 @@ spec:
               mountPath: /var/lib/humagen-browser
             - name: tmp
               mountPath: /tmp
-            - name: shm
-              mountPath: /dev/shm
       volumes:
-        # The profile: the browser's sign-ins, gone with the pod.
+        # The profile: the browser's sign-ins, gone with the pod. All three
+        # count against the pod's ephemeral-storage limit.
         - name: home
           emptyDir: {}
         - name: output
-          emptyDir:
-            sizeLimit: {{ $b.outputSize | default "1Gi" }}
+          emptyDir: {}
         - name: tmp
           emptyDir: {}
-        - name: shm
-          emptyDir:
-            medium: Memory
-            sizeLimit: {{ $b.shmSize | default "512Mi" }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
@@ -141,7 +158,7 @@ spec:
       affinity:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-{{- if $np.enabled }}
+{{- if $policy }}
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -167,23 +184,35 @@ spec:
         - protocol: TCP
           port: {{ $port }}
   egress:
-    # Names.
-    - ports:
+    # Names, from the cluster's own resolvers only.
+    - to:
+        {{- if $dnsNamespace }}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $dnsNamespace }}
+        {{- end }}
+        {{- range $dnsCIDRs }}
+        - ipBlock:
+            cidr: {{ . }}
+        {{- end }}
+      ports:
+        {{- range $dnsPorts }}
         - protocol: UDP
-          port: 53
+          port: {{ int . }}
         - protocol: TCP
-          port: 53
-    # The internet, and nothing private: not the cluster, its nodes or the
-    # metadata server.
+          port: {{ int . }}
+        {{- end }}
+    # The internet, and nothing in the blocked ranges: not the cluster, its
+    # nodes or a metadata server.
     - to:
         - ipBlock:
             cidr: 0.0.0.0/0
-            {{- with $np.blockedCIDRs }}
+            {{- with $blocked }}
             except:
               {{- toYaml . | nindent 14 }}
             {{- end }}
       ports:
-        {{- range $np.ports }}
+        {{- range $ports }}
         - protocol: TCP
           port: {{ int . }}
         {{- end }}
