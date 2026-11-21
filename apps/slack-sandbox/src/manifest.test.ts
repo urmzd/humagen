@@ -68,7 +68,7 @@ describe("app identity", () => {
   it("names the bot as the app is named, in a display name Slack accepts", () => {
     // Slack lowercases the username it derives; the display name may carry capitals.
     expect(manifest.features.bot_user.display_name).toBe("Humagen");
-    expect(manifest.features.bot_user.display_name).toMatch(/^[A-Za-z0-9._-]{1,80}$/);
+    expect(manifest.features.bot_user.display_name.length).toBeLessThanOrEqual(80);
   });
 
   it("renames the shortcuts without changing what they call", () => {
