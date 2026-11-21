@@ -136,6 +136,16 @@ test("an unknown page stays visible as not found while legacy tabs fall back saf
   assert.equal(href({ page: "agent", name: "lead", tab: "home" }), "/agents/lead");
   assert.equal(href({ page: "agent", name: "lead", tab: "prompt" }), "/agents/lead/prompt");
   assert.equal(href({ page: "agent", name: null, tab: "prompt" }), "/agents/new");
+  // A new agent starts from its goal, then is given its look; each step has an address.
+  assert.deepEqual(at("/agents/new"), { page: "agent-create" });
+  assert.deepEqual(at("/agents/new/writer"), { page: "agent-create", template: "writer" });
+  assert.equal(href({ page: "agent-create" }), "/agents/new");
+  assert.equal(href({ page: "agent-create", template: "writer" }), "/agents/new/writer");
+  assert.deepEqual(at("/agents/new/setup"), { page: "agent-setup" });
+  // Settings sections keep addresses of their own.
+  assert.deepEqual(at("/agents/lead/general"), { page: "agent", name: "lead", tab: "general" });
+  assert.deepEqual(at("/agents/lead/slack"), { page: "agent", name: "lead", tab: "slack" });
+  assert.equal(href({ page: "agent", name: "lead", tab: "slack" }), "/agents/lead/slack");
   assert.equal(href({ page: "agent", name: "lead", tab: "look" }), "/agents/lead/look");
   assert.deepEqual(at("/settings/bogus"), { page: "settings", section: "profile" });
 });

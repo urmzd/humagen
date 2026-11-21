@@ -1,10 +1,12 @@
 import { defaultCopy } from "@humagen/components";
+import { SettingsIcon } from "@humagen/render-web";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { BuilderButton } from "./AgentBuilder.tsx";
 import { AgentDefaultSkills } from "./AgentDefaultSkills.tsx";
 import { AgentHealth } from "./AgentHealth.tsx";
 import { AgentHomeTab } from "./AgentHomeTab.tsx";
 import { AgentLookEditor } from "./AgentLookEditor.tsx";
+import { AgentGeneral, AgentSettingsNav, type SettingsTab } from "./AgentSettings.tsx";
 import { AgentSlackApp } from "./AgentSlackApp.tsx";
 import {
   type AgentSpec,
@@ -22,6 +24,7 @@ import {
   type Source,
   type SuiteView,
 } from "./api.ts";
+import { agentShown } from "./branding.ts";
 import { Evals } from "./Evals.tsx";
 import { ApprovalQueue, CallPolicyEditor, useReach } from "./Governance.tsx";
 import { chainProblem, chainWords, defaultModel, ModelChain, POLICY } from "./ModelChain.tsx";
@@ -44,7 +47,6 @@ import {
   primary,
   Section,
   Switch,
-  Tabs,
   textLink,
   took,
 } from "./ui.tsx";
@@ -348,6 +350,8 @@ export function AgentDetail({
   onManagePolicies,
   seed,
   viewer,
+  onRetired,
+  onOpenThread,
 }: {
   operations?: ReactNode;
   onBuilderSession?: (id: string) => void;
@@ -402,6 +406,10 @@ export function AgentDetail({
   seed?: { history?: Revision[]; notes?: Note[] };
   /** The signed-in person's subject, whom the approval queue offers a note only where a run takes one from them. */
   viewer?: string;
+  /** The agent was retired from its settings. */
+  onRetired?: () => void;
+  /** Open a session started from its home. */
+  onOpenThread?: (id: string) => void;
 }) {
   const saved: AgentSpec = revision?.spec ?? {
     name: "",
@@ -539,31 +547,37 @@ export function AgentDetail({
 
   const ended = stats ? stats.completed + stats.failed : 0;
 
-  const tabs: { id: Tab; label: string; count?: number }[] = [
-    ...(revision ? [{ id: "home" as const, label: defaultCopy.agentHome.tab }] : []),
-    { id: "prompt", label: "Prompt" },
-    ...(revision ? [{ id: "look" as const, label: defaultCopy.agentLook.tab }] : []),
-    { id: "model", label: "Model" },
-    { id: "access", label: "Access", count: spawn.length },
-    ...(revision ? [{ id: "queue" as const, label: "Queue", count: waiting }] : []),
-    { id: "context", label: "Context", count: reads.length },
-    ...(revision
-      ? ([
-          { id: "memory", label: "Memory", count: proposed.length },
-          { id: "evals", label: "Evals", count: mySuites.length },
-          { id: "alerts", label: "Rules", count: myRules.length },
-          { id: "revisions", label: "Revisions", count: history.length },
-        ] as const)
-      : []),
-  ];
+  // A new agent has only the sections its spec holds; a saved one has them all.
+  const has = (t: SettingsTab) =>
+    !!revision || t === "prompt" || t === "model" || t === "access" || t === "context";
+  const counts: Partial<Record<SettingsTab, number>> = {
+    access: spawn.length,
+    queue: waiting,
+    context: reads.length,
+    memory: proposed.length,
+    evals: mySuites.length,
+    alerts: myRules.length,
+    revisions: history.length,
+  };
+  const atHome = !!revision && tab === "home";
+  const shownName = revision ? agentShown(name) : spec.name || "New agent";
 
   return (
     <Page
-      back={{ label: "All agents", onClick: onBack }}
-      icon={<AgentMark name={spec.name || "?"} size={32} />}
-      title={revision ? name : spec.name || "New agent"}
+      back={
+        atHome || !revision
+          ? { label: "All agents", onClick: onBack }
+          : { label: shownName, onClick: () => setTab("home") }
+      }
+      icon={atHome ? undefined : <AgentMark name={spec.name || "?"} size={32} />}
+      title={atHome ? shownName : revision ? defaultCopy.agentSettings.settings : shownName}
       meta={
-        revision ? (
+        atHome ? (
+          <>
+            <span>@{name}</span>
+            {workspaceDefault === name && <Chip>{defaultCopy.workspaceDefault}</Chip>}
+          </>
+        ) : revision ? (
           <>
             <span>Revision {revision.rev}</span>
             <span>
@@ -579,7 +593,21 @@ export function AgentDetail({
         )
       }
       actions={
-        editable ? (
+        atHome ? (
+          <>
+            {editable && onBuilderSession && (
+              <BuilderButton name={name} onOpen={onBuilderSession} className={button} />
+            )}
+            <button
+              type="button"
+              className={editable ? primary : button}
+              onClick={() => setTab("general")}
+            >
+              <SettingsIcon aria-hidden className="size-4" />
+              {defaultCopy.agentSettings.settings}
+            </button>
+          </>
+        ) : editable ? (
           <>
             {revision && onBuilderSession && (
               <BuilderButton name={name} onOpen={onBuilderSession} />
@@ -601,701 +629,752 @@ export function AgentDetail({
           </>
         ) : undefined
       }
-      tabs={<Tabs label="Agent sections" value={tab} onChange={setTab} tabs={tabs} />}
     >
-      {operations}
-      {revision && tab === "home" && (
+      {atHome ? (
         <AgentHomeTab
           revision={revision}
+          // The platform's own agents are the workspace's.
+          home={builtin ? undefined : home}
           stats={stats}
           canWrite={canWrite}
           onLook={() => setTab("look")}
+          onOpenThread={onOpenThread}
         />
-      )}
-      {revision && tab === "look" && (
-        <>
-          <AgentLookEditor name={name} canWrite={canWrite} />
-          <AgentSlackApp name={name} canLink={canLinkSlack} />
-        </>
-      )}
-      {revision && (tab === "prompt" || tab === "evals") && <AgentHealth name={name} />}
-      {revision && tab === "prompt" && (
-        <dl className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-          {[
-            ["Runs, 24h", String(stats?.runs ?? 0)],
-            [
-              "Success",
-              ended ? `${Math.round((100 * (stats?.completed ?? 0)) / ended)}%` : "No data",
-            ],
-            ["Median", stats?.p50_ms ? took(stats.p50_ms) : "–"],
-            ["Open alerts", String(myOpen)],
-            ["Evals", String(mySuites.length)],
-          ].map(([label, value]) => (
-            <div key={label} className={`${card} py-3`}>
-              <dt className="text-aui-xs text-aui-muted">{label}</dt>
-              <dd className="text-aui-lg font-semibold tabular-nums text-aui-fg">{value}</dd>
-            </div>
-          ))}
-        </dl>
-      )}
-
-      {builtin && revision && (
-        <p data-testid="agent-locked" className={`${card} text-aui-sm text-aui-muted`}>
-          {BUILTIN_LOCKED}
-        </p>
-      )}
-
-      {heldCalls.length > 0 && (
-        <div
-          data-testid="agent-held-calls"
-          className={`${card} flex flex-wrap items-center justify-between gap-3`}
-        >
-          <p className="min-w-0 flex-1 text-aui-sm text-aui-fg">
-            This agent asks for approval before calling{" "}
-            {heldCalls.map((t) => t.slice(4)).join(", ")}. Each of those calls waits until a person
-            approves it.
-          </p>
-          {editable && (
-            <button
-              type="button"
-              className={button}
-              onClick={() =>
-                set({ approvals: (spec.approvals ?? []).filter((t) => !t.startsWith("tag_")) })
-              }
-            >
-              Remove It
-            </button>
-          )}
-        </div>
-      )}
-
-      <Problem message={problem} />
-
-      {tab === "prompt" && (
-        <section className="flex flex-col gap-3">
-          {!revision && (
-            <Label text="Name" hint="Letters, digits and dashes. It cannot change later.">
-              <input
-                className={field}
-                value={spec.name}
-                required
-                onChange={(e) => set({ name: e.target.value })}
-              />
-            </Label>
-          )}
-          <Label
-            text="Description"
-            hint="One or two lines on what this agent is for. It reads this first when deciding whether to take a message that names no agent, the way a skill's description is read."
-          >
-            <textarea
-              className={`${field} min-h-14`}
-              value={spec.description ?? ""}
-              disabled={!editable}
-              maxLength={400}
-              onChange={(e) => set({ description: e.target.value })}
-            />
-          </Label>
-          <Switch
-            label="Only when tagged"
-            hint="On, it answers only a message that names it, and is never asked about one that names no agent."
-            checked={spec.tagged_only === true}
-            disabled={!editable}
-            onChange={(on) => set({ tagged_only: on || undefined })}
+      ) : (
+        <div className="grid min-w-0 gap-6 md:grid-cols-[12rem_minmax(0,1fr)]">
+          <AgentSettingsNav
+            name={name}
+            tab={tab as SettingsTab}
+            onTab={setTab}
+            has={has}
+            counts={counts}
           />
-          <div className="flex flex-col gap-1">
-            <div className="flex items-baseline justify-between">
-              <label htmlFor="agent-prompt" className="text-aui-xs font-medium text-aui-muted">
-                System prompt
-              </label>
-              <span className="text-aui-2xs tabular-nums text-aui-muted">
-                {spec.system_prompt.split("\n").length}{" "}
-                {spec.system_prompt.includes("\n") ? "lines" : "line"},{" "}
-                {spec.system_prompt.length.toLocaleString()} characters, about{" "}
-                {approxTokens(spec.system_prompt).toLocaleString()} tokens
-              </span>
-            </div>
-            <textarea
-              id="agent-prompt"
-              className={`${field} humagen-glass min-h-[22rem] resize-y font-aui-mono text-aui-sm leading-relaxed`}
-              value={spec.system_prompt}
-              disabled={!editable}
-              spellCheck={false}
-              placeholder="Who the agent is, what it is for, how it should answer, and what it must never do."
-              onChange={(e) => set({ system_prompt: e.target.value })}
-            />
-          </div>
-          {revision && dirty && spec.system_prompt !== saved.system_prompt && (
-            <details className={card} open>
-              <summary className="cursor-pointer text-aui-sm text-aui-fg">
-                Changes since revision {revision.rev}
-              </summary>
-              <div className="pt-2">
-                <Diff before={saved.system_prompt} after={spec.system_prompt} />
-              </div>
-            </details>
-          )}
-          {revision && (
-            <p className="text-aui-xs text-aui-muted">
-              Runs and evals use the saved revision. Save your changes, then run the evals to
-              compare this revision with the last.
-            </p>
-          )}
-        </section>
-      )}
+          <div className="flex min-w-0 flex-col gap-6" data-section-body={tab}>
+            {operations}
+            {revision && tab === "general" && (
+              <AgentGeneral
+                revision={revision}
+                canWrite={editable || (canWrite && builtin)}
+                // The platform writes it again (its own, a Store package's, the
+                // platform file's), so it is paused, never retired.
+                builtin={
+                  builtin ||
+                  !!revision.package ||
+                  [revision, ...history].some(
+                    (r) => r.created_by === "file" || r.created_by === "startup",
+                  )
+                }
+                onTab={setTab}
+                onRetired={() => onRetired?.()}
+              />
+            )}
+            {revision && tab === "look" && <AgentLookEditor name={name} canWrite={canWrite} />}
+            {revision && tab === "slack" && <AgentSlackApp name={name} canLink={canLinkSlack} />}
+            {revision && (tab === "prompt" || tab === "evals") && <AgentHealth name={name} />}
+            {revision && tab === "prompt" && (
+              <dl className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+                {[
+                  ["Runs, 24h", String(stats?.runs ?? 0)],
+                  [
+                    "Success",
+                    ended ? `${Math.round((100 * (stats?.completed ?? 0)) / ended)}%` : "No data",
+                  ],
+                  ["Median", stats?.p50_ms ? took(stats.p50_ms) : "–"],
+                  ["Open alerts", String(myOpen)],
+                  ["Evals", String(mySuites.length)],
+                ].map(([label, value]) => (
+                  <div key={label} className={`${card} py-3`}>
+                    <dt className="text-aui-xs text-aui-muted">{label}</dt>
+                    <dd className="text-aui-lg font-semibold tabular-nums text-aui-fg">{value}</dd>
+                  </div>
+                ))}
+              </dl>
+            )}
 
-      {tab === "model" && (
-        <ModelTab
-          spec={spec}
-          editable={editable}
-          policies={policies}
-          others={agents.filter((a) => a.spec.name !== spec.name)}
-          onChange={(patch) => set(patch)}
-          onManage={onManagePolicies}
-        />
-      )}
-
-      {tab === "access" && (
-        <div className="flex flex-col gap-8">
-          <p className="text-aui-xs text-aui-muted">
-            Agent calls and approval settings below are saved with{" "}
-            {revision ? `Save as Revision ${revision.rev + 1}` : "Create Agent"}. Who sees it and
-            Who may call it have their own save controls and take effect immediately.
-          </p>
-          {revision && (
-            <WhoSeesIt
-              name={name}
-              home={home}
-              personalProject={personalProject}
-              tree={tree}
-              builtin={builtin}
-              canChange={canWrite && !builtin}
-              canGovern={canGovern}
-              onChanged={() => onHomed?.()}
-            />
-          )}
-          <Section
-            title="Agents it may call"
-            hint="The agents this one may hand work to. Only agents whose own policy takes its calls are offered. Depth, fan-out and budget limits still apply to every call."
-          >
-            <PickMany
-              label="Agents it may call"
-              add="Add Agent"
-              disabled={!editable}
-              empty={
-                callable.length === 0
-                  ? "No other agents exist yet."
-                  : "It calls no one. It does every task itself."
-              }
-              value={spawn}
-              options={callable.map((a) => ({
-                value: a.spec.name,
-                label: a.spec.name,
-                hint:
-                  reachOf.get(a.spec.name)?.approval === "required"
-                    ? `Each call waits for approval. ${a.spec.description ?? ""}`.trim()
-                    : a.spec.description || undefined,
-                mark: <AgentMark name={a.spec.name} size={14} />,
-              }))}
-              onChange={(next) => set({ access: { ...spec.access, spawn: next } })}
-            />
-            {refusing.length > 0 && (
-              <p className="text-aui-xs text-aui-muted">
-                Not open to {name}: {refusing.map((a) => a.spec.name).join(", ")}. Their own call
-                policy decides.
+            {builtin && revision && (
+              <p data-testid="agent-locked" className={`${card} text-aui-sm text-aui-muted`}>
+                {BUILTIN_LOCKED}
               </p>
             )}
-          </Section>
 
-          {revision && (
-            <Section
-              title="Who may call it"
-              hint="This agent decides who may hand it work and when a call waits for a person. It applies from the moment it is saved, not with the next revision."
-            >
-              <CallPolicyEditor agent={name} agents={agents} canWrite={canWrite} />
-            </Section>
-          )}
-
-          <Section
-            title="Personal connections"
-            hint="Use only the tools that the person starting the work has connected and approved. This does not share their credentials or give this agent access to another person's connections."
-          >
-            <Switch
-              label="Use the requester's approved connection tools"
-              hint="Saved with this agent's next revision. Workspace policy and the person's current tool approval still apply to every call."
-              checked={(spec.tools ?? []).some(
-                (tool) => tool === "person_tools" || tool === "mcp:person_tools:write",
-              )}
-              disabled={!editable}
-              onChange={(on) =>
-                setSpec((current) => ({
-                  ...current,
-                  tools: [
-                    ...(current.tools ?? []).filter(
-                      (tool) => tool !== "person_tools" && tool !== "mcp:person_tools:write",
-                    ),
-                    ...(on ? ["person_tools"] : []),
-                  ],
-                  ...(!on
-                    ? {
-                        approvals: current.approvals?.filter(
-                          (tool) => tool !== "person_tools" && tool !== "mcp:person_tools:write",
-                        ),
-                      }
-                    : {}),
-                }))
-              }
-            />
-            <a href="/connections" className={textLink}>
-              Review Plugins
-            </a>
-          </Section>
-
-          <Section
-            title="People in the loop"
-            hint="A question or an approval reaches the inboxes of the people who may answer it. Runs started before you save keep the rules they started with."
-          >
-            <div className={`${card} flex flex-col gap-3`}>
-              <Switch
-                label="May ask a person"
-                hint="The agent can ask someone to choose or reply, and waits for the answer."
-                checked={(spec.tools ?? []).includes(ASK_PERSON)}
-                disabled={!editable}
-                onChange={(on) => setSpec((s) => withAsking(s, on))}
-              />
-              {approvable(spec)
-                .filter(
-                  (t) =>
-                    !t.startsWith("tag_") && t !== "person_tools" && t !== "mcp:person_tools:write",
-                )
-                .map((tool) => (
-                  <Switch
-                    key={tool}
-                    label={`Approve ${tool} first`}
-                    hint="Each use waits until a person approves it. Nobody answering in time denies it."
-                    checked={(spec.approvals ?? []).includes(tool)}
-                    disabled={!editable}
-                    onChange={(on) => setSpec((s) => withApproval(s, tool, on))}
-                  />
-                ))}
-              <Label
-                text="Who may approve"
-                hint="People and roles, one per line, such as role:operator. Empty means anyone but the person who asked."
+            {heldCalls.length > 0 && (
+              <div
+                data-testid="agent-held-calls"
+                className={`${card} flex flex-wrap items-center justify-between gap-3`}
               >
-                <NamesField
-                  key={`approvers-${revision?.rev ?? 0}`}
-                  names={spec.approvers}
-                  disabled={!editable}
-                  onChange={(text) => setSpec((s) => withNames(s, "approvers", text))}
-                />
-              </Label>
-              <Switch
-                label="The person who asked may approve"
-                hint="Off, an approval is always someone else's."
-                checked={spec.self_approval === true}
-                disabled={!editable}
-                onChange={(on) => set({ self_approval: on || undefined })}
-              />
-              <Label
-                text="Who may answer its questions"
-                hint="People and roles, one per line. Empty means anyone in the workspace."
-              >
-                <NamesField
-                  key={`answerers-${revision?.rev ?? 0}`}
-                  names={spec.answerers}
-                  disabled={!editable}
-                  onChange={(text) => setSpec((s) => withNames(s, "answerers", text))}
-                />
-              </Label>
-            </div>
-          </Section>
-        </div>
-      )}
-
-      {tab === "queue" && revision && (
-        <ApprovalQueue agent={name} viewer={viewer} onOpenTask={onOpenTask} onCount={setWaiting} />
-      )}
-
-      {tab === "context" && revision && (
-        <AgentDefaultSkills
-          agent={revision.spec.name}
-          home={home ?? ""}
-          agentRevision={revision.rev}
-          canWrite={canWrite}
-        />
-      )}
-      {tab === "context" && (
-        <Section
-          title="Context"
-          hint="The sources this agent reads from. A source is shared: attaching it here does not copy it."
-        >
-          <PickMany
-            label="Sources it reads"
-            add="Attach Source"
-            disabled={!editable}
-            empty={sources.length === 0 ? "No sources exist yet." : "It reads no sources."}
-            value={reads.map((r) => r.name)}
-            options={sources.map((k) => ({
-              value: k.name,
-              label: k.name,
-              hint:
-                k.description || `${k.documents} ${k.documents === 1 ? "document" : "documents"}`,
-            }))}
-            onChange={(next) =>
-              set({
-                sources: next.map(
-                  (n) => reads.find((r) => r.name === n) ?? { name: n, uri: `knowledge://${n}` },
-                ),
-              })
-            }
-          />
-          {onOpenSource && reads.length > 0 && (
-            <p className="flex flex-wrap gap-x-3 text-aui-xs text-aui-muted">
-              Open:
-              {reads.map((r) => (
-                <button
-                  key={r.name}
-                  type="button"
-                  className="underline hover:text-aui-fg"
-                  onClick={() => onOpenSource(r.name)}
-                >
-                  {r.name}
-                </button>
-              ))}
-            </p>
-          )}
-          {editable && canKnowledge && (
-            <form
-              className="flex flex-wrap gap-2"
-              onSubmit={(e) => {
-                e.preventDefault();
-                const chosen = newSource.trim();
-                setProblem(null);
-                api
-                  .createSource(chosen, "")
-                  .then(() => {
-                    setNewSource("");
-                    onSourcesChanged?.();
-                    set({ sources: [...reads, { name: chosen, uri: `knowledge://${chosen}` }] });
-                  })
-                  .catch((err) =>
-                    setProblem(
-                      err instanceof ApiError ? err.message : "The source could not be created.",
-                    ),
-                  );
-              }}
-            >
-              <input
-                aria-label="New source name"
-                className={`${field} h-8 max-w-xs flex-1`}
-                placeholder="Or name a new source"
-                value={newSource}
-                onChange={(e) => setNewSource(e.target.value)}
-              />
-              <button type="submit" className={button} disabled={!newSource.trim()}>
-                Create and Attach
-              </button>
-            </form>
-          )}
-          <p className="text-aui-xs text-aui-muted">
-            Attaching a source records the intent and its evals run against it. Retrieval inside a
-            run is not wired yet. Save the agent to keep a change.
-          </p>
-        </Section>
-      )}
-
-      {tab === "memory" && revision && (
-        <section className="flex flex-col gap-3">
-          <p className="max-w-xl text-aui-sm text-aui-muted">
-            What {name} carries from one conversation to the next. Every note is sent with each
-            turn, so keep them few and lasting.
-          </p>
-          {canWrite && (
-            <form
-              className="flex gap-2"
-              onSubmit={(e) => {
-                e.preventDefault();
-                setProblem(null);
-                api
-                  .addMemory(name, note)
-                  .then(() => {
-                    setNote("");
-                    loadNotes();
-                  })
-                  .catch((err) =>
-                    setProblem(
-                      err instanceof ApiError ? err.message : "The note could not be saved.",
-                    ),
-                  );
-              }}
-            >
-              <input
-                aria-label="Something to remember"
-                className={field}
-                value={note}
-                maxLength={300}
-                required
-                placeholder="A lasting fact, such as: Releases go out on Tuesdays."
-                onChange={(e) => setNote(e.target.value)}
-              />
-              <button type="submit" className={primary}>
-                Remember
-              </button>
-            </form>
-          )}
-          {proposed.length > 0 && (
-            <div className={`${card} flex flex-col gap-2`}>
-              <h3 className="text-aui-sm font-medium text-aui-fg">
-                Proposed by the memory agent ({proposed.length})
-              </h3>
-              <p className="text-aui-xs text-aui-muted">
-                Not in use yet. Tick what {name} should remember, then keep it. Discard the rest.
-              </p>
-              <ul>
-                {proposed.map((n) => (
-                  <li key={n.id} className="border-aui-border border-t py-2 first:border-t-0">
-                    <label className="flex items-start gap-2.5 text-aui-sm text-aui-fg">
-                      <input
-                        type="checkbox"
-                        className="mt-1"
-                        disabled={!canWrite}
-                        checked={picked.has(n.id)}
-                        onChange={(e) =>
-                          setPicked((p) => {
-                            const next = new Set(p);
-                            if (e.target.checked) next.add(n.id);
-                            else next.delete(n.id);
-                            return next;
-                          })
-                        }
-                      />
-                      <span className="min-w-0">
-                        <span className="block">{n.text}</span>
-                        <span className="block text-aui-xs text-aui-muted">
-                          Proposed {ago(n.at)}
-                        </span>
-                      </span>
-                    </label>
-                  </li>
-                ))}
-              </ul>
-              {canWrite && (
-                <div className="flex flex-wrap justify-end gap-2">
+                <p className="min-w-0 flex-1 text-aui-sm text-aui-fg">
+                  This agent asks for approval before calling{" "}
+                  {heldCalls.map((t) => t.slice(4)).join(", ")}. Each of those calls waits until a
+                  person approves it.
+                </p>
+                {editable && (
                   <button
                     type="button"
                     className={button}
                     onClick={() =>
-                      Promise.all(
-                        proposed
-                          .filter((n) => picked.size === 0 || picked.has(n.id))
-                          .map((n) => api.removeMemory(name, n.id)),
-                      )
-                        .then(() => {
-                          setPicked(new Set());
-                          loadNotes();
-                        })
-                        .catch(() => {})
+                      set({
+                        approvals: (spec.approvals ?? []).filter((t) => !t.startsWith("tag_")),
+                      })
                     }
                   >
-                    {picked.size > 0 ? `Discard ${picked.size} Selected` : "Discard All"}
+                    Remove It
                   </button>
-                  <button
-                    type="button"
-                    className={primary}
-                    disabled={picked.size === 0}
-                    onClick={() =>
+                )}
+              </div>
+            )}
+
+            <Problem message={problem} />
+
+            {tab === "prompt" && (
+              <section className="flex flex-col gap-3">
+                {!revision && (
+                  <Label text="Name" hint="Letters, digits and dashes. It cannot change later.">
+                    <input
+                      className={field}
+                      value={spec.name}
+                      required
+                      onChange={(e) => set({ name: e.target.value })}
+                    />
+                  </Label>
+                )}
+                <Label
+                  text="Description"
+                  hint="One or two lines on what this agent is for. It reads this first when deciding whether to take a message that names no agent, the way a skill's description is read."
+                >
+                  <textarea
+                    className={`${field} min-h-14`}
+                    value={spec.description ?? ""}
+                    disabled={!editable}
+                    maxLength={400}
+                    onChange={(e) => set({ description: e.target.value })}
+                  />
+                </Label>
+                <Switch
+                  label="Only when tagged"
+                  hint="On, it answers only a message that names it, and is never asked about one that names no agent."
+                  checked={spec.tagged_only === true}
+                  disabled={!editable}
+                  onChange={(on) => set({ tagged_only: on || undefined })}
+                />
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-baseline justify-between">
+                    <label
+                      htmlFor="agent-prompt"
+                      className="text-aui-xs font-medium text-aui-muted"
+                    >
+                      System prompt
+                    </label>
+                    <span className="text-aui-2xs tabular-nums text-aui-muted">
+                      {spec.system_prompt.split("\n").length}{" "}
+                      {spec.system_prompt.includes("\n") ? "lines" : "line"},{" "}
+                      {spec.system_prompt.length.toLocaleString()} characters, about{" "}
+                      {approxTokens(spec.system_prompt).toLocaleString()} tokens
+                    </span>
+                  </div>
+                  <textarea
+                    id="agent-prompt"
+                    className={`${field} humagen-glass min-h-[22rem] resize-y font-aui-mono text-aui-sm leading-relaxed`}
+                    value={spec.system_prompt}
+                    disabled={!editable}
+                    spellCheck={false}
+                    placeholder="Who the agent is, what it is for, how it should answer, and what it must never do."
+                    onChange={(e) => set({ system_prompt: e.target.value })}
+                  />
+                </div>
+                {revision && dirty && spec.system_prompt !== saved.system_prompt && (
+                  <details className={card} open>
+                    <summary className="cursor-pointer text-aui-sm text-aui-fg">
+                      Changes since revision {revision.rev}
+                    </summary>
+                    <div className="pt-2">
+                      <Diff before={saved.system_prompt} after={spec.system_prompt} />
+                    </div>
+                  </details>
+                )}
+                {revision && (
+                  <p className="text-aui-xs text-aui-muted">
+                    Runs and evals use the saved revision. Save your changes, then run the evals to
+                    compare this revision with the last.
+                  </p>
+                )}
+              </section>
+            )}
+
+            {tab === "model" && (
+              <ModelTab
+                spec={spec}
+                editable={editable}
+                policies={policies}
+                others={agents.filter((a) => a.spec.name !== spec.name)}
+                onChange={(patch) => set(patch)}
+                onManage={onManagePolicies}
+              />
+            )}
+
+            {tab === "access" && (
+              <div className="flex flex-col gap-8">
+                <p className="text-aui-xs text-aui-muted">
+                  Agent calls and approval settings below are saved with{" "}
+                  {revision ? `Save as Revision ${revision.rev + 1}` : "Create Agent"}. Who sees it
+                  and Who may call it have their own save controls and take effect immediately.
+                </p>
+                {revision && (
+                  <WhoSeesIt
+                    name={name}
+                    home={home}
+                    personalProject={personalProject}
+                    tree={tree}
+                    builtin={builtin}
+                    canChange={canWrite && !builtin}
+                    canGovern={canGovern}
+                    onChanged={() => onHomed?.()}
+                  />
+                )}
+                <Section
+                  title="Agents it may call"
+                  hint="The agents this one may hand work to. Only agents whose own policy takes its calls are offered. Depth, fan-out and budget limits still apply to every call."
+                >
+                  <PickMany
+                    label="Agents it may call"
+                    add="Add Agent"
+                    disabled={!editable}
+                    empty={
+                      callable.length === 0
+                        ? "No other agents exist yet."
+                        : "It calls no one. It does every task itself."
+                    }
+                    value={spawn}
+                    options={callable.map((a) => ({
+                      value: a.spec.name,
+                      label: a.spec.name,
+                      hint:
+                        reachOf.get(a.spec.name)?.approval === "required"
+                          ? `Each call waits for approval. ${a.spec.description ?? ""}`.trim()
+                          : a.spec.description || undefined,
+                      mark: <AgentMark name={a.spec.name} size={14} />,
+                    }))}
+                    onChange={(next) => set({ access: { ...spec.access, spawn: next } })}
+                  />
+                  {refusing.length > 0 && (
+                    <p className="text-aui-xs text-aui-muted">
+                      Not open to {name}: {refusing.map((a) => a.spec.name).join(", ")}. Their own
+                      call policy decides.
+                    </p>
+                  )}
+                </Section>
+
+                {revision && (
+                  <Section
+                    title="Who may call it"
+                    hint="This agent decides who may hand it work and when a call waits for a person. It applies from the moment it is saved, not with the next revision."
+                  >
+                    <CallPolicyEditor agent={name} agents={agents} canWrite={canWrite} />
+                  </Section>
+                )}
+
+                <Section
+                  title="Personal connections"
+                  hint="Use only the tools that the person starting the work has connected and approved. This does not share their credentials or give this agent access to another person's connections."
+                >
+                  <Switch
+                    label="Use the requester's approved connection tools"
+                    hint="Saved with this agent's next revision. Workspace policy and the person's current tool approval still apply to every call."
+                    checked={(spec.tools ?? []).some(
+                      (tool) => tool === "person_tools" || tool === "mcp:person_tools:write",
+                    )}
+                    disabled={!editable}
+                    onChange={(on) =>
+                      setSpec((current) => ({
+                        ...current,
+                        tools: [
+                          ...(current.tools ?? []).filter(
+                            (tool) => tool !== "person_tools" && tool !== "mcp:person_tools:write",
+                          ),
+                          ...(on ? ["person_tools"] : []),
+                        ],
+                        ...(!on
+                          ? {
+                              approvals: current.approvals?.filter(
+                                (tool) =>
+                                  tool !== "person_tools" && tool !== "mcp:person_tools:write",
+                              ),
+                            }
+                          : {}),
+                      }))
+                    }
+                  />
+                  <a href="/connections" className={textLink}>
+                    Review Plugins
+                  </a>
+                </Section>
+
+                <Section
+                  title="People in the loop"
+                  hint="A question or an approval reaches the inboxes of the people who may answer it. Runs started before you save keep the rules they started with."
+                >
+                  <div className={`${card} flex flex-col gap-3`}>
+                    <Switch
+                      label="May ask a person"
+                      hint="The agent can ask someone to choose or reply, and waits for the answer."
+                      checked={(spec.tools ?? []).includes(ASK_PERSON)}
+                      disabled={!editable}
+                      onChange={(on) => setSpec((s) => withAsking(s, on))}
+                    />
+                    {approvable(spec)
+                      .filter(
+                        (t) =>
+                          !t.startsWith("tag_") &&
+                          t !== "person_tools" &&
+                          t !== "mcp:person_tools:write",
+                      )
+                      .map((tool) => (
+                        <Switch
+                          key={tool}
+                          label={`Approve ${tool} first`}
+                          hint="Each use waits until a person approves it. Nobody answering in time denies it."
+                          checked={(spec.approvals ?? []).includes(tool)}
+                          disabled={!editable}
+                          onChange={(on) => setSpec((s) => withApproval(s, tool, on))}
+                        />
+                      ))}
+                    <Label
+                      text="Who may approve"
+                      hint="People and roles, one per line, such as role:operator. Empty means anyone but the person who asked."
+                    >
+                      <NamesField
+                        key={`approvers-${revision?.rev ?? 0}`}
+                        names={spec.approvers}
+                        disabled={!editable}
+                        onChange={(text) => setSpec((s) => withNames(s, "approvers", text))}
+                      />
+                    </Label>
+                    <Switch
+                      label="The person who asked may approve"
+                      hint="Off, an approval is always someone else's."
+                      checked={spec.self_approval === true}
+                      disabled={!editable}
+                      onChange={(on) => set({ self_approval: on || undefined })}
+                    />
+                    <Label
+                      text="Who may answer its questions"
+                      hint="People and roles, one per line. Empty means anyone in the workspace."
+                    >
+                      <NamesField
+                        key={`answerers-${revision?.rev ?? 0}`}
+                        names={spec.answerers}
+                        disabled={!editable}
+                        onChange={(text) => setSpec((s) => withNames(s, "answerers", text))}
+                      />
+                    </Label>
+                  </div>
+                </Section>
+              </div>
+            )}
+
+            {tab === "queue" && revision && (
+              <ApprovalQueue
+                agent={name}
+                viewer={viewer}
+                onOpenTask={onOpenTask}
+                onCount={setWaiting}
+              />
+            )}
+
+            {tab === "context" && revision && (
+              <AgentDefaultSkills
+                agent={revision.spec.name}
+                home={home ?? ""}
+                agentRevision={revision.rev}
+                canWrite={canWrite}
+              />
+            )}
+            {tab === "context" && (
+              <Section
+                title="Context"
+                hint="The sources this agent reads from. A source is shared: attaching it here does not copy it."
+              >
+                <PickMany
+                  label="Sources it reads"
+                  add="Attach Source"
+                  disabled={!editable}
+                  empty={sources.length === 0 ? "No sources exist yet." : "It reads no sources."}
+                  value={reads.map((r) => r.name)}
+                  options={sources.map((k) => ({
+                    value: k.name,
+                    label: k.name,
+                    hint:
+                      k.description ||
+                      `${k.documents} ${k.documents === 1 ? "document" : "documents"}`,
+                  }))}
+                  onChange={(next) =>
+                    set({
+                      sources: next.map(
+                        (n) =>
+                          reads.find((r) => r.name === n) ?? { name: n, uri: `knowledge://${n}` },
+                      ),
+                    })
+                  }
+                />
+                {onOpenSource && reads.length > 0 && (
+                  <p className="flex flex-wrap gap-x-3 text-aui-xs text-aui-muted">
+                    Open:
+                    {reads.map((r) => (
+                      <button
+                        key={r.name}
+                        type="button"
+                        className="underline hover:text-aui-fg"
+                        onClick={() => onOpenSource(r.name)}
+                      >
+                        {r.name}
+                      </button>
+                    ))}
+                  </p>
+                )}
+                {editable && canKnowledge && (
+                  <form
+                    className="flex flex-wrap gap-2"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      const chosen = newSource.trim();
+                      setProblem(null);
                       api
-                        .approveMemory(name, [...picked])
+                        .createSource(chosen, "")
                         .then(() => {
-                          setPicked(new Set());
+                          setNewSource("");
+                          onSourcesChanged?.();
+                          set({
+                            sources: [...reads, { name: chosen, uri: `knowledge://${chosen}` }],
+                          });
+                        })
+                        .catch((err) =>
+                          setProblem(
+                            err instanceof ApiError
+                              ? err.message
+                              : "The source could not be created.",
+                          ),
+                        );
+                    }}
+                  >
+                    <input
+                      aria-label="New source name"
+                      className={`${field} h-8 max-w-xs flex-1`}
+                      placeholder="Or name a new source"
+                      value={newSource}
+                      onChange={(e) => setNewSource(e.target.value)}
+                    />
+                    <button type="submit" className={button} disabled={!newSource.trim()}>
+                      Create and Attach
+                    </button>
+                  </form>
+                )}
+                <p className="text-aui-xs text-aui-muted">
+                  Attaching a source records the intent and its evals run against it. Retrieval
+                  inside a run is not wired yet. Save the agent to keep a change.
+                </p>
+              </Section>
+            )}
+
+            {tab === "memory" && revision && (
+              <section className="flex flex-col gap-3">
+                <p className="max-w-xl text-aui-sm text-aui-muted">
+                  What {name} carries from one conversation to the next. Every note is sent with
+                  each turn, so keep them few and lasting.
+                </p>
+                {canWrite && (
+                  <form
+                    className="flex gap-2"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      setProblem(null);
+                      api
+                        .addMemory(name, note)
+                        .then(() => {
+                          setNote("");
                           loadNotes();
                         })
                         .catch((err) =>
                           setProblem(
-                            err instanceof ApiError ? err.message : "Those could not be kept.",
+                            err instanceof ApiError ? err.message : "The note could not be saved.",
                           ),
-                        )
-                    }
+                        );
+                    }}
                   >
-                    Keep {picked.size > 0 ? `${picked.size} Selected` : "Selected"}
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-          {kept.length === 0 ? (
-            <p className={`${card} text-aui-sm text-aui-muted`}>
-              {name} remembers nothing yet. Write a note here, or choose a memory agent under
-              Settings to have notes proposed after each turn.
-            </p>
-          ) : (
-            <ul className="humagen-glass overflow-hidden rounded-aui-lg">
-              {kept.map((n) => (
-                <li
-                  key={n.id}
-                  className="flex items-start justify-between gap-3 border-aui-border border-b px-4 py-2.5 last:border-b-0"
-                >
-                  <span className="min-w-0">
-                    <span className="block text-aui-sm text-aui-fg">{n.text}</span>
-                    <span className="block text-aui-xs text-aui-muted">
-                      {n.source === "person"
-                        ? `Written by ${n.by_name || n.by}`
-                        : "Proposed by the memory agent and approved"}
-                      , {ago(n.at)}
-                    </span>
-                  </span>
-                  {canWrite && (
-                    <button
-                      type="button"
-                      className={button}
-                      onClick={() =>
-                        api
-                          .removeMemory(name, n.id)
-                          .then(loadNotes)
-                          .catch(() => {})
-                      }
-                    >
-                      Forget
+                    <input
+                      aria-label="Something to remember"
+                      className={field}
+                      value={note}
+                      maxLength={300}
+                      required
+                      placeholder="A lasting fact, such as: Releases go out on Tuesdays."
+                      onChange={(e) => setNote(e.target.value)}
+                    />
+                    <button type="submit" className={primary}>
+                      Remember
                     </button>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      )}
+                  </form>
+                )}
+                {proposed.length > 0 && (
+                  <div className={`${card} flex flex-col gap-2`}>
+                    <h3 className="text-aui-sm font-medium text-aui-fg">
+                      Proposed by the memory agent ({proposed.length})
+                    </h3>
+                    <p className="text-aui-xs text-aui-muted">
+                      Not in use yet. Tick what {name} should remember, then keep it. Discard the
+                      rest.
+                    </p>
+                    <ul>
+                      {proposed.map((n) => (
+                        <li key={n.id} className="border-aui-border border-t py-2 first:border-t-0">
+                          <label className="flex items-start gap-2.5 text-aui-sm text-aui-fg">
+                            <input
+                              type="checkbox"
+                              className="mt-1"
+                              disabled={!canWrite}
+                              checked={picked.has(n.id)}
+                              onChange={(e) =>
+                                setPicked((p) => {
+                                  const next = new Set(p);
+                                  if (e.target.checked) next.add(n.id);
+                                  else next.delete(n.id);
+                                  return next;
+                                })
+                              }
+                            />
+                            <span className="min-w-0">
+                              <span className="block">{n.text}</span>
+                              <span className="block text-aui-xs text-aui-muted">
+                                Proposed {ago(n.at)}
+                              </span>
+                            </span>
+                          </label>
+                        </li>
+                      ))}
+                    </ul>
+                    {canWrite && (
+                      <div className="flex flex-wrap justify-end gap-2">
+                        <button
+                          type="button"
+                          className={button}
+                          onClick={() =>
+                            Promise.all(
+                              proposed
+                                .filter((n) => picked.size === 0 || picked.has(n.id))
+                                .map((n) => api.removeMemory(name, n.id)),
+                            )
+                              .then(() => {
+                                setPicked(new Set());
+                                loadNotes();
+                              })
+                              .catch(() => {})
+                          }
+                        >
+                          {picked.size > 0 ? `Discard ${picked.size} Selected` : "Discard All"}
+                        </button>
+                        <button
+                          type="button"
+                          className={primary}
+                          disabled={picked.size === 0}
+                          onClick={() =>
+                            api
+                              .approveMemory(name, [...picked])
+                              .then(() => {
+                                setPicked(new Set());
+                                loadNotes();
+                              })
+                              .catch((err) =>
+                                setProblem(
+                                  err instanceof ApiError
+                                    ? err.message
+                                    : "Those could not be kept.",
+                                ),
+                              )
+                          }
+                        >
+                          Keep {picked.size > 0 ? `${picked.size} Selected` : "Selected"}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {kept.length === 0 ? (
+                  <p className={`${card} text-aui-sm text-aui-muted`}>
+                    {name} remembers nothing yet. Write a note here, or choose a memory agent under
+                    Settings to have notes proposed after each turn.
+                  </p>
+                ) : (
+                  <ul className="humagen-glass overflow-hidden rounded-aui-lg">
+                    {kept.map((n) => (
+                      <li
+                        key={n.id}
+                        className="flex items-start justify-between gap-3 border-aui-border border-b px-4 py-2.5 last:border-b-0"
+                      >
+                        <span className="min-w-0">
+                          <span className="block text-aui-sm text-aui-fg">{n.text}</span>
+                          <span className="block text-aui-xs text-aui-muted">
+                            {n.source === "person"
+                              ? `Written by ${n.by_name || n.by}`
+                              : "Proposed by the memory agent and approved"}
+                            , {ago(n.at)}
+                          </span>
+                        </span>
+                        {canWrite && (
+                          <button
+                            type="button"
+                            className={button}
+                            onClick={() =>
+                              api
+                                .removeMemory(name, n.id)
+                                .then(loadNotes)
+                                .catch(() => {})
+                            }
+                          >
+                            Forget
+                          </button>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+            )}
 
-      {tab === "evals" && revision && (
-        <Evals
-          target="agent"
-          subject={name}
-          suites={suites}
-          canWrite={canEval}
-          onChanged={onSuitesChanged}
-          onOpenRun={onOpenRun}
-        />
-      )}
+            {tab === "evals" && revision && (
+              <Evals
+                target="agent"
+                subject={name}
+                suites={suites}
+                canWrite={canEval}
+                onChanged={onSuitesChanged}
+                onOpenRun={onOpenRun}
+              />
+            )}
 
-      {tab === "alerts" && revision && (
-        <section className="flex flex-col gap-3">
-          <p className="max-w-xl text-aui-sm text-aui-muted">
-            Rules that watch this agent. When one holds, an alert lands in the inbox and stays until
-            someone acknowledges it.
-          </p>
-          {canAlert && (
-            <div className={`${card} flex flex-col gap-2`}>
-              <h3 className="text-aui-sm font-medium text-aui-fg">Alert me when</h3>
-              <div className="flex flex-wrap gap-2">
-                {presets.map((p) => {
-                  const rule = p.rule(name);
-                  const have = myRules.some((r) => r.name === rule.name);
+            {tab === "alerts" && revision && (
+              <section className="flex flex-col gap-3">
+                <p className="max-w-xl text-aui-sm text-aui-muted">
+                  Rules that watch this agent. When one holds, an alert lands in the inbox and stays
+                  until someone acknowledges it.
+                </p>
+                {canAlert && (
+                  <div className={`${card} flex flex-col gap-2`}>
+                    <h3 className="text-aui-sm font-medium text-aui-fg">Alert me when</h3>
+                    <div className="flex flex-wrap gap-2">
+                      {presets.map((p) => {
+                        const rule = p.rule(name);
+                        const have = myRules.some((r) => r.name === rule.name);
+                        return (
+                          <button
+                            key={rule.name}
+                            type="button"
+                            className={button}
+                            disabled={have}
+                            onClick={() => addRule(rule)}
+                          >
+                            {have ? `On: ${p.label}` : p.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <p className="text-aui-xs text-aui-muted">
+                      For other conditions, people to notify and cooldowns,{" "}
+                      {onOpenAlerts ? (
+                        <button
+                          type="button"
+                          className="underline hover:text-aui-fg"
+                          onClick={onOpenAlerts}
+                        >
+                          add a rule under Alerts
+                        </button>
+                      ) : (
+                        "add a rule under Alerts"
+                      )}
+                      .
+                    </p>
+                  </div>
+                )}
+                {myRules.length === 0 ? (
+                  <p className={`${card} text-aui-sm text-aui-muted`}>
+                    No rules watch this agent. Rules for any agent still apply.
+                  </p>
+                ) : (
+                  <ul className="humagen-glass overflow-hidden rounded-aui-lg">
+                    {myRules.map((r) => (
+                      <li
+                        key={r.name}
+                        className="flex items-center justify-between gap-3 border-aui-border border-b px-4 py-2.5 last:border-b-0"
+                      >
+                        <span className="min-w-0">
+                          <span className="block text-aui-sm text-aui-fg">{r.name}</span>
+                          <span className="block text-aui-xs text-aui-muted">
+                            {r.kind.replace("_", " ")}
+                            {r.threshold ? `, threshold ${r.threshold}` : ""}, {r.severity}
+                          </span>
+                        </span>
+                        {canAlert && (
+                          <button
+                            type="button"
+                            className={button}
+                            onClick={() =>
+                              api
+                                .deleteAlertRule(r.name)
+                                .then(onRulesChanged)
+                                .catch(() => {})
+                            }
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+            )}
+
+            {tab === "revisions" && revision && (
+              <ol className="flex flex-col gap-2">
+                {history.map((h, i) => {
+                  const older = history[i + 1];
                   return (
-                    <button
-                      key={rule.name}
-                      type="button"
-                      className={button}
-                      disabled={have}
-                      onClick={() => addRule(rule)}
-                    >
-                      {have ? `On: ${p.label}` : p.label}
-                    </button>
+                    <li key={h.rev} className={`${card} flex flex-col gap-2`}>
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                          <span className="text-aui-sm font-medium text-aui-fg">
+                            Revision {h.rev}
+                          </span>
+                          {h.rev === revision.rev && <Chip>Current</Chip>}
+                          <span className="text-aui-xs text-aui-muted">
+                            {ago(h.created_at)} by {h.created_by_name || h.created_by}
+                          </span>
+                          <span className="text-aui-xs text-aui-muted">
+                            {h.spec.provider} / {h.spec.model}
+                          </span>
+                        </div>
+                        {editable && h.rev !== revision.rev && (
+                          <button type="button" className={button} onClick={() => restore(h)}>
+                            Restore as Revision {revision.rev + 1}
+                          </button>
+                        )}
+                      </div>
+                      {older ? (
+                        <details>
+                          <summary className="cursor-pointer text-aui-xs text-aui-muted">
+                            What changed from revision {older.rev}
+                          </summary>
+                          <div className="pt-2">
+                            <Diff before={older.spec.system_prompt} after={h.spec.system_prompt} />
+                          </div>
+                        </details>
+                      ) : (
+                        <p className="text-aui-xs text-aui-muted">The first revision.</p>
+                      )}
+                    </li>
                   );
                 })}
-              </div>
-              <p className="text-aui-xs text-aui-muted">
-                For other conditions, people to notify and cooldowns,{" "}
-                {onOpenAlerts ? (
-                  <button
-                    type="button"
-                    className="underline hover:text-aui-fg"
-                    onClick={onOpenAlerts}
-                  >
-                    add a rule under Alerts
-                  </button>
-                ) : (
-                  "add a rule under Alerts"
-                )}
-                .
-              </p>
-            </div>
-          )}
-          {myRules.length === 0 ? (
-            <p className={`${card} text-aui-sm text-aui-muted`}>
-              No rules watch this agent. Rules for any agent still apply.
-            </p>
-          ) : (
-            <ul className="humagen-glass overflow-hidden rounded-aui-lg">
-              {myRules.map((r) => (
-                <li
-                  key={r.name}
-                  className="flex items-center justify-between gap-3 border-aui-border border-b px-4 py-2.5 last:border-b-0"
-                >
-                  <span className="min-w-0">
-                    <span className="block text-aui-sm text-aui-fg">{r.name}</span>
-                    <span className="block text-aui-xs text-aui-muted">
-                      {r.kind.replace("_", " ")}
-                      {r.threshold ? `, threshold ${r.threshold}` : ""}, {r.severity}
-                    </span>
-                  </span>
-                  {canAlert && (
-                    <button
-                      type="button"
-                      className={button}
-                      onClick={() =>
-                        api
-                          .deleteAlertRule(r.name)
-                          .then(onRulesChanged)
-                          .catch(() => {})
-                      }
-                    >
-                      Remove
-                    </button>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      )}
-
-      {tab === "revisions" && revision && (
-        <ol className="flex flex-col gap-2">
-          {history.map((h, i) => {
-            const older = history[i + 1];
-            return (
-              <li key={h.rev} className={`${card} flex flex-col gap-2`}>
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                    <span className="text-aui-sm font-medium text-aui-fg">Revision {h.rev}</span>
-                    {h.rev === revision.rev && <Chip>Current</Chip>}
-                    <span className="text-aui-xs text-aui-muted">
-                      {ago(h.created_at)} by {h.created_by_name || h.created_by}
-                    </span>
-                    <span className="text-aui-xs text-aui-muted">
-                      {h.spec.provider} / {h.spec.model}
-                    </span>
-                  </div>
-                  {editable && h.rev !== revision.rev && (
-                    <button type="button" className={button} onClick={() => restore(h)}>
-                      Restore as Revision {revision.rev + 1}
-                    </button>
-                  )}
-                </div>
-                {older ? (
-                  <details>
-                    <summary className="cursor-pointer text-aui-xs text-aui-muted">
-                      What changed from revision {older.rev}
-                    </summary>
-                    <div className="pt-2">
-                      <Diff before={older.spec.system_prompt} after={h.spec.system_prompt} />
-                    </div>
-                  </details>
-                ) : (
-                  <p className="text-aui-xs text-aui-muted">The first revision.</p>
-                )}
-              </li>
-            );
-          })}
-        </ol>
+              </ol>
+            )}
+          </div>
+        </div>
       )}
     </Page>
   );

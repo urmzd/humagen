@@ -33,6 +33,8 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-080 | A conversation is one surface with the composer floating over it, on a named z-index scale, and Stop works at two levels: the composer stops everything in the session, each running agent, call to another agent, step and background task stops from its own row; the composer's footer says who answers, the approval mode and a usage ring that opens the session's usage and the limits that hold it | Implemented: `Thread` `footer` (`packages/web/src/Thread.tsx`), the `--aui-z-*` scale (`packages/render-web/src/theme.css`), `ItemStopControl` and `ItemStopsContext` (render-web `stop.tsx`, `meta.tsx`), `Composer` `stopAll` and `footer`, `stops.tsx`, `SessionUsage.tsx`, `GET /api/threads/{id}/usage` (`internal/platform/session_usage.go`). Evidence: `composer-overlay.dom.test.tsx`, `TestThreadUsage*` and `foldUsage` tests; before and after captures at 1280x800 and 390x844, light and dark, on PR #474. Not done: Run in Background for a call already running (the runtime starts a call in the background only when the model asks, with `background: true`); a real iOS keyboard. |
 | DES-077 | Background work asked in Slack reports back where it was asked: a watch that fires or runs out, a goal or task that ends, and `notify` reply once in the app's Slack thread that asked, naming the person, with the result's one line and Open Session; anywhere else, or when a run behind it read private context, the person is told in their direct messages; work someone stopped tells nobody | Implemented: `SurfaceNoticesFor` forwards `result` notices only for background work and `notify` (`internal/platform/background_report.go`), with `reply_in` on the event stream (`InboxNotice.reply_in`, `InboxNoticeReply`); the Slack app's `report` in `app.tsx`. Evidence: `TestBackgroundWorkAskedInSlackRepliesInTheThread`, `TestABackgroundResultFromPrivateContextIsSentToThePersonAlone`, `TestBackgroundWorkAskedElsewhereIsSentToTheirDirectMessages`, and the three background tests in `apps/slack/src/dm.test.tsx`. Not yet seen in a live Slack workspace. |
 | DES-078 | An agent in a conversation, a Slack thread among them, proposes a schedule on a clear approval card ("Create a schedule: plaud-new, every 15 minutes, posts in this Slack channel (C0PLAUD) only when something fires", with what it checks, how often, the agent, where it posts and its next run), confirms the next run once approved, and Run once now is itself an approved action | Implemented: run tools `create_schedule`, `update_schedule`, `pause_schedule`, `resume_schedule` and `run_schedule` (`schedule_tools.go`) call the API's own routes as the person, every call asked of that person whatever the policy allows; the card's fields come from `schedulePreview` (`packages/adapter/src/schedule.ts`), words in `copy.schedules.proposal`. Evidence: `TestAnAgentSchedulesWorkForThePersonItWorksFor`, `TestEveryScheduleCallIsAskedOfThePerson`, `TestScheduleToolsRefuseRunsThatActForNoPerson`, adapter `schedule.test.ts`. Not checked: the card in a live Slack workspace or against Slack's validator (no network here), and a live model proposing one. See [schedules from a conversation](../guides/schedules-from-a-conversation.md) |
+| DES-079 | Run and Answer: in a session set to it, the approval agent also answers a question an agent asks a person when the session already settles it, as the person who chose it, and hands them the rest | Implemented: `threads.ApprovalDecide` (`pkg/threads/approval.go`), `internal/platform/approval_questions.go`, the `answer` field and `DescribeQuestion` in `pkg/approve`, `PUT /api/threads/{id}/approval` with `decide`, Answer Questions beside Run in `ApprovalToggle.tsx`, and the judgement on a question's card (`ClarificationCard`). Evidence: `TestRunAndAnswerAnswersAChoiceTheSessionSettles`, `TestRunAndAnswerAnswersAReply`, `TestWhatRunAndAnswerDoesNotSettleWaitsForAPerson`, `TestRunAndAnswerNeverAnswersForSomeoneElse`, `TestRunAndAnswerLeavesWhatSomeoneElseAskedFor`, `TestRunLeavesQuestionsForAPerson`, `TestRunAndAnswerIsAModeAPersonChooses`, `TestApprovalModeIsSetOnItsOwnAndKept`, `TestAQuestionsAnswerIsReadBesideTheDecision`; `approval-toggle.dom.test.tsx`, `ui.test.tsx`. Not run: `pnpm validate:slack` (needs the Slack bench) and a screen check in a running console. |
+| DES-081 | An agent is made goal first and is met on its home: a new agent starts from a searchable list of outcomes (Start from scratch first), is given a name, a shape and a color with its bot drawn as it will be, and opens on a home where it introduces itself, offers jobs to hand it and takes a message addressed to it; its settings are grouped as General, Access, Tools and Behavior, and General shows what it completed this week, how it answers in Slack, Pause and Retire | Implemented: see [DES-081](#des-081-goal-first-agents-a-home-and-grouped-settings). |
 | DES-079 | Auto answers questions: in a session set to Auto, the approval agent also answers a question an agent asks a person when the session already settles it, as the person who chose it, and hands them the rest. Two modes, Ask and Auto; Run and Answer folded into Auto | Implemented: `threads.ApprovalAuto` and `threads.ApprovalModeOf`, which reads a stored `decide` as `auto` (`pkg/threads/approval.go`), `internal/platform/approval_questions.go`, the `answer` field and `DescribeQuestion` in `pkg/approve`, `PUT /api/threads/{id}/approval` with `auto` (`decide` still taken as `auto`), the Ask and Auto menu in `ApprovalToggle.tsx`, and the judgement on a question's card (`ClarificationCard`). Evidence: `TestAutoAnswersAChoiceTheSessionSettles`, `TestAutoAnswersAReply`, `TestWhatAutoDoesNotSettleWaitsForAPerson`, `TestAutoNeverAnswersForSomeoneElse`, `TestAutoLeavesWhatSomeoneElseAskedFor`, `TestAskLeavesQuestionsForAPerson`, `TestDecideIsTakenAsAuto`, `TestAutoIsAModeAPersonChooses`, `TestApprovalModeIsSetOnItsOwnAndKept`, `TestStoredApprovalModesReadAsAuto`, `TestAQuestionsAnswerIsReadBesideTheDecision`; `approval-toggle.dom.test.tsx`, `ui.test.tsx`. Not run: `pnpm validate:slack` (needs the Slack bench) and a screen check in a running console. |
 | DES-076 | A session's Details pane is a workbench of tabs, and what a person does by hand in one goes with their next message | Implemented: the tab registry (`workbench.ts`), the pane (`Workbench.tsx`), six tab addresses (`?panel=details&bench=`), and the record, list and fold of what was done by hand (`human-activity.ts`, `humanActivity.tsx`). All six tabs are built: Details, Browser (`WorkbenchBrowser.tsx`, `POST /api/sessions/{id}/browser`), Terminal (`WorkbenchTerminal.tsx`, `POST /api/threads/{id}/sandboxes/commands` on a docker sandbox), Changes (`WorkbenchChanges.tsx`), Side Chat (`WorkbenchSidechat.tsx`, `GET /api/threads/{id}/forks`) and Search (`WorkbenchSearch.tsx`). Browser, Terminal, Changes, Side Chat and the Workspace file editor record what a person did; Search records nothing. Not built: the agent's own screenshots and live video in Browser, a persistent shell in Terminal, a baseline from before the session in Changes, and keeping the list of what was done by hand across a reload. The Details tab keeps its earlier 12px and 13px labels. Evidence: `workbench.dom.test.tsx`, `workbench-browser.dom.test.tsx`, `workbench-terminal.dom.test.tsx`, `workbench-changes.dom.test.tsx`, `workbench-sidechat.dom.test.tsx`, `workbench-search.dom.test.tsx`, `room.dom.test.tsx`, `route.test.ts`, core `human-activity.test.ts`, `TestWhatWasDoneByHandTagsNobody`, `TestAPersonActsOnTheSessionsBrowserByHand`, `TestAPersonsCommand*`, `TestSandboxCommandRouteRunsForItsPosterAndNobodyElse`; the six tabs seen together in a running console at 1280x800 and 390x844, light and dark, where five things done by hand in four tabs reached the agent in one message and the list then cleared. |
 | DES-069 | Conversation overview and visible work controls | Implemented: Overview, Workspace, Context and Activity header controls collapse into the menu below the conversation's 3xl breakpoint. The addressed overview folds environment, latest context, agents and run changes from existing APIs; delegated transcript calls share one collapsed disclosure. Evidence: `conversation-overview.dom.test.tsx`, `timeline.dom.test.tsx` and route round-trip tests. Live browser verification unavailable in this session. |
@@ -2728,6 +2730,74 @@ Evidence: `go test -race ./pkg/threads ./pkg/approve ./internal/platform
 `TestAQuestionIsDescribedWithItsOptionsAndWhoItIsFor`); `cd apps/web && pnpm
 test` (`approval-toggle.dom.test.tsx`, `ui.test.tsx`). Not run:
 `pnpm validate:slack`, which needs the Slack bench, and a screen check.
+
+### DES-081: Goal-first agents, a home and grouped settings
+
+**Creation is goal first.** New Agent opens `/agents/new`: the outcomes a new
+agent can start from, each a title and what a person gets from it ("Document
+Writer: Documents you can publish"), searchable, with Start from scratch first
+and always listed. The templates come from `GET /api/agent-templates`
+(`internal/platform/agent_templates.go`), so the builder and any API client
+read the same list; each carries a description, a greeting, a shape, its
+instructions, the tools it grants (each one the builder may grant) and up to
+three starters. Describe It to the entry agent stays as the way to build one
+in a session. Continue opens `/agents/new/{template}`: a name (the handle
+people tag is derived and shown), the shape and color pickers of the Look tab
+(`ShapePicker`, `HuePicker`), Shuffle, and the bot drawn beside them as it
+will be. Create Agent makes an ordinary agent with `POST /api/agents` on the
+entry agent's model chain and keeps its look, greeting and starters with
+`PUT /api/agents/{name}/look`. A color another agent holds cannot be picked; a
+taken name is said plainly; a template the catalog no longer has falls back to
+the goal step; a failed read of the templates says so with Retry.
+
+**An agent opens on its home.** Its bot, then the agent introducing itself in
+its own voice ("Hi, I'm Lead." and its greeting, else its description), then
+Put {name} to work: its starters, or else one per skill it uses by default, run
+as that skill's slash command. Each starter opens a session with the agent and
+the message written. The composer under them is `Composer`, addressed to the
+agent ("Ask Lead to…"), and starts a session with it. A paused agent says so.
+There is no model picker: people pick agents, not models (DES-067). Settings
+and Manage with builder are the page's actions.
+
+**Settings are grouped.** An agent's settings are one page headed by one title
+(Settings, with the agent's mark and revision), with its sections in a grouped
+list beside them, and on a phone one Section picker: General (General, Look,
+Instructions), Access (Sharing and Calls, Slack, Approvals), Tools (Skills and
+Knowledge, Model) and Behavior (Memory, Evals, Rules, Revisions). Each section
+keeps the address its tab had (`/agents/{name}/{section}`); General and Slack
+are new (`/agents/{name}/general`, `/agents/{name}/slack`). This replaces the
+strip of eleven tabs: an agent's page is not headed by tabs.
+
+**General** shows the agent's bot and name, renamed in place (its look's
+display name), the runs it completed in the last seven days with a link to
+those sessions, how it answers in Slack (through the workspace's app, or its
+own app from #467) with Set Up, its instructions at a glance with Edit, and
+Stop or remove: Pause (reversible, `PUT /api/agents/{name}/control`, which
+admission already enforces) and Retire (`DELETE /api/agents/{name}`, the same
+as the builder's `retire_agent`). Retire asks first. A retired agent leaves the
+workspace, its sessions and revisions stay readable, and **its name stays
+taken**: a create with it is 409. Everything the platform keeps by an agent's
+name (memory, schedules, action policies, its Slack app, look and home
+project) would otherwise pass to whatever agent took the name next, so the
+name is kept rather than each store being detached one by one, which a new
+store could forget. Its schedules are paused on retiring, and Run Now or
+Resume on one is 409 until it is pointed at another agent; a schedule never
+runs a different agent unless someone chose that agent. The platform's own
+agents, a Store package's (removed with the package, which may install it
+again) and the platform file's (written again at every start) can be paused,
+never retired by a person (409). Pull requests merged are not shown: no route
+records them per agent.
+
+If the look, greeting and starters cannot be saved after the agent is made,
+Customize keeps the draft, says so, and offers Save Look Again (for the agent
+already made, never a second one) or Open Without Look.
+
+Evidence: `agent-create.dom.test.tsx`, `agent-home.dom.test.tsx`,
+`agent-settings.dom.test.tsx`, `route.test.ts`; `TestAgentTemplatesAreListed`,
+`TestRetireAgent`, `TestAgentTemplatesAreWellFormed` and the contract checks
+in `TestResponsesMatchTheSpec`. Before and after screens at 1280x800 and
+390x844, light and dark, in PR #476.
+
 
 ### DES-080: One session panel, reached from the header
 

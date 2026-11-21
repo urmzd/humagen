@@ -2369,6 +2369,39 @@ paths:
         "409": {$ref: "#/components/responses/Conflict"}
         "413": {$ref: "#/components/responses/TooLarge"}
         "500": {$ref: "#/components/responses/ServerError"}
+    delete:
+      operationId: retireAgent
+      tags: [agents]
+      summary: Retire an agent
+      description: |
+        Retires the agent for good: it leaves the workspace and stops
+        answering, its sessions and revisions stay readable, its schedules
+        are paused (they run again only once they ask another agent, and
+        Run Now or Resume before that is 409), and its name stays taken, so
+        a create with it is 409 and nothing it left keyed by its name (its
+        memory, schedules, action policies, Slack app, look and home) passes
+        to a new agent. Pausing it (`PUT /api/agents/{name}/control`) keeps
+        it instead. `rev`, when given, is the revision the caller read; one
+        written since is 409. The platform's own agents, a Store package's
+        and the platform file's are never retired by a person (409). The
+        builder's `retire_agent` tool does the same after approval.
+      x-permission: agents:write
+      parameters:
+        - {$ref: "#/components/parameters/AgentName"}
+        - name: rev
+          in: query
+          required: false
+          description: The revision the caller read.
+          schema: {type: integer, minimum: 0}
+      responses:
+        "204":
+          description: Retired.
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/ServerError"}
   /api/agents/{name}/reset:
     post:
       operationId: resetAgent
@@ -4537,6 +4570,28 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
         "500": {$ref: "#/components/responses/ServerError"}
 
+  /api/agent-templates:
+    get:
+      operationId: listAgentTemplates
+      tags: [agents]
+      summary: List the goals a new agent can start from
+      description: |
+        Each template is an outcome a person wants, with the instructions,
+        tools, look and starters a new agent made from it begins with, and
+        the model chain it starts on (the entry agent's). A template is a
+        starting point: the agent made from one is an ordinary agent, created
+        with `POST /api/agents` and styled with `PUT /api/agents/{name}/look`.
+      x-permission: agents:read
+      x-readonly: true
+      responses:
+        "200":
+          description: The templates, blank first, and the model a new agent starts on.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AgentTemplateCatalog"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "500": {$ref: "#/components/responses/ServerError"}
   /api/project-templates:
     get:
       operationId: listProjectTemplates
@@ -5428,6 +5483,7 @@ paths:
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
         "500": {$ref: "#/components/responses/ServerError"}
   /api/schedules/{name}/run:
     post:
@@ -5456,6 +5512,7 @@ paths:
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
         "402": {$ref: "#/components/responses/Refused"}
         "429": {$ref: "#/components/responses/Refused"}
         "500": {$ref: "#/components/responses/ServerError"}
@@ -16289,6 +16346,52 @@ components:
             configured; never taken from a request.
           type: string
           readOnly: true
+    AgentTemplateCatalog:
+      description: The goals a new agent can start from, and the model chain it starts on.
+      type: object
+      required: [templates, model]
+      properties:
+        templates:
+          type: array
+          maxItems: 32
+          items: {$ref: "#/components/schemas/AgentTemplate"}
+        model:
+          description: The entry agent's model chain. Empty when the workspace has no entry agent.
+          type: object
+          required: [provider, model]
+          properties:
+            provider: {type: string}
+            model: {type: string}
+            fallbacks:
+              type: array
+              items: {$ref: "#/components/schemas/ModelRef"}
+            fallback_on:
+              type: array
+              items: {type: string}
+    AgentTemplate:
+      description: One goal a new agent can start from.
+      type: object
+      required: [id, title, outcome, description, greeting, shape, system_prompt, tools, starters]
+      properties:
+        id: {type: string, description: "The template's address in the console: /agents/new/{id}."}
+        title: {type: string, description: "What the agent is."}
+        outcome: {type: string, description: "What a person gets from it, in a few words."}
+        description: {type: string, description: "The new agent's description."}
+        greeting: {type: string, description: "What it says about itself, in its own voice."}
+        shape: {type: string, description: "The bot it is drawn as, one of the look's shapes."}
+        system_prompt: {type: string}
+        tools:
+          type: array
+          items: {type: string}
+        starters:
+          type: array
+          maxItems: 3
+          items:
+            type: object
+            required: [title, prompt]
+            properties:
+              title: {type: string}
+              prompt: {type: string}
     AgentLookView:
       description: An agent's look, its hue, and what a picker offers.
       type: object

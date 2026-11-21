@@ -1045,9 +1045,15 @@ import type {
   AgentControl,
   AgentControlInput,
   AgentNetwork,
+  AgentTemplateCatalog,
   Assignment,
   AssignmentInput,
   HandoffContract,
+} from "../../../packages/client/src/generated/types.ts";
+
+export type {
+  AgentTemplate,
+  AgentTemplateCatalog,
 } from "../../../packages/client/src/generated/types.ts";
 
 export const api = {
@@ -1317,6 +1323,11 @@ export const api = {
   setAgentHome: (agent: string, project: string) =>
     call<AgentHome>("PUT", `/api/agents/${encodeURIComponent(agent)}/home`, { project }),
   createAgent: (spec: AgentSpec) => call<Revision>("POST", "/api/agents", spec),
+  /** The goals a new agent can start from, blank first, and the model it starts on. */
+  agentTemplates: () => call<AgentTemplateCatalog>("GET", "/api/agent-templates"),
+  /** Retires an agent: it leaves the workspace; its sessions and revisions stay readable. */
+  retireAgent: (name: string, rev?: number) =>
+    call<void>("DELETE", `/api/agents/${encodeURIComponent(name)}${rev ? `?rev=${rev}` : ""}`),
   reviseAgent: (spec: AgentSpec, expectedRev: number) =>
     call<Revision>("PUT", `/api/agents/${encodeURIComponent(spec.name)}`, {
       spec,

@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/urmzd/saige/flow/connectors/cron"
@@ -19,13 +20,22 @@ import (
 // the file stays, unmanaged. It runs once the file's agents and their homes
 // are in, so an agent not available in its project fails the start, naming
 // the schedule.
-func applySchedules(p *platform.Platform, tenant string, w spec.Workspace) error {
+func applySchedules(p *platform.Platform, tenant string, w spec.Workspace, log *slog.Logger) error {
 	now := time.Now().UTC()
 	declared := map[string]bool{}
 	for i, pr := range w.Projects {
 		for j, d := range pr.Schedules {
 			at := fmt.Sprintf("platform %q: workspace.projects[%d].schedules[%d]", tenant, i, j)
 			agent := wire.NormalizeName(d.Agent)
+			// A retired agent's schedule is not declared, and one already
+			// held is left as it is (paused when the agent was retired),
+			// rather than failing the start or leaving a schedule that
+			// only fails when it fires.
+			if p.AgentRetired(tenant, agent) {
+				retiredNameSkipped(log, tenant, agent, fmt.Sprintf("workspace.projects[%d].schedules[%d]", i, j))
+				declared[d.Name] = true
+				continue
+			}
 			if err := p.Available(tenant, pr.Name, agent); err != nil {
 				return fmt.Errorf("%s.agent: %w", at, err)
 			}
