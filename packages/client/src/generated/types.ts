@@ -3204,6 +3204,8 @@ export interface PersonalPreferences {
 export interface Branding {
   /** The product's name. */
   name: string;
+  /** The https address of the page of terms the console links to beside its notice that the product is AI. Null shows the notice without a link. */
+  terms_url: string | null;
   /** The entry agent's agent name. People see it as name, never as this. */
   entry_agent: string;
   /** The text beside the logo in the sidebar. Empty shows the logo alone. */

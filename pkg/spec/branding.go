@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"net/url"
 	"path"
 	"regexp"
 	"strconv"
@@ -68,6 +69,10 @@ type Branding struct {
 	Copy map[string]string `json:"copy,omitempty"`
 	// Email is what notification emails say.
 	Email *EmailCopy `json:"email,omitempty"`
+	// TermsURL is the page of terms the console links to beside its notice
+	// that the product is AI and can make mistakes. Left out, the notice has
+	// no link: Humagen ships no terms of its own.
+	TermsURL string `json:"terms_url,omitempty"`
 }
 
 // Logo is an image file, SVG, PNG, WebP or JPEG, read at start.
@@ -365,7 +370,29 @@ func (b Branding) check(system bool) error {
 	if err := checkCopy(b.Copy); err != nil {
 		return err
 	}
+	if err := checkTermsURL(b.TermsURL); err != nil {
+		return fmt.Errorf("branding.terms_url: %w", err)
+	}
 	return checkEmail(b.Email)
+}
+
+// MaxTermsURL is the longest address branding.terms_url may be.
+const MaxTermsURL = 500
+
+// checkTermsURL checks the address of a page of terms: an https address
+// with a host and no credentials, since the console opens it for a person.
+func checkTermsURL(s string) error {
+	if s == "" {
+		return nil
+	}
+	if err := checkText(s, MaxTermsURL, false); err != nil {
+		return err
+	}
+	u, err := url.Parse(s)
+	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil {
+		return fmt.Errorf("%q is not an https address, such as https://example.com/terms", s)
+	}
+	return nil
 }
 
 func checkName(s string) error {
@@ -463,6 +490,9 @@ func MergeBranding(sys, ws Branding) Branding {
 	}
 	if ws.Logo != nil {
 		out.Logo = ws.Logo
+	}
+	if ws.TermsURL != "" {
+		out.TermsURL = ws.TermsURL
 	}
 	if p := ws.Palette; p != nil {
 		var merged Palette

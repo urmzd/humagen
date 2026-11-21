@@ -67,6 +67,10 @@ func TestBrandingRefuses(t *testing.T) {
 		"a logo with no path":         {system: `logo: {alt: Acme}`, want: "branding.logo.path is required"},
 		"markup in a name":            {system: `name: "<b>Acme</b>"`, want: "branding.name: plain text"},
 		"an unknown field":            {system: `favicon_dir: ./icons`, want: "favicon_dir"},
+		"terms that are not https":    {system: `terms_url: http://acme.example/terms`, want: "branding.terms_url"},
+		"terms that are a script":     {platform: `terms_url: "javascript:alert(1)"`, want: "branding.terms_url"},
+		"terms with no host":          {system: `terms_url: "https:///terms"`, want: "branding.terms_url"},
+		"terms with a password":       {system: `terms_url: "https://a:b@acme.example/terms"`, want: "branding.terms_url"},
 		"a workspace accent lost on the deployment's surface": {system: `palette: {surface: {dark: "#000000"}, text: {dark: "#ffffff"}}`,
 			platform: `palette: {accent: {dark: "#101010"}}`, want: "over the System document's"},
 	} {
@@ -86,6 +90,39 @@ func TestBrandingRefuses(t *testing.T) {
 				t.Fatalf("got %v, want %q", err, tc.want)
 			}
 		})
+	}
+}
+
+func TestTermsURL(t *testing.T) {
+	docs, err := Parse([]byte(`api_version: humagen/v1
+kind: System
+spec:
+  branding:
+    terms_url: https://acme.example/terms
+---
+api_version: humagen/v1
+kind: Platform
+metadata: {name: default}
+spec:
+  branding:
+    wordmark: Field
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := docs.Config
+	if err := cfg.check(); err != nil {
+		t.Fatal(err)
+	}
+	sys := cfg.System.Spec.Branding
+	if got := MergeBranding(sys, cfg.Platforms[0].Spec.Branding).TermsURL; got != "https://acme.example/terms" {
+		t.Fatalf("a workspace that names no terms keeps the deployment's: %q", got)
+	}
+	if got := MergeBranding(sys, Branding{TermsURL: "https://north.example/terms"}).TermsURL; got != "https://north.example/terms" {
+		t.Fatalf("a workspace's terms win: %q", got)
+	}
+	if got := MergeBranding(Branding{}, Branding{}).TermsURL; got != "" {
+		t.Fatalf("no terms are Humagen's own: %q", got)
 	}
 }
 

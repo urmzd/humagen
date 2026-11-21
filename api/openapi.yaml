@@ -16823,9 +16823,12 @@ components:
     Branding:
       description: How the console brands itself for the caller's workspace.
       type: object
-      required: [name, wordmark, title, logo, logo_dark, logo_alt, style, starters, copy, entry_agent]
+      required: [name, wordmark, title, logo, logo_dark, logo_alt, style, starters, copy, entry_agent, terms_url]
       properties:
         name: {type: string, description: The product's name.}
+        terms_url:
+          type: [string, "null"]
+          description: The https address of the page of terms the console links to beside its notice that the product is AI. Null shows the notice without a link.
         entry_agent: {type: string, description: "The entry agent's agent name. People see it as name, never as this."}
         wordmark: {type: string, description: The text beside the logo in the sidebar. Empty shows the logo alone.}
         title: {type: string, description: What follows the page's name in the browser tab.}

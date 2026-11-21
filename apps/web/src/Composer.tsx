@@ -9,6 +9,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { termsUrl } from "./branding.ts";
 import {
   type Command,
   commandsFor,
@@ -34,7 +35,7 @@ import {
   withMention,
   withoutMention,
 } from "./tags.ts";
-import { AgentMark, button, composerIconControl, Presence, primary } from "./ui.tsx";
+import { AgentMark, button, composerIconControl, Presence, primary, textLink } from "./ui.tsx";
 import {
   canRecord,
   MAX_RECORDING_MS,
@@ -1092,7 +1093,31 @@ export function Composer({
         )}
       </form>
       {footer}
+      <AiNotice />
     </div>
+  );
+}
+
+/**
+ * The line under every composer: the product is AI and can make mistakes,
+ * with a link to the workspace's page of terms when its branding names one
+ * (branding.terms_url). A line of its own, so it reads the same at every
+ * width and nothing in the footer row moves for it.
+ */
+function AiNotice() {
+  const terms = termsUrl();
+  return (
+    <p data-layer="ai-notice" className="px-2 text-center text-aui-xs leading-6 text-aui-muted">
+      {defaultCopy.dock.aiNotice(defaultCopy.product)}
+      {terms && (
+        <>
+          {" "}
+          <a className={textLink} href={terms} target="_blank" rel="noreferrer">
+            {defaultCopy.dock.terms}
+          </a>
+        </>
+      )}
+    </p>
   );
 }
 

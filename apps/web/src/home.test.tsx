@@ -256,7 +256,8 @@ test("retained Company announcement sits above the greeting and uses one page he
   assert.doesNotMatch(html, /Mark as Read|role="alert"|animate/);
 });
 
-test("Home keeps starters after the input, before session content, with no AI disclaimer", () => {
+// The AI notice is the composer's (DES-085): the page adds none of its own.
+test("Home keeps starters after the input, before session content, and adds no AI notice of its own", () => {
   const html = renderToStaticMarkup(
     <HomePage greeting="Hello" canRun hasAgents below={<div>Updates fixture</div>}>
       {prompt}

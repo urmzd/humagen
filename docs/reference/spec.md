@@ -190,6 +190,7 @@ spec:
       heading: "Georgia, serif"
       files: [{family: Inter, path: ./brand/InterVariable.woff2, weight: "100 900"}]   # served for the lists to name
     email: {subject: "{name} updates", multiple: "{count} updates wait for you in {name}."}
+    terms_url: https://acme.example/terms   # the Terms link under the composer. Left out: no link
 
   notifications:            # optional outbound delivery; people must also opt in
     email:
@@ -798,6 +799,7 @@ the workspace signs in.
 | `starters` | Up to 6 `{agent, label, text}` suggestions on an empty conversation, each shown only where its agent can answer. `[]` shows none | both |
 | `copy` | The console's own text by key, such as `navigation.agents: Assistants`. `humagen config copy-keys` lists the keys; an unknown one is an error. A workspace's keys are merged over the deployment's | both |
 | `email` | What notification emails say: `subject`, `single` (one update), `multiple` (with `{count}`) and `footer`. `{name}` is the product's name in each. Left out, Humagen's under the product's name | both |
+| `terms_url` | The `https` address of your page of terms. The console shows "{name} is AI and can make mistakes." under the composer, and adds a Terms link to this address when it is set. Left out, the line has no link | both |
 
 Colors are hex, `#rgb` or `#rrggbb`. Text must reach 4.5:1 on its surface and
 the accent 3:1 in each theme (WCAG AA), against Humagen's own for a side left

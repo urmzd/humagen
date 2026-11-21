@@ -23,7 +23,25 @@ export function servedBranding(name = servedName()): Branding {
     starters: null,
     copy: {},
     entry_agent: "humagen",
+    terms_url: null,
   };
+}
+
+/** The workspace's page of terms, once branding is applied. Null is none. */
+let terms: string | null = null;
+
+/**
+ * The page of terms the composer's notice links to, or null for no link.
+ * Only an https address is a link: the server checks it, and this keeps any
+ * other scheme out of an href.
+ */
+export function termsUrl(): string | null {
+  return terms;
+}
+
+/** Remember the workspace's page of terms. Anything but an https address forgets it. */
+export function setTermsUrl(url: string | null | undefined): void {
+  terms = url?.startsWith("https://") ? url : null;
 }
 
 /** The entry agent's own name, and the name people see it by, once branding is applied. */
@@ -92,5 +110,6 @@ export function accentAttribute(accent?: string): string {
 export function brandCopy(target: { product?: unknown }, branding: Branding): void {
   if (typeof target.product === "string") target.product = branding.name;
   setEntryAgent(branding.entry_agent || "", branding.name);
+  setTermsUrl(branding.terms_url);
   applyCopy(target, branding.copy ?? {});
 }

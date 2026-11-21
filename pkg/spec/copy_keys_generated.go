@@ -1213,6 +1213,7 @@ var copyKeyList = []string{
 	"dock.stopped",
 	"dock.stopping",
 	"dock.stoppingAll",
+	"dock.terms",
 	"dock.usage.atLeast",
 	"dock.usage.close",
 	"dock.usage.context",
