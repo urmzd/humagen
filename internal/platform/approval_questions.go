@@ -17,7 +17,7 @@ import (
 	"github.com/urmzd/humagen/pkg/threads"
 )
 
-// Run and Answer (threads.ApprovalDecide) is Run, and the approval agent
+// In Auto (threads.ApprovalAuto) the approval agent decides gated calls and
 // also answers a question an agent asks a person (ask_person: a choice or a
 // reply), as the person who chose the mode, when the session already
 // settles the answer: an option they already stated, or a confirmation of
@@ -31,18 +31,18 @@ import (
 // every decision and hand-off is audited as approval.judged.
 
 // isPersonQuestion reports whether q is a question an agent asks a person,
-// which only Run and Answer may answer: a choice or a reply, not an
+// which Auto may answer: a choice or a reply, not an
 // approval, a budget request or any other hold.
 func isPersonQuestion(q event.Question) bool {
 	return (q.Kind == event.QuestionChoice || q.Kind == event.QuestionReply) && q.Hold == nil && !isBudget(q)
 }
 
 // autoAnswer hands a question run parked on to the approval agent, when the
-// session is set to Run and Answer and the question is one the person who
-// chose it could answer themselves. Anything else stays for a person, and
-// the hand-off is audited.
+// session is set to Auto and the question is one the person who chose it
+// could answer themselves. Anything else stays for a person, and the
+// hand-off is audited.
 func (p *Platform) autoAnswer(ctx context.Context, run runs.Run, q event.Question, m inbox.Message, a threads.Approval) {
-	if !a.Decides() {
+	if !a.Auto() {
 		return
 	}
 	by := p.approvingFor(run.Tenant, a)
@@ -111,7 +111,7 @@ func (p *Platform) approvalQuestion(run runs.Run, q event.Question, spec wire.Ag
 		AskedOf:     q.AskedOf,
 		For:         name,
 		Policy: []string{
-			fmt.Sprintf("%s set the session to Run and Answer, so you may answer in their place, and only what they have already settled in the session.", name),
+			fmt.Sprintf("%s set the session to Auto, so you may answer in their place, and only what they have already settled in the session.", name),
 			"Ask a person about a preference they have not stated, money or spending, a credential or secret, anything that cannot be undone, or anything asked of someone else.",
 			"Your answer is shown to them as yours, and they can correct it.",
 		},
@@ -165,8 +165,7 @@ func answerFrom(q *inbox.QuestionPart, d approve.Decision) (QuestionAnswer, appr
 	return ask("It is not a question the approval agent answers.")
 }
 
-// fileAnswer answers the question an approval run decided in Run and
-// Answer, as by, unless the run could not decide, its answer cannot be read
+// fileAnswer answers the question an approval run decided in Auto, as by, unless the run could not decide, its answer cannot be read
 // or does not fit, or it handed the question to a person. A denial of a
 // question hands it to a person.
 func (p *Platform) fileAnswer(ctx context.Context, decided, parked runs.Run, m inbox.Message, about judgedAbout, by auth.Principal) error {

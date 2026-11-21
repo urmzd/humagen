@@ -39,7 +39,7 @@ import (
 //
 // Every call is asked about, whatever the action policy allows: of the
 // person the run acts for alone, who may answer it themselves, or of the
-// approval agent in a conversation they set to Run where the policy asks.
+// approval agent in a conversation they set to Auto where the policy asks.
 
 // The tools. Each shares its name with the API operation an MCP client is
 // offered, under a registry key of its own (runToolKey).

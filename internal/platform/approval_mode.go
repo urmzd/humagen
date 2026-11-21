@@ -20,12 +20,13 @@ import (
 )
 
 // SetApprovalMode sets how a conversation's gated tool actions are approved:
-// threads.ApprovalAuto approves for who what they may approve themselves,
-// within policy, threads.ApprovalDecide does that and also answers for them
-// a question the session already settles (approval_questions.go), and
-// threads.ApprovalAsk asks a person again. It takes a person who may post
-// in the conversation, and it is audited.
+// threads.ApprovalAuto lets the approval agent approve for who what they may
+// approve themselves, within policy, and answer for them a question the
+// session already settles (approval_questions.go); threads.ApprovalAsk asks
+// a person again. decide, Run and Answer's old name, is taken as Auto. It
+// takes a person who may post in the conversation, and it is audited.
 func (p *Platform) SetApprovalMode(who auth.Principal, id, mode string) (threads.Thread, error) {
+	mode = threads.ApprovalModeOf(mode)
 	th, err := p.ThreadRecord(who.Tenant, id)
 	if err != nil {
 		return threads.Thread{}, err
@@ -92,12 +93,12 @@ func autoApprovable(q event.Question, alwaysAsk []string, forced bool, level ope
 }
 
 // autoApprove hands an approval a run parked on to the approval agent, when
-// its conversation is set to Run (approval_agent.go). The agent answers as
-// the person who chose Run, through the path every answer takes, so
+// its conversation is set to Auto (approval_agent.go). The agent answers as
+// the person who chose Auto, through the path every answer takes, so
 // self-approval, the approvers the question names and the runtime's own
 // checks all hold. Whatever it may not decide stays in the inbox for a
-// person, and every decision is audited. A question that is not an
-// approval goes to autoAnswer, which acts only in Run and Answer.
+// person, and every decision is audited. A question for a person goes to
+// autoAnswer.
 func (p *Platform) autoApprove(ctx context.Context, run runs.Run, q event.Question, m inbox.Message) {
 	if run.Thread == "" || m.ID == "" {
 		return

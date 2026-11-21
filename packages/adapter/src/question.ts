@@ -42,7 +42,7 @@ export interface WireQuestion {
   hold?: { id: string; topic?: string; data?: unknown };
   /** A `budget` inbox part's limit, as the platform keeps it on the part. */
   budget?: WireBudget;
-  /** What the approval agent said about an approval or, in Run and Answer, a question, as an inbox part keeps it. */
+  /** What the approval agent said about an approval or, in Auto, a question, as an inbox part keeps it. */
   judgement?: WireJudgement;
 }
 
@@ -294,7 +294,7 @@ export function interruptOf(q: WireQuestion, settled?: Settled): Interrupt | nul
     }
     case "choice":
     case "reply": {
-      // The approval agent's view, in a session set to Run and Answer: an answer it gave or a hand-off.
+      // The approval agent's view, in a session set to Auto: an answer it gave or a hand-off.
       const judgement = q.judgement ? judgementOf(q.judgement) : undefined;
       return {
         type: "clarification",

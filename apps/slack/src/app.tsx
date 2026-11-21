@@ -961,7 +961,9 @@ export class App {
     }
     if (this.listenTo(event)) return;
     const asked =
-      event.type === "app_mention" || (event.type === "message" && event.channel_type === "im");
+      event.type === "app_mention" ||
+      (event.type === "message" && event.channel_type === "im") ||
+      following;
     // Loop prevention: a bot's message, this app's own, an edit or a join never starts a run.
     if (!asked || (event.subtype && event.subtype !== "file_share") || event.bot_id || !event.user)
       return;
@@ -986,8 +988,9 @@ export class App {
       user: event.user,
       key: eventKey(session, event.ts),
       // A direct message is always addressed to the app, so only a channel thread has more to read.
-      history: event.type === "app_mention" && session.threadTs !== event.ts,
+      history: (event.type === "app_mention" || following) && session.threadTs !== event.ts,
     });
+    if (event.type === "app_mention" || following) this.follow(session, event.user);
   }
 
   /**
@@ -2223,9 +2226,10 @@ export class App {
   }
 
   /**
-   * Let the approval agent decide a thread's gated actions, or ask a person
-   * again: the console's toggle, set through the same route as the person
-   * who pressed, whom the client must map. Humagen decides whether they may,
+   * Set a thread to Auto, where the approval agent decides gated actions and
+   * answers what the thread settles, or back to Ask: the console's two
+   * modes, set through the same route as the person who pressed, whom the
+   * client must map. Humagen decides whether they may,
    * as it does in the console. What changed is said in the thread, with the
    * way back.
    */
@@ -3366,7 +3370,7 @@ export function approvalModeNote(
             action_id: `${ActionId.approvalMode}#0`,
             text: {
               type: "plain_text",
-              text: back === "ask" ? copy.approvals.askMeAgain : copy.approvals.letAgentDecideAgain,
+              text: back === "ask" ? copy.approvals.switchToAsk : copy.approvals.switchToAuto,
             },
             value: encodeAction({ turnId: run, target: back }),
           },

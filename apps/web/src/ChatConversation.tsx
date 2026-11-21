@@ -25,13 +25,8 @@ import { traceSource } from "./responseSource.ts";
 import { type ConversationPanel, type ConversationView, href } from "./route.ts";
 import { SessionDetailsProvider } from "./SessionDetails.tsx";
 import { SessionDetailsPanel, sessionFiles, sessionProgress } from "./SessionPanel.tsx";
-import {
-  hasPlaceLine,
-  OriginButton,
-  referenceOfPlace,
-  SessionPlace,
-  usePlace,
-} from "./SessionPlace.tsx";
+import { OriginButton, referenceOfPlace, SessionPlace, usePlace } from "./SessionPlace.tsx";
+import { useItemStops } from "./stops.tsx";
 import { AgentTint, Checkpoint, cause, Mentioned, Presence } from "./ui.tsx";
 import { Workspace } from "./Workspace.tsx";
 
@@ -79,6 +74,12 @@ function TurnView({
   actions?: ReactNode;
 }) {
   const { run, stop } = useRunStop(originalRun, canStop);
+  const itemStops = useItemStops({
+    run,
+    allowed: canStop,
+    background: [],
+    agentStop: stop ? { onStop: stop.onStop, pending: !!stop.pending } : undefined,
+  });
   const turn = useRunTurn(run);
   const index = siblings.findIndex((s) => s.id === run.id);
   const ended = run.status === "completed" || run.status === "failed";
@@ -118,6 +119,7 @@ function TurnView({
             <AgentMessage
               actions={actions}
               stop={stop}
+              itemStops={itemStops}
               disclaimer={false}
               activity={false}
               timestamp={<MessageTime at={run.created_at} />}
@@ -248,9 +250,7 @@ export function RunsConversation({
           origin={<OriginButton place={chatPlace} />}
           progress={sessionProgress(turns)}
           location={
-            hasPlaceLine(chatPlace) && (
-              <SessionPlace place={chatPlace} sender={path[0]?.actor?.display} />
-            )
+            chatPlace && <SessionPlace place={chatPlace} sender={path[0]?.actor?.display} />
           }
           agents={summary?.agents ?? [...new Set(turns.map((t) => t.agent))]}
           people={room?.thread.participants?.filter((p) => p.kind === "person").map((p) => p.name)}
@@ -271,6 +271,7 @@ export function RunsConversation({
               busy={tailWorking}
               label="Conversation"
               turns={wave}
+              footer={composer}
             >
               {path.map((run, i) => (
                 <TurnView
@@ -350,7 +351,6 @@ export function RunsConversation({
               ))}
             </Thread>
           </WebSurface>
-          {composer}
         </ConversationPage>
         {room && (
           <ConversationInfo

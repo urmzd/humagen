@@ -208,6 +208,29 @@ type SessionIdentity struct {
 	Parent      string `json:"parent"`
 	Label       string `json:"label,omitempty"`
 	SourceAlert string `json:"source_alert,omitempty"`
+	// Environment and Repos are what the person chose when starting it.
+	Environment string   `json:"environment,omitempty"`
+	Repos       []string `json:"repos,omitempty"`
+}
+
+// Bounds on a session's chosen environment and repositories.
+const (
+	MaxSessionRepos       = 10
+	MaxSessionEnvironment = 64
+	MaxSessionRepo        = 200
+)
+
+// Check refuses a stored choice that is out of bounds.
+func (s SessionIdentity) Check() error {
+	if len(s.Environment) > MaxSessionEnvironment || len(s.Repos) > MaxSessionRepos {
+		return fmt.Errorf("%w: session environment or repos too long", ErrInvalid)
+	}
+	for _, r := range s.Repos {
+		if r == "" || len(r) > MaxSessionRepo {
+			return fmt.Errorf("%w: session repo", ErrInvalid)
+		}
+	}
+	return nil
 }
 
 // Thread retains storage compatibility while sessions have one immutable agent.
@@ -443,6 +466,7 @@ func (t Thread) clone() Thread {
 	t.Agents = slices.Clone(t.Agents)
 	if t.Session != nil {
 		identity := *t.Session
+		identity.Repos = slices.Clone(identity.Repos)
 		t.Session = &identity
 	}
 	t.Fork = t.Fork.clone()
@@ -633,4 +657,10 @@ func (m Message) validate() error {
 		}
 	}
 	return nil
+}
+
+// same reports whether two identities are equal.
+func (s *SessionIdentity) same(o SessionIdentity) bool {
+	return s.Agent == o.Agent && s.Parent == o.Parent && s.Label == o.Label && s.SourceAlert == o.SourceAlert &&
+		s.Environment == o.Environment && slices.Equal(s.Repos, o.Repos)
 }

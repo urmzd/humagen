@@ -39,17 +39,19 @@ function setup() {
   return { box, type, menu, sent };
 }
 
-test("while an agent works the bar stays as it is: no Stop, no working line, no beam", async () => {
+test("while an agent works Send is Stop, for everything running, and the bar has no working line or beam", async () => {
   const { type, box, sent } = setup();
   type("Draft the plan");
   fireEvent.submit(box.closest("form") as HTMLFormElement);
   await waitFor(() => assert.deepEqual(sent, ["Draft the plan"]));
   const form = box.closest("form") as HTMLFormElement;
-  // The agent's own mark is where it is stopped (StoppableMark), not the bar.
-  assert.equal(screen.queryByRole("button", { name: /^Stop/ }), null);
+  // Asserted by name and by presence only: printing a happy-dom node does not finish.
+  const buttons = screen.getAllByRole("button").map((b) => b.getAttribute("aria-label"));
+  assert.ok(buttons.includes(defaultCopy.dock.stopAllLabel), "Stop is in Send's place");
+  assert.ok(!buttons.includes("Send message"), "Send is not shown while work runs");
   assert.equal(form.hasAttribute("data-working"), false);
-  assert.equal(form.querySelector("[data-working-beam]"), null);
-  assert.equal(screen.queryByTestId("working-thread"), null);
+  assert.ok(!form.querySelector("[data-working-beam]"), "no working beam");
+  assert.ok(!screen.queryByTestId("working-thread"), "no working line");
 });
 
 test("/ opens the command menu of skills, each with its description and kind, the match highlighted", () => {

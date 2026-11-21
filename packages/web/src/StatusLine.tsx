@@ -1,3 +1,4 @@
+import { defaultCopy } from "@humagen/components/copy";
 import {
   type ApprovalMode,
   budgetPressure,
@@ -142,17 +143,13 @@ export function StatusLine({
         </Segment>
       )}
 
-      <Segment label="Approval mode" hideBelow="sm">
+      <Segment label={defaultCopy.approvals.label} hideBelow="sm">
         <button
           type="button"
           className={segBtn}
           aria-pressed={mode === "auto"}
           disabled={!onApprovalMode}
-          title={
-            mode === "ask"
-              ? "Asks before side effects. Click to act without asking."
-              : "Acts without asking. Click to ask first."
-          }
+          title={mode === "ask" ? defaultCopy.approvals.askHint : defaultCopy.approvals.autoHint}
           onClick={() => onApprovalMode?.(mode === "ask" ? "auto" : "ask")}
         >
           {mode === "ask" ? (
@@ -160,7 +157,7 @@ export function StatusLine({
           ) : (
             <ZapIcon size={11} className="text-aui-warn" />
           )}
-          {mode === "ask" ? "Ask before acting" : "Act without asking"}
+          {mode === "ask" ? defaultCopy.approvals.ask : defaultCopy.approvals.auto}
         </button>
       </Segment>
 
