@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.181.0 (2026-11-21)
+
+### Features
+
+- **console**: the session panel says where a session is attached (#501) ([f805cfa](https://github.com/urmzd/humagen/commit/f805cfa038e0bf36aaa2de8289a6ec866afed160))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.180.0...v0.181.0)
+
+
 ## 0.179.1 (2026-11-21)
 
 ### Bug Fixes
