@@ -2126,6 +2126,8 @@ export const defaultCopy = {
       earlierFailed: (n: number) =>
         `${n} earlier failed ${n === 1 ? "command" : "commands"} not shown`,
       waiting: "waiting for you",
+      /** A call waiting on a person, when it has no title of its own. */
+      waitingCall: "A tool call",
       showMore: "Show more",
       showLess: "Show less",
       arguments: "Arguments",
@@ -2690,7 +2692,7 @@ export const defaultCopy = {
       `${percent}% working over the last ${checks} ${checks === 1 ? "check" : "checks"}`,
   },
   audit: {
-    dateRange: "Date Range",
+    dateRange: "Date range",
     rangeDefault: "Last 24 Hours",
     clearRange: "Reset Range",
     invalidRange: "Choose a valid time window of no more than 31 days.",
@@ -2707,9 +2709,9 @@ export const defaultCopy = {
       memory: "Memory",
       source: "Sources",
       credential: "Credentials",
-      action_policy: "Action Policies",
+      action_policy: "Action policies",
       assignment: "Assignments",
-      call_policy: "Agent Call Policies",
+      call_policy: "Agent call policies",
     },
     actor: "Actor",
     domain: "Domain",
@@ -2718,7 +2720,7 @@ export const defaultCopy = {
     apply: "Apply Filters",
     export: "Export CSV",
     open: "Open Resource",
-    allDomains: "All Domains",
+    allDomains: "All domains",
     csvColumns: [
       "ID",
       "When",
@@ -2754,8 +2756,8 @@ export const defaultCopy = {
     failed: "The read audit could not be loaded.",
   },
   approve: "Approve",
-  askApproval: "Ask a question",
-  declineAction: "Decline action",
+  askApproval: "Ask a Question",
+  declineAction: "Decline",
   cancel: "Cancel",
   edit: "Edit",
   confirmDestructive: {
@@ -3078,6 +3080,14 @@ export const defaultCopy = {
     } as Record<"open" | "snoozed" | "resolved", string>,
     markDone: "Mark Done",
     markDoneNamed: (title: string) => `Mark ${title} done`,
+    /** What an alert's card in a session opens, by the alert's action. */
+    open: {
+      answer: "Open Question",
+      approve: "Review Approval",
+      retry: "Review Failed Answer",
+      reconnect: "Open Connections",
+      session: "Open Session",
+    },
     /** The alerts table: its name, its column headings and what its header says once rows are ticked. */
     table: {
       label: "Alerts",

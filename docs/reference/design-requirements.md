@@ -2078,7 +2078,8 @@ post contract.
 Session alerts render beside their recorded message or above loaded history when
 the anchor is absent. Reading does not resolve them. Resolve and Snooze are
 permission-gated and offer Undo. Known actions lead to existing approval, answer,
-retry or connection controls; unknown actions open the session. A reviewed fix
+retry or connection controls; unknown actions open the session. A card beside its
+own message omits the link back to that session; page and connection links stay. A reviewed fix
 request carries `source_alert`, uses a permitted agent, and inherits its source
 audience. Alert-only sessions render before their first human message. An
 addressed older message uses a bounded `around` page read and scrolls only the
@@ -2089,12 +2090,13 @@ Rename, personal Archive/Undo and governed deletion according to access. Rename
 preserves routing; Delete requests administrator review and does not remove the
 record directly. Canonical sharing uses project access without a channel picker.
 Bring Back is offered inside Fork for a completed fork result and retains the
-existing consent review. Approval controls say Ask a question and Decline action.
+existing consent review. Approval controls say Ask a Question and Decline.
 Failure debug references are kept out of the everyday response and remain in the
 explicit issue-report draft.
 
 Evidence: `session-ux.dom.test.tsx` covers continuation metadata, header writes,
-archive synchronization, explicit deletion review, alert resolution/undo, fix
+archive synchronization, explicit deletion review, alert resolution/undo, the
+alert card beside its own message without a link back to the session, fix
 review, canonical sharing and bounded old-anchor reads. `wave.dom.test.tsx` checks
 that addressed history scrolls only the transcript once. Existing fork, share,
 room and Slack interaction suites retain their governed approval checks. Browser

@@ -396,7 +396,7 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
       path: `/messages/${ids.approval.id}`,
       act: async (page) => {
         await readySession(page);
-        await page.getByRole("button", { name: "Ask a question", exact: true }).first().waitFor();
+        await page.getByRole("button", { name: "Ask a Question", exact: true }).first().waitFor();
         await page
           .getByRole("button", { name: /^Approve(?::|$)/ })
           .first()

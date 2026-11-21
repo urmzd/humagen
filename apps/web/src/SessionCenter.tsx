@@ -39,7 +39,6 @@ import {
   LoadMore,
   Page,
   Problem,
-  primary,
   SearchField,
   Segmented,
   SkeletonRows,
@@ -726,7 +725,7 @@ export function AlertsPage({
                       <span className="col-start-2 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 @3xl:col-start-auto @3xl:justify-end">
                         <button
                           type="button"
-                          className={primary}
+                          className={button}
                           onClick={() => {
                             const page = alertPage(a) ?? to;
                             if (page) go(page);
