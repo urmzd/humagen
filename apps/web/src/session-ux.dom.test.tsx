@@ -737,3 +737,35 @@ test("initial approval positioning does not override a message link or later scr
     HTMLElement.prototype.scrollTo = oldScroll;
   }
 });
+
+test("initial approval positioning clears the composer that floats over the thread", async () => {
+  const { Thread } = await import("@humagen/web");
+  const oldScroll = HTMLElement.prototype.scrollTo;
+  const oldRect = HTMLElement.prototype.getBoundingClientRect;
+  const calls: ScrollToOptions[] = [];
+  HTMLElement.prototype.scrollTo = (options) => {
+    if (typeof options === "object") calls.push(options);
+  };
+  // The list ends at 600, the composer covers it from 450, and the card ends at 500.
+  HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
+    const edge = (top: number, bottom: number) => ({ top, bottom }) as DOMRect;
+    if (this.dataset.layer === "composer-dock") return edge(450, 600);
+    if (this.dataset.auiBlock === "approval") return edge(440, 500);
+    return edge(0, 600);
+  };
+  try {
+    const view = render(
+      <Thread initialApproval={{ run: "r1", question: "q1" }} footer={<div>Composer</div>}>
+        <div data-turn-id="r1">
+          <div data-aui-block="approval" data-aui-block-id="approval:q1:r0" />
+        </div>
+      </Thread>,
+    );
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0]?.top, 66, "the card ends 16px above the composer, not behind it");
+    view.unmount();
+  } finally {
+    HTMLElement.prototype.scrollTo = oldScroll;
+    HTMLElement.prototype.getBoundingClientRect = oldRect;
+  }
+});

@@ -94,11 +94,11 @@ export function Thread({
       item.dataset.auiBlockId?.startsWith(`approval:${initialApproval.question}:r`),
     );
     if (!root || !card) return;
+    // The composer floats over the list's end, so the card clears its top edge.
+    const viewportBottom = root.getBoundingClientRect().bottom;
+    const dockTop = dock.current?.getBoundingClientRect().top ?? viewportBottom;
     const top =
-      root.scrollTop +
-      card.getBoundingClientRect().bottom -
-      root.getBoundingClientRect().bottom +
-      16;
+      root.scrollTop + card.getBoundingClientRect().bottom - Math.min(viewportBottom, dockTop) + 16;
     root.scrollTo({ top, behavior: "auto" });
     if (root.scrollHeight - root.scrollTop - root.clientHeight >= 48) release();
   }, [focus, initialApproval, scroller, release]);
