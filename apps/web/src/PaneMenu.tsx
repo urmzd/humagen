@@ -139,7 +139,11 @@ export function PaneMenu({
     setPath([...at, id]);
   };
   const back = () => {
-    if (at.length === 0) return onClose();
+    // A menu on the bar leaves the way it steps back, so its rows slide back as it closes.
+    if (at.length === 0) {
+      if (!sheet) setDirection("back");
+      return onClose();
+    }
     setDirection("back");
     returnTo.current = at[at.length - 1];
     setPath(at.slice(0, -1));
