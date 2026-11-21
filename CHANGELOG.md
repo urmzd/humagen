@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.171.1 (2026-11-21)
+
+### Bug Fixes
+
+- **slack-sandbox**: the generated manifest names the bot Humagen (#497) ([1ebff0d](https://github.com/urmzd/humagen/commit/1ebff0d47f8b24a8d6884d3112f2973d605b9074))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.171.0...v0.171.1)
+
+
 ## 0.169.0 (2026-11-21)
 
 ### Features
