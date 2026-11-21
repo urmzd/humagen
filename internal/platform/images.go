@@ -16,9 +16,11 @@ package platform
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -44,8 +46,12 @@ const (
 )
 
 // imageRepullTimeout bounds one pull of a ready image at start, so a
-// registry that hangs holds up no other image.
-var imageRepullTimeout = 5 * time.Minute
+// registry that hangs holds up no other image. imageCheckTimeout is
+// ImageCheckTimeout, which a test shortens.
+var (
+	imageRepullTimeout = 5 * time.Minute
+	imageCheckTimeout  = ImageCheckTimeout
+)
 
 // ImagePuller fetches images onto the sandbox host.
 type ImagePuller interface {
@@ -319,7 +325,7 @@ func (c *imageChecks) stop() {
 func (p *Platform) checkImageLater(tenant, id string, n int64) {
 	go func() {
 		defer p.imageChecks.release(tenant, id)
-		ctx, cancel := context.WithTimeout(p.imageChecks.context(), ImageCheckTimeout)
+		ctx, cancel := context.WithTimeout(p.imageChecks.context(), imageCheckTimeout)
 		defer cancel()
 		p.checkImage(ctx, tenant, id, n)
 	}()
@@ -368,7 +374,11 @@ func (p *Platform) checkImage(ctx context.Context, tenant, id string, n int64) {
 		return
 	}
 	if err != nil {
-		slog.Warn("images: check failed", "tenant", tenant, "image", id, "error", err)
+		var cause error
+		if f := (*checkFailure)(nil); errors.As(err, &f) {
+			cause = f.cause
+		}
+		slog.Warn("images: check failed", "tenant", tenant, "image", id, "problem", err, "cause", cause)
 		return
 	}
 	if saved.Warm {
@@ -376,46 +386,93 @@ func (p *Platform) checkImage(ctx context.Context, tenant, id string, n int64) {
 	}
 }
 
+// checkFailure is why a check failed: problem is what the image's readers
+// are shown, and cause, when there is one, is what the sandbox host said,
+// which only the server's log gets. A host's words name the host: its
+// Docker address, its paths, the registry's answer in full.
+type checkFailure struct {
+	problem string
+	cause   error
+}
+
+func (f *checkFailure) Error() string { return f.problem }
+
 // probeImage pulls img and runs the command every run's shell relies on in
-// it, as the sandbox's non-root user. It returns the pinned digest.
+// it, as the sandbox's non-root user. It returns the pinned digest, or a
+// *checkFailure.
 func (p *Platform) probeImage(ctx context.Context, tenant string, img images.Image) (string, error) {
 	cred, _ := p.secrets.Get(tenant, imageOwner(img.ID), "pull")
+	fail := func(problem string, cause error) (string, error) {
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			problem = fmt.Sprintf("checking %s took longer than %s", img.Ref, imageCheckTimeout)
+		}
+		return "", &checkFailure{problem: problem, cause: errors.New(redact(cause.Error(), cred))}
+	}
 	digest, err := p.cfg.SandboxImages.Puller.Pull(ctx, img.Ref, cred)
 	if err != nil {
-		return "", pullProblem(img.Ref, img.Credential, err)
+		return fail(pullProblem(img.Ref, img.Credential, err), err)
 	}
 	inst, err := p.cfg.Sandbox.Leaser.Lease(ctx, isolation.Request{Tenant: tenant, Run: "image-check-" + img.ID, Image: digest, Egress: []string{}})
 	if err != nil {
-		return "", fmt.Errorf("could not start it: %w", err)
+		return fail("it was pulled, and the sandbox could not start it", err)
 	}
 	defer func() { _ = inst.Close(context.WithoutCancel(ctx)) }()
 	st, err := inst.Exec(ctx, isolation.Command{Argv: []string{"sh", "-c", "command -v sleep >/dev/null"}, Timeout: imageProbeTimeout}, isolation.Stdio{})
 	if err != nil {
-		return "", fmt.Errorf("could not run sh in it: %w", err)
+		return fail("sh could not be run in it; an image needs sh and sleep", err)
 	}
 	if st.Code != 0 {
-		return "", errors.New("it has no sleep on the shell's path; an image needs sh and sleep")
+		return "", &checkFailure{problem: "it has no sleep on the shell's path; an image needs sh and sleep"}
 	}
 	return digest, nil
 }
 
-// pullProblem says why a pull failed in words a person can act on: the
-// registry's own message is kept for what it does not cover.
-func pullProblem(ref string, credential bool, err error) error {
-	msg := strings.ToLower(err.Error())
-	switch {
-	case strings.Contains(msg, "unauthorized"), strings.Contains(msg, "403"), strings.Contains(msg, "401"),
-		strings.Contains(msg, "denied"), strings.Contains(msg, "not found"), strings.Contains(msg, "manifest unknown"):
-		if credential {
-			return fmt.Errorf("the registry has no %s that this credential can read", ref)
-		}
-		return fmt.Errorf("the registry has no %s, or it is private and needs a pull credential", ref)
-	case strings.Contains(msg, "no matching manifest"), strings.Contains(msg, "platform"):
-		return fmt.Errorf("%s has no build for the sandbox host's platform", ref)
-	case strings.Contains(msg, "deadline"), strings.Contains(msg, "timeout"):
-		return fmt.Errorf("pulling %s took too long", ref)
+// redact takes a pull credential ("user:token") out of s however it is
+// written there: whole, its token alone, or in base64 as Docker keeps it.
+func redact(s, credential string) string {
+	if credential == "" {
+		return s
 	}
-	return fmt.Errorf("could not pull %s: %w", ref, err)
+	hide := []string{
+		credential,
+		base64.StdEncoding.EncodeToString([]byte(credential)),
+		base64.URLEncoding.EncodeToString([]byte(credential)),
+		base64.RawStdEncoding.EncodeToString([]byte(credential)),
+		base64.RawURLEncoding.EncodeToString([]byte(credential)),
+	}
+	if _, token, ok := strings.Cut(credential, ":"); ok && token != "" {
+		hide = append(hide, token)
+	}
+	for _, h := range hide {
+		s = strings.ReplaceAll(s, h, "[credential]")
+	}
+	return s
+}
+
+// pullProblem says why a pull failed, to everyone who may read the image:
+// one of a few reasons, worded from the image's own reference and never
+// from what the host printed.
+func pullProblem(ref string, credential bool, err error) string {
+	msg := strings.ToLower(err.Error())
+	has := func(parts ...string) bool {
+		return slices.ContainsFunc(parts, func(part string) bool { return strings.Contains(msg, part) })
+	}
+	switch {
+	case has("docker api", "docker daemon", "cannot connect"):
+		// The sandbox host's own Docker could not be reached.
+	case has("unauthorized", "authentication required", "denied", "forbidden", "not found", "manifest unknown", "name unknown"):
+		if credential {
+			return fmt.Sprintf("the registry has no %s that this credential can read", ref)
+		}
+		return fmt.Sprintf("the registry has no %s, or it is private and needs a pull credential", ref)
+	case has("no matching manifest", "platform"):
+		return fmt.Sprintf("%s has no build for the sandbox host's platform", ref)
+	case has("no such host", "dial tcp", "i/o timeout", "handshake", "connection refused", "connection reset", "x509", "network is unreachable", "no route to host", "server misbehaving"):
+		return fmt.Sprintf("the sandbox host could not reach %s", images.Registry(ref))
+	case errors.Is(err, context.DeadlineExceeded), has("deadline", "timeout", "timed out"):
+		return fmt.Sprintf("pulling %s took too long", ref)
+	}
+	return fmt.Sprintf("the sandbox host could not pull %s; the server's log says why", ref)
 }
 
 // warmer is a Leaser that can start an image before a run asks for it, as
@@ -475,8 +532,10 @@ func (p *Platform) repull(ctx context.Context, tenant string, img images.Image) 
 	}
 	defer done()
 	cred, _ := p.secrets.Get(tenant, imageOwner(img.ID), "pull")
-	_, err = p.cfg.SandboxImages.Puller.Pull(ctx, img.Digest, cred)
-	return err
+	if _, err = p.cfg.SandboxImages.Puller.Pull(ctx, img.Digest, cred); err != nil {
+		return errors.New(redact(err.Error(), cred))
+	}
+	return nil
 }
 
 // ErrImageGone reports a session whose image was removed or no longer

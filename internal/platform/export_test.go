@@ -189,3 +189,11 @@ func SetImageRepullTimeout(d time.Duration) (restore func()) {
 	imageRepullTimeout = d
 	return func() { imageRepullTimeout = was }
 }
+
+// SetImageCheckTimeout bounds one image's pull and first start to d, and
+// returns what puts it back.
+func SetImageCheckTimeout(d time.Duration) (restore func()) {
+	was := imageCheckTimeout
+	imageCheckTimeout = d
+	return func() { imageCheckTimeout = was }
+}
