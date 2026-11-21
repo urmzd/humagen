@@ -50,7 +50,26 @@ const started = (body: unknown) => ({
   links: [],
   people: [],
   cursor: "cursor",
-  messages: [],
+  messages: [
+    {
+      id: "m-1",
+      session: "th-00000000000000ab",
+      author: { kind: "person", name: "Ada" },
+      status: "done",
+      parts: [{ type: "text", text: (body as { text: string }).text }],
+      at,
+      message: {
+        id: "m-1",
+        thread: "th-00000000000000ab",
+        by: "ada",
+        name: "Ada",
+        text: (body as { text: string }).text,
+        mentions: [],
+        via: "console",
+        at,
+      },
+    },
+  ],
 });
 
 let net: ReturnType<typeof stubFetch> | undefined;
@@ -93,13 +112,18 @@ test("Home draws the chat bar while the agents are read, and reads the project's
   assert.equal(input.value, "Plan the launch");
   // The project's agents are asked for while the workspace's are still on their way.
   await waitFor(() =>
-    assert.ok(net?.seen.some((s) => s.path === "/api/projects/~/agents"), "project agents read"),
+    assert.ok(
+      net?.seen.some((s) => s.path === "/api/projects/~/agents"),
+      "project agents read",
+    ),
   );
   assert.ok(net?.seen.some((s) => s.path === "/api/agents"));
   await act(async () => reply({ agents: [agent("lead")] }));
   await waitFor(() => assert.equal(screen.queryByRole("status", { name: "Loading agents" }), null));
   assert.equal(box().value, "Plan the launch");
 });
+
+const noHomes: Record<string, string> = {};
 
 function home(props: Partial<Parameters<typeof Chat>[0]> = {}) {
   const opened: string[] = [];
@@ -113,6 +137,8 @@ function home(props: Partial<Parameters<typeof Chat>[0]> = {}) {
   const noop = () => {};
   const base = {
     threadId: null,
+    // Held across renders, as App holds it: completion recomputes on a new object.
+    homes: noHomes,
     me: "ada",
     summary: undefined,
     tick: 0,
@@ -123,8 +149,10 @@ function home(props: Partial<Parameters<typeof Chat>[0]> = {}) {
     onThread: (id: string) => opened.push(id),
     onChanged: noop,
     onProjectCreated: noop,
+    agents: [] as Revision[],
+    agentsRead: false,
   };
-  const mounted = render(<Chat {...base} agents={[]} agentsRead={false} {...props} />);
+  const mounted = render(<Chat {...base} {...props} />);
   return {
     opened,
     rerender: (next: Partial<Parameters<typeof Chat>[0]>) =>
