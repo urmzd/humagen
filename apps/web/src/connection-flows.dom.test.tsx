@@ -685,6 +685,56 @@ test("Plugins is MCPs and your skills, Apps is the workspace's installs, and eac
   assert.equal(screen.queryByRole("region", { name: "MCPs" }), null);
 });
 
+test("an installed app's status, action and menu are one group at the row's end; a plugin's row is as it was", async () => {
+  const preset = (id: string, name: string, kind: string, scope: string) => ({
+    id,
+    name,
+    kind,
+    scope,
+    available: true,
+    connected: true,
+  });
+  net = stubFetch(
+    offered({
+      "GET /api/connections/presets": () => [
+        preset("notion", "Notion", "oauth", "person"),
+        preset("slack", "Slack", "client_oauth", "workspace"),
+        preset("github", "GitHub", "github_install", "workspace"),
+      ],
+    }),
+  );
+  const workspace = render(<Connections scope="apps" canConnect canWrite />);
+  const apps = await screen.findByRole("list", { name: "Apps" });
+  for (const name of ["Slack", "GitHub"]) {
+    const row = await within(apps).findByRole("listitem", { name });
+    const more = within(row).getByRole("button", { name: `More for ${name}` });
+    const group = row.lastElementChild as HTMLElement;
+    // On a phone a control left to wrap by itself drops alone under the logo.
+    for (const part of [
+      within(row).getByText("Installed"),
+      within(row).getByRole("button", { name: "Manage" }),
+      more,
+    ])
+      assert.ok(group.contains(part), `${name}: ${part.textContent || "More"} is in the group`);
+    assert.match(group.className, /(^| )ml-auto( |$)/, "the group sits at the row's end");
+    assert.match(group.className, /(^| )shrink-0( |$)/);
+    assert.doesNotMatch(group.className, /flex-wrap|contents/, "the group stays on one line");
+    // The name gives up room so the group fits beside it at 390 pixels.
+    const title = within(row).getByRole("button", { name });
+    assert.equal(group.contains(title), false);
+    assert.match(title.className, /(^| )min-w-16( |$)/);
+  }
+  workspace.unmount();
+
+  render(<Connections canConnect canWrite />);
+  const notion = await screen.findByRole("listitem", { name: "Notion" });
+  const more = within(notion).getByRole("button", { name: "More for Notion" });
+  // Elsewhere the group makes no box, so a plugin's row wraps part by part as before.
+  assert.equal((notion.lastElementChild as HTMLElement).className, "contents");
+  assert.ok(notion.lastElementChild?.contains(more));
+  assert.match(within(notion).getByRole("button", { name: "Notion" }).className, / min-w-28 /);
+});
+
 test("an item that is off says so on its card; an administrator sees Enable and how", async () => {
   const off = {
     "GET /api/connections/presets": () => [

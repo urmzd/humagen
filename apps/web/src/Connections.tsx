@@ -835,7 +835,8 @@ export function Connections({
             type="button"
             aria-label={it.name}
             onClick={() => (it.go ? it.go() : open(it.id))}
-            className="flex min-h-6 min-w-28 flex-1 flex-col justify-center text-left outline-none after:absolute after:inset-0 focus-visible:after:outline-2 focus-visible:after:outline-aui-accent pointer-coarse:min-h-11"
+            // Apps keep their actions as words, so the name gives up more room to stay on their line.
+            className={`flex min-h-6 ${scope === "apps" ? "min-w-16" : "min-w-28"} flex-1 flex-col justify-center text-left outline-none after:absolute after:inset-0 focus-visible:after:outline-2 focus-visible:after:outline-aui-accent pointer-coarse:min-h-11`}
           >
             <span className="w-full min-w-0 truncate font-medium text-aui-sm text-aui-fg">
               {it.name}
@@ -844,44 +845,56 @@ export function Connections({
               <span className="w-full min-w-0 truncate text-aui-muted text-aui-xs">{it.note}</span>
             )}
           </button>
-          {it.pill && (
-            <span className="relative z-10 shrink-0">
-              <Pill tone={it.pill.tone}>{it.pill.text}</Pill>
-            </span>
-          )}
-          {it.action &&
-            (scope !== "apps" && ADDS.has(it.action.label) ? (
-              <button
-                type="button"
-                aria-label={it.action.label}
-                title={`${it.action.label} ${it.name}`}
-                disabled={it.action.disabled}
-                onClick={it.action.run}
-                className="relative z-10 inline-flex size-8 shrink-0 items-center justify-center rounded-aui text-aui-muted transition-colors hover:bg-aui-bg hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent disabled:opacity-50 pointer-coarse:size-11"
-              >
-                <PlusIcon size={16} />
-              </button>
-            ) : (
-              <button
-                type="button"
-                className={`${button} relative z-10 shrink-0`}
-                disabled={it.action.disabled}
-                onClick={it.action.run}
-              >
-                {it.action.label}
-              </button>
-            ))}
-          {it.menu.length > 0 && (
-            <span className="relative z-10 shrink-0">
-              <MoreMenu
-                items={it.menu.map((m) => ({
-                  label: m.label,
-                  onSelect: m.run,
-                  destructive: m.destructive,
-                  disabled: busy && m.destructive,
-                }))}
-                label={`More for ${it.name}`}
-              />
+          {/*
+            An app's status and controls wrap as one, to the row's end, so its menu never
+            drops alone under the logo. The group takes no clicks: its gaps still open the row.
+          */}
+          {(it.pill || it.action || it.menu.length > 0) && (
+            <span
+              className={
+                scope === "apps" ? "ml-auto flex shrink-0 items-center gap-x-3" : "contents"
+              }
+            >
+              {it.pill && (
+                <span className="relative z-10 shrink-0">
+                  <Pill tone={it.pill.tone}>{it.pill.text}</Pill>
+                </span>
+              )}
+              {it.action &&
+                (scope !== "apps" && ADDS.has(it.action.label) ? (
+                  <button
+                    type="button"
+                    aria-label={it.action.label}
+                    title={`${it.action.label} ${it.name}`}
+                    disabled={it.action.disabled}
+                    onClick={it.action.run}
+                    className="relative z-10 inline-flex size-8 shrink-0 items-center justify-center rounded-aui text-aui-muted transition-colors hover:bg-aui-bg hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent disabled:opacity-50 pointer-coarse:size-11"
+                  >
+                    <PlusIcon size={16} />
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className={`${button} relative z-10 shrink-0`}
+                    disabled={it.action.disabled}
+                    onClick={it.action.run}
+                  >
+                    {it.action.label}
+                  </button>
+                ))}
+              {it.menu.length > 0 && (
+                <span className="relative z-10 shrink-0">
+                  <MoreMenu
+                    items={it.menu.map((m) => ({
+                      label: m.label,
+                      onSelect: m.run,
+                      destructive: m.destructive,
+                      disabled: busy && m.destructive,
+                    }))}
+                    label={`More for ${it.name}`}
+                  />
+                </span>
+              )}
             </span>
           )}
         </li>

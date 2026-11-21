@@ -296,6 +296,31 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
         await manage.and(page.locator("button:focus")).waitFor();
         await manage.blur();
         await page.mouse.move(0, 0);
+        // The fixture's GitHub is installed through a client, a row with no menu. Shown, in
+        // the browser only, as installed from this page, it gains the menu an administrator sees.
+        await page.route(/\/api\/connections\/presets(?:\?|$)/, async (route) => {
+          const response = await route.fetch();
+          const presets = await response.json();
+          for (const preset of presets) if (preset.id === "github") preset.connected = true;
+          await route.fulfill({ response, json: presets });
+        });
+        await page.reload();
+        const more = github.getByRole("button", { name: "More for GitHub", exact: true });
+        await more.waitFor();
+        await page.evaluate(() => document.fonts.ready);
+        const action = await manage.boundingBox();
+        const menu = await more.boundingBox();
+        const row = await github.boundingBox();
+        assert.ok(action && menu && row);
+        assert.ok(
+          Math.abs(menu.y + menu.height / 2 - (action.y + action.height / 2)) <= 1,
+          "the menu shares Manage's line at every width",
+        );
+        assert.ok(menu.x >= action.x + action.width, "the menu follows Manage");
+        assert.ok(
+          Math.abs(menu.x + menu.width - (row.x + row.width)) <= 1,
+          "the menu ends the row",
+        );
       },
     },
     {
