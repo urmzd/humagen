@@ -309,10 +309,10 @@ export function AgentHealth({
               </span>
             </>
           )}
-          <About />
         </div>
         <div className="ml-auto flex shrink-0 items-center gap-2">
           {actions}
+          <About />
           {updated && !problem && (
             <span className="hidden text-aui-2xs text-aui-muted sm:inline">{updated}</span>
           )}
