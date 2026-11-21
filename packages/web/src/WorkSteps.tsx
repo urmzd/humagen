@@ -19,22 +19,28 @@ import {
   type Thought,
   type Turn,
   timeline,
+  toolArgs,
+  toolCommand,
   toolFailed,
   toolTarget,
 } from "@humagen/core";
 import {
+  CopyButton,
   ItemActionsContext,
   type ItemStop,
   ItemStopControl,
   ItemStopsContext,
   ShimmerVerb,
+  useNow,
 } from "@humagen/render-web";
 import {
   createContext,
   type MouseEvent,
   type ReactNode,
   useContext,
+  useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -237,41 +243,189 @@ function Quiet({ label, text, copy }: { label: string; text: string; copy: Copy 
 }
 
 const rowClass =
-  "group/row flex min-h-7 pointer-coarse:min-h-11 w-full min-w-0 items-center gap-2 rounded-aui-sm px-1 text-left text-aui-muted text-aui-sm hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent";
+  "group/row flex min-h-8 pointer-coarse:min-h-11 w-full min-w-0 items-center gap-2 px-2.5 text-left text-aui-muted text-aui-sm hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-accent";
+
+/** The first line of what a failed call said, without the runtime's "action failed:" lead. */
+export function failureLine(output: string | undefined): string | undefined {
+  const line = (output ?? "")
+    .split("\n")
+    .map((l) => l.trim())
+    .find(Boolean);
+  if (!line) return undefined;
+  const plain = line.replace(/^action failed:\s*/i, "");
+  return plain.length > 240 ? `${plain.slice(0, 239)}…` : plain;
+}
+
+/** A running time, whole seconds: "8s", "1m 52s". */
+export function clock(ms: number): string {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`;
+}
+
+/** How long a call has run so far, counted every second from when it started. */
+export function Elapsed({ since, copy }: { since?: string; copy: Copy }) {
+  const now = useNow(1000);
+  const start = since ? Date.parse(since) : Number.NaN;
+  if (!Number.isFinite(start)) return null;
+  const time = clock(now - start);
+  return (
+    <span
+      data-testid="elapsed"
+      title={copy.conversation.toolLine.elapsed(time)}
+      className="shrink-0 text-aui-muted tabular-nums"
+    >
+      {time}
+    </span>
+  );
+}
+
+/** Four dots that take turns while a step runs; still when motion is reduced. */
+export function WorkingMark() {
+  return (
+    <span
+      aria-hidden
+      data-testid="working-mark"
+      className="grid size-[15px] shrink-0 grid-cols-2 place-items-center text-aui-accent"
+    >
+      {[0, 1, 3, 2].map((d) => (
+        <span
+          key={d}
+          className="size-[4px] animate-pulse rounded-full bg-current motion-reduce:animate-none"
+          style={{ animationDelay: `${d * 200}ms` }}
+        />
+      ))}
+    </span>
+  );
+}
+
+/** "max_results" as "Max results". */
+function keyWords(key: string): string {
+  const w = key
+    .replace(/([a-z\d])([A-Z])/g, "$1 $2")
+    .replace(/[._-]+/g, " ")
+    .trim()
+    .toLowerCase();
+  return w.charAt(0).toUpperCase() + w.slice(1);
+}
+
+function valueText(v: unknown): string {
+  if (typeof v === "string") return v;
+  if (typeof v === "number" || typeof v === "boolean" || v === null) return String(v);
+  return JSON.stringify(v);
+}
+
+const MAX_VALUE = 2000;
+
+/** A value long enough to drown the table, cut with an ellipsis; the whole call is in its result and the activity. */
+function clipValue(text: string): string {
+  return text.length > MAX_VALUE ? `${text.slice(0, MAX_VALUE - 1)}…` : text;
+}
+
+/** A call's arguments as a table of names and values, the way a form reads. */
+function InputTable({ args, copy }: { args: Record<string, unknown>; copy: Copy }) {
+  const rows = Object.entries(args).filter(([, v]) => v !== undefined && v !== "");
+  if (!rows.length) return null;
+  return (
+    <div className="min-w-0">
+      <p className="text-aui-2xs text-aui-muted">{copy.conversation.toolLine.input}</p>
+      <dl
+        data-testid="input-table"
+        className="mt-1 grid min-w-0 grid-cols-[minmax(5rem,max-content)_minmax(0,1fr)] gap-x-4 gap-y-1 text-aui-xs"
+      >
+        {rows.map(([k, v]) => (
+          <div key={k} className="contents">
+            <dt className="text-aui-muted">{keyWords(k)}</dt>
+            <dd className="m-0 max-h-40 min-w-0 overflow-auto whitespace-pre-wrap font-mono text-aui-2xs text-aui-fg [overflow-wrap:anywhere]">
+              {clipValue(valueText(v))}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  );
+}
+
+/** A shell command as it was run, in a block of its own with Copy. */
+function CommandBlock({ command, copy }: { command: string; copy: Copy }) {
+  return (
+    <div
+      data-testid="command-block"
+      className="flex min-w-0 items-start gap-2 rounded-aui-sm border border-aui-border bg-aui-code py-1.5 pr-1 pl-2.5"
+    >
+      <pre className="m-0 min-w-0 flex-1 whitespace-pre-wrap py-0.5 font-mono text-aui-2xs text-aui-fg leading-5 [overflow-wrap:anywhere]">
+        <span aria-hidden className="select-none text-aui-muted">
+          ${" "}
+        </span>
+        {command}
+      </pre>
+      <CopyButton text={command} label={copy.conversation.toolLine.copyCommand} />
+    </div>
+  );
+}
+
+/** What a call was given: its command in a block, the rest as a table, else the raw text. */
+function CallInput({ task, copy }: { task: Task; copy: Copy }) {
+  const args = toolArgs(task);
+  const command = lineKind(task) === "run" ? toolCommand(task) : undefined;
+  if (!args) {
+    const raw = formatArgs(task);
+    return raw ? <Quiet label={copy.conversation.toolLine.input} text={raw} copy={copy} /> : null;
+  }
+  const { command: _c, cmd: _cmd, script: _s, ...rest } = args;
+  return (
+    <>
+      {command && <CommandBlock command={command} copy={copy} />}
+      <InputTable args={command ? rest : args} copy={copy} />
+    </>
+  );
+}
 
 /**
  * One tool call as a compact row: an icon for its kind, what it was, and the
  * command or target in quiet monospace. A row for a file opens the file in
- * the Workspace; any other row opens to the call's arguments and result.
+ * the Workspace; any other row opens to the call's input and result. A
+ * failed call says why in its first line, under the row, with Show Details.
+ * A running one counts its time.
  */
 function ToolRow({
   turn,
   task,
   edit,
   copy,
+  arrive,
 }: {
   turn: Turn;
   task: Task;
   edit?: FileEdit;
   copy: Copy;
+  /** Opened from the failed count: scrolled to and focused. */
+  arrive?: boolean;
 }) {
   const links = useContext(FileLinkContext);
   const itemActions = useContext(ItemActionsContext);
-  const [open, setOpen] = useState(false);
+  const running = live(task);
+  // A running command shows what it runs, as a card does.
+  const [open, setOpen] = useState(running && lineKind(task) === "run" && !!toolCommand(task));
   const w = copy.conversation.toolLine;
   const failed = toolFailed(task);
-  const running = live(task);
+  const reason = failed ? failureLine(task.output) : undefined;
   const target = edit ? undefined : toolTarget(task);
   const label = edit ? callLine(task, edit, copy) : task.title;
   const href = edit ? links.href(edit.path) : undefined;
   const took = duration(task.durationMs);
-  const args = formatArgs(task);
   const result = formatResult(task.output);
   const detailId = `tool-${turn.id}-${task.id}`;
+  const rowRef = useRef<HTMLLIElement>(null);
+  useEffect(() => {
+    if (!arrive) return;
+    rowRef.current?.scrollIntoView?.({ block: "nearest" });
+    rowRef.current?.querySelector<HTMLElement>("button, a")?.focus({ preventScroll: true });
+  }, [arrive]);
   const status = (
     <>
       {task.status === "waiting" && <span className="shrink-0 text-aui-accent">{w.waiting}</span>}
-      {failed && <span className="shrink-0 text-aui-muted">{w.failed(1)}</span>}
+      {failed && <span className="shrink-0 text-aui-bad">{w.failed(1)}</span>}
+      {running && <Elapsed since={task.startedAt} copy={copy} />}
       {took && !running && (
         <span className="ml-auto shrink-0 text-aui-2xs text-aui-muted tabular-nums">{took}</span>
       )}
@@ -279,7 +433,7 @@ function ToolRow({
   );
   const body = (
     <>
-      <StepIcon kind={edit ? "file" : lineKind(task)} />
+      {running ? <WorkingMark /> : <StepIcon kind={edit ? "file" : lineKind(task)} />}
       <span className="shrink-0 truncate text-aui-fg/90">
         {running ? <ShimmerVerb>{label}</ShimmerVerb> : label}
       </span>
@@ -294,7 +448,13 @@ function ToolRow({
     </>
   );
   return (
-    <li className="min-w-0" data-testid="tool-row" data-tool={task.tool}>
+    <li
+      ref={rowRef}
+      className="min-w-0"
+      data-testid="tool-row"
+      data-tool={task.tool}
+      data-failed={failed || undefined}
+    >
       <div className="flex min-w-0 items-center">
         {href && edit ? (
           <a
@@ -334,9 +494,26 @@ function ToolRow({
           </span>
         )}
       </div>
+      {reason && (
+        <p
+          data-testid="failure-reason"
+          className="m-0 flex min-w-0 flex-wrap items-baseline gap-x-2 px-2.5 pb-1.5 pl-[2.1rem] text-aui-xs"
+        >
+          <span className="min-w-0 text-aui-bad [overflow-wrap:anywhere]">{reason}</span>
+          <button
+            type="button"
+            aria-expanded={open}
+            aria-controls={detailId}
+            onClick={() => setOpen(!open)}
+            className="shrink-0 rounded-aui-sm text-aui-muted underline-offset-2 hover:text-aui-fg hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent pointer-coarse:min-h-11"
+          >
+            {open ? w.hideDetails : w.showDetails}
+          </button>
+        </p>
+      )}
       {open && (
-        <div id={detailId} className="mt-1 mb-2 ml-6 flex min-w-0 flex-col gap-2">
-          {args && <Quiet label={w.arguments} text={args} copy={copy} />}
+        <div id={detailId} className="flex min-w-0 flex-col gap-2 px-2.5 pt-1 pb-2.5 pl-[2.1rem]">
+          <CallInput task={task} copy={copy} />
           {result ? (
             <Quiet label={w.result} text={result} copy={copy} />
           ) : (
@@ -348,13 +525,6 @@ function ToolRow({
   );
 }
 
-/**
- * Steps taken between two parts of an answer, as one quiet line. Open, it
- * lists each call as a row. A run that wrote one file is that file: the line
- * opens it in the Workspace, and the chevron beside it lists the calls. A
- * step waiting on a person keeps the run open; a failed one is counted in the
- * line, in the same quiet tone, since nobody needs to act on it.
- */
 /**
  * One Stop for a line of steps, at the line itself: what each step running
  * under it (a step in flight, background work a step started) would stop,
@@ -385,6 +555,14 @@ function groupStop(
   };
 }
 
+/**
+ * Steps taken between two parts of an answer, as one quiet line. Open, it is
+ * a card that lists each call as a row. A run that wrote one file is that
+ * file: the line opens it in the Workspace, and the chevron beside it lists
+ * the calls. A step waiting on a person keeps the run open, and so does a
+ * command still running. A failed one is counted beside the line, and the
+ * count opens the card at the failed steps, each saying why.
+ */
 export function StepGroup({
   turn,
   tasks,
@@ -399,27 +577,29 @@ export function StepGroup({
   const stop = useMemo(() => groupStop(stops, turn, tasks), [stops, turn, tasks]);
   const waiting = tasks.some((t) => t.status === "waiting");
   const [open, setOpen] = useState<boolean | null>(null);
-  const shown = open ?? waiting;
+  // Opened from the failed count: the first failed step is scrolled to.
+  const [toFailed, setToFailed] = useState(false);
   const edits = useMemo(() => fileEdits(turn.tasks), [turn.tasks]);
   const line = useMemo(() => toolsLine(tasks, copy, edits), [tasks, copy, edits]);
+  const runningTask = tasks.find(live);
+  const shown = open ?? (waiting || (!!runningTask && lineKind(runningTask) === "run"));
   const w = copy.conversation.toolLine;
   const first = tasks[0];
   const kind = line.file ? "file" : first ? lineKind(first) : "tool";
+  const firstFailed = tasks.find(toolFailed)?.id;
   // Calls waiting on a person, or with their own controls or sources, keep the full task row.
   const full = (t: Task) =>
     t.status === "waiting" || t.interruptId !== undefined || (t.sources?.length ?? 0) > 0;
   const href = line.file ? links.href(line.file.path) : undefined;
   const text = (
     <>
-      <StepIcon kind={kind} />
+      {line.running ? <WorkingMark /> : <StepIcon kind={kind} />}
       <span className="min-w-0 truncate">
         {line.running ? <ShimmerVerb>{line.text}</ShimmerVerb> : line.text}
       </span>
+      {line.running && runningTask && <Elapsed since={runningTask.startedAt} copy={copy} />}
       {line.counts && !line.running && line.file && <Counts edit={line.file} />}
       {line.waiting && <span className="shrink-0 text-aui-accent">{w.waiting}</span>}
-      {line.failed > 0 && (
-        <span className="shrink-0 text-aui-muted">| {w.failed(line.failed)}</span>
-      )}
     </>
   );
   const lineClass =
@@ -440,11 +620,31 @@ export function StepGroup({
           <button
             type="button"
             aria-expanded={shown}
-            onClick={() => setOpen(!shown)}
+            onClick={() => {
+              setToFailed(false);
+              setOpen(!shown);
+            }}
             className={lineClass}
           >
             {text}
-            <Chevron open={shown} />
+            {line.failed === 0 && <Chevron open={shown} />}
+          </button>
+        )}
+        {line.failed > 0 && (
+          <button
+            type="button"
+            data-testid="failed-count"
+            aria-label={w.showFailed(line.failed)}
+            aria-expanded={shown && toFailed}
+            onClick={() => {
+              setToFailed(true);
+              setOpen(true);
+            }}
+            className="inline-flex min-h-6 pointer-coarse:min-h-11 shrink-0 items-center gap-1 rounded-aui-sm px-1 text-aui-muted text-aui-sm hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
+          >
+            <span aria-hidden>|</span>
+            <span className="text-aui-bad/90">{w.failed(line.failed)}</span>
+            {!href && <Chevron open={shown} />}
           </button>
         )}
         {href && (
@@ -461,14 +661,24 @@ export function StepGroup({
         {stop && stops && <ItemStopControl stop={stop} words={stops.words} />}
       </div>
       {shown && (
-        <ul className="mt-0.5 ml-[0.4375rem] flex min-w-0 flex-col border-aui-border border-l pl-2">
+        <ul
+          data-testid="step-card"
+          className="mt-1 flex min-w-0 flex-col divide-y divide-aui-border overflow-hidden rounded-aui border border-aui-border"
+        >
           {tasks.map((t) =>
             full(t) ? (
-              <li key={t.id} className="min-w-0">
+              <li key={t.id} className="min-w-0 px-2.5 py-1">
                 <TaskList turn={{ ...turn, planTitle: undefined, tasks: [t] }} copy={copy} />
               </li>
             ) : (
-              <ToolRow key={t.id} turn={turn} task={t} edit={edits.get(t.id)} copy={copy} />
+              <ToolRow
+                key={t.id}
+                turn={turn}
+                task={t}
+                edit={edits.get(t.id)}
+                copy={copy}
+                arrive={toFailed && t.id === firstFailed}
+              />
             ),
           )}
         </ul>

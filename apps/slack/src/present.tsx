@@ -122,8 +122,6 @@ export class Presenter {
   private agent = "";
   /** Slack refused a message posted as an agent, so the rest are the app's. */
   private authorOff = false;
-  /** Slack took a message of this turn that carried answer words. */
-  private answerSaid = false;
 
   constructor(
     private readonly slack: SlackApi,
@@ -215,20 +213,6 @@ export class Presenter {
   }
 
   /** Whether native streaming was still in use, so the caller can remember a refusal. */
-  /**
-   * Whether Slack holds an answer from this turn: a message posted, edited,
-   * streamed or closed with the turn's words in it. A status, a plan or a
-   * failure alone is not an answer.
-   */
-  get answered(): boolean {
-    return this.answerSaid;
-  }
-
-  /** Slack took a write that carried this turn. */
-  private delivered(turn: Turn) {
-    if (turn.text.trim()) this.answerSaid = true;
-  }
-
   get streaming(): boolean {
     return this.native;
   }
@@ -478,7 +462,6 @@ export class Presenter {
           const { chunks } = streamUpdate(this.sent, turn);
           if (chunks.length > 0) await this.append(turn, chunks);
           this.sent = turn;
-          this.delivered(turn);
           return;
         } catch (e) {
           if (!this.refused(e)) throw e;
@@ -492,7 +475,6 @@ export class Presenter {
       if (!this.ts) await this.post(first, view.text);
       else await this.edit(first, view.text);
       this.sent = turn;
-      this.delivered(turn);
     } catch (e) {
       // The rest is written once, whole, when the turn ends.
       this.degraded = true;
@@ -646,7 +628,6 @@ export class Presenter {
           blocks: first,
         });
         this.stopped = true;
-        this.delivered(turn);
         await this.overflow(rest, final.text, final.pages.length);
         for (const w of final.warnings) this.log(`render warning: ${w}`);
       } else {
@@ -657,7 +638,6 @@ export class Presenter {
         const [first = [], ...rest] = final.pages;
         if (!this.ts) await this.post(first, final.text);
         else await this.edit(first, final.text);
-        this.delivered(turn);
         await this.overflow(rest, final.text, final.pages.length);
         for (const w of final.warnings) this.log(`render warning: ${w}`);
       }
@@ -686,7 +666,6 @@ export class Presenter {
       try {
         // Only a message that could not take the turn at all is followed by a new one.
         if (!closed && !this.stopped) await this.post(first, final.text);
-        if (closed || !this.stopped) this.delivered(turn);
         await this.overflow(rest, final.text, final.pages.length);
       } catch (again) {
         this.log(`the turn could not be posted: ${(again as Error).message}`);
@@ -710,7 +689,6 @@ export class Presenter {
     try {
       const [first = [], ...rest] = final.pages;
       await this.post(first, final.text);
-      this.delivered(turn);
       await this.overflow(rest, final.text, final.pages.length);
     } catch (e) {
       this.log(`the end of the turn could not be posted: ${(e as Error).message}`);

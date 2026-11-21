@@ -2126,6 +2126,8 @@ export const defaultCopy = {
       earlierFailed: (n: number) =>
         `${n} earlier failed ${n === 1 ? "command" : "commands"} not shown`,
       waiting: "waiting for you",
+      /** A call waiting on a person, when it has no title of its own. */
+      waitingCall: "A tool call",
       showMore: "Show more",
       showLess: "Show less",
       arguments: "Arguments",
@@ -2133,6 +2135,37 @@ export const defaultCopy = {
       noResult: "No result",
       openFile: (path: string) => `Open ${path} in the Workspace`,
       details: (what: string) => `Details of ${what}`,
+      /** The failed count, as a button that opens the run of steps at its failures. */
+      showFailed: (n: number) => `${n} failed, show ${n === 1 ? "it" : "them"}`,
+      showDetails: "Show details",
+      hideDetails: "Hide details",
+      input: "Input",
+      copyCommand: "Copy command",
+      /** How long a step has run so far, for a reader of the screen. */
+      elapsed: (time: string) => `Running for ${time}`,
+    },
+    /** A delegated run that failed: why, the way to its run, and Retry. */
+    callFailure: {
+      details: "Show details",
+      retry: "Retry",
+      retrying: "Retrying",
+      /** Posted: the agent was asked again, in the conversation's next message. */
+      retried: "Asked again",
+      retryFailed: "Could not ask again. Try once more.",
+    },
+    /** A connection a run needed that the person has not made. */
+    connect: {
+      title: (name: string) => `${name} is not connected`,
+      body: (name: string) =>
+        `The agent needed your ${name} account and could not use it. Connect it, then ask again.`,
+      action: (name: string) => `Connect ${name}`,
+    },
+    /** A GitHub reference in an answer, as a chip. */
+    githubRef: {
+      pull: (ref: string) => `Pull request ${ref}`,
+      issue: (ref: string) => `Issue ${ref}`,
+      commit: (ref: string) => `Commit ${ref}`,
+      ref: (ref: string) => `GitHub ${ref}`,
     },
     /** The files a finished turn changed, as one card under it. */
     changes: {
@@ -2787,7 +2820,7 @@ export const defaultCopy = {
       `${percent}% working over the last ${checks} ${checks === 1 ? "check" : "checks"}`,
   },
   audit: {
-    dateRange: "Date Range",
+    dateRange: "Date range",
     rangeDefault: "Last 24 Hours",
     clearRange: "Reset Range",
     invalidRange: "Choose a valid time window of no more than 31 days.",
@@ -2804,9 +2837,9 @@ export const defaultCopy = {
       memory: "Memory",
       source: "Sources",
       credential: "Credentials",
-      action_policy: "Action Policies",
+      action_policy: "Action policies",
       assignment: "Assignments",
-      call_policy: "Agent Call Policies",
+      call_policy: "Agent call policies",
     },
     actor: "Actor",
     domain: "Domain",
@@ -2815,7 +2848,7 @@ export const defaultCopy = {
     apply: "Apply Filters",
     export: "Export CSV",
     open: "Open Resource",
-    allDomains: "All Domains",
+    allDomains: "All domains",
     csvColumns: [
       "ID",
       "When",
@@ -2859,8 +2892,8 @@ export const defaultCopy = {
     failed: "The read audit could not be loaded.",
   },
   approve: "Approve",
-  askApproval: "Ask a question",
-  declineAction: "Decline action",
+  askApproval: "Ask a Question",
+  declineAction: "Decline",
   cancel: "Cancel",
   edit: "Edit",
   confirmDestructive: {
@@ -3184,6 +3217,14 @@ export const defaultCopy = {
     reviewApproval: "Review Approval",
     markDone: "Mark Done",
     markDoneNamed: (title: string) => `Mark ${title} done`,
+    /** What an alert's card in a session opens, by the alert's action. */
+    open: {
+      answer: "Open Question",
+      approve: "Review Approval",
+      retry: "Review Failed Answer",
+      reconnect: "Open Connections",
+      session: "Open Session",
+    },
     /** The alerts table: its name, its column headings and what its header says once rows are ticked. */
     table: {
       label: "Alerts",
@@ -3400,6 +3441,59 @@ export const defaultCopy = {
       scheduled: "From a schedule",
       assignment: "From an assignment",
     },
+    /** Where a session started, short, on the row's second line beside its time. */
+    sourceShort: {
+      console: "Console",
+      slack: "Slack",
+      slack_dm: "Slack DM",
+      github: "GitHub",
+      scheduled: "Schedule",
+      assignment: "Assignment",
+    },
+    /** A row's state in words, on its own line (DES-054). */
+    state: {
+      waitingYou: (what: string, kind?: "approval" | "question") =>
+        !what
+          ? "Waiting for you"
+          : kind === "approval"
+            ? `Waiting for you: approve ${what}`
+            : `Waiting for you: ${what}`,
+      waitingOther: (what: string, kind?: "approval" | "question") =>
+        !what
+          ? "Waiting for someone"
+          : kind === "approval"
+            ? `Waiting for approval: ${what}`
+            : `Waiting for an answer: ${what}`,
+      /**
+       * It waits on a person and the listing could not tell whether that is
+       * the reader (waiting_unknown): said without naming whom, never as
+       * someone else.
+       */
+      waitingUnknown: (what: string, kind?: "approval" | "question") =>
+        !what ? "Waiting" : kind === "approval" ? `Waiting: approve ${what}` : `Waiting: ${what}`,
+      failed: (reason: string) => (reason ? `Failed: ${reason}` : "Failed"),
+      working: "Working",
+      alert: (title: string) => `Alert: ${title}`,
+      /** The dot on the right, for a screen reader and its tooltip. */
+      dot: {
+        you: "Waiting for you",
+        failed: "Failed, not yet read",
+        unread: "Unread",
+      },
+    },
+    /** The sections of the sidebar's list, each with its count. */
+    participated: "Participated",
+    recent: "Recent",
+    /** A count of sessions when more are left to load. */
+    countMore: (count: number) => `${count}+`,
+    /** The list's views, in its filter menu. */
+    views: {
+      flat: "Recent",
+      recents: "By day",
+      projects: "By project",
+    },
+    /** The handle on the sidebar's edge. */
+    resize: "Resize sidebar",
     /** An open alert on a session, by how urgent it is. */
     alert: {
       urgent: "Urgent alert",
@@ -3640,6 +3734,38 @@ export const defaultCopy = {
     noDescription: "No description",
     empty: "No agent can be asked here yet.",
     handle: (name: string) => `@${name}`,
+  },
+  modelProviders: {
+    title: "Model providers",
+    lede: "Workspace providers make models available. Choose a model for each agent in its settings.",
+    add: "Add OpenAI-Compatible Server",
+    configured: "Configured providers",
+    available: "Available providers",
+    empty: "No providers configured.",
+    deployment: "Deployment",
+    deploymentHint: "Managed by the deployment",
+    workspaceHint: "Managed by the workspace",
+    unconfigured: "Not set up",
+    setup: "Set Up",
+    setupProvider: (name: string) => `Set Up ${name}`,
+    enabled: "On",
+    activation: (name: string) => `Enable ${name}`,
+    manage: (name: string) => `Manage ${name}`,
+    status: {
+      checking: "Checking",
+      operational: "Answering",
+      degraded: "Slow",
+      down: "Failing",
+    },
+    check: "Check",
+    edit: "Edit",
+    remove: "Remove",
+    removeProvider: (name: string) => `Remove ${name}`,
+    removeHint: "This deletes the provider configuration and its stored key.",
+    readFailed: "The providers could not be read.",
+    checkFailed: "The provider could not be checked.",
+    updateFailed: (name: string) => `The setting for ${name} could not be saved.`,
+    removeFailed: "The provider could not be removed.",
   },
   /** The chat bar's + menu and what it selects for a conversation. */
   /** Voice notes recorded in the composer and transcribed by the deployment's speech kind. */

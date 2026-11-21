@@ -59,7 +59,8 @@
         "assistant_thread_started",
         "message.channels",
         "message.groups",
-        "message.im"
+        "message.im",
+        "message.mpim"
       ]
     },
     "interactivity": {

@@ -13,7 +13,7 @@ import {
 } from "@testing-library/react";
 import { useCompletion } from "./completion.ts";
 import { stubFetch } from "./dom.ts";
-import { PlusMenu, type Selection } from "./Plus.tsx";
+import { PlusMenu } from "./Plus.tsx";
 
 let net: ReturnType<typeof stubFetch> | undefined;
 afterEach(() => {
@@ -32,10 +32,6 @@ test("the composer menu offers Agents and Skills while the persistent folder own
       agents={[{ name: "helper" }]}
       skills={[]}
       onSkill={() => {}}
-      projects={[]}
-      personalProject="personal"
-      selection={{ project: "personal", channel: "general" }}
-      onChange={() => {}}
       onAttach={() => {}}
       onClose={() => {}}
     />,
@@ -165,9 +161,6 @@ test("Skills search Enter cannot submit work and Escape restores category focus 
         agents={[]}
         skills={[{ name: "review", description: "Review a change" }]}
         onSkill={(name) => chosen.push(name)}
-        projects={[]}
-        selection={{ project: null, channel: "general" }}
-        onChange={() => {}}
         onAttach={() => {}}
         onClose={() => {
           closed++;
@@ -204,9 +197,6 @@ test("Skills loading and failure states never offer a stale skill choice", async
   net = stubFetch({});
   const common = {
     agents: [],
-    projects: [],
-    selection: { project: null, channel: "general" } as Selection,
-    onChange: () => {},
     onAttach: () => {},
     onClose: () => {},
     onSkill: () => {},
@@ -237,9 +227,6 @@ for (const category of ["Agents", "Skills"] as const) {
         agents={[{ name: "helper", description: "Review changes" }]}
         skills={[{ name: "review", description: "Review a change" }]}
         onSkill={() => {}}
-        projects={[]}
-        selection={{ project: null, channel: "general" }}
-        onChange={() => {}}
         onAttach={() => {}}
         onClose={() => {
           closed++;

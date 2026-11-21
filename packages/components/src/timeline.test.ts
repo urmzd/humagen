@@ -108,8 +108,13 @@ describe("toolsLine", () => {
     expect(line).toMatchObject({ text: "Running bash", running: true });
   });
 
-  it("says a call waits on a person", () => {
-    expect(toolsLine([call("1", "deploy", {}, { status: "waiting" })]).waiting).toBe(true);
+  it("says a call waits on a person, and names the waiting call once", () => {
+    const line = toolsLine([
+      call("1", "file_read", { path: "a" }),
+      call("2", "deploy", {}, { status: "waiting" }),
+    ]);
+    expect(line.waiting).toBe(true);
+    expect(line.text).toBe("Deploy");
   });
 });
 

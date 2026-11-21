@@ -9,7 +9,7 @@ import {
   PlusIcon,
   WebSurface,
 } from "@humagen/render-web";
-import { AgentMessage, Thread as ThreadList, useQueue } from "@humagen/web";
+import { AgentMessage, RetryCallContext, Thread as ThreadList, useQueue } from "@humagen/web";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ThreadForkSummary } from "../../../packages/client/src/generated/types.ts";
 import { citationOf, type Run, turnOf } from "./adapter.ts";
@@ -452,14 +452,17 @@ function SideAnswer({
       className="flex flex-col gap-2 [&_header]:text-aui-base [&_header_span]:text-aui-base"
     >
       <AgentTint name={run.agent}>
-        <AgentMessage
-          turn={shown}
-          stop={stop}
-          disclaimer={false}
-          copy={copyFor(ask)}
-          itemActions={itemActions(run)}
-          capabilities={{ regenerate: false, feedback: false, report: false, followUp: false }}
-        />
+        {/* A side chat is private: Retry here would post its brief into the session, so there is none. */}
+        <RetryCallContext.Provider value={null}>
+          <AgentMessage
+            turn={shown}
+            stop={stop}
+            disclaimer={false}
+            copy={copyFor(ask)}
+            itemActions={itemActions(run)}
+            capabilities={{ regenerate: false, feedback: false, report: false, followUp: false }}
+          />
+        </RetryCallContext.Provider>
       </AgentTint>
       {conclusion.length > 0 && (
         <div>

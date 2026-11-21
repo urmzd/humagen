@@ -259,6 +259,7 @@ import type {
   SetKnowledgeDocumentExcludedBody,
   SetKnowledgeSyncSettingsBody,
   SetModelProviderBody,
+  SetModelProviderEnabledBody,
   Settings,
   SkillUsage,
   SnoozeInboxMessageBody,
@@ -2178,11 +2179,11 @@ model provider set up, a `provider:none` component is down.
 
   /** The providers an agent, a model policy or routing may name in the
 caller's workspace: those the deployment declares and those the
-workspace's administrators set up. There is no built-in model and no
+workspace's administrators enabled. There is no built-in model and no
 stand-in. Names are configuration, never keys. Declared does not mean a
 live call has been verified. A caller who may manage the workspace's
 providers (clients:write) also reads how each of its own is set up,
-with no key.
+with no key, including those they turned off.
  */
   async listModelProviders(options?: RequestOptions): Promise<ListModelProvidersResponse> {
     const path = "/api/model-providers";
@@ -2201,6 +2202,7 @@ with no key.
   /** A key is given as a value, kept in the secret store and never
 returned, or as `key_ref`, an `env:NAME` the server's configuration
 gives this workspace. With neither, a replaced provider keeps its key.
+A replacement keeps the provider's on or off state.
 A google provider may instead run on Vertex AI with the server's own
 credentials. A name the deployment declares, `policy`, `offline` and
 names starting `ws-` are refused.
@@ -2238,6 +2240,30 @@ names starting `ws-` are refused.
     let path = "/api/model-providers/{name}";
     path = path.replace("{name}", encodeURIComponent(String(name)));
     return this.rawRequest<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  /** Keeps the provider's settings and key. Deployment providers are read only.
+A provider explicitly assigned to an agent or a model policy cannot be
+turned off until those assignments are moved.
+ */
+  async setModelProviderEnabled(name: string, body: SetModelProviderEnabledBody, options?: RequestOptions): Promise<ModelProvider> {
+    let path = "/api/model-providers/{name}";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<ModelProvider>("PATCH", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async setModelProviderEnabledRaw(name: string, body: SetModelProviderEnabledBody, options?: RequestOptions): Promise<ApiResponse<ModelProvider>> {
+    let path = "/api/model-providers/{name}";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<ModelProvider>("PATCH", path, {
+      body,
+      contentType: "application/json",
       ...options,
     });
   }

@@ -108,6 +108,13 @@ export interface ThreadPostRequest {
   act_as: ActAs;
   surface: SurfaceRef;
   post_only?: boolean;
+  /**
+   * The message addressed nobody: a reply in a thread that does not mention
+   * the app. The platform answers it only in a thread that is listening, and
+   * only when the agent says it calls for it; anywhere else it answers 409
+   * and keeps nothing.
+   */
+  listen?: boolean;
 }
 
 /** What posting a message did, as `POST /api/threads` answers. Only the fields this app reads. */
@@ -203,10 +210,19 @@ export class HumagenError extends Error {
     message: string,
     /** Set when a limit refused the run (429 or 402). */
     readonly refusal?: Refusal,
+    /** Which failure it is, where humagen says (`ErrorBody.code`): the words may change, this does not. */
+    readonly code?: string,
   ) {
     super(message);
   }
 }
+
+/**
+ * The conflict `POST /api/sessions` answers for a Slack thread that started
+ * as a conversation, before threads outside a bound channel were sessions.
+ * The thread stays a conversation: it is posted to with `postThread`.
+ */
+export const THREAD_BEFORE_SESSIONS = "thread_before_sessions";
 
 /**
  * What this app asks of humagen. The names and shapes follow the generated
@@ -275,6 +291,13 @@ export interface Humagen {
    * found by its surface or started where the platform files it.
    */
   postThread(body: ThreadPostRequest, options?: CallOptions): Promise<ThreadPosted>;
+  /**
+   * Post a Slack person's message into the root session its Slack thread
+   * is, started on the thread's first message. A session is what the console
+   * lists, so a conversation that starts in Slack is found there as one that
+   * starts in the console is. Same request and same answer as `postThread`.
+   */
+  postSession(body: ThreadPostRequest, options?: CallOptions): Promise<ThreadPosted>;
   /**
    * Set how a humagen thread's gated actions are approved, for a person the
    * client maps: `auto`, the approval agent decides as them, or `ask`. The
@@ -465,6 +488,7 @@ const sleep = (ms: number, signal: AbortSignal) =>
  * | stopRun | `POST /api/runs/{id}/stop` |
  * | answerQuestion | `POST /api/runs/{id}/questions/{question}/answer` |
  * | postThread | `POST /api/threads` with a surface |
+ * | postSession | `POST /api/sessions` with a surface |
  * | setApprovalMode | `PUT /api/threads/{id}/approval` with `act_as` |
  * | getInboxMessage, inboxMessageFor | `GET /api/inbox/{id}`, for a person with `act_as_client` and `act_as_user` |
  * | resolveFor | `POST /api/inbox/{id}/parts/{part}/resolve` with `act_as` |
@@ -517,7 +541,10 @@ export function httpHumagen(cfg: {
   ): Promise<T> => {
     const res = await send(method, path, { json, headers });
     if (res.status === 204) return undefined as T;
-    const data = (await res.json().catch(() => ({}))) as { error?: string } & Refusal;
+    const data = (await res.json().catch(() => ({}))) as {
+      error?: string;
+      code?: string;
+    } & Refusal;
     if (!res.ok) {
       const refused = res.status === 429 || res.status === 402;
       throw new HumagenError(
@@ -531,6 +558,7 @@ export function httpHumagen(cfg: {
               policy: data.policy,
             }
           : undefined,
+        typeof data.code === "string" ? data.code : undefined,
       );
     }
     return data as T;
@@ -662,6 +690,22 @@ export function httpHumagen(cfg: {
       }
     },
     postThread: (body) => http<ThreadPosted>("POST", "/api/threads", body),
+    postSession: async (body) => {
+      // A session answers as itself, with what the post did under `posted`.
+      const view = await http<{
+        thread: ThreadPosted["thread"];
+        posted?: Omit<ThreadPosted, "thread">;
+      }>("POST", "/api/sessions", body);
+      return {
+        runs: [],
+        notified: [],
+        refused: [],
+        rule: "",
+        message: { id: "", text: body.text },
+        ...view.posted,
+        thread: view.thread,
+      };
+    },
     setApprovalMode: (thread, mode, actAs) =>
       http<unknown>("PUT", `/api/threads/${enc(thread)}/approval`, { mode, act_as: actAs }),
     threadSurface: (id) =>
