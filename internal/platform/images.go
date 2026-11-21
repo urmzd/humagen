@@ -257,8 +257,8 @@ func (p *Platform) ChangeImage(_ context.Context, who auth.Principal, id string,
 	switch {
 	case check:
 		p.checkImageLater(who.Tenant, id, img.Checks)
-	case img.Warm && img.Status == images.Ready:
-		p.warmImage(who.Tenant, img)
+	case in.Warm != nil:
+		p.keepImagesWarm()
 	}
 	return img.Shown(), nil
 }
@@ -274,6 +274,7 @@ func (p *Platform) RemoveImage(_ context.Context, who auth.Principal, id string)
 	if err := p.Images.Delete(who.Tenant, id); err != nil {
 		return err
 	}
+	p.keepImagesWarm()
 	return p.secrets.Drop(who.Tenant, imageOwner(id))
 }
 
@@ -290,6 +291,9 @@ type imageChecks struct {
 	pulls   int             // all of them
 	waiting []*pullWaiter   // the pulls waiting for a place, oldest first
 	wg      sync.WaitGroup
+
+	warm sync.Mutex      // one keepImagesWarm at a time, so the last one told stands
+	here map[string]bool // tenant and digest this process pulled; under warm
 }
 
 // pullWaiter is one pull waiting for a place; ready closes when it has one.
@@ -484,9 +488,10 @@ func (p *Platform) checkImage(ctx context.Context, tenant, id string, n int64) {
 		slog.Warn("images: check failed", "tenant", tenant, "image", id, "problem", err, "cause", cause)
 		return
 	}
-	if saved.Warm {
-		p.warmImage(tenant, saved)
-	}
+	// The host has the digest now. If the image is kept warm, this is
+	// the digest to keep, and the one it had is let go.
+	p.imageChecks.pulled(tenant, saved.Digest)
+	p.keepImagesWarm()
 }
 
 // beatImage says on the image, every imageBeatEvery until the returned stop
@@ -563,12 +568,14 @@ func (p *Platform) adoptStrandedChecks() {
 }
 
 // sweepImages looks, when the platform starts and every imageSweepEvery
-// after, for what a process that died left behind.
+// after, for what a process that died left behind, and for what another
+// process changed of the images kept warm.
 func (p *Platform) sweepImages(ctx context.Context) error {
 	tick := time.NewTicker(imageSweepEvery)
 	defer tick.Stop()
 	for {
 		p.adoptStrandedChecks()
+		p.keepImagesWarm()
 		select {
 		case <-ctx.Done():
 			return nil
@@ -666,51 +673,101 @@ func pullProblem(ref string, credential bool, err error) string {
 	return fmt.Sprintf("the sandbox host could not pull %s; the server's log says why", ref)
 }
 
-// warmer is a Leaser that can start an image before a run asks for it, as
-// saige's pool leaser can.
-type warmer interface {
-	Warm(isolation.Request) error
+// imageKeeper is a Leaser that keeps workspaces' images warm: the ones it
+// is told to, with instances started before a session asks, and no other.
+// Each call names them all, so an image left out is let go. The docker
+// sandbox's Leaser is one (internal/app); with a Leaser that is not, no
+// workspace's image is kept warm.
+type imageKeeper interface {
+	KeepWarm([]isolation.Request)
 }
 
-func (p *Platform) warmImage(tenant string, img images.Image) {
-	w, ok := p.cfg.Sandbox.Leaser.(warmer)
-	if !ok || img.Digest == "" {
-		return
+// pulled records that this process pulled a workspace's digest onto its
+// sandbox host. Only those are kept warm here: the host has them.
+func (c *imageChecks) pulled(tenant, digest string) {
+	c.warm.Lock()
+	defer c.warm.Unlock()
+	if c.here == nil {
+		c.here = map[string]bool{}
 	}
-	if err := w.Warm(isolation.Request{Tenant: tenant, Image: img.Digest}); err != nil {
-		slog.Warn("images: could not keep warm", "tenant", tenant, "image", img.ID, "error", err)
-	}
+	c.here[tenant+"\x00"+digest] = true
 }
 
-// PullReadyImages fetches every workspace's ready image onto the sandbox
-// host by digest, and warms those kept warm. The platform calls it when it
-// starts, so a host that has never run an image has it before a session
-// asks; a failure is logged and the image stays ready for the next host.
-// Each pull has imageRepullTimeout, and an image is warmed only if it is
-// still ready and kept warm once it is pulled.
-func (p *Platform) PullReadyImages(ctx context.Context) {
-	if !p.imagesOn() {
+// keepImagesWarm tells the sandbox every image to keep warm, as the images
+// stand now: each workspace's ready images marked warm (at most
+// images.MaxWarm of a workspace) that this process has pulled. It runs
+// whenever that may have changed here, and every imageSweepEvery for what
+// another process changed, so an image no longer warm, checked onto a new
+// digest, or removed is let go by every process within that time.
+func (p *Platform) keepImagesWarm() {
+	keeper, ok := p.cfg.Sandbox.Leaser.(imageKeeper)
+	if !ok {
 		return
 	}
-	_ = p.Images.Tenants(func(tenant string, imgs []images.Image) error {
+	c := &p.imageChecks
+	c.warm.Lock()
+	defer c.warm.Unlock()
+	reqs := []isolation.Request{}
+	held := map[string]bool{}
+	err := p.Images.Tenants(func(tenant string, imgs []images.Image) error {
 		for _, img := range imgs {
-			if img.Status != images.Ready || img.Digest == "" {
+			key := tenant + "\x00" + img.Digest
+			if img.Digest == "" || !c.here[key] {
 				continue
 			}
-			if ctx.Err() != nil {
-				return ctx.Err()
-			}
-			if err := p.repull(ctx, tenant, img); err != nil {
-				slog.Warn("images: could not pull a ready image", "tenant", tenant, "image", img.ID, "error", err)
-				continue
-			}
-			cur, err := p.Images.Get(tenant, img.ID)
-			if err == nil && cur.Warm && cur.Status == images.Ready && cur.Digest == img.Digest {
-				p.warmImage(tenant, cur)
+			held[key] = true
+			if img.Warm && img.Status == images.Ready {
+				reqs = append(reqs, isolation.Request{Tenant: tenant, Image: img.Digest})
 			}
 		}
 		return nil
 	})
+	if err != nil {
+		// What is warm stays as it was until the images can be read.
+		slog.Warn("images: could not read the images to keep warm", "error", err)
+		return
+	}
+	c.here = held // a digest no image has any more is forgotten
+	slices.SortFunc(reqs, func(a, b isolation.Request) int { return strings.Compare(a.Image, b.Image) })
+	keeper.KeepWarm(reqs)
+}
+
+// PullReadyImages fetches every workspace's ready image onto the sandbox
+// host by digest, and keeps warm those marked so. The platform calls it
+// when it starts, so a host that has never run an image has it before a
+// session asks; a failure is logged and the image stays ready for the next
+// host. Each pull has imageRepullTimeout, and an image is warmed only if it
+// is still ready and kept warm once it is pulled.
+func (p *Platform) PullReadyImages(ctx context.Context) {
+	if !p.imagesOn() {
+		return
+	}
+	type ready struct {
+		tenant string
+		img    images.Image
+	}
+	var all []ready
+	_ = p.Images.Tenants(func(tenant string, imgs []images.Image) error {
+		for _, img := range imgs {
+			if img.Status == images.Ready && img.Digest != "" {
+				all = append(all, ready{tenant, img})
+			}
+		}
+		return nil
+	})
+	for _, r := range all {
+		if ctx.Err() != nil {
+			return
+		}
+		if err := p.repull(ctx, r.tenant, r.img); err != nil {
+			slog.Warn("images: could not pull a ready image", "tenant", r.tenant, "image", r.img.ID, "error", err)
+			continue
+		}
+		p.imageChecks.pulled(r.tenant, r.img.Digest)
+		if r.img.Warm {
+			p.keepImagesWarm()
+		}
+	}
 }
 
 // repull pulls a ready image by its digest, within imageRepullTimeout of

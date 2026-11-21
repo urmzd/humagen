@@ -170,7 +170,9 @@ func openSandbox(ctx context.Context, o Options, l loaded, f sandboxFlags, log *
 			stop()
 			return isolation.Sandbox{Leaser: unavailable{err: fmt.Errorf("sandbox %s is unavailable: %w", name, err)}, Name: name}, none, nil
 		}
-		leaser, err := poolleaser.New(d, cfg)
+		// The deployment's image has its pool; a workspace's image is kept
+		// warm only while it is told to be (imageLeaser).
+		leaser, err := newImageLeaser(d, cfg)
 		if err != nil {
 			stop()
 			return isolation.Sandbox{}, none, fmt.Errorf("sandbox: docker: %w", err)
@@ -215,7 +217,7 @@ func both(a, b func()) func() {
 	return func() { a(); b() }
 }
 
-func closer(l *poolleaser.Leaser) func() {
+func closer(l interface{ Close(context.Context) error }) func() {
 	return func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()

@@ -1559,7 +1559,7 @@ func (p *Platform) Run(ctx context.Context) error {
 	}
 	// Every process checks images and looks for the checks a dead one left:
 	// whichever finds one first starts it again.
-	if p.imagesOn() {
+	if c := p.cfg.SandboxImages; c != nil && c.Puller != nil {
 		loop("images", func() error { return p.sweepImages(ctx) })
 	}
 	// The work done once per deployment runs on the elected leader only,

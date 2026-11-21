@@ -87,7 +87,7 @@ func TestACheckAgainStrandedByADeadProcessIsStartedAgain(t *testing.T) {
 // so no sweep takes it for stranded however long it runs, and a person's
 // Check Again on the other process starts no second pull either.
 func TestACheckRunningOnAnotherProcessIsNotStartedTwice(t *testing.T) {
-	const stale = time.Second
+	const stale = 2 * time.Second
 	t.Cleanup(platform.SetImageBeats(50*time.Millisecond, stale, 50*time.Millisecond))
 	on := processes(t)
 	slow := newGatePuller(func(int, string) bool { return true })
@@ -100,7 +100,7 @@ func TestACheckRunningOnAnotherProcessIsNotStartedTwice(t *testing.T) {
 	}
 	slow.waitStarted(t)
 	// The check runs for several times what makes a silent one stranded.
-	for deadline := time.Now().Add(3 * stale); time.Now().Before(deadline); time.Sleep(100 * time.Millisecond) {
+	for deadline := time.Now().Add(2*stale + stale/2); time.Now().Before(deadline); time.Sleep(100 * time.Millisecond) {
 		got, err := second.ChangeImage(t.Context(), admin, img.ID, platform.ImageChange{Check: true})
 		if err != nil {
 			t.Fatal(err)

@@ -42,9 +42,9 @@ const (
 	MaxRef = 512
 	// MaxProblem bounds why a check failed, in bytes.
 	MaxProblem = 512
-	// MaxWarm bounds the images one workspace keeps warm. The sandbox's
-	// pool is shared by every workspace, and an image it once warmed stays
-	// warm until the server restarts.
+	// MaxWarm bounds the images one workspace keeps warm. Only an image
+	// marked warm has idle instances kept for it; one unmarked, checked
+	// onto another digest or removed has them destroyed.
 	MaxWarm = 3
 )
 

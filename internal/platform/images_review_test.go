@@ -7,6 +7,7 @@ package platform_test
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -66,26 +67,43 @@ func (g *gatePuller) waitStarted(t *testing.T) string {
 	}
 }
 
-// warmLeaser records the images it is asked to keep warm.
+// warmLeaser records the images it is told to keep warm: each time, all
+// of them.
 type warmLeaser struct {
 	*isolationtest.Leaser
-	mu     sync.Mutex
-	warmed []string
+	mu   sync.Mutex
+	told int
+	kept []string
 }
 
-func (w *warmLeaser) Warm(req isolation.Request) error {
+func (w *warmLeaser) KeepWarm(reqs []isolation.Request) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	w.warmed = append(w.warmed, req.Image)
-	return nil
+	w.told++
+	w.kept = w.kept[:0:0]
+	for _, req := range reqs {
+		w.kept = append(w.kept, req.Image)
+	}
 }
 
-func (w *warmLeaser) take() []string {
+// warm is what it was last told to keep warm.
+func (w *warmLeaser) warm() []string {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	out := w.warmed
-	w.warmed = nil
-	return out
+	return slices.Clone(w.kept)
+}
+
+// keeps waits until it has been told to keep exactly want warm.
+func (w *warmLeaser) keeps(t *testing.T, when string, want ...string) {
+	t.Helper()
+	slices.Sort(want)
+	var got []string
+	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+		if got = w.warm(); slices.Equal(got, want) {
+			return
+		}
+	}
+	t.Fatalf("%s the sandbox was told to keep %v warm, want %v", when, got, want)
 }
 
 func imagesPlatform(t *testing.T, leaser isolation.Leaser, puller platform.ImagePuller) *platform.Platform {
@@ -177,9 +195,11 @@ func (s *seqPuller) Pull(ctx context.Context, ref, _ string) (string, error) {
 // A slow check that ends after a newer one, here on another process on
 // the same database, keeps nothing: the newer check's digest stands.
 func TestAnOlderCheckNeverReplacesANewerOne(t *testing.T) {
-	// The second process takes the first's check for stranded at once, as
-	// it would one whose process stopped beating, and starts a newer one.
-	t.Cleanup(platform.SetImageBeats(time.Hour, time.Nanosecond, time.Hour))
+	// The first process's check never beats, so the second soon takes it
+	// for stranded, as it would a dead process's, and a newer check starts
+	// there while the first's is still pulling.
+	const stale = 200 * time.Millisecond
+	t.Cleanup(platform.SetImageBeats(time.Hour, stale, time.Hour))
 	shared := state.NewMemory()
 	on := func(puller platform.ImagePuller) *platform.Platform {
 		return startWith(t, platform.Config{
@@ -190,12 +210,14 @@ func TestAnOlderCheckNeverReplacesANewerOne(t *testing.T) {
 		})
 	}
 	slow := &seqPuller{digest: "11", slow: make(chan struct{}), started: make(chan struct{})}
-	first, second := on(slow), on(&seqPuller{digest: "22"})
+	first := on(slow)
 	img, err := first.AddImage(t.Context(), admin, platform.ImageInput{Name: "A", Ref: "ghcr.io/acme/a:1"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	<-slow.started
+	second := on(&seqPuller{digest: "22"})
+	time.Sleep(stale + 50*time.Millisecond)
 	if _, err := second.ChangeImage(t.Context(), admin, img.ID, platform.ImageChange{Check: true}); err != nil {
 		t.Fatal(err)
 	}
@@ -240,9 +262,7 @@ func TestImageWarmingFollowsTheImageAsItStands(t *testing.T) {
 			}
 			readyImage(t, p, img.ID)
 			g.waitStarted(t)
-			if got := leaser.take(); len(got) != 1 {
-				t.Fatalf("the check warmed %v", got)
-			}
+			leaser.keeps(t, "after the check", "ghcr.io/acme/a@sha256:"+strings.Repeat("cd", 32))
 			done := make(chan struct{})
 			go func() { defer close(done); p.PullReadyImages(t.Context()) }()
 			g.waitStarted(t)
@@ -251,7 +271,7 @@ func TestImageWarmingFollowsTheImageAsItStands(t *testing.T) {
 			}
 			close(g.gate)
 			<-done
-			if got := leaser.take(); len(got) != 0 {
+			if got := leaser.warm(); len(got) != 0 {
 				t.Errorf("an image %s during the start-up pull was warmed: %v", c.name, got)
 			}
 		})

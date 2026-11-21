@@ -90,7 +90,12 @@ type egressLog struct {
 	log     *slog.Logger
 	queue   chan egressDecision
 	dropped atomic.Int64
-	leaser  atomic.Pointer[poolleaser.Leaser]
+	leaser  atomic.Pointer[granter]
+}
+
+// granter finds the request an egress grant was made for.
+type granter interface {
+	Granted(id string) (isolation.Request, bool)
 }
 
 type egressDecision struct {
@@ -107,9 +112,9 @@ func newEgressLog(log *slog.Logger) *egressLog {
 }
 
 // from names the leaser whose grants decisions belong to.
-func (e *egressLog) from(l *poolleaser.Leaser) {
+func (e *egressLog) from(l granter) {
 	if e != nil {
-		e.leaser.Store(l)
+		e.leaser.Store(&l)
 	}
 }
 
@@ -121,7 +126,7 @@ func (e *egressLog) add(d egress.Decision) {
 	}
 	x := egressDecision{d: d}
 	if l := e.leaser.Load(); l != nil && d.Grant != "" {
-		x.req, x.known = l.Granted(d.Grant)
+		x.req, x.known = (*l).Granted(d.Grant)
 	}
 	select {
 	case e.queue <- x:
