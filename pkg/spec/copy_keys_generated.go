@@ -1366,6 +1366,7 @@ var copyKeyList = []string{
 	"images.name",
 	"images.namePlaceholder",
 	"images.off",
+	"images.rechecking",
 	"images.ref",
 	"images.remove",
 	"images.status.checking",
