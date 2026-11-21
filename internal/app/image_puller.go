@@ -75,11 +75,31 @@ func pinned(ref string, digests []string) (string, error) {
 	return "", errors.New("the registry gave no digest for it")
 }
 
+// daemon is the Docker endpoint pulls go to: the sandbox host, else the
+// one the docker CLI's own configuration names (DOCKER_HOST or its current
+// context, as Colima and Docker Desktop set). It is read before a pull's own
+// configuration replaces the CLI's, which would hide the context.
+func (d dockerPuller) daemon(ctx context.Context) string {
+	if d.host != "" {
+		return d.host
+	}
+	if h := os.Getenv("DOCKER_HOST"); h != "" {
+		return h
+	}
+	out, err := exec.CommandContext(ctx, "docker", "context", "inspect", "--format", "{{.Endpoints.docker.Host}}").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
 func (d dockerPuller) docker(ctx context.Context, cfgDir string, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, "docker", args...)
+	// The pull's own configuration: no credential of this machine's user
+	// reaches a workspace's pull, and only the workspace's own does.
 	cmd.Env = append(os.Environ(), "DOCKER_CONFIG="+cfgDir)
-	if d.host != "" {
-		cmd.Env = append(cmd.Env, "DOCKER_HOST="+d.host)
+	if host := d.daemon(ctx); host != "" {
+		cmd.Env = append(cmd.Env, "DOCKER_HOST="+host)
 	}
 	if d.tlsDir != "" {
 		cmd.Env = append(cmd.Env, "DOCKER_TLS_VERIFY=1", "DOCKER_CERT_PATH="+d.tlsDir)
