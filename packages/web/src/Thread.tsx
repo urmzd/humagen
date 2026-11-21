@@ -1,4 +1,11 @@
-import { type ReactNode, useEffect, useLayoutEffect, useRef } from "react";
+import {
+  forwardRef,
+  type ReactNode,
+  type RefObject,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+} from "react";
 import { LatestButton, useLatest } from "./Latest.tsx";
 import { TurnRail, type TurnRailEntry } from "./TurnRail";
 
@@ -13,6 +20,9 @@ import { TurnRail, type TurnRailEntry } from "./TurnRail";
 /** The fewest turns a conversation has before its turn rail shows. */
 export const RAIL_MIN_TURNS = 6;
 
+/** The Jump to latest control and the fade under it (`h-16`), plus 16px of air. */
+const JUMP_CLEAR_PX = 80;
+
 export function Thread({
   children,
   label = "Conversation",
@@ -21,6 +31,7 @@ export function Thread({
   turns,
   busy = false,
   focus,
+  initialApproval,
   footer,
 }: {
   /**
@@ -32,6 +43,8 @@ export function Thread({
   footer?: ReactNode;
   /** An addressed message to reveal without scrolling the surrounding page. */
   focus?: string;
+  /** Latest actionable run on first open; an explicit message link takes precedence. */
+  initialApproval?: { run: string; question: string };
   children: ReactNode;
   label?: string;
   className?: string;
@@ -52,30 +65,57 @@ export function Thread({
     startAtEnd: !focus,
   });
   const revealed = useRef<string | undefined>(undefined);
+  const positioned = useRef(false);
   const root = useRef<HTMLDivElement>(null);
   const dock = useRef<HTMLDivElement>(null);
   const docked = footer !== undefined && footer !== null && footer !== false;
 
-  // The composer's height, and the scrollbar's width it must not cover, as
-  // variables on the thread: the list's end clears the composer however tall
-  // it grows, and a reader at the end stays there as it does.
-  useLayoutEffect(() => {
-    const el = dock.current;
-    const host = root.current;
-    if (!docked || !el || !host) return;
-    const measure = () => {
-      const list = scroller.current;
-      host.style.setProperty("--aui-thread-dock-h", `${Math.ceil(el.offsetHeight)}px`);
-      if (list)
-        host.style.setProperty("--aui-thread-gutter", `${list.offsetWidth - list.clientWidth}px`);
-      if (list && stuck.current) list.scrollTop = list.scrollHeight;
-    };
-    measure();
-    if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(measure);
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [docked, scroller, stuck]);
+  useComposerDock({
+    enabled: docked,
+    host: root,
+    dock,
+    scroller,
+    // A reader at the end stays there as the composer grows.
+    onMeasure: (list) => {
+      if (stuck.current) list.scrollTop = list.scrollHeight;
+    },
+  });
+
+  useEffect(() => {
+    if (positioned.current) return;
+    positioned.current = true;
+    if (focus || !initialApproval) return;
+    const root = scroller.current;
+    const run = root?.querySelector<HTMLElement>(
+      `[data-turn-id="${CSS.escape(initialApproval.run)}"]`,
+    );
+    // One pending approval has its own action row; several share the run's batch row.
+    const cards = run?.querySelectorAll<HTMLElement>(
+      '[data-aui-block="approval"], [data-aui-block="batch"]',
+    );
+    const card = Array.from(cards ?? []).find((item) => {
+      const id = item.dataset.auiBlockId ?? "";
+      return (
+        id.startsWith(`approval:${initialApproval.question}:r`) ||
+        id === `batch:${initialApproval.run}:actions`
+      );
+    });
+    if (!root || !card) return;
+    const end = root.scrollHeight - root.clientHeight;
+    const view = root.getBoundingClientRect();
+    const box = card.getBoundingClientRect();
+    // The list's end keeps room for the composer, so a row that starts on view
+    // there is clear of it: stay at the end and keep following.
+    if (root.scrollTop + box.top - view.top >= end) {
+      root.scrollTo({ top: end, behavior: "auto" });
+      return;
+    }
+    // Earlier in the list, the row stops clear of the composer that floats over
+    // the list's end and of the Jump to latest control drawn above it.
+    const edge = Math.min(view.bottom, dock.current?.getBoundingClientRect().top ?? view.bottom);
+    root.scrollTo({ top: root.scrollTop + box.bottom - edge + JUMP_CLEAR_PX, behavior: "auto" });
+    if (root.scrollHeight - root.scrollTop - root.clientHeight >= 48) release();
+  }, [focus, initialApproval, scroller, release]);
 
   useEffect(() => {
     if (!focus) {
@@ -130,22 +170,7 @@ export function Thread({
           {children}
         </div>
       </div>
-      {docked && (
-        <div
-          ref={dock}
-          data-layer="composer-dock"
-          // Over the list and clear of its scrollbar, so the bar stays reachable.
-          className="pointer-events-none absolute bottom-0 left-0 z-(--aui-z-composer) right-[var(--aui-thread-gutter,0px)]"
-        >
-          {/* Words pass under the composer through a fade, not against a hard edge. */}
-          <div
-            aria-hidden
-            className="h-8 bg-gradient-to-t from-aui-bg to-transparent"
-            data-layer="composer-fade"
-          />
-          <div className="pointer-events-auto bg-aui-bg">{footer}</div>
-        </div>
-      )}
+      {docked && <ComposerDock ref={dock}>{footer}</ComposerDock>}
       <div
         className="pointer-events-none absolute inset-x-0 top-0 z-(--aui-z-composer)"
         style={{ bottom: docked ? "var(--aui-thread-dock-h, 0px)" : 0 }}
@@ -155,3 +180,71 @@ export function Thread({
     </div>
   );
 }
+
+/**
+ * Keeps a floating composer's height, and the width of the scrollbar it must
+ * not cover, as variables on its host: `--aui-thread-dock-h` and
+ * `--aui-thread-gutter`. Whatever scrolls under the composer pads its end by
+ * the first, so its last line clears the composer however tall it grows.
+ */
+export function useComposerDock({
+  enabled,
+  host,
+  dock,
+  scroller,
+  onMeasure,
+}: {
+  enabled: boolean;
+  host: RefObject<HTMLElement | null>;
+  dock: RefObject<HTMLElement | null>;
+  scroller: RefObject<HTMLElement | null>;
+  /** Called after each measure with the scrolling list, to keep a reader where they were. */
+  onMeasure?: (list: HTMLElement) => void;
+}) {
+  const after = useRef(onMeasure);
+  after.current = onMeasure;
+  useLayoutEffect(() => {
+    const el = dock.current;
+    const root = host.current;
+    if (!enabled || !el || !root) return;
+    const measure = () => {
+      const list = scroller.current;
+      root.style.setProperty("--aui-thread-dock-h", `${Math.ceil(el.offsetHeight)}px`);
+      if (list) {
+        root.style.setProperty("--aui-thread-gutter", `${list.offsetWidth - list.clientWidth}px`);
+        after.current?.(list);
+      }
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [enabled, host, dock, scroller]);
+}
+
+/**
+ * The composer floating over the bottom of a surface that scrolls under it:
+ * the conversation's, and a project's page. Words pass under it through a
+ * fade, not against a hard edge, and it stays clear of the scrollbar so the
+ * bar stays reachable. Its host is `relative` and measures it with
+ * `useComposerDock`.
+ */
+export const ComposerDock = forwardRef<HTMLDivElement, { children: ReactNode }>(
+  function ComposerDock({ children }, ref) {
+    return (
+      <div
+        ref={ref}
+        data-layer="composer-dock"
+        className="pointer-events-none absolute bottom-0 left-0 z-(--aui-z-composer) right-[var(--aui-thread-gutter,0px)]"
+      >
+        <div
+          aria-hidden
+          className="h-8 bg-gradient-to-t from-aui-bg to-transparent"
+          data-layer="composer-fade"
+        />
+        <div className="pointer-events-auto bg-aui-bg">{children}</div>
+      </div>
+    );
+  },
+);

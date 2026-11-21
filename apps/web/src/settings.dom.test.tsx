@@ -6,7 +6,7 @@ import { ClientSettings } from "./Clients.tsx";
 import { stubFetch } from "./dom.ts";
 import type { PrefsRead } from "./preferences.ts";
 import type { SettingsSection } from "./route.ts";
-import { Settings } from "./Settings.tsx";
+import { Settings, SettingsNav } from "./Settings.tsx";
 
 // The loader imports every DOM file into one process, where a top-level hook
 // runs after other files' tests too, so it acts only on what this file set up.
@@ -119,11 +119,19 @@ test("appearance is the theme alone: no accent presets, no font specimen, nothin
   assert.equal(screen.queryByText("These follow you to any browser you sign in from."), null);
 });
 
-test("the audit address refuses a reader without governance", async () => {
+test("workspace settings have one audit destination alongside the deletion queue", () => {
   net = stubFetch({});
-  render(page(saved, "read", "read-audit"));
-  await screen.findByText("Only workspace administrators may read this audit.");
-  assert.ok(!net.seen.some((r) => r.path === "/api/read-audit"));
+  render(
+    <SettingsNav
+      me={{ ...me, permissions: ["projects:govern", "agents:write"] }}
+      active="Audit"
+      onSection={() => {}}
+      onNavigate={() => {}}
+    />,
+  );
+  assert.equal(screen.getAllByText("Audit", { exact: true }).length, 1);
+  assert.equal(screen.queryByText("Read Audit", { exact: true }), null);
+  assert.ok(screen.getByText("Deletion queue", { exact: true }));
 });
 
 const clientsCaps = { max: 10, max_per_surface: 5 };

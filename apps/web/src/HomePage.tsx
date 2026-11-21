@@ -7,9 +7,13 @@ import {
   orderNotifications,
   orderUpdates,
 } from "@humagen/core";
-import { EyeOffIcon } from "@humagen/render-web";
+import { EyeOffIcon, FolderIcon, PinIcon } from "@humagen/render-web";
 import { Button } from "@humagen/render-web/ui/button";
 import type { ReactNode } from "react";
+import type { ProjectView } from "./api.ts";
+import { ItemCard } from "./cards.tsx";
+import { cardsOf, titleOf } from "./projects.ts";
+import { href, type Route } from "./route.ts";
 import { ago, RowButton, Section, textAction } from "./ui.tsx";
 
 /** The urgency word's tint, the same tones the Notifications list uses. */
@@ -31,41 +35,97 @@ export function HomePage({
   greeting: string;
   canRun: boolean;
   hasAgents: boolean;
-  /** Under the prompt: what needs the person, and what is new (HomeBoxes). */
+  /** Optional project and artifact shortcuts under the prompt. */
   below?: ReactNode;
   children: ReactNode;
 }) {
   return (
-    // On a phone the chat bar stays at the bottom, in reach of a thumb, with the
-    // greeting centered above it and the boxes scrolling under it. Wider, the
-    // prompt is the page, centered.
+    // Optional sections flow below the desktop prompt and above the phone's
+    // bottom composer. Their arrival must not recenter the greeting or prompt.
     <section
       aria-label="New session"
-      className="humagen-home aui-scroll humagen-fade flex min-h-0 flex-1 flex-col overflow-y-auto pt-8 pb-2 md:pb-8"
+      className="humagen-home aui-scroll humagen-fade flex min-h-0 flex-1 flex-col overflow-y-auto pt-8 pb-2 md:pt-[clamp(2rem,24dvh,14rem)] md:pb-8"
     >
-      <div className="flex w-full min-w-0 flex-1 flex-col md:my-auto md:block md:flex-none">
+      <div className="flex w-full min-w-0 flex-1 flex-col md:block md:flex-none">
         {banner && <AnnouncementBanner announcement={banner} />}
-        <h1 className="humagen-display px-6 pb-6 text-center text-[2rem] font-semibold leading-tight text-aui-fg max-md:my-auto">
+        <h1 className="humagen-display px-6 pb-6 text-center text-[2rem] font-semibold leading-tight text-aui-fg max-md:mt-[clamp(1rem,16dvh,9rem)]">
           {greeting}
         </h1>
         {!canRun ? (
-          <p className="px-6 text-center text-aui-sm text-aui-muted max-md:order-last max-md:pb-6">
+          <p className="px-6 text-center text-aui-sm text-aui-muted max-md:order-last max-md:mt-auto max-md:pb-6">
             You do not have permission to start conversations in this workspace.
           </p>
         ) : !hasAgents ? (
-          <p className="px-6 text-center text-aui-sm text-aui-muted max-md:order-last max-md:pb-6">
+          <p className="px-6 text-center text-aui-sm text-aui-muted max-md:order-last max-md:mt-auto max-md:pb-6">
             An agent needs to be configured before you can start a conversation.
           </p>
         ) : (
           <div
             data-layer="sticky"
-            className="flex flex-col max-md:sticky max-md:bg-aui-bg max-md:gap-2 max-md:bottom-0 max-md:z-10 max-md:order-last max-md:pt-2"
+            className="flex flex-col max-md:sticky max-md:bg-aui-bg max-md:gap-2 max-md:bottom-0 max-md:z-10 max-md:order-last max-md:mt-auto max-md:pt-2"
           >
             {children}
           </div>
         )}
         {below && <div className="max-md:pb-6">{below}</div>}
       </div>
+    </section>
+  );
+}
+
+/** A few real projects to return to, ordered as they are on Projects. */
+export function HomeProjects({
+  projects,
+  personal,
+  pinned,
+  go,
+}: {
+  projects: ProjectView[] | null;
+  personal?: string;
+  pinned?: readonly string[];
+  go: (route: Route) => void;
+}) {
+  const list = cardsOf(
+    (projects ?? []).filter((p) => p.name !== "~" && p.name !== personal && !p.personal_owner),
+    { pinned },
+  ).slice(0, 3);
+  if (list.length === 0) return null;
+
+  return (
+    <section aria-labelledby="home-projects" className="mx-auto w-full max-w-4xl px-4 pt-6">
+      <h2 id="home-projects" className="pb-2 font-medium text-aui-xs text-aui-muted">
+        {defaultCopy.projects.title}
+      </h2>
+      <ul className="grid gap-3 sm:grid-cols-3">
+        {list.map((project) => {
+          const to = { page: "project", name: project.name } satisfies Route;
+          const title = titleOf(project);
+          return (
+            <li key={project.name} className="min-w-0">
+              <ItemCard
+                title={
+                  <span className="block truncate" title={title}>
+                    {title}
+                  </span>
+                }
+                mark={
+                  pinned?.includes(project.name) ? (
+                    <PinIcon
+                      size={14}
+                      fill="currentColor"
+                      aria-label={defaultCopy.projects.pinned}
+                    />
+                  ) : (
+                    <FolderIcon size={16} className="text-aui-muted" />
+                  )
+                }
+                href={href(to)}
+                onOpen={() => go(to)}
+              />
+            </li>
+          );
+        })}
+      </ul>
     </section>
   );
 }

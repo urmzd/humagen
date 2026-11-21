@@ -94,6 +94,7 @@ export function alertDestination(a: Alert): Route | undefined {
 
 /** What an alert's action button says: the page it opens, or the action's own name. */
 export function alertActionLabel(a: Alert): string {
+  if (a.action === "approve") return defaultCopy.attention.reviewApproval;
   const page = alertPage(a);
   const words = defaultCopy.corpora;
   if (!page) return alertAction(a);
