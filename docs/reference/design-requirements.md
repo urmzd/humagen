@@ -927,10 +927,18 @@ approval, disabled early approval, restoration, refusal and the combined menu.
   stops it), a call to another agent (`POST /api/runs/{child}/stop`),
   background work a step started, and a step in flight (which stops its run).
   A stopped item says Stopped in muted text, never Failed.
-- Under the box, one quiet right-aligned line: the agent that answered last
-  and its model, the approval mode as its own control, and a usage ring. On a
-  phone the line is the agent and the ring, and the approval mode waits under
-  a ⋯ button. The ring shows the fullest of the context and every
+- Under the box, one quiet line, on Home and in a conversation alike. On the
+  left, in order: the project (Home picks it here; it files the first
+  message), the environment and repository (`footerStart`, from the session
+  panel), then the approval mode. On the right: the agent that answered last
+  and its model, and a usage ring. On a phone the left items are icons only,
+  their words hidden but still their names.
+- Home's first message opens its conversation, and the bar and its footer
+  move down into it as one piece while the conversation's skeletons show:
+  Home remembers where they were and draws the same picture, inert, in the
+  loading screen's place, sliding with `--aui-dur-page` and
+  `--aui-ease-arrive` (`dockArrival.ts`). The footer never disappears, jumps
+  or reflows. With reduced motion it arrives in place. The ring shows the fullest of the context and every
   limit that holds the session, and takes a color only near a limit (amber)
   or over one (red); its name says which. It opens This Session (context,
   tokens or spend, runs, the agents that used most, from

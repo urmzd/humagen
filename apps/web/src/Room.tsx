@@ -50,6 +50,7 @@ import { Reference } from "./cards.tsx";
 import { type Completion, useCompletion } from "./completion.ts";
 import { deriveTitle } from "./conversationList.ts";
 import { Deliverables, revisionPrompt } from "./Deliverables.tsx";
+import { useDockArrival } from "./dockArrival.ts";
 import { ForkContext, ImportContext } from "./ForkConversation.tsx";
 import { GitHubTab, reviewText, reviewView } from "./GitHubTab.tsx";
 import { HumanActivityList, HumanActivityNote } from "./humanActivity.tsx";
@@ -753,6 +754,9 @@ export function ThreadRoom({
   const [localView, setLocalView] = useState<ConversationView>({});
   const [seed, setSeed] = useState<ComposerSeed>();
   const background = useSessionBackground(id);
+  // Arriving from Home's first message, the bar slides down to its place.
+  const dock = useRef<HTMLDivElement>(null);
+  useDockArrival(dock);
   const shownView = onView ? (view ?? {}) : localView;
   const openPanel = (
     panel?: ConversationPanel,
@@ -1123,7 +1127,10 @@ export function ThreadRoom({
                   turns={wave}
                   focus={focus}
                   footer={
-                    <div className="mx-auto flex w-full max-w-4xl flex-col gap-2 px-4 pb-3">
+                    <div
+                      ref={dock}
+                      className="mx-auto flex w-full max-w-4xl flex-col gap-2 px-4 pb-3"
+                    >
                       <Problem message={problem} />
                       {canRun && !posts && (
                         <p className="text-aui-xs text-aui-muted">{words.viewerOnly}</p>
@@ -1144,10 +1151,15 @@ export function ThreadRoom({
                             const latest = runs[runs.length - 1];
                             return (
                               <ComposerFooter
-                                start={footerStart}
+                                // Left, in order: project, environment and repository (footerStart), then approval.
+                                start={
+                                  <>
+                                    {footerStart}
+                                    <ApprovalToggle thread={th} me={handle || me} />
+                                  </>
+                                }
                                 agent={latest ? agentShown(latest.agent) : undefined}
                                 model={latest?.usage?.context?.model}
-                                approval={<ApprovalToggle thread={th} me={handle || me} />}
                                 usage={
                                   <UsageRing
                                     thread={id}

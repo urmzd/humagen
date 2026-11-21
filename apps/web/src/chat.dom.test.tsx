@@ -9,6 +9,7 @@ import { forgetApprover } from "./ApprovalToggle.tsx";
 import type { Run } from "./adapter.ts";
 import { api, type ProjectAgentsView, type Revision, type ThreadPage } from "./api.ts";
 import { Chat } from "./Chat.tsx";
+import { takeDeparture } from "./dockArrival.ts";
 import { stubEventSource, stubFetch } from "./dom.ts";
 import { forgetConfiguredProviders } from "./ModelChain.tsx";
 import { globex } from "./projects.fixtures.ts";
@@ -184,6 +185,11 @@ function openChat(
 }
 
 const box = () => screen.getByLabelText("Message", { selector: "textarea" }) as HTMLTextAreaElement;
+/** The left of the row under the bar: where the conversation is filed, and its approval mode. */
+const footerStart = () =>
+  screen
+    .getByRole("group", { name: defaultCopy.dock.footer })
+    .querySelector<HTMLElement>('[data-layer="composer-footer-start"]') as HTMLElement;
 
 test("Home's chat bar has no menu of who answers and no line saying who does", async () => {
   openChat(workspace("lead"));
@@ -244,7 +250,7 @@ test("Home's chat bar starts a private conversation in the picked project and op
   assert.ok(!net?.seen.some((s) => s.path.startsWith("/api/runs")), "no run is asked for");
 });
 
-test("Home's composer shows no project control, and Run chosen there is applied once the session starts", async () => {
+test("Home's bar holds no project or approval control: both sit in the footer's left, and Run chosen there is applied once the session starts", async () => {
   forgetApprover();
   forgetConfiguredProviders();
   const { opened } = openChat(
@@ -265,13 +271,16 @@ test("Home's composer shows no project control, and Run chosen there is applied 
   );
   const bar = screen.getByRole("form", { name: "Message" });
   assert.deepEqual(within(bar).queryAllByRole("button", { name: /project/i }), []);
-  fireEvent.click(within(bar).getByRole("button", { name: "Approvals: Ask Me" }));
+  assert.deepEqual(within(bar).queryAllByRole("button", { name: /^Approvals/ }), []);
+  const left = footerStart();
+  assert.ok(within(left).getByRole("button", { name: /^Select project/ }));
+  fireEvent.click(within(left).getByRole("button", { name: "Approvals: Ask Me" }));
   // The control opens a menu of the modes; Run is picked from it.
   await screen.findByRole("menu", { name: "Approvals" });
   const run = document.querySelector<HTMLElement>('[data-approval-option="auto"]');
   assert.ok(run, "the menu has no Run row");
   fireEvent.click(run);
-  assert.ok(within(bar).getByRole("button", { name: "Approvals: Run" }));
+  assert.ok(within(left).getByRole("button", { name: "Approvals: Run" }));
   assert.ok(!net?.seen.some((s) => s.method === "PUT"), "nothing is saved before the session");
   fireEvent.change(box(), { target: { value: "Plan the launch" } });
   fireEvent.keyDown(box(), { key: "Enter" });
@@ -1522,4 +1531,31 @@ test("composer only, as a project's page draws it: no greeting, its own words, a
   await waitFor(() => assert.deepEqual(opened, ["th-00000000000000ab"]));
   const started = net?.seen.find((s) => s.method === "POST");
   assert.deepEqual(started?.body, { project: "Globex", text: "Draft the renewal note" });
+});
+
+test("the project picked in Home's footer files the first message there, and the bar and its footer go down as one", async () => {
+  const { opened } = openChat(workspace("lead"), {
+    projects: [globex],
+    personalProject: "Personal",
+  });
+  const left = footerStart();
+  // Project first, then the approval mode.
+  const order = [...left.querySelectorAll("button")].map((b) => b.getAttribute("aria-label") ?? "");
+  assert.match(order[0] ?? "", /^Select project/);
+  assert.match(order[order.length - 1] ?? "", /^Approvals/);
+  fireEvent.click(within(left).getByRole("button", { name: /^Select project/ }));
+  fireEvent.click(await screen.findByRole("button", { name: /Globex/, pressed: false }));
+  await waitFor(() =>
+    assert.ok(within(footerStart()).getByRole("button", { name: /^Select project: Globex/ })),
+  );
+  fireEvent.change(box(), { target: { value: "What changed this week?" } });
+  fireEvent.keyDown(box(), { key: "Enter" });
+  await waitFor(() => assert.deepEqual(opened, ["th-00000000000000ab"]));
+  const started = net?.seen.find((s) => s.method === "POST" && s.path === "/api/sessions");
+  assert.equal((started?.body as { project?: string }).project, "Globex");
+  // What the conversation's loading screen draws in the bar's place: the bar and its footer together.
+  const left_behind = takeDeparture();
+  assert.ok(left_behind, "Home remembered its bar as it left");
+  assert.match(left_behind.html, /data-layer="composer-footer"/);
+  assert.match(left_behind.html, /humagen-composer-row/);
 });
