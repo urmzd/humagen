@@ -718,7 +718,15 @@ test("an installed app's status, action and menu are one group at the row's end;
       assert.ok(group.contains(part), `${name}: ${part.textContent || "More"} is in the group`);
     assert.match(group.className, /(^| )ml-auto( |$)/, "the group sits at the row's end");
     assert.match(group.className, /(^| )shrink-0( |$)/);
-    assert.doesNotMatch(group.className, /flex-wrap|contents/, "the group stays on one line");
+    // In a column narrower than the group it wraps inside the row, never past its edge.
+    assert.match(group.className, /(^| )max-w-full( |$)/, "the group stays inside the row");
+    // The action and its menu are one unit that does not wrap, apart from the status.
+    const manage = within(row).getByRole("button", { name: "Manage" });
+    const unit = manage.parentElement as HTMLElement;
+    assert.equal(unit.parentElement, group);
+    assert.ok(unit.contains(more), `${name}: the menu stays beside Manage`);
+    assert.equal(unit.contains(within(row).getByText("Installed")), false);
+    assert.doesNotMatch(unit.className, /flex-wrap|contents/, "the action and menu share a line");
     // The name gives up room so the group fits beside it at 390 pixels.
     const title = within(row).getByRole("button", { name });
     assert.equal(group.contains(title), false);
