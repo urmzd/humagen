@@ -117,8 +117,10 @@ function RowAction({
 /**
  * An alert's title: up to two lines in a stacked row, where touch has no
  * tooltip to carry the rest, and one line in the table, where rows keep one height.
+ * A tooltip does not show on keyboard focus, so there the title's link shows it whole.
  */
-const alertTitleLines = "line-clamp-2 break-words @3xl:pointer-fine:line-clamp-1";
+const alertTitleLines =
+  "line-clamp-2 break-words @3xl:pointer-fine:line-clamp-1 @3xl:pointer-fine:group-focus-visible/title:line-clamp-none";
 const alertCheck =
   "inline-flex size-6 items-center justify-center self-start pointer-coarse:size-11 @3xl:pointer-fine:self-center";
 
@@ -713,7 +715,7 @@ export function AlertsPage({
                             href={href(to)}
                             onClick={(event) => follow(event, () => go(to))}
                             // The title is as tall as a pointer needs, and on a touch screen as a finger does.
-                            className={`${title} rounded-aui-sm underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent inline-flex min-h-6 items-center pointer-coarse:min-h-11`}
+                            className={`${title} group/title rounded-aui-sm underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent inline-flex min-h-6 items-center pointer-coarse:min-h-11`}
                             title={a.title}
                           >
                             <span className={alertTitleLines}>{a.title}</span>

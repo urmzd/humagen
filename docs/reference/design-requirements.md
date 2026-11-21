@@ -987,7 +987,9 @@ project settings", with a clean outlook.
 - The box is one lean row: + (attach, and the + menu) on the left, the words,
   then Send (a return glyph) and the microphone as plain icons of equal
   weight. Attach, Send, microphone, approval mode and usage share 18px icons
-  and 32px targets on desktop or 44px targets on touch. The row grows upward
+  and 32px targets on desktop or 44px targets on touch. The project,
+  environment and repository controls under Home's bar have the same icons
+  and are as tall, with their words beside them. The row grows upward
   with the words and the buttons stay on its last line. Both buttons are always there: empty, Send
   is dimmed and the microphone is the action; with words, Send is ready and the
   microphone stays, so a person can switch between talking and typing. While
@@ -2258,7 +2260,9 @@ agent, then its source, priority, age and actions in columns. The header holds
 one box that selects every row shown, and once a row is selected the header
 names how many and offers Mark Selected Done and Snooze Selected. Primary
 actions stay on one line, and so do alert titles in the table; both keep their
-full names for tooltips and assistive technology. Each row reserves the same
+full names for tooltips and assistive technology. A tooltip does not show on
+keyboard focus, so a title cut to one line shows whole while its link has it.
+Each row reserves the same
 space for its actions. At narrow widths or on touch, the row stacks, labels
 Mark Done and Snooze next to their icons, and gives a title up to two lines,
 because a touch screen shows no tooltip. Review Approval opens the decision in
