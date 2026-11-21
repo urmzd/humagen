@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { setAgentHues } from "./agentHues.ts";
 import type { Note, ProjectDetail, Revision, ScheduleView } from "./api.ts";
 import { stubFetch } from "./dom.ts";
@@ -112,6 +113,8 @@ function open(
     onPin?: (project: string, pinned: boolean) => Promise<void>;
     pinned?: boolean;
     onFork?: () => void;
+    /** What the composer draws; nothing for someone who may not start a run. */
+    composer?: () => ReactNode;
   } = {},
 ) {
   const address = detail.project.name === "" ? "~" : encodeURIComponent(detail.project.name);
@@ -139,7 +142,7 @@ function open(
     <ProjectPage
       composer={(placeholder) => {
         placeholders.push(placeholder);
-        return <form aria-label="Home composer" />;
+        return opts.composer ? opts.composer() : <form aria-label="Home composer" />;
       }}
       self="ada"
       name={detail.project.name}
@@ -165,38 +168,179 @@ function open(
 const card = async (title: string) =>
   (await screen.findByRole("heading", { level: 2, name: title })).closest("section") as HTMLElement;
 
-test("a project page is headed by its title under a way back to Projects: no tabs, no agents of its own, no lede and no turn preview", async () => {
+/** A row of the project's setup, by its name. */
+const row = async (title: string) =>
+  (await screen.findByRole("listitem", { name: title })) as HTMLElement;
+
+/** The setup's rows, in order, by their keys. */
+const setupKeys = () =>
+  [...document.querySelectorAll<HTMLElement>("[data-setup]")].map((li) => li.dataset.setup);
+
+test("a project page is one surface: a trail back to Projects and its menu at the top, its title and description, Recents and its setup beside them", async () => {
   const { opened } = open(globexDetail);
   assert.ok(await screen.findByRole("heading", { level: 1, name: "Globex" }));
-  fireEvent.click(screen.getByRole("button", { name: /Projects$/ }));
+  const trail = screen.getByRole("navigation", { name: "Breadcrumb" });
+  assert.equal(within(trail).getByText("Globex").getAttribute("aria-current"), "page");
+  const back = within(trail).getByRole("link", { name: "Projects" });
+  assert.equal(back.getAttribute("href"), href({ page: "projects" }));
+  fireEvent.click(back);
   assert.deepEqual(opened, ["all"]);
+  assert.ok(screen.getByText("Renewals and support for Globex."), "its description, in one line");
   assert.ok(!screen.queryByRole("tablist"), "no tabs");
   for (const gone of [
-    "Renewals and support for Globex.",
     "Account | Globex Inc | in Field engineering",
     "Default agents",
     "Lead",
     "Sub-projects",
     "Manage connections",
     "Turn preview",
+    "No instructions",
+    "No corpora",
+    "Nothing scheduled",
+    "No references linked",
   ])
     assert.ok(!screen.queryByText(gone), `${gone} is not on the page`);
   assert.ok(!screen.queryByRole("textbox", { name: "Preview agent" }));
   assert.ok(!screen.queryByRole("button", { name: "New Session" }), "the composer starts one");
   // Agents are not the project's: nothing asks which agents it has.
   assert.ok(net.seen.every((r) => !r.path.includes("/agents")));
+  // It has sessions, so it leads with Recents and its setup is a summary beside them.
+  assert.ok(await card("Recents"));
   const side = screen.getByRole("complementary", { name: "Project settings" });
-  const headings = within(side)
-    .getAllByRole("heading", { level: 2 })
-    .map((h) => h.textContent);
-  assert.deepEqual(headings, [
-    "Access",
-    "Instructions",
-    "Context",
-    "Memory",
-    "Scheduled",
-    "External references",
+  assert.ok(within(side).getByRole("heading", { level: 2, name: "Setup" }));
+  assert.deepEqual(setupKeys(), ["instructions", "context", "memory", "scheduled", "references"]);
+  assert.ok(within(side).getByRole("heading", { level: 3, name: "Access" }));
+  assert.ok(!document.querySelector(".rounded-aui-lg.border"), "no boxed cards");
+});
+
+test("a new project leads with its setup as steps to get started, each done or not, with how many are done", async () => {
+  const fresh = { ...globex, conversations: 0, description: "" };
+  open({ ...globexDetail, project: fresh });
+  assert.ok(await screen.findByRole("heading", { level: 2, name: "Get started" }));
+  await waitFor(() =>
+    assert.equal(document.querySelector("[data-progress]")?.textContent, "0 of 5 set up"),
+  );
+  assert.ok(!screen.queryByRole("heading", { name: "Recents" }), "nothing to resume yet");
+  assert.ok(
+    net.seen.every((r) => !r.path.startsWith("/api/sessions")),
+    "Recents is not read for a project with none",
+  );
+  for (const name of ["Instructions", "Context", "Memory", "Scheduled", "External references"]) {
+    const li = await row(name);
+    assert.equal(li.dataset.done, "false", name);
+    assert.ok(within(li).getByText("Not set up"), `${name} says it is not set up`);
+    assert.equal(within(li).getByRole("button").textContent, "Add", `${name} says Add`);
+  }
+  assert.ok(!screen.queryByRole("button", { name: "Show" }), "steps never fold away");
+  // Partly set up: instructions and a note.
+  cleanup();
+  net.restore();
+  open(
+    {
+      ...globexDetail,
+      project: { ...fresh, instructions: "Never promise dates.", notes: 1 },
+    },
+    { routes: { "GET /api/projects/Globex/corpora": () => globexCorpora } },
+  );
+  await waitFor(() =>
+    assert.equal(document.querySelector("[data-progress]")?.textContent, "3 of 5 set up"),
+  );
+  assert.equal((await row("Instructions")).dataset.done, "true");
+  assert.ok(within(await row("Instructions")).getByText("Done"));
+  assert.match((await row("Instructions")).textContent ?? "", /Never promise dates\./);
+  assert.match((await row("Memory")).textContent ?? "", /1 note/);
+  assert.match((await row("Context")).textContent ?? "", /1 corpus/);
+  assert.equal((await row("Scheduled")).dataset.done, "false");
+});
+
+test("once everything is set up the setup reads as a summary, with no count of steps", async () => {
+  open(
+    { ...globexDetail, project: { ...globex, instructions: "Never promise dates.", notes: 2 } },
+    {
+      routes: {
+        "GET /api/projects/Globex/corpora": () => globexCorpora,
+        "GET /api/schedules": () => ({ schedules: [schedule("globex-weekly", "Globex")] }),
+        "GET /api/projects/Globex/channels": () => ({
+          channels: [
+            {
+              name: "slack-c0123",
+              project: "Globex",
+              version: 1,
+              slack: { client: "acme-slack", channel: "C0123" },
+            },
+          ],
+        }),
+      },
+    },
+  );
+  const side = await screen.findByRole("complementary", { name: "Project settings" });
+  await waitFor(() =>
+    assert.ok(
+      [...side.querySelectorAll<HTMLElement>("[data-setup]")].every((li) => li.dataset.done),
+      "every row is done",
+    ),
+  );
+  assert.ok(within(side).getByRole("heading", { level: 2, name: "Setup" }));
+  assert.ok(!side.querySelector("[data-progress]"), "no progress once it is all done");
+  assert.ok(!within(side).queryByText("Done"), "a summary, not steps");
+  const states = [...side.querySelectorAll<HTMLElement>("[data-setup]")].map((li) =>
+    li.textContent?.replace(/(Edit|View|Add)$/, ""),
+  );
+  assert.deepEqual(states, [
+    "InstructionsNever promise dates.",
+    "Context1 corpus",
+    "Memory2 notes",
+    "Scheduled1 schedule",
+    "External references1 channel",
   ]);
+});
+
+test("on a narrow page the summary folds away above Recents until Show opens it", async () => {
+  open(globexDetail);
+  const show = await screen.findByRole("button", { name: "Show" });
+  const list = document.getElementById(show.getAttribute("aria-controls") ?? "") as HTMLElement;
+  assert.equal(show.getAttribute("aria-expanded"), "false");
+  assert.match(list.className, /\bhidden\b/);
+  assert.match(list.className, /@3xl:block/, "beside Recents when there is room, always open");
+  fireEvent.click(show);
+  const hide = screen.getByRole("button", { name: "Hide" });
+  assert.equal(hide.getAttribute("aria-expanded"), "true");
+  assert.doesNotMatch(list.className, /\bhidden\b/);
+  // The setup comes first, so on a phone it sits above Recents.
+  const side = screen.getByRole("complementary", { name: "Project settings" });
+  const recents = await card("Recents");
+  assert.ok(side.compareDocumentPosition(recents) & Node.DOCUMENT_POSITION_FOLLOWING);
+});
+
+test("each row's action opens its own sheet beside the page, and closing it returns to the row", async () => {
+  open(
+    { ...globexDetail, project: { ...globex, conversations: 0 } },
+    {
+      routes: {
+        "GET /api/projects/Globex/members": () => ({
+          version: 4,
+          members: [{ who: "*", role: "member" }],
+          inherited: [],
+        }),
+      },
+    },
+  );
+  const sheets: [string, string][] = [
+    ["Add Instructions", "Instructions"],
+    ["Add Context", "Context"],
+    ["Add Memory", "Memory"],
+    ["Add Schedule", "Scheduled"],
+    ["Add External Reference", "External references"],
+    ["Change Access", "Who can see this project"],
+  ];
+  for (const [action, heading] of sheets) {
+    const button = await screen.findByRole("button", { name: action });
+    fireEvent.click(button);
+    const sheet = await screen.findByRole("dialog", { name: heading });
+    fireEvent.keyDown(sheet, { key: "Escape" });
+    await waitFor(() => assert.ok(!screen.queryByRole("dialog"), action));
+    await waitFor(() => assert.ok(document.activeElement === button, `${action} gets focus back`));
+  }
 });
 
 test("the More menu holds Pin, Edit, Fork, then Archive and Delete after a rule; Edit opens a sheet", async () => {
@@ -293,11 +437,32 @@ test("Archive Project can be undone, so it acts at once", async () => {
   );
 });
 
-test("the page draws Home's composer, saying it starts a session in the project", async () => {
+test("the composer floats over the bottom of the page: Home's own, saying it starts a session in the project", async () => {
   const { placeholders } = open(globexDetail);
-  assert.ok(await screen.findByRole("form", { name: "Home composer" }));
+  const composer = await screen.findByRole("form", { name: "Home composer" });
   assert.ok(placeholders.includes("New session in Globex"));
   assert.ok(!screen.queryByRole("button", { name: "Send" }), "no composer of its own");
+  // The conversation's dock: over the page, on the composer's layer, the page padded to clear it.
+  const dock = composer.closest("[data-layer='composer-dock']") as HTMLElement;
+  assert.ok(dock, "the composer is docked");
+  assert.match(dock.className, /z-\(--aui-z-composer\)/);
+  assert.ok(dock.querySelector("[data-layer='composer-fade']"));
+  assert.ok(
+    document.querySelector(".pb-\\[calc\\(var\\(--aui-thread-dock-h\\,8rem\\)\\+1\\.5rem\\)\\]"),
+  );
+});
+
+test("a composer that draws nothing leaves no dock and keeps no room for one", async () => {
+  open(globexDetail, { composer: () => null });
+  await screen.findByRole("heading", { level: 1, name: "Globex" });
+  const dock = document.querySelector("[data-layer='composer-dock']") as HTMLElement;
+  await waitFor(() => assert.equal(dock.parentElement?.className, "hidden"));
+  assert.equal(
+    document.querySelector(".pb-\\[calc\\(var\\(--aui-thread-dock-h\\,8rem\\)\\+1\\.5rem\\)\\]") ===
+      null,
+    true,
+    "the page is not padded for a composer",
+  );
 });
 
 test("Recents lists the project's own sessions newest first, each opening it, with Show More while there are more", async () => {
@@ -332,55 +497,31 @@ test("Recents lists the project's own sessions newest first, each opening it, wi
   assert.ok(!within(recents).queryByRole("button", { name: "Show More" }));
 });
 
-test("each recent session says where it started, who answered it and its state", async () => {
-  setAgentHues({ lead: 210, "globex-helper": 30 });
+test("each recent session is its title and when it last changed, with its state in words only when it needs a look", async () => {
   open(globexDetail, {
     routes: {
       "GET /api/sessions": () => ({
         sessions: [
-          session("s_1", "Renewal question", {
-            origin: "slack",
-            status: "working",
-            agents: ["globex-helper", "lead"],
-            people: ["dana"],
-          }),
-          session("s_2", "Weekly check", {
-            parent: "schedule://weekly-recap",
-            origin: "cron",
-            people: [],
-          }),
-          session("s_3", "Review the PR", { origin: "github" }),
-          session("s_4", "Try it out", {
-            agents: ["lead", "a", "b"],
-            people: ["ada", "bo"],
-          }),
+          session("s_1", "Renewal question", { origin: "slack", status: "waiting" }),
+          session("s_2", "Weekly check", { parent: "schedule://weekly-recap", origin: "cron" }),
+          session("s_3", "Review the PR", { origin: "github", status: "failed" }),
         ],
         next: "",
       }),
     },
   });
   const recents = await card("Recents");
-  const row = async (title: string) =>
-    (await within(recents).findByRole("link", { name: new RegExp(`^${title}`) })).textContent ?? "";
-  const slack = await row("Renewal question");
-  for (const part of ["Slack", "globex-helper", "lead", "@dana", "Working"])
-    assert.ok(slack.includes(part), part);
-  const answered = within(recents).getByRole("link", { name: /^Renewal question/ });
-  assert.equal(
-    answered.querySelectorAll("[data-accent='agent']").length,
-    2,
-    "each agent in its color",
-  );
-  assert.match(await row("Weekly check"), /Scheduled: weekly-recap/);
-  assert.match(await row("Review the PR"), /GitHub/);
-  const busy = await row("Try it out");
-  assert.match(busy, /Console/);
-  assert.doesNotMatch(busy, /@ada/, "the reader is not named among who answered");
-  assert.match(busy, /\+1/, "past three, the rest are counted");
-  assert.ok(
-    !within(recents).queryByText("Working", { selector: "[data-tone]" }),
-    "a state is quiet words, never a pill",
-  );
+  const link = async (title: string) =>
+    await within(recents).findByRole("link", { name: new RegExp(`^${title}`) });
+  const waiting = await link("Renewal question");
+  assert.ok(within(waiting).getByText("Waiting"));
+  assert.ok(waiting.querySelector("time"));
+  const done = await link("Weekly check");
+  assert.ok(!within(done).queryByText("Done"), "a finished session says nothing of its state");
+  assert.ok(within(await link("Review the PR")).getByText("Failed"));
+  for (const gone of ["Slack", "GitHub", "Scheduled: weekly-recap", "Console", "lead"])
+    assert.ok(!within(recents).queryByText(gone), `${gone} is not on the row`);
+  assert.ok(!recents.querySelector("[data-accent='agent']"), "no marks");
 });
 
 test("Recents with nothing in it says so in one line", async () => {
@@ -390,15 +531,16 @@ test("Recents with nothing in it says so in one line", async () => {
   assert.ok(!within(recents).queryByRole("button"));
 });
 
-test("Instructions: the card shows their first lines, and Edit saves them as a whole from the version read", async () => {
+test("Instructions: the row shows their first line, and Edit saves them as a whole from the version read", async () => {
   const puts: unknown[] = [];
   const instructed = { ...globex, instructions: "Never promise dates.\nAnswer in English." };
   open(
     { ...globexDetail, project: instructed },
     { routes: { "PUT /api/projects/Globex": (body) => (puts.push(body), instructed) } },
   );
-  const instructions = await card("Instructions");
+  const instructions = await row("Instructions");
   assert.match(instructions.textContent ?? "", /Never promise dates\./);
+  assert.doesNotMatch(instructions.textContent ?? "", /Answer in English/, "one line");
   fireEvent.click(within(instructions).getByRole("button", { name: "Edit Instructions" }));
   const sheet = await screen.findByRole("dialog", { name: "Instructions" });
   const box = within(sheet).getByRole("textbox", { name: "Instructions" }) as HTMLTextAreaElement;
@@ -414,12 +556,12 @@ test("Instructions: the card shows their first lines, and Edit saves them as a w
   cleanup();
   net.restore();
   open(globexDetail);
-  const empty = await card("Instructions");
-  assert.ok(within(empty).getByText("No instructions"));
+  const empty = await row("Instructions");
+  assert.equal(empty.textContent, "InstructionsAdd", "no empty line, just Add");
   assert.ok(within(empty).getByRole("button", { name: "Add Instructions" }));
 });
 
-test("Context: the card names each corpus and its sources, and the sheet saves the list as a whole", async () => {
+test("Context: the row counts the corpora, and the sheet saves the list as a whole", async () => {
   const puts: unknown[] = [];
   open(globexDetail, {
     routes: {
@@ -437,8 +579,8 @@ test("Context: the card names each corpus and its sources, and the sheet saves t
       ),
     },
   });
-  const context = await card("Context");
-  await within(context).findByText("Globex contracts, 3 sources");
+  const context = await row("Context");
+  await within(context).findByText("1 corpus");
   fireEvent.click(within(context).getByRole("button", { name: "Edit Context" }));
   const sheet = await screen.findByRole("dialog", { name: "Context" });
   const boxes = within(sheet)
@@ -453,23 +595,23 @@ test("Context: the card names each corpus and its sources, and the sheet saves t
   fireEvent.click(within(sheet).getByRole("button", { name: "Save" }));
   await waitFor(() => assert.equal(puts.length, 1));
   assert.deepEqual(puts[0], { version: 4, corpora: ["globex-contracts", "field-playbook"] });
-  await within(context).findByText("Field playbook, 2 sources");
+  await within(context).findByText("2 corpora");
 });
 
-test("Context on a server without corpora is its empty state, with nothing to add", async () => {
+test("Context on a server without corpora is empty, with nothing to add", async () => {
   open(globexDetail, {
     routes: {
       "GET /api/projects/Globex/corpora": () => new Response("{}", { status: 404 }),
       "GET /api/corpora": () => new Response("{}", { status: 404 }),
     },
   });
-  const context = await card("Context");
+  const context = await row("Context");
   await waitFor(() => assert.ok(net.seen.some((r) => r.path === "/api/corpora")));
-  assert.ok(within(context).getByText("No corpora"));
+  assert.equal(context.textContent, "Context");
   assert.ok(!within(context).queryByRole("button"));
 });
 
-test("Memory: the card counts the notes and what waits, and an owner keeps a waiting one from the sheet", async () => {
+test("Memory: the row counts the notes and what waits, and an owner keeps a waiting one from the sheet", async () => {
   const approved: unknown[] = [];
   let notes = [note("n1", "Renewals close in March."), note("n2", "Prefers email.", "pending")];
   open(
@@ -485,7 +627,7 @@ test("Memory: the card counts the notes and what waits, and an owner keeps a wai
       },
     },
   );
-  const memory = await card("Memory");
+  const memory = await row("Memory");
   assert.ok(within(memory).getByText("1 note, 1 waiting"));
   fireEvent.click(within(memory).getByRole("button", { name: "View Memory" }));
   const sheet = await screen.findByRole("dialog", { name: "Memory" });
@@ -509,16 +651,18 @@ test("Scheduled lists only this project's schedules in words, and Add files a ne
       "POST /api/schedules": (body) => (posts.push(body), schedule("globex-digest", "Globex")),
     },
   });
-  const scheduled = await card("Scheduled");
-  await within(scheduled).findByText("Weekly renewal check");
-  assert.ok(within(scheduled).getByText("Weekdays at 09:00 UTC"));
-  assert.ok(!within(scheduled).queryByText("field-daily"));
+  const scheduled = await row("Scheduled");
+  await within(scheduled).findByText("1 schedule");
   assert.ok(
     net.seen.some((r) => r.path === "/api/schedules?project=Globex"),
     "it asks for this project's",
   );
   fireEvent.click(within(scheduled).getByRole("button", { name: "Add Schedule" }));
-  const sheet = await screen.findByRole("dialog", { name: "New schedule" });
+  const sheet = await screen.findByRole("dialog", { name: "Scheduled" });
+  const listed = within(sheet).getByRole("list");
+  assert.ok(within(listed).getByText("Weekly renewal check"));
+  assert.ok(within(listed).getByText("Weekdays at 09:00 UTC"));
+  assert.ok(!within(listed).queryByText("field-daily"));
   fireEvent.change(within(sheet).getByRole("textbox", { name: "Name" }), {
     target: { value: "globex-digest" },
   });
@@ -536,7 +680,7 @@ test("Scheduled lists only this project's schedules in words, and Add files a ne
   });
 });
 
-test("Slack: a linked channel shows with its app, Add links one by its id, and Remove unlinks it", async () => {
+test("External references: the row counts linked Slack channels; its sheet names each with its app, links one by its id, and Remove unlinks it", async () => {
   const posts: unknown[] = [];
   const deletes: string[] = [];
   open(globexDetail, {
@@ -566,11 +710,12 @@ test("Slack: a linked channel shows with its app, Add links one by its id, and R
       },
     },
   });
-  const slack = await card("External references");
-  await within(slack).findByText("#C0123 via Acme Slack");
-  assert.ok(!within(slack).queryByText(/general/), "a channel with no Slack binding is no link");
+  const slack = await row("External references");
+  await within(slack).findByText("1 channel");
   fireEvent.click(within(slack).getByRole("button", { name: "Add External Reference" }));
-  const sheet = await screen.findByRole("dialog", { name: "Link a Slack channel" });
+  const sheet = await screen.findByRole("dialog", { name: "External references" });
+  await within(sheet).findByText("#C0123 via Acme Slack");
+  assert.ok(!within(sheet).queryByText(/general/), "a channel with no Slack binding is no link");
   const apps = within(sheet)
     .getAllByRole("option")
     .map((o) => o.textContent);
@@ -588,7 +733,9 @@ test("Slack: a linked channel shows with its app, Add links one by its id, and R
     slack: { client: "acme-slack", channel: "C0456" },
   });
   await waitFor(() => assert.ok(!screen.queryByRole("dialog")));
-  fireEvent.click(within(slack).getByRole("button", { name: "Remove #C0123" }));
+  fireEvent.click(within(slack).getByRole("button", { name: "Add External Reference" }));
+  const again = await screen.findByRole("dialog", { name: "External references" });
+  fireEvent.click(await within(again).findByRole("button", { name: "Remove #C0123" }));
   await waitFor(() => assert.deepEqual(deletes, ["slack-c0123"]));
 });
 
@@ -602,7 +749,7 @@ test("Access says who can see the project, and an owner changes it from the acce
       }),
     },
   });
-  const visibility = (await screen.findByRole("heading", { level: 2, name: "Access" }))
+  const visibility = (await screen.findByRole("heading", { level: 3, name: "Access" }))
     .parentElement as HTMLElement;
   assert.ok(within(visibility).getByText("Workspace"));
   fireEvent.click(within(visibility).getByRole("button", { name: "Change Access" }));
@@ -612,7 +759,7 @@ test("Access says who can see the project, and an owner changes it from the acce
   net.restore();
   // One only its owner reads is private.
   open({ ...globexDetail, project: { ...globex, members: [{ who: "ada", role: "owner" }] } });
-  const own = (await screen.findByRole("heading", { level: 2, name: "Access" }))
+  const own = (await screen.findByRole("heading", { level: 3, name: "Access" }))
     .parentElement as HTMLElement;
   assert.ok(within(own).getByText("Private"));
 });
@@ -641,13 +788,32 @@ test("a reader who may not edit the project sees what it holds and no way to cha
   const buttons = within(side)
     .getAllByRole("button")
     .map((b) => b.getAttribute("aria-label") ?? b.textContent);
-  assert.deepEqual(buttons, ["View Memory"], "only a way to read the notes");
+  assert.deepEqual(
+    buttons,
+    ["View Instructions", "View Memory"],
+    "only ways to read the instructions and the notes",
+  );
   assert.ok(!screen.queryByRole("button", { name: "More" }), "no menu with nothing in it");
   fireEvent.click(within(side).getByRole("button", { name: "View Memory" }));
   const sheet = await screen.findByRole("dialog", { name: "Memory" });
   await within(sheet).findByText("Prefers email.");
   assert.ok(!within(sheet).queryByRole("button", { name: /^Keep note/ }));
   assert.ok(!within(sheet).queryByRole("button", { name: "Add Note" }));
+});
+
+test("a reader who may not edit the project still reads which corpora it attaches", async () => {
+  open(
+    { ...globexDetail, project: projectView({ name: "Globex" }) },
+    {
+      can: ["projects:read", "runs:read", "knowledge:read"],
+      routes: { "GET /api/projects/Globex/corpora": () => globexCorpora },
+    },
+  );
+  fireEvent.click(await screen.findByRole("button", { name: "View Context" }));
+  const sheet = await screen.findByRole("dialog", { name: "Context" });
+  assert.ok(within(sheet).getByText("Globex contracts, 3 sources"));
+  assert.equal(within(sheet).queryByRole("checkbox"), null, "nothing to change");
+  assert.ok(!net.seen.some((r) => r.path === "/api/corpora"), "the corpus list is an editor's");
 });
 
 test("the workspace's page is titled with the workspace's name, and its title is not edited here", async () => {
