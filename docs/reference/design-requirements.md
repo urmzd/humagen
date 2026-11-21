@@ -26,6 +26,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 
 | ID | Requirement | Status |
 | --- | --- | --- |
+| DES-082 | A project's page is a chat landing page: one surface with a trail back to Projects and its menu at the top, its title and one-line description, and the conversation's floating composer pinned at the bottom. A project with no sessions leads with its setup as steps to get started, each done or not, with how many are done; once it has sessions it leads with Recents, and the setup is a summary beside them, folded above them on a phone. Setup and Recents are plain rows on hairlines, never boxed cards or "No ..." lines | Implemented: `ProjectPage`, `Setup`, `SetupRow`, `Recents` (`apps/web/src/Projects.tsx`), `ComposerDock` and `useComposerDock` shared with `Thread` (`packages/web/src/Thread.tsx`). Evidence: `projects.dom.test.tsx`; before and after captures at 1280x800 and 390x844, light and dark, on the pull request. |
 | DES-080 | A session has one panel, reached from its header, that shows where it runs, how full its context is, the connectors it may reach, what it made and what it changed, and each row opens the view it names; the header opens the workbench's views directly and the rest from More Views, and its title is the session's menu | Implemented: `SessionViews.tsx` (Details, Terminal, Changes, Browser and Files in the header; Artifacts, Side Chat ⌘;, Search ⌘⇧F, Background Tasks and Progress in More Views; on a phone all of them in More Views), `SessionSections.tsx` and `sessionContext.ts` (Environment, Context, Connectors, Changes), the title menu with Rename in place (`SessionActions.tsx`), the meta line said once (`SessionPlace.tsx`), and session titles without a leading mention, retitled after a greeting (`runs.SessionTitle`, `runs.Greeting`). No new route: the panel reads `GET /api/threads/{id}/sandboxes`, `GET /api/me/credentials`, `GET /api/github/pull` and each run's usage. Evidence: `session-context-panel.dom.test.tsx`, `TestSessionTitle*`, `TestGreeting`; before and after captures at 1280x800 and 390x844, light and dark, against a docker sandbox. |
 | DES-080 | A conversation is one surface with the composer floating over it, on a named z-index scale, and Stop works at two levels: the composer stops everything in the session, each running agent, call to another agent, step and background task stops from its own row; the composer's footer says who answers, the approval mode and a usage ring that opens the session's usage and the limits that hold it | Implemented: `Thread` `footer` (`packages/web/src/Thread.tsx`), the `--aui-z-*` scale (`packages/render-web/src/theme.css`), `ItemStopControl` and `ItemStopsContext` (render-web `stop.tsx`, `meta.tsx`), `Composer` `stopAll` and `footer`, `stops.tsx`, `SessionUsage.tsx`, `GET /api/threads/{id}/usage` (`internal/platform/session_usage.go`). Evidence: `composer-overlay.dom.test.tsx`, `TestThreadUsage*` and `foldUsage` tests; before and after captures at 1280x800 and 390x844, light and dark, on PR #474. Not done: Run in Background for a call already running (the runtime starts a call in the background only when the model asks, with `background: true`); a real iOS keyboard. |
 | DES-080 | A conversation is one surface with the composer floating over it, on a named z-index scale, and Stop works at two levels: the composer stops everything in the session, each running agent, call to another agent, step and background task stops from its own row; the composer's footer says who answers, the approval mode and a usage ring that opens the session's usage and the limits that hold it | Implemented: `Thread` `footer` (`packages/web/src/Thread.tsx`), the `--aui-z-*` scale (`packages/render-web/src/theme.css`), `ItemStopControl` and `ItemStopsContext` (render-web `stop.tsx`, `meta.tsx`), `Composer` `stopAll` and `footer`, `stops.tsx`, `SessionUsage.tsx`, `GET /api/threads/{id}/usage` (`internal/platform/session_usage.go`). Evidence: `composer-overlay.dom.test.tsx`, `TestThreadUsage*` and `foldUsage` tests; before and after captures at 1280x800 and 390x844, light and dark, on PR #474. Not done: Run in Background for a call already running (the runtime starts a call in the background only when the model asks, with `background: true`); a real iOS keyboard. |
@@ -688,7 +689,15 @@ Profile, Notifications, Privacy and workspace administration share compact
 a direct Memory link and one aligned save action. Audit uses a shared
 Radix/react-day-picker calendar with local date/time inputs, host conversion to
 ISO timestamps and positive-range validation capped at 31 days. Compact event
-rows expand retained details; resource, Refresh and Export actions carry icons.
+rows expand retained details. Resource, Refresh and Export actions carry icons.
+Workspace changes and administrator-only break-glass reads share the Audit
+destination, and the former Read Audit address opens it. A break-glass read the
+reads section lists is left out of the changes list, so it shows once; a read
+that section does not list stays among the changes, and the CSV export keeps
+every row. Both are boxed `Section`s: a heading's count is hidden at zero, and a
+list as long as the server's 100-record cap says so in place of a count. Route
+and DOM tests cover the legacy address, the permission-gated read request, the
+single listing, the empty headings and the cap.
 Announcements use a compact card, one Open
 Announcement action and a labeled eye-with-slash Hide button with a busy guard.
 
@@ -896,6 +905,49 @@ approval, disabled early approval, restoration, refusal and the combined menu.
 - Acceptance: a turn with a subagent shows the call as a message with both
   agents' marks and the prompt, the answer under it, and collapses when ended.
 
+### DES-082: A project's page is a chat landing page
+
+Owner request: "keep the project page like a normal chat landing page with
+the different steps/items in the top area with the prompt bar in the bottom
+so the users can either start by sending a message or by updating their
+project settings", with a clean outlook.
+
+- The page has the conversation's shape: a title row at the top (a trail,
+  Projects / the project, and the ⋯ menu), one background under it, and the
+  composer floating over its bottom through the same `ComposerDock` a
+  conversation uses, on `--aui-z-composer`. Whatever scrolls under it clears
+  it by `--aui-thread-dock-h`. Under the title row: the project's title and
+  its description in one muted line. The composer's placeholder is "New
+  session in <project>". Its footer is Home's: the project picker, set to
+  this project, and the approval mode at its left. It offers no model or
+  effort (DES-067).
+- The setup is one row per part: Instructions, Context, Memory, Scheduled and
+  External references, each with its mark, its name, a muted line on what it
+  holds ("2 corpora", "1 schedule", the instructions' first line) and one
+  action at the right (Add, Edit, View) that opens a sheet beside the page.
+  A part that holds nothing has no line; its row says Add. Who can see the
+  project is one muted line under the rows, with Change. Rows sit on
+  hairlines with no box, and the whole row is the action's target.
+- What leads depends on whether there is anything to resume. A project with
+  no sessions leads with its setup as **Get started**: each row's mark is a
+  ring or a check, and the heading says how many are done ("2 of 5 set up").
+  A project with sessions leads with **Recents** in the main column, and its
+  setup is a summary in a narrow column beside them, with the count only
+  while something is not set up. Below 48rem the summary comes first and
+  folds under its heading until Show opens it, so Recents stays in view; the
+  steps never fold. Recents leads once sessions exist because returning to
+  work is what a person comes back for, while the setup is changed rarely.
+- A row in Recents is the session's title and, at the right, when it last
+  changed. Its state is said in words before the time only when it needs a
+  look (Working, Waiting, Failed). Rows carry no marks, chips or origins; the
+  sidebar's rows say where a session started (DES-054).
+- On a phone the composer stays pinned at the bottom above the home
+  indicator and rises with the keyboard, as in a conversation; its footer
+  is Home's footer, as on Home's own page.
+- The page is not drawn with `Page`'s plain layout: like a conversation, it
+  needs a surface of its own under the title row for the composer to float
+  over. Its loading and missing states still use `Page`.
+
 ### DES-080: One surface, a floating composer, Stop at two levels
 
 - The conversation is one background with no box round it. The composer
@@ -912,8 +964,9 @@ approval, disabled early approval, restoration, refusal and the combined menu.
   `--aui-z-toast`. Code touched uses these, never a bare number.
 - The box is one lean row: + (attach, and the + menu) on the left, the words,
   then Send (a return glyph) and the microphone as plain icons of equal
-  weight, each a 44px target on touch. The row grows upward with the words and
-  the buttons stay on its last line. Both buttons are always there: empty, Send
+  weight. Attach, Send, microphone, approval mode and usage share 18px icons
+  and 32px targets on desktop or 44px targets on touch. The row grows upward
+  with the words and the buttons stay on its last line. Both buttons are always there: empty, Send
   is dimmed and the microphone is the action; with words, Send is ready and the
   microphone stays, so a person can switch between talking and typing. While
   it records or dictates, the microphone shows it live and is the stop in the
@@ -2149,6 +2202,9 @@ preserves routing; Delete requests administrator review and does not remove the
 record directly. Canonical sharing uses project access without a channel picker.
 Bring Back is offered inside Fork for a completed fork result and retains the
 existing consent review. Approval controls say Ask a question and Decline action.
+The console puts Approve and Decline together, then Ask a question; its Decline
+keeps Decline action in its accessible name.
+Approve reads the request's own verb on both surfaces when it has one.
 Failure debug references are kept out of the everyday response and remain in the
 explicit issue-report draft.
 
@@ -2206,21 +2262,31 @@ request totals remain open.
 
 ### DES-075: A calm Home and states that say whose move it is
 
-Home under the chat bar is one strip. Recently made shows the three newest
-artifacts the person may read from the existing `GET /api/artifacts`, each card
-opening it at `/artifacts/{id}`. Home does not say how many alerts are waiting:
-the Alerts entry in the menu carries that count as a badge, and the menu button
-carries a dot when the menu is closed. The strip has no link to all artifacts,
-because the Artifacts entry in the menu opens them. With nothing made, Home is the
-greeting and the chat bar. Home no longer lists alerts or recent sessions:
-sessions are in the sidebar's Recents and on Sessions.
+Home keeps the greeting and composer in place as project and artifact cards load. Its
+Projects strip shows up to three readable named projects using the Projects
+page order, with pinned projects first and then the latest activity. Each
+card opens its project. The workspace root and automatic Personal project are
+excluded. Loading, unavailable and empty project listings leave out the strip.
+Recently made shows the three newest artifacts the person may read from the
+existing `GET /api/artifacts`, each card opening it at `/artifacts/{id}`. The
+sidebar's Artifacts entry opens the full list. Alerts owns approvals and its
+sidebar badge carries the count. Recent sessions are in the sidebar's Recents
+and on Sessions.
 
 The alert center lists alerts as one table: a box to select, the alert and its
 agent, then its source, priority, age and actions in columns. The header holds
 one box that selects every row shown, and once a row is selected the header
-names how many and offers Mark Selected Done and Snooze Selected. Under 48rem a
-row stacks. The Skills list sits in the same column as the tabs above it, as a
-bordered list, and an empty scope says what to do next.
+names how many and offers Mark Selected Done and Snooze Selected. Primary
+actions stay on one line, and so do alert titles in the table; both keep their
+full names for tooltips and assistive technology. Each row reserves the same
+space for its actions. At narrow widths or on touch, the row stacks, labels
+Mark Done and Snooze next to their icons, and gives a title up to two lines,
+because a touch screen shows no tooltip. Review Approval opens the decision in
+its session. The Skills list sits in the same column as the tabs above it, as a
+bordered list, and an empty scope says what to do next. The `alerts` browser
+check compares action positions and widths with short and long labels at
+desktop and phone widths, holds table rows to one height, and expects a long
+title to take two lines in a stacked row.
 
 An alert is named by whose move it is: Waiting, Snoozed or Done, with Mark Done
 in place of Resolve, in the alert center, on a session's alert card and in bulk
@@ -2228,13 +2294,14 @@ actions. A project's inbox switch reads Waiting, Done and All. The API, the
 stored states and the addresses keep `open`, `snoozed` and `resolved`, so
 existing links hold. The words are in `copy.ts` (`attention`, `show`, `home`).
 
-Evidence: `session-center.dom.test.tsx` checks the single waiting link, the
-three-card strip and its destinations, and that nothing is drawn or asked for
+Evidence: `session-center.dom.test.tsx` checks the artifact strip and its
+destinations, and that nothing is drawn or asked for
 when there is nothing to show or no permission; `session-ux.dom.test.tsx` and
 `roles.dom.test.tsx` check the new words. Console screens `new` and `alerts`
-and `home-made` pass at 1280x800 and 390x844 in light and dark. Artifact
-cards show no preview of their content. A strip that cannot be read says so in
-one line.
+and `home-made` pass at 1280x800 and 390x844 in light and dark. The
+`home-projects` screen checks that the composer stays put when projects
+load. Home DOM tests cover omission, project order and links. Artifact cards show no preview
+of their content. An artifact strip that cannot be read says so in one line.
 
 ### DES-076: Continue an imported conversation
 

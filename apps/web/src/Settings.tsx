@@ -10,7 +10,6 @@ import {
   NetworkIcon,
   PaletteIcon,
   PlugIcon,
-  ScrollTextIcon,
   ServerIcon,
   ShieldIcon,
   SunIcon,
@@ -37,7 +36,6 @@ import { DeletionQueue } from "./DeletionQueue.tsx";
 import { ModelProviderSettings } from "./ModelProviders.tsx";
 import { PersonalPreferences } from "./PersonalPreferences.tsx";
 import type { PrefsRead } from "./preferences.ts";
-import { ReadAudit } from "./ReadAudit.tsx";
 import { href, type Route, type SettingsSection } from "./route.ts";
 import { SettingsFormRow } from "./SettingsFormRow.tsx";
 import { Avatar, linked, workspaceSettingsRoute } from "./settingsLinks.tsx";
@@ -155,8 +153,6 @@ export function Settings({
       .catch(fail("The workspace settings could not be saved."));
   };
 
-  const canReadAudit =
-    me.principal.roles?.includes("admin") && me.permissions.includes("projects:govern");
   const canGovern = me.permissions.includes("projects:govern");
 
   return (
@@ -176,16 +172,6 @@ export function Settings({
           {section === "notifications" && (
             <PersonalPreferences section="notifications" onSaved={onPrefs} />
           )}
-          {section === "read-audit" &&
-            (canReadAudit ? (
-              <ReadAudit />
-            ) : (
-              <>
-                <h1 className={pageTitle}>{defaultCopy.readAudit.title}</h1>
-                <Problem message={defaultCopy.readAudit.denied} />
-              </>
-            ))}
-
           {section === "voice" && (
             <>
               <header className="pb-2">
@@ -580,8 +566,6 @@ export function SettingsNav({
   onSection: (next: Section) => void;
   onNavigate?: (route: Route) => void;
 }) {
-  const canReadAudit =
-    me.principal.roles?.includes("admin") && me.permissions.includes("projects:govern");
   const canGovern = me.permissions.includes("projects:govern");
   const admin =
     me.principal.roles?.includes("admin") ||
@@ -601,15 +585,6 @@ export function SettingsNav({
         { id: "limits", label: "Limits", icon: <GaugeIcon size={16} /> },
         { id: "voice", label: defaultCopy.voiceSettings.title, icon: <MicIcon size={16} /> },
         { id: "access", label: "Access", icon: <ShieldIcon size={16} /> },
-        ...(canReadAudit
-          ? [
-              {
-                id: "read-audit" as const,
-                label: defaultCopy.readAudit.label,
-                icon: <ScrollTextIcon size={16} />,
-              },
-            ]
-          : []),
         ...(canGovern
           ? [
               {

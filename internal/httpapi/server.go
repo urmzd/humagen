@@ -924,8 +924,12 @@ func (s *Server) listThreads(w http.ResponseWriter, r *http.Request, who auth.Pr
 		return
 	}
 	page, next, err := s.P.ThreadPageAs(who, query)
-	if err != nil {
+	if errors.Is(err, runs.ErrCursor) {
 		fail(w, http.StatusBadRequest, "before is not a cursor this server issued")
+		return
+	}
+	if err != nil {
+		s.problem(w, err)
 		return
 	}
 	var cursor *string
