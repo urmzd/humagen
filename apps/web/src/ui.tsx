@@ -70,12 +70,21 @@ export function Label({
 }
 
 /** A problem said plainly, with a way out beside it when there is one, such as Retry. */
-export function Problem({ message, action }: { message: string | null; action?: ReactNode }) {
+export function Problem({
+  message,
+  action,
+  beside = false,
+}: {
+  message: string | null;
+  action?: ReactNode;
+  /** Keep the action on the message's row at any width: for an icon, which never needs a line of its own. */
+  beside?: boolean;
+}) {
   if (!message) return null;
   return (
     <p
       role="alert"
-      className={`rounded-aui border border-aui-bad/40 bg-aui-bad/10 px-3 py-2 text-aui-sm text-aui-fg${action ? " flex flex-wrap items-center justify-between gap-x-3 gap-y-1" : ""}`}
+      className={`rounded-aui border border-aui-bad/40 bg-aui-bad/10 px-3 py-2 text-aui-sm text-aui-fg${action ? ` flex items-center justify-between gap-x-3 gap-y-1${beside ? "" : " flex-wrap"}` : ""}`}
     >
       {action ? <span className="min-w-0">{message}</span> : message}
       {action}

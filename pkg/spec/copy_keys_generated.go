@@ -1752,6 +1752,7 @@ var copyKeyList = []string{
 	"outcomeLearning.steps",
 	"outcomeLearning.text",
 	"pageLoad.failed",
+	"pageLoad.hint",
 	"pageLoad.partFailed",
 	"pageLoad.title",
 	"partKind.alert",
