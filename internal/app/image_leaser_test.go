@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -22,22 +24,67 @@ import (
 	"github.com/urmzd/humagen/pkg/join"
 )
 
+// countingDriver counts the instances it started that are not yet closed,
+// whichever pool asked for them and whether or not that pool still exists.
+type countingDriver struct {
+	isolate.Driver
+	started atomic.Int64
+}
+
+func (d *countingDriver) Start(ctx context.Context, spec isolate.Spec) (isolate.Instance, error) {
+	inst, err := d.Driver.Start(ctx, spec)
+	if err != nil {
+		return nil, err
+	}
+	d.started.Add(1)
+	return &countedInstance{Instance: inst, d: d}, nil
+}
+
+type countedInstance struct {
+	isolate.Instance
+	d    *countingDriver
+	once sync.Once
+}
+
+func (i *countedInstance) Close(ctx context.Context) error {
+	err := i.Instance.Close(ctx)
+	i.once.Do(func() { i.d.started.Add(-1) })
+	return err
+}
+
+// drivers are the drivers of the leasers under test, to count what each
+// really has started.
+var drivers sync.Map
+
 func testImageLeaser(t *testing.T, pool isolate.PoolConfig) *imageLeaser {
 	t.Helper()
-	l, err := newImageLeaser(local.Driver{Dir: t.TempDir(), Log: io.Discard}, poolleaser.Config{Image: "local", Pool: pool})
+	d := &countingDriver{Driver: local.Driver{Dir: t.TempDir(), Log: io.Discard}}
+	l, err := newImageLeaser(d, poolleaser.Config{Image: "local", Pool: pool})
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = l.Close(context.Background()) })
+	drivers.Store(l, d)
+	t.Cleanup(func() {
+		drivers.Delete(l)
+		_ = l.Close(context.Background())
+	})
 	return l
 }
 
-// settled is the leaser's instances once they have stopped changing.
+// settled is the leaser's instances once they have stopped changing. Live
+// is what the driver has started and not closed, which counts an instance
+// even when no pool the leaser still holds knows of it.
 func settled(l *imageLeaser) isolate.PoolStats {
+	d, _ := drivers.Load(l)
+	read := func() isolate.PoolStats {
+		s := l.Stats()
+		s.Live = int(d.(*countingDriver).started.Load())
+		return s
+	}
 	var s isolate.PoolStats
 	for range 100 {
 		time.Sleep(50 * time.Millisecond)
-		n := l.Stats()
+		n := read()
 		if n == s {
 			return n
 		}
@@ -79,13 +126,13 @@ func TestOnlyAnImageToldToBeKeptWarmStaysStarted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s := settled(l); s.Warm != 3 || s.Leased != 1 {
+	if s := settled(l); s.Warm != 3 || s.Leased != 1 || s.Live != 4 {
 		t.Errorf("with a kept image leased: %+v, want 3 warm and 1 leased", s)
 	}
 	// Told to keep one: the other two are let go, and so is the lease's
 	// image, whose lease lives until it is released.
 	l.KeepWarm(warm[2:])
-	if s := settled(l); s.Warm != 1 || s.Leased != 1 || s.Specs != 1 {
+	if s := settled(l); s.Warm != 1 || s.Leased != 1 || s.Specs != 1 || s.Live != 2 {
 		t.Errorf("told to keep one: %+v, want 1 warm, and the lease still out", s)
 	}
 	if st, err := inst.Exec(ctx, isolation.Command{Argv: []string{"true"}}, isolation.Stdio{}); err != nil || st.Code != 0 {
@@ -111,7 +158,7 @@ func TestTheDeploymentsImageStaysInItsPool(t *testing.T) {
 	if err := inst.Close(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if s, base := settled(l), l.Leaser.Stats(); s.Warm != 1 || s.Specs != 1 || base != s {
+	if s, base := settled(l), l.Leaser.Stats(); s.Warm != 1 || s.Specs != 1 || s.Live != 1 || base != s {
 		t.Errorf("after a lease of the deployment's image: %+v (its pool: %+v), want one kept warm there", s, base)
 	}
 }
