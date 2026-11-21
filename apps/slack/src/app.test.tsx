@@ -2122,6 +2122,127 @@ test("a thread the app answered is followed: the asker's next reply needs no men
   assert.equal(w.humagen.started.length, 2);
 });
 
+test("a refused mention follows nothing: the asker's unmentioned reply starts no run", async () => {
+  const w = world();
+  w.humagen.refuse = new HumagenError(429, "the workspace reached 200 runs today", {
+    limit: "runs",
+    resets_at: new Date(Date.now() + 3_600_000).toISOString(),
+  });
+  await deliver(w, mention("@helper summarize this", TS));
+  await w.app.idle();
+  assert.equal(w.humagen.runs.size, 0, "the mention was refused");
+
+  await deliver(w, said("and the risks?", "1700000900.000100", { thread_ts: TS }));
+  await w.app.idle();
+  assert.equal(w.humagen.runs.size, 0, "a thread the app never answered is not followed");
+});
+
+test("a mention whose run fails follows nothing: the asker's unmentioned reply starts no run", async () => {
+  const w = world();
+  await deliver(w, mention("@helper summarize this", TS));
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.failed.v1", { error: "timeout", terminal: true });
+  await w.app.idle();
+  assert.equal(w.humagen.started.length, 1);
+
+  await deliver(w, said("and the risks?", "1700000900.000100", { thread_ts: TS }));
+  await w.app.idle();
+  assert.equal(w.humagen.started.length, 1, "a failed turn answered nothing");
+});
+
+test("an answered mention follows its thread: the asker's unmentioned reply starts one run", async () => {
+  const w = world();
+  await deliver(w, mention("@helper summarize this", TS));
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "ok" });
+  await w.app.idle();
+  assert.equal(w.humagen.started.length, 1);
+
+  await deliver(w, said("and the risks?", "1700000900.000100", { thread_ts: TS }));
+  assert.equal(w.humagen.started.length, 2, "the reply started exactly one run");
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "ok" });
+  await w.app.idle();
+  assert.equal(w.humagen.started.length, 2);
+});
+
+test("a quiet run that has said nothing follows nothing: the asker's unmentioned reply starts no run", async () => {
+  const w = world({ stallMs: 30, slowPollMs: 40 });
+  await deliver(w, mention("@helper long job", TS));
+  const run = w.humagen.last.id;
+  await emit(w, "run.accepted.v1");
+  await pause(120);
+  assert.equal(w.slack.of("chat.stopStream").length, 1, "the quiet stream was closed");
+  assert.equal(w.slack.of("chat.appendStream").length, 0, "no answer words were streamed");
+
+  // The quiet run is still followed slowly, so the app is not idle yet.
+  await deliver(w, said("any news?", "1700000900.000100", { thread_ts: TS }));
+  await pause(50);
+  assert.equal(w.humagen.started.length, 1, "no reply starts a run until the app answers");
+
+  // End the quiet run, or the app keeps following it and the suite never exits.
+  w.humagen.set(run, { status: "failed", error: "gave up" });
+  await w.app.idle();
+  await pause(100);
+});
+
+test("a quiet run followed once its answer is posted: the asker's unmentioned reply then starts one run", async () => {
+  const w = world({ stallMs: 30, slowPollMs: 40 });
+  await deliver(w, mention("@helper long job", TS));
+  const run = w.humagen.last.id;
+  await emit(w, "run.accepted.v1");
+  await pause(120);
+  w.humagen.set(run, { status: "completed", answer: "Long job done." });
+  await w.app.idle();
+  await pause(100);
+  assert.equal(finals(w, "Long job done.").length, 1, "the answer was posted");
+
+  await deliver(w, said("and the risks?", "1700000900.000100", { thread_ts: TS }));
+  assert.equal(w.humagen.started.length, 2, "the reply started exactly one run");
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "ok" });
+  await w.app.idle();
+  assert.equal(w.humagen.started.length, 2);
+});
+
+test("an older mention answered late does not take the thread back from the latest asker", async () => {
+  const w = world({ stallMs: 30, slowPollMs: 40 });
+  // A asks first, and the run goes quiet without a word.
+  await deliver(w, mention("@helper long job", TS));
+  const older = w.humagen.last.id;
+  await emit(w, "run.accepted.v1");
+  await pause(120);
+
+  // B asks after, in the same thread, and is answered.
+  await deliver(
+    w,
+    mention("@helper a quick one", "1700000070.000100", { thread_ts: TS, user: OTHER_USER }),
+  );
+  assert.equal(w.humagen.started.length, 2);
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "Quick answer." });
+
+  // A's answer lands late.
+  w.humagen.set(older, { status: "completed", answer: "Long job done." });
+  await w.app.idle();
+  await pause(100);
+  assert.equal(finals(w, "Long job done.").length, 1, "the late answer was posted");
+
+  // The thread stays with B, who asked last.
+  await deliver(
+    w,
+    said("and the risks?", "1700000900.000100", { thread_ts: TS, user: OTHER_USER }),
+  );
+  assert.equal(w.humagen.started.length, 3, "the latest asker's reply starts one run");
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "ok" });
+  await w.app.idle();
+
+  await deliver(w, said("me again", "1700001000.000100", { thread_ts: TS }));
+  await w.app.idle();
+  assert.equal(w.humagen.started.length, 3, "the earlier asker's reply starts nothing");
+});
+
 test("/agent alone opens the ask form with a picker of who to ask, and the one picked answers", async () => {
   const w = world();
   await deliver(w, command(""));
