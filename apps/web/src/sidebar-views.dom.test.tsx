@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { Marks, Me, Preferences, ProjectView, ThreadSummary } from "./api.ts";
 import { stubFetch } from "./dom.ts";
 import { unreadPrefs } from "./preferences.ts";
@@ -460,6 +460,71 @@ test("the sidebar's edge resizes it between its bounds, by drag or arrow keys, a
   fireEvent.doubleClick(edge);
   assert.equal(edge.getAttribute("aria-valuenow"), "296", "a double click puts it back");
   window.localStorage.removeItem("humagen.sidebar.width");
+});
+
+test("on a window too narrow for the remembered width, touching the edge without changing the width keeps what was remembered", async () => {
+  const was = window.innerWidth;
+  const resizeTo = (w: number) => {
+    Object.defineProperty(window, "innerWidth", { value: w, configurable: true, writable: true });
+    act(() => {
+      window.dispatchEvent(new window.Event("resize"));
+    });
+  };
+  const stored = () => window.localStorage.getItem("humagen.sidebar.width");
+  try {
+    // 400 was chosen on a wide screen; this window draws a third of 810.
+    window.localStorage.setItem("humagen.sidebar.width", "400");
+    resizeTo(810);
+    net = stubFetch({
+      "GET /api/marks": () => ({ archived: [], read: {}, tips: [] }),
+      "GET /api/threads": () => ({ threads: [], next: null }),
+    });
+    render(<Bar />);
+    const edge = await screen.findByRole("separator", { name: "Resize sidebar" });
+    const now = () => edge.getAttribute("aria-valuenow");
+    assert.equal(now(), "270", "it is drawn at the cap");
+    // A press that moves nothing.
+    fireEvent.pointerDown(edge, { button: 0, clientX: 270, pointerId: 1 });
+    fireEvent.pointerUp(edge, { clientX: 270, pointerId: 1 });
+    assert.equal(stored(), "400", "a click on the edge changed the remembered width");
+    // Keys toward a bound the cap already holds it at.
+    fireEvent.keyDown(edge, { key: "ArrowRight" });
+    assert.equal(stored(), "400", "ArrowRight at the cap changed the remembered width");
+    fireEvent.keyDown(edge, { key: "End" });
+    assert.equal(stored(), "400", "End at the cap changed the remembered width");
+    // Dragged in and back out to where it started, and a drag given up.
+    fireEvent.pointerDown(edge, { button: 0, clientX: 270, pointerId: 1 });
+    fireEvent.pointerMove(edge, { clientX: 250, pointerId: 1 });
+    assert.equal(now(), "250", "it follows the drag");
+    fireEvent.pointerUp(edge, { clientX: 300, pointerId: 1 });
+    assert.equal(stored(), "400", "a drag back to where it started changed the remembered width");
+    fireEvent.pointerDown(edge, { button: 0, clientX: 270, pointerId: 1 });
+    fireEvent.pointerMove(edge, { clientX: 250, pointerId: 1 });
+    fireEvent.pointerCancel(edge, { pointerId: 1 });
+    assert.equal(stored(), "400", "a drag given up changed the remembered width");
+    assert.equal(now(), "270");
+    // Back on a wide window it is the width the person chose.
+    resizeTo(1500);
+    assert.equal(now(), "400");
+    assert.equal(
+      document.documentElement.style.getPropertyValue("--humagen-sidebar-w"),
+      "400px",
+      "the width drawn is the remembered one",
+    );
+    // A change the person makes on the narrow window is remembered.
+    resizeTo(810);
+    fireEvent.keyDown(edge, { key: "ArrowLeft" });
+    assert.equal(now(), "254");
+    assert.equal(stored(), "254");
+    // A double click remembers the default itself, not this window's cap on it.
+    fireEvent.doubleClick(edge);
+    assert.equal(now(), "270");
+    assert.equal(stored(), "296");
+  } finally {
+    resizeTo(was);
+    window.localStorage.removeItem("humagen.sidebar.width");
+    document.documentElement.style.removeProperty("--humagen-sidebar-w");
+  }
 });
 
 test("a session waiting on someone else never reads as waiting for you, as the listing sends it", async () => {

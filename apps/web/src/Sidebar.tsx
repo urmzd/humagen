@@ -60,6 +60,7 @@ import { type Alert, holdsAnAlertOnly, openAlert, orderAlerts } from "./sessionC
 import { Avatar, workspaceSettingsRoute } from "./settingsLinks.tsx";
 import {
   applySidebarWidth,
+  clampSidebarWidth,
   SIDEBAR_WIDTH,
   sidebarCap,
   storedSidebarWidth,
@@ -747,9 +748,19 @@ function ResizeHandle() {
     return () => window.removeEventListener("resize", resized);
   }, []);
   const drawn = Math.min(width, cap);
-  const drag = useRef<{ x: number; from: number } | null>(null);
-  const set = (next: number, keep: boolean) =>
-    setWidth(applySidebarWidth(Math.min(next, cap), keep));
+  const drag = useRef<{ x: number; from: number; kept: number } | null>(null);
+  // Moves the edge to a width, and with `keep` remembers it. Only a width
+  // the person actually changed is remembered: on a window too narrow for
+  // the remembered width, a press that moves nothing, or a key toward a
+  // bound the cap already holds it at, asks for the width already drawn, and
+  // remembering that would overwrite what they chose on a wider screen with
+  // this window's cap. `from` is the drawn width the gesture started at.
+  const set = (next: number, keep: boolean, from = drawn) => {
+    const to = clampSidebarWidth(Math.min(next, cap));
+    if (keep && to === from) return false;
+    setWidth(applySidebarWidth(to, keep));
+    return true;
+  };
   const step = 16;
   return (
     // biome-ignore lint/a11y/useSemanticElements: a vertical separator that moves is a focusable splitter, which <hr> is not
@@ -767,7 +778,7 @@ function ResizeHandle() {
         e.preventDefault();
         // Kept while the pointer moves off the thin edge; a browser that cannot is still dragged.
         e.currentTarget.setPointerCapture?.(e.pointerId);
-        drag.current = { x: e.clientX, from: drawn };
+        drag.current = { x: e.clientX, from: drawn, kept: width };
       }}
       onPointerMove={(e) => {
         const d = drag.current;
@@ -776,12 +787,16 @@ function ResizeHandle() {
       onPointerUp={(e) => {
         const d = drag.current;
         drag.current = null;
-        if (d) set(d.from + e.clientX - d.x, true);
+        // Let go where it started: the width remembered before stays.
+        if (d && !set(d.from + e.clientX - d.x, true, d.from)) setWidth(applySidebarWidth(d.kept));
       }}
       onPointerCancel={() => {
+        const d = drag.current;
         drag.current = null;
+        if (d) setWidth(applySidebarWidth(d.kept));
       }}
-      onDoubleClick={() => set(SIDEBAR_WIDTH.initial, true)}
+      // The default itself is remembered, not this window's cap on it.
+      onDoubleClick={() => setWidth(applySidebarWidth(SIDEBAR_WIDTH.initial, true))}
       onKeyDown={(e) => {
         const next =
           e.key === "ArrowLeft"
