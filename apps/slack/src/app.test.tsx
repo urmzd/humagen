@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { fromServer } from "@humagen/adapter";
 import { defaultCopy, MessageView } from "@humagen/components";
 import { renderToSlack } from "@humagen/render-slack";
-import { echoed, forSlack, wholeMessage } from "./app.tsx";
+import { echoed, forSlack, tagsSomeoneElse, wholeMessage } from "./app.tsx";
 import {
   alertMail,
   BOT,
@@ -2243,6 +2243,66 @@ test("in a listening thread, a reply that tags only someone else is theirs: noth
   };
   assert.deepEqual(probe, { forwarded: 0, listen: false, runs: 0 });
   assert.equal(w.slack.calls.length, calls, "Slack hears nothing");
+});
+
+test("in a listening thread, a reply to a user group or to the whole channel is theirs: nothing is offered or run", async () => {
+  const w = await listeningThread();
+  const posts = w.humagen.posts.length;
+  const calls = w.slack.calls.length;
+  // The router would take any of them, so only the tag keeps them out.
+  w.humagen.callsFor = () => true;
+  const theirs = [
+    "<!subteam^S0123|@oncall> can you check the migration?",
+    "<!subteam^S0123> and the rollback?",
+    "<!here> lunch at noon?",
+    "<!channel|channel> the deploy is done",
+    "<!everyone> heads up",
+  ];
+  for (const [i, text] of theirs.entries())
+    await deliver(w, plain(text, `17000000${50 + i}.000200`, { thread_ts: TS }));
+  await w.app.idle();
+  assert.equal(w.humagen.posts.length - posts, 0, "nothing is offered");
+  assert.equal(w.humagen.started.length, 1, "nothing runs");
+  assert.equal(w.slack.calls.length, calls, "Slack hears nothing");
+
+  // A date Slack formats tags nobody: the listener's reply is offered as any other.
+  await deliver(
+    w,
+    plain("ship it <!date^1700000000^{date_short}|Nov 14>?", "1700000070.000200", {
+      thread_ts: TS,
+    }),
+  );
+  assert.equal(w.humagen.posts.at(-1)?.listen, true);
+  assert.equal(w.humagen.started.length, 2);
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "Shipping." });
+  await w.app.idle();
+});
+
+test("a tag of another user, a user group or the whole channel is someone else's; the app's own and a date are not", () => {
+  for (const text of [
+    `<@${OTHER_USER}> look`,
+    `<@${OTHER_USER}|olu> look`,
+    "<@W012ENTERPRISE> look",
+    `<@${BOT}> and <@${OTHER_USER}> look`,
+    "<!subteam^S0123|@oncall> look",
+    "<!subteam^S0123> look",
+    "<!here> look",
+    "<!here|here> look",
+    "<!channel> look",
+    "<!everyone> look",
+  ])
+    assert.equal(tagsSomeoneElse(text, BOT), true, text);
+  for (const text of [
+    "look",
+    `<@${BOT}> look`,
+    `<@${BOT}|humagen> look`,
+    "<!date^1700000000^{date_short}|Nov 14> look",
+    "<#C01ABCDEF|general> look",
+    "<https://example.com|here> look",
+    "!here and @channel as typed words",
+  ])
+    assert.equal(tagsSomeoneElse(text, BOT), false, text);
 });
 
 test("in a listening thread, a reply that tags someone else and the app is asked, with the whole message", async () => {

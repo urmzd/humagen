@@ -3359,10 +3359,15 @@ export function mentionsApp(text: string, botUser: string): boolean {
   return text.includes(`<@${botUser}>`) || text.includes(`<@${botUser}|`);
 }
 
-/** Whether a message tags a Slack user or bot other than this app: it is addressed to them. */
+/**
+ * Whether a message tags someone other than this app: it is addressed to
+ * them. Someone is a Slack user or bot, a user group (`<!subteam^S…>`), or
+ * everyone in the channel (`<!here>`, `<!channel>`, `<!everyone>`). Any other
+ * `<!…>`, such as a date, tags nobody.
+ */
 export function tagsSomeoneElse(text: string, botUser: string): boolean {
   for (const m of text.matchAll(/<@([A-Z0-9]+)(?:\|[^>]*)?>/g)) if (m[1] !== botUser) return true;
-  return false;
+  return /<!(?:subteam\^[A-Z0-9]+|here|channel|everyone)(?:\|[^>]*)?>/.test(text);
 }
 
 /** Words for Slack's mrkdwn with nothing in them read as markup: no mention, link or broadcast. */

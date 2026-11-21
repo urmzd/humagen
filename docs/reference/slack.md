@@ -193,7 +193,7 @@ The Slack app listens on a mention, and after one. Nothing else is heard.
 | A mention in a reply of a thread that did not begin with one | Answers once, with what was said in the thread since it was last asked. The thread is not listened to |
 | A reply that mentions nobody in a thread that is not listened to, or from anyone else in a listened one | Not heard, and not kept (409). A late answer to an older mention does not hand the thread back |
 | A reply that mentions nobody, which Humagen could not take (an error, or no answer from it) | Nothing shows in Slack: no notice, no reaction, no status. It is logged. A mention or a direct message that fails is told why |
-| A reply that tags only other people | Not offered: it is addressed to them. One that also mentions the app or names an agent is asked |
+| A reply that tags only other people, a user group, or the whole channel (`@here`, `@channel`, `@everyone`) | Not offered: it is addressed to them. One that also mentions the app or names an agent is asked |
 | A channel message that mentions nobody, outside a thread | Not heard. In a Slack channel bound to a project it is recorded there, as every message in a bound channel is |
 | A message from the app itself, another bot, an edit or a join | Never starts anything |
 
