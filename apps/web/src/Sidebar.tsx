@@ -333,7 +333,6 @@ export function recentGroups(
 function TaskRow({
   task,
   projectLabel,
-  projectTitle,
   priority,
   current,
   pinned,
@@ -352,8 +351,6 @@ function TaskRow({
   task: ThreadSummary;
   /** The project it is in, shown under its title; left out inside a project's group. */
   projectLabel?: string;
-  /** The project's title for its preview card, shown even inside a group. */
-  projectTitle?: string;
   priority?: "urgent" | "normal" | "low";
   current: boolean;
   pinned: boolean;
@@ -533,7 +530,7 @@ function TaskRow({
       {hasMenu && <FlashNote flash={flash} align="right" />}
       {peek.at && !renaming && (
         <PeekCard at={peek.at} id={peekId} onClose={peek.close}>
-          <ConversationPeek task={task} project={projectTitle ?? projectLabel} />
+          <ConversationPeek task={task} />
         </PeekCard>
       )}
     </li>
@@ -1107,7 +1104,6 @@ export function Sidebar({
       task={t}
       projectLabel={sessionMode && opts.label ? projectTitle(t.project) : undefined}
       glyph={sourceGlyph(t.origin)}
-      projectTitle={projectTitle(t.project)}
       priority={priorityBySession.get(t.id)}
       current={isCurrent(t)}
       pinned={opts.pinned ?? false}
@@ -1593,13 +1589,23 @@ export function Sidebar({
                 <>
                   <Avatar name={name} prefs={prefs} size={26} />
                   {open && (
-                    <span className="humagen-sidebar-reveal flex min-w-0 flex-1 items-baseline gap-1.5 truncate">
-                      <span className="truncate text-aui-sm text-aui-fg">{name}</span>
-                      {subtitle && (
-                        <span className="truncate text-aui-xs text-aui-muted">| {subtitle}</span>
-                      )}
-                      <span className="sr-only">, {defaultCopy.preferences.open}</span>
-                    </span>
+                    <>
+                      <span className="humagen-sidebar-reveal flex min-w-0 items-baseline gap-1.5 truncate">
+                        {/* The name keeps its width; the subtitle gives way first. */}
+                        <span className="max-w-full shrink-0 truncate text-aui-sm text-aui-fg">
+                          {name}
+                        </span>
+                        {subtitle && (
+                          <span className="truncate text-aui-xs text-aui-muted">| {subtitle}</span>
+                        )}
+                        <span className="sr-only">, {defaultCopy.preferences.open}</span>
+                      </span>
+                      <ChevronDownIcon
+                        size={14}
+                        aria-hidden
+                        className="humagen-sidebar-reveal shrink-0 text-aui-muted"
+                      />
+                    </>
                   )}
                 </>
               }

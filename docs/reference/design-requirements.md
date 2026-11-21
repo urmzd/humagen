@@ -90,7 +90,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-053 | Notifications sort into the reader's own views: Inbox, Unread, Hidden and Done, with per-reader hide and delete | Implemented; per-reader marks and counters, bulk API with isolation tests, DOM and route tests, phone/desktop captures |
 | DES-060 | Pull requests across workspace repositories, with board/list views and filters | Implemented; `pull_requests.go`, `History.tsx`, endpoint and DOM tests; `history-all` and `history-github` screens registered for CI |
 | DES-054 | The sidebar lists Recents newest first, Pinned on top, Projects and Archived as views; each row says its project, its age or an unread dot, and whether it waits on a person, runs or failed | Implemented: `conversationList.ts`, `marks.ts`, `Sidebar.tsx`, `pkg/marks`, `PATCH /api/threads/{id}/marks`, `waiting` and `last` on thread summaries; Go, web and DOM tests pass; `sidebar-recents`, `sidebar-row-actions`, `sidebar-projects` and `sidebar-archived` screens pass at 390x844 and 1280x800 |
-| DES-055 | A sidebar row previews itself on hover or a long press, and the wave's preview carries its author's mark | Implemented: `RowPreview.tsx`, `peek.ts`, `TurnRail.tsx`; web, DOM and screens pass (`sidebar-preview`, `conversation-wave-preview`) at 390x844 and 1280x800 |
+| DES-055 | A sidebar row previews itself on hover or a long press, and the wave's preview carries its author's mark | Implemented: `RowPreview.tsx`, `peek.ts`, `TurnRail.tsx`; web, DOM and screens pass (`sidebar-preview` checks the card is centred on its row, `conversation-wave-preview`) at 390x844 and 1280x800 |
 | DES-056 | A one-time tip teaches search, dismissed once per person | Evidence: `sidebar-search` checks the replacement Search navigation button; the tip card was removed |
 | DES-057 | Home files a new conversation from over its chat bar; a conversation's approval mode is a text control under the composer, Default or Approve for Me, within policy and audited | Implemented: `ApprovalModePicker.tsx`, `HomePage.tsx`, `pkg/threads/approval.go`, `internal/platform/approval_mode.go`, `PUT /api/threads/{id}/approval`; Go, DOM and screens pass (`home-project-above`, `composer-approval-mode`). Per-message model and effort were removed (DES-067). In Slack: an approval's menu lets the approval agent decide the thread, set as the person through the same route with `act_as` and said in the thread with the way back; an agent-decided card shows its reason; Ask a Question asks the agent in the thread while the call waits. Go, adapter, render-slack and Slack app tests pass; live Slack not yet checked |
 | DES-053 | Notifications sort into the reader's own views: Inbox, Unread, Hidden and Done, with per-reader hide and delete | Implemented; per-reader marks and counters, bulk API with isolation tests, DOM and route tests, phone/desktop captures |
@@ -1544,22 +1544,23 @@ Evidence: `go test -race ./pkg/marks ./pkg/runs ./internal/httpapi` (`TestArchiv
 
 ### DES-055: Previews of a conversation and of a turn
 
-Owner request: a preview card when hovering a sidebar row (title, project,
-updated time), as Antigravity does, and on the conversation's turn rail, as
-ChatGPT does.
+Owner request: a preview card when hovering a sidebar row, as Claude's app
+does (its whole title and how long ago it moved), and on the conversation's
+turn rail, as ChatGPT does. An earlier card also carried the project and the
+latest line said; the owner asked for the shorter card.
 
 Rules:
 
-- Resting a mouse on a row for 450ms opens a card beside it: the title, its
-  project and "Updated" with a time today or a date before, then the first
-  line of the latest thing said, after its author's mark (an agent's
-  initials in its ring, a person's initial). Leaving, scrolling or Escape
+- Resting a mouse on a row for 450ms opens a card beside the sidebar,
+  centred on the row: the whole title (up to three lines) and how long ago
+  the conversation moved ("5h ago", "Just now"). Leaving, scrolling or Escape
   closes it. The row names the card with `aria-describedby` while it shows.
 - On a touch screen a 500ms hold opens the card under the row, across the
   screen, or over it near the bottom. The hold does not also open the
   conversation, and the browser's own menu does not open; the next tap does.
-- The card is drawn over the page, so the sidebar's scrolling list never
-  clips it, and it is kept inside the window.
+- The card is drawn over the page on the same surface as other popovers, so
+  the sidebar's scrolling list never clips it, and it is kept inside the
+  window. It is measured before it paints, so a wrapped title stays centred.
 - The wave's preview of a turn (DES-044) leads with its author's mark: a
   person's initial for a message, an agent's initials for an answer.
 - Hovering a row on a wide screen keeps its title clear of its actions.
