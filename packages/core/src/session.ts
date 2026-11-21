@@ -29,7 +29,7 @@ export interface Budget {
   nextTurnUsd?: number;
 }
 
-/** "ask": gate side effects for approval. "auto": act without asking. */
+/** "ask" (Ask): a person approves gated actions. "auto" (Auto): the approval agent approves and answers, and asks when unsure. */
 export type ApprovalMode = "ask" | "auto";
 
 export interface SessionState {

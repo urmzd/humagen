@@ -2198,6 +2198,34 @@ export const defaultCopy = {
     atCreate: "How it looks",
     notKeptAtCreate: "The agent was made, but its look was not kept. Set it on its Look tab.",
   },
+  agentHome: {
+    tab: "Home",
+    ask: (name: string) => `Ask ${name}`,
+    editLook: "Edit Look",
+    putToWork: (name: string) => `Put ${name} to work`,
+    noGreeting: "Nobody has written what this agent says about itself yet.",
+    noStarters: "It offers no starters yet.",
+    noStartersOwner: "It offers no starters yet. Add them on its Look tab.",
+    lastDay: (runs: number, failed: number) =>
+      `${runs} run${runs === 1 ? "" : "s"} in the last day${failed > 0 ? `, ${failed} failed` : ""}`,
+  },
+  agentSlackApp: {
+    title: "Its own Slack app",
+    connected: "Connected",
+    notConnected: "Not connected",
+    what: "Give this agent a Slack app of its own, so people can mention it and message it by name. The workspace's Slack app keeps answering for every agent.",
+    connectedAs: (client: string) =>
+      `Connected as ${client}. Mentioning it in any of the workspace's Slack apps asks this agent, and its own app answers.`,
+    step1: "Create the app in Slack. Its manifest is made from this agent's look.",
+    create: "Create in Slack",
+    step2: "Install it to your workspace, and upload this agent's picture as its icon.",
+    step3: "Paste its bot token and signing secret. Slack says which app and bot they are.",
+    token: "Bot token",
+    signing: "Signing secret",
+    connect: "Connect",
+    askAdmin: "Ask a workspace admin to connect one.",
+    failed: "The Slack app could not be read or connected.",
+  },
   clientConnect: {
     heading: "Connect a system",
     open: "Connect a System",
@@ -2762,7 +2790,7 @@ export const defaultCopy = {
   judgement: {
     by: "Approval agent",
     decision: { allow: "Allowed", deny: "Denied", ask: "Asked a person" },
-    /** A question the approval agent answered in a session set to Run and Answer (DES-079). */
+    /** A question the approval agent answered in a session set to Auto (DES-079). */
     answered: "Answered by the approval agent",
     basedOn: (references: string[]) => `Based on: ${references.join("; ")}`,
   },
@@ -2991,6 +3019,8 @@ export const defaultCopy = {
   pageLoad: {
     title: "This page did not load",
     failed: "This page could not be loaded. Check your connection, then try again.",
+    /** Under the title, which already says the page did not load: only what to do. */
+    hint: "Check your connection, then try again.",
     /** Something that opens over the page, such as search, whose code could not be read. */
     partFailed: "That could not be opened. Check your connection, then try again.",
   },
@@ -3326,33 +3356,31 @@ export const defaultCopy = {
       dismiss: "Dismiss",
     },
   },
-  /** A conversation's approval mode, a text control under the composer (DES-057). */
+  /** A conversation's approval mode, a text control under the composer (DES-057, DES-079). */
   approvals: {
-    label: "Approvals",
-    /** The three modes, each with the one line its menu row says about the approval agent. */
-    ask: "Ask Me",
+    /** The menu's heading, and the control's name for assistive technology. */
+    label: "Approval mode",
+    /** The two modes, each with the one line its menu row says. */
+    ask: "Ask",
     askHint: "You approve every gated action.",
-    auto: "Run",
-    autoHint: "The approval agent decides gated actions and hands you any it is unsure of.",
-    autoFor: (name: string) => `Run, chosen by ${name}`,
-    decide: "Run and Answer",
-    decideHint: "It also answers an agent's question when the session already settles it.",
-    decideFor: (name: string) => `Run and Answer, chosen by ${name}`,
+    auto: "Auto",
+    autoHint: "The approval agent approves and answers for you, and asks when unsure.",
+    autoFor: (name: string) => `Auto, chosen by ${name}`,
     /** Under the menu's rows, when someone else set the session's mode. */
     chosenBy: (name: string) => `Chosen by ${name}.`,
     waiting: "No model is enabled for the approval agent yet, so every action waits for a person.",
-    failed: "Could not change approvals. Try again.",
+    failed: "Could not change the approval mode. Try again.",
     /** In the menu of an approval waiting in a Slack thread: sets the conversation, not the call. */
-    letAgentDecide: "Let the approval agent decide in this thread",
-    /** Under the note that the approval agent decides, to set the thread back. */
-    askMeAgain: "Ask Me Again",
-    /** Under the note that a person decides again, to hand it back to the approval agent. */
-    letAgentDecideAgain: "Let the Approval Agent Decide",
+    letAgentDecide: "Set this thread to Auto",
+    /** Under the note that the thread is set to Auto, to set it back. */
+    switchToAsk: "Switch to Ask",
+    /** Under the note that the thread is set to Ask, to set it to Auto again. */
+    switchToAuto: "Switch to Auto",
     /** What changed in the thread, said where everyone in it reads it. */
     nowAuto: (who: string) =>
-      `${who} let the approval agent decide gated actions in this thread. It decides from the next action on, as ${who} could, and hands a person anything it is unsure of. An action already waiting still waits for a person.`,
+      `${who} set this thread to Auto. The approval agent now approves gated actions and answers questions the thread already settles, as ${who} could, and asks a person when unsure. An action already waiting still waits for a person.`,
     nowAsk: (who: string) =>
-      `${who} set this thread to ask a person about every gated action again.`,
+      `${who} set this thread to Ask. A person approves every gated action again.`,
   },
   /** Over Home's chat bar: the person's own project, where a conversation in no project is filed (DES-057). */
   noProject: "No project",
@@ -4469,6 +4497,127 @@ export const defaultCopy = {
     files: (n: number) => `${n} ${n === 1 ? "file" : "files"}`,
   },
   /**
+   * The session panel's own sections and the header's view controls
+   * (SessionViews.tsx, SessionContext.tsx): where the session runs, how full
+   * its context is, the connectors it may reach, what it made and changed.
+   */
+  sessionPanel: {
+    /** The header's view controls. */
+    views: "Session views",
+    more: "More Views",
+    view: {
+      details: "Details",
+      terminal: "Terminal",
+      changes: "Changes",
+      browser: "Browser",
+      files: "Files",
+      artifacts: "Artifacts",
+      sidechat: "Side Chat",
+      search: "Search",
+      background: "Background Tasks",
+      progress: "Progress",
+    },
+    /** A view's key, as its menu row prints it. */
+    shortcut: {
+      sidechat: { mac: "⌘;", other: "Ctrl ;" },
+      search: { mac: "⌘⇧F", other: "Ctrl Shift F" },
+    },
+    /** Environment. */
+    sandbox: "Sandbox",
+    sandboxState: {
+      isolated: "Isolated",
+      host: "On this server",
+      none: "Not started",
+      unreachable: "Unreachable",
+      loading: "Checking",
+    },
+    sandboxHint: {
+      none: "Starts when a tool needs it",
+      unreachable: "Could not be reached",
+    },
+    retry: "Try Again",
+    openTerminal: "Open Terminal",
+    files: "Files",
+    browser: "Browser",
+    repo: (repo: string) => repo,
+    branch: "Branch",
+    /** Context. */
+    context: "Context",
+    contextOf: (percent: number) => `${percent}%`,
+    contextNone: "Not reported",
+    contextRows: {
+      window: "Window",
+      model: "Model",
+      prompt: "Prompt",
+      cached: "Cached",
+      output: "Output",
+      calls: "Model calls",
+      cost: "Cost",
+    },
+    contextUsed: (used: string, window: string) => `${used} of ${window} tokens`,
+    /** Connectors. */
+    connectors: "Connectors",
+    connected: (n: number) => `${n} connected`,
+    connectorUsed: "Used here",
+    connectorReady: "Connected",
+    connectorOff: "Not connected",
+    manageConnectors: "Manage Connectors",
+    connectorsFailed: "Connectors could not be read.",
+    /** Outputs and changes. */
+    outputs: "Outputs",
+    artifact: "Artifact",
+    changes: "Changes",
+    filesChanged: (n: number) => `${n} ${n === 1 ? "file" : "files"} changed`,
+    pull: (repo: string, n: number) => `${repo.split("/").pop() ?? repo} #${n}`,
+    ci: {
+      failing: (n: number) => `${n} failing`,
+      running: "Running",
+      passing: "Passing",
+      none: "No checks",
+      unknown: "CI unavailable",
+    },
+    openOnGitHub: (what: string) => `Open ${what} on GitHub`,
+    showMore: (n: number) => `Show ${n} More`,
+    /** What the session was set up with before its first message. */
+    chosenEnvironment: "Chosen environment",
+    chosenRepo: "Chosen repository",
+    /** The header's Terminal and Browser, when they cannot open, and why. */
+    unavailable: {
+      terminalHost:
+        "No terminal here: this deployment runs tools on the server, with no sandbox to open one in",
+      terminalUnreachable: "No terminal now: the sandbox could not be reached",
+      browser: "No browser: this session's agent has none",
+      browserUnknown: "No browser now: it could not be checked",
+    },
+    starting: "Starting environment…",
+    started: "Environment ready",
+    startFailed: (why: string) => `The environment could not start: ${why}`,
+    /** Where it started, which replaced the header's Item link. */
+    startedIn: "Started in",
+    otherSessions: "Other Sessions Here",
+    /** Expanding a section. */
+    expand: (what: string) => `Show ${what}`,
+    collapse: (what: string) => `Hide ${what}`,
+  },
+  /**
+   * A new session's setup beside the composer's plus (SessionPickers.tsx):
+   * where its tools run, and the repositories it works in.
+   */
+  sessionSetup: {
+    environment: "Environment",
+    auto: "Auto",
+    autoHint: "This workspace's default",
+    isolated: "Isolated sandbox",
+    onServer: "On this server",
+    terminal: "Terminal",
+    repo: "Repo",
+    repoLabel: "Repositories",
+    repos: (n: number) => `${n} repos`,
+    none: "None",
+    noRepos: "No repositories are connected.",
+    connectGitHub: "Connect GitHub",
+  },
+  /**
    * The session's workbench: the tabs of the pane Details opens, and what a
    * person did by hand in them, which goes with their next message
    * (docs/architecture/workbench.md).
@@ -4814,6 +4963,79 @@ export const defaultCopy = {
     retry: "Retry",
   },
   /** The control that returns to the end of a thread or of an answer's activity, named by what is there. */
+  /** The composer that floats over a conversation: its keys, its two levels of Stop, its footer and usage. */
+  dock: {
+    /** Said in the empty box while anything in the session runs. */
+    hint: (mac: boolean) =>
+      mac ? "↵ to send, ⌘↵ to queue for later" : "↵ to send, Ctrl+↵ to queue for later",
+    sendNow: "Send now",
+    /** Send's tooltip: how to send, queue and add a line. */
+    sendHint: (mac: boolean) =>
+      mac
+        ? "Send (↵). ⌘↵ queues, Shift+↵ adds a line"
+        : "Send (Enter). Ctrl+Enter queues, Shift+Enter adds a line",
+    /** The composer's Stop: everything running in the session. */
+    stopAll: "Stop",
+    stopAllLabel: "Stop everything running in this session",
+    stopAllHint: "Stop everything running in this session (Esc)",
+    stoppingAll: "Stopping everything in this session",
+    stopAllFailed: "Some of the work could not be stopped. Try Stop again.",
+    /** One running item's own Stop: an agent, a call to another agent, a step or background work. */
+    stop: "Stop",
+    stopping: "Stopping",
+    stopped: "Stopped",
+    stopLabel: (what: string) => `Stop ${what}`,
+    stoppingLabel: (what: string) => `Stopping ${what}`,
+    stoppedLabel: (what: string) => `${what} stopped`,
+    backgroundWork: (kind: string, text: string) => `the ${kind} "${text}"`,
+    /** The footer under the composer: who answers, the approval mode and the usage ring. */
+    footer: "Session details",
+    answeredBy: (agent: string) => `Answered by ${agent}`,
+    more: "More session controls",
+    usage: {
+      open: "Usage",
+      ring: (what: string, pct: number) => `${what}: ${pct}% used. Open usage`,
+      ringIdle: "Usage. Open usage",
+      context: "Context",
+      title: "Usage",
+      session: "This session",
+      contextUsed: (tokens: string, window: string) => `${tokens} of ${window} tokens`,
+      spent: "Spent so far",
+      tokens: "Tokens so far",
+      tokenCount: (tokens: string) => `${tokens} tokens`,
+      runs: (n: number) => (n === 1 ? "1 run" : `${n} runs`),
+      topAgents: "Most used by",
+      atLeast: "At least this much: the oldest runs were not counted.",
+      nothingYet: "Nothing used yet.",
+      limits: "Limits",
+      noLimits: "No limits set",
+      limitsHidden: "Limits are shown to people who can read billing.",
+      seeAll: "See all",
+      resets: (when: string) => `Resets ${when}`,
+      failed: "Usage could not be read.",
+      retry: "Retry",
+      loading: "Loading usage",
+      close: "Close usage",
+      near: (what: string) => `Near the ${what} limit`,
+      over: (what: string, when: string) =>
+        `${what} is used up. New runs are blocked until ${when}.`,
+      overApprove: (what: string, when: string) =>
+        `${what} is used up. New runs need approval until ${when}.`,
+      measure: {
+        runs: "Runs",
+        tokens: "Tokens",
+        spend: "Spend",
+        concurrent: "Running at once",
+      } as Record<"runs" | "tokens" | "spend" | "concurrent", string>,
+      period: { day: "Daily", month: "Monthly" } as Record<"day" | "month", string>,
+      scope: {
+        tenant: "Workspace",
+        project: "Project",
+        agent: "Agent",
+        client: "Client",
+      } as Record<"tenant" | "project" | "agent" | "client", string>,
+    },
+  },
   latest: {
     jump: "Jump to latest",
     /** An answer is still being written out of view. */
@@ -5014,6 +5236,7 @@ export const defaultCopy = {
     answered: "Answered",
     /** An agent's answer, as a screen reader names it. */
     answeredBy: (agent: string) => `Answered by ${agent}`,
+    more: "More session controls",
     typeahead: "People and agents to tag",
     /** The `/` command menu, as a screen reader names it. */
     commands: "Slash commands",

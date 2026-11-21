@@ -340,3 +340,20 @@ export function preloadWhenIdle(): () => void {
       void view.preload();
   });
 }
+
+/**
+ * A new session's environment and repository pickers, in the composer's
+ * footer on Home: read when Home draws them, so their data code is not Home's.
+ */
+export const SessionSetupPickers = lazyPage(
+  () => import("./SessionPickers.tsx"),
+  (m) => m.SessionSetupPickers,
+  { frame: "none" },
+);
+
+/** The composer's + menu, read when it is first opened (Plus.tsx). */
+export const PlusMenu = lazyPage(
+  () => import("./Plus.tsx"),
+  (m) => m.PlusMenu,
+  { frame: "none" },
+);

@@ -702,8 +702,8 @@ button.humagen-tick:focus-visible {
 /* One header height for a page and every drawer beside it, so their dividers meet. */
 :root { --humagen-header-h: 4.5rem; }
 /* The composer's height under a conversation, held while the conversation is read (Chat.tsx). */
-:root { --humagen-composer-h: 7.5rem; }
-@media (max-width: 47.99rem) { :root { --humagen-composer-h: 6rem; } }
+:root { --humagen-composer-h: 3.25rem; }
+@media (max-width: 47.99rem) { :root { --humagen-composer-h: 3.75rem; } }
 .humagen-conversation-header {
   grid-template-columns: minmax(0, 1fr) auto;
 }
@@ -1013,7 +1013,6 @@ body {
 @container composer (max-width: 36rem) {
   .humagen-composer { border-radius: 1rem; }
   .humagen-composer-bar { gap: .125rem; }
-  .humagen-approval-label { display: none; }
   .humagen-composer-chips { flex: 1 1 8rem; }
   .humagen-composer-send { margin-left: auto; }
   .humagen-composer-bar .humagen-project-picker { max-width: 11rem; }

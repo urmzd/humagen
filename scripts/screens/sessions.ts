@@ -369,7 +369,7 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
       path: session,
       act: async (page) => {
         await readySession(page);
-        await page.getByRole("button", { name: "Session actions", exact: true }).click();
+        await page.locator('h1 button[aria-haspopup="menu"]').click();
         const menu = page.getByRole("menu", { name: "Session actions", exact: true });
         await menu.getByRole("menuitem", { name: "Rename", exact: true }).waitFor();
         await menu.getByRole("menuitem", { name: "Archive", exact: true }).waitFor();
