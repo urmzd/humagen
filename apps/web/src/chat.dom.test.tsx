@@ -271,16 +271,16 @@ test("Home's bar holds no project or approval control: both sit in the footer's 
   );
   const bar = screen.getByRole("form", { name: "Message" });
   assert.deepEqual(within(bar).queryAllByRole("button", { name: /project/i }), []);
-  assert.deepEqual(within(bar).queryAllByRole("button", { name: /^Approvals/ }), []);
+  assert.deepEqual(within(bar).queryAllByRole("button", { name: /^Approval mode/ }), []);
   const left = footerStart();
   assert.ok(within(left).getByRole("button", { name: /^Select project/ }));
-  fireEvent.click(within(left).getByRole("button", { name: "Approvals: Ask Me" }));
-  // The control opens a menu of the modes; Run is picked from it.
-  await screen.findByRole("menu", { name: "Approvals" });
-  const run = document.querySelector<HTMLElement>('[data-approval-option="auto"]');
-  assert.ok(run, "the menu has no Run row");
-  fireEvent.click(run);
-  assert.ok(within(left).getByRole("button", { name: "Approvals: Run" }));
+  fireEvent.click(within(left).getByRole("button", { name: "Approval mode: Ask" }));
+  // The control opens a menu of the modes; Auto is picked from it.
+  await screen.findByRole("menu", { name: "Approval mode" });
+  const auto = document.querySelector<HTMLElement>('[data-approval-option="auto"]');
+  assert.ok(auto, "the menu has no Auto row");
+  fireEvent.click(auto);
+  assert.ok(within(left).getByRole("button", { name: "Approval mode: Auto" }));
   assert.ok(!net?.seen.some((s) => s.method === "PUT"), "nothing is saved before the session");
   fireEvent.change(box(), { target: { value: "Plan the launch" } });
   fireEvent.keyDown(box(), { key: "Enter" });
@@ -1542,7 +1542,7 @@ test("the project picked in Home's footer files the first message there, and the
   // Project first, then the approval mode.
   const order = [...left.querySelectorAll("button")].map((b) => b.getAttribute("aria-label") ?? "");
   assert.match(order[0] ?? "", /^Select project/);
-  assert.match(order[order.length - 1] ?? "", /^Approvals/);
+  assert.match(order[order.length - 1] ?? "", /^Approval mode/);
   fireEvent.click(within(left).getByRole("button", { name: /^Select project/ }));
   fireEvent.click(await screen.findByRole("button", { name: /Globex/, pressed: false }));
   await waitFor(() =>

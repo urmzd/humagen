@@ -301,13 +301,16 @@ test("a conversation's composer floats over it with its footer: the approval mod
   });
   await screen.findByRole("article", { name: "Message from Ana" });
   const footer = screen.getByRole("group", { name: defaultCopy.dock.footer });
-  assert.ok(footer.closest('[data-layer="composer-dock"]'), "the footer rides in the floating dock");
+  assert.ok(
+    footer.closest('[data-layer="composer-dock"]'),
+    "the footer rides in the floating dock",
+  );
   const left = footer.querySelector<HTMLElement>('[data-layer="composer-footer-start"]');
   assert.ok(left);
-  assert.ok(within(left).getByRole("button", { name: /^Approvals/ }));
+  assert.ok(within(left).getByRole("button", { name: /^Approval mode/ }));
   assert.equal(
     within(screen.getByRole("form", { name: "Message" })).queryByRole("button", {
-      name: /^Approvals/,
+      name: /^Approval mode/,
     }),
     null,
     "the bar itself holds only +, the words, Send and the microphone",
