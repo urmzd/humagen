@@ -2295,6 +2295,60 @@ test("a bound channel still mirrors a reply that tags someone else, passively", 
   assert.equal(w.slack.calls.length, 0);
 });
 
+// A thread is listened to only once the app has answered there, so an
+// unmentioned reply after a mention that answered nothing runs nothing.
+const unmentioned = (w: World, ts: string) =>
+  deliver(w, plain("and the risks?", ts, { thread_ts: TS }));
+
+test("a refused mention starts no listening: an unmentioned reply there runs nothing", async () => {
+  const w = mapped();
+  w.humagen.refuse = new HumagenError(429, "the workspace reached 200 runs today", {
+    limit: "runs",
+    resets_at: new Date(Date.now() + 3_600_000).toISOString(),
+  });
+  await deliver(w, mention("what broke the build?", TS));
+  await w.app.idle();
+  assert.equal(w.humagen.started.length, 0, "the mention was refused");
+  await unmentioned(w, "1700000050.000200");
+  await w.app.idle();
+  assert.equal(w.humagen.started.length, 0, "a thread the app never answered is not listened to");
+});
+
+test("a failed mention starts no listening: an unmentioned reply there runs nothing", async () => {
+  const w = mapped();
+  await deliver(w, mention("what broke the build?", TS));
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.failed.v1", { error: "timeout", terminal: true });
+  await w.app.idle();
+  assert.equal(w.humagen.started.length, 1);
+  await unmentioned(w, "1700000050.000200");
+  await w.app.idle();
+  assert.equal(w.humagen.started.length, 1, "a failed turn answered nothing");
+});
+
+test("a quiet run with no answer text starts no listening, and starts it once its answer posts", async () => {
+  const w = mapped({ stallMs: 30, slowPollMs: 40 });
+  await deliver(w, mention("long job", TS));
+  const run = w.humagen.last.id;
+  await emit(w, "run.accepted.v1");
+  await pause(120);
+  assert.equal(w.slack.of("chat.appendStream").length, 0, "no answer words were streamed");
+
+  await unmentioned(w, "1700000050.000200");
+  await pause(50);
+  assert.equal(w.humagen.started.length, 1, "no reply starts a run until the app answers");
+
+  // The quiet run answers later: from then on the thread is listened to.
+  w.humagen.set(run, { status: "completed", answer: "Long job done." });
+  await w.app.idle();
+  await pause(100);
+  await unmentioned(w, "1700000060.000300");
+  assert.equal(w.humagen.started.length, 2, "the reply after the answer is heard");
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "ok" });
+  await w.app.idle();
+});
+
 test("a message that mentions nobody outside a thread, or from someone the client does not map, is not heard", async () => {
   const w = mapped();
   await deliver(w, plain("anyone around?", "1700000200.000100"));

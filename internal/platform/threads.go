@@ -857,9 +857,10 @@ func (p *Platform) startThread(ctx context.Context, who auth.Principal, in Threa
 		sf := on.ref.surface(on.client.ID)
 		rec.Surface, rec.Announcement, first.SurfaceID, slack = &sf, on.announcement, on.ref.message(), nil
 		// A channel thread whose first message was addressed to the app is
-		// listened to from then on. A direct message needs no listening:
-		// every message there is addressed to the app.
-		rec.Listening = !in.PostOnly && !directMessage(on.ref.Channel) && on.ref.message() == on.ref.TS
+		// listened to once the app has answered there (listenOnAnswer). A
+		// direct message needs no listening: every message there is
+		// addressed to the app.
+		rec.Addressed = !in.PostOnly && !directMessage(on.ref.Channel) && on.ref.message() == on.ref.TS
 	}
 	mentions, err := threads.Parse(text, tagLookup{ctx: ctx, p: p, tenant: who.Tenant, slack: slack, sees: seer.Agent, tree: tree, project: project, person: humanSubject(person), console: on == nil})
 	if err != nil {

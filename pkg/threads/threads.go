@@ -260,11 +260,16 @@ type Thread struct {
 	// thread: a client, its channel there and the thread's own id. It is
 	// fixed when the thread is started, and one surface is one thread.
 	Surface *Surface `json:"surface,omitempty"`
-	// Listening says the thread on its surface began with a message addressed
-	// to the app: a mention in a channel thread's first message. Later
-	// messages there that address nobody are then read too, and the agent
-	// decides of each whether it calls for it. A thread a later mention
-	// started is not listened to: each mention there is answered once.
+	// Addressed says the thread on its surface began with a message addressed
+	// to the app: a mention in a channel thread's first message. Such a
+	// thread is listened to once the app has answered there. A thread a later
+	// mention started is not addressed: each mention there is answered once.
+	Addressed bool `json:"addressed,omitempty"`
+	// Listening says an addressed thread has had an answer from the app, so
+	// later messages there that address nobody are read too, and the agent
+	// decides of each whether it calls for it. A refused mention, a failed
+	// run, or one still quiet or waiting on a person answered nothing, and
+	// starts no listening (Store.Listen).
 	Listening bool `json:"listening,omitempty"`
 	// Announcement is the inbox id of the announcement the thread was
 	// started from: its surface is the announcement's post there, and a

@@ -182,6 +182,12 @@ export class FakeHumagen implements Humagen {
   /** Every message posted from a Slack thread, in order. */
   readonly posts: ThreadPostRequest[] = [];
   /** Slack threads that began with a message addressed to the app, as the platform records them. */
+  readonly addressed = new Set<string>();
+  /**
+   * Addressed Slack threads the app has answered in, as the platform records
+   * them: a run there completed with words in its answer. A refused mention,
+   * a failed run, or one still quiet or parked answered nothing.
+   */
   readonly listening = new Set<string>();
   /** Whether the agent says a message that addressed nobody calls for it. Tests set it. */
   callsFor: (text: string) => boolean = () => true;
@@ -382,7 +388,7 @@ export class FakeHumagen implements Humagen {
       thread = `th-${String(this.surfaces.size + 1).padStart(16, "0")}`;
       this.surfaces.set(where, thread);
       if (!body.post_only && !s.channel.startsWith("D") && (s.message ?? s.ts) === s.ts)
-        this.listening.add(where);
+        this.addressed.add(where);
       if (receipt && seed) this.seeded.set(thread, receipt.message);
     }
     const n = [...this.postedOnce.keys()].filter((k) => k.startsWith(`${where}/`)).length + 1;
@@ -748,7 +754,14 @@ export class FakeHumagen implements Humagen {
   /** Change a run's record, as the ledger would. */
   set(id: string, change: Partial<Run>) {
     const run = this.runs.get(id);
-    if (run) this.runs.set(id, { ...run, ...change, updated_at: this.at() });
+    if (!run) return;
+    const next = { ...run, ...change, updated_at: this.at() };
+    this.runs.set(id, next);
+    // As the platform does: an addressed thread is listened to once a run there answers.
+    if (next.status === "completed" && next.answer?.trim() && next.thread) {
+      for (const [where, thread] of this.surfaces)
+        if (thread === next.thread && this.addressed.has(where)) this.listening.add(where);
+    }
   }
 
   /** Publish one event on a run's stream. */

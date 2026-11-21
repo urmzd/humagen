@@ -13,6 +13,7 @@ import (
 	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/join"
 	"github.com/urmzd/humagen/pkg/projects"
+	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/threads"
 )
 
@@ -367,4 +368,21 @@ func (p *Platform) surfaceOfPost(who auth.Principal, th threads.Thread, in Messa
 		return nil, fmt.Errorf("%w: this thread is not that surface's", threads.ErrInvalid)
 	}
 	return &surfaced{client: c, ref: *in.Surface}, nil
+}
+
+// listenOnAnswer starts listening in an addressed thread once a run there
+// has answered: it completed with words in its answer. A refused mention
+// starts no run, and a run that failed, was stopped, or is still quiet or
+// waiting on a person has answered nothing, so a later message that
+// addresses nobody is not read until one does. A quiet run that answers
+// later starts it when it ends.
+func (p *Platform) listenOnAnswer(run runs.Run) error {
+	if run.Thread == "" || run.Status != runs.Completed || strings.TrimSpace(run.Answer) == "" {
+		return nil
+	}
+	_, err := p.Threads.Listen(run.Tenant, run.Thread, p.now())
+	if errors.Is(err, threads.ErrNotFound) {
+		return nil
+	}
+	return err
 }

@@ -138,3 +138,25 @@ func (s *Store) Purge(tenantName, id, by string, at time.Time) error {
 	}
 	return nil
 }
+
+// Listen marks an addressed thread as listening (Thread.Listening). A thread
+// that is not addressed, or already listening, is left as it is. Its version
+// does not change: it is the record of what the app has answered, not an
+// edit.
+func (s *Store) Listen(tenantName, id string, at time.Time) (Thread, error) {
+	changed := false
+	h, err := s.edit(tenantName, id, func(next *head, _ *write) error {
+		if !next.Addressed || next.Listening {
+			return state.ErrUnchanged
+		}
+		next.Listening, changed = true, true
+		return nil
+	})
+	if err != nil {
+		return Thread{}, err
+	}
+	if changed {
+		s.tell(tenantName, Notice{ID: id, At: at})
+	}
+	return h.Thread, nil
+}

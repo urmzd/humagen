@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/auth"
@@ -276,9 +277,15 @@ func TestTheMessagesRouteListensInASessionAThreadsFirstMessageStarted(t *testing
 	if err != nil || !first.Created {
 		t.Fatalf("the thread's first message = %+v, %v", first, err)
 	}
-	root, err := p.ReadSession(t.Context(), machine, first.Root, "", "", false)
-	if err != nil || !root.Thread.Listening {
-		t.Fatalf("a session a thread's first message started: listening %v, %v", root.Thread.Listening, err)
+	// It is listened to once the app has answered there.
+	for deadline := time.Now().Add(30 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+		root, err := p.ReadSession(t.Context(), machine, first.Root, "", "", false)
+		if err == nil && root.Thread.Addressed && root.Thread.Listening {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("a session a thread's first message started: addressed %v, listening %v, %v", root.Thread.Addressed, root.Thread.Listening, err)
+		}
 	}
 	heard := machineSays("C01RENEW", "1700000000.000200", "1700000000.000100", "and what about the price?")
 	heard.Listen = true

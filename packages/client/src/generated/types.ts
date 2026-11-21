@@ -1647,7 +1647,9 @@ not selected. Absent when none is selected.
   agents?: string[];
   mode?: ThreadMode;
   surface?: ThreadSurface;
-  /** The thread on its surface began with a message addressed to the app, a mention in a Slack channel thread's first message, so later messages there that address nobody are read too and the agent decides of each whether it calls for it. Absent for a thread a later mention started, where each mention is answered once, and for a direct message. */
+  /** The thread on its surface began with a message addressed to the app, a mention in a Slack channel thread's first message. It is listened to once the app has answered there. Absent for a thread a later mention started, where each mention is answered once, and for a direct message. */
+  addressed?: boolean;
+  /** An addressed thread the app has answered in, so later messages there that address nobody are read too and the agent decides of each whether it calls for it. A refused mention, a failed run, or one still quiet or waiting on a person answered nothing and starts no listening. */
   listening?: boolean;
   fork?: ThreadFork;
   import?: ThreadImport;

@@ -118,10 +118,11 @@ func (p *Platform) StartSurfaceSession(ctx context.Context, who auth.Principal, 
 		return SessionView{}, false, err
 	}
 	// A channel thread whose first message was addressed to the app is
-	// listened to from then on; a direct message needs no listening.
-	listening := !in.PostOnly && !directMessage(ref.Channel) && ref.message() == ref.TS
+	// listened to once the app has answered there (listenOnAnswer); a direct
+	// message needs no listening.
+	addressed := !in.PostOnly && !directMessage(ref.Channel) && ref.message() == ref.TS
 	startText, _ := p.surfaceText(who.Tenant, c, ref, in.Text)
-	th := threads.Thread{ID: rec.ID, Listening: listening, Project: at.project, Channel: at.channel, Visibility: vis, Participants: people, Title: runs.SessionTitle(startText), Default: owner, Agents: []string{owner}, CreatedBy: humanSubject(person), Surface: &sf, Session: &threads.SessionIdentity{Agent: owner, Parent: rec.Key.Parent, Label: rec.Key.Label}}
+	th := threads.Thread{ID: rec.ID, Addressed: addressed, Project: at.project, Channel: at.channel, Visibility: vis, Participants: people, Title: runs.SessionTitle(startText), Default: owner, Agents: []string{owner}, CreatedBy: humanSubject(person), Surface: &sf, Session: &threads.SessionIdentity{Agent: owner, Parent: rec.Key.Parent, Label: rec.Key.Label}}
 	_, err = p.Threads.Create(who.Tenant, th, p.now())
 	started = err == nil
 	if err != nil && !errors.Is(err, threads.ErrExists) {

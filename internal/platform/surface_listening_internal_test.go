@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/urmzd/humagen/pkg/join"
+	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/threads"
 )
 
@@ -52,11 +54,12 @@ func TestWhenTheAppListensInASlackThread(t *testing.T) {
 		return n
 	}
 
-	// A thread whose first message mentioned the app.
+	// A thread whose first message mentioned the app, listened to once it answered.
 	root, err := post("C0TEAM", "1700000000.000100", "", ThreadInput{Text: "what broke the build?"})
-	if err != nil || len(root.Runs) != 1 || !root.Thread.Listening {
-		t.Fatalf("a mention in a thread's first message: %d runs, listening %v, %v", len(root.Runs), root.Thread.Listening, err)
+	if err != nil || len(root.Runs) != 1 || !root.Thread.Addressed {
+		t.Fatalf("a mention in a thread's first message: %d runs, addressed %v, %v", len(root.Runs), root.Thread.Addressed, err)
 	}
+	awaitListening(t, p, root.Thread.ID)
 	heard, err := post("C0TEAM", "1700000000.000100", "1700000000.000200", ThreadInput{Text: "it was the migration, can you confirm?", Listen: true})
 	if err != nil || len(heard.Runs) != 1 {
 		t.Fatalf("a message the agent says is for it: %d runs, %v", len(heard.Runs), err)
@@ -73,8 +76,8 @@ func TestWhenTheAppListensInASlackThread(t *testing.T) {
 	// A thread a later reply's mention started: answered once, not listened to.
 	wanted = true
 	later, err := post("C0TEAM", "1700000000.000500", "1700000000.000600", ThreadInput{Text: "can you summarise this thread?"})
-	if err != nil || len(later.Runs) != 1 || later.Thread.Listening {
-		t.Fatalf("a mention in a later reply: %d runs, listening %v, %v", len(later.Runs), later.Thread.Listening, err)
+	if err != nil || len(later.Runs) != 1 || later.Thread.Addressed {
+		t.Fatalf("a mention in a later reply: %d runs, addressed %v, %v", len(later.Runs), later.Thread.Addressed, err)
 	}
 	if _, err := post("C0TEAM", "1700000000.000500", "1700000000.000700", ThreadInput{Text: "thanks, and the other one?", Listen: true}); !errors.Is(err, ErrNotListening) {
 		t.Fatalf("a message that addresses nobody in a thread not listened to: %v", err)
@@ -93,7 +96,146 @@ func TestWhenTheAppListensInASlackThread(t *testing.T) {
 
 	// A direct message is always addressed to the app.
 	dm, err := post("D0ADA", "1700000000.001000", "", ThreadInput{Text: "hello"})
-	if err != nil || dm.Thread.Listening {
-		t.Fatalf("a direct message: listening %v, %v", dm.Thread.Listening, err)
+	if err != nil || dm.Thread.Addressed || dm.Thread.Listening {
+		t.Fatalf("a direct message: addressed %v, listening %v, %v", dm.Thread.Addressed, dm.Thread.Listening, err)
 	}
+}
+
+// awaitListening waits for a thread's answered run to start listening there.
+func awaitListening(t *testing.T, p *Platform, id string) {
+	t.Helper()
+	deadline := time.Now().Add(30 * time.Second)
+	for {
+		th, err := p.Threads.Get("acme", id)
+		if err == nil && th.Listening {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("thread %s is not listening: %v", id, err)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// An addressed thread is listened to only once the app has answered there:
+// a refused mention (no run), a failed run, a run still quiet with no answer
+// text, and a first turn waiting on a person start no listening, so a later
+// message that addresses nobody there runs nothing. A quiet run that answers
+// later starts it when it ends.
+func TestAThreadIsListenedToOnlyOnceTheAppHasAnswered(t *testing.T) {
+	p, _, _ := slackPlatform(t)
+	machine := slackReporting(t, p, "app", "svc-slack")
+	p.cfg.Router = func(string) join.Asker {
+		return join.AskerFunc(func(_ context.Context, c join.Candidate, _ string) (join.Decision, error) {
+			return join.Decision{Agent: c.Name, Join: true, Reason: "it would take anything"}, nil
+		})
+	}
+	// An answered thread to copy: its place, people and agents.
+	answered, err := p.StartThread(t.Context(), machine, ThreadInput{
+		Text:    "what broke the build?",
+		ActAs:   &ActAs{Client: "app", User: "U0ADA"},
+		Surface: &SurfaceRef{Client: "app", Channel: "C0TEAM", TS: "1700000000.000100", AppUser: "UAPP"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range answered.Runs {
+		awaitEnd(t, p, r.ID)
+	}
+	awaitListening(t, p, answered.Thread.ID)
+	model, err := p.Threads.Get("acme", answered.Thread.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// A thread whose first message mentioned the app, and whose turn did not answer.
+	addressed := func(ts string) threads.Thread {
+		t.Helper()
+		th := model
+		th.ID, th.Version, th.Listening = "", 0, false
+		sf := *model.Surface
+		sf.TS = ts
+		th.Surface = &sf
+		got, err := p.Threads.Create("acme", th, p.now())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !got.Addressed || got.Listening {
+			t.Fatalf("a new addressed thread: addressed %v, listening %v", got.Addressed, got.Listening)
+		}
+		return got
+	}
+	reply := func(th threads.Thread, ts string) (Posted, error) {
+		t.Helper()
+		return p.StartThread(t.Context(), machine, ThreadInput{
+			Text:    "and the rollback?",
+			Listen:  true,
+			ActAs:   &ActAs{Client: "app", User: "U0ADA"},
+			Surface: &SurfaceRef{Client: "app", Channel: "C0TEAM", TS: th.Surface.TS, Message: ts, AppUser: "UAPP"},
+		})
+	}
+	unheard := func(name string, th threads.Thread) {
+		t.Helper()
+		got, err := reply(th, "1700000099.000900")
+		if !errors.Is(err, ErrNotListening) || len(got.Runs) != 0 {
+			t.Fatalf("%s: an unmentioned reply ran %d, %v; want none and ErrNotListening", name, len(got.Runs), err)
+		}
+		if now, _ := p.Threads.Get("acme", th.ID); now.Listening {
+			t.Fatalf("%s: the thread is listening", name)
+		}
+	}
+
+	refused := addressed("1700000010.000100")
+	unheard("a refused mention", refused)
+
+	failed := addressed("1700000020.000100")
+	if err := p.listenOnAnswer(runs.Run{Tenant: "acme", Thread: failed.ID, Status: runs.Failed, Answer: "half an answer"}); err != nil {
+		t.Fatal(err)
+	}
+	unheard("a failed run", failed)
+
+	paused := addressed("1700000030.000100")
+	if err := p.listenOnAnswer(runs.Run{Tenant: "acme", Thread: paused.ID, Status: runs.Parked}); err != nil {
+		t.Fatal(err)
+	}
+	unheard("a first turn waiting on a person", paused)
+
+	quiet := addressed("1700000040.000100")
+	if err := p.listenOnAnswer(runs.Run{Tenant: "acme", Thread: quiet.ID, Status: runs.Running}); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.listenOnAnswer(runs.Run{Tenant: "acme", Thread: quiet.ID, Status: runs.Completed, Answer: "  "}); err != nil {
+		t.Fatal(err)
+	}
+	unheard("a quiet run with no answer text", quiet)
+
+	// The quiet run answers later: from then on the thread is listened to.
+	if err := p.listenOnAnswer(runs.Run{Tenant: "acme", Thread: quiet.ID, Status: runs.Completed, Answer: "Rolled back."}); err != nil {
+		t.Fatal(err)
+	}
+	if now, _ := p.Threads.Get("acme", quiet.ID); !now.Listening {
+		t.Fatal("a quiet run that answered later did not start listening")
+	}
+	heard, err := reply(quiet, "1700000041.000200")
+	if err != nil || len(heard.Runs) != 1 {
+		t.Fatalf("an unmentioned reply once the app answered: %d runs, %v", len(heard.Runs), err)
+	}
+	for _, r := range heard.Runs {
+		awaitEnd(t, p, r.ID)
+	}
+
+	// A thread a later mention started is never listened to, answered or not.
+	later := model
+	later.ID, later.Version, later.Listening, later.Addressed = "", 0, false, false
+	sf := *model.Surface
+	sf.TS = "1700000050.000100"
+	later.Surface = &sf
+	lt, err := p.Threads.Create("acme", later, p.now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := p.listenOnAnswer(runs.Run{Tenant: "acme", Thread: lt.ID, Status: runs.Completed, Answer: "Summary."}); err != nil {
+		t.Fatal(err)
+	}
+	unheard("a thread a later mention started", lt)
 }
