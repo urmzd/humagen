@@ -1469,7 +1469,7 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 	case errors.Is(err, platform.ErrUnisolated):
 		fail(w, http.StatusConflict, "this deployment has no isolated sandbox to run a command in")
 	case errors.Is(err, platform.ErrImageGone):
-		fail(w, http.StatusConflict, "this session's image was removed or no longer passes its check; start a new session")
+		fail(w, http.StatusConflict, "this session's image was removed or is no longer allowed here; start a new session")
 	case errors.Is(err, platform.ErrSandboxUnavailable):
 		w.Header().Set("Retry-After", "5")
 		fail(w, http.StatusServiceUnavailable, "the sandbox could not run the command; try again")

@@ -39,7 +39,7 @@ func readyImage(t *testing.T, p *platform.Platform, id string) images.Image {
 			t.Fatal(err)
 		}
 		for _, img := range imgs {
-			if img.ID == id && img.Status != images.Checking {
+			if img.ID == id && img.Status != images.Checking && !img.Rechecking {
 				return img
 			}
 		}

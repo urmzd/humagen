@@ -114,8 +114,8 @@ func TestACheckAskedForWhileOneRunsStartsNone(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got.Status != images.Checking {
-			t.Fatalf("check %d answered %s, want checking", i, got.Status)
+		if !got.Rechecking || got.Status != images.Ready {
+			t.Fatalf("check %d answered %s (rechecking %v), want ready and being checked again", i, got.Status, got.Rechecking)
 		}
 	}
 	g.waitStarted(t)

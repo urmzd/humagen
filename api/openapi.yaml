@@ -20742,9 +20742,10 @@ components:
         id: {type: string}
         name: {type: string, maxLength: 60}
         ref: {type: string, maxLength: 512}
-        digest: {type: string, description: "The reference pinned, repo@sha256:..., once its check resolved it."}
-        status: {type: string, enum: [checking, ready, failed]}
-        problem: {type: string, maxLength: 512}
+        digest: {type: string, description: "The reference pinned, repo@sha256:..., by the last check that passed. Sessions run it."}
+        status: {type: string, enum: [checking, ready, failed], description: "A ready image stays ready while it is checked again and when that check fails."}
+        problem: {type: string, maxLength: 512, description: "Why its latest check failed. A ready image with one still runs the digest it had."}
+        rechecking: {type: boolean, description: "A ready image is being checked again."}
         warm: {type: boolean}
         credential: {type: boolean, description: "A pull credential is kept for it. The credential is never shown."}
         createdBy: {type: string}

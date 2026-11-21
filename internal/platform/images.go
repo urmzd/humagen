@@ -203,7 +203,8 @@ func (p *Platform) AddImage(ctx context.Context, who auth.Principal, in ImageInp
 
 // ChangeImage keeps an image warm or not, or checks it again. A check
 // asked for while one is under way starts none: the image is answered as
-// it stands, checking.
+// it stands, checking. A ready image stays ready while it is checked again,
+// on the digest it has: its sessions go on running.
 func (p *Platform) ChangeImage(_ context.Context, who auth.Principal, id string, in ImageChange) (images.Image, error) {
 	if !p.imagesOn() {
 		// Nothing is kept where nothing may be added.
@@ -215,7 +216,12 @@ func (p *Platform) ChangeImage(_ context.Context, who auth.Principal, id string,
 			img.Warm = *in.Warm
 		}
 		if check {
-			img.Status, img.Problem = images.Checking, ""
+			if img.Status == images.Ready && img.Digest != "" {
+				img.Rechecking = true
+			} else {
+				img.Status = images.Checking
+			}
+			img.Problem = ""
 			img.Checks++
 		}
 		return img
@@ -236,7 +242,9 @@ func (p *Platform) ChangeImage(_ context.Context, who auth.Principal, id string,
 }
 
 // RemoveImage forgets an image and its credential. A session started in it
-// is refused a sandbox from then on: its image is gone.
+// is refused a sandbox from then on: its image is gone. Removing it, and
+// the deployment no longer allowing its registry, are the only ways a
+// session loses an image that once passed its check.
 func (p *Platform) RemoveImage(_ context.Context, who auth.Principal, id string) error {
 	if !p.imagesOn() {
 		return images.ErrNotFound
@@ -398,8 +406,12 @@ func (p *Platform) checkImage(ctx context.Context, tenant, id string, n int64) {
 		return
 	}
 	var digest string
-	// The registries allowed may have narrowed since it was added.
+	// The registries allowed may have narrowed since it was added. That
+	// is the deployment's decision, not a check that went wrong: the image
+	// is refused, where any other failure leaves a ready image ready.
+	disallowed := false
 	if err = images.CheckRef(img.Ref, p.cfg.SandboxImages.Registries); err != nil {
+		disallowed = true
 		err = fmt.Errorf("this deployment no longer allows it: %s", strings.TrimPrefix(err.Error(), images.ErrInvalid.Error()+": "))
 	} else if done, perr := p.imageChecks.pull(ctx, tenant); perr != nil {
 		err = perr
@@ -420,8 +432,16 @@ func (p *Platform) checkImage(ctx context.Context, tenant, id string, n int64) {
 			return cur
 		}
 		cur.CheckedAt = time.Now().UTC()
+		cur.Rechecking = false
 		if err != nil {
-			cur.Status, cur.Problem = images.Failed, err.Error()
+			// A check that fails never takes a working image away: one
+			// that was ready stays ready on the digest its last good
+			// check pinned, which the host still holds, and shows why
+			// this check failed.
+			if cur.Status != images.Ready || cur.Digest == "" || disallowed {
+				cur.Status = images.Failed
+			}
+			cur.Problem = err.Error()
 			return cur
 		}
 		cur.Status, cur.Problem, cur.Digest = images.Ready, "", digest
@@ -597,8 +617,9 @@ func (p *Platform) repull(ctx context.Context, tenant string, img images.Image) 
 	return nil
 }
 
-// ErrImageGone reports a session whose image was removed or no longer
-// passes its check.
+// ErrImageGone reports a session whose image was removed, or is one the
+// deployment no longer allows. An image being checked again, or whose
+// latest check failed, is not gone: it runs the digest it had.
 var ErrImageGone = errors.New("platform: this session's image is not available")
 
 // imageOf is the digest a session's runs lease: empty for the default

@@ -15,7 +15,10 @@ export interface WorkspaceImage {
   ref: string;
   digest?: string;
   status: "checking" | "ready" | "failed";
+  /** Why its latest check failed. A ready image with one still runs the digest it had. */
   problem?: string;
+  /** A ready image is being checked again. */
+  rechecking?: boolean;
   warm?: boolean;
   credential?: boolean;
   createdBy: string;
@@ -106,7 +109,7 @@ export function ImageSettings({
     api.defaultRef().then(setDefaultRef, () => setDefaultRef(""));
   }, [api]);
 
-  const checking = data?.images.some((i) => i.status === "checking") ?? false;
+  const checking = data?.images.some((i) => i.status === "checking" || i.rechecking) ?? false;
   useEffect(() => {
     if (!checking) return;
     const t = setInterval(load, pollMs);
@@ -152,13 +155,17 @@ export function ImageSettings({
                   {words.pinned(shortDigest(img.digest))}
                 </span>
               )}
-              {img.status === "failed" && img.problem && (
+              {img.problem && (
                 <span className="break-words text-aui-bad text-aui-xs" data-testid="image-problem">
-                  {img.problem}
+                  {img.status === "ready" ? words.stillRuns(img.problem) : img.problem}
                 </span>
               )}
             </div>
-            <Pill tone={tone[img.status]}>{words.status[img.status]}</Pill>
+            {img.rechecking ? (
+              <Pill tone="neutral">{words.rechecking}</Pill>
+            ) : (
+              <Pill tone={tone[img.status]}>{words.status[img.status]}</Pill>
+            )}
             {canEdit &&
               (confirming === img.id ? (
                 <span className="flex items-center gap-2">
@@ -194,7 +201,7 @@ export function ImageSettings({
                   <button
                     type="button"
                     className={button}
-                    disabled={img.status === "checking"}
+                    disabled={img.status === "checking" || !!img.rechecking}
                     onClick={() =>
                       act(api.change(img.id, { check: true }), "The image could not be checked.")
                     }

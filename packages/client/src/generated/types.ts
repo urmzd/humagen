@@ -5907,10 +5907,14 @@ export interface WorkspaceImage {
   id: string;
   name: string;
   ref: string;
-  /** The reference pinned, repo@sha256:..., once its check resolved it. */
+  /** The reference pinned, repo@sha256:..., by the last check that passed. Sessions run it. */
   digest?: string;
+  /** A ready image stays ready while it is checked again and when that check fails. */
   status: "checking" | "ready" | "failed";
+  /** Why its latest check failed. A ready image with one still runs the digest it had. */
   problem?: string;
+  /** A ready image is being checked again. */
+  rechecking?: boolean;
   warm?: boolean;
   /** A pull credential is kept for it. The credential is never shown. */
   credential?: boolean;

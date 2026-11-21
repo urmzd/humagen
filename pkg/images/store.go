@@ -62,11 +62,15 @@ var ErrNameTaken = errors.New("images: name taken")
 type Status string
 
 const (
-	// Checking: it is being pulled, pinned and started.
+	// Checking: it is being pulled, pinned and started, and no check of it
+	// has passed yet.
 	Checking Status = "checking"
-	// Ready: sessions may run it.
+	// Ready: sessions may run it. It stays ready while it is checked again
+	// (Rechecking) and when that check fails (Problem): a check never
+	// takes a working image away.
 	Ready Status = "ready"
-	// Failed: the check did not pass; Problem says why.
+	// Failed: no check of it passed, or the deployment stopped allowing
+	// its registry; Problem says why.
 	Failed Status = "failed"
 )
 
@@ -76,10 +80,16 @@ type Image struct {
 	Name string `json:"name"`
 	// Ref is the reference as it was added.
 	Ref string `json:"ref"`
-	// Digest is Ref pinned, repo@sha256:..., once the check resolved it.
-	Digest  string `json:"digest,omitempty"`
-	Status  Status `json:"status"`
+	// Digest is Ref pinned, repo@sha256:..., once a check resolved it: the
+	// last check that passed, which is what sessions run.
+	Digest string `json:"digest,omitempty"`
+	Status Status `json:"status"`
+	// Problem is why the latest check failed. A ready image has one when a
+	// later check of it failed: it stays ready, on the digest it had.
 	Problem string `json:"problem,omitempty"`
+	// Rechecking says a ready image is being checked again. Its sessions
+	// go on running Digest until the new check passes.
+	Rechecking bool `json:"rechecking,omitempty"`
 	// Warm keeps an instance of it started on each sandbox host, so a
 	// session does not wait for one.
 	Warm bool `json:"warm,omitempty"`
@@ -263,7 +273,7 @@ func (s *Store) Create(tenant string, img Image) (Image, error) {
 	if err := CheckName(img.Name); err != nil {
 		return Image{}, err
 	}
-	img.Status, img.Digest, img.Problem, img.Checks = Checking, "", "", 1
+	img.Status, img.Digest, img.Problem, img.Checks, img.Rechecking = Checking, "", "", 1, false
 	_, err := s.t.Update(tenant, key, func(all map[string]Image, _ bool) (map[string]Image, error) {
 		if len(all) >= Limit {
 			return nil, fmt.Errorf("%w: a workspace keeps at most %d images", ErrInvalid, Limit)

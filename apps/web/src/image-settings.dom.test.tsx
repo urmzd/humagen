@@ -16,9 +16,17 @@ function server(registries = ["ghcr.io"]) {
   const api: ImagesApi = {
     list: async () => {
       for (const img of images) {
-        if (img.status !== "checking") continue;
+        if (img.status !== "checking" && !img.rechecking) continue;
         const n = (reads.get(img.id) ?? 0) + 1;
         reads.set(img.id, n);
+        if (img.rechecking) {
+          // A check again that fails: the image stays ready as it was.
+          if (n >= 2) {
+            img.rechecking = false;
+            img.problem = "the sandbox host could not reach ghcr.io";
+          }
+          continue;
+        }
         if (n >= 2) {
           img.status = img.ref.includes("broken") ? "failed" : "ready";
           if (img.status === "failed") img.problem = "docker pull: manifest unknown";
@@ -47,7 +55,11 @@ function server(registries = ["ghcr.io"]) {
       const img = images.find((i) => i.id === id);
       if (!img) throw new Error("not found");
       if (change.warm !== undefined) img.warm = change.warm;
-      if (change.check) img.status = "checking";
+      if (change.check) {
+        reads.delete(img.id);
+        if (img.status === "ready") img.rechecking = true;
+        else img.status = "checking";
+      }
       return img;
     },
     remove: async (id) => {
@@ -104,6 +116,33 @@ test("an image that fails its check says why, and can be checked again", async (
   );
   fireEvent.click(screen.getByRole("button", { name: words.checkAgain }));
   await waitFor(() => assert.ok(calls.includes('change img_0 {"check":true}')));
+});
+
+test("a ready image checked again stays ready, and says why when that check fails", async () => {
+  const { api, calls } = server();
+  await api.add({ name: "Agent", ref: "ghcr.io/acme/agent:1" });
+  render(<ImageSettings canEdit api={api} pollMs={10} />);
+  const row = () => document.querySelector('[data-image="img_0"]') as HTMLElement;
+  await waitFor(() => assert.equal(row()?.getAttribute("data-status"), "ready"));
+  fireEvent.click(within(row()).getByRole("button", { name: words.checkAgain }));
+  await waitFor(() => assert.ok(calls.includes('change img_0 {"check":true}')));
+  // While it is checked again it is still ready, and cannot be asked twice.
+  await waitFor(() => assert.match(row().textContent ?? "", new RegExp(words.rechecking)));
+  assert.equal(row().getAttribute("data-status"), "ready");
+  assert.equal(
+    (within(row()).getByRole("button", { name: words.checkAgain }) as HTMLButtonElement).disabled,
+    true,
+  );
+  // The check fails: ready, pinned as before, with the reason.
+  await waitFor(() =>
+    assert.equal(
+      screen.getByTestId("image-problem").textContent,
+      words.stillRuns("the sandbox host could not reach ghcr.io"),
+    ),
+  );
+  assert.equal(row().getAttribute("data-status"), "ready");
+  assert.match(row().textContent ?? "", /Pinned sha256:abababababab/);
+  assert.match(row().textContent ?? "", new RegExp(words.status.ready));
 });
 
 test("a deployment that takes no images says so; a reader sees images and changes nothing", async () => {
