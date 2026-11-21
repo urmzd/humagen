@@ -9,7 +9,7 @@
       "agent_description": "Answers mentions, direct messages and code channel commands with a Humagen agent."
     },
     "bot_user": {
-      "display_name": "humagen",
+      "display_name": "Humagen",
       "always_online": true
     },
     "code_channels": {

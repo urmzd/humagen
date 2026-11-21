@@ -22,6 +22,14 @@ import { useRunStop } from "./RunStop.tsx";
 import { ShareDialog } from "./Share.tsx";
 import { useThreadSelection } from "./selection.ts";
 
+/** The session's menu: its title, a button in the header's heading. */
+function sessionMenu(): HTMLElement {
+  const el = document.querySelector<HTMLElement>('h1 button[aria-haspopup="menu"]');
+  if (!el) throw new Error("no session menu in the header");
+  return el;
+}
+const findSessionMenu = () => waitFor(sessionMenu);
+
 const words = defaultCopy.threads;
 const at = "2026-10-01T09:00:00Z";
 const helper = {
@@ -286,6 +294,37 @@ test("a shared thread shows people by name and agents by theirs and where it is 
   assert.ok(!screen.queryByRole("button", { name: words.share }));
   fireEvent.click(where);
   assert.deepEqual(opened, ["Globex/renewals"]);
+});
+
+test("a conversation's composer floats over it with its footer: the approval mode on the left, the usage ring on the right", async () => {
+  room({
+    "GET /api/threads/th-0123456789abcdef/usage": () => ({
+      runs: 0,
+      usage: {},
+      agents: [],
+      working: 0,
+      truncated: false,
+    }),
+    "GET /api/usage": () => ({ scopes: [] }),
+  });
+  await screen.findByRole("article", { name: "Message from Ana" });
+  const footer = screen.getByRole("group", { name: defaultCopy.dock.footer });
+  assert.ok(
+    footer.closest('[data-layer="composer-dock"]'),
+    "the footer rides in the floating dock",
+  );
+  const left = footer.querySelector<HTMLElement>('[data-layer="composer-footer-start"]');
+  assert.ok(left);
+  assert.ok(within(left).getByRole("button", { name: /^Approval mode/ }));
+  assert.equal(
+    within(screen.getByRole("form", { name: "Message" })).queryByRole("button", {
+      name: /^Approval mode/,
+    }),
+    null,
+    "the bar itself holds only +, the words, Send and the microphone",
+  );
+  const ring = within(footer).getByRole("button", { name: /Open usage$/ });
+  assert.ok(!left.contains(ring), "the ring is on the right");
 });
 
 test("the reader's messages sit on the right, everyone else's on the left under one name per run", async () => {
@@ -2174,7 +2213,7 @@ test("Share at the top of a private conversation moves it into a project's chann
   await screen.findByRole("heading", { level: 1 });
   assert.ok(!screen.queryByText(words.private), "no Private word");
   // Share sits at the top, not under the chat bar.
-  const actions = screen.getByRole("button", { name: "Session actions" });
+  const actions = sessionMenu();
   assert.ok(actions.closest("header"), "Session actions are in the header");
   fireEvent.click(actions);
   const share = await screen.findByRole("menuitem", { name: words.share });
@@ -2244,7 +2283,7 @@ test("completed work requires destination review, and an unseen run refresh inva
     }),
   });
   render(<Sharing initial={ran} />);
-  fireEvent.click(await screen.findByRole("button", { name: "Session actions" }));
+  fireEvent.click(await findSessionMenu());
   fireEvent.click(await screen.findByRole("menuitem", { name: words.share }));
   let dialog = await screen.findByRole("dialog", { name: defaultCopy.conversation.people });
   const fixed = within(dialog).getByLabelText(
@@ -2296,7 +2335,7 @@ test("completed work requires destination review, and an unseen run refresh inva
     },
   });
   render(<Sharing initial={mine} />);
-  fireEvent.click(await screen.findByRole("button", { name: "Session actions" }));
+  fireEvent.click(await findSessionMenu());
   fireEvent.click(await screen.findByRole("menuitem", { name: words.share }));
   dialog = await screen.findByRole("dialog", { name: defaultCopy.conversation.people });
   fireEvent.change(within(dialog).getByLabelText(words.shareProject), {
@@ -2567,7 +2606,7 @@ test("someone added to a private conversation is not offered Share: its starter,
       onChanged={() => {}}
     />,
   );
-  fireEvent.click(await screen.findByRole("button", { name: "Session actions" }));
+  fireEvent.click(await findSessionMenu());
   assert.ok(await screen.findByRole("menuitem", { name: words.share }));
 });
 
@@ -2876,7 +2915,7 @@ test("Share preserves the selected channel and invalidates consent after a stale
       }),
   });
   render(<Sharing initial={ran} />);
-  fireEvent.click(await screen.findByRole("button", { name: "Session actions" }));
+  fireEvent.click(await findSessionMenu());
   fireEvent.click(await screen.findByRole("menuitem", { name: words.share }));
   const dialog = await screen.findByRole("dialog", { name: defaultCopy.conversation.people });
   const channel = within(dialog).getByLabelText(words.shareChannel) as HTMLSelectElement;
@@ -3110,7 +3149,7 @@ test("a starter whose subject holds an address is known by their handle: Share a
       onChanged={() => {}}
     />,
   );
-  fireEvent.click(await screen.findByRole("button", { name: "Session actions" }));
+  fireEvent.click(await findSessionMenu());
   assert.ok(await screen.findByRole("menuitem", { name: words.share }), "the starter may share it");
   fireEvent.click(screen.getByRole("button", { name: defaultCopy.chat.plus }));
   const menu = await screen.findByRole("dialog", { name: defaultCopy.chat.menu });
@@ -3160,7 +3199,7 @@ test("Share says who the platform did not add, and why, beside who was told", as
     }),
   });
   render(<Sharing initial={mine} />);
-  fireEvent.click(await screen.findByRole("button", { name: "Session actions" }));
+  fireEvent.click(await findSessionMenu());
   fireEvent.click(await screen.findByRole("menuitem", { name: words.share }));
   const dialog = await screen.findByRole("dialog", { name: defaultCopy.conversation.people });
   assert.ok(within(dialog).getByText(words.shareLede));

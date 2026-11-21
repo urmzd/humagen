@@ -46,7 +46,7 @@ export const pages = {
 } satisfies Record<string, Page>;
 
 /** The published guides, and where questions go. */
-export const docs = { label: "Docs", href: "https://docs.urmzd.com/humagen/" };
+export const docs = { label: "Docs", href: "https://docs.withhumagen.com/" };
 export const help = { label: "Ask on GitHub", href: `${site.repo}/issues` };
 
 /** Button labels are Title Case, as in the console. */

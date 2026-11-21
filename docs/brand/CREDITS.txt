@@ -1,0 +1,10 @@
+Logo mark and favicon: the Humagen mark, as drawn in packages/web/src/HumagenMark.tsx
+and apps/site/public/favicon.svg in this repository.
+
+IBM Plex Sans: IBM Corp., distributed under the SIL Open Font License.
+Latin variable WOFF2 files from @fontsource-variable/ibm-plex-sans 5.3.0.
+See IBM-Plex-Sans-LICENSE.txt for the full license.
+
+IBM Plex Mono: IBM Corp., distributed under the SIL Open Font License.
+Latin WOFF2 files from @fontsource/ibm-plex-mono 5.3.0.
+See IBM-Plex-Mono-LICENSE.txt for the full license.
