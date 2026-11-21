@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/inbox"
@@ -209,7 +210,7 @@ func (p *Platform) startFromSurface(ctx context.Context, who auth.Principal, in 
 		return Posted{}, err
 	} else if ok {
 		if in.Listen {
-			if !th.Listening {
+			if !p.listensTo(who, th, in.ActAs) {
 				return Posted{}, ErrNotListening
 			}
 			// Heard either way; answered only when the agent says it is for it.
@@ -376,13 +377,37 @@ func (p *Platform) surfaceOfPost(who auth.Principal, th threads.Thread, in Messa
 // waiting on a person has answered nothing, so a later message that
 // addresses nobody is not read until one does. A quiet run that answers
 // later starts it when it ends.
+//
+// It listens to the person whose message the run answered, and only an
+// answer to a newer message hands it to someone else.
 func (p *Platform) listenOnAnswer(run runs.Run) error {
 	if run.Thread == "" || run.Status != runs.Completed || strings.TrimSpace(run.Answer) == "" {
 		return nil
 	}
-	_, err := p.Threads.Listen(run.Tenant, run.Thread, p.now())
+	return p.answered(run.Tenant, run.Thread, wire.Meta(run.Tag())[runs.MetaMessage])
+}
+
+// answered records that the app answered message mid of a thread: an
+// addressed thread listens to its poster, unless it already listens to
+// someone's newer message.
+func (p *Platform) answered(tenant, thread, mid string) error {
+	m, err := p.Threads.Message(tenant, thread, mid)
+	if err == nil {
+		_, err = p.Threads.Listen(tenant, thread, m.By, m.SurfaceID, p.now())
+	}
 	if errors.Is(err, threads.ErrNotFound) {
 		return nil
 	}
 	return err
+}
+
+// listensTo says whether a thread reads a message from as that addresses
+// nobody: it is listening, to them. Only the person whose message the app
+// answered most recently there may carry on without a mention.
+func (p *Platform) listensTo(who auth.Principal, th threads.Thread, as *ActAs) bool {
+	if !th.Listening || th.Listener == nil {
+		return false
+	}
+	by, _, _, _, err := p.author(who, as)
+	return err == nil && by != "" && by == th.Listener.Person
 }

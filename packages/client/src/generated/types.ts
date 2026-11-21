@@ -1649,8 +1649,10 @@ not selected. Absent when none is selected.
   surface?: ThreadSurface;
   /** The thread on its surface began with a message addressed to the app, a mention in a Slack channel thread's first message. It is listened to once the app has answered there. Absent for a thread a later mention started, where each mention is answered once, and for a direct message. */
   addressed?: boolean;
-  /** An addressed thread the app has answered in, so later messages there that address nobody are read too and the agent decides of each whether it calls for it. A refused mention, a failed run, or one still quiet or waiting on a person answered nothing and starts no listening. */
+  /** An addressed thread the app has answered in. A refused mention, a failed run, or one still quiet or waiting on a person answered nothing and starts no listening. */
   listening?: boolean;
+  /** Whose later messages there that address nobody are read, when the thread is `listening`, and the agent decides of each whether it calls for it. It is the person whose message the app answered most recently; only an answer to a newer message changes it. Anyone else mentions the app or an agent to ask. */
+  listener?: ThreadListener;
   fork?: ThreadFork;
   import?: ThreadImport;
   archive?: ThreadArchive;
@@ -6325,6 +6327,11 @@ export interface AgentSetupPlanAssignment {
 export interface PreparedCallInputMessagesItem {
   role: "user" | "assistant";
   text: string;
+}
+
+export interface ThreadListener {
+  person: string;
+  message?: string;
 }
 
 export interface ThreadApproval {

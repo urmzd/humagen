@@ -2,6 +2,7 @@ package platform_test
 
 import (
 	"cmp"
+	"context"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -19,6 +20,7 @@ import (
 	"github.com/urmzd/humagen/pkg/call"
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/inbox"
+	"github.com/urmzd/humagen/pkg/join"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/threads"
@@ -588,5 +590,93 @@ func TestASlackThreadStaysWithTheAgentItTagged(t *testing.T) {
 	after, err := p.StartThread(t.Context(), machine, fromSlack("D0ANA", ts, "1700000000.000400", "<@UAPP> thanks, what next?"))
 	if err != nil || len(after.Runs) != 1 || after.Runs[0].Agent != "helper" {
 		t.Fatalf("after the handover an untagged reply started %+v, %v", after.Runs, err)
+	}
+}
+
+// awaitListener waits for a thread to listen to person.
+func awaitListener(t *testing.T, p *platform.Platform, id, person string) {
+	t.Helper()
+	deadline := time.Now().Add(30 * time.Second)
+	for {
+		th, err := p.Threads.Get(tenant, id)
+		if err == nil && th.Listening && th.Listener != nil && th.Listener.Person == person {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("thread %s does not listen to %s: %+v, %v", id, person, th.Listener, err)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// A listened thread listens to the latest asker only: the person whose
+// mention the app answered most recently carries on without a mention, and
+// anyone else mentions the app or an agent. A late answer to an older
+// mention does not take the thread back (Codex's probe: the older asker runs
+// 0 before and 0 after it, the newer asker 1 after).
+func TestAListenedThreadListensToTheLatestAskerOnly(t *testing.T) {
+	// The agent would take any of these replies: only who wrote one decides.
+	p, _ := slackRoomOn(t, startWith(t, platform.Config{Router: func(string) join.Asker {
+		return join.AskerFunc(func(_ context.Context, c join.Candidate, _ string) (join.Decision, error) {
+			return join.Decision{Agent: c.Name, Join: true, Reason: "it would take anything"}, nil
+		})
+	}}), nil)
+	pol, err := auth.ParsePolicy("test", `
+role viewer { allow read on * }
+role operator extends viewer { allow write on runs }
+grant operator to subject "ana"
+grant operator to subject "vic"
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	machine := auth.Principal{Subject: "svc-slack", Tenant: tenant, Kind: auth.Machine, Scopes: []auth.Permission{auth.RunsRead, auth.RunsWrite}}.WithPolicy(pol)
+	const root = "1700000000.000100"
+	say := func(user, ts, text string, listen bool) (platform.Posted, error) {
+		t.Helper()
+		in := fromSlack("C01RENEW", root, ts, text)
+		in.ActAs.User, in.Listen = user, listen
+		got, err := p.StartThread(t.Context(), machine, in)
+		for _, r := range got.Runs {
+			settle(t, p, r.ID)
+		}
+		return got, err
+	}
+	runsOf := func(got platform.Posted, err error) int {
+		t.Helper()
+		if err != nil && !errors.Is(err, platform.ErrNotListening) {
+			t.Fatal(err)
+		}
+		return len(got.Runs)
+	}
+
+	first, err := say("U0ANA", "", "<@UAPP> @lead what changed in the renewal?", false)
+	if err != nil || len(first.Runs) != 1 {
+		t.Fatalf("ana's mention: %d runs, %v", len(first.Runs), err)
+	}
+	id := first.Thread.ID
+	awaitListener(t, p, id, "ana")
+	if n := runsOf(say("U0VIC", "1700000000.000150", "and the price?", true)); n != 0 {
+		t.Fatalf("someone else's unmentioned reply ran %d, want 0", n)
+	}
+
+	// Vic asks with a mention, and is answered: the thread is his now.
+	if _, err := say("U0VIC", "1700000000.000300", "<@UAPP> @lead and the price?", false); err != nil {
+		t.Fatal(err)
+	}
+	awaitListener(t, p, id, "vic")
+	before := runsOf(say("U0ANA", "1700000000.000400", "and the terms?", true))
+
+	// A late answer to ana's older mention lands after vic's.
+	if _, err := p.Threads.Listen(tenant, id, "ana", "1700000000.000200", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	after := runsOf(say("U0ANA", "1700000000.000500", "and the terms again?", true))
+	newer := runsOf(say("U0VIC", "1700000000.000600", "and the discount?", true))
+	if before != 0 || after != 0 || newer != 1 {
+		t.Fatalf("older asker before=%d after=%d, newer asker after=%d; want 0, 0, 1", before, after, newer)
+	}
+	if th, _ := p.Threads.Get(tenant, id); th.Listener == nil || th.Listener.Person != "vic" {
+		t.Fatalf("the thread listens to %+v, want vic", th.Listener)
 	}
 }

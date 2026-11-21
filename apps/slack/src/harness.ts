@@ -39,6 +39,15 @@ import { type Envelope, type SlackApi, SlackError } from "./slack.ts";
 export const TEAM = "T01ABCDEF";
 export const OTHER_TEAM = "T09ZZZZZZ";
 export const CHANNEL = "C01ABCDEF";
+
+/** Whether Slack ts a was posted before b: seconds, a dot, then microseconds. */
+function olderTs(a: string, b: string): boolean {
+  const key = (ts: string) => {
+    const [secs = "0", micros = ""] = ts.split(".");
+    return BigInt(secs) * 1_000_000n + BigInt(`${micros}000000`.slice(0, 6));
+  };
+  return key(a) < key(b);
+}
 export const DM = "D01ABCDEF";
 export const USER = "U01ABCDEF";
 export const OTHER_USER = "U02ABCDEF";
@@ -184,11 +193,15 @@ export class FakeHumagen implements Humagen {
   /** Slack threads that began with a message addressed to the app, as the platform records them. */
   readonly addressed = new Set<string>();
   /**
-   * Addressed Slack threads the app has answered in, as the platform records
-   * them: a run there completed with words in its answer. A refused mention,
-   * a failed run, or one still quiet or parked answered nothing.
+   * Who each addressed Slack thread listens to, as the platform records it:
+   * the person whose message a run there answered most recently (completed
+   * with words in its answer), and that message's ts. A refused mention, a
+   * failed run, or one still quiet or parked answered nothing, and an answer
+   * to an older message than the listener's own changes nothing.
    */
-  readonly listening = new Set<string>();
+  readonly listening = new Map<string, { user: string; ts: string }>();
+  /** Each run started from a Slack message: its thread, who asked and the message's ts. */
+  private readonly askedIn = new Map<string, { where: string; user: string; ts: string }>();
   /** Whether the agent says a message that addressed nobody calls for it. Tests set it. */
   callsFor: (text: string) => boolean = () => true;
   /** The humagen thread each Slack thread is, by client, channel and ts. */
@@ -364,7 +377,7 @@ export class FakeHumagen implements Humagen {
     let thread = this.surfaces.get(where);
     // As the platform does: a message that addressed nobody is taken only in
     // a thread that began with one addressed to the app, and starts none.
-    if (body.listen && (!thread || !this.listening.has(where))) {
+    if (body.listen && (!thread || this.listening.get(where)?.user !== body.act_as?.user)) {
       this.posts.pop();
       this.routes.pop();
       throw new HumagenError(409, "nobody is listening in this thread: mention the app to ask it");
@@ -425,6 +438,7 @@ export class FakeHumagen implements Humagen {
         { agent, text: message.text, act_as: body.act_as },
         `thread-${thread}-${message.id}-${agent}`,
       );
+      this.askedIn.set(run.id, { where, user: body.act_as?.user ?? "", ts: s.message ?? s.ts });
       this.set(run.id, { thread, message: message.id });
       posted.runs = [this.runs.get(run.id) as Run];
     }
@@ -757,10 +771,13 @@ export class FakeHumagen implements Humagen {
     if (!run) return;
     const next = { ...run, ...change, updated_at: this.at() };
     this.runs.set(id, next);
-    // As the platform does: an addressed thread is listened to once a run there answers.
-    if (next.status === "completed" && next.answer?.trim() && next.thread) {
-      for (const [where, thread] of this.surfaces)
-        if (thread === next.thread && this.addressed.has(where)) this.listening.add(where);
+    // As the platform does: an addressed thread listens to whose message a run
+    // there answered, unless it already listens to someone's newer one.
+    const asked = this.askedIn.get(id);
+    if (next.status === "completed" && next.answer?.trim() && asked?.user) {
+      const now = this.listening.get(asked.where);
+      if (this.addressed.has(asked.where) && (!now || olderTs(now.ts, asked.ts)))
+        this.listening.set(asked.where, { user: asked.user, ts: asked.ts });
     }
   }
 

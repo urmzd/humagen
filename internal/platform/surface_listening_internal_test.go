@@ -152,7 +152,7 @@ func TestAThreadIsListenedToOnlyOnceTheAppHasAnswered(t *testing.T) {
 	addressed := func(ts string) threads.Thread {
 		t.Helper()
 		th := model
-		th.ID, th.Version, th.Listening = "", 0, false
+		th.ID, th.Version, th.Listening, th.Listener = "", 0, false, nil
 		sf := *model.Surface
 		sf.TS = ts
 		th.Surface = &sf
@@ -164,6 +164,15 @@ func TestAThreadIsListenedToOnlyOnceTheAppHasAnswered(t *testing.T) {
 			t.Fatalf("a new addressed thread: addressed %v, listening %v", got.Addressed, got.Listening)
 		}
 		return got
+	}
+	// Ada's mention there, as the platform keeps it.
+	asked := func(th threads.Thread) threads.Message {
+		t.Helper()
+		m, _, err := p.Threads.Post("acme", th.ID, threads.Message{By: "ada", Name: "Ada", Text: "what broke the build?", SurfaceID: th.Surface.TS}, p.now())
+		if err != nil {
+			t.Fatal(err)
+		}
+		return m
 	}
 	reply := func(th threads.Thread, ts string) (Posted, error) {
 		t.Helper()
@@ -209,12 +218,12 @@ func TestAThreadIsListenedToOnlyOnceTheAppHasAnswered(t *testing.T) {
 	}
 	unheard("a quiet run with no answer text", quiet)
 
-	// The quiet run answers later: from then on the thread is listened to.
-	if err := p.listenOnAnswer(runs.Run{Tenant: "acme", Thread: quiet.ID, Status: runs.Completed, Answer: "Rolled back."}); err != nil {
+	// The quiet run answers later: from then on the thread listens to Ada.
+	if err := p.answered("acme", quiet.ID, asked(quiet).ID); err != nil {
 		t.Fatal(err)
 	}
-	if now, _ := p.Threads.Get("acme", quiet.ID); !now.Listening {
-		t.Fatal("a quiet run that answered later did not start listening")
+	if now, _ := p.Threads.Get("acme", quiet.ID); !now.Listening || now.Listener == nil || now.Listener.Person != "ada" {
+		t.Fatalf("a quiet run that answered later: listening %v, listener %+v", now.Listening, now.Listener)
 	}
 	heard, err := reply(quiet, "1700000041.000200")
 	if err != nil || len(heard.Runs) != 1 {
@@ -226,7 +235,7 @@ func TestAThreadIsListenedToOnlyOnceTheAppHasAnswered(t *testing.T) {
 
 	// A thread a later mention started is never listened to, answered or not.
 	later := model
-	later.ID, later.Version, later.Listening, later.Addressed = "", 0, false, false
+	later.ID, later.Version, later.Listening, later.Listener, later.Addressed = "", 0, false, nil, false
 	sf := *model.Surface
 	sf.TS = "1700000050.000100"
 	later.Surface = &sf
@@ -234,7 +243,7 @@ func TestAThreadIsListenedToOnlyOnceTheAppHasAnswered(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := p.listenOnAnswer(runs.Run{Tenant: "acme", Thread: lt.ID, Status: runs.Completed, Answer: "Summary."}); err != nil {
+	if err := p.answered("acme", lt.ID, asked(lt).ID); err != nil {
 		t.Fatal(err)
 	}
 	unheard("a thread a later mention started", lt)

@@ -86,7 +86,7 @@ func (p *Platform) StartSurfaceSession(ctx context.Context, who auth.Principal, 
 			}
 		}
 		if in.Listen {
-			if !th.Listening {
+			if !p.listensTo(who, th, in.ActAs) {
 				return SessionView{}, false, ErrNotListening
 			}
 			// Heard either way; answered only when the agent says it is for it.

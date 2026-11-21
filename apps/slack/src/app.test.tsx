@@ -2349,6 +2349,52 @@ test("a quiet run with no answer text starts no listening, and starts it once it
   await w.app.idle();
 });
 
+test("a listened thread listens to the latest asker only, and a late older answer does not take it back", async () => {
+  const w = mapped({ stallMs: 30, slowPollMs: 40 });
+  const runs = () => w.humagen.started.length;
+  // Ana asks first, and her run goes quiet before it answers.
+  await deliver(w, mention("long job", TS));
+  const older = w.humagen.last.id;
+  await emit(w, "run.accepted.v1");
+  await pause(120);
+
+  // The quiet run is still followed slowly, so the app is not idle: wait instead.
+  // Olu asks there with a mention, and is answered: the thread is his.
+  await deliver(
+    w,
+    mention("and the price?", "1700000030.000300", { thread_ts: TS, user: OTHER_USER }),
+  );
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "The price is fine." });
+  await pause(50);
+  assert.equal(runs(), 2);
+
+  const at = runs();
+  await deliver(w, plain("and the terms?", "1700000040.000400", { thread_ts: TS }));
+  await pause(50);
+  const before = runs() - at;
+
+  // Ana's older run answers late.
+  w.humagen.set(older, { status: "completed", answer: "Long job done." });
+  await w.app.idle();
+  await pause(100);
+  const mid = runs();
+  await deliver(w, plain("and the terms again?", "1700000050.000500", { thread_ts: TS }));
+  await w.app.idle();
+  const after = runs() - mid;
+
+  const last = runs();
+  await deliver(
+    w,
+    plain("and the discount?", "1700000060.000600", { thread_ts: TS, user: OTHER_USER }),
+  );
+  const newer = runs() - last;
+  assert.deepEqual({ before, after, newer }, { before: 0, after: 0, newer: 1 });
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "No discount." });
+  await w.app.idle();
+});
+
 test("a message that mentions nobody outside a thread, or from someone the client does not map, is not heard", async () => {
   const w = mapped();
   await deliver(w, plain("anyone around?", "1700000200.000100"));

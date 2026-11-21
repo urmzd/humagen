@@ -265,12 +265,15 @@ type Thread struct {
 	// thread is listened to once the app has answered there. A thread a later
 	// mention started is not addressed: each mention there is answered once.
 	Addressed bool `json:"addressed,omitempty"`
-	// Listening says an addressed thread has had an answer from the app, so
-	// later messages there that address nobody are read too, and the agent
-	// decides of each whether it calls for it. A refused mention, a failed
-	// run, or one still quiet or waiting on a person answered nothing, and
-	// starts no listening (Store.Listen).
+	// Listening says an addressed thread has had an answer from the app. A
+	// refused mention, a failed run, or one still quiet or waiting on a
+	// person answered nothing, and starts no listening (Store.Listen).
 	Listening bool `json:"listening,omitempty"`
+	// Listener is whose later messages that address nobody are read there:
+	// the person whose message the app answered most recently. The agent
+	// decides of each whether it calls for it. Anyone else mentions the app
+	// or an agent to ask.
+	Listener *Listener `json:"listener,omitempty"`
 	// Announcement is the inbox id of the announcement the thread was
 	// started from: its surface is the announcement's post there, and a
 	// reply to it started the thread. It is fixed when the thread is
@@ -668,4 +671,13 @@ func (m Message) validate() error {
 func (s *SessionIdentity) same(o SessionIdentity) bool {
 	return s.Agent == o.Agent && s.Parent == o.Parent && s.Label == o.Label && s.SourceAlert == o.SourceAlert &&
 		s.Environment == o.Environment && slices.Equal(s.Repos, o.Repos)
+}
+
+// Listener is the person an addressed thread listens to, and their message
+// the app answered there, by its surface id (a Slack ts). Only an answer to
+// a newer message changes it, so a late answer to an older one does not take
+// the thread back.
+type Listener struct {
+	Person  string `json:"person"`
+	Message string `json:"message,omitempty"`
 }
