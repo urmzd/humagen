@@ -2198,6 +2198,17 @@ export const defaultCopy = {
     atCreate: "How it looks",
     notKeptAtCreate: "The agent was made, but its look was not kept. Set it on its Look tab.",
   },
+  agentHome: {
+    tab: "Home",
+    ask: (name: string) => `Ask ${name}`,
+    editLook: "Edit Look",
+    putToWork: (name: string) => `Put ${name} to work`,
+    noGreeting: "Nobody has written what this agent says about itself yet.",
+    noStarters: "It offers no starters yet.",
+    noStartersOwner: "It offers no starters yet. Add them on its Look tab.",
+    lastDay: (runs: number, failed: number) =>
+      `${runs} run${runs === 1 ? "" : "s"} in the last day${failed > 0 ? `, ${failed} failed` : ""}`,
+  },
   agentSlackApp: {
     title: "Its own Slack app",
     connected: "Connected",

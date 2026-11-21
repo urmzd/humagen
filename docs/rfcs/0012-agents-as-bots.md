@@ -295,6 +295,12 @@ several clients, so a deployment can use it for linked apps until then.
 
 ### 3. An agent's page opens on its home
 
+Built: the Home tab (`/agents/{name}`, `AgentHomeTab`), with the agent's bot,
+display name, greeting, Ask, its runs over the last day, and its starters,
+each a new conversation with the agent and the message written. Its prompt
+moves to `/agents/{name}/prompt`. Not built: the regrouped tabs below.
+
+
 `/agents/{name}` opens on a new **Home** tab, and its settings regroup into
 the order the screenshots use, which is also the order a person needs them:
 
@@ -348,7 +354,8 @@ Small changes that make each agent read as itself:
    looks in every mark, display names through `agentShown`, the Look tab,
    greetings and starters, the drawn picture and its public route, a look
    at New Agent.
-2. **Console.** The Home tab, the regrouped tabs, the new setup steps.
+2. **Console.** Built: the Home tab and the look at New Agent. Not built: the
+   regrouped tabs and the goal-first setup steps.
 3. **Slack.** Built: `chat:write.customize` and the agent's name and picture
    on every post, stream and status line, and Home's Meet your agents.
    Built: threads that stay with the agent they were started for
