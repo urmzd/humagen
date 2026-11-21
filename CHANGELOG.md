@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.174.2 (2026-11-21)
+
+### Bug Fixes
+
+- **platform**: called runs get no caller person tool servers (#507) ([13ad1d9](https://github.com/urmzd/humagen/commit/13ad1d95858f07993b31b80119cd371a273ef5b9))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.174.1...v0.174.2)
+
+
+## 0.174.1 (2026-11-21)
+
+### Bug Fixes
+
+- **console**: stack workspace Apps as connection rows (#502) ([3541b4c](https://github.com/urmzd/humagen/commit/3541b4c34c7fc3e960f5b2b92f002d388d7c1b9e))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.174.0...v0.174.1)
+
+
 ## 0.169.0 (2026-11-21)
 
 ### Features
