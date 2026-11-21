@@ -164,10 +164,11 @@ export function ItemCard({
   href?: string;
   children?: ReactNode;
 }) {
-  // The whole card is the title's target (its ::after), so the title itself stays one
-  // line tall and level with its mark, on a touch screen too.
+  // On a touch screen the title is as tall as a finger needs, with its first line
+  // centered in that height and level with its mark. The space under it is a clear
+  // border, not padding: a clamped third line would show through padding.
   const titleClass =
-    "line-clamp-2 min-h-6 min-w-0 flex-1 text-left font-medium text-aui-sm text-aui-fg leading-6 outline-none after:absolute after:inset-0 after:rounded-aui-lg focus-visible:after:outline-2 focus-visible:after:outline-aui-accent";
+    "line-clamp-2 min-h-6 min-w-0 flex-1 text-left font-medium text-aui-sm text-aui-fg leading-6 outline-none after:absolute after:inset-0 after:rounded-aui-lg focus-visible:after:outline-2 focus-visible:after:outline-aui-accent pointer-coarse:border-transparent pointer-coarse:border-b-[10px] pointer-coarse:pt-2.5";
   const linked = !!href || !!onOpen;
   return (
     <article
@@ -176,7 +177,11 @@ export function ItemCard({
     >
       {media && <div className="-mx-4 -mt-4 overflow-hidden rounded-t-aui-lg">{media}</div>}
       <header className="flex min-w-0 items-start gap-3">
-        {mark && <span className="flex size-6 shrink-0 items-center justify-center">{mark}</span>}
+        {mark && (
+          <span className="flex size-6 shrink-0 items-center justify-center pointer-coarse:h-11">
+            {mark}
+          </span>
+        )}
         {href ? (
           <a
             href={href}
