@@ -288,11 +288,12 @@ export async function resizeSidebar(page: Page): Promise<void> {
   const nav = page.getByRole("complementary", { name: "Navigation" });
   const width = (await nav.boundingBox())?.width ?? 0;
   // It is drawn no wider than a third of the window.
-  const want = Math.min(344, (page.viewportSize()?.width ?? 0) / 3);
+  const want = Math.min(344, Math.floor((page.viewportSize()?.width ?? 0) / 3));
   if (Math.abs(width - want) > 2)
     throw new Error(`the dragged sidebar is ${width}px, want ${want}`);
-  if ((await page.evaluate(() => localStorage.getItem("humagen.sidebar.width"))) !== "344")
-    throw new Error("the dragged width is kept");
+  // What is kept is what is drawn.
+  const kept = await page.evaluate(() => localStorage.getItem("humagen.sidebar.width"));
+  if (kept !== String(want)) throw new Error(`the dragged width is kept as ${kept}, want ${want}`);
 }
 
 /** Rests the mouse on a row that is not the open one, which shows its hover state and preview. */
