@@ -705,6 +705,34 @@ test("only a projected approval with its pending inline decision is hidden", asy
   );
 });
 
+// A parked run as the console draws it: the adapter's turn in AgentMessage, inside the run's article.
+async function parkedRun(ids: string[]) {
+  const { WebSurface } = await import("@humagen/render-web");
+  const { AgentMessage } = await import("@humagen/web");
+  const { turnOf } = await import("./adapter.ts");
+  const asks = ids.map((id) => ({
+    id,
+    kind: "approval",
+    prompt: `Write file ${id}?`,
+    tool: { name: "file_write", call_id: `call-${id}` },
+  }));
+  const run = {
+    id: "r1",
+    agent: "helper",
+    status: "parked",
+    created_at: "2026-01-01",
+    updated_at: "2026-01-01",
+    ...(asks.length > 1 ? { questions: asks } : { question: asks[0] }),
+  };
+  return (
+    <WebSurface onAction={() => {}}>
+      <article data-turn-id={run.id}>
+        <AgentMessage turn={turnOf(run as never)} />
+      </article>
+    </WebSurface>
+  );
+}
+
 test("initial approval positioning does not override a message link or later scrolling", async () => {
   const { Thread } = await import("@humagen/web");
   const oldScroll = HTMLElement.prototype.scrollTo;
@@ -713,14 +741,14 @@ test("initial approval positioning does not override a message link or later scr
     if (typeof options === "object") calls.push(options);
   };
   try {
-    const children = (
-      <div data-turn-id="r1">
-        <div data-aui-block="approval" data-aui-block-id="approval:q1:r0" />
-        <div data-aui-block="approval" data-aui-block-id="approval:q2:r0" />
-      </div>
-    );
+    const children = await parkedRun(["q1"]);
     const view = render(
       <Thread initialApproval={{ run: "r1", question: "q1" }}>{children}</Thread>,
+    );
+    assert.equal(
+      view.container.querySelector('[data-aui="actions"]')?.getAttribute("data-aui-block-id"),
+      "approval:q1:r0",
+      "one pending approval has its own action row",
     );
     assert.equal(calls.length, 1);
     view.rerender(<Thread initialApproval={{ run: "r1", question: "q2" }}>{children}</Thread>);
@@ -733,6 +761,40 @@ test("initial approval positioning does not override a message link or later scr
       </Thread>,
     );
     assert.equal(calls.length, 0, "an explicit link wins over the initial approval");
+  } finally {
+    HTMLElement.prototype.scrollTo = oldScroll;
+  }
+});
+
+test("initial approval positioning finds the one action row several pending approvals share", async () => {
+  const { Thread } = await import("@humagen/web");
+  const oldScroll = HTMLElement.prototype.scrollTo;
+  const calls: ScrollToOptions[] = [];
+  HTMLElement.prototype.scrollTo = (options) => {
+    if (typeof options === "object") calls.push(options);
+  };
+  try {
+    // Room.tsx names the last pending approval; the console draws the run's approvals as one batch.
+    const view = render(
+      <Thread initialApproval={{ run: "r1", question: "q2" }}>
+        {await parkedRun(["q1", "q2"])}
+      </Thread>,
+    );
+    const rows = Array.from(view.container.querySelectorAll('[data-aui="actions"]'));
+    assert.deepEqual(
+      rows.map((row) => row.getAttribute("data-aui-block-id")),
+      ["batch:r1:actions"],
+      "several pending approvals share one action row and have none of their own",
+    );
+    assert.equal(calls.length, 1, "the batch's action row is positioned");
+    view.unmount();
+    calls.length = 0;
+    render(
+      <Thread initialApproval={{ run: "other", question: "q2" }}>
+        {await parkedRun(["q1", "q2"])}
+      </Thread>,
+    );
+    assert.equal(calls.length, 0, "another run's batch is not this approval's row");
   } finally {
     HTMLElement.prototype.scrollTo = oldScroll;
   }

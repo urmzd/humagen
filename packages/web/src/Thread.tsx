@@ -92,10 +92,17 @@ export function Thread({
     const run = root?.querySelector<HTMLElement>(
       `[data-turn-id="${CSS.escape(initialApproval.run)}"]`,
     );
-    const cards = run?.querySelectorAll<HTMLElement>('[data-aui-block="approval"]');
-    const card = Array.from(cards ?? []).find((item) =>
-      item.dataset.auiBlockId?.startsWith(`approval:${initialApproval.question}:r`),
+    // One pending approval has its own action row; several share the run's batch row.
+    const cards = run?.querySelectorAll<HTMLElement>(
+      '[data-aui-block="approval"], [data-aui-block="batch"]',
     );
+    const card = Array.from(cards ?? []).find((item) => {
+      const id = item.dataset.auiBlockId ?? "";
+      return (
+        id.startsWith(`approval:${initialApproval.question}:r`) ||
+        id === `batch:${initialApproval.run}:actions`
+      );
+    });
     if (!root || !card) return;
     const end = root.scrollHeight - root.clientHeight;
     const view = root.getBoundingClientRect();
