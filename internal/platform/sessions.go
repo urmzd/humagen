@@ -44,6 +44,11 @@ type SessionInput struct {
 	// PostOnly posts a surface's message without starting anything, as a
 	// channel the app follows quietly, or catching a thread up, does.
 	PostOnly bool `json:"post_only,omitempty"`
+	// Listen, with Surface, posts a message that addressed nobody: a reply
+	// in a thread that does not mention the app. It starts no session. In
+	// one that is listening (threads.Thread.Listening) the agent is asked
+	// whether the message calls for it; anywhere else it is ErrNotListening.
+	Listen bool `json:"listen,omitempty"`
 	// spoken marks the first message as said in voice mode, for a
 	// conversation the messages API starts (sendToNewConsoleRoot).
 	spoken bool

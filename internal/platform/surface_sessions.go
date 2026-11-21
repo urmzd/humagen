@@ -85,11 +85,21 @@ func (p *Platform) StartSurfaceSession(ctx context.Context, who auth.Principal, 
 				return SessionView{}, false, err
 			}
 		}
+		if in.Listen {
+			if !th.Listening {
+				return SessionView{}, false, ErrNotListening
+			}
+			// Heard either way; answered only when the agent says it is for it.
+			post.PostOnly = post.PostOnly || !p.callsFor(ctx, who.Tenant, th, in.Text)
+		}
 		if err := p.audiences.Put(who.Tenant, th.ID, aud); err != nil {
 			return SessionView{}, false, err
 		}
 		out, err := p.surfacePost(ctx, who, th, post)
 		return out, false, err
+	}
+	if in.Listen {
+		return SessionView{}, false, ErrNotListening
 	}
 	at, err := p.filedAt(who.Tenant, c, ref.Channel)
 	if err != nil {
@@ -107,7 +117,10 @@ func (p *Platform) StartSurfaceSession(ctx context.Context, who auth.Principal, 
 	if err != nil {
 		return SessionView{}, false, err
 	}
-	th := threads.Thread{ID: rec.ID, Project: at.project, Channel: at.channel, Visibility: vis, Participants: people, Title: firstWords(in.Text, threads.MaxTitle), Default: owner, Agents: []string{owner}, CreatedBy: humanSubject(person), Surface: &sf, Session: &threads.SessionIdentity{Agent: owner, Parent: rec.Key.Parent, Label: rec.Key.Label}}
+	// A channel thread whose first message was addressed to the app is
+	// listened to from then on; a direct message needs no listening.
+	listening := !in.PostOnly && !directMessage(ref.Channel) && ref.message() == ref.TS
+	th := threads.Thread{ID: rec.ID, Listening: listening, Project: at.project, Channel: at.channel, Visibility: vis, Participants: people, Title: firstWords(in.Text, threads.MaxTitle), Default: owner, Agents: []string{owner}, CreatedBy: humanSubject(person), Surface: &sf, Session: &threads.SessionIdentity{Agent: owner, Parent: rec.Key.Parent, Label: rec.Key.Label}}
 	_, err = p.Threads.Create(who.Tenant, th, p.now())
 	started = err == nil
 	if err != nil && !errors.Is(err, threads.ErrExists) {

@@ -5509,6 +5509,8 @@ export interface MessagesInput {
   act_as?: ActAs;
   /** With act_as, record the message and start nothing, for what people said in the thread before the app was asked. */
   post_only?: boolean;
+  /** With act_as, post a message that addressed nobody, such as a reply in a Slack thread that does not mention the app. It starts no session. In a thread that is `listening` the agent is asked whether the message calls for it, and answers it or the message is kept and starts nothing (`posted.rule` is `post_only`). Anywhere else the answer is 409 and nothing is kept. */
+  listen?: boolean;
 }
 
 /** One person's message. role is user; the platform writes the agents' messages. */

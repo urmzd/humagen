@@ -266,3 +266,42 @@ func TestOnlyTheClientsMachinePostsForAPersonOnTheMessagesRoute(t *testing.T) {
 		t.Fatalf("post_only with nobody to post for = %v", err)
 	}
 }
+
+// The messages route listens as the threads route does: a session a
+// thread's first message started is listened to, and a message there that
+// addresses nobody is answered or kept; one a later reply started is not.
+func TestTheMessagesRouteListensInASessionAThreadsFirstMessageStarted(t *testing.T) {
+	p, machine := slackRoom(t, nil)
+	first, err := p.SendMessages(t.Context(), machine, machineSays("C01RENEW", "1700000000.000100", "", "<@UAPP> what changed in the renewal?"))
+	if err != nil || !first.Created {
+		t.Fatalf("the thread's first message = %+v, %v", first, err)
+	}
+	root, err := p.ReadSession(t.Context(), machine, first.Root, "", "", false)
+	if err != nil || !root.Thread.Listening {
+		t.Fatalf("a session a thread's first message started: listening %v, %v", root.Thread.Listening, err)
+	}
+	heard := machineSays("C01RENEW", "1700000000.000200", "1700000000.000100", "and what about the price?")
+	heard.Listen = true
+	got, err := p.SendMessages(t.Context(), machine, heard)
+	if err != nil || got.Root != first.Root || got.Posted.Message.ID == "" {
+		t.Fatalf("a message that addresses nobody in a listened session = %+v, %v", got, err)
+	}
+
+	later, err := p.SendMessages(t.Context(), machine, machineSays("C01RENEW", "1700000000.000600", "1700000000.000500", "<@UAPP> can you summarise this thread?"))
+	if err != nil || !later.Created {
+		t.Fatalf("a mention in a later reply = %+v, %v", later, err)
+	}
+	if s, err := p.ReadSession(t.Context(), machine, later.Root, "", "", false); err != nil || s.Thread.Listening {
+		t.Fatalf("a session a later reply started: listening %v, %v", s.Thread.Listening, err)
+	}
+	unheard := machineSays("C01RENEW", "1700000000.000700", "1700000000.000500", "thanks, and the other one?")
+	unheard.Listen = true
+	if _, err := p.SendMessages(t.Context(), machine, unheard); !errors.Is(err, platform.ErrNotListening) {
+		t.Fatalf("a message that addresses nobody where nobody listens: %v", err)
+	}
+	nowhere := machineSays("C01RENEW", "1700000000.000950", "1700000000.000900", "anyone around?")
+	nowhere.Listen = true
+	if _, err := p.SendMessages(t.Context(), machine, nowhere); !errors.Is(err, platform.ErrNotListening) {
+		t.Fatalf("a message that addresses nobody where there is no session: %v", err)
+	}
+}
