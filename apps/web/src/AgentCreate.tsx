@@ -97,7 +97,7 @@ export function AgentCreate({
   const body: ReactNode = !catalog ? (
     problem ? (
       <div
-        className="flex flex-col items-start gap-3 p-6 md:col-span-2"
+        className="flex flex-col items-start gap-3 p-6 lg:col-span-2"
         data-testid="agent-create-failed"
       >
         <Problem message={problem} />
@@ -106,7 +106,7 @@ export function AgentCreate({
         </button>
       </div>
     ) : (
-      <div className="p-6 md:col-span-2">
+      <div className="p-6 lg:col-span-2">
         <SkeletonRows count={6} />
       </div>
     )
@@ -130,7 +130,7 @@ export function AgentCreate({
   return (
     <Page title={words.title} back={{ label: defaultCopy.navigation.agents, onClick: onBack }}>
       <div
-        className="grid min-w-0 overflow-hidden rounded-aui-lg border border-aui-border bg-aui-bg md:min-h-[32rem] md:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]"
+        className="grid min-w-0 overflow-hidden rounded-aui-lg border border-aui-border bg-aui-bg lg:min-h-[32rem] lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]"
         data-testid="agent-create"
       >
         {body}
@@ -214,7 +214,7 @@ function Goal({
               <label
                 key={t.id}
                 data-template={t.id}
-                className={`flex min-h-11 cursor-pointer items-center gap-3 rounded-aui px-2.5 py-2 has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-aui-accent ${
+                className={`flex min-h-11 shrink-0 cursor-pointer items-center gap-3 rounded-aui px-2.5 py-2 has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-aui-accent ${
                   chosen === t.id ? "bg-aui-accent-soft" : "hover:bg-aui-hover"
                 }`}
               >
