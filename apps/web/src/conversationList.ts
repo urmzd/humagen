@@ -99,10 +99,9 @@ export function rowState(
   } = {},
 ): RowState {
   const unread = isUnread(t, marks);
-  // A session listing names what a run waits on a person for; a run parked on
-  // its delegation to a child agent counts in `waiting` but waits on nobody,
-  // so there it reads as working.
-  const waiting = (t.waiting ?? 0) > 0 && (!opts.session || t.waiting_kind !== undefined);
+  // Something in it is parked. Whom on is the listing's to say, from the
+  // reader's own inbox; without that it waits on someone.
+  const waiting = (t.waiting ?? 0) > 0;
   // Only a listing that says the reader is asked makes it theirs: a missing
   // answer is no one's, never the reader's by default.
   const you = waiting && t.waiting_on_you === true;

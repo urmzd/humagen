@@ -1564,11 +1564,11 @@ export interface ThreadSummary {
   source?: "slack" | "slack_dm" | "github" | "scheduled";
   /** On a session listing, the caller takes part in the session without having started it. They posted in it, were mentioned or were added. */
   joined?: boolean;
-  /** On a session listing, what the latest run parked on a person waits for. For an approval it is the tool asked about; for a question, the first line of its prompt. At most 100 characters. */
+  /** On a session listing, what waits on a person. It is the question waiting on the caller when there is one, else the latest run parked on a person. For an approval it is the tool asked about; for a question, the first line of its prompt. At most 100 characters. */
   waiting_for?: string;
   /** What `waiting_for` is. */
   waiting_kind?: "approval" | "question";
-  /** The caller is the one the latest parked run asks, on a session listing. They are named, an approver, or taking part when nobody is named. Always sent; false when nothing waits on the caller, so a client never assumes it does. A delegation to a child agent waits on nobody. */
+  /** On a session listing, an open question about the session in the caller's own inbox is addressed to them as answering decides it, with the requester excluded, and the caller may write runs. A question a called agent raised counts for the session that called it. The listing reads the caller's inbox once per page for this. Always sent; false otherwise, so a client never assumes it. */
   waiting_on_you: boolean;
   /** On a session listing, why the latest turn failed, the first line of its error, at most 100 characters. Absent when the latest turn did not fail, so a failure a later turn answered is not shown. */
   failure?: string;

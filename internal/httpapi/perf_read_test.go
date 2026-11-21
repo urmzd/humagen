@@ -875,3 +875,34 @@ func TestSessionPagesAreTheWholeListingInOrder(t *testing.T) {
 		}
 	}
 }
+
+// A page of sessions says what waits on its reader from one read of their
+// inbox, whatever the page's size: the questions open for them, kept to the
+// page's sessions, and nothing read per session or per message.
+func TestAPageOfSessionsReadsTheInboxOnce(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		reader := auth.Principal{Subject: "ana", Tenant: "acme", Kind: auth.User, Name: "Ana", Roles: []auth.Role{auth.Operator}}
+		f, store := quietFixture(t, open(t), func(p *platform.Platform) {
+			seedVolume(t, p, reader, volume{Sessions: 30, Children: 4, Runs: 100, Alerts: 6, Parallel: 4})
+		})
+		tok := f.person(t, "acme", "ana", "Ana", "humagen-operators")
+		for _, path := range []string{"/api/sessions?limit=1", "/api/sessions?limit=20", "/api/sessions?roots=true&mine=true&limit=5"} {
+			f.do(t, nil, "GET", path, tok, "")
+			store.idle(t)
+			got := store.during(func() {
+				if res, body := f.do(t, nil, "GET", path, tok, ""); res.StatusCode != http.StatusOK {
+					t.Fatalf("GET %s = %d %v", path, res.StatusCode, body)
+				}
+			})
+			inbox := 0
+			for k, n := range got.by {
+				if strings.HasSuffix(k, " inbox") {
+					inbox += n
+				}
+			}
+			if got.by["list inbox"] != 1 || inbox != 1 {
+				t.Errorf("GET %s read the inbox %d times (%d lists): %v", path, inbox, got.by["list inbox"], got.by)
+			}
+		}
+	})
+}

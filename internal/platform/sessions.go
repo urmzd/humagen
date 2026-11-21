@@ -422,22 +422,14 @@ func sessionStatus(rr []runs.Run) string {
 }
 
 // waitingOn is what the latest run parked on a person waits for: the tool
-// an approval asks about, or the first line of a question, its kind, and
-// whether subject is the one asked. Only a question a person answers counts,
-// as askOf and questionParts decide it: a parent waiting on its delegation to
-// a child agent waits on nobody. A run's questions are read as Waits orders
-// them.
-//
-// subject is the one asked only when the question names them: as the person
-// it is asked of, or among its approvers, and not as the person who asked for
-// the run unless it allows self-approval. An approval whose approvers come
-// from the agent's spec names nobody on the question, so it is no one's here:
-// deciding who else may answer it needs askOf's reads, which a listing does
-// not make.
-func waitingOn(rr []runs.Run, subject string) (what, kind string, you bool) {
+// an approval asks about, or the first line of a question, and its kind.
+// Only a question a person answers counts, as askOf and questionParts decide
+// it: a parent waiting on its delegation to a child agent waits on nobody. A
+// run's questions are read as Waits orders them. Whom it waits on is not
+// read from the run: see openQuestions.
+func waitingOn(rr []runs.Run) (what, kind string) {
 	var at time.Time
 	var q *event.Question
-	var run *runs.Run
 	for i := range rr {
 		r := &rr[i]
 		if r.Status != runs.Parked || (q != nil && r.UpdatedAt.Before(at)) {
@@ -445,31 +437,74 @@ func waitingOn(rr []runs.Run, subject string) (what, kind string, you bool) {
 		}
 		for _, w := range r.Waits() {
 			if _, _, ok := questionParts(partKind(w)); ok && w.ID != "" {
-				q, at, run = &w, r.UpdatedAt, r
+				q, at = &w, r.UpdatedAt
 				break
 			}
 		}
 	}
 	if q == nil {
-		return "", "", false
+		return "", ""
 	}
-	part, _, _ := questionParts(partKind(*q))
-	switch {
-	case part == inbox.PartApproval && q.Tool != nil:
-		what, kind = firstWords(q.Tool.Name, MaxAttention), WaitingApproval
-	case part == inbox.PartApproval:
-		what, kind = firstWords(firstLineOf(q.Prompt), MaxAttention), WaitingApproval
-	default:
-		what, kind = firstWords(firstLineOf(q.Prompt), MaxAttention), WaitingQuestion
+	return attentionOf(questionPartOf(*q))
+}
+
+// questionPartOf is the parts of a question that say what it is about.
+func questionPartOf(q event.Question) inbox.QuestionPart {
+	part := inbox.QuestionPart{ID: q.ID, Kind: partKind(q), Prompt: q.Prompt}
+	if q.Tool != nil {
+		part.Tool = &inbox.QuestionTool{Name: q.Tool.Name}
 	}
-	if subject == "" {
-		return what, kind, false
+	return part
+}
+
+// attentionOf is what a question waits for, in a few words, and its kind:
+// the tool an approval asks about, else the first line of what it asks.
+func attentionOf(q inbox.QuestionPart) (what, kind string) {
+	part, _, _ := questionParts(q.Kind)
+	if part == inbox.PartApproval {
+		if q.Tool != nil && q.Tool.Name != "" {
+			return firstWords(q.Tool.Name, MaxAttention), WaitingApproval
+		}
+		return firstWords(firstLineOf(q.Prompt), MaxAttention), WaitingApproval
 	}
-	you = q.AskedOf == subject || slices.Contains(q.Approvers, subject)
-	if you && part == inbox.PartApproval && !q.SelfApproval && runs.AskedBy(*run) == subject {
-		you = false
+	return firstWords(firstLineOf(q.Prompt), MaxAttention), WaitingQuestion
+}
+
+// openQuestions is the questions open in the reader's own inbox that they
+// may answer, by the session they are about, for the sessions of one page:
+// one read of their inbox. A question is theirs only as answering decides it
+// from what it was raised with: addressed to them (Message.For, which
+// checkAnswer ends with), the person who asked for the work excluded, and
+// they may write runs. A question a called agent's run raised is filed under
+// the session that called it, so it counts there. Only sessions of the page,
+// which the reader was already found to read, are kept, so nothing else of
+// the inbox is read or shown. Answering checks again.
+func (p *Platform) openQuestions(who auth.Principal, sessions []string) map[string][]inbox.QuestionPart {
+	if !who.Can(auth.RunsWrite) || len(sessions) == 0 {
+		return nil
 	}
-	return what, kind, you
+	reader := readerOf(who)
+	msgs, _, err := p.Inbox.Page(who.Tenant, inbox.Query{
+		Reader: reader.Subject, Roles: reader.Roles, Now: p.now(),
+		Kinds: []inbox.Kind{inbox.KindApproval, inbox.KindClarification},
+		Limit: inbox.MaxPage,
+	})
+	if err != nil {
+		p.log.Warn("platform: the questions waiting on a reader could not be read; sessions are listed without them", "tenant", who.Tenant, "error", err)
+		return nil
+	}
+	out := map[string][]inbox.QuestionPart{}
+	for _, m := range msgs {
+		if !slices.Contains(sessions, m.Source.Thread) || !m.For(reader) {
+			continue
+		}
+		for _, part := range m.Parts {
+			if part.Question != nil && part.State == inbox.PartOpen {
+				out[m.Source.Thread] = append(out[m.Source.Thread], *part.Question)
+			}
+		}
+	}
+	return out
 }
 
 // latestFailure is why the latest turn failed, or "" when it did not: a turn
@@ -534,7 +569,7 @@ func (p *Platform) sessionSummary(who auth.Principal, th threads.Thread) Session
 	out, err := p.summarizeSessions(who, []sessionRow{row}, false)
 	if err != nil {
 		p.log.Warn("platform: a session's runs could not be read; it is shown without them", "session", th.ID, "error", err)
-		return p.shownSessions(who.Tenant, []SessionSummary{p.summarizeSession(who, row, nil, threads.Message{}, false)})[0]
+		return p.shownSessions(who.Tenant, []SessionSummary{p.summarizeSession(who, row, nil, threads.Message{}, false, nil)})[0]
 	}
 	return out[0]
 }
@@ -572,10 +607,12 @@ func (p *Platform) summarizeSessions(who auth.Principal, rows []sessionRow, plac
 	if err != nil {
 		return nil, err
 	}
+	// One read of the reader's inbox says, for every row, what waits on them.
+	asks := p.openQuestions(who, ids)
 	out := make([]SessionSummary, len(rows))
 	for i, row := range rows {
 		message, said := last[row.head.ID]
-		out[i] = p.summarizeSession(who, row, turns[row.head.ID], message, said)
+		out[i] = p.summarizeSession(who, row, turns[row.head.ID], message, said, asks[row.head.ID])
 		if placed {
 			out[i].UpdatedAt, out[i].Conversation.UpdatedAt = row.at, row.at
 		}
@@ -587,7 +624,7 @@ func (p *Platform) summarizeSessions(who auth.Principal, rows []sessionRow, plac
 // message, said when it has one. The people in it are not yet named as the
 // directory names them: shownSessions does that, and nothing is returned
 // without it.
-func (p *Platform) summarizeSession(who auth.Principal, row sessionRow, rr []runs.Run, message threads.Message, said bool) SessionSummary {
+func (p *Platform) summarizeSession(who auth.Principal, row sessionRow, rr []runs.Run, message threads.Message, said bool, asks []inbox.QuestionPart) SessionSummary {
 	th := row.head.Thread
 	at := row.at
 	for _, r := range rr {
@@ -611,7 +648,12 @@ func (p *Platform) summarizeSession(who auth.Principal, row sessionRow, rr []run
 	conversation.Messages = row.head.Messages
 	conversation.Source = threadSource(th)
 	conversation.Joined = joinedSession(th, who.Subject)
-	conversation.WaitingFor, conversation.WaitingKind, conversation.WaitingOnYou = waitingOn(rr, who.Subject)
+	conversation.WaitingFor, conversation.WaitingKind = waitingOn(rr)
+	if len(asks) > 0 {
+		// What waits on the reader is said over what else waits.
+		conversation.WaitingFor, conversation.WaitingKind = attentionOf(asks[0])
+		conversation.WaitingOnYou = true
+	}
 	conversation.Failure = latestFailure(rr, th)
 	if said {
 		lastAgent := time.Time{}

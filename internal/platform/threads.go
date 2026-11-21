@@ -202,11 +202,13 @@ type ThreadSummary struct {
 	// the session without having started it: they posted in it, were
 	// mentioned or were added.
 	Joined bool `json:"joined,omitempty"`
-	// WaitingFor is what a run parked in it waits on a person for, set on a
-	// session listing: the tool an approval asks about, or the first line of
-	// a question, at most MaxAttention runes. WaitingKind is WaitingApproval
-	// or WaitingQuestion, and WaitingOnYou says the listing's reader is the
-	// one asked: named, an approver, or taking part when nobody is named.
+	// WaitingFor is what waits on a person in it, set on a session listing:
+	// the question waiting on the reader when there is one, else what the
+	// latest run parked on a person asks; the tool an approval asks about, or
+	// the first line of a question, at most MaxAttention runes. WaitingKind
+	// is WaitingApproval or WaitingQuestion. WaitingOnYou says an open
+	// question about it in the reader's own inbox is theirs to answer
+	// (openQuestions).
 	WaitingFor  string `json:"waiting_for,omitempty"`
 	WaitingKind string `json:"waiting_kind,omitempty"`
 	// WaitingOnYou is always sent, false included: a reader who is not

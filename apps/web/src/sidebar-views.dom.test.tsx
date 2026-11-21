@@ -303,9 +303,9 @@ test("a row's state is said in words: waiting on you in the warning color, a fai
     assert.doesNotMatch(row.innerHTML, /aui-accent/, "nothing in a row uses the accent");
 });
 
-test("a parent parked on its delegation to a child agent shows as working, never as waiting on someone", async () => {
+test("a parked session the reader's inbox holds nothing of waits on someone, never on the reader", async () => {
   // As the listing sends it: the run index counts the parked parent in
-  // waiting, and nothing names a person it waits on.
+  // waiting, and nothing in the reader's inbox is about it.
   const delegating = {
     ...task("s_parent", "Check every repository"),
     active: 1,
@@ -334,9 +334,10 @@ test("a parent parked on its delegation to a child agent shows as working, never
     "link",
     { name: /^Check every repository/ },
   );
-  assert.equal(row.querySelector("[data-state]")?.textContent, "Working");
+  assert.equal(row.querySelector("[data-state]")?.textContent, "Waiting for someone");
+  assert.match(row.querySelector("[data-state]")?.className ?? "", /text-aui-muted/);
   assert.equal(row.querySelector("[data-dot]"), null);
-  assert.doesNotMatch(row.textContent ?? "", /Waiting/);
+  assert.doesNotMatch(row.textContent ?? "", /Waiting for you/);
 });
 
 test("a screen reader hears each row's source once, and Unread beside a state line", async () => {
@@ -512,9 +513,8 @@ test("a session waiting on someone else never reads as waiting for you, as the l
     list.getByRole("link", { name: /^Deploy the API/ }).querySelector("[data-dot]"),
     null,
   );
-  // A listing that names nothing waited on is a run parked on its delegation
-  // to a child agent, which waits on nobody: it is working.
-  assert.equal((await line(/^An older listing/))?.textContent, "Working");
+  // A listing that names nothing waited on and no one: it waits on someone.
+  assert.equal((await line(/^An older listing/))?.textContent, "Waiting for someone");
   assert.equal(
     list.getByRole("link", { name: /^An older listing/ }).querySelector("[data-dot]"),
     null,
