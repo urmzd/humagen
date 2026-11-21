@@ -8,6 +8,14 @@ import {
   REVIEW_TITLE,
   type SessionFixtures,
 } from "./session-fixtures.ts";
+import {
+  assertCalmFocus,
+  assertSources,
+  dressSources,
+  focusLog,
+  hoverRow,
+  hoverState,
+} from "./sidebar-sources.ts";
 
 export interface SessionScreen {
   name: string;
@@ -319,11 +327,37 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
       },
     },
     {
+      name: "sidebar-sources",
+      path: session,
+      // DES-054: where each session came from, pinned, selected and hovered rows,
+      // with keyboard focus on the conversation beside them.
+      act: async (page) => {
+        await readySession(page);
+        await dressSources(page, ids.work.id);
+        await assertSources(page);
+        await hoverState(page);
+        if ((page.viewportSize()?.width ?? 0) >= 768) {
+          await focusLog(page);
+          await assertCalmFocus(page);
+        }
+        await hoverRow(page);
+      },
+    },
+    {
+      name: "session-log-focus",
+      path: session,
+      act: async (page) => {
+        await readySession(page);
+        await focusLog(page);
+        await assertCalmFocus(page);
+      },
+    },
+    {
       name: "session-menu",
       path: session,
       act: async (page) => {
         await readySession(page);
-        await page.getByRole("button", { name: "Session actions", exact: true }).click();
+        await page.locator('h1 button[aria-haspopup="menu"]').click();
         const menu = page.getByRole("menu", { name: "Session actions", exact: true });
         await menu.getByRole("menuitem", { name: "Rename", exact: true }).waitFor();
         await menu.getByRole("menuitem", { name: "Archive", exact: true }).waitFor();

@@ -35,12 +35,6 @@ export const ActionId = {
   report: "aui.report",
   /** Open a delegated run. `turnId` is the turn it was called from; `target` the child run id. */
   openRun: "aui.run.open",
-  /**
-   * Ask an agent again what a delegated call that failed asked it, as the
-   * next turn. `turnId` is the turn it was called from, `target` the agent
-   * and `text` what it was asked.
-   */
-  retryCall: "aui.call.retry",
   /** What a finished run used, for the person who asks alone. `turnId` is the run. */
   runDetails: "aui.run.details",
   openAssignment: "aui.assignment.open",

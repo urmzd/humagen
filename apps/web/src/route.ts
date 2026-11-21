@@ -12,7 +12,9 @@ import { swap } from "./transition.ts";
  */
 
 export type AgentTab =
+  | "home"
   | "prompt"
+  | "look"
   | "model"
   | "access"
   | "queue"
@@ -22,7 +24,9 @@ export type AgentTab =
   | "alerts"
   | "revisions";
 export const AGENT_TABS: AgentTab[] = [
+  "home",
   "prompt",
+  "look",
   "model",
   "access",
   "queue",
@@ -628,7 +632,7 @@ export function href(r: Route): string {
       return r.state ? `/agents?state=${enc(r.state)}` : "/agents";
     case "agent": {
       const base = r.name === null ? "/agents/new" : `/agents/${enc(r.name)}`;
-      return r.tab === "prompt" ? base : `${base}/${r.tab}`;
+      return r.tab === (r.name === null ? "prompt" : "home") ? base : `${base}/${r.tab}`;
     }
     case "artifacts":
       return r.artifact ? `/artifacts/${enc(r.artifact)}` : "/artifacts";
@@ -1062,7 +1066,8 @@ function read(pathname: string, search: string): Route {
       return {
         page: "agent",
         name: a === "new" ? null : a,
-        tab: a === "new" ? "prompt" : pick(b === "knowledge" ? "context" : b, AGENT_TABS, "prompt"),
+        // An agent opens on its home; a new one, which has none yet, on its prompt.
+        tab: a === "new" ? "prompt" : pick(b === "knowledge" ? "context" : b, AGENT_TABS, "home"),
       };
     case "artifacts":
       return { page: "artifacts", artifact: a };

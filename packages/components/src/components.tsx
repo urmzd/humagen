@@ -83,11 +83,6 @@ export interface TurnCapabilities {
   /** Ask Follow-up on a review's findings, which puts words in the host's composer. */
   followUp?: boolean;
   /**
-   * Retry on a delegated call that failed, which asks that agent again
-   * (`ActionId.retryCall`). Left out unless the host can post the next turn.
-   */
-  retryCall?: boolean;
-  /**
    * Continue in a Code Channel on a finished answer. Unlike the others it is
    * left out unless a host turns it on: only Slack has the place, and only
    * where the workspace opted in.
@@ -418,7 +413,7 @@ export function ClarificationCard({
   copy = defaultCopy,
 }: { turnId: string; clarification: Clarification } & WithCopy) {
   const { answer, options, judgement } = clarification;
-  // The approval agent's part, in Run and Answer: an answer it gave, which the person
+  // The approval agent's part, in Auto: an answer it gave, which the person
   // can tell from their own, or why it left the question for them.
   const judged = judgement ? (
     <Context

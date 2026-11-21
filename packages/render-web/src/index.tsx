@@ -28,6 +28,7 @@ export {
   GitHubRefWordsContext,
   githubRefKinds,
   githubRefOf,
+  refKey,
   remarkGitHubRefs,
 } from "./github-refs";
 export * from "./icons";
@@ -36,6 +37,10 @@ export {
   ArtifactOpenContext,
   type ItemActions,
   ItemActionsContext,
+  type ItemStop,
+  type ItemStops,
+  ItemStopsContext,
+  type ItemStopWords,
   NowContext,
   SuppressContext,
   type TurnItem,
@@ -55,6 +60,7 @@ export {
 } from "./motion";
 export { RequestBubble, readableMentions } from "./request";
 export { SourceContext, type SourceExcerpt, type SourceLoader } from "./review";
+export { ItemStopControl } from "./stop";
 export * from "./Tooltip";
 export { StatusIcon, statusLabel } from "./task";
 

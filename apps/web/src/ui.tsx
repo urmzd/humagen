@@ -13,7 +13,7 @@ import {
 import { AgentInitials, AgentOrb, type OrbState, usePresence } from "@humagen/web";
 import { createPortal } from "react-dom";
 import { agentHue, requestAgentHue, subscribeHues } from "./agentHues.ts";
-import { agentShown } from "./branding.ts";
+import { agentShown, brandShown } from "./branding.ts";
 import { builtinAgentKey } from "./legacy.ts";
 
 export { Presence, usePresence } from "@humagen/web";
@@ -66,12 +66,21 @@ export function Label({
 }
 
 /** A problem said plainly, with a way out beside it when there is one, such as Retry. */
-export function Problem({ message, action }: { message: string | null; action?: ReactNode }) {
+export function Problem({
+  message,
+  action,
+  beside = false,
+}: {
+  message: string | null;
+  action?: ReactNode;
+  /** Keep the action on the message's row at any width: for an icon, which never needs a line of its own. */
+  beside?: boolean;
+}) {
   if (!message) return null;
   return (
     <p
       role="alert"
-      className={`rounded-aui border border-aui-bad/40 bg-aui-bad/10 px-3 py-2 text-aui-sm text-aui-fg${action ? " flex flex-wrap items-center justify-between gap-x-3 gap-y-1" : ""}`}
+      className={`rounded-aui border border-aui-bad/40 bg-aui-bad/10 px-3 py-2 text-aui-sm text-aui-fg${action ? ` flex items-center justify-between gap-x-3 gap-y-1${beside ? "" : " flex-wrap"}` : ""}`}
     >
       {action ? <span className="min-w-0">{message}</span> : message}
       {action}
@@ -733,7 +742,7 @@ export function AgentMark({
       style={{ "--aui-accent-h": hueOf(name) } as CSSProperties}
     >
       {size >= 16 ? (
-        <AgentInitials name={agentShown(name)} state={state} size={size} />
+        <AgentInitials name={brandShown(name)} lookOf={name} state={state} size={size} />
       ) : (
         <AgentOrb state={state} size={size} label="" />
       )}
@@ -1379,6 +1388,7 @@ export function Popover({
   narrow = false,
   side,
   tooltip,
+  tooltipSide,
   popup = "dialog",
   children,
   onOpen,
@@ -1397,6 +1407,8 @@ export function Popover({
   /** A rail flyout opens alongside its trigger instead of above or below. */
   side?: "right";
   tooltip?: string;
+  /** Where the tooltip shows: beside the trigger (a rail), or above it (a bar at the page's edge). */
+  tooltipSide?: "right" | "top";
   children: (close: () => void) => ReactNode;
 }) {
   const [open, setOpen] = useState(false);
@@ -1514,7 +1526,13 @@ export function Popover({
         }
       }}
     >
-      {tooltip ? <Tooltip label={tooltip}>{triggerButton}</Tooltip> : triggerButton}
+      {tooltip ? (
+        <Tooltip label={tooltip} side={tooltipSide}>
+          {triggerButton}
+        </Tooltip>
+      ) : (
+        triggerButton
+      )}
       {present.mounted &&
         // A flyout leaves its column: a scrolling or blurred ancestor would clip it.
         createPortal(flyoutPanel, document.body)}

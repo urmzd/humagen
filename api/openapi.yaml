@@ -727,7 +727,55 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/ServerError"
+  /api/sessions/options:
+    get:
+      operationId: "getSessionOptions"
+      tags:
+        - "sessions"
+      summary: "List the environments and repositories a session may be started with"
+      description: |
+        The environments are this deployment's: `auto` (its default) and its
+        configured sandbox. The repositories are those the caller's
+        tenant's enabled GitHub clients may read or write, sorted, at most 100.
+      x-permission: "runs:read"
+      responses:
+        "200":
+          description: What a session may be started with.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/SessionOptions"}
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/ServerError"
   /api/sessions/{id}/browser:
+    get:
+      operationId: "getSessionBrowser"
+      tags:
+        - "sessions"
+      summary: "Say whether the session has a browser"
+      description: |
+        True when the session's agent holds a write grant on at least one
+        browser provider. Otherwise `reason` says why.
+      x-permission: "runs:read"
+      parameters:
+        - {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}
+      responses:
+        "200":
+          description: Whether the session has a browser.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BrowserAvailability"}
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
     post:
       operationId: "actOnSessionBrowser"
       tags:
@@ -1378,6 +1426,30 @@ paths:
             text/plain:
               schema: {type: string}
 
+  /agent-marks/{tenant}/{file}:
+    get:
+      operationId: getAgentMarkImage
+      tags: [agents]
+      summary: An agent's drawn picture
+      description: |
+        Served to anyone with the address, since Slack fetches an icon
+        without a credential: the address is the capability. `file` is the
+        picture's 128-bit random token and `.png`, and a picture that was
+        replaced is no longer served. Anything else is the same 404.
+      x-permission: public
+      security: []
+      parameters:
+        - {name: tenant, in: path, required: true, schema: {type: string}}
+        - {name: file, in: path, required: true, schema: {type: string, pattern: "^[0-9a-f]{32}\\.png$"}}
+      responses:
+        "200":
+          description: The picture.
+          content:
+            image/png:
+              schema: {type: string, format: binary}
+        "404":
+          description: No current picture at that address.
+
   /readyz:
     get:
       operationId: getReadiness
@@ -1839,6 +1911,10 @@ paths:
                   hues:
                     type: object
                     additionalProperties: {type: number, minimum: 0, exclusiveMaximum: 360}
+                  looks:
+                    description: The look of each agent requested that has one other than the default.
+                    type: object
+                    additionalProperties: {$ref: "#/components/schemas/AgentLook"}
         "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
@@ -1869,6 +1945,10 @@ paths:
                   hues:
                     type: object
                     additionalProperties: {type: number, minimum: 0, exclusiveMaximum: 360}
+                  looks:
+                    description: The look of each agent requested that has one other than the default.
+                    type: object
+                    additionalProperties: {$ref: "#/components/schemas/AgentLook"}
         "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
@@ -2165,6 +2245,10 @@ paths:
                     description: Permanently reserved hues for readable agents in this workspace.
                     type: object
                     additionalProperties: {type: number, minimum: 0, exclusiveMaximum: 360}
+                  looks:
+                    description: The look of each readable agent that has one other than the default.
+                    type: object
+                    additionalProperties: {$ref: "#/components/schemas/AgentLook"}
                   homes:
                     description: |
                       Each homed agent's home, by agent: the project whose
@@ -2424,6 +2508,169 @@ paths:
           content:
             application/json:
               schema: {$ref: "#/components/schemas/AgentHome"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/agents/{name}/look:
+    get:
+      operationId: getAgentLook
+      tags: [agents]
+      summary: Read how an agent looks
+      description: |
+        The agent's look (its display name and the bot it is drawn as), its
+        hue, the hues other agents hold, and every choice a picker offers. An
+        empty field of the look is the default the platform draws.
+      x-permission: agents:read
+      x-readonly: true
+      parameters:
+        - {$ref: "#/components/parameters/AgentName"}
+      responses:
+        "200":
+          description: The agent's look.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AgentLookView"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+    put:
+      operationId: setAgentLook
+      tags: [agents]
+      summary: Set how an agent looks
+      description: |
+        Replaces the agent's look, and with `hue` moves it to that color. A
+        look is presentation: it makes no revision and changes nothing a run
+        does. An empty look returns the agent to the default. A display name
+        is unique in the workspace, ignoring case, and is never another
+        agent's handle; a hue is never another agent's. Either taken is 409.
+        Takes the ownership changing the agent takes. The platform's own
+        agents take a look too.
+      x-permission: agents:write
+      parameters:
+        - {$ref: "#/components/parameters/AgentName"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [look]
+              properties:
+                look: {$ref: "#/components/schemas/AgentLook"}
+                hue:
+                  description: The color to move the agent to. Left out, it keeps its own.
+                  type: number
+                  minimum: 0
+                  exclusiveMaximum: 360
+      responses:
+        "200":
+          description: The agent's look as kept.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AgentLookView"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/agents/{name}/mark:
+    put:
+      operationId: setAgentMark
+      tags: [agents]
+      summary: Keep the picture drawn of an agent
+      description: |
+        The console draws the agent's bot as a PNG and sends it here, so a
+        surface that needs an image (Slack's icon for a message the agent
+        posts) can show it. It is kept under a new random token and served
+        at the look's `image_url`; the picture it replaces is deleted. At
+        most 256 KiB. Takes the ownership changing the agent takes.
+      x-permission: agents:write
+      parameters:
+        - {$ref: "#/components/parameters/AgentName"}
+      requestBody:
+        required: true
+        content:
+          image/png:
+            schema: {type: string, format: binary}
+      responses:
+        "200":
+          description: The agent's look, with where its picture is served.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AgentLookView"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/agents/{name}/slack-app:
+    get:
+      operationId: getAgentSlackApp
+      tags: [agents]
+      summary: An agent's own Slack app
+      description: |
+        The manifest of the agent's own Slack app, built from its look (its
+        display name, greeting, starters and color) on the shared app's
+        scopes and events; the link that creates it in Slack with the
+        manifest filled in; and the client it is linked as, when it is. Slack
+        takes no icon in a manifest: upload the agent's picture.
+      x-permission: agents:read
+      x-readonly: true
+      parameters:
+        - {$ref: "#/components/parameters/AgentName"}
+      responses:
+        "200":
+          description: The agent's own Slack app.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AgentSlackApp"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+    post:
+      operationId: linkAgentSlackApp
+      tags: [agents]
+      summary: Connect an agent's own Slack app
+      description: |
+        Links an installed Slack app as the agent's own, from its bot token
+        and signing secret. Slack is asked who the bot is (`auth.test`, then
+        `bots.info`), so nobody copies an id. The client made routes to the
+        agent alone, maps its bot user to the agent, and files and acts for
+        people as the team's other Slack client does. A mention of its bot
+        through any of the team's Slack apps names the agent, and is its own
+        app's to answer. A token Slack refuses is 400; an app already
+        connected is 409. Takes clients:write and the ownership changing the
+        agent takes.
+      x-permission: clients:write
+      parameters:
+        - {$ref: "#/components/parameters/AgentName"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [token]
+              properties:
+                token: {$ref: "#/components/schemas/SecretInput"}
+                signing_secret: {$ref: "#/components/schemas/SecretInput"}
+      responses:
+        "201":
+          description: Linked. The agent's own Slack app, with the client it is linked as.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AgentSlackApp"}
         "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
@@ -4714,22 +4961,23 @@ paths:
       tags: [threads]
       summary: Set how a conversation's gated tool actions are approved
       description: |
-        `ask` asks a person, the default. `auto` approves for the caller what
-        they may approve themselves, through the same checks as their own
-        answer: the approvers a question names, self-approval and the
-        runtime's. A budget request, an action the agent always asks about,
-        a run forced to ask and an action the policy does not ask about still
-        go to a person. `decide` (Run and Answer) does what `auto` does,
-        and the approval agent also answers, as the caller, a question an
-        agent asks a person (a choice or a reply) when the session already
-        settles the answer; anything else, anything asked of someone else,
-        and anything in work someone else asked for still goes to a person.
-        Each automatic approval and answer, each hand-off, and each change
-        of mode is audited. Takes a person who may post in the conversation.
-        A surface that authenticated a person itself sets it for them with
-        `act_as`: only the credential its client names, and only for a person
-        its client maps; every check is then that person's, and `auto` and
-        `decide` act as them.
+        Two modes. `ask` (Ask) asks a person, the default. `auto` (Auto)
+        lets the approval agent act for the caller: it approves what they may
+        approve themselves, through the same checks as their own answer (the
+        approvers a question names, self-approval and the runtime's), and it
+        answers, as the caller, a question an agent asks a person (a choice
+        or a reply) when the session already settles the answer. A budget
+        request, an action the agent always asks about, a run forced to ask,
+        an action the policy does not ask about, anything it is unsure of,
+        anything asked of someone else and anything in work someone else
+        asked for still go to a person. `decide`, what Run and Answer was set
+        as before it became part of Auto, is still accepted and taken as
+        `auto`; it is deprecated and will be removed. Each automatic approval
+        and answer, each hand-off, and each change of mode is audited. Takes
+        a person who may post in the conversation. A surface that
+        authenticated a person itself sets it for them with `act_as`: only
+        the credential its client names, and only for a person its client
+        maps; every check is then that person's, and `auto` acts as them.
       x-permission: runs:write
       parameters:
         - {$ref: "#/components/parameters/ThreadID"}
@@ -4742,7 +4990,10 @@ paths:
               additionalProperties: false
               required: [mode]
               properties:
-                mode: {type: string, enum: [ask, auto, decide]}
+                mode:
+                  description: "`ask` or `auto`. `decide` is a deprecated spelling of `auto`."
+                  type: string
+                  enum: [ask, auto, decide]
                 act_as: {$ref: "#/components/schemas/ActAs"}
       responses:
         "200":
@@ -5740,6 +5991,24 @@ paths:
         "413": {$ref: "#/components/responses/TooLarge"}
         "500": {$ref: "#/components/responses/ServerError"}
         "503": {$ref: "#/components/responses/Unavailable"}
+  /api/threads/{id}/usage:
+    get:
+      operationId: getThreadUsage
+      tags: [threads]
+      summary: What the conversation has used so far, from its runs
+      x-permission: runs:read
+      parameters:
+        - {$ref: "#/components/parameters/ThreadID"}
+      responses:
+        "200":
+          description: The conversation's usage. A conversation with no runs answers zeros.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ThreadUsage"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
   /api/threads/{id}/scratchpads:
     get:
       operationId: listScratchpads
@@ -11375,6 +11644,40 @@ components:
         writable: {type: boolean}
         reason: {type: string}
         limit: {type: integer, const: 50}
+    ThreadUsage:
+      description: |
+        What a conversation has used so far, read from its run index. A run
+        called by another counted run is already in its caller's total and is
+        not added again. When `truncated` is true the index read hit its cap and
+        every figure is a lower bound.
+      type: object
+      required: [runs, usage, agents, working, truncated]
+      properties:
+        runs: {type: integer, minimum: 0, description: How many runs were counted.}
+        usage: {$ref: "#/components/schemas/Usage"}
+        agents:
+          description: Each agent's own calls, the dearest first (cost, then tokens, then name), at most 20.
+          type: array
+          maxItems: 20
+          items:
+            type: object
+            required: [agent, runs, usage]
+            properties:
+              agent: {type: string}
+              runs: {type: integer, minimum: 1}
+              usage: {$ref: "#/components/schemas/Usage"}
+        context:
+          description: The context fill of the most recent run that reported one.
+          type: object
+          required: [run, agent]
+          properties:
+            run: {type: string}
+            agent: {type: string}
+            model: {type: string}
+            window: {type: integer}
+            tokens: {type: integer}
+        working: {type: integer, minimum: 0, description: How many counted runs have not ended.}
+        truncated: {type: boolean}
     ScratchpadInput:
       type: object
       required: [name, content]
@@ -13709,6 +14012,10 @@ components:
         messages:
           description: How many messages people have posted in it.
           type: integer
+        source:
+          description: Where it started when that was not the console or the API, read from the Slack thread it lives on or the place its session was started from. Absent for the console and the API. A run's `origin` cannot say this, as a Slack message posts to its thread through the API.
+          type: string
+          enum: [slack, slack_dm, github, scheduled]
         turns: {type: integer}
         branches: {type: integer}
         active:
@@ -13835,11 +14142,11 @@ components:
         import: {$ref: "#/components/schemas/ThreadImport"}
         archive: {$ref: "#/components/schemas/ThreadArchive"}
         approval:
-          description: How the conversation's gated tool actions are approved, and who chose it. Absent asks a person. `auto` approves for that person what they may approve themselves, within policy; a budget request and an action the agent or the policy always asks about still go to a person. `decide` does that too, and also answers for them a question an agent asks a person when the session already settles it.
+          description: How the conversation's gated tool actions are approved, and who chose it. Absent asks a person (Ask). `auto` (Auto) lets the approval agent approve for that person what they may approve themselves, within policy, and answer for them a question an agent asks a person when the session already settles it; a budget request, an action the agent or the policy always asks about, and anything it is unsure of still go to a person. A conversation stored as `decide` (Run and Answer, before it became part of Auto) reads as `auto`.
           type: object
           required: [mode, by, at]
           properties:
-            mode: {type: string, enum: [auto, decide]}
+            mode: {type: string, enum: [auto]}
             by:
               description: The person who chose it, by handle.
               type: string
@@ -15852,6 +16159,91 @@ components:
           description: Always empty. Projects no longer enable agents; kept until the console stops reading it.
           type: array
           items: {type: string}
+    AgentLook:
+      description: |
+        How an agent is drawn and what people call it. Every field is
+        optional, and an empty one is the default: the shape its handle
+        hashes to, eyes, a fabric finish, nothing worn, and its handle as its
+        name.
+      type: object
+      additionalProperties: false
+      properties:
+        display_name:
+          description: What people call the agent. Its handle, which people tag, does not change.
+          type: string
+          maxLength: 40
+        shape: {type: string, enum: [clover, flower, triangle, square, blob, ghost, circle, drop, star, droid, mech, alien, hexagon, cat, cloud, pill, pebble, puddle]}
+        face: {type: string, enum: [eyes, mouth]}
+        finish: {type: string, enum: [fabric, plastic, smooth, flat]}
+        hat: {type: string, enum: [none, beret, beanie, party, crown]}
+        glasses: {type: string, enum: [none, round, square, shades]}
+        headphones: {type: boolean}
+        bow_tie: {type: boolean}
+        greeting:
+          description: A sentence or two in the agent's voice, shown where people meet it.
+          type: string
+          maxLength: 280
+        starters:
+          description: Up to three jobs people can hand the agent in one click.
+          type: array
+          maxItems: 3
+          items:
+            type: object
+            additionalProperties: false
+            required: [title, prompt]
+            properties:
+              title: {type: string, maxLength: 60}
+              prompt: {type: string, maxLength: 500}
+        image_url:
+          description: |
+            Where the agent's drawn picture is served, to anyone with the
+            address (Slack fetches it as the agent's icon). Set by the server
+            once the console has drawn one and a canonical console URL is
+            configured; never taken from a request.
+          type: string
+          readOnly: true
+    AgentLookView:
+      description: An agent's look, its hue, and what a picker offers.
+      type: object
+      additionalProperties: false
+      required: [agent, look, hue, taken, choices]
+      properties:
+        agent: {type: string}
+        look: {$ref: "#/components/schemas/AgentLook"}
+        hue: {type: number, minimum: 0, exclusiveMaximum: 360}
+        taken:
+          description: The hues other agents in the workspace hold, sorted, without their names.
+          type: array
+          items: {type: number}
+        choices:
+          type: object
+          additionalProperties: false
+          required: [shapes, faces, finishes, hats, glasses]
+          properties:
+            shapes: {type: array, items: {type: string}}
+            faces: {type: array, items: {type: string}}
+            finishes: {type: array, items: {type: string}}
+            hats: {type: array, items: {type: string}}
+            glasses: {type: array, items: {type: string}}
+    AgentSlackApp:
+      description: An agent's own Slack app.
+      type: object
+      additionalProperties: false
+      required: [manifest, create_url]
+      properties:
+        manifest:
+          description: The Slack app manifest, as Slack's create-from-manifest page takes it.
+          type: object
+          additionalProperties: true
+        create_url:
+          description: Slack's create-from-manifest page, with the manifest filled in.
+          type: string
+        client:
+          description: The client the app is linked as. Absent until it is linked.
+          type: string
+        bot_user:
+          description: The linked app's bot user, which names the agent in any of the team's Slack apps.
+          type: string
     AgentHome:
       description: Who now sees an agent, as its home.
       allOf:
@@ -19718,6 +20110,15 @@ components:
         source_alert:
           type: string
           description: The readable session alert that anchors this fix conversation.
+        environment:
+          type: string
+          maxLength: 64
+          description: Where the session runs. "" and "auto" are the deployment's default.
+        repos:
+          type: array
+          maxItems: 10
+          items: {type: string, maxLength: 200}
+          description: Repositories ("owner/name") the session works on.
     MessageFeedbackInput:
       type: object
       additionalProperties: false
@@ -20103,6 +20504,15 @@ components:
         post_only:
           type: boolean
           description: "With surface: post the message without starting anything."
+        environment:
+          type: string
+          maxLength: 64
+          description: Where the session runs, from GET /api/sessions/options. "" and "auto" are the deployment's default. Refused with surface.
+        repos:
+          type: array
+          maxItems: 10
+          items: {type: string, maxLength: 200}
+          description: Repositories ("owner/name") the session works on, each listed by GET /api/sessions/options. Refused with surface.
     BrowserAction:
       description: What a person asks of a session's browser.
       type: object
@@ -20161,6 +20571,40 @@ components:
           minItems: 4
           maxItems: 4
           items: {type: integer}
+    SessionEnvironment:
+      description: One place a session may run.
+      type: object
+      additionalProperties: false
+      required: [name, label, isolated, terminal]
+      properties:
+        name: {type: string, description: "What a session stores: auto or the sandbox's kind."}
+        label: {type: string}
+        isolated: {type: boolean, description: Each run leases an instance of its own.}
+        terminal: {type: boolean, description: A person may run their own commands there.}
+    SessionOptions:
+      description: What a session may be started with.
+      type: object
+      additionalProperties: false
+      required: [environments, repos]
+      properties:
+        environments:
+          type: array
+          items: {$ref: "#/components/schemas/SessionEnvironment"}
+        repos:
+          type: array
+          maxItems: 100
+          items: {type: string}
+    BrowserAvailability:
+      description: Whether a session has a browser.
+      type: object
+      additionalProperties: false
+      required: [available, providers, reason]
+      properties:
+        available: {type: boolean}
+        providers:
+          type: array
+          items: {type: string}
+        reason: {type: string, description: Why there is no browser; empty when there is one.}
     BrowserView:
       description: A session's browser after an action.
       type: object

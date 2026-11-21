@@ -30,6 +30,7 @@ import {
   type Failure,
   feedbackEvent,
   HOME_ID,
+  type HomeAgentCard,
   messageState,
   partMatches,
   type QueueState,
@@ -65,6 +66,7 @@ import { inThread, Names, readThread, sinceLastTurn, withHistory } from "./histo
 import { homeModel } from "./home.ts";
 import {
   type AskCall,
+  type AskFormAgent,
   askCallForm,
   askCallOf,
   askForm,
@@ -76,6 +78,7 @@ import {
 import {
   type ActAs,
   type Agent,
+  type AgentLook,
   type Binding,
   type ClientRecord,
   type Humagen,
@@ -91,7 +94,7 @@ import {
 } from "./humagen.ts";
 import { eventKey, runId, type Session, sessionName, sessionOf, threadKey } from "./keys.ts";
 import { memoryPlanStore, PlanCanvas, type PlanStore } from "./plancanvas.ts";
-import { Presenter } from "./present.tsx";
+import { type Author, Presenter } from "./present.tsx";
 import { promptIn, recordedOf, settleCard, settledElsewhere } from "./questions.tsx";
 import { type Envelope, type SlackApi, SlackError } from "./slack.ts";
 
@@ -209,6 +212,9 @@ interface Thread {
   jobs: Map<string, Job>;
   live?: Live;
 }
+
+/** How many threads remember the agent they were asked for by name. The oldest is forgotten first. */
+const NAMED_THREADS = 5000;
 
 const terminal = (s: Run["status"]) => s === "completed" || s === "failed" || s === "stopped";
 
@@ -464,6 +470,29 @@ const sentToThem = (p: ActionPayload): boolean => {
 
 export class App {
   private readonly threads = new Map<string, Thread>();
+  /**
+   * The agent each thread was last asked for by name. An untagged message in
+   * the thread goes to it instead of the default, as the platform does for a
+   * person the client maps (RFC 0012), until another is named. It outlives
+   * the thread's queue, and is forgotten on a restart.
+   */
+  private readonly named = new Map<string, string>();
+  /**
+   * The channel threads this app answered a mention in, and who asked it
+   * there last. A reply from that person in such a thread is taken as asked,
+   * without a mention (RFC 0012): someone talking to the agent need not
+   * mention the app on every reply, and people talking to each other in the
+   * thread are never answered. Forgotten on a restart.
+   */
+  private readonly followed = new Map<string, string>();
+
+  private follow(session: Session, user: string) {
+    const key = sessionName(session);
+    this.followed.delete(key);
+    this.followed.set(key, user);
+    const oldest = this.followed.keys().next().value;
+    if (this.followed.size > NAMED_THREADS && oldest !== undefined) this.followed.delete(oldest);
+  }
   /** Slack deliveries already taken, so a redelivery in this process does nothing. */
   private readonly seen = new Recent<true>(10_000);
   /** Who asked for each run, by Slack user id. */
@@ -765,10 +794,51 @@ export class App {
 
   private async agents(): Promise<Agent[]> {
     if (this.agentList && Date.now() - this.agentList.at < 30_000) return this.agentList.agents;
-    const agents = (await this.humagen.listAgents()).agents.map((r) => r.spec);
+    const listed = await this.humagen.listAgents();
+    const agents = listed.agents.map((r) => r.spec);
     this.agentList = { at: Date.now(), agents };
+    this.agentLooks = listed.looks ?? {};
     return agents;
   }
+
+  /**
+   * The agents `/agent` offers to ask: those this app may reach by name, the
+   * client's default first, each by the name people call it and its
+   * greeting or description.
+   */
+  private async pickable(): Promise<AskFormAgent[]> {
+    const routing = await this.routing().catch(() => undefined);
+    const first = routing?.client?.default_agent || this.opts.defaultAgent || "";
+    return (await this.agents().catch(() => [] as Agent[]))
+      .filter((a) => !routing || choose(`@${a.name}`, [a], routing).how === "named")
+      .map((a) => {
+        const look = this.agentLooks[a.name];
+        const about = look?.greeting || a.description;
+        return {
+          id: a.name,
+          name: look?.display_name || a.name,
+          ...(about ? { description: about } : {}),
+        };
+      })
+      .sort((x, y) => (x.id === first ? -1 : y.id === first ? 1 : x.name.localeCompare(y.name)));
+  }
+
+  /** Each agent's look, as the agent list last gave it. */
+  private agentLooks: Record<string, AgentLook> = {};
+
+  /**
+   * Who a turn's messages are posted as: an agent someone gave a look is
+   * posted by its name and, once the console drew it, its picture. An agent
+   * nobody styled is posted as the app, as it always was.
+   */
+  private authorOf = (agent: string): Author | undefined => {
+    const look = this.agentLooks[agent];
+    if (!look || (!look.display_name && !look.image_url)) return undefined;
+    return {
+      username: look.display_name || agent,
+      ...(look.image_url ? { icon_url: look.image_url } : {}),
+    };
+  };
 
   /** Nothing answers by default: say how to tag an agent this app may reach, naming one. */
   private async tagOne(routing: Routing | undefined): Promise<Failure> {
@@ -837,6 +907,35 @@ export class App {
       await this.stop({ team: this.opts.team, channel, threadTs: event.thread_ts });
       return;
     }
+    // A reply in a channel thread this app answered, from the person who asked
+    // it there last, is asked though it names nobody. A message that mentions
+    // the app arrives as its own app_mention as well, and is taken from there.
+    const following =
+      event.type === "message" &&
+      event.channel_type !== "im" &&
+      Boolean(event.thread_ts && event.channel && event.user) &&
+      !(event.text ?? "").includes(`<@${this.opts.botUser}>`) &&
+      this.followed.get(
+        sessionName({
+          team: this.opts.team,
+          channel: event.channel ?? "",
+          threadTs: event.thread_ts ?? "",
+        }),
+      ) === event.user;
+    // The manifest asks for channel messages only so the app can follow a
+    // thread: any other channel message that does not mention the app is
+    // dropped unread here, unless the client's own subscriptions name
+    // channel messages (a bridge that mirrors a bound channel).
+    if (
+      event.type === "message" &&
+      event.channel_type !== "im" &&
+      !following &&
+      !(
+        event.channel &&
+        (await this.bridgeControls(event.channel)).client?.capabilities?.events.includes("message")
+      )
+    )
+      return;
     if (
       (event.type === "message" || event.type === "app_mention") &&
       event.channel &&
@@ -880,7 +979,9 @@ export class App {
       }
     }
     const asked =
-      event.type === "app_mention" || (event.type === "message" && event.channel_type === "im");
+      event.type === "app_mention" ||
+      (event.type === "message" && event.channel_type === "im") ||
+      following;
     // Loop prevention: a bot's message, this app's own, an edit or a join never starts a run.
     if (!asked || (event.subtype && event.subtype !== "file_share") || event.bot_id || !event.user)
       return;
@@ -905,8 +1006,9 @@ export class App {
       user: event.user,
       key: eventKey(session, event.ts),
       // A direct message is always addressed to the app, so only a channel thread has more to read.
-      history: event.type === "app_mention" && session.threadTs !== event.ts,
+      history: (event.type === "app_mention" || following) && session.threadTs !== event.ts,
     });
+    if (event.type === "app_mention" || following) this.follow(session, event.user);
   }
 
   private readonly skillChannels = new Map<string, string>();
@@ -1089,7 +1191,10 @@ export class App {
     const items = new Mailbox<Item>();
     const live: Live = { stopped: false, wake: (item) => items.push(item) };
     thread.live = live;
+    // The looks are read before the turn is shown, so its first message carries its agent.
+    await this.agents().catch(() => [] as Agent[]);
     const presenter = new Presenter(this.slack, this.target(job), {
+      authorOf: this.authorOf,
       native: this.native,
       outcomesOnly: controls.policy.bound,
       canDeliver: async () => this.bridgeOutputAllowed(job.session.channel, outputRun),
@@ -1162,8 +1267,19 @@ export class App {
         if (placed === "duplicate") return "done" as const;
         if (!job.again) {
           const choice = choose(job.text, await this.agents(), routing);
-          if (choice.agent === null) return this.refuse(job, presenter, "", NO_AGENT);
-          agent = choice.agent;
+          // A thread asked for an agent by name keeps it for the untagged messages after.
+          const where = sessionName(job.session);
+          const before = this.named.get(where);
+          const kept =
+            choice.how !== "named" && before && mayRoute(routing, before) ? before : null;
+          if (choice.how === "named") {
+            this.named.delete(where);
+            this.named.set(where, choice.agent);
+            const oldest = this.named.keys().next().value;
+            if (this.named.size > NAMED_THREADS && oldest !== undefined) this.named.delete(oldest);
+          }
+          if (!kept && choice.agent === null) return this.refuse(job, presenter, "", NO_AGENT);
+          agent = kept ?? (choice.agent as string);
           text = choice.text;
         } else if (!mayRoute(routing, agent)) {
           // Asked again after the client was disabled or the agent left its list.
@@ -2067,9 +2183,10 @@ export class App {
   }
 
   /**
-   * Let the approval agent decide a thread's gated actions, or ask a person
-   * again: the console's toggle, set through the same route as the person
-   * who pressed, whom the client must map. Humagen decides whether they may,
+   * Set a thread to Auto, where the approval agent decides gated actions and
+   * answers what the thread settles, or back to Ask: the console's two
+   * modes, set through the same route as the person who pressed, whom the
+   * client must map. Humagen decides whether they may,
    * as it does in the console. What changed is said in the thread, with the
    * way back.
    */
@@ -2829,7 +2946,32 @@ export class App {
       workspace: this.opts.tenant,
       build,
       href: this.href,
+      meet: await this.meet(),
     });
+  }
+
+  /**
+   * The agents this app may reach that someone introduced: a greeting or
+   * starters on their look. The rest are reached as always, by handle.
+   */
+  private async meet(): Promise<HomeAgentCard[]> {
+    const agents = await this.agents().catch(() => [] as Agent[]);
+    const routing = await this.routing().catch(() => undefined);
+    return agents
+      .filter((a) => !routing || mayRoute(routing, a.name))
+      .flatMap((a) => {
+        const look = this.agentLooks[a.name];
+        if (!look?.greeting && !(look?.starters ?? []).length) return [];
+        return [
+          {
+            handle: a.name,
+            name: look?.display_name || a.name,
+            ...(look?.greeting ? { greeting: look.greeting } : {}),
+            ...(look?.starters?.length ? { starters: look.starters } : {}),
+          },
+        ];
+      })
+      .sort((x, y) => x.name.localeCompare(y.name));
   }
 
   /** Whether Build an Agent is offered: the builder is there, and this app may reach it. */
@@ -2959,6 +3101,14 @@ export class App {
     }
     if (text === "connections") return this.openConnections(c);
     if (text.startsWith("canvas ")) return this.publishCanvas(c, text.slice(7).trim());
+    if (!text && c.trigger_id) {
+      // `/agent` alone opens the ask form with a picker of who to ask.
+      await this.slack.call("views.open", {
+        trigger_id: c.trigger_id,
+        view: askForm(this.words, await this.pickable()),
+      });
+      return;
+    }
     if (!text || text === "help") {
       // Who can be asked, in the platform's own words.
       // humagen: needs an AgentList component (name, description), as the console's agent menu shows.
@@ -3114,8 +3264,14 @@ export class App {
     if (p.type !== "view_submission" || p.view?.callback_id !== ENTRY.form) return;
     const said = p.view.state?.values?.text?.value?.value?.trim() ?? "";
     if (!said) return;
+    // The agent picked in the form is tagged as anyone would tag it, when this app may reach it.
+    const picked = (
+      p.view.state?.values?.agent?.value as { selected_option?: { value?: string } } | undefined
+    )?.selected_option?.value;
+    const routing = picked ? await this.routing().catch(() => undefined) : undefined;
+    const asked = picked && routing && mayRoute(routing, picked) ? `@${picked} ${said}` : said;
     // Build an Agent's words go to the builder, tagged as anyone would tag it.
-    const text = formKind(p.view.private_metadata) === "build" ? `@${BUILDER} ${said}` : said;
+    const text = formKind(p.view.private_metadata) === "build" ? `@${BUILDER} ${said}` : asked;
     // A global shortcut or the Home tab has no channel: answer in the app's own messages with this person.
     await this.start({ channel: p.user.id, user: p.user.id }, text);
   }
@@ -3151,7 +3307,7 @@ export function approvalModeNote(
             action_id: `${ActionId.approvalMode}#0`,
             text: {
               type: "plain_text",
-              text: back === "ask" ? copy.approvals.askMeAgain : copy.approvals.letAgentDecideAgain,
+              text: back === "ask" ? copy.approvals.switchToAsk : copy.approvals.switchToAuto,
             },
             value: encodeAction({ turnId: run, target: back }),
           },

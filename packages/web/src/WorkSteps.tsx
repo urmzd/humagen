@@ -24,7 +24,15 @@ import {
   toolFailed,
   toolTarget,
 } from "@humagen/core";
-import { CopyButton, ItemActionsContext, ShimmerVerb, useNow } from "@humagen/render-web";
+import {
+  CopyButton,
+  ItemActionsContext,
+  type ItemStop,
+  ItemStopControl,
+  ItemStopsContext,
+  ShimmerVerb,
+  useNow,
+} from "@humagen/render-web";
 import {
   createContext,
   type MouseEvent,
@@ -511,6 +519,36 @@ function ToolRow({
 }
 
 /**
+ * One Stop for a line of steps, at the line itself: what each step running
+ * under it (a step in flight, background work a step started) would stop,
+ * pressed together. Stopped once every one of them is.
+ */
+function groupStop(
+  stops: { of: (item: { kind: "task"; turn: Turn; task: Task }) => ItemStop | null } | null,
+  turn: Turn,
+  tasks: Task[],
+): ItemStop | null {
+  if (!stops) return null;
+  const each = tasks.flatMap((task) => {
+    const s = stops.of({ kind: "task", turn, task });
+    return s ? [s] : [];
+  });
+  if (each.length === 0) return null;
+  const live = each.filter((s) => !s.stopped);
+  if (live.length === 0) return { what: each[0]?.what ?? "", stopped: true };
+  const press = live.filter((s) => s.onStop);
+  return {
+    what: live.length === 1 ? (live[0]?.what ?? "") : live.map((s) => s.what).join(", "),
+    pending: live.every((s) => s.pending),
+    onStop: press.length
+      ? () => {
+          for (const s of press) s.onStop?.();
+        }
+      : undefined,
+  };
+}
+
+/**
  * Steps taken between two parts of an answer, as one quiet line. Open, it is
  * a card that lists each call as a row. A run that wrote one file is that
  * file: the line opens it in the Workspace, and the chevron beside it lists
@@ -528,6 +566,8 @@ export function StepGroup({
   copy?: Copy;
 }) {
   const links = useContext(FileLinkContext);
+  const stops = useContext(ItemStopsContext);
+  const stop = useMemo(() => groupStop(stops, turn, tasks), [stops, turn, tasks]);
   const waiting = tasks.some((t) => t.status === "waiting");
   const [open, setOpen] = useState<boolean | null>(null);
   // Opened from the failed count: the first failed step is scrolled to.
@@ -611,6 +651,7 @@ export function StepGroup({
             <Chevron open={shown} />
           </button>
         )}
+        {stop && stops && <ItemStopControl stop={stop} words={stops.words} />}
       </div>
       {shown && (
         <ul

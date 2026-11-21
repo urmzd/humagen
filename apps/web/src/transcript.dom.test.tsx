@@ -3,8 +3,8 @@ import { afterEach, test } from "node:test";
 import { defaultCopy } from "@humagen/components";
 import { ActionId, type UiAction } from "@humagen/core";
 import { GitHubRefKindsContext, githubRefKinds, NowContext, WebSurface } from "@humagen/render-web";
-import { AgentMessage, ConnectLinkContext } from "@humagen/web";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { AgentMessage, ConnectLinkContext, type RetryCall, RetryCallContext } from "@humagen/web";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import {
   connectTurn,
@@ -40,10 +40,17 @@ test("the failed count opens the steps at the failures, each saying why", () => 
   assert.ok(within(failed).getByRole("button", { name: line.hideDetails }));
 });
 
-test("a failed delegated run says why, opens its run, and Retry asks the agent again", () => {
+test("a failed delegated run says why, opens its run, and Retry asks the agent again", async () => {
   const seen: UiAction[] = [];
+  const asked: RetryCall[] = [];
   show(
-    <AgentMessage turn={failedTurn()} disclaimer={false} capabilities={{ retryCall: true }} />,
+    <RetryCallContext.Provider
+      value={async (c) => {
+        asked.push(c);
+      }}
+    >
+      <AgentMessage turn={failedTurn()} disclaimer={false} />
+    </RetryCallContext.Provider>,
     (a) => seen.push(a),
   );
   const failure = screen.getByTestId("call-failure");
@@ -56,23 +63,42 @@ test("a failed delegated run says why, opens its run, and Retry asks the agent a
     id: ActionId.openRun,
     payload: { turnId: "turn-failed", target: "r-reviewer-1" },
   });
-  fireEvent.click(
-    within(failure).getByRole("button", { name: call.retryLabel("github-reviewer") }),
-  );
-  assert.deepEqual(seen.at(-1), {
-    id: ActionId.retryCall,
-    payload: {
+  const retry = () =>
+    within(failure).getByRole("button", {
+      name: call.retryLabel("github-reviewer"),
+    }) as HTMLButtonElement;
+  fireEvent.click(retry());
+  assert.deepEqual(asked, [
+    {
       turnId: "turn-failed",
-      target: "github-reviewer",
+      agent: "github-reviewer",
       text: "Check the CI status and open pull requests of urmzd/humagen and urmzd/saige.",
     },
-  });
-  // Pressed once, it says it is retrying and is not pressed again.
-  const retrying = within(failure).getByRole("button", {
-    name: call.retryLabel("github-reviewer"),
-  });
-  assert.equal((retrying as HTMLButtonElement).disabled, true);
-  assert.equal(retrying.textContent, call.retrying);
+  ]);
+  // Posted, it says it is retrying and is not pressed again.
+  await waitFor(() => assert.equal(retry().textContent, call.retrying));
+  assert.equal(retry().disabled, true);
+});
+
+test("a Retry the host could not post is ready to press again", async () => {
+  let attempts = 0;
+  show(
+    <RetryCallContext.Provider
+      value={() => {
+        attempts++;
+        return Promise.reject(new Error("503 Service Unavailable"));
+      }}
+    >
+      <AgentMessage turn={failedTurn()} disclaimer={false} />
+    </RetryCallContext.Provider>,
+  );
+  const retry = () =>
+    screen.getByRole("button", { name: call.retryLabel("github-reviewer") }) as HTMLButtonElement;
+  fireEvent.click(retry());
+  await waitFor(() => assert.equal(retry().disabled, false));
+  assert.equal(retry().textContent, call.retry);
+  fireEvent.click(retry());
+  await waitFor(() => assert.equal(attempts, 2));
 });
 
 test("without a host that can ask again, a failed delegated run offers no Retry", () => {
@@ -182,6 +208,26 @@ test("one number reads one way: known from anywhere in the answer, else one neut
     ["a/b#9", "ref", "ref"],
     ["a/b#9", "ref", "ref"],
   ]);
+});
+
+test("a reference is one however its owner and repository are cased", () => {
+  const { container } = show(
+    <AgentMessage
+      turn={{
+        ...referencesTurn(),
+        text: "URMZD/Humagen#471 is https://github.com/urmzd/humagen/pull/471.",
+      }}
+      disclaimer={false}
+    />,
+  );
+  assert.deepEqual(
+    [...container.querySelectorAll("a[data-github-ref]")].map((a) =>
+      a.getAttribute("data-github-ref"),
+    ),
+    ["pull", "pull"],
+  );
+  // As written, not as normalised.
+  assert.equal(container.querySelector("a[data-github-ref]")?.textContent, "URMZD/Humagen#471");
 });
 
 test("a session's pull request reads as one in a later answer that only writes its number", () => {

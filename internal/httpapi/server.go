@@ -87,6 +87,9 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok\n")) })
 	mux.HandleFunc("GET /readyz", s.readyz)
+	// An agent's drawn picture, which Slack fetches without a credential: its
+	// unguessable address is what authorizes it (agentMark).
+	mux.HandleFunc("GET /agent-marks/{tenant}/{file}", s.agentMark)
 	// A client's own secret authorizes these routes, not a browser role. The
 	// request goes to the client whose secret verifies it, and takes its
 	// tenant from that client.
@@ -184,6 +187,11 @@ func (s *Server) Handler() http.Handler {
 	s.storeRoutes(mux)
 	mux.HandleFunc("PUT /api/agents/{name}", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.reviseAgent))))
 	mux.HandleFunc("PUT /api/agents/{name}/home", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.putAgentHome))))
+	mux.HandleFunc("GET /api/agents/{name}/look", s.authed(auth.AgentsRead, agentNamed(s.seenAgent(s.getAgentLook))))
+	mux.HandleFunc("PUT /api/agents/{name}/look", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.putAgentLook))))
+	mux.HandleFunc("PUT /api/agents/{name}/mark", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.putAgentMark))))
+	mux.HandleFunc("GET /api/agents/{name}/slack-app", s.authed(auth.AgentsRead, agentNamed(s.seenAgent(s.getAgentSlackApp))))
+	mux.HandleFunc("POST /api/agents/{name}/slack-app", s.authed(auth.ClientsWrite, agentNamed(s.seenAgent(s.linkAgentSlackApp))))
 	mux.HandleFunc("GET /api/agents/{name}/history", s.authed(auth.AgentsRead, agentNamed(s.seenAgent(s.agentHistory))))
 	mux.HandleFunc("GET /api/agents/{name}/skills", s.authed(auth.AgentsRead, agentNamed(s.seenAgent(s.getAgentSkillDefaults))))
 	mux.HandleFunc("PUT /api/agents/{name}/skills", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.putAgentSkillDefaults))))
@@ -515,6 +523,11 @@ func (s *Server) listAgents(w http.ResponseWriter, r *http.Request, who auth.Pri
 		s.problem(w, err)
 		return
 	}
+	looks, err := s.looksFor(who.Tenant, names)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
 	homes, enabled := map[string]string{}, map[string][]string{}
 	for name, place := range s.P.AgentPlaces(who.Tenant, names) {
 		if place.Home != "" {
@@ -522,7 +535,7 @@ func (s *Server) listAgents(w http.ResponseWriter, r *http.Request, who auth.Pri
 		}
 		enabled[name] = slices.DeleteFunc(place.EnabledIn, func(p string) bool { return !seer.Project(projects.NameOf(p)) })
 	}
-	ok(w, http.StatusOK, map[string]any{"agents": s.viewRevisions(s.P.Names(who.Tenant), seer.Revisions(all)), "builtin": platform.Builtins(), "homes": homes, "enabled_in": enabled, "hues": hues})
+	ok(w, http.StatusOK, map[string]any{"agents": s.viewRevisions(s.P.Names(who.Tenant), seer.Revisions(all)), "builtin": platform.Builtins(), "homes": homes, "enabled_in": enabled, "hues": hues, "looks": looks})
 }
 
 // revisionView is an agent's revision and what the person who saved it is

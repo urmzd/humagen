@@ -1,3 +1,4 @@
+import { agentLook } from "./agentHues.ts";
 import type { Branding } from "./api.ts";
 
 export type { Branding };
@@ -13,7 +14,7 @@ function servedName(): string {
 export function servedBranding(name = servedName()): Branding {
   return {
     name,
-    wordmark: name === "Humagen" ? "humagen" : name,
+    wordmark: name,
     title: name,
     logo: null,
     logo_dark: null,
@@ -34,10 +35,19 @@ export function setEntryAgent(agent: string, name: string): void {
 }
 
 /**
- * The name people see for an agent: the workspace's name for its entry
- * agent, which nobody sees by its own, and every other agent's own name.
+ * The name people see for an agent: the display name its look gives it,
+ * else the workspace's name for its entry agent, which nobody sees by its
+ * own, and else its own name.
  */
 export function agentShown(name: string): string {
+  return agentLook(name)?.display_name || brandShown(name);
+}
+
+/**
+ * The name an agent is known by before any look: what its default bot is
+ * drawn from, so naming an agent never changes its face.
+ */
+export function brandShown(name: string): string {
   return entry.agent !== "" && name === entry.agent && entry.name ? entry.name : name;
 }
 

@@ -155,3 +155,51 @@ test("a bridged outcome shows no status line", async () => {
   await p.finish(doneTurn);
   assert.deepEqual(slack.lines, []);
 });
+
+const barbara = (agent: string) =>
+  agent === streamingTurn.agent.name
+    ? {
+        username: "Barbara",
+        icon_url: `https://humagen.example/agent-marks/acme/${"a".repeat(32)}.png`,
+      }
+    : undefined;
+
+test("an agent with a look answers as itself: its name and picture on the stream and the status line", async () => {
+  const slack = new FakeSlack();
+  const p = new Presenter(slack, target, { now: () => 0, authorOf: barbara });
+  await p.update(doing("Reading the reports"));
+  await p.finish(doneTurn);
+  const line = slack.of("assistant.threads.setStatus")[0] ?? {};
+  assert.equal(line.username, "Barbara");
+  const opened = slack.of("chat.startStream")[0] ?? slack.of("chat.postMessage")[0] ?? {};
+  assert.equal(opened.username, "Barbara");
+  assert.match(String(opened.icon_url), /agent-marks/);
+});
+
+test("an agent nobody styled answers as the app", async () => {
+  const slack = new FakeSlack();
+  const p = new Presenter(slack, target, { now: () => 0, authorOf: () => undefined });
+  await p.update(doing("Reading the reports"));
+  await p.finish(doneTurn);
+  for (const c of slack.calls) assert.equal(c.args.username, undefined, c.method);
+});
+
+test("an install without chat:write.customize posts as the app, and the answer still arrives", async () => {
+  const slack = new FakeSlack();
+  slack.failing["chat.startStream"] = (args) => (args.username ? "missing_scope" : undefined);
+  slack.failing["assistant.threads.setStatus"] = (args) =>
+    args.username ? "missing_scope" : undefined;
+  const logged: string[] = [];
+  const p = new Presenter(slack, target, {
+    now: () => 0,
+    authorOf: barbara,
+    log: (l) => logged.push(l),
+  });
+  await p.update(doing("Reading the reports"));
+  await p.finish(doneTurn);
+  const streams = slack.of("chat.startStream");
+  assert.ok(streams.length > 0 || slack.of("chat.postMessage").length > 0, "the answer was posted");
+  assert.ok(logged.some((l) => l.includes("posting as the app")));
+  const last = slack.calls.at(-1);
+  assert.equal(last?.args.username, undefined, "once refused, the rest are the app's");
+});

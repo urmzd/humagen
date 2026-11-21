@@ -142,23 +142,25 @@ it: the call's card keeps waiting with its buttons, and the answer streams
 below it. Deciding stays with Approve and Decline. In a bound channel only a
 mapped person may ask.
 
-**The approval agent.** A conversation set to Run in the console has the
-approval agent decide its gated actions. In Slack, an approval waiting in a
-run's thread has a menu after its buttons with one row, **Let the approval
-agent decide in this thread**, where the app's client maps people. It sets
+**The approval agent.** A conversation has two approval modes, as in the
+console: **Ask**, where a person approves every gated action, and **Auto**,
+where the approval agent decides gated actions, answers what the conversation
+already settles, and asks a person when unsure. In Slack, an approval waiting
+in a run's thread has a menu after its buttons with one row, **Set this
+thread to Auto**, where the app's client maps people. It sets
 the conversation the thread is (`PUT /api/threads/{id}/approval` with
 `act_as`), with the same checks as the console's toggle, made as the person
 who pressed: Humagen decides whether they may, and its refusal is said to
 them alone. A Slack user the client maps to nobody is told they cannot, and
 Humagen is not asked. The change is said in the thread, naming who made it:
-the agent decides from the next action on, as that person could, and an
-action already waiting still waits for a person. Under it, **Ask Me Again**
-sets the conversation back, and that change is said the same way, with
-**Let the Approval Agent Decide** under it.
+the approval agent approves and answers from the next action on, as that
+person could, and an action already waiting still waits for a person. Under
+it, **Switch to Ask** sets the conversation back, and that change is said the
+same way, with **Switch to Auto** under it.
 
 A call the approval agent decided settles its card with what it decided and
 why, as the inbox shows it (`Approval agent: Allowed: "<reason>"` beside who
-set the conversation to Run). What it said about a call it handed to a
+set the conversation to Auto). What it said about a call it handed to a
 person is put on the card while it waits, from the inbox, when the app is
 following the run.
 
@@ -195,8 +197,15 @@ is their handle, and anyone else stays plain and is refused. When the app is
 mentioned in a thread, the people's messages since it was last asked there are
 posted first, each as its person and posted only, so the room in Humagen reads as
 it did in Slack. Each message is posted once by its ts: a redelivered event
-answers `repeated` and starts nothing again. Outside a bound channel the
-client's default answers an untagged message; the client's allow-list holds
+answers `repeated` and starts nothing again. The app follows a channel thread it answered: a reply there from the person
+who asked it last is taken as asked, with no mention, and replies from
+anyone else start nothing, so people talking to each other in the thread
+are never answered. A bound channel's messages are mirrored as before and
+never followed. A thread stays with the agent it was asked for: the one agent a
+message tags, once it answers, becomes the thread's selected agent, and the
+thread's selected agents answer its untagged messages ahead of any default,
+until a message tags another (RFC 0012). Outside a bound channel the
+client's default answers an untagged message in a thread nobody tagged; the client's allow-list holds
 everywhere, and for a default of `*` only the agents on a client's list are
 asked to join. `@auto` tags nobody. The machine reads every thread on its
 own surface, wherever it is filed, but a person it posts or answers for is held to where they may
@@ -273,11 +282,11 @@ take, as when it went away just then, is recorded at the next look rather
 than posted again, while the app keeps running.
 
 A reply in an announcement's Slack thread starts a shared thread seeded with
-the announcement. Slack delivers a message in a channel thread to the app
-only when it mentions the app: the manifest subscribes to `app_mention`, and
-to `message.im` for direct messages alone, and adding `message.channels`
-would widen what the app reads. So the reply that mentions the app is the
-one that reaches Humagen, and the replies before it that did not are posted
+the announcement. The manifest subscribes to `message.channels` and
+`message.groups` so the app can follow a thread it answered (below), and
+the app drops every other channel message that does not mention it unread,
+unless the client's own subscriptions name channel messages. So the reply
+that mentions the app is the one that reaches Humagen, and the replies before it that did not are posted
 ahead of it as the room, each as its person and posted only. The app posts
 them as for any Slack thread, with the post's surface: the platform finds
 the announcement by the receipt the app recorded at that channel and ts, and

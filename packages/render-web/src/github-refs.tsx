@@ -48,14 +48,23 @@ export function githubRefKinds(text: string): Map<string, "pull" | "issue"> {
   const kinds = new Map<string, "pull" | "issue">();
   ADDRESSES.lastIndex = 0;
   for (let m = ADDRESSES.exec(text); m; m = ADDRESSES.exec(text)) {
-    const label = `${m[1]}#${m[3]}`;
+    const label = refKey(`${m[1]}#${m[3]}`);
     if (m[2]?.toLowerCase() === "pull") kinds.set(label, "pull");
     else if (!kinds.has(label)) kinds.set(label, "issue");
   }
   return kinds;
 }
 
-/** The kinds known where a chip is drawn: in its answer, and in the session around it when a host knows. */
+/**
+ * One reference's identity, however it is written: GitHub's owners and
+ * repositories ignore case, so `URMZD/Humagen#471` and the address of
+ * urmzd/humagen's pull request 471 are one reference.
+ */
+export function refKey(label: string): string {
+  return label.toLowerCase();
+}
+
+/** The kinds known where a chip is drawn, keyed by `refKey`: in its answer, and in the session around it when a host knows. */
 export const GitHubRefKindsContext = createContext<ReadonlyMap<string, "pull" | "issue">>(
   new Map(),
 );
@@ -190,7 +199,7 @@ export function GitHubRefLink({
   // What the answer says this number is, wherever it says it, else what this
   // link's own address says, else the neutral mark.
   const kind: GitHubRefKind =
-    ref.kind === "commit" ? "commit" : (known.get(ref.label) ?? (bare ? "ref" : ref.kind));
+    ref.kind === "commit" ? "commit" : (known.get(refKey(ref.label)) ?? (bare ? "ref" : ref.kind));
   const own = label.trim() === href || label.trim() === ref.label;
   const name = words[kind](ref.label);
   return (

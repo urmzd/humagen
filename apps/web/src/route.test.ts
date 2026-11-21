@@ -129,7 +129,14 @@ test("an unknown page stays visible as not found while legacy tabs fall back saf
   assert.deepEqual(at("/nowhere"), { page: "not-found", path: "/nowhere" });
   assert.equal(href(at("/nowhere")), "/nowhere");
   assert.equal(documentTitle(at("/nowhere")), "Page not found - Humagen");
-  assert.deepEqual(at("/agents/lead/bogus"), { page: "agent", name: "lead", tab: "prompt" });
+  assert.deepEqual(at("/agents/lead/bogus"), { page: "agent", name: "lead", tab: "home" });
+  assert.deepEqual(at("/agents/lead/look"), { page: "agent", name: "lead", tab: "look" });
+  // An agent opens on its home, and its prompt has an address of its own.
+  assert.deepEqual(at("/agents/lead"), { page: "agent", name: "lead", tab: "home" });
+  assert.equal(href({ page: "agent", name: "lead", tab: "home" }), "/agents/lead");
+  assert.equal(href({ page: "agent", name: "lead", tab: "prompt" }), "/agents/lead/prompt");
+  assert.equal(href({ page: "agent", name: null, tab: "prompt" }), "/agents/new");
+  assert.equal(href({ page: "agent", name: "lead", tab: "look" }), "/agents/lead/look");
   assert.deepEqual(at("/settings/bogus"), { page: "settings", section: "profile" });
 });
 

@@ -16,6 +16,7 @@ import (
 	"log/slog"
 	"maps"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
@@ -54,6 +55,7 @@ import (
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/internal/wire/sessionstate"
 	"github.com/urmzd/humagen/pkg/agentcolors"
+	"github.com/urmzd/humagen/pkg/agentlooks"
 	"github.com/urmzd/humagen/pkg/alerts"
 	"github.com/urmzd/humagen/pkg/artifacts"
 	"github.com/urmzd/humagen/pkg/audit"
@@ -190,8 +192,11 @@ type Config struct {
 	MentionKinds map[string][]MentionKind
 	// SlackAPI and GitHubAPI build the API a client writes through from its
 	// token. Nil means the real one over HTTP.
-	SlackAPI  func(token string) slack.API
-	GitHubAPI func(token string) github.API
+	SlackAPI func(token string) slack.API
+	// SlackWebAPI is the root of Slack's Web API that linking an agent's own
+	// Slack app asks who a bot token is. Empty means https://slack.com/api.
+	SlackWebAPI string
+	GitHubAPI   func(token string) github.API
 	// PersonalHTTP is the client a person's own tool servers are reached
 	// through. Nil means the default client over HTTP.
 	PersonalHTTP *http.Client
@@ -417,6 +422,8 @@ type Platform struct {
 	emailPreferenceLocks [64]sync.Mutex
 	// AgentColors reserves each workspace's stable agent hues.
 	AgentColors *agentcolors.Store
+	// AgentLooks keeps how each agent is drawn and the name people see.
+	AgentLooks *agentlooks.Store
 	// Scratchpads keeps each conversation's named scratchpads.
 	Scratchpads *scratchpads.Store
 	// Projects is each tenant's tree of projects.
@@ -1814,4 +1821,21 @@ func commentID(id int64) string {
 		return ""
 	}
 	return strconv.FormatInt(id, 10)
+}
+
+// MarkURL is where Slack, or anyone, reads an agent's drawn picture: the
+// console's canonical address, then the tenant and the picture's token. It
+// is empty when no canonical address is configured, since a picture Slack
+// cannot reach is no use to it.
+func (p *Platform) MarkURL(tenant, token string) string {
+	if p.cfg.PublicURL == "" || token == "" {
+		return ""
+	}
+	base, err := url.Parse(p.cfg.PublicURL)
+	if err != nil || (base.Scheme != "https" && base.Scheme != "http") || base.Host == "" {
+		return ""
+	}
+	base.Path = strings.TrimRight(base.Path, "/") + "/agent-marks/" + url.PathEscape(tenant) + "/" + token + ".png"
+	base.RawQuery, base.Fragment = "", ""
+	return base.String()
 }

@@ -1,6 +1,7 @@
 import {
   ANY_AGENT,
   firstName,
+  HOME_MEET_MAX,
   HOME_NOTIFICATIONS,
   HOME_PROJECTS_MAX,
   type HomeAccess,
@@ -252,6 +253,42 @@ export function Home({ home, copy = defaultCopy }: { home: HomeModel; copy?: Cop
                   c.moreProjects(moreProjects),
               ]}
             />
+          )}
+        </>
+      )}
+
+      {home.meet && home.meet.length > 0 && (
+        <>
+          <Divider />
+          <Header text={c.meetAgents} level={2} />
+          {home.meet.slice(0, HOME_MEET_MAX).map((a) => (
+            <Row
+              key={`agent:${a.handle}`}
+              text={`**${a.name}**`}
+              detail={[
+                a.greeting ?? null,
+                slack
+                  ? c.askAgentSlack(home.assistant.handle ?? home.assistant.name, a.handle)
+                  : c.askAgentWeb(a.handle),
+              ]
+                .filter(Boolean)
+                .join(" ")}
+            />
+          ))}
+          {home.meet.slice(0, HOME_MEET_MAX).flatMap((a) =>
+            (a.starters ?? []).length > 0
+              ? [
+                  <Context
+                    key={`starters:${a.handle}`}
+                    items={[
+                      c.startersOf(
+                        a.name,
+                        (a.starters ?? []).map((st) => st.title),
+                      ),
+                    ]}
+                  />,
+                ]
+              : [],
           )}
         </>
       )}

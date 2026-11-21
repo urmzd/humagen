@@ -32,6 +32,7 @@ Run `pnpm install` once from the repository root. The adapter and renderers are 
 |-------|-----------------------|
 | A direct message | A thread under that message. Each top-level message starts a conversation. |
 | A mention in a channel | The mention's thread. |
+| `/agent` | Opens the ask form with a picker of who to ask. |
 | `/agent <question>` | A new thread in the channel. `/agent help` lists who can be asked. |
 | **Ask the agent** shortcut | The app's messages with you. |
 | **Ask agent about this** on a message | That message's thread. On your own message it asks as you; on anyone else's, or a bot's, it asks through the app, for nobody, so their words are never run as you. Under a dev sign-in, where the app's own credential is the person `dev`, asking through the app acts for `dev`. |
@@ -241,8 +242,13 @@ events.
    reach it, or `@auto`, which picks among the agents available where the
    message lands, when the app may reach any agent. The name is taken out of
    the message.
-2. The client's default agent, or `HUMAGEN_DEFAULT_AGENT`.
-3. When the app may reach any agent, nobody is named: the app sends no agent,
+2. The agent the thread was last asked for by name: a thread started for
+   one agent stays that agent's until another is named. A person the client
+   maps posts into Humagen's thread, where the platform keeps the same rule;
+   for anyone else the app remembers it, for its last 5000 threads, until
+   it restarts.
+3. The client's default agent, or `HUMAGEN_DEFAULT_AGENT`.
+4. When the app may reach any agent, nobody is named: the app sends no agent,
    and the default the workspace's projects set answers. With none set, Humagen
    answers 409 and the app asks the person to tag an agent, naming one it may
    reach.
@@ -262,6 +268,53 @@ that lists agents and names no default answers nothing: the default Humagen woul
 use is not known here, so it could be one the list leaves out. For the same
 reason such a client never sends `auto`, as a tag or as its default, since
 `@auto` picks among every agent available where the run lands.
+
+## Picking who to ask
+
+`/agent` alone opens the ask form with a picker of who to ask: the agents
+this app may reach by name, the client's default first, each by the name
+people call it and its greeting or description. Left unpicked, the default
+answers, as for any question. `/agent` with words asks at once, as before,
+and `/agent help` lists the agents.
+
+## Following a thread
+
+In a channel thread it answered, the app takes the next reply from the
+person who asked it there last as asked, though it does not mention the
+app; anyone else's replies start nothing. It reads channel messages for
+this alone (`message.channels`, `message.groups`): any other channel
+message that does not mention it is dropped unread, unless the client's
+own subscriptions name channel messages. Which threads it follows is kept
+in memory, for its last 5000, and forgotten on a restart. A bound channel is
+never followed.
+
+## An agent's own app
+
+An agent may have a Slack app of its own, made and connected from its Look
+tab in the console (see
+[clients](../../docs/reference/clients.md#an-agents-own-slack-app)). This
+process serves one client: run one more, with that client as
+`HUMAGEN_CLIENT`, for each agent's own app.
+
+## Each agent in its own name
+
+One app answers for every agent, and it posts each turn as the agent that
+answers it: the answer, its stream, and the status line above the reply box
+carry the agent's display name and its picture (`username` and `icon_url`,
+which Slack takes on `chat.postMessage`, `chat.startStream` and
+`assistant.threads.setStatus` with the `chat:write.customize` scope the
+manifest asks for). Slack still marks every one APP and names the app on
+hover. Both come from the agent's look, set on its Look tab in the console
+(`pkg/agentlooks`), which `GET /api/agents` carries: the picture is the one
+the console drew when the look was saved, served at an unguessable address
+under the console's public URL, so an agent shows a picture only where the
+server has a `public_url`. An agent nobody gave a look is posted as the app,
+as it always was. An install from before the scope, or a workspace that
+refuses it, has its call made again as the app, and the rest of that turn
+is the app's.
+
+Home's Meet your agents lists the agents this app may reach that someone
+gave a greeting or starters, each with how to ask it here.
 
 ## Identity and permissions
 

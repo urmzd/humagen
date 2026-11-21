@@ -10,6 +10,7 @@ import type {
   AgentControlInput,
   AgentEvaluationHealth,
   AgentHome,
+  AgentLookView,
   AgentNetwork,
   AgentSession,
   AgentSetup,
@@ -17,6 +18,7 @@ import type {
   AgentSetupTest,
   AgentSkillDefaults,
   AgentSkillDefaultsUpdate,
+  AgentSlackApp,
   AgentSpec,
   Alert,
   AlertCount,
@@ -38,6 +40,7 @@ import type {
   Branding,
   BringBackThreadResultBody,
   BrowserAction,
+  BrowserAvailability,
   BrowserView,
   CallPolicy,
   CallPolicyInput,
@@ -112,6 +115,7 @@ import type {
   KnowledgeSourceConfig,
   KnowledgeVariant,
   LibrarySkill,
+  LinkAgentSlackAppBody,
   LinkSessionBody,
   ListAgentRevisionsResponse,
   ListAgentsResponse,
@@ -246,8 +250,10 @@ import type {
   SearchKnowledgeResponse,
   SearchMemoryResponse,
   SessionInput,
+  SessionOptions,
   SessionPostInput,
   SetAgentHomeBody,
+  SetAgentLookBody,
   SetApprovalModeBody,
   SetKnowledgeDocumentExcludedBody,
   SetKnowledgeSyncSettingsBody,
@@ -282,6 +288,7 @@ import type {
   ThreadShare,
   ThreadShared,
   ThreadUpdate,
+  ThreadUsage,
   ToolCredential,
   ToolCredentialInput,
   ToolCredentials,
@@ -1024,6 +1031,43 @@ visible older history pages on reset.
     });
   }
 
+  /** The environments are this deployment's: `auto` (its default) and its
+configured sandbox. The repositories are those the caller's
+tenant's enabled GitHub clients may read or write, sorted, at most 100.
+ */
+  async getSessionOptions(options?: RequestOptions): Promise<SessionOptions> {
+    const path = "/api/sessions/options";
+    return this.request<SessionOptions>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getSessionOptionsRaw(options?: RequestOptions): Promise<ApiResponse<SessionOptions>> {
+    const path = "/api/sessions/options";
+    return this.rawRequest<SessionOptions>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** True when the session's agent holds a write grant on at least one
+browser provider. Otherwise `reason` says why.
+ */
+  async getSessionBrowser(id: string, options?: RequestOptions): Promise<BrowserAvailability> {
+    let path = "/api/sessions/{id}/browser";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<BrowserAvailability>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getSessionBrowserRaw(id: string, options?: RequestOptions): Promise<ApiResponse<BrowserAvailability>> {
+    let path = "/api/sessions/{id}/browser";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<BrowserAvailability>("GET", path, {
+      ...options,
+    });
+  }
+
   /** The browser is the one the session's agent works in: an MCP tool
 provider the agent holds a write grant on (`mcp:<name>:write`),
 shared and reached over HTTP, whose accepted tools include a
@@ -1555,6 +1599,29 @@ afterwards. Nothing is sent to the agent.
   async getHealthRaw(options?: RequestOptions): Promise<ApiResponse<string>> {
     const path = "/healthz";
     return this.rawRequest<string>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Served to anyone with the address, since Slack fetches an icon
+without a credential: the address is the capability. `file` is the
+picture's 128-bit random token and `.png`, and a picture that was
+replaced is no longer served. Anything else is the same 404.
+ */
+  async getAgentMarkImage(tenant: string, file: string, options?: RequestOptions): Promise<Blob> {
+    let path = "/agent-marks/{tenant}/{file}";
+    path = path.replace("{tenant}", encodeURIComponent(String(tenant)));
+    path = path.replace("{file}", encodeURIComponent(String(file)));
+    return this.request<Blob>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getAgentMarkImageRaw(tenant: string, file: string, options?: RequestOptions): Promise<ApiResponse<Blob>> {
+    let path = "/agent-marks/{tenant}/{file}";
+    path = path.replace("{tenant}", encodeURIComponent(String(tenant)));
+    path = path.replace("{file}", encodeURIComponent(String(file)));
+    return this.rawRequest<Blob>("GET", path, {
       ...options,
     });
   }
@@ -2397,6 +2464,132 @@ are the workspace's (400).
     let path = "/api/agents/{name}/home";
     path = path.replace("{name}", encodeURIComponent(String(name)));
     return this.rawRequest<AgentHome>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** The agent's look (its display name and the bot it is drawn as), its
+hue, the hues other agents hold, and every choice a picker offers. An
+empty field of the look is the default the platform draws.
+ */
+  async getAgentLook(name: string, options?: RequestOptions): Promise<AgentLookView> {
+    let path = "/api/agents/{name}/look";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<AgentLookView>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getAgentLookRaw(name: string, options?: RequestOptions): Promise<ApiResponse<AgentLookView>> {
+    let path = "/api/agents/{name}/look";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<AgentLookView>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Replaces the agent's look, and with `hue` moves it to that color. A
+look is presentation: it makes no revision and changes nothing a run
+does. An empty look returns the agent to the default. A display name
+is unique in the workspace, ignoring case, and is never another
+agent's handle; a hue is never another agent's. Either taken is 409.
+Takes the ownership changing the agent takes. The platform's own
+agents take a look too.
+ */
+  async setAgentLook(name: string, body: SetAgentLookBody, options?: RequestOptions): Promise<AgentLookView> {
+    let path = "/api/agents/{name}/look";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<AgentLookView>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async setAgentLookRaw(name: string, body: SetAgentLookBody, options?: RequestOptions): Promise<ApiResponse<AgentLookView>> {
+    let path = "/api/agents/{name}/look";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<AgentLookView>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** The console draws the agent's bot as a PNG and sends it here, so a
+surface that needs an image (Slack's icon for a message the agent
+posts) can show it. It is kept under a new random token and served
+at the look's `image_url`; the picture it replaces is deleted. At
+most 256 KiB. Takes the ownership changing the agent takes.
+ */
+  async setAgentMark(name: string, body: Blob, options?: RequestOptions): Promise<AgentLookView> {
+    let path = "/api/agents/{name}/mark";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<AgentLookView>("PUT", path, {
+      body,
+      contentType: "image/png",
+      ...options,
+    });
+  }
+
+  async setAgentMarkRaw(name: string, body: Blob, options?: RequestOptions): Promise<ApiResponse<AgentLookView>> {
+    let path = "/api/agents/{name}/mark";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<AgentLookView>("PUT", path, {
+      body,
+      contentType: "image/png",
+      ...options,
+    });
+  }
+
+  /** The manifest of the agent's own Slack app, built from its look (its
+display name, greeting, starters and color) on the shared app's
+scopes and events; the link that creates it in Slack with the
+manifest filled in; and the client it is linked as, when it is. Slack
+takes no icon in a manifest: upload the agent's picture.
+ */
+  async getAgentSlackApp(name: string, options?: RequestOptions): Promise<AgentSlackApp> {
+    let path = "/api/agents/{name}/slack-app";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<AgentSlackApp>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getAgentSlackAppRaw(name: string, options?: RequestOptions): Promise<ApiResponse<AgentSlackApp>> {
+    let path = "/api/agents/{name}/slack-app";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<AgentSlackApp>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Links an installed Slack app as the agent's own, from its bot token
+and signing secret. Slack is asked who the bot is (`auth.test`, then
+`bots.info`), so nobody copies an id. The client made routes to the
+agent alone, maps its bot user to the agent, and files and acts for
+people as the team's other Slack client does. A mention of its bot
+through any of the team's Slack apps names the agent, and is its own
+app's to answer. A token Slack refuses is 400; an app already
+connected is 409. Takes clients:write and the ownership changing the
+agent takes.
+ */
+  async linkAgentSlackApp(name: string, body: LinkAgentSlackAppBody, options?: RequestOptions): Promise<AgentSlackApp> {
+    let path = "/api/agents/{name}/slack-app";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<AgentSlackApp>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async linkAgentSlackAppRaw(name: string, body: LinkAgentSlackAppBody, options?: RequestOptions): Promise<ApiResponse<AgentSlackApp>> {
+    let path = "/api/agents/{name}/slack-app";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<AgentSlackApp>("POST", path, {
       body,
       contentType: "application/json",
       ...options,
@@ -4314,22 +4507,23 @@ whoever started the thread or an owner of its project (403).
     });
   }
 
-  /** `ask` asks a person, the default. `auto` approves for the caller what
-they may approve themselves, through the same checks as their own
-answer: the approvers a question names, self-approval and the
-runtime's. A budget request, an action the agent always asks about,
-a run forced to ask and an action the policy does not ask about still
-go to a person. `decide` (Run and Answer) does what `auto` does,
-and the approval agent also answers, as the caller, a question an
-agent asks a person (a choice or a reply) when the session already
-settles the answer; anything else, anything asked of someone else,
-and anything in work someone else asked for still goes to a person.
-Each automatic approval and answer, each hand-off, and each change
-of mode is audited. Takes a person who may post in the conversation.
-A surface that authenticated a person itself sets it for them with
-`act_as`: only the credential its client names, and only for a person
-its client maps; every check is then that person's, and `auto` and
-`decide` act as them.
+  /** Two modes. `ask` (Ask) asks a person, the default. `auto` (Auto)
+lets the approval agent act for the caller: it approves what they may
+approve themselves, through the same checks as their own answer (the
+approvers a question names, self-approval and the runtime's), and it
+answers, as the caller, a question an agent asks a person (a choice
+or a reply) when the session already settles the answer. A budget
+request, an action the agent always asks about, a run forced to ask,
+an action the policy does not ask about, anything it is unsure of,
+anything asked of someone else and anything in work someone else
+asked for still go to a person. `decide`, what Run and Answer was set
+as before it became part of Auto, is still accepted and taken as
+`auto`; it is deprecated and will be removed. Each automatic approval
+and answer, each hand-off, and each change of mode is audited. Takes
+a person who may post in the conversation. A surface that
+authenticated a person itself sets it for them with `act_as`: only
+the credential its client names, and only for a person its client
+maps; every check is then that person's, and `auto` acts as them.
  */
   async setApprovalMode(id: string, body: SetApprovalModeBody, options?: RequestOptions): Promise<Thread> {
     let path = "/api/threads/{id}/approval";
@@ -5074,6 +5268,23 @@ to that machine only, wherever the message is read.
     return this.rawRequest<SandboxCommandResult>("POST", path, {
       body,
       contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** What the conversation has used so far, from its runs */
+  async getThreadUsage(id: string, options?: RequestOptions): Promise<ThreadUsage> {
+    let path = "/api/threads/{id}/usage";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<ThreadUsage>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getThreadUsageRaw(id: string, options?: RequestOptions): Promise<ApiResponse<ThreadUsage>> {
+    let path = "/api/threads/{id}/usage";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<ThreadUsage>("GET", path, {
       ...options,
     });
   }

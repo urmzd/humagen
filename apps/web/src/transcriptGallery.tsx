@@ -1,5 +1,5 @@
 import { WebSurface } from "@humagen/render-web";
-import { AgentMessage, UserMessage } from "@humagen/web";
+import { AgentMessage, RetryCallContext, UserMessage } from "@humagen/web";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "@humagen/render-web/fonts.css";
@@ -32,12 +32,9 @@ function Transcript() {
         </div>
         <WebSurface>
           <AgentTint name={turn.agent.name}>
-            <AgentMessage
-              turn={turn}
-              disclaimer={false}
-              activity={false}
-              capabilities={{ retryCall: true }}
-            />
+            <RetryCallContext.Provider value={async () => {}}>
+              <AgentMessage turn={turn} disclaimer={false} activity={false} />
+            </RetryCallContext.Provider>
           </AgentTint>
         </WebSurface>
       </div>
