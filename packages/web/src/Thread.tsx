@@ -20,6 +20,9 @@ import { TurnRail, type TurnRailEntry } from "./TurnRail";
 /** The fewest turns a conversation has before its turn rail shows. */
 export const RAIL_MIN_TURNS = 6;
 
+/** The Jump to latest control and the fade under it (`h-16`), plus 16px of air. */
+const JUMP_CLEAR_PX = 80;
+
 export function Thread({
   children,
   label = "Conversation",
@@ -28,6 +31,7 @@ export function Thread({
   turns,
   busy = false,
   focus,
+  initialApproval,
   footer,
 }: {
   /**
@@ -39,6 +43,8 @@ export function Thread({
   footer?: ReactNode;
   /** An addressed message to reveal without scrolling the surrounding page. */
   focus?: string;
+  /** Latest actionable run on first open; an explicit message link takes precedence. */
+  initialApproval?: { run: string; question: string };
   children: ReactNode;
   label?: string;
   className?: string;
@@ -59,6 +65,7 @@ export function Thread({
     startAtEnd: !focus,
   });
   const revealed = useRef<string | undefined>(undefined);
+  const positioned = useRef(false);
   const root = useRef<HTMLDivElement>(null);
   const dock = useRef<HTMLDivElement>(null);
   const docked = footer !== undefined && footer !== null && footer !== false;
@@ -73,6 +80,42 @@ export function Thread({
       if (stuck.current) list.scrollTop = list.scrollHeight;
     },
   });
+
+  useEffect(() => {
+    if (positioned.current) return;
+    positioned.current = true;
+    if (focus || !initialApproval) return;
+    const root = scroller.current;
+    const run = root?.querySelector<HTMLElement>(
+      `[data-turn-id="${CSS.escape(initialApproval.run)}"]`,
+    );
+    // One pending approval has its own action row; several share the run's batch row.
+    const cards = run?.querySelectorAll<HTMLElement>(
+      '[data-aui-block="approval"], [data-aui-block="batch"]',
+    );
+    const card = Array.from(cards ?? []).find((item) => {
+      const id = item.dataset.auiBlockId ?? "";
+      return (
+        id.startsWith(`approval:${initialApproval.question}:r`) ||
+        id === `batch:${initialApproval.run}:actions`
+      );
+    });
+    if (!root || !card) return;
+    const end = root.scrollHeight - root.clientHeight;
+    const view = root.getBoundingClientRect();
+    const box = card.getBoundingClientRect();
+    // The list's end keeps room for the composer, so a row that starts on view
+    // there is clear of it: stay at the end and keep following.
+    if (root.scrollTop + box.top - view.top >= end) {
+      root.scrollTo({ top: end, behavior: "auto" });
+      return;
+    }
+    // Earlier in the list, the row stops clear of the composer that floats over
+    // the list's end and of the Jump to latest control drawn above it.
+    const edge = Math.min(view.bottom, dock.current?.getBoundingClientRect().top ?? view.bottom);
+    root.scrollTo({ top: root.scrollTop + box.bottom - edge + JUMP_CLEAR_PX, behavior: "auto" });
+    if (root.scrollHeight - root.scrollTop - root.clientHeight >= 48) release();
+  }, [focus, initialApproval, scroller, release]);
 
   useEffect(() => {
     if (!focus) {
