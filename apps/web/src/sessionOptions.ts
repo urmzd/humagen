@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { call } from "./api.ts";
 
-// What a new session may be set up with, read once per page. Kept apart from
+// What a new session may be set up with, read once per page and again while
+// one of its images is still being checked. Kept apart from
 // SessionPickers.tsx, which Home reads only when it draws the pickers, so the
 // composer can hold a session's choices without loading the pickers.
 
@@ -39,28 +40,60 @@ export interface SessionSetup {
 
 export const DEFAULT_SETUP: SessionSetup = { image: "default", repos: [] };
 
-/** The images and repositories a new session may have, read once per page. */
+/** How often options are read again while one of their images is checking. */
+const SETTLE_MS = 3000;
+
+/** The one read every picker on the page shares. */
 let optionsRead: Promise<SessionOptions> | undefined;
+function readOnce(): Promise<SessionOptions> {
+  const mine = call<SessionOptions>("GET", "/api/sessions/options").then(
+    (o) => {
+      // An image still checking will be ready or failed soon: this answer
+      // is not kept, so the next read asks again.
+      if (optionsRead === mine && o?.images?.some?.((i) => i.status === "checking"))
+        optionsRead = undefined;
+      return o;
+    },
+    (e) => {
+      if (optionsRead === mine) optionsRead = undefined;
+      throw e;
+    },
+  );
+  return mine;
+}
+
+/**
+ * The images and repositories a new session may have, read once per page.
+ * While one of the images is still checking they are read again every
+ * settleMs, so an image that has just become ready can be chosen without
+ * loading the page again.
+ */
 export function useSessionOptions(
   enabled = true,
-  read: () => Promise<SessionOptions> = () =>
-    (optionsRead ??= call<SessionOptions>("GET", "/api/sessions/options").catch((e) => {
-      optionsRead = undefined;
-      throw e;
-    })),
+  read: () => Promise<SessionOptions> = () => (optionsRead ??= readOnce()),
+  settleMs = SETTLE_MS,
 ): SessionOptions | null | undefined {
   const [options, setOptions] = useState<SessionOptions | null>();
-  // biome-ignore lint/correctness/useExhaustiveDependencies: read once.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: read once, and again only while an image is checking.
   useEffect(() => {
     if (!enabled) return;
     let on = true;
-    read().then(
-      // An answer not in this shape, from an older server, offers nothing.
-      (o) => on && setOptions(Array.isArray(o?.images) && Array.isArray(o.repos) ? o : null),
-      () => on && setOptions(null),
-    );
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const go = () =>
+      read().then(
+        (o) => {
+          if (!on) return;
+          // An answer not in this shape, from an older server, offers nothing.
+          const ok = Array.isArray(o?.images) && Array.isArray(o.repos);
+          setOptions(ok ? o : null);
+          if (ok && o.images.some((i) => i.status === "checking")) timer = setTimeout(go, settleMs);
+        },
+        () => on && setOptions(null),
+      );
+    go();
     return () => {
       on = false;
+      clearTimeout(timer);
     };
   }, []);
   return options;

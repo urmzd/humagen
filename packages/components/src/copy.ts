@@ -4654,7 +4654,8 @@ export const defaultCopy = {
     /** A ready image being checked again: sessions still run it. */
     rechecking: "Checking Again",
     /** Why a ready image's latest check failed; it runs the digest it had. */
-    stillRuns: (problem: string) => `Last check failed: ${problem}. Sessions still run it as pinned.`,
+    stillRuns: (problem: string) =>
+      `Last check failed: ${problem}. Sessions still run it as pinned.`,
     checkAgain: "Check Again",
     remove: "Remove",
     off: "This deployment runs only its default image.",

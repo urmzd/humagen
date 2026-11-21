@@ -11,7 +11,7 @@ import { PlusMenu } from "./Plus.tsx";
 import { type SessionOptions, type SessionSetup, SessionSetupPickers } from "./SessionPickers.tsx";
 import { EnvironmentSection } from "./SessionSections.tsx";
 import { type SessionView, SessionViews, useUnavailableViews } from "./SessionViews.tsx";
-import { DEFAULT_SETUP } from "./sessionOptions.ts";
+import { DEFAULT_SETUP, useSessionOptions } from "./sessionOptions.ts";
 import { summarize } from "./sessionSummary.ts";
 import { type TerminalApi, WorkbenchTerminal } from "./WorkbenchTerminal.tsx";
 
@@ -108,6 +108,44 @@ test("a new session runs the Default image until a ready one of the workspace's 
   fireEvent.click(rows[1] as HTMLElement);
   assert.deepEqual(seen.at(-1), { image: "img_a", repos: [] });
   assert.ok(screen.getByRole("button", { name: `${words.image}: Agent tools` }));
+});
+
+test("an image still checking when the options were read can be chosen once it is ready, with no reload", async () => {
+  // The server's answers: checking twice, then ready.
+  let reads = 0;
+  const read = async (): Promise<SessionOptions> => {
+    reads++;
+    const settled = reads > 2;
+    return {
+      ...options,
+      images: [
+        options.images[0] as SessionOptions["images"][number],
+        {
+          id: "img_new",
+          name: "Just added",
+          ref: "ghcr.io/acme/new:1",
+          status: settled ? "ready" : "checking",
+          warm: false,
+          default: false,
+        },
+      ],
+    };
+  };
+  function Statuses() {
+    const o = useSessionOptions(true, read, 10);
+    return <p data-testid="statuses">{o?.images.map((i) => `${i.id}:${i.status}`).join(" ")}</p>;
+  }
+  render(<Statuses />);
+  await waitFor(() =>
+    assert.equal(screen.getByTestId("statuses").textContent, "default:ready img_new:checking"),
+  );
+  await waitFor(() =>
+    assert.equal(screen.getByTestId("statuses").textContent, "default:ready img_new:ready"),
+  );
+  // Once nothing is checking it is not read again.
+  const settledAt = reads;
+  await new Promise((r) => setTimeout(r, 60));
+  assert.equal(reads, settledAt);
 });
 
 test("the image menu ends with a way to manage images where the workspace may add them", async () => {
