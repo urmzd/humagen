@@ -3,7 +3,7 @@ import { SettingsIcon } from "@humagen/render-web";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { BuilderButton } from "./AgentBuilder.tsx";
 import { AgentDefaultSkills } from "./AgentDefaultSkills.tsx";
-import { AgentHealth } from "./AgentHealth.tsx";
+import { AgentHealth, AgentStats } from "./AgentHealth.tsx";
 import { AgentHomeTab } from "./AgentHomeTab.tsx";
 import { AgentLookEditor } from "./AgentLookEditor.tsx";
 import { AgentGeneral, AgentSettingsNav, type SettingsTab } from "./AgentSettings.tsx";
@@ -48,7 +48,6 @@ import {
   Section,
   Switch,
   textLink,
-  took,
 } from "./ui.tsx";
 
 export type Tab = AgentTab;
@@ -545,8 +544,6 @@ export function AgentDetail({
       );
   };
 
-  const ended = stats ? stats.completed + stats.failed : 0;
-
   // A new agent has only the sections its spec holds; a saved one has them all.
   const has = (t: SettingsTab) =>
     !!revision || t === "prompt" || t === "model" || t === "access" || t === "context";
@@ -670,25 +667,16 @@ export function AgentDetail({
             )}
             {revision && tab === "look" && <AgentLookEditor name={name} canWrite={canWrite} />}
             {revision && tab === "slack" && <AgentSlackApp name={name} canLink={canLinkSlack} />}
-            {revision && tab === "prompt" && <AgentHealth name={name} />}
             {revision && tab === "prompt" && (
-              <dl className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-                {[
-                  ["Runs, 24h", String(stats?.runs ?? 0)],
-                  [
-                    "Success",
-                    ended ? `${Math.round((100 * (stats?.completed ?? 0)) / ended)}%` : "No data",
-                  ],
-                  ["Median", stats?.p50_ms ? took(stats.p50_ms) : "–"],
-                  ["Open alerts", String(myOpen)],
-                  ["Evals", String(mySuites.length)],
-                ].map(([label, value]) => (
-                  <div key={label} className={`${card} py-3`}>
-                    <dt className="text-aui-xs text-aui-muted">{label}</dt>
-                    <dd className="text-aui-lg font-semibold tabular-nums text-aui-fg">{value}</dd>
-                  </div>
-                ))}
-              </dl>
+              <AgentHealth
+                name={name}
+                suites={mySuites}
+                canRun={canEval}
+                onSuitesChanged={onSuitesChanged}
+              />
+            )}
+            {revision && tab === "prompt" && (
+              <AgentStats stats={stats} openAlerts={myOpen} suites={mySuites.length} />
             )}
 
             {builtin && revision && (

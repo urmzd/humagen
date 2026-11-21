@@ -897,10 +897,33 @@ export interface Suite {
   cases: EvalCase[];
   k?: number;
   pass_rate?: number;
+  /** How often the schedule runs the suite, from an hour to thirty days; 0 or absent is no schedule. */
+  every_seconds?: number;
+  /** Set by the server: who saved the suite last, the person its schedule acts for. */
+  created_by?: string;
+  updated_at?: string;
 }
 
 export interface SuiteView extends Suite {
   runs: EvalRun[];
+  /** What the person who saved the suite last is called. */
+  created_by_name?: string;
+  /** When the schedule next starts the suite; absent without a schedule. */
+  next_run_at?: string;
+  /** A run of the scheduled suite is going; the next starts after it ends. */
+  schedule_busy?: boolean;
+}
+
+/** A suite as it is saved: what a listing adds to it left off, as the server takes no unknown field. */
+function suiteBody(s: Suite): Suite {
+  const {
+    runs: _runs,
+    created_by_name: _name,
+    next_run_at: _next,
+    schedule_busy: _busy,
+    ...body
+  } = s as Partial<SuiteView> & Suite;
+  return body;
 }
 
 /**
@@ -1686,8 +1709,9 @@ export const api = {
   },
 
   suites: () => call<{ suites: SuiteView[] }>("GET", "/api/evals").then((r) => r.suites),
-  createSuite: (s: Suite) => call<Suite>("POST", "/api/evals", s),
-  saveSuite: (s: Suite) => call<Suite>("PUT", `/api/evals/${encodeURIComponent(s.name)}`, s),
+  createSuite: (s: Suite) => call<Suite>("POST", "/api/evals", suiteBody(s)),
+  saveSuite: (s: Suite) =>
+    call<Suite>("PUT", `/api/evals/${encodeURIComponent(s.name)}`, suiteBody(s)),
   deleteSuite: (name: string) => call<void>("DELETE", `/api/evals/${encodeURIComponent(name)}`),
   runSuite: (name: string) => call<EvalRun>("POST", `/api/evals/${encodeURIComponent(name)}/run`),
   /** A page of the questions behind answers rated down, awaiting review, newest first. */
