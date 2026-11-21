@@ -37,6 +37,19 @@
   --aui-dur-route-out: 120ms;
   --aui-route-rise: 6px;
   --aui-skeleton-delay: 150ms;
+  /*
+   * Layers, lowest first. A conversation is one surface: its messages are
+   * content, the composer floats over them, and anything that opens from the
+   * composer or a message (the @ list, a menu, a preview card) sits above
+   * the composer. Sheets and drawers cover all of that; toasts and tooltips
+   * cover everything. Use these, never a bare number, in what you touch.
+   */
+  --aui-z-content: 0;
+  --aui-z-sticky: 10; /* sticky headers, the busy bar, the turn rail */
+  --aui-z-composer: 20; /* the floating composer and its fade */
+  --aui-z-popover: 30; /* @ and / lists, menus, preview cards, the usage popover */
+  --aui-z-sheet: 40; /* drawers, sheets, the inspector */
+  --aui-z-toast: 60; /* toasts, update prompts, tooltips */
   /* One hairline for chrome and panels. */
   --aui-hairline: 1px;
   /*

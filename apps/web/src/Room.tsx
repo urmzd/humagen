@@ -1074,6 +1074,63 @@ export function ThreadRoom({
                   label="Thread"
                   turns={wave}
                   focus={focus}
+                  footer={
+                    <div className="mx-auto flex w-full max-w-4xl flex-col gap-2 px-4 pb-3">
+                      <Problem message={problem} />
+                      {canRun && !posts && (
+                        <p className="text-aui-xs text-aui-muted">{words.viewerOnly}</p>
+                      )}
+                      {posts && (
+                        <RoomComposer
+                          sessionAgents={page.sessionAgents}
+                          runs={turns.flatMap((turn) =>
+                            turn.run && actedFor(turn.run) === me ? [turn.run] : [],
+                          )}
+                          thread={id}
+                          trailing={<ApprovalToggle thread={th} me={handle || me} />}
+                          seed={seed}
+                          placeholder={words.message}
+                          tags={tags}
+                          plus={{
+                            // The draft's mentions are the + menu's agents.
+                            menu: (close, attach, leave, draft) => (
+                              <PlusMenu
+                                onLeave={leave}
+                                agents={tags.agents}
+                                {...mentionPicks(draft, tags.agents, setSeed)}
+                                skills={tags.skills}
+                                skillsFailed={tags.skillsFailed}
+                                onSkill={(name) => {
+                                  setSeed({ text: `/${name} `, mode: "prepend" });
+                                }}
+                                selection={selection}
+                                onChange={select}
+                                onAttach={attach}
+                                onClose={close}
+                              />
+                            ),
+                          }}
+                          autoFocus={sharing ? false : undefined}
+                          onPost={(text, pick, uploads) =>
+                            // It follows the newest message, so a run it starts reads the conversation so far.
+                            coworking
+                              .post(id, { text, ...pick, uploads })
+                              .then((p) => {
+                                // What was posted shows at once: the message, and any run its tags started.
+                                setTurns((t) =>
+                                  mergeTurns(t, [
+                                    { kind: "message", message: p.message },
+                                    ...p.runs.map((run) => ({ kind: "run" as const, run })),
+                                  ]),
+                                );
+                                onChanged();
+                                return p;
+                              })
+                          }
+                        />
+                      )}
+                    </div>
+                  }
                 >
                   <Problem message={attention.problem ?? null} />
                   {attention.problem && (
@@ -1257,61 +1314,6 @@ export function ThreadRoom({
                   ))}
                 </ThreadList>
               </WebSurface>
-              <div className="mx-auto flex w-full max-w-4xl flex-col gap-2 px-4 pb-4">
-                <Problem message={problem} />
-                {canRun && !posts && (
-                  <p className="text-aui-xs text-aui-muted">{words.viewerOnly}</p>
-                )}
-                {posts && (
-                  <RoomComposer
-                    sessionAgents={page.sessionAgents}
-                    runs={turns.flatMap((turn) =>
-                      turn.run && actedFor(turn.run) === me ? [turn.run] : [],
-                    )}
-                    thread={id}
-                    trailing={<ApprovalToggle thread={th} me={handle || me} />}
-                    seed={seed}
-                    placeholder={words.message}
-                    tags={tags}
-                    plus={{
-                      // The draft's mentions are the + menu's agents.
-                      menu: (close, attach, leave, draft) => (
-                        <PlusMenu
-                          onLeave={leave}
-                          agents={tags.agents}
-                          {...mentionPicks(draft, tags.agents, setSeed)}
-                          skills={tags.skills}
-                          skillsFailed={tags.skillsFailed}
-                          onSkill={(name) => {
-                            setSeed({ text: `/${name} `, mode: "prepend" });
-                          }}
-                          selection={selection}
-                          onChange={select}
-                          onAttach={attach}
-                          onClose={close}
-                        />
-                      ),
-                    }}
-                    autoFocus={sharing ? false : undefined}
-                    onPost={(text, pick, uploads) =>
-                      // It follows the newest message, so a run it starts reads the conversation so far.
-                      coworking
-                        .post(id, { text, ...pick, uploads })
-                        .then((p) => {
-                          // What was posted shows at once: the message, and any run its tags started.
-                          setTurns((t) =>
-                            mergeTurns(t, [
-                              { kind: "message", message: p.message },
-                              ...p.runs.map((run) => ({ kind: "run" as const, run })),
-                            ]),
-                          );
-                          onChanged();
-                          return p;
-                        })
-                    }
-                  />
-                )}
-              </div>
             </ConversationPage>
             <ConversationInfo
               origin={referenceOfPlace(place)}

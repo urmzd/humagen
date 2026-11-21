@@ -263,6 +263,7 @@ export function RunsConversation({
               busy={tailWorking}
               label="Conversation"
               turns={wave}
+              footer={composer}
             >
               {path.map((run, i) => (
                 <TurnView
@@ -342,7 +343,6 @@ export function RunsConversation({
               ))}
             </Thread>
           </WebSurface>
-          {composer}
         </ConversationPage>
         {room && (
           <ConversationInfo
