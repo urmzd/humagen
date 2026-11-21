@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.166.0 (2026-11-21)
+
+### Features
+
+- **console**: sidebar rows show their source and a labelled state, calm focus (#470) ([3a718dc](https://github.com/urmzd/humagen/commit/3a718dcfc21fb37c0442cd275801d8e39564e4e8))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.165.0...v0.166.0)
+
+
 ## 0.164.1 (2026-11-21)
 
 ### Bug Fixes
