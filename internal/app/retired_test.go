@@ -6,12 +6,14 @@ import (
 	"log/slog"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/urmzd/saige/flow/connectors/cron"
 
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/people"
 	"github.com/urmzd/humagen/pkg/spec"
 )
 
@@ -146,5 +148,37 @@ func TestAnAgentFlagNamingARetiredNameStartsWithoutIt(t *testing.T) {
 	}
 	if err := p.RetireAgent(ctx, retireAdmin, "desk", 0); !errors.Is(err, platform.ErrAgentProtected) {
 		t.Fatalf("retiring an agent a flag names = %v", err)
+	}
+}
+
+// A retired agent's name stays taken for people too. Were a person signing
+// in given it as their handle, a file that still names the retired agent
+// would stop the next start on "a person goes by @ops": a sign-in must not
+// be able to do that.
+func TestAPersonIsNotGivenARetiredAgentsNameSoTheNextStartGoesOn(t *testing.T) {
+	p := newProjectsPlatform(t)
+	ctx := t.Context()
+	if _, err := p.Agents.Create(ctx, "acme", *fileAgent("ops", "").Spec, "ada"); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.RetireAgent(ctx, retireAdmin, "ops", 0); err != nil {
+		t.Fatal(err)
+	}
+	cfg := platformFileOf(fileAgent("ops", ""), fileAgent("lead", ""))
+	if err := applyPlatforms(ctx, p, cfg, nil); err != nil {
+		t.Fatalf("the start with a retired name in the file: %v", err)
+	}
+	who, err := p.People.Seen("acme", people.Sighting{Subject: "u-123", Name: "Ops", Source: people.SignIn}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if who.Handle == "ops" {
+		t.Errorf("a person was given the retired agent's name as their handle")
+	}
+	if err := applyPlatforms(ctx, p, cfg, nil); err != nil {
+		t.Errorf("the start after the sign-in: %v", err)
+	}
+	if err := checkNewAgentName(ctx, p, "acme", "ops"); err != nil {
+		t.Errorf("the -agent path's name check after the sign-in: %v", err)
 	}
 }

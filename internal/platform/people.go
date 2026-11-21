@@ -11,6 +11,7 @@ import (
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/people"
+	"github.com/urmzd/saige/flow/definition"
 )
 
 // The directory of people: who is in the workspace, by name and handle. It is
@@ -23,13 +24,15 @@ import (
 var ErrNameTaken = errors.New("platform: name taken")
 
 // agentTaken reports whether a handle is an agent's name in a workspace, so
-// no person is given it.
+// no person is given it. A retired agent's name stays taken: nothing takes
+// it over, and the platform file may still name it, which a start checks
+// against people's handles.
 func (p *Platform) agentTaken(tenant, handle string) bool {
 	if IsBuiltin(handle) {
 		return true
 	}
 	_, err := p.Catalog().Get(context.Background(), tenant, handle, 0)
-	return err == nil
+	return err == nil || errors.Is(err, definition.ErrRetired)
 }
 
 // SeePerson records a person who signed in: their name and their roles now.
