@@ -203,7 +203,7 @@ make tilt
 
 ## Documentation
 
-The [Humagen guide](https://docs.humagen.com/) walks through rendering a local review and opening your first session. The documentation workflow checks the guide on pull requests and publishes changes from `main` to GitHub Pages at `docs.humagen.com`.
+The [Humagen guide](https://docs.withhumagen.com/) walks through rendering a local review and opening your first session. The documentation workflow checks the guide on pull requests and publishes changes from `main` to [docs.withhumagen.com](https://docs.withhumagen.com/).
 
 Build the documentation from the repository root with [uv](https://docs.astral.sh/uv/). The static site is written to `site/`. The preview command prints the local address.
 
@@ -212,7 +212,7 @@ uvx --from zensical==0.1.2 zensical build
 uvx --from zensical==0.1.2 zensical serve
 ```
 
-The guide loads its shared logo, fonts and colors from `https://docs.urmzd.com/brand/`, so a local preview shows the same theme as the published guide.
+The guide's logo, fonts and colors live in `docs/brand/`, copied from the shared theme in [urmzd.com](https://github.com/urmzd/urmzd.com/tree/main/docs-site/public/brand), so a local preview shows the same theme as the published guide.
 
 - [Roadmap](docs/plans/roadmap.md)
 - [Architecture and status](docs/architecture/overview.md)

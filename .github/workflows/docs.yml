@@ -1,5 +1,10 @@
 name: Documentation
 
+# Builds the guide on pull requests that touch it, and on a push to main
+# uploads it to S3 behind CloudFront at docs.withhumagen.com. The bucket,
+# distribution and DOCS_AWS_* secrets come from urmzd/infra; the deploy is
+# skipped until DOCS_AWS_ROLE_ARN exists.
+
 on:
   pull_request:
     paths:
@@ -25,6 +30,8 @@ jobs:
   build:
     name: Build documentation
     runs-on: ubuntu-latest
+    outputs:
+      deploy: ${{ steps.gate.outputs.deploy }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -32,28 +39,68 @@ jobs:
           python-version: "3.13"
       - run: python -m pip install zensical==0.1.2
       - run: zensical build --strict --clean
-      - uses: actions/upload-pages-artifact@v4
-        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+      - uses: actions/upload-artifact@v4
         with:
+          name: docs
           path: site
+          retention-days: 7
+      # Secrets cannot be read in a job's `if`, so this step decides.
+      - name: Deploy on this run?
+        id: gate
+        env:
+          HAS_ROLE: ${{ secrets.DOCS_AWS_ROLE_ARN != '' }}
+        run: |
+          if [ "${{ github.event_name }}" != pull_request ] && [ "${{ github.ref }}" = refs/heads/main ] && [ "$HAS_ROLE" = true ]; then
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+            echo "Not deploying: event ${{ github.event_name }}, ref ${{ github.ref }}, DOCS_AWS_ROLE_ARN set: $HAS_ROLE"
+          fi
 
-  # Publishes the guide at docs.humagen.com, the Pages custom domain of this
-  # repository. docs.urmzd.com/humagen/ redirects here.
   deploy:
     name: Deploy documentation
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     needs: build
+    if: needs.build.outputs.deploy == 'true'
     runs-on: ubuntu-latest
     permissions:
-      pages: write
+      contents: read
       id-token: write
     environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      name: production
+      url: https://docs.withhumagen.com
     concurrency:
-      group: pages
+      group: deploy-docs
       cancel-in-progress: false
+    env:
+      BUCKET: docs.withhumagen.com
+      DOMAIN: docs.withhumagen.com
     steps:
-      - name: Publish to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: docs
+          path: site
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.DOCS_AWS_ROLE_ARN }}
+          aws-region: ${{ secrets.DOCS_AWS_REGION }}
+      # Hashed assets are immutable; HTML and text must revalidate.
+      - name: Upload to S3
+        working-directory: site
+        run: |
+          aws s3 sync . "s3://$BUCKET" --delete \
+            --cache-control "public, max-age=31536000, immutable" \
+            --exclude "*.html" --exclude "*.txt" --exclude "*.xml" --exclude "*.json"
+          aws s3 sync . "s3://$BUCKET" \
+            --cache-control "public, max-age=0, must-revalidate" \
+            --exclude "*" --include "*.html" --include "*.txt" --include "*.xml" --include "*.json"
+      - name: Invalidate CloudFront
+        run: |
+          id=$(aws cloudfront list-distributions \
+            --query "DistributionList.Items[?Aliases.Items && contains(Aliases.Items, '$DOMAIN')].Id | [0]" \
+            --output text)
+          if [ -z "$id" ] || [ "$id" = None ]; then
+            echo "::error::No CloudFront distribution has the alias $DOMAIN"
+            exit 1
+          fi
+          aws cloudfront create-invalidation --distribution-id "$id" --paths "/*"
+          echo "Deployed https://$DOMAIN" >> "$GITHUB_STEP_SUMMARY"
