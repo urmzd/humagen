@@ -56,7 +56,7 @@ import {
   type SerializeResult,
   suggestedPrompts,
 } from "@humagen/render-slack";
-import { BUILDER, choose, mayRoute, type Routing } from "./agents.ts";
+import { BUILDER, choose, mayRoute, namesAgent, type Routing } from "./agents.ts";
 import { type Branding, brandedCopy, brandedWords, DEFAULT_BRANDING } from "./branding.ts";
 import { bridgePolicy, subscribed } from "./bridge.ts";
 import { CodeChannels } from "./codechannel.ts";
@@ -914,7 +914,7 @@ export class App {
         (await this.bridgeControls(event.channel)).client?.capabilities?.events.includes("message")
       )
     ) {
-      this.listenTo(event);
+      await this.listenTo(event);
       return;
     }
     if (
@@ -959,7 +959,7 @@ export class App {
         return;
       }
     }
-    if (this.listenTo(event)) return;
+    if (await this.listenTo(event)) return;
     const asked =
       event.type === "app_mention" || (event.type === "message" && event.channel_type === "im");
     // Loop prevention: a bot's message, this app's own, an edit or a join never starts a run.
@@ -995,10 +995,11 @@ export class App {
    * listening there is the platform's to say (`listen`): it is, where the
    * thread's first message mentioned the app, and then the agent decides
    * whether this message calls for it. A thread a later mention started was
-   * answered once, and a message outside a thread is nobody's. Reports
-   * whether the message was offered.
+   * answered once, and a message outside a thread is nobody's. A reply that
+   * tags someone else and names no agent is addressed to them, not to the
+   * agent, so it is not offered. Reports whether the message was offered.
    */
-  private listenTo(event: SlackEvent): boolean {
+  private async listenTo(event: SlackEvent): Promise<boolean> {
     if (
       event.type !== "message" ||
       event.channel_type === "im" ||
@@ -1015,6 +1016,11 @@ export class App {
       return false;
     const text = (event.text ?? "").trim();
     if (!text) return false;
+    if (
+      tagsSomeoneElse(text, this.opts.botUser) &&
+      !namesAgent(text, await this.agents().catch(() => [] as Agent[]))
+    )
+      return false;
     const session: Session = {
       team: this.opts.team,
       channel: event.channel,
@@ -3335,6 +3341,12 @@ export function wholeMessage(text: string, botUser: string, name: string): strin
 /** Whether Slack text mentions the app, wherever in it: `<@U…>` or `<@U…|name>`. */
 export function mentionsApp(text: string, botUser: string): boolean {
   return text.includes(`<@${botUser}>`) || text.includes(`<@${botUser}|`);
+}
+
+/** Whether a message tags a Slack user or bot other than this app: it is addressed to them. */
+export function tagsSomeoneElse(text: string, botUser: string): boolean {
+  for (const m of text.matchAll(/<@([A-Z0-9]+)(?:\|[^>]*)?>/g)) if (m[1] !== botUser) return true;
+  return false;
 }
 
 /** Words for Slack's mrkdwn with nothing in them read as markup: no mention, link or broadcast. */

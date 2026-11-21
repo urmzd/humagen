@@ -25,7 +25,6 @@ import {
   questionMail,
   resultMail,
   SUBJECT,
-  said,
   settle,
   stopPressed,
   TEAM,
@@ -2210,6 +2209,90 @@ test("a mention in a later reply is answered once: the thread is not listened to
   await emit(w, "run.accepted.v1");
   await emit(w, "run.completed.v1", { text: "The other one." });
   await w.app.idle();
+});
+
+/** A listening thread: its first message mentioned the app and was answered. */
+async function listeningThread() {
+  const w = mapped();
+  await deliver(w, mention("what broke the build?", TS));
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "The migration." });
+  await w.app.idle();
+  return w;
+}
+
+test("in a listening thread, a reply that tags only someone else is theirs: nothing is offered or run", async () => {
+  const w = await listeningThread();
+  const posts = w.humagen.posts.length;
+  const calls = w.slack.calls.length;
+  // The router would take it, so only the tag keeps it out (Codex's probe).
+  w.humagen.callsFor = () => true;
+  await deliver(
+    w,
+    plain(`<@${OTHER_USER}> can you check the migration?`, "1700000050.000200", { thread_ts: TS }),
+  );
+  await deliver(
+    w,
+    plain(`<@${OTHER_USER}|olu> and the rollback?`, "1700000051.000200", { thread_ts: TS }),
+  );
+  await w.app.idle();
+  const probe = {
+    forwarded: w.humagen.posts.length - posts,
+    listen: w.humagen.posts.slice(posts).some((p) => p.listen),
+    runs: w.humagen.started.length - 1,
+  };
+  assert.deepEqual(probe, { forwarded: 0, listen: false, runs: 0 });
+  assert.equal(w.slack.calls.length, calls, "Slack hears nothing");
+});
+
+test("in a listening thread, a reply that tags someone else and the app is asked, with the whole message", async () => {
+  const w = await listeningThread();
+  const text = `<@${OTHER_USER}> FYI, <@${BOT}> can you confirm it was the migration?`;
+  // Slack sends the channel message and its app_mention: the mention is taken.
+  await deliver(w, plain(text, "1700000050.000200", { thread_ts: TS }));
+  await deliver(w, mention("", "1700000050.000200", { text, thread_ts: TS }));
+  assert.equal(w.humagen.started.length, 2, "the app was asked");
+  const asked = w.humagen.posts.at(-1);
+  assert.notEqual(asked?.listen, true, "asked, not offered to listening");
+  assert.match(String(asked?.text), new RegExp(`<@${OTHER_USER}> FYI, Humagen can you confirm`));
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "Confirmed." });
+  await w.app.idle();
+});
+
+test("in a listening thread, a reply that tags someone else and names an agent is offered", async () => {
+  const w = await listeningThread();
+  await deliver(
+    w,
+    plain(`<@${OTHER_USER}> let's ask @lead about the rollback`, "1700000050.000200", {
+      thread_ts: TS,
+    }),
+  );
+  assert.equal(w.humagen.posts.at(-1)?.listen, true);
+  assert.equal(w.humagen.posts.at(-1)?.text, `<@${OTHER_USER}> let's ask @lead about the rollback`);
+  assert.equal(w.humagen.started.length, 2, "the agent answered");
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "Rolled back." });
+  await w.app.idle();
+});
+
+test("a bound channel still mirrors a reply that tags someone else, passively", async () => {
+  const w = mapped();
+  const c = w.humagen.clients.get(CLIENT);
+  assert.ok(c);
+  c.capabilities = { events: ["app_mention", "message"], actions: [], deliver_outcomes: true };
+  w.humagen.bound.set(CLIENT, [{ slack_channel: CHANNEL, project: "Field", channel: "general" }]);
+  await deliver(
+    w,
+    plain(`<@${OTHER_USER}> the deploy is done`, "1700000050.000200", { thread_ts: TS }),
+  );
+  await w.app.idle();
+  assert.equal(w.humagen.posts.length, 1);
+  assert.equal(w.humagen.posts[0]?.post_only, true);
+  assert.notEqual(w.humagen.posts[0]?.listen, true);
+  assert.equal(w.humagen.posts[0]?.text, `<@${OTHER_USER}> the deploy is done`);
+  assert.equal(w.humagen.started.length, 0);
+  assert.equal(w.slack.calls.length, 0);
 });
 
 test("a message that mentions nobody outside a thread, or from someone the client does not map, is not heard", async () => {
