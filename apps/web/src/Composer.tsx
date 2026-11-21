@@ -34,7 +34,7 @@ import {
   withMention,
   withoutMention,
 } from "./tags.ts";
-import { AgentMark, button, Presence, primary } from "./ui.tsx";
+import { AgentMark, button, composerIconControl, Presence, primary } from "./ui.tsx";
 import {
   canRecord,
   MAX_RECORDING_MS,
@@ -92,13 +92,12 @@ function Glyph({ d, size = 18 }: { d: string; size?: number }) {
     </svg>
   );
 }
-const PLUS = "M5 12h14M12 5v14";
+const PLUS = "M3 12h18M12 3v18";
 const RETURN = "M9 10l-5 5 5 5M20 4v7a4 4 0 0 1-4 4H4";
 const MIC =
   "M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3zM19 10v2a7 7 0 0 1-14 0v-2M12 19v3";
 
-const tool =
-  "inline-flex size-9 pointer-coarse:size-11 items-center justify-center rounded-full text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent disabled:opacity-40";
+const tool = `${composerIconControl} mb-0.5 pointer-coarse:mb-0 text-aui-muted hover:text-aui-fg disabled:opacity-40`;
 
 /**
  * What to put in the box: text that replaces the draft or goes ahead of it,

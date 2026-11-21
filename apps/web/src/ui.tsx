@@ -47,6 +47,10 @@ export const button = buttonVariants({ variant: "outline" });
 
 export const primary = buttonVariants();
 
+/** The composer and its footer use the same icon button geometry. */
+export const composerIconControl =
+  "inline-flex size-8 shrink-0 items-center justify-center rounded-aui pointer-coarse:size-11 transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent";
+
 export function Label({
   text,
   hint,
