@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.176.0 (2026-11-21)
+
+### Features
+
+- **console**: show why work failed, what to connect, and rich references in a transcript (#471) ([14fece4](https://github.com/urmzd/humagen/commit/14fece4454933d79cd69d95cbf3901e90b90f4a4))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.175.0...v0.176.0)
+
+
 ## 0.174.2 (2026-11-21)
 
 ### Bug Fixes
