@@ -28,6 +28,7 @@ import { CodeBlock, Terminal } from "./code";
 import { Feedback } from "./feedback";
 import { FileTile } from "./file";
 import { Checkboxes } from "./form";
+import { GitHubRefLink, githubRefOf, remarkGitHubRefs } from "./github-refs";
 import {
   AlertOctagonIcon,
   AlertTriangleIcon,
@@ -132,6 +133,17 @@ const linkRenderer: Components["a"] = ({ href, children }) => {
   const label = textOf(children);
   const cite = CITE.exec(label);
   if (cite?.[1]) return <CitationChip href={href} label={cite[1]} />;
+  const ref = githubRefOf(href);
+  if (ref && href)
+    return (
+      <GitHubRefLink
+        href={href}
+        label={label}
+        bare={ref.kind === "issue" && label.trim() === ref.label}
+      >
+        {children}
+      </GitHubRefLink>
+    );
   return isExternal(href) ? (
     <a href={href} target="_blank" rel="noopener noreferrer">
       {children}
@@ -174,7 +186,7 @@ const markdownComponents: Components = {
 const Inline = memo(function Inline({ text }: { text: string }) {
   return (
     <ReactMarkdown
-      remarkPlugins={[remarkGfm]}
+      remarkPlugins={[remarkGfm, remarkGitHubRefs]}
       components={{ p: ({ children }) => <>{children}</>, a: linkRenderer }}
       allowedElements={["p", "strong", "em", "code", "a", "del"]}
       unwrapDisallowed
@@ -193,7 +205,7 @@ function Text({ text }: PrimitiveProps["Text"]) {
   );
 }
 
-const remarkPlugins = [remarkGfm];
+const remarkPlugins = [remarkGfm, remarkGitHubRefs];
 
 /** One piece of a document, parsed again only when its own text changes. */
 const MarkdownBlock = memo(function MarkdownBlock({ text }: { text: string }) {

@@ -609,7 +609,7 @@ function AnswerView({
               turn={rated}
               copy={copyFor(ask)}
               itemActions={itemActions(run)}
-              capabilities={{ regenerate: false }}
+              capabilities={{ regenerate: false, retryCall: canStop }}
               onAskAgent={onAsk}
               onReply={onReply}
               onRedirect={onRedirect}
@@ -884,6 +884,22 @@ export function ThreadRoom({
     // A review's Ask Follow-up puts its words, tagging the agent, in the box. Nothing is sent.
     if (a.id === ActionId.reviewFollowUp) {
       if (posts && a.payload.text) setSeed({ text: `${a.payload.text} `, mode: "prepend" });
+      return;
+    }
+    // A delegated call that failed is asked again as the next message, tagging its agent.
+    if (a.id === ActionId.retryCall) {
+      if (!posts || !a.payload.target || !a.payload.text) return;
+      setProblem(null);
+      coworking
+        .post(id, { text: `@${a.payload.target} ${a.payload.text}` })
+        .then(() => onChanged())
+        .catch((error) =>
+          setProblem(
+            error instanceof Error
+              ? error.message
+              : defaultCopy.conversation.callFailure.retryFailed,
+          ),
+        );
       return;
     }
     if (a.id === ActionId.retry) {

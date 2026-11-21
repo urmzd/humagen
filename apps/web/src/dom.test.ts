@@ -21,6 +21,7 @@ import { loadTests } from "./testload.ts";
 GlobalRegistrator.register({ url: "http://localhost:5173/" });
 await loadTests([
   "/src/bigquery-connection.dom.test.tsx",
+  "/src/transcript.dom.test.tsx",
   "/src/connection-flows.dom.test.tsx",
   "/src/sidebar-recents.dom.test.tsx",
   "/src/agent-builder.dom.test.tsx",

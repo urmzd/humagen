@@ -26,6 +26,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 
 | ID | Requirement | Status |
 | --- | --- | --- |
+| DES-080 | A transcript says why work failed and what to do next: a failed step or delegated run shows its error's first line with Show Details, the failed count opens the steps at the failures, a failed delegated run offers Retry, a connection the run needed is a card with Connect, GitHub pull requests, issues and commits in an answer are chips, and an open run of steps is a card with each call's input as a table, a command with Copy and a running step's live time | Implemented: `StepGroup`, `ToolRow`, `Elapsed` and `WorkingMark` in `packages/web/src/WorkSteps.tsx`; `AgentCall` and `ConnectCards` in `packages/web/src/AgentMessage.tsx`; `packages/render-web/src/github-refs.tsx`; `ActionId.retryCall`, handled in `Room.tsx`; `needs_connection` on a run (`pkg/runs/connections.go`, recorded by `noteConnectionNeed` in `internal/platform/connection_need.go` when a tool group needs the person's own credential); `Task.startedAt` from the adapter. Evidence: `transcript.dom.test.tsx`, `timeline.dom.test.tsx`, `workspace.dom.test.tsx`, adapter `fold.test.ts` and `run.test.ts`, `TestARunRecordsEachConnectionItNeededOnceWithinBounds`, `TestAToolGroupWithoutThePersonsConnectionIsRecordedOnTheRunAndItsTurn`, `TestOtherExpansionFailuresNameNoConnection`; before and after captures of `transcript-gallery.html` at 1280x800 and 390x844, light and dark (`scripts/screens/transcript.ts`). Not built: Retry on a single tool call (no route runs one call again), a pull request's state and checks on its chip, and a connection named only in the agent's words. Not seen: a live run that records `needs_connection`, and `pnpm validate:slack`. |
 | DES-077 | Background work asked in Slack reports back where it was asked: a watch that fires or runs out, a goal or task that ends, and `notify` reply once in the app's Slack thread that asked, naming the person, with the result's one line and Open Session; anywhere else, or when a run behind it read private context, the person is told in their direct messages; work someone stopped tells nobody | Implemented: `SurfaceNoticesFor` forwards `result` notices only for background work and `notify` (`internal/platform/background_report.go`), with `reply_in` on the event stream (`InboxNotice.reply_in`, `InboxNoticeReply`); the Slack app's `report` in `app.tsx`. Evidence: `TestBackgroundWorkAskedInSlackRepliesInTheThread`, `TestABackgroundResultFromPrivateContextIsSentToThePersonAlone`, `TestBackgroundWorkAskedElsewhereIsSentToTheirDirectMessages`, and the three background tests in `apps/slack/src/dm.test.tsx`. Not yet seen in a live Slack workspace. |
 | DES-078 | An agent in a conversation, a Slack thread among them, proposes a schedule on a clear approval card ("Create a schedule: plaud-new, every 15 minutes, posts in this Slack channel (C0PLAUD) only when something fires", with what it checks, how often, the agent, where it posts and its next run), confirms the next run once approved, and Run once now is itself an approved action | Implemented: run tools `create_schedule`, `update_schedule`, `pause_schedule`, `resume_schedule` and `run_schedule` (`schedule_tools.go`) call the API's own routes as the person, every call asked of that person whatever the policy allows; the card's fields come from `schedulePreview` (`packages/adapter/src/schedule.ts`), words in `copy.schedules.proposal`. Evidence: `TestAnAgentSchedulesWorkForThePersonItWorksFor`, `TestEveryScheduleCallIsAskedOfThePerson`, `TestScheduleToolsRefuseRunsThatActForNoPerson`, adapter `schedule.test.ts`. Not checked: the card in a live Slack workspace or against Slack's validator (no network here), and a live model proposing one. See [schedules from a conversation](../guides/schedules-from-a-conversation.md) |
 | DES-079 | Run and Answer: in a session set to it, the approval agent also answers a question an agent asks a person when the session already settles it, as the person who chose it, and hands them the rest | Implemented: `threads.ApprovalDecide` (`pkg/threads/approval.go`), `internal/platform/approval_questions.go`, the `answer` field and `DescribeQuestion` in `pkg/approve`, `PUT /api/threads/{id}/approval` with `decide`, Answer Questions beside Run in `ApprovalToggle.tsx`, and the judgement on a question's card (`ClarificationCard`). Evidence: `TestRunAndAnswerAnswersAChoiceTheSessionSettles`, `TestRunAndAnswerAnswersAReply`, `TestWhatRunAndAnswerDoesNotSettleWaitsForAPerson`, `TestRunAndAnswerNeverAnswersForSomeoneElse`, `TestRunAndAnswerLeavesWhatSomeoneElseAskedFor`, `TestRunLeavesQuestionsForAPerson`, `TestRunAndAnswerIsAModeAPersonChooses`, `TestApprovalModeIsSetOnItsOwnAndKept`, `TestAQuestionsAnswerIsReadBesideTheDecision`; `approval-toggle.dom.test.tsx`, `ui.test.tsx`. Not run: `pnpm validate:slack` (needs the Slack bench) and a screen check in a running console. |
@@ -2355,6 +2356,34 @@ fixture data in a harness that was not committed, every group, a query, no
 match, the failed read, and Terminal and Browser standing in as built. Not seen:
 a real pull request, file or browser step from a live run, and the real
 Terminal and Browser tabs taking a result.
+
+### DES-080: Failures, connections and references in a transcript
+
+- A failed step says why under its row: the first line of its error, without
+  the runtime's "action failed:" lead, in the bad tone, with Show Details for
+  the rest. A run of steps counts its failures beside its line; the count is
+  its own button that opens the run at the first failed step.
+- A failed call to another agent says why under its item, with Show Details,
+  which opens its run, and Retry where the host can post: it asks the same
+  agent the same brief as the conversation's next message
+  (`ActionId.retryCall`). There is no Retry on a single tool call, since no
+  route runs one call again.
+- A connection a run needed is said by the platform, not read from the
+  answer: when a tool group needs the person's own credential and they have
+  none (`ErrNoPersonCredential`), the run and the turn it belongs to record
+  `needs_connection`. A finished turn then ends with a card per connection:
+  "GitHub is not connected", a line on what to do, and Connect GitHub, which
+  opens `/settings/plugins/<provider>`.
+- A pull request, issue or commit address in an answer, and a written
+  `owner/repo#123`, is a chip: its mark and its short name, still a link. A
+  written reference does not say whether it is a pull request or an issue, so
+  it carries GitHub's mark. Inline code is left as code.
+- Open, a run of steps is a card with one row per call. A call's input is a
+  table of names and values; a command is a block of its own with Copy. A
+  running step has a working mark that takes turns (still when motion is
+  reduced) and counts its time each second; a running command shows what it
+  runs. A finished step says how long it took.
+- The one-line summaries stay muted and the agent's words primary.
 
 ### DES-079: Run and Answer
 

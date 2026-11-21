@@ -555,6 +555,18 @@
 .aui-prose :where(a:not([data-aui-cite])):hover {
   text-decoration-color: var(--aui-accent);
 }
+/* A GitHub reference: its mark, then its name, underlined alone. */
+.aui-prose a.aui-ref {
+  text-decoration: none;
+}
+.aui-prose a.aui-ref > span {
+  text-decoration: underline;
+  text-decoration-color: color-mix(in oklab, var(--aui-accent) 40%, transparent);
+  text-underline-offset: 2px;
+}
+.aui-prose a.aui-ref:hover > span {
+  text-decoration-color: var(--aui-accent);
+}
 .aui-prose :where(strong) {
   font-weight: 600;
 }

@@ -51,9 +51,11 @@ const scenes: Scene[] = [
     act: async (page) => {
       const line = page.locator('[data-testid="step-group"] button[aria-expanded="false"]').first();
       if (await line.count()) await line.click();
-      // Open the command's own row to its input and output.
-      const row = page.locator('[data-testid="tool-row"][data-tool="bash"] button').first();
-      if (await row.count()) await row.click();
+      // Open the command's row and the tool search's row to their input and output.
+      for (const tool of ["bash", "tool_search"]) {
+        const row = page.locator(`[data-testid="tool-row"][data-tool="${tool}"] button`).first();
+        if (await row.count()) await row.click();
+      }
     },
   },
   { name: "running-step", scene: "running" },

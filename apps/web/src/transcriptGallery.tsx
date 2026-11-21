@@ -32,7 +32,12 @@ function Transcript() {
         </div>
         <WebSurface>
           <AgentTint name={turn.agent.name}>
-            <AgentMessage turn={turn} disclaimer={false} activity={false} />
+            <AgentMessage
+              turn={turn}
+              disclaimer={false}
+              activity={false}
+              capabilities={{ retryCall: true }}
+            />
           </AgentTint>
         </WebSurface>
       </div>
