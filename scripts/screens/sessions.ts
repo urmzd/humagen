@@ -163,6 +163,39 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
       },
     },
     {
+      name: "home-projects",
+      path: "/",
+      act: async (page) => {
+        const load = Promise.withResolvers<void>();
+        await page.route(
+          (url) => url.pathname === "/api/projects" && url.searchParams.has("limit"),
+          async (route) => {
+            await load.promise;
+            await route.continue();
+          },
+        );
+        const projects = page.getByRole("region", {
+          name: defaultCopy.projects.title,
+          exact: true,
+        });
+        let before: { y: number } | null;
+        try {
+          await page.reload({ waitUntil: "domcontentloaded" });
+          await composer(page).waitFor();
+          await page.evaluate(() => document.fonts.ready);
+          assert.equal(await projects.count(), 0, "No section is drawn without project data");
+          before = await composer(page).boundingBox();
+        } finally {
+          load.resolve();
+        }
+        const project = projects.getByRole("link", { name: "Launch", exact: true });
+        await project.waitFor();
+        assert.equal(await project.getAttribute("href"), "/projects/Launch");
+        const after = await composer(page).boundingBox();
+        assert.ok(before && after && Math.abs(before.y - after.y) <= 1, "The composer stays put");
+      },
+    },
+    {
       // Nothing seeds an artifact (there is no model to publish one), so the
       // strip is drawn from three answered here, as the list route answers.
       name: "home-made",
