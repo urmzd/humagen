@@ -3,7 +3,8 @@ import { BellIcon, BotIcon, PlugIcon, ShieldIcon, UserIcon } from "@humagen/rend
 import { Toaster } from "@humagen/render-web/ui/sonner";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Run, RunEvent } from "./adapter.ts";
-import { agentHuePath, configureAgentHues } from "./agentHues.ts";
+import { agentHuePath, configureAgentHues, setAgentLooks } from "./agentHues.ts";
+import { drawAgentLooks } from "./agentLooks.ts";
 import {
   type Alert,
   type AlertRule,
@@ -110,6 +111,9 @@ import { WorkspaceTabs } from "./WorkspaceTabs.tsx";
 import { hubTabs, settingsPageLabel, workspaceHub } from "./workspace-navigation.ts";
 import { useBrandingStyle } from "./workspaceBranding.ts";
 
+// Every agent mark draws the look its agent chose.
+drawAgentLooks();
+
 type Session =
   | { state: "loading" }
   | { state: "signed-out" }
@@ -130,9 +134,7 @@ export function App({ preloaded = null }: { preloaded?: Branding | null } = {}) 
       // A caller with no permission at all is sent null, not an empty list.
       .then((me) => {
         const huePath = agentHuePath(me.permissions ?? []);
-        configureAgentHues(
-          huePath ? (names) => api.agentHues(names, huePath).then((r) => r.hues) : undefined,
-        );
+        configureAgentHues(huePath ? (names) => api.agentHues(names, huePath) : undefined);
         // The workspace's branding is read before the console draws, so its
         // text is in place from the first frame and one brand never flashes
         // in for another.
@@ -436,6 +438,10 @@ function Console({
     api
       .agentList()
       .then((r) => {
+        setAgentLooks(
+          r.looks ?? {},
+          r.agents.map((a) => a.spec.name),
+        );
         setAgentHues(r.hues ?? {});
         setAgents(r.agents);
         setAgentRead("ready");

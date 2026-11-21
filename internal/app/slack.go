@@ -144,7 +144,7 @@ func slackManifest(name string, c slackCopy) SlackManifest {
 	m.Features.AgentView.Description = "Ask anything. " + name + " brings in the right agents and answers here."
 	m.Features.AgentView.SuggestedPrompts = []string{}
 	m.OAuth.Scopes.Bot = []string{
-		"app_mentions:read", "assistant:write", "channels:history", "chat:write", "commands",
+		"app_mentions:read", "assistant:write", "channels:history", "chat:write", "chat:write.customize", "commands",
 		"groups:history", "im:history", "mpim:history", "reactions:write", "users:read",
 		"files:read", "files:write", "canvases:write",
 	}
