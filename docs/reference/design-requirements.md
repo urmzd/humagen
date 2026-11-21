@@ -2090,6 +2090,8 @@ preserves routing; Delete requests administrator review and does not remove the
 record directly. Canonical sharing uses project access without a channel picker.
 Bring Back is offered inside Fork for a completed fork result and retains the
 existing consent review. Approval controls say Ask a question and Decline action.
+The console puts Approve and Decline together, then Ask a question; its Decline
+keeps Decline action in its accessible name.
 Failure debug references are kept out of the everyday response and remain in the
 explicit issue-report draft.
 
