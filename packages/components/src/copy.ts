@@ -3248,12 +3248,27 @@ export const defaultCopy = {
     archiveFailed: "Could not archive. Try again.",
     unarchiveFailed: "Could not bring it back. Try again.",
     undo: "Undo",
-    /** What a row's dot says, for a screen reader and the row's tooltip. */
+    /** What a row's state mark says, for a screen reader and the mark's tooltip. */
     standing: {
       needs: "Needs you",
       running: "Running",
       failed: "A reply failed",
       unread: "Unread",
+    },
+    /** Where a session started, said by its row's leading mark and to a screen reader. */
+    sources: {
+      console: "Started in the console",
+      slack: "From a Slack thread",
+      slack_dm: "From a Slack DM",
+      github: "From GitHub",
+      scheduled: "From a schedule",
+      assignment: "From an assignment",
+    },
+    /** An open alert on a session, by how urgent it is. */
+    alert: {
+      urgent: "Urgent alert",
+      normal: "Alert",
+      low: "Low priority alert",
     },
     /** How long ago a conversation moved, from its row's age: "now", "5h", "2d". */
     movedAgo: (age: string) => (age === "now" ? "Just now" : `${age} ago`),

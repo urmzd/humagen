@@ -1542,6 +1542,8 @@ export interface ThreadSummary {
   visibility: ThreadVisibility;
   /** How many messages people have posted in it. */
   messages: number;
+  /** Where it started when that was not the console or the API, read from the Slack thread it lives on or the place its session was started from. Absent for the console and the API. A run's `origin` cannot say this, as a Slack message posts to its thread through the API. */
+  source?: "slack" | "slack_dm" | "github" | "scheduled";
   turns: number;
   branches: number;
   /** How many of its runs are in flight. */
