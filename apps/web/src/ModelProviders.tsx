@@ -264,7 +264,7 @@ export function ModelProviderSettings({
             aria-busy={changing[m.name] || undefined}
             aria-disabled={pending || undefined}
             disabled={!canEdit}
-            className="relative aria-disabled:cursor-wait aria-disabled:opacity-50 pointer-coarse:before:absolute pointer-coarse:before:-inset-y-2.5 pointer-coarse:before:inset-x-0"
+            className="relative aria-disabled:cursor-wait aria-disabled:opacity-50 data-[state=unchecked]:border-aui-muted data-[state=unchecked]:[&>[data-slot=switch-thumb]]:bg-aui-muted pointer-coarse:before:absolute pointer-coarse:before:-inset-y-2.5 pointer-coarse:before:inset-x-0"
             onCheckedChange={(enabled) => {
               if (!pending) void setEnabled(m.name, enabled);
             }}
