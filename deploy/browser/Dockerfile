@@ -37,8 +37,9 @@ RUN npm install --omit=dev --no-audit --no-fund --no-update-notifier \
 
 COPY entrypoint.sh /opt/browser/entrypoint.sh
 
-# Not root, and a home Chromium may write its caches to. /var/lib/humagen-browser
-# holds downloads and capture files; mount a volume there to keep them.
+# Not root. /home/browser holds the browser's profile (its sign-ins) and
+# /var/lib/humagen-browser its downloads and capture files: mount a volume at
+# either to keep it past the container.
 RUN useradd --uid 10001 --create-home --shell /usr/sbin/nologin browser \
     && mkdir -p /var/lib/humagen-browser \
     && chown browser:browser /var/lib/humagen-browser \

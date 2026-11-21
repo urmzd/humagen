@@ -85,9 +85,14 @@ func TestBrowserImagePinsTheReviewedVersion(t *testing.T) {
 	if launcher[1] != image[1] {
 		t.Fatalf("deploy/browser/Dockerfile runs Playwright MCP %s, examples/browser/start.sh %s: the accepted tool hashes are for one version", image[1], launcher[1])
 	}
-	// The image starts the same server the launcher's isolated mode does.
 	entry := read("deploy/browser/entrypoint.sh")
-	for _, flag := range []string{"--headless", "--isolated", "--no-webmcp", "--image-responses allow"} {
+	// The image serves images to the model as the launcher does, and one
+	// browser to every client (TestBrowserLiveIsOneBrowserForEveryClient).
+	// With --isolated, this version gives each client a browser of its own.
+	if strings.Contains(entry, "--isolated") {
+		t.Fatal("deploy/browser/entrypoint.sh passes --isolated: each Humagen process would then have a browser of its own")
+	}
+	for _, flag := range []string{"--headless", "--shared-browser-context", "--no-webmcp", "--image-responses allow"} {
 		if !strings.Contains(entry, flag) {
 			t.Fatalf("deploy/browser/entrypoint.sh does not pass %s", flag)
 		}
@@ -158,7 +163,11 @@ func TestBrowserLive(t *testing.T) {
 		}
 		return out
 	}
-	defer func() { call("browser_close", nil) }()
+	// The browser image's one browser is every client's, and no client may
+	// close it (TestBrowserLiveIsOneBrowserForEveryClient).
+	if os.Getenv("HUMAGEN_BROWSER_SHARED") == "" {
+		defer func() { call("browser_close", nil) }()
+	}
 	call("browser_navigate", map[string]any{"url": browserFixtureURL(t, page.URL)})
 	if size := os.Getenv("HUMAGEN_BROWSER_VIEWPORT"); size != "" {
 		var width, height int
@@ -222,6 +231,99 @@ func TestBrowserLive(t *testing.T) {
 	}
 	capture("after")
 	t.Log("real navigation, changed page, downloaded CSV bytes, and before/after PNG pixels passed")
+}
+
+// TestBrowserLiveIsOneBrowserForEveryClient checks the browser image's
+// promise: two clients, as a server pod and a worker pod are, see one page
+// and one set of sign-ins. Set HUMAGEN_BROWSER_SHARED=1 beside
+// HUMAGEN_BROWSER_MCP_URL for a worker started from deploy/browser. The
+// launcher's isolated mode gives each client its own, so this is not run for it.
+func TestBrowserLiveIsOneBrowserForEveryClient(t *testing.T) {
+	endpoint := os.Getenv("HUMAGEN_BROWSER_MCP_URL")
+	if endpoint == "" || os.Getenv("HUMAGEN_BROWSER_SHARED") == "" {
+		t.Skip("set HUMAGEN_BROWSER_MCP_URL and HUMAGEN_BROWSER_SHARED=1 for a running browser image")
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
+	defer cancel()
+	page := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		if r.URL.Path == "/sign-in" {
+			http.SetCookie(w, &http.Cookie{Name: "signed", Value: "in", Path: "/"})
+			_, _ = w.Write([]byte(`<!doctype html><title>Sign in</title><h1>Signed in</h1>`))
+			return
+		}
+		state := "signed out"
+		if c, err := r.Cookie("signed"); err == nil && c.Value == "in" {
+			state = "still signed in"
+		}
+		_, _ = w.Write([]byte(`<!doctype html><title>Account</title><h1>Account: ` + state + `</h1>`))
+	}))
+	defer page.Close()
+	accepted := browserAccepted(t)
+	client := func() func(string, map[string]any) string {
+		provider := toolprovider.Provider{Tenant: "browser-test", Name: "browser", Transport: toolprovider.TransportHTTP, Endpoint: endpoint}
+		session, err := mcptools.Connect(ctx, provider)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = session.Close() })
+		set, err := session.Toolset(ctx, toolprovider.Snapshot{Tenant: provider.Tenant, Provider: provider.Name, Tools: accepted}, toolprovider.GrantWrite)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return func(name string, args map[string]any) string {
+			t.Helper()
+			tool, err := set.Lookup("browser__" + name)
+			if err != nil {
+				t.Fatal(err)
+			}
+			out, err := tool.Execute(ctx, args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return out
+		}
+	}
+	server, worker := client(), client()
+	base := browserFixtureURL(t, page.URL)
+	// A person signs in from the console's tab, on the server's connection.
+	server("browser_navigate", map[string]any{"url": base + "/sign-in"})
+	// A run on a worker's connection then opens a page that needs the sign-in.
+	worker("browser_navigate", map[string]any{"url": base + "/account"})
+	if seen := worker("browser_snapshot", nil); !strings.Contains(seen, "still signed in") {
+		t.Fatalf("the second client did not have the first client's sign-in: %s", seen)
+	}
+	// And the console's tab shows the page the run left the browser on.
+	if seen := server("browser_snapshot", nil); !strings.Contains(seen, "Account: still signed in") {
+		t.Fatalf("the first client does not see the page the second opened: %s", seen)
+	}
+	// No client may close the browser the others are using.
+	tool, err := sharedTool(t, ctx, endpoint, accepted, "browser_close")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out, err := tool.Execute(ctx, nil); err == nil || !strings.Contains(err.Error(), "shared between clients") {
+		t.Fatalf("closing the shared browser was not refused: %q, %v", out, err)
+	}
+	if seen := worker("browser_snapshot", nil); !strings.Contains(seen, "Account: still signed in") {
+		t.Fatalf("the page did not survive a refused close: %s", seen)
+	}
+}
+
+// sharedTool is one accepted browser tool on a connection of its own.
+func sharedTool(t *testing.T, ctx context.Context, endpoint string, accepted []toolprovider.Tool, name string) (saigetypes.Tool, error) {
+	t.Helper()
+	provider := toolprovider.Provider{Tenant: "browser-test", Name: "browser", Transport: toolprovider.TransportHTTP, Endpoint: endpoint}
+	session, err := mcptools.Connect(ctx, provider)
+	if err != nil {
+		return nil, err
+	}
+	t.Cleanup(func() { _ = session.Close() })
+	set, err := session.Toolset(ctx, toolprovider.Snapshot{Tenant: provider.Tenant, Provider: provider.Name, Tools: accepted}, toolprovider.GrantWrite)
+	if err != nil {
+		return nil, err
+	}
+	return set.Lookup("browser__" + name)
 }
 
 // browserFixtureURL is the address the browser worker opens this test's page
