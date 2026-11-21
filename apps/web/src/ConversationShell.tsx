@@ -99,8 +99,14 @@ export function ConversationPage({
   onArtifact,
   children,
   actions,
+  views,
+  titleControl,
 }: {
   actions?: ReactNode;
+  /** The session's view controls (SessionViews), in place of the Details button alone. */
+  views?: ReactNode;
+  /** The title as a control, such as a menu of what can be done to the session. */
+  titleControl?: ReactNode;
   title: string;
   project: string;
   private: boolean;
@@ -126,7 +132,7 @@ export function ConversationPage({
     >
       <Page
         layout="conversation"
-        title={title}
+        title={titleControl ?? title}
         meta={
           <span className="inline-flex flex-wrap items-center gap-x-3">
             <span>{project}</span>
@@ -137,23 +143,25 @@ export function ConversationPage({
           <>
             {/* Icons only, in a fixed order: where it started, Details, People, then the ⋯ menu. */}
             {origin}
-            <button
-              type="button"
-              data-session-details
-              data-working={progress?.working ? "" : undefined}
-              className={`${headerIcon} gap-0.5 ${progress?.working ? "text-aui-accent" : ""}`}
-              aria-label={defaultCopy.details.open(progress?.open ?? 0)}
-              title={defaultCopy.details.open(progress?.open ?? 0)}
-              aria-expanded={!!activePanel && activePanel !== "people"}
-              onClick={() =>
-                activePanel && activePanel !== "people" ? onClosePanel?.() : onPanel("details")
-              }
-            >
-              <ListChecksIcon size={18} />
-              {!!progress?.open && (
-                <span className="text-aui-xs tabular-nums">{progress.open}</span>
-              )}
-            </button>
+            {views ?? (
+              <button
+                type="button"
+                data-session-details
+                data-working={progress?.working ? "" : undefined}
+                className={`${headerIcon} gap-0.5 ${progress?.working ? "text-aui-accent" : ""}`}
+                aria-label={defaultCopy.details.open(progress?.open ?? 0)}
+                title={defaultCopy.details.open(progress?.open ?? 0)}
+                aria-expanded={!!activePanel && activePanel !== "people"}
+                onClick={() =>
+                  activePanel && activePanel !== "people" ? onClosePanel?.() : onPanel("details")
+                }
+              >
+                <ListChecksIcon size={18} />
+                {!!progress?.open && (
+                  <span className="text-aui-xs tabular-nums">{progress.open}</span>
+                )}
+              </button>
+            )}
             {/* One control for who is in it: Share where it can be shared, else People & Access. Both open the same panel. */}
             {personal && onProject ? (
               <button
