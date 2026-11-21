@@ -11,10 +11,12 @@ import {
   MonitorIcon,
   PlugIcon,
   ServerIcon,
+  SettingsIcon,
 } from "@humagen/render-web";
 import { type ReactNode, useEffect, useId, useState } from "react";
 import type { Run } from "./adapter.ts";
 import { api, type ToolCredential } from "./api.ts";
+import { Reference } from "./cards.tsx";
 import type { PaneTab } from "./pane.ts";
 import { href, type WorkbenchTabId } from "./route.ts";
 import {
@@ -32,6 +34,7 @@ import {
 } from "./sessionContext.ts";
 import { type SessionOptions, useSessionOptions } from "./sessionOptions.ts";
 import type { SessionSummary } from "./sessionSummary.ts";
+import type { Reference as Ref } from "./trace.ts";
 import { menuRow, UsageMeter } from "./ui.tsx";
 import { costWords, count } from "./usage.ts";
 import { type ConversationSandboxes, workspaceFiles } from "./workspace-files.ts";
@@ -286,6 +289,7 @@ export function EnvironmentSection({
         mark={<LayersIcon size={16} />}
         label={image.name}
         sub={words.imageSub(image.pin, options?.sandbox ?? "")}
+        value={<SettingsIcon size={14} aria-label={words.manageImages} />}
         href={href({ page: "settings", section: "images" })}
       />
       <Row
@@ -486,7 +490,65 @@ function ContextBreakdown({ id, use }: { id: string; use: ContextUse }) {
  * connected, with those this session used marked. It opens to the list; the
  * list ends with the way to manage them.
  */
-export function ConnectorsSection({ summary }: { summary: SessionSummary }) {
+/**
+ * Where a session is attached, as references that open where they live: the
+ * Slack thread it is, then the Slack posts and GitHub issues it made. Pull
+ * requests are Changes, not here.
+ */
+export function attachedTo(origin: Ref | undefined, summary: SessionSummary): Ref[] {
+  const out: Ref[] = [];
+  if (origin && (origin.kind === "slack" || origin.kind === "github"))
+    out.push({ ...origin, label: origin.kind === "slack" ? words.slackThread : origin.label });
+  for (const o of summary.outputs) {
+    if ((o.kind !== "slack" && o.kind !== "issue") || !o.url) continue;
+    if (out.some((r) => r.url === o.url)) continue;
+    out.push({ kind: o.kind === "slack" ? "slack" : "github", label: o.title, url: o.url });
+  }
+  return out;
+}
+
+/** How many rows of a list show before Show More. */
+export const ROWS_SHOWN = 5;
+
+/** The first rows of a list, and a Show More that shows the rest. */
+export function ShowMoreList<T>({
+  items,
+  children,
+  shown = ROWS_SHOWN,
+}: {
+  items: readonly T[];
+  children: (item: T) => ReactNode;
+  shown?: number;
+}) {
+  const [all, setAll] = useState(false);
+  return (
+    <>
+      {(all ? items : items.slice(0, shown)).map(children)}
+      {!all && items.length > shown && (
+        <li>
+          <button
+            type="button"
+            onClick={() => setAll(true)}
+            data-testid="panel-show-more"
+            className="inline-flex min-h-9 items-center rounded-aui px-2.5 text-aui-muted text-aui-sm hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
+          >
+            {words.showMore(items.length - shown)}
+          </button>
+        </li>
+      )}
+    </>
+  );
+}
+
+export function ConnectorsSection({
+  summary,
+  origin,
+}: {
+  summary: SessionSummary;
+  /** Where the session started, when that is a Slack thread or a GitHub item. */
+  origin?: Ref;
+}) {
+  const attached = attachedTo(origin, summary);
   const [list, setList] = useState<ToolCredential[] | null>();
   const [expanded, setExpanded] = useState(false);
   const id = useId();
@@ -507,10 +569,29 @@ export function ConnectorsSection({ summary }: { summary: SessionSummary }) {
     (u) => !(list ?? []).some((c) => c.provider.toLowerCase() === u.toLowerCase()),
   );
   const total = connected.length + others.length;
-  if (list === undefined && used.length === 0) return null;
-  if (list !== null && list !== undefined && list.length === 0 && used.length === 0) return null;
+  const none = used.length === 0 && attached.length === 0;
+  if (list === undefined && none) return null;
+  if (list !== null && list !== undefined && list.length === 0 && none) return null;
   return (
     <Section label={words.connectors} testId="connectors" quiet>
+      {attached.length > 0 && (
+        <li>
+          <span className="block px-2.5 pt-1 text-aui-muted text-aui-xs">{words.attached}</span>
+          <ul className="flex flex-col gap-1 px-2.5 py-1" data-testid="panel-attached">
+            <ShowMoreList items={attached}>
+              {(r) => (
+                <li key={r.url ?? r.label} className="flex min-w-0">
+                  <Reference
+                    kind={r.kind === "other" ? "url" : r.kind}
+                    label={r.label}
+                    href={r.url}
+                  />
+                </li>
+              )}
+            </ShowMoreList>
+          </ul>
+        </li>
+      )}
       <Row
         testId="panel-connectors"
         mark={<PlugIcon size={16} />}
@@ -684,6 +765,7 @@ export function SessionSections({
   open,
   outputs,
   chosen,
+  origin,
 }: {
   chosen?: SessionChoice;
   thread: string | undefined;
@@ -693,6 +775,8 @@ export function SessionSections({
   open: PanelOpen;
   /** Details' own Outputs section, drawn between Connectors and Changes. */
   outputs?: ReactNode;
+  /** Where the session started, when that is a Slack thread or a GitHub item. */
+  origin?: Ref;
 }) {
   const pulls = pullsOf(summary);
   const facts = usePulls(pulls);
@@ -708,7 +792,7 @@ export function SessionSections({
       />
       <div className="-my-1 flex flex-col border-[var(--humagen-rule)] border-y py-1">
         <ContextSection runs={runs} />
-        <ConnectorsSection summary={summary} />
+        <ConnectorsSection summary={summary} origin={origin} />
       </div>
       {outputs}
       <PanelChanges
