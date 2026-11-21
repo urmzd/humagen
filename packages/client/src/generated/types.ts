@@ -101,6 +101,24 @@ export interface ScratchpadList {
   limit: 50;
 }
 
+/** What a conversation has used so far, read from its run index. A run
+called by another counted run is already in its caller's total and is
+not added again. When `truncated` is true the index read hit its cap and
+every figure is a lower bound.
+ */
+export interface ThreadUsage {
+  /** How many runs were counted. */
+  runs: number;
+  usage: Usage;
+  /** Each agent's own calls, the dearest first (cost, then tokens, then name), at most 20. */
+  agents: ThreadUsageAgentsItem[];
+  /** The context fill of the most recent run that reported one. */
+  context?: ThreadUsageContext;
+  /** How many counted runs have not ended. */
+  working: number;
+  truncated: boolean;
+}
+
 export interface ScratchpadInput {
   /** 1 to 80 printable characters without a slash, unique in the conversation in any case. */
   name: string;
@@ -6135,6 +6153,20 @@ export interface BigQuerySetupView {
   oauth_connectors: string[];
   adc: BigQueryAdcScope[];
   credential_refs: string[];
+}
+
+export interface ThreadUsageAgentsItem {
+  agent: string;
+  runs: number;
+  usage: Usage;
+}
+
+export interface ThreadUsageContext {
+  run: string;
+  agent: string;
+  model?: string;
+  window?: number;
+  tokens?: number;
 }
 
 export interface GitHubSubjectPullRequest {
