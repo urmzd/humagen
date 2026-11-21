@@ -688,7 +688,15 @@ Profile, Notifications, Privacy and workspace administration share compact
 a direct Memory link and one aligned save action. Audit uses a shared
 Radix/react-day-picker calendar with local date/time inputs, host conversion to
 ISO timestamps and positive-range validation capped at 31 days. Compact event
-rows expand retained details; resource, Refresh and Export actions carry icons.
+rows expand retained details. Resource, Refresh and Export actions carry icons.
+Workspace changes and administrator-only break-glass reads share the Audit
+destination, and the former Read Audit address opens it. A break-glass read the
+reads section lists is left out of the changes list, so it shows once; a read
+that section does not list stays among the changes, and the CSV export keeps
+every row. Both are boxed `Section`s: a heading's count is hidden at zero, and a
+list as long as the server's 100-record cap says so in place of a count. Route
+and DOM tests cover the legacy address, the permission-gated read request, the
+single listing, the empty headings and the cap.
 Announcements use a compact card, one Open
 Announcement action and a labeled eye-with-slash Hide button with a busy guard.
 
