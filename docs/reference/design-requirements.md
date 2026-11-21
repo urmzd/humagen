@@ -26,6 +26,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 
 | ID | Requirement | Status |
 | --- | --- | --- |
+| DES-082 | A project's page is a chat landing page: one surface with a trail back to Projects and its menu at the top, its title and one-line description, and the conversation's floating composer pinned at the bottom. A project with no sessions leads with its setup as steps to get started, each done or not, with how many are done; once it has sessions it leads with Recents, and the setup is a summary beside them, folded above them on a phone. Setup and Recents are plain rows on hairlines, never boxed cards or "No ..." lines | Implemented: `ProjectPage`, `Setup`, `SetupRow`, `Recents` (`apps/web/src/Projects.tsx`), `ComposerDock` and `useComposerDock` shared with `Thread` (`packages/web/src/Thread.tsx`). Evidence: `projects.dom.test.tsx`; before and after captures at 1280x800 and 390x844, light and dark, on the pull request. |
 | DES-080 | A session has one panel, reached from its header, that shows where it runs, how full its context is, the connectors it may reach, what it made and what it changed, and each row opens the view it names; the header opens the workbench's views directly and the rest from More Views, and its title is the session's menu | Implemented: `SessionViews.tsx` (Details, Terminal, Changes, Browser and Files in the header; Artifacts, Side Chat ⌘;, Search ⌘⇧F, Background Tasks and Progress in More Views; on a phone all of them in More Views), `SessionSections.tsx` and `sessionContext.ts` (Environment, Context, Connectors, Changes), the title menu with Rename in place (`SessionActions.tsx`), the meta line said once (`SessionPlace.tsx`), and session titles without a leading mention, retitled after a greeting (`runs.SessionTitle`, `runs.Greeting`). No new route: the panel reads `GET /api/threads/{id}/sandboxes`, `GET /api/me/credentials`, `GET /api/github/pull` and each run's usage. Evidence: `session-context-panel.dom.test.tsx`, `TestSessionTitle*`, `TestGreeting`; before and after captures at 1280x800 and 390x844, light and dark, against a docker sandbox. |
 | DES-080 | A conversation is one surface with the composer floating over it, on a named z-index scale, and Stop works at two levels: the composer stops everything in the session, each running agent, call to another agent, step and background task stops from its own row; the composer's footer says who answers, the approval mode and a usage ring that opens the session's usage and the limits that hold it | Implemented: `Thread` `footer` (`packages/web/src/Thread.tsx`), the `--aui-z-*` scale (`packages/render-web/src/theme.css`), `ItemStopControl` and `ItemStopsContext` (render-web `stop.tsx`, `meta.tsx`), `Composer` `stopAll` and `footer`, `stops.tsx`, `SessionUsage.tsx`, `GET /api/threads/{id}/usage` (`internal/platform/session_usage.go`). Evidence: `composer-overlay.dom.test.tsx`, `TestThreadUsage*` and `foldUsage` tests; before and after captures at 1280x800 and 390x844, light and dark, on PR #474. Not done: Run in Background for a call already running (the runtime starts a call in the background only when the model asks, with `background: true`); a real iOS keyboard. |
 | DES-080 | A conversation is one surface with the composer floating over it, on a named z-index scale, and Stop works at two levels: the composer stops everything in the session, each running agent, call to another agent, step and background task stops from its own row; the composer's footer says who answers, the approval mode and a usage ring that opens the session's usage and the limits that hold it | Implemented: `Thread` `footer` (`packages/web/src/Thread.tsx`), the `--aui-z-*` scale (`packages/render-web/src/theme.css`), `ItemStopControl` and `ItemStopsContext` (render-web `stop.tsx`, `meta.tsx`), `Composer` `stopAll` and `footer`, `stops.tsx`, `SessionUsage.tsx`, `GET /api/threads/{id}/usage` (`internal/platform/session_usage.go`). Evidence: `composer-overlay.dom.test.tsx`, `TestThreadUsage*` and `foldUsage` tests; before and after captures at 1280x800 and 390x844, light and dark, on PR #474. Not done: Run in Background for a call already running (the runtime starts a call in the background only when the model asks, with `background: true`); a real iOS keyboard. |
@@ -894,6 +895,49 @@ approval, disabled early approval, restoration, refusal and the combined menu.
 - A call is not drawn as a task row with a work step count.
 - Acceptance: a turn with a subagent shows the call as a message with both
   agents' marks and the prompt, the answer under it, and collapses when ended.
+
+### DES-082: A project's page is a chat landing page
+
+Owner request: "keep the project page like a normal chat landing page with
+the different steps/items in the top area with the prompt bar in the bottom
+so the users can either start by sending a message or by updating their
+project settings", with a clean outlook.
+
+- The page has the conversation's shape: a title row at the top (a trail,
+  Projects / the project, and the ⋯ menu), one background under it, and the
+  composer floating over its bottom through the same `ComposerDock` a
+  conversation uses, on `--aui-z-composer`. Whatever scrolls under it clears
+  it by `--aui-thread-dock-h`. Under the title row: the project's title and
+  its description in one muted line. The composer's placeholder is "New
+  session in <project>". Its footer is Home's: the project picker, set to
+  this project, and the approval mode at its left. It offers no model or
+  effort (DES-067).
+- The setup is one row per part: Instructions, Context, Memory, Scheduled and
+  External references, each with its mark, its name, a muted line on what it
+  holds ("2 corpora", "1 schedule", the instructions' first line) and one
+  action at the right (Add, Edit, View) that opens a sheet beside the page.
+  A part that holds nothing has no line; its row says Add. Who can see the
+  project is one muted line under the rows, with Change. Rows sit on
+  hairlines with no box, and the whole row is the action's target.
+- What leads depends on whether there is anything to resume. A project with
+  no sessions leads with its setup as **Get started**: each row's mark is a
+  ring or a check, and the heading says how many are done ("2 of 5 set up").
+  A project with sessions leads with **Recents** in the main column, and its
+  setup is a summary in a narrow column beside them, with the count only
+  while something is not set up. Below 48rem the summary comes first and
+  folds under its heading until Show opens it, so Recents stays in view; the
+  steps never fold. Recents leads once sessions exist because returning to
+  work is what a person comes back for, while the setup is changed rarely.
+- A row in Recents is the session's title and, at the right, when it last
+  changed. Its state is said in words before the time only when it needs a
+  look (Working, Waiting, Failed). Rows carry no marks, chips or origins; the
+  sidebar's rows say where a session started (DES-054).
+- On a phone the composer stays pinned at the bottom above the home
+  indicator and rises with the keyboard, as in a conversation; its footer
+  is Home's footer, as on Home's own page.
+- The page is not drawn with `Page`'s plain layout: like a conversation, it
+  needs a surface of its own under the title row for the composer to float
+  over. Its loading and missing states still use `Page`.
 
 ### DES-080: One surface, a floating composer, Stop at two levels
 
