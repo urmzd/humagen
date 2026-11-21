@@ -29,6 +29,7 @@ import {
   followTraces,
   type TraceLoader,
 } from "./responseSource.ts";
+import { type PanelOpen, Row, Section, SessionSections } from "./SessionSections.tsx";
 import {
   type Output,
   type SavedFile,
@@ -39,7 +40,7 @@ import {
   type UsedKey,
 } from "./sessionSummary.ts";
 import type { Reference as Ref } from "./trace.ts";
-import { AgentMark, menuRow, SkeletonRows } from "./ui.tsx";
+import { AgentMark, SkeletonRows } from "./ui.tsx";
 import type { WorkbenchTabProps } from "./workbench.ts";
 import { workspaceFiles } from "./workspace-files.ts";
 
@@ -87,70 +88,6 @@ type View =
   | { kind: "progress" }
   | { kind: "agent"; name: string }
   | { kind: "used"; key: UsedKey | "origin" };
-
-const row = `${menuRow()} justify-between`;
-
-/** One row of the panel: a mark, what it is, a short value, and where it leads. */
-function Row({
-  mark,
-  label,
-  value,
-  onOpen,
-  href,
-  testId,
-}: {
-  mark: ReactNode;
-  label: ReactNode;
-  value?: ReactNode;
-  onOpen?: () => void;
-  href?: string;
-  testId?: string;
-}) {
-  const body = (
-    <>
-      <span className="flex min-w-0 items-center gap-2">
-        <span className="flex size-5 shrink-0 items-center justify-center text-aui-muted">
-          {mark}
-        </span>
-        <span className="min-w-0 truncate">{label}</span>
-      </span>
-      <span className="flex min-w-0 shrink items-center gap-1 text-aui-muted text-aui-xs">
-        {value !== undefined && <span className="min-w-0 truncate">{value}</span>}
-        {(onOpen || href) && <ChevronRightIcon size={12} aria-hidden className="shrink-0" />}
-      </span>
-    </>
-  );
-  if (href)
-    return (
-      <li>
-        <a href={href} target="_blank" rel="noreferrer" className={row} data-testid={testId}>
-          {body}
-        </a>
-      </li>
-    );
-  return (
-    <li>
-      <button
-        type="button"
-        onClick={onOpen}
-        disabled={!onOpen}
-        className={row}
-        data-testid={testId}
-      >
-        {body}
-      </button>
-    </li>
-  );
-}
-
-function Section({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <section aria-label={label} className="flex flex-col gap-0.5" data-testid="details-section">
-      <h3 className="px-2.5 pb-1 text-aui-muted text-aui-xs">{label}</h3>
-      <ul className="flex flex-col">{children}</ul>
-    </section>
-  );
-}
 
 const outputMark: Record<Output["kind"], ReactNode> = {
   spreadsheet: <FileIcon size={16} />,
@@ -254,7 +191,16 @@ function titleOf(view: View): string {
  * Details as the workbench's first tab: the same rows, with what a row
  * opened named above its Back, since the pane's header names the tab.
  */
-export function DetailsTab({ responses, summary, origin, openFile }: WorkbenchTabProps) {
+export function DetailsTab({
+  responses,
+  summary,
+  origin,
+  openFile,
+  openTab,
+  openWorkspace,
+  runs,
+  thread,
+}: WorkbenchTabProps) {
   const [view, setView] = useState<View>({ kind: "summary" });
   return (
     <SessionDetailsBody
@@ -265,6 +211,7 @@ export function DetailsTab({ responses, summary, origin, openFile }: WorkbenchTa
       summary={summary}
       origin={origin}
       onOpenFile={openFile}
+      panel={{ thread, runs, open: { tab: openTab, workspace: openWorkspace } }}
     />
   );
 }
@@ -279,9 +226,12 @@ function SessionDetailsBody({
   origin,
   onOpenFile,
   messageId,
+  panel,
 }: {
   view: View;
   onView: (view: View) => void;
+  /** The workbench's own: the sections that need the session's runs and its other views. */
+  panel?: { thread: string; runs: Run[]; open: PanelOpen };
   heading?: string;
   responses: ResponseState[] | undefined;
   summary: SessionSummary | undefined;
@@ -351,10 +301,12 @@ function SessionDetailsBody({
       ) : (
         <Summary
           summary={summary}
+          responses={responses}
           current={current}
           origin={origin}
           onView={setView}
           onOpenFile={onOpenFile}
+          panel={panel}
         />
       )}
     </div>
@@ -363,19 +315,27 @@ function SessionDetailsBody({
 
 function Summary({
   summary,
+  responses,
   current,
   origin,
   onView,
   onOpenFile,
+  panel,
 }: {
   summary: SessionSummary;
+  responses: ResponseState[];
+  panel?: { thread: string; runs: Run[]; open: PanelOpen };
   current?: ResponseState;
   origin?: Ref;
   onView: (v: View) => void;
   onOpenFile?: (artifactId: string) => void;
 }) {
   const progress = progressWords(summary, current);
-  const used = (Object.keys(summary.used) as UsedKey[]).filter((k) => summary.used[k].length > 0);
+  // In the workbench, connections have a section of their own, and pull requests are changes.
+  const used = (Object.keys(summary.used) as UsedKey[]).filter(
+    (k) => summary.used[k].length > 0 && !(panel && k === "connections"),
+  );
+  const outputs = panel ? summary.outputs.filter((o) => o.kind !== "pr") : summary.outputs;
   const tone =
     summary.progress?.status === "running"
       ? summary.progress.waiting
@@ -410,9 +370,39 @@ function Summary({
           ))}
         </Section>
       )}
-      {summary.outputs.length > 0 && (
+      {panel && (
+        <SessionSections
+          thread={panel.thread}
+          runs={panel.runs}
+          responses={responses}
+          summary={summary}
+          open={panel.open}
+          outputs={
+            outputs.length > 0 ? (
+              <Section label={words.outputs} testId="outputs">
+                {outputs.map((o) => (
+                  <Row
+                    key={o.key}
+                    testId="details-output"
+                    mark={outputMark[o.kind]}
+                    label={o.title}
+                    value={o.type}
+                    href={o.url}
+                    onOpen={
+                      o.artifactId && onOpenFile
+                        ? () => onOpenFile(o.artifactId as string)
+                        : undefined
+                    }
+                  />
+                ))}
+              </Section>
+            ) : null
+          }
+        />
+      )}
+      {!panel && outputs.length > 0 && (
         <Section label={words.outputs}>
-          {summary.outputs.map((o) => (
+          {outputs.map((o) => (
             <Row
               key={o.key}
               testId="details-output"
@@ -427,7 +417,7 @@ function Summary({
           ))}
         </Section>
       )}
-      {summary.environment.length > 0 && (
+      {!panel && summary.environment.length > 0 && (
         <Section label={words.environment}>
           {summary.environment.map((e) => (
             <Row

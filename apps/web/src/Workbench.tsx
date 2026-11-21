@@ -5,6 +5,7 @@ import { useId } from "react";
 import type { Run } from "./adapter.ts";
 import { useHumanActivity } from "./humanActivity.tsx";
 import { LazyFrame } from "./lazy.tsx";
+import type { PaneTab } from "./pane.ts";
 import type { TraceLoader } from "./responseSource.ts";
 import type { ConversationView } from "./route.ts";
 import { useSessionSummary } from "./SessionPanel.tsx";
@@ -48,6 +49,7 @@ export function SessionWorkbench({
   leaving,
   onClose,
   onOpenFile,
+  onOpenWorkspace,
   onAsk,
   loader,
   files,
@@ -66,6 +68,8 @@ export function SessionWorkbench({
   leaving?: boolean;
   onClose: () => void;
   onOpenFile?: (artifactId: string) => void;
+  /** Opens a tab of the Workspace pane. */
+  onOpenWorkspace?: (tab: PaneTab) => void;
   /** Puts words in the composer for the reader to send. */
   onAsk?: (text: string) => void;
   loader?: TraceLoader;
@@ -92,6 +96,7 @@ export function SessionWorkbench({
         onSelection={(ref) => onView(openBench(view, active.id, ref))}
         openTab={(id, ref) => onView(openBench(view, id, ref))}
         openFile={onOpenFile}
+        openWorkspace={onOpenWorkspace}
         record={record}
         ask={canPost ? onAsk : undefined}
         expanded={expanded}
