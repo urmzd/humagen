@@ -7,8 +7,8 @@ import { stubFetch } from "./dom.ts";
 import { forgetConfiguredProviders } from "./ModelChain.tsx";
 
 // A session's approval mode: one control under the composer that names the
-// mode and opens a menu of the three, each with one line on what the approval
-// agent does in it.
+// mode, Ask or Auto, and opens a menu of the two under an "Approval mode"
+// heading, each with one line on what happens in it.
 
 let net: ReturnType<typeof stubFetch> | undefined;
 afterEach(() => {
@@ -28,7 +28,7 @@ const providers = { providers: [{ name: "anthropic", kind: "anthropic", declared
 const words = defaultCopy.approvals;
 
 /** Open the menu from the control named by the current mode, and press a mode's row. */
-async function pick(current: string, mode: "ask" | "auto" | "decide") {
+async function pick(current: string, mode: "ask" | "auto") {
   fireEvent.click(screen.getByRole("button", { name: current }));
   await screen.findByRole("menu");
   const row = document.querySelector<HTMLElement>(`[data-approval-option="${mode}"]`);
@@ -36,7 +36,7 @@ async function pick(current: string, mode: "ask" | "auto" | "decide") {
   fireEvent.click(row);
 }
 
-test("the control opens a menu of the three modes, each with a short description", async () => {
+test("the control opens a menu of the two modes under a heading, each with a short description", async () => {
   net = stubFetch({
     "GET /api/agents": () => approver("anthropic"),
     "GET /api/model-providers": () => providers,
@@ -44,41 +44,40 @@ test("the control opens a menu of the three modes, each with a short description
   render(<ApprovalToggle thread={{ id: "th-1" }} me="ada" />);
   // One control: nothing sits beside it, and nothing is said in a tooltip.
   assert.equal(screen.getAllByRole("button").length, 1);
-  const control = screen.getByRole("button", { name: "Approvals: Ask Me" });
+  const control = screen.getByRole("button", { name: "Approval mode: Ask" });
+  assert.ok(control.textContent?.includes("Ask"));
   assert.equal(control.getAttribute("title"), null);
   assert.equal(control.getAttribute("aria-haspopup"), "menu");
   fireEvent.click(control);
-  const menu = await screen.findByRole("menu", { name: "Approvals" });
+  const menu = await screen.findByRole("menu", { name: "Approval mode" });
+  // The heading names the menu; then exactly two rows.
+  assert.equal(menu.firstElementChild?.textContent, "Approval mode");
   const rows = [...menu.querySelectorAll('[role="menuitemradio"]')];
   assert.deepEqual(
     rows.map((r) => r.textContent),
-    [
-      `${words.ask}${words.askHint}`,
-      `${words.auto}${words.autoHint}`,
-      `${words.decide}${words.decideHint}`,
-    ],
+    [`Ask${words.askHint}`, `Auto${words.autoHint}`],
   );
   assert.deepEqual(
     rows.map((r) => r.getAttribute("aria-checked")),
-    ["true", "false", "false"],
+    ["true", "false"],
   );
-  for (const hint of [words.askHint, words.autoHint, words.decideHint])
+  for (const hint of [words.askHint, words.autoHint])
     assert.ok(hint.length <= 80, `"${hint}" is not short`);
   // Arrow keys move through the rows.
   (rows[0] as HTMLElement).focus();
   const focused = () => document.activeElement?.getAttribute("data-approval-option");
   fireEvent.keyDown(menu, { key: "ArrowDown" });
   assert.equal(focused(), "auto");
-  fireEvent.keyDown(menu, { key: "End" });
-  assert.equal(focused(), "decide");
   fireEvent.keyDown(menu, { key: "ArrowDown" });
   assert.equal(focused(), "ask");
+  fireEvent.keyDown(menu, { key: "End" });
+  assert.equal(focused(), "auto");
   // Escape closes it; so does Tab, which would otherwise leave it open behind the focus.
   const expanded = () =>
-    screen.getByRole("button", { name: "Approvals: Ask Me" }).getAttribute("aria-expanded");
+    screen.getByRole("button", { name: "Approval mode: Ask" }).getAttribute("aria-expanded");
   fireEvent.keyDown(menu, { key: "Escape" });
   await waitFor(() => assert.equal(expanded(), "false"));
-  fireEvent.click(screen.getByRole("button", { name: "Approvals: Ask Me" }));
+  fireEvent.click(screen.getByRole("button", { name: "Approval mode: Ask" }));
   await waitFor(() => assert.equal(expanded(), "true"));
   fireEvent.keyDown(await screen.findByRole("menu"), { key: "Tab" });
   await waitFor(() => assert.equal(expanded(), "false"));
@@ -96,26 +95,22 @@ test("a mode picked from the menu is saved for the session, and the menu closes"
     },
   });
   render(<ApprovalToggle thread={{ id: "th-1" }} me="ada" />);
-  await pick("Approvals: Ask Me", "decide");
-  await screen.findByRole("button", { name: "Approvals: Run and Answer" });
+  await pick("Approval mode: Ask", "auto");
+  await screen.findByRole("button", { name: "Approval mode: Auto" });
   await waitFor(() =>
     assert.equal(
-      screen
-        .getByRole("button", { name: "Approvals: Run and Answer" })
-        .getAttribute("aria-expanded"),
+      screen.getByRole("button", { name: "Approval mode: Auto" }).getAttribute("aria-expanded"),
       "false",
     ),
   );
-  await pick("Approvals: Run and Answer", "auto");
-  await screen.findByRole("button", { name: "Approvals: Run" });
   // Picking the mode already set changes nothing.
-  await pick("Approvals: Run", "auto");
-  await pick("Approvals: Run", "ask");
-  await screen.findByRole("button", { name: "Approvals: Ask Me" });
+  await pick("Approval mode: Auto", "auto");
+  await pick("Approval mode: Auto", "ask");
+  await screen.findByRole("button", { name: "Approval mode: Ask" });
   await waitFor(() =>
     assert.deepEqual(
       net?.seen.filter((r) => r.method === "PUT").map((r) => r.body),
-      [{ mode: "decide" }, { mode: "auto" }, { mode: "ask" }],
+      [{ mode: "auto" }, { mode: "ask" }],
     ),
   );
 });
@@ -129,19 +124,17 @@ test("someone else's choice is named, and a refusal puts the mode back", async (
   });
   render(
     <ApprovalToggle
-      thread={{ id: "th-1", approval: { mode: "decide", by: "mira", at: "2026-11-03T00:00:00Z" } }}
+      thread={{ id: "th-1", approval: { mode: "auto", by: "mira", at: "2026-11-03T00:00:00Z" } }}
       me="ada"
       nameOf={() => "Mira"}
     />,
   );
-  fireEvent.click(
-    screen.getByRole("button", { name: "Approvals: Run and Answer, chosen by Mira" }),
-  );
+  fireEvent.click(screen.getByRole("button", { name: "Approval mode: Auto, chosen by Mira" }));
   const menu = await screen.findByRole("menu");
   assert.ok(menu.textContent?.includes(words.chosenBy("Mira")));
-  fireEvent.click(screen.getByRole("menuitemradio", { name: /^Ask Me/ }));
+  fireEvent.click(screen.getByRole("menuitemradio", { name: /^Ask/ }));
   await screen.findByRole("alert");
-  assert.ok(screen.getByRole("button", { name: "Approvals: Run and Answer, chosen by Mira" }));
+  assert.ok(screen.getByRole("button", { name: "Approval mode: Auto, chosen by Mira" }));
 });
 
 test("with no session yet the choice is held, and an approver with no model says every action waits", async () => {
@@ -151,10 +144,10 @@ test("with no session yet the choice is held, and an approver with no model says
   });
   const chosen: string[] = [];
   render(<ApprovalToggle me="ada" onPending={(m) => chosen.push(m)} />);
-  fireEvent.click(screen.getByRole("button", { name: "Approvals: Ask Me" }));
+  fireEvent.click(screen.getByRole("button", { name: "Approval mode: Ask" }));
   const menu = await screen.findByRole("menu");
   await waitFor(() => assert.ok(menu.textContent?.includes(words.waiting)));
-  fireEvent.click(screen.getByRole("menuitemradio", { name: /^Run and Answer/ }));
-  assert.deepEqual(chosen, ["decide"]);
+  fireEvent.click(screen.getByRole("menuitemradio", { name: /^Auto/ }));
+  assert.deepEqual(chosen, ["auto"]);
   assert.equal(net.seen.filter((r) => r.method === "PUT").length, 0);
 });

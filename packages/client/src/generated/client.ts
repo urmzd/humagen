@@ -4314,22 +4314,23 @@ whoever started the thread or an owner of its project (403).
     });
   }
 
-  /** `ask` asks a person, the default. `auto` approves for the caller what
-they may approve themselves, through the same checks as their own
-answer: the approvers a question names, self-approval and the
-runtime's. A budget request, an action the agent always asks about,
-a run forced to ask and an action the policy does not ask about still
-go to a person. `decide` (Run and Answer) does what `auto` does,
-and the approval agent also answers, as the caller, a question an
-agent asks a person (a choice or a reply) when the session already
-settles the answer; anything else, anything asked of someone else,
-and anything in work someone else asked for still goes to a person.
-Each automatic approval and answer, each hand-off, and each change
-of mode is audited. Takes a person who may post in the conversation.
-A surface that authenticated a person itself sets it for them with
-`act_as`: only the credential its client names, and only for a person
-its client maps; every check is then that person's, and `auto` and
-`decide` act as them.
+  /** Two modes. `ask` (Ask) asks a person, the default. `auto` (Auto)
+lets the approval agent act for the caller: it approves what they may
+approve themselves, through the same checks as their own answer (the
+approvers a question names, self-approval and the runtime's), and it
+answers, as the caller, a question an agent asks a person (a choice
+or a reply) when the session already settles the answer. A budget
+request, an action the agent always asks about, a run forced to ask,
+an action the policy does not ask about, anything it is unsure of,
+anything asked of someone else and anything in work someone else
+asked for still go to a person. `decide`, what Run and Answer was set
+as before it became part of Auto, is still accepted and taken as
+`auto`; it is deprecated and will be removed. Each automatic approval
+and answer, each hand-off, and each change of mode is audited. Takes
+a person who may post in the conversation. A surface that
+authenticated a person itself sets it for them with `act_as`: only
+the credential its client names, and only for a person its client
+maps; every check is then that person's, and `auto` acts as them.
  */
   async setApprovalMode(id: string, body: SetApprovalModeBody, options?: RequestOptions): Promise<Thread> {
     let path = "/api/threads/{id}/approval";

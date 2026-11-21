@@ -7,12 +7,13 @@ import { POLICY } from "./models.ts";
 import { Popover } from "./ui.tsx";
 
 /**
- * How a session's gated actions are approved: ✋ a person, or ⏩ the approval agent,
- * which in "decide" also answers questions the session already settles (DES-079).
+ * How a session's gated actions are approved: ✋ Ask, a person, or ⏩ Auto,
+ * the approval agent, which also answers questions the session already
+ * settles (DES-057, DES-079).
  */
-export type ApprovalMode = "ask" | "auto" | "decide";
+export type ApprovalMode = "ask" | "auto";
 
-/** The built-in that decides gated actions in a session set to Run. */
+/** The built-in that decides gated actions in a session set to Auto. */
 const APPROVER = "approver";
 
 let approverRead: Promise<Revision | null> | null = null;
@@ -55,9 +56,9 @@ export function useApproverReady(): boolean | null {
 
 /**
  * A session's approval mode under the composer, always shown: one control
- * that names the mode, ✋ Ask Me or ⏩ Run or ⏩ Run and Answer, and opens a
- * menu of the three. Each row says in one line what the approval agent does
- * in that mode (DES-057, DES-079), so the choice is read before it is made
+ * that names the mode, ✋ Ask or ⏩ Auto, and opens a menu of the two under
+ * an "Approval mode" heading. Each row says in one line what happens in that
+ * mode (DES-057, DES-079), so the choice is read before it is made
  * and nothing about it sits in a tooltip. The menu also says when the
  * approval agent has no model to run on, so every action waits for a person,
  * and who chose the mode when it was someone else. With no session yet, as
@@ -84,22 +85,10 @@ export function ApprovalToggle({
   const [approval, setApproval] = useState(thread?.approval);
   const [problem, setProblem] = useState("");
   useEffect(() => setApproval(thread?.approval), [thread?.approval]);
-  const mode: ApprovalMode = thread
-    ? approval?.mode === "auto" || approval?.mode === "decide"
-      ? approval.mode
-      : "ask"
-    : pending;
+  // Any approval a session holds is Auto; the server reads an old one as Auto too.
+  const mode: ApprovalMode = thread ? (approval ? "auto" : "ask") : pending;
   const someoneElse = approval && thread && approval.by !== me ? nameOf(approval.by) : "";
-  const label =
-    mode === "ask"
-      ? words.ask
-      : mode === "decide"
-        ? someoneElse
-          ? words.decideFor(someoneElse)
-          : words.decide
-        : someoneElse
-          ? words.autoFor(someoneElse)
-          : words.auto;
+  const label = mode === "ask" ? words.ask : someoneElse ? words.autoFor(someoneElse) : words.auto;
   const choose = (next: ApprovalMode) => {
     setProblem("");
     if (next === mode) return;
@@ -120,7 +109,6 @@ export function ApprovalToggle({
   const options: { mode: ApprovalMode; name: string; hint: string }[] = [
     { mode: "ask", name: words.ask, hint: words.askHint },
     { mode: "auto", name: words.auto, hint: words.autoHint },
-    { mode: "decide", name: words.decide, hint: words.decideHint },
   ];
   // Arrow keys, Home and End move through the rows, and Escape or Tab closes
   // the menu and puts focus back on the control, as in every menu here.
@@ -162,9 +150,7 @@ export function ApprovalToggle({
             <Icon size={16} />
             {/* The mode in words where the bar has room; the icon alone in a narrow one. */}
             <span aria-hidden className="humagen-approval-label inline-flex items-center gap-1">
-              <span className="text-aui-xs">
-                {mode === "ask" ? words.ask : mode === "decide" ? words.decide : words.auto}
-              </span>
+              <span className="text-aui-xs">{mode === "ask" ? words.ask : words.auto}</span>
               <ChevronDownIcon size={12} />
             </span>
           </>
@@ -177,6 +163,9 @@ export function ApprovalToggle({
             onKeyDown={keys(close)}
             className="flex flex-col"
           >
+            <p aria-hidden className="px-2.5 pt-1 pb-1.5 text-aui-xs text-aui-muted">
+              {words.label}
+            </p>
             {options.map((o) => {
               const RowIcon = o.mode === "ask" ? HandIcon : FastForwardIcon;
               const on = o.mode === mode;

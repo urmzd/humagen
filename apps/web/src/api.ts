@@ -2117,10 +2117,10 @@ export interface Thread {
   /** The imported conversation it continues: the pinned revision and the turns its agent is sent. */
   import?: ThreadImport;
   /**
-   * How its gated tool actions are approved: absent asks a person; auto approves for `by`
-   * (DES-057); decide does that and also answers what the session settles (DES-079).
+   * How its gated tool actions are approved: absent is Ask, a person; auto is Auto, where the
+   * approval agent approves and answers what the session settles for `by` (DES-057, DES-079).
    */
-  approval?: { mode: "auto" | "decide"; by: string; roles?: string[]; at: string };
+  approval?: { mode: "auto"; by: string; roles?: string[]; at: string };
   /** The inbox id of the announcement a reply to which, in Slack, started the thread. */
   announcement?: string;
   /** The Slack thread this thread is, when it was started from Slack. It never changes. */
@@ -2518,7 +2518,7 @@ export const coworking = {
   ) => call<Thread>("POST", `${threadPath(id)}/publication`, body),
   share: (id: string, s: ThreadShare) => call<ThreadShared>("POST", `${threadPath(id)}/share`, s),
   /** Sets how a conversation's gated tool actions are approved: ask, or auto or decide for the caller. */
-  setApprovalMode: (id: string, mode: "ask" | "auto" | "decide") =>
+  setApprovalMode: (id: string, mode: "ask" | "auto") =>
     call<Thread>("PUT", `${threadPath(id)}/approval`, { mode }),
   /** The skills a `$name` can pick in a project. */
   skills: (project: string) =>
