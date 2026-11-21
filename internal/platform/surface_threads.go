@@ -147,7 +147,7 @@ func (p *Platform) surfaceText(tenant string, c clients.Client, ref SurfaceRef, 
 	if c.Surface != clients.Slack {
 		return text, nil
 	}
-	cx := slackContext{AppUser: ref.AppUser, Bots: c.Bots, HandleOf: func(subject string) (string, bool) {
+	cx := slackContext{AppUser: ref.AppUser, Bots: p.teamBots(tenant, c), HandleOf: func(subject string) (string, bool) {
 		if p.People == nil {
 			return "", false
 		}
@@ -157,6 +157,7 @@ func (p *Platform) surfaceText(tenant string, c clients.Client, ref SurfaceRef, 
 	if c.Slack != nil {
 		cx.People = c.Slack.People
 	}
+	cx.Deferred = p.ownAppBots(tenant, c)
 	out, refused := slackText(text, cx)
 	var tags []threads.Mention
 	for _, r := range refused {
@@ -187,6 +188,10 @@ func (p *Platform) startFromSurface(ctx context.Context, who auth.Principal, in 
 	}
 	if in.Project != "" || in.Channel != "" || in.Visibility != "" || in.Default != "" {
 		return Posted{}, ErrSurfacePlace
+	}
+	// A message that names an agent's own app is that app's to answer.
+	if p.deferredToOwnApp(who.Tenant, c, in.Text) {
+		in.PostOnly = true
 	}
 	sf := ref.surface(c.ID)
 	if err := sf.Validate(); err != nil {
