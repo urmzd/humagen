@@ -332,6 +332,7 @@ var copyKeyList = []string{
 	"attention.empty.snoozed",
 	"attention.markDone",
 	"attention.markSelectedDone",
+	"attention.reviewApproval",
 	"attention.snooze",
 	"attention.snoozeSelected",
 	"attention.stateLabel",

@@ -248,6 +248,28 @@ test("session rows retain readable project context and age on narrow surfaces", 
   );
   assert.ok(personal.closest("li")?.querySelector("time[datetime]"));
 });
+test("Alerts opens the decision for review", async () => {
+  net = stubFetch({
+    "GET /api/alerts": () => ({ alerts: [{ ...alert("approval"), action: "approve" }] }),
+  });
+  const went: unknown[] = [];
+  render(
+    <AlertsPage
+      route={{ page: "alerts" }}
+      go={(route) => went.push(route)}
+      canWrite
+      onChanged={() => {}}
+      tick={0}
+    />,
+  );
+  fireEvent.click(await screen.findByRole("button", { name: "Review Approval" }));
+  assert.deepEqual(went, [{ page: "conversation", id: "s_root", message: "msg1" }]);
+  assert.equal(
+    net.seen.some(({ method }) => method === "PATCH"),
+    false,
+  );
+});
+
 test("Alerts resolves selected records and Undo reopens only successful changes", async () => {
   let rows = [alert("one"), alert("two", "urgent")];
   const sent: unknown[] = [];
