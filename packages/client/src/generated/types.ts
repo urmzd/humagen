@@ -2893,13 +2893,13 @@ export interface AgentTemplate {
   id: string;
   /** What the agent is. */
   title: string;
-  /** What a person gets from it */
+  /** What a person gets from it, in a few words. */
   outcome: string;
   /** The new agent's description. */
   description: string;
-  /** What it says about itself */
+  /** What it says about itself, in its own voice. */
   greeting: string;
-  /** The bot it is drawn as */
+  /** The bot it is drawn as, one of the look's shapes. */
   shape: string;
   system_prompt: string;
   tools: string[];
