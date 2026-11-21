@@ -606,6 +606,18 @@ test("the header points back to where the session started, and says nothing for 
     screen.getByTestId("session-place").textContent ?? "",
     /Slack thread.*from Ana.*Slack channel/,
   );
+  assert.ok(screen.getByRole("link", { name: "Related sessions" }));
+  cleanup();
+  // A direct message's place already says who reads it: the audience is not said again.
+  const dm = placeOf(
+    { surface: { client: "acme", channel: "D1", ts: "1.2" }, visibility: "private" },
+    "T1",
+  );
+  render(<SessionPlace place={dm} sender="Ana" />);
+  assert.equal(
+    (screen.getByTestId("session-place").textContent ?? "").replace(/\s+/g, " ").trim(),
+    "Started in Slack DM·from Ana·Related sessions",
+  );
   cleanup();
   const web = placeOf({ visibility: "private" });
   render(

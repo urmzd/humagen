@@ -128,9 +128,15 @@ export function ConversationPage({
         layout="conversation"
         title={title}
         meta={
-          <span className="inline-flex flex-wrap items-center gap-x-3">
+          // One line, each part set off by the same dot: the project, then where the session is and came from.
+          <span className="inline-flex flex-wrap items-center gap-x-2">
             <span>{project}</span>
-            {location}
+            {location && (
+              <>
+                <span aria-hidden>·</span>
+                {location}
+              </>
+            )}
           </span>
         }
         actions={

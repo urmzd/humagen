@@ -25,7 +25,13 @@ import { traceSource } from "./responseSource.ts";
 import { type ConversationPanel, type ConversationView, href } from "./route.ts";
 import { SessionDetailsProvider } from "./SessionDetails.tsx";
 import { SessionDetailsPanel, sessionFiles, sessionProgress } from "./SessionPanel.tsx";
-import { OriginButton, referenceOfPlace, SessionPlace, usePlace } from "./SessionPlace.tsx";
+import {
+  hasPlaceLine,
+  OriginButton,
+  referenceOfPlace,
+  SessionPlace,
+  usePlace,
+} from "./SessionPlace.tsx";
 import { AgentTint, Checkpoint, cause, Mentioned, Presence } from "./ui.tsx";
 import { Workspace } from "./Workspace.tsx";
 
@@ -242,7 +248,9 @@ export function RunsConversation({
           origin={<OriginButton place={chatPlace} />}
           progress={sessionProgress(turns)}
           location={
-            chatPlace && <SessionPlace place={chatPlace} sender={path[0]?.actor?.display} />
+            hasPlaceLine(chatPlace) && (
+              <SessionPlace place={chatPlace} sender={path[0]?.actor?.display} />
+            )
           }
           agents={summary?.agents ?? [...new Set(turns.map((t) => t.agent))]}
           people={room?.thread.participants?.filter((p) => p.kind === "person").map((p) => p.name)}

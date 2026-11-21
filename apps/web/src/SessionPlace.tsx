@@ -125,29 +125,48 @@ export function OriginButton({ place }: { place: Place | undefined }) {
 
 /**
  * The root message in the header's meta line: where it came from and who
- * sent it, and who can read it there. "Slack thread · from Ana · Slack
- * channel". A session started on the web needs no line.
+ * sent it, who can read it there, and a way to the other sessions of the
+ * same place. "Slack thread · from Ana · Public channel · Related sessions".
+ * Each part says something the others do not: a direct message's place
+ * already says who reads it, so its audience is not said again. A session
+ * started on the web needs no line.
  */
 const link =
-  "min-h-6 rounded-aui underline decoration-aui-border underline-offset-2 hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent";
+  "inline-flex min-h-6 items-center rounded-aui underline decoration-aui-border underline-offset-2 hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent";
+
+/** Whether a place has a line to show: a session started on the web has none. */
+export function hasPlaceLine(place: Place | undefined): place is Place {
+  return !!place && place.kind !== "console";
+}
+
+/** Whether the audience adds to the place's own label: "Slack DM" already says a direct message. */
+function saysAudience(place: Place): boolean {
+  return place.audience !== "dm";
+}
 
 export function SessionPlace({ place, sender }: { place: Place; sender?: string }) {
   if (place.kind === "console") return null;
   return (
     <span className="inline-flex flex-wrap items-center gap-x-2" data-testid="session-place">
-      <span className="sr-only">{words.place.label}</span>
-      <span>{place.label}</span>
+      <span>
+        <span className="sr-only">{words.place.label} </span>
+        {place.label}
+      </span>
       {sender && (
         <>
           <span aria-hidden>·</span>
           <span>{words.place.from(sender)}</span>
         </>
       )}
-      <span aria-hidden>·</span>
-      <span>
-        <span className="sr-only">{words.audience.label}: </span>
-        {defaultCopy.trace.audience[place.audience]}
-      </span>
+      {saysAudience(place) && (
+        <>
+          <span aria-hidden>·</span>
+          <span>
+            <span className="sr-only">{words.audience.label}: </span>
+            {defaultCopy.trace.audience[place.audience]}
+          </span>
+        </>
+      )}
       {place.origin && (
         <>
           <span aria-hidden>·</span>

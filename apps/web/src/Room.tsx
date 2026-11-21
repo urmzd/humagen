@@ -76,7 +76,13 @@ import { SessionActions } from "./SessionActions.tsx";
 import { alertAnchor, SessionAlerts, useSessionAlerts } from "./SessionAlerts.tsx";
 import { SessionDetailsProvider } from "./SessionDetails.tsx";
 import { sessionFiles, sessionProgress } from "./SessionPanel.tsx";
-import { OriginButton, referenceOfPlace, SessionPlace, usePlace } from "./SessionPlace.tsx";
+import {
+  hasPlaceLine,
+  OriginButton,
+  referenceOfPlace,
+  SessionPlace,
+  usePlace,
+} from "./SessionPlace.tsx";
 import { ShareDialog } from "./Share.tsx";
 import { useThreadSelection } from "./selection.ts";
 import { topicsOf } from "./topics.ts";
@@ -964,24 +970,30 @@ export function ThreadRoom({
               origin={<OriginButton place={place} />}
               progress={sessionProgress(turns.flatMap((t) => (t.run ? [t.run] : [])))}
               location={
-                <>
-                  {th.visibility !== "private" && !id.startsWith("s_") && (
-                    <button
-                      type="button"
-                      aria-label={words.sharedIn(
-                        projectTitle(projects, th.project, workspaceName, personalProject),
-                        th.channel,
-                      )}
-                      onClick={() => onOpenChannel(th.project, th.channel)}
-                      className="min-h-6 rounded-aui hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
-                    >
-                      {words.channel(th.channel)}
-                    </button>
-                  )}
-                  {place && (
-                    <SessionPlace place={place} sender={rootMessage?.name || rootMessage?.by} />
-                  )}
-                </>
+                // Nothing to say for a private session started here: the project stands alone.
+                (th.visibility !== "private" && !id.startsWith("s_")) || hasPlaceLine(place) ? (
+                  <>
+                    {th.visibility !== "private" && !id.startsWith("s_") && (
+                      <button
+                        type="button"
+                        aria-label={words.sharedIn(
+                          projectTitle(projects, th.project, workspaceName, personalProject),
+                          th.channel,
+                        )}
+                        onClick={() => onOpenChannel(th.project, th.channel)}
+                        className="min-h-6 rounded-aui hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
+                      >
+                        {words.channel(th.channel)}
+                      </button>
+                    )}
+                    {th.visibility !== "private" && !id.startsWith("s_") && hasPlaceLine(place) && (
+                      <span aria-hidden>·</span>
+                    )}
+                    {hasPlaceLine(place) && (
+                      <SessionPlace place={place} sender={rootMessage?.name || rootMessage?.by} />
+                    )}
+                  </>
+                ) : undefined
               }
               projectRef={shareButton}
               onPanel={(next) => openPanel(next)}

@@ -4387,8 +4387,8 @@ export const defaultCopy = {
     noSessions: "No sessions yet",
     /** Places that mentioned the item: a pasted link, a permalink, "#243". */
     backlinks: "Also discussed in",
-    /** The header's link to the session's item. */
-    open: "Item",
+    /** The header's link to the session's item: every session of the same place, and where else it was discussed. */
+    open: "Related sessions",
   },
   /** Where a session started, as the Sessions list filters it. */
   places: {
