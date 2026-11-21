@@ -206,3 +206,10 @@ func SetImageBeats(every, stale, sweep time.Duration) (restore func()) {
 	imageBeatEvery, imageBeatStale, imageSweepEvery = every, stale, sweep
 	return func() { imageBeatEvery, imageBeatStale, imageSweepEvery = wasEvery, wasStale, wasSweep }
 }
+
+// SweepImages does one pass of the images sweep: checks no process is
+// running are started again, and what is kept warm is read again.
+func SweepImages(p *Platform) {
+	p.adoptStrandedChecks()
+	p.keepImagesWarm()
+}

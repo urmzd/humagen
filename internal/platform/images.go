@@ -15,11 +15,13 @@ package platform
 // HTTP (browser_view.go), not part of the image.
 
 import (
+	"cmp"
 	"context"
 	"encoding/base64"
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"slices"
 	"strings"
 	"sync"
@@ -29,6 +31,7 @@ import (
 
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/images"
+	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/humagen/pkg/threads"
 )
 
@@ -46,6 +49,13 @@ const (
 	// MaxTenantImagePulls bounds how many of them one workspace has, so
 	// one workspace's slow pulls never hold every place.
 	MaxTenantImagePulls = MaxImagePulls - 1
+	// MaxImageTenants bounds the workspaces one pass over every
+	// workspace's images reads (the sweep, and the pulls at start), and
+	// the workspaces whose images one process keeps warm. A deployment
+	// with more workspaces that have added an image logs a warning, and
+	// those past the bound are not swept: a check a dead process left in
+	// one waits for a person to check the image again.
+	MaxImageTenants = 10 * state.MaxList
 )
 
 // imageRepullTimeout bounds one pull of a ready image at start, so a
@@ -258,7 +268,7 @@ func (p *Platform) ChangeImage(_ context.Context, who auth.Principal, id string,
 	case check:
 		p.checkImageLater(who.Tenant, id, img.Checks)
 	case in.Warm != nil:
-		p.keepImagesWarm()
+		p.keepTenantWarm(who.Tenant)
 	}
 	return img.Shown(), nil
 }
@@ -274,7 +284,7 @@ func (p *Platform) RemoveImage(_ context.Context, who auth.Principal, id string)
 	if err := p.Images.Delete(who.Tenant, id); err != nil {
 		return err
 	}
-	p.keepImagesWarm()
+	p.keepTenantWarm(who.Tenant)
 	return p.secrets.Drop(who.Tenant, imageOwner(id))
 }
 
@@ -292,8 +302,11 @@ type imageChecks struct {
 	waiting []*pullWaiter   // the pulls waiting for a place, oldest first
 	wg      sync.WaitGroup
 
-	warm sync.Mutex      // one keepImagesWarm at a time, so the last one told stands
-	here map[string]bool // tenant and digest this process pulled; under warm
+	warm sync.Mutex // one change to what is kept warm at a time, so the last one told stands
+	// here are the digests this process pulled, by tenant, and kept the
+	// requests the sandbox was last told to keep warm for each; under warm.
+	here map[string]map[string]bool
+	kept map[string][]isolation.Request
 }
 
 // pullWaiter is one pull waiting for a place; ready closes when it has one.
@@ -491,7 +504,7 @@ func (p *Platform) checkImage(ctx context.Context, tenant, id string, n int64) {
 	// The host has the digest now. If the image is kept warm, this is
 	// the digest to keep, and the one it had is let go.
 	p.imageChecks.pulled(tenant, saved.Digest)
-	p.keepImagesWarm()
+	p.keepTenantWarm(tenant)
 }
 
 // beatImage says on the image, every imageBeatEvery until the returned stop
@@ -530,7 +543,8 @@ func (p *Platform) beatImage(ctx context.Context, tenant, id string, n int64, su
 }
 
 // adoptStrandedChecks starts again every check that no process is running:
-// one whose process died mid-check, on this database's every workspace. The
+// one whose process died mid-check, in any workspace of this
+// database, read within eachTenantsImages' bound. The
 // check it starts is a new one (the image's count of checks goes up), so
 // whatever the dead check's process might still write is dropped, and of
 // two processes that find the same stranded check only the first starts it:
@@ -538,13 +552,12 @@ func (p *Platform) beatImage(ctx context.Context, tenant, id string, n int64, su
 func (p *Platform) adoptStrandedChecks() {
 	type found struct{ tenant, id string }
 	var all []found
-	_ = p.Images.Tenants(func(tenant string, imgs []images.Image) error {
+	p.eachTenantsImages(func(tenant string, imgs []images.Image) {
 		for _, img := range imgs {
 			if stranded(img) {
 				all = append(all, found{tenant, img.ID})
 			}
 		}
-		return nil
 	})
 	for _, f := range all {
 		if !p.imageChecks.claim(f.tenant, f.id) {
@@ -564,6 +577,21 @@ func (p *Platform) adoptStrandedChecks() {
 		}
 		slog.Info("images: a check no process was running starts again", "tenant", f.tenant, "image", f.id)
 		p.checkImageLater(f.tenant, f.id, img.Checks)
+	}
+}
+
+// eachTenantsImages calls fn with the images of each workspace that has
+// added one. The read is bounded: the directory of those workspaces a page
+// of state.MaxList at a time and one record of at most images.Limit images
+// for each, MaxImageTenants workspaces at most. Past that it says so in the
+// log and reads no further.
+func (p *Platform) eachTenantsImages(fn func(tenant string, imgs []images.Image)) {
+	more, err := p.Images.Tenants(MaxImageTenants, fn)
+	if err != nil {
+		slog.Warn("images: could not read every workspace's images; the next pass tries again", "error", err)
+	}
+	if more {
+		slog.Warn("images: more workspaces have images than one pass reads; the rest are not swept", "bound", MaxImageTenants)
 	}
 }
 
@@ -683,23 +711,47 @@ type imageKeeper interface {
 }
 
 // pulled records that this process pulled a workspace's digest onto its
-// sandbox host. Only those are kept warm here: the host has them.
+// sandbox host. Only those are kept warm here: the host has them. At most
+// MaxImageTenants workspaces are recorded, which bounds keepImagesWarm.
 func (c *imageChecks) pulled(tenant, digest string) {
 	c.warm.Lock()
 	defer c.warm.Unlock()
 	if c.here == nil {
-		c.here = map[string]bool{}
+		c.here = map[string]map[string]bool{}
+		c.kept = map[string][]isolation.Request{}
 	}
-	c.here[tenant+"\x00"+digest] = true
+	if c.here[tenant] == nil {
+		if len(c.here) >= MaxImageTenants {
+			slog.Warn("images: this process pulled images of more workspaces than it keeps warm; this one's are not", "tenant", tenant, "bound", MaxImageTenants)
+			return
+		}
+		c.here[tenant] = map[string]bool{}
+	}
+	c.here[tenant][digest] = true
+}
+
+// keepTenantWarm tells the sandbox what to keep warm after one workspace's
+// images changed here: it reads that workspace's images (one record, at
+// most images.Limit) and no other's.
+func (p *Platform) keepTenantWarm(tenant string) {
+	p.keepWarm(func(*imageChecks) []string { return []string{tenant} })
 }
 
 // keepImagesWarm tells the sandbox every image to keep warm, as the images
-// stand now: each workspace's ready images marked warm (at most
-// images.MaxWarm of a workspace) that this process has pulled. It runs
-// whenever that may have changed here, and every imageSweepEvery for what
-// another process changed, so an image no longer warm, checked onto a new
-// digest, or removed is let go by every process within that time.
+// stand now. It runs every imageSweepEvery, for what another process
+// changed, so an image no longer warm, checked onto a new digest, or
+// removed is let go by every process within that time. It reads the images
+// of the workspaces this process has pulled a digest for, one record each
+// and at most MaxImageTenants of them.
 func (p *Platform) keepImagesWarm() {
+	p.keepWarm(func(c *imageChecks) []string { return slices.Collect(maps.Keys(c.here)) })
+}
+
+// keepWarm reads the images of the workspaces which names, and tells the
+// sandbox every image to keep warm: each workspace's ready images marked
+// warm (at most images.MaxWarm of a workspace) that this process has pulled. A workspace whose images
+// cannot be read keeps what it had until they can.
+func (p *Platform) keepWarm(which func(*imageChecks) []string) {
 	keeper, ok := p.cfg.Sandbox.Leaser.(imageKeeper)
 	if !ok {
 		return
@@ -707,33 +759,48 @@ func (p *Platform) keepImagesWarm() {
 	c := &p.imageChecks
 	c.warm.Lock()
 	defer c.warm.Unlock()
-	reqs := []isolation.Request{}
-	held := map[string]bool{}
-	err := p.Images.Tenants(func(tenant string, imgs []images.Image) error {
+	for _, tenant := range which(c) {
+		had := c.here[tenant]
+		if len(had) == 0 {
+			continue
+		}
+		imgs, err := p.Images.List(tenant)
+		if err != nil {
+			slog.Warn("images: could not read the images to keep warm", "tenant", tenant, "error", err)
+			continue
+		}
+		held := map[string]bool{}
+		var reqs []isolation.Request
 		for _, img := range imgs {
-			key := tenant + "\x00" + img.Digest
-			if img.Digest == "" || !c.here[key] {
+			if img.Digest == "" || !had[img.Digest] {
 				continue
 			}
-			held[key] = true
+			held[img.Digest] = true
 			if img.Warm && img.Status == images.Ready {
 				reqs = append(reqs, isolation.Request{Tenant: tenant, Image: img.Digest})
 			}
 		}
-		return nil
-	})
-	if err != nil {
-		// What is warm stays as it was until the images can be read.
-		slog.Warn("images: could not read the images to keep warm", "error", err)
-		return
+		// A digest no image has any more is forgotten.
+		if len(held) == 0 {
+			delete(c.here, tenant)
+			delete(c.kept, tenant)
+			continue
+		}
+		c.here[tenant], c.kept[tenant] = held, reqs
 	}
-	c.here = held // a digest no image has any more is forgotten
-	slices.SortFunc(reqs, func(a, b isolation.Request) int { return strings.Compare(a.Image, b.Image) })
+	reqs := []isolation.Request{}
+	for _, kept := range c.kept {
+		reqs = append(reqs, kept...)
+	}
+	slices.SortFunc(reqs, func(a, b isolation.Request) int {
+		return cmp.Or(strings.Compare(a.Image, b.Image), strings.Compare(a.Tenant, b.Tenant))
+	})
 	keeper.KeepWarm(reqs)
 }
 
 // PullReadyImages fetches every workspace's ready image onto the sandbox
-// host by digest, and keeps warm those marked so. The platform calls it
+// host by digest, and keeps warm those marked so. The workspaces are read
+// within eachTenantsImages' bound. The platform calls it
 // when it starts, so a host that has never run an image has it before a
 // session asks; a failure is logged and the image stays ready for the next
 // host. Each pull has imageRepullTimeout, and an image is warmed only if it
@@ -747,13 +814,12 @@ func (p *Platform) PullReadyImages(ctx context.Context) {
 		img    images.Image
 	}
 	var all []ready
-	_ = p.Images.Tenants(func(tenant string, imgs []images.Image) error {
+	p.eachTenantsImages(func(tenant string, imgs []images.Image) {
 		for _, img := range imgs {
 			if img.Status == images.Ready && img.Digest != "" {
 				all = append(all, ready{tenant, img})
 			}
 		}
-		return nil
 	})
 	for _, r := range all {
 		if ctx.Err() != nil {
@@ -765,7 +831,7 @@ func (p *Platform) PullReadyImages(ctx context.Context) {
 		}
 		p.imageChecks.pulled(r.tenant, r.img.Digest)
 		if r.img.Warm {
-			p.keepImagesWarm()
+			p.keepTenantWarm(r.tenant)
 		}
 	}
 }

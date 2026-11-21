@@ -1,13 +1,16 @@
 package images_test
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/urmzd/humagen/pkg/images"
+	"github.com/urmzd/humagen/pkg/state"
 )
 
 func TestRegistryAndCheckRef(t *testing.T) {
@@ -158,5 +161,80 @@ func TestAWorkspaceKeepsFewImagesWarm(t *testing.T) {
 	}
 	if _, err := s.Create("globex", images.Image{ID: images.NewID(), Name: "Theirs", Warm: true}); err != nil {
 		t.Errorf("another workspace's warm image: %v", err)
+	}
+}
+
+// neverLoaded is a store that fails the test when every record of a
+// namespace is read after the one read that fills the directory.
+type neverLoaded struct {
+	state.Store
+	t     *testing.T
+	loads int
+}
+
+func (n *neverLoaded) Load(ctx context.Context, namespace string) ([]state.Record, error) {
+	if n.loads++; n.loads > 1 {
+		n.t.Errorf("every record of %s was read %d times; only the directory's first fill may", namespace, n.loads)
+	}
+	return n.Store.Load(ctx, namespace)
+}
+
+// The read across workspaces is bounded: it pages a directory of the
+// workspaces that have added an image and reads one record for each, never
+// the whole namespace, and stops at the bound it is given, saying so.
+func TestReadingEveryWorkspacesImagesIsBounded(t *testing.T) {
+	st := &neverLoaded{Store: state.NewMemory(), t: t}
+	s := images.Open(st)
+	for i := range 5 {
+		tenant := fmt.Sprintf("ws-%d", i)
+		if _, err := s.Create(tenant, images.Image{ID: images.NewID(), Name: "A"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	gone, err := s.Create("ws-9", images.Image{ID: images.NewID(), Name: "A"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Delete("ws-9", gone.ID); err != nil {
+		t.Fatal(err)
+	}
+	read := func(s *images.Store, most int) ([]string, bool) {
+		t.Helper()
+		var got []string
+		more, err := s.Tenants(most, func(tenant string, imgs []images.Image) {
+			if len(imgs) != 1 {
+				t.Errorf("%s: %d images, want 1", tenant, len(imgs))
+			}
+			got = append(got, tenant)
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return got, more
+	}
+	all := []string{"ws-0", "ws-1", "ws-2", "ws-3", "ws-4"}
+	// Another process on the same database reads the same.
+	for _, s := range []*images.Store{s, images.Open(st)} {
+		if got, more := read(s, 100); !slices.Equal(got, all) || more {
+			t.Errorf("every workspace: %v more=%v, want %v and no more", got, more, all)
+		}
+		if got, more := read(s, 6); !slices.Equal(got, all) || more {
+			t.Errorf("at the bound: %v more=%v, want %v and no more", got, more, all)
+		}
+		if got, more := read(s, 3); !slices.Equal(got, all[:3]) || !more {
+			t.Errorf("past the bound: %v more=%v, want %v and more", got, more, all[:3])
+		}
+	}
+	// More workspaces than one page of the directory holds.
+	for i := range state.MaxList + 100 {
+		if _, err := s.Create(fmt.Sprintf("big-%04d", i), images.Image{ID: images.NewID(), Name: "A"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got, more := read(s, 2*state.MaxList); len(got) != state.MaxList+105 || more || !slices.IsSorted(got) {
+		t.Errorf("across pages: %d workspaces more=%v, want %d in order and no more", len(got), more, state.MaxList+105)
+	}
+	if got, more := read(s, state.MaxList+1); len(got) != state.MaxList+1 || !more {
+		t.Errorf("across pages, past the bound: %d workspaces more=%v, want %d and more", len(got), more, state.MaxList+1)
 	}
 }

@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -214,11 +215,20 @@ func CheckName(name string) error {
 	return nil
 }
 
-const key = "images"
+const (
+	key       = "images"
+	namespace = "sandbox-images"
+)
 
-// Store keeps each workspace's images, one record per workspace.
+// Store keeps each workspace's images, one record per workspace, and a
+// directory of the workspaces that have ever added one (state.Tenants),
+// which the platform's sweep pages instead of reading every record.
 type Store struct {
-	t *state.Table[map[string]Image]
+	st state.Store
+	t  *state.Table[map[string]Image]
+
+	mu  sync.Mutex
+	dir *state.Tenants // opened at first use; under mu
 }
 
 // Open returns a store on st, which may be shared with other processes. A
@@ -227,7 +237,21 @@ func Open(st state.Store) *Store {
 	if st == nil {
 		st = state.NewMemory()
 	}
-	return &Store{t: state.NewTable[map[string]Image](st, "sandbox-images")}
+	return &Store{st: st, t: state.NewTable[map[string]Image](st, namespace)}
+}
+
+// directory is the workspaces that have added an image.
+func (s *Store) directory() (*state.Tenants, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.dir == nil {
+		dir, err := state.OpenTenants(s.st, namespace)
+		if err != nil {
+			return nil, err
+		}
+		s.dir = dir
+	}
+	return s.dir, nil
 }
 
 func (s *Store) all(tenant string) (map[string]Image, error) {
@@ -286,7 +310,15 @@ func (s *Store) Create(tenant string, img Image) (Image, error) {
 	}
 	img.Status, img.Digest, img.Problem, img.Checks, img.Rechecking = Checking, "", "", 1, false
 	img.Beat = time.Now().UTC()
-	_, err := s.t.Update(tenant, key, func(all map[string]Image, _ bool) (map[string]Image, error) {
+	dir, err := s.directory()
+	if err != nil {
+		return Image{}, err
+	}
+	// Marked before its first image is kept, so the sweep finds it.
+	if err := dir.Mark(tenant); err != nil {
+		return Image{}, err
+	}
+	_, err = s.t.Update(tenant, key, func(all map[string]Image, _ bool) (map[string]Image, error) {
 		if len(all) >= Limit {
 			return nil, fmt.Errorf("%w: a workspace keeps at most %d images", ErrInvalid, Limit)
 		}
@@ -371,14 +403,45 @@ func (s *Store) Delete(tenant, id string) error {
 	return err
 }
 
-// Tenants calls fn with every workspace's images, for the work the platform
-// does across them: pulling ready images onto a sandbox host when it starts.
-func (s *Store) Tenants(fn func(tenant string, imgs []Image) error) error {
-	return s.t.Load(func(tenant, _ string, all map[string]Image) error {
-		imgs := make([]Image, 0, len(all))
-		for _, img := range all {
-			imgs = append(imgs, img)
+// Tenants calls fn with the images of each workspace that has added one,
+// for the work the platform does across them: its sweep, and pulling ready
+// images when it starts. It is a bounded read: the directory of those
+// workspaces a page of state.MaxList at a time, then one workspace's record
+// (at most Limit images) each, and never more than most workspaces. More
+// reports that there were more than most, which were not read. A workspace
+// whose images cannot be read is left out, and the first such error is
+// returned once the others have been read.
+func (s *Store) Tenants(most int, fn func(tenant string, imgs []Image)) (more bool, err error) {
+	dir, err := s.directory()
+	if err != nil {
+		return false, err
+	}
+	n, after := 0, ""
+	var failed error
+	for {
+		page, next, err := dir.Page(after, min(most-n+1, state.MaxList))
+		if err != nil {
+			return false, err
 		}
-		return fn(tenant, imgs)
-	})
+		for _, tenant := range page {
+			if n == most {
+				return true, failed
+			}
+			n++
+			imgs, err := s.List(tenant)
+			if err != nil {
+				if failed == nil {
+					failed = err
+				}
+				continue
+			}
+			if len(imgs) > 0 {
+				fn(tenant, imgs)
+			}
+		}
+		if next == "" {
+			return false, failed
+		}
+		after = next
+	}
 }
