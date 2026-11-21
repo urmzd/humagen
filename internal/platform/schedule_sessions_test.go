@@ -51,6 +51,9 @@ func TestEachScheduledRunIsASessionInItsProject(t *testing.T) {
 	if err != nil || len(inField) != 1 || inField[0].ID != th.ID {
 		t.Fatalf("Field's sessions = %+v, %v", inField, err)
 	}
+	if got := inField[0].Conversation.Source; got != platform.SourceScheduled {
+		t.Fatalf("a scheduled session's source = %q, want %q", got, platform.SourceScheduled)
+	}
 	again, err := p.Invoke(t.Context(), scheduled("nightly-1", "helper", "Field"))
 	if err != nil || again.ID != r.ID || again.Thread != r.Thread {
 		t.Fatalf("the same occurrence again = %+v, %v", again, err)

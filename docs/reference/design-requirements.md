@@ -89,7 +89,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-052 | Conversation files, scratchpads, code editing, change review and artifact publication, in one Workspace panel opened from Conversation Settings beside a compact header | Implemented: `WorkspaceFiles.tsx`, `Workspace.tsx`, `ConversationShell.tsx`, `/api/threads/{id}/files`, `GET /api/threads/{id}/sandboxes`; web, route, Go race and confinement suites pass; `conversation-header`, `workspace-*` and `ide-*` screens pass at 390x844 and 1280x800 |
 | DES-053 | Notifications sort into the reader's own views: Inbox, Unread, Hidden and Done, with per-reader hide and delete | Implemented; per-reader marks and counters, bulk API with isolation tests, DOM and route tests, phone/desktop captures |
 | DES-060 | Pull requests across workspace repositories, with board/list views and filters | Implemented; `pull_requests.go`, `History.tsx`, endpoint and DOM tests; `history-all` and `history-github` screens registered for CI |
-| DES-054 | The sidebar lists Recents newest first, Pinned on top, Projects and Archived as views; each row says its project, its age or an unread dot, and whether it waits on a person, runs or failed | Implemented: `conversationList.ts`, `marks.ts`, `Sidebar.tsx`, `pkg/marks`, `PATCH /api/threads/{id}/marks`, `waiting` and `last` on thread summaries; Go, web and DOM tests pass; `sidebar-recents`, `sidebar-row-actions`, `sidebar-projects` and `sidebar-archived` screens pass at 390x844 and 1280x800 |
+| DES-054 | The sidebar lists Recents newest first, Pinned on top, Projects and Archived as views; each row leads with where its session started (Slack, GitHub, a schedule, the console) and says its age and, as a labelled icon, whether it waits on a person, runs or failed; red means failure only | Implemented: `conversationList.ts`, `marks.ts`, `Sidebar.tsx`, `pkg/marks`, `PATCH /api/threads/{id}/marks`, `waiting` and `last` on thread summaries; Go, web and DOM tests pass; `sidebar-recents`, `sidebar-row-actions`, `sidebar-projects` and `sidebar-archived` screens pass at 390x844 and 1280x800 |
 | DES-055 | A sidebar row previews itself on hover or a long press, and the wave's preview carries its author's mark | Implemented: `RowPreview.tsx`, `peek.ts`, `TurnRail.tsx`; web, DOM and screens pass (`sidebar-preview` checks the card is centred on its row, `conversation-wave-preview`) at 390x844 and 1280x800 |
 | DES-056 | A one-time tip teaches search, dismissed once per person | Evidence: `sidebar-search` checks the replacement Search navigation button; the tip card was removed |
 | DES-057 | Home files a new conversation from over its chat bar; a conversation's approval mode is a text control under the composer, Default or Approve for Me, within policy and audited | Implemented: `ApprovalModePicker.tsx`, `HomePage.tsx`, `pkg/threads/approval.go`, `internal/platform/approval_mode.go`, `PUT /api/threads/{id}/approval`; Go, DOM and screens pass (`home-project-above`, `composer-approval-mode`). Per-message model and effort were removed (DES-067). In Slack: an approval's menu lets the approval agent decide the thread, set as the person through the same route with `act_as` and said in the thread with the way back; an agent-decided card shows its reason; Ask a Question asks the agent in the thread while the call waits. Go, adapter, render-slack and Slack app tests pass; live Slack not yet checked |
@@ -1491,23 +1491,44 @@ and the posted text); `go test -race ./pkg/threads ./internal/platform`
 Owner request: a flat list of conversations across projects, each row its
 title, its project under it and its age or an unread dot, with Pinned on
 top; Projects kept as another view; pin and archive from the row; an
-Archived view; and dots for what is running and what needs the reader.
+Archived view; and dots for what is running and what needs the reader. A later request: show where each session came from (Slack, GitHub and so
+on) instead of unexplained red dots, make Recents, Pinned and the project
+groups easier to read, and calm the red hover, selection and focus.
 
 Rules:
 
 - The list's views are picked from its filter menu: **Recents** (the
   default: every project, newest first), **Projects** (the conversations
-  under folders, open and closed folder icons) and **Archived**. Pinned sits
-  above whichever view is on and holds pinned projects and conversations.
-- A row is its title, then its project ("Personal", the workspace's name or
-  the project's title) on a second line, and on the right how long ago it
-  moved (`now`, `5m`, `3h`, `2d`, `3w`, `9mo`, `2y`) or an unread dot. Inside
-  a project's group the project line is left out.
-- One dot before the title, most urgent first: **needs you** (a run is
-  parked on a person, an approval or a question: colored and still, since
-  it waits on a person), **running** (a ring that breathes slowly, still
-  with reduced motion) and **a reply failed** (solid). Unread is the accent
-  dot in place of the age. A screen reader hears each as words.
+  under their project's header) and **Archived**. Pinned sits above
+  whichever view is on and holds pinned projects and conversations.
+- Hierarchy: a section label (Pinned, Recents) is small and muted; a
+  project's header is small, set in the foreground's weight with a chevron
+  that folds it, and carries no icon; rows carry the icons. A group that
+  started empty opens when its rows arrive, unless the reader folded it.
+- A row is one line at one height (36px, 44px on a touch screen): a mark
+  for where the session started, its title cut with an ellipsis, then what
+  it asks of the reader and how long ago it moved (`now`, `5m`, `3h`, `2d`,
+  `3w`, `9mo`, `2y`).
+- **Where it started** leads every row, in the muted ink: Slack (a thread or
+  a direct message), GitHub, a schedule, an assignment, or the console. Its
+  tooltip says it in words ("From a Slack DM") and a screen reader hears it
+  after the title. The thread summary's `source` names a Slack thread or
+  direct message, a pull request or a schedule; a run's origin is the
+  fallback, since a Slack message posts through the API.
+- **State** sits beside the age, most urgent first, each an icon with its
+  words as tooltip and for a screen reader: **needs you** (a hand in the
+  warning color, still), **running** (a neutral ring whose arc turns, still
+  with reduced motion) and **a reply failed** (a warning triangle in red).
+  **Red means failure only**: nothing else in a row uses it or the accent.
+  Unread sets the title in a heavier weight and the age in the foreground,
+  with no dot. An open alert on the session is a bell, in the warning color
+  when urgent.
+- Hover tints a row. The open row is filled, set in medium weight and marked
+  by a bar at its left edge, so hover and selection never read as one.
+  Keyboard focus anywhere in the sidebar is a neutral ring drawn inside the
+  control, never the accent. The conversation's scrolling log, reachable by
+  keyboard so it can be scrolled, shows focus as a 1px neutral line inside
+  its edge rather than a 2px accent frame around the page.
 - Unread: an agent said the last thing, after the reader last opened the
   conversation. Opening a conversation reads it, and so does staying in it
   while it moves. Before a reader's first mark nothing reads as unread, so
@@ -1538,7 +1559,9 @@ Evidence: `go test -race ./pkg/marks ./pkg/runs ./internal/httpapi` (`TestArchiv
 `TestAThreadSaysWhatWaitsAndWhatWasSaidLast`, `TestMarksArePerPersonAndConfined`,
 `TestMarksTakeRunsRead`, the contract tests); `cd apps/web && pnpm test`
 (`conversationList.test.ts`, `sidebar-views.dom.test.tsx`,
-`preferences.dom.test.tsx`); `make screens` with `sidebar-recents`,
+`preferences.dom.test.tsx`); `go test ./internal/platform -run
+TestAThreadSaysWhereItStarted`; `make screens` with `sidebar-sources` and
+`session-log-focus` (canonical suite), `sidebar-recents`,
 `sidebar-row-actions`, `sidebar-projects`, `sidebar-archived` and
 `sidebar-participants`.
 
