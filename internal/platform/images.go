@@ -263,7 +263,7 @@ func (p *Platform) probeImage(ctx context.Context, tenant string, img images.Ima
 	cred, _ := p.secrets.Get(tenant, imageOwner(img.ID), "pull")
 	digest, err := p.cfg.SandboxImages.Puller.Pull(ctx, img.Ref, cred)
 	if err != nil {
-		return "", fmt.Errorf("could not pull %s: %w", img.Ref, err)
+		return "", pullProblem(img.Ref, img.Credential, err)
 	}
 	inst, err := p.cfg.Sandbox.Leaser.Lease(ctx, isolation.Request{Tenant: tenant, Run: "image-check-" + img.ID, Image: digest, Egress: []string{}})
 	if err != nil {
@@ -278,6 +278,25 @@ func (p *Platform) probeImage(ctx context.Context, tenant string, img images.Ima
 		return "", errors.New("it has no sleep on the shell's path; an image needs sh and sleep")
 	}
 	return digest, nil
+}
+
+// pullProblem says why a pull failed in words a person can act on: the
+// registry's own message is kept for what it does not cover.
+func pullProblem(ref string, credential bool, err error) error {
+	msg := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(msg, "unauthorized"), strings.Contains(msg, "403"), strings.Contains(msg, "401"),
+		strings.Contains(msg, "denied"), strings.Contains(msg, "not found"), strings.Contains(msg, "manifest unknown"):
+		if credential {
+			return fmt.Errorf("the registry has no %s that this credential can read", ref)
+		}
+		return fmt.Errorf("the registry has no %s, or it is private and needs a pull credential", ref)
+	case strings.Contains(msg, "no matching manifest"), strings.Contains(msg, "platform"):
+		return fmt.Errorf("%s has no build for the sandbox host's platform", ref)
+	case strings.Contains(msg, "deadline"), strings.Contains(msg, "timeout"):
+		return fmt.Errorf("pulling %s took too long", ref)
+	}
+	return fmt.Errorf("could not pull %s: %w", ref, err)
 }
 
 // warmer is a Leaser that can start an image before a run asks for it, as

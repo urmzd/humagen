@@ -146,11 +146,12 @@ export function ImageSettings({
             <LayersIcon size={16} className="shrink-0 text-aui-muted" />
             <div className="flex min-w-0 flex-1 flex-col">
               <span className="truncate font-medium text-aui-fg text-aui-sm">{img.name}</span>
-              <span className="truncate text-aui-muted text-aui-xs">
-                {[img.ref, shortDigest(img.digest) && words.pinned(shortDigest(img.digest))]
-                  .filter(Boolean)
-                  .join(" · ")}
-              </span>
+              <span className="truncate text-aui-muted text-aui-xs">{img.ref}</span>
+              {shortDigest(img.digest) && (
+                <span className="truncate font-mono text-aui-2xs text-aui-muted">
+                  {words.pinned(shortDigest(img.digest))}
+                </span>
+              )}
               {img.status === "failed" && img.problem && (
                 <span className="break-words text-aui-bad text-aui-xs" data-testid="image-problem">
                   {img.problem}
