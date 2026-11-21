@@ -117,9 +117,10 @@ export type ComposerSeed =
 /**
  * The message box. Type, attach files, record a voice note (where the
  * deployment transcribes them) or dictate. Enter sends and
- * Shift+Enter adds a line. While a reply is in flight, sending queues the
- * message behind it, Cmd+Enter (Ctrl+Enter) stops the reply and sends it
- * now, and Esc with nothing typed stops the reply.
+ * Shift+Enter adds a line. While anything in the session runs, the box says
+ * so: Enter sends now (the work in flight stops for it), Cmd+Enter
+ * (Ctrl+Enter) queues the message behind it, and Stop, or Esc with nothing
+ * typed, stops everything running in the session.
  */
 /**
  * A line the bar says while a person types (no match, no skills yet, a refusal).
@@ -128,7 +129,7 @@ export type ComposerSeed =
  */
 const floatNote =
   // Over the bar where it sits at the foot of a page; under it on Home's wide layout, where the greeting is above.
-  "absolute right-2 bottom-full left-2 z-20 mb-1 rounded-aui border border-aui-border bg-aui-surface px-3 py-2 text-aui-xs text-aui-muted shadow-lg md:[.humagen-home_&]:top-full md:[.humagen-home_&]:bottom-auto md:[.humagen-home_&]:mt-1 md:[.humagen-home_&]:mb-0";
+  "absolute right-2 bottom-full left-2 z-(--aui-z-popover) mb-1 rounded-aui border border-aui-border bg-aui-surface px-3 py-2 text-aui-xs text-aui-muted shadow-lg md:[.humagen-home_&]:top-full md:[.humagen-home_&]:bottom-auto md:[.humagen-home_&]:mt-1 md:[.humagen-home_&]:mb-0";
 
 export function Composer({
   queue,
@@ -145,7 +146,17 @@ export function Composer({
   voice,
   held = false,
   onCancelHeld,
+  stopAll,
+  footer,
 }: {
+  /**
+   * Everything running in the session, whoever started it. While anything
+   * runs the bar shows Stop, which (as Esc in an empty box does) stops all of
+   * it; without this, only the reply to this person's last message counts.
+   */
+  stopAll?: { busy: boolean; pending: boolean; onStop: () => void };
+  /** A quiet row under the box: who answers, the approval mode, usage. */
+  footer?: ReactNode;
   /**
    * The message in the box is sent and waits to go: it stays on screen,
    * read-only and dimmed, until it goes. Escape gives it back to edit.
@@ -224,6 +235,14 @@ export function Composer({
     setMenu(false);
     input.current?.focus();
   };
+  // Anything at work in the session: the bar shows Stop, and Enter sends now.
+  const running = queue.running || Boolean(stopAll?.busy);
+  const stopping = Boolean(stopAll?.pending) || queue.state.status === "stopping";
+  const stopEverything = () => {
+    if (queue.state.status === "running") queue.stop();
+    else stopAll?.onStop();
+  };
+  const mac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
   // A press outside the menu closes it, as Escape does.
   useEffect(() => {
     if (!menu) return;
@@ -527,15 +546,16 @@ export function Composer({
         return;
       }
     }
-    // Esc with nothing typed stops the reply to the last message.
-    if (e.key === "Escape" && !value && queue.state.status === "running") {
+    // Esc with nothing typed stops everything at work in the session.
+    if (e.key === "Escape" && !value && running && !stopping) {
       e.preventDefault();
-      queue.stop();
+      stopEverything();
       return;
     }
+    // Enter sends now; Cmd+Enter (Ctrl+Enter) queues behind what is running.
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
-      send(e.metaKey || e.ctrlKey);
+      send(!(e.metaKey || e.ctrlKey));
     }
   };
 
@@ -649,7 +669,7 @@ export function Composer({
       : "Dictate";
 
   return (
-    <div className="humagen-composer-container relative z-10 flex min-w-0 flex-col gap-1.5">
+    <div className="humagen-composer-container relative z-(--aui-z-composer) flex min-w-0 flex-col gap-1.5">
       {chooseSession && (
         <Modal title={`Session for @${chooseSession}`} onClose={() => setChooseSession(undefined)}>
           <div className="flex flex-col gap-4 p-5">
@@ -688,7 +708,7 @@ export function Composer({
         aria-label="Message"
         onSubmit={(e) => {
           e.preventDefault();
-          send(false);
+          send(true);
         }}
         className="humagen-composer relative flex flex-col gap-1 rounded-[1.25rem] border border-aui-border bg-aui-surface p-2 transition-colors focus-within:border-aui-fg motion-reduce:transition-none"
       >
@@ -706,7 +726,7 @@ export function Composer({
             role="listbox"
             aria-label={defaultCopy.threads.commands}
             style={{ maxHeight: listAt.max }}
-            className={`absolute right-2 left-2 z-20 overflow-y-auto rounded-aui border border-aui-border bg-aui-surface p-1 shadow-lg ${listAt.up ? "bottom-full mb-1 md:[.humagen-home_&]:top-full md:[.humagen-home_&]:bottom-auto md:[.humagen-home_&]:mt-1 md:[.humagen-home_&]:mb-0" : "top-full mt-1"}`}
+            className={`absolute right-2 left-2 z-(--aui-z-popover) overflow-y-auto rounded-aui border border-aui-border bg-aui-surface p-1 shadow-lg ${listAt.up ? "bottom-full mb-1 md:[.humagen-home_&]:top-full md:[.humagen-home_&]:bottom-auto md:[.humagen-home_&]:mt-1 md:[.humagen-home_&]:mb-0" : "top-full mt-1"}`}
           >
             {commands.map((c, i) => (
               <li
@@ -744,7 +764,7 @@ export function Composer({
             role="listbox"
             aria-label={tags.label}
             style={{ maxHeight: listAt.max }}
-            className={`absolute right-2 left-2 z-20 overflow-y-auto rounded-aui border border-aui-border bg-aui-surface p-1 shadow-lg ${listAt.up ? "bottom-full mb-1 md:[.humagen-home_&]:top-full md:[.humagen-home_&]:bottom-auto md:[.humagen-home_&]:mt-1 md:[.humagen-home_&]:mb-0" : "top-full mt-1"}`}
+            className={`absolute right-2 left-2 z-(--aui-z-popover) overflow-y-auto rounded-aui border border-aui-border bg-aui-surface p-1 shadow-lg ${listAt.up ? "bottom-full mb-1 md:[.humagen-home_&]:top-full md:[.humagen-home_&]:bottom-auto md:[.humagen-home_&]:mt-1 md:[.humagen-home_&]:mb-0" : "top-full mt-1"}`}
           >
             {shown.map((o, i) => (
               <li
@@ -917,7 +937,9 @@ export function Composer({
           placeholder={
             mentioned.length > 0
               ? `Message ${mentioned.map((name) => `@${name}`).join(", ")}`
-              : emptyText || placeholder || defaultCopy.chat.placeholder
+              : running
+                ? defaultCopy.dock.hint(mac)
+                : emptyText || placeholder || defaultCopy.chat.placeholder
           }
           onChange={(e) => {
             change(e.target.value);
@@ -1014,6 +1036,20 @@ export function Composer({
           {/* What the + menu picked sits in the bar, beside +, so nothing under it moves. */}
           <div className="humagen-composer-chips min-w-0 flex-1">{plus?.chips}</div>
           {trailing}
+          {/* While anything in the session runs, Stop stops all of it. Esc does too. */}
+          {running && (
+            <button
+              type="button"
+              data-layer="stop-all"
+              className={`${action} humagen-composer-stop bg-aui-fg text-aui-bg hover:opacity-90 disabled:cursor-progress disabled:opacity-50`}
+              aria-label={stopping ? defaultCopy.dock.stoppingAll : defaultCopy.dock.stopAllLabel}
+              title={defaultCopy.dock.stopAllHint}
+              disabled={stopping}
+              onClick={stopEverything}
+            >
+              <span aria-hidden className="size-2.5 rounded-[2px] bg-current" />
+            </button>
+          )}
           {/*
           One button in one place. With nothing to send it records a voice
           note (or dictates, where the deployment does not transcribe), and
@@ -1045,8 +1081,8 @@ export function Composer({
                 <button
                   type="submit"
                   disabled={!ready}
-                  aria-label={queue.running ? "Queue message" : "Send message"}
-                  title={queue.running ? "Queue behind the reply in flight" : "Send"}
+                  aria-label={running ? defaultCopy.dock.sendNow : "Send message"}
+                  title={running ? defaultCopy.dock.sendNow : "Send"}
                   className={`${action} bg-aui-hover text-aui-fg hover:opacity-90 disabled:opacity-40`}
                 >
                   <ArrowUpIcon size={16} strokeWidth={2.5} />
@@ -1071,6 +1107,7 @@ export function Composer({
           )}
         </div>
       </form>
+      {footer}
     </div>
   );
 }

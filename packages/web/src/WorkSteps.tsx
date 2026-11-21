@@ -22,7 +22,13 @@ import {
   toolFailed,
   toolTarget,
 } from "@humagen/core";
-import { ItemActionsContext, ShimmerVerb } from "@humagen/render-web";
+import {
+  ItemActionsContext,
+  type ItemStop,
+  ItemStopControl,
+  ItemStopsContext,
+  ShimmerVerb,
+} from "@humagen/render-web";
 import {
   createContext,
   type MouseEvent,
@@ -349,6 +355,32 @@ function ToolRow({
  * step waiting on a person keeps the run open; a failed one is counted in the
  * line, in the same quiet tone, since nobody needs to act on it.
  */
+/**
+ * One Stop for a line of steps, at the line itself: what each step running
+ * under it (a step in flight, background work a step started) would stop,
+ * pressed together. Stopped once every one of them is.
+ */
+function groupStop(
+  stops: { of: (item: { kind: "task"; turn: Turn; task: Task }) => ItemStop | null } | null,
+  turn: Turn,
+  tasks: Task[],
+): ItemStop | null {
+  if (!stops) return null;
+  const each = tasks.flatMap((task) => {
+    const s = stops.of({ kind: "task", turn, task });
+    return s ? [s] : [];
+  });
+  if (each.length === 0) return null;
+  const live = each.filter((s) => !s.stopped);
+  if (live.length === 0) return { what: each[0]?.what ?? "", stopped: true };
+  const press = live.filter((s) => s.onStop);
+  return {
+    what: live.length === 1 ? (live[0]?.what ?? "") : live.map((s) => s.what).join(", "),
+    pending: live.every((s) => s.pending),
+    onStop: press.length ? () => press.forEach((s) => s.onStop?.()) : undefined,
+  };
+}
+
 export function StepGroup({
   turn,
   tasks,
@@ -359,6 +391,8 @@ export function StepGroup({
   copy?: Copy;
 }) {
   const links = useContext(FileLinkContext);
+  const stops = useContext(ItemStopsContext);
+  const stop = useMemo(() => groupStop(stops, turn, tasks), [stops, turn, tasks]);
   const waiting = tasks.some((t) => t.status === "waiting");
   const [open, setOpen] = useState<boolean | null>(null);
   const shown = open ?? waiting;
@@ -420,6 +454,7 @@ export function StepGroup({
             <Chevron open={shown} />
           </button>
         )}
+        {stop && stops && <ItemStopControl stop={stop} words={stops.words} />}
       </div>
       {shown && (
         <ul className="mt-0.5 ml-[0.4375rem] flex min-w-0 flex-col border-aui-border border-l pl-2">

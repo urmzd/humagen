@@ -1347,6 +1347,9 @@ export const api = {
     call<{ proposals: Proposal[] }>("GET", "/api/memory/pending").then((r) => r.proposals),
   /** Stop a run and everything attached to it. Runs it delegated keep going. */
   stopRun: (id: string) => call<Run>("POST", `/api/runs/${encodeURIComponent(id)}/stop`),
+  /** Stop every run in a session and in its child sessions. */
+  stopSession: (id: string) =>
+    call<void>("POST", `/api/sessions/${encodeURIComponent(id)}/stop`, { children: true }),
   /** Answer the question a run is waiting on. Returns the question's inbox message, settled. */
   answer: (r: AnswerRequest) => call<unknown>("POST", answerPath(r), r.body),
   /** A message alone, without its children: who its root's place was asked in front of. */

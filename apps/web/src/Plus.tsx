@@ -402,7 +402,7 @@ export function PlusMenu({
       }}
       style={{ maxHeight: place.max }}
       data-plus-menu
-      className={`motion-safe:animate-aui-pop absolute left-0 z-30 flex w-full min-w-0 max-w-sm flex-col overflow-x-hidden overflow-y-auto rounded-aui border border-aui-border bg-aui-surface p-1.5 shadow-lg ${place.up ? "bottom-full mb-1 origin-bottom-left" : "top-full mt-1 origin-top-left"}`}
+      className={`motion-safe:animate-aui-pop absolute left-0 z-(--aui-z-popover) flex w-full min-w-0 max-w-sm flex-col overflow-x-hidden overflow-y-auto rounded-aui border border-aui-border bg-aui-surface p-1.5 shadow-lg ${place.up ? "bottom-full mb-1 origin-bottom-left" : "top-full mt-1 origin-top-left"}`}
     >
       <div
         key={pane}
