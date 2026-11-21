@@ -2212,6 +2212,7 @@ export const defaultCopy = {
     addStarters: "Add Starters",
     paused: (name: string) => `${name} is paused and answers nobody until it is resumed.`,
     startFailed: "The session could not be started. Try again.",
+    startRefused: (why: string) => `The session was not started: ${why}`,
     lastDay: (runs: number, failed: number) =>
       `${runs} run${runs === 1 ? "" : "s"} in the last day${failed > 0 ? `, ${failed} failed` : ""}`,
   },

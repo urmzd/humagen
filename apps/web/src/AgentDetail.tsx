@@ -633,6 +633,8 @@ export function AgentDetail({
       {atHome ? (
         <AgentHomeTab
           revision={revision}
+          // The platform's own agents are the workspace's.
+          home={builtin ? undefined : home}
           stats={stats}
           canWrite={canWrite}
           onLook={() => setTab("look")}

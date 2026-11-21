@@ -4,9 +4,10 @@ import { useQueue } from "@humagen/web";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import type { AgentSession } from "../../../packages/client/src/generated/types.ts";
 import { agentLook, subscribeHues } from "./agentHues.ts";
-import { type AgentControl, api, call, type Group, type Revision } from "./api.ts";
+import { type AgentControl, ApiError, api, call, type Group, type Revision } from "./api.ts";
 import { agentShown } from "./branding.ts";
 import { Composer } from "./Composer.tsx";
+import { homeName } from "./projects.ts";
 import { href } from "./route.ts";
 import { AgentMark, button, Problem } from "./ui.tsx";
 
@@ -57,12 +58,15 @@ async function defaultSkills(name: string): Promise<{ name: string; description:
 export function AgentHomeTab({
   revision,
   stats,
+  home,
   canWrite,
   onLook,
   onOpenThread,
   seed,
 }: {
   revision: Revision;
+  /** The project it is homed in. None, or "~", is the workspace. */
+  home?: string;
   /** Its runs over the last day, when they were read. */
   stats?: Group;
   canWrite: boolean;
@@ -105,15 +109,28 @@ export function AgentHomeTab({
   const queue = useQueue({
     onStart: (message) => {
       setProblem("");
-      call<AgentSession>("POST", "/api/sessions", { agent: name, text: message.text })
+      // An agent homed in a project answers only where its readers alone
+      // read, so the session starts there, not in the asker's own project.
+      const project = homeName(home);
+      call<AgentSession>("POST", "/api/sessions", {
+        agent: name,
+        text: message.text,
+        ...(project ? { project } : {}),
+      })
         .then((session) => {
           queue.turnEnded("done");
           if (onOpenThread) onOpenThread(session.id);
           else window.location.assign(href({ page: "conversation", id: session.id }));
         })
-        .catch(() => {
+        .catch((e: unknown) => {
           queue.reject();
-          setProblem(words.startFailed);
+          // A refusal says why (the asker may read the project and not
+          // post there); anything else is a failure to try again.
+          setProblem(
+            e instanceof ApiError && e.status >= 400 && e.status < 500 && e.message
+              ? words.startRefused(e.message)
+              : words.startFailed,
+          );
         });
     },
     onInterrupt: () => queue.turnEnded("stopped"),
