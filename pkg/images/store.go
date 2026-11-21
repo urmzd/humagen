@@ -42,6 +42,10 @@ const (
 	MaxRef = 512
 	// MaxProblem bounds why a check failed, in bytes.
 	MaxProblem = 512
+	// MaxWarm bounds the images one workspace keeps warm. The sandbox's
+	// pool is shared by every workspace, and an image it once warmed stays
+	// warm until the server restarts.
+	MaxWarm = 3
 )
 
 // ErrInvalid reports an image that will not be kept. Callers match with
@@ -84,6 +88,31 @@ type Image struct {
 	CreatedBy  string    `json:"createdBy"`
 	CreatedAt  time.Time `json:"createdAt"`
 	CheckedAt  time.Time `json:"checkedAt,omitzero"`
+	// Checks counts the checks started on it. A check keeps what it found
+	// only while it is the latest, so a slow one never replaces a newer
+	// one's result. It is kept, not shown: Shown leaves it out.
+	Checks int64 `json:"checks,omitempty"`
+}
+
+// Shown is img as a person sees it: without its count of checks.
+func (img Image) Shown() Image {
+	img.Checks = 0
+	return img
+}
+
+// warm counts the images in all kept warm.
+func warm(all map[string]Image) int {
+	n := 0
+	for _, img := range all {
+		if img.Warm {
+			n++
+		}
+	}
+	return n
+}
+
+func errWarm() error {
+	return fmt.Errorf("%w: a workspace keeps at most %d images warm", ErrInvalid, MaxWarm)
 }
 
 // NewID returns a fresh image id.
@@ -223,8 +252,9 @@ func (s *Store) Get(tenant, id string) (Image, error) {
 	return img, nil
 }
 
-// Create keeps a new image, checking, under its own id. A name is unique in
-// a workspace, ignoring case.
+// Create keeps a new image, checking, under its own id: its first check is
+// under way. A name is unique in a workspace, ignoring case, and keeping it
+// warm is refused past MaxWarm.
 func (s *Store) Create(tenant string, img Image) (Image, error) {
 	if !ValidID(img.ID) {
 		return Image{}, fmt.Errorf("%w: id %q", ErrInvalid, img.ID)
@@ -233,10 +263,13 @@ func (s *Store) Create(tenant string, img Image) (Image, error) {
 	if err := CheckName(img.Name); err != nil {
 		return Image{}, err
 	}
-	img.Status, img.Digest, img.Problem = Checking, "", ""
+	img.Status, img.Digest, img.Problem, img.Checks = Checking, "", "", 1
 	_, err := s.t.Update(tenant, key, func(all map[string]Image, _ bool) (map[string]Image, error) {
 		if len(all) >= Limit {
 			return nil, fmt.Errorf("%w: a workspace keeps at most %d images", ErrInvalid, Limit)
+		}
+		if img.Warm && warm(all) >= MaxWarm {
+			return nil, errWarm()
 		}
 		next := make(map[string]Image, len(all)+1)
 		for k, v := range all {
@@ -258,7 +291,8 @@ func (s *Store) Create(tenant string, img Image) (Image, error) {
 }
 
 // Update changes one image with fn and returns it as kept. Its id, name,
-// reference, creator and creation time do not change.
+// reference, creator and creation time do not change. Keeping it warm is
+// refused past MaxWarm.
 func (s *Store) Update(tenant, id string, fn func(Image) Image) (Image, error) {
 	var out Image
 	_, err := s.t.Update(tenant, key, func(all map[string]Image, _ bool) (map[string]Image, error) {
@@ -277,6 +311,9 @@ func (s *Store) Update(tenant, id string, fn func(Image) Image) (Image, error) {
 		if next == cur {
 			out = cur
 			return nil, state.ErrUnchanged
+		}
+		if next.Warm && !cur.Warm && warm(all) >= MaxWarm {
+			return nil, errWarm()
 		}
 		copied := make(map[string]Image, len(all))
 		for k, v := range all {

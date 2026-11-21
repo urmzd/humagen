@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/urmzd/saige/flow/isolation"
@@ -37,7 +38,14 @@ const (
 	imageProbeTimeout = 30 * time.Second
 	// MaxImageCredential bounds a pull credential, in bytes.
 	MaxImageCredential = 4 << 10
+	// MaxImagePulls bounds the pulls this process runs at once, for every
+	// workspace: they share the sandbox host's Docker daemon.
+	MaxImagePulls = 3
 )
+
+// imageRepullTimeout bounds one pull of a ready image at start, so a
+// registry that hangs holds up no other image.
+var imageRepullTimeout = 5 * time.Minute
 
 // ImagePuller fetches images onto the sandbox host.
 type ImagePuller interface {
@@ -138,7 +146,11 @@ func (p *Platform) ListImages(who auth.Principal) ([]images.Image, error) {
 	if !p.imagesOn() {
 		return []images.Image{}, nil
 	}
-	return p.Images.List(who.Tenant)
+	imgs, err := p.Images.List(who.Tenant)
+	for i := range imgs {
+		imgs[i] = imgs[i].Shown()
+	}
+	return imgs, err
 }
 
 // imageOwner is who an image's pull credential is kept under in the
@@ -174,35 +186,44 @@ func (p *Platform) AddImage(ctx context.Context, who auth.Principal, in ImageInp
 		}
 		return images.Image{}, err
 	}
-	p.checkImageLater(who.Tenant, saved.ID)
-	return saved, nil
+	if p.imageChecks.claim(who.Tenant, saved.ID) {
+		p.checkImageLater(who.Tenant, saved.ID, saved.Checks)
+	}
+	return saved.Shown(), nil
 }
 
-// ChangeImage keeps an image warm or not, or checks it again.
+// ChangeImage keeps an image warm or not, or checks it again. A check
+// asked for while one is under way starts none: the image is answered as
+// it stands, checking.
 func (p *Platform) ChangeImage(_ context.Context, who auth.Principal, id string, in ImageChange) (images.Image, error) {
 	if !p.imagesOn() {
 		// Nothing is kept where nothing may be added.
 		return images.Image{}, images.ErrNotFound
 	}
+	check := in.Check && p.imageChecks.claim(who.Tenant, id)
 	img, err := p.Images.Update(who.Tenant, id, func(img images.Image) images.Image {
 		if in.Warm != nil {
 			img.Warm = *in.Warm
 		}
-		if in.Check {
+		if check {
 			img.Status, img.Problem = images.Checking, ""
+			img.Checks++
 		}
 		return img
 	})
 	if err != nil {
+		if check {
+			p.imageChecks.release(who.Tenant, id)
+		}
 		return images.Image{}, err
 	}
 	switch {
-	case in.Check:
-		p.checkImageLater(who.Tenant, id)
+	case check:
+		p.checkImageLater(who.Tenant, id, img.Checks)
 	case img.Warm && img.Status == images.Ready:
 		p.warmImage(who.Tenant, img)
 	}
-	return img, nil
+	return img.Shown(), nil
 }
 
 // RemoveImage forgets an image and its credential. A session started in it
@@ -217,25 +238,123 @@ func (p *Platform) RemoveImage(_ context.Context, who auth.Principal, id string)
 	return p.secrets.Drop(who.Tenant, imageOwner(id))
 }
 
-// checkImageLater checks an image in the background, past the request
-// that asked for it.
-func (p *Platform) checkImageLater(tenant, id string) {
+// imageChecks are the image checks under way in this process: at most one
+// per image, at most MaxImagePulls pulling at once, and all of them ended
+// when the platform stops.
+type imageChecks struct {
+	mu      sync.Mutex
+	ctx     context.Context // every check's; cancelled by stop
+	cancel  context.CancelFunc
+	stopped bool
+	running map[string]bool // tenant and image id
+	pulls   chan struct{}
+	wg      sync.WaitGroup
+}
+
+func (c *imageChecks) initLocked() {
+	if c.ctx == nil {
+		c.ctx, c.cancel = context.WithCancel(context.Background())
+		c.running = map[string]bool{}
+		c.pulls = make(chan struct{}, MaxImagePulls)
+	}
+}
+
+// claim reports whether a check of the image may start: none is under way
+// and the platform has not stopped. The caller then releases it.
+func (c *imageChecks) claim(tenant, id string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.initLocked()
+	key := tenant + "\x00" + id
+	if c.stopped || c.running[key] {
+		return false
+	}
+	c.running[key] = true
+	c.wg.Add(1)
+	return true
+}
+
+func (c *imageChecks) release(tenant, id string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	delete(c.running, tenant+"\x00"+id)
+	c.wg.Done()
+}
+
+// context is the one every check runs under.
+func (c *imageChecks) context() context.Context {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.initLocked()
+	return c.ctx
+}
+
+// pull waits for room to pull, and returns what gives it back.
+func (c *imageChecks) pull(ctx context.Context) (func(), error) {
+	c.mu.Lock()
+	c.initLocked()
+	pulls := c.pulls
+	c.mu.Unlock()
+	select {
+	case pulls <- struct{}{}:
+		return func() { <-pulls }, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+// stop ends every check under way and waits for them.
+func (c *imageChecks) stop() {
+	c.mu.Lock()
+	c.initLocked()
+	c.stopped = true
+	c.cancel()
+	c.mu.Unlock()
+	c.wg.Wait()
+}
+
+// checkImageLater runs check n of an image in the background, past the
+// request that asked for it. Its claim is the caller's, and is released
+// when it ends.
+func (p *Platform) checkImageLater(tenant, id string, n int64) {
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), ImageCheckTimeout)
+		defer p.imageChecks.release(tenant, id)
+		ctx, cancel := context.WithTimeout(p.imageChecks.context(), ImageCheckTimeout)
 		defer cancel()
-		p.checkImage(ctx, tenant, id)
+		p.checkImage(ctx, tenant, id, n)
 	}()
 }
 
+// errStopped is a check the server stopped before it finished.
+var errStopped = errors.New("the server stopped before the check finished; check it again")
+
 // checkImage pulls an image, pins it and starts it once, and keeps what
-// came of it.
-func (p *Platform) checkImage(ctx context.Context, tenant, id string) {
+// came of it while it is the image's latest check, n.
+func (p *Platform) checkImage(ctx context.Context, tenant, id string, n int64) {
 	img, err := p.Images.Get(tenant, id)
-	if err != nil {
+	if err != nil || img.Checks != n {
 		return
 	}
-	digest, err := p.probeImage(ctx, tenant, img)
+	var digest string
+	// The registries allowed may have narrowed since it was added.
+	if err = images.CheckRef(img.Ref, p.cfg.SandboxImages.Registries); err != nil {
+		err = fmt.Errorf("this deployment no longer allows it: %s", strings.TrimPrefix(err.Error(), images.ErrInvalid.Error()+": "))
+	} else if done, perr := p.imageChecks.pull(ctx); perr != nil {
+		err = perr
+	} else {
+		digest, err = p.probeImage(ctx, tenant, img)
+		done()
+	}
+	if err != nil && p.imageChecks.context().Err() != nil {
+		err = errStopped
+	}
+	stale := false
 	saved, uerr := p.Images.Update(tenant, id, func(cur images.Image) images.Image {
+		if cur.Checks != n {
+			// A newer check started; its result is the one kept.
+			stale = true
+			return cur
+		}
 		cur.CheckedAt = time.Now().UTC()
 		if err != nil {
 			cur.Status, cur.Problem = images.Failed, err.Error()
@@ -244,8 +363,8 @@ func (p *Platform) checkImage(ctx context.Context, tenant, id string) {
 		cur.Status, cur.Problem, cur.Digest = images.Ready, "", digest
 		return cur
 	})
-	if uerr != nil {
-		// Removed while it was checked.
+	if uerr != nil || stale {
+		// Removed, or checked again, while it was checked.
 		return
 	}
 	if err != nil {
@@ -319,6 +438,8 @@ func (p *Platform) warmImage(tenant string, img images.Image) {
 // host by digest, and warms those kept warm. The platform calls it when it
 // starts, so a host that has never run an image has it before a session
 // asks; a failure is logged and the image stays ready for the next host.
+// Each pull has imageRepullTimeout, and an image is warmed only if it is
+// still ready and kept warm once it is pulled.
 func (p *Platform) PullReadyImages(ctx context.Context) {
 	if !p.imagesOn() {
 		return
@@ -331,17 +452,31 @@ func (p *Platform) PullReadyImages(ctx context.Context) {
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
-			cred, _ := p.secrets.Get(tenant, imageOwner(img.ID), "pull")
-			if _, err := p.cfg.SandboxImages.Puller.Pull(ctx, img.Digest, cred); err != nil {
+			if err := p.repull(ctx, tenant, img); err != nil {
 				slog.Warn("images: could not pull a ready image", "tenant", tenant, "image", img.ID, "error", err)
 				continue
 			}
-			if img.Warm {
-				p.warmImage(tenant, img)
+			cur, err := p.Images.Get(tenant, img.ID)
+			if err == nil && cur.Warm && cur.Status == images.Ready && cur.Digest == img.Digest {
+				p.warmImage(tenant, cur)
 			}
 		}
 		return nil
 	})
+}
+
+// repull pulls a ready image by its digest, within imageRepullTimeout.
+func (p *Platform) repull(ctx context.Context, tenant string, img images.Image) error {
+	ctx, cancel := context.WithTimeout(ctx, imageRepullTimeout)
+	defer cancel()
+	done, err := p.imageChecks.pull(ctx)
+	if err != nil {
+		return err
+	}
+	defer done()
+	cred, _ := p.secrets.Get(tenant, imageOwner(img.ID), "pull")
+	_, err = p.cfg.SandboxImages.Puller.Pull(ctx, img.Digest, cred)
+	return err
 }
 
 // ErrImageGone reports a session whose image was removed or no longer

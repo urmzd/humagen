@@ -126,3 +126,37 @@ func TestCheckRefAllowsOnlyTheHostDockerContacts(t *testing.T) {
 		}
 	}
 }
+
+// A workspace keeps at most MaxWarm images warm: the sandbox's pool is
+// shared, and what it warms stays warm.
+func TestAWorkspaceKeepsFewImagesWarm(t *testing.T) {
+	s := images.Open(nil)
+	var kept []images.Image
+	for i := range images.MaxWarm {
+		img, err := s.Create("acme", images.Image{ID: images.NewID(), Name: fmt.Sprintf("Warm %d", i), Warm: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		kept = append(kept, img)
+	}
+	if _, err := s.Create("acme", images.Image{ID: images.NewID(), Name: "One more", Warm: true}); !errors.Is(err, images.ErrInvalid) {
+		t.Errorf("a warm image past MaxWarm: %v, want ErrInvalid", err)
+	}
+	cold, err := s.Create("acme", images.Image{ID: images.NewID(), Name: "Cold"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	warmUp := func(img images.Image) images.Image { img.Warm = true; return img }
+	if _, err := s.Update("acme", cold.ID, warmUp); !errors.Is(err, images.ErrInvalid) {
+		t.Errorf("warming one past MaxWarm: %v, want ErrInvalid", err)
+	}
+	if _, err := s.Update("acme", kept[0].ID, func(img images.Image) images.Image { img.Warm = false; return img }); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Update("acme", cold.ID, warmUp); err != nil {
+		t.Errorf("warming one once another went cold: %v", err)
+	}
+	if _, err := s.Create("globex", images.Image{ID: images.NewID(), Name: "Theirs", Warm: true}); err != nil {
+		t.Errorf("another workspace's warm image: %v", err)
+	}
+}

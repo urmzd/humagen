@@ -365,6 +365,9 @@ type Platform struct {
 	deliveries *state.Table[rootDelivery]
 	// health is the last health report and each component's recent checks.
 	health healthBook
+	// imageChecks are the image checks under way in this process
+	// (images.go).
+	imageChecks imageChecks
 
 	cfg                    Config
 	log                    *slog.Logger
@@ -1441,6 +1444,8 @@ func (p *Platform) Run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	defer p.stopWakers()
+	// An image check started while the platform ran ends with it.
+	defer p.imageChecks.stop()
 	p.Knowledge.UseEmbedder(ctx, p.cfg.Embedder, p.log)
 	p.CatalogStore.UseEmbedder(ctx, p.cfg.Embedder, p.log)
 

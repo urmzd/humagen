@@ -181,3 +181,11 @@ func (p *Platform) ReleaseTurn(req runtime.Request) { p.releaseTurn(req) }
 
 // SetPersonCommandTimeout shortens how long a person's command may run.
 func (p *Platform) SetPersonCommandTimeout(d time.Duration) { p.personCommands.timeout = d }
+
+// SetImageRepullTimeout bounds one pull of a ready image at start to d,
+// and returns what puts it back.
+func SetImageRepullTimeout(d time.Duration) (restore func()) {
+	was := imageRepullTimeout
+	imageRepullTimeout = d
+	return func() { imageRepullTimeout = was }
+}
