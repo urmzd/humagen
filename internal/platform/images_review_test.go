@@ -289,8 +289,12 @@ func TestImageWarmingFollowsTheImageAsItStands(t *testing.T) {
 	}
 }
 
-// A check under way when the platform stops ends with it, and says so.
+// A check under way when the platform stops ends with it, and is not
+// failed: a deploy is no reason to make a person check the image again. It
+// is left for the next process to look, which starts it again at once,
+// without waiting for its beat to grow old.
 func TestAnImageCheckEndsWithThePlatform(t *testing.T) {
+	shared := state.NewMemory()
 	ended := make(chan struct{}, 1)
 	release := make(chan struct{})
 	t.Cleanup(func() { close(release) })
@@ -306,6 +310,7 @@ func TestAnImageCheckEndsWithThePlatform(t *testing.T) {
 	p, err := platform.New(platform.Config{
 		Workspace:        t.TempDir(),
 		Router:           func(string) join.Asker { return join.Words },
+		Backends:         platform.Backends{Shared: shared},
 		Sandbox:          isolation.Sandbox{Leaser: &isolationtest.Leaser{Dir: t.TempDir()}, Name: "test"},
 		SandboxContained: true,
 		SandboxImages:    &platform.ImageConfig{Registries: []string{"ghcr.io"}, Puller: puller},
@@ -339,8 +344,85 @@ func TestAnImageCheckEndsWithThePlatform(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Status != images.Failed || !strings.Contains(got.Problem, "check it again") {
-		t.Errorf("a check the platform stopped: %s %q", got.Status, got.Problem)
+	if got.Status != images.Checking || got.Problem != "" || !got.Beat.IsZero() {
+		t.Fatalf("a check the platform stopped: %s %q beat %s, want checking and handed over", got.Status, got.Problem, got.Beat)
+	}
+	// The beat is stale only after a minute and a half; the process that
+	// starts next does not wait for that.
+	next := startWith(t, platform.Config{
+		Backends:         platform.Backends{Shared: shared},
+		Sandbox:          isolation.Sandbox{Leaser: &isolationtest.Leaser{Dir: t.TempDir()}, Name: "test"},
+		SandboxContained: true,
+		SandboxImages:    &platform.ImageConfig{Registries: []string{"ghcr.io"}, Puller: &pinPuller{}},
+	})
+	readyImage(t, next, img.ID)
+	if got, err := next.Images.Get(tenant, img.ID); err != nil || got.Status != images.Ready || got.Checks != 2 {
+		t.Errorf("the check the next process took over: %+v %v, want ready after 2 checks", got, err)
+	}
+}
+
+// The same for a ready image that was being checked again: it stays ready,
+// and the next process finishes its check again.
+func TestAnImageCheckAgainEndsWithThePlatform(t *testing.T) {
+	shared := state.NewMemory()
+	cfg := func(puller platform.ImagePuller) platform.Config {
+		return platform.Config{
+			Workspace:        t.TempDir(),
+			Router:           func(string) join.Asker { return join.Words },
+			Backends:         platform.Backends{Shared: shared},
+			Sandbox:          isolation.Sandbox{Leaser: &isolationtest.Leaser{Dir: t.TempDir()}, Name: "test"},
+			SandboxContained: true,
+			SandboxImages:    &platform.ImageConfig{Registries: []string{"ghcr.io"}, Puller: puller},
+		}
+	}
+	g := newGatePuller(func(n int, _ string) bool { return n > 1 })
+	defer close(g.gate)
+	p, err := platform.New(cfg(g))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	stopped := make(chan error, 1)
+	go func() { stopped <- p.Run(ctx) }()
+	img, err := p.AddImage(t.Context(), admin, platform.ImageInput{Name: "A", Ref: "ghcr.io/acme/a:1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	was := readyImage(t, p, img.ID)
+	g.waitStarted(t)
+	if _, err := p.ChangeImage(t.Context(), admin, img.ID, platform.ImageChange{Check: true}); err != nil {
+		t.Fatal(err)
+	}
+	g.waitStarted(t)
+	cancel()
+	if err := <-stopped; err != nil {
+		t.Fatalf("platform stopped with %v", err)
+	}
+	got, err := p.Images.Get(tenant, img.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != images.Ready || !got.Rechecking || got.Problem != "" || got.Digest != was.Digest || !got.Beat.IsZero() {
+		t.Fatalf("a check again the platform stopped: %+v, want ready, being checked again and handed over", got)
+	}
+	next := startWith(t, cfg(&seqPuller{digest: "22"}))
+	for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+		got, err := next.Images.Get(tenant, img.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Status != images.Ready {
+			t.Fatalf("a ready image while its check again is taken over: %+v", got)
+		}
+		if !got.Rechecking {
+			if !strings.Contains(got.Digest, "2222") || got.Problem != "" {
+				t.Errorf("the check again the next process took over: %+v, want the new digest", got)
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the check again was not taken over: %+v", got)
+		}
 	}
 }
 

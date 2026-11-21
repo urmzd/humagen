@@ -458,13 +458,13 @@ func (p *Platform) checkImageLater(tenant, id string, n int64) {
 	}()
 }
 
-// errStopped is a check the server stopped before it finished.
-var errStopped = errors.New("the server stopped before the check finished; check it again")
-
 // checkImage pulls an image, pins it and starts it once, and keeps what
 // came of it while it is the image's latest check, n. Its ImageCheckTimeout
 // starts when it has a place to pull in, not while it waits for one: a
-// check is never failed for the time other pulls took.
+// check is never failed for the time other pulls took. A check the platform
+// stops (a deploy) is not failed either: it is left as a dead process would
+// leave it, marked so that the next sweep of any process, or of this one
+// started again, starts it again at once.
 func (p *Platform) checkImage(ctx context.Context, tenant, id string, n int64) {
 	img, err := p.Images.Get(tenant, id)
 	if err != nil || img.Checks != n {
@@ -472,7 +472,8 @@ func (p *Platform) checkImage(ctx context.Context, tenant, id string, n int64) {
 	}
 	ctx, superseded := context.WithCancel(ctx)
 	defer superseded()
-	defer p.beatImage(ctx, tenant, id, n, superseded)()
+	stopBeat := sync.OnceFunc(p.beatImage(ctx, tenant, id, n, superseded))
+	defer stopBeat()
 	var digest string
 	// The registries allowed may have narrowed since it was added. That
 	// is the deployment's decision, not a check that went wrong: the image
@@ -490,7 +491,15 @@ func (p *Platform) checkImage(ctx context.Context, tenant, id string, n int64) {
 		done()
 	}
 	if err != nil && p.imageChecks.context().Err() != nil {
-		err = errStopped
+		// The platform is stopping. With no beat, the check is stranded.
+		stopBeat()
+		_, _ = p.Images.Update(tenant, id, func(cur images.Image) images.Image {
+			if cur.Checks == n && cur.BeingChecked() {
+				cur.Beat = time.Time{}
+			}
+			return cur
+		})
+		return
 	}
 	stale := false
 	saved, uerr := p.Images.Update(tenant, id, func(cur images.Image) images.Image {
@@ -569,7 +578,7 @@ func (p *Platform) beatImage(ctx context.Context, tenant, id string, n int64, su
 }
 
 // adoptStrandedChecks starts again every check that no process is running:
-// one whose process died mid-check, in any workspace of this
+// one whose process died mid-check, or stopped, in any workspace of this
 // database, read within eachTenantsImages' bound. The
 // check it starts is a new one (the image's count of checks goes up), so
 // whatever the dead check's process might still write is dropped, and of
