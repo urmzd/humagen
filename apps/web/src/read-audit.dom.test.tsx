@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { defaultCopy } from "@humagen/components";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { Audit } from "./Audit.tsx";
 import { stubFetch } from "./dom.ts";
 import { ReadAudit } from "./ReadAudit.tsx";
@@ -36,6 +36,218 @@ test("the audit names an empty window", async () => {
   net = stubFetch({ "GET /api/read-audit": () => ({ records: [] }) });
   render(<ReadAudit />);
   await screen.findByText(defaultCopy.readAudit.empty);
+});
+
+test("Audit loads break-glass records only when authorized", async () => {
+  net = stubFetch({
+    "GET /api/audit": () => ({ records: [] }),
+    "GET /api/read-audit": () => ({ records: [] }),
+  });
+  render(<Audit />);
+  await screen.findByText(defaultCopy.audit.empty);
+  assert.ok(!net.seen.some((request) => request.path === "/api/read-audit"));
+  assert.equal(screen.queryByRole("heading", { name: defaultCopy.readAudit.title }), null);
+
+  cleanup();
+  render(<Audit reads />);
+  await screen.findByText(defaultCopy.readAudit.empty);
+  // An empty section is headed by its name alone: a count is hidden at zero.
+  assert.ok(screen.getByRole("heading", { name: defaultCopy.audit.changes }));
+  assert.ok(screen.getByRole("heading", { name: defaultCopy.readAudit.title }));
+  assert.equal(screen.queryByText("0"), null);
+  assert.equal(screen.queryByText(defaultCopy.audit.limited), null);
+});
+
+test("a section as long as the server's cap says so and is not counted", async () => {
+  const at = Date.parse("2026-10-22T10:00:00Z");
+  net = stubFetch({
+    "GET /api/audit": () => ({
+      records: Array.from({ length: 100 }, (_, n) => ({
+        id: `audit-${n}`,
+        actor: "ana",
+        at: new Date(at - n * 60_000).toISOString(),
+        action: "memory.edit",
+        resource: "memory",
+        resource_id: `note-${n}`,
+        scope: "personal",
+        outcome: "succeeded",
+      })),
+    }),
+    "GET /api/read-audit": () => ({
+      records: Array.from({ length: 100 }, (_, n) => ({
+        subject: "governor",
+        project: "Secret",
+        route: "GET /api/projects/{name}",
+        at: new Date(at - n * 60_000).toISOString(),
+      })),
+    }),
+  });
+  render(<Audit reads />);
+  await waitFor(() => assert.equal(screen.getAllByText(defaultCopy.audit.limited).length, 2));
+  assert.ok(screen.getByRole("heading", { name: defaultCopy.audit.changes }));
+  assert.ok(screen.getByRole("heading", { name: defaultCopy.readAudit.title }));
+  assert.equal(screen.queryByText("100"), null);
+});
+
+const governorRead = {
+  subject: "governor",
+  project: "Secret",
+  route: "GET /api/projects/{name}",
+  at: "2026-10-22T10:00:00Z",
+};
+const changesWithTheRead = [
+  {
+    id: "read-1",
+    actor: "governor",
+    at: "2026-10-22T10:00:00Z",
+    action: "project.break_glass_read",
+    resource: "project",
+    resource_id: "Secret",
+    scope: "project",
+    project: "Secret",
+    route: "GET /api/projects/{name}",
+    rule: "projects:govern",
+    outcome: "succeeded",
+  },
+  {
+    id: "audit-1",
+    actor: "ana",
+    at: "2026-10-22T09:00:00Z",
+    action: "project.created",
+    resource: "project",
+    resource_id: "Secret",
+    scope: "project",
+    project: "Secret",
+    outcome: "succeeded",
+  },
+];
+
+test("a break-glass read is listed once when both sections show", async () => {
+  net = stubFetch({
+    "GET /api/audit": () => ({ records: changesWithTheRead }),
+    "GET /api/read-audit": () => ({ records: [governorRead] }),
+  });
+  render(<Audit reads />);
+  await screen.findByText("Project created");
+  await waitFor(() => assert.equal(screen.queryByText("Project break glass read"), null));
+  // The reader is named by the reads section alone, and the changes hold the one change.
+  assert.equal(screen.getAllByText("governor").length, 1);
+  assert.equal(screen.getAllByText("GET /api/projects/{name}").length, 1);
+  // Each heading carries its own count, read after a pause: "Workspace changes, 1".
+  assert.ok(screen.getByRole("heading", { name: `${defaultCopy.readAudit.title} , 1` }));
+  assert.ok(screen.getByRole("heading", { name: `${defaultCopy.audit.changes} , 1` }));
+  const changes = screen.getByRole("region", { name: `${defaultCopy.audit.changes} , 1` });
+  assert.equal(within(changes).getAllByRole("listitem").length, 1);
+});
+
+test("a break-glass read the reads section does not list stays among the changes", async () => {
+  net = stubFetch({
+    "GET /api/audit": () => ({ records: changesWithTheRead }),
+    "GET /api/read-audit": () => ({ records: [] }),
+  });
+  render(<Audit reads />);
+  await screen.findByText(defaultCopy.readAudit.empty);
+  await screen.findByText("Project break glass read");
+  assert.ok(screen.getByText("Project created"));
+
+  // Without the reads section nothing is taken out.
+  cleanup();
+  render(<Audit />);
+  await screen.findByText("Project break glass read");
+});
+
+test("when the server's 100 records are all reads listed above, the page does not say there are no changes", async () => {
+  const at = Date.parse("2026-10-22T10:00:00Z");
+  const reads = Array.from({ length: 100 }, (_, n) => ({
+    subject: "governor",
+    project: "Secret",
+    route: "GET /api/projects/{name}",
+    at: new Date(at - n * 60_000).toISOString(),
+  }));
+  net = stubFetch({
+    "GET /api/audit": () => ({
+      records: reads.map((read, n) => ({
+        id: `read-${n}`,
+        actor: read.subject,
+        at: read.at,
+        action: "project.break_glass_read",
+        resource: "project",
+        resource_id: read.project,
+        scope: "project",
+        project: read.project,
+        route: read.route,
+        rule: "projects:govern",
+        outcome: "succeeded",
+      })),
+    }),
+    "GET /api/read-audit": () => ({ records: reads }),
+  });
+  render(<Audit reads />);
+  await screen.findByText(defaultCopy.audit.hiddenByReads);
+  assert.equal(screen.queryByText(defaultCopy.audit.empty), null);
+  // The line stands alone: the hint that a list is capped is not repeated over no list.
+  const changes = screen.getByRole("region", { name: defaultCopy.audit.changes });
+  assert.equal(within(changes).queryByText(defaultCopy.audit.limited), null);
+  assert.equal(within(changes).queryByText(defaultCopy.audit.limitedByReads), null);
+});
+
+test("a capped list shortened by reads says why it is short", async () => {
+  const at = Date.parse("2026-10-22T10:00:00Z");
+  const reads = Array.from({ length: 97 }, (_, n) => ({
+    subject: "governor",
+    project: "Secret",
+    route: "GET /api/projects/{name}",
+    at: new Date(at - n * 60_000).toISOString(),
+  }));
+  net = stubFetch({
+    "GET /api/audit": () => ({
+      records: [
+        ...reads.map((read, n) => ({
+          id: `read-${n}`,
+          actor: read.subject,
+          at: read.at,
+          action: "project.break_glass_read",
+          resource: "project",
+          resource_id: read.project,
+          scope: "project",
+          project: read.project,
+          route: read.route,
+          rule: "projects:govern",
+          outcome: "succeeded",
+        })),
+        ...Array.from({ length: 3 }, (_, n) => ({
+          id: `audit-${n}`,
+          actor: "ana",
+          at: new Date(at - (200 + n) * 60_000).toISOString(),
+          action: "memory.edit",
+          resource: "memory",
+          resource_id: `note-${n}`,
+          scope: "personal",
+          outcome: "succeeded",
+        })),
+      ],
+    }),
+    "GET /api/read-audit": () => ({ records: reads }),
+  });
+  render(<Audit reads />);
+  const changes = await screen.findByRole("region", { name: defaultCopy.audit.changes });
+  await within(changes).findByText(defaultCopy.audit.limitedByReads);
+  assert.equal(within(changes).getAllByRole("listitem").length, 3);
+  assert.equal(within(changes).queryByText(defaultCopy.audit.limited), null);
+});
+
+test("Refresh reads the break-glass reads again with the changes", async () => {
+  net = stubFetch({
+    "GET /api/audit": () => ({ records: changesWithTheRead }),
+    "GET /api/read-audit": () => ({ records: [governorRead] }),
+  });
+  render(<Audit reads />);
+  await screen.findByText("Project created");
+  const count = (path: string) => net?.seen.filter((request) => request.path === path).length;
+  assert.equal(count("/api/read-audit"), 1);
+  fireEvent.click(screen.getByRole("button", { name: defaultCopy.audit.refresh }));
+  await waitFor(() => assert.equal(count("/api/read-audit"), 2));
+  await waitFor(() => assert.equal(count("/api/audit"), 2));
 });
 
 test("a failed read says the audit could not load", async () => {

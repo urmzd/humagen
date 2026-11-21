@@ -2773,6 +2773,8 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	exerciseSandboxCommandContract(t, c)
 	padID := exerciseScratchpadContract(t, c, auditAdmin, globex, workspaceID)
 	exerciseSaveContract(t, c, auditAdmin, globex, workspaceID, padID)
+	c.call(auditAdmin, "GET", "/api/threads/{id}/usage", "/api/threads/"+workspaceID+"/usage", "", http.StatusOK)
+	c.call(globex, "GET", "/api/threads/{id}/usage", "/api/threads/"+workspaceID+"/usage", "", http.StatusNotFound)
 	// Two rules hold for every route that takes something: another
 	// workspace's object is not found, and a body with a field the route
 	// does not know is refused. Both are asked of every operation the spec
@@ -2815,6 +2817,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/threads/{id}/sandboxes/commands":                {"id": workspaceID},
 		"/api/threads/{id}/memory":                            {"id": workspaceID},
 		"/api/threads/{id}/artifacts":                         {"id": workspaceID},
+		"/api/threads/{id}/usage":                             {"id": workspaceID},
 		"/api/threads/{id}/scratchpads":                       {"id": workspaceID},
 		"/api/threads/{id}/scratchpads/{pad}":                 {"id": workspaceID, "pad": padID},
 		"/api/runs/{id}/questions/{question}/answer":          {"id": id, "question": "x"},

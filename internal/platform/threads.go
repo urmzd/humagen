@@ -192,6 +192,50 @@ type ThreadSummary struct {
 	Visibility threads.Visibility `json:"visibility"`
 	// Messages is how many messages people have posted in it.
 	Messages int `json:"messages"`
+	// Source is where it started when that was not the console or the API:
+	// SourceSlack, SourceSlackDM, SourceGitHub or SourceScheduled, read from
+	// the Slack thread it lives on or the place its session was started
+	// from. A run's origin cannot say this: a Slack message posts to its
+	// thread through the API, so its runs' origin is the API's.
+	Source string `json:"source,omitempty"`
+}
+
+// Where a conversation started, as ThreadSummary.Source says it.
+const (
+	SourceSlack     = "slack"
+	SourceSlackDM   = "slack_dm"
+	SourceGitHub    = "github"
+	SourceScheduled = "scheduled"
+)
+
+// threadSource is where a thread started: the Slack thread or direct
+// message it lives on, or the Slack, GitHub or schedule place its session
+// was started from. "" is the console or the API, and a thread from before
+// either was kept.
+func threadSource(th threads.Thread) string {
+	if th.Surface != nil {
+		if directMessage(th.Surface.Channel) {
+			return SourceSlackDM
+		}
+		return SourceSlack
+	}
+	if th.Session == nil {
+		return ""
+	}
+	scheme, rest, _ := strings.Cut(th.Session.Parent, "://")
+	switch scheme {
+	case "slack":
+		// slack://team/channel/ts: a channel starting with D is a direct message.
+		if _, after, ok := strings.Cut(rest, "/"); ok && directMessage(after) {
+			return SourceSlackDM
+		}
+		return SourceSlack
+	case "github":
+		return SourceGitHub
+	case "schedule":
+		return SourceScheduled
+	}
+	return ""
 }
 
 // author is who a message is posted as: the caller, or the person a
@@ -2377,18 +2421,17 @@ func (t ThreadTurn) at() time.Time {
 // agent has answered yet. A conversation's channel and project are its
 // record's when it has one.
 func (p *Platform) ThreadPage(tenant string, q runs.ThreadQuery) ([]ThreadSummary, string, error) {
-	return p.threadPage(tenant, q, nil)
+	return p.threadPage(tenant, q, nil, nil)
 }
 
 // ThreadPageAs is ThreadPage holding only the conversations the reader may
 // read: in a project they see, and in a private thread taking part. A page is
 // full of those, so a hidden conversation never shortens one.
 func (p *Platform) ThreadPageAs(who auth.Principal, q runs.ThreadQuery) ([]ThreadSummary, string, error) {
-	seer := p.Seer(who)
-	return p.threadPage(who.Tenant, q, func(s ThreadSummary) bool { return seer.Conversation(s.ID, s.Project) })
+	return p.threadPage(who.Tenant, q, p.Seer(who).Snapshot(), nil)
 }
 
-func (p *Platform) threadPage(tenant string, q runs.ThreadQuery, keep func(ThreadSummary) bool) ([]ThreadSummary, string, error) {
+func (p *Platform) threadPage(tenant string, q runs.ThreadQuery, seer *Seer, keep func(ThreadSummary) bool) ([]ThreadSummary, string, error) {
 	limit := q.Limit
 	if limit <= 0 {
 		limit = runs.DefaultThreadPage
@@ -2419,13 +2462,14 @@ func (p *Platform) threadPage(tenant string, q runs.ThreadQuery, keep func(Threa
 	if err != nil {
 		return nil, "", err
 	}
+	listed, err := p.Runs.ListThreads(tenant, 0)
+	if err != nil {
+		return nil, "", err
+	}
 	byID := map[string]*ThreadSummary{}
 	var order []*ThreadSummary
-	for _, s := range p.Runs.Threads(tenant, 0) {
+	for _, s := range listed {
 		if elsewhere[s.ID] || s.Origin == OriginEval {
-			continue
-		}
-		if first, err := p.Runs.Get(tenant, s.ID); err == nil && IsEvaluation(first) {
 			continue
 		}
 		sum := &ThreadSummary{ThreadSummary: s, Visibility: threads.Shared}
@@ -2433,8 +2477,8 @@ func (p *Platform) threadPage(tenant string, q runs.ThreadQuery, keep func(Threa
 		order = append(order, sum)
 	}
 	for _, rec := range recs {
-		if first, err := p.Runs.Get(tenant, rec.ID); err == nil && IsEvaluation(first) {
-			continue
+		if seer != nil {
+			seer.Hold(rec.Thread)
 		}
 		sum, ok := byID[rec.ID]
 		if !ok {
@@ -2445,6 +2489,7 @@ func (p *Platform) threadPage(tenant string, q runs.ThreadQuery, keep func(Threa
 			order = append(order, sum)
 		}
 		sum.Project, sum.Channel, sum.Visibility, sum.Messages = rec.Project, rec.Channel, rec.Visibility, rec.Messages
+		sum.Source = threadSource(rec.Thread)
 		if rec.Title != "" {
 			sum.Title, sum.Named = rec.Title, true
 		}
@@ -2457,37 +2502,52 @@ func (p *Platform) threadPage(tenant string, q runs.ThreadQuery, keep func(Threa
 			}
 		}
 	}
+	order = slices.DeleteFunc(order, func(s *ThreadSummary) bool {
+		if q.Before != "" {
+			at := s.UpdatedAt.UnixNano()
+			if at > afterAt || (at == afterAt && s.ID <= afterID) {
+				return true
+			}
+		}
+		return in != nil && !in[s.Project] ||
+			q.Origin != "" && s.Origin != q.Origin ||
+			q.Agent != "" && !slices.Contains(s.Agents, q.Agent) ||
+			q.Standing == runs.StandingRunning && s.Active == 0 ||
+			q.Standing == runs.StandingFailed && s.Failed == 0 ||
+			q.Channel != "" && s.Channel != q.Channel ||
+			keep != nil && !keep(*s)
+	})
 	slices.SortFunc(order, func(a, b *ThreadSummary) int {
 		return cmp.Or(b.UpdatedAt.Compare(a.UpdatedAt), strings.Compare(a.ID, b.ID))
 	})
 	page := []ThreadSummary{}
-	for _, s := range order {
-		switch {
-		case in != nil && !in[s.Project]:
-			continue
-		case q.Origin != "" && s.Origin != q.Origin:
-			continue
-		case q.Agent != "" && !slices.Contains(s.Agents, q.Agent):
-			continue
-		case q.Standing == runs.StandingRunning && s.Active == 0:
-			continue
-		case q.Standing == runs.StandingFailed && s.Failed == 0:
-			continue
-		case q.Channel != "" && s.Channel != q.Channel:
-			continue
-		case keep != nil && !keep(*s):
-			continue
+	// Only the first run can identify an evaluation or place a housekeeping
+	// conversation. Read candidates together, stopping when the page is full.
+	for batch := range slices.Chunk(order, limit+1) {
+		ids := make([]string, len(batch))
+		for i, s := range batch {
+			ids[i] = s.ID
 		}
-		if q.Before != "" {
-			at := s.UpdatedAt.UnixNano()
-			if at > afterAt || (at == afterAt && s.ID <= afterID) {
+		firsts, err := p.Runs.Many(tenant, ids)
+		if err != nil {
+			return nil, "", err
+		}
+		if seer != nil {
+			seer.Read(ids...)
+		}
+		for _, s := range batch {
+			first, ok := firsts[s.ID]
+			if ok && IsEvaluation(first) {
 				continue
 			}
+			if seer != nil && !seer.Place(conversationPlace(s.ID, s.Project, first)) {
+				continue
+			}
+			if len(page) == limit {
+				return page, encodeThreadCursor(page[len(page)-1]), nil
+			}
+			page = append(page, *s)
 		}
-		if len(page) == limit {
-			return page, encodeThreadCursor(page[len(page)-1]), nil
-		}
-		page = append(page, *s)
 	}
 	return page, "", nil
 }

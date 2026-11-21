@@ -12,7 +12,14 @@ import {
   updatesOf,
   type WireProject,
 } from "@humagen/adapter";
-import { defaultCopy, Home, MessageView, TurnView, toolsLineText } from "@humagen/components";
+import {
+  ApprovalCard,
+  defaultCopy,
+  Home,
+  MessageView,
+  TurnView,
+  toolsLineText,
+} from "@humagen/components";
 import {
   ActionId,
   fileEdits,
@@ -473,6 +480,70 @@ function webButtons(element: ReactElement): string[] {
     .sort();
 }
 
+/** A button as a person meets it: what it does, what it reads, and the name a screen reader says. */
+type Offered = { id: string; label: string; name: string | undefined };
+/** Slack's buttons that act, in the order shown. */
+function slackOffers(element: ReactElement): Offered[] {
+  const blocks = renderToSlack(element).pages.flat() as {
+    type: string;
+    elements?: {
+      type: string;
+      action_id: string;
+      value?: string;
+      text?: { text: string };
+      accessibility_label?: string;
+    }[];
+  }[];
+  return blocks
+    .filter((b) => b.type === "actions")
+    .flatMap((b) => b.elements ?? [])
+    .filter((e) => e.type === "button")
+    .map((e) => ({
+      id: decodeSlackAction(e)?.id ?? "",
+      label: e.text?.text ?? "",
+      name: e.accessibility_label,
+    }));
+}
+/** The console's buttons that act, in the order shown. */
+function webOffers(element: ReactElement): Offered[] {
+  const html = renderToStaticMarkup(<WebSurface>{element}</WebSurface>);
+  return [...html.matchAll(/<button([^>]*)>([\s\S]*?)<\/button>/g)]
+    .map((m) => ({
+      id: /data-aui-action="([^"]*)"/.exec(m[1] ?? "")?.[1] ?? "",
+      label: (m[2] ?? "").replace(/<[^>]+>/g, "").trim(),
+      name: /aria-label="([^"]*)"/.exec(m[1] ?? "")?.[1],
+    }))
+    .filter((b) => b.id);
+}
+
+/**
+ * A pending approval offers the same three actions on both surfaces, each
+ * decision named for its request to a screen reader. Slack ends on the
+ * refusal and names it in full. The console keeps the two decisions together
+ * and short: Approve, then Decline, then the question.
+ */
+const decisionName = (label: string) => `${label}: ${QUESTIONS.approval.prompt}`;
+const approveOffer: Offered = {
+  id: ActionId.approve,
+  label: defaultCopy.approve,
+  name: decisionName(defaultCopy.approve),
+};
+const askOffer: Offered = { id: ActionId.ask, label: defaultCopy.askApproval, name: undefined };
+const slackDecision: Offered[] = [
+  approveOffer,
+  askOffer,
+  {
+    id: ActionId.deny,
+    label: defaultCopy.declineAction,
+    name: decisionName(defaultCopy.declineAction),
+  },
+];
+const webDecision: Offered[] = [
+  approveOffer,
+  { id: ActionId.deny, label: defaultCopy.decline, name: decisionName(defaultCopy.declineAction) },
+  askOffer,
+];
+
 const asked = (kind: keyof typeof QUESTIONS) => [
   ev("run.accepted.v1", { rev: 1 }),
   ev("run.started.v1", { attempt: 1 }),
@@ -510,9 +581,8 @@ for (const kind of ["approval", "choice", "reply"] as const) {
     const onRun = <TurnView turn={waiting} />;
     bothSay(onRun, QUESTIONS[kind].prompt);
     if (kind === "approval") {
-      bothSay(onRun, defaultCopy.approve, defaultCopy.declineAction);
-      assert.ok(slackButtons(onRun).includes(defaultCopy.declineAction));
-      assert.ok(webButtons(onRun).includes(defaultCopy.declineAction));
+      assert.deepEqual(slackOffers(onRun), slackDecision);
+      assert.deepEqual(webOffers(onRun), webDecision);
       for (const id of [ActionId.approve, ActionId.deny]) {
         assert.deepEqual(slackAction(onRun, id), {
           id,
@@ -522,17 +592,22 @@ for (const kind of ["approval", "choice", "reply"] as const) {
     }
     if (kind === "choice") bothSay(onRun, "us-east", "eu-west");
     if (kind === "reply") bothSay(onRun, defaultCopy.somethingElse);
-    assert.deepEqual(
-      slackButtons(onRun),
-      webButtons(onRun).filter((b) => slackButtons(onRun).includes(b)),
-    );
+    // Every button Slack offers is on the console in the same words. An approval
+    // is the one exception, checked in full above: the console shortens the refusal.
+    if (kind !== "approval") {
+      assert.deepEqual(
+        slackButtons(onRun),
+        webButtons(onRun).filter((b) => slackButtons(onRun).includes(b)),
+      );
+    }
 
     // In the inbox: the same question, the same choices.
     const mail = fromServer(questionMail(RUN, kind));
     const inMail = <MessageView message={forSlack(mail)} />;
     bothSay(<MessageView message={mail} />, QUESTIONS[kind].prompt);
     if (kind === "approval") {
-      bothSay(inMail, defaultCopy.approve, defaultCopy.declineAction);
+      assert.deepEqual(slackOffers(inMail), slackDecision);
+      assert.deepEqual(webOffers(inMail), webDecision);
       for (const id of [ActionId.approve, ActionId.deny]) {
         assert.deepEqual(slackAction(inMail, id), {
           id,
@@ -559,6 +634,33 @@ for (const kind of ["approval", "choice", "reply"] as const) {
     }
   });
 }
+
+test("an approval's own verb is its approve button on both, and starts the name a screen reader says", () => {
+  const approval = { ...fx.pendingApproval, approveLabel: "Roll Back" };
+  const card = <ApprovalCard turnId={RUN} approval={approval} />;
+  const approve: Offered = {
+    id: ActionId.approve,
+    label: "Roll Back",
+    name: `Roll Back: ${approval.summary}`,
+  };
+  for (const [surface, offers] of [
+    ["Slack", slackOffers(card)],
+    ["the console", webOffers(card)],
+  ] as const) {
+    assert.deepEqual(
+      offers.find((o) => o.id === ActionId.approve),
+      approve,
+      `${surface} does not offer the approval's own verb`,
+    );
+  }
+  // The console still keeps the refusal beside it, ahead of every other action.
+  assert.deepEqual(
+    webOffers(card)
+      .slice(0, 2)
+      .map((o) => o.id),
+    [ActionId.approve, ActionId.deny],
+  );
+});
 
 test("an approval the approval agent judged shows its view in Slack, the workspace's own fields as label and value", () => {
   const judged = (judgement?: Record<string, unknown>) => {

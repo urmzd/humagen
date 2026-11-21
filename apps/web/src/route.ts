@@ -87,7 +87,6 @@ export type SettingsSection =
   | "voice"
   | "connections"
   | "access"
-  | "read-audit"
   | "deletions";
 export const SETTINGS_SECTIONS: SettingsSection[] = [
   "notifications",
@@ -100,7 +99,6 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
   "voice",
   "connections",
   "access",
-  "read-audit",
   "deletions",
 ];
 
@@ -1112,7 +1110,7 @@ function read(pathname: string, search: string): Route {
       // Apps are the workspace's installs, under Workspace settings.
       if (a === "apps") return { page: "connections", provider: b, scope: "apps" };
       if (a === "health") return { page: "monitor", tab: "health" };
-      if (a === "audit") return { page: "audit" };
+      if (a === "audit" || a === "read-audit") return { page: "audit" };
       if (a === "usage") return read("/operations/usage", search);
       // Models are chosen per agent now; an old link lands on the agents.
       if (a === "models") return { page: "agents" };

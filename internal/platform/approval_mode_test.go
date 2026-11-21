@@ -122,10 +122,10 @@ func answeredFor(t *testing.T, p *platform.Platform, run string) inbox.Outcome {
 	return got
 }
 
-// Run hands a call the policy asks about to the approval agent, in a run of
-// its own, which allows it as the person who chose Run; the session's answer
+// Auto hands a call the policy asks about to the approval agent, in a run of
+// its own, which allows it as the person who chose Auto; the session's answer
 // and the audit carry its reason and what it rested on.
-func TestTheApprovalAgentAllowsACallInASessionSetToRun(t *testing.T) {
+func TestTheApprovalAgentAllowsACallInASessionSetToAuto(t *testing.T) {
 	p, c, first := judged(t, selfApproving, `{"decision": "allow", "reason": "The person asked lead to check it.", "references": ["call_agents asks a person", "call_agent to helper", "admin: Check it"]}`)
 	th, err := p.SetApprovalMode(admin, first.Thread, threads.ApprovalAuto)
 	if err != nil || !th.Approval.Auto() || th.Approval.By != admin.Subject {
@@ -206,7 +206,7 @@ func TestWhatTheApprovalAgentDoesNotDecideWaitsForAPerson(t *testing.T) {
 
 // What the agent itself always asks about goes to a person, whatever the
 // session's mode, and the approval agent is not asked.
-func TestRunLeavesWhatTheAgentAlwaysAsksAbout(t *testing.T) {
+func TestAutoLeavesWhatTheAgentAlwaysAsksAbout(t *testing.T) {
 	p, c, first := judged(t, func(s *wire.AgentSpec) {
 		s.SelfApproval = true
 		s.Approvals = []string{legacy.CallAgentTool}
@@ -228,8 +228,8 @@ func TestRunLeavesWhatTheAgentAlwaysAsksAbout(t *testing.T) {
 	}
 }
 
-// Only a person sets a session to Run.
-func TestOnlyAPersonSetsRun(t *testing.T) {
+// Only a person sets a session to Auto.
+func TestOnlyAPersonSetsAuto(t *testing.T) {
 	p, _, first := judged(t, nil)
 	machine := admin
 	machine.Kind = auth.Machine
