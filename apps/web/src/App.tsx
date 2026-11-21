@@ -995,7 +995,12 @@ function Console({
                     ))}
                   {route.page === "audit" &&
                     (can("projects:govern") ? (
-                      <Audit />
+                      <Audit
+                        reads={
+                          me.principal.kind !== "machine" &&
+                          me.principal.roles?.includes("admin") === true
+                        }
+                      />
                     ) : (
                       <Page title={defaultCopy.navigation.audit}>
                         <Problem message={defaultCopy.noPermission} />

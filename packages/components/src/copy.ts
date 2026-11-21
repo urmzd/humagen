@@ -2734,6 +2734,7 @@ export const defaultCopy = {
     ],
 
     title: "Audit",
+    changes: "Workspace changes",
     description:
       "Workspace changes in the last 24 hours. Pending means completion could not yet be confirmed.",
     empty: "No recorded changes in this window.",

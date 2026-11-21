@@ -38,6 +38,23 @@ test("the audit names an empty window", async () => {
   await screen.findByText(defaultCopy.readAudit.empty);
 });
 
+test("Audit loads break-glass records only when authorized", async () => {
+  net = stubFetch({
+    "GET /api/audit": () => ({ records: [] }),
+    "GET /api/read-audit": () => ({ records: [] }),
+  });
+  render(<Audit />);
+  await screen.findByText(defaultCopy.audit.empty);
+  assert.ok(!net.seen.some((request) => request.path === "/api/read-audit"));
+  assert.equal(screen.queryByRole("heading", { name: defaultCopy.readAudit.title }), null);
+
+  cleanup();
+  render(<Audit reads />);
+  await screen.findByText(defaultCopy.readAudit.empty);
+  assert.ok(screen.getByRole("heading", { name: /^Workspace changes/ }));
+  assert.ok(screen.getByRole("heading", { name: /^Break-glass reads/ }));
+});
+
 test("a failed read says the audit could not load", async () => {
   net = stubFetch({});
   render(<ReadAudit />);
