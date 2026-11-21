@@ -219,3 +219,11 @@ func SweepImages(p *Platform) {
 func SessionDigest(p *Platform, tenant, thread string) (string, error) {
 	return p.imageOf(tenant, thread)
 }
+
+// QuickToolSeedRetries makes a provider that was unreachable at start be
+// asked again every few milliseconds, for the length of the test.
+func QuickToolSeedRetries(t interface{ Cleanup(func()) }) {
+	first, most := toolSeedRetry, toolSeedRetryMax
+	toolSeedRetry, toolSeedRetryMax = 20*time.Millisecond, 50*time.Millisecond
+	t.Cleanup(func() { toolSeedRetry, toolSeedRetryMax = first, most })
+}
