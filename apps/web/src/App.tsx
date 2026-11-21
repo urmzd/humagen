@@ -996,7 +996,7 @@ function Console({
                     ))}
                   {route.page === "audit" &&
                     (can("projects:govern") ? (
-                      <Audit />
+                      <Audit deletions reads={me.principal.roles?.includes("admin") === true} />
                     ) : (
                       <Page title={defaultCopy.navigation.audit}>
                         <Problem message={defaultCopy.noPermission} />
@@ -1725,10 +1725,6 @@ function Console({
                       canAdmin={can("agents:write")}
                       section={route.section}
                       onSection={openSettings}
-                      explain={route.permission ?? "runs:read"}
-                      onExplain={(permission) =>
-                        go({ page: "settings", section: "access", permission }, { replace: true })
-                      }
                       onPrefs={setPrefs}
                       onWorkspace={setWorkspace}
                       projects={projectNames}

@@ -113,10 +113,12 @@ test("agent health shows actual failed checks and before-after scores, then refr
   await screen.findByText("Health temporarily unavailable");
   assert.equal(screen.queryByText(/Healthy/), null);
   refused = false;
-  fireEvent.click(screen.getByRole("button", { name: "Refresh health" }));
+  fireEvent.click(screen.getByRole("button", { name: defaultCopy.retry }));
   await screen.findByText(/1 of 2 recent evaluations passed \(50%\)/);
   assert.ok(screen.getByText("No evidence linked"));
-  assert.ok(screen.getByText("review: 100% → 50% | Regression"));
+  assert.ok(screen.getByText("review"));
+  assert.ok(screen.getByText("100% → 50%"));
+  assert.ok(screen.getByText("Regression"));
 });
 
 test("every agent is listed whatever its sessions are doing, and eval regressions show as health", async () => {

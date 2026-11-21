@@ -363,8 +363,6 @@ test("settings no longer edit projects: the workspace section links to Projects 
       canAdmin
       section="workspace"
       onSection={noop}
-      explain="runs:read"
-      onExplain={noop}
       onPrefs={noop}
       onWorkspace={noop}
       onOpenProjects={noop}

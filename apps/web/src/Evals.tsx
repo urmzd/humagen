@@ -1,4 +1,4 @@
-import { type FormEvent, useState } from "react";
+import { type FormEvent, type ReactNode, useState } from "react";
 import {
   ApiError,
   api,
@@ -374,6 +374,7 @@ export function Evals({
   canWrite,
   onChanged,
   onOpenRun,
+  header,
 }: {
   target: Suite["target"];
   subject: string;
@@ -381,6 +382,8 @@ export function Evals({
   canWrite: boolean;
   onChanged: () => void;
   onOpenRun?: (id: string) => void;
+  /** Draws the tab's top row around its New Eval action, as an agent's health does. */
+  header?: (action: ReactNode) => ReactNode;
 }) {
   const mine = suites.filter((s) => s.target === target && s.subject === subject);
   const [editing, setEditing] = useState<Suite | "new" | null>(null);
@@ -390,20 +393,20 @@ export function Evals({
     p.then(onChanged).catch((e) => setProblem(e instanceof ApiError ? e.message : fallback));
   };
 
+  const newEval =
+    canWrite && !editing ? (
+      <button type="button" className={primary} onClick={() => setEditing("new")}>
+        New Eval
+      </button>
+    ) : null;
+
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-start justify-between gap-3">
-        <p className="max-w-xl text-aui-sm text-aui-muted">
-          {target === "agent"
-            ? "Each case sends this agent a real request and checks the answer. Checks are exact, so the same answer always gets the same score."
-            : "Each case asks this source a question and checks that the right document comes back near the top."}
-        </p>
-        {canWrite && !editing && (
-          <button type="button" className={primary} onClick={() => setEditing("new")}>
-            New Eval
-          </button>
-        )}
-      </div>
+    <div className="flex flex-col gap-4">
+      {header ? (
+        header(newEval)
+      ) : newEval ? (
+        <div className="flex justify-end">{newEval}</div>
+      ) : null}
       <Problem message={problem} />
       {editing && (
         <SuiteForm
@@ -422,10 +425,7 @@ export function Evals({
         <EvalCandidates agent={subject} suites={mine} canWrite={canWrite} onChanged={onChanged} />
       )}
       {mine.length === 0 && !editing && (
-        <p className={`${card} text-aui-sm text-aui-muted`}>
-          No evals yet. Without one, a change to{" "}
-          {target === "agent" ? "the prompt" : "the documents"} is judged by eye.
-        </p>
+        <p className={`${card} text-aui-sm text-aui-muted`}>No evals yet.</p>
       )}
       {mine.map((s) => {
         const last = s.runs[0];

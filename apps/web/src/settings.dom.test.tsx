@@ -52,8 +52,6 @@ function page(
       canAdmin={false}
       section={section}
       onSection={noop}
-      explain="runs:read"
-      onExplain={noop}
       onPrefs={onPrefs}
       onWorkspace={noop}
       onOpenProjects={noop}
@@ -117,13 +115,6 @@ test("appearance is the theme alone: no accent presets, no font specimen, nothin
   assert.equal(screen.queryByRole("button", { name: "Purple" }), null);
   assert.equal(screen.queryByText(/IBM Plex/), null);
   assert.equal(screen.queryByText("These follow you to any browser you sign in from."), null);
-});
-
-test("the audit address refuses a reader without governance", async () => {
-  net = stubFetch({});
-  render(page(saved, "read", "read-audit"));
-  await screen.findByText("Only workspace administrators may read this audit.");
-  assert.ok(!net.seen.some((r) => r.path === "/api/read-audit"));
 });
 
 const clientsCaps = { max: 10, max_per_surface: 5 };

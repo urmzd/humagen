@@ -648,7 +648,7 @@ export function AgentDetail({
             counts={counts}
           />
           <div className="flex min-w-0 flex-col gap-6" data-section-body={tab}>
-            {operations}
+            {(tab === "general" || tab === "context") && operations}
             {revision && tab === "general" && (
               <AgentGeneral
                 revision={revision}
@@ -660,7 +660,7 @@ export function AgentDetail({
             )}
             {revision && tab === "look" && <AgentLookEditor name={name} canWrite={canWrite} />}
             {revision && tab === "slack" && <AgentSlackApp name={name} canLink={canLinkSlack} />}
-            {revision && (tab === "prompt" || tab === "evals") && <AgentHealth name={name} />}
+            {revision && tab === "prompt" && <AgentHealth name={name} />}
             {revision && tab === "prompt" && (
               <dl className="grid grid-cols-2 gap-3 sm:grid-cols-5">
                 {[
@@ -1236,6 +1236,13 @@ export function AgentDetail({
                 canWrite={canEval}
                 onChanged={onSuitesChanged}
                 onOpenRun={onOpenRun}
+                header={(action) => (
+                  <AgentHealth
+                    name={name}
+                    version={mySuites.map((s) => s.runs[0]?.id ?? "").join()}
+                    actions={action}
+                  />
+                )}
               />
             )}
 

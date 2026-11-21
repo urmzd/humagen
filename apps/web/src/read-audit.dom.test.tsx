@@ -38,6 +38,22 @@ test("the audit names an empty window", async () => {
   await screen.findByText(defaultCopy.readAudit.empty);
 });
 
+test("the Audit page reads break-glass reads and deletions only when asked", async () => {
+  net = stubFetch({
+    "GET /api/audit": () => ({ records: [] }),
+    "GET /api/read-audit": () => ({ records: [] }),
+    "GET /api/deletions": () => ({ deletions: [] }),
+  });
+  render(<Audit />);
+  await screen.findByText(defaultCopy.audit.empty);
+  assert.ok(!net.seen.some((r) => r.path === "/api/read-audit" || r.path === "/api/deletions"));
+  cleanup();
+  render(<Audit deletions reads />);
+  await screen.findByText(defaultCopy.readAudit.empty);
+  await screen.findByText(defaultCopy.deletions.empty);
+  assert.ok(screen.getByRole("heading", { name: new RegExp(defaultCopy.audit.changes) }));
+});
+
 test("a failed read says the audit could not load", async () => {
   net = stubFetch({});
   render(<ReadAudit />);

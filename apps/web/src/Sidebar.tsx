@@ -792,7 +792,8 @@ export function Sidebar({
   const who = me.principal;
   const dev = who.subject === "dev";
   const name = prefs?.display_name || who.name || who.email || who.subject;
-  const subtitle = dev ? "Dev mode, no sign-in" : (who.roles ?? []).join(", ") || who.tenant;
+  // The account row is the name alone; the menu adds roles for a signed-in person.
+  const subtitle = dev ? "" : (who.roles ?? []).join(", ") || who.tenant;
   // Settings open from the account row: yours, and the workspace's when you may see any of it.
   const workspaceSettings = workspaceSettingsRoute(can, who.roles ?? []);
   // Recents is what people asked for. Scheduled and eval runs live on their own
@@ -1590,14 +1591,8 @@ export function Sidebar({
                   <Avatar name={name} prefs={prefs} size={26} />
                   {open && (
                     <>
-                      <span className="humagen-sidebar-reveal flex min-w-0 items-baseline gap-1.5 truncate">
-                        {/* The name keeps its width; the subtitle gives way first. */}
-                        <span className="max-w-full shrink-0 truncate text-aui-sm text-aui-fg">
-                          {name}
-                        </span>
-                        {subtitle && (
-                          <span className="truncate text-aui-xs text-aui-muted">| {subtitle}</span>
-                        )}
+                      <span className="humagen-sidebar-reveal flex min-w-0 flex-1 items-baseline truncate">
+                        <span className="max-w-full truncate text-aui-sm text-aui-fg">{name}</span>
                         <span className="sr-only">, {defaultCopy.preferences.open}</span>
                       </span>
                       <ChevronDownIcon
@@ -1616,7 +1611,11 @@ export function Sidebar({
                     <Avatar name={name} prefs={prefs} size={32} />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-aui-sm text-aui-fg">{name}</span>
-                      <span className="block truncate text-aui-2xs text-aui-muted">{subtitle}</span>
+                      {subtitle && (
+                        <span className="block truncate text-aui-2xs text-aui-muted">
+                          {subtitle}
+                        </span>
+                      )}
                     </span>
                   </div>
                   <Separator className="my-1" />
