@@ -95,7 +95,6 @@ import {
   useViewShortcuts,
 } from "./SessionViews.tsx";
 import { ShareDialog } from "./Share.tsx";
-import { useThreadSelection } from "./selection.ts";
 import { useItemStops, useSessionBackground, useSessionStop } from "./stops.tsx";
 import { topicsOf } from "./topics.ts";
 import { mergeTurns } from "./turns.ts";
@@ -956,18 +955,6 @@ export function ThreadRoom({
   const shareable =
     posts && th.visibility === "private" && !th.surface && !!onSharing && (started || owner);
   const hasRuns = turns.some((t) => t.run);
-  // What the + menu selected for the conversation, shown at once and saved on the thread.
-  const { selection, select } = useThreadSelection(id, th, {
-    saved: (t) => {
-      setPage((p) => ({ ...p, thread: t }));
-      onChanged();
-    },
-    reread: (p) => {
-      setPage(p);
-      setTurns((t) => mergeTurns(t, p.turns));
-    },
-    problem: setProblem,
-  });
   const fixedWhy = hasRuns
     ? defaultCopy.threads.shareProjectFixed
     : th.surface
@@ -1316,8 +1303,6 @@ export function ThreadRoom({
                                 onSkill={(name) => {
                                   setSeed({ text: `/${name} `, mode: "prepend" });
                                 }}
-                                selection={selection}
-                                onChange={select}
                                 onAttach={attach}
                                 onClose={close}
                               />
@@ -1394,6 +1379,7 @@ export function ThreadRoom({
                         canWrite={!!alertAccess?.write}
                         agents={posts ? agents.map((a) => a.spec.name) : []}
                         onOpen={onOpenThread}
+                        beside
                       />
                       {t.announcement ? (
                         <AnnouncementView key={`a:${t.announcement.id}`} a={t.announcement} />
@@ -1863,8 +1849,6 @@ export function ChannelPage({
                 onSkill={(name) => {
                   setSeed({ text: `/${name} `, mode: "prepend" });
                 }}
-                selection={{ project, channel }}
-                onChange={() => {}}
                 onAttach={attach}
                 onClose={close}
                 onLeave={leave}

@@ -15,7 +15,7 @@ import {
   type ThreadTurn,
 } from "./api.ts";
 import { liveEventSource, stubEventSource, stubFetch } from "./dom.ts";
-import { PlusMenu, type Selection, SelectionChips } from "./Plus.tsx";
+import { PlusMenu, SelectionChips } from "./Plus.tsx";
 import { globex, tree } from "./projects.fixtures.ts";
 import { ChannelPage, ChannelsTab, postedLine, ThreadRoom } from "./Room.tsx";
 import { useRunStop } from "./RunStop.tsx";
@@ -2672,8 +2672,6 @@ test("the + menu checks the agents a draft mentions and mentions any number of t
       agents={names.map((name) => ({ name }))}
       mentioned={["a1", "a2", "a3", "a4", "a5"]}
       onMention={(name) => picks.push([name, true])}
-      selection={{ project: "Globex", channel: "general" }}
-      onChange={() => {}}
       onAttach={() => {}}
       onClose={() => {}}
     />,
@@ -2688,8 +2686,6 @@ test("the + menu checks the agents a draft mentions and mentions any number of t
       agents={names.map((name) => ({ name }))}
       mentioned={names}
       onMention={() => {}}
-      selection={{ project: "Globex", channel: "general" }}
-      onChange={() => {}}
       onAttach={() => {}}
       onClose={() => {}}
     />,
@@ -3017,17 +3013,13 @@ test("the + menu returns focus to its category when leaving Agents and Skills", 
   net = stubFetch({
     "GET /api/projects/Globex/channels": () => ({ channels: [] }),
   });
-  const sel: Selection = { project: "Globex", channel: "general" };
   render(
     <PlusMenu
       agents={[{ name: "helper" }, { name: "lead" }]}
       skills={[]}
       onSkill={() => {}}
-      selection={sel}
-      onChange={() => {}}
       onAttach={() => {}}
       onClose={() => {}}
-      projects={tree}
     />,
   );
   const menu = screen.getByRole("dialog", { name: defaultCopy.chat.menu });

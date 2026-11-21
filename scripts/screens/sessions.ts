@@ -391,7 +391,51 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
       path: "/settings/apps",
       act: async (page) => {
         await page.getByRole("heading", { name: "Apps", exact: true, level: 1 }).waitFor();
-        await page.getByRole("list", { name: "Apps", exact: true }).waitFor();
+        const apps = page.getByRole("list", { name: "Apps", exact: true });
+        const slack = apps.getByRole("listitem", { name: "Slack", exact: true });
+        const github = apps.getByRole("listitem", { name: "GitHub", exact: true });
+        const enable = slack.getByRole("button", { name: "Enable", exact: true });
+        const manage = github.getByRole("button", { name: "Manage", exact: true });
+        await enable.waitFor();
+        await manage.waitFor();
+        const first = await slack.boundingBox();
+        const second = await github.boundingBox();
+        assert.ok(first && second);
+        assert.equal(first.x, second.x, "Apps share a column at every width");
+        assert.ok(first.y + first.height <= second.y, "Apps are stacked");
+        await manage.click();
+        const detail = page.getByRole("dialog", { name: "GitHub", exact: true });
+        await detail.waitFor();
+        await page.keyboard.press("Escape");
+        await detail.waitFor({ state: "hidden" });
+        await manage.and(page.locator("button:focus")).waitFor();
+        await manage.blur();
+        await page.mouse.move(0, 0);
+        // The fixture's GitHub is installed through a client, a row with no menu. Shown, in
+        // the browser only, as installed from this page, it gains the menu an administrator sees.
+        await page.route(/\/api\/connections\/presets(?:\?|$)/, async (route) => {
+          const response = await route.fetch();
+          const presets = await response.json();
+          for (const preset of presets) if (preset.id === "github") preset.connected = true;
+          await route.fulfill({ response, json: presets });
+        });
+        await page.reload();
+        const more = github.getByRole("button", { name: "More for GitHub", exact: true });
+        await more.waitFor();
+        await page.evaluate(() => document.fonts.ready);
+        const action = await manage.boundingBox();
+        const menu = await more.boundingBox();
+        const row = await github.boundingBox();
+        assert.ok(action && menu && row);
+        assert.ok(
+          Math.abs(menu.y + menu.height / 2 - (action.y + action.height / 2)) <= 1,
+          "the menu shares Manage's line at every width",
+        );
+        assert.ok(menu.x >= action.x + action.width, "the menu follows Manage");
+        assert.ok(
+          Math.abs(menu.x + menu.width - (row.x + row.width)) <= 1,
+          "the menu ends the row",
+        );
       },
     },
     {
@@ -531,7 +575,7 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
       path: `/messages/${ids.approval.id}`,
       act: async (page) => {
         await readySession(page);
-        await page.getByRole("button", { name: "Ask a question", exact: true }).first().waitFor();
+        await page.getByRole("button", { name: "Ask a Question", exact: true }).first().waitFor();
         await page
           .getByRole("button", { name: /^Approve(?::|$)/ })
           .first()

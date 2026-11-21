@@ -227,7 +227,7 @@ func (c *operationsCatalog) ToolGroup(name string) (native.ToolGroup, error) {
 		}
 		ctx := event.WithActor(execution.(context.Context), actor)
 		if name == personToolsGrant {
-			group, err := c.p.personalToolGroup(ctx, c.req)
+			group, err := c.p.personalToolGroup(ctx, c.req, actor)
 			if err != nil {
 				return group, err
 			}
