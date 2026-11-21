@@ -16,6 +16,7 @@ import (
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/personctx"
 	saigetypes "github.com/urmzd/saige/agent/types"
+	"github.com/urmzd/saige/flow/event"
 	"github.com/urmzd/saige/flow/runtime"
 	"github.com/urmzd/saige/flow/turn/native"
 )
@@ -135,15 +136,21 @@ func samePersonTools(a, b []toolprovider.Tool) bool {
 	})
 }
 
-func (p *Platform) personalToolGroup(ctx context.Context, req runtime.Request) (native.ToolGroup, error) {
+func (p *Platform) personalToolGroup(ctx context.Context, req runtime.Request, actor event.Actor) (native.ToolGroup, error) {
 	if !slices.Contains(req.Definition.Spec.Tools, personToolsGrant) {
 		return native.ToolGroup{}, ErrForbidden
+	}
+	// The catalog resolves the run's actor from its record or admission.
+	// A pinned context can carry a caller's identity for policy checks only.
+	person := personOf(actor)
+	if person == "" {
+		return native.ToolGroup{}, mcptools.ErrNoPersonCredential
 	}
 	c, err := requestContext(req)
 	if err != nil {
 		return native.ToolGroup{}, err
 	}
-	if c.Person == "" {
+	if c.Person != person {
 		return native.ToolGroup{}, mcptools.ErrNoPersonCredential
 	}
 	out := []saigetypes.Tool{}
@@ -152,7 +159,7 @@ func (p *Platform) personalToolGroup(ctx context.Context, req runtime.Request) (
 			continue
 		}
 		// Revocation or a new approval after admission invalidates the old snapshot.
-		own, err := p.PersonContexts.Get(req.Tenant, c.Person)
+		own, err := p.PersonContexts.Get(req.Tenant, person)
 		if err != nil {
 			return native.ToolGroup{}, err
 		}
@@ -161,7 +168,7 @@ func (p *Platform) personalToolGroup(ctx context.Context, req runtime.Request) (
 		}) {
 			continue
 		}
-		offered, err := p.discoverPersonToolsFor(ctx, req.Tenant, c.Person, server)
+		offered, err := p.discoverPersonToolsFor(ctx, req.Tenant, person, server)
 		if err != nil {
 			return native.ToolGroup{}, err
 		}
@@ -169,11 +176,11 @@ func (p *Platform) personalToolGroup(ctx context.Context, req runtime.Request) (
 			return native.ToolGroup{}, fmt.Errorf("%w: %s tool list changed; approve it again in Customize", mcptools.ErrHeldBack, server.Name)
 		}
 		prov := toolprovider.Provider{Tenant: req.Tenant, Name: "person-" + server.Name, Transport: toolprovider.TransportHTTP, Endpoint: server.URL}
-		opts := []mcptools.Option{mcptools.WithResolver(p.personToolResolver()), mcptools.WithHTTPClient(p.personOAuthHTTPClient(req.Tenant, c.Person, server))}
+		opts := []mcptools.Option{mcptools.WithResolver(p.personToolResolver()), mcptools.WithHTTPClient(p.personOAuthHTTPClient(req.Tenant, person, server))}
 		if server.OAuth != "" {
 			prov.CredentialScope = toolprovider.ScopePerson
 			source := mcptools.NewTokenSource(func(ctx context.Context) (mcptools.Secret, error) {
-				return p.personalOAuth(ctx, req.Tenant, c.Person, server)
+				return p.personalOAuth(ctx, req.Tenant, person, server)
 			})
 			opts = append(opts, mcptools.WithPersonCredential(mcptools.PersonCredential{Source: source}))
 		}
@@ -192,7 +199,7 @@ func (p *Platform) personalToolGroup(ctx context.Context, req runtime.Request) (
 		}
 		go func() { <-ctx.Done(); _ = session.Close() }()
 		for _, tool := range tools.All() {
-			out = append(out, &personServerTool{Tool: tool, p: p, req: req, server: server, person: c.Person})
+			out = append(out, &personServerTool{Tool: tool, p: p, req: req, server: server, person: person})
 		}
 	}
 	return native.ToolGroup{Name: personToolsGrant, Tools: out}, nil

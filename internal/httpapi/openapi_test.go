@@ -649,6 +649,7 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		"ProjectKnowledge": {typ: platform.ProjectKnowledge{}}, "ProjectKnowledgeSource": {typ: projects.KnowledgeSource{}}, "ProjectKnowledgeInput": {typ: platform.KnowledgeInput{}, written: true},
 		"ProjectSkill": {typ: platform.SkillDetail{}}, "ProjectSkillRef": {typ: projects.SkillRef{}}, "ProjectSkills": {typ: platform.ProjectSkills{}}, "ProjectSkillsInput": {typ: platform.SkillsInput{}, written: true},
 		"MentionKind": {typ: platform.MentionKind{}}, "MentionItem": {typ: platform.MentionItem{}},
+		"ModelProvider": {typ: platform.ModelProvider{}},
 		"VoiceSettings": {typ: platform.VoiceSettings{}}, "VoiceProvider": {typ: platform.VoiceProvider{}}, "VoiceKind": {typ: platform.VoiceKind{}},
 		"VoiceProviderInput": {typ: platform.VoiceProviderInput{}, written: true}, "VoicePrice": {typ: speech.Price{}}, "VoiceCheck": {typ: platform.VoiceCheck{}},
 		"VoiceUsage": {typ: platform.VoiceUsage{}}, "VoiceSpeech": {typ: platform.VoiceSpeech{}}, "VoiceSpeechInput": {typ: speakInput{}, written: true}, "SpokenCorrection": {typ: correction{}, written: true}, "SpokenAnswer": {typ: platform.SpokenAnswer{}},
@@ -2937,7 +2938,11 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 			if strings.HasPrefix(op.path, "/api/connections/") || op.path == "/api/clients/{id}/check" || op.path == "/api/catalog/connectors/{name}/reconnect" {
 				foreign = foreignPerson
 			}
-			c.call(foreign, op.method, op.path, path, valid[op.path], http.StatusNotFound)
+			body := valid[op.path]
+			if op.path == "/api/model-providers/{name}" && op.method == http.MethodPatch {
+				body = `{"enabled":false}`
+			}
+			c.call(foreign, op.method, op.path, path, body, http.StatusNotFound)
 		}
 		if refusesUnknownFields(op) {
 			caller := acme
@@ -2953,14 +2958,28 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 
 	c.call(acme, "DELETE", "/api/artifacts/{id}", artifactPath, "", http.StatusNoContent)
 	c.call(acme, "DELETE", "/api/artifacts/{id}", artifactPath, "", http.StatusNotFound)
-	// A workspace's own model provider: set up, checked, in use, removed.
+	// A workspace's own model provider: set up, checked, in use, paused and removed.
 	c.call(acme, "PUT", "/api/model-providers/{name}", "/api/model-providers/house", `{"kind":"openai","base_url":"http://127.0.0.1:9/v1"}`, http.StatusOK)
 	c.call(acme, "POST", "/api/model-providers/{name}/check", "/api/model-providers/house/check", "", http.StatusOK)
 	c.call(acme, "POST", "/api/model-providers/{name}/check", "/api/model-providers/nowhere/check", "", http.StatusBadRequest)
 	c.call(acme, "POST", "/api/agents", "/api/agents", `{"name":"house-agent","provider":"house","model":"llama3.2","system_prompt":"Answer."}`, http.StatusCreated)
+	c.call(acme, "PATCH", "/api/model-providers/{name}", "/api/model-providers/house", `{"enabled":false}`, http.StatusConflict)
 	c.call(acme, "DELETE", "/api/model-providers/{name}", "/api/model-providers/house", "", http.StatusConflict)
 	c.call(acme, "DELETE", "/api/model-providers/{name}", "/api/model-providers/nowhere", "", http.StatusBadRequest)
 	c.call(acme, "PUT", "/api/model-providers/{name}", "/api/model-providers/spare", `{"kind":"openai","base_url":"http://127.0.0.1:9/v1"}`, http.StatusOK)
+	const providerPath = "/api/model-providers/{name}"
+	const spare = "/api/model-providers/spare"
+	c.call(acme, "PATCH", providerPath, spare, `{}`, http.StatusBadRequest)
+	c.call(globex, "PATCH", providerPath, spare, `{"enabled":false}`, http.StatusNotFound)
+	off := c.call(acme, "PATCH", providerPath, spare, `{"enabled":false}`, http.StatusOK)
+	if off.field("disabled") != true || off.str("base_url") != "http://127.0.0.1:9/v1" {
+		t.Fatalf("turning off spare did not keep its setup: %s", off.raw)
+	}
+	c.call(acme, "POST", "/api/model-providers/{name}/check", spare+"/check", "", http.StatusBadRequest)
+	on := c.call(acme, "PATCH", providerPath, spare, `{"enabled":true}`, http.StatusOK)
+	if on.field("disabled") == true {
+		t.Fatalf("spare was not turned back on: %s", on.raw)
+	}
 	c.call(acme, "DELETE", "/api/model-providers/{name}", "/api/model-providers/spare", "", http.StatusNoContent)
 	c.call(acme, "DELETE", "/api/clients/{id}", "/api/clients/support", "", http.StatusNoContent)
 	c.call(acme, "DELETE", "/api/clients/{id}", "/api/clients/support", "", http.StatusNotFound)

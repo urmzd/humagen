@@ -522,11 +522,13 @@ func (p *Platform) SpecWrittenBy(ctx context.Context, who auth.Principal, old *w
 // (resolveModel). Fiber's offline counts only when the platform is not held
 // to configured models (Config.ConfiguredModelsOnly).
 func (p *Platform) agentProviders(tenant string) []string {
-	return p.providersIn(p.Settings(tenant))
+	s := p.Settings(tenant)
+	s.ModelProviders = slices.DeleteFunc(s.ModelProviders, func(m ModelProvider) bool { return m.Disabled })
+	return p.providersIn(s)
 }
 
-// providersIn is agentProviders for a workspace whose settings are s, so
-// reading the settings themselves can ask it.
+// providersIn is the provider names a workspace recognizes, including
+// disabled providers whose names still refer to their stored setup.
 func (p *Platform) providersIn(s Settings) []string {
 	out := append([]string{PolicyProvider}, p.cfg.Ext.ProviderNames()...)
 	out = append(out, ModelProviderKinds()...)

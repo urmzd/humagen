@@ -20,6 +20,11 @@ export interface ArtifactSave {
   title?: string;
 }
 
+export interface RunConnectionNeed {
+  provider: string;
+  name?: string;
+}
+
 /** A memory tree a run's instance was given, and what the run kept of its changes. */
 export interface RunMemoryUse {
   kind: "person" | "project" | "agent";
@@ -885,6 +890,8 @@ export interface ModelProvider {
   key_ref?: string;
   /** A value is kept for it in the secret store. */
   key_stored?: boolean;
+  /** The provider is off and its configuration and key are retained. */
+  disabled?: boolean;
   added_by?: string;
   added_at?: string;
 }
@@ -1455,6 +1462,13 @@ the schema.
   outcome?: RunOutcome;
   sandbox?: RunSandboxRecord;
   memory?: RunMemoryUse[];
+  /** Connections the run needed and the person it acts for had not
+made: a tool group it was granted could not be opened without
+that person's own credential. A run that called another agent
+carries what that agent's run needed as well. `provider` is the
+provider's name as Connections names it.
+ */
+  needs_connection?: RunConnectionNeed[];
   citations: RunCitation[];
   error?: string;
   /** What a parked run is waiting for. */
@@ -6596,6 +6610,10 @@ export interface SetModelProviderBody {
   vertex?: ModelProviderVertex;
   key_ref?: string;
   key?: string;
+}
+
+export interface SetModelProviderEnabledBody {
+  enabled: boolean;
 }
 
 export interface ListAgentsResponse {

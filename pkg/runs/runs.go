@@ -345,7 +345,12 @@ type Run struct {
 	// Memory is the memory trees the run's instance was given and what it
 	// wrote to them.
 	Memory []MemoryUse `json:"memory,omitempty"`
-	Error  string      `json:"error,omitempty"`
+	// NeedsConnection is the connections the run needed and the person it
+	// acts for had not made (RecordConnectionNeed). A run that called
+	// another agent carries what that agent's run needed as well, so the
+	// turn a person reads can offer to connect it.
+	NeedsConnection []ConnectionNeed `json:"needs_connection,omitempty"`
+	Error           string           `json:"error,omitempty"`
 	// Reason says what a parked run is waiting for, or that a run which has
 	// answered is waiting for the agents attached to it.
 	Reason string `json:"reason,omitempty"`
