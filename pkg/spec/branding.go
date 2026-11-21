@@ -71,7 +71,7 @@ type Branding struct {
 	Email *EmailCopy `json:"email,omitempty"`
 	// TermsURL is the page of terms the console links to beside its notice
 	// that the product is AI and can make mistakes. Left out, the notice has
-	// no link: Humagen ships no terms of its own.
+	// no link: the terms a deployment is used under are its operator's to name.
 	TermsURL string `json:"terms_url,omitempty"`
 }
 

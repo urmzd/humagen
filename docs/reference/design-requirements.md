@@ -1146,7 +1146,8 @@ any. This reverses the first point of DES-030.
   where {name} is the product's name from the branding. It is a line of its
   own, centered, in the footer row's muted text size, so it reads the same at
   every width and nothing in the footer row moves for it.
-- Humagen ships no terms of its own. A deployment or a workspace names its page
+- The console links to no page unless one is named: the terms a person uses a
+  deployment under are its operator's. A deployment or a workspace names its page
   in `branding.terms_url`, an `https` address; the line then ends with a Terms
   link that opens it in a new tab. Left out, the line has no link.
 - The line is one height with or without the link, so the composer does not
