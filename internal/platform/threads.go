@@ -2462,9 +2462,13 @@ func (p *Platform) threadPage(tenant string, q runs.ThreadQuery, seer *Seer, kee
 	if err != nil {
 		return nil, "", err
 	}
+	listed, err := p.Runs.ListThreads(tenant, 0)
+	if err != nil {
+		return nil, "", err
+	}
 	byID := map[string]*ThreadSummary{}
 	var order []*ThreadSummary
-	for _, s := range p.Runs.Threads(tenant, 0) {
+	for _, s := range listed {
 		if elsewhere[s.ID] || s.Origin == OriginEval {
 			continue
 		}
