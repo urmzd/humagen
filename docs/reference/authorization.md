@@ -20,9 +20,7 @@ anything give you this permission, and does anything take it away?
 4. **The project.** Inside a project, your role there (viewer, member or
    owner) can only narrow what step 3 allowed. It never adds to it.
 
-A machine skips steps 2 and 3: it holds exactly the scopes on its token. To
-see which rule, role and grant decided a permission for you, use
-[Explain](#debug-with-explain).
+A machine skips steps 2 and 3: it holds exactly the scopes on its token.
 
 ## Grammar
 
@@ -217,8 +215,7 @@ not the grant.
 A signed-in person asks about themselves with
 `GET /api/access/explain?permission=agents:write`. It takes a permission and
 no subject, so nobody can ask about someone else, and any signed-in caller may
-call it. The console shows the answer under Access, reached from "Why can I do
-this?" on the home page.
+call it.
 
 From the command line, with the same environment and flags as `serve`:
 
