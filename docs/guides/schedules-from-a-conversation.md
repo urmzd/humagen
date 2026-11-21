@@ -63,7 +63,7 @@ A cron is five fields, read in UTC: `*/15 * * * *` is every 15 minutes,
   found.
 - Every call waits for that person's approval, whatever the action policy
   allows, for up to a day. They may approve their own. In a conversation set
-  to Run, the approval agent may decide it in their place where the policy
+  to Auto, the approval agent may decide it in their place where the policy
   asks; where the policy allows, the person still decides. A policy of
   `never` for `other` refuses every call.
 - A schedule made from a conversation is filed in its project and owned by the

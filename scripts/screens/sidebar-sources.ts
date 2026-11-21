@@ -271,12 +271,18 @@ export async function assertSources(page: Page): Promise<void> {
     throw new Error("no row carries a bare dot");
 }
 
-/** The focused log draws a thin line inside its edge rather than a 2px accent frame. */
+/**
+ * The focused log draws a thin neutral line along its top edge (DES-080): no
+ * accent frame, and no ring round the whole log, which would box in the
+ * surface the composer floats over.
+ */
 export async function assertCalmFocus(page: Page): Promise<void> {
   const shadow = await page.evaluate(() => {
     const log = document.activeElement as HTMLElement | null;
     return log?.getAttribute("role") === "log" ? getComputedStyle(log).boxShadow : "";
   });
-  if (!/0px 0px 0px 1px inset/.test(shadow))
-    throw new Error(`the focused log should show a 1px inset ring, not: ${shadow || "nothing"}`);
+  if (!/0px 2px 0px 0px inset/.test(shadow) || /0px 0px 0px [12]px/.test(shadow))
+    throw new Error(
+      `the focused log should show a line along its top, not: ${shadow || "nothing"}`,
+    );
 }

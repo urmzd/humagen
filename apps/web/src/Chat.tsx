@@ -2,7 +2,15 @@ import { answerOfAction, answers } from "@humagen/adapter/question";
 import { defaultCopy } from "@humagen/components";
 import { ActionId, type QueuedMessage, type UiAction } from "@humagen/core";
 import { railEntry, useQueue } from "@humagen/web";
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { type ApprovalMode, ApprovalToggle } from "./ApprovalToggle.tsx";
 import { actedFor, type Run, turnOf } from "./adapter.ts";
 import {
@@ -19,13 +27,16 @@ import { asksOf } from "./asks.ts";
 import { Composer, type ComposerSeed } from "./Composer.tsx";
 import type { ConversationForkActions } from "./ConversationForkPanels.tsx";
 import { type Completion, useCompletion } from "./completion.ts";
+import { rememberDock, useDockArrival } from "./dockArrival.ts";
 import { FindHelp, type HelpSuggestion } from "./FindHelp.tsx";
 import { type HomeAnnouncement, HomePage } from "./HomePage.tsx";
 import { LazyFrame } from "./lazy.tsx";
 import { emptySelection, mentionPicks, PlusMenu, type Selection } from "./Plus.tsx";
+import { ProjectPicker } from "./ProjectPicker.tsx";
 import { RunsConversation, ThreadRoom } from "./pages.ts";
 import type { ConversationPanel, ConversationView } from "./route.ts";
 import { Scroller } from "./Scroller.tsx";
+import { ComposerFooter } from "./SessionUsage.tsx";
 import { useThreadSelection } from "./selection.ts";
 import { mentionsIn } from "./tags.ts";
 import { topicsOf } from "./topics.ts";
@@ -347,6 +358,8 @@ export function Chat({
   // Read when the project's agents arrive, not drawn: kept out of state so a
   // key typed does not render the conversation again.
   const draft = useRef("");
+  // Home's bar, remembered as it leaves for the conversation its first message opens.
+  const bar = useRef<HTMLDivElement>(null);
   // The agents that can answer in the picked project, once read.
   const [offered, setOffered] = useState<Set<string> | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
@@ -585,6 +598,8 @@ export function Chat({
           // Run, chosen before the session started, is applied to it now.
           if (pendingApproval !== "ask")
             void coworking.setApprovalMode(p.thread.id, pendingApproval).catch(() => undefined);
+          // The bar and its footer move down into the conversation as one piece.
+          rememberDock(bar.current?.querySelector(".humagen-composer-container") ?? null);
           onThread(p.thread.id);
           done(p.runs);
         })
@@ -723,6 +738,7 @@ export function Chat({
   // Drawn with the page: only sending and mentions wait for the agents.
   const composer = canRun && (agents.length > 0 || !agentsRead || agentsFailed) && (
     <div
+      ref={bar}
       className={
         composerOnly
           ? "flex w-full min-w-0 flex-col gap-2"
@@ -790,16 +806,34 @@ export function Chat({
         onDraft={(text) => {
           draft.current = text;
         }}
-        trailing={
-          threadId ? (
-            room?.thread && <ApprovalToggle thread={room.thread} me={handle || me} />
-          ) : (
-            <ApprovalToggle
-              me={handle || me}
-              pending={pendingApproval}
-              onPending={setPendingApproval}
-            />
-          )
+        // Under the bar, one quiet row: on the left where the conversation is
+        // filed and its approval mode; the bar itself holds only +, the words,
+        // Send and the microphone.
+        footer={
+          <ComposerFooter
+            start={
+              threadId ? (
+                room?.thread && <ApprovalToggle thread={room.thread} me={handle || me} />
+              ) : (
+                <>
+                  <ProjectPicker
+                    projects={projects}
+                    value={project}
+                    personalProject={personalProject}
+                    personalLabel={defaultCopy.noProject}
+                    channel={selection.channel}
+                    onChange={(name) => select({ ...selection, project: name, channel: "general" })}
+                    onCreated={onProjectCreated}
+                  />
+                  <ApprovalToggle
+                    me={handle || me}
+                    pending={pendingApproval}
+                    onPending={setPendingApproval}
+                  />
+                </>
+              )
+            }
+          />
         }
         // An agent the project picked does not offer is not kept for it.
         onAvailable={
@@ -1056,14 +1090,42 @@ function ConversationLoading({
         <div className="mx-auto flex min-h-0 w-full max-w-4xl flex-1 flex-col px-4 py-4">
           {children}
         </div>
-        <div className="mx-auto w-full max-w-4xl px-4 pb-4">
-          <div
-            aria-hidden
-            className="aui-skeleton-delay h-[var(--humagen-composer-h)] rounded-aui-lg border border-aui-border"
-          />
-        </div>
+        <DockPlaceholder />
       </Page>
     </section>
+  );
+}
+
+/**
+ * The composer's place while a conversation loads. Arriving from Home's first
+ * message, it is Home's own bar and footer, drawn inert, sliding down to
+ * here (dockArrival.ts); otherwise a quiet outline of the bar and its footer.
+ */
+function DockPlaceholder() {
+  const dock = useRef<HTMLDivElement>(null);
+  const picture = useRef<HTMLDivElement>(null);
+  const html = useDockArrival(dock);
+  useLayoutEffect(() => {
+    if (html && picture.current) picture.current.innerHTML = html;
+  }, [html]);
+  return (
+    <div
+      ref={dock}
+      data-layer="composer-placeholder"
+      className="mx-auto flex w-full max-w-4xl flex-col gap-1.5 px-4 pb-3"
+    >
+      {html ? (
+        <div ref={picture} inert aria-hidden className="pointer-events-none" />
+      ) : (
+        <>
+          <div
+            aria-hidden
+            className="aui-skeleton-delay h-[var(--humagen-composer-h)] rounded-[1.25rem] border border-aui-border"
+          />
+          <div aria-hidden className="h-7" />
+        </>
+      )}
+    </div>
   );
 }
 

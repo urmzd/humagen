@@ -23,6 +23,9 @@ import {
   GaugeIcon,
   type ItemActions,
   ItemActionsContext,
+  ItemStopControl,
+  type ItemStops,
+  ItemStopsContext,
   Rating,
   RedirectIcon,
   RefreshIcon,
@@ -70,6 +73,19 @@ export function AgentAvatar({ agent, state = "idle" }: { agent: Turn["agent"]; s
       )}
     </span>
   );
+}
+
+/** The words of every item's Stop, from the copy. */
+export function stopWords(copy: Copy) {
+  const d = copy.dock;
+  return {
+    stop: d.stop,
+    stopping: d.stopping,
+    stopped: d.stopped,
+    stopLabel: d.stopLabel,
+    stoppingLabel: d.stoppingLabel,
+    stoppedLabel: d.stoppedLabel,
+  };
 }
 
 /** How a host stops the run behind a mark. `pending` while the ledger has not recorded the end. */
@@ -286,13 +302,18 @@ function AgentCall({
   copy: Copy;
 }) {
   const onAction = useContext(ActionContext);
+  const stops = useContext(ItemStopsContext);
+  const turn = useContext(TurnMetaContext);
   const sub = task.subagent as NonNullable<Task["subagent"]>;
-  const live = task.status === "in_progress";
+  const stop = stops && turn ? stops.of({ kind: "subagent", turn, task }) : null;
+  const stopped = Boolean(stop?.stopped);
+  const live = task.status === "in_progress" && !stopped;
   const [open, setOpen] = useState(false);
   const prompt = callPrompt(task);
   const title = callTitle(task);
   const answer = task.status === "complete" ? task.output?.trim() : undefined;
-  const word = copy.conversation.callStatus[task.status];
+  // A call someone stopped reads as stopped, calmly, not as a failure.
+  const word = stopped ? undefined : copy.conversation.callStatus[task.status];
   const ms = sub.durationMs ?? task.durationMs;
   const tint =
     sub.hue === undefined
@@ -300,39 +321,47 @@ function AgentCall({
       : { "data-accent": "agent", style: { "--aui-accent-h": sub.hue } as CSSProperties };
   const runId = sub.runId;
   return (
-    <div data-aui="agent-call" data-status={task.status} className="min-w-0" {...tint}>
-      <button
-        type="button"
-        {...(runId ? { "aria-haspopup": "dialog" as const } : { "aria-expanded": open })}
-        onClick={() =>
-          runId
-            ? onAction({ id: ActionId.openRun, payload: { turnId, target: runId } })
-            : setOpen(!open)
-        }
-        className="group/call flex w-full min-w-0 pointer-coarse:min-h-11 items-center gap-2 rounded-aui border border-aui-border px-2.5 py-1.5 text-left text-aui-sm transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent motion-reduce:transition-none"
-      >
-        <span className="sr-only">{copy.conversation.callAsked(caller)} </span>
-        <AgentInitials name={sub.name} size={18} />
-        <span className="shrink-0 font-medium text-aui-fg">
-          {live ? <Shimmer>{sub.name}</Shimmer> : sub.name}
-        </span>
-        {word && (
-          <span
-            className={`shrink-0 text-aui-xs ${task.status === "error" || task.status === "denied" ? "text-aui-bad" : "text-aui-accent"}`}
-          >
-            {word}
+    <div
+      data-aui="agent-call"
+      data-status={stopped ? "stopped" : task.status}
+      className="min-w-0"
+      {...tint}
+    >
+      <div className="flex min-w-0 items-center gap-1 rounded-aui border border-aui-border pr-1">
+        <button
+          type="button"
+          {...(runId ? { "aria-haspopup": "dialog" as const } : { "aria-expanded": open })}
+          onClick={() =>
+            runId
+              ? onAction({ id: ActionId.openRun, payload: { turnId, target: runId } })
+              : setOpen(!open)
+          }
+          className="group/call flex min-w-0 flex-1 pointer-coarse:min-h-11 items-center gap-2 rounded-aui px-2.5 py-1.5 text-left text-aui-sm transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent motion-reduce:transition-none"
+        >
+          <span className="sr-only">{copy.conversation.callAsked(caller)} </span>
+          <AgentInitials name={sub.name} size={18} />
+          <span className="shrink-0 font-medium text-aui-fg">
+            {live ? <Shimmer>{sub.name}</Shimmer> : sub.name}
           </span>
-        )}
-        <span className="min-w-0 flex-1 truncate text-aui-xs text-aui-muted">{title}</span>
-        {!live && ms !== undefined && ms > 0 && (
-          <span className="shrink-0 text-aui-2xs text-aui-muted tabular-nums">{seconds(ms)}</span>
-        )}
-        <ChevronRightIcon
-          size={12}
-          strokeWidth={2.5}
-          className={`shrink-0 text-aui-muted opacity-60 group-hover/call:opacity-100 ${!runId && open ? "rotate-90" : ""}`}
-        />
-      </button>
+          {word && (
+            <span
+              className={`shrink-0 text-aui-xs ${task.status === "error" || task.status === "denied" ? "text-aui-bad" : "text-aui-accent"}`}
+            >
+              {word}
+            </span>
+          )}
+          <span className="min-w-0 flex-1 truncate text-aui-xs text-aui-muted">{title}</span>
+          {!live && ms !== undefined && ms > 0 && (
+            <span className="shrink-0 text-aui-2xs text-aui-muted tabular-nums">{seconds(ms)}</span>
+          )}
+          <ChevronRightIcon
+            size={12}
+            strokeWidth={2.5}
+            className={`shrink-0 text-aui-muted opacity-60 group-hover/call:opacity-100 ${!runId && open ? "rotate-90" : ""}`}
+          />
+        </button>
+        {stop && stops && <ItemStopControl stop={stop} words={stops.words} />}
+      </div>
       {!runId && open && (
         <div className="flex min-w-0 flex-col gap-2 px-2.5 pt-2 pb-1">
           {prompt && (
@@ -457,10 +486,17 @@ export function AgentMessage({
   actions,
   onRedirect,
   stop,
+  itemStops,
   disclaimer = true,
   activity: sayActivity = true,
 }: {
   turn: Turn;
+  /**
+   * Each running item's own Stop, at the top of its row: a call to another
+   * agent, a step, background work a step started. The agent's own Stop is
+   * `stop`. Leave it out to inherit one from an `ItemStopsContext` further up.
+   */
+  itemStops?: ItemStops;
   /**
    * Say what the agent is doing beside its name while it works. A host that
    * says it in its prompt, for every thread at work, turns it off.
@@ -499,6 +535,8 @@ export function AgentMessage({
   onReply?: () => void;
 }) {
   const inherited = useContext(ItemActionsContext);
+  const inheritedStops = useContext(ItemStopsContext);
+  const stops = itemStops ?? inheritedStops;
   const statusLine = `**${turn.agent.name}**: ${copy.status[turn.status]}`;
   const final = turn.status === "done";
   const settledTurn = final || turn.status === "failed" || turn.status === "stopped";
@@ -608,6 +646,15 @@ export function AgentMessage({
               {timestamp}
             </span>
           )}
+          {/* The agent's own Stop, in words at the top of its answer, beside the mark that also stops it. */}
+          {stop && (working(orb) || stop.pending) && (
+            <span className="ml-auto">
+              <ItemStopControl
+                stop={{ what: turn.agent.name, onStop: stop.onStop, pending: stop.pending }}
+                words={stopWords(copy)}
+              />
+            </span>
+          )}
           {/* Announce state changes, not every streamed token. */}
           <output className="sr-only">{copy.status[turn.status]}</output>
         </header>
@@ -615,34 +662,40 @@ export function AgentMessage({
           <Reasoning text={turn.reasoning} streaming={reasoningLive} />
         )}
         <ItemActionsContext.Provider value={itemActions ?? inherited}>
-          <TurnMetaContext.Provider value={turn}>
-            <SuppressContext.Provider value={suppressed}>
-              <div className="aui-stack">
-                {settledTurn && blocks.length > 0 && (
-                  <WorkedFor
-                    ms={turn.durationMs}
-                    open={traceOpen}
-                    onToggle={() => setTraceOpen((o) => !o)}
+          <ItemStopsContext.Provider value={stops}>
+            <TurnMetaContext.Provider value={turn}>
+              <SuppressContext.Provider value={suppressed}>
+                <div className="aui-stack">
+                  {settledTurn && blocks.length > 0 && (
+                    <WorkedFor
+                      ms={turn.durationMs}
+                      open={traceOpen}
+                      onToggle={() => setTraceOpen((o) => !o)}
+                      copy={copy}
+                    />
+                  )}
+                  {(!settledTurn || traceOpen) && blocks.map(block)}
+                  <TurnView
+                    turn={{ ...turn, text: tail }}
                     copy={copy}
+                    capabilities={{ ...capabilities, followUp }}
+                    hideTasks
                   />
-                )}
-                {(!settledTurn || traceOpen) && blocks.map(block)}
-                <TurnView
-                  turn={{ ...turn, text: tail }}
-                  copy={copy}
-                  capabilities={{ ...capabilities, followUp }}
-                  hideTasks
-                />
-                <AgentChangeCards tasks={turn.tasks} />
-                {rest.map(block)}
-                {turn.status === "stopped" && turn.stop && (
-                  <StopBanner turnId={turn.id} stop={turn.stop} label={copy.stopPhase[turn.stop]} />
-                )}
-                {/* What the turn changed, once it is over: a card that opens each file. */}
-                {settledTurn && <TurnChanges tasks={turn.tasks} copy={copy} />}
-              </div>
-            </SuppressContext.Provider>
-          </TurnMetaContext.Provider>
+                  <AgentChangeCards tasks={turn.tasks} />
+                  {rest.map(block)}
+                  {turn.status === "stopped" && turn.stop && (
+                    <StopBanner
+                      turnId={turn.id}
+                      stop={turn.stop}
+                      label={copy.stopPhase[turn.stop]}
+                    />
+                  )}
+                  {/* What the turn changed, once it is over: a card that opens each file. */}
+                  {settledTurn && <TurnChanges tasks={turn.tasks} copy={copy} />}
+                </div>
+              </SuppressContext.Provider>
+            </TurnMetaContext.Provider>
+          </ItemStopsContext.Provider>
           {(settledTurn || actions) && (
             <FeedbackPromptContext.Provider value={feedbackPrompt}>
               <MessageActions

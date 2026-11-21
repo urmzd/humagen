@@ -4949,22 +4949,23 @@ paths:
       tags: [threads]
       summary: Set how a conversation's gated tool actions are approved
       description: |
-        `ask` asks a person, the default. `auto` approves for the caller what
-        they may approve themselves, through the same checks as their own
-        answer: the approvers a question names, self-approval and the
-        runtime's. A budget request, an action the agent always asks about,
-        a run forced to ask and an action the policy does not ask about still
-        go to a person. `decide` (Run and Answer) does what `auto` does,
-        and the approval agent also answers, as the caller, a question an
-        agent asks a person (a choice or a reply) when the session already
-        settles the answer; anything else, anything asked of someone else,
-        and anything in work someone else asked for still goes to a person.
-        Each automatic approval and answer, each hand-off, and each change
-        of mode is audited. Takes a person who may post in the conversation.
-        A surface that authenticated a person itself sets it for them with
-        `act_as`: only the credential its client names, and only for a person
-        its client maps; every check is then that person's, and `auto` and
-        `decide` act as them.
+        Two modes. `ask` (Ask) asks a person, the default. `auto` (Auto)
+        lets the approval agent act for the caller: it approves what they may
+        approve themselves, through the same checks as their own answer (the
+        approvers a question names, self-approval and the runtime's), and it
+        answers, as the caller, a question an agent asks a person (a choice
+        or a reply) when the session already settles the answer. A budget
+        request, an action the agent always asks about, a run forced to ask,
+        an action the policy does not ask about, anything it is unsure of,
+        anything asked of someone else and anything in work someone else
+        asked for still go to a person. `decide`, what Run and Answer was set
+        as before it became part of Auto, is still accepted and taken as
+        `auto`; it is deprecated and will be removed. Each automatic approval
+        and answer, each hand-off, and each change of mode is audited. Takes
+        a person who may post in the conversation. A surface that
+        authenticated a person itself sets it for them with `act_as`: only
+        the credential its client names, and only for a person its client
+        maps; every check is then that person's, and `auto` acts as them.
       x-permission: runs:write
       parameters:
         - {$ref: "#/components/parameters/ThreadID"}
@@ -4977,7 +4978,10 @@ paths:
               additionalProperties: false
               required: [mode]
               properties:
-                mode: {type: string, enum: [ask, auto, decide]}
+                mode:
+                  description: "`ask` or `auto`. `decide` is a deprecated spelling of `auto`."
+                  type: string
+                  enum: [ask, auto, decide]
                 act_as: {$ref: "#/components/schemas/ActAs"}
       responses:
         "200":
@@ -5975,6 +5979,24 @@ paths:
         "413": {$ref: "#/components/responses/TooLarge"}
         "500": {$ref: "#/components/responses/ServerError"}
         "503": {$ref: "#/components/responses/Unavailable"}
+  /api/threads/{id}/usage:
+    get:
+      operationId: getThreadUsage
+      tags: [threads]
+      summary: What the conversation has used so far, from its runs
+      x-permission: runs:read
+      parameters:
+        - {$ref: "#/components/parameters/ThreadID"}
+      responses:
+        "200":
+          description: The conversation's usage. A conversation with no runs answers zeros.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ThreadUsage"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
   /api/threads/{id}/scratchpads:
     get:
       operationId: listScratchpads
@@ -11604,6 +11626,40 @@ components:
         writable: {type: boolean}
         reason: {type: string}
         limit: {type: integer, const: 50}
+    ThreadUsage:
+      description: |
+        What a conversation has used so far, read from its run index. A run
+        called by another counted run is already in its caller's total and is
+        not added again. When `truncated` is true the index read hit its cap and
+        every figure is a lower bound.
+      type: object
+      required: [runs, usage, agents, working, truncated]
+      properties:
+        runs: {type: integer, minimum: 0, description: How many runs were counted.}
+        usage: {$ref: "#/components/schemas/Usage"}
+        agents:
+          description: Each agent's own calls, the dearest first (cost, then tokens, then name), at most 20.
+          type: array
+          maxItems: 20
+          items:
+            type: object
+            required: [agent, runs, usage]
+            properties:
+              agent: {type: string}
+              runs: {type: integer, minimum: 1}
+              usage: {$ref: "#/components/schemas/Usage"}
+        context:
+          description: The context fill of the most recent run that reported one.
+          type: object
+          required: [run, agent]
+          properties:
+            run: {type: string}
+            agent: {type: string}
+            model: {type: string}
+            window: {type: integer}
+            tokens: {type: integer}
+        working: {type: integer, minimum: 0, description: How many counted runs have not ended.}
+        truncated: {type: boolean}
     ScratchpadInput:
       type: object
       required: [name, content]
@@ -14059,11 +14115,11 @@ components:
         import: {$ref: "#/components/schemas/ThreadImport"}
         archive: {$ref: "#/components/schemas/ThreadArchive"}
         approval:
-          description: How the conversation's gated tool actions are approved, and who chose it. Absent asks a person. `auto` approves for that person what they may approve themselves, within policy; a budget request and an action the agent or the policy always asks about still go to a person. `decide` does that too, and also answers for them a question an agent asks a person when the session already settles it.
+          description: How the conversation's gated tool actions are approved, and who chose it. Absent asks a person (Ask). `auto` (Auto) lets the approval agent approve for that person what they may approve themselves, within policy, and answer for them a question an agent asks a person when the session already settles it; a budget request, an action the agent or the policy always asks about, and anything it is unsure of still go to a person. A conversation stored as `decide` (Run and Answer, before it became part of Auto) reads as `auto`.
           type: object
           required: [mode, by, at]
           properties:
-            mode: {type: string, enum: [auto, decide]}
+            mode: {type: string, enum: [auto]}
             by:
               description: The person who chose it, by handle.
               type: string
