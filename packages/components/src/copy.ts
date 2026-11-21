@@ -4451,6 +4451,127 @@ export const defaultCopy = {
     files: (n: number) => `${n} ${n === 1 ? "file" : "files"}`,
   },
   /**
+   * The session panel's own sections and the header's view controls
+   * (SessionViews.tsx, SessionContext.tsx): where the session runs, how full
+   * its context is, the connectors it may reach, what it made and changed.
+   */
+  sessionPanel: {
+    /** The header's view controls. */
+    views: "Session views",
+    more: "More Views",
+    view: {
+      details: "Details",
+      terminal: "Terminal",
+      changes: "Changes",
+      browser: "Browser",
+      files: "Files",
+      artifacts: "Artifacts",
+      sidechat: "Side Chat",
+      search: "Search",
+      background: "Background Tasks",
+      progress: "Progress",
+    },
+    /** A view's key, as its menu row prints it. */
+    shortcut: {
+      sidechat: { mac: "⌘;", other: "Ctrl ;" },
+      search: { mac: "⌘⇧F", other: "Ctrl Shift F" },
+    },
+    /** Environment. */
+    sandbox: "Sandbox",
+    sandboxState: {
+      isolated: "Isolated",
+      host: "On this server",
+      none: "Not started",
+      unreachable: "Unreachable",
+      loading: "Checking",
+    },
+    sandboxHint: {
+      none: "Starts when a tool needs it",
+      unreachable: "Could not be reached",
+    },
+    retry: "Try Again",
+    openTerminal: "Open Terminal",
+    files: "Files",
+    browser: "Browser",
+    repo: (repo: string) => repo,
+    branch: "Branch",
+    /** Context. */
+    context: "Context",
+    contextOf: (percent: number) => `${percent}%`,
+    contextNone: "Not reported",
+    contextRows: {
+      window: "Window",
+      model: "Model",
+      prompt: "Prompt",
+      cached: "Cached",
+      output: "Output",
+      calls: "Model calls",
+      cost: "Cost",
+    },
+    contextUsed: (used: string, window: string) => `${used} of ${window} tokens`,
+    /** Connectors. */
+    connectors: "Connectors",
+    connected: (n: number) => `${n} connected`,
+    connectorUsed: "Used here",
+    connectorReady: "Connected",
+    connectorOff: "Not connected",
+    manageConnectors: "Manage Connectors",
+    connectorsFailed: "Connectors could not be read.",
+    /** Outputs and changes. */
+    outputs: "Outputs",
+    artifact: "Artifact",
+    changes: "Changes",
+    filesChanged: (n: number) => `${n} ${n === 1 ? "file" : "files"} changed`,
+    pull: (repo: string, n: number) => `${repo.split("/").pop() ?? repo} #${n}`,
+    ci: {
+      failing: (n: number) => `${n} failing`,
+      running: "Running",
+      passing: "Passing",
+      none: "No checks",
+      unknown: "CI unavailable",
+    },
+    openOnGitHub: (what: string) => `Open ${what} on GitHub`,
+    showMore: (n: number) => `Show ${n} More`,
+    /** What the session was set up with before its first message. */
+    chosenEnvironment: "Chosen environment",
+    chosenRepo: "Chosen repository",
+    /** The header's Terminal and Browser, when they cannot open, and why. */
+    unavailable: {
+      terminalHost:
+        "No terminal here: this deployment runs tools on the server, with no sandbox to open one in",
+      terminalUnreachable: "No terminal now: the sandbox could not be reached",
+      browser: "No browser: this session's agent has none",
+      browserUnknown: "No browser now: it could not be checked",
+    },
+    starting: "Starting environment…",
+    started: "Environment ready",
+    startFailed: (why: string) => `The environment could not start: ${why}`,
+    /** Where it started, which replaced the header's Item link. */
+    startedIn: "Started in",
+    otherSessions: "Other Sessions Here",
+    /** Expanding a section. */
+    expand: (what: string) => `Show ${what}`,
+    collapse: (what: string) => `Hide ${what}`,
+  },
+  /**
+   * A new session's setup beside the composer's plus (SessionPickers.tsx):
+   * where its tools run, and the repositories it works in.
+   */
+  sessionSetup: {
+    environment: "Environment",
+    auto: "Auto",
+    autoHint: "This workspace's default",
+    isolated: "Isolated sandbox",
+    onServer: "On this server",
+    terminal: "Terminal",
+    repo: "Repo",
+    repoLabel: "Repositories",
+    repos: (n: number) => `${n} repos`,
+    none: "None",
+    noRepos: "No repositories are connected.",
+    connectGitHub: "Connect GitHub",
+  },
+  /**
    * The session's workbench: the tabs of the pane Details opens, and what a
    * person did by hand in them, which goes with their next message
    * (docs/architecture/workbench.md).

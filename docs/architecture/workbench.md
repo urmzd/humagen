@@ -45,9 +45,10 @@ tab that is not built, or an id that does not exist, opens Details.
 Files has no tab. A session's files, artifacts, scratchpads and sandboxes
 already open in the Workspace pane (`pane.ts`, `?panel=files&tabs=`), which
 has its own tabs, split and drafts. Details lists outputs and opens them
-there through `openFile`. A tab that wants to show a file calls `openFile`
-with an artifact id, or links to the Workspace pane; it does not draw a
-second file viewer.
+there through `openFile`, and its Files row opens the pane's files through
+`openWorkspace`, as the header's Files control does (DES-080). A tab that
+wants to show a file calls `openFile` with an artifact id, or
+`openWorkspace` with a pane tab; it does not draw a second file viewer.
 
 ## Adding a tab
 

@@ -107,7 +107,8 @@ func (p *Platform) StartSurfaceSession(ctx context.Context, who auth.Principal, 
 	if err != nil {
 		return SessionView{}, false, err
 	}
-	th := threads.Thread{ID: rec.ID, Project: at.project, Channel: at.channel, Visibility: vis, Participants: people, Title: firstWords(in.Text, threads.MaxTitle), Default: owner, Agents: []string{owner}, CreatedBy: humanSubject(person), Surface: &sf, Session: &threads.SessionIdentity{Agent: owner, Parent: rec.Key.Parent, Label: rec.Key.Label}}
+	startText, _ := p.surfaceText(who.Tenant, c, ref, in.Text)
+	th := threads.Thread{ID: rec.ID, Project: at.project, Channel: at.channel, Visibility: vis, Participants: people, Title: runs.SessionTitle(startText), Default: owner, Agents: []string{owner}, CreatedBy: humanSubject(person), Surface: &sf, Session: &threads.SessionIdentity{Agent: owner, Parent: rec.Key.Parent, Label: rec.Key.Label}}
 	_, err = p.Threads.Create(who.Tenant, th, p.now())
 	started = err == nil
 	if err != nil && !errors.Is(err, threads.ErrExists) {
@@ -165,6 +166,7 @@ func (p *Platform) surfacePost(ctx context.Context, who auth.Principal, th threa
 	if _, _, err = p.sessionAgent(ctx, reader, th.Project, th.Session.Agent, text); err != nil {
 		return SessionView{}, err
 	}
+	p.retitleAfterGreeting(who.Tenant, th, text)
 	posted, err := p.PostMessage(ctx, who, th.ID, in)
 	if err != nil {
 		return SessionView{}, err
@@ -202,7 +204,7 @@ func (p *Platform) postSurfaceChildOf(ctx context.Context, who auth.Principal, r
 	if err != nil {
 		return Posted{}, "", err
 	}
-	child := threads.Thread{ID: rec.ID, Project: root.Project, Channel: root.Channel, Visibility: root.Visibility, CreatedBy: root.CreatedBy, Participants: slices.Clone(root.Participants), Default: agent, Agents: []string{agent}, Title: firstWords(text, threads.MaxTitle), Session: &threads.SessionIdentity{Agent: agent, Parent: root.ID, Label: rec.Key.Label, SourceAlert: root.Session.SourceAlert}}
+	child := threads.Thread{ID: rec.ID, Project: root.Project, Channel: root.Channel, Visibility: root.Visibility, CreatedBy: root.CreatedBy, Participants: slices.Clone(root.Participants), Default: agent, Agents: []string{agent}, Title: runs.SessionTitle(text), Session: &threads.SessionIdentity{Agent: agent, Parent: root.ID, Label: rec.Key.Label, SourceAlert: root.Session.SourceAlert}}
 	if _, err := p.Threads.Create(who.Tenant, child, p.now()); err != nil && !errors.Is(err, threads.ErrExists) {
 		return Posted{}, "", err
 	}
