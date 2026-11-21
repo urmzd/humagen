@@ -21,7 +21,7 @@ import (
 )
 
 // DefaultWordmark is the sidebar's text when nothing names the product.
-const DefaultWordmark = "humagen"
+const DefaultWordmark = "Humagen"
 
 // Size limits for the files branding reads.
 const (
