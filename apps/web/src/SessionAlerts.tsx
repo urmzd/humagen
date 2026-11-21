@@ -164,7 +164,8 @@ export function SessionAlerts({
                 {defaultCopy.attention.doneWhen(alert.resolve_when)}
               </p>
             )}
-            <div className="flex flex-wrap gap-2">
+            {/* A reader who may not change alerts has nothing here beside a message. */}
+            <div className="flex flex-wrap gap-2 empty:hidden">
               {link && (
                 <a
                   className={button}

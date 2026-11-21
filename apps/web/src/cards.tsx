@@ -164,12 +164,14 @@ export function ItemCard({
   href?: string;
   children?: ReactNode;
 }) {
-  // On a touch screen the title is as tall as a finger needs, with its first line
-  // centered in that height and level with its mark. The space under it is a clear
-  // border, not padding: a clamped third line would show through padding.
+  // On a touch screen a linked card's title is as tall as a finger needs, with its
+  // first line centered in that height. The space under it is a clear border, not
+  // padding: a clamped third line would show through padding.
   const titleClass =
     "line-clamp-2 min-h-6 min-w-0 flex-1 text-left font-medium text-aui-sm text-aui-fg leading-6 outline-none after:absolute after:inset-0 after:rounded-aui-lg focus-visible:after:outline-2 focus-visible:after:outline-aui-accent pointer-coarse:border-transparent pointer-coarse:border-b-[10px] pointer-coarse:pt-2.5";
   const linked = !!href || !!onOpen;
+  // That first line is then a 44px band, and every slot beside the title centers in it.
+  const band = linked ? "pointer-coarse:flex pointer-coarse:h-11 pointer-coarse:items-center" : "";
   return (
     <article
       className={`humagen-glass relative isolate flex h-full min-w-0 flex-col gap-3 rounded-aui-lg p-4 ${linked ? "hover:bg-aui-hover" : ""} ${current ? "outline-2 outline-aui-accent -outline-offset-1" : ""}`}
@@ -178,7 +180,9 @@ export function ItemCard({
       {media && <div className="-mx-4 -mt-4 overflow-hidden rounded-t-aui-lg">{media}</div>}
       <header className="flex min-w-0 items-start gap-3">
         {mark && (
-          <span className="flex size-6 shrink-0 items-center justify-center pointer-coarse:h-11">
+          <span
+            className={`flex size-6 shrink-0 items-center justify-center ${linked ? "pointer-coarse:h-11" : ""}`}
+          >
             {mark}
           </span>
         )}
@@ -201,18 +205,22 @@ export function ItemCard({
             {title}
           </button>
         ) : (
-          <h3 className="line-clamp-2 min-w-0 flex-1 font-medium text-aui-sm text-aui-fg">
+          <h3 className="line-clamp-2 min-w-0 flex-1 font-medium text-aui-sm text-aui-fg leading-6">
             {title}
           </h3>
         )}
-        {status && <span className="relative z-10 shrink-0">{status}</span>}
+        {status && <span className={`relative z-10 shrink-0 ${band}`}>{status}</span>}
         {time && (
-          <span className="relative z-10 shrink-0 text-aui-2xs text-aui-muted tabular-nums">
+          <span
+            className={`relative z-10 shrink-0 text-aui-2xs text-aui-muted tabular-nums ${band}`}
+          >
             {time}
           </span>
         )}
         {menu && menu.length > 0 && (
-          <span className="relative z-10 -my-1.5 -mr-1.5 shrink-0">
+          <span
+            className={`relative z-10 -my-1.5 -mr-1.5 shrink-0 ${linked ? "pointer-coarse:my-0" : ""}`}
+          >
             <MoreMenu items={menu} label={menuLabel} />
           </span>
         )}

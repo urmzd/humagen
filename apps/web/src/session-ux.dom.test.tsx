@@ -496,14 +496,20 @@ test("session UX an alert beside its own message keeps its actions and drops the
     rule: "",
     at: "2026-11-07T12:00:00Z",
   };
-  net = stubFetch({ "GET /api/alerts": () => ({ alerts: [alert] }) });
-  function View({ beside }: { beside: boolean }) {
+  const reconnect = {
+    ...alert,
+    id: "alert-reconnect",
+    title: "Reconnect GitHub",
+    action: "reconnect",
+  };
+  net = stubFetch({ "GET /api/alerts": () => ({ alerts: [alert, reconnect] }) });
+  function View({ beside, canWrite = true }: { beside: boolean; canWrite?: boolean }) {
     const attention = useSessionAlerts("s_here", true, 0, () => {});
     return (
       <SessionAlerts
         alerts={attention.rows}
         attention={attention}
-        canWrite
+        canWrite={canWrite}
         agents={[]}
         beside={beside}
       />
@@ -520,6 +526,19 @@ test("session UX an alert beside its own message keeps its actions and drops the
   assert.equal(within(card).queryByRole("link"), null);
   assert.ok(within(card).getByRole("button", { name: "Mark Done" }));
   assert.ok(within(card).getByRole("button", { name: "Snooze 1h" }));
+  // A link that leads somewhere else stays.
+  const other = screen.getByRole("region", { name: "Alert: Reconnect GitHub" });
+  assert.equal(
+    within(other).getByRole("link", { name: "Open Connections" }).getAttribute("href"),
+    "/connections",
+  );
+  // A reader who may not change alerts is left no empty row of actions.
+  view.rerender(<View beside canWrite={false} />);
+  const read = await screen.findByRole("region", { name: "Alert: Confirm the owner" });
+  assert.equal(within(read).queryByRole("link"), null);
+  assert.equal(within(read).queryByRole("button"), null);
+  assert.equal(read.lastElementChild?.childElementCount, 0);
+  assert.match(read.lastElementChild?.className ?? "", /empty:hidden/);
 });
 
 test("session UX canonical sharing uses project access without a project channel picker", async () => {
