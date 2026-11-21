@@ -189,7 +189,7 @@ func TestAnImageThatFailsItsCheckSaysWhyAndIsNotOffered(t *testing.T) {
 	img := want(t, f, owner, "POST", "/api/images", `{"name":"Broken","ref":"ghcr.io/acme/broken:1"}`, http.StatusCreated)
 	id := img["id"].(string)
 	got := settled(t, f, owner, id)
-	if got["status"] != "failed" || !strings.Contains(got["problem"].(string), "manifest unknown") {
+	if got["status"] != "failed" || got["problem"] != "the registry has no ghcr.io/acme/broken:1, or it is private and needs a pull credential" {
 		t.Fatalf("checked = %v", got)
 	}
 	if code, out := status(t, f, owner, "POST", "/api/sessions", `{"agent":"helper","project":"~","text":"Go","image":"`+id+`"}`); code != http.StatusBadRequest {
