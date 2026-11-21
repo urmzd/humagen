@@ -341,7 +341,7 @@ export type Route =
    */
   | { page: "connections"; provider?: string; scope?: "apps" }
   | { page: "directory"; tab: DirectoryTab }
-  | { page: "settings"; section: SettingsSection; permission?: string };
+  | { page: "settings"; section: SettingsSection };
 
 export type Page = Route["page"];
 
@@ -661,10 +661,7 @@ export function href(r: Route): string {
           : "/settings/people";
     case "settings": {
       if (r.section === "connections") return "/settings/plugins";
-      const base = `/settings/${r.section}`;
-      return r.section === "access" && r.permission
-        ? `${base}?permission=${enc(r.permission)}`
-        : base;
+      return `/settings/${r.section}`;
     }
   }
 }
@@ -714,7 +711,7 @@ function legacy(q: URLSearchParams): Route | null {
     case "limits":
       return { page: "settings", section: v };
     case "access":
-      return { page: "settings", section: "access", permission: q.get("permission") ?? undefined };
+      return { page: "settings", section: "access" };
     case "settings":
       return { page: "settings", section: "profile" };
     default:
@@ -1121,7 +1118,6 @@ function read(pathname: string, search: string): Route {
       return {
         page: "settings",
         section: pick(a, SETTINGS_SECTIONS, "profile"),
-        permission: q.get("permission") ?? undefined,
       };
     default:
       return { page: "not-found", path: `/${parts.map(enc).join("/")}` };

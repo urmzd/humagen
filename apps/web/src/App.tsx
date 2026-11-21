@@ -1093,13 +1093,6 @@ function Console({
                             go({ page: "you", section: "connections", provider }, { replace: true })
                           }
                           canConnect={can(CONNECT_PERMISSION)}
-                          onWhy={() =>
-                            go({
-                              page: "settings",
-                              section: "access",
-                              permission: CONNECT_PERMISSION,
-                            })
-                          }
                         />
                       ) : (
                         <PersonalPreferences

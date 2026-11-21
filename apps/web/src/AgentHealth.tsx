@@ -235,20 +235,17 @@ function Suites({
 /**
  * An agent's evaluation health: one row with its state, the recent pass rate,
  * the page's action and a refresh, then the checks on recent runs beside its
- * eval suites, then what failed and what changed. It reads again when
- * `version` changes, as it does when an eval runs. Without `suites` it leaves
+ * eval suites, then what failed and what changed. Without `suites` it leaves
  * the suites out, as the Evals tab lists them itself.
  */
 export function AgentHealth({
   name,
-  version,
   actions,
   suites,
   canRun = false,
   onSuitesChanged,
 }: {
   name: string;
-  version?: string;
   actions?: ReactNode;
   suites?: SuiteView[];
   canRun?: boolean;
@@ -266,7 +263,7 @@ export function AgentHealth({
     const t = setInterval(() => setNow((n) => n + 1), 60_000);
     return () => clearInterval(t);
   }, []);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: version and tick only say when to read again
+  // biome-ignore lint/correctness/useExhaustiveDependencies: tick only says when to read again
   useEffect(() => {
     let live = true;
     setProblem("");
@@ -292,7 +289,7 @@ export function AgentHealth({
     return () => {
       live = false;
     };
-  }, [name, version, tick]);
+  }, [name, tick]);
   const refresh = () => setTick((t) => t + 1);
   const updated = readAt ? words.updated(ago(readAt)) : "";
   const failures = (health?.results ?? []).filter((result) => !result.passed).slice(0, 3);

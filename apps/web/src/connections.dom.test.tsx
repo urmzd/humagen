@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import type { ToolCredentials } from "./api.ts";
 import { YourConnections } from "./Connections.tsx";
 import { cannotConnect } from "./connections.ts";
@@ -43,11 +43,8 @@ const mine: ToolCredentials = {
 
 test("someone who may not connect is told so in words, with no Connect, form or Remove to press", async () => {
   net = stubFetch({ "GET /api/me/credentials": () => mine });
-  let why = 0;
   // Even an address that opens a tool's form opens none.
-  render(
-    <YourConnections open="calendar" onOpen={() => {}} canConnect={false} onWhy={() => why++} />,
-  );
+  render(<YourConnections open="calendar" onOpen={() => {}} canConnect={false} />);
   assert.ok(await screen.findByText(/Connecting a credential takes permission to run agents/));
   assert.ok(screen.getByText(cannotConnect, { exact: false }));
   // Where each tool stands is still shown.
@@ -56,10 +53,8 @@ test("someone who may not connect is told so in words, with no Connect, form or 
   for (const name of ["Connect", "Replace", "Remove", "Cancel"])
     assert.ok(!screen.queryByRole("button", { name }), `${name} is offered`);
   assert.ok(!screen.queryByRole("textbox"));
-  const link = screen.getByRole("link", { name: "Why can't I?" });
-  assert.equal(link.getAttribute("href"), "/settings/access?permission=runs%3Awrite");
-  fireEvent.click(link);
-  assert.equal(why, 1);
+  // The reason is said in place; there is no link to an explanation that is gone.
+  assert.equal(screen.queryByRole("link", { name: "Why can't I?" }), null);
   assert.ok(!net?.seen.some((r) => r.method !== "GET"));
 });
 

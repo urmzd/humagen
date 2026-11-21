@@ -163,21 +163,6 @@ export interface Me {
   handle?: string;
 }
 
-/** Why the caller may or may not do one thing. Only ever about the caller. */
-export interface AccessDecision {
-  permission: string;
-  allowed: boolean;
-  /** "scope" when a machine's token decided rather than the policy. */
-  outcome: "allowed" | "denied" | "no match" | "scope";
-  role?: string;
-  path?: string[];
-  rule?: string;
-  /** The grant that gave `role`, when the sign-in kept it. */
-  grant?: string;
-  held: { role: string; grant?: string; group?: string }[];
-  unknown?: string[];
-}
-
 export interface ModelRef {
   provider: string;
   model: string;
@@ -1254,8 +1239,6 @@ export const api = {
   readAudit: () =>
     call<{ records: ReadAuditRecord[] }>("GET", "/api/read-audit").then((r) => r.records),
   me: () => call<Me>("GET", "/api/me"),
-  explain: (permission: string) =>
-    call<AccessDecision>("GET", `/api/access/explain?${new URLSearchParams({ permission })}`),
   agents: () => call<{ agents: Revision[] }>("GET", "/api/agents").then((r) => r.agents),
   /** Every agent, and the names of those the platform provides, which cannot be edited. */
   agentHues: (names: string[], path = "/api/agent-hues") =>
