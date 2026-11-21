@@ -20,7 +20,9 @@ every rendered code fragment must stay inside its paragraph's text column.
 
 The canonical artifact state is `artifacts` at `/artifacts`, replacing the old
 `library` Skills capture. Connections is Apps and MCPs with no tabs, so
-`connections-mcps` replaces `connections-knowledge` (data sources moved into a corpus). Session
+`connections-mcps` replaces `connections-knowledge` (data sources moved into a corpus). The
+`connections` state then shows GitHub, in the browser only, as installed from the page, so one
+app's row has its More menu, which must share the Manage button's line at every width. Session
 rows must remain native links so modified clicks and opening another tab work.
 
 The session suite builds `fixture-host`, which runs the normal Humagen serve and
