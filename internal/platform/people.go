@@ -11,7 +11,6 @@ import (
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/people"
-	"github.com/urmzd/saige/flow/definition"
 )
 
 // The directory of people: who is in the workspace, by name and handle. It is
@@ -32,7 +31,7 @@ func (p *Platform) agentTaken(tenant, handle string) bool {
 		return true
 	}
 	_, err := p.Catalog().Get(context.Background(), tenant, handle, 0)
-	return err == nil || errors.Is(err, definition.ErrRetired)
+	return err == nil || errors.Is(err, wire.ErrNotFound) && p.AgentRetired(tenant, handle)
 }
 
 // SeePerson records a person who signed in: their name and their roles now.
