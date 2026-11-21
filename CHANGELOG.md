@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.177.2 (2026-11-21)
+
+### Bug Fixes
+
+- **console**: keep sidebar statuses on one line (#494) ([b37d9cc](https://github.com/urmzd/humagen/commit/b37d9cc916686b4bedaa0b5b588d28fc40efdff1))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.177.1...v0.177.2)
+
+
 ## 0.177.1 (2026-11-21)
 
 ### Bug Fixes
