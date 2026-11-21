@@ -7,13 +7,16 @@ import {
   CheckIcon,
   ChevronDownIcon,
   ChevronRightIcon,
+  ClockIcon,
   EllipsisIcon,
   GitHubIcon,
   HistoryIcon,
+  HourglassIcon,
   LayersIcon,
   ListChecksIcon,
   LogOutIcon,
-  MessageIcon,
+  MessageSquareIcon,
+  MonitorIcon,
   PanelLeftCloseIcon,
   PanelLeftOpenIcon,
   PencilIcon,
@@ -22,11 +25,13 @@ import {
   ProjectIcon,
   SearchIcon,
   SettingsIcon,
+  ShieldIcon,
   SlackIcon,
   SlidersIcon,
   Tooltip,
   TrashIcon,
   UserIcon,
+  XCircleIcon,
 } from "@humagen/render-web";
 import { Separator } from "@humagen/render-web/ui/separator";
 import { HumagenMark } from "@humagen/web";
@@ -39,6 +44,7 @@ import {
   type ThreadSummary,
 } from "./api.ts";
 import { agentShown, type Branding, servedBranding } from "./branding.ts";
+import { Pill } from "./cards.tsx";
 import {
   age,
   GROUP_ROWS,
@@ -282,7 +288,7 @@ function ProjectGroup({
 
 /**
  * A conversation row's link: its title on the first line, when it moved and
- * where it started on the second, and a line of state when it has one. Hover
+ * where it started on the second, with room for a status badge. Hover
  * tints it; the open row is filled, set in medium weight and marked at its
  * left edge, so the two never read as one. Keyboard focus is a neutral ring
  * drawn inside the row.
@@ -296,7 +302,7 @@ const rowAction =
 
 /** One glyph per place a session can start, drawn in the row's muted ink. */
 const SOURCE_ICONS: Record<RowSource, ReactNode> = {
-  console: <MessageIcon size={14} />,
+  console: <MonitorIcon size={14} />,
   slack: <SlackIcon size={13} />,
   slack_dm: <SlackIcon size={13} />,
   github: <GitHubIcon size={14} />,
@@ -326,15 +332,31 @@ function SourceLabel({ source }: { source: RowSource }) {
   );
 }
 
-/** The dot's color: the warning for waiting on the reader, red for an unread failure. */
-const DOT_TONE: Record<NonNullable<RowState["dot"]>, string> = {
-  you: "bg-aui-warn",
-  failed: "bg-aui-bad",
-  unread: "bg-[var(--humagen-unread)]",
+/** A distinct glyph for each status, with the full reason on the badge. */
+const STATE_ICONS = {
+  approval: ShieldIcon,
+  question: MessageSquareIcon,
+  waiting: HourglassIcon,
+  failed: XCircleIcon,
+  working: ClockIcon,
+  alert: BellIcon,
 };
 
-/** The state line's color: red says failure, the warning says it waits on someone. */
-const LINE_TONE = { warn: "text-aui-warn", bad: "text-aui-bad", muted: "text-aui-muted" };
+function RowStatusBadge({ state }: { state: RowState }) {
+  const Icon = STATE_ICONS[state.kind];
+  return (
+    <span
+      aria-hidden
+      data-state={state.kind}
+      title={state.text}
+      className="ml-auto inline-flex shrink-0"
+    >
+      <Pill tone={state.tone} size="compact">
+        <Icon size={12} />
+      </Pill>
+    </span>
+  );
+}
 
 /** Today, Yesterday or Earlier, by the reader's own calendar day. */
 export function recentDay(iso: string, now: Date): "today" | "yesterday" | "earlier" {
@@ -379,7 +401,7 @@ function TaskRow({
   current,
   pinned,
   archived = false,
-  state = {},
+  state,
   unread = false,
   ageText = "",
   source = "console",
@@ -395,7 +417,7 @@ function TaskRow({
   current: boolean;
   pinned: boolean;
   archived?: boolean;
-  /** What it says about its state, in words, and its dot. */
+  /** The most pressing status, with its full explanation. */
   state?: RowState;
   /** An agent said something the reader has not read: the title is heavier. */
   unread?: boolean;
@@ -427,20 +449,13 @@ function TaskRow({
     if (t && t !== task.title) onRename?.(t);
     requestAnimationFrame(() => trigger()?.focus());
   };
-  // Resting the pointer on the row, or holding a finger on it, previews it.
+  // Resting the pointer or keyboard focus on the row, or holding a finger on
+  // it, previews it: the preview says the status the badge shows as a glyph.
   const peek = usePeek();
   const peekId = `peek-${task.id}`;
-  const dotSaid = state.dot ? words.state.dot[state.dot] : "";
-  // What a screen reader hears of the dot: unread even beside a state line,
-  // which already says when it waits on the reader.
-  const srDot =
-    state.dot === "you"
-      ? state.line
-        ? ""
-        : dotSaid
-      : state.dot && state.line
-        ? words.state.dot.unread
-        : dotSaid;
+  const statusId = `row-status-${task.id}`;
+  const statusText = [state?.text, unread && words.state.unread].filter(Boolean).join(", ");
+  const description = [statusText && statusId, peek.at && peekId].filter(Boolean).join(" ");
   return (
     // A row that is saying something sits over its neighbours and over the
     // section's label, which sticks above the first row, so the note shows.
@@ -473,51 +488,42 @@ function TaskRow({
             onSelect();
           }}
           {...peek.bind}
-          aria-describedby={peek.at ? peekId : undefined}
+          aria-describedby={description || undefined}
           data-thread-row={task.id}
           aria-current={current ? "page" : undefined}
           // The first line keeps the width the menu button takes at its end, so a title
           // is cut at the same place at rest and under the pointer.
           className={rowLink}
         >
-          <span className="flex min-w-0 items-center gap-2">
-            <span
-              data-standing={unread ? "unread" : undefined}
-              className={`min-w-0 flex-1 truncate ${unread ? "font-semibold" : ""} ${current ? "font-medium" : ""}`}
-            >
-              {title}
-            </span>
-            <span className="flex h-5 w-7 shrink-0 items-center justify-center">
-              {state.dot && (
-                <span
-                  aria-hidden
-                  data-dot={state.dot}
-                  title={dotSaid}
-                  className={`block size-2 rounded-full ${DOT_TONE[state.dot]} ${hasMenu ? "[@media(pointer:fine)]:group-focus-within/task:invisible [@media(pointer:fine)]:group-hover/task:invisible" : ""}`}
-                />
-              )}
-            </span>
+          <span
+            data-standing={unread ? "unread" : undefined}
+            className={`min-w-0 truncate pr-7 pointer-coarse:pr-10 ${unread ? "font-semibold" : ""} ${current ? "font-medium" : ""}`}
+          >
+            {title}
           </span>
           <span
             data-row-age
-            className="flex min-w-0 items-center gap-2 pr-7 text-aui-2xs text-aui-muted tabular-nums"
+            className="flex h-4 min-w-0 items-center gap-2 pr-7 text-aui-2xs text-aui-muted tabular-nums pointer-coarse:pr-10"
           >
-            {ageText && <span className="shrink-0">{ageText}</span>}
+            {ageText && <span className="shrink-0 whitespace-nowrap">{ageText}</span>}
             <SourceLabel source={source} />
+            {state ? (
+              <RowStatusBadge state={state} />
+            ) : unread ? (
+              <span
+                aria-hidden
+                data-dot="unread"
+                className="ml-auto size-1.5 shrink-0 rounded-full bg-[var(--humagen-unread)]"
+              />
+            ) : null}
           </span>
-          {state.line && (
-            <span
-              data-state={state.line.tone}
-              className={`truncate pr-1 text-aui-2xs ${LINE_TONE[state.line.tone]}`}
-            >
-              {state.line.text}
-            </span>
-          )}
-          <span className="sr-only">
-            , {words.sources[source]}
-            {srDot && `, ${srDot}`}
-          </span>
+          <span className="sr-only">, {words.sources[source]}</span>
         </a>
+      )}
+      {statusText && (
+        <span id={statusId} className="sr-only">
+          {statusText}
+        </span>
       )}
       {hasMenu && !renaming && (
         <div
@@ -576,7 +582,7 @@ function TaskRow({
       {hasMenu && <FlashNote flash={flash} align="right" />}
       {peek.at && !renaming && (
         <PeekCard at={peek.at} id={peekId} onClose={peek.close}>
-          <ConversationPeek task={task} />
+          <ConversationPeek task={task} status={state?.text} />
         </PeekCard>
       )}
     </li>
@@ -1263,7 +1269,7 @@ export function Sidebar({
       current={isCurrent(t)}
       pinned={opts.pinned ?? false}
       archived={archivedSet.has(t.id)}
-      state={rowState(t, marks, defaultCopy.sidebar.state, {
+      state={rowState(t, defaultCopy.sidebar.state, {
         session: sessionMode,
         alert: alertBySession.get(t.id),
       })}
@@ -1778,23 +1784,16 @@ export function Sidebar({
                 <>
                   <Avatar name={name} prefs={prefs} size={26} />
                   {open && (
-                    <>
-                      <span className="humagen-sidebar-reveal flex min-w-0 items-baseline gap-1.5 truncate">
-                        {/* The name keeps its width; the subtitle gives way first. */}
-                        <span className="max-w-full shrink-0 truncate text-aui-sm text-aui-fg">
-                          {name}
-                        </span>
-                        {subtitle && (
-                          <span className="truncate text-aui-xs text-aui-muted">| {subtitle}</span>
-                        )}
-                        <span className="sr-only">, {defaultCopy.preferences.open}</span>
+                    <span className="humagen-sidebar-reveal flex min-w-0 items-baseline gap-1.5 truncate">
+                      {/* The name keeps its width; the subtitle gives way first. */}
+                      <span className="max-w-full shrink-0 truncate text-aui-sm text-aui-fg">
+                        {name}
                       </span>
-                      <ChevronDownIcon
-                        size={14}
-                        aria-hidden
-                        className="humagen-sidebar-reveal shrink-0 text-aui-muted"
-                      />
-                    </>
+                      {subtitle && (
+                        <span className="truncate text-aui-xs text-aui-muted">| {subtitle}</span>
+                      )}
+                      <span className="sr-only">, {defaultCopy.preferences.open}</span>
+                    </span>
                   )}
                 </>
               }

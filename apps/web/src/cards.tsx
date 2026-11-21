@@ -33,10 +33,21 @@ const toneClass: Record<Tone, string> = {
 };
 
 /** A state: priority, status, health. Filled, so it reads before the text around it. */
-export function Pill({ tone = "neutral", children }: { tone?: Tone; children: ReactNode }) {
+export function Pill({
+  tone = "neutral",
+  size = "default",
+  children,
+}: {
+  tone?: Tone;
+  size?: "compact" | "default";
+  children: ReactNode;
+}) {
+  const sizing = size === "compact" ? "h-4 px-1.5" : "h-5 px-2";
+  const edge =
+    size === "compact" && tone === "neutral" ? "ring-1 ring-inset ring-aui-muted/25" : "";
   return (
     <span
-      className={`inline-flex h-5 shrink-0 items-center rounded-full px-2 font-medium text-aui-2xs ${toneClass[tone]}`}
+      className={`inline-flex shrink-0 items-center rounded-full font-medium text-aui-2xs ${sizing} ${toneClass[tone]} ${edge}`}
     >
       {children}
     </span>
