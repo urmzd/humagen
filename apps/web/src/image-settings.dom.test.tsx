@@ -78,7 +78,9 @@ test("an image added is checking, then ready and pinned; it can be kept warm and
     target: { value: "bot:s3cret" },
   });
   fireEvent.submit(form);
-  await waitFor(() => assert.equal(calls[0], "add Agent tools ghcr.io/acme/agent:1.4 bot:s3cret false"));
+  await waitFor(() =>
+    assert.equal(calls[0], "add Agent tools ghcr.io/acme/agent:1.4 bot:s3cret false"),
+  );
 
   const row = () => document.querySelector('[data-image="img_0"]') as HTMLElement;
   await waitFor(() => assert.equal(row()?.getAttribute("data-status"), "ready"));
