@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.179.1 (2026-11-21)
+
+### Bug Fixes
+
+- **console**: settings titles alone, one amber for waiting, Audit filters folded on phones (#509) ([0e706c8](https://github.com/urmzd/humagen/commit/0e706c84ec10f00304de13e05319b051bda06a90))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.179.0...v0.179.1)
+
+
 ## 0.179.0 (2026-11-21)
 
 ### Features
