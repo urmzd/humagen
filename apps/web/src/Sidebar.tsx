@@ -1235,16 +1235,11 @@ export function Sidebar({
               </button>
             )}
           </div>
-          {/*
-            The navigation stays put and only the conversation lists under it
-            scroll. On a window too short for that, the navigation scrolls with
-            the lists, so they never shrink to a sliver.
-          */}
           <div
             data-sidebar-scroll
-            className="aui-scroll flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-contain [@media(min-height:640px)]:overflow-y-hidden"
+            className="aui-scroll flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-contain"
           >
-            <div className={`flex shrink-0 flex-col gap-1 pb-2 ${open ? "px-2" : "items-center"}`}>
+            <div className={`flex shrink-0 flex-col gap-1 ${open ? "px-2" : "items-center"}`}>
               {entries
                 .filter((entry) => entry.show)
                 .map((entry) => (
@@ -1261,318 +1256,313 @@ export function Sidebar({
                 ))}
             </div>
 
-            <div
-              data-sidebar-lists
-              className="aui-scroll flex flex-col [@media(min-height:640px)]:min-h-0 [@media(min-height:640px)]:flex-1 [@media(min-height:640px)]:overflow-x-hidden [@media(min-height:640px)]:overflow-y-auto [@media(min-height:640px)]:overscroll-contain"
-            >
-              {open && (pinnedRows.length > 0 || readableProjectPins.length > 0) && (
-                <section
-                  aria-label="Pinned"
-                  className="humagen-sidebar-reveal flex shrink-0 flex-col pt-6"
-                >
-                  <Label fold={pinnedFold}>{defaultCopy.sidebar.pinned}</Label>
-                  <ul className="px-2" hidden={!pinnedFold.open}>
-                    {readableProjectPins.map((project) => (
-                      <li
-                        key={`project:${project}`}
-                        className={`group/project relative ${flashed === `project:${project}` && flash ? "z-20" : ""}`}
-                      >
-                        <div className="py-1 pr-10 [@media(pointer:coarse)]:pr-12">
-                          <Item
-                            icon={<ProjectIcon />}
-                            label={projectTitle(project)}
-                            href={href({ page: "project", name: project === "~" ? "" : project })}
-                            active={
-                              route.page === "project" &&
-                              route.name === (project === "~" ? "" : project)
-                            }
-                            open
-                            onClick={() =>
-                              go({ page: "project", name: project === "~" ? "" : project })
-                            }
-                          />
-                        </div>
-                        {onPinProject && (
-                          <PinButton
-                            pinned
-                            project
-                            projectId={project}
-                            label={defaultCopy.sidebar.pinProject(projectTitle(project), true)}
-                            onClick={(button) => toggleProjectPin(project, false, button)}
-                          />
-                        )}
-                        <FlashNote
-                          flash={flashed === `project:${project}` ? flash : null}
-                          align="right"
+            {open && (pinnedRows.length > 0 || readableProjectPins.length > 0) && (
+              <section
+                aria-label="Pinned"
+                className="humagen-sidebar-reveal flex shrink-0 flex-col pt-6"
+              >
+                <Label fold={pinnedFold}>{defaultCopy.sidebar.pinned}</Label>
+                <ul className="px-2" hidden={!pinnedFold.open}>
+                  {readableProjectPins.map((project) => (
+                    <li
+                      key={`project:${project}`}
+                      className={`group/project relative ${flashed === `project:${project}` && flash ? "z-20" : ""}`}
+                    >
+                      <div className="py-1 pr-10 [@media(pointer:coarse)]:pr-12">
+                        <Item
+                          icon={<ProjectIcon />}
+                          label={projectTitle(project)}
+                          href={href({ page: "project", name: project === "~" ? "" : project })}
+                          active={
+                            route.page === "project" &&
+                            route.name === (project === "~" ? "" : project)
+                          }
+                          open
+                          onClick={() =>
+                            go({ page: "project", name: project === "~" ? "" : project })
+                          }
                         />
+                      </div>
+                      {onPinProject && (
+                        <PinButton
+                          pinned
+                          project
+                          projectId={project}
+                          label={defaultCopy.sidebar.pinProject(projectTitle(project), true)}
+                          onClick={(button) => toggleProjectPin(project, false, button)}
+                        />
+                      )}
+                      <FlashNote
+                        flash={flashed === `project:${project}` ? flash : null}
+                        align="right"
+                      />
+                    </li>
+                  ))}
+                  {pinnedRows.map((t) => row(t, { label: true, pinned: true }))}
+                </ul>
+              </section>
+            )}
+
+            {open && can("runs:read") && (
+              <section
+                aria-label="Sessions"
+                data-view={view}
+                className="humagen-sidebar-reveal flex shrink-0 flex-col pt-6"
+              >
+                {/* The label stays in reach while the list scrolls under it. */}
+                <Label
+                  fold={recentsFold}
+                  action={
+                    <Popover
+                      narrow
+                      align="right"
+                      label={defaultCopy.chat.filter(filters)}
+                      className="relative inline-flex size-8 pointer-coarse:size-11 items-center justify-center rounded-aui text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-expanded:bg-aui-hover aria-expanded:text-aui-fg"
+                      button={
+                        <>
+                          <SlidersIcon size={14} />
+                          {(filters > 0 || view !== "projects") && (
+                            <span
+                              aria-hidden
+                              className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-aui-accent"
+                            />
+                          )}
+                        </>
+                      }
+                    >
+                      {() => (
+                        <div className="aui-scroll flex max-h-[60vh] flex-col overflow-y-auto">
+                          <Choices<ListView>
+                            title="View"
+                            value={view}
+                            options={[
+                              { value: "projects", label: "By project" },
+                              { value: "recents", label: "By day" },
+                              {
+                                value: "archived",
+                                label: `${defaultCopy.sidebar.archived}${marks.archived.length ? ` (${marks.archived.length})` : ""}`,
+                              },
+                            ]}
+                            onChange={setView}
+                          />
+                          <Choices
+                            title="Status"
+                            value={standing}
+                            options={[
+                              { value: "", label: "All" },
+                              { value: "running", label: "Running" },
+                              { value: "failed", label: "Failed" },
+                            ]}
+                            onChange={setStanding}
+                          />
+                          {answering.length > 1 && (
+                            <Choices
+                              title="Agent"
+                              value={agent}
+                              options={[
+                                { value: "", label: "Any" },
+                                ...answering.map((a) => ({
+                                  value: a,
+                                  label: agentShown(a),
+                                  mark: <AgentMark name={a} size={12} />,
+                                })),
+                              ]}
+                              onChange={setAgent}
+                            />
+                          )}
+                          {(filters > 0 || view !== "projects") && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                clear();
+                                setView("projects");
+                              }}
+                              className="mt-1 rounded-aui border-[var(--humagen-rule)] border-t px-2.5 py-2 text-left text-aui-sm text-aui-fg hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
+                            >
+                              Reset to defaults
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </Popover>
+                  }
+                >
+                  <span className="py-1 text-aui-xs">
+                    {view === "archived"
+                      ? defaultCopy.sidebar.archived
+                      : defaultCopy.sidebar.recents}
+                  </span>
+                </Label>
+                {note && (
+                  <p
+                    role="status"
+                    className="mx-3 mb-1 flex items-center gap-2 rounded-aui bg-aui-hover px-2.5 py-1.5 text-aui-xs text-aui-muted"
+                  >
+                    <span className="min-w-0 flex-1">
+                      {note.archived
+                        ? defaultCopy.sidebar.archivedNote
+                        : defaultCopy.sidebar.unarchivedNote}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={undoArchive}
+                      className="shrink-0 rounded-aui px-1.5 font-medium text-aui-fg hover:bg-aui-bg focus-visible:outline-2 focus-visible:outline-aui-accent"
+                    >
+                      {defaultCopy.sidebar.undo}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setNote(null)}
+                      aria-label="Dismiss"
+                      className="shrink-0 rounded-aui px-1 text-aui-muted hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
+                    >
+                      ×
+                    </button>
+                  </p>
+                )}
+                <ul
+                  className="px-2 pb-3"
+                  hidden={!recentsFold.open}
+                  aria-label={view === "recents" ? defaultCopy.sidebar.recents : viewTitle}
+                  aria-busy={loading !== null}
+                >
+                  {noConversations && loading === "first" && (
+                    <li className="px-2.5">
+                      <SkeletonRows count={5} height="1.25rem" />
+                    </li>
+                  )}
+                  {noConversations && loading !== "first" && stalled && (
+                    <li className="flex flex-col items-start gap-1.5 px-2.5 py-1.5 text-aui-xs text-aui-muted">
+                      Your sessions could not be loaded.
+                      <button
+                        type="button"
+                        onClick={retry}
+                        className="humagen-press inline-flex h-6 items-center rounded-full border border-[var(--humagen-rule)] px-2.5 text-aui-fg hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
+                      >
+                        Try Again
+                      </button>
+                    </li>
+                  )}
+                  {view !== "archived" && noConversations && loading !== "first" && !stalled && (
+                    <li className="px-2.5 py-1.5 text-aui-xs text-aui-muted">
+                      {filters > 0
+                        ? "No session matches these filters."
+                        : "Your sessions appear here. Start with New."}
+                    </li>
+                  )}
+                  {view === "recents" &&
+                    recentGroups(unpinned, new Date(now)).map((g, i) => (
+                      <li
+                        key={g.day}
+                        className={i === 0 ? "" : "pt-3"}
+                        data-testid="recents-group"
+                        data-day={g.day}
+                      >
+                        {/* Recents already says these are the newest, so today's sessions take no heading. */}
+                        {g.day !== "today" && (
+                          <p className="px-2.5 pb-1 text-aui-xs text-aui-muted">{g.label}</p>
+                        )}
+                        <ul>{g.items.map((t) => row(t, { label: true }))}</ul>
                       </li>
                     ))}
-                    {pinnedRows.map((t) => row(t, { label: true, pinned: true }))}
-                  </ul>
-                </section>
-              )}
-
-              {open && can("runs:read") && (
-                <section
-                  aria-label="Sessions"
-                  data-view={view}
-                  className="humagen-sidebar-reveal flex shrink-0 flex-col pt-6"
-                >
-                  {/* The label stays in reach while the list scrolls under it. */}
-                  <Label
-                    fold={recentsFold}
-                    action={
-                      <Popover
-                        narrow
-                        align="right"
-                        label={defaultCopy.chat.filter(filters)}
-                        className="relative inline-flex size-8 pointer-coarse:size-11 items-center justify-center rounded-aui text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-expanded:bg-aui-hover aria-expanded:text-aui-fg"
-                        button={
-                          <>
-                            <SlidersIcon size={14} />
-                            {(filters > 0 || view !== "projects") && (
-                              <span
-                                aria-hidden
-                                className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-aui-accent"
-                              />
-                            )}
-                          </>
-                        }
-                      >
-                        {() => (
-                          <div className="aui-scroll flex max-h-[60vh] flex-col overflow-y-auto">
-                            <Choices<ListView>
-                              title="View"
-                              value={view}
-                              options={[
-                                { value: "projects", label: "By project" },
-                                { value: "recents", label: "By day" },
-                                {
-                                  value: "archived",
-                                  label: `${defaultCopy.sidebar.archived}${marks.archived.length ? ` (${marks.archived.length})` : ""}`,
-                                },
-                              ]}
-                              onChange={setView}
-                            />
-                            <Choices
-                              title="Status"
-                              value={standing}
-                              options={[
-                                { value: "", label: "All" },
-                                { value: "running", label: "Running" },
-                                { value: "failed", label: "Failed" },
-                              ]}
-                              onChange={setStanding}
-                            />
-                            {answering.length > 1 && (
-                              <Choices
-                                title="Agent"
-                                value={agent}
-                                options={[
-                                  { value: "", label: "Any" },
-                                  ...answering.map((a) => ({
-                                    value: a,
-                                    label: agentShown(a),
-                                    mark: <AgentMark name={a} size={12} />,
-                                  })),
-                                ]}
-                                onChange={setAgent}
-                              />
-                            )}
-                            {(filters > 0 || view !== "projects") && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  clear();
-                                  setView("projects");
-                                }}
-                                className="mt-1 rounded-aui border-[var(--humagen-rule)] border-t px-2.5 py-2 text-left text-aui-sm text-aui-fg hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
-                              >
-                                Reset to defaults
-                              </button>
-                            )}
-                          </div>
-                        )}
-                      </Popover>
-                    }
-                  >
-                    <span className="py-1 text-aui-xs">
-                      {view === "archived"
-                        ? defaultCopy.sidebar.archived
-                        : defaultCopy.sidebar.recents}
-                    </span>
-                  </Label>
-                  {note && (
-                    <p
-                      role="status"
-                      className="mx-3 mb-1 flex items-center gap-2 rounded-aui bg-aui-hover px-2.5 py-1.5 text-aui-xs text-aui-muted"
-                    >
-                      <span className="min-w-0 flex-1">
-                        {note.archived
-                          ? defaultCopy.sidebar.archivedNote
-                          : defaultCopy.sidebar.unarchivedNote}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={undoArchive}
-                        className="shrink-0 rounded-aui px-1.5 font-medium text-aui-fg hover:bg-aui-bg focus-visible:outline-2 focus-visible:outline-aui-accent"
-                      >
-                        {defaultCopy.sidebar.undo}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setNote(null)}
-                        aria-label="Dismiss"
-                        className="shrink-0 rounded-aui px-1 text-aui-muted hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
-                      >
-                        ×
-                      </button>
-                    </p>
-                  )}
-                  <ul
-                    className="px-2 pb-3"
-                    hidden={!recentsFold.open}
-                    aria-label={view === "recents" ? defaultCopy.sidebar.recents : viewTitle}
-                    aria-busy={loading !== null}
-                  >
-                    {noConversations && loading === "first" && (
-                      <li className="px-2.5">
-                        <SkeletonRows count={5} height="1.25rem" />
-                      </li>
-                    )}
-                    {noConversations && loading !== "first" && stalled && (
-                      <li className="flex flex-col items-start gap-1.5 px-2.5 py-1.5 text-aui-xs text-aui-muted">
-                        Your sessions could not be loaded.
-                        <button
-                          type="button"
-                          onClick={retry}
-                          className="humagen-press inline-flex h-6 items-center rounded-full border border-[var(--humagen-rule)] px-2.5 text-aui-fg hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
-                        >
-                          Try Again
-                        </button>
-                      </li>
-                    )}
-                    {view !== "archived" && noConversations && loading !== "first" && !stalled && (
+                  {view === "archived" &&
+                    (lists.archived.length === 0 && loading !== "first" ? (
                       <li className="px-2.5 py-1.5 text-aui-xs text-aui-muted">
-                        {filters > 0
-                          ? "No session matches these filters."
-                          : "Your sessions appear here. Start with New."}
+                        {defaultCopy.sidebar.noArchived}
                       </li>
-                    )}
-                    {view === "recents" &&
-                      recentGroups(unpinned, new Date(now)).map((g, i) => (
+                    ) : (
+                      lists.archived.map((t) => row(t, { label: true }))
+                    ))}
+                  {view === "projects" &&
+                    projectGroups.map((project) => {
+                      const inGroup = unpinned.filter((t) => (t.project || "~") === project);
+                      const all = expanded.has(project);
+                      const rows = all ? inGroup : inGroup.slice(0, GROUP_ROWS);
+                      return (
                         <li
-                          key={g.day}
-                          className={i === 0 ? "" : "pt-3"}
-                          data-testid="recents-group"
-                          data-day={g.day}
+                          key={project}
+                          className={`group/project relative min-w-0 pt-2 ${flashed === `project:${project}` && flash ? "z-20" : ""}`}
                         >
-                          {/* Recents already says these are the newest, so today's sessions take no heading. */}
-                          {g.day !== "today" && (
-                            <p className="px-2.5 pb-1 text-aui-xs text-aui-muted">{g.label}</p>
-                          )}
-                          <ul>{g.items.map((t) => row(t, { label: true }))}</ul>
-                        </li>
-                      ))}
-                    {view === "archived" &&
-                      (lists.archived.length === 0 && loading !== "first" ? (
-                        <li className="px-2.5 py-1.5 text-aui-xs text-aui-muted">
-                          {defaultCopy.sidebar.noArchived}
-                        </li>
-                      ) : (
-                        lists.archived.map((t) => row(t, { label: true }))
-                      ))}
-                    {view === "projects" &&
-                      projectGroups.map((project) => {
-                        const inGroup = unpinned.filter((t) => (t.project || "~") === project);
-                        const all = expanded.has(project);
-                        const rows = all ? inGroup : inGroup.slice(0, GROUP_ROWS);
-                        return (
-                          <li
-                            key={project}
-                            className={`group/project relative min-w-0 pt-2 ${flashed === `project:${project}` && flash ? "z-20" : ""}`}
+                          <ProjectGroup
+                            title={projectTitle(project)}
+                            startsOpen={inGroup.length > 0}
+                            holdsCurrent={inGroup.some(isCurrent)}
                           >
-                            <ProjectGroup
-                              title={projectTitle(project)}
-                              startsOpen={inGroup.length > 0}
-                              holdsCurrent={inGroup.some(isCurrent)}
-                            >
-                              <ul className="ml-2 border-aui-border border-l pl-1">
-                                {inGroup.length === 0 && (
-                                  <li className="px-2.5 py-1.5 text-aui-xs text-aui-muted">
-                                    {defaultCopy.sidebar.noConversations}
-                                  </li>
+                            <ul className="ml-2 border-aui-border border-l pl-1">
+                              {inGroup.length === 0 && (
+                                <li className="px-2.5 py-1.5 text-aui-xs text-aui-muted">
+                                  {defaultCopy.sidebar.noConversations}
+                                </li>
+                              )}
+                              {rows.map((t) => row(t, { label: false }))}
+                              {inGroup.length > GROUP_ROWS && (
+                                <li>
+                                  <button
+                                    type="button"
+                                    aria-expanded={all}
+                                    onClick={() =>
+                                      setExpanded((e) => {
+                                        const n = new Set(e);
+                                        if (all) n.delete(project);
+                                        else n.add(project);
+                                        return n;
+                                      })
+                                    }
+                                    className="flex h-8 w-full items-center rounded-aui px-2.5 text-left text-aui-xs text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
+                                  >
+                                    {all
+                                      ? defaultCopy.sidebar.showFewer
+                                      : defaultCopy.sidebar.seeAll(inGroup.length)}
+                                  </button>
+                                </li>
+                              )}
+                            </ul>
+                          </ProjectGroup>
+                          {onPinProject && can("projects:read") && (
+                            <div className="absolute top-2 right-0 h-10 w-10">
+                              <PinButton
+                                project
+                                projectId={project}
+                                pinned={pinnedProjects.has(project)}
+                                label={defaultCopy.sidebar.pinProject(
+                                  projectTitle(project),
+                                  pinnedProjects.has(project),
                                 )}
-                                {rows.map((t) => row(t, { label: false }))}
-                                {inGroup.length > GROUP_ROWS && (
-                                  <li>
-                                    <button
-                                      type="button"
-                                      aria-expanded={all}
-                                      onClick={() =>
-                                        setExpanded((e) => {
-                                          const n = new Set(e);
-                                          if (all) n.delete(project);
-                                          else n.add(project);
-                                          return n;
-                                        })
-                                      }
-                                      className="flex h-8 w-full items-center rounded-aui px-2.5 text-left text-aui-xs text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
-                                    >
-                                      {all
-                                        ? defaultCopy.sidebar.showFewer
-                                        : defaultCopy.sidebar.seeAll(inGroup.length)}
-                                    </button>
-                                  </li>
-                                )}
-                              </ul>
-                            </ProjectGroup>
-                            {onPinProject && can("projects:read") && (
-                              <div className="absolute top-2 right-0 h-10 w-10">
-                                <PinButton
-                                  project
-                                  projectId={project}
-                                  pinned={pinnedProjects.has(project)}
-                                  label={defaultCopy.sidebar.pinProject(
-                                    projectTitle(project),
-                                    pinnedProjects.has(project),
-                                  )}
-                                  onClick={(button) =>
-                                    toggleProjectPin(project, !pinnedProjects.has(project), button)
-                                  }
-                                />
-                              </div>
-                            )}
-                            <FlashNote
-                              flash={flashed === `project:${project}` ? flash : null}
-                              align="right"
-                            />
-                          </li>
-                        );
-                      })}
-                    {/* Older conversations arrive a page at a time, when asked for. */}
-                    {(hasMore || loading === "more") && (
-                      <li className="flex justify-center pt-2">
-                        <button
-                          type="button"
-                          onClick={more}
-                          disabled={loading === "more"}
-                          className="inline-flex h-6 items-center rounded-full border border-[var(--humagen-rule)] px-2.5 text-aui-xs text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent disabled:cursor-default"
-                        >
-                          {loading === "more" ? (
-                            <span className="aui-shimmer">Loading</span>
-                          ) : failed ? (
-                            "Could not load. Try again"
-                          ) : (
-                            "See more"
+                                onClick={(button) =>
+                                  toggleProjectPin(project, !pinnedProjects.has(project), button)
+                                }
+                              />
+                            </div>
                           )}
-                        </button>
-                      </li>
-                    )}
-                  </ul>
-                </section>
-              )}
-            </div>
+                          <FlashNote
+                            flash={flashed === `project:${project}` ? flash : null}
+                            align="right"
+                          />
+                        </li>
+                      );
+                    })}
+                  {/* Older conversations arrive a page at a time, when asked for. */}
+                  {(hasMore || loading === "more") && (
+                    <li className="flex justify-center pt-2">
+                      <button
+                        type="button"
+                        onClick={more}
+                        disabled={loading === "more"}
+                        className="inline-flex h-6 items-center rounded-full border border-[var(--humagen-rule)] px-2.5 text-aui-xs text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent disabled:cursor-default"
+                      >
+                        {loading === "more" ? (
+                          <span className="aui-shimmer">Loading</span>
+                        ) : failed ? (
+                          "Could not load. Try again"
+                        ) : (
+                          "See more"
+                        )}
+                      </button>
+                    </li>
+                  )}
+                </ul>
+              </section>
+            )}
           </div>
         </nav>
 

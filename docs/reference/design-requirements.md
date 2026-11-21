@@ -39,7 +39,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-004 | Reveal full message date and time on hover and keyboard focus | Human messages and announcements implemented, DOM-tested and browser-checked; agent-message timestamps pending |
 | OPS-001 | Durable assignments, scoped autonomy, agent pause and recorded coordination | Domain stores, admission/tool guards, OpenAPI routes and console components implemented. Restart tests cover memory and Postgres; UI DOM tests cover saved and refused actions, inherited policy provenance, effective pause, typed contract inputs and reviewed deadlines. Native reminders survive restart on the same confined inbox item. Done checks and continuation are shown on the assignment's card, and its recorded run opens the message page of the run that answered, which shows the recorded answer when the run has no session trace: DOM tests cover a card with and without checks, and all eight light, dark, desktop and phone before and after captures of the card and the run page are in pull request 343. Not seen in a browser: a card without checks and a count above one. Global navigation, screenshots and source-health integration belong to the following stack layers. |
 | DES-005 | Keep this requirements record discoverable and accurate | Documented; AGENTS.md references this file |
-| DES-006 | Keep sidebar and main content scrolling independent; in the sidebar only the lists scroll | Implemented; Chromium wheel regression covers phone and desktop, pinned navigation and the short-window fallback |
+| DES-006 | Keep sidebar and main content scrolling independent | Implemented; Chromium wheel regression covers phone and desktop |
 | DES-007 | Agent badge text remains contained at narrow widths and enlarged text sizes | Fixed; dark phone/desktop containment regression passes |
 | DES-008 | Agent/project discovery belongs in the new-conversation picker | Implemented; search and selection preserve drafts/files and cannot submit work |
 | DES-009 | Use consistent action icons and readable inbox recovery groups | Implemented; semantic shared icons, touch targets, collapsed companion diagnostics and native recovery captures |
@@ -209,16 +209,13 @@ connection control is implied.
   column without moving the sidebar or the document.
 - Navigation and conversations scroll inside the sidebar only when that area
   is scrolled. Reaching its boundary must not scroll the main content.
-- Keep the sidebar header, its navigation and the account controls visible
-  while only the conversation lists between them scroll, including in the
-  phone drawer. On a window under 640px tall the navigation scrolls with the
-  lists instead, so they never shrink to a sliver.
+- Keep the sidebar header and account controls visible while its lists scroll,
+  including in the phone drawer.
 - Evidence: `App.tsx`, `Sidebar.tsx`, and `styles.css` constrain the shell and
   contain sidebar overscroll. `scripts/screens/sidebar-scroll.ts`, run through
   the `sidebar-scroll` screen fixture, checks real wheel input, long lists,
-  fixed header, navigation and account geometry, the short-window fallback and
-  independent content scroll in Chromium at phone and desktop widths. Long
-  content is inserted only for the layout test.
+  fixed header/account geometry and independent content scroll in Chromium at
+  phone and desktop widths. Long content is inserted only for the layout test.
 
 ### DES-052: Conversation files, scratchpads and the Workspace
 

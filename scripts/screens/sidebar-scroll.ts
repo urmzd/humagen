@@ -3,9 +3,8 @@ import type { Page } from "playwright-core";
 
 /**
  * Stress the real shell with long content, then wheel each column separately.
- * In the sidebar only the conversation lists scroll: the top row, the
- * navigation and the account stay put. On a window too short for that, the
- * navigation scrolls with the lists instead (checked last).
+ * In the sidebar the top row, New and Search (`data-sidebar-start`) and the
+ * account stay put while everything under New and Search scrolls.
  */
 export async function sidebarScroll(page: Page): Promise<void> {
   const phone = (page.viewportSize()?.width ?? 0) < 768;
@@ -19,7 +18,7 @@ export async function sidebarScroll(page: Page): Promise<void> {
   });
   if (phone) await page.getByRole("button", { name: /^Open sidebar/ }).click();
   const sidebar = page.getByRole("complementary", { name: "Navigation", includeHidden: true });
-  const list = sidebar.locator("[data-sidebar-lists]");
+  const list = sidebar.locator("[data-sidebar-scroll]");
   await list.evaluate((element) => {
     const fixture = document.createElement("ul");
     fixture.setAttribute("data-scroll-fixture", "");
@@ -37,13 +36,13 @@ export async function sidebarScroll(page: Page): Promise<void> {
       const box = element.getBoundingClientRect();
       const header = element.firstElementChild?.getBoundingClientRect();
       const footer = element.lastElementChild?.getBoundingClientRect();
-      const nav = element.querySelector("[data-sidebar-scroll] > div")?.getBoundingClientRect();
+      const start = element.querySelector("[data-sidebar-start]")?.getBoundingClientRect();
       return {
         top: box.top,
         bottom: box.bottom,
         header: header?.height,
         footer: footer?.bottom,
-        nav: nav?.top,
+        start: start?.top,
       };
     });
   const initial = await geometry();
@@ -54,14 +53,14 @@ export async function sidebarScroll(page: Page): Promise<void> {
   await list.hover();
   await page.mouse.wheel(0, 600);
   await page.waitForFunction(
-    () => (document.querySelector("[data-sidebar-lists]")?.scrollTop ?? 0) > 0,
+    () => (document.querySelector("[data-sidebar-scroll]")?.scrollTop ?? 0) > 0,
   );
   assert.equal(
     await content.evaluate((element) => element.scrollTop),
     0,
     "sidebar scroll leaves content still",
   );
-  assert.deepEqual(await geometry(), initial, "sidebar chrome and navigation stay fixed");
+  assert.deepEqual(await geometry(), initial, "sidebar chrome, New and Search stay fixed");
   await list.evaluate((element) => {
     element.scrollTop = element.scrollHeight;
   });
@@ -104,24 +103,5 @@ export async function sidebarScroll(page: Page): Promise<void> {
   await content.evaluate((element) => {
     element.scrollTop = 0;
   });
-  // A short window: the navigation scrolls with the lists, so they keep room.
-  const size = page.viewportSize();
-  if (size) {
-    await page.setViewportSize({ width: size.width, height: 560 });
-    const short = await sidebar.evaluate((element) => {
-      const outer = element.querySelector<HTMLElement>("[data-sidebar-scroll]");
-      const lists = element.querySelector<HTMLElement>("[data-sidebar-lists]");
-      return {
-        outer: outer ? getComputedStyle(outer).overflowY : "",
-        lists: lists ? getComputedStyle(lists).overflowY : "",
-      };
-    });
-    assert.deepEqual(
-      short,
-      { outer: "auto", lists: "visible" },
-      "a short window scrolls navigation and lists together",
-    );
-    await page.setViewportSize(size);
-  }
   if (phone) await page.getByRole("button", { name: "Close sidebar", exact: true }).click();
 }
