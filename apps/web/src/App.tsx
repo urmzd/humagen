@@ -1615,6 +1615,7 @@ function Console({
                         workspaceDefault={workspaceDefault}
                         canWrite={can("agents:write")}
                         canGovern={can("projects:govern")}
+                        canLinkSlack={can("clients:write")}
                         builtin={route.name ? builtin.includes(route.name) : false}
                         canEval={can("evals:write")}
                         canAlert={can("alerts:write")}

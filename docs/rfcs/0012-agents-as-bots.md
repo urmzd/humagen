@@ -1,6 +1,6 @@
 # Agents as bots: one identity on every surface
 
-Status: partly built. Looks (decision 1), the one Slack app posting as each agent (decision 2's persona and Home's agents), greetings and starters, and a look chosen at New Agent are built. The rest is proposed.
+Status: partly built; see Phasing for what remains. Looks (decision 1), the one Slack app posting as each agent (decision 2's persona and Home's agents), greetings and starters, and a look chosen at New Agent are built. The rest is proposed.
 
 ## Goal
 
@@ -356,9 +356,13 @@ Small changes that make each agent read as itself:
    surface), and threads followed without a mention (replies from the person
    who asked last). Still to do: `/ask` with the picker, the lead and the agents on App
    Home.
-4. **Linked apps.** The manifest from the agent, the connect flow with
-   `auth.test`, team-wide resolution of linked bots, several clients in
-   `apps/slack`.
+4. **Linked apps.** Built: the manifest from the agent
+   (`internal/slackmanifest.ForAgent`, `GET /api/agents/{name}/slack-app`),
+   the connect flow with `auth.test` and `bots.info`
+   (`POST /api/agents/{name}/slack-app`, on the Look tab), team-wide
+   resolution of linked bots, and the main app posting only a message that
+   names an agent's own app. Not built: several clients in one `apps/slack`
+   process (run one process per app, or the webhook connector).
 5. **GitHub and notifications.** The persona header and the waiting lines.
 
 Each phase updates `docs/architecture/surfaces.md` and the status table.

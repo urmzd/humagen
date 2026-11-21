@@ -2890,6 +2890,18 @@ export interface AgentLookView {
   choices: AgentLookViewChoices;
 }
 
+/** An agent's own Slack app. */
+export interface AgentSlackApp {
+  /** The Slack app manifest, as Slack's create-from-manifest page takes it. */
+  manifest: Record<string, unknown>;
+  /** Slack's create-from-manifest page, with the manifest filled in. */
+  create_url: string;
+  /** The client the app is linked as. Absent until it is linked. */
+  client?: string;
+  /** The linked app's bot user, which names the agent in any of the team's Slack apps. */
+  bot_user?: string;
+}
+
 /** Who now sees an agent, as its home. */
 export type AgentHome = { agent: string } & AgentPlace;
 
@@ -6529,6 +6541,11 @@ export interface SetAgentHomeBody {
 export interface SetAgentLookBody {
   look: AgentLook;
   hue?: number;
+}
+
+export interface LinkAgentSlackAppBody {
+  token: SecretInput;
+  signing_secret?: SecretInput;
 }
 
 export interface ListAgentRevisionsResponse {

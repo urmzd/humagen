@@ -2198,6 +2198,23 @@ export const defaultCopy = {
     atCreate: "How it looks",
     notKeptAtCreate: "The agent was made, but its look was not kept. Set it on its Look tab.",
   },
+  agentSlackApp: {
+    title: "Its own Slack app",
+    connected: "Connected",
+    notConnected: "Not connected",
+    what: "Give this agent a Slack app of its own, so people can mention it and message it by name. The workspace's Slack app keeps answering for every agent.",
+    connectedAs: (client: string) =>
+      `Connected as ${client}. Mentioning it in any of the workspace's Slack apps asks this agent, and its own app answers.`,
+    step1: "Create the app in Slack. Its manifest is made from this agent's look.",
+    create: "Create in Slack",
+    step2: "Install it to your workspace, and upload this agent's picture as its icon.",
+    step3: "Paste its bot token and signing secret. Slack says which app and bot they are.",
+    token: "Bot token",
+    signing: "Signing secret",
+    connect: "Connect",
+    askAdmin: "Ask a workspace admin to connect one.",
+    failed: "The Slack app could not be read or connected.",
+  },
   clientConnect: {
     heading: "Connect a system",
     open: "Connect a System",
