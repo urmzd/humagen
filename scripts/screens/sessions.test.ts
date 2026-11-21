@@ -53,11 +53,11 @@ function recorder({ pickerVisible = true, fileContent = "" } = {}) {
   return { page, calls };
 }
 
-test("the canonical session suite keeps 26 unique states at all five widths", () => {
+test("the canonical session suite keeps 27 unique states at all five widths", () => {
   const screens = sessionScreens(ids);
-  assert.equal(screens.length, 26);
-  assert.equal(new Set(screens.map((screen) => screen.name)).size, 26);
-  assert.equal(screens.length * viewports().length, 130);
+  assert.equal(screens.length, 27);
+  assert.equal(new Set(screens.map((screen) => screen.name)).size, 27);
+  assert.equal(screens.length * viewports().length, 135);
   for (const [name, path] of Object.entries({
     new: "/",
     sessions: "/sessions",
