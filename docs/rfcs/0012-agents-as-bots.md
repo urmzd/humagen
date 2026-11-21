@@ -1,6 +1,6 @@
 # Agents as bots: one identity on every surface
 
-Status: partly built. Looks (decision 1), the one Slack app posting as each agent (decision 2's persona and Home's agents), greetings and starters, and a look chosen at New Agent are built. The rest is proposed.
+Status: partly built; see Phasing for what remains. Looks (decision 1), the one Slack app posting as each agent (decision 2's persona and Home's agents), greetings and starters, and a look chosen at New Agent are built. The rest is proposed.
 
 ## Goal
 
@@ -191,8 +191,9 @@ In a channel the app hears only messages that mention it. Making people type
 `@Humagen` on every reply to an agent they are already talking to is the
 largest papercut in the flow, so the app also subscribes to
 `message.channels` and `message.groups`, and takes an unmentioned message only
-in a thread it has answered in, from a person the client maps. Anything else
-it hears that way it drops unread.
+in a thread it has answered in, from the person who asked it there last, so
+people talking to each other in the thread are never answered. Anything else
+it hears that way it drops unread. Built.
 
 #### Walkthrough
 
@@ -294,6 +295,12 @@ several clients, so a deployment can use it for linked apps until then.
 
 ### 3. An agent's page opens on its home
 
+Built: the Home tab (`/agents/{name}`, `AgentHomeTab`), with the agent's bot,
+display name, greeting, Ask, its runs over the last day, and its starters,
+each a new conversation with the agent and the message written. Its prompt
+moves to `/agents/{name}/prompt`. Not built: the regrouped tabs below.
+
+
 `/agents/{name}` opens on a new **Home** tab, and its settings regroup into
 the order the screenshots use, which is also the order a person needs them:
 
@@ -347,15 +354,22 @@ Small changes that make each agent read as itself:
    looks in every mark, display names through `agentShown`, the Look tab,
    greetings and starters, the drawn picture and its public route, a look
    at New Agent.
-2. **Console.** The Home tab, the regrouped tabs, the new setup steps.
+2. **Console.** Built: the Home tab and the look at New Agent. Not built: the
+   regrouped tabs and the goal-first setup steps.
 3. **Slack.** Built: `chat:write.customize` and the agent's name and picture
    on every post, stream and status line, and Home's Meet your agents.
-   Still to do: threads that stay with the agent they
-   were started for and are followed without a mention, `/ask` with the picker, the lead and the agents on App
+   Built: threads that stay with the agent they were started for
+   (`keepTagged`, and `Decide` letting a thread's selection answer on a
+   surface), and threads followed without a mention (replies from the person
+   who asked last). Still to do: `/ask` with the picker, the lead and the agents on App
    Home.
-4. **Linked apps.** The manifest from the agent, the connect flow with
-   `auth.test`, team-wide resolution of linked bots, several clients in
-   `apps/slack`.
+4. **Linked apps.** Built: the manifest from the agent
+   (`internal/slackmanifest.ForAgent`, `GET /api/agents/{name}/slack-app`),
+   the connect flow with `auth.test` and `bots.info`
+   (`POST /api/agents/{name}/slack-app`, on the Look tab), team-wide
+   resolution of linked bots, and the main app posting only a message that
+   names an agent's own app. Not built: several clients in one `apps/slack`
+   process (run one process per app, or the webhook connector).
 5. **GitHub and notifications.** The persona header and the waiting lines.
 
 Each phase updates `docs/architecture/surfaces.md` and the status table.
