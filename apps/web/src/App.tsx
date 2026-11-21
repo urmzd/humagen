@@ -1099,13 +1099,6 @@ function Console({
                             go({ page: "you", section: "connections", provider }, { replace: true })
                           }
                           canConnect={can(CONNECT_PERMISSION)}
-                          onWhy={() =>
-                            go({
-                              page: "settings",
-                              section: "access",
-                              permission: CONNECT_PERMISSION,
-                            })
-                          }
                         />
                       ) : (
                         <PersonalPreferences
@@ -1741,10 +1734,6 @@ function Console({
                       canAdmin={can("agents:write")}
                       section={route.section}
                       onSection={openSettings}
-                      explain={route.permission ?? "runs:read"}
-                      onExplain={(permission) =>
-                        go({ page: "settings", section: "access", permission }, { replace: true })
-                      }
                       onPrefs={setPrefs}
                       onWorkspace={setWorkspace}
                       projects={projectNames}
