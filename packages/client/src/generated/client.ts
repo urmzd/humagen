@@ -2326,12 +2326,17 @@ they were not shown, and the approvals of calls to them, are kept.
     });
   }
 
-  /** Retires the agent: it leaves the workspace and stops answering, its
-sessions and revisions stay readable, and a new agent may take its
-name later. Pausing it (`PUT /api/agents/{name}/control`) keeps it
-instead. `rev`, when given, is the revision the caller read; one
-written since is 409. The platform's own agents are never retired
-(409). The builder's `retire_agent` tool does the same after approval.
+  /** Retires the agent for good: it leaves the workspace and stops
+answering, its sessions and revisions stay readable, its schedules
+are paused (they run again only once they ask another agent, and
+Run Now or Resume before that is 409), and its name stays taken, so
+a create with it is 409 and nothing it left keyed by its name (its
+memory, schedules, action policies, Slack app, look and home) passes
+to a new agent. Pausing it (`PUT /api/agents/{name}/control`) keeps
+it instead. `rev`, when given, is the revision the caller read; one
+written since is 409. The platform's own agents, a Store package's
+and the platform file's are never retired by a person (409). The
+builder's `retire_agent` tool does the same after approval.
  */
   async retireAgent(name: string, rev?: number, options?: RequestOptions): Promise<void> {
     let path = "/api/agents/{name}";
