@@ -143,7 +143,15 @@ export function Composer({
   sessionAgents,
   plus,
   voice,
+  held = false,
+  onCancelHeld,
 }: {
+  /**
+   * The message in the box is sent and waits to go: it stays on screen,
+   * read-only and dimmed, until it goes. Escape gives it back to edit.
+   */
+  held?: boolean;
+  onCancelHeld?: () => void;
   /**
    * Voice notes, when the deployment transcribes them: the microphone
    * records, and the words come back into the draft, marked, to read and
@@ -173,6 +181,8 @@ export function Composer({
     defaultAgent?: string;
     options: TagOption[];
     onQuery?: (typing: Typing) => void;
+    /** The agents are still being read: the @ menu says so in a row of its own. */
+    agentsLoading?: boolean;
   };
   /** Agents with an existing session that can be continued or started afresh. */
   sessionAgents?: string[];
@@ -260,6 +270,8 @@ export function Composer({
   const current = commands[clamped]?.disabled ? nextEnabled(commands, clamped, 1) : clamped;
   // The list opens toward the side of the bar with more room, no taller than that room.
   const open = count > 0;
+  // An @ typed before the agents are read opens the list with a row saying they are on their way.
+  const agentsPending = !!tags?.agentsLoading && typing?.sigil === "@";
   // The skills a message here can name, drawn as tokens where it names them.
   const skillNames = tags?.options.filter((o) => o.kind === "skill").map((o) => o.token) ?? [];
   const tokens = [
@@ -272,15 +284,16 @@ export function Composer({
   );
   const backdrop = useRef<HTMLDivElement>(null);
   const [listAt, setListAt] = useState<{ up: boolean; max: number }>({ up: true, max: 256 });
+  const listed = open || agentsPending;
   useLayoutEffect(() => {
-    if (!open) return;
+    if (!listed) return;
     const r = form.current?.getBoundingClientRect();
     if (!r) return;
     const above = r.top - 8;
     const below = window.innerHeight - r.bottom - 8;
     const up = above >= Math.min(256, below);
     setListAt({ up, max: Math.max(120, Math.min(256, up ? above : below)) });
-  }, [open]);
+  }, [listed]);
 
   // What is being tagged at the caret, read after every change and every
   // move of the caret.
@@ -445,7 +458,7 @@ export function Composer({
   const lit = String(asked);
 
   const send = (now: boolean) => {
-    if (!ready) return;
+    if (!ready || held) return;
     const text =
       withAttached(
         quote
@@ -474,6 +487,13 @@ export function Composer({
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (held) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onCancelHeld?.();
+      }
+      return;
+    }
     if (plus && e.key === "/" && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
       setTyping(null);
@@ -716,7 +736,7 @@ export function Composer({
             ))}
           </ul>
         )}
-        {tags && shown.length > 0 && (
+        {tags && (shown.length > 0 || agentsPending) && (
           // Still: a list waiting on a person does not animate.
           <ul
             id="composer-tags"
@@ -758,6 +778,18 @@ export function Composer({
                 )}
               </li>
             ))}
+            {agentsPending && (
+              // Not an option to pick: the keys pass over it, and Enter still sends.
+              <li
+                role="option"
+                aria-disabled
+                aria-selected={false}
+                className="flex pointer-coarse:min-h-11 items-center gap-2.5 rounded-aui px-2.5 py-1.5 text-aui-xs text-aui-muted"
+              >
+                <span aria-hidden className="aui-skeleton size-4 shrink-0 rounded-full" />
+                {defaultCopy.chat.loadingAgents}
+              </li>
+            )}
           </ul>
         )}
         {plus && (
@@ -858,7 +890,7 @@ export function Composer({
             ref={backdrop}
             aria-hidden
             data-tokens
-            className="pointer-events-none absolute overflow-hidden break-words whitespace-pre-wrap text-transparent"
+            className={`pointer-events-none absolute overflow-hidden break-words whitespace-pre-wrap text-transparent${held ? " opacity-60" : ""}`}
           >
             {tokenRuns(value, tokens).map((run, i) =>
               run.token ? (
@@ -879,6 +911,8 @@ export function Composer({
           ref={input}
           rows={1}
           value={value}
+          readOnly={held}
+          aria-readonly={held || undefined}
           // Who a mention asks, else the caller's own words: never the default agent's token.
           placeholder={
             mentioned.length > 0
@@ -908,14 +942,14 @@ export function Composer({
           // a textarea may not take that role, and a combobox is one line.
           // The open list is said by aria-controls and the active option.
           aria-haspopup={tags ? "listbox" : undefined}
-          aria-controls={tags && open ? "composer-tags" : undefined}
+          aria-controls={tags && listed ? "composer-tags" : undefined}
           aria-autocomplete={tags ? "list" : undefined}
           aria-activedescendant={
             tags && open && current >= 0 ? `composer-tag-${current}` : undefined
           }
-          className="humagen-composer-input relative max-h-[200px] min-h-10 pointer-coarse:min-h-11 w-full resize-none bg-transparent px-3 pt-2 text-aui-base text-aui-fg outline-none placeholder:text-aui-muted"
+          className={`humagen-composer-input relative max-h-[200px] min-h-10 pointer-coarse:min-h-11 w-full resize-none bg-transparent px-3 pt-2 text-aui-base text-aui-fg outline-none placeholder:text-aui-muted${held ? " opacity-60" : ""}`}
         />
-        {tags && typing?.query && typing.sigil === "@" && !shown.length && (
+        {tags && typing?.query && typing.sigil === "@" && !shown.length && !agentsPending && (
           <p role="status" className={floatNote}>
             No matching people or agents for @{typing.query}
           </p>

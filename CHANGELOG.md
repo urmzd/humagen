@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.166.0 (2026-11-21)
+
+### Features
+
+- **console**: sidebar rows show their source and a labelled state, calm focus (#470) ([3a718dc](https://github.com/urmzd/humagen/commit/3a718dcfc21fb37c0442cd275801d8e39564e4e8))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.165.0...v0.166.0)
+
+
+## 0.164.1 (2026-11-21)
+
+### Bug Fixes
+
+- **console**: sidebar row preview card (#416) ([ae44611](https://github.com/urmzd/humagen/commit/ae44611277f8755246fbb642582c85c3b0fad75f))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.164.0...v0.164.1)
+
+
+## 0.163.0 (2026-11-21)
+
+### Features
+
+- **web**: Continue Conversation (#443) ([25a2804](https://github.com/urmzd/humagen/commit/25a2804e6b98d2d8413c6cab2e6f1bb57c3ec91b))
+- **slack**: an alert for a person reaches the Slack app as a direct message notice (#424) ([730a20b](https://github.com/urmzd/humagen/commit/730a20b62e856dd17c3f3662d8d7a503abc6715c))
+
+### Bug Fixes
+
+- **slack**: no disclaimer or retry line on Slack answers (#423) ([182a702](https://github.com/urmzd/humagen/commit/182a702e98865ce54707a65cd9b408c6be1b60a4))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.162.1...v0.163.0)
+
+
 ## 0.161.0 (2026-11-20)
 
 ### Features
