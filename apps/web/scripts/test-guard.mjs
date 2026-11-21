@@ -14,13 +14,17 @@
 // - Concurrency: at most HUMAGEN_TEST_SLOTS (default 2) guarded runs at once
 //   on this machine, across every checkout and worktree. A run past that
 //   waits for a slot rather than stacking another test process on top.
+//   A slot is a TCP port on 127.0.0.1 (HUMAGEN_TEST_SLOT_PORT, default 47611,
+//   and the ports after it) held by listening on it: taking one is a single
+//   atomic bind, and the kernel frees it the moment the holder exits, however
+//   it exits, so there is no lock file to go stale.
+// - The guard will not run a command whose memory it cannot read: if ps
+//   fails before or during the run, it refuses or stops.
 //
 // macOS enforces no per-process memory limit (RLIMIT_AS and RLIMIT_RSS are
 // ignored), so the ceiling is watched from here.
 import { execFileSync, spawn } from "node:child_process";
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { createServer } from "node:net";
 
 const number = (name, fallback) => {
   const n = Number(process.env[name]);
@@ -30,6 +34,7 @@ const maxMB = number("HUMAGEN_TEST_MAX_MB", 8192);
 const maxProcessMB = number("HUMAGEN_TEST_MAX_PROCESS_MB", 3072);
 const maxMinutes = number("HUMAGEN_TEST_MAX_MINUTES", 15);
 const slots = Math.floor(number("HUMAGEN_TEST_SLOTS", 2));
+const slotPort = Math.floor(number("HUMAGEN_TEST_SLOT_PORT", 47611));
 
 const [command, ...args] = process.argv.slice(2);
 if (!command) {
@@ -39,55 +44,43 @@ if (!command) {
 
 const say = (message) => console.error(`test-guard: ${message}`);
 
-// A slot is a directory holding the pid that took it. A slot whose pid is
-// gone was left by a run that died without releasing it, and is taken over.
-const slotRoot = join(homedir(), ".cache", "humagen", "test-slots");
-mkdirSync(slotRoot, { recursive: true });
+const listen = (port) =>
+  new Promise((resolve) => {
+    const server = createServer();
+    server.once("error", () => resolve(undefined));
+    server.listen({ port, host: "127.0.0.1", exclusive: true }, () => {
+      server.unref();
+      resolve(server);
+    });
+  });
 
-const alive = (pid) => {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (e) {
-    return e.code === "EPERM";
-  }
-};
-
-const take = () => {
+const take = async () => {
   for (let i = 0; i < slots; i++) {
-    const dir = join(slotRoot, String(i));
-    try {
-      mkdirSync(dir);
-    } catch {
-      let owner = 0;
-      try {
-        owner = Number(readFileSync(join(dir, "pid"), "utf8"));
-      } catch {}
-      if (owner && alive(owner)) continue;
-      rmSync(dir, { recursive: true, force: true });
-      try {
-        mkdirSync(dir);
-      } catch {
-        continue;
-      }
-    }
-    writeFileSync(join(dir, "pid"), String(process.pid));
-    return dir;
+    const server = await listen(slotPort + i);
+    if (server) return server;
   }
   return undefined;
 };
 
-let slot = take();
+/** Resident memory of every process, in KB by process group, or undefined when ps fails. */
+const sample = () => {
+  try {
+    return execFileSync("ps", ["-axo", "pgid=,rss="], { encoding: "utf8" });
+  } catch {
+    return undefined;
+  }
+};
+if (sample() === undefined) {
+  say("refusing to run: `ps -axo pgid=,rss=` failed, so memory could not be watched");
+  process.exit(2);
+}
+
+let slot = await take();
 if (!slot) {
   say(`${slots} test runs are already going on this machine; waiting for one to finish`);
-  while (!(slot = take())) await new Promise((r) => setTimeout(r, 1000));
+  while (!(slot = await take())) await new Promise((r) => setTimeout(r, 1000));
 }
-const release = () => {
-  try {
-    if (Number(readFileSync(join(slot, "pid"), "utf8")) === process.pid)
-      rmSync(slot, { recursive: true, force: true });
-  } catch {}
-};
+const release = () => slot.close();
 
 const heapCap = "--max-old-space-size=2048";
 const nodeOptions = process.env.NODE_OPTIONS ?? "";
@@ -117,12 +110,8 @@ const stop = (why) => {
 
 /** The group's resident memory, in all and in its largest process, in MB. */
 const groupMB = () => {
-  let out;
-  try {
-    out = execFileSync("ps", ["-axo", "pgid=,rss="], { encoding: "utf8" });
-  } catch {
-    return { total: 0, largest: 0 };
-  }
+  const out = sample();
+  if (out === undefined) return undefined;
   let total = 0;
   let largest = 0;
   for (const line of out.split("\n")) {
@@ -138,7 +127,12 @@ const cause = "A test that prints a DOM node or never stops rendering is the usu
 let peak = 0;
 let peakProcess = 0;
 const watch = setInterval(() => {
-  const { total, largest } = groupMB();
+  const mb = groupMB();
+  if (!mb) {
+    stop("killed: `ps -axo pgid=,rss=` failed, so memory could no longer be watched");
+    return;
+  }
+  const { total, largest } = mb;
   peak = Math.max(peak, total);
   peakProcess = Math.max(peakProcess, largest);
   if (largest > maxProcessMB)

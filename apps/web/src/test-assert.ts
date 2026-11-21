@@ -58,9 +58,6 @@ export function describeDom(v: unknown): string {
   return v.nodeName;
 }
 
-const MAX_DEPTH = 4;
-const MAX_ENTRIES = 200;
-
 interface ListLike {
   length: number;
   item: (i: number) => unknown;
@@ -76,15 +73,20 @@ const isPlain = (v: object): boolean => {
   return Array.isArray(v) || proto === Object.prototype || proto === null;
 };
 
+/** The own enumerable keys node's deep comparison reads, strings and symbols. */
+const ownKeys = (v: object): (string | symbol)[] =>
+  Reflect.ownKeys(v).filter(
+    (k) =>
+      Object.prototype.propertyIsEnumerable.call(v, k) && !(Array.isArray(v) && k === "length"),
+  );
+
 /** Whether v is, or holds in its arrays, plain objects and node lists, a DOM node or window. */
-export function holdsDom(v: unknown, depth = 0, seen = new Set<object>()): boolean {
+export function holdsDom(v: unknown, seen = new Set<object>()): boolean {
   if (typeof v !== "object" || v === null) return false;
   if (isNode(v) || isWindow(v) || isList(v)) return true;
-  if (depth >= MAX_DEPTH || seen.has(v) || !isPlain(v)) return false;
+  if (seen.has(v) || !isPlain(v)) return false;
   seen.add(v);
-  return Object.values(v)
-    .slice(0, MAX_ENTRIES)
-    .some((x) => holdsDom(x, depth + 1, seen));
+  return ownKeys(v).some((k) => holdsDom((v as Record<string | symbol, unknown>)[k], seen));
 }
 
 /** A stand-in for one DOM object: small to print, the same object for the same node. */
@@ -97,23 +99,32 @@ interface Token {
  * v with each DOM node or window swapped for its token and each node list
  * for an array of them. Node's assert never sees the DOM: Node 24's
  * AssertionError walks actual and expected even when given a message.
+ *
+ * Comparison semantics are kept: one memo serves both operands, so an object
+ * met twice, in one operand or both, becomes the same copy and identity
+ * checks still hold; nothing is cut short, so every entry is still compared;
+ * holes, symbol keys and prototypes are carried over.
  */
-function swapDom(v: unknown, tokens: Map<object, Token>, depth = 0): unknown {
+function swapDom(v: unknown, memo: Map<object, unknown>): unknown {
   if (typeof v !== "object" || v === null) return v;
+  if (memo.has(v)) return memo.get(v);
   if (isNode(v) || isWindow(v)) {
-    let t = tokens.get(v);
-    if (!t) tokens.set(v, (t = { dom: describeDom(v), id: tokens.size + 1 }));
-    return t;
+    const token: Token = { dom: describeDom(v), id: memo.size + 1 };
+    memo.set(v, token);
+    return token;
   }
-  if (isList(v))
-    return Array.from({ length: Math.min(v.length, MAX_ENTRIES) }, (_, i) =>
-      swapDom(v.item(i), tokens, depth + 1),
-    );
-  if (depth >= MAX_DEPTH || !isPlain(v)) return v;
-  if (Array.isArray(v)) return v.slice(0, MAX_ENTRIES).map((x) => swapDom(x, tokens, depth + 1));
-  const out: Record<string, unknown> = Object.create(Object.getPrototypeOf(v));
-  for (const [k, x] of Object.entries(v).slice(0, MAX_ENTRIES))
-    out[k] = swapDom(x, tokens, depth + 1);
+  if (isList(v)) {
+    const out: unknown[] = [];
+    memo.set(v, out);
+    for (let i = 0; i < v.length; i++) out.push(swapDom(v.item(i), memo));
+    return out;
+  }
+  if (!isPlain(v)) return v;
+  const out: Record<string | symbol, unknown> = Array.isArray(v)
+    ? new Array(v.length)
+    : Object.create(Object.getPrototypeOf(v));
+  memo.set(v, out);
+  for (const k of ownKeys(v)) out[k] = swapDom((v as Record<string | symbol, unknown>)[k], memo);
   return out;
 }
 
@@ -140,8 +151,8 @@ function guard(target: Record<string, unknown>): void {
     const wrapped: Paired = function (this: unknown, actual, expected, message) {
       if (!holdsDom(actual) && !holdsDom(expected))
         return original.call(this, actual, expected, message);
-      const tokens = new Map<object, Token>();
-      return original.call(this, swapDom(actual, tokens), swapDom(expected, tokens), message);
+      const memo = new Map<object, unknown>();
+      return original.call(this, swapDom(actual, memo), swapDom(expected, memo), message);
     };
     Object.defineProperty(wrapped, "name", { value: name });
     Object.defineProperty(wrapped, WRAPPED, { value: true });
