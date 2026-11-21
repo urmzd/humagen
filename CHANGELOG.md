@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.172.0 (2026-11-21)
+
+### Breaking
+
+- **console**: one session panel with environment, context, connectors and changes (#475) ([14b15ae](https://github.com/urmzd/humagen/commit/14b15ae6715abcfeef402a0df8cff9ac139c9ba5))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.171.1...v0.172.0)
+
+
 ## 0.169.0 (2026-11-21)
 
 ### Features
