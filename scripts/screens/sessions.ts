@@ -314,6 +314,26 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
       path: session,
       act: async (page) => {
         await readySession(page);
+        const controls = page
+          .locator(".humagen-composer-row > button")
+          .or(page.getByRole("button", { name: /^Approval mode: / }))
+          .or(page.locator('[data-layer="usage-ring"]'));
+        await page.locator('[data-layer="usage-ring"]').waitFor();
+        const geometry = await controls.evaluateAll((buttons) => ({
+          target: matchMedia("(pointer: coarse)").matches ? 44 : 32,
+          buttons: buttons.map((button) => {
+            const { width, height } = button.getBoundingClientRect();
+            const icon = button.querySelector("svg")?.getBoundingClientRect();
+            return { width, height, icon: icon && { width: icon.width, height: icon.height } };
+          }),
+        }));
+        assert.ok(geometry.buttons.length >= 4, "Compose, approval and usage controls are visible");
+        for (const { width, height, icon } of geometry.buttons) {
+          assert.equal(width, geometry.target, "Composer controls share a target width");
+          assert.equal(height, geometry.target, "Composer controls share a target height");
+          if (icon)
+            assert.deepEqual(icon, { width: 18, height: 18 }, "Composer icons share a size");
+        }
         const worked = page.getByTestId("worked").first();
         await worked.scrollIntoViewIfNeeded();
         const bounds = await worked.boundingBox();

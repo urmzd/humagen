@@ -909,8 +909,9 @@ approval, disabled early approval, restoration, refusal and the combined menu.
   `--aui-z-toast`. Code touched uses these, never a bare number.
 - The box is one lean row: + (attach, and the + menu) on the left, the words,
   then Send (a return glyph) and the microphone as plain icons of equal
-  weight, each a 44px target on touch. The row grows upward with the words and
-  the buttons stay on its last line. Both buttons are always there: empty, Send
+  weight. Attach, Send, microphone, approval mode and usage share 18px icons
+  and 32px targets on desktop or 44px targets on touch. The row grows upward
+  with the words and the buttons stay on its last line. Both buttons are always there: empty, Send
   is dimmed and the microphone is the action; with words, Send is ready and the
   microphone stays, so a person can switch between talking and typing. While
   it records or dictates, the microphone shows it live and is the stop in the

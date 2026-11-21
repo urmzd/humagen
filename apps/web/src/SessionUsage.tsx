@@ -3,7 +3,7 @@ import { type ReactNode, useCallback, useEffect, useId, useRef, useState } from 
 import { ApiError, api, type ScopeUsage, type ThreadUsage } from "./api.ts";
 import { usd } from "./format.ts";
 import { href } from "./route.ts";
-import { AgentMark } from "./ui.tsx";
+import { AgentMark, composerIconControl } from "./ui.tsx";
 
 /*
  * The quiet row under a conversation's composer: the agent answering (and
@@ -176,7 +176,7 @@ function Ring({ fraction, tone }: { fraction: number; tone: "plain" | "near" | "
   const around = 2 * Math.PI * r;
   const filled = Math.max(0, Math.min(1, fraction)) * around;
   return (
-    <svg aria-hidden width="16" height="16" viewBox="0 0 16 16" className="shrink-0 -rotate-90">
+    <svg aria-hidden width="18" height="18" viewBox="0 0 16 16" className="shrink-0 -rotate-90">
       <circle
         cx="8"
         cy="8"
@@ -389,7 +389,7 @@ export function UsageRing({
         aria-expanded={open}
         aria-controls={open ? id : undefined}
         onClick={() => (open ? close() : setOpen(true))}
-        className={`inline-flex size-7 pointer-coarse:size-11 items-center justify-center rounded-full hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent ${shown?.over ? "text-aui-bad" : shown?.near ? "text-aui-warn" : "text-aui-muted"}`}
+        className={`${composerIconControl} ${shown?.over ? "text-aui-bad" : shown?.near ? "text-aui-warn" : "text-aui-muted"}`}
       >
         <Ring fraction={shown?.fraction ?? 0} tone={shown ? toneOf(shown) : "plain"} />
       </button>
@@ -541,7 +541,7 @@ function MoreControls({ children }: { children: ReactNode }) {
         aria-label={defaultCopy.dock.more}
         aria-expanded={open}
         onClick={() => setOpen(!open)}
-        className="inline-flex size-7 pointer-coarse:size-11 items-center justify-center rounded-full text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
+        className={`${composerIconControl} text-aui-muted hover:text-aui-fg`}
       >
         <span aria-hidden>⋯</span>
       </button>
