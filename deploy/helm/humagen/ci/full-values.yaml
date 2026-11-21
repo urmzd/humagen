@@ -69,3 +69,9 @@ ingress:
     - secretName: humagen-tls
       hosts: [humagen.example.com]
 extraArgs: ["-seed=false"]
+browser:
+  enabled: true
+  image:
+    repository: registry.example.com/humagen-browser
+    tag: "1.2.3"
+  extraArgs: ["--viewport-size", "1440x900"]

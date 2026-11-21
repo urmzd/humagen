@@ -4,6 +4,7 @@
 #   $EDITOR config/warp.yaml                   # the identity provider, public URL
 #   docker compose up -d --build               # Humagen and Postgres
 #   docker compose --profile s3 up -d --build   # and MinIO
+#   docker compose --profile browser up -d --build   # and a browser for agents
 #
 # `make up` and `make down` at the repository root wrap these, and take the
 # profiles from COMPOSE_PROFILES in .env. See docs/guides/deploy.md.
@@ -94,6 +95,33 @@ services:
       timeout: 3s
       retries: 10
 
+  # A browser for agents: Chromium and the Playwright MCP server in one
+  # container (deploy/browser), with no published port: only this project's
+  # services reach it, at http://browser:8931/mcp. Add the tool server to your
+  # Platform document and grant an agent mcp:browser:write
+  # (docs/guides/browser.md#run-the-bundled-browser-image). It reaches the
+  # internet and this compose network: keep nothing on the network that a page
+  # an agent opens should not reach.
+  browser:
+    profiles: ["browser"]
+    build:
+      context: ../browser
+    image: ${HUMAGEN_BROWSER_IMAGE:-humagen-browser:local}
+    restart: unless-stopped
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    shm_size: 512m
+    environment:
+      # The name and port the server reaches it by: any other Host is refused.
+      HUMAGEN_BROWSER_ALLOWED_HOSTS: browser:8931
+    tmpfs:
+      - /tmp
+      # The profile (its sign-ins), gone with the container.
+      - /home/browser:uid=10001,gid=10001
+    volumes:
+      - browser-output:/var/lib/humagen-browser
+
   # Creates the bucket once MinIO is up, then exits. Uses the mc that ships in
   # the MinIO image.
   minio-bucket:
@@ -135,4 +163,5 @@ volumes:
   warp-data:
   postgres-data:
   minio-data:
+  browser-output:
   fiber-postgres-data:

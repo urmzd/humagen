@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -96,6 +97,32 @@ func TestBrowserImagePinsTheReviewedVersion(t *testing.T) {
 		if !strings.Contains(entry, flag) {
 			t.Fatalf("deploy/browser/entrypoint.sh does not pass %s", flag)
 		}
+	}
+}
+
+// The Helm chart's browser.enabled accepts the same tools, by the same
+// hashes, as examples/browser: the chart carries its own list because it is
+// installed without a checkout.
+func TestBrowserChartAcceptsTheReviewedTools(t *testing.T) {
+	data, err := os.ReadFile("../../deploy/helm/humagen/files/browser-tools.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	type tool struct{ name, hash, class string }
+	var chart []tool
+	for _, m := range regexp.MustCompile(`(?m)^- \{name: (\S+), schema_hash: ([0-9a-f]{64}), class: (\w+)\}$`).FindAllStringSubmatch(string(data), -1) {
+		chart = append(chart, tool{m[1], m[2], m[3]})
+	}
+	var reviewed []tool
+	for _, a := range browserAccepted(t) {
+		reviewed = append(reviewed, tool{a.Name, a.SchemaHash, string(a.Class)})
+	}
+	if len(chart) == 0 || !slices.Equal(chart, reviewed) {
+		t.Fatalf("deploy/helm/humagen/files/browser-tools.yaml accepts %v, examples/browser/accepted.json %v", chart, reviewed)
+	}
+	// And every line of the chart's file that names a tool was read.
+	if n := strings.Count(string(data), "\n- "); n != len(chart) {
+		t.Fatalf("%d tool lines in the chart's file, %d read", n, len(chart))
 	}
 }
 

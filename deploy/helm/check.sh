@@ -89,6 +89,20 @@ refuse --set replicaCount=2 --set system.spec.stores.kind=memory --set system.sp
 refuse --set worker.enabled=true
 refuse -f "$chart/ci/scale-values.yaml" --set system.spec.blobs.kind=disk --set system.spec.blobs.s3=null
 refuse -f "$chart/ci/scale-values.yaml" --set existingSecret=
+# The browser is one page and one set of sign-ins, so it belongs to one
+# workspace: several platforms need it named, the name must be a platform's,
+# and its tool server may not take a name the workspace already uses.
+# (--set on a list replaces it, so each case names every platform.)
+two="--set platforms[0].metadata.name=default --set platforms[1].metadata.name=other"
+# shellcheck disable=SC2086
+"$helm" template humagen "$chart" -f "$chart/ci/default-values.yaml" $two >/dev/null
+# shellcheck disable=SC2086
+refuse --set browser.enabled=true $two
+refuse --set browser.enabled=true --set browser.workspace=nobody
+"$helm" template humagen "$chart" -f "$chart/ci/default-values.yaml" --set 'platforms[0].metadata.name=default' --set 'platforms[0].spec.tools[0].name=browser' --set 'platforms[0].spec.tools[0].kind=mcp' >/dev/null
+refuse --set browser.enabled=true --set 'platforms[0].metadata.name=default' --set 'platforms[0].spec.tools[0].name=browser' --set 'platforms[0].spec.tools[0].kind=mcp'
+# shellcheck disable=SC2086
+"$helm" template humagen "$chart" -f "$chart/ci/default-values.yaml" --set browser.enabled=true $two --set browser.workspace=other >/dev/null
 # What the chart renders for each blobs kind and stores kind.
 python3 -I - "$chart" "$helm" <<'EOF'
 import subprocess, sys, yaml
@@ -104,6 +118,42 @@ def data_volume(docs, name="humagen"):
 def system(docs):
     cm = next(d for d in docs if d["kind"] == "ConfigMap")
     return next(yaml.safe_load_all(cm["data"]["humagen.yaml"]))
+def platforms(docs):
+    cm = next(d for d in docs if d["kind"] == "ConfigMap")
+    return list(yaml.safe_load_all(cm["data"]["humagen.yaml"]))[1:]
+# The browser: off, nothing of it is rendered; on, one pod only this
+# release's pods reach, and its tool server in the one workspace it is for.
+docs = render()
+assert not [d for d in docs if d["metadata"]["name"].endswith("-browser")], "browser off: something was rendered"
+assert not any("tools" in p.get("spec", {}) for p in platforms(docs)), "browser off: a tool server was added"
+docs = render("--set", "browser.enabled=true")
+named = {d["kind"]: d for d in docs if d["metadata"]["name"] == "humagen-browser"}
+assert set(named) == {"ServiceAccount", "Service", "Deployment", "NetworkPolicy"}, sorted(named)
+assert named["ServiceAccount"]["automountServiceAccountToken"] is False
+pod = named["Deployment"]["spec"]["template"]["spec"]
+c = pod["containers"][0]
+assert pod["automountServiceAccountToken"] is False and named["Deployment"]["spec"]["replicas"] == 1
+assert c["securityContext"]["readOnlyRootFilesystem"] and c["securityContext"]["capabilities"]["drop"] == ["ALL"]
+assert "httpGet" not in c["readinessProbe"], "the browser refuses a probe's Host: probe the port"
+hosts = next(e["value"] for e in c["env"] if e["name"] == "HUMAGEN_BROWSER_ALLOWED_HOSTS").split(",")
+tool = platforms(docs)[0]["spec"]["tools"][0]
+assert tool["name"] == "browser" and tool["mcp"]["transport"] == "http", tool
+endpoint = tool["mcp"]["endpoint"]
+assert endpoint == "http://humagen-browser:8931/mcp", endpoint
+assert endpoint.split("/")[2] in hosts, "the server would refuse the endpoint's own Host"
+assert len(tool["mcp"]["accept"]) == 13 and all(t["class"] == "write" and len(t["schema_hash"]) == 64 for t in tool["mcp"]["accept"])
+policy = named["NetworkPolicy"]["spec"]
+assert policy["policyTypes"] == ["Ingress", "Egress"]
+assert [p["port"] for p in policy["ingress"][0]["ports"]] == [8931]
+names = sorted(f["podSelector"]["matchLabels"]["app.kubernetes.io/name"] for f in policy["ingress"][0]["from"])
+assert names == ["humagen", "humagen-worker"], names
+out = policy["egress"][1]
+assert out["to"][0]["ipBlock"]["cidr"] == "0.0.0.0/0" and "169.254.0.0/16" in out["to"][0]["ipBlock"]["except"] and "10.0.0.0/8" in out["to"][0]["ipBlock"]["except"]
+assert [p["port"] for p in out["ports"]] == [80, 443]
+docs = render("--set", "browser.enabled=true", "--set", "browser.networkPolicy.enabled=false", "--set", "browser.tool=web", "--set", "browser.port=9000")
+assert "NetworkPolicy" not in kinds(docs), "browser.networkPolicy off: a policy was rendered"
+tool = platforms(docs)[0]["spec"]["tools"][0]
+assert (tool["name"], tool["mcp"]["endpoint"]) == ("web", "http://humagen-browser:9000/mcp"), tool
 docs = render()
 assert "PersistentVolumeClaim" in kinds(docs), "disk blobs: no claim"
 assert "persistentVolumeClaim" in data_volume(docs), "disk blobs: data is not the claim"

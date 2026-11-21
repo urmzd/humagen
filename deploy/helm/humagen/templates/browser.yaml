@@ -1,0 +1,191 @@
+{{- /* The browser for agents: Chromium and the Playwright MCP server in one
+pod (deploy/browser), with a Service only this release's pods may reach. The
+tool server that names it is added to one workspace's spec (_helpers.tpl,
+humagen.spec). */}}
+{{- $b := .Values.browser | default dict -}}
+{{- if $b.enabled }}
+{{- $name := include "humagen.browserFullname" . -}}
+{{- $port := int ($b.port | default 8931) -}}
+{{- $np := $b.networkPolicy | default dict -}}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "humagen.browserLabels" . | nindent 4 }}
+# The browser calls no cluster API, and holds no identity a page could use.
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "humagen.browserLabels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "humagen.browserSelectorLabels" . | nindent 4 }}
+  ports:
+    - name: mcp
+      port: {{ $port }}
+      targetPort: mcp
+      protocol: TCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "humagen.browserLabels" . | nindent 4 }}
+spec:
+  # One browser: a second pod would be a second page, and a client would be
+  # sent to either. The old pod goes before the new one starts.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "humagen.browserSelectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with $b.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "humagen.browserLabels" . | nindent 8 }}
+        {{- with $b.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ $name }}
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: browser
+          image: "{{ $b.image.repository }}:{{ $b.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ $b.image.pullPolicy | default "IfNotPresent" }}
+          {{- with $b.extraArgs }}
+          args:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          env:
+            - name: HOME
+              value: /home/browser
+            - name: HUMAGEN_BROWSER_MCP_PORT
+              value: {{ $port | quote }}
+            # The names this release's pods reach the Service by. The server
+            # answers a request for any other Host with 403, so a page the
+            # browser opens cannot reach it by a name of its own.
+            - name: HUMAGEN_BROWSER_ALLOWED_HOSTS
+              value: "{{ $name }}:{{ $port }},{{ $name }}.{{ .Release.Namespace }}:{{ $port }},{{ $name }}.{{ .Release.Namespace }}.svc:{{ $port }},{{ $name }}.{{ .Release.Namespace }}.svc.cluster.local:{{ $port }}"
+          ports:
+            - name: mcp
+              containerPort: {{ $port }}
+              protocol: TCP
+          # The port, not a request: a probe's Host is the pod's address,
+          # which the server refuses.
+          startupProbe:
+            tcpSocket: {port: mcp}
+            periodSeconds: 2
+            failureThreshold: 60
+          readinessProbe:
+            tcpSocket: {port: mcp}
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket: {port: mcp}
+            periodSeconds: 20
+            failureThreshold: 3
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml $b.resources | nindent 12 }}
+          volumeMounts:
+            - name: home
+              mountPath: /home/browser
+            - name: output
+              mountPath: /var/lib/humagen-browser
+            - name: tmp
+              mountPath: /tmp
+            - name: shm
+              mountPath: /dev/shm
+      volumes:
+        # The profile: the browser's sign-ins, gone with the pod.
+        - name: home
+          emptyDir: {}
+        - name: output
+          emptyDir:
+            sizeLimit: {{ $b.outputSize | default "1Gi" }}
+        - name: tmp
+          emptyDir: {}
+        - name: shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: {{ $b.shmSize | default "512Mi" }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- if $np.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "humagen.browserLabels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "humagen.browserSelectorLabels" . | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    # Only this release's server and worker pods.
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "humagen.selectorLabels" . | nindent 14 }}
+        - podSelector:
+            matchLabels:
+              {{- include "humagen.workerSelectorLabels" . | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: {{ $port }}
+  egress:
+    # Names.
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # The internet, and nothing private: not the cluster, its nodes or the
+    # metadata server.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            {{- with $np.blockedCIDRs }}
+            except:
+              {{- toYaml . | nindent 14 }}
+            {{- end }}
+      ports:
+        {{- range $np.ports }}
+        - protocol: TCP
+          port: {{ int . }}
+        {{- end }}
+{{- end }}
+{{- end }}

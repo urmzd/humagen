@@ -87,13 +87,75 @@ same database. A bus kind set in the values wins. */}}
 api_version: humagen/v1
 kind: System
 {{ omit $sys "api_version" "kind" | toYaml }}
+{{- $browser := .Values.browser | default dict -}}
+{{- $browserWorkspace := include "humagen.browserWorkspace" . -}}
 {{- range $i, $p := .Values.platforms }}
 {{- $_ := required (printf "platforms[%d].metadata.name is required: it is the workspace's tenant" $i) (($p.metadata | default dict).name) }}
+{{- if and $browser.enabled (eq $browserWorkspace $p.metadata.name) }}
+{{/* The browser's tool server, in the one workspace it belongs to. Never
+mutate the release's values. */}}
+{{- $p = deepCopy $p -}}
+{{- $pspec := $p.spec | default dict -}}
+{{- $name := $browser.tool | default "browser" -}}
+{{- range $t := ($pspec.tools | default list) -}}
+{{- if eq ($t.name | default "") $name -}}
+{{- fail (printf "browser.enabled adds the tool server %q to workspace %q, which already has one of that name: rename it, or set browser.tool" $name $browserWorkspace) -}}
+{{- end -}}
+{{- end -}}
+{{- $accept := $.Files.Get "files/browser-tools.yaml" | fromYamlArray -}}
+{{- $tool := dict "name" $name "kind" "mcp" "mcp" (dict "transport" "http" "endpoint" (printf "http://%s:%d/mcp" (include "humagen.browserFullname" $) (int ($browser.port | default 8931))) "accept" $accept) -}}
+{{- $_ := set $pspec "tools" (append ($pspec.tools | default list) $tool) -}}
+{{- $_ := set $p "spec" $pspec -}}
+{{- end }}
 ---
 api_version: humagen/v1
 kind: Platform
 {{ omit $p "api_version" "kind" | toYaml }}
 {{- end }}
+{{- end -}}
+
+{{/* The browser pod's names and labels: a name of its own, so the server's
+selector and Service never match it. */}}
+{{- define "humagen.browserFullname" -}}
+{{- printf "%s-browser" (include "humagen.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+
+{{- define "humagen.browserSelectorLabels" -}}
+app.kubernetes.io/name: {{ printf "%s-browser" (include "humagen.name" .) | trunc 63 | trimSuffix "-" }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end -}}
+
+{{- define "humagen.browserLabels" -}}
+helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" }}
+{{ include "humagen.browserSelectorLabels" . }}
+app.kubernetes.io/component: browser
+app.kubernetes.io/version: {{ (.Values.browser.image | default dict).tag | default .Chart.AppVersion | quote }}
+app.kubernetes.io/managed-by: {{ .Release.Service }}
+{{- end -}}
+
+{{/*
+The workspace the browser belongs to. It is one browser with one page and
+one set of sign-ins, so it is never given to more than one workspace: with
+several platforms, browser.workspace says which. Empty when the browser is off.
+*/}}
+{{- define "humagen.browserWorkspace" -}}
+{{- $browser := .Values.browser | default dict -}}
+{{- if $browser.enabled -}}
+{{- $names := list -}}
+{{- range $p := .Values.platforms -}}
+{{- $names = append $names ((($p | default dict).metadata | default dict).name | default "") -}}
+{{- end -}}
+{{- if $browser.workspace -}}
+{{- if not (has $browser.workspace $names) -}}
+{{- fail (printf "browser.workspace %q is not a platform's metadata.name" $browser.workspace) -}}
+{{- end -}}
+{{- $browser.workspace -}}
+{{- else if eq (len $names) 1 -}}
+{{- first $names -}}
+{{- else -}}
+{{- fail "browser.enabled gives one workspace the browser: it is one page and one set of sign-ins. With no platform, or several, name the workspace in browser.workspace" -}}
+{{- end -}}
+{{- end -}}
 {{- end -}}
 
 {{/*

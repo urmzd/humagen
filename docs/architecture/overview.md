@@ -858,7 +858,13 @@ and opens/closes Details before its capture.
 Browser automation has a pinned external-worker path in
 [the browser guide](../guides/browser.md): explicit MCP grants, inline page
 snapshots, interactions, selected downloads, and image results. The local
-connector acceptance uses a real isolated browser. The connected acceptance
+connector acceptance uses a real isolated browser. The worker also comes as
+an image, `deploy/browser`, which the Helm chart runs as one pod with
+`browser.enabled` and Compose with the `browser` profile: one browser every
+Humagen process shares, reached only by the release's own pods and kept off
+private addresses by a network policy. CI runs the acceptance against the
+image, and a second check that two clients see one page and one sign-in. The
+chart's pod and policy are rendered and checked, and not yet run on a cluster. The connected acceptance
 helper exercises an independently launched, signed-in local fixture through an
 explicit CDP endpoint: model screenshot interpretation, the same retained tab,
 a selected action and an exact-byte download, at both widths and themes, with

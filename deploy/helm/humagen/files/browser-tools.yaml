@@ -1,0 +1,19 @@
+# The browser tools the chart accepts for browser.enabled: the thirteen
+# Playwright MCP tools of examples/browser, by the hash of each one's schema.
+# The browser image runs the release these are for. A new release changes the
+# hashes: update examples/browser/accepted.json, examples/browser/humagen.yaml,
+# deploy/browser/Dockerfile and this file together
+# (TestBrowserChartAcceptsTheReviewedTools).
+- {name: browser_close, schema_hash: 71fc596a20f27da3dec80050e5d1f553eba34aea24c2853b853488a811e6b892, class: write}
+- {name: browser_resize, schema_hash: 4a80d1f511092cf5e94b689f81afd36ec42b0ac74a510f7220a7c9987af00b84, class: write}
+- {name: browser_handle_dialog, schema_hash: 2d4cacf71e9fd7f902bebbc84f106614b891c2654de32b71b1f0d629a10d8b5c, class: write}
+- {name: browser_fill_form, schema_hash: c991223a68247bd517c0fa1b61db444178ff6ad546e7214936d29b8de4c2f2ee, class: write}
+- {name: browser_press_key, schema_hash: 57a7f701ebf865e5a7a759c15e8d04bca12cb756c2e3f4ae7280070bb6e310e2, class: write}
+- {name: browser_type, schema_hash: ed892740ebc14bb2a49467c08b8bb02717d50f1f3ef8ed06d51abf5ebb3249da, class: write}
+- {name: browser_navigate, schema_hash: 2165538e098634780eec628947d795a2619b4d2e3cef0e36d3084ac46abb94f7, class: write}
+- {name: browser_navigate_back, schema_hash: 71fc596a20f27da3dec80050e5d1f553eba34aea24c2853b853488a811e6b892, class: write}
+- {name: browser_take_screenshot, schema_hash: 78dcb99cc226d741aa8c11a11ee0df62e15a9f9ab9db1a1ce4fdc5512d323d96, class: write}
+- {name: browser_snapshot, schema_hash: 1d7650f3b9f3612bbb4f1511c77944e7b9ed6e98c9e012926a243c58f016df6f, class: write}
+- {name: browser_click, schema_hash: 7fed82f52ae7018670d967e4429b63501948c80de2df2e9279ce4c103694d0d3, class: write}
+- {name: browser_tabs, schema_hash: fc3f534e7428342371db86b438fad5f52abbe45d43b6e18fd79fb3d23de782c8, class: write}
+- {name: browser_wait_for, schema_hash: cee58694f677034e21fc68446200888eb28469696b4ca9259047e15084fb22ff, class: write}

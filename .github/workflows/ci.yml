@@ -133,6 +133,51 @@ jobs:
         run: |
           docker run --rm humagen:ci version
           docker run --rm --entrypoint sh humagen:ci -c 'cd "$HUMAGEN_SLACK_APP_DIR" && node --import tsx -e "await import(\"./src/app.tsx\"); console.log(\"slack app loads\")"'
+      - name: Did the change touch the browser image?
+        id: browser
+        # The image, the tools it must serve, and the test that drives it.
+        run: |
+          if [ "${{ github.event_name }}" = push ]; then
+            echo "image=true" >> "$GITHUB_OUTPUT"
+          elif git diff --name-only "origin/${{ github.base_ref }}...HEAD" | grep -qE '^(deploy/browser/|examples/browser/|internal/mcptools/|\.github/workflows/ci\.yml$)'; then
+            echo "image=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.browser.outputs.image == 'true' && steps.changed.outputs.image != 'true'
+        uses: docker/setup-buildx-action@v3
+      - name: Build the browser image
+        if: steps.browser.outputs.image == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: deploy/browser
+          push: false
+          load: true
+          tags: humagen-browser:ci
+          cache-from: type=gha,scope=browser
+          cache-to: type=gha,mode=max,scope=browser
+      - if: steps.browser.outputs.image == 'true'
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: The browser image serves the reviewed tools to a real page
+        if: steps.browser.outputs.image == 'true'
+        # The image as the chart runs it: read-only, no capabilities, its
+        # profile and scratch space in memory. The acceptance opens a page
+        # this job serves, clicks, downloads and takes screenshots through
+        # the accepted tool schemas, then checks that two clients share one
+        # browser. On the host's network, so the browser reaches the page.
+        run: |
+          out=$(mktemp -d) && chmod 777 "$out"
+          docker run -d --name browser --network host --read-only --cap-drop ALL \
+            --security-opt no-new-privileges --shm-size 512m \
+            --tmpfs /tmp --tmpfs /home/browser:uid=10001,gid=10001 \
+            -v "$out:/var/lib/humagen-browser" humagen-browser:ci
+          for _ in $(seq 1 30); do
+            if (exec 3<>/dev/tcp/127.0.0.1/8931) 2>/dev/null; then break; fi
+            sleep 1
+          done
+          HUMAGEN_BROWSER_MCP_URL=http://127.0.0.1:8931/mcp HUMAGEN_BROWSER_OUTPUT_DIR="$out" \
+            HUMAGEN_BROWSER_SHARED=1 go test ./internal/mcptools -run '^TestBrowser' -count=1 -v \
+            || { docker logs browser; exit 1; }
 
   helm:
     name: Helm chart

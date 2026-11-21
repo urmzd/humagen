@@ -266,6 +266,9 @@ docker compose -f compose.yaml -f compose.dev.yaml up -d --build
 
 Every request is an admin. Do not use it anywhere but your own machine.
 
+A browser for agents is the `browser` profile: see
+[the bundled browser image](browser.md#run-the-bundled-browser-image).
+
 ## Kubernetes with Helm
 
 [`deploy/helm/humagen`](https://github.com/urmzd/humagen/tree/main/deploy/helm/humagen) deploys one Humagen server: a Deployment, a
@@ -437,6 +440,10 @@ while still connecting to the local port forwards. Without it, each request
 uses its URL's host. `HUMAGEN_E2E_LOGIN` supplies `Tailscale-User-Login` for a
 pod's trusted loopback connection. The check starts a real model run and
 compares both replicas' live and stored events; it does not stop either pod.
+
+`browser.enabled` adds a browser for agents as one more pod, reached only by
+the release's own pods: see
+[the bundled browser image](browser.md#run-the-bundled-browser-image).
 
 ## Flux
 

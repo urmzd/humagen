@@ -429,6 +429,64 @@ tailscale:
       limits:
         memory: 256Mi
 
+# -- A browser for agents: one pod with Chromium and the Playwright MCP server
+# (deploy/browser), reached only by this release's own pods. Turning it on
+# also gives one workspace the tool server, named `tool`, with the thirteen
+# browser tools accepted (files/browser-tools.yaml); grant an agent
+# `mcp:browser:write` to let it use them (docs/guides/browser.md).
+#
+# It is one browser, shared: every agent with the grant, and every person who
+# opens a session's Browser tab, sees the same page and the same sign-ins. So
+# it belongs to one workspace. Its profile lasts as long as the pod.
+browser:
+  enabled: false
+  # -- The workspace (a platform's metadata.name) the browser belongs to.
+  # Empty means the only one; with several platforms it must be named.
+  workspace: ""
+  # -- The tool server's name in that workspace's spec, and so in the grant.
+  tool: browser
+  image:
+    # Releases do not publish an image yet: build one from deploy/browser and
+    # push it here.
+    repository: ghcr.io/urmzd/humagen-browser
+    # Empty means the chart's appVersion.
+    tag: ""
+    pullPolicy: IfNotPresent
+  port: 8931
+  # -- Further arguments for the Playwright MCP server, such as
+  # ["--viewport-size", "1440x900"].
+  extraArgs: []
+  # Chromium is the cost: a gigabyte holds a few ordinary pages.
+  resources:
+    requests:
+      cpu: 250m
+      memory: 1Gi
+    limits:
+      memory: 2Gi
+  # -- Chromium's shared memory, which a pod's default 64Mi starves.
+  shmSize: 512Mi
+  # -- Downloads and capture files, kept as long as the pod.
+  outputSize: 1Gi
+  podLabels: {}
+  podAnnotations: {}
+  # -- Who may reach the browser, and what it may reach. On, only this
+  # release's server and worker pods reach its port, and it reaches DNS and
+  # the internet on `ports`: nothing in `blockedCIDRs`, which are the private
+  # ranges a cluster, its nodes and its metadata server live in. A page an
+  # agent opens is not trusted, so this is what keeps it from the cluster.
+  # It needs a network plugin that enforces NetworkPolicy; with one that does
+  # not, the policy is accepted and does nothing.
+  networkPolicy:
+    enabled: true
+    ports: [80, 443]
+    blockedCIDRs:
+      - 10.0.0.0/8
+      - 172.16.0.0/12
+      - 192.168.0.0/16
+      - 100.64.0.0/10
+      - 169.254.0.0/16
+      - 127.0.0.0/8
+
 nodeSelector: {}
 tolerations: []
 affinity: {}

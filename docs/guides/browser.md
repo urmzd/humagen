@@ -51,6 +51,75 @@ For a remote deployment, keep the browser on its own trusted worker and use an
 authenticated tunnel or service. Exposing this unauthenticated loopback server
 on a public interface is not part of this configuration.
 
+## Run the bundled browser image
+
+`deploy/browser` builds one image with Chromium and the same Playwright MCP
+release, so a deployment needs no Node or Chrome on a worker:
+
+```sh
+docker build -t humagen-browser deploy/browser
+```
+
+It serves the thirteen tools over MCP at `/mcp` on port 8931, headless, as a
+user with no privileges. Run it where only Humagen reaches it. It has no
+sign-in of its own.
+
+| Where | How |
+|-------|-----|
+| Kubernetes | `browser.enabled: true` in the Helm chart, with `browser.image` naming the image you pushed. The chart adds the pod, a Service, a network policy and the `browser` tool server in one workspace's spec, with the thirteen tools accepted |
+| Docker Compose | `docker compose --profile browser up -d --build` in `deploy/compose`. Add the tool server from `examples/browser/humagen.yaml` to your Platform document with `endpoint: http://browser:8931/mcp` |
+
+Then grant an agent `mcp:browser:write`.
+
+What the image and the chart hold to:
+
+- **One browser for every Humagen process.** A server pod's Browser tab and a
+  worker pod's run see the same page and the same sign-ins. A browser started
+  with `--isolated`, as the local worker above is, gives each process its own,
+  which is right for one process and wrong for several. No client may close
+  the shared browser.
+- **One workspace.** It is one page and one set of sign-ins, so the chart
+  gives it to one workspace: `browser.workspace` names it when there are
+  several.
+- **The name it is reached by.** The server answers only requests for the
+  host and port in `HUMAGEN_BROWSER_ALLOWED_HOSTS`, exactly as the endpoint
+  names them (`browser:8931`), and any other with 403. A health check that
+  sends a request is refused the same way: check the port.
+- **No way into the cluster.** A page an agent opens is not trusted. The
+  chart's network policy lets only this release's server and worker pods reach
+  the browser, and lets the browser reach DNS and the internet on ports 80
+  and 443: no private range, so not the cluster, its nodes or the cloud's
+  metadata server. This needs a network plugin that enforces NetworkPolicy.
+  The pod holds no service account token. Under Compose there is no such
+  policy: the browser reaches the compose network.
+- **A profile that lasts as long as the pod.** Sign-ins are in
+  `/home/browser/profile` and downloads in `/var/lib/humagen-browser`. Both are
+  gone when the container is; mount a volume to keep either.
+- **Chromium runs without its own sandbox.** A container without extra
+  privileges has no user namespaces for it. The container is the boundary:
+  read-only, no capabilities, no privilege escalation.
+
+To check an image, start it and run the acceptance below with
+`HUMAGEN_BROWSER_SHARED=1`, which adds the check that two clients share one
+browser. When the browser is in a container and the test is not, name this
+host as the container sees it in `HUMAGEN_BROWSER_FIXTURE_HOST`
+(`host.docker.internal`, or `host.lima.internal` under Colima), and the
+address you reach the browser at in `HUMAGEN_BROWSER_ALLOWED_HOSTS`:
+
+```sh
+out="$HOME/.cache/humagen/browser-image-test" && mkdir -p "$out"
+docker run -d --name humagen-browser --read-only --cap-drop ALL \
+  --security-opt no-new-privileges --shm-size 512m \
+  --tmpfs /tmp --tmpfs /home/browser:uid=10001,gid=10001 \
+  -e HUMAGEN_BROWSER_ALLOWED_HOSTS=127.0.0.1:18931 \
+  -v "$out:/var/lib/humagen-browser" -p 127.0.0.1:18931:8931 humagen-browser
+HUMAGEN_BROWSER_MCP_URL=http://127.0.0.1:18931/mcp HUMAGEN_BROWSER_OUTPUT_DIR="$out" \
+  HUMAGEN_BROWSER_SHARED=1 HUMAGEN_BROWSER_FIXTURE_HOST=host.docker.internal \
+  go test -race ./internal/mcptools -run '^TestBrowser' -v
+```
+
+CI builds the image and runs this on every change to it.
+
 ## Use existing signed-in tabs
 
 Install the official [Playwright browser extension](https://playwright.dev/mcp/configuration/browser-extension)
