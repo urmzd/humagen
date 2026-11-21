@@ -101,6 +101,24 @@ export interface ScratchpadList {
   limit: 50;
 }
 
+/** What a conversation has used so far, read from its run index. A run
+called by another counted run is already in its caller's total and is
+not added again. When `truncated` is true the index read hit its cap and
+every figure is a lower bound.
+ */
+export interface ThreadUsage {
+  /** How many runs were counted. */
+  runs: number;
+  usage: Usage;
+  /** Each agent's own calls, the dearest first (cost, then tokens, then name), at most 20. */
+  agents: ThreadUsageAgentsItem[];
+  /** The context fill of the most recent run that reported one. */
+  context?: ThreadUsageContext;
+  /** How many counted runs have not ended. */
+  working: number;
+  truncated: boolean;
+}
+
 export interface ScratchpadInput {
   /** 1 to 80 printable characters without a slash, unique in the conversation in any case. */
   name: string;
@@ -1642,7 +1660,7 @@ not selected. Absent when none is selected.
   fork?: ThreadFork;
   import?: ThreadImport;
   archive?: ThreadArchive;
-  /** How the conversation's gated tool actions are approved, and who chose it. Absent asks a person. `auto` approves for that person what they may approve themselves, within policy; a budget request and an action the agent or the policy always asks about still go to a person. `decide` does that too, and also answers for them a question an agent asks a person when the session already settles it. */
+  /** How the conversation's gated tool actions are approved, and who chose it. Absent asks a person (Ask). `auto` (Auto) lets the approval agent approve for that person what they may approve themselves, within policy, and answer for them a question an agent asks a person when the session already settles it; a budget request, an action the agent or the policy always asks about, and anything it is unsure of still go to a person. A conversation stored as `decide` (Run and Answer, before it became part of Auto) reads as `auto`. */
   approval?: ThreadApproval;
   /** The inbox id of the announcement the thread was started from, a reply to its post on the thread's surface. It never changes, and the thread's turns start with it. */
   announcement?: string;
@@ -6184,6 +6202,20 @@ export interface BigQuerySetupView {
   credential_refs: string[];
 }
 
+export interface ThreadUsageAgentsItem {
+  agent: string;
+  runs: number;
+  usage: Usage;
+}
+
+export interface ThreadUsageContext {
+  run: string;
+  agent: string;
+  model?: string;
+  window?: number;
+  tokens?: number;
+}
+
 export interface GitHubSubjectPullRequest {
   url?: string;
 }
@@ -6251,7 +6283,7 @@ export interface PreparedCallInputMessagesItem {
 }
 
 export interface ThreadApproval {
-  mode: "auto" | "decide";
+  mode: "auto";
   by: string;
   roles?: string[];
   at: string;

@@ -2112,9 +2112,10 @@ export class App {
   }
 
   /**
-   * Let the approval agent decide a thread's gated actions, or ask a person
-   * again: the console's toggle, set through the same route as the person
-   * who pressed, whom the client must map. Humagen decides whether they may,
+   * Set a thread to Auto, where the approval agent decides gated actions and
+   * answers what the thread settles, or back to Ask: the console's two
+   * modes, set through the same route as the person who pressed, whom the
+   * client must map. Humagen decides whether they may,
    * as it does in the console. What changed is said in the thread, with the
    * way back.
    */
@@ -3221,7 +3222,7 @@ export function approvalModeNote(
             action_id: `${ActionId.approvalMode}#0`,
             text: {
               type: "plain_text",
-              text: back === "ask" ? copy.approvals.askMeAgain : copy.approvals.letAgentDecideAgain,
+              text: back === "ask" ? copy.approvals.switchToAsk : copy.approvals.switchToAuto,
             },
             value: encodeAction({ turnId: run, target: back }),
           },

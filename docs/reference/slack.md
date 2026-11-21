@@ -142,23 +142,25 @@ it: the call's card keeps waiting with its buttons, and the answer streams
 below it. Deciding stays with Approve and Decline. In a bound channel only a
 mapped person may ask.
 
-**The approval agent.** A conversation set to Run in the console has the
-approval agent decide its gated actions. In Slack, an approval waiting in a
-run's thread has a menu after its buttons with one row, **Let the approval
-agent decide in this thread**, where the app's client maps people. It sets
+**The approval agent.** A conversation has two approval modes, as in the
+console: **Ask**, where a person approves every gated action, and **Auto**,
+where the approval agent decides gated actions, answers what the conversation
+already settles, and asks a person when unsure. In Slack, an approval waiting
+in a run's thread has a menu after its buttons with one row, **Set this
+thread to Auto**, where the app's client maps people. It sets
 the conversation the thread is (`PUT /api/threads/{id}/approval` with
 `act_as`), with the same checks as the console's toggle, made as the person
 who pressed: Humagen decides whether they may, and its refusal is said to
 them alone. A Slack user the client maps to nobody is told they cannot, and
 Humagen is not asked. The change is said in the thread, naming who made it:
-the agent decides from the next action on, as that person could, and an
-action already waiting still waits for a person. Under it, **Ask Me Again**
-sets the conversation back, and that change is said the same way, with
-**Let the Approval Agent Decide** under it.
+the approval agent approves and answers from the next action on, as that
+person could, and an action already waiting still waits for a person. Under
+it, **Switch to Ask** sets the conversation back, and that change is said the
+same way, with **Switch to Auto** under it.
 
 A call the approval agent decided settles its card with what it decided and
 why, as the inbox shows it (`Approval agent: Allowed: "<reason>"` beside who
-set the conversation to Run). What it said about a call it handed to a
+set the conversation to Auto). What it said about a call it handed to a
 person is put on the card while it waits, from the inbox, when the app is
 following the run.
 
