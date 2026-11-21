@@ -374,6 +374,11 @@
  * sits in a later layer and would beat the card rules below, which give the
  * row of a question or an approval its border, padding and place in the card.
  */
+[data-aui-block="approval"] > [data-aui-action="aui.approve"],
+[data-aui-block="approval"] > [data-aui-action="aui.deny"] {
+  min-width: 6rem;
+}
+
 [data-aui="actions"],
 [data-aui="checkboxes"] {
   margin: 0;
