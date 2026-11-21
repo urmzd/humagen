@@ -984,7 +984,7 @@ project settings", with a clean outlook.
   A stopped item says Stopped in muted text, never Failed.
 - Under the box, one quiet line, on Home and in a conversation alike. On the
   left, in order: the project (Home picks it here; it files the first
-  message), the environment and repository (`footerStart`, from the session
+  message), the image and repositories (`footerStart`, from the session
   panel), then the approval mode. On the right: the agent that answered last
   and its model, and a usage ring. On a phone the left items are icons only,
   their words hidden but still their names.
@@ -2666,13 +2666,16 @@ does nothing, saying Starting environment… and then Environment ready, and
 records nothing for the next message; a failure to start says why.
 
 A new private session is set up beside the composer's plus, before its first
-message: its environment (Auto, the workspace's default, or one the
-deployment offers, `GET /api/sessions/options`) and the repositories it
-works in, from those the workspace's GitHub apps may read (none to ten).
-They go with the first message (`environment` and `repos` on
-`POST /api/sessions`), are kept on the session (`session.environment`,
-`session.repos`), and show in the panel's Environment section. Auto is not
-sent. The pickers sit in the composer's `leading` slot; the composer's
+message: the image its tools run in (Default, the deployment's own, or one
+the workspace added in Settings, Images, `GET /api/sessions/options`) and
+the repositories it works in, from those the workspace's GitHub apps may
+read (none to ten). Only a ready image may be chosen: one still checking or
+failed is listed with why, and the options are read again while an image is
+checking, so it can be chosen as soon as it is ready. They go with the first
+message (`image` and `repos` on `POST /api/sessions`), are kept on the
+session (`session.image`, `session.repos`), and show in the panel's
+Environment section. `environment` is no longer taken: a request that sends
+it is refused. The pickers sit in the composer's `leading` slot; the composer's
 footer layout belongs to #474, and they move to its left footer slot when
 that lands.
 

@@ -280,8 +280,30 @@ administrators may also add images of their own from those registries
 checked when it is added: pulled through this daemon with the workspace's pull
 credential, pinned to the digest it resolved to, and started once to prove it
 has `sh` and `sleep`. Sessions run the digest, so every sandbox host runs the
-same bytes, and the server pulls every ready image again when it starts. An
-image may be kept warm, one started instance per host, within `max`.
+same bytes, and the server pulls every ready image again when it starts.
+
+A pull is given the workspace's credential or none: never a registry login
+of the machine the server runs on (its Docker configuration, credential
+helpers and `DOCKER_AUTH_CONFIG` are kept from it). A registry mirror with
+credentials of its own in the daemon's configuration is the daemon's, and
+serves every workspace. At most three pulls run at once, two of one
+workspace, and a check has ten minutes from when its pull starts. A check
+that fails shows the workspace one of a few reasons; what Docker printed is
+in the server's log only.
+
+Checking a ready image again never takes it away: sessions run the digest
+its last good check pinned until a check passes and moves it, and a check
+again that fails says why beside the image. A check whose process died is
+started again by another within a few minutes.
+
+A workspace keeps at most three of its images warm. Only those have idle
+instances: `warm` of them (one by default) for each shape of instance the
+image is leased in, with and without the compartment for a person's tool
+servers. Unmarking an image, removing it, or a check moving it to another
+digest destroys them, on every server process within a minute. Any other
+image starts when a session's tool first needs it, and checking an image
+leaves nothing started. Instances of workspaces' images leased at once are
+bounded by `max`, apart from the default image's own `max`.
 
 Flags override the block: `-sandbox`, `-sandbox-runtime`,
 `-sandbox-insecure-development-runtime`, `-sandbox-image`,
