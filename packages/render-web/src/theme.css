@@ -374,16 +374,17 @@
  * sits in a later layer and would beat the card rules below, which give the
  * row of a question or an approval its border, padding and place in the card.
  */
-[data-aui-block="approval"] > [data-aui-action="aui.approve"],
-[data-aui-block="approval"] > [data-aui-action="aui.deny"] {
-  min-width: 6rem;
-}
-
 [data-aui="actions"],
 [data-aui="checkboxes"] {
   margin: 0;
   border: 0;
   padding: 0;
+}
+
+/* An approval's two decisions share a minimum width, so short labels line up. */
+[data-aui-block="approval"] > [data-aui-action="aui.approve"],
+[data-aui-block="approval"] > [data-aui-action="aui.deny"] {
+  min-width: 6rem;
 }
 
 /* Interrupt cards: the prompt text, its preview, the buttons, and the meta line read as one card. */
