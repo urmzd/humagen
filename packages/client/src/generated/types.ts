@@ -4052,7 +4052,7 @@ export interface EvalRun {
 }
 
 /** A suite with its most recent runs, newest first. */
-export type EvalSuiteView = EvalSuite & { every_seconds?: number; runs: EvalRun[] };
+export type EvalSuiteView = EvalSuite & { every_seconds?: number; runs: EvalRun[]; created_by_name?: string; next_run_at?: string };
 
 /** A saved view of a source, which leaves some documents out. */
 export interface KnowledgeVariant {
@@ -6067,6 +6067,8 @@ export interface AgentEvaluationHealth {
   passed: number;
   pass_rate: number;
   results: OnlineEvaluation[];
+  /** Runs rated down with a reason that wait in the review queue, of those the caller may read. */
+  flagged: number;
 }
 
 export interface AgentChangeScore {

@@ -16,6 +16,9 @@ type AgentEvaluationHealth struct {
 	Passed   int            `json:"passed"`
 	PassRate float64        `json:"pass_rate"`
 	Results  []evals.Online `json:"results"`
+	// Flagged counts the runs rated down with a reason that wait in the
+	// review queue, of those the caller may read.
+	Flagged int `json:"flagged"`
 }
 
 func (p *Platform) AgentEvaluationHealth(who auth.Principal, name string) (AgentEvaluationHealth, error) {
@@ -39,6 +42,11 @@ func (p *Platform) AgentEvaluationHealth(who auth.Principal, name string) (Agent
 			out.Passed++
 		}
 	}
+	flagged, err := p.openEvalCandidates(who, name)
+	if err != nil {
+		return out, err
+	}
+	out.Flagged = len(flagged)
 	if out.Samples > 0 {
 		out.PassRate = 100 * float64(out.Passed) / float64(out.Samples)
 		out.Status = "healthy"

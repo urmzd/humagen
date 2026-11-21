@@ -189,7 +189,11 @@ export function EvalCandidates({
   // A page emptied by the reviewer still leads to the pages after it.
   if (candidates.length === 0 && !problem && !next) return null;
   return (
-    <section className={`${card} flex flex-col gap-3`} aria-label={words.title}>
+    <section
+      id="eval-feedback"
+      className={`${card} flex scroll-mt-4 flex-col gap-3`}
+      aria-label={words.title}
+    >
       <h3 className="text-aui-base font-medium text-aui-fg">{words.title}</h3>
       <Problem message={problem} />
       <ul className="flex flex-col">

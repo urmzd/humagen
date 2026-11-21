@@ -17767,6 +17767,13 @@ components:
               type: array
               items:
                 $ref: "#/components/schemas/EvalRun"
+            created_by_name:
+              description: What the person who last saved the suite is called. A schedule acts for them.
+              type: string
+            next_run_at:
+              description: When the schedule next starts the suite. Absent when it has no schedule.
+              type: string
+              format: date-time
       properties: {}
 
     KnowledgeVariant:
@@ -20950,6 +20957,9 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/OnlineEvaluation"
+        flagged:
+          description: Runs rated down with a reason that wait in the review queue, of those the caller may read.
+          type: integer
       required:
         - agent
         - status
@@ -20957,6 +20967,7 @@ components:
         - passed
         - pass_rate
         - results
+        - flagged
     AgentChangeScore:
       type: object
       properties:

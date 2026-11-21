@@ -783,11 +783,18 @@ func (s *Server) searchKnowledge(w http.ResponseWriter, r *http.Request, who aut
 type suiteView struct {
 	evals.Suite
 	Runs []evals.Run `json:"runs"`
+	// CreatedByName is what the person who last saved the suite is called:
+	// the person its schedule acts for.
+	CreatedByName string `json:"created_by_name,omitempty"`
+	// NextRunAt is when the schedule next starts the suite; absent when it
+	// has no schedule.
+	NextRunAt time.Time `json:"next_run_at,omitzero"`
 }
 
 func (s *Server) listSuites(w http.ResponseWriter, _ *http.Request, who auth.Principal) {
 	out := []suiteView{}
 	seer := s.P.Seer(who)
+	names := s.P.Names(who.Tenant)
 	suites, err := s.P.Evals.List(who.Tenant)
 	if err != nil {
 		s.problem(w, err)
@@ -806,7 +813,14 @@ func (s *Server) listSuites(w http.ResponseWriter, _ *http.Request, who auth.Pri
 				runs[i].Results = []evals.Result{}
 			}
 		}
-		out = append(out, suiteView{Suite: s.P.EvalSuiteView(suite), Runs: orEmpty(runs)})
+		view := suiteView{Suite: s.P.EvalSuiteView(suite), Runs: orEmpty(runs), CreatedByName: names.Of(suite.CreatedBy)}
+		if next, scheduled, err := s.P.EvalNextRun(who.Tenant, suite); err != nil {
+			s.problem(w, err)
+			return
+		} else if scheduled {
+			view.NextRunAt = next
+		}
+		out = append(out, view)
 	}
 	ok(w, http.StatusOK, map[string]any{"suites": out})
 }
