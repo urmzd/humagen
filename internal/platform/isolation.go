@@ -66,13 +66,19 @@ func (p *Platform) runInstances(_ context.Context, req runtime.Request) *isolati
 		return isolation.Unisolated(ir)
 	}
 	var files isolation.Files
+	var imageErr error
 	if req.RunID != "" {
 		files = isolation.AllFiles(
 			&runFiles{p: p, tenant: req.Tenant, run: req.RunID},
 			&runMemory{p: p, tenant: req.Tenant, run: req.RunID},
 		)
+		// The run's session chose the image its tools run in; a run that
+		// is not a session's runs the deployment's own.
+		if r, err := p.runRecordOf(req.Tenant, req.RunID); err == nil {
+			ir.Image, imageErr = p.imageOf(req.Tenant, r.Thread)
+		}
 	}
-	return isolation.NewRun(p.cfg.Sandbox.Leaser, ir, files)
+	return isolation.NewRun(p.leaserFor(imageErr), ir, files)
 }
 
 // egressHosts are the hosts a turn's sandbox may reach: its pinned egress

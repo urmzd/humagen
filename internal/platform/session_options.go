@@ -7,56 +7,47 @@ import (
 	"strings"
 
 	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/images"
 	"github.com/urmzd/humagen/pkg/threads"
 )
 
-// Bounds on what a session's environment and repository choice may hold.
-const (
-	// EnvironmentAuto is the deployment's own default environment.
-	EnvironmentAuto = "auto"
-	// MaxSessionOptionRepos is how many repositories the options list.
-	MaxSessionOptionRepos = 100
-)
+// MaxSessionOptionRepos is how many repositories the options list.
+const MaxSessionOptionRepos = 100
 
-// SessionEnvironment is one place a session's work may run.
-type SessionEnvironment struct {
-	// Name is what a session stores: "auto" or the sandbox's kind.
-	Name  string `json:"name"`
-	Label string `json:"label"`
-	// Isolated says each run leases an instance of its own.
-	Isolated bool `json:"isolated"`
-	// Terminal says a person may run their own commands there.
-	Terminal bool `json:"terminal"`
-}
-
-// SessionOptions is what a person may choose when starting a session: where
-// it runs and which repositories it works on.
+// SessionOptions is what a person may choose when starting a session: the
+// image its tools run in and the repositories it works on.
 type SessionOptions struct {
-	Environments []SessionEnvironment `json:"environments"`
-	Repos        []string             `json:"repos"`
+	// Images are the deployment's default first, then the workspace's own;
+	// only a ready one may be chosen.
+	Images []SessionImage `json:"images"`
+	// ImageRegistries are where the workspace may add images from; empty
+	// when it may add none.
+	ImageRegistries []string `json:"imageRegistries"`
+	// Sandbox says where the images run, as the deployment names its
+	// sandbox ("docker/runsc"), and Isolated whether each run has an
+	// instance of its own. Terminal says a person may run commands there.
+	Sandbox  string   `json:"sandbox"`
+	Isolated bool     `json:"isolated"`
+	Terminal bool     `json:"terminal"`
+	Repos    []string `json:"repos"`
 }
 
-// SessionOptions lists this deployment's environments and the repositories
-// the caller's tenant's enabled GitHub clients may read. The tenant is the
-// principal's.
-func (p *Platform) SessionOptions(_ context.Context, who auth.Principal) SessionOptions {
-	sb := p.cfg.Sandbox
-	name, label := "unisolated", "This server (unisolated)"
-	switch kind := sb.String(); {
-	case !sb.Isolated():
-	case strings.HasPrefix(kind, "docker"):
-		name, label = "docker", "Docker sandbox"
-	case strings.HasPrefix(kind, "local"):
-		name, label = "local", "This server"
-	default:
-		name, label = kind, kind
+// SessionOptions lists the images the caller's workspace may run a session
+// in and the repositories its enabled GitHub clients may read. The tenant
+// is the principal's.
+func (p *Platform) SessionOptions(_ context.Context, who auth.Principal) (SessionOptions, error) {
+	imgs, err := p.SessionImages(who)
+	if err != nil {
+		return SessionOptions{}, err
 	}
-	terminal := p.PersonCommands()
-	env := []SessionEnvironment{
-		{Name: EnvironmentAuto, Label: "Auto", Isolated: sb.Isolated(), Terminal: terminal},
-		{Name: name, Label: label, Isolated: sb.Isolated(), Terminal: terminal},
-	}
-	return SessionOptions{Environments: env, Repos: p.tenantRepos(who.Tenant)}
+	return SessionOptions{
+		Images:          imgs,
+		ImageRegistries: p.ImageRegistries(),
+		Sandbox:         p.cfg.Sandbox.String(),
+		Isolated:        p.cfg.Sandbox.Isolated(),
+		Terminal:        p.PersonCommands(),
+		Repos:           p.tenantRepos(who.Tenant),
+	}, nil
 }
 
 // tenantRepos are the "owner/name" repositories the tenant's enabled GitHub
@@ -80,21 +71,31 @@ func (p *Platform) tenantRepos(tenant string) []string {
 	return out[:min(len(out), MaxSessionOptionRepos)]
 }
 
-// checkSessionChoice refuses an environment or repositories this tenant was
-// not offered. It runs before anything is created.
+// checkSessionChoice refuses an image or repositories this tenant was not
+// offered, or an image that is not ready. It runs before anything is
+// created.
 func (p *Platform) checkSessionChoice(ctx context.Context, who auth.Principal, in SessionInput) error {
-	if in.Environment == "" && len(in.Repos) == 0 {
+	if in.Image == "" && len(in.Repos) == 0 {
 		return nil
 	}
 	if in.Surface != nil {
-		return fmt.Errorf("%w: environment and repos are not taken with a surface", threads.ErrInvalid)
+		return fmt.Errorf("%w: image and repos are not taken with a surface", threads.ErrInvalid)
 	}
 	if len(in.Repos) > threads.MaxSessionRepos {
 		return fmt.Errorf("%w: at most %d repos", threads.ErrInvalid, threads.MaxSessionRepos)
 	}
-	opts := p.SessionOptions(ctx, who)
-	if in.Environment != "" && !slices.ContainsFunc(opts.Environments, func(e SessionEnvironment) bool { return e.Name == in.Environment }) {
-		return fmt.Errorf("%w: environment is not one this deployment offers", threads.ErrInvalid)
+	opts, err := p.SessionOptions(ctx, who)
+	if err != nil {
+		return err
+	}
+	if in.Image != "" {
+		i := slices.IndexFunc(opts.Images, func(img SessionImage) bool { return img.ID == in.Image })
+		if i < 0 {
+			return fmt.Errorf("%w: image is not one this workspace has", threads.ErrInvalid)
+		}
+		if opts.Images[i].Status != images.Ready {
+			return fmt.Errorf("%w: image %s is %s, not ready", threads.ErrInvalid, opts.Images[i].Name, opts.Images[i].Status)
+		}
 	}
 	seen := map[string]bool{}
 	for _, r := range in.Repos {

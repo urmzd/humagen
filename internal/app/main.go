@@ -496,6 +496,7 @@ func serve(o Options, args []string, d serveDefaults) error {
 		Workspace:            *workspaceDir,
 		Sandbox:              sbx,
 		SandboxContained:     sandboxing.contained(),
+		SandboxImages:        sandboxing.images(),
 		Concurrency:          *concurrency,
 		Role:                 role,
 		Leader:               elector,
@@ -580,6 +581,9 @@ func serve(o Options, args []string, d serveDefaults) error {
 	errc := make(chan error, 8)
 	ran := make(chan struct{})
 	go func() { defer close(ran); errc <- p.Run(ctx) }()
+	// A sandbox host that has never run a workspace's ready images gets
+	// them now, before a session asks.
+	go p.PullReadyImages(ctx)
 	if o.running != nil {
 		o.running(p)
 	}

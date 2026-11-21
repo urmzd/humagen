@@ -156,7 +156,12 @@ func (p *Platform) RunPersonCommand(ctx context.Context, who auth.Principal, id 
 	defer leave()
 
 	files := &runFiles{p: p, tenant: who.Tenant, of: id}
-	claim := isolation.NewRun(p.cfg.Sandbox.Leaser, isolation.Request{Tenant: who.Tenant, Egress: []string{}}, files)
+	// A person's command runs in the image the session's runs do.
+	image, err := p.imageOf(who.Tenant, id)
+	if err != nil {
+		return PersonCommandResult{}, err
+	}
+	claim := isolation.NewRun(p.cfg.Sandbox.Leaser, isolation.Request{Tenant: who.Tenant, Egress: []string{}, Image: image}, files)
 	released := false
 	release := func() error {
 		if released {

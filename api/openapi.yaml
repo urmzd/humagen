@@ -732,11 +732,12 @@ paths:
       operationId: "getSessionOptions"
       tags:
         - "sessions"
-      summary: "List the environments and repositories a session may be started with"
+      summary: "List the images and repositories a session may be started with"
       description: |
-        The environments are this deployment's: `auto` (its default) and its
-        configured sandbox. The repositories are those the caller's
-        tenant's enabled GitHub clients may read or write, sorted, at most 100.
+        The images are the deployment's default, then the caller's
+        workspace's own, oldest first; only a ready one may be chosen. The
+        repositories are those the caller's tenant's enabled GitHub clients
+        may read or write, sorted, at most 100.
       x-permission: "runs:read"
       responses:
         "200":
@@ -748,6 +749,111 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/ServerError"
+  /api/images:
+    get:
+      operationId: "listImages"
+      tags:
+        - "sessions"
+      summary: "List the workspace's own sandbox images"
+      description: |
+        The images the caller's workspace added for sessions to run in, oldest
+        first, and the registries it may add them from. Empty in a deployment
+        that runs only its default image.
+      x-permission: "runs:read"
+      responses:
+        "200":
+          description: The workspace's images.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/WorkspaceImages"}
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/ServerError"
+    post:
+      operationId: "addImage"
+      tags:
+        - "sessions"
+      summary: "Add a sandbox image"
+      description: |
+        Keeps the image, checking, and checks it in the background: pulls it
+        through the sandbox's Docker daemon, pins it to its digest, and runs
+        sh in it as the sandbox's user. Poll GET /api/images for the outcome.
+        A workspace keeps at most 20.
+      x-permission: "clients:write"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ImageInput"}
+      responses:
+        "201":
+          description: The image, checking.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/WorkspaceImage"}
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/ServerError"
+  /api/images/{id}:
+    patch:
+      operationId: "changeImage"
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      tags:
+        - "sessions"
+      summary: "Keep an image warm, or check it again"
+      x-permission: "clients:write"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ImageChange"}
+      responses:
+        "200":
+          description: The image as kept.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/WorkspaceImage"}
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+    delete:
+      operationId: "removeImage"
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      tags:
+        - "sessions"
+      summary: "Remove an image and its pull credential"
+      description: A session started in it is refused a sandbox from then on.
+      x-permission: "clients:write"
+      responses:
+        "204":
+          description: Removed.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/ServerError"
   /api/sessions/{id}/browser:
@@ -20009,10 +20115,10 @@ components:
         source_alert:
           type: string
           description: The readable session alert that anchors this fix conversation.
-        environment:
+        image:
           type: string
           maxLength: 64
-          description: Where the session runs. "" and "auto" are the deployment's default.
+          description: The id of the image the session's tools run in. "" and "default" are the deployment's own.
         repos:
           type: array
           maxItems: 10
@@ -20403,10 +20509,10 @@ components:
         post_only:
           type: boolean
           description: "With surface: post the message without starting anything."
-        environment:
+        image:
           type: string
           maxLength: 64
-          description: Where the session runs, from GET /api/sessions/options. "" and "auto" are the deployment's default. Refused with surface.
+          description: The id of a ready image from GET /api/sessions/options. "" and "default" are the deployment's own. Refused with surface.
         repos:
           type: array
           maxItems: 10
@@ -20470,29 +20576,87 @@ components:
           minItems: 4
           maxItems: 4
           items: {type: integer}
-    SessionEnvironment:
-      description: One place a session may run.
+    SessionImage:
+      description: An image a session may run in.
       type: object
       additionalProperties: false
-      required: [name, label, isolated, terminal]
+      required: [id, name, ref, status, warm, default]
       properties:
-        name: {type: string, description: "What a session stores: auto or the sandbox's kind."}
-        label: {type: string}
-        isolated: {type: boolean, description: Each run leases an instance of its own.}
-        terminal: {type: boolean, description: A person may run their own commands there.}
+        id: {type: string, description: '"default" for the deployment''s own, else the workspace image''s id.'}
+        name: {type: string}
+        ref: {type: string, description: "The reference as it was added."}
+        status: {type: string, enum: [checking, ready, failed]}
+        problem: {type: string, description: "Why its check failed."}
+        warm: {type: boolean, description: "An instance is kept started, so a session does not wait for one."}
+        default: {type: boolean}
     SessionOptions:
       description: What a session may be started with.
       type: object
       additionalProperties: false
-      required: [environments, repos]
+      required: [images, imageRegistries, sandbox, isolated, terminal, repos]
       properties:
-        environments:
+        images:
           type: array
-          items: {$ref: "#/components/schemas/SessionEnvironment"}
+          maxItems: 21
+          items: {$ref: "#/components/schemas/SessionImage"}
+        imageRegistries:
+          type: array
+          description: Where the workspace may add images from; empty when it may add none.
+          items: {type: string}
+        sandbox: {type: string, description: 'Where images run, as the deployment names its sandbox ("docker/runsc").'}
+        isolated: {type: boolean, description: "Each run has an instance of its own."}
+        terminal: {type: boolean, description: "A person may run commands in a session's sandbox."}
         repos:
           type: array
           maxItems: 100
           items: {type: string}
+    WorkspaceImage:
+      description: An image a workspace added for its sessions to run in.
+      type: object
+      additionalProperties: false
+      required: [id, name, ref, status, createdBy, createdAt]
+      properties:
+        id: {type: string}
+        name: {type: string, maxLength: 60}
+        ref: {type: string, maxLength: 512}
+        digest: {type: string, description: "The reference pinned, repo@sha256:..., once its check resolved it."}
+        status: {type: string, enum: [checking, ready, failed]}
+        problem: {type: string, maxLength: 512}
+        warm: {type: boolean}
+        credential: {type: boolean, description: "A pull credential is kept for it. The credential is never shown."}
+        createdBy: {type: string}
+        createdAt: {type: string, format: date-time}
+        checkedAt: {type: string, format: date-time}
+    WorkspaceImages:
+      description: A workspace's own images and where it may add them from.
+      type: object
+      additionalProperties: false
+      required: [images, registries]
+      properties:
+        images:
+          type: array
+          maxItems: 20
+          items: {$ref: "#/components/schemas/WorkspaceImage"}
+        registries:
+          type: array
+          items: {type: string}
+    ImageInput:
+      description: An image to add.
+      type: object
+      additionalProperties: false
+      required: [name, ref]
+      properties:
+        name: {type: string, maxLength: 60}
+        ref: {type: string, maxLength: 512, description: 'A reference on a registry the deployment allows, "ghcr.io/acme/agent:1.4".'}
+        credential: {type: string, maxLength: 4096, description: 'The registry''s pull secret, "user:token". Kept apart and never returned.'}
+        warm: {type: boolean}
+    ImageChange:
+      description: A change to an image.
+      type: object
+      additionalProperties: false
+      properties:
+        warm: {type: boolean}
+        check: {type: boolean, description: "Pull and check it again."}
     BrowserAvailability:
       description: Whether a session has a browser.
       type: object
