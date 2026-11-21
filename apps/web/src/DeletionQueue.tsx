@@ -1,8 +1,7 @@
 import { defaultCopy } from "@humagen/components";
 import { useEffect, useState } from "react";
-import { AuditSection, auditRow, auditRows } from "./AuditSection.tsx";
 import { coworking, type Deletion } from "./api.ts";
-import { Problem, SkeletonRows } from "./ui.tsx";
+import { card, Problem, pageLede, pageTitle, SkeletonRows } from "./ui.tsx";
 
 const day = (iso: string) =>
   new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
@@ -35,9 +34,9 @@ export function DeletionQueue() {
   const due = rows?.filter((r) => r.due) ?? [];
   const waiting = rows?.filter((r) => !r.due) ?? [];
   const list = (items: Deletion[]) => (
-    <ul className={auditRows}>
+    <ul className="flex flex-col gap-2">
       {items.map((d) => (
-        <li key={d.id} className={auditRow}>
+        <li key={d.id} className={`${card} flex flex-wrap items-center gap-3 p-4`}>
           <div className="min-w-0 flex-1">
             <p className="truncate text-aui-sm text-aui-fg">{d.title || words.untitled}</p>
             <p className="flex flex-wrap gap-x-2 gap-y-1 text-aui-xs text-aui-muted">
@@ -73,26 +72,32 @@ export function DeletionQueue() {
     </ul>
   );
   return (
-    <AuditSection id="deletions" title={words.title} count={rows?.length}>
+    <>
+      <header className="pb-2">
+        <h1 className={pageTitle}>{words.title}</h1>
+        <p className={pageLede}>{words.hint}</p>
+      </header>
       <Problem message={problem} />
       {rows === null ? (
-        !problem && <SkeletonRows count={2} />
+        !problem && <SkeletonRows count={3} />
       ) : rows.length === 0 ? (
-        <p className="text-aui-sm text-aui-muted">{words.empty}</p>
+        <p className="text-aui-muted">{words.empty}</p>
       ) : (
         <>
-          <h3 className="text-aui-xs font-medium text-aui-muted">{words.waiting(due.length)}</h3>
-          {due.length ? list(due) : <p className="text-aui-sm text-aui-muted">{words.notDue}</p>}
+          <section className="flex flex-col gap-2">
+            <h2 className="text-aui-sm font-medium text-aui-fg">{words.waiting(due.length)}</h2>
+            {due.length ? list(due) : <p className="text-aui-sm text-aui-muted">{words.notDue}</p>}
+          </section>
           {waiting.length > 0 && (
-            <>
-              <h3 className="pt-2 text-aui-xs font-medium text-aui-muted">
+            <section className="flex flex-col gap-2 pt-4">
+              <h2 className="text-aui-sm font-medium text-aui-fg">
                 {words.archivedCount(waiting.length)}
-              </h3>
+              </h2>
               {list(waiting)}
-            </>
+            </section>
           )}
         </>
       )}
-    </AuditSection>
+    </>
   );
 }

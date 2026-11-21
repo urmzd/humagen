@@ -10,9 +10,11 @@ import {
   NetworkIcon,
   PaletteIcon,
   PlugIcon,
+  ScrollTextIcon,
   ServerIcon,
   ShieldIcon,
   SunIcon,
+  TrashIcon,
   UserIcon,
 } from "@humagen/render-web";
 import { Input } from "@humagen/render-web/ui/input";
@@ -30,9 +32,11 @@ import {
 } from "./api.ts";
 import { BillingSettings } from "./Billing.tsx";
 import { ClientSettings } from "./Clients.tsx";
+import { DeletionQueue } from "./DeletionQueue.tsx";
 import { ModelProviderSettings } from "./ModelProviders.tsx";
 import { PersonalPreferences } from "./PersonalPreferences.tsx";
 import type { PrefsRead } from "./preferences.ts";
+import { ReadAudit } from "./ReadAudit.tsx";
 import { href, type Route, type SettingsSection } from "./route.ts";
 import { SettingsFormRow } from "./SettingsFormRow.tsx";
 import { Avatar, linked, workspaceSettingsRoute } from "./settingsLinks.tsx";
@@ -145,6 +149,10 @@ export function Settings({
       .catch(fail("The workspace settings could not be saved."));
   };
 
+  const canReadAudit =
+    me.principal.roles?.includes("admin") && me.permissions.includes("projects:govern");
+  const canGovern = me.permissions.includes("projects:govern");
+
   return (
     <div className="humagen-fade flex min-h-0 flex-1 flex-col md:flex-row">
       <SettingsNav
@@ -162,6 +170,16 @@ export function Settings({
           {section === "notifications" && (
             <PersonalPreferences section="notifications" onSaved={onPrefs} />
           )}
+          {section === "read-audit" &&
+            (canReadAudit ? (
+              <ReadAudit />
+            ) : (
+              <>
+                <h1 className={pageTitle}>{defaultCopy.readAudit.title}</h1>
+                <Problem message={defaultCopy.readAudit.denied} />
+              </>
+            ))}
+
           {section === "voice" && (
             <>
               <header className="pb-2">
@@ -171,6 +189,16 @@ export function Settings({
               <VoiceSettings canEdit={me.permissions.includes("clients:write")} />
             </>
           )}
+
+          {section === "deletions" &&
+            (canGovern ? (
+              <DeletionQueue />
+            ) : (
+              <>
+                <h1 className={pageTitle}>{defaultCopy.deletions.title}</h1>
+                <Problem message={defaultCopy.deletions.denied} />
+              </>
+            ))}
 
           {section === "providers" && (
             <>
@@ -541,6 +569,9 @@ export function SettingsNav({
   onSection: (next: Section) => void;
   onNavigate?: (route: Route) => void;
 }) {
+  const canReadAudit =
+    me.principal.roles?.includes("admin") && me.permissions.includes("projects:govern");
+  const canGovern = me.permissions.includes("projects:govern");
   const admin =
     me.principal.roles?.includes("admin") ||
     me.permissions.includes("agents:write") ||
@@ -559,6 +590,24 @@ export function SettingsNav({
         { id: "limits", label: "Limits", icon: <GaugeIcon size={16} /> },
         { id: "voice", label: defaultCopy.voiceSettings.title, icon: <MicIcon size={16} /> },
         { id: "access", label: "Access", icon: <ShieldIcon size={16} /> },
+        ...(canReadAudit
+          ? [
+              {
+                id: "read-audit" as const,
+                label: defaultCopy.readAudit.label,
+                icon: <ScrollTextIcon size={16} />,
+              },
+            ]
+          : []),
+        ...(canGovern
+          ? [
+              {
+                id: "deletions" as const,
+                label: defaultCopy.deletions.title,
+                icon: <TrashIcon size={16} />,
+              },
+            ]
+          : []),
       ]
     : [];
   // Your settings and the workspace's are two places: the open section says which.

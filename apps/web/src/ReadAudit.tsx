@@ -1,9 +1,7 @@
 import { defaultCopy } from "@humagen/components";
 import { useEffect, useState } from "react";
-import { AuditSection, auditRow, auditRows } from "./AuditSection.tsx";
 import { api, type ReadAuditRecord } from "./api.ts";
-import { MessageTime } from "./MessageTime.tsx";
-import { Problem, SkeletonRows } from "./ui.tsx";
+import { card, Problem, pageLede, pageTitle, SkeletonRows } from "./ui.tsx";
 
 /** The last day's recorded exceptional reads, bounded by the server. */
 export function ReadAudit() {
@@ -25,34 +23,34 @@ export function ReadAudit() {
   }, []);
   const copy = defaultCopy.readAudit;
   return (
-    <AuditSection id="read-audit" title={copy.title} count={records?.length}>
+    <>
+      <header>
+        <h1 className={pageTitle}>{copy.title}</h1>
+        <p className={pageLede}>{copy.description}</p>
+      </header>
       {failed ? (
         <Problem message={copy.failed} />
       ) : records === null ? (
-        <SkeletonRows count={2} />
+        <SkeletonRows count={3} />
       ) : records.length === 0 ? (
-        <p className="text-aui-sm text-aui-muted">{copy.empty}</p>
+        <p className="text-aui-muted">{copy.empty}</p>
       ) : (
-        <ol className={auditRows}>
+        <ol className="flex flex-col gap-3">
           {records.map((r, i) => (
-            <li key={`${r.at}-${i}`} className={auditRow}>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-aui-sm text-aui-fg">{r.subject}</p>
-                <p className="flex min-w-0 flex-wrap gap-x-3 text-aui-xs text-aui-muted">
-                  <span className="min-w-0 truncate">
-                    {r.project || "~"}
-                    {r.thread ? ` / ${r.thread}` : ""}
-                  </span>
-                  {r.route && <span className="min-w-0 truncate font-aui-mono">{r.route}</span>}
-                </p>
-              </div>
-              <span className="shrink-0 text-aui-xs text-aui-muted">
-                <MessageTime at={r.at} />
-              </span>
+            <li key={`${r.at}-${i}`} className={`${card} min-w-0 break-words p-4`}>
+              <p>{r.subject}</p>
+              <p className="text-aui-muted">
+                {r.project || "~"}
+                {r.thread ? ` / ${r.thread}` : ""}
+              </p>
+              <p className="text-aui-sm text-aui-muted">{r.route}</p>
+              <time className="text-aui-sm text-aui-muted" dateTime={r.at}>
+                {new Date(r.at).toLocaleString()}
+              </time>
             </li>
           ))}
         </ol>
       )}
-    </AuditSection>
+    </>
   );
 }
