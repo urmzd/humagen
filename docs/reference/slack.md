@@ -178,6 +178,30 @@ and archiving a channel unbinds it. `GET /api/clients/{id}/bindings` lists a
 client's. A client's `home` (a project and one of its channels) is where
 everything else is filed.
 
+#### When the app listens
+
+The Slack app listens on a mention, and after one. Nothing else is heard.
+
+| In Slack | What the app does |
+|---|---|
+| A direct message | Answers. Every message there is addressed to it |
+| A message that mentions the app, anywhere in it | Answers that message |
+| A mention in a channel thread's first message | Answers, and the thread is **listened to** from then on (`listening` on the thread) |
+| A later reply in a listened thread that mentions nobody | Reads it and asks the agent whether it calls for it (`POST /api/threads` with `listen`). The agent answers, or the message is kept as what was said and nothing shows in Slack |
+| A mention in a reply of a thread that did not begin with one | Answers once, with what was said in the thread since it was last asked. The thread is not listened to |
+| A reply that mentions nobody in a thread that is not listened to | Not heard, and not kept (409) |
+| A channel message that mentions nobody, outside a thread | Not heard. In a Slack channel bound to a project it is recorded there, as every message in a bound channel is |
+| A message from the app itself, another bot, an edit or a join | Never starts anything |
+
+Only a person the client maps is listened to. The agent's answer to "does this
+call for me?" is the one a message that names no agent is routed by
+([overview](../architecture/overview.md)): a no, a failure and no agent to ask
+all leave the message unanswered.
+
+A direct message with a client that names no `home` is filed in the person's
+own project, as a session they start in the console is. A channel's thread is
+filed where the channel is bound, else in the client's `home`.
+
 For a person the client maps, the Slack app posts each message into the Humagen
 thread its Slack thread is, as that person (`POST /api/threads` with
 `surface {client, channel, ts, message, app_user}` and `act_as`). Only the
@@ -399,6 +423,7 @@ then create the app from the manifest at <https://api.slack.com/apps>.
 |----------------|----------------------------|
 | `app_mentions:read`, `app_mention` | A mention in a channel raises a run. |
 | `im:history`, `message.im` | A direct message raises a run. |
+| `channels:history`, `groups:history`, `mpim:history`, `message.channels`, `message.groups`, `message.mpim` | The replies in a thread that began with a mention, which the app listens to. |
 | `chat:write` | Post and edit the run's message; report session status. |
 | `reactions:write` | The `slack_add_reaction` action. |
 | `agent_view`, `assistant:write` | Declares the app an agent, which sessions require. |

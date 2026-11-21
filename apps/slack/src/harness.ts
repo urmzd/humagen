@@ -181,6 +181,10 @@ export class FakeHumagen implements Humagen {
   readonly answered: { answer: AnswerRequest; as: ActAs }[] = [];
   /** Every message posted from a Slack thread, in order. */
   readonly posts: ThreadPostRequest[] = [];
+  /** Slack threads that began with a message addressed to the app, as the platform records them. */
+  readonly listening = new Set<string>();
+  /** Whether the agent says a message that addressed nobody calls for it. Tests set it. */
+  callsFor: (text: string) => boolean = () => true;
   /** The humagen thread each Slack thread is, by client, channel and ts. */
   private readonly surfaces = new Map<string, string>();
   /** Each message posted, by its ts: what it did. */
@@ -341,6 +345,12 @@ export class FakeHumagen implements Humagen {
     const where = `${s.client}/${s.channel}/${s.ts}`;
     const bound = (this.bound.get(s.client) ?? []).find((b) => b.slack_channel === s.channel);
     let thread = this.surfaces.get(where);
+    // As the platform does: a message that addressed nobody is taken only in
+    // a thread that began with one addressed to the app, and starts none.
+    if (body.listen && (!thread || !this.listening.has(where))) {
+      this.posts.pop();
+      throw new HumagenError(409, "nobody is listening in this thread: mention the app to ask it");
+    }
     if (!thread) {
       // As the platform does: a Slack thread under a post this app recorded
       // is that announcement's while the Slack channel is bound to its
@@ -359,6 +369,8 @@ export class FakeHumagen implements Humagen {
       }
       thread = `th-${String(this.surfaces.size + 1).padStart(16, "0")}`;
       this.surfaces.set(where, thread);
+      if (!body.post_only && !s.channel.startsWith("D") && (s.message ?? s.ts) === s.ts)
+        this.listening.add(where);
       if (receipt && seed) this.seeded.set(thread, receipt.message);
     }
     const n = [...this.postedOnce.keys()].filter((k) => k.startsWith(`${where}/`)).length + 1;
@@ -380,7 +392,7 @@ export class FakeHumagen implements Humagen {
       new RegExp(`(^|\\s)@${a.name}\\b`).test(message.text),
     );
     const person = /(^|\s)@([a-z][a-z0-9-]*)/.exec(message.text)?.[2];
-    if (body.post_only) posted.rule = "post_only";
+    if (body.post_only || (body.listen && !this.callsFor(message.text))) posted.rule = "post_only";
     else if (tagged) posted.rule = "tagged";
     else if (person) {
       posted.rule = "people";

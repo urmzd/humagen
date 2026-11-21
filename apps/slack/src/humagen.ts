@@ -108,6 +108,13 @@ export interface ThreadPostRequest {
   act_as: ActAs;
   surface: SurfaceRef;
   post_only?: boolean;
+  /**
+   * The message addressed nobody: a reply in a thread that does not mention
+   * the app. The platform answers it only in a thread that is listening, and
+   * only when the agent says it calls for it; anywhere else it answers 409
+   * and keeps nothing.
+   */
+  listen?: boolean;
 }
 
 /** What posting a message did, as `POST /api/threads` answers. Only the fields this app reads. */

@@ -190,6 +190,13 @@ interface Job {
   notTheirs?: boolean;
   /** A mention in a channel thread: what people said there since the app was last asked goes with it. */
   history?: boolean;
+  /**
+   * The message addressed nobody: a reply, with no mention, in a channel
+   * thread. Humagen takes it only where the thread began with a mention, and
+   * answers only when the agent says it calls for it. Until a run starts
+   * nothing is shown: no reaction, no status, no notice.
+   */
+  listen?: boolean;
 }
 
 type Item =
@@ -978,6 +985,41 @@ export class App {
         return;
       }
     }
+    // A reply in a channel thread that mentions nobody. Whether anyone is
+    // listening there is the platform's to say (`listen`): it is, where the
+    // thread's first message mentioned the app, and then the agent decides
+    // whether this message calls for it. A thread a later mention started was
+    // answered once, and a message outside a thread is nobody's.
+    if (
+      event.type === "message" &&
+      event.channel_type !== "im" &&
+      event.channel &&
+      event.ts &&
+      event.user &&
+      !event.bot_id &&
+      (!event.subtype || event.subtype === "file_share") &&
+      event.user !== this.opts.botUser &&
+      event.thread_ts &&
+      event.thread_ts !== event.ts &&
+      !mentionsApp(event.text ?? "", this.opts.botUser)
+    ) {
+      const text = (event.text ?? "").trim();
+      if (!text) return;
+      const session: Session = {
+        team: this.opts.team,
+        channel: event.channel,
+        threadTs: event.thread_ts,
+      };
+      this.enqueue({
+        session,
+        text,
+        triggerTs: event.ts,
+        user: event.user,
+        key: eventKey(session, event.ts),
+        listen: true,
+      });
+      return;
+    }
     const asked =
       event.type === "app_mention" ||
       (event.type === "message" && event.channel_type === "im") ||
@@ -1069,8 +1111,9 @@ export class App {
       this.track(this.drive(thread, job, false));
       return;
     }
-    // It waits behind the turn in flight. The reaction says it was seen.
-    this.track(this.react(job, null, "queued"));
+    // It waits behind the turn in flight. The reaction says it was seen: a
+    // message nobody was asked about gets none until someone answers it.
+    if (!job.listen) this.track(this.react(job, null, "queued"));
   }
 
   private async react(job: Job, prev: Turn["status"] | null, next: Turn["status"]) {
@@ -1223,6 +1266,8 @@ export class App {
       // asked again acts for whom again() decided, never for whoever else is
       // known, and someone else's words are asked for nobody.
       const asking = job.again ? job.again.as : job.notTheirs ? null : await this.actAs(job.user);
+      // Only a person the client maps is listened to: nobody else's words are posted for them.
+      if (job.listen && !asking) return "done" as const;
       // In a code channel the conversation is its thread's, which the app
       // names, so a mapped person asks through the app as themselves there.
       if (asking && !job.again && !job.conversation) {
@@ -1232,10 +1277,19 @@ export class App {
           );
           return "stopped" as const;
         }
-        const posted = await this.cowork(job, asking);
+        let posted: ThreadPosted;
+        try {
+          posted = await this.cowork(job, asking);
+        } catch (e) {
+          // Nobody is listening in that thread: the message was nobody's.
+          if (job.listen && e instanceof HumagenError && e.status === 409) return "done" as const;
+          throw e;
+        }
         // Humagen already has this message: it was answered before a restart.
         if (posted.repeated) return "done" as const;
         const first = posted.runs[0];
+        // Heard, and not for the agent: kept as what was said, with nothing shown.
+        if (!first && job.listen) return "done" as const;
         if (!first) return this.unanswered(job, presenter, posted, routing);
         if (posted.runs.length > 1) {
           this.log(
@@ -1433,6 +1487,7 @@ export class App {
       text: job.text,
       act_as: asking,
       surface: this.surfaceOf(job, job.triggerTs),
+      ...(job.listen ? { listen: true } : {}),
     });
   }
 
@@ -3274,6 +3329,11 @@ export class App {
     // A global shortcut or the Home tab has no channel: answer in the app's own messages with this person.
     await this.start({ channel: p.user.id, user: p.user.id }, text);
   }
+}
+
+/** Whether Slack text mentions the app, wherever in it: `<@U…>` or `<@U…|name>`. */
+export function mentionsApp(text: string, botUser: string): boolean {
+  return text.includes(`<@${botUser}>`) || text.includes(`<@${botUser}|`);
 }
 
 /** Words for Slack's mrkdwn with nothing in them read as markup: no mention, link or broadcast. */

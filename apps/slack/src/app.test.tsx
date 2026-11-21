@@ -2174,3 +2174,96 @@ test("/agent alone opens the ask form with a picker of who to ask, and the one p
   await emit(w, "run.completed.v1", { text: "ok" });
   await w.app.idle();
 });
+
+
+// When the app listens: only on a mention, and after one. A thread whose first
+// message mentioned it is listened to from then on, and the agent says of each
+// later message whether it calls for it. A mention in a later reply is
+// answered once. Nothing else is heard.
+
+/** A message in a channel that mentions nobody, as Slack's `message` event delivers it. */
+const plain = (text: string, ts: string, over: Record<string, unknown> = {}) =>
+  mention("", ts, { type: "message", channel_type: "channel", text, ...over });
+
+test("a thread that began with a mention is listened to, and the agent decides what calls for it", async () => {
+  const w = mapped();
+  await deliver(w, mention("what broke the build?", TS));
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "The migration." });
+  await w.app.idle();
+  assert.equal(w.humagen.started.length, 1);
+
+  // A reply that mentions nobody is read, and here the agent says it is for it.
+  await deliver(
+    w,
+    plain("can you confirm it was the migration?", "1700000050.000200", { thread_ts: TS }),
+  );
+  assert.equal(w.humagen.posts.at(-1)?.listen, true);
+  assert.equal(w.humagen.posts.at(-1)?.text, "can you confirm it was the migration?");
+  assert.equal(w.humagen.started.length, 2, "the agent answered what called for it");
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "Confirmed." });
+  await w.app.idle();
+
+  // One that is not for it is kept as what was said, and Slack hears nothing.
+  w.humagen.callsFor = () => false;
+  const calls = w.slack.calls.length;
+  await deliver(w, plain("lunch at noon?", "1700000060.000300", { thread_ts: TS }));
+  await w.app.idle();
+  assert.equal(w.humagen.posts.at(-1)?.text, "lunch at noon?");
+  assert.equal(w.humagen.started.length, 2, "nothing was started");
+  assert.equal(w.slack.calls.length, calls, "no reaction, status or message");
+  collect("listening", w.slack);
+});
+
+test("a mention in a later reply is answered once: the thread is not listened to", async () => {
+  const w = mapped();
+  const root = "1700000100.000100";
+  await deliver(
+    w,
+    mention("can you summarise this thread?", "1700000110.000200", { thread_ts: root }),
+  );
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "Summary." });
+  await w.app.idle();
+  assert.equal(w.humagen.started.length, 1);
+
+  const posts = w.humagen.posts.length;
+  const calls = w.slack.calls.length;
+  await deliver(w, plain("thanks, and the other one?", "1700000120.000300", { thread_ts: root }));
+  await w.app.idle();
+  assert.equal(w.humagen.posts.length, posts, "the message was not kept");
+  assert.equal(w.humagen.started.length, 1);
+  assert.equal(w.slack.calls.length, calls, "Slack hears nothing");
+
+  // Mentioned again there, it answers again.
+  await deliver(w, mention("and the other one?", "1700000130.000400", { thread_ts: root }));
+  assert.equal(w.humagen.started.length, 2);
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "The other one." });
+  await w.app.idle();
+});
+
+test("a message that mentions nobody outside a thread, or from someone the client does not map, is not heard", async () => {
+  const w = mapped();
+  await deliver(w, plain("anyone around?", "1700000200.000100"));
+  await deliver(
+    w,
+    plain("in a thread nobody started", "1700000210.000200", { thread_ts: "1700000205.000100" }),
+  );
+  await deliver(w, mention("start one", "1700000300.000100"));
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "Started." });
+  await w.app.idle();
+  const posts = w.humagen.posts.length;
+  await deliver(
+    w,
+    plain("from a stranger", "1700000310.000200", {
+      thread_ts: "1700000300.000100",
+      user: "U09STRANGER",
+    }),
+  );
+  await w.app.idle();
+  assert.equal(w.humagen.posts.length, posts);
+  assert.equal(w.humagen.started.length, 1);
+});
