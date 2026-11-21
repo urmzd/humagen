@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.183.0 (2026-11-21)
+
+### Features
+
+- **console**: the composer says the product is AI, with a Terms link from branding (#511) ([e9e424a](https://github.com/urmzd/humagen/commit/e9e424ae1ad7b4f9ca8b67d109b9afb9b51e1d16))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.182.0...v0.183.0)
+
+
 ## 0.182.0 (2026-11-21)
 
 ### Features
