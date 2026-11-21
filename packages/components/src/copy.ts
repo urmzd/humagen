@@ -3257,7 +3257,7 @@ export const defaultCopy = {
     },
     /** Where a session started, said by its row's leading mark and to a screen reader. */
     sources: {
-      console: "Started in the console",
+      console: "Started in the web console",
       slack: "From a Slack thread",
       slack_dm: "From a Slack DM",
       github: "From GitHub",
@@ -3266,14 +3266,14 @@ export const defaultCopy = {
     },
     /** Where a session started, short, on the row's second line beside its time. */
     sourceShort: {
-      console: "Console",
+      console: "Web / Console",
       slack: "Slack",
       slack_dm: "Slack DM",
       github: "GitHub",
       scheduled: "Schedule",
       assignment: "Assignment",
     },
-    /** A row's state in words, on its own line (DES-054). */
+    /** The sidebar badge's details for a tooltip and assistive technology (DES-054). */
     state: {
       waitingYou: (what: string, kind?: "approval" | "question") =>
         !what
@@ -3290,12 +3290,7 @@ export const defaultCopy = {
       failed: (reason: string) => (reason ? `Failed: ${reason}` : "Failed"),
       working: "Working",
       alert: (title: string) => `Alert: ${title}`,
-      /** The dot on the right, for a screen reader and its tooltip. */
-      dot: {
-        you: "Waiting for you",
-        failed: "Failed, not yet read",
-        unread: "Unread",
-      },
+      unread: "Unread",
     },
     /** The sections of the sidebar's list, each with its count. */
     participated: "Participated",

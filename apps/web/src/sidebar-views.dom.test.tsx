@@ -94,7 +94,7 @@ const view = async (name: "Recents" | "Projects" | RegExp) => {
   fireEvent.keyDown(disclosure, { key: "Escape" });
 };
 
-test("Recent lists every session newest first: its title, then its time and where it started, and its state in words", async () => {
+test("Recent lists sessions newest first with their source, time, and compact status", async () => {
   const since = new Date(Date.now() - 24 * hour).toISOString();
   const marks: Marks = { archived: [], read: {}, tips: [], since };
   net = stubFetch({
@@ -126,22 +126,29 @@ test("Recent lists every session newest first: its title, then its time and wher
   const list = within(await screen.findByRole("list", { name: "Recents" }));
   const names = (await list.findAllByRole("link")).map((a) => a.textContent?.split(/\d|Just/)[0]);
   assert.deepEqual(names, ["Answered", "Waiting on me", "Still going", "Quiet"]);
-  const waiting = list.getByRole("link", { name: /^Waiting on me/ });
+  const waiting = list.getByRole("link", {
+    name: /^Waiting on me/,
+    description: "Waiting for you",
+  });
   assert.doesNotMatch(waiting.textContent ?? "", /Spring launch/);
-  assert.equal(waiting.querySelector("[data-state]")?.textContent, "Waiting for you");
-  assert.equal(waiting.querySelector("[data-dot]")?.getAttribute("data-dot"), "you");
   assert.equal(
-    list.getByRole("link", { name: /^Still going/ }).querySelector("[data-state]")?.textContent,
+    waiting.querySelector('[data-state="waiting"]')?.getAttribute("title"),
+    "Waiting for you",
+  );
+  assert.equal(waiting.querySelector("[data-dot]"), null);
+  assert.equal(
+    list
+      .getByRole("link", { name: /^Still going/, description: "Working" })
+      .querySelector('[data-state="working"]')
+      ?.getAttribute("title"),
     "Working",
   );
-  const answered = list.getByRole("link", { name: /^Answered/ });
-  await waitFor(() =>
-    assert.equal(answered.querySelector("[data-dot]")?.getAttribute("data-dot"), "unread"),
-  );
+  const answered = await list.findByRole("link", { name: /^Answered/, description: "Unread" });
+  assert.equal(answered.querySelector("[data-dot]")?.getAttribute("data-dot"), "unread");
   assert.match(answered.querySelector("[data-standing]")?.className ?? "", /font-semibold/);
-  assert.match(answered.textContent ?? "", /, Unread$/);
+  assert.equal(answered.querySelector("[data-state]"), null);
   const quiet = list.getByRole("link", { name: /^Quiet/ });
-  assert.match(quiet.querySelector("[data-row-age]")?.textContent ?? "", /ago\s*Console$/);
+  assert.match(quiet.querySelector("[data-row-age]")?.textContent ?? "", /ago\s*Web \/ Console$/);
   assert.equal(quiet.querySelector("[data-state]"), null);
   assert.equal(quiet.querySelector("[data-dot]"), null);
   // The header says how many each section holds.
@@ -183,7 +190,7 @@ test("a row's second line says how long ago it moved and where it started, in wo
     [/^Review PR 482/, "github", "GitHub", "From GitHub"],
     [/^Weekly digest/, "scheduled", "Schedule", "From a schedule"],
     [/^Standing goal/, "assignment", "Assignment", "From an assignment"],
-    [/^Launch plan/, "console", "Console", "Started in the console"],
+    [/^Launch plan/, "console", "Web / Console", "Started in the web console"],
   ];
   for (const [name, source, short, words] of expected) {
     const row = await list.findByRole("link", { name });
@@ -205,7 +212,7 @@ test("a row's second line says how long ago it moved and where it started, in wo
     );
 });
 
-test("a row's state is said in words: waiting on you in the warning color, a failure with why in red", async () => {
+test("status badges distinguish approvals, questions, failures, and running work with accessible details", async () => {
   const since = new Date(Date.now() - 24 * hour).toISOString();
   const fresh = new Date().toISOString();
   const rows = [
@@ -256,44 +263,42 @@ test("a row's state is said in words: waiting on you in the warning color, a fai
   });
   render(<Bar sessionMode />);
   const list = within(await screen.findByRole("list", { name: "Recents" }));
-  const state = async (name: RegExp) =>
-    (await list.findByRole("link", { name })).querySelector<HTMLElement>("[data-state]");
-  const dot = (name: RegExp) =>
-    list.getByRole("link", { name }).querySelector<HTMLElement>("[data-dot]");
-  const approve = await state(/^Approve contract/);
-  assert.equal(approve?.textContent, "Waiting for you: approve file_write");
-  assert.match(approve?.className ?? "", /text-aui-warn/);
-  assert.equal(dot(/^Approve contract/)?.getAttribute("data-dot"), "you");
-  assert.match(dot(/^Approve contract/)?.className ?? "", /bg-aui-warn/);
+  const statuses = [
+    [/^Approve contract/, "approval", "Waiting for you: approve file_write", "text-aui-warn"],
+    [
+      /^Pick a scope/,
+      "question",
+      "Waiting for you: Which repositories should I check?",
+      "text-aui-warn",
+    ],
+    [/^Someone else's call/, "approval", "Waiting for approval: deploy", "text-aui-muted"],
+    [/^Broke/, "failed", "Failed: provider: rate limited (429)", "text-aui-bad", true],
+    [/^Deploying/, "working", "Working", "text-aui-muted"],
+  ] as const;
+  for (const [name, state, reason, tone, unread] of statuses) {
+    const row = await list.findByRole("link", {
+      name,
+      description: unread ? `${reason}, Unread` : reason,
+    });
+    const badge = row.querySelector(`[data-state="${state}"]`);
+    assert.ok(badge);
+    assert.equal(badge.getAttribute("title"), reason);
+    assert.ok(badge.querySelector("svg"));
+    assert.equal(badge.textContent, "");
+    assert.ok(badge.firstElementChild?.classList.contains("rounded-full"));
+    assert.ok(badge.firstElementChild?.classList.contains(tone), `${state} uses ${tone}`);
+    assert.equal(row.querySelector("[data-dot]"), null, "the badge carries the alert by itself");
+    assert.ok(
+      !row.textContent?.includes(reason),
+      "the details stay out of the link's visible text",
+    );
+  }
+  const recovered = await list.findByRole("link", { name: /^Recovered/ });
   assert.equal(
-    (await state(/^Pick a scope/))?.textContent,
-    "Waiting for you: Which repositories should I check?",
-  );
-  const other = await state(/^Someone else's call/);
-  assert.equal(other?.textContent, "Waiting for approval: deploy");
-  assert.match(other?.className ?? "", /text-aui-muted/);
-  assert.equal(dot(/^Someone else's call/), null, "it does not wait on the reader");
-  const broke = await state(/^Broke/);
-  assert.equal(broke?.textContent, "Failed: provider: rate limited (429)");
-  assert.match(broke?.className ?? "", /text-aui-bad/, "red says failure");
-  await waitFor(() => assert.equal(dot(/^Broke/)?.getAttribute("data-dot"), "failed"));
-  assert.match(dot(/^Broke/)?.className ?? "", /bg-aui-bad/);
-  assert.equal(
-    await state(/^Recovered/),
+    recovered.querySelector("[data-state]"),
     null,
     "a failure a later turn answered is not one: the session listing names none",
   );
-  assert.equal((await state(/^Deploying/))?.textContent, "Working");
-  // Hovering a row trades only its dot for the ⋮ button: its words stay.
-  for (const name of [/^Approve contract/, /^Broke/]) {
-    const row = list.getByRole("link", { name });
-    for (
-      let el = row.querySelector<HTMLElement>("[data-state]");
-      el && el !== row.parentElement;
-      el = el.parentElement
-    )
-      assert.doesNotMatch(el.className, /:invisible/, `${name} keeps its state on hover`);
-  }
   for (const row of document.querySelectorAll("[data-thread-row]"))
     assert.doesNotMatch(row.innerHTML, /aui-accent/, "nothing in a row uses the accent");
 });

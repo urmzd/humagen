@@ -69,64 +69,44 @@ export type StateWords = Pick<
   "waitingYou" | "waitingOther" | "failed" | "working" | "alert"
 >;
 
-/** What a row says about its state: a line in words, a dot for what is new, and whether it runs. */
+/** The row's most pressing status and the detail behind its badge. */
 export type RowState = {
-  /** A line under the row's time and source, in its tone: warn waits on someone, bad failed. */
-  line?: { tone: "warn" | "bad" | "muted"; text: string };
-  /** The dot on the right, by meaning: it waits on the reader, it failed unread, or it is unread. */
-  dot?: "you" | "failed" | "unread";
+  kind: "approval" | "question" | "waiting" | "failed" | "working" | "alert";
+  tone: "warn" | "bad" | "neutral";
+  text: string;
 };
 
-/**
- * A row's state, said in words, most pressing first: it waits on someone
- * (the reader, in the warning color), its latest turn failed (in red, with
- * why), it is working, or it holds an open alert. The dot on the right marks
- * what is new to the reader: waiting on them, a failure they have not read,
- * or an answer they have not read.
- *
- * A session listing says why the latest turn failed (`failure`); an earlier
- * failure a later turn answered is not one. Other listings only count
- * failed runs, so any is said as "Failed".
- */
+/** Session listings report a failure only while the latest turn failed. */
 export function rowState(
   t: ThreadSummary,
-  marks: Marks,
-  /** The words for each state: defaultCopy.sidebar.state, passed in so this module stays plain TypeScript. */
+  /** Passed in so this module stays plain TypeScript. */
   words: StateWords,
   opts: {
     session?: boolean;
     alert?: { priority: "urgent" | "normal" | "low"; title: string };
   } = {},
-): RowState {
-  const unread = isUnread(t, marks);
-  const waiting = (t.waiting ?? 0) > 0;
-  const you = waiting && (t.waiting_on_you ?? true);
+): RowState | undefined {
+  if ((t.waiting ?? 0) > 0) {
+    const you = t.waiting_on_you ?? true;
+    const detail = t.waiting_for ?? "";
+    return {
+      kind: t.waiting_kind ?? "waiting",
+      tone: you ? "warn" : "neutral",
+      text: you
+        ? words.waitingYou(detail, t.waiting_kind)
+        : words.waitingOther(detail, t.waiting_kind),
+    };
+  }
   const failure = t.failure ?? (!opts.session && t.failed > 0 ? "" : undefined);
-  const line: RowState["line"] = waiting
-    ? {
-        tone: you ? "warn" : "muted",
-        text: you
-          ? words.waitingYou(t.waiting_for ?? "", t.waiting_kind)
-          : words.waitingOther(t.waiting_for ?? "", t.waiting_kind),
-      }
-    : failure !== undefined
-      ? { tone: "bad", text: words.failed(failure) }
-      : t.active > 0
-        ? { tone: "muted", text: words.working }
-        : opts.alert
-          ? {
-              tone: opts.alert.priority === "urgent" ? "warn" : "muted",
-              text: words.alert(opts.alert.title),
-            }
-          : undefined;
-  const dot: RowState["dot"] = you
-    ? "you"
-    : unread
-      ? failure !== undefined
-        ? "failed"
-        : "unread"
-      : undefined;
-  return { line, dot };
+  if (failure !== undefined) return { kind: "failed", tone: "bad", text: words.failed(failure) };
+  if (t.active > 0) return { kind: "working", tone: "neutral", text: words.working };
+  if (opts.alert)
+    return {
+      kind: "alert",
+      tone: opts.alert.priority === "urgent" ? "warn" : "neutral",
+      text: words.alert(opts.alert.title),
+    };
+  return undefined;
 }
 
 // One rule for every age and relative time in the console: format.ts.
