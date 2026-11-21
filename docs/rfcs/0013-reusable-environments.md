@@ -84,11 +84,18 @@ For shared roots and sessions, project files and other shared resources retain
 their existing access rules. A connector or vault action acts only as the
 recorded person whose message or run requested it, never as the root creator,
 environment owner, another participant, or a machine with no mapped person.
-A called run may inherit that identity only under the existing delegation rules
-and may narrow access, never widen it. `ActorOf`, `personOf`, `ownCredentialOf`,
-`steeredFor` and `personCredential` in `internal/platform/credentials.go` are
-the existing identity and steering boundaries to extend and verify. A shared
-thread must not make a private credential or its use available to other readers.
+A called run acts for nobody, as today
+([security, not built yet](../architecture/security.md#not-built-yet); the
+actor rules in `internal/platform/credentials.go`). It does not inherit its
+caller's person for a connector or vault action, even though its run context
+keeps that person (`pkg/runctx`), so a binding needed inside a called run fails
+closed with a reason and creates no request. Letting a called run use a person's
+binding is out of scope and needs its own rule: consent from that person for
+each call, naming the called agent, tool and destination. `ActorOf`, `personOf`,
+`ownCredentialOf`, `steeredFor` and `personCredential` in
+`internal/platform/credentials.go` are the existing identity and steering
+boundaries to extend and verify. A shared thread must not make a private
+credential or its use available to other readers.
 
 ## Missing credentials and use
 
@@ -97,8 +104,9 @@ actor, session, project, exact tool and destination and checks all grants. If
 no usable binding exists, park the action and create a **metadata-only**
 request addressed to the acting person: what is needed, the tool and destination,
 the requesting session and available scopes. Nobody without that identity can
-supply or inspect the request. A machine or unmapped actor fails closed with a
-reason, rather than asking the room or borrowing an identity.
+supply or inspect the request. A machine, a called run or any other unmapped
+actor fails closed with a reason, rather than asking the room or borrowing an
+identity.
 
 The value is submitted to a separate authenticated write-only endpoint over a
 protected connection, bound server-side to the pending request, actor, session,
@@ -188,8 +196,8 @@ implemented and visually verified.
    input and output, tool arguments and results, logs, errors, audit, ledger,
    API responses, terminal, files, DOM/accessibility snapshots, screenshots,
    recordings and traces; include echo, encoded/transformed output, redirect,
-   wrong origin and unauthorized actor cases. If a boundary cannot enforce the
-   invariant, reject the operation instead of declaring it safe.
+   wrong origin, unauthorized actor and called run cases. If a boundary cannot
+   enforce the invariant, reject the operation instead of declaring it safe.
 5. Build the owner-only interface and exercise the full waiting, supply,
    decline, revoke and failure flow in light and dark at desktop and phone
    widths. Capture matched before/after screenshots and inspect them; document
