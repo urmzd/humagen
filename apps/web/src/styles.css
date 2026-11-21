@@ -379,7 +379,7 @@ button.humagen-tick:focus-visible {
  *
  * The line also says how the agent stands, by form as well as color:
  * idle is thin and quiet, done is thin, working is thick and breathes, waiting
- * on a person is thick, dashed and still, and failed is thick and red.
+ * on a person is thick, dashed, amber and still, and failed is thick and red.
  */
 .humagen-stroke {
   --humagen-stroke-color: var(--humagen-stroke);
@@ -397,6 +397,7 @@ button.humagen-tick:focus-visible {
   --humagen-stroke-w: 2px;
 }
 .humagen-stroke[data-state="waiting"] {
+  --humagen-stroke-color: var(--aui-warn);
   --humagen-stroke-style: dashed;
 }
 .humagen-stroke[data-state="failed"] {

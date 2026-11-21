@@ -103,12 +103,12 @@ export function StatusIcon({ status, size = 16 }: { status: TaskStatus; size?: n
     );
   }
   if (status === "waiting") {
-    // Blocked on a person: a static mark, never a spinner.
+    // Blocked on a person: a static mark in the waiting amber, never a spinner.
     return (
       <span
         aria-hidden
         style={box}
-        className="flex shrink-0 items-center justify-center text-aui-accent/70"
+        className="flex shrink-0 items-center justify-center text-aui-warn"
       >
         <HourglassIcon size={size - 3} />
       </span>
@@ -241,7 +241,7 @@ function AgentItem({
         {/* Settled and fine needs no word; anything else is said, not just colored. */}
         {status !== "complete" && (
           <span
-            className={`shrink-0 text-aui-2xs ${status === "error" ? "text-aui-bad" : "text-aui-accent"}`}
+            className={`shrink-0 text-aui-2xs ${status === "error" ? "text-aui-bad" : status === "waiting" ? "text-aui-warn" : "text-aui-accent"}`}
           >
             {agentStatus[status]}
           </span>
@@ -475,7 +475,7 @@ export function TaskRow({
         </span>
         {inline && (
           <span
-            className={`min-w-0 flex-1 truncate text-aui-2xs ${status === "waiting" ? "text-aui-accent" : "text-aui-muted"}`}
+            className={`min-w-0 flex-1 truncate text-aui-2xs ${status === "waiting" ? "text-aui-warn" : "text-aui-muted"}`}
           >
             {inline}
           </span>

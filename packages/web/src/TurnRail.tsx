@@ -275,7 +275,7 @@ export function TurnRail({
               : isActive
                 ? "aui-wave-now"
                 : t.status === "waiting"
-                  ? "bg-aui-accent/60"
+                  ? "bg-aui-warn"
                   : near > 0 && lit
                     ? "bg-aui-fg/45"
                     : "bg-aui-fg/25";

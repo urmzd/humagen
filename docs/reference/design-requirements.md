@@ -1079,7 +1079,20 @@ a Stop for the whole session, and each running item has a Stop in words.
 - A turn that completed shows no status chip: a still mark and an answer say
   it. Status shows for working (the mark moves), waiting on a person, failed
   and stopped.
+- Waiting on a person is one amber everywhere, the warning color (`--aui-warn`),
+  never the accent or an agent's hue: the dot beside the agent's name, a step
+  line's "waiting for you", a waiting step's mark and its "Waiting for
+  approval", a waiting call to another agent, a file waiting for approval, the
+  rail down an approval, a batch of approvals and a question, the wave's tick,
+  and the dashed edge of a message or run that waits (`Stroke`). The sidebar,
+  Sessions, Home and a session's Details already used it. An agent's own color
+  stays on its mark, its name and its working state; failed stays red. Amber
+  text measures 6.03:1 on the page and 5.86:1 on a card in light, and 10.01:1
+  and 8.99:1 in dark, against the 4.5:1 that text needs.
 - Acceptance: a completed turn has no Done label; the other states still read.
+  `timeline.dom.test.tsx` checks the amber in a waiting turn of an agent with
+  its own hue, and that a working call keeps that hue; `ui.test.tsx` checks the
+  rails and the waiting edge in the stylesheets.
 
 ### DES-030: No AI disclaimer in the console
 
@@ -1748,7 +1761,8 @@ sidebar destinations; the tip card was removed.
   kind counts ("Read 3 files", "Ran 2 commands"), a mix names each kind in
   order ("Read 2 files, ran a command"), and more than three kinds count
   calls ("Used 6 tools"). A failed call adds "1 failed" in the same tone. A
-  call waiting on a person adds "waiting for you" and does not animate.
+  call waiting on a person adds "waiting for you" in the warning amber
+  (DES-029) and does not animate.
 - While a call runs, its run says "Running <tool>".
 - Open, each call is one compact row: an icon for its kind, its name, and
   its command or target in muted monospace, cut with an ellipsis, then its

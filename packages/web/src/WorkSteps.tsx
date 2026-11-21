@@ -270,7 +270,7 @@ function ToolRow({
   const detailId = `tool-${turn.id}-${task.id}`;
   const status = (
     <>
-      {task.status === "waiting" && <span className="shrink-0 text-aui-accent">{w.waiting}</span>}
+      {task.status === "waiting" && <span className="shrink-0 text-aui-warn">{w.waiting}</span>}
       {failed && <span className="shrink-0 text-aui-muted">{w.failed(1)}</span>}
       {took && !running && (
         <span className="ml-auto shrink-0 text-aui-2xs text-aui-muted tabular-nums">{took}</span>
@@ -416,7 +416,7 @@ export function StepGroup({
         {line.running ? <ShimmerVerb>{line.text}</ShimmerVerb> : line.text}
       </span>
       {line.counts && !line.running && line.file && <Counts edit={line.file} />}
-      {line.waiting && <span className="shrink-0 text-aui-accent">{w.waiting}</span>}
+      {line.waiting && <span className="shrink-0 text-aui-warn">{w.waiting}</span>}
       {line.failed > 0 && (
         <span className="shrink-0 text-aui-muted">| {w.failed(line.failed)}</span>
       )}
