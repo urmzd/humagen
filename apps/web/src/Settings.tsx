@@ -4,6 +4,7 @@ import {
   BotIcon,
   BrainIcon,
   GaugeIcon,
+  LayersIcon,
   MicIcon,
   MonitorIcon,
   MoonIcon,
@@ -34,6 +35,7 @@ import {
 import { BillingSettings } from "./Billing.tsx";
 import { ClientSettings } from "./Clients.tsx";
 import { DeletionQueue } from "./DeletionQueue.tsx";
+import { ImageSettings } from "./ImageSettings.tsx";
 import { ModelProviderSettings } from "./ModelProviders.tsx";
 import { PersonalPreferences } from "./PersonalPreferences.tsx";
 import type { PrefsRead } from "./preferences.ts";
@@ -485,6 +487,15 @@ export function Settings({
             </>
           )}
 
+          {section === "images" && (
+            <>
+              <header className="pb-2">
+                <h1 className={pageTitle}>{defaultCopy.images.title}</h1>
+              </header>
+              <ImageSettings canEdit={me.permissions.includes("clients:write")} />
+            </>
+          )}
+
           {section === "limits" && (
             <BillingSettings
               projects={projects}
@@ -598,6 +609,7 @@ export function SettingsNav({
     ? [
         { id: "workspace", label: "Workspace", icon: <ServerIcon size={16} /> },
         { id: "providers", label: "Model providers", icon: <BrainIcon size={16} /> },
+        { id: "images", label: defaultCopy.images.title, icon: <LayersIcon size={16} /> },
         { id: "limits", label: "Limits", icon: <GaugeIcon size={16} /> },
         { id: "voice", label: defaultCopy.voiceSettings.title, icon: <MicIcon size={16} /> },
         { id: "access", label: "Access", icon: <ShieldIcon size={16} /> },

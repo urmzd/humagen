@@ -36,9 +36,9 @@ import { PlusMenu, RunsConversation, SessionSetupPickers, ThreadRoom } from "./p
 import { emptySelection, mentionPicks, type Selection } from "./plusSelection.ts";
 import { type ConversationPanel, type ConversationView, href } from "./route.ts";
 import { Scroller } from "./Scroller.tsx";
-import { DEFAULT_SETUP, type SessionSetup, useSessionOptions } from "./sessionOptions.ts";
 import { ComposerFooter } from "./SessionUsage.tsx";
 import { useThreadSelection } from "./selection.ts";
+import { DEFAULT_SETUP, type SessionSetup, useSessionOptions } from "./sessionOptions.ts";
 import { mentionsIn } from "./tags.ts";
 import { topicsOf } from "./topics.ts";
 import { readFromStart } from "./turns.ts";

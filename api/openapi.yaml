@@ -20585,6 +20585,7 @@ components:
         id: {type: string, description: '"default" for the deployment''s own, else the workspace image''s id.'}
         name: {type: string}
         ref: {type: string, description: "The reference as it was added."}
+        digest: {type: string, description: "The reference pinned, repo@sha256:..., once its check resolved it."}
         status: {type: string, enum: [checking, ready, failed]}
         problem: {type: string, description: "Why its check failed."}
         warm: {type: boolean, description: "An instance is kept started, so a session does not wait for one."}

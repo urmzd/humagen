@@ -11,6 +11,8 @@ export interface SessionImage {
   id: string;
   name: string;
   ref: string;
+  /** The reference pinned, repo@sha256:..., once its check resolved it. */
+  digest?: string;
   status: "checking" | "ready" | "failed";
   problem?: string;
   /** An instance is kept started, so a session does not wait for one. */
@@ -67,4 +69,3 @@ export function useSessionOptions(
 export function forgetSessionOptions(): void {
   optionsRead = undefined;
 }
-

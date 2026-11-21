@@ -4507,7 +4507,9 @@ export const defaultCopy = {
     openOnGitHub: (what: string) => `Open ${what} on GitHub`,
     showMore: (n: number) => `Show ${n} More`,
     /** What the session was set up with before its first message. */
-    chosenEnvironment: "Chosen environment",
+    image: "Image",
+    imageSub: (ref: string, sandbox: string) => [ref, sandbox].filter(Boolean).join(" · "),
+    manageImages: "Manage images",
     chosenRepo: "Chosen repository",
     /** The header's Terminal and Browser, when they cannot open, and why. */
     unavailable: {

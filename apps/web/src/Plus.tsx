@@ -350,9 +350,9 @@ export function PlusMenu({
           ? defaultCopy.navigation.skills
           : pane === "repos"
             ? c.repos
-          : pane === "channels"
-            ? c.channelsIn(projectName(channelProject))
-            : undefined;
+            : pane === "channels"
+              ? c.channelsIn(projectName(channelProject))
+              : undefined;
   const header = pane !== "root" && (
     <div className="mb-1 flex min-w-0 items-center gap-2 border-b border-aui-border pb-1">
       <button

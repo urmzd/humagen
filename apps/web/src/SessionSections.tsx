@@ -7,6 +7,7 @@ import {
   ExternalLinkIcon,
   FolderIcon,
   GitHubIcon,
+  LayersIcon,
   MonitorIcon,
   PlugIcon,
   ServerIcon,
@@ -29,6 +30,7 @@ import {
   type SandboxState,
   sandboxState,
 } from "./sessionContext.ts";
+import { type SessionOptions, useSessionOptions } from "./sessionOptions.ts";
 import type { SessionSummary } from "./sessionSummary.ts";
 import { menuRow, UsageMeter } from "./ui.tsx";
 import { costWords, count } from "./usage.ts";
@@ -149,6 +151,29 @@ export function Section({
   );
 }
 
+/**
+ * The image a session runs in, as the panel names it: the workspace image it
+ * chose, or the deployment's default, with the reference it is pinned to (the
+ * digest, shortened) when the options say.
+ */
+export function chosenImage(
+  id: string | undefined,
+  options: SessionOptions | null | undefined,
+): { name: string; pin: string } {
+  const all = options?.images ?? [];
+  const img =
+    all.find((i) => i.id === (id && id !== "default" ? id : "default")) ??
+    all.find((i) => i.default);
+  if (!img)
+    return { name: id && id !== "default" ? id : defaultCopy.sessionSetup.defaultImage, pin: "" };
+  const digest = img.digest?.match(/@sha256:([0-9a-f]{12})/)?.[1];
+  const repo = img.ref.replace(/@.*$/, "").replace(/:[^/:]+$/, "");
+  return {
+    name: img.default ? defaultCopy.sessionSetup.defaultImage : img.name,
+    pin: digest ? `${repo}@${digest}` : img.ref,
+  };
+}
+
 /** What a session was set up with before its first message (SessionPickers.tsx). */
 export interface SessionChoice {
   /** The image's id; "default" or none is the deployment's own. */
@@ -252,10 +277,17 @@ export function EnvironmentSection({
     ...fromPulls,
   ];
   const files = boxes?.session.files;
-  const environment =
-    chosen?.environment && chosen.environment !== "auto" ? chosen.environment : undefined;
+  const options = useSessionOptions();
+  const image = chosenImage(chosen?.image, options);
   return (
     <Section label={defaultCopy.details.environment} testId="environment">
+      <Row
+        testId="panel-image"
+        mark={<LayersIcon size={16} />}
+        label={image.name}
+        sub={words.imageSub(image.pin, options?.sandbox ?? "")}
+        href={href({ page: "settings", section: "images" })}
+      />
       <Row
         testId="panel-sandbox"
         mark={<ServerIcon size={16} />}
@@ -265,9 +297,7 @@ export function EnvironmentSection({
             ? words.sandboxHint.none
             : state === "unreachable"
               ? words.sandboxHint.unreachable
-              : environment
-                ? `${words.chosenEnvironment}: ${environment}`
-                : undefined
+              : undefined
         }
         value={
           <span className="inline-flex items-center gap-1.5" data-state={state}>
