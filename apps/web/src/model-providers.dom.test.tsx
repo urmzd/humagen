@@ -160,9 +160,16 @@ test("turning a configured provider off and on keeps its row and its key", async
   const menu = screen.getByRole("menu", { name: "Manage OpenAI" });
   assert.equal(within(menu).queryByRole("menuitem", { name: "Check" }), null);
   fireEvent.click(within(menu).getByRole("menuitem", { name: "Remove" }));
-  const remove = screen.getByRole("dialog", { name: "Remove OpenAI" });
-  assert.ok(within(remove).getByText(/deletes the provider configuration and its stored key/));
-  fireEvent.click(within(remove).getByRole("button", { name: "Cancel" }));
+  // Removing asks again in place on the row, with no dialog, and rests on Keep It.
+  const remove = screen.getByRole("group", {
+    name: "Remove OpenAI? This deletes the provider configuration and its stored key.",
+  });
+  assert.equal(screen.queryByRole("dialog"), null);
+  assert.ok(toggle.closest("li")?.contains(remove), "the question sits on the provider's own row");
+  const keep = within(remove).getByRole("button", { name: "Keep It" });
+  assert.equal(document.activeElement, keep);
+  fireEvent.click(keep);
+  assert.equal(screen.queryByRole("group", { name: /^Remove OpenAI/ }), null);
 
   fireEvent.click(toggle);
   await waitFor(() => assert.equal(toggle.getAttribute("aria-checked"), "true"));
@@ -173,6 +180,37 @@ test("turning a configured provider off and on keeps its row and its key", async
       ["PATCH", { enabled: true }],
     ],
   );
+});
+
+test("removing a provider confirms in place, and a refusal is said on its row", async () => {
+  let refuse = true;
+  net = stubFetch({
+    "GET /api/model-providers": () => setup([{ name: "openai", kind: "openai", key_stored: true }]),
+    "DELETE /api/model-providers/openai": () =>
+      refuse
+        ? new Response(
+            JSON.stringify({ error: 'model provider in use: "openai" is used by @writer' }),
+            { status: 409 },
+          )
+        : undefined,
+  });
+  render(<ModelProviderSettings canEdit />);
+  const list = await screen.findByRole("list", { name: "Configured providers" });
+  const ask = () => {
+    fireEvent.click(screen.getByRole("button", { name: "Manage OpenAI" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Remove" }));
+    return screen.getByRole("group", { name: /^Remove OpenAI\? This deletes/ });
+  };
+  fireEvent.click(within(ask()).getByRole("button", { name: "Remove" }));
+  assert.ok(await within(list).findByText(/is used by @writer/));
+  assert.ok(within(list).getByRole("switch", { name: "Enable OpenAI" }), "a refused row stays");
+  assert.equal(screen.queryByRole("group", { name: /^Remove OpenAI/ }), null);
+
+  refuse = false;
+  fireEvent.click(within(ask()).getByRole("button", { name: "Remove" }));
+  await screen.findByRole("button", { name: "Set Up OpenAI" });
+  assert.equal(screen.queryByText(/is used by @writer/), null);
+  assert.equal(net.seen.filter((r) => r.method === "DELETE").length, 2);
 });
 
 test("a chain no enabled provider answers says which it needs", async () => {

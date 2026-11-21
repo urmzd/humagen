@@ -1,13 +1,7 @@
 import { defaultCopy } from "@humagen/components";
 import { PlusIcon } from "@humagen/render-web";
 import { NativeSelect } from "@humagen/render-web/ui/native-select";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@humagen/render-web/ui/sheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@humagen/render-web/ui/sheet";
 import { Switch } from "@humagen/render-web/ui/switch";
 import { type FormEvent, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -23,6 +17,7 @@ import { Pill } from "./cards.tsx";
 import { forgetConfiguredProviders, ProviderMark } from "./ModelChain.tsx";
 import {
   button,
+  Confirm,
   field,
   Label,
   MoreMenu,
@@ -73,7 +68,6 @@ function reach(m: ModelProvider): string {
 }
 
 type Editing = { provider?: ModelProvider; kind: ModelProviderKind; name?: string };
-type Editor = Editing | { remove: ModelProvider };
 
 const providerList = "min-w-0 divide-y divide-aui-border rounded-aui-lg border border-aui-border";
 
@@ -93,6 +87,7 @@ function ProviderRow({
   children,
   status,
   problem,
+  confirm,
 }: {
   name: string;
   kind: string;
@@ -100,6 +95,8 @@ function ProviderRow({
   children?: ReactNode;
   status?: ReactNode;
   problem?: string;
+  /** The second step of removing it, asked in place under the row. */
+  confirm?: ReactNode;
 }) {
   return (
     <li className="flex min-w-0 flex-col gap-2 px-3 py-2.5">
@@ -119,6 +116,7 @@ function ProviderRow({
         {children}
       </div>
       <Problem message={problem ?? null} />
+      {confirm}
     </li>
   );
 }
@@ -140,7 +138,8 @@ export function ModelProviderSettings({
 }) {
   const [setup, setSetup] = useState<ModelProviderSetup | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
-  const [editor, setEditor] = useState<Editor | null>(null);
+  const [editor, setEditor] = useState<Editing | null>(null);
+  const [removing, setRemoving] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [checks, setChecks] = useState<Record<string, ModelProviderCheck | "checking">>({});
   const [changing, setChanging] = useState<Record<string, boolean>>({});
@@ -157,7 +156,7 @@ export function ModelProviderSettings({
   }, []);
   useEffect(() => load(), [load]);
 
-  const begin = (next: Editor, trigger = document.activeElement) => {
+  const begin = (next: Editing, trigger = document.activeElement) => {
     opener.current = trigger instanceof HTMLButtonElement ? trigger : add.current;
     setEditor(next);
   };
@@ -213,11 +212,18 @@ export function ModelProviderSettings({
     if (!m.disabled) check(m.name);
   };
   const remove = async (name: string) => {
-    await api.deleteModelProvider(name);
-    saveWorkspace((own) => own.filter((m) => m.name !== name));
-    setChecks(({ [name]: _old, ...rest }) => rest);
-    setRowProblems(({ [name]: _old, ...rest }) => rest);
-    setEditor(null);
+    setChanging((current) => ({ ...current, [name]: true }));
+    setRowProblems((current) => ({ ...current, [name]: "" }));
+    try {
+      await api.deleteModelProvider(name);
+      saveWorkspace((own) => own.filter((m) => m.name !== name));
+      setChecks(({ [name]: _old, ...rest }) => rest);
+      setRowProblems(({ [name]: _old, ...rest }) => rest);
+    } catch (error) {
+      setRowProblems((current) => ({ ...current, [name]: message(error, words.removeFailed) }));
+    } finally {
+      setChanging(({ [name]: _old, ...rest }) => rest);
+    }
   };
 
   const own = setup?.workspace ?? [];
@@ -255,6 +261,19 @@ export function ModelProviderSettings({
         problem={
           rowProblems[m.name] || (result?.status !== "operational" ? result?.detail : undefined)
         }
+        confirm={
+          removing === m.name && (
+            <Confirm
+              question={`${words.removeProvider(name)}? ${words.removeHint}`}
+              action={words.remove}
+              onConfirm={() => {
+                setRemoving(null);
+                void remove(m.name);
+              }}
+              onKeep={() => setRemoving(null)}
+            />
+          )
+        }
       >
         <div className="flex shrink-0 items-center gap-1">
           <Switch
@@ -285,7 +304,7 @@ export function ModelProviderSettings({
                   label: words.remove,
                   destructive: true,
                   disabled: pending,
-                  onSelect: () => begin({ remove: m }),
+                  onSelect: () => setRemoving(m.name),
                 },
               ]}
             />
@@ -388,76 +407,18 @@ export function ModelProviderSettings({
             }
           }}
         >
-          {editor &&
-            ("remove" in editor ? (
-              <RemoveProvider
-                name={providerName(editor.remove.name)}
-                busy={saving}
-                setBusy={setSaving}
-                onCancel={() => setEditor(null)}
-                onRemove={() => remove(editor.remove.name)}
-              />
-            ) : (
-              <ProviderForm
-                editing={editor}
-                taken={configured.map((m) => m.name)}
-                busy={saving}
-                setBusy={setSaving}
-                onCancel={() => setEditor(null)}
-                onSaved={saved}
-              />
-            ))}
+          {editor && (
+            <ProviderForm
+              editing={editor}
+              taken={configured.map((m) => m.name)}
+              busy={saving}
+              setBusy={setSaving}
+              onCancel={() => setEditor(null)}
+              onSaved={saved}
+            />
+          )}
         </SheetContent>
       </Sheet>
-    </>
-  );
-}
-
-function RemoveProvider({
-  name,
-  busy,
-  setBusy,
-  onCancel,
-  onRemove,
-}: {
-  name: string;
-  busy: boolean;
-  setBusy: (busy: boolean) => void;
-  onCancel: () => void;
-  onRemove: () => Promise<void>;
-}) {
-  const [problem, setProblem] = useState<string | null>(null);
-  const remove = async () => {
-    setBusy(true);
-    setProblem(null);
-    try {
-      await onRemove();
-    } catch (error) {
-      setProblem(message(error, words.removeFailed));
-    } finally {
-      setBusy(false);
-    }
-  };
-  return (
-    <>
-      <SheetHeader>
-        <SheetTitle>{words.removeProvider(name)}</SheetTitle>
-        <SheetDescription>{words.removeHint}</SheetDescription>
-      </SheetHeader>
-      <Problem message={problem} />
-      <div className="flex justify-end gap-2">
-        <button type="button" disabled={busy} className={button} onClick={onCancel}>
-          Cancel
-        </button>
-        <button
-          type="button"
-          disabled={busy}
-          className={`${button} text-aui-bad`}
-          onClick={() => void remove()}
-        >
-          {words.remove}
-        </button>
-      </div>
     </>
   );
 }

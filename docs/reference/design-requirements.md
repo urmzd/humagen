@@ -1124,8 +1124,9 @@ agents, so a line under the prompt bar only cost a phone its height.
   turns and excluded from Health checks. A provider in use by an explicit
   agent model chain or model policy stays on and the row says what uses it.
   Deployment-managed providers show their source without an editable switch.
-  Removing a provider is a separate action that explains that it also deletes
-  the stored key.
+  Removing a provider is a separate action in the row's menu. It asks again
+  in place on the row, saying that it also deletes the stored key, with focus
+  on Keep It; a refusal is said on the row.
 - The page asks again every 30 seconds; the server reuses a report for 30
   seconds.
 - Acceptance: with Anthropic, OpenAI and Gemini keys set, each reads
