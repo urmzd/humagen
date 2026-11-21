@@ -170,7 +170,9 @@ test("the platform's own agent can be paused but never retired, and a reader cha
       seed={{ completed: 0, control, slack: null }}
     />,
   );
-  assert.ok(screen.getByText("The platform keeps this agent. You can pause it, not retire it."));
+  assert.ok(
+    screen.getByText("The platform writes this agent again, so it can be paused, not retired."),
+  );
   assert.equal(screen.queryByRole("button", { name: "Retire" }), null);
   assert.ok(screen.getByRole("button", { name: "Pause" }));
   view.rerender(

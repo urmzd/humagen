@@ -1444,7 +1444,11 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 	case errors.Is(err, evals.ErrBusy):
 		fail(w, http.StatusConflict, "that suite is already running")
 	case errors.Is(err, platform.ErrAgentProtected):
-		fail(w, http.StatusConflict, "the platform keeps this agent: pause it instead")
+		fail(w, http.StatusConflict, detail(err, platform.ErrAgentProtected))
+	case errors.Is(err, platform.ErrAgentRetired):
+		fail(w, http.StatusConflict, detail(err, platform.ErrAgentRetired))
+	case errors.Is(err, wire.ErrRetired):
+		fail(w, http.StatusConflict, detail(err, wire.ErrRetired))
 	case errors.Is(err, platform.ErrStoreConflict):
 		fail(w, http.StatusConflict, detail(err, platform.ErrStoreConflict))
 	case errors.Is(err, wire.ErrConflict):

@@ -2625,10 +2625,23 @@ those sessions, how it answers in Slack (through the workspace's app, or its
 own app from #467) with Set Up, its instructions at a glance with Edit, and
 Stop or remove: Pause (reversible, `PUT /api/agents/{name}/control`, which
 admission already enforces) and Retire (`DELETE /api/agents/{name}`, the same
-as the builder's `retire_agent`: it leaves the workspace, its sessions and
-revisions stay readable, and its name can be used again). Retire asks first.
-The platform's own agents can be paused and never retired (409). Pull requests
-merged are not shown: no route records them per agent.
+as the builder's `retire_agent`). Retire asks first. A retired agent leaves the
+workspace, its sessions and revisions stay readable, and **its name stays
+taken**: a create with it is 409. Everything the platform keeps by an agent's
+name (memory, schedules, action policies, its Slack app, look and home
+project) would otherwise pass to whatever agent took the name next, so the
+name is kept rather than each store being detached one by one, which a new
+store could forget. Its schedules are paused on retiring, and Run Now or
+Resume on one is 409 until it is pointed at another agent; a schedule never
+runs a different agent unless someone chose that agent. The platform's own
+agents, a Store package's (removed with the package, which may install it
+again) and the platform file's (written again at every start) can be paused,
+never retired by a person (409). Pull requests merged are not shown: no route
+records them per agent.
+
+If the look, greeting and starters cannot be saved after the agent is made,
+Customize keeps the draft, says so, and offers Save Look Again (for the agent
+already made, never a second one) or Open Without Look.
 
 Evidence: `agent-create.dom.test.tsx`, `agent-home.dom.test.tsx`,
 `agent-settings.dom.test.tsx`, `route.test.ts`; `TestAgentTemplatesAreListed`,

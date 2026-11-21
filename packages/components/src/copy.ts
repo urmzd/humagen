@@ -2239,6 +2239,11 @@ export const defaultCopy = {
     creating: "Creating…",
     failed: "The agent could not be created.",
     taken: "An agent or a person already has that name. Try another.",
+    retired: "An agent with that name was retired, and its name stays taken. Try another.",
+    lookNotKept: (name: string) =>
+      `${name} was made, but its look, greeting and starters were not saved. Try again, or open it and set them in Look.`,
+    retryLook: "Save Look Again",
+    openWithoutLook: "Open Without Look",
     templatesFailed: "The templates could not be read.",
     unknownTemplate: "That template is not offered any more. Pick another.",
     retry: "Retry",
@@ -2289,12 +2294,12 @@ export const defaultCopy = {
       `${name} is paused and answers nobody. Resume it to let it answer.`,
     retire: "Retire",
     retireWhat: (name: string) =>
-      `Remove ${name} from the workspace. Its sessions and revisions stay readable, and its name can be used again.`,
+      `Remove ${name} from the workspace for good. Its sessions and revisions stay readable, its schedules are paused, and its name stays taken.`,
     retireConfirm: (name: string) => `Retire ${name}?`,
     retireConfirmWhat:
-      "It stops answering at once and leaves every list. Pausing keeps it instead.",
+      "It stops answering at once and leaves every list, and no new agent can take its name. Pausing keeps it instead.",
     keep: "Keep It",
-    kept: "The platform keeps this agent. You can pause it, not retire it.",
+    kept: "The platform writes this agent again, so it can be paused, not retired.",
     controlFailed: "Its state could not be changed. Try again.",
     readOnly: "Only the agent's owners can change these.",
   },
