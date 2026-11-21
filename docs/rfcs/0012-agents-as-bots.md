@@ -195,7 +195,10 @@ unmentioned reply to the platform (`listen`). The platform takes it only in a
 thread whose first message mentioned the app, once the app has answered there,
 which it records on the thread (`listening`), so it survives a restart. A
 refused mention, a failed run, or one still quiet or waiting on someone
-answered nothing and starts no listening. There the agent is asked whether the
+answered nothing and starts no listening. It listens only to the person whose
+mention the app answered most recently there, and only an answer to a newer
+mention hands it to someone else; anyone else mentions the app or an agent.
+There the agent is asked whether the
 message calls for it: it answers, or the message is kept as what was said and
 nothing shows in Slack, so people talking to each other in the thread are not
 answered. A thread a later mention started is answered once and not listened
