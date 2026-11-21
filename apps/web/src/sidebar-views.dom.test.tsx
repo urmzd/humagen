@@ -366,6 +366,74 @@ test("a project group that rendered before its rows arrived opens when they do, 
   await waitFor(() => assert.equal(ops?.open, false, "a group the reader folded stays folded"));
 });
 
+/** Every list and item in the sidebar holds something: no empty block takes up room. */
+function assertNoEmptyBlocks() {
+  const nav = screen.getByRole("complementary", { name: "Navigation" });
+  for (const el of nav.querySelectorAll("ul:not([hidden]), li, details")) {
+    const shown = el.textContent?.trim() || el.querySelector("svg, img, input");
+    assert.ok(shown, `an empty ${el.tagName.toLowerCase()} renders in the sidebar`);
+  }
+}
+
+for (const c of [
+  {
+    name: "no sessions, with projects",
+    threads: [] as ThreadSummary[],
+    pinned: [] as string[],
+    filter: false,
+    says: "Your sessions appear here. Start with New.",
+  },
+  {
+    name: "only pinned sessions",
+    threads: [task("t1", "Pinned plan")],
+    pinned: ["t1"],
+    filter: false,
+    says: "No other sessions yet.",
+  },
+  {
+    name: "a filter that matches nothing",
+    threads: [] as ThreadSummary[],
+    pinned: [] as string[],
+    filter: true,
+    says: "No session matches these filters.",
+  },
+])
+  test(`an empty Recents says one short, true thing and draws nothing else: ${c.name}`, async () => {
+    net = stubFetch({
+      "GET /api/marks": () => ({ archived: [], read: {}, tips: [] }),
+      "GET /api/threads": (_body, query) => ({
+        threads: query.get("standing") ? [] : c.threads,
+        next: null,
+      }),
+    });
+    render(
+      <Bar
+        pinned={c.pinned}
+        projects={[
+          { name: "Launch", title: "Launch" } as ProjectView,
+          { name: "Ops", title: "Ops" } as ProjectView,
+        ]}
+      />,
+    );
+    if (c.filter) {
+      fireEvent.click(await screen.findByRole("button", { name: "Filter conversations" }));
+      const panel = within(await screen.findByRole("dialog", { name: "Filter conversations" }));
+      fireEvent.click(panel.getByRole("button", { name: /^Status / }));
+      fireEvent.click(
+        within(panel.getByRole("group", { name: "Status" })).getByRole("button", {
+          name: "Failed",
+        }),
+      );
+      fireEvent.keyDown(panel.getByRole("button", { name: /^Status / }), { key: "Escape" });
+    }
+    const message = await screen.findByText(c.says);
+    const list = message.closest("ul");
+    assert.ok(list);
+    assert.equal(list.children.length, 1, "the message is the list's only item");
+    assert.equal(list.querySelector("details"), null, "no project folder contradicts the message");
+    assertNoEmptyBlocks();
+  });
+
 test("opening a conversation marks it read", async () => {
   net = stubFetch({
     "GET /api/marks": () => ({ archived: [], read: {}, tips: [] }),
