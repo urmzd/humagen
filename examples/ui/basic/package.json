@@ -1,6 +1,6 @@
 {
   "name": "@humagen/example-basic",
-  "version": "0.174.2",
+  "version": "0.174.3",
   "private": true,
   "type": "module",
   "scripts": {

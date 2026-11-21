@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.174.3 (2026-11-21)
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.174.2...v0.174.3)
+
+
 ## 0.174.2 (2026-11-21)
 
 ### Bug Fixes
