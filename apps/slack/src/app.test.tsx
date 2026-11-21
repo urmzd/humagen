@@ -2205,6 +2205,44 @@ test("a quiet run followed once its answer is posted: the asker's unmentioned re
   assert.equal(w.humagen.started.length, 2);
 });
 
+test("an older mention answered late does not take the thread back from the latest asker", async () => {
+  const w = world({ stallMs: 30, slowPollMs: 40 });
+  // A asks first, and the run goes quiet without a word.
+  await deliver(w, mention("@helper long job", TS));
+  const older = w.humagen.last.id;
+  await emit(w, "run.accepted.v1");
+  await pause(120);
+
+  // B asks after, in the same thread, and is answered.
+  await deliver(
+    w,
+    mention("@helper a quick one", "1700000070.000100", { thread_ts: TS, user: OTHER_USER }),
+  );
+  assert.equal(w.humagen.started.length, 2);
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "Quick answer." });
+
+  // A's answer lands late.
+  w.humagen.set(older, { status: "completed", answer: "Long job done." });
+  await w.app.idle();
+  await pause(100);
+  assert.equal(finals(w, "Long job done.").length, 1, "the late answer was posted");
+
+  // The thread stays with B, who asked last.
+  await deliver(
+    w,
+    said("and the risks?", "1700000900.000100", { thread_ts: TS, user: OTHER_USER }),
+  );
+  assert.equal(w.humagen.started.length, 3, "the latest asker's reply starts one run");
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "ok" });
+  await w.app.idle();
+
+  await deliver(w, said("me again", "1700001000.000100", { thread_ts: TS }));
+  await w.app.idle();
+  assert.equal(w.humagen.started.length, 3, "the earlier asker's reply starts nothing");
+});
+
 test("/agent alone opens the ask form with a picker of who to ask, and the one picked answers", async () => {
   const w = world();
   await deliver(w, command(""));

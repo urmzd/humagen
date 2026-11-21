@@ -205,6 +205,19 @@ type Item =
   | { type: "broken"; error: Error }
   | { type: "tick" };
 
+/** Whether Slack message `a` was posted before `b`. Timestamps are seconds, a dot, then microseconds. */
+function olderTs(a: string, b: string): boolean {
+  const key = (ts: string) => {
+    const [s = "0", us = ""] = ts.split(".");
+    return BigInt(s) * 1_000_000n + BigInt(us.padEnd(6, "0").slice(0, 6) || "0");
+  };
+  try {
+    return key(a) < key(b);
+  } catch {
+    return a < b;
+  }
+}
+
 /** A run being followed right now. */
 interface Live {
   run?: Run;
@@ -485,17 +498,25 @@ export class App {
   private readonly named = new Map<string, string>();
   /**
    * The channel threads this app answered a mention in, and who asked it
-   * there last. A thread is followed only once an answer is posted there. A reply from that person in such a thread is taken as asked,
-   * without a mention (RFC 0012): someone talking to the agent need not
-   * mention the app on every reply, and people talking to each other in the
-   * thread are never answered. Forgotten on a restart.
+   * there last, with the message they asked in. A thread is followed only
+   * once an answer is posted there. A reply from that person in such a
+   * thread is taken as asked, without a mention (RFC 0012): someone talking
+   * to the agent need not mention the app on every reply, and people talking
+   * to each other in the thread are never answered. Forgotten on a restart.
    */
-  private readonly followed = new Map<string, string>();
+  private readonly followed = new Map<string, { user: string; ts: string }>();
 
-  private follow(session: Session, user: string) {
+  /**
+   * Follow a thread for the person whose message at `ts` was answered. An
+   * answer that lands late for an older message does not take the thread
+   * back from someone who asked after them.
+   */
+  private follow(session: Session, user: string, ts: string) {
     const key = sessionName(session);
+    const now = this.followed.get(key);
+    if (now && olderTs(ts, now.ts)) return;
     this.followed.delete(key);
-    this.followed.set(key, user);
+    this.followed.set(key, { user, ts });
     const oldest = this.followed.keys().next().value;
     if (this.followed.size > NAMED_THREADS && oldest !== undefined) this.followed.delete(oldest);
   }
@@ -927,7 +948,7 @@ export class App {
           channel: event.channel ?? "",
           threadTs: event.thread_ts ?? "",
         }),
-      ) === event.user;
+      )?.user === event.user;
     // The manifest asks for channel messages only so the app can follow a
     // thread: any other channel message that does not mention the app is
     // dropped unread here, unless the client's own subscriptions name
@@ -1380,7 +1401,7 @@ export class App {
     if (this.chrome.has(job.session.channel)) void this.chrome.settle(job.session.channel, run);
     // Slack has the answer's words: the asker's next reply needs no mention.
     const enroll = () => {
-      if (job.follows && presenter.answered) this.follow(job.session, job.user);
+      if (job.follows && presenter.answered) this.follow(job.session, job.user, job.triggerTs);
     };
     if (turn.status !== "failed" && turn.status !== "stopped") enroll();
     if (stalled) {
