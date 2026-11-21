@@ -114,7 +114,7 @@ func TestACalledRunGetsNoneOfItsCallersPersonTools(t *testing.T) {
 		}
 		req := runtime.Request{Tenant: "acme", RunID: run.ID, Meta: pinned}
 		req.Definition.Spec.Tools = []string{personToolsGrant}
-		group, err := p.personalToolGroup(ctx, req)
+		group, err := p.personalToolGroup(ctx, req, run.Actor)
 		if errors.Is(err, mcptools.ErrNoPersonCredential) {
 			return 0
 		}

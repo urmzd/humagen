@@ -43,9 +43,9 @@ var ErrInvalid = errors.New("runctx: invalid")
 
 // Context is what a run was admitted with.
 type Context struct {
-	// Person is the subject the run acts for: whoever posted the message
-	// that started it, in a shared thread too. Empty for a run that acts
-	// for nobody, such as a schedule's.
+	// Person is the subject whose settings and limits apply. Called runs
+	// keep the caller's subject for policy checks. The run's actor says
+	// who the run acts for.
 	Person string `json:"person,omitempty"`
 	// Settings are the run's ceilings and preferences, resolved from the
 	// workspace, its project chain and its person.
@@ -74,13 +74,11 @@ func New(person string, resolved settings.Resolved, own personctx.Context) Conte
 	return c
 }
 
-// Narrow is the context a run called by this one gets: the same person, its
-// ceilings tightened by by, and none of the person's own tool servers. A run
-// another agent called acts for nobody (docs/architecture/security.md), so
-// it never reaches a server with the credential of the person who started
-// the tree.
+// Narrow keeps the caller's policy identity and tightens its ceilings.
+// A called run acts for nobody, so it inherits neither personal tool servers
+// nor the person's memory volume.
 func (c Context) Narrow(by settings.Ceilings) Context {
-	return Context{Person: c.Person, Settings: c.Settings.Narrow(by), Memory: c.Memory, ToolServers: []personctx.ToolServer{}}
+	return Context{Person: c.Person, Settings: c.Settings.Narrow(by), ToolServers: []personctx.ToolServer{}}
 }
 
 func (c Context) encode() ([]byte, error) {
