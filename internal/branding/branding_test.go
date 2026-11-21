@@ -31,7 +31,7 @@ func TestNothingSetIsHumagen(t *testing.T) {
 		t.Fatal(err)
 	}
 	b := s.For("default")
-	if b.Name != "Humagen" || b.Title != "Humagen" || b.Wordmark != "humagen" || b.Logo != nil || b.CSS != "" {
+	if b.Name != "Humagen" || b.Title != "Humagen" || b.Wordmark != "Humagen" || b.Logo != nil || b.CSS != "" {
 		t.Fatalf("default = %+v", b)
 	}
 	built := `<html><head><title>the console</title><meta name="theme-color" content="#000000" /></head></html>`

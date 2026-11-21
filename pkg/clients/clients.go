@@ -325,8 +325,8 @@ type GitHubOptions struct {
 	// read through this client.
 	ReadRepositories []string `json:"read_repositories,omitempty"`
 	// Login is the app's own GitHub login, such as "humagen[bot]", mentioned as
-	// @humagen. A comment that mentions it and names no agent is addressed to
-	// the client and answered by its default, as an untagged Slack message is
+	// @Humagen (in any case). A comment that mentions it and names no agent is
+	// addressed to the client and answered by its default, as an untagged Slack message is
 	// (see docs/reference/github.md). While it is empty, a comment that names no agent
 	// starts nothing.
 	Login string `json:"login,omitempty"`
