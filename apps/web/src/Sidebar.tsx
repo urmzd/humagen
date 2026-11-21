@@ -1195,6 +1195,9 @@ export function Sidebar({
     if (selected && can("runs:read")) markRead(selected);
   }, [selected, selectedUpdated, markRead, can]);
   const noConversations = recents.length === 0 && unpinned.length === 0;
+  // Nothing to list under Recents: it says so once, in words that fit why, and
+  // draws no project folders that would contradict it.
+  const listEmpty = unpinned.length === 0;
   const isCurrent = (t: ThreadSummary) => t.id === openRow;
   const canPin = can("runs:read");
   const pinnedProjects = new Set(prefs?.pinned_projects ?? []);
@@ -1576,11 +1579,13 @@ export function Sidebar({
                       </button>
                     </li>
                   )}
-                  {view !== "archived" && noConversations && loading !== "first" && !stalled && (
-                    <li className="px-2.5 py-1.5 text-aui-xs text-aui-muted">
+                  {view !== "archived" && listEmpty && loading !== "first" && !stalled && (
+                    <li data-empty className="px-2.5 py-1.5 text-aui-xs text-aui-muted">
                       {filters > 0
                         ? "No session matches these filters."
-                        : "Your sessions appear here. Start with New."}
+                        : pinnedRows.length > 0
+                          ? "No other sessions yet."
+                          : "Your sessions appear here. Start with New."}
                     </li>
                   )}
                   {view === "flat" && recentRows.map((t) => row(t))}
@@ -1608,6 +1613,7 @@ export function Sidebar({
                       lists.archived.map((t) => row(t))
                     ))}
                   {view === "projects" &&
+                    !listEmpty &&
                     projectGroups.map((project) => {
                       const inGroup = recentRows.filter((t) => (t.project || "~") === project);
                       const all = expanded.has(project);
