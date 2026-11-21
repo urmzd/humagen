@@ -315,12 +315,14 @@ function AgentCall({
   const stopped = Boolean(stop?.stopped);
   const live = task.status === "in_progress" && !stopped;
   const [open, setOpen] = useState(false);
-  const retryCall = useContext(RetryCallContext);
+  const retryCalls = useContext(RetryCallContext);
   // Asking again is in flight, or was accepted; a refusal makes Retry usable again.
   const [retry, setRetry] = useState<"idle" | "pending" | "sent">("idle");
   const failed = task.status === "error" && !stopped;
   const reason = failed ? (failureLine(task.output) ?? sub.summary) : undefined;
   const prompt = callPrompt(task);
+  const call = prompt ? { turnId, agent: sub.name, text: prompt } : undefined;
+  const canRetry = !!call && !!retryCalls && (retryCalls.allows?.(call) ?? true);
   const title = callTitle(task);
   const answer = task.status === "complete" ? task.output?.trim() : undefined;
   // A call someone stopped reads as stopped, calmly, not as a failure.
@@ -399,14 +401,13 @@ function AgentCall({
             >
               {copy.conversation.callFailure.details}
             </button>
-            {retryCall && prompt && (
+            {canRetry && retryCalls && call && (
               <button
                 type="button"
                 disabled={retry !== "idle"}
-                aria-label={copy.conversation.callFailure.retryLabel(sub.name)}
                 onClick={() => {
                   setRetry("pending");
-                  retryCall({ turnId, agent: sub.name, text: prompt }).then(
+                  retryCalls.ask(call).then(
                     () => setRetry("sent"),
                     () => setRetry("idle"),
                   );
@@ -416,7 +417,10 @@ function AgentCall({
                 <RefreshIcon size={12} aria-hidden />
                 {retry === "idle"
                   ? copy.conversation.callFailure.retry
-                  : copy.conversation.callFailure.retrying}
+                  : retry === "pending"
+                    ? copy.conversation.callFailure.retrying
+                    : copy.conversation.callFailure.retried}
+                <span className="sr-only"> {sub.name}</span>
               </button>
             )}
           </span>
@@ -454,12 +458,19 @@ export interface RetryCall {
 }
 
 /**
- * How a host asks an agent again what a delegated call that failed asked
- * it, as the conversation's next message. Without one, a failed call offers
- * no Retry. Its promise settles when the host has posted, or refused: a
- * refusal leaves Retry ready to press again, and the host says why.
+ * How a host asks an agent again what a delegated call that failed asked it,
+ * as the conversation's next message. `ask` settles when the host has posted,
+ * or refused: a refusal leaves Retry ready to press again, and the host says
+ * why. `allows` leaves Retry off a call the host could not post (one too long
+ * for a message). Without a host, or where a host provides `null` (a private
+ * side chat, another person's answer), a failed call offers no Retry.
  */
-export const RetryCallContext = createContext<((call: RetryCall) => Promise<void>) | null>(null);
+export interface RetryCalls {
+  ask: (call: RetryCall) => Promise<void>;
+  allows?: (call: RetryCall) => boolean;
+}
+
+export const RetryCallContext = createContext<RetryCalls | null>(null);
 
 /**
  * A connection the run needed and the person has not made, as a card under

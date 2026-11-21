@@ -675,6 +675,7 @@ var copyKeyList = []string{
 	"conversation.artifactUse",
 	"conversation.artifactVersions",
 	"conversation.callFailure.details",
+	"conversation.callFailure.retried",
 	"conversation.callFailure.retry",
 	"conversation.callFailure.retryFailed",
 	"conversation.callFailure.retrying",

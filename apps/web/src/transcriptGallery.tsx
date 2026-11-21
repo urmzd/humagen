@@ -32,7 +32,7 @@ function Transcript() {
         </div>
         <WebSurface>
           <AgentTint name={turn.agent.name}>
-            <RetryCallContext.Provider value={async () => {}}>
+            <RetryCallContext.Provider value={{ ask: async () => {} }}>
               <AgentMessage turn={turn} disclaimer={false} activity={false} />
             </RetryCallContext.Provider>
           </AgentTint>

@@ -45,8 +45,10 @@ test("a failed delegated run says why, opens its run, and Retry asks the agent a
   const asked: RetryCall[] = [];
   show(
     <RetryCallContext.Provider
-      value={async (c) => {
-        asked.push(c);
+      value={{
+        ask: async (c) => {
+          asked.push(c);
+        },
       }}
     >
       <AgentMessage turn={failedTurn()} disclaimer={false} />
@@ -65,7 +67,7 @@ test("a failed delegated run says why, opens its run, and Retry asks the agent a
   });
   const retry = () =>
     within(failure).getByRole("button", {
-      name: call.retryLabel("github-reviewer"),
+      name: `${call.retry} github-reviewer`,
     }) as HTMLButtonElement;
   fireEvent.click(retry());
   assert.deepEqual(asked, [
@@ -75,37 +77,70 @@ test("a failed delegated run says why, opens its run, and Retry asks the agent a
       text: "Check the CI status and open pull requests of urmzd/humagen and urmzd/saige.",
     },
   ]);
-  // Posted, it says it is retrying and is not pressed again.
-  await waitFor(() => assert.equal(retry().textContent, call.retrying));
-  assert.equal(retry().disabled, true);
+  // Posted, it says so and is not pressed again.
+  const sent = () =>
+    within(failure).getByRole("button", {
+      name: `${call.retried} github-reviewer`,
+    }) as HTMLButtonElement;
+  await waitFor(() => assert.equal(sent().disabled, true));
 });
 
 test("a Retry the host could not post is ready to press again", async () => {
   let attempts = 0;
   show(
     <RetryCallContext.Provider
-      value={() => {
-        attempts++;
-        return Promise.reject(new Error("503 Service Unavailable"));
+      value={{
+        ask: () => {
+          attempts++;
+          return Promise.reject(new Error("503 Service Unavailable"));
+        },
       }}
     >
       <AgentMessage turn={failedTurn()} disclaimer={false} />
     </RetryCallContext.Provider>,
   );
   const retry = () =>
-    screen.getByRole("button", { name: call.retryLabel("github-reviewer") }) as HTMLButtonElement;
+    screen.getByRole("button", { name: `${call.retry} github-reviewer` }) as HTMLButtonElement;
   fireEvent.click(retry());
   await waitFor(() => assert.equal(retry().disabled, false));
-  assert.equal(retry().textContent, call.retry);
+  assert.equal(retry().textContent, `${call.retry} github-reviewer`);
   fireEvent.click(retry());
   await waitFor(() => assert.equal(attempts, 2));
+});
+
+test("a call the host could not post again offers no Retry", () => {
+  show(
+    <RetryCallContext.Provider value={{ ask: async () => {}, allows: () => false }}>
+      <AgentMessage turn={failedTurn()} disclaimer={false} />
+    </RetryCallContext.Provider>,
+  );
+  assert.equal(screen.queryByRole("button", { name: `${call.retry} github-reviewer` }), null);
+  assert.ok(screen.getByTestId("call-failure"));
+});
+
+test("a link whose text names another reference stays a plain link", () => {
+  const { container } = show(
+    <AgentMessage
+      turn={{
+        ...referencesTurn(),
+        text: "See [urmzd/humagen#7](https://github.com/evil/repo/pull/8) and [the fix](https://github.com/a/b/pull/9).",
+      }}
+      disclaimer={false}
+    />,
+  );
+  const chips = [...container.querySelectorAll("a[data-github-ref]")].map((a) => a.textContent);
+  assert.deepEqual(chips, ["the fix"]);
+  assert.equal(
+    screen.getByRole("link", { name: "urmzd/humagen#7" }).getAttribute("href"),
+    "https://github.com/evil/repo/pull/8",
+  );
 });
 
 test("without a host that can ask again, a failed delegated run offers no Retry", () => {
   show(<AgentMessage turn={failedTurn()} disclaimer={false} />);
   const failure = screen.getByTestId("call-failure");
   assert.equal(
-    within(failure).queryByRole("button", { name: call.retryLabel("github-reviewer") }),
+    within(failure).queryByRole("button", { name: `${call.retry} github-reviewer` }),
     null,
   );
 });

@@ -21,6 +21,7 @@ export { Feedback, FeedbackPromptContext, Rating, RatingSelectionContext } from 
 export { ArtifactIcon, FileTile, phaseLabel } from "./file";
 export { Checkboxes, FormContext, FormStore, useGroup } from "./form";
 export {
+  chipRefOf,
   type GitHubRef,
   GitHubRefKindsContext,
   GitHubRefLink,

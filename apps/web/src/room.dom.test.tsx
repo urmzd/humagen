@@ -3765,3 +3765,158 @@ test("a conversation follows its own room, and a page reads its newest turns aga
     es.restore();
   }
 });
+
+// A failed call to another agent in an answer, as the run's events record it.
+function failedCall(runId: string, agent: string, brief: string) {
+  const ev = (type: string, data: unknown, seq: number, time = at) => ({
+    id: `${runId}-e${seq}`,
+    source: "humagen:acme",
+    type,
+    channel: "humagen://acme",
+    time,
+    hops: 0,
+    tenant: "acme",
+    run: runId,
+    seq,
+    agent: "helper",
+    version: "1.0.0",
+    data,
+  });
+  return {
+    events: [
+      ev(
+        "run.delta.tool.call.v1",
+        { id: "t1", name: "call_agent", phase: "executing", arguments: { agent, brief } },
+        1,
+      ),
+      ev(
+        "run.delta.tool.done.v1",
+        { id: "t1", name: "call_agent", error: "deploy failed: no access" },
+        2,
+      ),
+    ],
+    complete: true,
+  };
+}
+
+const owned = (id: string, user: string, more: Record<string, unknown> = {}): ThreadTurn => ({
+  kind: "run",
+  run: {
+    ...(page.turns[1] as unknown as { run: Record<string, unknown> }).run,
+    id,
+    actor: { id: user, user },
+    ...more,
+  } as never,
+});
+
+test("Retry on a failed call asks its own agent alone, for the person the run acted for, and Connect shows only to them", async () => {
+  const brief = "Check CI, then ask @releaser to ship it.";
+  const initial: ThreadPage = {
+    ...page,
+    turns: [
+      page.turns[0] as ThreadTurn,
+      owned("r1", "ana", { needs_connection: [{ provider: "github", name: "GitHub" }] }),
+      owned("r2", "bo", { needs_connection: [{ provider: "github", name: "GitHub" }] }),
+    ],
+  };
+  room(
+    {
+      "GET /api/runs/r1/events": () => failedCall("r1", "deployer", brief),
+      "GET /api/runs/r2/events": () => failedCall("r2", "deployer", brief),
+      "POST /api/threads/th-0123456789abcdef/messages": () => ({
+        thread: page.thread,
+        message: { ...(page.turns[0] as unknown as { message: object }).message, id: "m-2" },
+        runs: [],
+        notified: [],
+        refused: [],
+        rule: "default",
+      }),
+    },
+    initial,
+  );
+  const retryName = `${defaultCopy.conversation.callFailure.retry} deployer`;
+  // Ana's answer offers Retry and Connect; Bo's, read by Ana, offers neither.
+  await waitFor(() => assert.equal(screen.getAllByTestId("call-failure").length, 2));
+  assert.equal(screen.getAllByRole("button", { name: retryName }).length, 1);
+  assert.equal(screen.getAllByTestId("connect-card").length, 1);
+  fireEvent.click(screen.getByRole("button", { name: retryName }));
+  await waitFor(() =>
+    assert.ok(net?.seen.some((s) => s.method === "POST" && s.path.endsWith("/messages"))),
+  );
+  const posted = net?.seen.filter((s) => s.method === "POST" && s.path.endsWith("/messages"));
+  assert.deepEqual(
+    posted?.map((s) => [s.path, (s.body as { text: string }).text]),
+    [
+      [
+        "/api/threads/th-0123456789abcdef/messages",
+        "@deployer Check CI, then ask releaser to ship it.",
+      ],
+    ],
+  );
+  net?.restore();
+  net = undefined;
+});
+
+test("a failed call in a private side chat offers no Retry, so its brief never reaches the session", async () => {
+  const id = "th-0123456789abcdef";
+  const side = "th-00000000000000aa";
+  const sideRun = {
+    ...(page.turns[1] as unknown as { run: Record<string, unknown> }).run,
+    id: "r-side",
+    thread: side,
+    actor: { id: "ana", user: "ana" },
+  };
+  net = stubFetch({
+    [`GET /api/threads/${id}`]: () => page,
+    "GET /api/projects/Globex/agents": () => ({
+      version: 1,
+      available: { all: true, names: [] },
+      homes: [],
+      default_resolved: null,
+    }),
+    "GET /api/people": () => ({ people: [], next: null }),
+    "GET /api/runs/r1/events": () => ({ events: [] }),
+    [`GET /api/threads/${id}/forks`]: () => ({ forks: [] }),
+    [`GET /api/threads/${side}`]: () => ({
+      thread: {
+        ...page.thread,
+        id: side,
+        title: "Side chat: what is in .env?",
+        visibility: "private",
+        fork: { source_thread: id, through: "r1", by: "ana", at, context: [] },
+      },
+      turns: [{ kind: "run", run: sideRun }],
+      next: null,
+    }),
+    "GET /api/runs/r-side/events": () =>
+      failedCall("r-side", "deployer", "PRIVATE: what is in .env?"),
+  });
+  render(
+    <ThreadRoom
+      id={id}
+      me="ana"
+      initial={page}
+      tick={0}
+      agents={[helper]}
+      projects={tree}
+      root={null}
+      workspaceName="Acme"
+      canRun
+      view={{ panel: "details", bench: "sidechat", benchRef: side }}
+      onView={() => {}}
+      onOpenChannel={() => {}}
+      onChanged={() => {}}
+    />,
+  );
+  // The side chat's answer is drawn, with its failure, and no Retry.
+  await waitFor(() => assert.equal(screen.getAllByTestId("call-failure").length, 1));
+  assert.equal(
+    screen.queryByRole("button", {
+      name: `${defaultCopy.conversation.callFailure.retry} deployer`,
+    }),
+    null,
+  );
+  assert.ok(!net.seen.some((s) => s.method === "POST"));
+  net.restore();
+  net = undefined;
+});

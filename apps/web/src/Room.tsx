@@ -16,12 +16,13 @@ import {
   messageActionButton,
   type RetryCall,
   RetryCallContext,
+  type RetryCalls,
   railEntry,
   Thread as ThreadList,
   type TurnRailEntry,
   useQueue,
 } from "@humagen/web";
-import { Fragment, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, type ReactNode, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { ApprovalToggle } from "./ApprovalToggle.tsx";
 import { actedFor, citationOf, type Run, turnOf } from "./adapter.ts";
 import {
@@ -614,6 +615,10 @@ function AnswerView({
   actions?: ReactNode;
 }) {
   const { run, stop } = useRunStop(originalRun, canStop);
+  // What a run of someone else's needed, and asking its calls again, are theirs:
+  // another reader sees neither the Connect card nor Retry on it.
+  const ownsRun = !!me && actedFor(originalRun) === me;
+  const retryCalls = useContext(RetryCallContext);
   const itemStops = useItemStops({
     run,
     allowed: canStop,
@@ -657,21 +662,23 @@ function AnswerView({
       <AgentTint name={run.agent}>
         <RunFeedbackHost turn={shown}>
           {(rated) => (
-            <AgentMessage
-              actions={actions}
-              stop={stop}
-              itemStops={itemStops}
-              disclaimer={false}
-              activity={false}
-              timestamp={<MessageTime at={run.created_at} />}
-              turn={rated}
-              copy={copyFor(ask)}
-              itemActions={itemActions(run)}
-              capabilities={{ regenerate: false }}
-              onAskAgent={onAsk}
-              onReply={onReply}
-              onRedirect={onRedirect}
-            />
+            <RetryCallContext.Provider value={ownsRun ? retryCalls : null}>
+              <AgentMessage
+                actions={actions}
+                stop={stop}
+                itemStops={itemStops}
+                disclaimer={false}
+                activity={false}
+                timestamp={<MessageTime at={run.created_at} />}
+                turn={ownsRun ? rated : { ...rated, needsConnection: undefined }}
+                copy={copyFor(ask)}
+                itemActions={itemActions(run)}
+                capabilities={{ regenerate: false }}
+                onAskAgent={onAsk}
+                onReply={onReply}
+                onRedirect={onRedirect}
+              />
+            </RetryCallContext.Provider>
           )}
         </RunFeedbackHost>
       </AgentTint>
@@ -690,10 +697,6 @@ function AnswerView({
 const noHomes: Record<string, string> = {};
 
 /**
- * A shared thread: its people's messages and its agents' answers in the
- * order they were made, who takes part, and a composer that tags with @.
- */
-/**
  * What an answer in the conversation reads from around it: where a file it
  * wrote opens, what each GitHub number named in the session is, and how a
  * failed call to another agent is asked again.
@@ -701,23 +704,35 @@ const noHomes: Record<string, string> = {};
 function TranscriptContexts({
   fileLinks,
   refKinds,
-  retryCall,
+  retryCalls,
   children,
 }: {
   fileLinks: FileLinks;
   refKinds: ReadonlyMap<string, "pull" | "issue">;
-  retryCall: ((call: RetryCall) => Promise<void>) | null;
+  retryCalls: RetryCalls | null;
   children: ReactNode;
 }) {
   return (
     <FileLinkContext.Provider value={fileLinks}>
       <GitHubRefKindsContext.Provider value={refKinds}>
-        <RetryCallContext.Provider value={retryCall}>{children}</RetryCallContext.Provider>
+        <RetryCallContext.Provider value={retryCalls}>{children}</RetryCallContext.Provider>
       </GitHubRefKindsContext.Provider>
     </FileLinkContext.Provider>
   );
 }
 
+/** The most characters a message holds (threads.MaxText on the server). */
+const MESSAGE_MAX = 8000;
+
+/** What Retry posts: the call's agent, tagged, then its brief with every other tag made a word. */
+export function retryText({ agent, text }: RetryCall): string {
+  return `@${agent} ${text.replace(/(^|[^\w@])@(?=[\w.-])/g, "$1")}`;
+}
+
+/**
+ * A shared thread: its people's messages and its agents' answers in the
+ * order they were made, who takes part, and a composer that tags with @.
+ */
 export function ThreadRoom({
   id,
   me,
@@ -996,19 +1011,24 @@ export function ThreadRoom({
   const asked = new Set(turns.flatMap((t) => (t.message?.answers ? [t.message.answers.run] : [])));
   // A run waiting on a person, such as an expert's answer, is shown still.
   const busy = turns.some((t) => t.run && isWorking(t.run.status));
-  // A delegated call that failed is asked again as the next message, tagging its
-  // agent. A refusal is said under the conversation, and Retry can be pressed again.
-  const retryCall = async ({ agent, text }: RetryCall) => {
-    setProblem(null);
-    try {
-      await coworking.post(id, { text: `@${agent} ${text}` });
-      onChanged();
-    } catch (error) {
-      setProblem(
-        error instanceof Error ? error.message : defaultCopy.conversation.callFailure.retryFailed,
-      );
-      throw error;
-    }
+  // A delegated call that failed is asked again as the next message, tagging
+  // its own agent alone: other agents its brief names are words, not tags, so
+  // Retry wakes nobody the call did not. A refusal is said under the
+  // conversation, and Retry can be pressed again.
+  const retryCalls: RetryCalls = {
+    ask: async (call) => {
+      setProblem(null);
+      try {
+        await coworking.post(id, { text: retryText(call) });
+        onChanged();
+      } catch (error) {
+        setProblem(
+          error instanceof Error ? error.message : defaultCopy.conversation.callFailure.retryFailed,
+        );
+        throw error;
+      }
+    },
+    allows: (call) => [...retryText(call)].length <= MESSAGE_MAX,
   };
   const onAction = (a: UiAction) => {
     if (a.id === ActionId.openRun)
@@ -1084,7 +1104,7 @@ export function ThreadRoom({
         <TranscriptContexts
           fileLinks={fileLinks}
           refKinds={refKinds}
-          retryCall={posts ? retryCall : null}
+          retryCalls={posts ? retryCalls : null}
         >
           <section className="flex min-h-0 min-w-0 flex-1">
             <ConversationPage

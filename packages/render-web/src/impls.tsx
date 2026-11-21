@@ -28,7 +28,7 @@ import { CodeBlock, Terminal } from "./code";
 import { Feedback } from "./feedback";
 import { FileTile } from "./file";
 import { Checkboxes } from "./form";
-import { GitHubRefLink, githubRefOf, remarkGitHubRefs } from "./github-refs";
+import { chipRefOf, GitHubRefLink, remarkGitHubRefs } from "./github-refs";
 import {
   AlertOctagonIcon,
   AlertTriangleIcon,
@@ -133,7 +133,7 @@ const linkRenderer: Components["a"] = ({ href, children }) => {
   const label = textOf(children);
   const cite = CITE.exec(label);
   if (cite?.[1]) return <CitationChip href={href} label={cite[1]} />;
-  const ref = githubRefOf(href);
+  const ref = chipRefOf(href, label);
   if (ref && href)
     return (
       <GitHubRefLink

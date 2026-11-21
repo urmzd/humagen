@@ -314,6 +314,13 @@ function valueText(v: unknown): string {
   return JSON.stringify(v);
 }
 
+const MAX_VALUE = 2000;
+
+/** A value long enough to drown the table, cut with an ellipsis; the whole call is in its result and the activity. */
+function clipValue(text: string): string {
+  return text.length > MAX_VALUE ? `${text.slice(0, MAX_VALUE - 1)}…` : text;
+}
+
 /** A call's arguments as a table of names and values, the way a form reads. */
 function InputTable({ args, copy }: { args: Record<string, unknown>; copy: Copy }) {
   const rows = Object.entries(args).filter(([, v]) => v !== undefined && v !== "");
@@ -328,8 +335,8 @@ function InputTable({ args, copy }: { args: Record<string, unknown>; copy: Copy 
         {rows.map(([k, v]) => (
           <div key={k} className="contents">
             <dt className="text-aui-muted">{keyWords(k)}</dt>
-            <dd className="m-0 min-w-0 whitespace-pre-wrap font-mono text-aui-2xs text-aui-fg [overflow-wrap:anywhere]">
-              {valueText(v)}
+            <dd className="m-0 max-h-40 min-w-0 overflow-auto whitespace-pre-wrap font-mono text-aui-2xs text-aui-fg [overflow-wrap:anywhere]">
+              {clipValue(valueText(v))}
             </dd>
           </div>
         ))}

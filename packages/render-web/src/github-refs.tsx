@@ -69,6 +69,30 @@ export const GitHubRefKindsContext = createContext<ReadonlyMap<string, "pull" | 
   new Map(),
 );
 
+const WRITTEN_REF = /^([\w.-]+\/[\w.-]+)([#@])(\w+)$/;
+
+/**
+ * The reference a link is a chip for: the one its address names, unless its
+ * text names a different reference, which would put one reference's name on
+ * another's link. Such a link stays a plain link.
+ */
+export function chipRefOf(href: string | undefined, label: string): GitHubRef | undefined {
+  const ref = githubRefOf(href);
+  if (!ref) return undefined;
+  const written = WRITTEN_REF.exec(label.trim());
+  if (!written) return ref;
+  const [, repo, mark, id] = written as unknown as [string, string, string, string];
+  const [, ownRepo = "", ownId = ""] = /^(.*)[#@](\w+)$/.exec(ref.label) ?? [];
+  const a = id.toLowerCase();
+  const b = ownId.toLowerCase();
+  const kindMatches = (mark === "@") === (ref.kind === "commit");
+  const same =
+    kindMatches &&
+    refKey(repo) === refKey(ownRepo) &&
+    (mark === "@" ? a.startsWith(b) || b.startsWith(a) : a === b);
+  return same ? ref : undefined;
+}
+
 /** The reference a link's address names, or undefined for any other address. */
 export function githubRefOf(href: string | undefined): GitHubRef | undefined {
   const m = href ? ADDRESS.exec(href) : null;

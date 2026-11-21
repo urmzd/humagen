@@ -2517,10 +2517,16 @@ Terminal and Browser tabs taking a result.
   the rest. A run of steps counts its failures beside its line; the count is
   its own button that opens the run at the first failed step.
 - A failed call to another agent says why under its item, with Show Details,
-  which opens its run, and Retry where the host can post: it asks the same
-  agent the same brief as the conversation's next message
-  (`ActionId.retryCall`). There is no Retry on a single tool call, since no
+  which opens its run, and Retry where the host can post (`RetryCallContext`):
+  it asks the same agent the same brief as the conversation's next message,
+  tagging that agent alone (other agents the brief names become plain words).
+  Retry is offered only to the person the run acted for, never in a private
+  side chat (its brief would reach the shared session), and never for a brief
+  too long for one message. A refused post leaves Retry ready again; a sent
+  one reads "Asked again". There is no Retry on a single tool call, since no
   route runs one call again.
+- The Connect card shows only to the person the run acted for: the
+  connection it needed is theirs.
 - A connection a run needed is said by the platform, not read from the
   answer: when a tool group needs the person's own credential and they have
   none (`ErrNoPersonCredential`), the run and the turn it belongs to record

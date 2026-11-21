@@ -2134,7 +2134,7 @@ export const defaultCopy = {
       openFile: (path: string) => `Open ${path} in the Workspace`,
       details: (what: string) => `Details of ${what}`,
       /** The failed count, as a button that opens the run of steps at its failures. */
-      showFailed: (n: number) => `Show the ${n === 1 ? "failed step" : `${n} failed steps`}`,
+      showFailed: (n: number) => `${n} failed, show ${n === 1 ? "it" : "them"}`,
       showDetails: "Show details",
       hideDetails: "Hide details",
       input: "Input",
@@ -2146,8 +2146,9 @@ export const defaultCopy = {
     callFailure: {
       details: "Show details",
       retry: "Retry",
-      retryLabel: (agent: string) => `Ask ${agent} again`,
       retrying: "Retrying",
+      /** Posted: the agent was asked again, in the conversation's next message. */
+      retried: "Asked again",
       retryFailed: "Could not ask again. Try once more.",
     },
     /** A connection a run needed that the person has not made. */
