@@ -195,8 +195,11 @@ is their handle, and anyone else stays plain and is refused. When the app is
 mentioned in a thread, the people's messages since it was last asked there are
 posted first, each as its person and posted only, so the room in Humagen reads as
 it did in Slack. Each message is posted once by its ts: a redelivered event
-answers `repeated` and starts nothing again. Outside a bound channel the
-client's default answers an untagged message; the client's allow-list holds
+answers `repeated` and starts nothing again. A thread stays with the agent it was asked for: the one agent a
+message tags, once it answers, becomes the thread's selected agent, and the
+thread's selected agents answer its untagged messages ahead of any default,
+until a message tags another (RFC 0012). Outside a bound channel the
+client's default answers an untagged message in a thread nobody tagged; the client's allow-list holds
 everywhere, and for a default of `*` only the agents on a client's list are
 asked to join. `@auto` tags nobody. The machine reads every thread on its
 own surface, wherever it is filed, but a person it posts or answers for is held to where they may

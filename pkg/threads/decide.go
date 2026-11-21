@@ -150,9 +150,12 @@ func Decide(in Input) Decision {
 			skill = skill || m.Refused == ""
 		}
 	}
-	// A thread's selected agents answer only in the console: a client's
-	// surface keeps its defaults.
-	routed := in.TagsOnly && len(in.Routed) > 0
+	// A thread's selected agents answer its untagged messages, in the
+	// console and on a client's surface alike, ahead of any default. On a
+	// surface the one agent a message tags becomes the thread's selection
+	// (the platform's keepTagged), so a Slack thread started for one agent
+	// stays that agent's (RFC 0012).
+	routed := len(in.Routed) > 0
 	d := Decision{Agents: []string{}, Mentions: ms}
 	switch {
 	case tagged:

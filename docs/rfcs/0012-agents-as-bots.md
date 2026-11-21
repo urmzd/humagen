@@ -350,8 +350,9 @@ Small changes that make each agent read as itself:
 2. **Console.** The Home tab, the regrouped tabs, the new setup steps.
 3. **Slack.** Built: `chat:write.customize` and the agent's name and picture
    on every post, stream and status line, and Home's Meet your agents.
-   Still to do: threads that stay with the agent they
-   were started for and are followed without a mention, `/ask` with the picker, the lead and the agents on App
+   Built: threads that stay with the agent they were started for
+   (`keepTagged`, and `Decide` letting a thread's selection answer on a
+   surface). Still to do: threads followed without a mention, `/ask` with the picker, the lead and the agents on App
    Home.
 4. **Linked apps.** The manifest from the agent, the connect flow with
    `auth.test`, team-wide resolution of linked bots, several clients in
