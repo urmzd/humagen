@@ -86,8 +86,13 @@ func placeOfRun(r runs.Run) Place {
 // its own, with no record, and it lives where its run does: with the turn it
 // serves, whose words it was sent.
 func (p *Platform) placeOfConversation(tenant, id, project string) Place {
-	if r, err := p.Runs.Get(tenant, id); err == nil && r.Origin == runs.OriginSystem && r.Thread == id {
-		return placeOfRun(r)
+	first, _ := p.Runs.Get(tenant, id)
+	return conversationPlace(id, project, first)
+}
+
+func conversationPlace(id, project string, first runs.Run) Place {
+	if first.Origin == runs.OriginSystem && first.Thread == id {
+		return placeOfRun(first)
 	}
 	return Place{Project: project, Thread: id}
 }
