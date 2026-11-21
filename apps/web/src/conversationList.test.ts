@@ -8,6 +8,7 @@ import {
   NO_MARKS,
   partition,
   projectOrder,
+  rowState,
   standingOf,
 } from "./conversationList.ts";
 
@@ -116,4 +117,49 @@ test("an unnamed conversation is titled from its first message, as the server ti
     ],
   ];
   for (const [input, want] of cases) assert.equal(deriveTitle(input), want, input);
+});
+
+test("a row's state: waiting on the reader, then a failure, then working, then an alert, with a dot for what is new", () => {
+  const words = {
+    waitingYou: (what: string, kind?: string) => `you:${kind ?? ""}:${what}`,
+    waitingOther: (what: string, kind?: string) => `other:${kind ?? ""}:${what}`,
+    failed: (reason: string) => `failed:${reason}`,
+    working: "working",
+    alert: (title: string) => `alert:${title}`,
+    dot: { you: "", failed: "", unread: "" },
+  };
+  const since = "2026-01-01T00:00:00Z";
+  const m: Marks = { archived: [], read: {}, tips: [], since };
+  const s = (over: Partial<ThreadSummary>) => rowState(t("a", over), m, words, { session: true });
+  assert.deepEqual(
+    s({
+      active: 1,
+      waiting: 1,
+      waiting_for: "deploy",
+      waiting_kind: "approval",
+      waiting_on_you: true,
+    }),
+    { line: { tone: "warn", text: "you:approval:deploy" }, dot: "you" },
+  );
+  assert.deepEqual(s({ active: 1, waiting: 1, waiting_on_you: false }), {
+    line: { tone: "muted", text: "other::" },
+    dot: undefined,
+  });
+  assert.deepEqual(s({ failed: 1, failure: "boom", last_agent: true }), {
+    line: { tone: "bad", text: "failed:boom" },
+    dot: "failed",
+  });
+  // A session listing names no failure once a later turn answered.
+  assert.deepEqual(s({ failed: 1 }), { line: undefined, dot: undefined });
+  // Other listings only count failures.
+  assert.deepEqual(rowState(t("a", { failed: 1 }), m, words).line, {
+    tone: "bad",
+    text: "failed:",
+  });
+  assert.deepEqual(s({ active: 1 }).line, { tone: "muted", text: "working" });
+  assert.deepEqual(
+    rowState(t("a"), m, words, { alert: { priority: "urgent", title: "Hi" } }).line,
+    { tone: "warn", text: "alert:Hi" },
+  );
+  assert.deepEqual(s({ last_agent: true }), { line: undefined, dot: "unread" });
 });

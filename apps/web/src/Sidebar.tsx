@@ -1220,7 +1220,10 @@ export function Sidebar({
       current={isCurrent(t)}
       pinned={opts.pinned ?? false}
       archived={archivedSet.has(t.id)}
-      state={rowState(t, marks, { session: sessionMode, alert: alertBySession.get(t.id) })}
+      state={rowState(t, marks, defaultCopy.sidebar.state, {
+        session: sessionMode,
+        alert: alertBySession.get(t.id),
+      })}
       unread={isUnread(t, marks)}
       ageText={defaultCopy.sidebar.movedAgo(age(t.updated_at, now))}
       to={href({ page: "conversation", id: t.id })}

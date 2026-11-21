@@ -1,4 +1,4 @@
-import { defaultCopy } from "@humagen/components";
+import type { defaultCopy } from "@humagen/components";
 import type { Marks, ThreadSummary } from "./api.ts";
 
 /**
@@ -63,6 +63,12 @@ export function standingOf(t: ThreadSummary, marks: Marks): RowStanding {
   return isUnread(t, marks) ? "unread" : "";
 }
 
+/** The words a row's state is said in (defaultCopy.sidebar.state). */
+export type StateWords = Pick<
+  typeof defaultCopy.sidebar.state,
+  "waitingYou" | "waitingOther" | "failed" | "working" | "alert"
+>;
+
 /** What a row says about its state: a line in words, a dot for what is new, and whether it runs. */
 export type RowState = {
   /** A line under the row's time and source, in its tone: warn waits on someone, bad failed. */
@@ -85,12 +91,13 @@ export type RowState = {
 export function rowState(
   t: ThreadSummary,
   marks: Marks,
+  /** The words for each state: defaultCopy.sidebar.state, passed in so this module stays plain TypeScript. */
+  words: StateWords,
   opts: {
     session?: boolean;
     alert?: { priority: "urgent" | "normal" | "low"; title: string };
   } = {},
 ): RowState {
-  const words = defaultCopy.sidebar.state;
   const unread = isUnread(t, marks);
   const waiting = (t.waiting ?? 0) > 0;
   const you = waiting && (t.waiting_on_you ?? true);
