@@ -2313,7 +2313,6 @@ var copyKeyList = []string{
 	"sidebar.needYouSuffix",
 	"sidebar.noArchived",
 	"sidebar.noConversations",
-	"sidebar.outsideProject",
 	"sidebar.pinned",
 	"sidebar.projects",
 	"sidebar.recents",

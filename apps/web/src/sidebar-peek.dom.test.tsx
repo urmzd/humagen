@@ -69,7 +69,7 @@ function Bar({ go = () => {} }: { go?: () => void }) {
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-test("resting the pointer on a row previews its title, project, update and last line by whom", async () => {
+test("resting the pointer on a row previews its whole title and how long ago it moved", async () => {
   net = stubFetch({
     "GET /api/marks": () => ({ archived: [], read: {}, tips: [] }),
     "GET /api/threads": () => ({ threads: [row], next: null }),
@@ -81,9 +81,8 @@ test("resting the pointer on a row previews its title, project, update and last 
   await wait(PEEK_MS + 50);
   const card = await screen.findByRole("tooltip");
   assert.match(card.textContent ?? "", /Vendor contract/);
-  assert.match(card.textContent ?? "", /Spring launch | Updated Oct 21/);
-  assert.match(card.textContent ?? "", /Clause 4 caps liability/);
-  assert.equal(card.querySelector(".aui-initials")?.textContent, "LE");
+  assert.match(card.textContent ?? "", /\d+(m|h|d|w|mo|y) ago$/);
+  assert.doesNotMatch(card.textContent ?? "", /Spring launch|Clause 4/, "no project or last line");
   assert.equal(button.getAttribute("aria-describedby"), card.id);
   fireEvent.pointerLeave(button, { pointerType: "mouse" });
   await waitFor(() => assert.equal(screen.queryByRole("tooltip"), null));

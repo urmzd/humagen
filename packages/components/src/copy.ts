@@ -3217,8 +3217,8 @@ export const defaultCopy = {
       failed: "A reply failed",
       unread: "Unread",
     },
-    updated: (when: string) => `Updated ${when}`,
-    outsideProject: "Outside of a project",
+    /** How long ago a conversation moved, from its row's age: "now", "5h", "2d". */
+    movedAgo: (age: string) => (age === "now" ? "Just now" : `${age} ago`),
     /** A one-time tip, until the person dismisses it. */
     searchTip: {
       title: "Search across conversations",
