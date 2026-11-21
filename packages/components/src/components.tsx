@@ -413,7 +413,7 @@ export function ClarificationCard({
   copy = defaultCopy,
 }: { turnId: string; clarification: Clarification } & WithCopy) {
   const { answer, options, judgement } = clarification;
-  // The approval agent's part, in Run and Answer: an answer it gave, which the person
+  // The approval agent's part, in Auto: an answer it gave, which the person
   // can tell from their own, or why it left the question for them.
   const judged = judgement ? (
     <Context

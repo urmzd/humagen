@@ -65,7 +65,6 @@ import {
   WORKSPACE,
 } from "./projects.ts";
 import { href, type ProjectSort } from "./route.ts";
-import { ComposerFooter } from "./SessionUsage.tsx";
 import { type AgentSessionSummary, isRootSession, sessionCenter } from "./sessionCenter.ts";
 import {
   ago,
@@ -1663,19 +1662,6 @@ function LinksSheet({
   );
 }
 
-/** The row under the composer's box, at its left: the project a session started here is filed in. */
-function FiledIn({ title }: { title: string }) {
-  return (
-    <span className="inline-flex min-w-0 items-center gap-1.5" title={here.filedIn(title)}>
-      <FolderIcon size={14} aria-hidden className="shrink-0" />
-      <span className="sr-only">{here.filedIn(title)}</span>
-      <span aria-hidden data-label className="truncate">
-        {title}
-      </span>
-    </span>
-  );
-}
-
 const VISIBILITY_ICON: Record<ProjectVisibility, ReactNode> = {
   private: <UserIcon size={14} />,
   shared: <UsersIcon size={14} />,
@@ -1712,11 +1698,10 @@ export function ProjectPage({
   onFork,
 }: {
   /**
-   * The composer Home uses, drawn with the words given and the row under its
-   * box (given the approval mode): a session started with it is filed in this
-   * project and opens once it exists.
+   * The composer Home uses, with its footer, drawn with the words given: a
+   * session started with it is filed in this project and opens once it exists.
    */
-  composer?: (placeholder: string, footer: (approval: ReactNode) => ReactNode) => ReactNode;
+  composer?: (placeholder: string) => ReactNode;
   /** The reader's handle. Kept for callers. */
   self?: string;
   /** "" is the workspace. */
@@ -2152,11 +2137,7 @@ export function ProjectPage({
         {composed && (
           <ComposerDock ref={dock}>
             <div className={`mx-auto w-full ${width} px-5 pb-3 md:px-10 ${columns}`}>
-              <div className="min-w-0">
-                {composer?.(here.composer(title), (approval) => (
-                  <ComposerFooter start={<FiledIn title={title} />} approval={approval} />
-                ))}
-              </div>
+              <div className="min-w-0">{composer?.(here.composer(title))}</div>
             </div>
           </ComposerDock>
         )}

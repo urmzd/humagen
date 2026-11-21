@@ -26,11 +26,11 @@ planned collections, browser, protocol and improvement work from this UI pass.
 
 | ID | Requirement | Status |
 | --- | --- | --- |
-| DES-082 | A project's page is a chat landing page: one surface with a trail back to Projects and its menu at the top, its title and one-line description, and the conversation's floating composer pinned at the bottom. A project with no sessions leads with its setup as steps to get started, each done or not, with how many are done; once it has sessions it leads with Recents, and the setup is a summary beside them, folded above them on a phone. Setup and Recents are plain rows on hairlines, never boxed cards or "No ..." lines | Implemented: `ProjectPage`, `Setup`, `SetupRow`, `Recents` (`apps/web/src/Projects.tsx`), `ComposerDock` and `useComposerDock` shared with `Thread` (`packages/web/src/Thread.tsx`), `Chat` `composerFooter`. Evidence: `projects.dom.test.tsx`, `chat.dom.test.tsx`; before and after captures at 1280x800 and 390x844, light and dark, on the pull request. |
+| DES-082 | A project's page is a chat landing page: one surface with a trail back to Projects and its menu at the top, its title and one-line description, and the conversation's floating composer pinned at the bottom. A project with no sessions leads with its setup as steps to get started, each done or not, with how many are done; once it has sessions it leads with Recents, and the setup is a summary beside them, folded above them on a phone. Setup and Recents are plain rows on hairlines, never boxed cards or "No ..." lines | Implemented: `ProjectPage`, `Setup`, `SetupRow`, `Recents` (`apps/web/src/Projects.tsx`), `ComposerDock` and `useComposerDock` shared with `Thread` (`packages/web/src/Thread.tsx`). Evidence: `projects.dom.test.tsx`; before and after captures at 1280x800 and 390x844, light and dark, on the pull request. |
 | DES-080 | A conversation is one surface with the composer floating over it, on a named z-index scale, and Stop works at two levels: the composer stops everything in the session, each running agent, call to another agent, step and background task stops from its own row; the composer's footer says who answers, the approval mode and a usage ring that opens the session's usage and the limits that hold it | Implemented: `Thread` `footer` (`packages/web/src/Thread.tsx`), the `--aui-z-*` scale (`packages/render-web/src/theme.css`), `ItemStopControl` and `ItemStopsContext` (render-web `stop.tsx`, `meta.tsx`), `Composer` `stopAll` and `footer`, `stops.tsx`, `SessionUsage.tsx`, `GET /api/threads/{id}/usage` (`internal/platform/session_usage.go`). Evidence: `composer-overlay.dom.test.tsx`, `TestThreadUsage*` and `foldUsage` tests; before and after captures at 1280x800 and 390x844, light and dark, on PR #474. Not done: Run in Background for a call already running (the runtime starts a call in the background only when the model asks, with `background: true`); a real iOS keyboard. |
 | DES-077 | Background work asked in Slack reports back where it was asked: a watch that fires or runs out, a goal or task that ends, and `notify` reply once in the app's Slack thread that asked, naming the person, with the result's one line and Open Session; anywhere else, or when a run behind it read private context, the person is told in their direct messages; work someone stopped tells nobody | Implemented: `SurfaceNoticesFor` forwards `result` notices only for background work and `notify` (`internal/platform/background_report.go`), with `reply_in` on the event stream (`InboxNotice.reply_in`, `InboxNoticeReply`); the Slack app's `report` in `app.tsx`. Evidence: `TestBackgroundWorkAskedInSlackRepliesInTheThread`, `TestABackgroundResultFromPrivateContextIsSentToThePersonAlone`, `TestBackgroundWorkAskedElsewhereIsSentToTheirDirectMessages`, and the three background tests in `apps/slack/src/dm.test.tsx`. Not yet seen in a live Slack workspace. |
 | DES-078 | An agent in a conversation, a Slack thread among them, proposes a schedule on a clear approval card ("Create a schedule: plaud-new, every 15 minutes, posts in this Slack channel (C0PLAUD) only when something fires", with what it checks, how often, the agent, where it posts and its next run), confirms the next run once approved, and Run once now is itself an approved action | Implemented: run tools `create_schedule`, `update_schedule`, `pause_schedule`, `resume_schedule` and `run_schedule` (`schedule_tools.go`) call the API's own routes as the person, every call asked of that person whatever the policy allows; the card's fields come from `schedulePreview` (`packages/adapter/src/schedule.ts`), words in `copy.schedules.proposal`. Evidence: `TestAnAgentSchedulesWorkForThePersonItWorksFor`, `TestEveryScheduleCallIsAskedOfThePerson`, `TestScheduleToolsRefuseRunsThatActForNoPerson`, adapter `schedule.test.ts`. Not checked: the card in a live Slack workspace or against Slack's validator (no network here), and a live model proposing one. See [schedules from a conversation](../guides/schedules-from-a-conversation.md) |
-| DES-079 | Run and Answer: in a session set to it, the approval agent also answers a question an agent asks a person when the session already settles it, as the person who chose it, and hands them the rest | Implemented: `threads.ApprovalDecide` (`pkg/threads/approval.go`), `internal/platform/approval_questions.go`, the `answer` field and `DescribeQuestion` in `pkg/approve`, `PUT /api/threads/{id}/approval` with `decide`, Answer Questions beside Run in `ApprovalToggle.tsx`, and the judgement on a question's card (`ClarificationCard`). Evidence: `TestRunAndAnswerAnswersAChoiceTheSessionSettles`, `TestRunAndAnswerAnswersAReply`, `TestWhatRunAndAnswerDoesNotSettleWaitsForAPerson`, `TestRunAndAnswerNeverAnswersForSomeoneElse`, `TestRunAndAnswerLeavesWhatSomeoneElseAskedFor`, `TestRunLeavesQuestionsForAPerson`, `TestRunAndAnswerIsAModeAPersonChooses`, `TestApprovalModeIsSetOnItsOwnAndKept`, `TestAQuestionsAnswerIsReadBesideTheDecision`; `approval-toggle.dom.test.tsx`, `ui.test.tsx`. Not run: `pnpm validate:slack` (needs the Slack bench) and a screen check in a running console. |
+| DES-079 | Auto answers questions: in a session set to Auto, the approval agent also answers a question an agent asks a person when the session already settles it, as the person who chose it, and hands them the rest. Two modes, Ask and Auto; Run and Answer folded into Auto | Implemented: `threads.ApprovalAuto` and `threads.ApprovalModeOf`, which reads a stored `decide` as `auto` (`pkg/threads/approval.go`), `internal/platform/approval_questions.go`, the `answer` field and `DescribeQuestion` in `pkg/approve`, `PUT /api/threads/{id}/approval` with `auto` (`decide` still taken as `auto`), the Ask and Auto menu in `ApprovalToggle.tsx`, and the judgement on a question's card (`ClarificationCard`). Evidence: `TestAutoAnswersAChoiceTheSessionSettles`, `TestAutoAnswersAReply`, `TestWhatAutoDoesNotSettleWaitsForAPerson`, `TestAutoNeverAnswersForSomeoneElse`, `TestAutoLeavesWhatSomeoneElseAskedFor`, `TestAskLeavesQuestionsForAPerson`, `TestDecideIsTakenAsAuto`, `TestAutoIsAModeAPersonChooses`, `TestApprovalModeIsSetOnItsOwnAndKept`, `TestStoredApprovalModesReadAsAuto`, `TestAQuestionsAnswerIsReadBesideTheDecision`; `approval-toggle.dom.test.tsx`, `ui.test.tsx`. Not run: `pnpm validate:slack` (needs the Slack bench) and a screen check in a running console. |
 | DES-076 | A session's Details pane is a workbench of tabs, and what a person does by hand in one goes with their next message | Implemented: the tab registry (`workbench.ts`), the pane (`Workbench.tsx`), six tab addresses (`?panel=details&bench=`), and the record, list and fold of what was done by hand (`human-activity.ts`, `humanActivity.tsx`). All six tabs are built: Details, Browser (`WorkbenchBrowser.tsx`, `POST /api/sessions/{id}/browser`), Terminal (`WorkbenchTerminal.tsx`, `POST /api/threads/{id}/sandboxes/commands` on a docker sandbox), Changes (`WorkbenchChanges.tsx`), Side Chat (`WorkbenchSidechat.tsx`, `GET /api/threads/{id}/forks`) and Search (`WorkbenchSearch.tsx`). Browser, Terminal, Changes, Side Chat and the Workspace file editor record what a person did; Search records nothing. Not built: the agent's own screenshots and live video in Browser, a persistent shell in Terminal, a baseline from before the session in Changes, and keeping the list of what was done by hand across a reload. The Details tab keeps its earlier 12px and 13px labels. Evidence: `workbench.dom.test.tsx`, `workbench-browser.dom.test.tsx`, `workbench-terminal.dom.test.tsx`, `workbench-changes.dom.test.tsx`, `workbench-sidechat.dom.test.tsx`, `workbench-search.dom.test.tsx`, `room.dom.test.tsx`, `route.test.ts`, core `human-activity.test.ts`, `TestWhatWasDoneByHandTagsNobody`, `TestAPersonActsOnTheSessionsBrowserByHand`, `TestAPersonsCommand*`, `TestSandboxCommandRouteRunsForItsPosterAndNobodyElse`; the six tabs seen together in a running console at 1280x800 and 390x844, light and dark, where five things done by hand in four tabs reached the agent in one message and the list then cleared. |
 | DES-069 | Conversation overview and visible work controls | Implemented: Overview, Workspace, Context and Activity header controls collapse into the menu below the conversation's 3xl breakpoint. The addressed overview folds environment, latest context, agents and run changes from existing APIs; delegated transcript calls share one collapsed disclosure. Evidence: `conversation-overview.dom.test.tsx`, `timeline.dom.test.tsx` and route round-trip tests. Live browser verification unavailable in this session. |
 | DES-059 | PR review evidence in two panes, with GitHub issue and pull request Workspace tabs | Implemented: `GitHubTab.tsx`, `github-ref.ts`, tenant-scoped `GET /api/github/pull` and `/api/github/issue`, bounded repository/SHA patch cache, workflow status, labels and comments; unit, DOM and endpoint regressions added; `conversation-review-workspace` screen registered for CI. |
@@ -907,9 +907,9 @@ project settings", with a clean outlook.
   conversation uses, on `--aui-z-composer`. Whatever scrolls under it clears
   it by `--aui-thread-dock-h`. Under the title row: the project's title and
   its description in one muted line. The composer's placeholder is "New
-  session in <project>"; the row under its box says where the session is
-  filed at the left and the approval mode at the right, as a conversation's
-  footer does. It offers no model or effort (DES-067).
+  session in <project>". Its footer is Home's: the project picker, set to
+  this project, and the approval mode at its left. It offers no model or
+  effort (DES-067).
 - The setup is one row per part: Instructions, Context, Memory, Scheduled and
   External references, each with its mark, its name, a muted line on what it
   holds ("2 corpora", "1 schedule", the instructions' first line) and one
@@ -932,7 +932,7 @@ project settings", with a clean outlook.
   sidebar's rows say where a session started (DES-054).
 - On a phone the composer stays pinned at the bottom above the home
   indicator and rises with the keyboard, as in a conversation; its footer
-  keeps the filed-in mark and moves the approval mode under ⋯ (DES-080).
+  is Home's footer, as on Home's own page.
 - The page is not drawn with `Page`'s plain layout: like a conversation, it
   needs a surface of its own under the title row for the composer to float
   over. Its loading and missing states still use `Page`.
@@ -971,10 +971,18 @@ project settings", with a clean outlook.
   stops it), a call to another agent (`POST /api/runs/{child}/stop`),
   background work a step started, and a step in flight (which stops its run).
   A stopped item says Stopped in muted text, never Failed.
-- Under the box, one quiet right-aligned line: the agent that answered last
-  and its model, the approval mode as its own control, and a usage ring. On a
-  phone the line is the agent and the ring, and the approval mode waits under
-  a ⋯ button. The ring shows the fullest of the context and every
+- Under the box, one quiet line, on Home and in a conversation alike. On the
+  left, in order: the project (Home picks it here; it files the first
+  message), the environment and repository (`footerStart`, from the session
+  panel), then the approval mode. On the right: the agent that answered last
+  and its model, and a usage ring. On a phone the left items are icons only,
+  their words hidden but still their names.
+- Home's first message opens its conversation, and the bar and its footer
+  move down into it as one piece while the conversation's skeletons show:
+  Home remembers where they were and draws the same picture, inert, in the
+  loading screen's place, sliding with `--aui-dur-page` and
+  `--aui-ease-arrive` (`dockArrival.ts`). The footer never disappears, jumps
+  or reflows. With reduced motion it arrives in place. The ring shows the fullest of the context and every
   limit that holds the session, and takes a color only near a limit (amber)
   or over one (red); its name says which. It opens This Session (context,
   tokens or spend, runs, the agents that used most, from
@@ -1780,10 +1788,10 @@ Rules:
 - Home holds its project picker in the composer toolbar at every width. The
   person's own project reads **No project** on desktop and uses its folder on
   a phone (DES-045). One picker is drawn at a time.
-- A conversation's composer has **Approvals: Default** or **Approve for Me**,
-  a text control before Send. Its menu says what each does. Someone else's
-  choice reads "Approved for <name>". A refused change puts it back and says
-  so.
+- A conversation's composer has one approval mode control, **Ask** or
+  **Auto** with its icon, before Send. Its menu, headed **Approval mode**,
+  says what each does (DES-079). Someone else's choice reads "Auto, chosen
+  by <name>". A refused change puts it back and says so.
 - **Approve for Me** answers, as the person who chose it, an approval of a
   tool action the policy asks about, through the path every answer takes:
   the approvers the question names, self-approval and the runtime's checks
@@ -1814,7 +1822,7 @@ screens` with `home-project-above` and `composer-approval-mode`.
 In Slack (the Slack app, `apps/slack`):
 
 - An approval waiting in a run's thread has a menu (Slack's overflow, after
-  its buttons) with one row, "Let the approval agent decide in this thread".
+  its buttons) with one row, "Set this thread to Auto".
   It is offered only where the app's client maps people
   (`TurnCapabilities.approvalAgent`), never on a run held at a limit, and
   never as a button, so it never reads as a decision on the call. It sets
@@ -1822,9 +1830,10 @@ In Slack (the Slack app, `apps/slack`):
   so every check is the console's, made as the person who pressed; a
   person the client maps to nobody is told so and Humagen is not asked, and
   a refusal is said to the presser alone in Humagen's words. The change is
-  said in the thread, naming who made it, that the agent decides from the
-  next action on and that the action already waiting still waits, with one
-  button back (Ask Me Again, or Let the Approval Agent Decide).
+  said in the thread, naming who made it, that the approval agent now
+  approves and answers what the thread settles and that the action already
+  waiting still waits, with one button back (Switch to Ask, or Switch to
+  Auto).
 - An approval the approval agent decided says so on its card in the
   thread, with its reason, as the inbox does: the run's answer carries the
   agent's note (`judgementOfNote` in `packages/adapter/src/question.ts`).
@@ -2475,25 +2484,33 @@ match, the failed read, and Terminal and Browser standing in as built. Not seen:
 a real pull request, file or browser step from a live run, and the real
 Terminal and Browser tabs taking a result.
 
-### DES-079: Run and Answer
+### DES-079: Auto answers questions
 
 Owner request: the approval agent that decides tool calls in a session set to
-Run can decide the questions an agent puts to a person too, as a secondary
-option: "anything that the agent's tool states it needs a human, or the agent
-thinks it does."
+Auto can decide the questions an agent puts to a person too: "anything that
+the agent's tool states it needs a human, or the agent thinks it does." It
+first shipped as a third mode, Run and Answer, beside Run. The owner then
+asked for two clear choices, as other agent tools offer: "run and answer
+doesn't make sense; we have Auto / run or Ask". Run and Answer folded into
+Auto, the most useful of the three.
 
 Rules:
 
-- It is a third approval mode, `decide` (**Run and Answer**), beside `ask`
-  (the default) and `auto` (Run). It is a mode rather than a separate setting
-  because it delegates the same thing to the same person: it is chosen by a
-  person who may post in the session, keeps the roles they held then, answers
-  as them, and is audited as `conversation.approval_mode`, as Run is. It is
-  never on by default, and it is not a spec field: like Run, it is one
-  person's choice for one session, stored on the session.
-- Run and Answer does everything Run does with tool calls, and nothing more
-  with them: an action the agent always asks about, a budget request and an
-  action the policy refuses still go to a person.
+- There are two approval modes: `ask` (**Ask**, the default), where a person
+  approves every gated action, and `auto` (**Auto**), where the approval agent
+  decides gated actions, answers what the session already settles, and asks a
+  person when unsure. Auto is chosen by a person who may post in the session,
+  keeps the roles they held then, answers as them, and is audited as
+  `conversation.approval_mode`. It is never on by default, and it is not a
+  spec field: it is one person's choice for one session, stored on the
+  session.
+- Stored data stays readable: a session stored as `auto` (Run) or `decide`
+  (Run and Answer) reads as Auto, and a write stores `auto`. The API still
+  takes `decide` as `auto`, deprecated, for at least one release, and never
+  returns it.
+- With tool calls, Auto does what Run did and nothing more: an action the
+  agent always asks about, a budget request and an action the policy refuses
+  still go to a person.
 - It also hands the approval agent a choice or a reply an agent asks with
   `ask_person`, in a run of its own, with the question, its options, whom it
   asked and the session so far. The agent answers (`allow` with `answer`) only
@@ -2516,24 +2533,26 @@ Rules:
   under the answer, or **Approval agent: Asked a person** with the reason
   above the options. The answer is recorded as the person's, so they see it
   and can correct the agent in the session.
-- The composer shows one approvals control, named for the mode. It opens a
-  menu of **Ask Me**, **Run** and **Run and Answer**, each with one line on
-  what the approval agent does in that mode and a check on the one in use.
-  Someone else's choice reads "Run and Answer, chosen by <name>", and the menu
-  says so; it also says when the approval agent has no model to run on.
+- The composer shows one control: an icon and **Ask** or **Auto**. It opens a
+  menu headed **Approval mode** with the two, each with one line on what
+  happens in that mode and a check on the one in use. Someone else's choice
+  reads "Auto, chosen by <name>", and the menu says so; it also says when the
+  approval agent has no model to run on. Slack sets a thread to Auto from a
+  waiting call's menu and back with **Switch to Ask** (DES-057).
 - A workspace's own output schema for the approval agent keeps working: the
   `answer` field is optional, and a schema without it decides calls only, so
   every question goes to a person.
 
 Evidence: `go test -race ./pkg/threads ./pkg/approve ./internal/platform
-./internal/httpapi` (`TestRunAndAnswerAnswersAChoiceTheSessionSettles`,
-`TestRunAndAnswerAnswersAReply`,
-`TestWhatRunAndAnswerDoesNotSettleWaitsForAPerson`,
-`TestRunAndAnswerNeverAnswersForSomeoneElse`,
-`TestRunAndAnswerLeavesWhatSomeoneElseAskedFor`,
-`TestRunLeavesQuestionsForAPerson`, `TestRunAndAnswerIsAModeAPersonChooses`,
-`TestApprovalModeIsSetOnItsOwnAndKept`,
+./internal/httpapi` (`TestAutoAnswersAChoiceTheSessionSettles`,
+`TestAutoAnswersAReply`, `TestWhatAutoDoesNotSettleWaitsForAPerson`,
+`TestAutoNeverAnswersForSomeoneElse`, `TestAutoLeavesWhatSomeoneElseAskedFor`,
+`TestAskLeavesQuestionsForAPerson`, `TestDecideIsTakenAsAuto`,
+`TestAutoIsAModeAPersonChooses`, `TestApprovalModeIsSetOnItsOwnAndKept` and
+`TestStoredApprovalModesReadAsAuto` on memory and Postgres,
 `TestAQuestionsAnswerIsReadBesideTheDecision`,
 `TestAQuestionIsDescribedWithItsOptionsAndWhoItIsFor`); `cd apps/web && pnpm
-test` (`approval-toggle.dom.test.tsx`, `ui.test.tsx`). Not run:
-`pnpm validate:slack`, which needs the Slack bench, and a screen check.
+test` (`approval-toggle.dom.test.tsx`, `chat.dom.test.tsx`, `ui.test.tsx`);
+`cd apps/slack && pnpm test` (`questions.test.tsx`); `packages/render-slack`
+`question-cards.test.tsx`. Not run: `pnpm validate:slack` against a real
+Slack bench.

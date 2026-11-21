@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
-import { defaultCopy } from "@humagen/components";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { setAgentHues } from "./agentHues.ts";
 import type { Note, ProjectDetail, Revision, ScheduleView } from "./api.ts";
@@ -138,17 +137,9 @@ function open(
   const placeholders: string[] = [];
   render(
     <ProjectPage
-      composer={(placeholder, footer) => {
+      composer={(placeholder) => {
         placeholders.push(placeholder);
-        return (
-          <form aria-label="Home composer">
-            {footer(
-              <button type="button" aria-label="Ask Me">
-                Ask Me
-              </button>,
-            )}
-          </form>
-        );
+        return <form aria-label="Home composer" />;
       }}
       self="ada"
       name={detail.project.name}
@@ -443,7 +434,7 @@ test("Archive Project can be undone, so it acts at once", async () => {
   );
 });
 
-test("the composer floats over the bottom of the page: Home's own, saying it starts a session in the project and where it is filed", async () => {
+test("the composer floats over the bottom of the page: Home's own, saying it starts a session in the project", async () => {
   const { placeholders } = open(globexDetail);
   const composer = await screen.findByRole("form", { name: "Home composer" });
   assert.ok(placeholders.includes("New session in Globex"));
@@ -456,10 +447,6 @@ test("the composer floats over the bottom of the page: Home's own, saying it sta
   assert.ok(
     document.querySelector(".pb-\\[calc\\(var\\(--aui-thread-dock-h\\,8rem\\)\\+1\\.5rem\\)\\]"),
   );
-  // Under the box: where the session is filed at the left, and the approval mode.
-  const footer = within(composer).getByRole("group", { name: defaultCopy.dock.footer });
-  assert.ok(within(footer).getByText("Filed in Globex"));
-  assert.ok(within(footer).getAllByRole("button", { name: "Ask Me" }).length > 0);
 });
 
 test("Recents lists the project's own sessions newest first, each opening it, with Show More while there are more", async () => {
