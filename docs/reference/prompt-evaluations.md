@@ -101,11 +101,12 @@ Health shows only the runs the caller reads in their own right: as an owner, a
 participant, a project member, or because the run is public. It never uses
 break-glass, so a run an administrator could read only by exception is left out
 of the results, the pass rate and the flagged count alike, and a health refresh
-writes no read-audit record; the run itself and the review queue show such a run
+records no run or thread as read (an agent homed in a project the reader
+reaches only by exception is still recorded once, as that agent's read); the run itself and the review queue show such a run
 and record the read. The flagged count is present (0 when there are none) for a
 caller with `evals:read` and absent without it. It is counted from the
 candidates the review queue reads, the first 1,000 of the agent, so it agrees
-with what the queue shows the caller; `flagged_more` says only that the caller
+with what the queue shows a caller who reads by no exception; `flagged_more` says only that the caller
 reads more than 50 flagged runs, and nothing says whether the agent has
 candidates the caller cannot see. Failed checks on completed runs
 raise an alert in a builder session; failed runs keep their normal failure alert.

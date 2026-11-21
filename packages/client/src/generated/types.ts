@@ -6113,7 +6113,7 @@ export interface OnlineEvaluation {
   signals: EvaluationSignals;
 }
 
-/** What the checks on an agent's recent runs say, from the runs the caller reads in their own right (as owner, participant or project member, or because the run is public). Health never uses break-glass; a run the caller could read only by exception is left out of results, samples, passed, pass_rate and flagged alike, and reading health writes no read-audit record. */
+/** What the checks on an agent's recent runs say, from the runs the caller reads in their own right (as owner, participant or project member, or because the run is public). Health never uses break-glass; a run the caller could read only by exception is left out of results, samples, passed, pass_rate and flagged alike, and no run or thread is recorded as read. An agent homed in a project the caller reaches only by exception is still recorded once, as the read of that agent it is. */
 export interface AgentEvaluationHealth {
   agent: string;
   status: "untested" | "healthy" | "needs_review";
@@ -6121,7 +6121,7 @@ export interface AgentEvaluationHealth {
   passed: number;
   pass_rate: number;
   results: OnlineEvaluation[];
-  /** Distinct runs rated down with a reason that wait in the review queue, of those the caller reads in their own right, up to 50. Present, 0 when there are none, for a caller with evals:read; absent only for a caller without it. It is counted from the candidates the review queue reads (the first 1,000 of the agent), so it agrees with what the queue shows the caller and, like the queue, can be fewer than every such run when the agent has more candidates than that. Nothing in the answer says whether it has, since that would tell of candidates the caller cannot see. */
+  /** Distinct runs rated down with a reason that wait in the review queue, of those the caller reads in their own right, up to 50. Present, 0 when there are none, for a caller with evals:read; absent only for a caller without it. It is counted from the candidates the review queue reads (the first 1,000 of the agent), so it agrees with what the queue shows a caller who reads by no exception (the queue shows a governor more, since it uses break-glass and records it) and, like the queue, can be fewer than every such run when the agent has more candidates than that. Nothing in the answer says whether it has, since that would tell of candidates the caller cannot see. */
   flagged?: number;
   /** The caller reads more than 50 flagged runs, so flagged (50) is a lower bound. Decided only from runs the caller reads in their own right; true only with flagged at 50. */
   flagged_more?: boolean;

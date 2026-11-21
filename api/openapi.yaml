@@ -21100,7 +21100,7 @@ components:
         - at
         - signals
     AgentEvaluationHealth:
-      description: What the checks on an agent's recent runs say, from the runs the caller reads in their own right (as owner, participant or project member, or because the run is public). Health never uses break-glass; a run the caller could read only by exception is left out of results, samples, passed, pass_rate and flagged alike, and reading health writes no read-audit record.
+      description: What the checks on an agent's recent runs say, from the runs the caller reads in their own right (as owner, participant or project member, or because the run is public). Health never uses break-glass; a run the caller could read only by exception is left out of results, samples, passed, pass_rate and flagged alike, and no run or thread is recorded as read. An agent homed in a project the caller reaches only by exception is still recorded once, as the read of that agent it is.
       type: object
       properties:
         agent:
@@ -21122,7 +21122,7 @@ components:
           items:
             $ref: "#/components/schemas/OnlineEvaluation"
         flagged:
-          description: Distinct runs rated down with a reason that wait in the review queue, of those the caller reads in their own right, up to 50. Present, 0 when there are none, for a caller with evals:read; absent only for a caller without it. It is counted from the candidates the review queue reads (the first 1,000 of the agent), so it agrees with what the queue shows the caller and, like the queue, can be fewer than every such run when the agent has more candidates than that. Nothing in the answer says whether it has, since that would tell of candidates the caller cannot see.
+          description: Distinct runs rated down with a reason that wait in the review queue, of those the caller reads in their own right, up to 50. Present, 0 when there are none, for a caller with evals:read; absent only for a caller without it. It is counted from the candidates the review queue reads (the first 1,000 of the agent), so it agrees with what the queue shows a caller who reads by no exception (the queue shows a governor more, since it uses break-glass and records it) and, like the queue, can be fewer than every such run when the agent has more candidates than that. Nothing in the answer says whether it has, since that would tell of candidates the caller cannot see.
           type: integer
           minimum: 0
           maximum: 50
