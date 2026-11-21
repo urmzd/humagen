@@ -872,6 +872,22 @@ export const direct = (text: string, ts: string, over: Record<string, unknown> =
     event: { type: "message", channel_type: "im", channel: DM, user: USER, text, ts, ...over },
   });
 
+/** A message in a channel that does not mention the app, as Slack sends it with `message.channels`. */
+export const said = (text: string, ts: string, over: Record<string, unknown> = {}): Envelope =>
+  envelope("events_api", {
+    team_id: TEAM,
+    event_id: `Ev${ts.replace(".", "")}s`,
+    event: {
+      type: "message",
+      channel_type: "channel",
+      channel: CHANNEL,
+      user: USER,
+      text,
+      ts,
+      ...over,
+    },
+  });
+
 export const stopPressed = (threadTs: string, channel = CHANNEL): Envelope =>
   envelope("events_api", {
     team_id: TEAM,

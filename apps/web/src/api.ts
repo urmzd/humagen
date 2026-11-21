@@ -8,6 +8,7 @@ import type {
   AgentSetupPlan,
   AgentSkillDefaults,
   AgentSkillDefaultsUpdate,
+  AgentSlackApp,
   AnalyticsBucket,
   AnalyticsGroup,
   AuditRecord,
@@ -77,6 +78,7 @@ export type {
   AgentLookView,
   AgentOffer,
   AgentPlace,
+  AgentSlackApp,
   Branding,
   ContextLayer,
   DefaultResolved,
@@ -1629,6 +1631,15 @@ export const api = {
     if (!res.ok) throw new ApiError(res.status, data.error ?? `Request failed (${res.status})`);
     return data as VoiceTranscript;
   },
+  /** An agent's own Slack app: its manifest, the link that creates it, and the client it is linked as. */
+  agentSlackApp: (name: string) =>
+    call<AgentSlackApp>("GET", `/api/agents/${encodeURIComponent(name)}/slack-app`),
+  /** Connect an agent's own Slack app from its bot token and signing secret. */
+  linkAgentSlackApp: (name: string, token: string, signing: string) =>
+    call<AgentSlackApp>("POST", `/api/agents/${encodeURIComponent(name)}/slack-app`, {
+      token: { value: token },
+      ...(signing ? { signing_secret: { value: signing } } : {}),
+    }),
   /** Keep the picture the console drew of an agent, for surfaces that need an image, such as Slack. */
   setAgentMark: async (name: string, png: Blob) => {
     const res = await fetch(`/api/agents/${encodeURIComponent(name)}/mark`, {
