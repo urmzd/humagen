@@ -118,11 +118,12 @@ export function EnvironmentPicker({
       up
       popup="menu"
       label={`${words.environment}: ${name}`}
+      tooltip={`${words.environment}: ${name}`}
       className={control}
       button={
         <>
           <CloudIcon size={16} />
-          <span aria-hidden className="inline-flex items-center gap-1 text-aui-xs">
+          <span aria-hidden className="inline-flex items-center gap-1 text-aui-xs" data-label>
             <span className="max-w-32 truncate">{name}</span>
             <ChevronDownIcon size={12} />
           </span>
@@ -203,11 +204,12 @@ export function RepoPicker({
       up
       popup="menu"
       label={`${words.repoLabel}: ${value.length ? value.join(", ") : words.none}`}
+      tooltip={`${words.repoLabel}: ${value.length ? value.join(", ") : words.none}`}
       className={control}
       button={
         <>
           <GitHubIcon size={16} />
-          <span aria-hidden className="inline-flex items-center gap-1 text-aui-xs">
+          <span aria-hidden className="inline-flex items-center gap-1 text-aui-xs" data-label>
             <span className="max-w-40 truncate">{name}</span>
             <ChevronDownIcon size={12} />
           </span>
