@@ -5499,6 +5499,10 @@ export interface SessionIdentity {
   label?: string;
   /** The readable session alert that anchors this fix conversation. */
   source_alert?: string;
+  /** Where the session runs. "" and "auto" are the deployment's default. */
+  environment?: string;
+  /** Repositories ("owner/name") the session works on. */
+  repos?: string[];
 }
 
 export interface MessageFeedbackInput {
@@ -5821,6 +5825,10 @@ export interface SessionInput {
   surface_kind?: string;
   /** With surface: post the message without starting anything. */
   post_only?: boolean;
+  /** Where the session runs, from GET /api/sessions/options. "" and "auto" are the deployment's default. Refused with surface. */
+  environment?: string;
+  /** Repositories ("owner/name") the session works on, each listed by GET /api/sessions/options. Refused with surface. */
+  repos?: string[];
 }
 
 /** What a person asks of a session's browser. */
@@ -5859,6 +5867,31 @@ export interface BrowserElement {
   name?: string;
   /** Where it is in the screenshot, in CSS pixels: x, y, width, height. Absent for an element with no place on the screen. */
   box?: number[];
+}
+
+/** One place a session may run. */
+export interface SessionEnvironment {
+  /** What a session stores: auto or the sandbox's kind. */
+  name: string;
+  label: string;
+  /** Each run leases an instance of its own. */
+  isolated: boolean;
+  /** A person may run their own commands there. */
+  terminal: boolean;
+}
+
+/** What a session may be started with. */
+export interface SessionOptions {
+  environments: SessionEnvironment[];
+  repos: string[];
+}
+
+/** Whether a session has a browser. */
+export interface BrowserAvailability {
+  available: boolean;
+  providers: string[];
+  /** Why there is no browser; empty when there is one. */
+  reason: string;
 }
 
 /** A session's browser after an action. */
