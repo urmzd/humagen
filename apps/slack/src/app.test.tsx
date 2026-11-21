@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { fromServer } from "@humagen/adapter";
 import { defaultCopy, MessageView } from "@humagen/components";
 import { renderToSlack } from "@humagen/render-slack";
-import { echoed, forSlack } from "./app.tsx";
+import { echoed, forSlack, wholeMessage } from "./app.tsx";
 import {
   alertMail,
   BOT,
@@ -2266,4 +2266,45 @@ test("a message that mentions nobody outside a thread, or from someone the clien
   await w.app.idle();
   assert.equal(w.humagen.posts.length, posts);
   assert.equal(w.humagen.started.length, 1);
+});
+
+test("the whole message is sent: a mention anywhere asks, and the words around it stay", () => {
+  const say = (text: string) => wholeMessage(text, BOT, "Humagen");
+  // The address that opens a message is dropped, with its colon or comma.
+  assert.equal(say(`<@${BOT}> please check my repos`), "please check my repos");
+  assert.equal(say(`<@${BOT}>: summarise this`), "summarise this");
+  assert.equal(say(`  <@${BOT}|humagen>, summarise this`), "summarise this");
+  // Anywhere else the mention is part of the sentence, and nothing around it is lost.
+  assert.equal(
+    say(`Hey team, could <@${BOT}> take a look at this? Thanks`),
+    "Hey team, could Humagen take a look at this? Thanks",
+  );
+  assert.equal(
+    say(`The build broke after the merge.\n\nCan you find out why, <@${BOT}>`),
+    "The build broke after the merge.\n\nCan you find out why, Humagen",
+  );
+  assert.equal(
+    say(`First paragraph.\n\n<@${BOT}> second paragraph asks.\n\nThird adds a detail.`),
+    "First paragraph.\n\nHumagen second paragraph asks.\n\nThird adds a detail.",
+  );
+  // Someone else's mention is theirs, and stays as Slack wrote it.
+  assert.equal(say(`<@${BOT}> ask <@U09OTHER> about it`), "ask <@U09OTHER> about it");
+});
+
+test("a mention in the middle or at the end of a message asks with the whole message", async () => {
+  const w = mapped();
+  await deliver(
+    w,
+    mention("", TS, {
+      text: `Hey team, could <@${BOT}> take a look at the failing deploy? Thanks`,
+    }),
+  );
+  assert.equal(
+    w.humagen.posts[0]?.text,
+    "Hey team, could Humagen take a look at the failing deploy? Thanks",
+  );
+  assert.equal(w.humagen.started.length, 1);
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "Looking." });
+  await w.app.idle();
 });

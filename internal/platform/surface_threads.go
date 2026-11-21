@@ -177,7 +177,7 @@ func (p *Platform) surfaceText(tenant string, c clients.Client, ref SurfaceRef, 
 	if c.Surface != clients.Slack {
 		return text, nil
 	}
-	cx := slackContext{AppUser: ref.AppUser, Bots: p.teamBots(tenant, c), HandleOf: func(subject string) (string, bool) {
+	cx := slackContext{AppUser: ref.AppUser, AppName: p.Names(tenant).Product(), Bots: p.teamBots(tenant, c), HandleOf: func(subject string) (string, bool) {
 		if p.People == nil {
 			return "", false
 		}

@@ -193,6 +193,11 @@ The Slack app listens on a mention, and after one. Nothing else is heard.
 | A channel message that mentions nobody, outside a thread | Not heard. In a Slack channel bound to a project it is recorded there, as every message in a bound channel is |
 | A message from the app itself, another bot, an edit or a join | Never starts anything |
 
+The whole message is sent, as the person wrote it. The app's own mention tags
+nobody: one that opens the message is the address and is dropped, with the
+colon or comma after it, and anywhere else it reads as the app's name, so
+"could @Humagen take a look" asks "could Humagen take a look".
+
 Only a person the client maps is listened to. The agent's answer to "does this
 call for me?" is the one a message that names no agent is routed by
 ([overview](../architecture/overview.md)): a no, a failure and no agent to ask

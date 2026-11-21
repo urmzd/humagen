@@ -967,7 +967,7 @@ export class App {
           channel: event.channel,
           threadTs: event.thread_ts ?? event.ts,
         };
-        const text = (event.text ?? "").replaceAll(`<@${this.opts.botUser}>`, " ").trim();
+        const text = wholeMessage(event.text ?? "", this.opts.botUser, this.selfName);
         if (!text && !event.files?.length) return;
         await this.humagen.postThread({
           text: text || defaultCopy.attachedFilesPrompt,
@@ -1033,7 +1033,7 @@ export class App {
       channel: event.channel,
       threadTs: event.thread_ts ?? event.ts,
     };
-    const text = (event.text ?? "").replaceAll(`<@${this.opts.botUser}>`, " ").trim();
+    const text = wholeMessage(event.text ?? "", this.opts.botUser, this.selfName);
     if (!text && !event.files?.length) return;
     await this.offerSkills(event.channel);
     // A mention in a code channel continues the conversation of the thread it was opened from.
@@ -3329,6 +3329,21 @@ export class App {
     // A global shortcut or the Home tab has no channel: answer in the app's own messages with this person.
     await this.start({ channel: p.user.id, user: p.user.id }, text);
   }
+}
+
+/**
+ * A Slack message as it is sent on: the whole message, as the person wrote
+ * it. The app's own mention is how the message reached it and tags nobody,
+ * so one that opens the message is the address and is dropped, with the
+ * colon or comma after it ("<@app>: summarise" asks "summarise"). Anywhere
+ * else the mention is part of the sentence and reads as the app's name
+ * ("could <@app> take a look" asks "could Humagen take a look"): cut out, it
+ * would leave "could take a look".
+ */
+export function wholeMessage(text: string, botUser: string, name: string): string {
+  const own = new RegExp(`<@${botUser}(?:\\|[^<>]*)?>`, "g");
+  const opened = new RegExp(`^\\s*<@${botUser}(?:\\|[^<>]*)?>[ \\t]*[:,]?[ \\t]*`);
+  return text.replace(opened, "").replace(own, name).trim();
 }
 
 /** Whether Slack text mentions the app, wherever in it: `<@U…>` or `<@U…|name>`. */
