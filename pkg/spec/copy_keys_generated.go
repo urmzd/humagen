@@ -705,6 +705,7 @@ var copyKeyList = []string{
 	"conversation.stopTurn",
 	"conversation.stoppingTurn",
 	"conversation.toolLine.arguments",
+	"conversation.toolLine.copyCommand",
 	"conversation.toolLine.fetch.a",
 	"conversation.toolLine.hideDetails",
 	"conversation.toolLine.input",
