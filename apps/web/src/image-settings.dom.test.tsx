@@ -71,10 +71,10 @@ test("an image added is checking, then ready and pinned; it can be kept warm and
   fireEvent.click(screen.getByRole("button", { name: words.add }));
   const form = screen.getByRole("form", { name: words.add });
   fireEvent.change(within(form).getByLabelText(words.name), { target: { value: "Agent tools" } });
-  fireEvent.change(within(form).getByLabelText(words.ref), {
+  fireEvent.change(within(form).getByLabelText(new RegExp(`^${words.ref}`)), {
     target: { value: "ghcr.io/acme/agent:1.4" },
   });
-  fireEvent.change(within(form).getByLabelText(words.credential), {
+  fireEvent.change(within(form).getByLabelText(new RegExp(`^${words.credential}`)), {
     target: { value: "bot:s3cret" },
   });
   fireEvent.submit(form);

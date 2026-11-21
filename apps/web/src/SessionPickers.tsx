@@ -171,7 +171,7 @@ export function SessionSetupPickers({
   const read = useSessionOptions(given === undefined);
   const options = given !== undefined ? given : read;
   if (!options) return null;
-  const canAdd = options.imageRegistries.length > 0;
+  const canAdd = (options.imageRegistries ?? []).length > 0;
   if (options.images.length < 2 && !canAdd) return null;
   return (
     <span className="inline-flex min-w-0 items-center gap-0.5" data-testid="session-setup">

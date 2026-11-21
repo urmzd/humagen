@@ -55,7 +55,8 @@ export function useSessionOptions(
     if (!enabled) return;
     let on = true;
     read().then(
-      (o) => on && setOptions(o),
+      // An answer not in this shape, from an older server, offers nothing.
+      (o) => on && setOptions(Array.isArray(o?.images) && Array.isArray(o.repos) ? o : null),
       () => on && setOptions(null),
     );
     return () => {

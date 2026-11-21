@@ -594,6 +594,12 @@ func (h hidden) holds(body string) bool {
 // unplaced are the path parameters that name something outside any project,
 // which a member of the workspace may see.
 func (h hidden) unplaced(path, param string) bool {
+	if strings.HasPrefix(path, "/api/images/") {
+		// A workspace's images are the whole workspace's, as its clients
+		// are, and this fixture's deployment takes none of its own: another
+		// tenant's image is refused by TestAnImageIsRefusedWhenItIsNotAllowedOrNotTheTenants.
+		return true
+	}
 	if strings.HasPrefix(path, "/api/store/") {
 		// A store package is the platform's, the same in every workspace:
 		// naming one names nothing the hidden workspace holds.
