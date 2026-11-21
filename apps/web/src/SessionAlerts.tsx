@@ -2,7 +2,8 @@ import { defaultCopy } from "@humagen/components";
 import { Modal } from "@humagen/web";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AgentSession } from "../../../packages/client/src/generated/types.ts";
-import { call } from "./api.ts";
+import { turnOf } from "./adapter.ts";
+import { call, type ThreadTurn } from "./api.ts";
 import { href } from "./route.ts";
 import { AlertMark } from "./SessionCenter.tsx";
 import {
@@ -81,6 +82,18 @@ export function useSessionAlerts(
 }
 export type SessionAttention = ReturnType<typeof useSessionAlerts>;
 export const alertAnchor = (alert: Alert) => alert.message || alert.run_id;
+
+/** Suppress only projected approvals whose run actually renders a pending approval. */
+export function duplicatesInlineApproval(alert: Alert, turns: ThreadTurn[]): boolean {
+  if (alert.kind !== "approval" || alert.action !== "approve" || !alert.run_id) return false;
+  const run = turns.find((turn) => turn.run?.id === alert.run_id)?.run;
+  return (
+    !!run &&
+    turnOf(run).interrupts.some(
+      (item) => item.type === "approval" && item.decision.kind === "pending",
+    )
+  );
+}
 
 /** Recorded alerts sit beside their message; old or session-wide anchors stay above history. */
 export function SessionAlerts({
