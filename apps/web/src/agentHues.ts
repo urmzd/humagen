@@ -38,6 +38,9 @@ export interface AgentLook {
   glasses?: string;
   headphones?: boolean;
   bow_tie?: boolean;
+  greeting?: string;
+  starters?: { title: string; prompt: string }[];
+  image_url?: string;
 }
 
 let looks: Readonly<Record<string, AgentLook>> = {};

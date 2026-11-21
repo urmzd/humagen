@@ -202,14 +202,25 @@ type ThreadSummary struct {
 	// the session without having started it: they posted in it, were
 	// mentioned or were added.
 	Joined bool `json:"joined,omitempty"`
-	// WaitingFor is what a run parked in it waits on a person for, set on a
-	// session listing: the tool an approval asks about, or the first line of
-	// a question, at most MaxAttention runes. WaitingKind is WaitingApproval
-	// or WaitingQuestion, and WaitingOnYou says the listing's reader is the
-	// one asked: named, an approver, or taking part when nobody is named.
-	WaitingFor   string `json:"waiting_for,omitempty"`
-	WaitingKind  string `json:"waiting_kind,omitempty"`
-	WaitingOnYou bool   `json:"waiting_on_you,omitempty"`
+	// WaitingFor is what waits on a person in it, set on a session listing:
+	// the question waiting on the reader when there is one, else what the
+	// latest run parked on a person asks; the tool an approval asks about, or
+	// the first line of a question, at most MaxAttention runes. WaitingKind
+	// is WaitingApproval or WaitingQuestion. WaitingOnYou says an open
+	// question one of its runs waits on is the reader's to answer, as
+	// answering would decide it (openQuestions), whatever they did with its
+	// notification.
+	WaitingFor  string `json:"waiting_for,omitempty"`
+	WaitingKind string `json:"waiting_kind,omitempty"`
+	// WaitingOnYou is always sent, false included: a reader who is not
+	// asked must never be told they are.
+	WaitingOnYou bool `json:"waiting_on_you"`
+	// WaitingUnknown says it waits and whether on the reader could not be
+	// told: the workspace's inbox holds more live messages than a listing
+	// reads (inbox.MaxAsking) and no question of the reader's about it was
+	// among those read, or the inbox could not be read. WaitingOnYou is then
+	// false, which does not mean it waits on someone else.
+	WaitingUnknown bool `json:"waiting_unknown,omitempty"`
 	// Failure is why its latest turn failed, set on a session listing when
 	// it did: the first line of the run's error, at most MaxAttention runes.
 	// A run that failed before a later turn answered is not a failure here.
@@ -1358,8 +1369,39 @@ func (p *Platform) carryOut(ctx context.Context, poster auth.Principal, tenant s
 			out.Refused = append(out.Refused, mn)
 		}
 	}
+	th = p.keepTagged(tenant, th, via, d, out.Runs, len(mentioned) > 0)
 	out.Thread, out.Message = th, m
 	return out, nil
+}
+
+// keepTagged makes the one agent a message on a client's surface tagged,
+// and that answered, the thread's selected agent, so the untagged replies
+// after it go to that agent (RFC 0012): a Slack thread started for one
+// agent stays that agent's until someone tags another. The console runs
+// only what a message tags, and a session answers by its own agent, so
+// neither changes here. A thread that moved on meanwhile keeps what it has.
+func (p *Platform) keepTagged(tenant string, th threads.Thread, via string, d threads.Decision, started []runs.Run, delegated bool) threads.Thread {
+	if via == "" || th.Session != nil || d.Rule != threads.RuleTagged || delegated {
+		return th
+	}
+	var tagged []string
+	for _, r := range started {
+		if !slices.Contains(tagged, r.Agent) {
+			tagged = append(tagged, r.Agent)
+		}
+	}
+	if len(tagged) != 1 || slices.Equal(th.Agents, tagged) {
+		return th
+	}
+	kept, err := p.Threads.Update(tenant, th.ID, th.Version, p.now(), func(t *threads.Thread) error {
+		t.Agents, t.Mode = tagged, ""
+		return nil
+	})
+	if err != nil {
+		p.log.Info("platform: a thread's tagged agent was not kept", "tenant", tenant, "thread", th.ID, "error", err)
+		return th
+	}
+	return kept
 }
 
 // mentionRefusal is why a mentioned agent is not asked in a conversation
@@ -2415,18 +2457,17 @@ func (t ThreadTurn) at() time.Time {
 // agent has answered yet. A conversation's channel and project are its
 // record's when it has one.
 func (p *Platform) ThreadPage(tenant string, q runs.ThreadQuery) ([]ThreadSummary, string, error) {
-	return p.threadPage(tenant, q, nil)
+	return p.threadPage(tenant, q, nil, nil)
 }
 
 // ThreadPageAs is ThreadPage holding only the conversations the reader may
 // read: in a project they see, and in a private thread taking part. A page is
 // full of those, so a hidden conversation never shortens one.
 func (p *Platform) ThreadPageAs(who auth.Principal, q runs.ThreadQuery) ([]ThreadSummary, string, error) {
-	seer := p.Seer(who)
-	return p.threadPage(who.Tenant, q, func(s ThreadSummary) bool { return seer.Conversation(s.ID, s.Project) })
+	return p.threadPage(who.Tenant, q, p.Seer(who).Snapshot(), nil)
 }
 
-func (p *Platform) threadPage(tenant string, q runs.ThreadQuery, keep func(ThreadSummary) bool) ([]ThreadSummary, string, error) {
+func (p *Platform) threadPage(tenant string, q runs.ThreadQuery, seer *Seer, keep func(ThreadSummary) bool) ([]ThreadSummary, string, error) {
 	limit := q.Limit
 	if limit <= 0 {
 		limit = runs.DefaultThreadPage
@@ -2457,13 +2498,14 @@ func (p *Platform) threadPage(tenant string, q runs.ThreadQuery, keep func(Threa
 	if err != nil {
 		return nil, "", err
 	}
+	listed, err := p.Runs.ListThreads(tenant, 0)
+	if err != nil {
+		return nil, "", err
+	}
 	byID := map[string]*ThreadSummary{}
 	var order []*ThreadSummary
-	for _, s := range p.Runs.Threads(tenant, 0) {
+	for _, s := range listed {
 		if elsewhere[s.ID] || s.Origin == OriginEval {
-			continue
-		}
-		if first, err := p.Runs.Get(tenant, s.ID); err == nil && IsEvaluation(first) {
 			continue
 		}
 		sum := &ThreadSummary{ThreadSummary: s, Visibility: threads.Shared}
@@ -2471,8 +2513,8 @@ func (p *Platform) threadPage(tenant string, q runs.ThreadQuery, keep func(Threa
 		order = append(order, sum)
 	}
 	for _, rec := range recs {
-		if first, err := p.Runs.Get(tenant, rec.ID); err == nil && IsEvaluation(first) {
-			continue
+		if seer != nil {
+			seer.Hold(rec.Thread)
 		}
 		sum, ok := byID[rec.ID]
 		if !ok {
@@ -2496,37 +2538,52 @@ func (p *Platform) threadPage(tenant string, q runs.ThreadQuery, keep func(Threa
 			}
 		}
 	}
+	order = slices.DeleteFunc(order, func(s *ThreadSummary) bool {
+		if q.Before != "" {
+			at := s.UpdatedAt.UnixNano()
+			if at > afterAt || (at == afterAt && s.ID <= afterID) {
+				return true
+			}
+		}
+		return in != nil && !in[s.Project] ||
+			q.Origin != "" && s.Origin != q.Origin ||
+			q.Agent != "" && !slices.Contains(s.Agents, q.Agent) ||
+			q.Standing == runs.StandingRunning && s.Active == 0 ||
+			q.Standing == runs.StandingFailed && s.Failed == 0 ||
+			q.Channel != "" && s.Channel != q.Channel ||
+			keep != nil && !keep(*s)
+	})
 	slices.SortFunc(order, func(a, b *ThreadSummary) int {
 		return cmp.Or(b.UpdatedAt.Compare(a.UpdatedAt), strings.Compare(a.ID, b.ID))
 	})
 	page := []ThreadSummary{}
-	for _, s := range order {
-		switch {
-		case in != nil && !in[s.Project]:
-			continue
-		case q.Origin != "" && s.Origin != q.Origin:
-			continue
-		case q.Agent != "" && !slices.Contains(s.Agents, q.Agent):
-			continue
-		case q.Standing == runs.StandingRunning && s.Active == 0:
-			continue
-		case q.Standing == runs.StandingFailed && s.Failed == 0:
-			continue
-		case q.Channel != "" && s.Channel != q.Channel:
-			continue
-		case keep != nil && !keep(*s):
-			continue
+	// Only the first run can identify an evaluation or place a housekeeping
+	// conversation. Read candidates together, stopping when the page is full.
+	for batch := range slices.Chunk(order, limit+1) {
+		ids := make([]string, len(batch))
+		for i, s := range batch {
+			ids[i] = s.ID
 		}
-		if q.Before != "" {
-			at := s.UpdatedAt.UnixNano()
-			if at > afterAt || (at == afterAt && s.ID <= afterID) {
+		firsts, err := p.Runs.Many(tenant, ids)
+		if err != nil {
+			return nil, "", err
+		}
+		if seer != nil {
+			seer.Read(ids...)
+		}
+		for _, s := range batch {
+			first, ok := firsts[s.ID]
+			if ok && IsEvaluation(first) {
 				continue
 			}
+			if seer != nil && !seer.Place(conversationPlace(s.ID, s.Project, first)) {
+				continue
+			}
+			if len(page) == limit {
+				return page, encodeThreadCursor(page[len(page)-1]), nil
+			}
+			page = append(page, *s)
 		}
-		if len(page) == limit {
-			return page, encodeThreadCursor(page[len(page)-1]), nil
-		}
-		page = append(page, *s)
 	}
 	return page, "", nil
 }

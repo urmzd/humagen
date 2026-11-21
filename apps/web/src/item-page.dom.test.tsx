@@ -36,6 +36,7 @@ const session = (id: string, parent: string, origin = "api"): AgentSessionSummar
     messages: 1,
     turns: 1,
     branches: 0,
+    waiting_on_you: false,
     active: 0,
     waiting: 0,
     failed: 0,

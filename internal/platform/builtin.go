@@ -82,8 +82,9 @@ const BuiltinArchitectReviewer = "architect-reviewer"
 // BuiltinQAReviewer checks behavior and test coverage without changing code.
 const BuiltinQAReviewer = "qa-reviewer"
 
-// BuiltinApprover is the approval agent: in a session set to Run it decides
-// each tool call the policy asks about (approval_agent.go). It takes no
+// BuiltinApprover is the approval agent: in a session set to Auto it decides
+// each tool call the policy asks about (approval_agent.go) and answers a
+// question the session already settles (approval_questions.go). It takes no
 // messages of its own and has no tools.
 const BuiltinApprover = approve.Agent
 
@@ -214,7 +215,7 @@ func (p *Platform) builtinSpecs() []wire.AgentSpec {
 		Tools:        reviewTools(),
 	}, {
 		Name:         BuiltinApprover,
-		Description:  "Decides tool calls in sessions set to Run: allows, denies with a reason, or asks a person; in Run and Answer, also answers what the session already settles",
+		Description:  "In sessions set to Auto: decides tool calls (allows, denies with a reason, or asks a person) and answers what the session already settles",
 		Provider:     chain[0].Provider,
 		Model:        chain[0].Model,
 		Fallbacks:    slices.Clone(chain[1:]),

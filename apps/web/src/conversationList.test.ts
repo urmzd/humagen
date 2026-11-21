@@ -119,29 +119,87 @@ test("an unnamed conversation is titled from its first message, as the server ti
   for (const [input, want] of cases) assert.equal(deriveTitle(input), want, input);
 });
 
-test("a row badge prioritizes waiting, failure, work and open alerts", () => {
+test("a row badge prioritizes waiting, failure, work and open alerts", async () => {
   const words = {
     waitingYou: (what: string, kind?: string) => `you:${kind ?? ""}:${what}`,
     waitingOther: (what: string, kind?: string) => `other:${kind ?? ""}:${what}`,
+    waitingUnknown: (what: string, kind?: string) => `unknown:${kind ?? ""}:${what}`,
     failed: (reason: string) => `failed:${reason}`,
     working: "working",
     alert: (title: string) => `alert:${title}`,
   };
+  const since = "2026-01-01T00:00:00Z";
+  const m: Marks = { archived: [], read: {}, tips: [], since };
   const state = (over: Partial<ThreadSummary>) => rowState(t("a", over), words, { session: true });
   assert.deepEqual(
-    state({ active: 1, waiting: 1, waiting_for: "deploy", waiting_kind: "approval", failed: 1 }),
+    state({
+      active: 1,
+      waiting: 1,
+      waiting_for: "deploy",
+      waiting_kind: "approval",
+      waiting_on_you: true,
+      failed: 1,
+    }),
     { kind: "approval", tone: "warn", text: "you:approval:deploy" },
   );
+  // Only a listing that says the reader is asked makes it theirs: a missing
+  // answer is no one's, never the reader's by default.
+  assert.deepEqual(
+    state({ active: 1, waiting: 1, waiting_for: "deploy", waiting_kind: "approval" }),
+    { kind: "approval", tone: "neutral", text: "other:approval:deploy" },
+  );
+  assert.deepEqual(
+    state({ active: 1, waiting: 1, waiting_kind: "question", waiting_on_you: false }),
+    { kind: "question", tone: "neutral", text: "other:question:" },
+  );
+  // A listing that names nothing waited on and no one: it waits on someone.
   assert.deepEqual(state({ active: 1, waiting: 1, waiting_on_you: false }), {
     kind: "waiting",
     tone: "neutral",
     text: "other::",
   });
+  // The listing could not tell whom it waits on: it is said to wait, in the
+  // neutral tone, and never on someone else or on the reader.
+  assert.deepEqual(
+    state({
+      active: 1,
+      waiting: 1,
+      waiting_for: "deploy",
+      waiting_kind: "approval",
+      waiting_on_you: false,
+      waiting_unknown: true,
+    }),
+    { kind: "approval", tone: "neutral", text: "unknown:approval:deploy" },
+  );
+  assert.deepEqual(state({ waiting: 1, waiting_on_you: false, waiting_unknown: true }), {
+    kind: "waiting",
+    tone: "neutral",
+    text: "unknown::",
+  });
+  // Told it is the reader's, that is what is said, whatever else is set.
+  assert.deepEqual(
+    state({ waiting: 1, waiting_for: "deploy", waiting_on_you: true, waiting_unknown: true }),
+    { kind: "waiting", tone: "warn", text: "you::deploy" },
+  );
+  const said = (await import("@humagen/components/copy")).defaultCopy.sidebar.state;
+  assert.equal(said.waitingUnknown("file_write", "approval"), "Waiting: approve file_write");
+  assert.equal(said.waitingUnknown("Which region?", "question"), "Waiting: Which region?");
+  assert.equal(said.waitingUnknown(""), "Waiting");
+  for (const text of [said.waitingUnknown("x", "approval"), said.waitingUnknown("")])
+    assert.doesNotMatch(text, /you|someone|answer|approval:/i);
   assert.deepEqual(state({ active: 1, failed: 1, failure: "boom" }), {
     kind: "failed",
     tone: "bad",
     text: "failed:boom",
   });
+  // An unread failure is the failed badge on a row whose title reads unread.
+  const unreadFailure = t("a", { failed: 1, failure: "boom", last_agent: true });
+  assert.deepEqual(rowState(unreadFailure, words, { session: true }), {
+    kind: "failed",
+    tone: "bad",
+    text: "failed:boom",
+  });
+  assert.equal(isUnread(unreadFailure, m), true);
   // A session listing reports no failure once a later turn answered.
   assert.equal(state({ failed: 1 }), undefined);
   // Other listings only count failures.
@@ -156,5 +214,7 @@ test("a row badge prioritizes waiting, failure, work and open alerts", () => {
     tone: "warn",
     text: "alert:Hi",
   });
+  // Nothing to say of its state: only the unread dot is left to show.
   assert.equal(state({ last_agent: true }), undefined);
+  assert.equal(isUnread(t("a", { last_agent: true }), m), true);
 });

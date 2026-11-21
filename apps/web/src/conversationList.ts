@@ -66,7 +66,7 @@ export function standingOf(t: ThreadSummary, marks: Marks): RowStanding {
 /** The words a row's state is said in (defaultCopy.sidebar.state). */
 export type StateWords = Pick<
   typeof defaultCopy.sidebar.state,
-  "waitingYou" | "waitingOther" | "failed" | "working" | "alert"
+  "waitingYou" | "waitingOther" | "waitingUnknown" | "failed" | "working" | "alert"
 >;
 
 /** The row's most pressing status and the detail behind its badge. */
@@ -86,15 +86,22 @@ export function rowState(
     alert?: { priority: "urgent" | "normal" | "low"; title: string };
   } = {},
 ): RowState | undefined {
+  // Something in it is parked. Whom on is the listing's to say, from the
+  // reader's own inbox; without that it waits on someone.
   if ((t.waiting ?? 0) > 0) {
-    const you = t.waiting_on_you ?? true;
+    // Only a listing that says the reader is asked makes it theirs: a missing
+    // answer is no one's, never the reader's by default.
+    const you = t.waiting_on_you === true;
     const detail = t.waiting_for ?? "";
     return {
       kind: t.waiting_kind ?? "waiting",
       tone: you ? "warn" : "neutral",
       text: you
         ? words.waitingYou(detail, t.waiting_kind)
-        : words.waitingOther(detail, t.waiting_kind),
+        : t.waiting_unknown === true
+          ? // The listing could not tell whom: said without naming anyone.
+            words.waitingUnknown(detail, t.waiting_kind)
+          : words.waitingOther(detail, t.waiting_kind),
     };
   }
   const failure = t.failure ?? (!opts.session && t.failed > 0 ? "" : undefined);

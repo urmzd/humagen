@@ -4,6 +4,7 @@ import { defaultCopy } from "@humagen/components";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { Component, type ComponentType, type ReactNode, useState } from "react";
 import { again, LazyFrame, lazyHost, lazyPage, lazyView, moduleAddress, sparing } from "./lazy.tsx";
+import { HubTabLabel } from "./ui.tsx";
 
 // Loading the console again is counted, not done.
 let reloads = 0;
@@ -87,9 +88,13 @@ test("a page whose code cannot be read says so and offers Retry, which reads it 
   const Page = lazyPage(reports.load, same, { title: () => "Reports" });
   render(<Page who="Ada" />);
   await reports.fail();
-  // Never an empty page: a title, what happened, and a way to try again.
+  // Never an empty page: a title that says what happened, what to do, and a way to try again.
   assert.ok(await screen.findByRole("heading", { name: words.title }));
-  assert.equal(screen.getByRole("alert").textContent, words.failed);
+  assert.equal(screen.getByRole("alert").textContent, words.hint);
+  // The way to try again is one icon on the message's row, named for a screen reader.
+  const retry = screen.getByRole("button", { name: defaultCopy.retry });
+  assert.equal(retry.textContent, "");
+  assert.equal(screen.getAllByRole("button").length, 1);
   assert.equal(screen.queryByText("Reports for Ada"), null);
 
   fireEvent.click(screen.getByRole("button", { name: defaultCopy.retry }));
@@ -98,6 +103,22 @@ test("a page whose code cannot be read says so and offers Retry, which reads it 
   assert.ok(await screen.findByRole("heading", { name: "Reports for Ada" }));
   assert.equal(screen.queryByRole("alert"), null);
   assert.equal(reloads, 0, "read again where it stood, without loading the console again");
+});
+
+test("under a hub's tabs the open tab heads the failure, which is said once", async () => {
+  const reports = code(Reports);
+  const Page = lazyPage(reports.load, same, { title: () => "Reports" });
+  render(
+    <HubTabLabel.Provider value="Agents">
+      <Page who="Ada" />
+    </HubTabLabel.Provider>,
+  );
+  await reports.fail();
+  // The tab already names the page: no second title, and the message says what happened.
+  assert.equal((await screen.findByRole("alert")).textContent, words.failed);
+  assert.equal(screen.queryByRole("heading", { name: words.title }), null);
+  assert.ok(screen.getByRole("heading", { name: "Agents" }).className.includes("sr-only"));
+  assert.ok(screen.getByRole("button", { name: defaultCopy.retry }));
 });
 
 test("when trying again fails too, the console is loaded again at its address", async () => {
@@ -112,7 +133,7 @@ test("when trying again fails too, the console is loaded again at its address", 
   await reports.fail();
   await waitFor(() => assert.equal(reloads, 1));
   // The failure stays on view until the console loads again.
-  assert.equal(screen.getByRole("alert").textContent, words.failed);
+  assert.equal(screen.getByRole("alert").textContent, words.hint);
   assert.ok(screen.getByRole("button", { name: defaultCopy.retry }));
 });
 

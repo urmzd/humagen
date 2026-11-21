@@ -43,6 +43,7 @@ const session = (id: string, parent = "console:p"): AgentSessionSummary => ({
     messages: 1,
     turns: 1,
     branches: 0,
+    waiting_on_you: false,
     active: 1,
     waiting: 0,
     failed: 0,
@@ -248,6 +249,45 @@ test("session rows retain readable project context and age on narrow surfaces", 
   );
   assert.ok(personal.closest("li")?.querySelector("time[datetime]"));
 });
+test("Alerts opens the decision for review", async () => {
+  net = stubFetch({
+    "GET /api/alerts": () => ({ alerts: [{ ...alert("approval"), action: "approve" }] }),
+  });
+  const went: unknown[] = [];
+  render(
+    <AlertsPage
+      route={{ page: "alerts" }}
+      go={(route) => went.push(route)}
+      canWrite
+      onChanged={() => {}}
+      tick={0}
+    />,
+  );
+  fireEvent.click(await screen.findByRole("button", { name: "Review Approval" }));
+  assert.deepEqual(went, [{ page: "conversation", id: "s_root", message: "msg1" }]);
+  assert.equal(
+    net.seen.some(({ method }) => method === "PATCH"),
+    false,
+  );
+});
+
+test("an alert title takes two lines in a stacked row and one in the table", async () => {
+  const title = "Spend for launch is a lower bound: some model calls have no price in US dollars";
+  net = stubFetch({ "GET /api/alerts": () => ({ alerts: [{ ...alert("long"), title }] }) });
+  render(
+    <AlertsPage route={{ page: "alerts" }} go={() => {}} canWrite onChanged={() => {}} tick={0} />,
+  );
+  // A touch screen shows no tooltip, so a stacked row must show the second line itself.
+  const link = await screen.findByRole("link", { name: title });
+  const classes = link.firstElementChild?.className.split(/\s+/) ?? [];
+  assert.ok(classes.includes("line-clamp-2"), `two lines when stacked: ${classes.join(" ")}`);
+  assert.ok(
+    classes.includes("@3xl:pointer-fine:line-clamp-1"),
+    `one line in the table: ${classes.join(" ")}`,
+  );
+  assert.ok(!classes.includes("truncate"), `not one line everywhere: ${classes.join(" ")}`);
+});
+
 test("Alerts resolves selected records and Undo reopens only successful changes", async () => {
   let rows = [alert("one"), alert("two", "urgent")];
   const sent: unknown[] = [];

@@ -350,11 +350,12 @@ export async function resizeSidebar(page: Page): Promise<void> {
   const nav = page.getByRole("complementary", { name: "Navigation" });
   const width = (await nav.boundingBox())?.width ?? 0;
   // It is drawn no wider than a third of the window.
-  const want = Math.min(344, (page.viewportSize()?.width ?? 0) / 3);
+  const want = Math.min(344, Math.floor((page.viewportSize()?.width ?? 0) / 3));
   if (Math.abs(width - want) > 2)
     throw new Error(`the dragged sidebar is ${width}px, want ${want}`);
-  if ((await page.evaluate(() => localStorage.getItem("humagen.sidebar.width"))) !== "344")
-    throw new Error("the dragged width is kept");
+  // What is kept is what is drawn.
+  const kept = await page.evaluate(() => localStorage.getItem("humagen.sidebar.width"));
+  if (kept !== String(want)) throw new Error(`the dragged width is kept as ${kept}, want ${want}`);
 }
 
 /** Rests the mouse on a row that is not the open one, which shows its hover state and preview. */
@@ -446,12 +447,18 @@ export async function assertSources(page: Page): Promise<void> {
     throw new Error("no row carries a bare dot");
 }
 
-/** The focused log draws a thin line inside its edge rather than a 2px accent frame. */
+/**
+ * The focused log draws a thin neutral line along its top edge (DES-080): no
+ * accent frame, and no ring round the whole log, which would box in the
+ * surface the composer floats over.
+ */
 export async function assertCalmFocus(page: Page): Promise<void> {
   const shadow = await page.evaluate(() => {
     const log = document.activeElement as HTMLElement | null;
     return log?.getAttribute("role") === "log" ? getComputedStyle(log).boxShadow : "";
   });
-  if (!/0px 0px 0px 1px inset/.test(shadow))
-    throw new Error(`the focused log should show a 1px inset ring, not: ${shadow || "nothing"}`);
+  if (!/0px 2px 0px 0px inset/.test(shadow) || /0px 0px 0px [12]px/.test(shadow))
+    throw new Error(
+      `the focused log should show a line along its top, not: ${shadow || "nothing"}`,
+    );
 }

@@ -20,7 +20,7 @@ import (
 )
 
 // The approval agent (BuiltinApprover) decides tool calls in a session set
-// to Run (threads.ApprovalAuto). It is a built-in agent, in the store like
+// to Auto (threads.ApprovalAuto). It is a built-in agent, in the store like
 // the others, with its own versioned base and model chain, and a workspace
 // may change it like any agent. It is asked only about a call the policy
 // leaves to a person (autoApprovable).
@@ -29,7 +29,7 @@ import (
 // as housekeeping (startHook) with the call put as approve.Describe writes
 // it, and when that run ends fileApproval reads its answer and answers the
 // question through the path every answer takes, as the person who chose
-// Run, so it never allows more than they could. The session shows "Allowed
+// Auto, so it never allows more than they could. The session shows "Allowed
 // by the approval agent: <reason>" or "Denied by the approval agent:
 // <reason>", which a denied agent reads. A run that fails (none of its
 // chain's providers is enabled, say), an answer that cannot be read, and
@@ -37,10 +37,9 @@ import (
 // kept on the question's card (judge) with the fields a workspace's schema
 // adds.
 //
-// In a session set to Run and Answer (threads.ApprovalDecide) it is also
-// shown a question an agent asks a person (approval_questions.go), and
-// answers it the same way, as the person who chose the mode, only when the
-// session settles the answer.
+// In a session set to Auto it is also shown a question an agent asks a
+// person (approval_questions.go), and answers it the same way, as the
+// person who chose the mode, only when the session settles the answer.
 //
 // The approval agent answers with structured output: its spec's output
 // schema (approve.DefaultSchema as it ships; a workspace may add fields of
@@ -81,7 +80,7 @@ func (p *Platform) approvalCall(run runs.Run, q event.Question, spec wire.AgentS
 	}
 	c.Policy = []string{
 		fmt.Sprintf("In %s, calls of this kind (%s) need approval before they run.", where, strings.ReplaceAll(string(p.categoryOf(q.Tool.Name)), "_", " ")),
-		"The session's owner set it to Run, so you decide in their place, and only within what they could approve themselves.",
+		"The session's owner set it to Auto, so you decide in their place, and only within what they could approve themselves.",
 	}
 	if q.Tool.ActsForPerson {
 		c.Policy = append(c.Policy, "This tool acts with a person's own account: allow only what the session clearly asks of it.")
@@ -140,9 +139,6 @@ func aboutOf(q event.Question) judgedAbout {
 	if q.Tool != nil {
 		a.Tool = q.Tool.Name
 	}
-	if isPersonQuestion(q) {
-		a.Mode = threads.ApprovalDecide
-	}
 	return a
 }
 
@@ -167,7 +163,7 @@ func (p *Platform) askApprover(ctx context.Context, run runs.Run, about judgedAb
 }
 
 // fileApproval answers the question an approval run decided, once that run
-// has ended, unless the session has left Run since or someone answered
+// has ended, unless the session has left Auto since or someone answered
 // first.
 func (p *Platform) fileApproval(ctx context.Context, decided runs.Run) error {
 	meta := wire.Meta(decided.Tag())
@@ -186,11 +182,7 @@ func (p *Platform) fileApproval(ctx context.Context, decided runs.Run) error {
 	by := p.approvingFor(decided.Tenant, *th.Approval)
 	question, tool := meta[metaApprovalQuestion], meta[metaApprovalTool]
 	if kind := meta[metaApprovalKind]; kind == event.QuestionChoice || kind == event.QuestionReply {
-		if !th.Approval.Decides() {
-			// The session left Run and Answer since: a person answers.
-			return nil
-		}
-		return p.fileAnswer(ctx, decided, parked, m, judgedAbout{Question: question, Kind: kind, Mode: threads.ApprovalDecide}, by)
+		return p.fileAnswer(ctx, decided, parked, m, judgedAbout{Question: question, Kind: kind, Mode: threads.ApprovalAuto}, by)
 	}
 	about := judgedAbout{Question: question, Tool: tool, Kind: event.QuestionApproval, Mode: th.Approval.ModeOf()}
 	var d approve.Decision
@@ -249,7 +241,7 @@ func (p *Platform) judge(tenant string, m inbox.Message, question, decidedBy str
 }
 
 // auditJudgement records what the approval agent decided about a question
-// run asked, for the person who chose Run. decidedBy is the approval run.
+// run asked, for the person who chose Auto. decidedBy is the approval run.
 // The fields a workspace's schema adds are recorded with it, each under
 // "field." and its name, and an answer to a question under "answer".
 func (p *Platform) auditJudgement(by auth.Principal, run runs.Run, about judgedAbout, decidedBy string, d approve.Decision) {

@@ -64,7 +64,13 @@ import { type Standing, useRecents, useRecentsRow } from "./recents.ts";
 import { href, type Route, type Page as RoutePage } from "./route.ts";
 import { type Alert, holdsAnAlertOnly, openAlert, orderAlerts } from "./sessionCenter.ts";
 import { Avatar, workspaceSettingsRoute } from "./settingsLinks.tsx";
-import { applySidebarWidth, SIDEBAR_WIDTH, storedSidebarWidth } from "./sidebarState.ts";
+import {
+  applySidebarWidth,
+  clampSidebarWidth,
+  SIDEBAR_WIDTH,
+  sidebarCap,
+  storedSidebarWidth,
+} from "./sidebarState.ts";
 import { AgentMark, type Flash, FlashNote, Popover, SkeletonRows, useFlash } from "./ui.tsx";
 import { workspaceHub } from "./workspace-navigation.ts";
 
@@ -318,7 +324,10 @@ function SourceLabel({ source }: { source: RowSource }) {
       <span aria-hidden className="inline-flex size-3.5 shrink-0 items-center justify-center">
         {SOURCE_ICONS[source]}
       </span>
-      <span className="truncate">{defaultCopy.sidebar.sourceShort[source]}</span>
+      {/* Said in full after the title for a screen reader, so not twice. */}
+      <span aria-hidden className="truncate">
+        {defaultCopy.sidebar.sourceShort[source]}
+      </span>
     </span>
   );
 }
@@ -736,8 +745,28 @@ function Label({
  */
 function ResizeHandle() {
   const [width, setWidth] = useState(storedSidebarWidth);
-  const drag = useRef<{ x: number; from: number } | null>(null);
-  const set = (next: number, keep: boolean) => setWidth(applySidebarWidth(next, keep));
+  // The sidebar is never drawn wider than a third of the window, so the edge
+  // says and moves from the width that is drawn, not the one kept.
+  const [cap, setCap] = useState(() => sidebarCap());
+  useEffect(() => {
+    const resized = () => setCap(sidebarCap());
+    window.addEventListener("resize", resized);
+    return () => window.removeEventListener("resize", resized);
+  }, []);
+  const drawn = Math.min(width, cap);
+  const drag = useRef<{ x: number; from: number; kept: number } | null>(null);
+  // Moves the edge to a width, and with `keep` remembers it. Only a width
+  // the person actually changed is remembered: on a window too narrow for
+  // the remembered width, a press that moves nothing, or a key toward a
+  // bound the cap already holds it at, asks for the width already drawn, and
+  // remembering that would overwrite what they chose on a wider screen with
+  // this window's cap. `from` is the drawn width the gesture started at.
+  const set = (next: number, keep: boolean, from = drawn) => {
+    const to = clampSidebarWidth(Math.min(next, cap));
+    if (keep && to === from) return false;
+    setWidth(applySidebarWidth(to, keep));
+    return true;
+  };
   const step = 16;
   return (
     // biome-ignore lint/a11y/useSemanticElements: a vertical separator that moves is a focusable splitter, which <hr> is not
@@ -746,8 +775,8 @@ function ResizeHandle() {
       aria-orientation="vertical"
       aria-label={defaultCopy.sidebar.resize}
       aria-valuemin={SIDEBAR_WIDTH.min}
-      aria-valuemax={SIDEBAR_WIDTH.max}
-      aria-valuenow={width}
+      aria-valuemax={Math.max(SIDEBAR_WIDTH.min, Math.min(SIDEBAR_WIDTH.max, cap))}
+      aria-valuenow={drawn}
       tabIndex={0}
       data-sidebar-resize
       onPointerDown={(e) => {
@@ -755,7 +784,7 @@ function ResizeHandle() {
         e.preventDefault();
         // Kept while the pointer moves off the thin edge; a browser that cannot is still dragged.
         e.currentTarget.setPointerCapture?.(e.pointerId);
-        drag.current = { x: e.clientX, from: width };
+        drag.current = { x: e.clientX, from: drawn, kept: width };
       }}
       onPointerMove={(e) => {
         const d = drag.current;
@@ -764,18 +793,22 @@ function ResizeHandle() {
       onPointerUp={(e) => {
         const d = drag.current;
         drag.current = null;
-        if (d) set(d.from + e.clientX - d.x, true);
+        // Let go where it started: the width remembered before stays.
+        if (d && !set(d.from + e.clientX - d.x, true, d.from)) setWidth(applySidebarWidth(d.kept));
       }}
       onPointerCancel={() => {
+        const d = drag.current;
         drag.current = null;
+        if (d) setWidth(applySidebarWidth(d.kept));
       }}
-      onDoubleClick={() => set(SIDEBAR_WIDTH.initial, true)}
+      // The default itself is remembered, not this window's cap on it.
+      onDoubleClick={() => setWidth(applySidebarWidth(SIDEBAR_WIDTH.initial, true))}
       onKeyDown={(e) => {
         const next =
           e.key === "ArrowLeft"
-            ? width - step
+            ? drawn - step
             : e.key === "ArrowRight"
-              ? width + step
+              ? drawn + step
               : e.key === "Home"
                 ? SIDEBAR_WIDTH.min
                 : e.key === "End"
@@ -1088,8 +1121,8 @@ export function Sidebar({
   // Archived here is the reader's own: the conversation leaves their lists
   // and stays for everyone else. Delete still asks an admin.
   const { marks, archive: setArchivedMark, read: markRead } = useMarks(can("runs:read"));
-  // Sessions are filed under the project they belong to, each a group that folds;
-  // the plain list by day is one choice away in the filter.
+  // Recent lists sessions newest first; By project, By day and Archived are
+  // groupings one choice away in the filter.
   const [view, setView] = useState<ListView>("flat");
   const [note, setNote] = useState<{ id: string; archived: boolean } | null>(null);
   const [gone, setGone] = useState<Set<string>>(() => new Set());
@@ -1600,8 +1633,11 @@ export function Sidebar({
                   )}
                   {view !== "archived" && listEmpty && loading !== "first" && !stalled && (
                     <li data-empty className="px-2.5 py-1.5 text-aui-xs text-aui-muted">
+                      {/* Said of every section: a session listed above is not "no session". */}
                       {filters > 0
-                        ? "No session matches these filters."
+                        ? participatedRows.length > 0
+                          ? "No other session matches these filters."
+                          : "No session matches these filters."
                         : pinnedRows.length > 0 || participatedRows.length > 0
                           ? "No other sessions yet."
                           : "Your sessions appear here. Start with New."}

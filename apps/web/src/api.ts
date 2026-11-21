@@ -8,6 +8,7 @@ import type {
   AgentSetupPlan,
   AgentSkillDefaults,
   AgentSkillDefaultsUpdate,
+  AgentSlackApp,
   AnalyticsBucket,
   AnalyticsGroup,
   AuditRecord,
@@ -62,6 +63,7 @@ import type {
   ThreadFollowup,
   ThreadImport,
   ThreadShare,
+  ThreadUsage,
   VoiceSettings,
   VoiceTranscript,
 } from "../../../packages/client/src/generated/types.ts";
@@ -77,6 +79,7 @@ export type {
   AgentLookView,
   AgentOffer,
   AgentPlace,
+  AgentSlackApp,
   Branding,
   ContextLayer,
   DefaultResolved,
@@ -475,10 +478,16 @@ export interface ThreadSummary {
   source?: "slack" | "slack_dm" | "github" | "scheduled";
   /** On a session listing: the reader takes part in a session someone else started. */
   joined?: boolean;
-  /** On a session listing: what the latest parked run waits on, and whether it asks the reader. */
+  /**
+   * On a session listing: what the latest parked run waits on, and whether it
+   * asks the reader. waiting_on_you is always sent; a missing one reads as not.
+   * waiting_unknown says it waits and the listing could not tell whether on
+   * the reader: neither "you" nor "someone else" is then said.
+   */
   waiting_for?: string;
   waiting_kind?: "approval" | "question";
   waiting_on_you?: boolean;
+  waiting_unknown?: boolean;
   /** On a session listing: why the latest turn failed, when it did. */
   failure?: string;
   turns: number;
@@ -768,6 +777,7 @@ export interface PolicyChange {
 }
 
 export type Note = GeneratedNote;
+export type { ThreadUsage };
 
 /**
  * A tool that acts as you: an MCP provider reached with each person's own
@@ -1369,6 +1379,12 @@ export const api = {
     call<{ proposals: Proposal[] }>("GET", "/api/memory/pending").then((r) => r.proposals),
   /** Stop a run and everything attached to it. Runs it delegated keep going. */
   stopRun: (id: string) => call<Run>("POST", `/api/runs/${encodeURIComponent(id)}/stop`),
+  /** What a conversation's runs have used so far. */
+  threadUsage: (id: string) =>
+    call<ThreadUsage>("GET", `/api/threads/${encodeURIComponent(id)}/usage`),
+  /** Stop every run in a session and in its child sessions. */
+  stopSession: (id: string) =>
+    call<void>("POST", `/api/sessions/${encodeURIComponent(id)}/stop`, { children: true }),
   /** Answer the question a run is waiting on. Returns the question's inbox message, settled. */
   answer: (r: AnswerRequest) => call<unknown>("POST", answerPath(r), r.body),
   /** A message alone, without its children: who its root's place was asked in front of. */
@@ -1637,6 +1653,15 @@ export const api = {
     if (!res.ok) throw new ApiError(res.status, data.error ?? `Request failed (${res.status})`);
     return data as VoiceTranscript;
   },
+  /** An agent's own Slack app: its manifest, the link that creates it, and the client it is linked as. */
+  agentSlackApp: (name: string) =>
+    call<AgentSlackApp>("GET", `/api/agents/${encodeURIComponent(name)}/slack-app`),
+  /** Connect an agent's own Slack app from its bot token and signing secret. */
+  linkAgentSlackApp: (name: string, token: string, signing: string) =>
+    call<AgentSlackApp>("POST", `/api/agents/${encodeURIComponent(name)}/slack-app`, {
+      token: { value: token },
+      ...(signing ? { signing_secret: { value: signing } } : {}),
+    }),
   /** Keep the picture the console drew of an agent, for surfaces that need an image, such as Slack. */
   setAgentMark: async (name: string, png: Blob) => {
     const res = await fetch(`/api/agents/${encodeURIComponent(name)}/mark`, {
@@ -2153,14 +2178,16 @@ export interface Thread {
   /** The imported conversation it continues: the pinned revision and the turns its agent is sent. */
   import?: ThreadImport;
   /**
-   * How its gated tool actions are approved: absent asks a person; auto approves for `by`
-   * (DES-057); decide does that and also answers what the session settles (DES-079).
+   * How its gated tool actions are approved: absent is Ask, a person; auto is Auto, where the
+   * approval agent approves and answers what the session settles for `by` (DES-057, DES-079).
    */
-  approval?: { mode: "auto" | "decide"; by: string; roles?: string[]; at: string };
+  approval?: { mode: "auto"; by: string; roles?: string[]; at: string };
   /** The inbox id of the announcement a reply to which, in Slack, started the thread. */
   announcement?: string;
   /** The Slack thread this thread is, when it was started from Slack. It never changes. */
   surface?: { client: string; channel: string; ts: string };
+  /** A session's own: its agent, and what it was set up with before its first message. */
+  session?: { agent: string; parent: string; environment?: string; repos?: string[] };
   version: number;
   created_by: string;
   created_at: string;
@@ -2529,6 +2556,9 @@ export const coworking = {
     visibility?: "shared" | "private";
     agents?: string[];
     mode?: "join" | "all";
+    /** A private session's environment and repositories, chosen before its first message. */
+    environment?: string;
+    repos?: string[];
   }) =>
     t.visibility === "shared"
       ? call<ThreadPosted>("POST", "/api/threads", t)
@@ -2537,6 +2567,8 @@ export const coworking = {
           uploads: t.uploads,
           project: t.project,
           agent: t.agents?.[0],
+          ...(t.environment && t.environment !== "auto" ? { environment: t.environment } : {}),
+          ...(t.repos?.length ? { repos: t.repos } : {}),
         }).then(sessionPosted),
   /**
    * Shares a private thread in a project's channel (general unless named)
@@ -2554,7 +2586,7 @@ export const coworking = {
   ) => call<Thread>("POST", `${threadPath(id)}/publication`, body),
   share: (id: string, s: ThreadShare) => call<ThreadShared>("POST", `${threadPath(id)}/share`, s),
   /** Sets how a conversation's gated tool actions are approved: ask, or auto or decide for the caller. */
-  setApprovalMode: (id: string, mode: "ask" | "auto" | "decide") =>
+  setApprovalMode: (id: string, mode: "ask" | "auto") =>
     call<Thread>("PUT", `${threadPath(id)}/approval`, { mode }),
   /** The skills a `$name` can pick in a project. */
   skills: (project: string) =>

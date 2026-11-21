@@ -168,7 +168,7 @@ export function buildManifest(options: ManifestOptions = {}) {
         messages_tab_enabled: true,
         messages_tab_read_only_enabled: false,
       },
-      bot_user: { display_name: options.botName ?? "humagen", always_online: true },
+      bot_user: { display_name: options.botName ?? "Humagen", always_online: true },
       ...(has("shortcuts")
         ? {
             shortcuts: [
