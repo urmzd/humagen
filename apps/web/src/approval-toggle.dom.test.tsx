@@ -6,9 +6,10 @@ import { ApprovalToggle, forgetApprover } from "./ApprovalToggle.tsx";
 import { stubFetch } from "./dom.ts";
 import { forgetConfiguredProviders } from "./ModelChain.tsx";
 
-// A session's approval mode: one control under the composer that names the
-// mode, Ask or Auto, and opens a menu of the two under an "Approval mode"
-// heading, each with one line on what happens in it.
+// A session's approval mode: one icon control under the composer, named
+// "Approval mode: Ask" or "Approval mode: Auto" and shown so in a tooltip,
+// that opens a menu of the two under an "Approval mode" heading, each with
+// one line on what happens in it.
 
 let net: ReturnType<typeof stubFetch> | undefined;
 afterEach(() => {
@@ -42,12 +43,21 @@ test("the control opens a menu of the two modes under a heading, each with a sho
     "GET /api/model-providers": () => providers,
   });
   render(<ApprovalToggle thread={{ id: "th-1" }} me="ada" />);
-  // One control: nothing sits beside it, and nothing is said in a tooltip.
+  // One control, found by its name: the mode's icon alone, no words beside it.
   assert.equal(screen.getAllByRole("button").length, 1);
   const control = screen.getByRole("button", { name: "Approval mode: Ask" });
-  assert.ok(control.textContent?.includes("Ask"));
+  assert.equal(control.textContent, "");
   assert.equal(control.getAttribute("title"), null);
   assert.equal(control.getAttribute("aria-haspopup"), "menu");
+  // Its name is shown in a tooltip on focus (and hover), and goes with the focus.
+  fireEvent.focus(control);
+  assert.equal(screen.getByRole("tooltip").textContent, "Approval mode: Ask");
+  assert.ok(control.getAttribute("aria-describedby"));
+  fireEvent.blur(control);
+  assert.equal(screen.queryByRole("tooltip"), null);
+  fireEvent.mouseEnter(control);
+  assert.equal(screen.getByRole("tooltip").textContent, "Approval mode: Ask");
+  fireEvent.mouseLeave(control);
   fireEvent.click(control);
   const menu = await screen.findByRole("menu", { name: "Approval mode" });
   // The heading names the menu; then exactly two rows.
@@ -129,7 +139,11 @@ test("someone else's choice is named, and a refusal puts the mode back", async (
       nameOf={() => "Mira"}
     />,
   );
-  fireEvent.click(screen.getByRole("button", { name: "Approval mode: Auto, chosen by Mira" }));
+  const control = screen.getByRole("button", { name: "Approval mode: Auto, chosen by Mira" });
+  assert.equal(control.textContent, "");
+  fireEvent.focus(control);
+  assert.equal(screen.getByRole("tooltip").textContent, "Approval mode: Auto, chosen by Mira");
+  fireEvent.click(control);
   const menu = await screen.findByRole("menu");
   assert.ok(menu.textContent?.includes(words.chosenBy("Mira")));
   fireEvent.click(screen.getByRole("menuitemradio", { name: /^Ask/ }));

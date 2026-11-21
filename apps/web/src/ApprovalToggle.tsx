@@ -55,9 +55,10 @@ export function useApproverReady(): boolean | null {
 }
 
 /**
- * A session's approval mode under the composer, always shown: one control
- * that names the mode, ✋ Ask or ⏩ Auto, and opens a menu of the two under
- * an "Approval mode" heading. Each row says in one line what happens in that
+ * A session's approval mode under the composer, always shown: one control,
+ * the mode's icon (✋ Ask or ⏩ Auto) with a small chevron, named "Approval
+ * mode: <mode>" for assistive technology and in a tooltip on hover and
+ * focus, that opens a menu of the two under an "Approval mode" heading. Each row says in one line what happens in that
  * mode (DES-057, DES-079), so the choice is read before it is made
  * and nothing about it sits in a tooltip. The menu also says when the
  * approval agent has no model to run on, so every action waits for a person,
@@ -144,13 +145,15 @@ export function ApprovalToggle({
         align="right"
         popup="menu"
         label={`${words.label}: ${label}`}
+        // The trigger is the mode's icon alone, so its name is said on hover and focus too.
+        tooltip={`${words.label}: ${label}`}
+        tooltipSide="top"
         className="inline-flex h-8 min-w-8 pointer-coarse:h-11 pointer-coarse:min-w-11 shrink-0 items-center justify-center gap-1.5 rounded-aui px-2 text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-expanded:bg-aui-hover aria-expanded:text-aui-fg"
         button={
           <>
             <Icon size={16} />
-            {/* The mode in words where the bar has room; the icon alone in a narrow one. */}
-            <span aria-hidden className="humagen-approval-label inline-flex items-center gap-1">
-              <span className="text-aui-xs">{mode === "ask" ? words.ask : words.auto}</span>
+            {/* A small chevron says it opens a menu where the bar has room; the icon alone in a narrow one. */}
+            <span aria-hidden className="humagen-approval-label inline-flex items-center">
               <ChevronDownIcon size={12} />
             </span>
           </>
