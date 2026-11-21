@@ -315,6 +315,16 @@ export class FakeHumagen implements Humagen {
     if (existing) return existing;
     const prev = t.after ? this.runs.get(t.after) : undefined;
     if (t.after && !prev) throw new HumagenError(404, "not found");
+    // As the platform does: a turn asked again after one that answered
+    // nothing, for the same person, answers that turn's message.
+    const was = t.after ? this.askedIn.get(t.after) : undefined;
+    if (
+      was &&
+      (prev?.status === "failed" || prev?.status === "stopped") &&
+      prev.actor?.user &&
+      prev.actor.user === actor.user
+    )
+      this.askedIn.set(id, was);
     const now = this.at();
     const run: Run = {
       id,

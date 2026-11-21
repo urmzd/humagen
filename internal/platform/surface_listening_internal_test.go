@@ -3,10 +3,13 @@ package platform
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/join"
+	"github.com/urmzd/humagen/pkg/people"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/threads"
 )
@@ -247,4 +250,82 @@ func TestAThreadIsListenedToOnlyOnceTheAppHasAnswered(t *testing.T) {
 		t.Fatal(err)
 	}
 	unheard("a thread a later mention started", lt)
+}
+
+// A thread's listener is shown by handle, as its other people are: a
+// listener given by email never comes back as the email (N1).
+func TestAThreadsListenerIsShownByHandle(t *testing.T) {
+	p, _, _ := slackPlatform(t)
+	const email = "ada.lovelace@example.com"
+	if _, err := p.People.Seen("acme", people.Sighting{Subject: email, Name: "Ada Lovelace", Source: people.SignIn}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	shown := p.shower("acme")
+	th := shown.thread(threads.Thread{Listening: true, Listener: &threads.Listener{Person: email, Message: "1700000000.000100"}})
+	want := shown.person(email).Handle
+	if want == "" || th.Listener == nil || th.Listener.Person != want || strings.Contains(th.Listener.Person, "@") {
+		t.Fatalf("the listener is shown as %+v, want handle %q", th.Listener, want)
+	}
+	if th.Listener.Message != "1700000000.000100" {
+		t.Fatalf("the listener's mention is %q", th.Listener.Message)
+	}
+}
+
+// A failed mention answered on Retry starts listening for that mention's
+// asker: the retried turn carries the message the failed one answered
+// (F3), and the newest-mention rule still applies to it.
+func TestAFailedMentionAnsweredOnRetryStartsListening(t *testing.T) {
+	// Nothing listens here, so a turn on an OpenAI model fails.
+	t.Setenv("OPENAI_BASE_URL", "http://127.0.0.1:1/v1")
+	p, _, _ := slackPlatform(t)
+	machine := slackReporting(t, p, "app", "svc-slack")
+	ctx := t.Context()
+	revise := func(provider, model string) {
+		t.Helper()
+		cur, err := p.Agents.Get(ctx, "acme", "lead", 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		spec := cur.Spec.Clone()
+		spec.Provider, spec.Model = provider, model
+		if _, err := p.Agents.Revise(ctx, "acme", spec, cur.Rev, "test"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	revise("openai", "none")
+	got, err := p.StartThread(ctx, machine, ThreadInput{
+		Text:    "what broke the build?",
+		ActAs:   &ActAs{Client: "app", User: "U0ADA"},
+		Surface: &SurfaceRef{Client: "app", Channel: "C0TEAM", TS: "1700000000.000100", AppUser: "UAPP"},
+	})
+	if err != nil || len(got.Runs) != 1 {
+		t.Fatalf("the mention: %d runs, %v", len(got.Runs), err)
+	}
+	failed := awaitEnd(t, p, got.Runs[0].ID)
+	if failed.Status != runs.Failed {
+		t.Fatalf("the mention's run ended %q, want failed", failed.Status)
+	}
+	if th, _ := p.Threads.Get("acme", got.Thread.ID); th.Listening {
+		t.Fatal("a failed mention started listening")
+	}
+
+	// Retry as the Slack app asks it, the same words after the failed turn
+	// for the same person, with the agent working again: its answer is the
+	// mention's.
+	revise("offline", "offline")
+	again, err := p.Converse(ctx, "acme", Turn{ID: "api-slack-retry", Agent: failed.Agent, Text: failed.Text, After: failed.ID, Actor: failed.Actor, Client: "app"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m := wire.Meta(again.Tag())[runs.MetaMessage]; m == "" || m != wire.Meta(failed.Tag())[runs.MetaMessage] {
+		t.Fatalf("the retry answers message %q, want the failed turn's %q", m, wire.Meta(failed.Tag())[runs.MetaMessage])
+	}
+	if done := awaitEnd(t, p, again.ID); done.Status != runs.Completed || done.Answer == "" {
+		t.Fatalf("the retry ended %q with %q", done.Status, done.Answer)
+	}
+	awaitListening(t, p, got.Thread.ID)
+	th, err := p.Threads.Get("acme", got.Thread.ID)
+	if err != nil || th.Listener == nil || th.Listener.Person != "ada" || th.Listener.Message != "1700000000.000100" {
+		t.Fatalf("after the retry the thread listens to %+v, %v; want ada's mention", th.Listener, err)
+	}
 }
