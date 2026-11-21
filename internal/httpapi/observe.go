@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"slices"
@@ -808,6 +809,10 @@ func (s *Server) listSuites(w http.ResponseWriter, _ *http.Request, who auth.Pri
 			continue
 		}
 		runs, schedule, err := s.P.EvalSuiteListing(who, suite)
+		if errors.Is(err, evals.ErrNotFound) {
+			// Deleted since the list was read: it is gone, not a failure.
+			continue
+		}
 		if err != nil {
 			s.problem(w, err)
 			return

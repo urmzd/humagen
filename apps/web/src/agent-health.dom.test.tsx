@@ -219,12 +219,17 @@ test("a person sets, changes and turns off a suite's schedule within its bounds,
     <Evals
       target="agent"
       subject="writer"
-      suites={[scheduled]}
+      suites={[{ ...scheduled, schedule_busy: true }]}
       canWrite
       onChanged={() => changed++}
     />,
   );
-  assert.ok(screen.getByText("Every 6 hours, next in 2 hours, last run 3 hours ago, runs as Ana"));
+  // A run is going: the next starts after it, and saving still works.
+  assert.ok(
+    screen.getByText(
+      "Every 6 hours, next after the current run, last run 3 hours ago, runs as Ana",
+    ),
+  );
   fireEvent.click(screen.getByRole("button", { name: sched.edit }));
   const editor = screen.getByRole("form", { name: sched.editFor("smoke") });
   assert.equal(
@@ -249,7 +254,8 @@ test("a person sets, changes and turns off a suite's schedule within its bounds,
   const body = saved[0] as Record<string, unknown>;
   assert.equal(body.every_seconds, 86_400);
   // What a listing adds is left off, as the server takes no unknown field.
-  for (const key of ["runs", "created_by_name", "next_run_at"]) assert.ok(!(key in body), key);
+  for (const key of ["runs", "created_by_name", "next_run_at", "schedule_busy"])
+    assert.ok(!(key in body), key);
 
   // Off saves a zero period, which turns the schedule off.
   fireEvent.click(screen.getByRole("button", { name: sched.edit }));
@@ -386,4 +392,24 @@ test("a count the server stopped before finding a visible run links to the queue
   assert.equal(link.getAttribute("href"), "/agents/writer/evals#eval-feedback");
   assert.ok(!/\d/.test(link.textContent ?? ""), link.textContent ?? "");
   assert.equal(screen.queryByText(/flagged for review/), null);
+});
+
+test("a failed refresh takes down the figures it could not confirm", async () => {
+  let fail = false;
+  net = stubFetch({
+    "GET /api/agents/writer/health": () =>
+      fail
+        ? new Response(JSON.stringify({ error: "Health is down" }), { status: 503 })
+        : health({ samples: 1, passed: 1, pass_rate: 100, results: [result("r1")], flagged: 3 }),
+    "GET /api/agents/writer/changes": () => [],
+  });
+  render(<AgentHealth name="writer" />);
+  await screen.findByRole("link", { name: words.flagged(3) });
+  fail = true;
+  fireEvent.click(screen.getByRole("button", { name: words.refresh }));
+  await screen.findByText("Health is down");
+  assert.equal(screen.queryByRole("link", { name: words.flagged(3) }), null);
+  assert.equal(screen.queryByText(words.passRate), null);
+  assert.equal(screen.queryByText(words.updated("just now")), null);
+  assert.ok(screen.getByRole("button", { name: defaultCopy.retry }));
 });

@@ -1,6 +1,7 @@
 package platform
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -128,10 +129,73 @@ func TestScheduleIsReadFromTheRunsTheReaderMaySee(t *testing.T) {
 	}
 }
 
-// The count is of visible runs whatever the queue holds before them: a
-// thousand candidates on a private run leave a stranger's count of the one
-// run they may read where it was.
-func TestFlaggedCountIsStableUnderManyHiddenCandidates(t *testing.T) {
+// The count reads the window the review queue reads, so the two agree: a
+// stranger's count is the runs the queue shows them, and with candidates past
+// the window it says the count is a lower bound rather than dropping it.
+func TestFlaggedCountAgreesWithTheQueue(t *testing.T) {
+	p, err := New(Config{Workspace: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = p.Close() }()
+	privateEvalTraceRun(t, p, "private-run", "ana")
+	for i := range 5 {
+		id := fmt.Sprintf("public-%d", i)
+		tag := wire.NewEvent(wire.Raise{ID: id, Origin: runs.OriginAPI, Tenant: "acme", Agent: BuiltinBuilder, At: time.Now()})
+		if err := p.Runs.Record(id, tag, 1); err != nil {
+			t.Fatal(err)
+		}
+	}
+	save := func(run, rater string) {
+		c := evals.Candidate{Run: run, Agent: BuiltinBuilder, Input: "q", Reason: "wrong", At: time.Now()}
+		if err := p.Evals.SaveCandidate("acme", rater, c); err != nil {
+			t.Fatal(err)
+		}
+	}
+	stranger := auth.Principal{Tenant: "acme", Subject: "bob", Kind: auth.User, Roles: []auth.Role{auth.Operator}}
+	queued := func() int {
+		runs := map[string]bool{}
+		after := ""
+		for {
+			page, err := p.ListEvalCandidates(stranger, BuiltinBuilder, MaxEvalCandidatePage, after)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, c := range page.Candidates {
+				runs[c.Run] = true
+			}
+			if page.Next == "" {
+				return len(runs)
+			}
+			after = page.Next
+		}
+	}
+	count := func() (int, bool) {
+		h, err := p.AgentEvaluationHealth(stranger, BuiltinBuilder)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return h.Flagged, h.FlaggedMore
+	}
+	for i := range 5 {
+		save(fmt.Sprintf("public-%d", i), "bob")
+	}
+	if n, more := count(); n != 5 || more || queued() != 5 {
+		t.Fatalf("before: flagged = %d, more = %v, queue shows %d", n, more, queued())
+	}
+	for i := range 3 * state.MaxList {
+		save("private-run", fmt.Sprintf("rater-%d", i))
+	}
+	n, more := count()
+	if n != queued() || !more {
+		t.Fatalf("after hidden candidates: flagged = %d, more = %v, queue shows %d runs", n, more, queued())
+	}
+}
+
+// A count is not a read: a governor who sees private runs only by
+// break-glass has them left out of the count, and refreshing health writes
+// no read-audit record.
+func TestAHealthRefreshRecordsNoReads(t *testing.T) {
 	p, err := New(Config{Workspace: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
@@ -142,28 +206,55 @@ func TestFlaggedCountIsStableUnderManyHiddenCandidates(t *testing.T) {
 	if err := p.Runs.Record("public-run", public, 1); err != nil {
 		t.Fatal(err)
 	}
-	save := func(run, rater string) {
+	for _, run := range []string{"private-run", "public-run"} {
 		c := evals.Candidate{Run: run, Agent: BuiltinBuilder, Input: "q", Reason: "wrong", At: time.Now()}
-		if err := p.Evals.SaveCandidate("acme", rater, c); err != nil {
+		if err := p.Evals.SaveCandidate("acme", "rater-"+run, c); err != nil {
 			t.Fatal(err)
 		}
 	}
-	stranger := auth.Principal{Tenant: "acme", Subject: "bob", Kind: auth.User, Roles: []auth.Role{auth.Operator}}
-	count := func() (int, bool) {
-		h, err := p.AgentEvaluationHealth(stranger, BuiltinBuilder)
+	governor := auth.Principal{Tenant: "acme", Subject: "gov", Kind: auth.User, Roles: []auth.Role{auth.Admin}}
+	// The governor may read the private run, by exception only (checked on a
+	// holding seer, which records nothing until disclosed).
+	check := p.Seer(governor).Snapshot().Holding()
+	if !check.deciding("check", func() bool { return check.RunID("private-run") }) || !check.exceptional("check") {
+		t.Fatal("the governor does not read the private run by break-glass")
+	}
+	start := time.Now().Add(-time.Minute)
+	for range 3 {
+		h, err := p.AgentEvaluationHealth(governor, BuiltinBuilder)
 		if err != nil {
 			t.Fatal(err)
 		}
-		return h.Flagged, h.FlaggedMore
+		if h.Flagged != 1 || h.FlaggedMore {
+			t.Fatalf("governor flagged = %d, more = %v; want the one run they read in their own right", h.Flagged, h.FlaggedMore)
+		}
 	}
-	save("public-run", "bob")
-	if n, more := count(); n != 1 || more {
-		t.Fatalf("before: flagged = %d, more = %v", n, more)
+	rows, err := p.ReadAudit.List("acme", start, time.Now().Add(time.Second), 500)
+	if err != nil {
+		t.Fatal(err)
 	}
-	for i := range state.MaxList {
-		save("private-run", fmt.Sprintf("rater-%d", i))
+	if len(rows) != 0 {
+		t.Fatalf("health refreshes wrote %d read-audit records: %+v", len(rows), rows)
 	}
-	if n, more := count(); n != 1 || more {
-		t.Fatalf("after a thousand hidden candidates: flagged = %d, more = %v", n, more)
+}
+
+// A suite deleted after it was listed is gone, which the listing skips.
+func TestASuiteListingOfADeletedSuiteIsNotFound(t *testing.T) {
+	p, err := New(Config{Workspace: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = p.Close() }()
+	suite := evalHistorySuite()
+	suite.Cases[0].Trace = nil
+	if err := p.Evals.Put("acme", suite, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.Evals.Delete("acme", suite.Name); err != nil {
+		t.Fatal(err)
+	}
+	who := auth.Principal{Tenant: "acme", Subject: "ana", Kind: auth.User, Roles: []auth.Role{auth.Admin}}
+	if _, _, err := p.EvalSuiteListing(who, suite); !errors.Is(err, evals.ErrNotFound) {
+		t.Fatalf("listing a deleted suite: %v", err)
 	}
 }

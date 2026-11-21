@@ -904,6 +904,7 @@ function suiteBody(s: Suite): Suite {
     runs: _runs,
     created_by_name: _name,
     next_run_at: _next,
+    schedule_busy: _busy,
     ...body
   } = s as Partial<SuiteView> & Suite;
   return body;

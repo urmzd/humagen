@@ -5,7 +5,6 @@ import (
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/evals"
 	"github.com/urmzd/humagen/pkg/operations"
-	"github.com/urmzd/humagen/pkg/state"
 	"slices"
 )
 
@@ -28,10 +27,6 @@ type AgentEvaluationHealth struct {
 // MaxFlagged caps the flagged count on agent health; past it the count says
 // there are more.
 const MaxFlagged = 50
-
-// maxFlaggedPages bounds what one count reads: this many pages of
-// state.MaxList candidates. Past it the count is a lower bound and says so.
-const maxFlaggedPages = 10
 
 func (p *Platform) AgentEvaluationHealth(who auth.Principal, name string) (AgentEvaluationHealth, error) {
 	out := AgentEvaluationHealth{Agent: name, Status: "untested", Results: []evals.Online{}}
@@ -69,57 +64,57 @@ func (p *Platform) AgentEvaluationHealth(who auth.Principal, name string) (Agent
 	return out, nil
 }
 
-// countFlagged counts the distinct runs the caller may read that have an
-// open candidate for an agent, as the review queue shows them. It pages
-// through the queue with its cursor, reads each page's new runs in one
-// batched read and their threads once, and stops when more than MaxFlagged
-// visible runs are counted or the queue ends. Both the count and whether
-// there are more come from visible runs only, except past maxFlaggedPages,
-// where the count is what was found so far and more says the rest is
-// unread.
+// countFlagged counts the distinct runs with an open candidate for an agent
+// that the caller reads in their own right, from the window of candidates
+// the review queue reads (evals.Store.CandidateRuns), so the two agree.
+//
+// A count is not a read of what it counts, so it writes no read-audit
+// record: a run the caller sees only by exception (a governor's break-glass
+// read of a private conversation) is decided on a holding seer, left out of
+// the count and never disclosed. The review queue, which shows such a row's
+// question, records the read when it shows it.
+//
+// It decodes only each candidate's run, reads the distinct runs in one
+// batched read and their threads once. more says there are more than
+// MaxFlagged, or that the queue holds candidates past the window, so the
+// count is a lower bound.
 func (p *Platform) countFlagged(who auth.Principal, agent string) (n int, more bool, err error) {
-	seer := p.Seer(who).Snapshot()
-	decided := map[string]bool{}
-	visible := map[string]bool{}
-	after := ""
-	for range maxFlaggedPages {
-		page, next, err := p.Evals.CandidatePage(who.Tenant, agent, after, state.MaxList)
-		if err != nil {
-			return 0, false, err
-		}
-		ids := make([]string, 0, len(page))
-		for _, c := range page {
-			if !decided[c.Run] && !slices.Contains(ids, c.Run) {
-				ids = append(ids, c.Run)
-			}
-		}
-		if len(ids) > 0 {
-			found, err := p.Runs.Many(who.Tenant, ids)
-			if err != nil {
-				return 0, false, err
-			}
-			threads := make([]string, 0, len(found))
-			for _, r := range found {
-				threads = append(threads, placeOfRun(r).Thread)
-			}
-			seer.Read(threads...)
-			for _, id := range ids {
-				r, ok := found[id]
-				decided[id] = true
-				if ok && seer.Run(r) {
-					visible[id] = true
-				}
-			}
-		}
-		if len(visible) > MaxFlagged {
-			return MaxFlagged, true, nil
-		}
-		if next == "" {
-			return len(visible), false, nil
-		}
-		after = next
+	runIDs, past, err := p.Evals.CandidateRuns(who.Tenant, agent)
+	if err != nil {
+		return 0, false, err
 	}
-	return len(visible), true, nil
+	ids := make([]string, 0, len(runIDs))
+	seen := map[string]bool{}
+	for _, id := range runIDs {
+		if id != "" && !seen[id] {
+			seen[id] = true
+			ids = append(ids, id)
+		}
+	}
+	found, err := p.Runs.Many(who.Tenant, ids)
+	if err != nil {
+		return 0, false, err
+	}
+	seer := p.Seer(who).Snapshot().Holding()
+	threads := make([]string, 0, len(found))
+	for _, r := range found {
+		threads = append(threads, placeOfRun(r).Thread)
+	}
+	seer.Read(threads...)
+	for _, id := range ids {
+		r, ok := found[id]
+		if !ok {
+			continue
+		}
+		row := "flagged:" + id
+		if seer.deciding(row, func() bool { return seer.Run(r) }) && !seer.exceptional(row) {
+			n++
+		}
+	}
+	if n > MaxFlagged {
+		return MaxFlagged, true, nil
+	}
+	return n, past, nil
 }
 
 func (p *Platform) AgentChangeScores(who auth.Principal, name string) ([]evals.Change, error) {

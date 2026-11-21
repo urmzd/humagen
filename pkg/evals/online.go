@@ -127,23 +127,29 @@ func (s *Store) OpenCandidates(tenant, agent string) ([]Candidate, error) {
 	return out, nil
 }
 
-// CandidatePage is one page of an agent's open candidates, at most limit (1
-// to state.MaxList), after the cursor a previous page returned ("" for the
-// first). next is "" on the last page. Callers must apply the source run's
-// read policy to each.
-func (s *Store) CandidatePage(tenant, agent, after string, limit int) (page []Candidate, next string, err error) {
-	if tenant == "" || agent == "" || limit < 1 || limit > state.MaxList {
-		return nil, "", ErrInvalid
+// CandidateRuns is the run each open candidate of an agent came from, read
+// from the same window OpenCandidates reads (the first state.MaxList by
+// key), so a count from it agrees with the review queue. Only the run is
+// decoded, never the question or the comment. more says the queue holds
+// candidates past the window. Callers must apply the run's read policy.
+func (s *Store) CandidateRuns(tenant, agent string) (runIDs []string, more bool, err error) {
+	if tenant == "" || agent == "" {
+		return nil, false, ErrInvalid
 	}
-	rows, next, err := s.candidates.List(tenant, state.Query{Prefix: agent + "/", After: after, Limit: limit})
+	rows, next, err := s.candidateRuns.List(tenant, state.Query{Prefix: agent + "/", Limit: state.MaxList})
 	if err != nil {
-		return nil, "", err
+		return nil, false, err
 	}
-	page = make([]Candidate, 0, len(rows))
+	runIDs = make([]string, 0, len(rows))
 	for _, row := range rows {
-		page = append(page, row.Value)
+		runIDs = append(runIDs, row.Value.Run)
 	}
-	return page, next, nil
+	return runIDs, next != "", nil
+}
+
+// candidateRun is the part of a stored Candidate a count reads.
+type candidateRun struct {
+	Run string `json:"run"`
 }
 
 // ResolveCandidate records a reviewer's decision and takes the candidate

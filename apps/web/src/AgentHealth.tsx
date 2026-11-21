@@ -282,7 +282,12 @@ export function AgentHealth({
           setReadAt(new Date().toISOString());
         },
         (error: unknown) => {
-          if (live) setProblem(error instanceof Error ? error.message : words.failed);
+          if (!live) return;
+          // A failed read leaves no figures on screen that it could not confirm.
+          setHealth(undefined);
+          setChanges([]);
+          setReadAt(undefined);
+          setProblem(error instanceof Error ? error.message : words.failed);
         },
       )
       .finally(() => {
