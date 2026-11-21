@@ -6,7 +6,12 @@ import { MessageTime } from "./MessageTime.tsx";
 import { Problem, SkeletonRows } from "./ui.tsx";
 
 /** The last day's recorded exceptional reads, bounded by the server. */
-export function ReadAudit() {
+export function ReadAudit({
+  onListed,
+}: {
+  /** Told which reads the section lists, so the page does not repeat them. */
+  onListed?: (records: ReadAuditRecord[]) => void;
+} = {}) {
   const [records, setRecords] = useState<ReadAuditRecord[] | null>(null);
   const [failed, setFailed] = useState(false);
   useEffect(() => {
@@ -14,7 +19,9 @@ export function ReadAudit() {
     api
       .readAudit()
       .then((rows) => {
-        if (live) setRecords(rows);
+        if (!live) return;
+        setRecords(rows);
+        onListed?.(rows);
       })
       .catch(() => {
         if (live) setFailed(true);
@@ -22,7 +29,7 @@ export function ReadAudit() {
     return () => {
       live = false;
     };
-  }, []);
+  }, [onListed]);
   const copy = defaultCopy.readAudit;
   return (
     <AuditSection id="read-audit" title={copy.title} count={records?.length}>

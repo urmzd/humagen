@@ -689,8 +689,11 @@ Radix/react-day-picker calendar with local date/time inputs, host conversion to
 ISO timestamps and positive-range validation capped at 31 days. Compact event
 rows expand retained details. Resource, Refresh and Export actions carry icons.
 Workspace changes and administrator-only break-glass reads share the Audit
-destination, and the former Read Audit address opens it. Route and DOM tests
-cover the legacy address and the permission-gated read request.
+destination, and the former Read Audit address opens it. A break-glass read the
+reads section lists is left out of the changes list, so it shows once; a read
+that section does not list stays among the changes, and the CSV export keeps
+every row. Route and DOM tests cover the legacy address, the permission-gated
+read request and the single listing.
 Announcements use a compact card, one Open
 Announcement action and a labeled eye-with-slash Hide button with a busy guard.
 

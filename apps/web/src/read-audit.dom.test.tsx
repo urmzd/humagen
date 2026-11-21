@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { defaultCopy } from "@humagen/components";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { Audit } from "./Audit.tsx";
 import { stubFetch } from "./dom.ts";
 import { ReadAudit } from "./ReadAudit.tsx";
@@ -53,6 +53,70 @@ test("Audit loads break-glass records only when authorized", async () => {
   await screen.findByText(defaultCopy.readAudit.empty);
   assert.ok(screen.getByRole("heading", { name: /^Workspace changes/ }));
   assert.ok(screen.getByRole("heading", { name: /^Break-glass reads/ }));
+});
+
+const governorRead = {
+  subject: "governor",
+  project: "Secret",
+  route: "GET /api/projects/{name}",
+  at: "2026-10-22T10:00:00Z",
+};
+const changesWithTheRead = [
+  {
+    id: "read-1",
+    actor: "governor",
+    at: "2026-10-22T10:00:00Z",
+    action: "project.break_glass_read",
+    resource: "project",
+    resource_id: "Secret",
+    scope: "project",
+    project: "Secret",
+    route: "GET /api/projects/{name}",
+    rule: "projects:govern",
+    outcome: "succeeded",
+  },
+  {
+    id: "audit-1",
+    actor: "ana",
+    at: "2026-10-22T09:00:00Z",
+    action: "project.created",
+    resource: "project",
+    resource_id: "Secret",
+    scope: "project",
+    project: "Secret",
+    outcome: "succeeded",
+  },
+];
+
+test("a break-glass read is listed once when both sections show", async () => {
+  net = stubFetch({
+    "GET /api/audit": () => ({ records: changesWithTheRead }),
+    "GET /api/read-audit": () => ({ records: [governorRead] }),
+  });
+  render(<Audit reads />);
+  await screen.findByText("Project created");
+  await waitFor(() => assert.equal(screen.queryByText("Project break glass read"), null));
+  // The reader is named by the reads section alone, and the changes hold the one change.
+  assert.equal(screen.getAllByText("governor").length, 1);
+  assert.equal(screen.getAllByText("GET /api/projects/{name}").length, 1);
+  const changes = screen.getByRole("region", { name: /^Workspace changes/ });
+  assert.equal(within(changes).getAllByRole("listitem").length, 1);
+});
+
+test("a break-glass read the reads section does not list stays among the changes", async () => {
+  net = stubFetch({
+    "GET /api/audit": () => ({ records: changesWithTheRead }),
+    "GET /api/read-audit": () => ({ records: [] }),
+  });
+  render(<Audit reads />);
+  await screen.findByText(defaultCopy.readAudit.empty);
+  await screen.findByText("Project break glass read");
+  assert.ok(screen.getByText("Project created"));
+
+  // Without the reads section nothing is taken out.
+  cleanup();
+  render(<Audit />);
+  await screen.findByText("Project break glass read");
 });
 
 test("a failed read says the audit could not load", async () => {

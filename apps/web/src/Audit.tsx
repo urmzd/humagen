@@ -9,8 +9,8 @@ import { NativeSelect } from "@humagen/render-web/ui/native-select";
 import { useEffect, useState } from "react";
 import type { AuditRecord } from "../../../packages/client/src/generated/types.ts";
 import { AuditSection } from "./AuditSection.tsx";
-import { api } from "./api.ts";
-import { auditCSV } from "./audit.ts";
+import { api, type ReadAuditRecord } from "./api.ts";
+import { auditCSV, changesBeside } from "./audit.ts";
 import { ReadAudit } from "./ReadAudit.tsx";
 import { href } from "./route.ts";
 import { Page, Problem, SkeletonRows } from "./ui.tsx";
@@ -25,6 +25,7 @@ export function Audit({
   reads?: boolean;
 }) {
   const [rows, setRows] = useState<AuditRecord[] | null>(null);
+  const [listed, setListed] = useState<ReadAuditRecord[]>([]);
   const [failed, setFailed] = useState(false);
   const [query, setQuery] = useState<Record<string, string>>({});
   const [actor, setActor] = useState("");
@@ -68,6 +69,8 @@ export function Audit({
       setInvalidRange(true);
     }
   };
+  // A read the section above lists is not a second row here. The export keeps every row.
+  const changes = rows && reads ? changesBeside(rows, listed) : rows;
   const download = () => {
     if (!rows) return;
     const url = URL.createObjectURL(
@@ -97,11 +100,11 @@ export function Audit({
     value.replace(/[_.:-]+/g, " ").replace(/^./, (letter) => letter.toUpperCase());
   return (
     <Page title={copy.title}>
-      {reads && <ReadAudit />}
+      {reads && <ReadAudit onListed={setListed} />}
       <AuditSection
         id="changes"
         title={copy.changes}
-        count={rows?.length}
+        count={changes?.length}
         actions={
           <>
             <Button variant="ghost" size="sm" onClick={() => setRefresh((value) => value + 1)}>
@@ -176,13 +179,13 @@ export function Audit({
         {invalidRange && <Problem message={copy.invalidRange} />}
         {failed ? (
           <Problem message={copy.failed} />
-        ) : rows === null ? (
+        ) : !changes ? (
           <SkeletonRows count={3} />
-        ) : rows.length === 0 ? (
+        ) : changes.length === 0 ? (
           <p className="text-aui-muted">{copy.empty}</p>
         ) : (
           <ol className="-mx-4 divide-y divide-[var(--humagen-rule)] border-[var(--humagen-rule)] border-t">
-            {rows.map((row) => (
+            {changes.map((row) => (
               <li key={row.id} className="min-w-0 break-words px-4 py-3">
                 <div className="flex flex-wrap items-start justify-between gap-2 sm:flex-nowrap">
                   <div className="min-w-48 flex-1 sm:min-w-0">
