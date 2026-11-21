@@ -130,12 +130,12 @@ function RecentRuns({ health, agent }: { health: AgentEvaluationHealth; agent: s
           </Fact>
         </dl>
       )}
-      {((health.flagged ?? 0) > 0 || health.flagged_more) && (
+      {/* flagged is 0 when the reader has none in the queue and absent when
+          they may not read the queue; neither has anything to link to. */}
+      {(health.flagged ?? 0) > 0 && (
         <p className="text-aui-sm">
           <TabLink agent={agent} part="eval-feedback">
-            {(health.flagged ?? 0) > 0
-              ? words.flagged(health.flagged ?? 0, health.flagged_more)
-              : words.flaggedUncounted}
+            {words.flagged(health.flagged ?? 0, health.flagged_more)}
           </TabLink>
         </p>
       )}

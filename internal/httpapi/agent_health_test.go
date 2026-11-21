@@ -16,8 +16,8 @@ func TestAgentHealthCountsTheRunsFlaggedForReview(t *testing.T) {
 	f := newFixture(t)
 	admin := f.machine(t, "acme", everything...)
 	want(t, f, admin, "POST", "/api/agents", helperSpec, http.StatusCreated)
-	if got := want(t, f, admin, "GET", "/api/agents/helper/health", "", http.StatusOK); got["flagged"] != nil {
-		t.Fatalf("health before any rating = %v", got)
+	if got := want(t, f, admin, "GET", "/api/agents/helper/health", "", http.StatusOK); got["flagged"] != float64(0) || got["flagged_more"] != nil {
+		t.Fatalf("health before any rating = %v; want flagged 0, present for a caller with evals:read", got)
 	}
 	first := f.ask(t, admin, `{"agent":"helper","text":"Where is the first report?"}`)
 	second := f.ask(t, admin, `{"agent":"helper","text":"Where is the second report?"}`)
@@ -26,15 +26,18 @@ func TestAgentHealthCountsTheRunsFlaggedForReview(t *testing.T) {
 	if got := want(t, f, admin, "GET", "/api/agents/helper/health", "", http.StatusOK); got["flagged"] != float64(1) || got["flagged_more"] != nil {
 		t.Fatalf("health with one run rated down = %v", got)
 	}
-	// Health needs only agents:read; the queue's count is for those who may read the queue.
+	// Health needs only agents:read; the queue's count is for those who may
+	// read the queue. It is absent for one who may not, and only for them,
+	// so a client tells "none" (0) from "may not read" (absent).
 	viewer := f.machineAs(t, "viewer", "acme", "humagen:agents:read")
-	if got := want(t, f, viewer, "GET", "/api/agents/helper/health", "", http.StatusOK); got["flagged"] != nil {
+	got := want(t, f, viewer, "GET", "/api/agents/helper/health", "", http.StatusOK)
+	if _, has := got["flagged"]; has || got["flagged_more"] != nil {
 		t.Fatalf("health for a caller without evals:read = %v", got)
 	}
 	page := want(t, f, admin, "GET", "/api/eval-candidates?agent=helper", "", http.StatusOK)
 	want(t, f, admin, "DELETE", "/api/eval-candidates/"+candidateIDs(page)[0], "", http.StatusNoContent)
-	if got := want(t, f, admin, "GET", "/api/agents/helper/health", "", http.StatusOK); got["flagged"] != nil {
-		t.Fatalf("health after dismissing = %v", got)
+	if got := want(t, f, admin, "GET", "/api/agents/helper/health", "", http.StatusOK); got["flagged"] != float64(0) {
+		t.Fatalf("health after dismissing = %v; want flagged 0", got)
 	}
 
 	// Many ratings of one run are one flagged run.
@@ -45,6 +48,58 @@ func TestAgentHealthCountsTheRunsFlaggedForReview(t *testing.T) {
 	}
 	if got := want(t, f, admin, "GET", "/api/agents/helper/health", "", http.StatusOK); got["flagged"] != float64(1) || got["flagged_more"] != nil {
 		t.Fatalf("health with one run rated down by many = %v", got)
+	}
+}
+
+// Over the real route, a governor who takes no part in private threads is
+// shown none of their checked or flagged runs on health, and refreshing
+// writes no read-audit record; the owner is shown all of them. The review
+// queue is where a governor reads such runs, and it records the read.
+func TestAgentHealthNeverReadsByBreakGlass(t *testing.T) {
+	f := newFixture(t)
+	admin := f.machine(t, "acme", everything...)
+	want(t, f, admin, "POST", "/api/agents", helperSpec, http.StatusCreated)
+	ana := f.person(t, "acme", "00u-ana", "Ana", "humagen-admins")
+	gov := f.person(t, "acme", "00u-gov", "Gov", "humagen-admins")
+	const n = 3
+	for range n {
+		started := want(t, f, ana, "POST", "/api/threads", `{"visibility":"private","text":"@helper where is the plan?"}`, http.StatusCreated)
+		run := started["runs"].([]any)[0].(map[string]any)["id"].(string)
+		ended(t, f, ana, run)
+		want(t, f, ana, "PUT", "/api/runs/"+run+"/feedback", `{"rating":"down","reason":"wrong"}`, http.StatusOK)
+	}
+	audited := func() int {
+		rows, err := f.p.ReadAudit.List("acme", time.Now().Add(-time.Hour), time.Now().Add(time.Minute), 500)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return len(rows)
+	}
+	// The checks on the runs are written after each run ends.
+	var own map[string]any
+	for range 400 {
+		own = want(t, f, ana, "GET", "/api/agents/helper/health", "", http.StatusOK)
+		if own["samples"] == float64(n) {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if own["samples"] != float64(n) || own["flagged"] != float64(n) {
+		t.Fatalf("the owner's health = %v; want %d samples and %d flagged", own, n, n)
+	}
+	for range 3 {
+		got := want(t, f, gov, "GET", "/api/agents/helper/health", "", http.StatusOK)
+		if got["samples"] != float64(0) || len(got["results"].([]any)) != 0 || got["flagged"] != float64(0) || got["flagged_more"] != nil || got["status"] != "untested" {
+			t.Fatalf("a governor's health = %v; want none of the private runs", got)
+		}
+	}
+	if got := audited(); got != 0 {
+		t.Fatalf("health refreshes wrote %d read-audit records", got)
+	}
+	// The queue shows the governor the same runs, and records that it did.
+	page := want(t, f, gov, "GET", "/api/eval-candidates?agent=helper", "", http.StatusOK)
+	if len(page["candidates"].([]any)) != n || audited() != n {
+		t.Fatalf("the governor's queue = %d rows, %d records; want %d and %d", len(page["candidates"].([]any)), audited(), n, n)
 	}
 }
 

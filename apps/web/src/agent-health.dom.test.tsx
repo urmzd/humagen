@@ -378,21 +378,35 @@ test("a run past the flagged count says there are more", async () => {
   assert.equal(words.flagged(50, true), "50+ runs flagged for review");
 });
 
-test("a count the server stopped before finding a visible run links to the queue without a number", async () => {
-  net = stubFetch({
-    "GET /api/agents/writer/health": () => {
-      const h: Record<string, unknown> = health({ flagged_more: true });
-      delete h.flagged;
-      return h;
-    },
-    "GET /api/agents/writer/changes": () => [],
+// flagged is 0 for a reader with evals:read and none in the queue, and absent
+// for one without evals:read. Neither is sent to a queue that is empty for
+// them, whatever else the answer says.
+for (const [name, flagged] of [
+  ["none flagged (0)", 0],
+  ["may not read the queue (absent)", undefined],
+] as const) {
+  test(`a reader with ${name} is shown no link to the review queue`, async () => {
+    net = stubFetch({
+      "GET /api/agents/writer/health": () => {
+        const h: Record<string, unknown> = health({
+          samples: 1,
+          passed: 1,
+          pass_rate: 100,
+          results: [result("r1")],
+          flagged_more: true,
+        });
+        if (flagged === undefined) delete h.flagged;
+        else h.flagged = flagged;
+        return h;
+      },
+      "GET /api/agents/writer/changes": () => [],
+    });
+    render(<AgentHealth name="writer" />);
+    await screen.findByText(words.passRate);
+    assert.equal(document.querySelector('a[href$="#eval-feedback"]'), null);
+    assert.equal(screen.queryByText(/flagged for review|Review queue/), null);
   });
-  render(<AgentHealth name="writer" />);
-  const link = await screen.findByRole("link", { name: words.flaggedUncounted });
-  assert.equal(link.getAttribute("href"), "/agents/writer/evals#eval-feedback");
-  assert.ok(!/\d/.test(link.textContent ?? ""), link.textContent ?? "");
-  assert.equal(screen.queryByText(/flagged for review/), null);
-});
+}
 
 test("a failed refresh takes down the figures it could not confirm", async () => {
   let fail = false;

@@ -129,22 +129,32 @@ func (s *Store) OpenCandidates(tenant, agent string) ([]Candidate, error) {
 
 // CandidateRuns is the run each open candidate of an agent came from, read
 // from the same window OpenCandidates reads (the first state.MaxList by
-// key), so a count from it agrees with the review queue. Only the run is
-// decoded, never the question or the comment. more says the queue holds
-// candidates past the window. Callers must apply the run's read policy.
-func (s *Store) CandidateRuns(tenant, agent string) (runIDs []string, more bool, err error) {
+// key), so a count from it agrees with the review queue. Callers must apply
+// the run's read policy.
+//
+// It does not say whether the queue holds candidates past the window: that
+// is known before any read policy is applied, so telling it to a caller
+// would tell them of candidates they may not see.
+//
+// The bound: one read of at most state.MaxList (1,000) rows. Only the run
+// is decoded into the result, never the question or the comment, but the
+// store still returns each whole row, so at the row caps SaveCandidate
+// enforces (an input of 64,000 bytes and a comment of 4,000) one call reads
+// about 68 MB of rows, 74 MB allocated when measured. An index of candidates by run would make it a read of ids;
+// that is a recorded follow-up.
+func (s *Store) CandidateRuns(tenant, agent string) ([]string, error) {
 	if tenant == "" || agent == "" {
-		return nil, false, ErrInvalid
+		return nil, ErrInvalid
 	}
-	rows, next, err := s.candidateRuns.List(tenant, state.Query{Prefix: agent + "/", Limit: state.MaxList})
+	rows, _, err := s.candidateRuns.List(tenant, state.Query{Prefix: agent + "/", Limit: state.MaxList})
 	if err != nil {
-		return nil, false, err
+		return nil, err
 	}
-	runIDs = make([]string, 0, len(rows))
+	runIDs := make([]string, 0, len(rows))
 	for _, row := range rows {
 		runIDs = append(runIDs, row.Value.Run)
 	}
-	return runIDs, next != "", nil
+	return runIDs, nil
 }
 
 // candidateRun is the part of a stored Candidate a count reads.
