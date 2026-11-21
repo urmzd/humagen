@@ -429,8 +429,10 @@ type Store struct {
 	onlineAgent *state.Table[Online]
 	online      *state.Table[Online]
 	candidates  *state.Table[Candidate]
-	resolved    *state.Table[Resolution]
-	kept        *state.Table[stored]
+	// candidateRuns reads the same records as candidates, decoding the run alone.
+	candidateRuns *state.Table[candidateRun]
+	resolved      *state.Table[Resolution]
+	kept          *state.Table[stored]
 	// now is the clock a run's heartbeat is read and written by.
 	now func() time.Time
 }
@@ -508,7 +510,7 @@ func Open(st state.Store) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Store{tenants: tenants, retrievals: state.NewTable[Retrieval](st, "evals.retrievals"), changes: state.NewTable[Change](st, "evals.changes"), onlineAgent: state.NewTable[Online](st, "evals.agent_online"), kept: state.NewTable[stored](st, namespace), online: state.NewTable[Online](st, "evals.online"), candidates: state.NewTable[Candidate](st, "evals.candidates"), resolved: state.NewTable[Resolution](st, "evals.candidate_resolutions"), now: time.Now}, nil
+	return &Store{tenants: tenants, retrievals: state.NewTable[Retrieval](st, "evals.retrievals"), changes: state.NewTable[Change](st, "evals.changes"), onlineAgent: state.NewTable[Online](st, "evals.agent_online"), kept: state.NewTable[stored](st, namespace), online: state.NewTable[Online](st, "evals.online"), candidates: state.NewTable[Candidate](st, "evals.candidates"), candidateRuns: state.NewTable[candidateRun](st, "evals.candidates"), resolved: state.NewTable[Resolution](st, "evals.candidate_resolutions"), now: time.Now}, nil
 }
 
 // stale reports whether a running run has gone unwritten so long that

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.178.1 (2026-11-21)
+
+### Bug Fixes
+
+- **console**: clean up evals, drop dev and permission noise (#480) ([280843f](https://github.com/urmzd/humagen/commit/280843fcfdbef8ce05099416c5028327a2f69026))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.178.0...v0.178.1)
+
+
 ## 0.178.0 (2026-11-21)
 
 ### Features

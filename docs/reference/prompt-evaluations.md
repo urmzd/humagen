@@ -97,7 +97,18 @@ applicability or evidence authorization, which remain delivery checks. Optional
 `spec.workspace.eval_limits` fields `max_spend` (micro-USD), `max_duration_ms` and
 `require_evidence` add cost, execution-time and linked-evidence checks. Waiting
 for a person is excluded from execution time. Zero cost/time limits are disabled.
-Health shows only the caller's readable runs. Failed checks on completed runs
+Health shows only the runs the caller reads in their own right: as an owner, a
+participant, a project member, or because the run is public. It never uses
+break-glass, so a run an administrator could read only by exception is left out
+of the results, the pass rate and the flagged count alike, and a health refresh
+records no run or thread as read (an agent homed in a project the reader
+reaches only by exception is still recorded once, as that agent's read); the run itself and the review queue show such a run
+and record the read. The flagged count is present (0 when there are none) for a
+caller with `evals:read` and absent without it. It is counted from the
+candidates the review queue reads, the first 1,000 of the agent, so it agrees
+with what the queue shows a caller who reads by no exception; `flagged_more` says only that the caller
+reads more than 50 flagged runs, and nothing says whether the agent has
+candidates the caller cannot see. Failed checks on completed runs
 raise an alert in a builder session; failed runs keep their normal failure alert.
 
 Setup validation and evaluation runs remain separately marked and do not enter
@@ -105,3 +116,46 @@ ordinary conversation history, housekeeping or failure notifications. A
 configured agent without a setup wizard has a ready read projection; that
 projection grants no setup mutation rights. Feedback marked down with a reason
 becomes a candidate input. Promoting it requires explicit expected checks.
+
+## In the console
+
+An agent's Prompt tab opens on its health: one row with a status, the share of
+recent runs that passed their checks, and a refresh that says when it last read.
+Below it, Recent runs gives the pass rate, how many runs it covers and since
+when, the check that fails most, and how many runs wait in the review queue.
+Eval suites gives each suite's last result, its schedule ("Every 6 hours, next
+in 2 hours, last run 3 hours ago", or Not scheduled) and Run Now. The info icon
+on the row explains the three kinds of evaluation and links here.
+
+A suite's Schedule button on the Evals tab sets, changes or turns off its
+schedule: Off, Hourly, Every 6 hours, Daily, Weekly, or a custom number of hours
+from 1 to 720. The editor says who the schedule runs as now. Saving makes it run
+as the person who saves, because every save of a suite does.
+
+## A first suite
+
+A fresh install has no suite, and `-seed` adds none: a seeded suite on the
+entry agent would join every shared-instruction gate, and the entry agent calls
+tools, so the gate would fail until a replay runtime is configured. Start with a
+few cases on an agent of your own whose answers have a stable shape:
+
+```json
+{
+  "name": "release-notes",
+  "target": "agent",
+  "subject": "writer",
+  "every_seconds": 86400,
+  "cases": [
+    {"id": "one-line", "input": "Summarize this change in one sentence: the export now includes archived projects.",
+     "checks": [{"kind": "contains", "value": "archived"}, {"kind": "not_contains", "value": "great question"}]},
+    {"id": "number-only", "input": "How many days are in a leap year? Reply with the number only.",
+     "checks": [{"kind": "matches", "value": "^\\s*366\\s*$"}]},
+    {"id": "fast", "input": "Reply with the word ready.",
+     "checks": [{"kind": "matches", "value": "(?i)ready"}, {"kind": "within_ms", "value": "30000"}]}
+  ]
+}
+```
+
+Each check is exact, so a case fails only when the answer changed in a way the
+check names. Rate a poor answer down with a reason to collect more cases: each
+waits in the review queue until a reviewer adds checks to it.

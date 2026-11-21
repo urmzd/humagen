@@ -40,15 +40,12 @@ func (p *Platform) runDueEvals(ctx context.Context) error {
 			if err != nil {
 				return err
 			}
-			var last time.Time
 			busy := false
 			for _, r := range prior {
-				if r.StartedAt.After(last) {
-					last = r.StartedAt
-				}
 				busy = busy || r.Status == evals.Running
 			}
-			if busy || !last.IsZero() && p.now().Sub(last) < time.Duration(suite.EverySeconds)*time.Second {
+			// A reader who sees every run is shown this same next run (evalSchedule).
+			if next, _ := evals.NextRun(suite, prior); busy || p.now().Before(next) {
 				continue
 			}
 			if _, err = p.StartEval(ctx, tenant, suite.Name, "system:schedule"); err != nil && !errors.Is(err, evals.ErrBusy) {
