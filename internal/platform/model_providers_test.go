@@ -211,6 +211,9 @@ func TestDeleteModelProviderRefusesOneInUse(t *testing.T) {
 	if _, err := p.Agents.Create(ctx, "acme", wire.AgentSpec{Name: "writer", Provider: "team", Model: "claude-sonnet-5-5", SystemPrompt: "Write."}, "ada"); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := p.SetModelProviderEnabled(ctx, admin("acme"), "team", false); !errors.Is(err, ErrModelProviderInUse) || !strings.Contains(err.Error(), "@writer") {
+		t.Fatalf("turn off while an agent uses it = %v", err)
+	}
 	if err := p.DeleteModelProvider(ctx, admin("acme"), "team"); !errors.Is(err, ErrModelProviderInUse) || !strings.Contains(err.Error(), "@writer") {
 		t.Fatalf("delete while an agent uses it = %v", err)
 	}
@@ -222,6 +225,68 @@ func TestDeleteModelProviderRefusesOneInUse(t *testing.T) {
 	}
 	if _, ok := p.secrets.Get("acme", secretsOwner("team"), "key"); ok {
 		t.Fatal("the removed provider's key is still kept")
+	}
+}
+
+func TestTurningOffModelProviderKeepsTheKey(t *testing.T) {
+	p, seen := configured(t, Config{
+		Ext: Extensions{Providers: map[string]native.ProviderFunc{"declared": func(native.Spec) (saigetypes.Provider, error) {
+			return nil, nil
+		}}},
+	})
+	ctx := t.Context()
+	actor := admin("acme")
+	viewer := auth.Principal{Tenant: "acme", Subject: "vi", Roles: []auth.Role{auth.Viewer}}
+	in := ModelProviderInput{Kind: KindOpenAI, BaseURL: "https://proxy.example/v1", Key: "sk-team"}
+	m, err := p.SetModelProvider(ctx, actor, "team", in)
+	if err != nil || m.Disabled {
+		t.Fatalf("created provider = %+v, %v", m, err)
+	}
+	if _, err := p.SetModelProviderEnabled(ctx, viewer, "team", false); !errors.Is(err, auth.ErrForbidden) {
+		t.Fatalf("a viewer turned off a provider: %v", err)
+	}
+	if _, err := p.SetModelProviderEnabled(ctx, admin("globex"), "team", false); !errors.Is(err, wire.ErrNotFound) {
+		t.Fatalf("another workspace turned off a provider: %v", err)
+	}
+	if _, err := p.SetModelProviderEnabled(ctx, actor, "declared", false); !errors.Is(err, ErrModelProvider) {
+		t.Fatalf("the workspace turned off a deployment provider: %v", err)
+	}
+	for range 2 {
+		off, err := p.SetModelProviderEnabled(ctx, actor, "team", false)
+		if err != nil || !off.Disabled || !off.KeyStored || off.BaseURL != in.BaseURL {
+			t.Fatalf("disabled provider = %+v, %v", off, err)
+		}
+	}
+	ref := workspaceRef("acme", "team")
+	if _, ok := p.resolveProvider(ref); ok {
+		t.Fatal("a saved provider reference still resolves after turning it off")
+	}
+	if slices.ContainsFunc(p.ModelProviderChoices("acme"), func(c ModelProviderChoice) bool { return c.Name == "team" }) {
+		t.Fatal("a disabled provider is still offered")
+	}
+	if slices.ContainsFunc(p.HealthFor(ctx, "acme").Components, func(c HealthComponent) bool { return c.ID == "provider:team" }) {
+		t.Fatal("a disabled provider is still reported as operational")
+	}
+	if _, err := p.CheckModelProvider(ctx, actor, "team"); !errors.Is(err, ErrModelProvider) {
+		t.Fatalf("a disabled provider can be checked: %v", err)
+	}
+	updated, err := p.SetModelProvider(ctx, actor, "team", ModelProviderInput{Kind: KindOpenAI, BaseURL: "https://new.example/v1"})
+	if err != nil || !updated.Disabled || !updated.KeyStored {
+		t.Fatalf("editing a disabled provider = %+v, %v", updated, err)
+	}
+	on, err := p.SetModelProviderEnabled(ctx, actor, "team", true)
+	if err != nil || on.Disabled || on.BaseURL != updated.BaseURL {
+		t.Fatalf("re-enabled provider = %+v, %v", on, err)
+	}
+	fn, ok := p.resolveProvider(ref)
+	if !ok {
+		t.Fatal("the provider did not resolve after turning it on")
+	}
+	if _, err := fn(native.Spec{Name: "writer"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(*seen) != 1 || (*seen)[0].key != in.Key {
+		t.Fatal("turning the provider off and on lost its original key")
 	}
 }
 
@@ -283,12 +348,130 @@ func TestBuiltinsShipWithAChainAndRunOnWhatIsEnabled(t *testing.T) {
 	if err != nil || s.Provider != workspaceRef("acme", "openai") || len(s.Fallbacks) != 1 || s.Fallbacks[0].Provider != workspaceRef("acme", "google") {
 		t.Fatalf("with openai and google enabled = %+v, %v", s, err)
 	}
+	if _, err := p.SetModelProviderEnabled(ctx, admin("acme"), KindOpenAI, false); err != nil {
+		t.Fatal(err)
+	}
+	s, err = run()
+	if err != nil || s.Provider != workspaceRef("acme", "google") || len(s.Fallbacks) != 0 {
+		t.Fatalf("with openai turned off = %+v, %v", s, err)
+	}
+	if _, err := p.SetModelProviderEnabled(ctx, admin("acme"), KindGoogle, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := run(); !errors.Is(err, ErrModelProvider) {
+		t.Fatalf("a run with all providers turned off = %v", err)
+	}
 	// A kind may be named before it is enabled; offline never.
 	for provider, ok := range map[string]bool{KindAnthropic: true, KindGoogle: true, wire.ProviderOffline: false} {
 		spec := wire.AgentSpec{Name: "writer2", Provider: provider, Model: "m", SystemPrompt: "Write."}
 		if err := spec.Normalize().ValidateWith(p.agentProviders("acme")); (err == nil) != ok {
 			t.Errorf("an agent on %s: %v", provider, err)
 		}
+	}
+}
+
+// A preset the platform's own agents ship on can be removed, as it can be
+// turned off: they answer on the next provider, and say what they need when
+// none is left. A person's own agent on it still holds it.
+func TestRemovingAPresetTheShippedAgentsRunOn(t *testing.T) {
+	p, _ := configured(t, Config{ShipBuiltins: true})
+	ctx := t.Context()
+	for kind, key := range map[string]string{KindOpenAI: "sk-o", KindAnthropic: "sk-a"} {
+		if _, err := p.SetModelProvider(ctx, admin("acme"), kind, ModelProviderInput{Kind: kind, Key: key}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := p.EnsureBuiltins(ctx, "acme"); err != nil {
+		t.Fatal(err)
+	}
+	installForTest(t, p, "acme", "humagen/core")
+	writer, err := p.Catalog().Get(ctx, "acme", BuiltinWriter, 0)
+	if err != nil || writer.CreatedBy != "platform" {
+		t.Fatalf("writer = %+v, %v", writer.Spec, err)
+	}
+	run := func() (native.Spec, error) {
+		def := native.Revision{Spec: native.Spec{Name: writer.Spec.Name, Provider: writer.Spec.Provider, Model: writer.Spec.Model}}
+		for _, f := range writer.Spec.Fallbacks {
+			def.Spec.Fallbacks = append(def.Spec.Fallbacks, native.ModelRef{Provider: f.Provider, Model: f.Model})
+		}
+		got, err := p.resolveModel(runtime.Request{Tenant: "acme", Definition: def})
+		return got.Definition.Spec, err
+	}
+	if s, err := run(); err != nil || s.Provider != workspaceRef("acme", KindAnthropic) {
+		t.Fatalf("with both set up = %+v, %v", s, err)
+	}
+	// A person's own agent on the preset holds it.
+	if _, err := p.Agents.Create(ctx, "acme", wire.AgentSpec{Name: "mine", Provider: KindAnthropic, Model: "claude-sonnet-5-5", SystemPrompt: "Write."}, "ada"); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.DeleteModelProvider(ctx, admin("acme"), KindAnthropic); !errors.Is(err, ErrModelProviderInUse) || !strings.Contains(err.Error(), "@mine") || strings.Contains(err.Error(), "@"+BuiltinWriter) {
+		t.Fatalf("remove under a person's own agent = %v", err)
+	}
+	if _, err := p.Agents.Revise(ctx, "acme", wire.AgentSpec{Name: "mine", Provider: KindOpenAI, Model: "gpt-5.1", SystemPrompt: "Write."}, 1, "ada"); err != nil {
+		t.Fatal(err)
+	}
+	// Only the platform's agents name it now, so it goes, with its key.
+	if err := p.DeleteModelProvider(ctx, admin("acme"), KindAnthropic); err != nil {
+		t.Fatalf("remove a preset only shipped agents name = %v", err)
+	}
+	if _, ok := p.secrets.Get("acme", secretsOwner(KindAnthropic), "key"); ok {
+		t.Fatal("the removed preset's key is still kept")
+	}
+	if s, err := run(); err != nil || s.Provider != workspaceRef("acme", KindOpenAI) || s.Model != "gpt-5.1" {
+		t.Fatalf("a shipped agent after the removal = %+v, %v", s, err)
+	}
+	// The last one a shipped agent could use is held only by the person's agent.
+	if err := p.DeleteModelProvider(ctx, admin("acme"), KindOpenAI); !errors.Is(err, ErrModelProviderInUse) || !strings.Contains(err.Error(), "@mine") {
+		t.Fatalf("remove the last preset under a person's agent = %v", err)
+	}
+	if _, err := p.Agents.Revise(ctx, "acme", wire.AgentSpec{Name: "mine", Provider: "offline", Model: "offline", SystemPrompt: "Write."}, 2, "ada"); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.DeleteModelProvider(ctx, admin("acme"), KindOpenAI); err != nil {
+		t.Fatalf("remove the last preset = %v", err)
+	}
+	if _, err := run(); !errors.Is(err, ErrModelProvider) || !strings.Contains(err.Error(), "anthropic, openai, google") {
+		t.Fatalf("a shipped agent with nothing set up = %v", err)
+	}
+}
+
+// A deployment may rename the entry agent. It still ships on the platform's
+// chain, so it never holds a preset on; a person's own revision of it does.
+func TestARenamedEntryAgentDoesNotHoldAPresetOn(t *testing.T) {
+	p, _ := configured(t, Config{ShipBuiltins: true, EntryAgent: "acme-bot"})
+	ctx := t.Context()
+	for kind, key := range map[string]string{KindOpenAI: "sk-o", KindAnthropic: "sk-a"} {
+		if _, err := p.SetModelProvider(ctx, admin("acme"), kind, ModelProviderInput{Kind: kind, Key: key}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := p.EnsureBuiltins(ctx, "acme"); err != nil {
+		t.Fatal(err)
+	}
+	entry, err := p.Catalog().Get(ctx, "acme", "acme-bot", 0)
+	if err != nil || !p.isEntry(entry) || IsBuiltin(entry.Spec.Name) {
+		t.Fatalf("the renamed entry agent = %+v, %v", entry, err)
+	}
+	names := func(kind string) bool {
+		return entry.Spec.Provider == kind || slices.ContainsFunc(entry.Spec.Fallbacks, func(f wire.ModelRef) bool { return f.Provider == kind })
+	}
+	if !names(KindOpenAI) || !names(KindAnthropic) {
+		t.Fatalf("the entry agent's chain = %s %+v", entry.Spec.Provider, entry.Spec.Fallbacks)
+	}
+	for _, enabled := range []bool{false, true} {
+		if _, err := p.SetModelProviderEnabled(ctx, admin("acme"), KindOpenAI, enabled); err != nil {
+			t.Fatalf("openai enabled=%v with a renamed entry agent: %v", enabled, err)
+		}
+	}
+	if _, err := p.SetModelProviderEnabled(ctx, admin("acme"), KindAnthropic, false); err != nil {
+		t.Fatalf("turning anthropic off with a renamed entry agent: %v", err)
+	}
+	// A person who revises it has made an assignment of their own.
+	if _, err := p.Agents.Revise(ctx, "acme", entry.Spec, entry.Rev, "ada"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.SetModelProviderEnabled(ctx, admin("acme"), KindOpenAI, false); !errors.Is(err, ErrModelProviderInUse) || !strings.Contains(err.Error(), "@acme-bot") {
+		t.Fatalf("turning openai off under a person's own revision = %v", err)
 	}
 }
 

@@ -182,15 +182,20 @@ func (p *Platform) AgentTemplates(ctx context.Context, tenant string) AgentTempl
 }
 
 // ErrAgentProtected reports a change to an agent the platform keeps: the
-// entry agent, the analyst and the approver are never retired.
+// entry agent, the analyst and the approver, a store package's agents and
+// the platform file's are never retired by a person.
 var ErrAgentProtected = errors.New("platform: the platform keeps this agent")
 
 // RetireAgent retires an agent, which a person does from its settings and
-// the builder with retire_agent: it leaves the workspace, its sessions and
-// revisions stay readable, and a new agent may take its name. Pausing it
-// instead keeps it and stops it from answering. A revision written since
-// expectedRev (when it is not 0) is a conflict, so a change made meanwhile
-// is never retired unseen.
+// the builder with retire_agent: it stops answering and leaves the
+// workspace, its sessions and revisions stay readable, and its name stays
+// taken. A new agent cannot take the name, so nothing the retired one left
+// keyed by it (its memory, schedules, action policies, Slack app, look and
+// home project) passes to another agent; and its schedules are paused,
+// since they can only run again once they are pointed at another agent.
+// Pausing it instead keeps it. A revision written since expectedRev (when
+// it is not 0) is a conflict, so a change made meanwhile is never retired
+// unseen.
 func (p *Platform) RetireAgent(ctx context.Context, who auth.Principal, name string, expectedRev int) (resultErr error) {
 	name = wire.NormalizeName(name)
 	if !who.Can(auth.AgentsWrite) {
@@ -200,8 +205,8 @@ func (p *Platform) RetireAgent(ctx context.Context, who auth.Principal, name str
 	if err != nil {
 		return err
 	}
-	if IsBuiltin(name) || p.helperProtected(name) {
-		return fmt.Errorf("%w: %s", ErrAgentProtected, name)
+	if err := p.retirable(ctx, who.Tenant, have); err != nil {
+		return err
 	}
 	if err := p.OwnsHome(who, name); err != nil {
 		return err
@@ -209,10 +214,119 @@ func (p *Platform) RetireAgent(ctx context.Context, who auth.Principal, name str
 	if expectedRev != 0 && expectedRev != have.Rev {
 		return fmt.Errorf("%w: agent %q is at revision %d, not %d", wire.ErrConflict, name, have.Rev, expectedRev)
 	}
-	attempt, err := p.BeginAudit(who, audit.Change{Action: "agent.retire", Resource: "agent", ID: name, Scope: "agent", Agent: name, Before: map[string]string{"rev": strconv.Itoa(have.Rev)}, After: map[string]string{"retired": "true"}})
+	attempt, err := p.BeginAudit(who, audit.Change{Action: "agent.retire", Resource: "agent", ID: name, Scope: "agent", Agent: name, Before: map[string]string{"rev": strconv.Itoa(have.Rev)}, After: map[string]string{"retired": "true", "name_kept": "true"}})
 	if err != nil {
 		return err
 	}
 	defer func() { p.finishOperationsAudit(attempt, resultErr) }()
-	return p.retireAgent(ctx, who.Tenant, name, have.Rev)
+	return p.retireForGood(ctx, who.Tenant, name, have.Rev, who.Subject)
+}
+
+// retirable refuses an agent a person may pause but not retire: the
+// platform's own, a store package's (removed with its package, which may
+// install it again) and one the platform file declares (written again at
+// every start).
+func (p *Platform) retirable(ctx context.Context, tenant string, have wire.Revision) error {
+	name := have.Spec.Name
+	switch {
+	case IsBuiltin(name) || p.helperProtected(name):
+		return fmt.Errorf("%w: @%s is the platform's own; pause it instead", ErrAgentProtected, name)
+	case have.Spec.Package != nil:
+		return fmt.Errorf("%w: @%s comes from a Store package; remove the package instead", ErrAgentProtected, name)
+	case p.fileDeclares(tenant, name):
+		return fmt.Errorf("%w: @%s is declared in the platform file; remove it there", ErrAgentProtected, name)
+	}
+	revs, err := p.Catalog().History(ctx, tenant, name)
+	if err != nil {
+		return err
+	}
+	for _, r := range revs {
+		if r.CreatedBy == "file" || r.CreatedBy == "startup" {
+			return fmt.Errorf("%w: @%s is declared in the platform file; remove it there", ErrAgentProtected, name)
+		}
+	}
+	return nil
+}
+
+// DeclareFileAgent records that the platform file declares name in tenant, so
+// nobody retires it from the console or the builder: the file owns it, and
+// would ask for it again at the next start. The file is read once, at start,
+// so what is recorded is what the file declares. A declaration whose content
+// is what a person already wrote adds no revision, so history alone does not
+// show it.
+func (p *Platform) DeclareFileAgent(tenant, name string) {
+	p.fileAgents.Store(fileAgentKey{tenant, wire.NormalizeName(name)}, struct{}{})
+}
+
+type fileAgentKey struct{ tenant, name string }
+
+func (p *Platform) fileDeclares(tenant, name string) bool {
+	_, ok := p.fileAgents.Load(fileAgentKey{tenant, wire.NormalizeName(name)})
+	return ok
+}
+
+// AgentRetired reports whether name in tenant was retired. A name it cannot
+// read is not reported as retired.
+func (p *Platform) AgentRetired(tenant, name string) bool {
+	retired, err := p.agentRetired(tenant, name)
+	return err == nil && retired
+}
+
+// retireForGood retires name at rev with its name kept from reuse, and
+// pauses every schedule that asks it.
+func (p *Platform) retireForGood(ctx context.Context, tenant, name string, rev int, by string) error {
+	unlock, err := p.lockSetupRevision(tenant, name)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	if err := p.Agents.Retire(ctx, tenant, name, rev, by); err != nil {
+		return fmt.Errorf("platform: retire %s: %w", name, err)
+	}
+	return p.pauseSchedulesOf(tenant, name)
+}
+
+// pauseSchedulesOf pauses the tenant's schedules that ask agent. A schedule
+// of a retired agent runs again only once it is pointed at another one.
+func (p *Platform) pauseSchedulesOf(tenant, agent string) error {
+	all, err := p.Schedules.List(tenant)
+	if err != nil {
+		return err
+	}
+	for _, e := range all {
+		if wire.NormalizeName(e.Agent) != agent || e.Paused {
+			continue
+		}
+		if err := p.Schedules.SetPaused(tenant, e.Name, true); err != nil {
+			return fmt.Errorf("platform: pause schedule %s of retired %s: %w", e.Name, agent, err)
+		}
+	}
+	return nil
+}
+
+// ErrAgentRetired reports a schedule whose agent was retired: it runs again
+// once it asks another agent.
+var ErrAgentRetired = errors.New("platform: the schedule's agent was retired")
+
+// ScheduleAgentRetired reports whether the agent a schedule asks was
+// retired, so the schedule cannot run until it asks another.
+func (p *Platform) ScheduleAgentRetired(ctx context.Context, tenant, agent string) error {
+	_, err := p.Catalog().Get(ctx, tenant, agent, 0)
+	if err == nil {
+		return nil
+	}
+	if retired, rerr := p.agentRetired(tenant, agent); rerr == nil && retired {
+		return fmt.Errorf("%w: @%s was retired; point the schedule at another agent", ErrAgentRetired, agent)
+	}
+	return nil
+}
+
+// agentRetired reports whether a name in tenant was retired.
+func (p *Platform) agentRetired(tenant, name string) (bool, error) {
+	a, ok := p.Agents.(*wire.Agents)
+	if !ok {
+		return false, nil
+	}
+	_, retired, err := a.Source().Retired(tenant, wire.NormalizeName(name))
+	return retired, err
 }

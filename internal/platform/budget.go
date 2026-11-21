@@ -13,7 +13,6 @@ import (
 	"github.com/urmzd/saige/flow/runtime"
 	"github.com/urmzd/saige/flow/turn"
 
-	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/policy"
 	"github.com/urmzd/humagen/pkg/runs"
@@ -230,15 +229,6 @@ func budgetPrompt(agent, reason string, limit policy.Limit, amount int64) string
 		more = fmt.Sprintf("%d tokens", amount)
 	}
 	return fmt.Sprintf("%s is held: %s. Grant this run %s more, or stop it.", agent, reason, more)
-}
-
-// mayGrant reports whether a person may answer a budget question: granting
-// spend or stopping a run at a limit is billing:write's.
-func mayGrant(who auth.Principal, reader inbox.Reader) error {
-	if !principalOf(who, reader).Can(auth.BillingWrite) {
-		return fmt.Errorf("%w: granting a run more than its limit needs %s", ErrForbidden, auth.BillingWrite)
-	}
-	return nil
 }
 
 // grantNow is what approving a budget question grants now: the policy's

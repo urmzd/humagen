@@ -181,3 +181,22 @@ test("an action handed back to the model as failed text is a failed call", () =>
   assert.equal(f.turn.tasks.find((t) => t.id === "c2")?.status, "error");
   assert.equal(f.turn.tasks.find((t) => t.id === "c1")?.status, "complete");
 });
+
+test("a run that needed a connection says which, once each, by name", () => {
+  const turn = turnOf(
+    run({
+      status: "completed",
+      answer: "Connect GitHub and ask again.",
+      needs_connection: [
+        { provider: "github", name: "GitHub" },
+        { provider: "github", name: "GitHub" },
+        { provider: "linear" },
+      ],
+    }),
+  );
+  assert.deepEqual(turn.needsConnection, [
+    { provider: "github", name: "GitHub" },
+    { provider: "linear", name: "linear" },
+  ]);
+  assert.equal(turnOf(run({ status: "completed" })).needsConnection, undefined);
+});

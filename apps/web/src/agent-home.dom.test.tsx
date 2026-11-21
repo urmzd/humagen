@@ -139,5 +139,92 @@ test("the home's composer starts a session with the agent and opens it", async (
   fireEvent.change(box, { target: { value: "Summarize churn" } });
   fireEvent.keyDown(box, { key: "Enter" });
   await waitFor(() => assert.deepEqual(opened, ["s_1"]));
+  // Homed in the workspace (no home, or "~"), it names no project.
   assert.deepEqual(asked, [{ agent: "barbara", text: "Summarize churn" }]);
+});
+
+const ask = (text: string) => {
+  const box = screen.getByPlaceholderText("Ask Barbara to…");
+  fireEvent.input(box, { target: { value: text } });
+  fireEvent.change(box, { target: { value: text } });
+  fireEvent.keyDown(box, { key: "Enter" });
+};
+
+test("the composer of an agent homed in a project starts the session in that project", async () => {
+  setAgentLooks({ barbara: { display_name: "Barbara" } });
+  const asked: unknown[] = [];
+  net = stubFetch({
+    "POST /api/sessions": (body) => {
+      asked.push(body);
+      return { id: `s_${asked.length}` };
+    },
+  });
+  const opened: string[] = [];
+  const view = render(
+    <AgentHomeTab
+      revision={barbara}
+      home="Secret"
+      canWrite
+      onOpenThread={(id) => opened.push(id)}
+      seed={{ control: ready }}
+    />,
+  );
+  ask("Summarize churn");
+  await waitFor(() => assert.deepEqual(opened, ["s_1"]));
+  // A Personal home is written "~personal-x"; the workspace is "~".
+  for (const [home, project] of [
+    ["~personal-ada", "personal-ada"],
+    ["~", undefined],
+  ] as const) {
+    view.rerender(
+      <AgentHomeTab
+        revision={barbara}
+        home={home}
+        canWrite
+        onOpenThread={(id) => opened.push(id)}
+        seed={{ control: ready }}
+      />,
+    );
+    ask(`In ${home}`);
+    await waitFor(() => assert.equal(asked.length, project ? 2 : 3));
+  }
+  assert.deepEqual(asked, [
+    { agent: "barbara", text: "Summarize churn", project: "Secret" },
+    { agent: "barbara", text: "In ~personal-ada", project: "personal-ada" },
+    { agent: "barbara", text: "In ~" },
+  ]);
+});
+
+test("a refused start says why, and a failed one says to try again", async () => {
+  setAgentLooks({ barbara: { display_name: "Barbara" } });
+  let answer = () =>
+    new Response(JSON.stringify({ error: "you read Secret but may not post in it" }), {
+      status: 403,
+    });
+  net = stubFetch({ "POST /api/sessions": () => answer() });
+  const opened: string[] = [];
+  render(
+    <AgentHomeTab
+      revision={barbara}
+      home="Secret"
+      canWrite={false}
+      onOpenThread={(id) => opened.push(id)}
+      seed={{ control: ready }}
+    />,
+  );
+  ask("Summarize churn");
+  const refused = await screen.findByRole("alert");
+  assert.equal(
+    refused.textContent,
+    "The session was not started: you read Secret but may not post in it",
+  );
+  answer = () => new Response(JSON.stringify({ error: "boom" }), { status: 503 });
+  ask("Summarize churn");
+  await waitFor(() =>
+    assert.equal(
+      screen.getByRole("alert").textContent,
+      "The session could not be started. Try again.",
+    ),
+  );
+  assert.deepEqual(opened, []);
 });

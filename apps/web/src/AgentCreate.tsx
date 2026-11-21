@@ -40,6 +40,9 @@ export function matching(templates: AgentTemplate[], query: string): AgentTempla
   });
 }
 
+/** What a new agent is called on screen: the name typed, else its handle. */
+const agentShownOf = (handle: string, typed: string) => typed.trim() || handle;
+
 /** The first color no agent holds, or none when every one is held and the server is left to pick. */
 export function freeHue(taken: readonly number[]): number | undefined {
   return SWATCHES.find((h) => !taken.includes(h));
@@ -324,35 +327,9 @@ function Customize({
     bowTie: look.bow_tie,
   };
   const model = catalog.model;
-  const create = async () => {
-    if (!handle) return setProblem(words.nameNeeded);
-    setBusy(true);
-    setProblem("");
-    let made: Revision;
-    try {
-      made = await api.createAgent({
-        name: handle,
-        description: template.description,
-        provider: model.provider,
-        model: model.model,
-        ...(model.fallbacks?.length ? { fallbacks: model.fallbacks } : {}),
-        ...(model.fallback_on?.length
-          ? { fallback_on: model.fallback_on as FallbackCondition[] }
-          : {}),
-        system_prompt: template.system_prompt,
-        tools: [...template.tools],
-        access: { spawn: [] },
-      });
-    } catch (e) {
-      setBusy(false);
-      return setProblem(
-        e instanceof ApiError && e.status === 409
-          ? words.taken
-          : e instanceof ApiError
-            ? e.message
-            : words.failed,
-      );
-    }
+  // The agent once it is made: a failed look is retried for it, never made again.
+  const [made, setMade] = useState<Revision>();
+  const keepLook = async (agent: Revision) => {
     const kept: AgentLook = {
       ...look,
       ...(name.trim() && name.trim() !== handle ? { display_name: name.trim() } : {}),
@@ -360,14 +337,58 @@ function Customize({
       ...(template.starters.length ? { starters: template.starters } : {}),
     };
     try {
-      const v = await api.setAgentLook(made.spec.name, kept, hue);
-      setAgentLooks({ [made.spec.name]: v.look }, [made.spec.name]);
-      setAgentHues({ [made.spec.name]: v.hue });
-    } catch {
-      // The agent is made; its look can be set in Look. Its home says nothing is lost but the look.
+      const v = await api.setAgentLook(agent.spec.name, kept, hue);
+      setAgentLooks({ [agent.spec.name]: v.look }, [agent.spec.name]);
+      setAgentHues({ [agent.spec.name]: v.hue });
+      return true;
+    } catch (e) {
+      setProblem(
+        e instanceof ApiError && e.status === 409
+          ? /color/i.test(e.message)
+            ? defaultCopy.agentLook.colorTakenNow
+            : defaultCopy.agentLook.nameTaken
+          : words.lookNotKept(agentShownOf(agent.spec.name, name)),
+      );
+      return false;
     }
+  };
+  const create = async () => {
+    if (!handle) return setProblem(words.nameNeeded);
+    setBusy(true);
+    setProblem("");
+    let agent = made;
+    if (!agent) {
+      try {
+        agent = await api.createAgent({
+          name: handle,
+          description: template.description,
+          provider: model.provider,
+          model: model.model,
+          ...(model.fallbacks?.length ? { fallbacks: model.fallbacks } : {}),
+          ...(model.fallback_on?.length
+            ? { fallback_on: model.fallback_on as FallbackCondition[] }
+            : {}),
+          system_prompt: template.system_prompt,
+          tools: [...template.tools],
+          access: { spawn: [] },
+        });
+      } catch (e) {
+        setBusy(false);
+        return setProblem(
+          e instanceof ApiError && e.status === 409
+            ? e.message.includes("retired")
+              ? words.retired
+              : words.taken
+            : e instanceof ApiError
+              ? e.message
+              : words.failed,
+        );
+      }
+      setMade(agent);
+    }
+    const ok = await keepLook(agent);
     setBusy(false);
-    onCreated(made);
+    if (ok) onCreated(agent);
   };
   return (
     <>
@@ -424,6 +445,7 @@ function Customize({
             placeholder={template.title}
             aria-describedby="agent-create-handle"
             onChange={(e) => setName(e.target.value)}
+            readOnly={!!made}
           />
           <span id="agent-create-handle" className="min-h-4 text-aui-2xs text-aui-muted">
             {handle ? words.handle(handle) : ""}
@@ -442,18 +464,25 @@ function Customize({
         </p>
         <Problem message={problem} />
         <div className="mt-auto flex flex-wrap items-center justify-end gap-2 pt-2">
-          <a
-            className={button}
-            href={href({ page: "agent-create" })}
-            onClick={(e) => {
-              e.preventDefault();
-              onBack();
-            }}
-          >
-            {words.back}
-          </a>
+          {made ? (
+            // The agent exists: its look is tried again, or left to set later.
+            <button type="button" className={button} onClick={() => onCreated(made)}>
+              {words.openWithoutLook}
+            </button>
+          ) : (
+            <a
+              className={button}
+              href={href({ page: "agent-create" })}
+              onClick={(e) => {
+                e.preventDefault();
+                onBack();
+              }}
+            >
+              {words.back}
+            </a>
+          )}
           <button type="submit" className={primary} disabled={busy || !model.provider}>
-            {busy ? words.creating : words.create}
+            {busy ? words.creating : made ? words.retryLook : words.create}
           </button>
         </div>
       </form>

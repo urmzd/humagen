@@ -277,16 +277,21 @@ people call it and its greeting or description. Left unpicked, the default
 answers, as for any question. `/agent` with words asks at once, as before,
 and `/agent help` lists the agents.
 
-## Following a thread
+## Listening in a thread
 
-In a channel thread it answered, the app takes the next reply from the
-person who asked it there last as asked, though it does not mention the
-app; anyone else's replies start nothing. It reads channel messages for
-this alone (`message.channels`, `message.groups`): any other channel
-message that does not mention it is dropped unread, unless the client's
-own subscriptions name channel messages. Which threads it follows is kept
-in memory, for its last 5000, and forgotten on a restart. A bound channel is
-never followed.
+A channel thread whose first message mentioned the app is listened to once
+the app has answered there. The next reply from the person whose mention it
+answered most recently is offered to the agent though it does not mention
+the app, and the agent says whether it calls for it; anyone else's replies
+start nothing. Only the newest answered mention moves whom the thread
+listens to: the listener's unmentioned replies never do. Whether a thread is
+listened to is Humagen's to say (`listening` on the thread), so it holds
+across a restart. The app reads channel messages for this alone
+(`message.channels`, `message.groups`): any other channel message that does
+not mention it is dropped unread, unless the client's own subscriptions name
+channel messages. A reply that tags only someone else, a user group or the
+whole channel is theirs and is not offered. Until a run starts for a reply
+nobody was asked about, nothing shows in Slack, a failure included.
 
 ## An agent's own app
 

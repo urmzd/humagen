@@ -193,8 +193,12 @@ func (p *Platform) allows(tree *projects.Tree, who auth.Principal, part inbox.Pa
 	if !who.Can(perm) {
 		return fmt.Errorf("%w: %s needs %s", ErrForbidden, action, perm)
 	}
-	if part.Question != nil && part.Question.Kind == budgetTopic && !who.Can(auth.BillingWrite) {
-		return fmt.Errorf("%w: granting a run more than its limit needs %s", ErrForbidden, auth.BillingWrite)
+	if part.Question != nil {
+		// What answering it takes of anyone, as answering checks it. Whom it
+		// is addressed to is decided by whom the inbox shows it to.
+		if _, err := heldToAnswer(who, *part.Question); err != nil {
+			return err
+		}
 	}
 	if part.Type == inbox.PartMemory && part.Memory != nil {
 		return p.ownsHome(tree, who, part.Memory.Owner)
