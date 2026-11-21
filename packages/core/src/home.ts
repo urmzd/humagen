@@ -267,6 +267,19 @@ export interface HomeLink {
   url: string;
 }
 
+/** An agent on Home: what it is called, what it says of itself, and the jobs it offers. */
+export interface HomeAgentCard {
+  /** The handle people tag. */
+  handle: string;
+  /** What people call it. */
+  name: string;
+  greeting?: string;
+  starters?: { title: string; prompt: string }[];
+}
+
+/** How many agents Home introduces. */
+export const HOME_MEET_MAX = 8;
+
 export interface HomeModel {
   person: {
     id: string;
@@ -297,6 +310,11 @@ export interface HomeModel {
   projects?: HomeProject[];
   /** Where all of the person's projects are listed, for "N more". */
   projectsUrl?: string;
+  /**
+   * The agents worth meeting: each one someone gave a greeting or starters,
+   * with how to ask it. Leave out to hide it.
+   */
+  meet?: HomeAgentCard[];
   /** @deprecated Use `notifications`. Read only when `notifications` is absent. */
   waiting?: HomeWaiting[];
   /** Leave out when the person can't choose. */

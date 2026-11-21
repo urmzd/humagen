@@ -30,6 +30,7 @@ import {
   type Failure,
   feedbackEvent,
   HOME_ID,
+  type HomeAgentCard,
   messageState,
   partMatches,
   type QueueState,
@@ -76,6 +77,7 @@ import {
 import {
   type ActAs,
   type Agent,
+  type AgentLook,
   type Binding,
   type ClientRecord,
   type Humagen,
@@ -91,7 +93,7 @@ import {
 } from "./humagen.ts";
 import { eventKey, runId, type Session, sessionName, sessionOf, threadKey } from "./keys.ts";
 import { memoryPlanStore, PlanCanvas, type PlanStore } from "./plancanvas.ts";
-import { Presenter } from "./present.tsx";
+import { type Author, Presenter } from "./present.tsx";
 import { promptIn, recordedOf, settleCard, settledElsewhere } from "./questions.tsx";
 import { type Envelope, type SlackApi, SlackError } from "./slack.ts";
 
@@ -765,10 +767,29 @@ export class App {
 
   private async agents(): Promise<Agent[]> {
     if (this.agentList && Date.now() - this.agentList.at < 30_000) return this.agentList.agents;
-    const agents = (await this.humagen.listAgents()).agents.map((r) => r.spec);
+    const listed = await this.humagen.listAgents();
+    const agents = listed.agents.map((r) => r.spec);
     this.agentList = { at: Date.now(), agents };
+    this.agentLooks = listed.looks ?? {};
     return agents;
   }
+
+  /** Each agent's look, as the agent list last gave it. */
+  private agentLooks: Record<string, AgentLook> = {};
+
+  /**
+   * Who a turn's messages are posted as: an agent someone gave a look is
+   * posted by its name and, once the console drew it, its picture. An agent
+   * nobody styled is posted as the app, as it always was.
+   */
+  private authorOf = (agent: string): Author | undefined => {
+    const look = this.agentLooks[agent];
+    if (!look || (!look.display_name && !look.image_url)) return undefined;
+    return {
+      username: look.display_name || agent,
+      ...(look.image_url ? { icon_url: look.image_url } : {}),
+    };
+  };
 
   /** Nothing answers by default: say how to tag an agent this app may reach, naming one. */
   private async tagOne(routing: Routing | undefined): Promise<Failure> {
@@ -1089,7 +1110,10 @@ export class App {
     const items = new Mailbox<Item>();
     const live: Live = { stopped: false, wake: (item) => items.push(item) };
     thread.live = live;
+    // The looks are read before the turn is shown, so its first message carries its agent.
+    await this.agents().catch(() => [] as Agent[]);
     const presenter = new Presenter(this.slack, this.target(job), {
+      authorOf: this.authorOf,
       native: this.native,
       outcomesOnly: controls.policy.bound,
       canDeliver: async () => this.bridgeOutputAllowed(job.session.channel, outputRun),
@@ -2829,7 +2853,32 @@ export class App {
       workspace: this.opts.tenant,
       build,
       href: this.href,
+      meet: await this.meet(),
     });
+  }
+
+  /**
+   * The agents this app may reach that someone introduced: a greeting or
+   * starters on their look. The rest are reached as always, by handle.
+   */
+  private async meet(): Promise<HomeAgentCard[]> {
+    const agents = await this.agents().catch(() => [] as Agent[]);
+    const routing = await this.routing().catch(() => undefined);
+    return agents
+      .filter((a) => !routing || mayRoute(routing, a.name))
+      .flatMap((a) => {
+        const look = this.agentLooks[a.name];
+        if (!look?.greeting && !(look?.starters ?? []).length) return [];
+        return [
+          {
+            handle: a.name,
+            name: look?.display_name || a.name,
+            ...(look?.greeting ? { greeting: look.greeting } : {}),
+            ...(look?.starters?.length ? { starters: look.starters } : {}),
+          },
+        ];
+      })
+      .sort((x, y) => x.name.localeCompare(y.name));
   }
 
   /** Whether Build an Agent is offered: the builder is there, and this app may reach it. */

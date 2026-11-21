@@ -3,6 +3,7 @@ import { test } from "node:test";
 import {
   agentHue,
   agentHuePath,
+  agentLook,
   configureAgentHues,
   requestAgentHue,
   setAgentHues,
@@ -80,4 +81,30 @@ test("a project-only reader resolves marks without run or agent permissions", as
   await new Promise((resolve) => setTimeout(resolve, 10));
   assert.equal(agentHue("projectLead"), 45);
   configureAgentHues(undefined);
+});
+
+test("a lookup carries looks, and a look it no longer has is back to the default", async () => {
+  let looks: Record<string, { display_name?: string; hat?: string }> = {
+    barbara: { display_name: "Barbara", hat: "crown" },
+  };
+  configureAgentHues(async (names) => ({
+    hues: Object.fromEntries(names.map((n) => [n, 90])),
+    looks: Object.fromEntries(Object.entries(looks).filter(([n]) => names.includes(n))),
+  }));
+  try {
+    requestAgentHue("barbara");
+    requestAgentHue("rex");
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    assert.equal(agentLook("barbara")?.display_name, "Barbara");
+    assert.equal(agentLook("rex"), undefined);
+    assert.equal(agentHue("rex"), 90);
+    looks = {};
+    configureAgentHues(async (names) => ({
+      hues: Object.fromEntries(names.map((n) => [n, 90])),
+      looks,
+    }));
+    assert.equal(agentLook("barbara"), undefined, "a new identity forgets looks");
+  } finally {
+    configureAgentHues(undefined);
+  }
 });

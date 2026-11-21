@@ -6,7 +6,13 @@ import {
   updatesOf,
   type WireProject,
 } from "@humagen/adapter";
-import { HOME_NEEDS, type HomeModel, type HomeStart, orderNotifications } from "@humagen/core";
+import {
+  HOME_NEEDS,
+  type HomeAgentCard,
+  type HomeModel,
+  type HomeStart,
+  orderNotifications,
+} from "@humagen/core";
 
 /** How many that need the person the Home tab shows, as the console's Home does. The rest are counted. */
 export { HOME_NEEDS };
@@ -37,6 +43,8 @@ export interface HomeReads {
   build: boolean;
   /** A console address, or nothing when the app has no public console address. */
   href: (path: string) => string | undefined;
+  /** The agents this app may reach that introduce themselves, by handle. Left out, Home names none. */
+  meet?: HomeAgentCard[];
 }
 
 const enc = encodeURIComponent;
@@ -90,6 +98,7 @@ export function homeModel(r: HomeReads): HomeModel {
       ? { projects: projectsOf(r.projects, (name) => r.href(projectPath(name))) }
       : {}),
     ...(projectsUrl ? { projectsUrl } : {}),
+    ...(r.meet && r.meet.length > 0 ? { meet: r.meet } : {}),
     connections: [],
     ...(consoleUrl ? { consoleUrl } : {}),
     links: [],
