@@ -68,14 +68,21 @@ func TestACalledRunOnlyNarrows(t *testing.T) {
 	if child.Person != parent.Person || child.Memory != parent.Memory {
 		t.Fatalf("child = %+v", child)
 	}
-	if len(child.ToolServers) != 1 || child.ToolServers[0].Name != "x" || child.Settings.Ceilings.AllowsToolServer("wider.test") {
+	// A called run acts for nobody: none of the person's own servers reach
+	// it, whatever the ceilings allow.
+	if len(child.ToolServers) != 0 || child.Settings.Ceilings.AllowsToolServer("wider.test") {
 		t.Fatalf("child servers = %+v, ceilings %+v", child.ToolServers, child.Settings.Ceilings)
 	}
 	if child.Settings.Ceilings.Depth(5) != 0 || !child.Settings.Ceilings.AllowsTool("file_read") || child.Settings.Ceilings.AllowsTool("file_write") {
 		t.Fatalf("child ceilings = %+v", child.Settings.Ceilings)
 	}
-	// Narrowing by nothing keeps the caller's context as it is.
+	// Narrowing by nothing keeps the caller's settings as they are, and
+	// still drops the person's servers.
 	same := parent.Narrow(settings.Ceilings{})
+	if len(parent.ToolServers) == 0 || len(same.ToolServers) != 0 {
+		t.Fatalf("narrowing by nothing kept servers %+v", same.ToolServers)
+	}
+	same.ToolServers = parent.ToolServers
 	d1, _ := same.Digest()
 	d2, _ := parent.Digest()
 	if d1 != d2 {

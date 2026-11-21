@@ -139,6 +139,11 @@ func (p *Platform) personalToolGroup(ctx context.Context, req runtime.Request) (
 	if !slices.Contains(req.Definition.Spec.Tools, personToolsGrant) {
 		return native.ToolGroup{}, ErrForbidden
 	}
+	// A run another agent called acts for nobody, even when its context was
+	// pinned before Narrow dropped the caller's servers.
+	if run, err := p.Runs.Get(req.Tenant, req.RunID); err == nil && run.Parent != "" {
+		return native.ToolGroup{}, mcptools.ErrNoPersonCredential
+	}
 	c, err := requestContext(req)
 	if err != nil {
 		return native.ToolGroup{}, err

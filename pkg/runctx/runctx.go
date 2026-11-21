@@ -10,7 +10,9 @@
 // refused, never repaired.
 //
 // A called run inherits its caller's context (Narrow). It keeps the caller's
-// person and can only tighten the caller's ceilings.
+// person, as whose ceilings and reads it is held to, and can only tighten the
+// caller's ceilings. It acts for nobody, so it gets none of that person's own
+// tool servers.
 package runctx
 
 import (
@@ -73,15 +75,12 @@ func New(person string, resolved settings.Resolved, own personctx.Context) Conte
 }
 
 // Narrow is the context a run called by this one gets: the same person, its
-// ceilings tightened by by, and only what still fits them.
+// ceilings tightened by by, and none of the person's own tool servers. A run
+// another agent called acts for nobody (docs/architecture/security.md), so
+// it never reaches a server with the credential of the person who started
+// the tree.
 func (c Context) Narrow(by settings.Ceilings) Context {
-	out := Context{Person: c.Person, Settings: c.Settings.Narrow(by), Memory: c.Memory, ToolServers: []personctx.ToolServer{}}
-	for _, t := range c.ToolServers {
-		if out.Settings.Ceilings.AllowsToolServer(t.Host()) {
-			out.ToolServers = append(out.ToolServers, t)
-		}
-	}
-	return out
+	return Context{Person: c.Person, Settings: c.Settings.Narrow(by), Memory: c.Memory, ToolServers: []personctx.ToolServer{}}
 }
 
 func (c Context) encode() ([]byte, error) {
