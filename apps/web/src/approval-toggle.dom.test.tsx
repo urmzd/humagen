@@ -164,7 +164,8 @@ test("with no session yet the choice is held, and an approver with no model says
 test("a conversation's pill holds its place, disabled, until the session's mode is read", () => {
   net = stubFetch({});
   render(<ApprovalToggle disabled me="ada" />);
-  const control = screen.getByRole("button", { name: words.label });
+  // Its name starts with the word it shows.
+  const control = screen.getByRole("button", { name: `${words.ask}, ${words.label}` });
   assert.equal(control.getAttribute("aria-disabled"), "true");
   assert.equal(control.textContent, "Manual");
   fireEvent.click(control);

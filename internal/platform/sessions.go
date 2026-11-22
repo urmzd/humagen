@@ -63,6 +63,9 @@ type SessionInput struct {
 	// spoken marks the first message as said in voice mode, for a
 	// conversation the messages API starts (sendToNewConsoleRoot).
 	spoken bool
+	// review is set only by ReviewAlert: a review session's label is
+	// reserved, so no request starts one with words of its own.
+	review bool
 }
 
 // SessionMessageOptions choose a mentioned agent's continuing or fresh child.
@@ -212,6 +215,9 @@ func (p *Platform) StartSession(ctx context.Context, who auth.Principal, in Sess
 	}
 	in.Text = uploadText(in.Text, in.Uploads)
 	ctx = context.WithValue(ctx, sessionReaderKey{}, who)
+	if strings.HasPrefix(strings.TrimSpace(in.Label), reviewPrefix) && !in.review {
+		return SessionView{}, fmt.Errorf("%w: a review session is opened with Review on its alert", threads.ErrInvalid)
+	}
 	if in.Command {
 		// Refused before the session is made, so a command that cannot
 		// run leaves no empty session behind.
@@ -304,7 +310,7 @@ func (p *Platform) StartSession(ctx context.Context, who auth.Principal, in Sess
 	if err != nil {
 		return SessionView{}, err
 	}
-	th := threads.Thread{ID: rec.ID, Project: project, Channel: ch.Name, Title: runs.SessionTitle(in.Text), TitleSource: threads.TitlePlaceholder, Visibility: threads.Private, Default: agent, Agents: []string{agent}, CreatedBy: who.Subject, Session: &threads.SessionIdentity{Agent: agent, Parent: rec.Key.Parent, Label: rec.Key.Label, SourceAlert: in.SourceAlert, Image: in.Image, Repos: slices.Clone(in.Repos)}}
+	th := threads.Thread{ID: rec.ID, Project: project, Channel: ch.Name, Title: startTitle(in), TitleSource: threads.TitlePlaceholder, Visibility: threads.Private, Default: agent, Agents: []string{agent}, CreatedBy: who.Subject, Session: &threads.SessionIdentity{Agent: agent, Parent: rec.Key.Parent, Label: rec.Key.Label, SourceAlert: in.SourceAlert, Image: in.Image, Repos: slices.Clone(in.Repos)}}
 	if parent.ID != "" {
 		th.Participants = slices.Clone(parent.Participants)
 		th.Visibility = parent.Visibility
@@ -324,7 +330,8 @@ func (p *Platform) StartSession(ctx context.Context, who auth.Principal, in Sess
 	if _, err := p.PostMessage(ctx, who, rec.ID, MessageInput{Text: in.Text, Spoken: in.spoken, Uploads: in.Uploads, Command: in.Command}); err != nil {
 		return SessionView{}, err
 	}
-	if created {
+	// A command is never sent to a model to name the session by.
+	if created && !in.Command {
 		p.nameSessionAtStart(ctx, who.Tenant, existing, in.Text)
 	}
 	return p.ReadSession(ctx, who, rec.ID, "", "", false)
@@ -334,12 +341,15 @@ func (p *Platform) StartSession(ctx context.Context, who auth.Principal, in Sess
 // placeholder title of its first message that asks for something, and has it
 // named from that message. It renames only a title the system derived from
 // that greeting, never one a person set or a generated one.
-func (p *Platform) retitleAfterGreeting(ctx context.Context, tenant string, th threads.Thread, text string) {
-	if runs.Greeting(text) {
+func (p *Platform) retitleAfterGreeting(ctx context.Context, tenant string, th threads.Thread, text string, command bool) {
+	if command || runs.Greeting(text) {
 		return
 	}
 	head, err := p.Threads.Summary(tenant, th.ID)
-	if err != nil || head.Messages == 0 || !runs.Greeting(head.First) {
+	// A session started with a command waits for a message, as one started
+	// with a greeting does.
+	byCommand := th.TitleSource == threads.TitlePlaceholder && th.Title == runs.CommandTitle
+	if err != nil || head.Messages == 0 || !runs.Greeting(head.First) && !byCommand {
 		return
 	}
 	next := runs.SessionTitle(text)
@@ -349,7 +359,7 @@ func (p *Platform) retitleAfterGreeting(ctx context.Context, tenant string, th t
 	// A failed rename leaves the greeting title, which is still true.
 	kept, changed, err := p.Threads.Retitle(tenant, th.ID, p.now(), func(cur threads.Thread) (string, string, bool) {
 		derived := cur.TitleSource == threads.TitlePlaceholder || cur.TitleSource == "" && cur.Title == runs.SessionTitle(head.First)
-		return next, threads.TitlePlaceholder, derived && runs.Greeting(cur.Title)
+		return next, threads.TitlePlaceholder, derived && (runs.Greeting(cur.Title) || cur.Title == runs.CommandTitle)
 	})
 	if err != nil || !changed {
 		return
@@ -386,7 +396,7 @@ func (p *Platform) PostSession(ctx context.Context, who auth.Principal, id strin
 	if _, _, err = p.sessionAgent(ctx, reader, th.Project, th.Session.Agent, text); err != nil {
 		return SessionView{}, err
 	}
-	p.retitleAfterGreeting(ctx, who.Tenant, th, text)
+	p.retitleAfterGreeting(ctx, who.Tenant, th, text, in.Command)
 	// A message that mentions another agent is answered in this session, by
 	// that agent or, for several, by the entry agent with what each said
 	// (carryOut). Only a request that asks for a child session by option

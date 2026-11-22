@@ -183,7 +183,7 @@ func (p *Platform) surfacePost(ctx context.Context, who auth.Principal, th threa
 	if _, _, err = p.sessionAgent(ctx, reader, th.Project, th.Session.Agent, text); err != nil {
 		return SessionView{}, err
 	}
-	p.retitleAfterGreeting(ctx, who.Tenant, th, text)
+	p.retitleAfterGreeting(ctx, who.Tenant, th, text, false)
 	posted, err := p.PostMessage(ctx, who, th.ID, in)
 	if err != nil {
 		return SessionView{}, err
@@ -217,6 +217,10 @@ func (p *Platform) postSurfaceChild(ctx context.Context, who auth.Principal, roo
 // (continued, or fresh or labelled as asked), as the person it is posted
 // for, where the agent answers it, and returns the child's id.
 func (p *Platform) postSurfaceChildOf(ctx context.Context, who auth.Principal, root threads.Thread, in MessageInput, text, agent string, option SessionMessageOptions) (Posted, string, error) {
+	// A review session's label is reserved for ReviewAlert.
+	if strings.HasPrefix(strings.TrimSpace(option.Label), reviewPrefix) {
+		return Posted{}, "", fmt.Errorf("%w: a review session is opened with Review on its alert", threads.ErrInvalid)
+	}
 	rec, err := p.Sessions.Open(ctx, who.Tenant, session.Open{Parent: root.ID, Agent: agent, Label: option.Label, Fresh: option.Fresh, Channel: wire.Channel(who.Tenant)})
 	if err != nil {
 		return Posted{}, "", err

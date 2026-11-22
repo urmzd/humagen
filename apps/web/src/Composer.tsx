@@ -150,9 +150,12 @@ export function Composer({
   stopAll,
   footer,
   note,
+  hold,
 }: {
   /** A line the bar says about the draft as it stands, such as what a "!" command will do. */
   note?: ReactNode;
+  /** Why the draft, with its file count, may not be sent; the bar says it. */
+  hold?: (draft: string, files: number) => string | null;
   /**
    * Everything running in the session, whoever started it. While anything
    * runs the bar shows Stop, which (as Esc in an empty box does) stops all of
@@ -470,6 +473,7 @@ export function Composer({
   );
 
   const ready = value.trim().length > 0 || files.length > 0;
+  const kept = hold?.(value, files.length) ?? null;
   // The bar's light (ComposerLight.tsx) shows only on a bar in use, so it is
   // read once the bar sits idle on screen, or the moment it is due.
   const [light, setLight] = useState(false);
@@ -490,7 +494,7 @@ export function Composer({
   const lit = String(asked);
 
   const send = (now: boolean) => {
-    if (!ready || held) return;
+    if (!ready || held || kept) return;
     const text =
       withAttached(
         quote
@@ -968,9 +972,9 @@ export function Composer({
             {notice}
           </p>
         )}
-        {!notice && note && (
+        {!notice && (kept || note) && (
           <output data-layer="note" className={floatNote}>
-            {note}
+            {kept || note}
           </output>
         )}
         {/*

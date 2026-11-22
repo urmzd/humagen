@@ -167,3 +167,47 @@ func TestABangCommandIsRefusedWhereItCouldReachTheHostOrIsNotTheirs(t *testing.T
 		t.Fatalf("a refused command leased an instance: %d, then %d", leased, n)
 	}
 }
+
+// A command can hold a secret, so it is never sent to the title model and
+// never shown as the title. The session waits for its first message that
+// asks for something, and is named from that message alone.
+func TestACommandIsNeverSentToTheTitleModel(t *testing.T) {
+	f := &titles{name: "Checking the release build"}
+	leaser := &isolationtest.Leaser{Dir: t.TempDir()}
+	p := startWith(t, platform.Config{
+		Limits:           call.Limits{},
+		Sandbox:          isolation.Sandbox{Leaser: leaser, Name: "test"},
+		SandboxContained: true,
+		Titler:           func(string, string) platform.Titler { return f },
+	})
+	secret := "!curl -H 'Authorization: Bearer sk-live-123' https://example.test/build"
+	v, err := p.StartSession(t.Context(), admin, platform.SessionInput{Project: "~", Agent: "lead", Text: secret, Command: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.WaitTitles()
+	th := record(t, p, v.ID)
+	if th.Title != runs.CommandTitle || th.TitleSource != threads.TitlePlaceholder {
+		t.Fatalf("a command session is titled %q (%s)", th.Title, th.TitleSource)
+	}
+	// A second command names nothing either.
+	if _, err := p.PostSession(t.Context(), admin, v.ID, platform.MessageInput{Text: "!echo sk-live-456", Command: true}); err != nil {
+		t.Fatal(err)
+	}
+	p.WaitTitles()
+	if n := len(f.calls()); n != 0 {
+		t.Fatalf("a command went to the title model: %+v", f.calls())
+	}
+	// The first message that asks for something names it, from its own words.
+	if title := postTitle(t, p, v.ID, "why does the release build fail on the second step"); title != "Why does the release build fail on…" && title != "Checking the release build" {
+		t.Fatalf("title %q", title)
+	}
+	p.WaitTitles()
+	asked := f.calls()
+	if len(asked) != 1 || strings.Contains(asked[0].Message, "sk-live") || strings.Contains(asked[0].Answer, "sk-live") {
+		t.Fatalf("asked %+v", asked)
+	}
+	if got := record(t, p, v.ID); got.Title != "Checking the release build" || got.TitleSource != threads.TitleGenerated {
+		t.Fatalf("title %q (%s)", got.Title, got.TitleSource)
+	}
+}

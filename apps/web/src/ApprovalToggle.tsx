@@ -157,7 +157,8 @@ export function ApprovalToggle({
       <span className="inline-flex min-w-0 items-center gap-1" data-approval-mode="loading">
         <button
           type="button"
-          aria-label={words.label}
+          // The name starts with the words the pill shows, as the enabled one's does.
+          aria-label={`${mode === "ask" ? words.ask : words.auto}, ${words.label}`}
           aria-disabled
           className={`${pill} cursor-default opacity-60 hover:bg-aui-hover/60 hover:text-aui-muted`}
         >

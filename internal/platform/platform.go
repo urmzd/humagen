@@ -528,6 +528,8 @@ type Platform struct {
 	publicationGuards []ConversationPublicationGuard
 	// moves serialize starting a thread's runs with moving the thread.
 	moves threadLocks
+	// reviews serialize opening and starting one alert's review session.
+	reviews threadLocks
 	// projectForkLocks serialize destination copies independently of the
 	// conversation placement locks acquired while capturing archives.
 	projectForkLocks threadLocks

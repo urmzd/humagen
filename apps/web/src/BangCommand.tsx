@@ -25,12 +25,29 @@ export function bangCommand(text: string): string | null {
 /**
  * Why a command may not run where the composer posts, or null when it may.
  * `terminal` is the server's word (GET /api/sessions/options); until it is
- * read the server decides. A command runs only in a session, so a shared
- * thread takes none.
+ * read the server decides. A command runs only in a session: anywhere else
+ * a leading "!" is plain text, so this is undefined there.
  */
-export function commandsHere(terminal: boolean | undefined, session: boolean): string | null {
+export function commandsHere(
+  terminal: boolean | undefined,
+  session: boolean,
+): string | null | undefined {
+  if (!session) return undefined;
   if (terminal === false) return words.noSandbox;
-  if (!session) return words.noSession;
+  return null;
+}
+
+/** Why a "!" draft is kept, not sent: no command, or files that would run with it. */
+export function commandHold(
+  draft: string,
+  files: number,
+  commands: string | null | undefined,
+): string | null {
+  if (commands === undefined) return null;
+  const command = bangCommand(draft);
+  if (command === null) return null;
+  if (files > 0) return words.withFiles;
+  if (command === "") return words.empty;
   return null;
 }
 
@@ -38,9 +55,13 @@ export function commandsHere(terminal: boolean | undefined, session: boolean): s
  * What the composer says while its draft starts with "!": what will happen,
  * or why nothing can. Null for any other draft.
  */
-export function commandHint(draft: string, refused: string | null, home = false): string | null {
+export function commandHint(
+  draft: string,
+  refused: string | null | undefined,
+  home = false,
+): string | null {
   const command = bangCommand(draft);
-  if (command === null) return null;
+  if (command === null || refused === undefined) return null;
   if (refused) return refused;
   if (command === "") return words.empty;
   return home ? words.hintHome : words.hint;

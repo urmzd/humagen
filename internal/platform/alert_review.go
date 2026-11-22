@@ -40,8 +40,12 @@ const (
 // AlertDocumentName is the name of the document a review session starts with.
 const AlertDocumentName = "Alert context.md"
 
+// reviewPrefix starts the label of every review session. The label is
+// reserved: only ReviewAlert opens a session with it.
+const reviewPrefix = "review-"
+
 // reviewLabel names the review session of one alert under its source.
-func reviewLabel(id string) string { return "review-" + id }
+func reviewLabel(id string) string { return reviewPrefix + id }
 
 // reviewAsk is what the agent is told, beside the message, when it answers
 // the first message of a review session. The person sees only the title and
@@ -72,6 +76,16 @@ func (p *Platform) ReviewAlert(ctx context.Context, who auth.Principal, id strin
 	if err = p.EnsureBuiltins(ctx, who.Tenant); err != nil {
 		return SessionView{}, false, err
 	}
+	// Only someone who may post where the alert sits opens its review, and
+	// that is checked before any session is made.
+	if err = p.MayPost(who, Place{Project: source.Project, Thread: source.ID}); err != nil {
+		return SessionView{}, false, err
+	}
+	// One alert's review is opened and started by one call at a time, so a
+	// double click finds the first call's session and starts nothing more.
+	lock := p.reviews.of(who.Tenant, a.ID)
+	lock.Lock()
+	defer lock.Unlock()
 	agent := p.cfg.EntryAgent
 	rec, err := p.Sessions.Open(ctx, who.Tenant, session.Open{Parent: source.ID, Agent: agent, Label: reviewLabel(a.ID), Channel: wire.Channel(who.Tenant)})
 	if err != nil {
@@ -79,6 +93,9 @@ func (p *Platform) ReviewAlert(ctx context.Context, who auth.Principal, id strin
 	}
 	if th, err := p.Threads.Get(who.Tenant, rec.ID); err == nil && th.Session != nil && th.Session.SourceAlert == a.ID {
 		if head, err := p.Threads.Summary(who.Tenant, th.ID); err == nil && head.Messages > 0 {
+			if !p.SeesSession(who, th.ID) {
+				return SessionView{}, false, threads.ErrNotFound
+			}
 			if _, err = p.Alerts.SetReview(who.Tenant, a.ID, th.ID); err != nil {
 				return SessionView{}, false, err
 			}
@@ -87,7 +104,7 @@ func (p *Platform) ReviewAlert(ctx context.Context, who auth.Principal, id strin
 		}
 	}
 	doc := p.alertDocument(who, a)
-	view, err = p.StartSession(ctx, who, SessionInput{SourceAlert: a.ID, Parent: source.ID, Agent: agent, Label: reviewLabel(a.ID), Text: firstWords(a.Title, threads.MaxTitle), Uploads: []Upload{{Name: AlertDocumentName, Data: []byte(doc)}}})
+	view, err = p.StartSession(ctx, who, SessionInput{SourceAlert: a.ID, Parent: source.ID, Agent: agent, Label: reviewLabel(a.ID), Text: firstWords(a.Title, threads.MaxTitle), Uploads: []Upload{{Name: AlertDocumentName, Data: []byte(doc)}}, review: true})
 	if err != nil {
 		return SessionView{}, false, err
 	}
