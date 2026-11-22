@@ -665,18 +665,19 @@ test("a call stopped before this page opened reads Stopped from its record, and 
 
 test("the footer has a left slot for where the session runs; empty, the rest stays at the right", () => {
   const { container, rerender } = render(
-    <ComposerFooter agent="lead" approval={<span>Ask</span>} usage={<span>ring</span>} />,
+    <ComposerFooter approval={<span>Ask</span>} usage={<span>ring</span>} />,
   );
   const left = container.querySelector<HTMLElement>('[data-layer="composer-footer-start"]');
   assert.ok(left);
   assert.equal(left.childElementCount, 0);
-  // The row is a grid: the left group first, who answers and the ring in the last group, at the right.
+  // The row is a grid: the left group first, the ring in the last group, at the right.
   const end = container.querySelector<HTMLElement>('[data-layer="composer-footer-end"]');
   assert.ok(end);
   assert.equal(left.parentElement?.lastElementChild, end);
   assert.match(left.parentElement?.className ?? "", /humagen-composer-footer/);
-  assert.ok(within(end).getByText("lead"));
   assert.ok(within(end).getByText("ring"));
+  // It names no agent and no model: each answer names who gave it.
+  assert.equal(end.querySelector("[data-accent=agent]"), null);
   rerender(
     <ComposerFooter
       start={
@@ -685,7 +686,6 @@ test("the footer has a left slot for where the session runs; empty, the rest sta
           <span data-label>Placeholder environment</span>
         </button>
       }
-      agent="lead"
       usage={<span>ring</span>}
     />,
   );

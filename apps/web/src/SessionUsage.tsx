@@ -456,14 +456,13 @@ export function UsageRing({
 
 /**
  * The row under the composer: on the left where the session runs and its
- * approval mode, in the middle the AI notice, on the right who answers (and
- * on which model) and the usage ring. One line; where the composer is too
+ * approval mode, in the middle the AI notice, on the right the usage ring.
+ * It names no agent and no model: a session is not one agent's, each answer
+ * names who gave it, and an agent's model is the agent's own. One line; where the composer is too
  * narrow for all three, the notice is a line of its own under the row.
  */
 export function ComposerFooter({
   start,
-  agent,
-  model,
   approval,
   usage,
 }: {
@@ -473,8 +472,6 @@ export function ComposerFooter({
    * item keeps its icon: mark its words with `data-label` and they are hidden.
    */
   start?: ReactNode;
-  agent?: string;
-  model?: string;
   approval?: ReactNode;
   usage?: ReactNode;
 }) {
@@ -495,16 +492,6 @@ export function ComposerFooter({
       {/* The composer puts its AI notice here. */}
       {notice && <div ref={notice} data-layer="composer-footer-notice" className="min-w-0" />}
       <div data-layer="composer-footer-end" className="flex min-w-0 items-center gap-3">
-        {agent && (
-          <span
-            className="inline-flex min-w-0 items-center gap-1.5"
-            title={defaultCopy.dock.answeredBy(agent)}
-          >
-            <AgentMark name={agent} size={14} />
-            <span className="truncate text-aui-fg">{agent}</span>
-            {model && <span className="truncate max-[40rem]:hidden">{model}</span>}
-          </span>
-        )}
         {approval && <span className="inline-flex max-[30rem]:hidden">{approval}</span>}
         {approval && <MoreControls>{approval}</MoreControls>}
         {usage}
@@ -513,7 +500,7 @@ export function ComposerFooter({
   );
 }
 
-/** On a phone, the approval mode waits under ⋯, so the row stays the agent and the ring. */
+/** On a phone, the approval mode waits under ⋯, so the row stays short. */
 function MoreControls({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const button = useRef<HTMLButtonElement>(null);
