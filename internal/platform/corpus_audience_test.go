@@ -226,3 +226,65 @@ func TestAProjectsAttachedCorporaAreSearchedInIt(t *testing.T) {
 		t.Fatalf("a restricted corpus reached by attachment = %s", out)
 	}
 }
+
+// A child an agent hands work to under a Slack thread's root session copies
+// the root's people, the asker alone, but answers in the same Slack thread.
+// It reaches whom the root reaches, so a confidential corpus only the asker
+// reads stays out of it in a public channel, as it stays out of the root.
+func TestASlackRootsChildReadsCorporaAsItsRootDoes(t *testing.T) {
+	f := graphFixture(t)
+	f.p.SourceEvidence = knowledge.NewEvidenceStore()
+	f.p.Clients = clients.NewMemory()
+	var err error
+	if f.p.Audit, err = audit.Open(nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.p.Clients.Create("tenant", clients.Client{ID: "slack", Name: "Slack", Surface: clients.Slack, Identity: clients.Identity{Team: "T01"}, Enabled: true, Agents: []string{"worker"}}, clients.DefaultCaps(), f.p.now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.p.Corpora.Update("tenant", "hr", 0, f.p.now(), func(c *corpora.Corpus) error {
+		c.Label, c.Readers = corpora.Confidential, []corpora.Reader{{Kind: corpora.Person, Name: "bo"}}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	people := []threads.Participant{{Kind: threads.Person, Name: "bo", Owner: true}}
+	session := func(id, parent string, surface *threads.Surface) threads.Thread {
+		return threads.Thread{ID: id, Project: "Data", Channel: "general", CreatedBy: "bo", Visibility: threads.Private, Participants: people, Default: "worker", Agents: []string{"worker"}, Surface: surface, Session: &threads.SessionIdentity{Agent: "worker", Parent: parent}}
+	}
+	root := session("s_"+strings.Repeat("1", 32), "slack://T01/C0PUBLIC/1.2", &threads.Surface{Client: "slack", Channel: "C0PUBLIC", TS: "1.2"})
+	// As startSessionChild files a child an agent hands work to.
+	child := session("s_"+strings.Repeat("2", 32), root.ID, nil)
+	own := threads.Thread{ID: "th-00000000000000aa", Project: "Data", Channel: "general", CreatedBy: "bo", Visibility: threads.Private, Participants: people}
+	search := func(name string, th threads.Thread) (string, runs.Run) {
+		t.Helper()
+		if _, err := f.p.Threads.Create("tenant", th, f.p.now()); err != nil {
+			t.Fatal(err)
+		}
+		tag := wire.NewEvent(wire.Raise{ID: name, Origin: runs.OriginAPI, Tenant: "tenant", Agent: "worker", Actor: event.Actor{ID: "bo", User: "bo"}, At: f.p.now(), Context: map[string]string{runs.MetaProject: "Data", runs.MetaThread: th.ID}})
+		if err := f.p.Runs.Record(name, tag, 1); err != nil {
+			t.Fatal(err)
+		}
+		r := runtime.Request{Tenant: "tenant", RunID: name}
+		r.Definition.Spec.Name = "worker"
+		out, err := f.p.corpusSearchTool(r).Execute(t.Context(), map[string]any{"query": "parental leave"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		run, _ := f.p.Runs.Get("tenant", name)
+		return out, run
+	}
+	found := func(out string) bool { return strings.Contains(out, "sixteen weeks") }
+	// The person's own private console conversation reads it, marked private.
+	if out, run := search("own", own); !found(out) || !run.UsesPrivateContext() {
+		t.Fatalf("bo's own conversation = %s, private %v", out, run.UsesPrivateContext())
+	}
+	for _, s := range []struct {
+		name string
+		th   threads.Thread
+	}{{"root", root}, {"child", child}} {
+		if out, run := search(s.name, s.th); found(out) {
+			t.Fatalf("the Slack thread's %s session read a confidential corpus in a public channel (private %v): %s", s.name, run.UsesPrivateContext(), out)
+		}
+	}
+}

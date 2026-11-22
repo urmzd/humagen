@@ -39,12 +39,12 @@ func (s *Server) clientBridgeDelivery(w http.ResponseWriter, r *http.Request, wh
 		s.problem(w, err)
 		return
 	}
-	run, channel := r.URL.Query().Get("run"), r.URL.Query().Get("channel")
-	if run == "" || len(run) > 160 || channel == "" || len(channel) > 64 {
-		fail(w, 400, "choose a bounded run and channel")
+	run, channel, ts := r.URL.Query().Get("run"), r.URL.Query().Get("channel"), r.URL.Query().Get("ts")
+	if run == "" || len(run) > 160 || channel == "" || len(channel) > 64 || len(ts) > 32 {
+		fail(w, 400, "choose a bounded run, channel and thread ts")
 		return
 	}
-	allowed, err := s.P.BridgeDeliveryAllowed(r.Context(), who, r.PathValue("id"), channel, run)
+	allowed, err := s.P.BridgeDeliveryAllowed(r.Context(), who, r.PathValue("id"), channel, ts, run)
 	if err != nil {
 		s.problem(w, err)
 		return

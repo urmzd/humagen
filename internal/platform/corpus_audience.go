@@ -96,9 +96,17 @@ func (p *Platform) corpusAudienceOf(req runtime.Request) (corpusAudience, error)
 		return corpusAudience{}, knowledge.ErrNotFound
 	}
 	public := corpusAudience{kind: AudiencePublic, person: person, readers: []auth.Principal{p.invitationReader(req.Tenant, person)}}
-	if th.Surface == nil {
+	// A session in a tree a surface started reaches whom that surface
+	// reaches, as its root does: a child an agent handed work to copies the
+	// root's people but answers in the same Slack thread.
+	root, ok := p.surfaceRoot(req.Tenant, th.ID)
+	if !ok {
+		return corpusAudience{}, knowledge.ErrNotFound
+	}
+	if root.Surface == nil {
 		return p.groupAudience(req.Tenant, person, participantsOf(th), 0), nil
 	}
+	th = root
 	if c, err := p.Clients.Get(req.Tenant, th.Surface.Client); err != nil {
 		return public, nil
 	} else if c.Surface == clients.GitHub {

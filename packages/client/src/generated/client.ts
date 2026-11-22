@@ -1360,12 +1360,13 @@ afterwards. Nothing is sent to the agent.
   }
 
   /** Recheck a native host's current permission to deliver this visible run */
-  async clientBridgeDelivery(id: string, run: string, channel: string, options?: RequestOptions): Promise<ClientBridgeDeliveryResponse> {
+  async clientBridgeDelivery(id: string, run: string, channel: string, ts?: string, options?: RequestOptions): Promise<ClientBridgeDeliveryResponse> {
     let path = "/api/clients/{id}/delivery";
     path = path.replace("{id}", encodeURIComponent(String(id)));
     const _q = new URLSearchParams();
     if (run !== undefined && run !== null) _q.set("run", String(run));
     if (channel !== undefined && channel !== null) _q.set("channel", String(channel));
+    if (ts !== undefined && ts !== null) _q.set("ts", String(ts));
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
     return this.request<ClientBridgeDeliveryResponse>("GET", path, {
@@ -1373,12 +1374,13 @@ afterwards. Nothing is sent to the agent.
     });
   }
 
-  async clientBridgeDeliveryRaw(id: string, run: string, channel: string, options?: RequestOptions): Promise<ApiResponse<ClientBridgeDeliveryResponse>> {
+  async clientBridgeDeliveryRaw(id: string, run: string, channel: string, ts?: string, options?: RequestOptions): Promise<ApiResponse<ClientBridgeDeliveryResponse>> {
     let path = "/api/clients/{id}/delivery";
     path = path.replace("{id}", encodeURIComponent(String(id)));
     const _q = new URLSearchParams();
     if (run !== undefined && run !== null) _q.set("run", String(run));
     if (channel !== undefined && channel !== null) _q.set("channel", String(channel));
+    if (ts !== undefined && ts !== null) _q.set("ts", String(ts));
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
     return this.rawRequest<ClientBridgeDeliveryResponse>("GET", path, {

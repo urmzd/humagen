@@ -1161,6 +1161,7 @@ paths:
         - {$ref: '#/components/parameters/ClientID'}
         - {name: run, in: query, required: true, schema: {type: string, maxLength: 160}}
         - {name: channel, in: query, required: true, schema: {type: string, maxLength: 64}}
+        - {name: ts, in: query, required: false, description: "The Slack thread's ts. A private session's run is allowed only in the Slack thread that started its session, so without it that run is refused outside a direct message.", schema: {type: string, maxLength: 32}}
       responses:
         '200':
           description: Current delivery decision with no private source metadata
