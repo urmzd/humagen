@@ -249,13 +249,22 @@ const reviewedNotion = {
   ],
 };
 
-/** Reviews Notion's tools from its card's one action; returns that button. */
+/**
+ * Chooses one of a row's actions from the arrow beside its control, as a
+ * person does once the item is theirs; returns the arrow, where focus goes back.
+ */
+async function choose(row: HTMLElement, name: string, action: string) {
+  const more = within(row).getByRole("button", { name: `More for ${name}` });
+  more.focus();
+  fireEvent.keyDown(more, { key: "Enter" });
+  fireEvent.click(await screen.findByRole("menuitem", { name: action }));
+  return more;
+}
+
+/** Reviews Notion's tools from the arrow beside its Connected control; returns that arrow. */
 async function openToolReview() {
   const notion = await screen.findByRole("listitem", { name: "Notion" });
-  const review = within(notion).getByRole("button", { name: "Review Tools" });
-  review.focus();
-  fireEvent.click(review);
-  return review;
+  return choose(notion, "Notion", "Review Tools");
 }
 
 test("keyboard tool review opens the provider Sheet, keeps a refused approval visible, and restores focus", async () => {
@@ -418,11 +427,7 @@ test("key MCPs: a value, a replaced reference and a removal, each from its card"
   await within(screen.getByRole("listitem", { name: "calendar" })).findByText("Connected");
   assert.equal(screen.queryByDisplayValue("private-value"), null);
 
-  fireEvent.click(
-    within(screen.getByRole("listitem", { name: "issues" })).getByRole("button", {
-      name: "Replace",
-    }),
-  );
+  await choose(screen.getByRole("listitem", { name: "issues" }), "issues", "Replace");
   const issues = within(await sheet("issues")).getByRole("region", { name: "issues" });
   fireEvent.change(within(issues).getByLabelText(/^Reference/), {
     target: { value: "op://People/alice/replacement" },
@@ -628,8 +633,8 @@ test("Plugins is MCPs and your skills, Apps is the workspace's installs, and eac
   assert.deepEqual(underTitle(), []);
   const apps = await screen.findByRole("list", { name: "Apps" });
   const slack = await within(apps).findByRole("listitem", { name: "Slack" });
-  await within(slack).findByText("Installed");
-  assert.ok(within(slack).getByRole("button", { name: "Manage" }));
+  // Its status is its control: pressing Installed manages it.
+  assert.ok(await within(slack).findByRole("button", { name: "Installed" }));
   assert.equal(screen.getAllByRole("listitem", { name: "Slack" }).length, 1, "Slack appears once");
   // A person's plugins are not the workspace's page.
   assert.equal(screen.queryByRole("list", { name: "MCPs" }), null);
@@ -687,7 +692,7 @@ test("Plugins is MCPs and your skills, Apps is the workspace's installs, and eac
   assert.equal(screen.queryByRole("region", { name: "MCPs" }), null);
 });
 
-test("an installed app's status, action and menu are one group at the row's end; a plugin's row is as it was", async () => {
+test("an installed app's status is its control, with its menu beside it at the row's end, as a plugin's is", async () => {
   const preset = (id: string, name: string, kind: string, scope: string) => ({
     id,
     name,
@@ -711,24 +716,18 @@ test("an installed app's status, action and menu are one group at the row's end;
     const row = await within(apps).findByRole("listitem", { name });
     const more = within(row).getByRole("button", { name: `More for ${name}` });
     const group = row.lastElementChild as HTMLElement;
-    // On a phone a control left to wrap by itself drops alone under the logo.
-    for (const part of [
-      within(row).getByText("Installed"),
-      within(row).getByRole("button", { name: "Manage" }),
-      more,
-    ])
-      assert.ok(group.contains(part), `${name}: ${part.textContent || "More"} is in the group`);
+    // The status is the control, and its arrow is the menu: one unit at the row's end.
+    const installed = within(row).getByRole("button", { name: "Installed" });
+    assert.ok(group.contains(installed), `${name}: Installed is in the group`);
+    assert.ok(group.contains(more), `${name}: its arrow is in the group`);
     assert.match(group.className, /(^| )ml-auto( |$)/, "the group sits at the row's end");
     assert.match(group.className, /(^| )shrink-0( |$)/);
     // In a column narrower than the group it wraps inside the row, never past its edge.
     assert.match(group.className, /(^| )max-w-full( |$)/, "the group stays inside the row");
-    // The action and its menu are one unit that does not wrap, apart from the status.
-    const manage = within(row).getByRole("button", { name: "Manage" });
-    const unit = manage.parentElement as HTMLElement;
-    assert.equal(unit.parentElement, group);
-    assert.ok(unit.contains(more), `${name}: the menu stays beside Manage`);
-    assert.equal(unit.contains(within(row).getByText("Installed")), false);
-    assert.doesNotMatch(unit.className, /flex-wrap|contents/, "the action and menu share a line");
+    // The control and its arrow are one split button that does not wrap.
+    const unit = installed.parentElement as HTMLElement;
+    assert.equal(unit.getAttribute("data-slot"), "button-group");
+    assert.ok(unit.contains(more), `${name}: the arrow stays beside Installed`);
     // The name gives up room so the group fits beside it at 390 pixels.
     const title = within(row).getByRole("button", { name });
     assert.equal(group.contains(title), false);
@@ -739,8 +738,8 @@ test("an installed app's status, action and menu are one group at the row's end;
   render(<Connections canConnect canWrite />);
   const notion = await screen.findByRole("listitem", { name: "Notion" });
   const more = within(notion).getByRole("button", { name: "More for Notion" });
-  // Elsewhere the group makes no box, so a plugin's row wraps part by part as before.
-  assert.equal((notion.lastElementChild as HTMLElement).className, "contents");
+  // A plugin's row has the same one control at its end as an app's.
+  assert.match((notion.lastElementChild as HTMLElement).className, /(^| )ml-auto( |$)/);
   assert.ok(notion.lastElementChild?.contains(more));
   assert.match(within(notion).getByRole("button", { name: "Notion" }).className, / min-w-28 /);
 });
@@ -894,7 +893,7 @@ test("the GitHub app's sheet holds the rules that start a session, saved on the 
   );
   render(<Connections scope="apps" canConnect canWrite />);
   const card = await screen.findByRole("listitem", { name: "GitHub" });
-  fireEvent.click(within(card).getByRole("button", { name: "Manage" }));
+  fireEvent.click(within(card).getByRole("button", { name: "Installed" }));
   const dialog = await sheet("GitHub");
   const rules = await within(dialog).findByRole("region", { name: "Start a session when" });
   const rule = within(rules).getByRole("listitem", { name: "review-prs" });

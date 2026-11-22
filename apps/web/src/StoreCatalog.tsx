@@ -1,8 +1,5 @@
 import { defaultCopy } from "@humagen/components";
 import { BotIcon } from "@humagen/render-web";
-import type { ReactNode } from "react";
-import { useState } from "react";
-import type { StoreAgent, StorePackage } from "./api.ts";
 import { Button } from "@humagen/render-web/ui/button";
 import {
   Item,
@@ -13,6 +10,9 @@ import {
   ItemMedia,
   ItemTitle,
 } from "@humagen/render-web/ui/item";
+import type { ReactNode } from "react";
+import { useState } from "react";
+import type { StoreAgent, StorePackage } from "./api.ts";
 import { agentShown } from "./branding.ts";
 import { follow, Pill, Reference, Tag } from "./cards.tsx";
 import { href } from "./route.ts";
