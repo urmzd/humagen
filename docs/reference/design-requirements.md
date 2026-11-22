@@ -1220,6 +1220,15 @@ complete the cycle".
 - Acceptance: `agent-props.dom.test.tsx` passes; in the gallery at 2x, light
   and dark, each prop reads at 24px and 32px and covers no face.
 
+The props are drawn as the objects themselves, in their own colors and
+shading: a lab microscope (base, lamp, stage with a slide, arm, a tube that
+eases down to focus, a turning knob), a cloud with three dots that come in
+turn, a steel wrench that turns, a yellow pencil that writes a line, a grey
+message and a blue answer that types, and a wooden hourglass that holds
+still. A thought or a message floats above the head; a thing the bot uses
+stands at its side. `/mascot-gallery.html` on the dev server shows every
+state at 28, 48 and 96px, with `?theme=light` for the light theme.
+
 ### DES-091: One component vocabulary, one layout rule
 
 Owner request, 2026-11-21: "use the best interfaces for those specific

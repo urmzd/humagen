@@ -1182,14 +1182,13 @@
      a thin halo of the page behind it so it reads over the body too. */
   .aui-prop {
     position: absolute;
-    top: 0;
-    right: calc(var(--prop-size) * -0.35);
+    top: calc(var(--prop-size) * -0.2);
+    right: calc(var(--prop-size) * -0.5);
     display: block;
     width: var(--prop-size);
     height: var(--prop-size);
     pointer-events: none;
-    filter: drop-shadow(0 0 0.75px var(--aui-bg)) drop-shadow(0 0 0.75px var(--aui-bg))
-      drop-shadow(0 0 0.5px var(--aui-bg));
+    filter: drop-shadow(0 0 0.75px var(--aui-bg)) drop-shadow(0 1px 1.5px rgb(0 0 0 / 0.35));
     animation: aui-prop-in 150ms ease-out;
     transition: opacity 150ms ease-out;
   }
@@ -1202,62 +1201,124 @@
   .aui-prop[data-leaving] {
     opacity: 0;
   }
-  .aui-prop .aui-prop-front {
-    fill: var(--aui-bg);
+  .aui-prop[data-anchor="beside"] {
+    top: auto;
+    bottom: calc(var(--prop-size) * -0.08);
+    right: calc(var(--prop-size) * -0.45);
   }
-  .aui-prop[data-motion="loop"] .aui-prop-move {
-    transform-box: view-box;
+  .aui-prop[data-prop="microscope"] svg {
+    transform: scaleX(-1);
   }
+  .aui-prop :is(.aui-prop-move, .aui-prop-knob, .aui-prop-dot, .aui-prop-trail) {
+    transform-box: fill-box;
+    transform-origin: center;
+  }
+  /* Microscope: the tube eases down to focus, the knob turns, the lamp glows. */
   .aui-prop[data-prop="microscope"] .aui-prop-move {
-    animation: aui-prop-focus 2.6s ease-in-out infinite;
+    animation: aui-prop-focus 2.8s ease-in-out infinite;
   }
-  .aui-prop[data-prop="wrench"] .aui-prop-move {
-    transform-origin: 8px 8px;
-    animation: aui-prop-sweep 2.4s ease-in-out infinite alternate;
+  .aui-prop[data-prop="microscope"] .aui-prop-knob {
+    animation: aui-prop-spin 2.8s ease-in-out infinite;
   }
-  .aui-prop[data-prop="thought"] .aui-prop-move {
+  .aui-prop[data-prop="microscope"] .aui-prop-glow {
+    animation: aui-prop-pulse 2.8s ease-in-out infinite;
+  }
+  /* Thought: the dots come one by one, the small clouds rise. */
+  .aui-prop .aui-prop-dot {
+    animation: aui-prop-dot 1.4s ease-in-out infinite;
+  }
+  .aui-prop .aui-prop-dot:nth-of-type(2) {
+    animation-delay: 0.2s;
+  }
+  .aui-prop .aui-prop-dot:nth-of-type(3) {
+    animation-delay: 0.4s;
+  }
+  .aui-prop[data-prop="thought"] .aui-prop-trail {
     animation: aui-prop-rise 2.8s ease-in-out infinite;
   }
   .aui-prop[data-prop="thought"] .aui-prop-late {
     animation-delay: 0.5s;
   }
-  .aui-prop[data-prop="pencil"] .aui-prop-move {
-    animation: aui-prop-write 2.2s ease-in-out infinite;
+  /* Wrench: it turns back and forth on the bolt. */
+  .aui-prop[data-prop="wrench"] .aui-prop-move {
+    transform-box: view-box;
+    transform-origin: 16px 16px;
+    animation: aui-prop-sweep 1.6s ease-in-out infinite alternate;
   }
+  /* Pencil: it writes a line, and the line draws under it. */
+  .aui-prop[data-prop="pencil"] .aui-prop-move {
+    animation: aui-prop-write 1.8s ease-in-out infinite;
+  }
+  .aui-prop[data-prop="pencil"] .aui-prop-ink {
+    stroke-dasharray: 1;
+    animation: aui-prop-ink 1.8s ease-in-out infinite;
+  }
+  /* Bubbles: the first message rocks, the answer types. */
   .aui-prop[data-prop="bubbles"] .aui-prop-move {
-    animation: aui-prop-turn 3s ease-in-out infinite;
+    animation: aui-prop-rock 2.4s ease-in-out infinite;
   }
   @keyframes aui-prop-in {
     from {
       opacity: 0;
+      transform: scale(0.8);
     }
   }
   @keyframes aui-prop-sweep {
     from {
-      transform: rotate(-9deg);
+      transform: rotate(-14deg);
     }
     to {
-      transform: rotate(9deg);
+      transform: rotate(14deg);
     }
   }
   @keyframes aui-prop-focus {
     0%,
     100% {
-      transform: translate(0, 0);
+      transform: translateY(0);
     }
     50% {
-      transform: translate(0.45px, 0.8px);
+      transform: translateY(1.4px);
+    }
+  }
+  @keyframes aui-prop-spin {
+    0%,
+    100% {
+      transform: rotate(0deg);
+    }
+    50% {
+      transform: rotate(160deg);
+    }
+  }
+  @keyframes aui-prop-pulse {
+    0%,
+    100% {
+      opacity: 0.35;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
+  @keyframes aui-prop-dot {
+    0%,
+    60%,
+    100% {
+      opacity: 0.35;
+      transform: translateY(0);
+    }
+    30% {
+      opacity: 1;
+      transform: translateY(-1.2px);
     }
   }
   @keyframes aui-prop-rise {
     0%,
     100% {
-      opacity: 0.45;
-      transform: translateY(0.6px);
+      opacity: 0.55;
+      transform: translateY(0.8px);
     }
     50% {
       opacity: 1;
-      transform: translateY(-0.6px);
+      transform: translateY(-0.8px);
     }
   }
   @keyframes aui-prop-write {
@@ -1265,17 +1326,32 @@
     100% {
       transform: translate(0, 0);
     }
+    25% {
+      transform: translate(1.6px, -0.6px);
+    }
     50% {
-      transform: translate(-0.9px, 0.9px);
+      transform: translate(3.2px, 0.4px);
+    }
+    75% {
+      transform: translate(4.8px, -0.4px);
     }
   }
-  @keyframes aui-prop-turn {
+  @keyframes aui-prop-ink {
+    0% {
+      stroke-dashoffset: 1;
+    }
+    70%,
+    100% {
+      stroke-dashoffset: 0;
+    }
+  }
+  @keyframes aui-prop-rock {
     0%,
     100% {
-      opacity: 1;
+      transform: rotate(-4deg);
     }
     50% {
-      opacity: 0.5;
+      transform: rotate(4deg);
     }
   }
   @media (prefers-reduced-motion: reduce) {

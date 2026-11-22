@@ -12,6 +12,7 @@ import {
   type ReactNode,
   type RefObject,
   useEffect,
+  useId,
   useLayoutEffect,
   useRef,
   useState,
@@ -379,92 +380,235 @@ function useShownProp(prop: AgentProp | undefined) {
   return { shown, leaving: !prop && !!shown };
 }
 
-// Each prop on a 16-unit grid. `.aui-prop-move` is the part that loops.
-const PROP_ART: Record<AgentProp, ReactNode> = {
-  microscope: (
-    <>
-      <path className="aui-prop-move" d="M3.9 3.6 7 1.8l3.2 5.5-3.1 1.8z" />
-      <path d="M2.4 14.4h11.2M9.6 14.4c2.6-1.6 3.1-5 1.1-7.3M4.2 11.6h4.6" />
-    </>
-  ),
-  wrench: (
-    <path
-      className="aui-prop-move"
-      d="M10.4 2.2a3.4 3.4 0 0 0-3.8 4.7l-4.3 4.3a1.5 1.5 0 0 0 2.1 2.1l4.3-4.3a3.4 3.4 0 0 0 4.7-3.8l-2.1 2.1-2.2-.5-.5-2.2z"
-    />
-  ),
-  thought: (
-    <>
-      <circle
-        className="aui-prop-move"
-        cx="2.6"
-        cy="13.6"
-        r="1.15"
-        fill="currentColor"
-        stroke="none"
-      />
-      <circle
-        className="aui-prop-move aui-prop-late"
-        cx="5.4"
-        cy="10.4"
-        r="1.6"
-        fill="currentColor"
-        stroke="none"
-      />
-      <path d="M9.4 8.4a2.3 2.3 0 0 1-.3-4.4 2.9 2.9 0 0 1 5.3-.4 2.2 2.2 0 0 1-.6 4.8z" />
-    </>
-  ),
-  pencil: (
-    <g className="aui-prop-move">
-      <path d="M11 2.8 13.2 5 5.6 12.6 2.4 13.6 3.4 10.4z" />
-      <path d="M9.6 4.2 11.8 6.4" />
-    </g>
-  ),
-  bubbles: (
-    <>
-      <path
-        className="aui-prop-move"
-        d="M2.5 2h6a1.5 1.5 0 0 1 1.5 1.5v2.5A1.5 1.5 0 0 1 8.5 7.5H5l-2 1.6V7.5h-.5A1.5 1.5 0 0 1 1 6V3.5A1.5 1.5 0 0 1 2.5 2z"
-      />
-      <path
-        className="aui-prop-front"
-        d="M7.5 7.5h6A1.5 1.5 0 0 1 15 9v2.5a1.5 1.5 0 0 1-1.5 1.5H13v1.6L11 13H7.5A1.5 1.5 0 0 1 6 11.5V9a1.5 1.5 0 0 1 1.5-1.5z"
-      />
-    </>
-  ),
-  hourglass: (
-    <>
-      <path d="M3.5 1.8h9M3.5 14.2h9" />
-      <path d="M4.8 1.8c0 3.6 6.4 4 6.4 6.2s-6.4 2.6-6.4 6.2M11.2 1.8c0 3.6-6.4 4-6.4 6.2s6.4 2.6 6.4 6.2" />
-    </>
-  ),
-};
+/**
+ * Each prop drawn as a small object, on a 32-unit grid, with its own colors
+ * and shading so it reads as the thing itself: a lab microscope, a cloud of
+ * thought, a steel wrench, a yellow pencil, two chat bubbles, a wooden
+ * hourglass. `id` keeps each mark's gradients its own.
+ */
+function PropArt({ prop, id }: { prop: AgentProp; id: string }) {
+  const u = (name: string) => `url(#${id}-${name})`;
+  const defs = (
+    <defs>
+      <linearGradient id={`${id}-dark`} x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stopColor="#4a515c" />
+        <stop offset="1" stopColor="#16191d" />
+      </linearGradient>
+      <linearGradient id={`${id}-body`} x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0" stopColor="#ffffff" />
+        <stop offset="0.55" stopColor="#e4e9ef" />
+        <stop offset="1" stopColor="#aab4bf" />
+      </linearGradient>
+      <linearGradient id={`${id}-steel`} x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stopColor="#f4f6f8" />
+        <stop offset="0.5" stopColor="#b8c1ca" />
+        <stop offset="1" stopColor="#6f7a86" />
+      </linearGradient>
+      <radialGradient id={`${id}-knob`} cx="0.35" cy="0.35" r="0.75">
+        <stop offset="0" stopColor="#ffffff" />
+        <stop offset="1" stopColor="#7d8893" />
+      </radialGradient>
+      <radialGradient id={`${id}-cloud`} cx="0.4" cy="0.3" r="0.8">
+        <stop offset="0" stopColor="#ffffff" />
+        <stop offset="1" stopColor="#d5dde7" />
+      </radialGradient>
+      <linearGradient id={`${id}-wood`} x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stopColor="#b9773f" />
+        <stop offset="1" stopColor="#6e3f1c" />
+      </linearGradient>
+      <linearGradient id={`${id}-accent`} x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stopColor="#6aa5ff" />
+        <stop offset="1" stopColor="#2f6fe0" />
+      </linearGradient>
+      <radialGradient id={`${id}-glow`} cx="0.5" cy="0.5" r="0.5">
+        <stop offset="0" stopColor="#fff3c4" />
+        <stop offset="1" stopColor="#ffcf4a" stopOpacity="0" />
+      </radialGradient>
+    </defs>
+  );
+  const edge = { stroke: "#2a2f36", strokeWidth: 0.5 };
+  switch (prop) {
+    case "microscope":
+      return (
+        <>
+          {defs}
+          {/* Base, lamp, stage and the slide under the lens. */}
+          <rect x="4" y="27" width="23" height="3.4" rx="1.5" fill={u("dark")} />
+          <rect x="15.5" y="24.2" width="8.5" height="3.2" rx="1" fill={u("dark")} />
+          <ellipse
+            className="aui-prop-glow"
+            cx="11.6"
+            cy="21.6"
+            rx="3.4"
+            ry="2.6"
+            fill={u("glow")}
+          />
+          <rect x="9.6" y="22.6" width="4" height="2.4" rx="0.7" fill={u("dark")} />
+          <rect x="5" y="19.4" width="14" height="2.1" rx="0.7" fill={u("dark")} />
+          <rect x="7.6" y="18.5" width="7.6" height="1" rx="0.3" fill="#bfe3ff" />
+          {/* The arm, from the base up to the tube. */}
+          <path
+            d="M20.6 25.2C26.4 21.4 26.6 12.2 19.8 8.2L17.9 10.9C22.6 13.6 22.6 20 18.2 23.4Z"
+            fill={u("body")}
+            {...edge}
+          />
+          {/* The tube moves as it focuses: eyepiece, body, nosepiece, objective. */}
+          <g className="aui-prop-move">
+            <g transform="rotate(25 15 13)">
+              <rect x="13.2" y="0.6" width="3.6" height="1.2" rx="0.4" fill={u("knob")} />
+              <rect x="13.6" y="1.6" width="2.8" height="2.8" rx="0.5" fill={u("dark")} />
+              <rect x="13" y="4.2" width="4" height="9.8" rx="1" fill={u("body")} {...edge} />
+              <rect x="13" y="8.8" width="4" height="1.1" fill="#2a2f36" />
+              <rect
+                x="12.4"
+                y="13.8"
+                width="5.2"
+                height="1.7"
+                rx="0.6"
+                fill={u("knob")}
+                {...edge}
+              />
+              <rect x="13.9" y="15.4" width="2.2" height="2.7" rx="0.4" fill={u("dark")} />
+              <rect x="13.9" y="16.3" width="2.2" height="0.6" fill="#d9a441" />
+            </g>
+          </g>
+          {/* The focus knob turns. */}
+          <g className="aui-prop-knob">
+            <circle cx="21.6" cy="17.6" r="2.5" fill={u("knob")} {...edge} />
+            <path d="M21.6 15.6v1.3" stroke="#2a2f36" strokeWidth="0.8" strokeLinecap="round" />
+          </g>
+        </>
+      );
+    case "thought":
+      return (
+        <>
+          {defs}
+          <circle className="aui-prop-trail" cx="3.4" cy="29" r="1.5" fill={u("cloud")} {...edge} />
+          <circle
+            className="aui-prop-trail aui-prop-late"
+            cx="7.2"
+            cy="24.6"
+            r="2.4"
+            fill={u("cloud")}
+            {...edge}
+          />
+          <path
+            d="M10.4 21.4C6.6 21.4 5.2 16.6 8.6 14.8 7.6 10.4 12.6 8 15.4 10.4 17 5.8 24 6.4 24.4 11 28.6 10.8 30.4 15.6 27.4 18 28.4 21 25.6 22.4 23.4 21.4Z"
+            fill={u("cloud")}
+            {...edge}
+          />
+          <circle className="aui-prop-dot" cx="13.2" cy="16.2" r="1.35" fill="#56606c" />
+          <circle className="aui-prop-dot" cx="17.8" cy="16.2" r="1.35" fill="#56606c" />
+          <circle className="aui-prop-dot" cx="22.4" cy="16.2" r="1.35" fill="#56606c" />
+        </>
+      );
+    case "wrench":
+      return (
+        <>
+          {defs}
+          <g className="aui-prop-move">
+            <path
+              d="M20.8 4.4a6.8 6.8 0 0 0-7.6 9.4l-8.6 8.6a3 3 0 0 0 4.2 4.2l8.6-8.6a6.8 6.8 0 0 0 9.4-7.6l-4.2 4.2-4.4-1-1-4.4z"
+              fill={u("steel")}
+              stroke="#4b545e"
+              strokeWidth="0.7"
+              strokeLinejoin="round"
+            />
+            <circle cx="6.7" cy="24.5" r="1" fill="#4b545e" />
+          </g>
+        </>
+      );
+    case "pencil":
+      return (
+        <>
+          {defs}
+          <path
+            className="aui-prop-ink"
+            d="M6.4 28c.9-1.2 1.8 1 2.7-.1s1.8 1 2.7 0"
+            fill="none"
+            stroke="#3b3f46"
+            strokeWidth="0.9"
+            strokeLinecap="round"
+            pathLength={1}
+          />
+          <g className="aui-prop-move">
+            <g transform="rotate(40 16 16)">
+              <rect x="13" y="1.6" width="6" height="4.4" rx="1.6" fill="#ef8a9b" />
+              <rect x="13" y="5.6" width="6" height="3.4" fill={u("steel")} />
+              <path d="M13 6.8h6M13 7.9h6" stroke="#7d8893" strokeWidth="0.4" />
+              <rect x="13" y="9" width="6" height="14" fill="#f2b630" />
+              <rect x="15" y="9" width="2" height="14" fill="#ffd45e" />
+              <path d="M13 23h6l-3 6.6z" fill="#f0cf9e" />
+              <path d="M15.1 27.6h1.8L16 29.6z" fill="#3b3b3b" />
+            </g>
+          </g>
+        </>
+      );
+    case "bubbles":
+      return (
+        <>
+          {defs}
+          <path
+            className="aui-prop-move"
+            d="M4.6 3h12a3 3 0 0 1 3 3v5a3 3 0 0 1-3 3H10l-4 3.2V14H4.6a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3z"
+            fill={u("cloud")}
+            {...edge}
+          />
+          <path
+            d="M15 14.4h12a3 3 0 0 1 3 3v5a3 3 0 0 1-3 3h-1.4v3.2l-4-3.2H15a3 3 0 0 1-3-3v-5a3 3 0 0 1 3-3z"
+            fill={u("accent")}
+            stroke="#1f4fae"
+            strokeWidth="0.5"
+          />
+          <circle className="aui-prop-dot" cx="17.4" cy="19.9" r="1.2" fill="#ffffff" />
+          <circle className="aui-prop-dot" cx="21" cy="19.9" r="1.2" fill="#ffffff" />
+          <circle className="aui-prop-dot" cx="24.6" cy="19.9" r="1.2" fill="#ffffff" />
+        </>
+      );
+    case "hourglass":
+      return (
+        <>
+          {defs}
+          <path
+            d="M10 5c0 7 5 8.5 5 11s-5 4-5 11h12c0-7-5-8.5-5-11s5-4 5-11z"
+            fill="#dff1ff"
+            fillOpacity="0.6"
+            stroke="#8fb8d8"
+            strokeWidth="0.6"
+          />
+          <path d="M11.6 9c.9 3 3.4 4.4 3.8 6h1.2c.4-1.6 2.9-3 3.8-6z" fill="#e6b25a" />
+          <rect x="15.7" y="15" width="0.6" height="7.6" fill="#e6b25a" />
+          <path d="M11 27c1-3.5 3.5-4.5 5-4.5s4 1 5 4.5z" fill="#e6b25a" />
+          <rect x="7" y="5" width="1.6" height="22" fill={u("wood")} />
+          <rect x="23.4" y="5" width="1.6" height="22" fill={u("wood")} />
+          <rect x="5.6" y="2" width="20.8" height="3.2" rx="1" fill={u("wood")} />
+          <rect x="5.6" y="26.8" width="20.8" height="3.2" rx="1" fill={u("wood")} />
+        </>
+      );
+  }
+}
 
 /**
- * A prop beside a mark, at the top right where it never covers the face.
+ * A prop at a mark's right, where it never covers the face: a thought or a
+ * message floats above the head, a thing it uses stands beside it, the
+ * microscope turned so its eyepiece leans toward the bot.
  * It fades in and out and loops slowly, except the hourglass: anything
  * waiting on a person holds still. Reduced motion stops every loop.
  */
 function PropMark({ prop, leaving, size }: { prop: AgentProp; leaving: boolean; size: number }) {
+  const id = useId().replace(/:/g, "");
   return (
     <span
       aria-hidden
-      className="aui-prop text-aui-muted"
+      className="aui-prop"
       data-prop={prop}
       data-motion={prop === "hourglass" ? "still" : "loop"}
+      data-anchor={prop === "thought" || prop === "bubbles" ? "above" : "beside"}
       data-leaving={leaving || undefined}
-      style={{ "--prop-size": `${Math.round(size * 0.4)}px` } as CSSProperties}
+      style={{ "--prop-size": `${Math.round(size * 0.6)}px` } as CSSProperties}
     >
-      <svg
-        aria-hidden="true"
-        viewBox="0 0 16 16"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.7"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        {PROP_ART[prop]}
+      <svg aria-hidden="true" viewBox="0 0 32 32">
+        <PropArt prop={prop} id={`p${id}`} />
       </svg>
     </span>
   );
