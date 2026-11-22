@@ -311,6 +311,9 @@ func (p *Platform) DeleteClient(_ context.Context, tenant, id, by string) error 
 	if err := p.secrets.Drop(tenant, id); err != nil {
 		return err
 	}
+	if err := p.RepoSettings.DeleteClient(tenant, id); err != nil {
+		return err
+	}
 	if err := p.Policies.Delete(tenant, policy.Scope{Kind: policy.Client, Name: id}, by, p.now()); err != nil && !errors.Is(err, policy.ErrNotFound) {
 		return err
 	}
@@ -568,6 +571,11 @@ func (p *Platform) dial(c clients.Client, secrets resolved) (*seat, error) {
 		if installed != nil {
 			cfg.MayRead = installed.Covers
 		}
+		// A repository its settings keep to its own runs is read by no other
+		// run, whatever grants it (github_repo_settings.go).
+		cfg.ReadRefused = func(_ context.Context, owner, repo string) bool {
+			return !p.readableElsewhere(c.Tenant, owner+"/"+repo)
+		}
 		peer, err := github.New(cfg)
 		if err != nil {
 			return nil, refused(err)
@@ -575,6 +583,9 @@ func (p *Platform) dial(c clients.Client, secrets resolved) (*seat, error) {
 		st := &seat{client: c, peer: peer, verifier: cfg.Verifier, guard: guard, installed: installed}
 		if files, ok := api.(github.FileAPI); ok {
 			st.files = files
+		}
+		if reader, ok := api.(github.ContextAPI); ok {
+			st.context = reader
 		}
 		return st, nil
 	}

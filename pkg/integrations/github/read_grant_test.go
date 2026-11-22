@@ -110,3 +110,44 @@ func TestAnInstalledRepositoryOutsideTheOwnersIsRefusedToTheReadTools(t *testing
 }
 
 const sourceSHAForGrant = "316c56f81540c3eaca02184173df322a48aebdd9"
+
+// A repository kept to its own runs is read by no other: not from Slack,
+// not by another repository's run, and not through a grant by name, while a
+// run on its own issue still reads it.
+func TestARepositoryKeptToItsOwnRunsRefusesCrossSourceReads(t *testing.T) {
+	fake := github.NewFake()
+	ref := github.Ref{Owner: "acme", Repo: "docs", Number: 7}
+	var evidence github.Context
+	evidence.Subject.Title = "docs issue"
+	evidence.Subject.Head.SHA = sourceSHAForGrant
+	if err := fake.SeedContext(ref, evidence); err != nil {
+		t.Fatal(err)
+	}
+	if err := fake.SeedFiles(ref, map[string]string{"README.md": "hello\n"}); err != nil {
+		t.Fatal(err)
+	}
+	refused := func(_ context.Context, owner, repo string) bool {
+		return strings.EqualFold(owner+"/"+repo, "acme/docs")
+	}
+	for _, cfg := range []github.Config{
+		{API: fake, Owners: []string{"acme"}, MayRead: installedOnly, ReadRefused: refused},
+		{API: fake, Owners: []string{"acme"}, ReadRepositories: []string{"acme/docs"}, ReadRefused: refused},
+	} {
+		c, err := github.New(cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		read := action(t, c, "github_read_context")
+		for _, source := range []string{"slack://T01/C01", "github://acme/web/pull/3"} {
+			if summary, err := read(source, `{"address":"github://acme/docs/issues/7"}`); err == nil || !strings.Contains(err.Error(), "not readable from other surfaces") {
+				t.Fatalf("%s read a repository kept to its own runs: %q, %v", source, summary, err)
+			}
+		}
+		if _, err := action(t, c, "github_read_file")("slack://T01/C01", `{"address":"github://acme/docs/issues/7","path":"README.md","ref":"`+sourceSHAForGrant+`"}`); err == nil {
+			t.Fatal("read a file of a repository kept to its own runs")
+		}
+		if summary, err := read("github://acme/docs/issues/7", `{"address":"github://acme/docs/issues/7"}`); err != nil || !strings.Contains(summary, "docs issue") {
+			t.Fatalf("its own run could not read it: %q, %v", summary, err)
+		}
+	}
+}

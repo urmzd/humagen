@@ -42,8 +42,12 @@ type Config struct {
 	// grants reads only: the read tools may name the repository, and
 	// nothing else does. Nil grants nothing more.
 	MayRead func(ctx context.Context, owner, repo string) bool
-	Bots    map[string]string
-	Agents  mention.Set
+	// ReadRefused names a repository only its own runs may read: a
+	// cross-source read of it is refused, whatever MayRead or
+	// ReadRepositories grant. Nil refuses nothing.
+	ReadRefused func(ctx context.Context, owner, repo string) bool
+	Bots        map[string]string
+	Agents      mention.Set
 	// Login is the app's own login. A comment that mentions it and names
 	// no agent is raised naming none, and the host chooses who answers.
 	Login          string

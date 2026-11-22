@@ -3,6 +3,7 @@ package github
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/url"
 	"strings"
 
@@ -28,8 +29,13 @@ type invokeFunc = func(context.Context, address.Address, json.RawMessage) (conne
 // pinned head, which is what the transport does for a granted repository.
 // Everything else (the owners the client serves, the reference's form) is
 // still checked by the transport.
+//
+// A repository Config.ReadRefused names is read by no run but its own: a run
+// raised on another repository, or on another surface, is refused whatever
+// grants it, and a run on one of the repository's own issues or pull
+// requests still reads it.
 func (c *Connector) grantedRead(next invokeFunc) invokeFunc {
-	if c.cfg.MayRead == nil {
+	if c.cfg.MayRead == nil && c.cfg.ReadRefused == nil {
 		return next
 	}
 	static := make(map[string]bool, len(c.cfg.ReadRepositories))
@@ -50,7 +56,10 @@ func (c *Connector) grantedRead(next invokeFunc) invokeFunc {
 		if source.Connector == Name && strings.EqualFold(source.Workspace, owner) && len(source.Path) > 0 && strings.EqualFold(source.Path[0], repo) {
 			return next(ctx, source, raw)
 		}
-		if static[strings.ToLower(owner+"/"+repo)] || !c.cfg.MayRead(ctx, owner, repo) {
+		if c.cfg.ReadRefused != nil && c.cfg.ReadRefused(ctx, owner, repo) {
+			return connector.Result{}, fmt.Errorf("github: %s/%s is not readable from other surfaces; its repository settings keep it to runs on its own issues and pull requests", owner, repo)
+		}
+		if static[strings.ToLower(owner+"/"+repo)] || c.cfg.MayRead == nil || !c.cfg.MayRead(ctx, owner, repo) {
 			return next(ctx, source, raw)
 		}
 		delete(args, "address")

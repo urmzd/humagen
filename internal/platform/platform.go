@@ -96,6 +96,7 @@ import (
 	"github.com/urmzd/humagen/pkg/projectforks"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/readaudit"
+	"github.com/urmzd/humagen/pkg/reposettings"
 	"github.com/urmzd/humagen/pkg/rooms"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/scratchpads"
@@ -438,6 +439,9 @@ type Platform struct {
 	AgentColors *agentcolors.Store
 	// AgentLooks keeps how each agent is drawn and the name people see.
 	AgentLooks *agentlooks.Store
+	// RepoSettings keeps what the workspace set for each repository a
+	// GitHub client covers (github_repo_settings.go).
+	RepoSettings *reposettings.Store
 	// Images keeps the sandbox images each workspace added.
 	Images *images.Store
 	// Scratchpads keeps each conversation's named scratchpads.

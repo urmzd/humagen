@@ -91,13 +91,24 @@ func (p *Platform) tenantRepos(ctx context.Context, tenant string) []string {
 		}()
 	}
 	wg.Wait()
+	// A repository the workspace keeps to its own runs is not one a session
+	// elsewhere may read, whichever client covers it.
+	kept, ok := p.keptToOwnRuns(tenant)
+	if !ok {
+		return out
+	}
 	for i, st := range seats {
+		offer := func(r string) {
+			if len(kept[strings.ToLower(strings.TrimSpace(r))]) == 0 {
+				add(r)
+			}
+		}
 		for _, r := range installed[i] {
-			add(r)
+			offer(r)
 		}
 		if g := st.client.GitHub; g != nil {
 			for _, r := range slices.Concat(g.ReadRepositories, g.ActionRepositories) {
-				add(r)
+				offer(r)
 			}
 		}
 	}

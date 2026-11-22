@@ -12,6 +12,7 @@ export interface HubTab {
 export function settingsPageLabel(route: Route): string | undefined {
   if (route.page === "directory" && route.tab === "people") return "People";
   if (route.page === "connections") return route.scope === "apps" ? "Apps" : "Plugins";
+  if (route.page === "repositories") return "Apps";
   if (route.page === "usage") return "Usage";
   if (route.page === "monitor" && route.tab === "health") return "Health";
   if (route.page === "action-policy") return "Policies";

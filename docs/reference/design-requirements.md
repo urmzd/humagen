@@ -38,6 +38,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-084 | An agent's health says what is checked and what to do next: one row (status pill, recent pass rate, a How evaluation works icon with the docs, an icon Refresh health that spins while it reads and says when it last read), checks on recent runs beside each eval suite's last result, schedule and Run Now, runs flagged for review linking to the queue, a schedule editor with presets inside the one hour to thirty day bound that says who the schedule runs as, and figures that show a value or an explained dash | Implemented: `AgentHealth.tsx` (`AgentHealth`, `AgentStats`), `evalHealth.ts`, the schedule editor in `Evals.tsx`, `next_run_at` and `created_by_name` on `GET /api/evals` and `flagged` on agent health, words in `copy.agentHealth`, `copy.agentStats` and `copy.evalSchedule`. Composes with #480's health row: one header row with an actions slot, pills, no separators and no explanatory paragraph. Evidence: `TestNextRunCountsFromTheLatestStart`, `TestAgentHealthCountsTheRunsFlaggedForReview`, `TestASuiteListingSaysWhenItsScheduleNextRunsAndForWhom`, `agent-health.dom.test.tsx`, `evalHealth.test.tsx`; before and after captures at 1280 and 390, light and dark, in pull request 482. Pass-rate bars are neutral when a run reached its threshold, warn below it and bad only when it could not run, each labelled by how long ago it ran; the schedule presets wrap rather than scroll at phone width. The refresh glyph turning is the one spinner on the page; it is a control's own state, and the content it refreshes stays on view. |
 | DES-090 | An agent's mascot feels alive and says what it is doing without drawing the eye: a small idle mark makes a rare blink or glance, finishes its move on open eyes when the pointer leaves or its work stops, and from 24px holds a prop that names its activity; a mascot never carries the orb | Implemented: `useIdleGlance`, `useSettle`, `eyesOpen`, `AgentProp`, `agentPropOf` and `PropMark` in `packages/web/src/AgentOrb.tsx`, `.aui-prop` in `packages/render-web/src/theme.css`. Evidence: `agent-props.dom.test.tsx`; gallery and transcript captures at 2x, light and dark, before and after, in the pull request text; in Chrome, 30 seconds sampled showed glances of 1.2 to 2 seconds and none under reduced motion, and frames after the pointer left a mark showed it land its hop and hold still with open eyes. The orb stays only where no mascot is drawn: an `AgentMark` under 16px, a host's avatar picture and the status line. |
 | DES-091 | One component vocabulary (shadcn/ui) and one layout rule for every page: one row of tabs at most, an item's sections as a side list, the path on the title line, rows for things to compare and act on, cards only for things browsed by picture, one control per row (a split button for the rest), and drawers with one job | Implemented for the parts and the pages named in its section: `packages/render-web/src/ui/` (item, card, field, button-group, breadcrumb, table), `SplitButton.tsx`, `Page` `sections` and the breadcrumb title line in `ui.tsx`; Knowledge, a source, a skill, the Store, Connections, the People drawer and the session drawers follow it; web tests pass; checked in the browser at 1280 and 390, light and dark. The pages listed under "Not yet" in its section still use their own parts |
+| DES-092 | A GitHub app lists its repositories, and each repository has its own settings: automatic review and on which events, the agent that answers a mention naming none, instructions, reads made before a run, and whether runs elsewhere may read it; the app's settings are the defaults | Implemented: `apps/web/src/GitHubRepositories.tsx` (a `DataTable` at `/settings/apps/github/<client>/repositories`, one repository's form at `.../<owner>/<repo>`), linked from the app's sheet under Apps; `pkg/reposettings`, `internal/platform/github_repo_settings.go`, `internal/httpapi/github_repos.go`. Evidence: `github-repositories.dom.test.tsx`, `route.test.ts`, `pkg/reposettings` store tests, `TestARepositorysSettingsDecideItsAutomaticReview`, `TestAMentionFollowsTheRepositorysAgentInstructionsAndReads`, `TestARepositoryKeptToItsOwnRunsIsNotReadElsewhere`; browser captures at 1440x900 and 390x844, light and dark, list, form, empty and loading. Not seen: the list from a real App installation (a local token client has none, so the page shows its "not listed" line). |
 | DES-089 | A session has no Side Chat: a second line of questions is a new session that refers to this one | Implemented: `WorkbenchSidechat.tsx`, `sidechat.ts`, the `sidechat` tab id, its header view and its key are removed; `session-context-panel.dom.test.tsx` and `route.test.ts` pass; checked in the browser that More Views and the workbench strip no longer list it |
 | DES-088 | The destination for work an agent starts without being asked is Automations, with a lightning mark, and has no Background tab: a session's background work is a section of that session's Details | Implemented: `Automations.tsx`, the entry in `Sidebar.tsx`, `/automations` in `route.ts` (old `/scheduled` addresses open it), `SessionBackground` in `Background.tsx` shown by `SessionPanel.tsx`; `automations.dom.test.tsx`, `background.dom.test.tsx`, `route.test.ts` and the sidebar tests pass; the page and the sidebar checked in the browser, the Background section by DOM tests only |
 | DES-087 | The composer is flat: the AI notice is in the middle of the footer row, the sentence is the link to the terms, messages that wait show greyed at the end of the conversation with Send now, and the box keeps its placeholder while agents work | Implemented: `NoticeSlotContext` and `queuePlace` in `Composer.tsx`, `ComposerFooter` in `SessionUsage.tsx`, `QueuedMessages` in `packages/web`, `.humagen-composer-footer` in `styles.css`; `composer-notice.dom.test.tsx`, `queued-messages.dom.test.tsx` and `composer-overlay.dom.test.tsx` pass; checked in the browser in a session and on Home, light and dark, at 1280 and 390 wide, with a real run and two waiting messages |
@@ -1280,6 +1281,30 @@ Sidebar sessions: Recent has no count beside its name. A session's status
 is one small dot where the unread dot sits, never a boxed icon: amber when
 it needs you, red when it failed, a soft pulse while it works, grey
 otherwise. The reason is the dot's title and is read out with the row.
+
+
+### DES-092: Repositories of a GitHub app
+
+Owner request, 2026-11-22: mentions start work and automatic review is off by
+default; a Repositories view for a GitHub app lists the installed repositories,
+and each opens its settings, kept to what the platform can enforce with one
+control per job.
+
+- The path names the app (`GitHub / Repositories`, `GitHub / acme/site`), so
+  two GitHub apps are told apart, and both pages share the settings column's
+  left edge.
+- The list is a `DataTable`: the repository (with Custom when it has settings),
+  its automatic review, the agent that answers there and whether other surfaces
+  may read it. The last two hide on a phone. A search field appears past eight
+  repositories. Loading is `SkeletonRows`; the empty state is a title and Check
+  Again.
+- The form has one control per setting: a select for automatic review (the
+  app's default named first, then Off, When opened, On each push, When opened
+  and on each push), a select for the agent, a text box for instructions, a
+  switch per read, and a switch for reads from other surfaces. Save sends the
+  version read; a conflict asks to reload. Use App Defaults removes the
+  settings.
+- Someone without `clients:write` sees the settings with the controls disabled.
 
 ### DES-089: No Side Chat
 

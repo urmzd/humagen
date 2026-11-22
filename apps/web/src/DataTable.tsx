@@ -24,6 +24,18 @@ const hidden = {
   lg: "hidden lg:table-cell",
 };
 
+/** Where every cell after this one hides, it ends the row: round it there, not square. */
+const ends = {
+  sm: "max-sm:rounded-r-aui-lg",
+  md: "max-md:rounded-r-aui-lg",
+  lg: "max-lg:rounded-r-aui-lg",
+};
+function endOf(later: { hide?: keyof typeof ends }[], control: boolean): string {
+  if (control || !later.length || later.some((c) => !c.hide)) return "";
+  const bp = (["sm", "md", "lg"] as const).find((b) => later.some((c) => c.hide === b));
+  return bp ? ends[bp] : "";
+}
+
 /**
  * Things to compare, as one table built from shadcn's Table: a quiet header,
  * then each thing as a soft rounded row with space between rows. The first
@@ -82,7 +94,9 @@ export function DataTable<T>({
               data-current={to.current ? "true" : undefined}
               className="group relative border-0 hover:bg-transparent"
             >
-              <TableCell className={`${cell} w-full max-w-0 ${first.className ?? ""}`}>
+              <TableCell
+                className={`${cell} w-full max-w-0 ${endOf(rest, !!control)} ${first.className ?? ""}`}
+              >
                 <a
                   href={to.href}
                   onClick={(event) => follow(event, to.onOpen)}
@@ -92,10 +106,10 @@ export function DataTable<T>({
                   {first.cell(row)}
                 </a>
               </TableCell>
-              {rest.map((c) => (
+              {rest.map((c, i) => (
                 <TableCell
                   key={c.name}
-                  className={`${cell} text-aui-muted text-aui-xs ${c.hide ? hidden[c.hide] : ""} ${c.className ?? ""}`}
+                  className={`${cell} text-aui-muted text-aui-xs ${c.hide ? hidden[c.hide] : ""} ${endOf(rest.slice(i + 1), !!control)} ${c.className ?? ""}`}
                 >
                   {c.cell(row)}
                 </TableCell>
