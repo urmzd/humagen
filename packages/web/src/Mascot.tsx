@@ -91,17 +91,18 @@ const EYES: Record<MascotPersona, Eyes> = {
 
 const CX = 52;
 const BASE = 100; // where the body meets its feet
-const UPPER = 14;
-const FORE = 13;
+const UPPER = 15;
+const FORE = 11;
 
 /** Where each arm points, in degrees from the shoulder (0 is right, 90 is down). */
+const REST: [number, number] = [140, -80];
 const ARMS: Record<Pose, { left: [number, number]; right: [number, number] }> = {
-  idle: { left: [112, -14], right: [68, 14] },
-  searching: { left: [104, -10], right: [20, 40] },
-  thinking: { left: [108, -12], right: [120, -230] },
-  calling: { left: [108, -12], right: [30, -20] },
+  idle: { left: REST, right: [40, 80] },
+  searching: { left: REST, right: [10, 35] },
+  thinking: { left: REST, right: [105, -225] },
+  calling: { left: REST, right: [30, -20] },
   composing: { left: [60, -60], right: [120, 80] },
-  delegating: { left: [110, -14], right: [-40, -30] },
+  delegating: { left: REST, right: [-40, -30] },
   waiting: { left: [70, -50], right: [110, 50] },
 };
 
@@ -119,7 +120,7 @@ function furDefs(box: [number, number, number, number]) {
 <filter id="fur" filterUnits="userSpaceOnUse" x="${x}" y="${y}" width="${w}" height="${h}">
 <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="3" seed="7"/>
 <feDisplacementMap in="SourceGraphic" scale="3.2"/></filter>
-<filter id="grain" x="0" y="0" width="100%" height="100%">
+<filter id="grain" filterUnits="userSpaceOnUse" x="${x}" y="${y}" width="${w}" height="${h}">
 <feTurbulence type="fractalNoise" baseFrequency="2.4" numOctaves="2" seed="2"/>
 <feColorMatrix type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 -1.4 1.1"/>
 <feComposite in2="SourceGraphic" operator="in"/></filter>
@@ -156,9 +157,49 @@ function bake(key: string, box: [number, number, number, number], body: string, 
 const BOX = {
   body: [0, 0, 130, 120] as [number, number, number, number],
   upper: [-8, -8, UPPER + 16, 16] as [number, number, number, number],
-  fore: [-8, -8, FORE + 16, 16] as [number, number, number, number],
-  hand: [-10, -10, 20, 20] as [number, number, number, number],
+  fore: [-8, -11, FORE + 18, 21] as [number, number, number, number],
 };
+
+/**
+ * One limb as one piece of the bot: fur at its edge, round shading across it
+ * so it reads as a soft cylinder whatever its angle, the body's grain, and
+ * its start faded so it grows out of the body or the upper arm with no seam.
+ * The forearm carries the hand, a mitt with a thumb, in the same piece.
+ */
+function limbMarkup(opts: {
+  len: number;
+  width: number;
+  limb: string;
+  hand: boolean;
+  fade: [number, number];
+  sleeve?: string;
+}) {
+  const { len, width, limb, hand, fade, sleeve } = opts;
+  const half = width / 2;
+  const line = (stroke: string) =>
+    `<path d="M0 0L${len} 0" stroke="${stroke}" stroke-width="${width}" stroke-linecap="round"/>`;
+  const mitt = (fill: string) =>
+    `<circle cx="${len}" cy="0" r="6.6" fill="${fill}"/><ellipse cx="${len - 2}" cy="-5.2" rx="2.7" ry="2.3" fill="${fill}"/>`;
+  const arm = sleeve
+    ? // A suit's sleeve is cloth, with a white cuff before the hand.
+      `${line(sleeve)}<path d="M0 ${-half + 1.2}L${len} ${-half + 1.2}" stroke="#fff" stroke-opacity="0.12" stroke-width="1.4" stroke-linecap="round"/>${hand ? `<rect x="${len - 4.4}" y="${-half}" width="2.8" height="${width}" rx="1" fill="#f4f6f8"/>` : ""}`
+    : `<g filter="url(#fur)">${line(limb)}</g>${line("url(#cyl)")}<g filter="url(#grain)" opacity="0.5">${line("#fff")}</g>`;
+  const fist = hand
+    ? `<g filter="url(#fur)">${mitt(limb)}</g>${mitt("url(#ball)")}<g filter="url(#grain)" opacity="0.5">${mitt("#fff")}</g>`
+    : "";
+  return `<defs>
+<linearGradient id="cyl" gradientUnits="userSpaceOnUse" x1="0" y1="${-half}" x2="0" y2="${half}">
+<stop offset="0" stop-color="#000" stop-opacity="0.3"/><stop offset="0.38" stop-color="#fff" stop-opacity="0.16"/>
+<stop offset="1" stop-color="#000" stop-opacity="0.42"/></linearGradient>
+<radialGradient id="ball" gradientUnits="userSpaceOnUse" cx="${len - 1.8}" cy="-2.4" r="8.5">
+<stop offset="0" stop-color="#fff" stop-opacity="0.3"/><stop offset="0.45" stop-color="#fff" stop-opacity="0"/>
+<stop offset="1" stop-color="#000" stop-opacity="0.42"/></radialGradient>
+<linearGradient id="fade" gradientUnits="userSpaceOnUse" x1="${fade[0]}" y1="0" x2="${fade[1]}" y2="0">
+<stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#fff"/></linearGradient>
+<mask id="grow" maskUnits="userSpaceOnUse" x="-20" y="-20" width="60" height="40">
+<rect x="-20" y="-20" width="60" height="40" fill="url(#fade)"/></mask></defs>
+<g mask="url(#grow)">${arm}</g>${fist}`;
+}
 
 function shapeMarkup(shape: Shape, cy: number, fill: string) {
   return shape.kind === "oval"
@@ -179,27 +220,24 @@ function useFur(
   const [fur, setFur] = useState<Fur>({});
   useEffect(() => {
     if (!ink || typeof document === "undefined") return;
-    const limb = `color-mix(in oklab, ${ink} 86%, black)`;
-    const px = Math.min(6, Math.max(1, (size / 120) * (window.devicePixelRatio || 1)));
+    const limb = `color-mix(in oklab, ${ink} 88%, black)`;
+    const px = Math.min(6, Math.max(2, (size / 120) * (window.devicePixelRatio || 1) * 1.5));
     const k = `${ink}|${sleeve ?? ""}|${JSON.stringify(shape)}|${px.toFixed(2)}`;
-    // A suit's sleeves are cloth, not fur, with a white cuff at the hand.
-    const cloth = (len: number, width: number, cuff: boolean) =>
-      `<path d="M0 0L${len} 0" stroke="${sleeve}" stroke-width="${width}" stroke-linecap="round"/>` +
-      `<path d="M0 ${-width / 2 + 1}L${len} ${-width / 2 + 1}" stroke="#fff" stroke-opacity="0.12" stroke-width="1.4" stroke-linecap="round"/>` +
-      (cuff
-        ? `<rect x="${len - 1.6}" y="${-width / 2}" width="2.6" height="${width}" rx="1" fill="#f4f6f8"/>`
-        : "");
     const parts: Record<keyof typeof BOX, string> = {
       body: `<g filter="url(#fur)"><ellipse cx="${CX - 11}" cy="${BASE + 3}" rx="8" ry="4.5" fill="${limb}"/><ellipse cx="${CX + 11}" cy="${BASE + 3}" rx="8" ry="4.5" fill="${limb}"/></g>
 <g filter="url(#fur)">${shapeMarkup(shape, cy, ink)}</g>${shapeMarkup(shape, cy, "url(#shade)")}
 <g filter="url(#grain)" opacity="0.5">${shapeMarkup(shape, cy, "#fff")}</g>`,
-      upper: sleeve
-        ? cloth(UPPER, 9.4, false)
-        : `<path d="M0 0L${UPPER} 0" stroke="${limb}" stroke-width="9" stroke-linecap="round" filter="url(#fur)"/>`,
-      fore: sleeve
-        ? cloth(FORE, 8.8, true)
-        : `<path d="M0 0L${FORE} 0" stroke="${limb}" stroke-width="8.4" stroke-linecap="round" filter="url(#fur)"/>`,
-      hand: `<g filter="url(#fur)"><circle r="6.4" fill="${limb}"/></g><circle r="6.4" fill="url(#shade)"/>`,
+      // The upper arm starts inside the body and fades in, so it grows out of it.
+      upper: limbMarkup({
+        len: UPPER,
+        width: 11.5,
+        limb,
+        hand: false,
+        fade: sleeve ? [-30, -20] : [-6, 3],
+        sleeve,
+      }),
+      // The forearm fades in over the elbow, and ends in its hand.
+      fore: limbMarkup({ len: FORE, width: 10.4, limb, hand: true, fade: [-5, 1.5], sleeve }),
     };
     let live = true;
     for (const name of Object.keys(parts) as (keyof typeof BOX)[])
@@ -241,13 +279,13 @@ export function Mascot({
   const cy = shape.kind === "oval" ? BASE - shape.ry + 2 : BASE - shape.h / 2;
   const half = shape.kind === "oval" ? shape.rx : shape.w / 2;
   const shoulderY = cy + 8;
-  const leftShoulder: [number, number] = [CX - half + 5, shoulderY];
-  const rightShoulder: [number, number] = [CX + half - 5, shoulderY];
+  const leftShoulder: [number, number] = [CX - half + 10, shoulderY];
+  const rightShoulder: [number, number] = [CX + half - 10, shoulderY];
   const eyeY = cy - 4;
   // The agent gives its orders at the earpiece, the remote held out in its other hand.
   const arm =
     persona === "spy" && pose === "delegating"
-      ? { left: [200, -20] as [number, number], right: [-60, -110] as [number, number] }
+      ? { left: [200, -20] as [number, number], right: [-40, -140] as [number, number] }
       : ARMS[pose];
   const hold = handProp(pose, persona);
   const ref = useRef<SVGSVGElement>(null);
@@ -450,12 +488,11 @@ function Arm({
             <g transform={`translate(${FORE} 0)`}>
               {/* What the hand holds stays upright, whatever the arm's angle. */}
               <g transform={`rotate(${-(a + b)})`}>{hold}</g>
-              {fur.hand ? (
-                <FurImage url={fur.hand} box={BOX.hand} />
-              ) : (
+              {/* The hand is part of the forearm's piece; a plain one until it is drawn. */}
+              {!fur.fore && (
                 <g>
-                  <circle r="6.4" fill="currentColor" className="m-limb" />
-                  <circle r="6.4" fill={u("shade")} />
+                  <circle r="6" fill="currentColor" className="m-limb" />
+                  <circle r="6" fill={u("shade")} />
                 </g>
               )}
             </g>
