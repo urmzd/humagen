@@ -1276,6 +1276,11 @@ name and handle; a press adds one, and someone already in shows Added. The
 people in the conversation follow under "In this conversation · N", each
 with their mark, Owner or a Remove icon. Invite adds a handle as typed.
 
+Sidebar sessions: Recent has no count beside its name. A session's status
+is one small dot where the unread dot sits, never a boxed icon: amber when
+it needs you, red when it failed, a soft pulse while it works, grey
+otherwise. The reason is the dot's title and is read out with the row.
+
 ### DES-089: No Side Chat
 
 Owner request, 2026-11-21: "remove the side chat". A chat nested in the
