@@ -175,8 +175,10 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
       path: "/",
       act: async (page) => {
         await composer(page).fill("Keep this unsent draft while choosing context.");
-        await page.getByRole("button", { name: defaultCopy.chat.plus, exact: true }).click();
-        await page.getByRole("dialog", { name: "Add to this conversation", exact: true }).waitFor();
+        // + opens the file picker; the session's context is chosen from its settings, beside it.
+        const setup = defaultCopy.chat.setup.label;
+        await page.getByRole("button", { name: setup, exact: true }).click();
+        await page.getByRole("dialog", { name: setup, exact: true }).waitFor();
         assert.equal(
           await composer(page).inputValue(),
           "Keep this unsent draft while choosing context.",
@@ -520,9 +522,16 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
       path: session,
       act: async (page) => {
         await readySession(page);
+        // The icon controls share one square target. Approval is a labelled pill
+        // (Manual or Auto): it need only be a full target.
+        const approval = page.getByRole("button", { name: /^Approval mode: / });
+        await approval.waitFor();
+        const pill = await approval.boundingBox();
+        const coarse = await page.evaluate(() => matchMedia("(pointer: coarse)").matches);
+        assert.ok(pill, "approval is visible");
+        assert.ok(pill.height >= (coarse ? 44 : 24), "approval is a full target");
         const controls = page
           .locator(".humagen-composer-row > button")
-          .or(page.getByRole("button", { name: /^Approval mode: / }))
           .or(page.locator('[data-layer="usage-ring"]'));
         await page.locator('[data-layer="usage-ring"]').waitFor();
         const geometry = await controls.evaluateAll((buttons) => ({
@@ -533,7 +542,7 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
             return { width, height, icon: icon && { width: icon.width, height: icon.height } };
           }),
         }));
-        assert.ok(geometry.buttons.length >= 4, "Compose, approval and usage controls are visible");
+        assert.ok(geometry.buttons.length >= 3, "Compose and usage controls are visible");
         for (const { width, height, icon } of geometry.buttons) {
           assert.equal(width, geometry.target, "Composer controls share a target width");
           assert.equal(height, geometry.target, "Composer controls share a target height");
