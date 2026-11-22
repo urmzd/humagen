@@ -68,8 +68,10 @@ us-central1-docker.pkg.dev/gen-lang-client-0907526271/humagen/humagen:<release c
 ```
 
 It builds with buildx and the GitHub Actions cache, and passes
-`VERSION=<tag>` and `COMMIT=<SHA>`. A version tag that already exists is
-not pushed again.
+`VERSION=<tag>` and `COMMIT=<SHA>`. A tag is written once. The deploy's
+build from source may have pushed one of the two tags first. If so, the job
+points the missing tag at that image and builds nothing, so a running pod's
+tag keeps its digest.
 
 The job signs in through Workload Identity Federation, with no stored key.
 The `github-humagen` provider in urmzd/infra (`gcp/humagen/ci.tf`) accepts

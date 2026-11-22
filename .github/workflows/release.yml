@@ -145,18 +145,30 @@ jobs:
 
       - uses: docker/setup-buildx-action@v3
 
-      # A tag is written once. The deploy may have built this version
-      # from source first; a running pod's tag then keeps its digest.
-      - name: Is the version already pushed?
+      # A tag is written once, so a running pod's tag keeps its digest. The
+      # deploy's fallback may have built humagen:<release SHA> (its usual
+      # humagen_ref) or humagen:<tag> from source first. Then the missing
+      # tag points at that same image, and nothing is built or overwritten.
+      - name: Which tags are already pushed?
         id: exists
         run: |
-          if docker buildx imagetools inspect "$REGISTRY/humagen:$TAG" >/dev/null 2>&1; then
-            echo "$REGISTRY/humagen:$TAG exists; nothing to build"
+          set -euo pipefail
+          has() { docker buildx imagetools inspect "$REGISTRY/humagen:$1" >/dev/null 2>&1; }
+          tag=false sha=false
+          if has "$TAG"; then tag=true; fi
+          if has "$SHA"; then sha=true; fi
+          echo "humagen:$TAG exists: $tag; humagen:$SHA exists: $sha"
+          if [ "$sha" = true ] && [ "$tag" = false ]; then
+            docker buildx imagetools create -t "$REGISTRY/humagen:$TAG" "$REGISTRY/humagen:$SHA"
+          elif [ "$tag" = true ] && [ "$sha" = false ]; then
+            docker buildx imagetools create -t "$REGISTRY/humagen:$SHA" "$REGISTRY/humagen:$TAG"
+          fi
+          if [ "$sha" = true ] || [ "$tag" = true ]; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
           fi
 
-      # The build arguments the deploy's fallback build passes, so either
-      # build of a version is the same image.
+      # The deploy's fallback passes the same COMMIT. Its VERSION is the
+      # humagen_ref it was given, so only the version string can differ.
       - name: Build and push
         if: steps.exists.outputs.exists != 'true'
         uses: docker/build-push-action@v6
