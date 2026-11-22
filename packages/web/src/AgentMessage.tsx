@@ -239,6 +239,48 @@ function UsageChip({ usage }: { usage: Usage }) {
 
 const actionBtn = messageActionButton;
 
+/**
+ * What an agent asked another, as its own words in the conversation: the
+ * agent it turned to, tagged, and the whole of what it gave it. A long ask
+ * shows its first lines and opens to the rest.
+ */
+function CallAsk({ task, copy }: { task: Task; copy: Copy }) {
+  const [open, setOpen] = useState(false);
+  const name = task.subagent?.name ?? task.title;
+  const asked = callPrompt(task) || callTitle(task);
+  const long = asked.length > 320 || asked.split("\n").length > 4;
+  return (
+    <div data-aui="call-ask" className="flex min-w-0 flex-col items-start gap-1">
+      <p
+        className={`min-w-0 whitespace-pre-wrap break-words text-aui-base text-aui-fg ${long && !open ? "line-clamp-4" : ""}`}
+      >
+        <span className="font-medium text-aui-accent">@{name}</span>
+        {asked ? ` ${asked}` : ""}
+      </p>
+      {long && (
+        <button
+          type="button"
+          aria-expanded={open}
+          onClick={() => setOpen(!open)}
+          className="min-h-6 rounded-aui text-aui-muted text-aui-xs hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent pointer-coarse:min-h-11"
+        >
+          {open ? copy.conversation.askLess : copy.conversation.askMore}
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** Who speaks next, where other agents spoke in between: the agent's mark and name, as on its first words. */
+function Speaker({ agent }: { agent: Turn["agent"] }) {
+  return (
+    <p data-aui="speaker" className="flex min-h-7 min-w-0 items-center gap-x-2 text-aui-sm">
+      <AgentAvatar agent={agent} />
+      <span className="max-w-full break-words font-semibold text-aui-fg">{agent.name}</span>
+    </p>
+  );
+}
+
 /** What a call gave the other agent: the prompt in its arguments, else the arguments. */
 export function callPrompt(task: Task): string {
   const raw = task.input?.trim() ?? "";
@@ -783,13 +825,46 @@ export function AgentMessage({
     ) : b.kind === "tools" ? (
       <StepGroup key={b.key} turn={turn} tasks={b.tasks} copy={copy} />
     ) : (
-      // The agent's own thread, where the host has it; else the call as one line.
-      <Fragment key={b.key}>
-        {callThread?.(b.task) ?? (
-          <AgentCall task={b.task} caller={turn.agent.name} turnId={turn.id} copy={copy} />
-        )}
-      </Fragment>
+      // Where the host does not hold the agent's own thread: the call as one line.
+      <AgentCall key={b.key} task={b.task} caller={turn.agent.name} turnId={turn.id} copy={copy} />
     );
+
+  // The turn as a conversation between the agents in it. Where this agent
+  // turns to others, what it asked each is its own words, and each agent
+  // answers as a message of its own. Calls next to each other are asked
+  // first, all of them, then answered. The agent is named again when it
+  // speaks after the others, so every word has its speaker.
+  const chat = (list: Block[], handed: boolean): { nodes: ReactNode[]; handed: boolean } => {
+    const nodes: ReactNode[] = [];
+    let after = handed;
+    const threadOf = (b: Block | undefined) =>
+      b?.kind === "call" ? (callThread?.(b.task) ?? undefined) : undefined;
+    for (let i = 0; i < list.length; i++) {
+      const b = list[i] as Block;
+      const thread = threadOf(b);
+      if (after) nodes.push(<Speaker key={`speaker-${b.key}`} agent={turn.agent} />);
+      after = false;
+      if (b.kind !== "call" || !thread) {
+        nodes.push(block(b));
+        continue;
+      }
+      const answers: ReactNode[] = [<Fragment key={b.key}>{thread}</Fragment>];
+      nodes.push(<CallAsk key={`ask-${b.key}`} task={b.task} copy={copy} />);
+      for (let next = list[i + 1]; next?.kind === "call"; next = list[i + 1]) {
+        const beside = threadOf(next);
+        if (!beside) break;
+        nodes.push(<CallAsk key={`ask-${next.key}`} task={next.task} copy={copy} />);
+        answers.push(<Fragment key={next.key}>{beside}</Fragment>);
+        i++;
+      }
+      nodes.push(...answers);
+      after = true;
+    }
+    return { nodes, handed: after };
+  };
+  const before = chat(blocks, false);
+  const lastWords = tail.trim() !== "";
+  const later = chat(rest, before.handed && !lastWords);
 
   const Frame = embedded ? "div" : "article";
   return (
@@ -867,7 +942,8 @@ export function AgentMessage({
                   <SuppressContext.Provider value={suppressed}>
                     <div className="aui-stack">
                       {/* What happened, in the order it happened, before the last words. */}
-                      {blocks.map(block)}
+                      {before.nodes}
+                      {before.handed && lastWords && <Speaker agent={turn.agent} />}
                       <TurnView
                         turn={{ ...turn, text: tail }}
                         copy={copy}
@@ -878,7 +954,7 @@ export function AgentMessage({
                       {settledTurn && turn.needsConnection?.length ? (
                         <ConnectCards needs={turn.needsConnection} copy={copy} />
                       ) : null}
-                      {rest.map(block)}
+                      {later.nodes}
                       {turn.status === "stopped" && turn.stop && (
                         <StopBanner
                           turnId={turn.id}
