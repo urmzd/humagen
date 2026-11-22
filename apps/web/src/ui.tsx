@@ -301,6 +301,7 @@ export function Page({
   back,
   actions,
   tabs,
+  sections,
   layout,
   start,
   narrow,
@@ -322,6 +323,11 @@ export function Page({
   actions?: ReactNode;
   /** Tabs under the header, sticking to the top while the page scrolls. What the page shows under them is a column of its own. */
   tabs?: ReactNode;
+  /**
+   * An item's sections, as a list beside its content (one menu on a phone).
+   * A page under a hub's tabs uses these, never a second row of tabs.
+   */
+  sections?: PageSections;
   /** Conversation controls share a row with its left-aligned title. */
   layout?: "conversation";
   /** The project control, at the leading edge of a conversation. */
@@ -362,7 +368,7 @@ export function Page({
   }
   const width = narrow ? "max-w-3xl" : wide ? "max-w-[82rem]" : "max-w-[68rem]";
   const underHub = title === hubLabel;
-  const tabbed = !!tabs || underHub;
+  const tabbed = !!tabs || (underHub && !back);
   // A page headed by its tabs has nothing else in its header: the title is
   // kept for assistive technology, and the actions join the tab row.
   const bare = tabbed && !back && !icon && !meta && !crumbs;
@@ -379,24 +385,30 @@ export function Page({
           </div>
         )}
         <header className={bare ? "hidden" : "flex flex-col gap-3"}>
-          {back && (
-            <button
-              type="button"
-              onClick={back.onClick}
-              className="inline-flex min-h-6 items-center self-start rounded-aui text-aui-xs text-aui-muted transition-colors hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
-            >
-              ‹ {back.label}
-            </button>
-          )}
           <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
             <div className="flex min-w-0 items-center gap-3">
               {icon}
               <div className="min-w-0">
-                {/* Under a hub's tabs the active tab already names the page: the heading stays for
-                    assistive technology and leaves the screen, so the title is said once. */}
-                {/* A page with tabs is headed by its tabs: the title stays for assistive
-                    technology only, and there is no lede under it. */}
-                {!bare && <h1 className={tabbed ? "sr-only" : pageTitle}>{title}</h1>}
+                {/* Where the page sits, on the title's own line, as one path: the list it came from, then the page. */}
+                {back && !bare ? (
+                  <div className="flex min-w-0 items-baseline gap-2">
+                    <nav aria-label="Breadcrumb" className="shrink-0">
+                      <button
+                        type="button"
+                        onClick={back.onClick}
+                        className={`${pageTitle} rounded-aui font-medium text-aui-muted transition-colors hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent`}
+                      >
+                        {back.label}
+                      </button>
+                    </nav>
+                    <span aria-hidden className={`${pageTitle} font-normal text-aui-muted/60`}>
+                      /
+                    </span>
+                    <h1 className={`${pageTitle} min-w-0`}>{title}</h1>
+                  </div>
+                ) : (
+                  !bare && <h1 className={tabbed ? "sr-only" : pageTitle}>{title}</h1>
+                )}
                 {meta && (
                   <div className="flex flex-wrap items-center gap-x-3 pt-1 text-aui-xs text-aui-muted">
                     {meta}
@@ -433,8 +445,70 @@ export function Page({
           Under tabs, what a tab shows is one column of its own. The tab strip draws a rule,
           so a section that opens the column, and draws its rule only after something, draws none.
         */}
-        {tabs ? <div className="flex min-w-0 flex-col gap-6">{children}</div> : children}
+        {sections ? (
+          <SectionLayout sections={sections}>{children}</SectionLayout>
+        ) : tabs ? (
+          <div className="flex min-w-0 flex-col gap-6">{children}</div>
+        ) : (
+          children
+        )}
       </div>
+    </div>
+  );
+}
+
+/** An item's sections: which there are, which is open, and how to open another. */
+export interface PageSections {
+  /** What the list is called for assistive technology: the item's name. */
+  label: string;
+  value: string;
+  items: { id: string; label: string; count?: number }[];
+  onChange: (id: string) => void;
+}
+
+/**
+ * An item's sections beside its content: a list down the left on a wide
+ * screen, one menu above the content on a phone. It is navigation, not a
+ * second row of tabs: the section open is the page's address.
+ */
+function SectionLayout({ sections, children }: { sections: PageSections; children: ReactNode }) {
+  const open = sections.items.find((i) => i.id === sections.value);
+  return (
+    <div className="flex min-w-0 flex-col gap-6 md:flex-row md:items-start md:gap-10">
+      <nav aria-label={sections.label} className="md:sticky md:top-4 md:w-44 md:shrink-0">
+        <ul className="flex flex-col gap-0.5 max-md:hidden">
+          {sections.items.map((i) => (
+            <li key={i.id}>
+              <button
+                type="button"
+                aria-current={i.id === sections.value ? "page" : undefined}
+                onClick={() => sections.onChange(i.id)}
+                className="flex min-h-8 w-full items-center justify-between gap-2 rounded-aui px-2.5 text-left text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-hover aria-[current=page]:font-medium aria-[current=page]:text-aui-fg"
+              >
+                <span className="truncate">{i.label}</span>
+                {i.count !== undefined && i.count > 0 && <Count n={i.count} />}
+              </button>
+            </li>
+          ))}
+        </ul>
+        <label className="md:hidden">
+          <span className="sr-only">{sections.label}</span>
+          <select
+            value={sections.value}
+            onChange={(e) => sections.onChange(e.target.value)}
+            className="h-11 w-full rounded-aui border border-aui-border bg-transparent px-3 text-aui-sm text-aui-fg"
+          >
+            {sections.items.map((i) => (
+              <option key={i.id} value={i.id}>
+                {i.count ? `${i.label} (${i.count})` : i.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </nav>
+      <section aria-label={open?.label} className="flex min-w-0 flex-1 flex-col gap-6">
+        {children}
+      </section>
     </div>
   );
 }

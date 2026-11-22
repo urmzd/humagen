@@ -9,8 +9,8 @@ import {
 } from "@humagen/core";
 import { ForkIcon, GitHubRefKindsContext, githubRefKinds, WebSurface } from "@humagen/render-web";
 import {
-  AgentNameContext,
   AgentMessage,
+  AgentNameContext,
   FileLinkContext,
   type FileLinks,
   MessageActionRow,
@@ -89,12 +89,7 @@ import { SessionDetailsProvider } from "./SessionDetails.tsx";
 import { sessionFiles, sessionProgress } from "./SessionPanel.tsx";
 import { OriginButton, referenceOfPlace, SessionPlace, usePlace } from "./SessionPlace.tsx";
 import { ComposerFooter, UsageRing } from "./SessionUsage.tsx";
-import {
-  type SessionView,
-  SessionViews,
-  useUnavailableViews,
-  useViewShortcuts,
-} from "./SessionViews.tsx";
+import { type SessionView, SessionViews, useUnavailableViews } from "./SessionViews.tsx";
 import { ShareDialog } from "./Share.tsx";
 import { useItemStops, useSessionBackground, useSessionStop } from "./stops.tsx";
 import { topicsOf } from "./topics.ts";
@@ -844,7 +839,6 @@ export function ThreadRoom({
     if (v === "details") return openPanel("details", openBench(shownView, "details"));
     if (v === "files" || v === "artifacts")
       return openPanel("workspace", openPane(shownView, { kind: v }));
-    if (v === "progress") return openPanel("activity");
     // A session carries its own background work: it is a section of its Details.
     if (v === "background") return openPanel("details", openBench(shownView, "details"));
     openWorkbench(v);
@@ -1054,16 +1048,13 @@ export function ThreadRoom({
     );
   };
 
-  useViewShortcuts(openView, () => true);
   const unavailable = useUnavailableViews(th.id, !!th.session);
   const activeView: SessionView | undefined =
     shownView.panel === "details"
       ? (shownView.bench ?? "details")
       : shownView.panel === "workspace"
         ? "files"
-        : shownView.panel === "activity"
-          ? "progress"
-          : undefined;
+        : undefined;
   return (
     <SessionDetailsProvider panel={shownView.panel} onPanel={(panel) => openPanel(panel)}>
       <WorkbenchOpen.Provider value={openWorkbench}>

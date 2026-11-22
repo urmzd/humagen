@@ -223,13 +223,16 @@ test("drafts survive closing the panel and switching sections, and guard navigat
     name: "Edit Plan.md",
   })) as HTMLTextAreaElement;
   fireEvent.change(editor, { target: { value: "# Pending" } });
-  fireEvent.click(screen.getByRole("button", { name: defaultCopy.workspace.pane.open }));
-  fireEvent.click(screen.getByRole("button", { name: defaultCopy.workspace.pane.pick.sandboxes }));
+  // Another section, then the drawer closed and opened again.
+  fireEvent.click(screen.getByRole("tab", { name: defaultCopy.workspace.pane.kind.sandboxes }));
   await screen.findByText(defaultCopy.workspace.sessionSandbox);
   fireEvent.click(screen.getByRole("button", { name: "Toggle Workspace" }));
   fireEvent.click(screen.getByRole("button", { name: "Toggle Workspace" }));
-  // The scratchpad's tab is named for it.
-  fireEvent.click(await screen.findByRole("tab", { name: "Plan" }));
+  // Back in Scratchpads, the pad opens from its list with the draft still in it.
+  fireEvent.click(
+    await screen.findByRole("tab", { name: defaultCopy.workspace.pane.kind.scratchpads }),
+  );
+  fireEvent.click(await screen.findByRole("button", { name: /^Plan/ }));
   await waitFor(() =>
     assert.equal(
       (screen.getByRole("textbox", { name: "Edit Plan.md" }) as HTMLTextAreaElement).value,

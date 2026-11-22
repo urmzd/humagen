@@ -1875,7 +1875,7 @@ test("a channel of a project the reader may not see reads as the project's own p
   assert.ok(!screen.queryByPlaceholderText(words.startThread));
   assert.ok(!screen.queryByText(words.startPrivate));
   assert.ok(!screen.queryByText(words.nobody));
-  fireEvent.click(screen.getByRole("button", { name: `‹ ${defaultCopy.projects.allProjects}` }));
+  fireEvent.click(screen.getByRole("button", { name: defaultCopy.projects.allProjects }));
   assert.equal(back, 1);
 });
 
@@ -1925,7 +1925,7 @@ test("a channel its project does not hold says so, and offers no composer", asyn
     ),
   );
   assert.ok(!screen.queryByPlaceholderText(words.startThread));
-  fireEvent.click(screen.getByRole("button", { name: "‹ Globex" }));
+  fireEvent.click(screen.getByRole("button", { name: "Globex" }));
   assert.equal(back, 1);
 });
 

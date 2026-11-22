@@ -37,6 +37,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-081 | An agent is made goal first and is met on its home: a new agent starts from a searchable list of outcomes (Start from scratch first), is given a name, a shape and a color with its bot drawn as it will be, and opens on a home where it introduces itself, offers jobs to hand it and takes a message addressed to it; its settings are grouped as General, Access, Tools and Behavior, and General shows what it completed this week, how it answers in Slack, Pause and Retire | Implemented: see [DES-081](#des-081-goal-first-agents-a-home-and-grouped-settings). |
 | DES-084 | An agent's health says what is checked and what to do next: one row (status pill, recent pass rate, a How evaluation works icon with the docs, an icon Refresh health that spins while it reads and says when it last read), checks on recent runs beside each eval suite's last result, schedule and Run Now, runs flagged for review linking to the queue, a schedule editor with presets inside the one hour to thirty day bound that says who the schedule runs as, and figures that show a value or an explained dash | Implemented: `AgentHealth.tsx` (`AgentHealth`, `AgentStats`), `evalHealth.ts`, the schedule editor in `Evals.tsx`, `next_run_at` and `created_by_name` on `GET /api/evals` and `flagged` on agent health, words in `copy.agentHealth`, `copy.agentStats` and `copy.evalSchedule`. Composes with #480's health row: one header row with an actions slot, pills, no separators and no explanatory paragraph. Evidence: `TestNextRunCountsFromTheLatestStart`, `TestAgentHealthCountsTheRunsFlaggedForReview`, `TestASuiteListingSaysWhenItsScheduleNextRunsAndForWhom`, `agent-health.dom.test.tsx`, `evalHealth.test.tsx`; before and after captures at 1280 and 390, light and dark, in pull request 482. Pass-rate bars are neutral when a run reached its threshold, warn below it and bad only when it could not run, each labelled by how long ago it ran; the schedule presets wrap rather than scroll at phone width. The refresh glyph turning is the one spinner on the page; it is a control's own state, and the content it refreshes stays on view. |
 | DES-090 | An agent's mascot feels alive and says what it is doing without drawing the eye: a small idle mark makes a rare blink or glance, finishes its move on open eyes when the pointer leaves or its work stops, and from 24px holds a prop that names its activity; a mascot never carries the orb | Implemented: `useIdleGlance`, `useSettle`, `eyesOpen`, `AgentProp`, `agentPropOf` and `PropMark` in `packages/web/src/AgentOrb.tsx`, `.aui-prop` in `packages/render-web/src/theme.css`. Evidence: `agent-props.dom.test.tsx`; gallery and transcript captures at 2x, light and dark, before and after, in the pull request text; in Chrome, 30 seconds sampled showed glances of 1.2 to 2 seconds and none under reduced motion, and frames after the pointer left a mark showed it land its hop and hold still with open eyes. The orb stays only where no mascot is drawn: an `AgentMark` under 16px, a host's avatar picture and the status line. |
+| DES-091 | One component vocabulary (shadcn/ui) and one layout rule for every page: one row of tabs at most, an item's sections as a side list, the path on the title line, rows for things to compare and act on, cards only for things browsed by picture, one control per row (a split button for the rest), and drawers with one job | Implemented for the parts and the pages named in its section: `packages/render-web/src/ui/` (item, card, field, button-group, breadcrumb, table), `SplitButton.tsx`, `Page` `sections` and the breadcrumb title line in `ui.tsx`; Knowledge, a source, a skill, the Store, Connections, the People drawer and the session drawers follow it; web tests pass; checked in the browser at 1280 and 390, light and dark. The pages listed under "Not yet" in its section still use their own parts |
 | DES-089 | A session has no Side Chat: a second line of questions is a new session that refers to this one | Implemented: `WorkbenchSidechat.tsx`, `sidechat.ts`, the `sidechat` tab id, its header view and its key are removed; `session-context-panel.dom.test.tsx` and `route.test.ts` pass; checked in the browser that More Views and the workbench strip no longer list it |
 | DES-088 | The destination for work an agent starts without being asked is Automations, with a lightning mark, and has no Background tab: a session's background work is a section of that session's Details | Implemented: `Automations.tsx`, the entry in `Sidebar.tsx`, `/automations` in `route.ts` (old `/scheduled` addresses open it), `SessionBackground` in `Background.tsx` shown by `SessionPanel.tsx`; `automations.dom.test.tsx`, `background.dom.test.tsx`, `route.test.ts` and the sidebar tests pass; the page and the sidebar checked in the browser, the Background section by DOM tests only |
 | DES-087 | The composer is flat: the AI notice is in the middle of the footer row, the sentence is the link to the terms, messages that wait show greyed at the end of the conversation with Send now, and the box keeps its placeholder while agents work | Implemented: `NoticeSlotContext` and `queuePlace` in `Composer.tsx`, `ComposerFooter` in `SessionUsage.tsx`, `QueuedMessages` in `packages/web`, `.humagen-composer-footer` in `styles.css`; `composer-notice.dom.test.tsx`, `queued-messages.dom.test.tsx` and `composer-overlay.dom.test.tsx` pass; checked in the browser in a session and on Home, light and dark, at 1280 and 390 wide, with a real run and two waiting messages |
@@ -1218,6 +1219,47 @@ complete the cycle".
   prop do.
 - Acceptance: `agent-props.dom.test.tsx` passes; in the gallery at 2x, light
   and dark, each prop reads at 24px and 32px and covers no face.
+
+### DES-091: One component vocabulary, one layout rule
+
+Owner request, 2026-11-21: "use the best interfaces for those specific
+things as references and then consolidate them so our UI, components and
+items have consistent behaviour across", after shadcn/ui
+(https://ui.shadcn.com) was named as the reference. The console takes its
+parts from shadcn/ui, styled with the console's own tokens, and puts each
+kind of thing in one kind of part:
+
+| A thing | Is drawn with | Not with |
+|---|---|---|
+| Something a person compares and acts on (a package, a source, a connection, an automation) | a row: `Item` in an `ItemGroup`, with its media, title, description and one control | a card in a grid |
+| Records compared by column | `Table` | rows of cards |
+| Something browsed by its picture (an artifact, a file) | `Card` | a row |
+| Nothing here yet | `Empty`, with the one action inside it | a heading and a button apart |
+| A form | `FieldSet`, `Field`, with its label and hint | a loose label over an input |
+| An action and the choices that go with it | a split button: `ButtonGroup` and `DropdownMenu` (`SplitButton`) | a second row of buttons |
+| A hub's areas (Agents, Skills, Knowledge, Store) | one row of `Tabs` | |
+| An item's sections | a list beside its content (`Page` `sections`); one menu on a phone | a second row of tabs |
+| Where a page sits | its path on the title line: "Knowledge / HR policies" | a back link over a small title |
+| A status | a `Badge`, or the control itself once it is the person's ("Connected") | a pill beside a button that says the same |
+
+- A page has at most one row of tabs. A page under a hub's tabs puts its own
+  sections in a side list.
+- A row ends with one control. Before a thing is the person's, the control
+  is the verb that makes it theirs (Install, Connect, Enable). Once it is,
+  the control is its state (Installed, Connected), which opens it to manage,
+  and the arrow beside it holds the rest (Review Tools, Replace, Remove,
+  with Remove last, after a rule, in the failure color).
+- A drawer has one job and no row of tabs of its own. What a session did,
+  read and linked is in the conversation, where each step and each
+  reference opens; no drawer repeats it. The People drawer lists people and
+  invites them; agents come from the project.
+- Something new is made with what it needs in the same form: a knowledge
+  base with its sources.
+
+Not yet: the Files drawer still opens files as chips with their own close
+buttons; Alerts, Monitor and the Memory library keep their own row of tabs
+(each is the page's only row); `Pill` and `Tag` are not yet `Badge`, and
+some pages still draw buttons and boxes by hand.
 
 ### DES-089: No Side Chat
 

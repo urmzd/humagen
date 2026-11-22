@@ -137,10 +137,10 @@ export const WORKSPACE_SECTIONS: WorkspaceSection[] = [
 /**
  * The tabs of a session's workbench, the pane the Details panel opens
  * (workbench.ts declares what each shows). Details is the default, at the
- * panel's own address; every other tab is `?bench=`. All five are addresses
+ * panel's own address; every other tab is `?bench=`. All four are addresses
  * from the start, so a tab's own change adds no route.
  */
-export const WORKBENCH_TAB_IDS = ["details", "browser", "terminal", "changes", "search"] as const;
+export const WORKBENCH_TAB_IDS = ["details", "browser", "terminal", "changes"] as const;
 export type WorkbenchTabId = (typeof WORKBENCH_TAB_IDS)[number];
 /** The most characters of a workbench tab's own selection an address carries. */
 export const MAX_BENCH_REF = 512;

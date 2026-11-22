@@ -123,7 +123,7 @@ test("the strip shows Details, the tabs with something to show, and the one the 
     ["details", "browser", "terminal"],
   );
   // A tab that is not built opens Details.
-  assert.equal(activeBench({ panel: "details", bench: "search" }, fake)?.id, "details");
+  assert.equal(activeBench({ panel: "details", bench: "gone" as never }, fake)?.id, "details");
   assert.equal(activeBench({ panel: "details", bench: "terminal" }, fake)?.id, "terminal");
   assert.equal(activeBench({ panel: "details" }, fake)?.id, "details");
 });
@@ -458,12 +458,12 @@ test("a card in the thread opens a tab that is built, and offers nothing for one
   const { rerender } = render(
     <WorkbenchOpen.Provider value={(id, ref) => opened.push(`${id}:${ref}`)}>
       <Card id="browser" />
-      <Card id="search" />
+      <Card id={"gone" as never} />
     </WorkbenchOpen.Provider>,
   );
   fireEvent.click(screen.getByRole("button", { name: "Open browser" }));
   assert.deepEqual(opened, ["browser:box-9"]);
-  assert.ok(screen.getByText("no search"));
+  assert.ok(screen.getByText("no gone"));
   // Outside a session's page there is no workbench to open.
   rerender(<Card id="browser" />);
   assert.ok(screen.getByText("no browser"));

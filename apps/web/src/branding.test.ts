@@ -92,4 +92,6 @@ test("the entry agent is shown by the workspace's name, every other agent by its
   assert.equal(agentShown("humagen"), "Humagen");
   // A name already written as one is kept as it is.
   assert.equal(titled("GitHub-bot"), "GitHub Bot");
+  // A short word a name writes in capitals stays in capitals.
+  assert.equal(agentShown("qa-reviewer"), "QA Reviewer");
 });

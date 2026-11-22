@@ -531,6 +531,16 @@ export const defaultCopy = {
   },
   agentStore: {
     title: "Store",
+    /** What the Store is, under its title. */
+    lede: "Ready-made teams of agents. Installing a package adds its agents to your workspace, where you can change them like your own. Removing retires them; their history stays.",
+    configure: "Configure",
+    view: "View Agents",
+    moreFor: (title: string) => `More for ${title}`,
+    connect: (what: string) => `Connect ${what}`,
+    /** A system by its name alone, in "Connect GitHub". */
+    surface: (surface: string) =>
+      ({ github: "GitHub", slack: "Slack" })[surface] ??
+      surface.charAt(0).toUpperCase() + surface.slice(1),
     installed: "Installed",
     install: "Install",
     restore: "Restore Missing",
@@ -880,6 +890,12 @@ export const defaultCopy = {
       add: "Add",
       none: "None yet.",
       create: "Create Corpus",
+      /** The sources a new corpus starts with, chosen as it is made. */
+      sources: "Sources",
+      sourcesHint:
+        "What it searches. Pick sources already in the workspace and systems already connected; you can connect a new system or upload files once it is made.",
+      noSources:
+        "Nothing is in the workspace yet. Connect a system or upload files once it is made.",
       save: "Save",
       cancel: "Cancel",
       created: (name: string) => `${name} created`,
@@ -1814,11 +1830,12 @@ export const defaultCopy = {
   },
   conversationAccess: {
     title: "People & Access",
-    add: "Add Participant",
-    handle: "Person handle or agent name",
-    kind: "Participant type",
-    person: "Person",
-    agent: "Agent",
+    add: "Invite",
+    handle: "Invite a person",
+    people: "People",
+    /** Under the people: where a conversation's agents come from. */
+    agentsNote:
+      "Agents are not invited: the ones this conversation's project turns on can answer here.",
     remove: "Remove",
     owner: "Owner",
     failed: "Access could not be changed.",
@@ -4820,13 +4837,7 @@ export const defaultCopy = {
       browser: "Browser",
       files: "Files",
       artifacts: "Artifacts",
-      search: "Search",
       background: "Background Tasks",
-      progress: "Progress",
-    },
-    /** A view's key, as its menu row prints it. */
-    shortcut: {
-      search: { mac: "⌘⇧F", other: "Ctrl Shift F" },
     },
     /** Environment. */
     sandbox: "Sandbox",
@@ -4963,7 +4974,6 @@ export const defaultCopy = {
       browser: "Browser",
       terminal: "Terminal",
       changes: "Changes",
-      search: "Search",
     },
     expand: "Expand Workbench",
     collapse: "Collapse Workbench",
@@ -5210,52 +5220,6 @@ export const defaultCopy = {
     recordCreated: (path: string, lines: number) =>
       `Created ${path} (${lines} ${lines === 1 ? "line" : "lines"})`,
     recordDeleted: (path: string) => `Deleted ${path}`,
-  },
-  /** The Search tab (WorkbenchSearch.tsx). */
-  workbenchSearch: {
-    field: "Search this session",
-    /** The key that puts the cursor in the field, as the field shows it. */
-    shortcut: { mac: "⌘⇧F", other: "Ctrl Shift F" },
-    clear: "Clear Search",
-    results: "Results",
-    group: {
-      files: "Files",
-      pulls: "Pull requests and issues",
-      links: "Links",
-      commands: "Commands",
-      browser: "Browser steps",
-      tools: "Tools",
-      agents: "Agents",
-      attachments: "Attachments",
-    },
-    /** Where a result opens, at the end of its row. */
-    opens: {
-      workspace: "Workspace",
-      terminal: "Terminal",
-      browser: "Browser",
-      activity: "Activity",
-      session: "Session",
-      message: "Message",
-      page: "Page",
-      external: "New tab",
-    },
-    /** A link's second line. */
-    note: {
-      origin: "Where this session started",
-      child: "A session this one started",
-      context: "Linked for context",
-      evidence: "Linked as evidence",
-    },
-    calls: (n: number) => `${n} ${n === 1 ? "call" : "calls"}`,
-    count: (n: number) => `${n} ${n === 1 ? "result" : "results"}`,
-    showAll: (n: number) => `Show All ${n}`,
-    keys: "↑ ↓ to move, Enter to open",
-    empty: "Nothing in this session to find yet",
-    emptyAction: "Open Details",
-    none: (query: string) => `Nothing in this session matches "${query}"`,
-    /** The session's own record could not be read; the rest is still searched. */
-    partial: "Linked sessions and attachments could not be read.",
-    retry: "Retry",
   },
   /** The control that returns to the end of a thread or of an answer's activity, named by what is there. */
   /** The composer that floats over a conversation: its keys, its two levels of Stop, its footer and usage. */

@@ -72,12 +72,19 @@ export function agentShown(name: string): string {
   return agentLook(name)?.display_name || titled(brandShown(name));
 }
 
+/** Words a name writes in capitals: "qa-reviewer" is "QA Reviewer". */
+const ACRONYMS = new Set(["ai", "api", "ci", "hr", "id", "pr", "qa", "sql", "ui", "ux"]);
+
 /** A handle as a name: each word capitalized, dashes and underscores as spaces. */
 export function titled(handle: string): string {
   return handle
     .split(/[-_\s]+/)
     .filter(Boolean)
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .map((word) =>
+      ACRONYMS.has(word.toLowerCase())
+        ? word.toUpperCase()
+        : word.charAt(0).toUpperCase() + word.slice(1),
+    )
     .join(" ");
 }
 
