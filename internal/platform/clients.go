@@ -514,7 +514,8 @@ func (p *Platform) dial(c clients.Client, secrets resolved) (*seat, error) {
 	case clients.GitHub:
 		guard := p.guardFor(c)
 		var api github.API
-		if github.IsPrivateKeyPEM(secrets.token) {
+		app := github.IsPrivateKeyPEM(secrets.token)
+		if app {
 			appAPI, err := github.NewAppHTTPAPI(p.observeGitHubAppAuth(c, github.AppConfig{
 				AppID:          c.Identity.AppID,
 				InstallationID: c.Identity.Installation,
@@ -563,11 +564,15 @@ func (p *Platform) dial(c clients.Client, secrets resolved) (*seat, error) {
 		_, cfg.StatusReactions = api.(ghtransport.ReactionAPI)
 		cfg.StatusReactions = cfg.StatusReactions && cfg.Login != ""
 		cfg.ReviewText = func(v ghtransport.View) (string, error) { return p.reviewView(c, v) }
+		installed := p.installedRepos(c, api, app)
+		if installed != nil {
+			cfg.MayRead = installed.Covers
+		}
 		peer, err := github.New(cfg)
 		if err != nil {
 			return nil, refused(err)
 		}
-		st := &seat{client: c, peer: peer, verifier: cfg.Verifier, guard: guard}
+		st := &seat{client: c, peer: peer, verifier: cfg.Verifier, guard: guard, installed: installed}
 		if files, ok := api.(github.FileAPI); ok {
 			st.files = files
 		}

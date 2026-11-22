@@ -33,7 +33,7 @@ func (p *Platform) GitHubIssue(ctx context.Context, tenant, repo string, number,
 	if !githubRepoName.MatchString(repo) || !valid || owner == ".." || name == ".." || owner == "." || name == "." || owner == "" || name == "" || strings.ContainsAny(owner+name, "?#%\\") || strings.Contains(name, "/") || number < 1 || number > 2147483647 || page < 1 || page > 10 {
 		return GitHubIssue{}, ErrSourceInvalid
 	}
-	reader := p.sourceReader(tenant, owner, name)
+	reader := p.sourceReader(ctx, tenant, owner, name)
 	api, ok := reader.(github.ContextAPI)
 	if !ok {
 		return GitHubIssue{}, ErrSourceNotFound
@@ -99,7 +99,7 @@ func (p *Platform) GitHubPullPage(ctx context.Context, tenant, repo string, numb
 	}
 	out := GitHubPull{Subject: c.Subject, Files: c.Files, Comments: c.Comments, Workflows: []github.WorkflowRun{}, NextPage: c.NextPage}
 	owner, name, _ := strings.Cut(repo, "/")
-	if api, ok := p.sourceReader(tenant, owner, name).(github.WorkflowAPI); ok {
+	if api, ok := p.sourceReader(ctx, tenant, owner, name).(github.WorkflowAPI); ok {
 		ci, e := api.WorkflowRuns(ctx, github.Ref{Owner: owner, Repo: name, Number: number}, c.Subject.Head.SHA, 1)
 		if e != nil {
 			return GitHubPull{}, fmt.Errorf("%w: CI: %v", ErrSourceUnavailable, e)

@@ -1041,7 +1041,10 @@ visible older history pages on reset.
   /** The images are the deployment's default, then the caller's
 workspace's own, oldest first; only a ready one may be chosen. The
 repositories are those the caller's tenant's enabled GitHub clients
-may read or write, sorted, at most 100.
+cover: the ones each client's GitHub App installation is installed
+on, and the ones its read_repositories or action_repositories name,
+deduplicated, sorted, at most 100. A session may choose any
+repository they cover, including one past the first 100.
  */
   async getSessionOptions(options?: RequestOptions): Promise<SessionOptions> {
     const path = "/api/sessions/options";
@@ -3702,7 +3705,7 @@ agents answering the next message are sent.
     });
   }
 
-  /** The lines an evidence permalink points at, with context around them, read through a GitHub client of the caller's workspace so its token stays on the server. A client may read repositories its owners include or its read_repositories name. Any other file, or one GitHub does not give, answers 404. All four of repo, sha, file and start are required. */
+  /** The lines an evidence permalink points at, with context around them, read through a GitHub client of the caller's workspace so its token stays on the server. A client may read repositories its owners include, its GitHub App installation covers, or its read_repositories name. Any other file, or one GitHub does not give, answers 404. All four of repo, sha, file and start are required. */
   async getGitHubSource(file: string, repo?: string, sha?: string, start?: number, end?: number, context?: number, options?: RequestOptions): Promise<SourceExcerpt> {
     let path = "/api/github/source";
     const _q = new URLSearchParams();

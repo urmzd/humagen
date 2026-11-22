@@ -737,7 +737,10 @@ paths:
         The images are the deployment's default, then the caller's
         workspace's own, oldest first; only a ready one may be chosen. The
         repositories are those the caller's tenant's enabled GitHub clients
-        may read or write, sorted, at most 100.
+        cover: the ones each client's GitHub App installation is installed
+        on, and the ones its read_repositories or action_repositories name,
+        deduplicated, sorted, at most 100. A session may choose any
+        repository they cover, including one past the first 100.
       x-permission: "runs:read"
       responses:
         "200":
@@ -3884,8 +3887,8 @@ paths:
       description: >-
         The lines an evidence permalink points at, with context around them,
         read through a GitHub client of the caller's workspace so its token
-        stays on the server. A client may read repositories its owners include
-        or its read_repositories name. Any other file, or one GitHub does not
+        stays on the server. A client may read repositories its owners include,
+        its GitHub App installation covers, or its read_repositories name. Any other file, or one GitHub does not
         give, answers 404. All four of repo, sha, file and start are required.
       x-permission: runs:read
       parameters:
@@ -19158,6 +19161,9 @@ components:
         mutations:
           type: boolean
         read_repositories:
+          description: Optional. Exact owner/repo names a run from another surface may
+            read through this client, besides the repositories its GitHub App
+            installation covers. Empty means the installation's repositories alone.
           type: array
           items:
             type: string

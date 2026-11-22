@@ -22,7 +22,7 @@ create the default client, `default-github`:
 | `HUMAGEN_GITHUB_APP`, `HUMAGEN_GITHUB_INSTALLATION` | `identity.app_id`, `identity.installation`. Optional |
 | `HUMAGEN_GITHUB_BOTS` | `bots` |
 | `HUMAGEN_GITHUB_CHECKS`, `HUMAGEN_GITHUB_GUIDES`, `HUMAGEN_GITHUB_MUTATIONS` | `github.checks`, `github.guides`, `github.mutations` |
-| `HUMAGEN_GITHUB_READ_REPOSITORIES` | `github.read_repositories` |
+| `HUMAGEN_GITHUB_READ_REPOSITORIES` | `github.read_repositories`. Optional: empty means the repositories the app is installed on (see [Repositories the app is installed on](#repositories-the-app-is-installed-on)) |
 | `HUMAGEN_GITHUB_LOGIN` | `github.login` |
 | `HUMAGEN_GITHUB_DEFAULT_AGENT` | `default_agent` |
 | `HUMAGEN_GITHUB_ASKERS` | `github.askers`: the only logins whose mentions, reviews and pull requests are acted on, comma separated. Optional |
@@ -144,10 +144,16 @@ again. The count and the pause are kept per pull request in the shared store
 `github_read_context` returns the subject and a page of comments. For PRs it
 also returns the head SHA, reviews, inline comments and changed-file patches.
 Follow `next_page` until absent. A missing patch is unavailable evidence.
-Reads default to the source repository. To allow GitHub context from Slack,
-Jira, or links in another repository, grant exact repository names. A run from
-another surface reads through the oldest GitHub client in its workspace that may
-route to its agent:
+Reads default to the source repository. A run from Slack, Jira, or a link in
+another repository may also read any repository the client's GitHub App
+installation covers (see
+[Repositories the app is installed on](#repositories-the-app-is-installed-on)).
+A run from another surface reads through the oldest GitHub client in its
+workspace that may route to its agent.
+
+`read_repositories` adds exact repository names to that. It is optional. Use
+it for a client that signs in with a personal token, which has no installation
+to list:
 
 ```sh
 export HUMAGEN_GITHUB_READ_REPOSITORIES='acme/handbook,acme/service'
@@ -200,11 +206,46 @@ Evidence that is a permalink to lines at a full commit SHA
 of context, line numbers and a link to GitHub. The lines come from
 `GET /api/github/source` (`runs:read`), which reads the file at that commit
 through a GitHub client of the caller's workspace, so the client's token never
-reaches the browser. A client reads repositories its owners include or its
-`read_repositories` name; any other repository, another workspace's, or a file
+reaches the browser. A client reads repositories its owners include, its
+installation covers, or its `read_repositories` name; any other repository, another workspace's, or a file
 the commit lacks answers 404. One request shows at most 200 lines and 20 lines
 of context, from a file of at most 256,000 bytes of UTF-8 text, and files read
 at a commit are kept, 64 at most, since they never change.
+
+## Repositories the app is installed on
+
+A client that signs in as a GitHub App reads the repositories its
+installation covers from `GET /installation/repositories`, with the
+installation token it already uses. The installation is the boundary: its
+token reaches nothing else, so Humagen grants nothing else.
+
+- **Session picker.** A new session offers the repositories every enabled
+  GitHub client of the workspace covers, plus any its `read_repositories` or
+  `action_repositories` name, deduplicated and sorted. The picker shows the
+  first 100. A session may choose any of them.
+- **Reads.** `github_read_context`, `github_read_file` and
+  `github_workflow_status` from another surface, and the console's source,
+  issue and pull request reads, reach any repository the installation covers.
+  The read tools check the client's `owners` first, so they refuse an
+  installed repository of an account `owners` does not list. The console's
+  reads do not: they reach any repository the installation covers. Keep
+  `owners` to the installation's account so the two agree.
+- **Writes.** Unchanged. A write stays bound to the original signed request,
+  or to `action_repositories`.
+
+The list is read when first needed and kept for 5 minutes. It holds at most
+1,000 repositories, 100 to a page, and one read gives up after 10 seconds.
+Callers that find the list due share one read. Each one waits only until its
+own request ends, and then uses the list as it stands. A caller that gives up
+does not stop the read for the others. The picker reads every client's list
+at the same time.
+When a read fails, Humagen keeps the list it had, or uses only the named
+repositories when it had none, logs the failure, and tries again after a
+minute. A repository added to the installation appears within 5 minutes; one
+removed is refused by GitHub at once, since the token no longer reaches it.
+
+A client with a personal token has no installation to list. It offers and
+reads only what its owners and `read_repositories` name.
 
 ## Check progress
 
@@ -421,7 +462,8 @@ installation-scoped stop policy. Subscribe to `pull_request_review_thread` for
 resolution feedback and grant the `reaction` capability for polling.
 
 Native actions may target another surface only when the exact repository is in
-`github.action_repositories`; `read_repositories` never grants writes. All runtime
+`github.action_repositories`; neither `read_repositories` nor the
+installation's repositories grant writes. All runtime
 and installation action policies still apply. Reactions use GitHub's supported
 emoji: eyes, rocket, -1 and confused. Slack's stop-hand emoji is not a GitHub
 reaction, so GitHub uses `/stop`.
