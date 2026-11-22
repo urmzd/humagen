@@ -3209,7 +3209,7 @@ test("Share says who the platform did not add, and why, beside who was told", as
 
 test("human and agent replies keep Copy and Reply in the same footer", async () => {
   room();
-  for (const label of ["Message from Ana", "helper message"]) {
+  for (const label of ["Message from Ana", "Helper message"]) {
     const message = await screen.findByRole("article", { name: label });
     const toolbar = within(message).getByRole("toolbar", { name: "Message actions" });
     assert.ok(within(toolbar).getByRole("button", { name: /Copy (message|answer)/ }));
@@ -3220,7 +3220,7 @@ test("human and agent replies keep Copy and Reply in the same footer", async () 
 
 test("agent replies expose their recorded instant with the same accessible timestamp", async () => {
   room();
-  const message = await screen.findByRole("article", { name: "helper message" });
+  const message = await screen.findByRole("article", { name: "Helper message" });
   const exact = new Date(at).toLocaleString(undefined, { dateStyle: "full", timeStyle: "long" });
   const time = within(message).getByRole("button", { name: words.posted(exact) });
   assert.equal(time.querySelector("time")?.dateTime, at);
@@ -3292,7 +3292,7 @@ test("recorded outcomes lead with recommendations and Redirect prepares human in
     ),
   };
   room({}, initial);
-  const message = await screen.findByRole("article", { name: "helper message" });
+  const message = await screen.findByRole("article", { name: "Helper message" });
   assert.ok(within(message).getByText("Recommendation"));
   assert.ok(within(message).getByText("Keep the current term"));
   assert.ok(within(message).getByText("Confirm the owner"));
@@ -3316,7 +3316,7 @@ test("copying an answer puts its Markdown on the clipboard in one click, with no
   });
   try {
     room();
-    const answer = await screen.findByRole("article", { name: "helper message" });
+    const answer = await screen.findByRole("article", { name: "Helper message" });
     const copy = within(answer).getByRole("button", { name: "Copy answer" });
     assert.equal(copy.getAttribute("aria-haspopup"), null);
     fireEvent.click(copy);
@@ -3507,7 +3507,7 @@ test("multiple replies by the same agent each retain one accessible Copy and Rep
     { "GET /api/runs/r2/events": () => ({ events: [] }) },
     { ...page, turns: [...page.turns, followup, secondRun] },
   );
-  const agents = await screen.findAllByRole("article", { name: "helper message" });
+  const agents = await screen.findAllByRole("article", { name: "Helper message" });
   assert.equal(agents.length, 2);
   const humans = screen.getAllByRole("article", { name: "Message from Ana" });
   assert.equal(humans.length, 2);

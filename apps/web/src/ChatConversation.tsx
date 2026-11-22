@@ -1,7 +1,13 @@
 import { defaultCopy } from "@humagen/components";
 import { ActionId, type UiAction } from "@humagen/core";
 import { ForkIcon, WebSurface } from "@humagen/render-web";
-import { AgentMessage, messageActionButton, type railEntry, Thread } from "@humagen/web";
+import {
+  AgentMessage,
+  AgentNameContext,
+  messageActionButton,
+  type railEntry,
+  Thread,
+} from "@humagen/web";
 import { type Dispatch, type ReactNode, type SetStateAction, useMemo } from "react";
 import { citationOf, type Run, turnOf } from "./adapter.ts";
 import type { ProjectView, ThreadAsk, ThreadPage, ThreadSummary } from "./api.ts";
@@ -13,6 +19,7 @@ import { ConversationInfo, ConversationPage } from "./ConversationShell.tsx";
 import { Deliverables, revisionPrompt } from "./Deliverables.tsx";
 import { GitHubTab, reviewText, reviewView } from "./GitHubTab.tsx";
 import { itemActions } from "./itemActions.tsx";
+import { agentShown } from "./branding.ts";
 import { AnswerRefs, CallThreads, OriginRef } from "./MessageRefs.tsx";
 import { MessageTime } from "./MessageTime.tsx";
 import { OutcomeActions } from "./OutcomeActions.tsx";
@@ -263,87 +270,94 @@ export function RunsConversation({
           {room && canRun && !room.thread.read_only && (
             <ConversationForkPanels thread={room.thread} runs={turns} actions={forkActions} />
           )}
-          <WebSurface onAction={onAction} className="flex min-h-0 flex-1 flex-col">
-            <Thread
-              className="w-full flex-1"
-              column="mx-auto w-full max-w-4xl px-4"
-              busy={tailWorking}
-              label="Conversation"
-              turns={wave}
-              footer={composer}
-            >
-              {path.map((run, i) => (
-                <TurnView
-                  key={run.id}
-                  run={run}
-                  origin={i === 0 ? <OriginRef origin={referenceOfPlace(chatPlace)} /> : undefined}
-                  canStop={canRun && !room?.thread.read_only}
-                  actions={
-                    !room?.thread.read_only && run.status === "completed" ? (
-                      <>
-                        <OutcomeActions run={run} canWrite={canLearn} />
-                        {canRun && forkActions?.onFork && (
-                          <button
-                            type="button"
-                            className={messageActionButton}
-                            aria-label={defaultCopy.forking.fromHere}
-                            title={defaultCopy.forking.fromHere}
-                            onClick={() => forkActions.onFork?.(run.id)}
-                          >
-                            <ForkIcon size={16} />
-                          </button>
-                        )}
-                      </>
-                    ) : undefined
-                  }
-                  me={me}
-                  ask={asks[run.id]}
-                  siblings={siblingsOf(turns, run)}
-                  live={
-                    i === path.length - 1 || (run.status !== "completed" && run.status !== "failed")
-                  }
-                  onSwitch={(id) => setChosen((c) => ({ ...c, [run.prev ?? ""]: id }))}
-                  onAsk={
-                    canRun ? () => setSeed({ text: `@${run.agent} `, mode: "prepend" }) : undefined
-                  }
-                  onReply={
-                    canRun
-                      ? () =>
-                          setSeed({
-                            quote: {
-                              label: `${run.agent}'s answer`,
-                              agent: run.agent,
-                              url: href({
-                                page: "conversation",
-                                id: threadId,
-                                panel: "activity",
-                                run: run.id,
-                              }),
-                            },
-                          })
-                      : undefined
-                  }
-                  onRedirect={
-                    canRun
-                      ? () =>
-                          setSeed({
-                            text: defaultCopy.conversation.redirectPrompt(
-                              run.agent,
-                              href({
-                                page: "conversation",
-                                id: threadId,
-                                panel: "activity",
-                                run: run.id,
-                              }),
-                            ),
-                            mode: "prepend",
-                          })
-                      : undefined
-                  }
-                />
-              ))}
-            </Thread>
-          </WebSurface>
+          <AgentNameContext.Provider value={agentShown}>
+            <WebSurface onAction={onAction} className="flex min-h-0 flex-1 flex-col">
+              <Thread
+                className="w-full flex-1"
+                column="mx-auto w-full max-w-4xl px-4"
+                busy={tailWorking}
+                label="Conversation"
+                turns={wave}
+                footer={composer}
+              >
+                {path.map((run, i) => (
+                  <TurnView
+                    key={run.id}
+                    run={run}
+                    origin={
+                      i === 0 ? <OriginRef origin={referenceOfPlace(chatPlace)} /> : undefined
+                    }
+                    canStop={canRun && !room?.thread.read_only}
+                    actions={
+                      !room?.thread.read_only && run.status === "completed" ? (
+                        <>
+                          <OutcomeActions run={run} canWrite={canLearn} />
+                          {canRun && forkActions?.onFork && (
+                            <button
+                              type="button"
+                              className={messageActionButton}
+                              aria-label={defaultCopy.forking.fromHere}
+                              title={defaultCopy.forking.fromHere}
+                              onClick={() => forkActions.onFork?.(run.id)}
+                            >
+                              <ForkIcon size={16} />
+                            </button>
+                          )}
+                        </>
+                      ) : undefined
+                    }
+                    me={me}
+                    ask={asks[run.id]}
+                    siblings={siblingsOf(turns, run)}
+                    live={
+                      i === path.length - 1 ||
+                      (run.status !== "completed" && run.status !== "failed")
+                    }
+                    onSwitch={(id) => setChosen((c) => ({ ...c, [run.prev ?? ""]: id }))}
+                    onAsk={
+                      canRun
+                        ? () => setSeed({ text: `@${run.agent} `, mode: "prepend" })
+                        : undefined
+                    }
+                    onReply={
+                      canRun
+                        ? () =>
+                            setSeed({
+                              quote: {
+                                label: `${run.agent}'s answer`,
+                                agent: run.agent,
+                                url: href({
+                                  page: "conversation",
+                                  id: threadId,
+                                  panel: "activity",
+                                  run: run.id,
+                                }),
+                              },
+                            })
+                        : undefined
+                    }
+                    onRedirect={
+                      canRun
+                        ? () =>
+                            setSeed({
+                              text: defaultCopy.conversation.redirectPrompt(
+                                run.agent,
+                                href({
+                                  page: "conversation",
+                                  id: threadId,
+                                  panel: "activity",
+                                  run: run.id,
+                                }),
+                              ),
+                              mode: "prepend",
+                            })
+                        : undefined
+                    }
+                  />
+                ))}
+              </Thread>
+            </WebSurface>
+          </AgentNameContext.Provider>
         </ConversationPage>
         {room && (
           <ConversationInfo

@@ -246,7 +246,7 @@ const actionBtn = messageActionButton;
  */
 function CallAsk({ task, copy }: { task: Task; copy: Copy }) {
   const [open, setOpen] = useState(false);
-  const name = task.subagent?.name ?? task.title;
+  const name = useContext(AgentNameContext)(task.subagent?.name ?? task.title);
   const asked = callPrompt(task) || callTitle(task);
   const long = asked.length > 320 || asked.split("\n").length > 4;
   return (
@@ -276,7 +276,9 @@ function Speaker({ agent }: { agent: Turn["agent"] }) {
   return (
     <p data-aui="speaker" className="flex min-h-7 min-w-0 items-center gap-x-2 text-aui-sm">
       <AgentAvatar agent={agent} />
-      <span className="max-w-full break-words font-semibold text-aui-fg">{agent.name}</span>
+      <span className="max-w-full break-words font-semibold text-aui-fg">
+        {useContext(AgentNameContext)(agent.name)}
+      </span>
     </p>
   );
 }
@@ -341,6 +343,15 @@ export function callTitle(task: Task): string {
  * leaves the call as one line.
  */
 export const CallThreadContext = createContext<((task: Task) => ReactNode) | null>(null);
+
+/**
+ * The name people see for an agent, from the name it is known by: a host
+ * that knows its agents' display names gives them here ("security-reviewer"
+ * is shown "Security Reviewer"). The mark is still drawn from the name the
+ * agent is known by, so a shown name never changes its face. Without a host,
+ * an agent is shown by that name.
+ */
+export const AgentNameContext = createContext<(name: string) => string>((name) => name);
 
 /**
  * A call this turn made to another agent, as one item where it happened:
@@ -756,6 +767,8 @@ export function AgentMessage({
   const inherited = useContext(ItemActionsContext);
   const inheritedStops = useContext(ItemStopsContext);
   const stops = itemStops ?? inheritedStops;
+  const nameOf = useContext(AgentNameContext);
+  const who = nameOf(turn.agent.name);
   const statusLine = `**${turn.agent.name}**: ${copy.status[turn.status]}`;
   const final = turn.status === "done";
   const settledTurn = final || turn.status === "failed" || turn.status === "stopped";
@@ -872,7 +885,7 @@ export function AgentMessage({
       {...(embedded
         ? { "data-aui": "thread-stream", className: "flex min-w-0 flex-col gap-2" }
         : {
-            "aria-label": `${turn.agent.name} message`,
+            "aria-label": `${who} message`,
             "aria-busy": busy || undefined,
             "data-turn-id": turn.id,
             "data-aui-still": turn.detached || undefined,
@@ -892,15 +905,13 @@ export function AgentMessage({
               <button
                 type="button"
                 className="min-h-6 pointer-coarse:min-h-11 max-w-full break-words rounded-aui text-left font-semibold text-aui-fg hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent"
-                aria-label={copy.conversation.askAgent(turn.agent.name)}
+                aria-label={copy.conversation.askAgent(who)}
                 onClick={onAskAgent}
               >
-                {turn.agent.name}
+                {who}
               </button>
             ) : (
-              <span className="max-w-full break-words font-semibold text-aui-fg">
-                {turn.agent.name}
-              </span>
+              <span className="max-w-full break-words font-semibold text-aui-fg">{who}</span>
             )}
             {task && <span className="min-w-0 truncate text-aui-muted text-aui-xs">{task}</span>}
             <span className="flex min-w-0 items-center gap-1.5 text-aui-2xs text-aui-muted">
@@ -922,7 +933,7 @@ export function AgentMessage({
             {stop && (working(orb) || stop.pending) && (
               <span className="ml-auto">
                 <ItemStopControl
-                  stop={{ what: turn.agent.name, onStop: stop.onStop, pending: stop.pending }}
+                  stop={{ what: who, onStop: stop.onStop, pending: stop.pending }}
                   words={stopWords(copy)}
                 />
               </span>

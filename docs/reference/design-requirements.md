@@ -1224,6 +1224,12 @@ same activity again makes no sense.
 
 - A turn reads top to bottom in time order: its words, its runs of steps and
   the agents it called, each where it happened.
+- An agent is shown by a proper name (owner request, 2026-11-21): its
+  look's display name, else the workspace's name for its entry agent, else
+  its handle written as a name ("security-reviewer" is "Security
+  Reviewer"). A handle is still what a person types to tag an agent. Its
+  mark is drawn from the name it is known by, so a shown name never changes
+  its face.
 - A turn that brought in other agents reads as a conversation between them,
   as people's messages read in a group chat (owner request, 2026-11-21): no
   agent's part is folded, set in or summed up.
