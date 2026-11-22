@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/urmzd/humagen/pkg/accounts"
 	"go/ast"
 	gotypesconst "go/constant"
 	"go/importer"
@@ -2233,6 +2234,18 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		t.Errorf("the app's bindings are %s, each saying when it was bound", bindings.raw)
 	}
 	c.call(globex, "GET", "/api/clients/{id}/bindings", "/api/clients/app/bindings", "", http.StatusNotFound)
+	// Who linked a Slack account in the app's team, for its administrators.
+	if _, err := f.p.Accounts.Link("acme", accounts.Account{Surface: accounts.Slack, ID: "U01ANA", Team: "T01ABCDEF", Login: "Ana", Subject: "00u-ana", At: time.Now().UTC()}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.p.Accounts.Link("acme", accounts.Account{Surface: accounts.Slack, ID: "U01ELSE", Team: "T09OTHER", Login: "Else", Subject: "00u-bo", At: time.Now().UTC()}); err != nil {
+		t.Fatal(err)
+	}
+	linked := c.call(acme, "GET", "/api/clients/{id}/accounts", "/api/clients/app/accounts", "", http.StatusOK)
+	if a := sliceOf(linked.field("accounts")); len(a) != 1 || obj(a[0])["id"] != "U01ANA" || obj(a[0])["subject"] != "00u-ana" {
+		t.Errorf("the app's linked accounts are %s, only its own team's", linked.raw)
+	}
+	c.call(globex, "GET", "/api/clients/{id}/accounts", "/api/clients/app/accounts", "", http.StatusNotFound)
 	c.call(acme, "POST", "/api/projects", "/api/projects", `{"name":"Crowded"}`, http.StatusCreated)
 	for i := range projects.MaxChannels - 1 {
 		c.call(acme, "POST", channels, "/api/projects/Crowded/channels", fmt.Sprintf(`{"name":"c%d"}`, i), http.StatusCreated)
