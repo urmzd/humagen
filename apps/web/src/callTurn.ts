@@ -6,6 +6,7 @@ import {
   type Thought,
   type Turn,
 } from "@humagen/core";
+import { brandShown } from "./branding.ts";
 
 const taskStatus = (tool: ResponseTool): Task["status"] =>
   tool.status === "done"
@@ -95,7 +96,8 @@ export function turnOfCall(call: ResponseTool, omit?: (step: ResponseTool) => bo
   if (!said && call.result && call.status !== "stopped") text = call.result.text.trim();
   return {
     id: call.runId ?? call.id,
-    agent: { name: call.agent ?? call.name },
+    // The name its mark is drawn from; the message shows it by its shown name (AgentNameContext).
+    agent: { name: brandShown(call.agent ?? call.name) },
     status: turnStatus(call),
     text,
     thoughts,
