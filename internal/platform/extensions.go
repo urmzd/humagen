@@ -226,7 +226,7 @@ type pendingSeed struct {
 	accept   []toolprovider.Tool
 }
 
-// accept_ reaches the provider and accepts the tools it pins.
+// reach reaches the provider and accepts the tools it pins.
 func (s pendingSeed) reach(ctx context.Context, store toolprovider.Store, dial mcptools.Dial, log *slog.Logger) error {
 	var held []heldBack
 	var err error

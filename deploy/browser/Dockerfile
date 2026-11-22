@@ -36,6 +36,7 @@ WORKDIR /opt/browser
 RUN npm install --omit=dev --no-audit --no-fund --no-update-notifier \
       "@playwright/mcp@${PLAYWRIGHT_MCP_VERSION}" \
     && node node_modules/playwright/cli.js install --with-deps --no-shell chromium \
+    && apt-get update \
     && apt-get install -y --no-install-recommends tini \
     && rm -rf /var/lib/apt/lists/* /root/.npm /tmp/*
 

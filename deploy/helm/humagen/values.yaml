@@ -478,6 +478,12 @@ browser:
   # 1 GiB: the oldest go first. Every snapshot and screenshot writes one, so
   # without a bound they only grow.
   outputMaxBytes: 268435456
+  # -- The RuntimeClass the pod runs under. Chromium runs without its own
+  # sandbox, so a page that breaks out of the renderer holds the pod: its
+  # sign-ins and the browser's port. Name a sandboxed runtime such as gVisor
+  # (`gvisor` or `runsc`, as your cluster calls it) to put a kernel between
+  # them and the node. Empty uses the cluster's default.
+  runtimeClassName: ""
   podLabels: {}
   podAnnotations: {}
   # -- Who may reach the browser, and what it may reach. A page an agent

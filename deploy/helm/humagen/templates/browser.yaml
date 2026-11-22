@@ -95,6 +95,9 @@ spec:
       serviceAccountName: {{ $name }}
       automountServiceAccountToken: false
       enableServiceLinks: false
+      {{- with .Values.browser.runtimeClassName }}
+      runtimeClassName: {{ . }}
+      {{- end }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:

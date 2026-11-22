@@ -182,7 +182,7 @@ jobs:
           done
           # Another name is refused, and the one it was told is served.
           refused=$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: localhost:8931' http://127.0.0.1:8931/mcp)
-          [ "$refused" = 403 ] || { echo "a request for another host got $refused, not 403"; exit 1; }
+          [ "$refused" = 403 ] || { echo "a request for another host got $refused, not 403"; docker logs browser; exit 1; }
           HUMAGEN_BROWSER_MCP_URL=http://127.0.0.1:8931/mcp HUMAGEN_BROWSER_OUTPUT_DIR="$out" \
             HUMAGEN_BROWSER_SHARED=1 go test -race ./internal/mcptools -run '^TestBrowser' -count=1 -v 2>&1 | tee test.log \
             || { docker logs browser; exit 1; }

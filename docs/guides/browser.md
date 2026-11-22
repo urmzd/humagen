@@ -113,9 +113,13 @@ What the image and the chart hold to:
   `browser.networkPolicy.blockedCIDRs`, or the browser reaches the cluster.
   IPv6 is not let out. All of this needs a network plugin that enforces
   NetworkPolicy. The pod holds no service account token.
-- **Under Compose, a network of its own.** The browser shares a network with
-  the server only, not with Postgres or MinIO. The server's API is within its
-  reach.
+- **Under Compose, a network of its own, and nothing refused.** The browser
+  shares a network with the server only, not with Postgres or MinIO. The
+  server's API is within its reach. Compose has no egress policy: a page the
+  browser opens reaches whatever the host reaches, such as the host's LAN,
+  its published ports and, on a cloud VM, the metadata address
+  `169.254.169.254` and the credentials it serves. Use Compose on a machine
+  with nothing to reach, or block those addresses in the host's firewall.
 - **Bounded files.** Every snapshot and screenshot writes a file. The oldest
   go when the output directory passes `HUMAGEN_BROWSER_OUTPUT_MAX_BYTES`,
   256 MiB unless set. The browser also keeps a temporary copy of each
@@ -125,7 +129,9 @@ What the image and the chart hold to:
   larger than that still does it.
 - **Chromium runs without its own sandbox.** A container without extra
   privileges has no user namespaces for it. The container is the boundary:
-  read-only, no capabilities, no privilege escalation.
+  read-only, no capabilities, no privilege escalation. A renderer exploit
+  holds the pod. In the chart, set `browser.runtimeClassName` to a sandboxed
+  runtime such as gVisor to put a kernel between the pod and the node.
 
 To check an image, start it and run the acceptance below with
 `HUMAGEN_BROWSER_SHARED=1`, which adds two checks: that two clients share one
