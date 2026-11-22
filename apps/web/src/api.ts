@@ -449,6 +449,8 @@ export interface ThreadSummary {
   title: string;
   /** The title is a name, not just the first message. */
   named: boolean;
+  /** Who gave the title: the start of the first message until a short generated name replaces it, or a person. */
+  title_source?: TitleSource;
   origin: string;
   project?: string;
   /** The project's channel it is in, `general` when its runs name none. */
@@ -2171,11 +2173,15 @@ export interface ThreadParticipant {
 }
 
 /** A shared thread's record. A conversation from before threads reads at version 0. */
+/** Who gave a session its title. The server replaces only a placeholder, so a person's title stays. */
+export type TitleSource = "placeholder" | "generated" | "person";
+
 export interface Thread {
   id: string;
   project: string;
   channel: string;
   title?: string;
+  title_source?: TitleSource;
   visibility: "shared" | "private";
   participants: ThreadParticipant[];
   default?: string;

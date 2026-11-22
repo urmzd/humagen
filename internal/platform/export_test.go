@@ -219,3 +219,13 @@ func SweepImages(p *Platform) {
 func SessionDigest(p *Platform, tenant, thread string) (string, error) {
 	return p.imageOf(tenant, thread)
 }
+
+// WaitTitles returns once every session title being generated is kept or
+// dropped.
+func (p *Platform) WaitTitles() { p.titling.Wait() }
+
+// CleanTitle is cleanTitle, for tests.
+func CleanTitle(answer string) string { return cleanTitle(answer) }
+
+// ThinTitle is thinTitle, for tests.
+func ThinTitle(text string) bool { return thinTitle(text) }

@@ -202,6 +202,13 @@ type Participant struct {
 	At      time.Time `json:"at"`
 }
 
+// Who gave a thread its title, as Thread.TitleSource says it.
+const (
+	TitlePlaceholder = "placeholder"
+	TitleGenerated   = "generated"
+	TitlePerson      = "person"
+)
+
 // SessionIdentity pins the agent and parent that own a session.
 type SessionIdentity struct {
 	Agent       string `json:"agent"`
@@ -244,9 +251,14 @@ type Thread struct {
 	// Project is the project it is filed in. "" is the root.
 	Project string `json:"project"`
 	// Channel is the project's channel it is in.
-	Channel    string     `json:"channel"`
-	Title      string     `json:"title,omitempty"`
-	Visibility Visibility `json:"visibility"`
+	Channel string `json:"channel"`
+	Title   string `json:"title,omitempty"`
+	// TitleSource is who gave the title: TitlePlaceholder, the start of the
+	// first message, TitleGenerated, a model's name for it, or TitlePerson.
+	// "" is a record from before sources were kept, or one started with a
+	// title of its own. Only a placeholder is ever replaced by the platform.
+	TitleSource string     `json:"title_source,omitempty"`
+	Visibility  Visibility `json:"visibility"`
 	// Participants are who takes part, in the order they joined.
 	Participants []Participant `json:"participants"`
 	// Default answers an untagged message here: an agent, or OpenName. ""
@@ -572,6 +584,8 @@ func (t Thread) validate() error {
 		return fmt.Errorf("%w: a thread is shared or private", ErrInvalid)
 	case utf8.RuneCountInString(t.Title) > MaxTitle || !oneLine(t.Title):
 		return fmt.Errorf("%w: a thread's title is one line of at most %d characters", ErrInvalid, MaxTitle)
+	case t.TitleSource != "" && t.TitleSource != TitlePlaceholder && t.TitleSource != TitleGenerated && t.TitleSource != TitlePerson:
+		return fmt.Errorf("%w: a title is a placeholder, generated or a person's", ErrInvalid)
 	case !validDefault(t.Default):
 		return fmt.Errorf("%w: a default is an agent's name or auto", ErrInvalid)
 	case !validRouting(t.Agents, t.Mode):

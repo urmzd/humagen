@@ -1,6 +1,9 @@
 package runs
 
-import "testing"
+import (
+	"testing"
+	"unicode/utf8"
+)
 
 func TestDeriveTitle(t *testing.T) {
 	for _, c := range []struct{ in, want string }{
@@ -23,9 +26,16 @@ func TestSessionTitle(t *testing.T) {
 		{"howdy", "Howdy"},
 		{"<@U123ABC> what shipped today", "What shipped today"},
 		{"<@U123ABC|lead> <@U999> deploy it", "Deploy it"},
+		// A placeholder shows whole in a sidebar row: cut on a word, under
+		// MaxSessionTitle.
+		{"Write four short sentences about the sea, the tide and the boats", "Write four short sentences about the…"},
+		{"Call the trace_message tool once with id 42 and report what it returns", "Call the trace_message tool once with…"},
 	} {
 		if got := SessionTitle(c.in); got != c.want {
 			t.Errorf("SessionTitle(%q) = %q, want %q", c.in, got, c.want)
+		}
+		if n := utf8.RuneCountInString(SessionTitle(c.in)); n > MaxSessionTitle {
+			t.Errorf("SessionTitle(%q) is %d runes", c.in, n)
 		}
 	}
 }

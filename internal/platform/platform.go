@@ -310,6 +310,10 @@ type Config struct {
 	// that names none (pkg/join), in place of the model the workspace's
 	// settings name. A nil Asker for a workspace asks nobody there.
 	Router func(tenant string) join.Asker
+	// Titler, when set, names a workspace's sessions in place of the small
+	// model of the session agent's provider (session_titles.go). A nil
+	// Titler for a session leaves its placeholder title.
+	Titler func(tenant, agent string) Titler
 	// Ext is what a program built on humagen adds: model providers, tool
 	// sources and MCP tool providers. The zero value adds nothing.
 	Ext Extensions
@@ -559,6 +563,8 @@ type Platform struct {
 	// admission serializes letting a run in. It is taken inside calls, never
 	// the other way round.
 	admission sync.Mutex
+	// titling counts the session titles being generated (nameSession).
+	titling sync.WaitGroup
 
 	// calls serializes Call, so two calls from one run cannot both pass a
 	// fan-out or budget check that only one of them fits under.

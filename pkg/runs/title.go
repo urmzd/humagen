@@ -10,12 +10,21 @@ import (
 // maxDerivedTitle bounds a title the system derives, in runes.
 const maxDerivedTitle = 60
 
+// MaxSessionTitle bounds a session's title the platform gives it, the
+// placeholder and the generated one, in runes: short enough that a sidebar
+// row shows it whole.
+const MaxSessionTitle = 40
+
 // DeriveTitle is the name the system gives a conversation from its first
 // message until someone, or a title agent, names it: the first line, without
 // the agents it tags at the start, capitalized, cut at a word under 60
 // characters. It is a pure function of the text, so every surface shows the
 // same title at once.
 func DeriveTitle(first string) string {
+	return deriveTitle(first, maxDerivedTitle)
+}
+
+func deriveTitle(first string, limit int) string {
 	line, _, _ := strings.Cut(strings.TrimSpace(first), "\n")
 	words := strings.Fields(line)
 	for len(words) > 1 && strings.HasPrefix(words[0], "@") {
@@ -28,9 +37,9 @@ func DeriveTitle(first string) string {
 		return words[0]
 	}
 	title := strings.TrimRight(strings.Join(words, " "), " ,;:-")
-	if utf8.RuneCountInString(title) > maxDerivedTitle {
-		cut := []rune(title)[:maxDerivedTitle]
-		if i := strings.LastIndexByte(string(cut), ' '); i > maxDerivedTitle/2 {
+	if utf8.RuneCountInString(title) > limit {
+		cut := []rune(title)[:limit]
+		if i := strings.LastIndexByte(string(cut), ' '); i > limit/2 {
 			cut = []rune(string(cut)[:i])
 		}
 		title = strings.TrimRight(string(cut), " ,;:-.") + "…"
@@ -42,11 +51,12 @@ func DeriveTitle(first string) string {
 // slackMention is a Slack user reference, <@U123ABC> or <@U123ABC|name>.
 var slackMention = regexp.MustCompile(`^\s*<@[A-Za-z0-9]+(\|[^>]*)?>`)
 
-// SessionTitle is the title a conversation gets from the message a person
-// starts it with: DeriveTitle of the text without the people and agents it
-// tags at the start, Slack's <@U123ABC> markup included.
+// SessionTitle is the placeholder title a session gets from the message a
+// person starts it with, until a generated one replaces it: DeriveTitle of
+// the text without the people and agents it tags at the start, Slack's
+// <@U123ABC> markup included, cut at a word under MaxSessionTitle runes.
 func SessionTitle(text string) string {
-	return DeriveTitle(dropSlackMentions(text))
+	return deriveTitle(dropSlackMentions(text), MaxSessionTitle-1)
 }
 
 func dropSlackMentions(text string) string {

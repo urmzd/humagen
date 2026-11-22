@@ -1565,6 +1565,8 @@ export interface ThreadSummary {
   title: string;
   /** The title is a name, not just the first message. */
   named: boolean;
+  /** Who gave the title, as the thread's record says. `placeholder` is the start of the first message, shown until a generated title replaces it; `generated` is a short name a model gave it; `person` is a person's rename, which is never replaced. Absent when nobody named it, or for a record from before sources were kept. */
+  title_source?: "placeholder" | "generated" | "person";
   origin: string;
   project?: string;
   /** The project's channel it is in, `general` when its runs name none. */
@@ -1661,6 +1663,8 @@ export interface Thread {
   project: string;
   channel: string;
   title?: string;
+  /** Who gave the title. `placeholder` is the start of the first message, cut on a word, which a short generated name replaces once a model gives one; `generated` is that name; `person` is a person's rename. The platform replaces only a placeholder, so a rename is never overwritten. Absent for a record from before sources were kept, or one started with a title of its own. A title changed through this API is a person's. */
+  title_source?: "placeholder" | "generated" | "person";
   visibility: ThreadVisibility;
   /** Who takes part. An agent that lives in a project the caller may not read is left out unless it answered in the thread, as its runs there name it. The caller adds people and agents up to 50 they are shown; with the ones they are not shown, and the people who post and the agents who answer, who join on their own, the record holds at most 100. */
   participants: ThreadParticipant[];

@@ -120,6 +120,7 @@ func (p *Platform) ended(ctx context.Context, run runs.Run) {
 			case run.Origin == runs.OriginSystem:
 				return p.fileHook(run)
 			case run.Origin == runs.OriginAPI && run.Parent == "" && run.Status == runs.Completed && wire.Meta(run.Tag())[metaBackground] == "":
+				p.nameSessionAfterAnswer(ctx, run)
 				return p.afterTurn(ctx, run)
 			}
 			return nil
