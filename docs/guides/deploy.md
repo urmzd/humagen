@@ -251,6 +251,10 @@ Humagen is published on `127.0.0.1:8080` by default. To reach it from other
 machines, set `HUMAGEN_BIND=0.0.0.0` behind TLS, and `public_url` to the address
 browsers use.
 
+A browser for agents is a second file beside `compose.yaml`, not for the
+development overlay: `docker compose -f compose.yaml -f compose.browser.yaml up -d --build`.
+See [the bundled browser image](browser.md#run-the-bundled-browser-image).
+
 ### Without an identity provider
 
 [`compose.dev.yaml`](https://github.com/urmzd/humagen/blob/main/deploy/compose/compose.dev.yaml) mounts
@@ -265,9 +269,6 @@ docker compose -f compose.yaml -f compose.dev.yaml up -d --build
 ```
 
 Every request is an admin. Do not use it anywhere but your own machine.
-
-A browser for agents is the `browser` profile: see
-[the bundled browser image](browser.md#run-the-bundled-browser-image).
 
 ## Kubernetes with Helm
 

@@ -121,6 +121,17 @@ refuse $on --set browser.tool=my_browser
 refuse $on --set-string browser.port=abc
 # shellcheck disable=SC2086
 refuse $on --set browser.port=99999
+# The bound on output files is a size under the pod's disk, never zero.
+# shellcheck disable=SC2086
+refuse $on --set-string browser.outputMaxBytes=abc
+# shellcheck disable=SC2086
+refuse $on --set browser.outputMaxBytes=5
+# shellcheck disable=SC2086
+refuse $on --set browser.outputMaxBytes=3221225472
+# A name that already ends in -browser at full length would make the
+# browser's objects the server's.
+# shellcheck disable=SC2086
+refuse $on --set fullnameOverride=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-browser
 # A policy with nowhere to ask for names would leave the browser unable to
 # open any page.
 printf 'browser:\n  networkPolicy:\n    dns:\n      namespace: ""\n      cidrs: []\n' >"$work/no-dns.yaml"

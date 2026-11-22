@@ -6,6 +6,14 @@ humagen.spec). */}}
 {{- if $b.enabled }}
 {{- $name := include "humagen.browserFullname" . -}}
 {{- $port := int (include "humagen.browserPort" .) -}}
+{{- if eq $name (include "humagen.fullname" .) -}}
+{{- fail "the release's own name already ends in -browser at its full length, so the browser's objects would be the server's: shorten fullnameOverride" -}}
+{{- end -}}
+{{- $outputRaw := $b.outputMaxBytes | default 268435456 -}}
+{{- $outputMax := int64 $outputRaw -}}
+{{- if or (lt $outputMax 1048576) (gt $outputMax 1073741824) -}}
+{{- fail (printf "browser.outputMaxBytes %v is not a size for the output files: a number of bytes from 1048576 (1 MiB) to 1073741824 (1 GiB), under the pod's disk" $outputRaw) -}}
+{{- end -}}
 {{- $image := $b.image | default dict -}}
 {{- $_ := required "browser.image.repository is required with browser.enabled: build deploy/browser and push it" $image.repository -}}
 {{- $_ := required "browser.image.tag is required with browser.enabled: the image is not the chart's version" $image.tag -}}
@@ -103,7 +111,7 @@ spec:
             - name: HUMAGEN_BROWSER_MCP_PORT
               value: {{ $port | quote }}
             - name: HUMAGEN_BROWSER_OUTPUT_MAX_BYTES
-              value: {{ int64 ($b.outputMaxBytes | default 268435456) | quote }}
+              value: {{ $outputMax | quote }}
             # The names this release's pods reach the Service by. The server
             # answers a request for any other Host with 403, so a page the
             # browser opens cannot reach it by a name of its own.

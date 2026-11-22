@@ -19,7 +19,9 @@ set -eu
 #                                own. Unset, only localhost:8931, 127.0.0.1:8931
 #                                and [::1]:8931 are served. Set, the list
 #                                replaces them.
-# HUMAGEN_BROWSER_MCP_PORT       the port, 8931 when unset
+# HUMAGEN_BROWSER_MCP_PORT       the port, 8931 when unset. Set it here and
+#                                not with --port, so the keep-open client
+#                                reaches the server too
 # HUMAGEN_BROWSER_PROFILE_DIR    where the browser's profile is kept,
 #                                /home/browser/profile when unset
 # HUMAGEN_BROWSER_OUTPUT_MAX_BYTES  the most the output directory holds
@@ -41,8 +43,14 @@ fi
 # extra privileges does not have. The container is the boundary here: run it
 # as this unprivileged user, with no capabilities, and give it no route to
 # anything but the internet (docs/guides/browser.md).
-# The client that keeps the browser open. It retries until the server is up.
-node /opt/browser/anchor.mjs &
+# The client that keeps the browser open and clears its temporary files. It
+# retries until the server is up, and is started again if it ever exits.
+(
+  while :; do
+    node /opt/browser/anchor.mjs || true
+    sleep 1
+  done
+) &
 
 # --idle-timeout 0: the server would otherwise close an unused browser after
 # an hour, and the page and its session with it.

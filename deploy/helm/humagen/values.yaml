@@ -457,12 +457,15 @@ browser:
   # -- Further arguments for the Playwright MCP server, such as
   # ["--viewport-size", "1440x900"]. They come after the image's own, so
   # they win: `--allowed-hosts '*'` here turns off the check of the name the
-  # server is reached by, and `--isolated` gives each Humagen process a
-  # browser of its own. Pass neither.
+  # server is reached by, `--isolated` gives each Humagen process a browser
+  # of its own, and `--port` moves the server away from the Service and from
+  # the client that keeps the browser open (set `port` above). Pass none.
   extraArgs: []
   # Chromium is the cost: a gigabyte holds a few ordinary pages. The disk is
   # the profile, the page cache and the output files together; a pod that
-  # passes its limit is evicted, and its sign-ins go with it.
+  # passes its limit is evicted, and its sign-ins go with it. A cluster that
+  # does not account for ephemeral storage, such as a rootless kind or k3s,
+  # cannot schedule a pod that asks for it: leave both lines out there.
   resources:
     requests:
       cpu: 250m
@@ -471,9 +474,9 @@ browser:
     limits:
       memory: 2Gi
       ephemeral-storage: 2Gi
-  # -- The most downloads and capture files kept, in bytes: the oldest go
-  # first. Every snapshot and screenshot writes one, so without a bound they
-  # only grow.
+  # -- The most downloads and capture files kept, in bytes, from 1 MiB to
+  # 1 GiB: the oldest go first. Every snapshot and screenshot writes one, so
+  # without a bound they only grow.
   outputMaxBytes: 268435456
   podLabels: {}
   podAnnotations: {}

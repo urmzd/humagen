@@ -89,8 +89,10 @@ func TestBrowserImagePinsTheReviewedVersion(t *testing.T) {
 	// What the script runs, without its comments.
 	var entry string
 	for _, line := range strings.Split(read("deploy/browser/entrypoint.sh"), "\n") {
-		if !strings.HasPrefix(strings.TrimSpace(line), "#") {
-			entry += line + "\n"
+		// A whole-line comment, and one after code on a line.
+		code, _, _ := strings.Cut(line, " # ")
+		if !strings.HasPrefix(strings.TrimSpace(code), "#") {
+			entry += code + "\n"
 		}
 	}
 	// The image serves images to the model as the launcher does, and one
@@ -99,7 +101,7 @@ func TestBrowserImagePinsTheReviewedVersion(t *testing.T) {
 	if strings.Contains(entry, "--isolated") {
 		t.Fatal("deploy/browser/entrypoint.sh passes --isolated: each Humagen process would then have a browser of its own")
 	}
-	for _, flag := range []string{"--headless", "--shared-browser-context", "--idle-timeout 0", "--no-webmcp", "--image-responses allow", "anchor.mjs"} {
+	for _, flag := range []string{"--headless", "--shared-browser-context", "--idle-timeout 0", "--no-webmcp", "--image-responses allow", "node /opt/browser/anchor.mjs"} {
 		if !strings.Contains(entry, flag) {
 			t.Fatalf("deploy/browser/entrypoint.sh does not pass %s", flag)
 		}

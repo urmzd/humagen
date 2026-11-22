@@ -99,7 +99,10 @@ func TestAnUnreachableToolServerDoesNotHoldUpAClose(t *testing.T) {
 	closed := make(chan error, 1)
 	go func() { closed <- p.Close() }()
 	select {
-	case <-closed:
+	case err := <-closed:
+		if err != nil {
+			t.Fatalf("close: %v", err)
+		}
 	case <-time.After(10 * time.Second):
 		t.Fatal("Close waited on a tool server that never answered")
 	}

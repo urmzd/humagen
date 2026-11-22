@@ -213,7 +213,7 @@ func seedToolProviders(ctx context.Context, store toolprovider.Store, seeds []To
 		}
 		seed := pendingSeed{provider: rec, accept: s.Accept}
 		if err := seed.reach(ctx, store, dial, log); err != nil {
-			log.Warn("tool provider not reachable at startup; its tools stay pending until it is", "provider", rec.Name, "error", err)
+			log.Warn("tool provider did not answer at startup; its tools stay pending until it does", "provider", rec.Name, "error", err)
 			pending = append(pending, seed)
 		}
 	}
@@ -287,6 +287,11 @@ func retryToolSeeds(store toolprovider.Store, pending []pendingSeed, dial mcptoo
 				}
 				if err != nil {
 					still = append(still, s)
+					// Once the wait is at its longest: a line a minute, with
+					// why, for a server that refuses or stays away.
+					if wait >= most {
+						log.Warn("tool provider still does not answer; its tools stay pending", "provider", s.provider.Name, "error", err)
+					}
 					continue
 				}
 				log.Info("tool provider reached; its declared tools are accepted", "provider", s.provider.Name)

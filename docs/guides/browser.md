@@ -68,7 +68,7 @@ port can call any of them, with no grant and no audit record.
 | Where | How |
 |-------|-----|
 | Kubernetes | `browser.enabled: true` in the Helm chart, with `browser.image` naming the image you pushed. The chart adds the pod, a Service, a network policy and the `browser` tool server in one workspace's spec, with the thirteen tools accepted |
-| Docker Compose | `docker compose --profile browser up -d --build` in `deploy/compose`. Add the tool server from `examples/browser/humagen.yaml` to your Platform document with `endpoint: http://browser:8931/mcp` |
+| Docker Compose | `docker compose -f compose.yaml -f compose.browser.yaml up -d --build` in `deploy/compose`. Add the tool server from `examples/browser/humagen.yaml` to your Platform document with `endpoint: http://browser:8931/mcp`. Not with the development overlay, whose server is on the host's network |
 
 Then grant an agent `mcp:browser:write`. Humagen and the browser may start in
 either order: a tool server that is not up yet is asked again until it
@@ -87,8 +87,10 @@ What the image and the chart hold to:
   While everything stays in one tab, every connection sees the same page.
 - **It lasts as long as its container.** The server closes the browser when
   its last client leaves, so the image keeps a client of its own connected
-  (`anchor.mjs`), and never closes an idle browser. A restart of every
-  Humagen pod then leaves the page and the sign-ins where they were. A
+  (`anchor.mjs`), and never closes an idle browser. That client asks the
+  browser for its tabs every half minute and connects again if it gets no
+  answer. A restart of every Humagen pod then leaves the page and the
+  sign-ins where they were. A
   restart of the browser's own pod loses both: the chart keeps the profile in
   the pod and has no volume for it. With `docker run` or Compose, a volume at
   `/home/browser` keeps the profile.
@@ -101,7 +103,10 @@ What the image and the chart hold to:
 - **No way into the cluster, by a list of what to refuse.** A page an agent
   opens is not trusted. The chart's network policy lets only this release's
   server and worker pods reach the browser. It lets the browser ask the
-  cluster's DNS for names, and reach the internet on ports 80 and 443, but
+  cluster's DNS for names (`browser.networkPolicy.dns`: the pods of
+  `kube-system`, and the node-local and metadata resolvers, on port 53; name
+  your own where DNS is elsewhere, such as OpenShift's `openshift-dns` on
+  5353), and reach the internet on ports 80 and 443, but
   for the private, link-local, shared and reserved ranges and the addresses
   clouds serve metadata on. If your cluster's pods, services or nodes have
   addresses outside those ranges, add them to
@@ -111,9 +116,13 @@ What the image and the chart hold to:
 - **Under Compose, a network of its own.** The browser shares a network with
   the server only, not with Postgres or MinIO. The server's API is within its
   reach.
-- **Bounded output.** Every snapshot and screenshot writes a file. The oldest
-  go when the directory passes `HUMAGEN_BROWSER_OUTPUT_MAX_BYTES`, 256 MiB
-  unless set, so the files cannot fill the pod's disk and evict it.
+- **Bounded files.** Every snapshot and screenshot writes a file. The oldest
+  go when the output directory passes `HUMAGEN_BROWSER_OUTPUT_MAX_BYTES`,
+  256 MiB unless set. The browser also keeps a temporary copy of each
+  download until it closes, which here is never, so the image removes those
+  when they are ten minutes old. The chart bounds the pod's disk at 2Gi: a
+  pod that passes it is evicted, and its sign-ins go with it. One download
+  larger than that still does it.
 - **Chromium runs without its own sandbox.** A container without extra
   privileges has no user namespaces for it. The container is the boundary:
   read-only, no capabilities, no privilege escalation.
