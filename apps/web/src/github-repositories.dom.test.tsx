@@ -239,3 +239,44 @@ test("someone who may not change apps reads a repository's settings without cont
     net.restore();
   }
 });
+
+test("a repository another app keeps to its own runs says which, and the list says so too", async () => {
+  const kept = repo("acme/infra", { cross_surface_reads: false, kept_by: ["GitHub Two"] });
+  const net = stubFetch({
+    "GET /api/clients/gh/repositories": () => ({
+      repositories: [kept],
+      defaults: { auto_review: off },
+      listed: true,
+    }),
+    "GET /api/clients/gh/repositories/acme/infra": () => kept,
+    "GET /api/clients": () => ({
+      clients: [{ id: "gh", name: "GitHub", surface: "github", agents: ["*"] }],
+      caps: { max: 10, max_per_surface: 10 },
+    }),
+    "GET /api/agents": () => ({ agents: [] }),
+  });
+  try {
+    render(
+      <WebSurface>
+        <GitHubRepositories client="gh" canWrite onNavigate={() => {}} />
+      </WebSurface>,
+    );
+    const table = await screen.findByRole("table", { name: words.title });
+    assert.ok(within(table).getByText(words.ownRuns));
+    cleanup();
+    render(
+      <WebSurface>
+        <GitHubRepositories client="gh" repo="acme/infra" canWrite onNavigate={() => {}} />
+      </WebSurface>,
+    );
+    await screen.findByRole("form", { name: "acme/infra" });
+    await screen.findByText(words.form.keptBy(["GitHub Two"]));
+    // This app's own switch shows its own setting, which is on.
+    const own = screen.getByLabelText(
+      new RegExp(`^${words.form.crossSurface}`),
+    ) as HTMLInputElement;
+    assert.equal(own.checked, true);
+  } finally {
+    net.restore();
+  }
+});

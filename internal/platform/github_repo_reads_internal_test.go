@@ -68,3 +68,51 @@ func TestEachReadGetsItsOwnNonce(t *testing.T) {
 		t.Fatalf("nonces %q and %q", a, b)
 	}
 }
+
+// When the budget cuts what was read, it never cuts inside a code fence:
+// every fence opened in the data is closed, and the note that says the data
+// was shortened, and the block's closing marker, are outside every fence.
+func TestACutByTheBudgetClosesItsFence(t *testing.T) {
+	const nonce = "0123456789abcdef01234567"
+	fake := github.NewFake()
+	pull := github.Context{Subject: github.ContextSubject{Number: 7, Title: "Large change", State: "open", Body: "A large change."}}
+	pull.Subject.Head.SHA = strings.Repeat("b", 40)
+	for i := range 12 {
+		// Each patch is near repoReadPatch, so the budget runs out inside one.
+		pull.Files = append(pull.Files, github.ContextFile{
+			Filename: "file" + strings.Repeat("x", i) + ".go", Status: "modified",
+			Patch: "@@ -1 +1 @@\n" + strings.Repeat("+line with ``` inside\n", repoReadPatch/22),
+		})
+	}
+	if err := fake.SeedContext(github.Ref{Owner: "acme", Repo: "site", Number: 7}, pull); err != nil {
+		t.Fatal(err)
+	}
+	text := repoReadsWith(context.Background(), fake, reposettings.Settings{Reads: []string{reposettings.ReadPullDiff}}, "acme/site", "pull", 7, nonce)
+	_, rest, _ := strings.Cut(text, "\n<github-data id=\""+nonce+"\">\n")
+	data, tail, ok := strings.Cut(rest, "\n</github-data id=\""+nonce+"\">")
+	if !ok || tail != "" {
+		t.Fatalf("the block does not end at its own marker:\n%s", text[max(0, len(text)-400):])
+	}
+	if !strings.HasSuffix(data, "\n(What was read passed its budget and was shortened.)") {
+		t.Fatalf("the data was not cut, or the note is missing:\n%s", data[max(0, len(data)-400):])
+	}
+	open := ""
+	for _, line := range strings.Split(data, "\n") {
+		run := len(line) - len(strings.TrimLeft(line, "`"))
+		switch {
+		case open == "" && run >= 3:
+			open = line[:run]
+		case open != "" && line == open:
+			open = ""
+		}
+		if strings.HasPrefix(line, "(What was read passed its budget") && open != "" {
+			t.Fatalf("the note is inside a fence opened by %q", open)
+		}
+	}
+	if open != "" {
+		t.Fatalf("the data ends inside a fence opened by %q:\n%s", open, data[max(0, len(data)-400):])
+	}
+	if n := len([]rune(data)); n > repoReadBudget+100 {
+		t.Fatalf("the data is %d characters, past the budget", n)
+	}
+}

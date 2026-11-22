@@ -151,6 +151,8 @@ export const defaultCopy = {
       readIssues: "Issues it links in this repository",
       crossSurface: "Readable from other surfaces",
       crossSurfaceHint: "Off keeps this repository to runs on its own issues and pull requests.",
+      keptBy: (apps: string[]) =>
+        `${apps.join(", ")} keeps this repository to runs on its own issues and pull requests, for the whole workspace, whatever is set here.`,
       save: "Save",
       saving: "Saving…",
       reset: "Use App Defaults",

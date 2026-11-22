@@ -19244,7 +19244,11 @@ components:
         installed: {type: boolean, description: The client's GitHub App installation covers it.}
         auto_review: {$ref: '#/components/schemas/GitHubRepoAutoReview'}
         agent: {type: string, description: The agent that answers here, the repository's or the client's default.}
-        cross_surface_reads: {type: boolean, description: "Runs other than the repository's own, and the console, may read it."}
+        cross_surface_reads: {type: boolean, description: "Runs other than the repository's own, and the console, may read it, in the whole workspace: false when any GitHub client keeps it to its own runs."}
+        kept_by:
+          type: array
+          description: The names of the GitHub clients that keep the repository to its own runs, this one among them when it does.
+          items: {type: string}
     GitHubRepositoryDefaults:
       type: object
       description: What a repository with no settings follows, from the client (and so from the environment for a client the environment configures).

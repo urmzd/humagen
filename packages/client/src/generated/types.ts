@@ -4873,8 +4873,10 @@ export interface GitHubRepository {
   auto_review: GitHubRepoAutoReview;
   /** The agent that answers here */
   agent?: string;
-  /** Runs other than the repository's own, and the console, may read it. */
+  /** Runs other than the repository's own, and the console, may read it, in the whole workspace: false when any GitHub client keeps it to its own runs. */
   cross_surface_reads: boolean;
+  /** The names of the GitHub clients that keep the repository to its own runs, this one among them when it does. */
+  kept_by?: string[];
 }
 
 /** What a repository with no settings follows, from the client (and so from the environment for a client the environment configures). */

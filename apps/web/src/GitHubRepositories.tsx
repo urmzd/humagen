@@ -243,7 +243,8 @@ function RepositorySettings({
     setAgent(s?.agent ?? "");
     setInstructions(s?.instructions ?? "");
     setReads(s?.reads ?? []);
-    setCrossSurface(v.cross_surface_reads);
+    // This app's own setting; whether the workspace keeps it is kept_by.
+    setCrossSurface(s?.cross_surface_reads !== false);
   };
   const load = useCallback(() => {
     setProblem(null);
@@ -312,6 +313,9 @@ function RepositorySettings({
     void act(() => repos.reset(client, repo, view.version), words.form.wasReset);
   };
   const choices = routable(app, agents);
+  // Other apps that keep this repository to its own runs: then it is kept in
+  // the whole workspace, whatever this app's switch says.
+  const others = (view?.kept_by ?? []).filter((name) => name !== app?.name);
   const appReview = defaults ? words.review[reviewOf(defaults.auto_review)] : "…";
   const appAgent = defaults ? agentWords(defaults.agent) : "…";
   const toggleRead = (read: string, on: boolean) =>
@@ -407,7 +411,7 @@ function RepositorySettings({
             <div className={card}>
               <Switch
                 label={words.form.crossSurface}
-                hint={words.form.crossSurfaceHint}
+                hint={others.length > 0 ? words.form.keptBy(others) : words.form.crossSurfaceHint}
                 checked={crossSurface}
                 onChange={setCrossSurface}
               />

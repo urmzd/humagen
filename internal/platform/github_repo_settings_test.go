@@ -310,13 +310,27 @@ func TestARepositoryKeptToItsOwnRunsByOneClientIsKeptByEvery(t *testing.T) {
 	if _, err := p.StartSession(t.Context(), admin, platform.SessionInput{Project: "~", Text: "look", Repos: []string{"partner/tools"}}); !errors.Is(err, threads.ErrInvalid) {
 		t.Fatalf("a session chose it through the other client: %v", err)
 	}
-	// What the first client's list says of it shows the workspace's answer
-	// only where its own settings say so: it is the second client's setting.
-	list, err := p.GitHubRepositories(t.Context(), tenant, "gh-partner")
-	if err != nil {
-		t.Fatal(err)
+	// Both clients' lists show the workspace's answer and the client that
+	// keeps it, the one that does not keep it too, with no setting of its own.
+	for _, id := range []string{"gh-partner", "gh"} {
+		list, err := p.GitHubRepositories(t.Context(), tenant, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		i := slices.IndexFunc(list.Repositories, func(r platform.GitHubRepository) bool { return r.Repository == "partner/tools" })
+		if i < 0 || list.Repositories[i].CrossSurfaceReads || !slices.Equal(list.Repositories[i].KeptBy, []string{"gh-partner"}) {
+			t.Fatalf("%s lists partner/tools as %+v", id, list.Repositories)
+		}
+		if id == "gh" && list.Repositories[i].Settings != nil {
+			t.Fatalf("gh has settings of its own for partner/tools: %+v", list.Repositories[i].Settings)
+		}
 	}
-	if i := slices.IndexFunc(list.Repositories, func(r platform.GitHubRepository) bool { return r.Repository == "partner/tools" }); i < 0 || list.Repositories[i].CrossSurfaceReads {
-		t.Fatalf("partner/tools is listed as %+v", list.Repositories)
+	one, err := p.GitHubRepository(t.Context(), tenant, "gh", "partner/tools")
+	if err != nil || one.CrossSurfaceReads || !slices.Equal(one.KeptBy, []string{"gh-partner"}) {
+		t.Fatalf("gh reads partner/tools as %+v, %v", one, err)
+	}
+	// A repository nobody keeps reads as readable, with nobody named.
+	if api, err := p.GitHubRepository(t.Context(), tenant, "gh", "acme/api"); err != nil || !api.CrossSurfaceReads || len(api.KeptBy) != 0 {
+		t.Fatalf("acme/api reads as %+v, %v", api, err)
 	}
 }

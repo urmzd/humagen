@@ -99,7 +99,7 @@ func (p *Platform) tenantRepos(ctx context.Context, tenant string) []string {
 	}
 	for i, st := range seats {
 		offer := func(r string) {
-			if !kept[strings.ToLower(strings.TrimSpace(r))] {
+			if len(kept[strings.ToLower(strings.TrimSpace(r))]) == 0 {
 				add(r)
 			}
 		}
