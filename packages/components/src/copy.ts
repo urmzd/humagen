@@ -2067,8 +2067,6 @@ export const defaultCopy = {
     stepNeedsYou: "waiting for you",
     openProfile: "Open its profile to see how it is set up",
     stepFailed: (count: number) => `${count} failed`,
-    /** Over calls to other agents that ran at the same time. */
-    callsTogether: (n: number) => `${n} agents at the same time`,
     /**
      * A run of tool calls between two parts of an answer, as one line, and
      * each call in it as a row. `one` names what a lone call was pointed at;
