@@ -128,7 +128,13 @@ func (p *Platform) ownPrivateConversation(req runtime.Request) (runs.Run, string
 		return runs.Run{}, "", knowledge.ProviderError{Cause: knowledge.AuthExpired}
 	}
 	thread, err := p.Threads.Get(req.Tenant, run.Thread)
-	if err != nil || thread.Visibility != threads.Private || thread.Surface != nil {
+	if err != nil || thread.Visibility != threads.Private {
+		return runs.Run{}, "", fmt.Errorf("%w: live results require your own private conversation", knowledge.ErrInvalid)
+	}
+	// A session in a tree a surface started answers on that surface, a
+	// child session that copied its root's people too: it is not the
+	// person's own private conversation.
+	if sf, ok := p.treeSurface(req.Tenant, run.Thread); !ok || sf != nil {
 		return runs.Run{}, "", fmt.Errorf("%w: live results require your own private conversation", knowledge.ErrInvalid)
 	}
 	own := false

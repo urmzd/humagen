@@ -15,6 +15,7 @@ const (
 	consoleRoot = "s_cccccccccccccccccccccccccccccccc"
 	namedRoot   = "s_dddddddddddddddddddddddddddddddd"
 	plainThread = "th-eeeeeeeeeeeeeeee"
+	rootTS      = "1700000000.000100"
 )
 
 // Only a session the Slack thread itself started may answer in that Slack
@@ -36,7 +37,7 @@ func TestOnlyTheSlackThreadsOwnPrivateSessionAnswersThere(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	put(threads.Thread{ID: slackRoot, Surface: &threads.Surface{Client: "app", Channel: "C0PUBLIC", TS: "1700000000.000100"}, Session: &threads.SessionIdentity{Agent: "lead", Parent: "slack://T0/C0PUBLIC/1700000000.000100"}})
+	put(threads.Thread{ID: slackRoot, Surface: &threads.Surface{Client: "app", Channel: "C0PUBLIC", TS: rootTS}, Session: &threads.SessionIdentity{Agent: "lead", Parent: "slack://T0/C0PUBLIC/1700000000.000100"}})
 	put(threads.Thread{ID: slackChild, Session: &threads.SessionIdentity{Agent: "lead", Parent: slackRoot}})
 	put(threads.Thread{ID: consoleRoot, Session: &threads.SessionIdentity{Agent: "lead", Parent: "console:ada"}})
 	put(threads.Thread{ID: namedRoot, Session: &threads.SessionIdentity{Agent: "lead", Parent: "slack://T0/C0PUBLIC/1700000000.000100"}})
@@ -44,21 +45,24 @@ func TestOnlyTheSlackThreadsOwnPrivateSessionAnswersThere(t *testing.T) {
 	for _, tc := range []struct {
 		client          clients.Client
 		thread, channel string
+		ts              string
 		want            bool
 	}{
-		{c, slackRoot, "C0PUBLIC", true},
-		{c, slackChild, "C0PUBLIC", true},
-		{c, slackRoot, "C0OTHER", false},
-		{c, slackChild, "G0OTHER", false},
-		{clients.Client{ID: "other", Tenant: "acme", Surface: clients.Slack, Enabled: true}, slackRoot, "C0PUBLIC", false},
-		{c, consoleRoot, "C0PUBLIC", false},
-		{c, namedRoot, "C0PUBLIC", false},
-		{c, plainThread, "C0PUBLIC", false},
+		{c, slackRoot, "C0PUBLIC", rootTS, true},
+		{c, slackChild, "C0PUBLIC", rootTS, true},
+		{c, slackRoot, "C0PUBLIC", "1700000000.000900", false},
+		{c, slackRoot, "C0PUBLIC", "", false},
+		{c, slackRoot, "C0OTHER", rootTS, false},
+		{c, slackChild, "G0OTHER", rootTS, false},
+		{clients.Client{ID: "other", Tenant: "acme", Surface: clients.Slack, Enabled: true}, slackRoot, "C0PUBLIC", rootTS, false},
+		{c, consoleRoot, "C0PUBLIC", rootTS, false},
+		{c, namedRoot, "C0PUBLIC", rootTS, false},
+		{c, plainThread, "C0PUBLIC", rootTS, false},
 	} {
 		r := run
 		r.Thread = tc.thread
-		if got := p.bridgeMayDeliver(t.Context(), tc.client, tc.channel, r); got != tc.want {
-			t.Errorf("%s's run through %s to %s = %v, want %v", tc.thread, tc.client.ID, tc.channel, got, tc.want)
+		if got := p.bridgeMayDeliver(t.Context(), tc.client, tc.channel, tc.ts, r); got != tc.want {
+			t.Errorf("%s's run through %s to %s/%q = %v, want %v", tc.thread, tc.client.ID, tc.channel, tc.ts, got, tc.want)
 		}
 	}
 }

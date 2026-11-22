@@ -1,6 +1,7 @@
 package platform_test
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -37,7 +38,7 @@ func TestBridgeDeliveryRechecksPolicyDirectionAndPrivateContext(t *testing.T) {
 	host := auth.Principal{Kind: auth.Machine, Tenant: tenant, Subject: "bridge-host", Scopes: []auth.Permission{auth.RunsRead, auth.ProjectsRead, auth.ClientsRead}}
 	check := func(want bool) {
 		t.Helper()
-		got, err := p.BridgeDeliveryAllowed(t.Context(), host, c.ID, "C01", run.ID)
+		got, err := p.BridgeDeliveryAllowed(t.Context(), host, c.ID, "C01", "", run.ID)
 		if err != nil || got != want {
 			t.Fatalf("delivery=%v want%v err%v", got, want, err)
 		}
@@ -83,9 +84,9 @@ func TestBridgeDeliveryRechecksPolicyDirectionAndPrivateContext(t *testing.T) {
 // no Slack conversation at all.
 func TestASlackThreadsOwnSessionIsDeliveredWhereItWasAsked(t *testing.T) {
 	p, machine := slackRoom(t, nil)
-	deliverable := func(t *testing.T, channel, run string) bool {
+	deliverable := func(t *testing.T, channel, ts, run string) bool {
 		t.Helper()
-		got, err := p.BridgeDeliveryAllowed(t.Context(), machine, "app", channel, run)
+		got, err := p.BridgeDeliveryAllowed(t.Context(), machine, "app", channel, ts, run)
 		if err != nil {
 			t.Fatalf("delivery of %s to %s: %v", run, channel, err)
 		}
@@ -106,9 +107,10 @@ func TestASlackThreadsOwnSessionIsDeliveredWhereItWasAsked(t *testing.T) {
 		{"direct message", "D0ANA", platform.ChannelDM, nil, threads.Private},
 	}
 	started := map[string]string{}
-	for i, pl := range places {
+	const ts, otherTS = "1700000000.000100", "1700000000.000900"
+	for _, pl := range places {
 		t.Run(pl.name, func(t *testing.T) {
-			in := slackSession(pl.channel, "1700000000.00010"+string(rune('0'+i)), "", "<@UAPP> howdy")
+			in := slackSession(pl.channel, ts, "", "<@UAPP> howdy")
 			if pl.typ != "" {
 				in = withAudience(in, pl.typ, pl.members...)
 			}
@@ -121,14 +123,19 @@ func TestASlackThreadsOwnSessionIsDeliveredWhereItWasAsked(t *testing.T) {
 			}
 			run := await(t, p, sessionRun(t, v).ID, runs.Completed)
 			started[pl.channel] = run.ID
-			if !deliverable(t, pl.channel, run.ID) {
+			if !deliverable(t, pl.channel, ts, run.ID) {
 				t.Fatalf("the answer of the session %s started is refused there", pl.channel)
+			}
+			if pl.vis == threads.Private && !strings.HasPrefix(pl.channel, "D") {
+				if deliverable(t, pl.channel, otherTS, run.ID) || deliverable(t, pl.channel, "", run.ID) {
+					t.Fatalf("the private session a thread of %s started is delivered to another thread there", pl.channel)
+				}
 			}
 		})
 	}
 	// A private Slack session answers only in its own conversation.
 	for _, from := range []string{"C0PUBLIC", "C0PRIVATE", "G0PRIVATE", "C0GROUP", "G0GROUP"} {
-		if deliverable(t, "C0SHARED", started[from]) {
+		if deliverable(t, "C0SHARED", ts, started[from]) {
 			t.Fatalf("the private session %s started is delivered to another channel", from)
 		}
 	}
@@ -140,7 +147,7 @@ func TestASlackThreadsOwnSessionIsDeliveredWhereItWasAsked(t *testing.T) {
 	}
 	console := await(t, p, posted.Runs[0].ID, runs.Completed)
 	for _, channel := range []string{"C0PUBLIC", "C0SHARED", "C0PRIVATE", "G0GROUP"} {
-		got, err := p.BridgeDeliveryAllowed(t.Context(), machine, "app", channel, console.ID)
+		got, err := p.BridgeDeliveryAllowed(t.Context(), machine, "app", channel, ts, console.ID)
 		if err == nil && got {
 			t.Fatalf("a private console session's run is delivered to %s", channel)
 		}

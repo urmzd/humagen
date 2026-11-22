@@ -1042,11 +1042,14 @@ often it is sent. The one agent a message mentions answers it in the root; a
 message naming nobody is the entry agent's.
 The request may not say where to file the session or who owns it. A Slack
 thread that started as a conversation before root sessions stays one (409).
-A root session's runs may be posted back to the Slack conversation that
-started it, whatever its audience: a private session started there answers
-there, in a channel, a group direct message or a direct message
-(`bridgeMayDeliver`, `startedIn`). A private session in any other Slack
-channel, or one started anywhere but the client's own surface, is refused.
+A root session's runs may be posted back to the Slack thread that started
+it, whatever its audience: a private session started there answers there, in
+a channel, a group direct message or a direct message (`bridgeMayDeliver`,
+`startedIn`). The same holds for every child in its tree. A private session in
+any other Slack thread, or one started anywhere but the client's own surface,
+is refused. No session in such a tree is a person's own private conversation
+(`ownPrivateConversation`, `treeSurface`), so a person's own credentials,
+connection status and consent links stay out of all of them.
 
 ### The dynamic router
 

@@ -558,7 +558,7 @@ export class FakeHumagen implements Humagen {
     return m as WireMessage;
   }
 
-  async deliveryAllowed(_client: string, _channel: string, _run: string) {
+  async deliveryAllowed(_client: string, _channel: string, _run: string, _ts?: string) {
     return true;
   }
   async bindings(client: string) {
