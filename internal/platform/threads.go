@@ -2005,7 +2005,8 @@ func (p *Platform) UpdateThread(ctx context.Context, who auth.Principal, id stri
 		return threads.Thread{}, fmt.Errorf("%w: %q is at version %d, not %d", threads.ErrVersion, id, th.Version, in.Version)
 	}
 	if moves {
-		if th.Visibility != threads.Private || cmp.Or(in.Visibility, th.Visibility) != threads.Private || th.Surface != nil {
+		// A session in a tree a surface started stays with that surface.
+		if sf, ok := p.treeSurface(who.Tenant, th.ID); th.Visibility != threads.Private || cmp.Or(in.Visibility, th.Visibility) != threads.Private || !ok || sf != nil {
 			return threads.Thread{}, fmt.Errorf("%w: only a private conversation moves here; Share moves one as it shares it", threads.ErrInvalid)
 		}
 		// As for a share, only a participant moves it: one who governs the

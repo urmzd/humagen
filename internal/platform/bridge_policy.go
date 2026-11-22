@@ -128,19 +128,28 @@ func (p *Platform) startedIn(c clients.Client, channel, ts, thread string) bool 
 // could not be read or the tree nests too deep, which a caller treats as
 // not knowing.
 func (p *Platform) treeSurface(tenant, thread string) (*threads.Surface, bool) {
+	root, ok := p.surfaceRoot(tenant, thread)
+	return root.Surface, ok
+}
+
+// surfaceRoot is the conversation that carries the surface of the session
+// tree thread is in (treeSurface), or the zero thread when no surface
+// started the tree. A session in that tree reaches whom that surface
+// reaches: it answers there.
+func (p *Platform) surfaceRoot(tenant, thread string) (threads.Thread, bool) {
 	id := thread
 	for range 64 {
 		th, err := p.Threads.Get(tenant, id)
 		if err != nil {
-			return nil, false
+			return threads.Thread{}, false
 		}
 		if th.Surface != nil {
-			return th.Surface, true
+			return th, true
 		}
 		if th.Session == nil || !strings.HasPrefix(th.Session.Parent, "s_") {
-			return nil, true
+			return threads.Thread{}, true
 		}
 		id = th.Session.Parent
 	}
-	return nil, false
+	return threads.Thread{}, false
 }

@@ -1,9 +1,12 @@
 package platform
 
 import (
+	"errors"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/threads"
@@ -64,5 +67,22 @@ func TestOnlyTheSlackThreadsOwnPrivateSessionAnswersThere(t *testing.T) {
 		if got := p.bridgeMayDeliver(t.Context(), tc.client, tc.channel, tc.ts, r); got != tc.want {
 			t.Errorf("%s's run through %s to %s/%q = %v, want %v", tc.thread, tc.client.ID, tc.channel, tc.ts, got, tc.want)
 		}
+	}
+	// A session in the Slack thread's tree stays with that thread: none is
+	// published or moved into a project as a console conversation would be.
+	ada := auth.Principal{Kind: auth.User, Tenant: "acme", Subject: "ada", Roles: []auth.Role{auth.Admin}}
+	for _, id := range []string{slackRoot, slackChild} {
+		th, err := p.Threads.Get("acme", id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := p.previewPlacement(t.Context(), ada, th, "Field", projects.General); !errors.Is(err, threads.ErrInvalid) || !strings.Contains(err.Error(), "stays on its surface") {
+			t.Errorf("publishing %s = %v, want it to stay on its surface", id, err)
+		}
+	}
+	if th, err := p.Threads.Get("acme", consoleRoot); err != nil {
+		t.Fatal(err)
+	} else if _, err := p.previewPlacement(t.Context(), ada, th, "Field", projects.General); err != nil && strings.Contains(err.Error(), "stays on its surface") {
+		t.Errorf("a console session is held to a surface: %v", err)
 	}
 }

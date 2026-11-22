@@ -248,7 +248,9 @@ the tree is the person's own private conversation, so tools that use a person's
 own credential or show their connection status and consent links
 (`list_connections`, `connect_connection`, `catalog_query`, a person's own
 `catalog_search` entries) refuse in all of them. Ask for those in a private
-console session of your own.
+console session of your own. Corpora are read for the Slack thread's
+audience in every session of the tree, and no session of the tree is published
+or moved into a project.
 
 The platform reads Slack's text in the one tag grammar: the app's own mention
 is not a tag, a bot in `client.bots` is its agent, a person in `slack.people`

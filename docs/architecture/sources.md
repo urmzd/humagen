@@ -426,6 +426,10 @@ channels):
 - A Slack conversation's audience is what the Slack app last reported with a
   message (`ReportedAudience`: kind, members as people, unmapped members),
   read through the session API (`Platform.audienceSource`).
+- A session in a tree a Slack thread started has that Slack thread's
+  audience, whatever its own record says. A child an agent hands work to, or
+  one a person opens under the root in the console, copies the root's people
+  but answers in the same Slack thread (`surfaceRoot`).
 - A direct answer marks its run private, so nothing it read goes into shared
   agent memory or out to another place.
 - Every read of a confidential or restricted corpus is audited (`corpus.read`,
