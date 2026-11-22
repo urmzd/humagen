@@ -36,8 +36,13 @@ func mentionAt(id, agent, at, login string) event.Envelope {
 // monalisa to mona.
 func githubSessionRoom(t *testing.T) (*platform.Platform, *raiser) {
 	t.Helper()
-	p, r, _ := githubRoom(t, platform.Backends{}, func(in *platform.ClientInput) {
+	p, r, said := githubRoomWith(t, platform.Backends{}, func(in *platform.ClientInput) {
 		in.GitHub.People = map[string]string{"octocat": "ana", "monalisa": "mona"}
+	}, func(cfg *platform.Config) { cfg.Policy = operators(t, "ana", "mona") })
+	t.Cleanup(func() {
+		if t.Failed() {
+			t.Log(said.String())
+		}
 	})
 	return p, r
 }
@@ -164,17 +169,18 @@ func TestAnUnmappedGitHubLoginAddsNobodyToTheSession(t *testing.T) {
 	}
 }
 
-// Through the real connector: a comment mentioning the app on a pull
-// request is filed in its session, titled as GitHub titles it, and its
-// answer goes back to the pull request as before.
+// Through the real connector: a comment mentioning the app on an issue is
+// filed in the issue's session, titled as GitHub titles the issue.
 func TestAGitHubCommentThroughTheConnectorOpensItsSession(t *testing.T) {
-	p := stage(t, &cast{says: map[string][][]saigetypes.Delta{"reviewer": {say("Looked.")}}}, (&fakes{}).config())
+	cfg := (&fakes{}).config()
+	cfg.Policy = operators(t, "ana")
+	p := stage(t, &cast{says: map[string][][]saigetypes.Delta{"reviewer": {say("Looked.")}}}, cfg)
 	create(t, p, tenant, platform.ClientInput{
 		Client: clients.Client{ID: "gh", Name: "GitHub", Surface: clients.GitHub, Enabled: true, Identity: clients.Identity{Owners: []string{"acme"}, Installation: "101"}, DefaultAgent: "reviewer", GitHub: &clients.GitHubOptions{Login: "humagen[bot]", People: map[string]string{"octocat": "ana"}}},
 		Token:  clients.SecretInput{Value: "token-gh"}, SigningSecret: clients.SecretInput{Value: "secret-gh"},
 	})
 	body := `{"action":"created","installation":{"id":101},"repository":{"full_name":"acme/repo","name":"repo","owner":{"login":"acme"}},` +
-		`"sender":{"login":"octocat","type":"User"},"issue":{"number":7,"title":"Fix the build","pull_request":{"url":"https://api.github.com/repos/acme/repo/pulls/7"}},` +
+		`"sender":{"login":"octocat","type":"User"},"issue":{"number":7,"title":"Fix the build"},` +
 		`"comment":{"id":91,"body":"@humagen review this","user":{"login":"octocat"},"author_association":"MEMBER"}}`
 	mac := hmac.New(sha256.New, []byte("secret-gh"))
 	mac.Write([]byte(body))
@@ -192,7 +198,7 @@ func TestAGitHubCommentThroughTheConnectorOpensItsSession(t *testing.T) {
 	if err != nil || th.Session == nil {
 		t.Fatalf("the comment's run is in %q: %v", run.Thread, err)
 	}
-	if th.Session.Parent != "github://acme/repo/pull/7" || th.Title != "Fix the build" || th.CreatedBy != "ana" || th.Visibility != threads.Private {
+	if th.Session.Parent != "github://acme/repo/issues/7" || th.Title != "Fix the build" || th.CreatedBy != "ana" || th.Visibility != threads.Private {
 		t.Fatalf("the comment's session = %+v titled %q by %q, %s", th.Session, th.Title, th.CreatedBy, th.Visibility)
 	}
 }
