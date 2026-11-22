@@ -1,3 +1,4 @@
+import { BOT_AVATAR_OVERSCAN, BOT_AVATAR_RISE, drawBotAvatarFrame, restPose } from "bot-avatars";
 import {
   type CSSProperties,
   type ReactNode,
@@ -218,7 +219,101 @@ function shapeMarkup(shape: Shape, cy: number, fill: string) {
     : `<rect x="${CX - shape.w / 2}" y="${cy - shape.h / 2}" width="${shape.w}" height="${shape.h}" rx="20" fill="${fill}"/>`;
 }
 
-type Fur = Partial<Record<keyof typeof BOX, string>>;
+/**
+ * The body and limbs in the same 3D plush the old bots had: bot-avatars
+ * builds a height field from the outline, lights it with a matcap and grows
+ * its fur along the slope. Its canvas is 1.5 boxes wide, with the shape's
+ * centre (design 50,50) at the middle and RISE of a box below it; a part is
+ * placed so that centre lands where `at` says, in this grid's units.
+ */
+const SPAN = 100 * BOT_AVATAR_OVERSCAN;
+function fabricPlace(at: [number, number]): [number, number, number, number] {
+  return [at[0] - SPAN / 2, at[1] - SPAN / 2 - BOT_AVATAR_RISE * 100, SPAN, SPAN];
+}
+
+/** A CSS colour as #rrggbb, which the renderer reads (it does not read oklch). */
+function hexOf(color: string): string {
+  const c = document.createElement("canvas");
+  c.width = c.height = 1;
+  const ctx = c.getContext("2d");
+  if (!ctx) return "#888888";
+  ctx.fillStyle = color;
+  ctx.fillRect(0, 0, 1, 1);
+  const [r = 0, g = 0, b = 0] = ctx.getImageData(0, 0, 1, 1).data;
+  return `#${[r, g, b].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
+}
+
+const fabrics = new Map<string, Promise<string>>();
+
+function bakeFabric(key: string, path: () => Path2D, color: string, unit: number) {
+  const hit = fabrics.get(key);
+  if (hit) return hit;
+  const box = Math.max(24, Math.round(100 * unit));
+  const side = Math.round(box * BOT_AVATAR_OVERSCAN);
+  const theme =
+    document.documentElement.dataset.theme === "light" ||
+    (!document.documentElement.dataset.theme &&
+      window.matchMedia?.("(prefers-color-scheme: light)").matches)
+      ? "light"
+      : "dark";
+  const made = new Promise<string>((resolve) => {
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = side;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return resolve("");
+    const draw = () => {
+      ctx.clearRect(0, 0, side, side);
+      drawBotAvatarFrame(ctx, box, restPose("default"), {
+        path: path(),
+        face: "eyes",
+        faceX: 50,
+        faceY: 50,
+        faceScale: 0,
+        color,
+        ink: "#111111",
+        shading: "fabric",
+        still: true,
+        typeKey: key,
+        theme,
+        dpr: 1,
+      });
+    };
+    draw();
+    // The pile is grown on idle time; draw again once it has landed.
+    setTimeout(() => {
+      draw();
+      resolve(canvas.toDataURL("image/png"));
+    }, 350);
+  });
+  fabrics.set(key, made);
+  return made;
+}
+
+function bodyPath(shape: Shape, cy: number) {
+  // Design units: the body's centre at 50,50, the feet below it as one form.
+  const p = new Path2D();
+  if (shape.kind === "oval") p.ellipse(50, 50, shape.rx, shape.ry, 0, 0, Math.PI * 2);
+  else p.roundRect(50 - shape.w / 2, 50 - shape.h / 2, shape.w, shape.h, 20);
+  const fy = 50 + (BASE + 3 - cy);
+  p.ellipse(50 - 11, fy, 8, 4.5, 0, 0, Math.PI * 2);
+  p.ellipse(50 + 11, fy, 8, 4.5, 0, 0, Math.PI * 2);
+  return p;
+}
+
+function limbPath(len: number, width: number, hand: boolean) {
+  // A capsule along x, centred at 50,50; the forearm's ends in a mitt with a thumb.
+  const p = new Path2D();
+  p.roundRect(50 - len / 2 - width / 2, 50 - width / 2, len + width, width, width / 2);
+  if (hand) {
+    p.moveTo(50 + len / 2 + 6.6, 50);
+    p.ellipse(50 + len / 2, 50, 6.6, 6.6, 0, 0, Math.PI * 2);
+    p.moveTo(50 + len / 2 - 2 + 2.7, 50 - 5.2);
+    p.ellipse(50 + len / 2 - 2, 50 - 5.2, 2.7, 2.3, 0, 0, Math.PI * 2);
+  }
+  return p;
+}
+
+type Fur = Partial<Record<keyof typeof BOX, string>> & { cloth?: boolean };
 
 /** The furry parts as images, once the ink is known; none until they are drawn. */
 function useFur(
@@ -251,16 +346,32 @@ function useFur(
       fore: limbMarkup({ len: FORE, width: 10.4, limb, hand: true, fade: [-5, 1.5], sleeve }),
     };
     let live = true;
-    for (const name of Object.keys(parts) as (keyof typeof BOX)[])
-      bake(`${name}|${k}`, BOX[name], parts[name], px).then(
-        (url) => live && setFur((f) => ({ ...f, [name]: url })),
-        () => {},
+    const keep = (name: keyof typeof BOX) => (url: string) =>
+      live && url && setFur((f) => ({ ...f, [name]: url }));
+    const unit = Math.min(8, Math.max(1.5, (size / 80) * (window.devicePixelRatio || 1)));
+    const hex = hexOf(ink);
+    const limbHex = hexOf(`color-mix(in oklab, ${ink} 90%, black)`);
+    const fk = `${hex}|${JSON.stringify(shape)}|${unit.toFixed(2)}`;
+    bakeFabric(`body|${fk}`, () => bodyPath(shape, cy), hex, unit).then(keep("body"));
+    if (sleeve)
+      for (const name of ["upper", "fore"] as const)
+        bake(`${name}|${k}`, BOX[name], parts[name], px).then(keep(name), () => {});
+    else {
+      bakeFabric(
+        `upper|${limbHex}|${unit}`,
+        () => limbPath(UPPER, 11.5, false),
+        limbHex,
+        unit,
+      ).then(keep("upper"));
+      bakeFabric(`fore|${limbHex}|${unit}`, () => limbPath(FORE, 10.4, true), limbHex, unit).then(
+        keep("fore"),
       );
+    }
     return () => {
       live = false;
     };
   }, [ink, shape, cy, size, sleeve]);
-  return fur;
+  return sleeve ? { ...fur, cloth: true } : fur;
 }
 
 function FurImage({ url, box }: { url: string; box: [number, number, number, number] }) {
@@ -468,7 +579,7 @@ export function Mascot({
         <g className="m-body">
           {/* The body and feet in fur, drawn once; a plain shape until then. */}
           {fur.body ? (
-            <FurImage url={fur.body} box={BOX.body} />
+            <FurImage url={fur.body} box={fabricPlace([CX, cy])} />
           ) : (
             <g>
               <g className="m-limb">
@@ -556,7 +667,7 @@ function Arm({
     <g transform={`translate(${at[0]} ${at[1]}) rotate(${a})`}>
       <g className={`m-upper ${upper}`}>
         {fur.upper ? (
-          <FurImage url={fur.upper} box={BOX.upper} />
+          <FurImage url={fur.upper} box={fur.cloth ? BOX.upper : fabricPlace([UPPER / 2, 0])} />
         ) : (
           <path
             d={`M0 0L${UPPER} 0`}
@@ -569,7 +680,7 @@ function Arm({
         <g transform={`translate(${UPPER} 0) rotate(${b})`}>
           <g className={`m-fore ${fore}`}>
             {fur.fore ? (
-              <FurImage url={fur.fore} box={BOX.fore} />
+              <FurImage url={fur.fore} box={fur.cloth ? BOX.fore : fabricPlace([FORE / 2, 0])} />
             ) : (
               <path
                 d={`M0 0L${FORE} 0`}
