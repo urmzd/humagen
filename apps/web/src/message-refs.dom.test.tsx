@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { defaultCopy } from "@humagen/components";
-import { allTools, answerOf, foldAll } from "@humagen/core";
+import { allTools, answerOf, foldAll, type Turn } from "@humagen/core";
 import { responseStreams } from "@humagen/core/fixtures/responses";
 import { WebSurface } from "@humagen/render-web";
+import { AgentMessage, CallThreadContext } from "@humagen/web";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { Run } from "./adapter.ts";
 import type { MessageTrace, Thread, TraceNode, TraceQuestion } from "./api.ts";
@@ -755,7 +756,7 @@ test("a called agent is one closed item once done, and the tree opens on a step 
   );
 });
 
-test("a called agent is a message of its own in the answer: full size, with its task, its stream and its own actions", async () => {
+test("a called agent is a message of its own in the answer: full size, with its stream and its own actions", async () => {
   const state = foldAll(responseStreams.parallelAgents);
   const call = allTools(state).find((t) => t.kind === "agent" && t.runId);
   assert.ok(call);
@@ -776,12 +777,15 @@ test("a called agent is a message of its own in the answer: full size, with its 
     assert.equal(lane.querySelector("a[title]"), null);
     const name = call.agent ?? call.name;
     const message = within(lane).getByRole("article", { name: `${name} message` });
-    // Its header names the agent and what it was asked. It does not say how long the call took.
+    // Its header names the agent, as any participant's does. What it was asked is its
+    // caller's words above it, and how long the call took is in Details.
     const header = message.querySelector("header");
     assert.ok(header);
     assert.ok((header.textContent ?? "").includes(name));
-    if (call.title) assert.ok((header.textContent ?? "").includes(call.title));
+    if (call.title) assert.ok(!(header.textContent ?? "").includes(call.title));
     assert.equal(header.querySelector(".tabular-nums"), null);
+    // It is not set in: one more participant, as wide as its caller.
+    assert.ok(!/border-l|pl-3/.test(lane.className));
     // Its words are drawn as an answer's are.
     const turn = turnOfCall(call);
     if (turn.text) assert.ok((message.textContent ?? "").includes(turn.text.slice(0, 24)));
@@ -885,4 +889,72 @@ test("a called agent's record becomes a turn: thinking, words, steps and its own
   // Failed, stopped or denied is said on the thread's line, not again in the stream.
   assert.equal(turnOfCall({ ...call, status: "error" }).status, "done");
   assert.equal(turnOfCall({ ...call, status: "awaiting_approval" }).status, "waiting");
+});
+
+test("a turn reads as a conversation: the agent's asks are its words, each agent answers, and the agent is named again after them", () => {
+  const call = (id: string, agent: string, brief: string, at: number) =>
+    ({
+      id,
+      title: agent,
+      tool: "call_agent",
+      status: "complete",
+      input: JSON.stringify({ agent, title: brief.slice(0, 12), brief }),
+      subagent: { name: agent, runId: `run-${id}` },
+      at,
+    }) as Turn["tasks"][number];
+  const opening = "I will ask both.";
+  const turn = {
+    id: "r1",
+    agent: { name: "lead" },
+    status: "done",
+    text: `${opening} Here are both.`,
+    tasks: [
+      call("c1", "researcher", "Find two facts on why teams self-host agents.", opening.length + 1),
+      call("c2", "writer", "Write a two-sentence launch note.", opening.length + 1),
+    ],
+    thoughts: [{ at: 0, after: 0, text: "Two jobs, two agents." }],
+    citations: [],
+    interrupts: [],
+    notices: [],
+  } as unknown as Turn;
+  const { container } = render(
+    <WebSurface>
+      <CallThreadContext.Provider
+        value={(task) => <div data-testid="reply">{`${task.subagent?.name} answers`}</div>}
+      >
+        <AgentMessage turn={turn} disclaimer={false} activity={false} />
+      </CallThreadContext.Provider>
+    </WebSurface>,
+  );
+  const text = container.textContent ?? "";
+  const order = [
+    "Two jobs, two agents.",
+    opening,
+    "@researcher Find two facts on why teams self-host agents.",
+    "@writer Write a two-sentence launch note.",
+    "researcher answers",
+    "writer answers",
+    "Here are both.",
+  ].map((s) => text.indexOf(s));
+  assert.ok(
+    order.every((i) => i >= 0),
+    `every part is shown: ${order}`,
+  );
+  assert.deepEqual(
+    [...order].sort((a, b) => a - b),
+    order,
+    "its thinking, its words, both asks, both answers, then its last words",
+  );
+  // Each ask tags the agent it went to.
+  const asks = [...container.querySelectorAll('[data-aui="call-ask"]')];
+  assert.equal(asks.length, 2);
+  // After the others spoke, the agent is named again before its last words, once.
+  const speakers = [...container.querySelectorAll('[data-aui="speaker"]')];
+  assert.equal(speakers.length, 1);
+  assert.equal(speakers[0]?.querySelector(".font-semibold")?.textContent, "lead");
+  const last = screen.getByText("Here are both.");
+  assert.ok(
+    speakers[0]?.compareDocumentPosition(last) & Node.DOCUMENT_POSITION_FOLLOWING,
+    "the name comes before its words",
+  );
 });

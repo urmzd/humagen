@@ -607,21 +607,26 @@ function Lane({
     const turn = turnOfCall(tool, (step) => asks.includes(step));
     const run = tool.runId;
     const ended = shown === "error" || shown === "denied" || shown === "stopped";
-    const task = (
-      <>
-        {title}
-        {delegated && (
-          <span className="ml-2 rounded-full border border-aui-border px-1.5 text-aui-2xs">
-            {words.delegated}
-          </span>
-        )}
-        {ended && shown && (
-          <span className={`ml-2 ${shown === "stopped" ? "" : "text-aui-bad"}`}>
-            {words.status[shown]}
-          </span>
-        )}
-      </>
-    );
+    // What it was asked is said above it, as its caller's words. Beside its
+    // name is only what its message does not show: that it was sent off to
+    // work on its own, or how it ended when it did not finish.
+    const task =
+      delegated || (ended && shown) ? (
+        <>
+          {delegated && (
+            <span className="rounded-full border border-aui-border px-1.5 text-aui-2xs">
+              {words.delegated}
+            </span>
+          )}
+          {ended && shown && (
+            <span
+              className={`${delegated ? "ml-2" : ""} ${shown === "stopped" ? "" : "text-aui-bad"}`}
+            >
+              {words.status[shown]}
+            </span>
+          )}
+        </>
+      ) : undefined;
     const message = (rated: Turn) => (
       <AgentMessage
         turn={rated}
@@ -651,7 +656,8 @@ function Lane({
         data-focused={focused || undefined}
         data-delegated={delegated || undefined}
         aria-label={agent}
-        className="ml-1.5 flex scroll-mt-4 flex-col gap-2 border-[var(--humagen-rule)] border-l pl-3"
+        // One more participant of the conversation: as wide as its caller, and not set in.
+        className="flex scroll-mt-4 flex-col gap-2"
       >
         {/* Its own color, not its caller's. */}
         <AgentTint name={agent}>
