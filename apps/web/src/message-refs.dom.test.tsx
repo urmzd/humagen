@@ -3,9 +3,11 @@ import { afterEach, test } from "node:test";
 import { defaultCopy } from "@humagen/components";
 import { allTools, answerOf, foldAll } from "@humagen/core";
 import { responseStreams } from "@humagen/core/fixtures/responses";
+import { WebSurface } from "@humagen/render-web";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { Run } from "./adapter.ts";
 import type { MessageTrace, Thread, TraceNode, TraceQuestion } from "./api.ts";
+import { turnOfCall } from "./callTurn.ts";
 import { stubFetch } from "./dom.ts";
 import { type FocusLoader, MessageFocus } from "./MessageFocus.tsx";
 import { AnswerRefs, callThreadsOf, SessionReferences } from "./MessageRefs.tsx";
@@ -753,7 +755,7 @@ test("a called agent is one closed item once done, and the tree opens on a step 
   );
 });
 
-test("a called agent's thread in an answer is one clickable line that opens its steps, with no link away", () => {
+test("a called agent's thread in an answer is one clickable line that opens to its own stream, with no link away", () => {
   const state = foldAll(responseStreams.parallelAgents);
   const call = allTools(state).find((t) => t.kind === "agent" && t.runId);
   assert.ok(call);
@@ -761,22 +763,104 @@ test("a called agent's thread in an answer is one clickable line that opens its 
   const task = { id: call.id, subagent: { runId: call.runId } } as Parameters<
     ReturnType<typeof callThreadsOf>
   >[0];
-  const { container } = render(<>{callThreadsOf(state)(task)}</>);
+  const { container } = render(<WebSurface>{callThreadsOf(state)(task)}</WebSurface>);
   const lane = within(container).getAllByTestId("activity-lane")[0];
   assert.ok(lane);
-  assert.equal(lane.querySelector("a"), null, "no expand sign on the line");
+  assert.equal(lane.querySelector("a[title]"), null, "no expand sign on the line");
   // The whole line is the control.
   const line = lane.querySelector("summary");
   assert.ok(line);
   assert.match(line.className, /cursor-pointer/);
   assert.match(line.className, /hover:bg-aui-hover/);
-  const details = lane.querySelector("details") as HTMLDetailsElement;
-  const was = details.open;
-  fireEvent.click(line);
-  details.open = !was;
-  assert.notEqual(details.open, was);
+  // It opens to the agent's own stream, drawn as an answer's is: no header and no action row of its own.
+  const stream = lane.querySelector('[data-aui="thread-stream"]');
+  assert.ok(stream, "the agent's stream");
+  assert.equal(stream.querySelector("header"), null);
+  assert.equal(stream.querySelector('[role="toolbar"]'), null);
+  assert.equal(lane.querySelector("article"), null, "not a message of the conversation");
+  const turn = turnOfCall(call);
+  if (turn.text) assert.ok((stream.textContent ?? "").includes(turn.text.slice(0, 24)));
   cleanup();
-  // In Details the same lane still links to its agent's message on its own.
+  // In Details the same lane still links to its agent's message on its own, and lists its blocks.
   const detail = render(<AgentCallLane tool={call} />);
   assert.ok(detail.container.querySelector(`a[title="${words.focus(call.agent ?? call.name)}"]`));
+  assert.equal(detail.container.querySelector('[data-aui="thread-stream"]'), null);
+});
+
+test("a called agent's record becomes a turn: thinking, words, steps and its own calls, in the order they came", () => {
+  const call = {
+    type: "tool",
+    id: "c1",
+    name: "call_agent",
+    kind: "agent",
+    agent: "researcher",
+    runId: "r2",
+    title: "Two facts",
+    input: {},
+    depth: 1,
+    status: "done",
+    elapsedMs: 1300,
+    content: [
+      { type: "thinking", text: "Which sources are primary?" },
+      { type: "text", text: "I will check the docs.", citations: [] },
+      {
+        type: "tool",
+        id: "t1",
+        name: "search",
+        kind: "tool",
+        title: "Searched the docs",
+        input: { q: "self-host" },
+        depth: 2,
+        status: "done",
+        elapsedMs: 40,
+        result: { text: "3 pages", sources: [], isError: false },
+        content: [],
+      },
+      { type: "hidden" },
+      { type: "thinking", text: "Two are enough." },
+      {
+        type: "tool",
+        id: "c2",
+        name: "call_agent",
+        kind: "agent",
+        agent: "writer",
+        runId: "r3",
+        title: "Tidy the facts",
+        input: {},
+        depth: 2,
+        status: "running",
+        content: [],
+      },
+      { type: "text", text: "Here are two facts.", citations: [] },
+    ],
+  } as unknown as Parameters<typeof turnOfCall>[0];
+  const turn = turnOfCall(call);
+  assert.equal(turn.id, "r2");
+  assert.equal(turn.agent.name, "researcher");
+  assert.equal(turn.status, "done");
+  assert.equal(turn.text, "I will check the docs.\n\nHere are two facts.");
+  // Each thought sits where it happened: before the first words, and after the first step.
+  assert.deepEqual(turn.thoughts, [
+    { at: 0, after: 0, text: "Which sources are primary?" },
+    { at: "I will check the docs.".length, after: 1, text: "Two are enough." },
+  ]);
+  assert.deepEqual(
+    turn.tasks.map((t) => [t.id, t.tool, t.status, t.at, t.subagent?.runId]),
+    [
+      ["t1", "search", "complete", 22, undefined],
+      ["c2", "call_agent", "in_progress", 22, "r3"],
+    ],
+  );
+  assert.equal(turn.tasks[0]?.input, '{"q":"self-host"}');
+  assert.equal(turn.tasks[0]?.output, "3 pages");
+  // An agent that wrote no words has its result as its words.
+  const quiet = turnOfCall({
+    ...call,
+    content: [],
+    result: { text: "Done: two facts.", sources: [], isError: false },
+  });
+  assert.equal(quiet.text, "Done: two facts.");
+  // Failed, stopped or denied is said on the thread's line, not again in the stream.
+  assert.equal(turnOfCall({ ...call, status: "error" }).status, "done");
+  assert.equal(turnOfCall({ ...call, status: "awaiting_approval" }).status, "waiting");
 });
