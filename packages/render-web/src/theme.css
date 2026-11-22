@@ -1160,6 +1160,102 @@
     height: var(--s);
     color: var(--aui-accent);
   }
+  /* What an agent holds while it works (AgentProp): at the mark's top right
+     corner, clear of the face and inside the row's height (rows clip), with
+     a thin halo of the page behind it so it reads over the body too. */
+  .aui-prop {
+    position: absolute;
+    top: 0;
+    right: calc(var(--prop-size) * -0.35);
+    display: block;
+    width: var(--prop-size);
+    height: var(--prop-size);
+    pointer-events: none;
+    filter: drop-shadow(0 0 0.75px var(--aui-bg)) drop-shadow(0 0 0.75px var(--aui-bg))
+      drop-shadow(0 0 0.5px var(--aui-bg));
+    animation: aui-prop-in 150ms ease-out;
+    transition: opacity 150ms ease-out;
+  }
+  .aui-prop svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+  }
+  .aui-prop[data-leaving] {
+    opacity: 0;
+  }
+  .aui-prop .aui-prop-front {
+    fill: var(--aui-bg);
+  }
+  .aui-prop[data-motion="loop"] .aui-prop-move {
+    transform-box: view-box;
+  }
+  .aui-prop[data-prop="magnifier"] .aui-prop-move {
+    transform-origin: 14px 14px;
+    animation: aui-prop-sweep 3.2s ease-in-out infinite alternate;
+  }
+  .aui-prop[data-prop="thought"] .aui-prop-move {
+    animation: aui-prop-rise 2.8s ease-in-out infinite;
+  }
+  .aui-prop[data-prop="thought"] .aui-prop-late {
+    animation-delay: 0.5s;
+  }
+  .aui-prop[data-prop="pencil"] .aui-prop-move {
+    animation: aui-prop-write 2.2s ease-in-out infinite;
+  }
+  .aui-prop[data-prop="bubbles"] .aui-prop-move {
+    animation: aui-prop-turn 3s ease-in-out infinite;
+  }
+  @keyframes aui-prop-in {
+    from {
+      opacity: 0;
+    }
+  }
+  @keyframes aui-prop-sweep {
+    from {
+      transform: rotate(-9deg);
+    }
+    to {
+      transform: rotate(9deg);
+    }
+  }
+  @keyframes aui-prop-rise {
+    0%,
+    100% {
+      opacity: 0.45;
+      transform: translateY(0.6px);
+    }
+    50% {
+      opacity: 1;
+      transform: translateY(-0.6px);
+    }
+  }
+  @keyframes aui-prop-write {
+    0%,
+    100% {
+      transform: translate(0, 0);
+    }
+    50% {
+      transform: translate(-0.9px, 0.9px);
+    }
+  }
+  @keyframes aui-prop-turn {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.5;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .aui-prop,
+    .aui-prop * {
+      animation: none !important;
+      transition: none;
+    }
+  }
   /* The drawn orb (AgentOrb): the canvas takes this color as its ink. */
   .aui-orb-drawn {
     display: inline-flex;

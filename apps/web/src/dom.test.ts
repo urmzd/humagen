@@ -46,6 +46,7 @@ await loadTests([
   "/src/agent-store.dom.test.tsx",
   "/src/agent-effort.dom.test.tsx",
   "/src/agent-look.dom.test.tsx",
+  "/src/agent-props.dom.test.tsx",
   "/src/agent-slack-app.dom.test.tsx",
   "/src/agent-home.dom.test.tsx",
   "/src/agent-create.dom.test.tsx",
