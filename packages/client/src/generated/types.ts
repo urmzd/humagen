@@ -4853,6 +4853,7 @@ Left out, it is on. Labels start nothing.
   checks?: boolean;
   guides?: boolean;
   mutations?: boolean;
+  /** Optional. Exact owner/repo names a run from another surface may read through this client, besides the repositories its GitHub App installation covers. Empty means the installation's repositories alone. */
   read_repositories?: string[];
   /** The app's own GitHub login, such as `humagen[bot]`. A comment that mentions it and names no agent is addressed to the client and answered by its default (see docs/reference/github.md). */
   login?: string;
