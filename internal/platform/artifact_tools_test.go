@@ -24,13 +24,15 @@ import (
 
 // artifactBench is a platform with two projects to file conversations in.
 // ada and bo are members of both, and cy, whom the workspace knows, of
-// neither.
+// neither. dee is an administrator who is a member of neither.
 func artifactBench(t *testing.T) (*platform.Platform, func(id, project, who string) runtime.Request) {
 	t.Helper()
 	pol, err := auth.ParsePolicy("artifacts", `role viewer { allow read on * }
 role poster extends viewer { allow write on runs, projects }
 grant poster to subject "ada"
-grant poster to subject "bo"`)
+grant poster to subject "bo"
+role admin { allow * on * }
+grant admin to subject "dee"`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,7 +42,7 @@ grant poster to subject "bo"`)
 			t.Fatal(err)
 		}
 	}
-	for _, who := range []string{"ada", "bo", "cy"} {
+	for _, who := range []string{"ada", "bo", "cy", "dee"} {
 		p.SeePerson(auth.Principal{Subject: who, Tenant: tenant, Kind: auth.User, Name: who})
 	}
 	return p, func(id, project, who string) runtime.Request {
@@ -147,6 +149,13 @@ func TestAnAgentReadsOnlyTheArtifactsItsPersonAndProjectAllow(t *testing.T) {
 		t.Fatalf("another project lists %q, %v", list, err)
 	}
 	refused("a person with no role", turn("api-cy", "Field", "cy"), plan.ID)
+	// An administrator may read every project, but a run that acts for one
+	// reads only by their own roles.
+	governor := turn("api-dee", "Field", "dee")
+	refused("an administrator outside the project", governor, plan.ID)
+	if list, err := use(t, p, governor, platform.ToolArtifactList, map[string]any{"scope": "project"}); err != nil || list != "No artifacts." {
+		t.Fatalf("an administrator's run lists %q, %v", list, err)
+	}
 	nobody := turn("api-nobody", "Field", "")
 	refused("a run that acts for nobody", nobody, plan.ID)
 	if _, err := use(t, p, nobody, platform.ToolArtifactList, map[string]any{"scope": "project"}); !errors.Is(err, platform.ErrSandbox) {
