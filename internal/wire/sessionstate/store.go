@@ -272,8 +272,13 @@ func (s *Store) BindRunsInOrder(ctx context.Context, tenant, id string, runs []s
 			}
 			after = next
 		}
+		if position > maxOrdered {
+			return fmt.Errorf("%w: session %s holds %d bindings, more than the %d that can be reordered", session.ErrInvalid, id, position, maxOrdered)
+		}
 		if int64(len(bound)) != position {
-			return fmt.Errorf("%w: session %s holds %d bindings, more than can be reordered", session.ErrInvalid, id, position)
+			// A binding was made between reading the head and the index:
+			// read both again.
+			return state.ErrConflict
 		}
 		order := slices.Clone(bound)
 		var added []string
