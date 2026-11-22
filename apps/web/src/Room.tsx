@@ -460,13 +460,15 @@ function MessageView({
         </p>
         {byHand}
         {uploads}
-        {/* Its actions show on hover and keep their place when hidden. They share the
-            time's line, so a hidden row leaves no empty band under the message. */}
+        {/* Its actions are always there. Only its time shows on hover, at the row's end,
+            so nothing between two actions comes or goes. */}
         <div className="flex max-w-full flex-wrap items-center justify-end gap-x-2">
           {row}
           <p className="flex flex-wrap items-baseline justify-end gap-x-2 text-aui-2xs text-aui-muted">
             {notes}
-            <MessageTime at={m.at} />
+            <span className="opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100 motion-reduce:transition-none pointer-coarse:opacity-100">
+              <MessageTime at={m.at} />
+            </span>
           </p>
         </div>
         {refs && <div className="flex justify-end">{refs}</div>}
