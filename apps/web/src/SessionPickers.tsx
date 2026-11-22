@@ -1,188 +1,114 @@
 import { defaultCopy } from "@humagen/components";
-import { CheckIcon, ChevronDownIcon, LayersIcon, SettingsIcon } from "@humagen/render-web";
-import type { KeyboardEvent } from "react";
-import { href } from "./route.ts";
+import { SlidersIcon } from "@humagen/render-web";
+import { useEffect, useRef, useState } from "react";
+import type { ProjectView } from "./api.ts";
+import { AUTO } from "./availability.ts";
+import type { HelpSuggestion } from "./FindHelp.tsx";
+import { SettingsMenu } from "./pages.ts";
 import type { SessionImage, SessionOptions, SessionSetup } from "./sessionOptions.ts";
-import { useSessionOptions } from "./sessionOptions.ts";
-import { composerTextControl, Popover } from "./ui.tsx";
+import { composerIconControl } from "./ui.tsx";
 
-const words = defaultCopy.sessionSetup;
+/*
+ * A new session's settings, behind one control beside the composer's +. The
+ * control is drawn with Home; its menu (SettingsMenu.tsx) is read as soon as
+ * the control is, so it opens with nothing to wait for.
+ */
+
+const setup = defaultCopy.chat.setup;
 
 export type { SessionImage, SessionOptions, SessionSetup };
 
-const control = composerTextControl;
-const row =
-  "flex min-h-11 w-full items-start gap-2.5 rounded-aui px-2.5 py-2 text-left outline-none hover:bg-aui-hover focus-visible:bg-aui-hover aria-disabled:cursor-not-allowed aria-disabled:opacity-60 aria-disabled:hover:bg-transparent";
-
-/** Arrow keys, Home and End move through a menu's rows; Escape or Tab closes it. */
-const keys =
-  (close: () => void) =>
-  (e: KeyboardEvent<HTMLDivElement>): void => {
-    if (e.key === "Escape" || e.key === "Tab") {
-      e.preventDefault();
-      e.stopPropagation();
-      close();
-      return;
-    }
-    const rows = [
-      ...e.currentTarget.querySelectorAll<HTMLElement>('[role="menuitemradio"],[role="menuitem"]'),
-    ];
-    const at = rows.indexOf(document.activeElement as HTMLElement);
-    const to =
-      e.key === "ArrowDown"
-        ? (at + 1) % rows.length
-        : e.key === "ArrowUp"
-          ? (at - 1 + rows.length) % rows.length
-          : e.key === "Home"
-            ? 0
-            : e.key === "End"
-              ? rows.length - 1
-              : -1;
-    if (to < 0) return;
-    e.preventDefault();
-    rows[to]?.focus();
+/** What the settings menu sets up for a new session. */
+export interface SessionSettingsProps {
+  project: {
+    projects: ProjectView[] | null;
+    value: string | null;
+    personalProject?: string;
+    channel?: string;
+    onChange: (name: string) => void;
+    onCreated: (project: ProjectView) => void;
   };
-
-/** An image's name as a person reads it. */
-export function imageName(img: SessionImage): string {
-  return img.default ? words.defaultImage : img.name;
+  agents: {
+    /** The agents that may answer where the session starts. Null while they load. */
+    available: { name: string; description?: string }[] | null;
+    mentioned: readonly string[];
+    /** Who answers a message that mentions nobody, when the project names one. */
+    defaultAgent?: string;
+    /** Mentions an agent in the draft, or takes its mention out. */
+    onMention: (name: string) => void;
+    /** Describe the work to find an agent: another way to choose. */
+    finder?: {
+      onSearch: (description: string) => Promise<HelpSuggestion[]>;
+      onChoose: (suggestion: HelpSuggestion, description: string) => void;
+      draft: () => string;
+    };
+  };
+  /** What the deployment offers a new session: undefined while it is read, null when it cannot be. */
+  options: SessionOptions | null | undefined;
+  setup: SessionSetup;
+  onSetup: (next: SessionSetup) => void;
+  /** Why the image and repositories cannot be chosen here, as for a thread in a channel. */
+  fixed?: string;
+  /** Where to connect GitHub when no repository is connected. */
+  connectHref?: string;
+  maxRepos?: number;
 }
 
-/** What an image offers now, in a few words. */
-export function imageHint(img: SessionImage): string {
-  if (img.default) return words.defaultHint(img.ref);
-  if (img.status === "checking") return words.checking;
-  if (img.status === "failed")
-    return img.problem ? `${words.failed}: ${img.problem}` : words.failed;
-  return `${img.ref} · ${img.warm ? words.warm : words.cold}`;
+/** The words a row says for the agents: those mentioned, else who answers. */
+export function agentsValue(mentioned: readonly string[], defaultAgent?: string): string {
+  // Auto is no agent: each available one decides whether it answers.
+  const named = defaultAgent && defaultAgent !== AUTO ? defaultAgent : undefined;
+  return mentioned.length === 0 ? (named ?? setup.anyAgent) : mentioned.join(", ");
 }
 
 /**
- * The image a new session's tools run in: the deployment's default, or one
- * of the workspace's own. Only a ready image may be chosen; the others show
- * why not. Chosen before the first message.
+ * The session settings control beside +: a small sliders icon that opens a
+ * menu of the new session's settings. Up and Down move through the rows,
+ * Right or Enter opens one, Escape steps back and then closes.
  */
-export function ImagePicker({
-  images,
-  value,
-  onChange,
-  canAdd,
-}: {
-  images: readonly SessionImage[];
-  value: string;
-  onChange: (id: string) => void;
-  /** The workspace may add images: the menu ends with a way to. */
-  canAdd: boolean;
-}) {
-  const current = images.find((i) => i.id === value) ?? images[0];
-  const name = current ? imageName(current) : words.defaultImage;
+export function SessionSettings(props: SessionSettingsProps) {
+  const [open, setOpen] = useState(false);
+  // The menu's code is read now, not on the first press.
+  useEffect(() => void SettingsMenu.preload(), []);
+  const button = useRef<HTMLButtonElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  const close = () => {
+    setOpen(false);
+    button.current?.focus();
+  };
+  // A press outside the menu closes it, as Escape does.
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: PointerEvent) => {
+      const at = e.target as Node;
+      if (!panel.current?.contains(at) && !button.current?.contains(at)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", away);
+    return () => document.removeEventListener("pointerdown", away);
+  }, [open]);
   return (
-    <Popover
-      up
-      popup="menu"
-      label={`${words.image}: ${name}`}
-      tooltip={`${words.image}: ${name}`}
-      className={control}
-      button={
-        <>
-          {/* The mark stays when a narrow composer hides the words. */}
-          <LayersIcon size={18} />
-          <span aria-hidden className="inline-flex items-center gap-1 text-aui-xs" data-label>
-            <span className="max-w-36 truncate">{name}</span>
-            <ChevronDownIcon size={12} />
-          </span>
-        </>
-      }
-    >
-      {(close) => (
-        <div
-          role="menu"
-          aria-label={words.image}
-          onKeyDown={keys(close)}
-          className="flex w-72 max-w-[calc(100vw-2rem)] flex-col"
-          data-testid="image-menu"
-        >
-          {images.map((img) => {
-            const on = img.id === current?.id;
-            const ready = img.status === "ready";
-            return (
-              <button
-                key={img.id}
-                type="button"
-                role="menuitemradio"
-                aria-checked={on}
-                aria-disabled={!ready || undefined}
-                // biome-ignore lint/a11y/noAutofocus: an opened menu takes focus on its current row.
-                autoFocus={on}
-                data-image={img.id}
-                data-status={img.status}
-                onClick={() => {
-                  if (!ready) return;
-                  close();
-                  onChange(img.id);
-                }}
-                className={row}
-              >
-                <LayersIcon size={16} className="mt-0.5 shrink-0 text-aui-muted" />
-                <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                  <span className="truncate text-aui-sm text-aui-fg">{imageName(img)}</span>
-                  <span className="line-clamp-2 break-all text-aui-xs text-aui-muted">
-                    {imageHint(img)}
-                  </span>
-                </span>
-                <CheckIcon
-                  size={16}
-                  aria-hidden
-                  className={`mt-0.5 shrink-0 text-aui-fg ${on ? "" : "invisible"}`}
-                />
-              </button>
-            );
-          })}
-          {canAdd && (
-            <a
-              role="menuitem"
-              href={href({ page: "settings", section: "images" })}
-              className={`${row} mt-1 items-center border-aui-border border-t text-aui-sm text-aui-muted`}
-            >
-              <SettingsIcon size={16} className="shrink-0" />
-              {words.manage}
-            </a>
-          )}
-        </div>
+    <>
+      <button
+        ref={button}
+        type="button"
+        aria-label={setup.label}
+        title={setup.label}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        data-session-settings
+        className={`${composerIconControl} mb-0.5 pointer-coarse:mb-0 text-aui-muted hover:text-aui-fg aria-expanded:bg-aui-hover aria-expanded:text-aui-fg`}
+        onClick={() => (open ? close() : setOpen(true))}
+      >
+        <SlidersIcon size={18} />
+      </button>
+      {open && (
+        <SettingsMenu
+          {...props}
+          panel={panel}
+          onClose={close}
+          onUnavailable={() => setOpen(false)}
+        />
       )}
-    </Popover>
-  );
-}
-
-/**
- * A new session's setup beside the composer's plus: the image it runs in.
- * Nothing shows until the options are read, when they cannot be, or when the
- * default is the only image and none may be added. Repositories are context
- * from the plus menu, not a control here.
- */
-export function SessionSetupPickers({
-  value,
-  onChange,
-  options: given,
-}: {
-  value: SessionSetup;
-  onChange: (next: SessionSetup) => void;
-  /** For a test to stand in for the server. */
-  options?: SessionOptions | null;
-}) {
-  const read = useSessionOptions(given === undefined);
-  const options = given !== undefined ? given : read;
-  if (!options) return null;
-  const canAdd = (options.imageRegistries ?? []).length > 0;
-  if (options.images.length < 2 && !canAdd) return null;
-  return (
-    <span className="inline-flex min-w-0 items-center gap-0.5" data-testid="session-setup">
-      <ImagePicker
-        images={options.images}
-        value={value.image}
-        onChange={(image) => onChange({ ...value, image })}
-        canAdd={canAdd}
-      />
-    </span>
+    </>
   );
 }

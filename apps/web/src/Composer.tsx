@@ -138,6 +138,7 @@ export function Composer({
   autoFocus,
   onDraft,
   leading,
+  beside,
   trailing,
   seed,
   tags,
@@ -187,6 +188,8 @@ export function Composer({
   onDraft?: (text: string) => void;
   /** Controls beside the plus, such as where the conversation is filed. */
   leading?: ReactNode;
+  /** A control right after + in the row, such as a new session's settings. */
+  beside?: ReactNode;
   /** Controls before the send or speak button. */
   trailing?: ReactNode;
   /**
@@ -1005,6 +1008,7 @@ export function Composer({
               <Glyph d={PLUS} />
             </button>
           )}
+          {beside}
           <textarea
             id="composer-input"
             ref={input}

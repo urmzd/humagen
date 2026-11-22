@@ -2,9 +2,8 @@ import { useEffect, useState } from "react";
 import { call } from "./api.ts";
 
 // What a new session may be set up with, read once per page and again while
-// one of its images is still being checked. Kept apart from
-// SessionPickers.tsx, which Home reads only when it draws the pickers, so the
-// composer can hold a session's choices without loading the pickers.
+// one of its images is still being checked. The pickers that show it under
+// Home's composer are SessionPickers.tsx.
 
 /** One image a new session may run in (`GET /api/sessions/options`). */
 export interface SessionImage {

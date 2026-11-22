@@ -465,7 +465,10 @@ export function ComposerFooter({
   start,
   approval,
   usage,
+  noticeBelow = false,
 }: {
+  /** The AI notice stays a line of its own under the row, which `start` fills. */
+  noticeBelow?: boolean;
   /**
    * The left of the row: where the session runs, such as an environment and a
    * repository picker. Empty, the rest stays at the right. On a phone each
@@ -490,7 +493,9 @@ export function ComposerFooter({
         {start}
       </div>
       {/* The composer puts its AI notice here. */}
-      {notice && <div ref={notice} data-layer="composer-footer-notice" className="min-w-0" />}
+      {notice && !noticeBelow && (
+        <div ref={notice} data-layer="composer-footer-notice" className="min-w-0" />
+      )}
       <div data-layer="composer-footer-end" className="flex min-w-0 items-center gap-3">
         {approval && <span className="inline-flex max-[30rem]:hidden">{approval}</span>}
         {approval && <MoreControls>{approval}</MoreControls>}

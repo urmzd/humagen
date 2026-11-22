@@ -1,10 +1,14 @@
 import { defaultCopy } from "@humagen/components";
-import { CheckIcon } from "@humagen/render-web";
+import { CheckIcon, FastForwardIcon, HandIcon } from "@humagen/render-web";
 import { type KeyboardEvent, useEffect, useState } from "react";
 import { ApiError, api, coworking, type Revision, type Thread } from "./api.ts";
 import { useConfiguredProviders } from "./ModelChain.tsx";
 import { POLICY } from "./models.ts";
-import { composerTextControl as control, Popover } from "./ui.tsx";
+import { Popover } from "./ui.tsx";
+
+/** The approval control: the mode's icon and word in a quiet pill, as tall as the composer's controls. */
+const pill =
+  "inline-flex h-7 pointer-coarse:h-11 shrink-0 items-center gap-1.5 rounded-full bg-aui-hover/60 px-2.5 text-aui-xs text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-expanded:bg-aui-hover aria-expanded:text-aui-fg";
 
 /**
  * How a session's gated actions are approved: ✋ Ask, a person, or ⏩ Auto,
@@ -71,7 +75,10 @@ export function ApprovalToggle({
   nameOf = (s) => s,
   pending = "ask",
   onPending,
+  disabled = false,
 }: {
+  /** The session's mode is still being read: the pill holds its place and waits. */
+  disabled?: boolean;
   /** The session, once there is one. */
   thread?: Pick<Thread, "id" | "approval">;
   /** The reader's handle, to tell their own choice from someone else's. */
@@ -137,17 +144,30 @@ export function ApprovalToggle({
     e.preventDefault();
     rows[to]?.focus();
   };
+  const Icon = mode === "ask" ? HandIcon : FastForwardIcon;
+  // The mode's icon and its word, in a quiet pill.
+  const face = (
+    <>
+      <Icon size={14} className={mode === "auto" ? "text-aui-warn" : undefined} />
+      <span>{mode === "ask" ? words.ask : words.auto}</span>
+    </>
+  );
+  if (disabled)
+    return (
+      <span className="inline-flex min-w-0 items-center gap-1" data-approval-mode="loading">
+        <button
+          type="button"
+          aria-label={words.label}
+          aria-disabled
+          className={`${pill} cursor-default opacity-60 hover:bg-aui-hover/60 hover:text-aui-muted`}
+        >
+          {face}
+        </button>
+      </span>
+    );
   return (
     <span className="inline-flex min-w-0 items-center gap-1" data-approval-mode={mode}>
-      <Popover
-        up
-        align="right"
-        popup="menu"
-        label={`${words.label}: ${label}`}
-        // The trigger is the mode's word, as the footer's other settings are: no icon to decode.
-        className={control}
-        button={<span className="text-aui-xs">{mode === "ask" ? words.ask : words.auto}</span>}
-      >
+      <Popover popup="menu" label={`${words.label}: ${label}`} className={pill} button={face}>
         {(close) => (
           <div
             role="menu"
@@ -156,9 +176,10 @@ export function ApprovalToggle({
             className="flex flex-col"
           >
             <p aria-hidden className="px-2.5 pt-1 pb-1.5 text-aui-xs text-aui-muted">
-              {words.label}
+              {words.question}
             </p>
             {options.map((o) => {
+              const RowIcon = o.mode === "ask" ? HandIcon : FastForwardIcon;
               const on = o.mode === mode;
               return (
                 <button
@@ -173,8 +194,14 @@ export function ApprovalToggle({
                     close();
                     choose(o.mode);
                   }}
+                  // Auto acts without a person, so its icon carries the warning color. A filled
+                  // row would read as the chosen one, which only the check says.
                   className="flex min-h-11 w-full items-start gap-2.5 rounded-aui px-2.5 py-2 text-left outline-none hover:bg-aui-hover focus-visible:bg-aui-hover"
                 >
+                  <RowIcon
+                    size={16}
+                    className={`mt-0.5 shrink-0 ${o.mode === "auto" ? "text-aui-warn" : "text-aui-muted"}`}
+                  />
                   <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                     <span className="text-aui-sm text-aui-fg">{o.name}</span>
                     <span className="text-aui-xs text-aui-muted">{o.hint}</span>
