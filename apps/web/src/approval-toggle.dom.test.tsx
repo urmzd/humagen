@@ -59,9 +59,11 @@ test("the control opens a menu of the two modes under a heading, each with a sho
     [`Manual${words.askHint}`, `Auto${words.autoHint}`],
   );
   assert.ok(rows.every((r) => r.querySelector("svg")));
-  // Auto acts without a person: its row carries the warning tint.
-  assert.match(rows[1]?.className ?? "", /bg-aui-warn/);
-  assert.doesNotMatch(rows[0]?.className ?? "", /bg-aui-warn/);
+  // Auto acts without a person: its icon carries the warning color, and no row is filled,
+  // so only the check says which mode is chosen.
+  assert.match(rows[1]?.querySelector("svg")?.getAttribute("class") ?? "", /text-aui-warn/);
+  assert.doesNotMatch(rows[0]?.querySelector("svg")?.getAttribute("class") ?? "", /text-aui-warn/);
+  for (const r of rows) assert.doesNotMatch(r.className, /bg-aui-warn/);
   assert.deepEqual(
     rows.map((r) => r.getAttribute("aria-checked")),
     ["true", "false"],
