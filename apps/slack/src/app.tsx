@@ -1215,6 +1215,8 @@ export class App {
       return "done" as const;
     }
     let outputRun = "";
+    // One answer is one run: a refusal is logged once for it, before or after the run exists.
+    let refusalLogged = false;
     // Continue in a Code Channel is offered under an answer this app keyed by its thread.
     let movable = false;
     const items = new Mailbox<Item>();
@@ -1226,7 +1228,21 @@ export class App {
       authorOf: this.authorOf,
       native: this.native,
       outcomesOnly: controls.policy.bound,
-      canDeliver: async () => this.bridgeOutputAllowed(job.session.channel, outputRun),
+      // A refused delivery is said once per run, never dropped without a word.
+      canDeliver: async () => {
+        const refusal = await this.deliveryRefusal(
+          job.session.channel,
+          outputRun,
+          job.session.threadTs,
+        );
+        if (refusal && !refusalLogged) {
+          refusalLogged = true;
+          this.log(
+            `run ${outputRun || "(none yet)"} not delivered to ${job.session.channel}: ${refusal}`,
+          );
+        }
+        return !refusal;
+      },
       copy: this.copy,
       capabilities: this.capabilities,
       log: (line) => this.log(line),
@@ -2481,7 +2497,7 @@ export class App {
     at: { channel: string; ts: string; threadTs?: string },
   ) {
     const about = message.about.find((item) => item.kind === "run");
-    if (!(await this.bridgeOutputAllowed(at.channel, about?.id ?? ""))) return;
+    if (!(await this.bridgeOutputAllowed(at.channel, about?.id ?? "", at.threadTs))) return;
     const view = renderToSlack(<MessageView message={forSlack(message)} />);
     const [first = [], ...rest] = view.pages;
     await this.slack.call("chat.update", {
@@ -2538,12 +2554,28 @@ export class App {
       };
     }
   }
-  private async bridgeOutputAllowed(channel: string, run = ""): Promise<boolean> {
+  private async bridgeOutputAllowed(
+    channel: string,
+    run = "",
+    threadTs?: string,
+  ): Promise<boolean> {
+    return (await this.deliveryRefusal(channel, run, threadTs)) === "";
+  }
+  /**
+   * Why a run may not be posted in a Slack channel's thread, or "" when it
+   * may. A private session's run is allowed only in the Slack thread that
+   * started its session, so the thread is always sent when there is one.
+   */
+  private async deliveryRefusal(channel: string, run = "", threadTs?: string): Promise<string> {
     const controls = await this.bridgeControls(channel);
-    if (!controls.policy.outbound) return false;
-    if (run && this.opts.clientId)
-      return this.humagen.deliveryAllowed(this.opts.clientId, channel, run);
-    return true;
+    if (!controls.policy.outbound) return "this client or channel delivers no outcomes";
+    if (
+      run &&
+      this.opts.clientId &&
+      !(await this.humagen.deliveryAllowed(this.opts.clientId, channel, run, threadTs))
+    )
+      return "humagen refused delivery of this run here";
+    return "";
   }
   private async isBound(channel: string): Promise<boolean> {
     return (await this.bound()).some((b) => b.slack_channel === channel);
@@ -2938,7 +2970,15 @@ export class App {
     const about = message.about.find((s) => s.kind === "run");
     const run = about ? await this.humagen.getRun(about.id) : null;
     const session = run ? await this.sessionOfRun(run) : null;
-    if (!session || session.team !== this.opts.team) return;
+    if (!run || !session || session.team !== this.opts.team) return;
+    // Held to the rule every answer is, as an edit of a posted one is (showMail).
+    const refusal = await this.deliveryRefusal(session.channel, run.id, session.threadTs);
+    if (refusal) {
+      this.log(
+        `inbox message ${message.id} about run ${run.id} not posted to ${session.channel}: ${refusal}`,
+      );
+      return;
+    }
     const ts = await this.postView(
       session,
       renderToSlack(<MessageView message={forSlack(message)} />),

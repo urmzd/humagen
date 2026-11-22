@@ -243,7 +243,8 @@ export interface ToolConnections {
   values: boolean;
 }
 export interface Humagen {
-  deliveryAllowed(client: string, channel: string, run: string): Promise<boolean>;
+  /** Whether a run may be posted in a Slack channel, in the thread `ts` when given. */
+  deliveryAllowed(client: string, channel: string, run: string, ts?: string): Promise<boolean>;
   connections(as: ActAs): Promise<ToolConnections>;
   connect(provider: string, ref: string, as: ActAs): Promise<unknown>;
   disconnect(provider: string, as: ActAs): Promise<void>;
@@ -735,10 +736,10 @@ export function httpHumagen(cfg: {
       orNull(http<{ message: WireMessage }>("GET", `/api/inbox/${enc(id)}`)).then(
         (r) => r?.message ?? null,
       ),
-    deliveryAllowed: (client, channel, run) =>
+    deliveryAllowed: (client, channel, run, ts) =>
       http<{ allowed: boolean }>(
         "GET",
-        `/api/clients/${enc(client)}/delivery?${new URLSearchParams({ channel, run })}`,
+        `/api/clients/${enc(client)}/delivery?${new URLSearchParams({ channel, run, ...(ts ? { ts } : {}) })}`,
       ).then((r) => r.allowed),
     bindings: (client) =>
       http<{ bindings: Binding[] }>("GET", `/api/clients/${enc(client)}/bindings`).then(

@@ -1420,6 +1420,39 @@ test("an inbox item about a run in a humagen thread lands in the run's Slack thr
   await watch;
 });
 
+test("an inbox item about a run is not posted where humagen refuses the run's delivery", async () => {
+  const w = mapped();
+  const watching = new AbortController();
+  const watch = w.app.watchInbox(watching.signal);
+  await deliver(w, mention("check the deploy", TS));
+  const run = w.humagen.last.id;
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "On it." });
+  await w.app.idle();
+  const before = w.slack.of("chat.postMessage").length;
+  assert.ok(before + w.slack.of("chat.startStream").length > 0, "the answer itself was delivered");
+
+  const asked: { run: string; ts: string | undefined }[] = [];
+  w.humagen.deliveryAllowed = async (_client, _channel, about, ts) => {
+    asked.push({ run: about, ts });
+    return false;
+  };
+  w.humagen.raise(resultMail(run));
+  await settle();
+  await w.app.idle();
+  assert.equal(w.slack.of("chat.postMessage").length, before, "nothing more is posted");
+  assert.deepEqual(asked, [{ run, ts: TS }], "delivery is asked for the run in its thread");
+  assert.ok(
+    w.logs.some((l) =>
+      new RegExp(`about run ${run} not posted to ${CHANNEL}: humagen refused`).test(l),
+    ),
+    w.logs.join("\n"),
+  );
+
+  watching.abort();
+  await watch;
+});
+
 test("the Home tab shows a person what waits on them, and an operator the whole inbox", async () => {
   const w = world({ operators: [OTHER_USER] });
   await deliver(w, mention("deploy it", TS));
@@ -2049,6 +2082,50 @@ test("a server refusal to deliver private context prevents every native bridge o
   await w.app.idle();
   assert.equal(w.slack.of("chat.postMessage").length, 0);
   assert.equal(w.slack.of("chat.startStream").length, 0);
+});
+test("a refused delivery in a session thread posts nothing and is logged once for its run", async () => {
+  const w = mapped();
+  const asked: { run: string; ts: string | undefined }[] = [];
+  w.humagen.deliveryAllowed = async (_client, _channel, run, ts) => {
+    asked.push({ run, ts });
+    return false;
+  };
+  await deliver(w, mention("@lead howdy", TS));
+  const run = w.humagen.last.id;
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.delta.text.v1", { text: "Howdy" });
+  await emit(w, "run.completed.v1", { text: "Howdy! How can I help you today?" });
+  await w.app.idle();
+  assert.deepEqual(w.humagen.routes, ["session"], "the unbound channel thread is a session");
+  assert.ok(asked.length > 1, "delivery is asked before each write");
+  assert.ok(
+    asked.every((a) => a.run === run && a.ts === TS),
+    `delivery is asked for the run in its own Slack thread: ${JSON.stringify(asked)}`,
+  );
+  assert.equal(w.slack.of("chat.postMessage").length, 0);
+  assert.equal(w.slack.of("chat.startStream").length, 0);
+  const refused = w.logs.filter((l) => l.includes("not delivered"));
+  assert.equal(refused.length, 1, refused.join("\n"));
+  assert.match(
+    refused[0] ?? "",
+    new RegExp(`run ${run} not delivered to ${CHANNEL}: humagen refused`),
+  );
+});
+test("a client that delivers no outcomes logs its refusal once for the run", async () => {
+  const w = mapped();
+  const c = w.humagen.clients.get(CLIENT);
+  assert.ok(c);
+  c.capabilities = { events: ["app_mention", "message"], actions: [], deliver_outcomes: false };
+  await deliver(w, mention("@lead howdy", TS));
+  const run = w.humagen.last.id;
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.delta.text.v1", { text: "Howdy" });
+  await emit(w, "run.completed.v1", { text: "Howdy!" });
+  await w.app.idle();
+  assert.equal(w.slack.of("chat.postMessage").length, 0);
+  const refused = w.logs.filter((l) => l.includes("not delivered"));
+  assert.equal(refused.length, 1, refused.join("\n"));
+  assert.match(refused[0] ?? "", new RegExp(`run ${run} not delivered to ${CHANNEL}: this client`));
 });
 test("disabled installation event subscriptions do not post or start native work", async () => {
   const w = mapped();

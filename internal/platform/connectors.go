@@ -771,7 +771,7 @@ func (s *surface) Deliver(ctx context.Context, to address.Address, e event.Envel
 				return nil
 			}
 			run, err := s.p.Runs.Get(e.Tenant, e.Run)
-			if err != nil || !s.p.bridgeMayDeliver(ctx, current, to.Path[0], run) {
+			if err != nil || !s.p.bridgeMayDeliver(ctx, current, to.Path[0], "", run) {
 				return nil
 			}
 		}

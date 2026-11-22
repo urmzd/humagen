@@ -57,7 +57,8 @@ func (p *Platform) PreviewPlacement(ctx context.Context, who auth.Principal, id,
 
 // Caller serializes publication with both carryOut and direct admission.
 func (p *Platform) previewPlacement(ctx context.Context, who auth.Principal, th threads.Thread, project, channel string) (PlacementPreview, error) {
-	if th.Surface != nil || th.Announcement != "" {
+	// A session in a tree a surface started answers on that surface too.
+	if sf, ok := p.treeSurface(who.Tenant, th.ID); !ok || sf != nil || th.Announcement != "" {
 		return PlacementPreview{}, fmt.Errorf("%w: a surface conversation stays on its surface", threads.ErrInvalid)
 	}
 	if p.Runs.AnyActive(who.Tenant, func(run runs.Run) bool { return placeOfRun(run).Thread == th.ID }) {
