@@ -4787,12 +4787,11 @@ export const defaultCopy = {
     item: (label: string) => `On ${label}`,
     clearItem: "Clear Item",
   },
-  /** A session's Details panel: its progress, agents, outputs, where it ran, and what it used. */
+  /** A session's Details panel: its agents, outputs, where it ran, and what it used. */
   details: {
     title: "Details",
     /** The header's Details button, with how many calls are running or waiting. */
     open: (n: number) => (n ? `Details, ${n} working` : "Details"),
-    progress: "Progress",
     working: (agents: number, tools: number) =>
       [
         "Working",

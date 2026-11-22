@@ -3043,7 +3043,8 @@ in `TestResponsesMatchTheSpec`. Before and after screens at 1280x800 and
 ### DES-080: One session panel, reached from the header
 
 The panel a session's header opens (the workbench's Details tab, DES-076)
-answers five questions in order, under Progress and Agents:
+answers five questions in order, under Agents. It has no Progress
+section, since the thread itself shows the progress:
 
 - **Environment.** The sandbox and where it stands: Isolated (its runs
   lease an instance), Not started (an isolated deployment whose runs have

@@ -1173,7 +1173,6 @@ var copyKeyList = []string{
 	"details.back",
 	"details.environment",
 	"details.outputs",
-	"details.progress",
 	"details.read",
 	"details.title",
 	"details.used.connections",
