@@ -145,7 +145,7 @@ export function ConversationAccess({
             </button>
           </div>
           {found && (
-            <ul aria-label={words.search} className="flex flex-col">
+            <ul aria-label={words.search} className="-mx-2 flex flex-col">
               {found.length === 0 ? (
                 <li className="px-2 py-2 text-aui-muted text-aui-xs">{words.noMatch}</li>
               ) : (
