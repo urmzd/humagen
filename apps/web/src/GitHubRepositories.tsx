@@ -12,18 +12,7 @@ import { api, type Client, call } from "./api.ts";
 import { Tag } from "./cards.tsx";
 import { DataTable } from "./DataTable.tsx";
 import { href, type Route } from "./route.ts";
-import {
-  button,
-  card,
-  Empty,
-  field,
-  Label,
-  Page,
-  Problem,
-  primary,
-  SkeletonRows,
-  Switch,
-} from "./ui.tsx";
+import { button, card, field, Label, Page, Problem, primary, SkeletonRows, Switch } from "./ui.tsx";
 
 const words = defaultCopy.githubRepos;
 
@@ -135,8 +124,8 @@ function RepositoryList({
         ) : data === null ? (
           <SkeletonRows count={5} height="2.75rem" />
         ) : data.repositories.length === 0 ? (
-          <div className="flex flex-col items-start gap-4">
-            <Empty title={words.empty} />
+          <div className="flex flex-col items-start gap-4 py-10">
+            <p className="humagen-display text-aui-lg font-medium text-aui-fg">{words.empty}</p>
             <button type="button" className={button} onClick={load}>
               {words.checkAgain}
             </button>
@@ -170,17 +159,18 @@ function RepositoryList({
                     cell: (r) => (
                       <span className="flex min-w-0 items-center gap-2">
                         <span className="truncate">{r.repository}</span>
-                        {r.settings && <Tag>{words.custom}</Tag>}
+                        {r.settings && (
+                          <span className="hidden shrink-0 sm:inline-flex">
+                            <Tag>{words.custom}</Tag>
+                          </span>
+                        )}
                       </span>
                     ),
                   },
                   {
                     name: words.columns.review,
-                    cell: (r) => (
-                      <span className="whitespace-nowrap">
-                        {words.review[reviewOf(r.auto_review)]}
-                      </span>
-                    ),
+                    className: "max-sm:w-32 max-sm:min-w-32",
+                    cell: (r) => <span>{words.review[reviewOf(r.auto_review)]}</span>,
                   },
                   {
                     name: words.columns.agent,
@@ -375,7 +365,7 @@ function RepositorySettings({
             </div>
             <Label text={words.form.instructions}>
               <textarea
-                className={`${field} min-h-28 py-2`}
+                className={`${field} h-auto min-h-28 py-2 pointer-coarse:h-auto`}
                 value={instructions}
                 maxLength={4000}
                 onChange={(e) => setInstructions(e.target.value)}
