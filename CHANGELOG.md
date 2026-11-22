@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.184.0 (2026-11-22)
+
+### Features
+
+- **console**: agents are shown by proper names ([aa6aeb7](https://github.com/urmzd/humagen/commit/aa6aeb779e4aae243468288021ed149e72a87ab2))
+- **console**: a turn with several agents reads as a conversation between them ([fe06440](https://github.com/urmzd/humagen/commit/fe06440f3706d39c072ff45a757935f2f4a0dc40))
+- **console**: each called agent is a full message with its own rating; Personal is not named ([95b678d](https://github.com/urmzd/humagen/commit/95b678d04416093bb99383f156c08bd9c4079bd0))
+- **console**: an agent's line in an answer has no chevron and no duration ([661b3d4](https://github.com/urmzd/humagen/commit/661b3d4103d311339d14f08ded7b6c127b925b40))
+- **console**: a called agent opens to its own full stream, and calls are not counted ([41853a9](https://github.com/urmzd/humagen/commit/41853a97500bcaea68e439162192257d99cb9e9d))
+- **console**: a called agent's thread has no expand sign ([5a5baac](https://github.com/urmzd/humagen/commit/5a5baac673b260f5e332b87b591d49a1b679d049))
+- **console**: the wave is a line that swings, not a filled shape ([fb7f1b9](https://github.com/urmzd/humagen/commit/fb7f1b92f211c25aa76643be39b624ad79133151))
+- **console**: the conversation's wave is one connected shape, and a person's message is flat ([58326d3](https://github.com/urmzd/humagen/commit/58326d3c068b928e3f6e4234d6f9ba0d6e9ee207))
+- **console**: no "Routed to" line above an answer ([72b6921](https://github.com/urmzd/humagen/commit/72b6921fa75dbe9d90dd4c9034fb2de5efa55394))
+- **console**: an answer has no activity control under it ([dbf507e](https://github.com/urmzd/humagen/commit/dbf507e0f025dae1846314f9bd297fec70cfa48a))
+
+### Bug Fixes
+
+- **console**: screens find agents by their proper names; keep Home within its budget ([4bdb68e](https://github.com/urmzd/humagen/commit/4bdb68edbd75da3cd2849343469d79c7f68dd8b4))
+- **console**: no line along the top of the sidebar ([6fc2a99](https://github.com/urmzd/humagen/commit/6fc2a994612be083c295052d3a50f552c89fa362))
+- **console**: a called agent's message is in its own color ([5836bc2](https://github.com/urmzd/humagen/commit/5836bc2843ecb150e988579ed8ea840291467811))
+- **console**: a step that waits on a person is drawn once in a thread ([b4edecb](https://github.com/urmzd/humagen/commit/b4edecbc9e407a0bbc72baaa26208c5e3d29d43d))
+- **console**: mark the wave's drawing as hidden in the form the linter reads ([bab660b](https://github.com/urmzd/humagen/commit/bab660bee0f1b3c6ab9f5165af31b5bde87977df))
+
+### Misc
+
+- **console**: sort imports ([cedbbbf](https://github.com/urmzd/humagen/commit/cedbbbf9084d90ca4c4e633549d8834548146810))
+- **console**: format and drop an unused import ([839b9da](https://github.com/urmzd/humagen/commit/839b9dad5eed3c640666d5eb2c84853333d8bbc9))
+- **screens**: remove a temporary capture script ([379f701](https://github.com/urmzd/humagen/commit/379f7013eb7c7d3fda8ccc27a94a9c14e21dadd5))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.183.0...v0.184.0)
+
+
 ## 0.183.0 (2026-11-21)
 
 ### Features
