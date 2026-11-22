@@ -737,7 +737,7 @@ export function outcomeOf(state: ResponseState): string {
       calls.length,
     );
   }
-  return words.worked(time, w.agents, w.tools);
+  return words.worked(w.agents, w.tools);
 }
 
 /** What a response cost and the models it ran on: "$0.02 · claude-sonnet". */

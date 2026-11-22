@@ -14,8 +14,10 @@ import {
   formatUsd,
   readReview,
   type Task,
+  type Together,
   type Turn,
   type Usage,
+  withCallsTogether,
 } from "@humagen/core";
 import {
   ActionContext,
@@ -46,6 +48,7 @@ import {
   Children,
   type CSSProperties,
   createContext,
+  Fragment,
   type ReactNode,
   useContext,
   useMemo,
@@ -59,7 +62,7 @@ import { MessageActionRow, messageActionButton } from "./MessageActionRow";
 import { MessageMore } from "./MessageMore";
 import { Reasoning } from "./Reasoning";
 import { TurnChanges } from "./TurnChanges";
-import { type Block, Elapsed, failureLine, interleave, StepGroup, WorkedFor } from "./WorkSteps";
+import { type Block, Elapsed, failureLine, interleave, StepGroup } from "./WorkSteps";
 
 function seconds(ms?: number) {
   if (ms === undefined) return null;
@@ -289,6 +292,15 @@ export function callTitle(task: Task): string {
   }
   return callPrompt(task).split("\n", 1)[0] ?? "";
 }
+
+/**
+ * A called agent's own thread, drawn where the call happened: what that agent
+ * said and did, in its own order, under its own line. A run is several
+ * threads, the caller's and each agent's it called, and a host that holds
+ * them gives each call its thread here. Null, or a call with no thread yet,
+ * leaves the call as one line.
+ */
+export const CallThreadContext = createContext<((task: Task) => ReactNode) | null>(null);
 
 /**
  * A call this turn made to another agent, as one item where it happened:
@@ -721,6 +733,7 @@ export function AgentMessage({
       if (kind === "pull" || !kinds.has(label)) kinds.set(label, kind);
     return kinds;
   }, [sessionKinds, turn.text]);
+  const callThread = useContext(CallThreadContext);
   const doing = useTurnActivity(turn);
   const activity = sayActivity ? doing : null;
   const orb = turn.detached ? "idle" : turnOrbState(turn);
@@ -739,7 +752,6 @@ export function AgentMessage({
     !turn.detached &&
     lastThought?.at === turn.text.length &&
     lastThought.after === turn.tasks.length;
-  const [traceOpen, setTraceOpen] = useState(true);
   // A review's Ask Follow-up writes in the composer, which a host that may ask this agent has.
   const followUp = capabilities?.followUp ?? onAskAgent !== undefined;
   const block = (b: Block) =>
@@ -759,8 +771,32 @@ export function AgentMessage({
     ) : b.kind === "tools" ? (
       <StepGroup key={b.key} turn={turn} tasks={b.tasks} copy={copy} />
     ) : (
-      <AgentCall key={b.key} task={b.task} caller={turn.agent.name} turnId={turn.id} copy={copy} />
+      // The agent's own thread, where the host has it; else the call as one line.
+      <Fragment key={b.key}>
+        {callThread?.(b.task) ?? (
+          <AgentCall task={b.task} caller={turn.agent.name} turnId={turn.id} copy={copy} />
+        )}
+      </Fragment>
     );
+  // Calls that ran at the same time, as one group where they started.
+  const together = (g: Together) => (
+    // biome-ignore lint/a11y/useSemanticElements: a fieldset is for form controls
+    <div
+      key={g.key}
+      role="group"
+      data-aui="calls-together"
+      aria-label={copy.conversation.callsTogether(g.calls.length)}
+      className="flex min-w-0 flex-col gap-1.5"
+    >
+      <p className="text-aui-2xs text-aui-muted">
+        {copy.conversation.callsTogether(g.calls.length)}
+      </p>
+      <div className="flex min-w-0 flex-col gap-1.5 border-aui-border border-l pl-3">
+        {g.calls.map(block)}
+      </div>
+    </div>
+  );
+  const drawn = useMemo(() => withCallsTogether(blocks), [blocks]);
 
   return (
     <article
@@ -829,15 +865,8 @@ export function AgentMessage({
                 <TurnMetaContext.Provider value={turn}>
                   <SuppressContext.Provider value={suppressed}>
                     <div className="aui-stack">
-                      {settledTurn && blocks.length > 0 && (
-                        <WorkedFor
-                          ms={turn.durationMs}
-                          open={traceOpen}
-                          onToggle={() => setTraceOpen((o) => !o)}
-                          copy={copy}
-                        />
-                      )}
-                      {(!settledTurn || traceOpen) && blocks.map(block)}
+                      {/* What happened, in the order it happened, before the last words. */}
+                      {drawn.map((b) => (b.kind === "together" ? together(b) : block(b)))}
                       <TurnView
                         turn={{ ...turn, text: tail }}
                         copy={copy}

@@ -1,8 +1,15 @@
 import { defaultCopy } from "@humagen/components";
-import { allTools } from "@humagen/core";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { allTools, type ResponseState, type Task } from "@humagen/core";
+import { CallThreadContext } from "@humagen/web";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Run } from "./adapter.ts";
-import { responseChips, summaryOf, useResponse, WorkedButton } from "./ResponseActivity.tsx";
+import {
+  AgentCallLane,
+  responseChips,
+  summaryOf,
+  useResponse,
+  WorkedButton,
+} from "./ResponseActivity.tsx";
 import { Chips } from "./refChips.tsx";
 import { type TraceLoader, traceSource } from "./responseSource.ts";
 import type { Chip, Reference } from "./trace.ts";
@@ -41,6 +48,56 @@ function useRunResponse(run: Run, seen: boolean, loader?: TraceLoader) {
     [seen, ended, run.id, run.status, loader],
   );
   return useResponse(source);
+}
+
+/** The call in a response that a turn's step is: by the run it started, or by its own id. */
+export function callIn(state: ResponseState, task: Task) {
+  const run = task.subagent?.runId;
+  return allTools(state).find(
+    (t) => t.kind === "agent" && ((run !== undefined && t.runId === run) || t.id === task.id),
+  );
+}
+
+/** A response's calls as threads, for a message to draw where each call happened. */
+export function callThreadsOf(state: ResponseState, messageId?: string) {
+  return (task: Task): ReactNode => {
+    const tool = callIn(state, task);
+    return tool ? <AgentCallLane tool={tool} messageId={messageId} /> : null;
+  };
+}
+
+/**
+ * Around an answer: each agent it called gets its own thread in the answer,
+ * where the call happened. A run is several threads, the answering agent's
+ * and each agent's it called; the message shows them as one, in order. The
+ * run's activity is read only for an answer that called someone, and until
+ * it is read each call is one line.
+ */
+export function CallThreads({
+  run,
+  calls,
+  loader,
+  children,
+}: {
+  run: Run;
+  /** Whether the answer called another agent: without one, nothing is read. */
+  calls: boolean;
+  loader?: TraceLoader;
+  children: ReactNode;
+}) {
+  // biome-ignore lint/correctness/useExhaustiveDependencies: keyed by the run's id and status, not its object.
+  const source = useMemo(
+    () => (calls ? traceSource(run, loader) : undefined),
+    [calls, run.id, run.status, loader],
+  );
+  const { state, version } = useResponse(source);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the state is one object, changed in place; version says when.
+  const thread = useCallback(callThreadsOf(state, run.message), [state, version, run.message]);
+  return (
+    <CallThreadContext.Provider value={calls ? thread : null}>
+      {children}
+    </CallThreadContext.Provider>
+  );
 }
 
 /**

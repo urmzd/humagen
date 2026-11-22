@@ -2067,8 +2067,8 @@ export const defaultCopy = {
     stepNeedsYou: "waiting for you",
     openProfile: "Open its profile to see how it is set up",
     stepFailed: (count: number) => `${count} failed`,
-    workedFor: (time: string) => `Worked for ${time}`,
-    worked: "Worked",
+    /** Over calls to other agents that ran at the same time. */
+    callsTogether: (n: number) => `${n} agents at the same time`,
     /**
      * A run of tool calls between two parts of an answer, as one line, and
      * each call in it as a row. `one` names what a lone call was pointed at;
@@ -5406,10 +5406,14 @@ export const defaultCopy = {
     /** On a call that does not wait: the agent carries on by itself and answers later. */
     delegated: "Delegated",
     asked: "Asked",
-    /** Under an answer: how long the response worked and how much it brought in. */
-    worked: (time: string, agents: number, tools: number) =>
+    /**
+     * Under an answer: what the response brought in, which opens its
+     * activity. No duration: the message says when, and each step and call
+     * says how long it took.
+     */
+    worked: (agents: number, tools: number) =>
       [
-        `Worked ${time}`,
+        "Activity",
         agents ? `${agents} ${agents === 1 ? "agent" : "agents"}` : "",
         tools ? `${tools} ${tools === 1 ? "tool" : "tools"}` : "",
       ]

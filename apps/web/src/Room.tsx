@@ -59,7 +59,7 @@ import { GitHubTab, reviewText, reviewView } from "./GitHubTab.tsx";
 import { HumanActivityList, HumanActivityNote } from "./humanActivity.tsx";
 import { itemActions } from "./itemActions.tsx";
 import { OLD_SYSTEM_SENDER } from "./legacy.ts";
-import { AnswerRefs } from "./MessageRefs.tsx";
+import { AnswerRefs, CallThreads } from "./MessageRefs.tsx";
 import { MessageTime } from "./MessageTime.tsx";
 import { OutcomeActions } from "./OutcomeActions.tsx";
 import { PersonMark } from "./PersonMark.tsx";
@@ -662,21 +662,23 @@ function AnswerView({
         <RunFeedbackHost turn={shown}>
           {(rated) => (
             <RetryCallContext.Provider value={ownsRun ? retryCalls : null}>
-              <AgentMessage
-                actions={actions}
-                stop={stop}
-                itemStops={itemStops}
-                disclaimer={false}
-                activity={false}
-                timestamp={<MessageTime at={run.created_at} />}
-                turn={ownsRun ? rated : { ...rated, needsConnection: undefined }}
-                copy={copyFor(ask)}
-                itemActions={itemActions(run)}
-                capabilities={{ regenerate: false }}
-                onAskAgent={onAsk}
-                onReply={onReply}
-                onRedirect={onRedirect}
-              />
+              <CallThreads run={run} calls={rated.tasks.some((t) => t.subagent)}>
+                <AgentMessage
+                  actions={actions}
+                  stop={stop}
+                  itemStops={itemStops}
+                  disclaimer={false}
+                  activity={false}
+                  timestamp={<MessageTime at={run.created_at} />}
+                  turn={ownsRun ? rated : { ...rated, needsConnection: undefined }}
+                  copy={copyFor(ask)}
+                  itemActions={itemActions(run)}
+                  capabilities={{ regenerate: false }}
+                  onAskAgent={onAsk}
+                  onReply={onReply}
+                  onRedirect={onRedirect}
+                />
+              </CallThreads>
             </RetryCallContext.Provider>
           )}
         </RunFeedbackHost>
