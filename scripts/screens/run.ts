@@ -193,7 +193,7 @@ function chats(ids: Ids, call: ReturnType<typeof api>): Screen[] {
       path: `/conversations/${ids.privateChat}`,
       act: async (page) => {
         const human = page.getByRole("article", { name: /^Message from / }).first();
-        const agent = page.getByRole("article", { name: "helper message", exact: true }).first();
+        const agent = page.getByRole("article", { name: "Helper message", exact: true }).first();
         for (const message of [human, agent]) {
           // An earlier message shows its actions once tapped or hovered (theme.css).
           await message.click({ position: { x: 4, y: 4 } });
@@ -239,7 +239,7 @@ function chats(ids: Ids, call: ReturnType<typeof api>): Screen[] {
       name: "conversation-feedback-reasons",
       path: `/conversations/${ids.privateChat}`,
       act: async (page) => {
-        const agent = page.getByRole("article", { name: "helper message", exact: true }).first();
+        const agent = page.getByRole("article", { name: "Helper message", exact: true }).first();
         // An earlier message shows its actions once tapped or hovered (theme.css).
         await agent.click({ position: { x: 4, y: 4 } });
         const rating = agent.getByRole("group", { name: "Rate this answer" });
@@ -279,7 +279,7 @@ function chats(ids: Ids, call: ReturnType<typeof api>): Screen[] {
       name: "conversation-agent-time",
       path: `/conversations/${ids.privateChat}`,
       act: async (page) => {
-        const message = page.getByRole("article", { name: "helper message", exact: true }).first();
+        const message = page.getByRole("article", { name: "Helper message", exact: true }).first();
         await message.getByRole("button", { name: /^Posted / }).click();
         const tooltip = message.getByRole("tooltip");
         await tooltip.waitFor();
@@ -346,7 +346,7 @@ function chats(ids: Ids, call: ReturnType<typeof api>): Screen[] {
       name: "conversation-timeline",
       path: `/conversations/${ids.timelineThread}`,
       act: async (page) => {
-        const message = page.getByRole("article", { name: "native-writer message", exact: true });
+        const message = page.getByRole("article", { name: "Native Writer message", exact: true });
         await message.getByText("The plan now keeps the November 12 date").waitFor();
         const text = (await message.innerText()).replace(/\s+/g, " ");
         const order = [
