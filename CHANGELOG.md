@@ -1,5 +1,63 @@
 # Changelog
 
+## 0.186.0 (2026-11-22)
+
+### Features
+
+- **sessions**: generate short session titles, keep a person's rename ([55e6260](https://github.com/urmzd/humagen/commit/55e6260e137c4750f7d689254d44f872d9b75220))
+- **web**: open an alert's document, and keep the alert out of its review ([c1993dd](https://github.com/urmzd/humagen/commit/c1993dddf5e5bd70e8bd4939bc5842487955f2a7))
+- **alerts**: start a review with the alert as an attached document ([dcf9e40](https://github.com/urmzd/humagen/commit/dcf9e400a0b51a5865fe3aa1f9225d3a3de82d26))
+- **web**: one settings menu beside + on Home, and approval as a pill ([24f2e18](https://github.com/urmzd/humagen/commit/24f2e18d0efce07414f1c35866609f09276a4d37))
+- run a ! message as a command in the session sandbox ([0d783c0](https://github.com/urmzd/humagen/commit/0d783c0f41227df63487033f2a32751666172ab6))
+- **web**: lean alert card with View, Review and Done ([ea6d287](https://github.com/urmzd/humagen/commit/ea6d28711917da1661db79d0f2ab55ec5473eee6))
+- **alerts**: put a health alert on the answer that failed and add Review ([c91b621](https://github.com/urmzd/humagen/commit/c91b621a8ccdff0e42666e2cf2edcb9b9931519a))
+- **web**: mascots spin in 3D, the body drawn at each angle of the turn ([1b6de4e](https://github.com/urmzd/humagen/commit/1b6de4eb836fccd72d87d27fbd3531516281cdc2))
+- **web**: mascot bodies and arms in bot-avatars' 3D plush ([6e3b42d](https://github.com/urmzd/humagen/commit/6e3b42d79ed0eca0e224f5d22695b70392c6f1e6))
+- **web**: say the approval mode as a word under the composer ([404acad](https://github.com/urmzd/humagen/commit/404acadff196002376861e13e3a2be1fb778022a))
+- **web**: idle mascots hop, spin, wave and wiggle now and then, and when pointed at ([17566cd](https://github.com/urmzd/humagen/commit/17566cd9fc48d6c8478ec214d45a30f8b8437b67))
+- **web**: agent marks draw Humagen's own mascots ([1bbb61a](https://github.com/urmzd/humagen/commit/1bbb61aeffe1a81d5f22a4bff3b4c97fff452ce0))
+- **web**: mascot tools drawn as rendered objects with livelier motion ([3568778](https://github.com/urmzd/humagen/commit/35687782c0c23e45bf976302d8801eccc82a388f))
+- **web**: draw mascot fur once for smooth motion; Humagen as a tuxedoed secret agent ([12d48b5](https://github.com/urmzd/humagen/commit/12d48b50ac238828e5530db6feed1bcf64222bdb))
+- **web**: Humagen's own mascots: personas with arms that use their props (prototype) ([6a72a5a](https://github.com/urmzd/humagen/commit/6a72a5aafdbf9562a5dc08429cfadbdae87b8255))
+- **web**: mascots hold their props with their own furry hands ([63c85bd](https://github.com/urmzd/humagen/commit/63c85bd6668118892d4d03b7f9b11c97072f3cd4))
+- **web**: draw mascot props as real objects, with a gallery of every state ([0f568bb](https://github.com/urmzd/humagen/commit/0f568bb4430eb3f8304e5e81f636ef7f0741f43c))
+- **web**: marks finish their move on open eyes, and mascots carry props, not orbs ([3306761](https://github.com/urmzd/humagen/commit/33067619bed5ce3e5ac6a77aa2d3225d6763ba08))
+- **web**: idle glances and activity props on agent marks ([d3f2f82](https://github.com/urmzd/humagen/commit/d3f2f82a0fe38d2eaf37c9b16dac3f804c2837a2))
+
+### Bug Fixes
+
+- **platform**: command error strings end without punctuation ([83c5819](https://github.com/urmzd/humagen/commit/83c58193a364b0cca2d25f88abfda4c50d834b73))
+- clear a stale hold, key the upper arm by theme, retry a picture whose job threw ([1f4f994](https://github.com/urmzd/humagen/commit/1f4f99498fed2832364b237736909a4bac1933b4))
+- cross-review findings: held queue stays held, proper names, in-app links, Workspace breadcrumb, search history, mascot job queue and caches ([26ec662](https://github.com/urmzd/humagen/commit/26ec66200e5be49e1d1780b41cebf79e916c74ac))
+- **web**: a ! command never carries files, and ! is plain text outside a session ([71b8374](https://github.com/urmzd/humagen/commit/71b8374b8256c41983ef5337b4e8f181f29bada3))
+- **platform**: never title a session from a command; start one review per alert ([63c6f34](https://github.com/urmzd/humagen/commit/63c6f3495c2c60ab59e9867d6175d7b61525605b))
+- **console**: a sidebar row's ⋯ is 28px on a mouse, so its status dot never meets it ([135d12e](https://github.com/urmzd/humagen/commit/135d12e815cb817dc7c86eee12d3bde79e7c784b))
+- **screens**: composer screens follow the settings menu and the approval pill ([b58e25b](https://github.com/urmzd/humagen/commit/b58e25bfc904b6395171709b2419bbfb197b0c7b))
+- **alerts**: quote tool errors as code and give the document a Close ([5be7948](https://github.com/urmzd/humagen/commit/5be79486cf596eb21c567dcc3ac6a786f07ddb79))
+- **web**: mark Auto's risk on its icon, not a filled row ([8b83567](https://github.com/urmzd/humagen/commit/8b8356713094d6aed1dd5854c66c5c61a1e3fe9d))
+- **web**: center a sidebar row's status dot under its menu button ([54a2475](https://github.com/urmzd/humagen/commit/54a2475dfd6fd0087e59a41b2c2c8883b5900381))
+- **alerts**: link a recap to the answer by its console path ([c1d2bf5](https://github.com/urmzd/humagen/commit/c1d2bf552a8951970b2ec310c94767aa2567cb1e))
+- **web**: center an agent mark's mascot on its body so it lines up with the name ([a9cfe5a](https://github.com/urmzd/humagen/commit/a9cfe5af740b3598c6aed3b5aee21f529cb6fa20))
+- **web**: mascot arms grow from the body as one shaded, furred piece ([71fe44b](https://github.com/urmzd/humagen/commit/71fe44b948d3afa4beee78a60b0c3da43bd00a75))
+- **web**: center Home's greeting and prompt on desktop ([ce59202](https://github.com/urmzd/humagen/commit/ce59202b0ddbdc17238e08a673e89a076ef24616))
+- **web**: show a failed answer as a quiet line with a small Retry ([85b94f2](https://github.com/urmzd/humagen/commit/85b94f2b1b49f3357dfc5feaf1e08d400349a1cd))
+
+### Performance
+
+- **web**: draw mascots in idle-time jobs, on first view, as blob URLs; turns on first need ([8eb9dbf](https://github.com/urmzd/humagen/commit/8eb9dbfd62d2a52ceca87aea91a818c773a1c3aa))
+
+### Misc
+
+- **console**: the retry button names its agent properly ([81f70d5](https://github.com/urmzd/humagen/commit/81f70d5abda6187df50d44e9f309dbd6a70fc2ec))
+- **spec**: regenerate product copy keys ([f841bcb](https://github.com/urmzd/humagen/commit/f841bcb08da16c6c7658017f08c16f3426670bd6))
+- **screens**: Home's composer scenarios use the settings menu and typed skills ([37c658f](https://github.com/urmzd/humagen/commit/37c658fe58bbaf58509f2ef48598daeb5e65dc5f))
+- **spec**: regenerate product copy keys after the merges ([5fc3d88](https://github.com/urmzd/humagen/commit/5fc3d88c6cbb0f23359205dba30ed506427ca2dd))
+- **spec**: regenerate product copy keys ([2bb98b7](https://github.com/urmzd/humagen/commit/2bb98b77c57283f65aabe922d56356c231e2a549))
+- **web**: check Auto's warning on its icon, with no filled row ([e3b9351](https://github.com/urmzd/humagen/commit/e3b93518e1580002fb789771fad6f8e4d7fdefb4))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.185.0...v0.186.0)
+
+
 ## 0.185.0 (2026-11-22)
 
 ### Features
