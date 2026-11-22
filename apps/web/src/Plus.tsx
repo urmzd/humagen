@@ -2,10 +2,10 @@ import { defaultCopy } from "@humagen/components";
 import {
   BotIcon,
   CheckIcon,
-  CodeIcon,
-  FileIcon,
+  GitBranchIcon,
+  PaperclipIcon,
   ProjectIcon,
-  WrenchIcon,
+  SparkleIcon,
   XIcon,
 } from "@humagen/render-web";
 import { type KeyboardEvent, type ReactNode, useLayoutEffect, useRef, useState } from "react";
@@ -117,7 +117,7 @@ export function PlusMenu({
     {
       id: "attach",
       label: words.attach,
-      icon: <FileIcon size={16} className="text-aui-muted" />,
+      icon: <PaperclipIcon size={16} className="text-aui-muted" />,
       onSelect: onAttach,
     },
     {
@@ -200,7 +200,7 @@ export function PlusMenu({
     rows.push({
       id: "skills",
       label: defaultCopy.navigation.skills,
-      icon: <WrenchIcon size={16} className="text-aui-muted" />,
+      icon: <SparkleIcon size={16} className="text-aui-muted" />,
       pane: {
         title: defaultCopy.navigation.skills,
         body: (
@@ -242,7 +242,7 @@ export function PlusMenu({
                       onClose();
                     }}
                   >
-                    <WrenchIcon size={16} className="text-aui-muted" />
+                    <SparkleIcon size={16} className="text-aui-muted" />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate">{skill.name}</span>
                       {skill.description && (
@@ -263,7 +263,7 @@ export function PlusMenu({
     rows.push({
       id: "repos",
       label: c.repos,
-      icon: <CodeIcon size={16} className="text-aui-muted" />,
+      icon: <GitBranchIcon size={16} className="text-aui-muted" />,
       value: repos.value.length > 0 ? c.selected(repos.value.length) : undefined,
       pane: { title: c.repos, body: <RepoChoices {...repos} /> },
     });
