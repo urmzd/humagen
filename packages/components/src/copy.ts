@@ -5325,9 +5325,8 @@ export const defaultCopy = {
     stoppingLabel: (what: string) => `Stopping ${what}`,
     stoppedLabel: (what: string) => `${what} stopped`,
     backgroundWork: (kind: string, text: string) => `the ${kind} "${text}"`,
-    /** The footer under the composer: who answers, the approval mode and the usage ring. */
+    /** The footer under the composer: the approval mode, the AI notice and the usage ring. */
     footer: "Session details",
-    answeredBy: (agent: string) => `Answered by ${agent}`,
     more: "More session controls",
     /** The line under a composer. {name} is the product's name. */
     aiNotice: "{name} is AI and can make mistakes.",
