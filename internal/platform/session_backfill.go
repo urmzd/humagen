@@ -129,7 +129,7 @@ func (p *Platform) backfillGitHub(ctx context.Context, tenant string, apply bool
 		place, sf, ok := githubPlace(tag, r.Client)
 		switch {
 		case !ok:
-			rep.add(BackfillRunLeft, r.ID, "", "not asked on an issue or pull request a session is kept for")
+			rep.add(BackfillRunLeft, r.ID, "", "no mention on an issue or pull request started it, as an automation or the automatic review starts one")
 			continue
 		case r.UsesPrivateContext():
 			// Filed with the others who asked there, it would be read by them.
@@ -187,6 +187,13 @@ func (p *Platform) backfillGitHubPlace(ctx context.Context, tenant string, apply
 		id, owner, project = th.ID, th.Session.Agent, th.Project
 		rep.add(BackfillSessionFound, first.place, id, "owned by "+owner)
 	} else {
+		channel := cmp.Or(first.run.Channel, runs.DefaultChannel)
+		if ch, err := p.Projects.Channel(tenant, project, channel); err != nil || ch.Archived {
+			for _, b := range past {
+				rep.add(BackfillRunLeft, b.run.ID, "", fmt.Sprintf("its channel %q #%s cannot hold a session now", project, channel))
+			}
+			return nil
+		}
 		id = session.Key{Tenant: tenant, Parent: first.place, Agent: owner}.Normalize().ID()
 		rep.add(BackfillSessionOpened, first.place, id, fmt.Sprintf("owned by %s, filed in %q, private to the people who asked", owner, project))
 		if apply {
@@ -222,6 +229,10 @@ func (p *Platform) backfillGitHubPlace(ctx context.Context, tenant string, apply
 	}
 	for _, b := range past {
 		r := b.run
+		if r.Thread != r.ID && r.Thread != id {
+			rep.add(BackfillRunLeft, r.ID, id, "it is in conversation "+r.Thread)
+			continue
+		}
 		if r.Project != project {
 			rep.add(BackfillRunLeft, r.ID, id, fmt.Sprintf("it is filed in %q and its session in %q", r.Project, project))
 			continue
