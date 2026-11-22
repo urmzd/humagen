@@ -241,12 +241,15 @@ function ReadersField({
 /** A new corpus, or a change to one: its description and who can read it. */
 function CorpusForm({
   corpus,
+  sources = [],
   onSaved,
   onCancel,
   onConflict,
 }: {
   /** The corpus being changed; absent for a new one. */
   corpus?: Corpus;
+  /** The workspace's sources, offered to a new corpus to start with. */
+  sources?: Source[];
   onSaved: (corpus: Corpus) => void;
   onCancel: () => void;
   onConflict: () => void;
@@ -261,12 +264,47 @@ function CorpusForm({
   const [label, setLabel] = useState<CorpusLabel>(corpus?.label || "internal");
   const [purpose, setPurpose] = useState(corpus?.purpose ?? "");
   const [graphSearch, setGraphSearch] = useState(corpus?.graph_search ?? false);
+  // A new corpus is made with what it searches, chosen here: sources already in the
+  // workspace and systems already connected. A new system is connected from it after.
+  const [connectors, setConnectors] = useState<CatalogConnectorView[]>([]);
+  const [chosen, setChosen] = useState<string[]>([]);
+  useEffect(() => {
+    if (corpus) return;
+    api.catalog().then(
+      (page) => setConnectors(page.connectors ?? []),
+      () => {},
+    );
+  }, [corpus]);
+  const offered: (CorpusMemberRef & { provider?: string })[] = corpus
+    ? []
+    : [
+        ...sources.map((s) => ({
+          kind: "source" as const,
+          name: s.name,
+          provider: providerOfSource(s),
+        })),
+        ...connectors.map((c) => ({ kind: "catalog" as const, name: c.name, provider: c.system })),
+      ];
+  const keyOf = (m: CorpusMemberRef) => `${m.kind}:${m.name}`;
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (busy) return;
-    const chosen = readersOf(readers.mode, readers.people, readers.projects);
+    const chosenReaders = readersOf(readers.mode, readers.people, readers.projects);
+    // A new corpus takes the sources chosen for it, one after another; it is made even
+    // if one is refused, and says which.
+    const createWith = async (made: Corpus) => {
+      let last = made;
+      for (const m of offered.filter((o) => chosen.includes(keyOf(o)))) {
+        try {
+          last = await api.addCorpusMember(made.name, { kind: m.kind, name: m.name });
+        } catch (e) {
+          toast.error(`${m.name}: ${message(e)}`);
+        }
+      }
+      return last;
+    };
     const sensitivity = {
       label,
       ...(label === "restricted" ? { purpose: purpose.trim() } : {}),
@@ -279,18 +317,20 @@ function CorpusForm({
           ? await api.updateCorpus(corpus.name, {
               title: title.trim(),
               description,
-              readers: chosen,
+              readers: chosenReaders,
               ...sensitivity,
               graph_search: graphSearch,
               version: corpus.version,
             })
-          : await api.createCorpus({
-              name,
-              title: title.trim(),
-              description,
-              readers: chosen,
-              ...sensitivity,
-            }),
+          : await createWith(
+              await api.createCorpus({
+                name,
+                title: title.trim(),
+                description,
+                readers: chosenReaders,
+                ...sensitivity,
+              }),
+            ),
       );
     } catch (err) {
       if (corpus && conflict(err)) onConflict();
@@ -329,6 +369,38 @@ function CorpusForm({
           onChange={(e) => setDescription(e.target.value)}
         />
       </Label>
+      {!corpus && (
+        <fieldset className="m-0 flex min-w-0 flex-col gap-2 border-0 p-0">
+          <legend className="pb-1 font-medium text-aui-fg text-aui-sm">{words.form.sources}</legend>
+          <p className="text-aui-muted text-aui-xs">{words.form.sourcesHint}</p>
+          {offered.length > 0 ? (
+            <ul className="flex flex-col rounded-aui border border-aui-border">
+              {offered.map((m) => {
+                const key = keyOf(m);
+                const on = chosen.includes(key);
+                return (
+                  <li key={key} className="border-aui-border border-t first:border-t-0">
+                    <label className="flex min-h-11 cursor-pointer items-center gap-3 px-3 text-aui-sm hover:bg-aui-hover">
+                      <input
+                        type="checkbox"
+                        checked={on}
+                        onChange={() =>
+                          setChosen((all) => (on ? all.filter((k) => k !== key) : [...all, key]))
+                        }
+                        className="size-4 accent-[var(--aui-accent)]"
+                      />
+                      <ProviderMark provider={m.provider} small />
+                      <span className="min-w-0 flex-1 truncate text-aui-fg">{m.name}</span>
+                    </label>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <p className="text-aui-muted text-aui-xs">{words.form.noSources}</p>
+          )}
+        </fieldset>
+      )}
       <ReadersField value={readers} onChange={setReaders} directory={directory} />
       <LabelField label={label} purpose={purpose} onLabel={setLabel} onPurpose={setPurpose} />
       {corpus && (
@@ -601,6 +673,7 @@ export function KnowledgePage({
         <CorpusForm
           key={editing ? `${editing.name}:${editing.version}` : "new"}
           corpus={editing}
+          sources={sources}
           onCancel={() => setSheet(null)}
           onConflict={reloadAfterConflict}
           onSaved={(c) => {

@@ -890,6 +890,12 @@ export const defaultCopy = {
       add: "Add",
       none: "None yet.",
       create: "Create Corpus",
+      /** The sources a new corpus starts with, chosen as it is made. */
+      sources: "Sources",
+      sourcesHint:
+        "What it searches. Pick sources already in the workspace and systems already connected; you can connect a new system or upload files once it is made.",
+      noSources:
+        "Nothing is in the workspace yet. Connect a system or upload files once it is made.",
       save: "Save",
       cancel: "Cancel",
       created: (name: string) => `${name} created`,
