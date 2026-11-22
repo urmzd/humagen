@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { defaultCopy } from "@humagen/components";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useState } from "react";
 import { stubFetch } from "./dom.ts";
 import { activeKey } from "./pane.ts";
@@ -119,28 +119,25 @@ function Harness({
   );
 }
 
-test("the Workspace is a pane of tabs: + opens an item list, a tab closes, and the tabs are its address", async () => {
+test("the Files drawer has one fixed row of sections, no tab per thing opened, and its address keeps what is open", async () => {
   setup();
   const views: ConversationView[] = [];
   render(<Harness initial={{ panel: "workspace" }} opened={[]} views={views} />);
-  // A bare address opens Files.
+  // A bare address opens Files, among the drawer's sections, always the same.
   const first = await screen.findAllByRole("tab");
   assert.deepEqual(
     first.map((t) => t.textContent),
-    [pane.kind.files],
+    (["files", "scratchpads", "artifacts", "sandboxes", "memories"] as const).map((k) => pane.kind[k]),
   );
-  fireEvent.click(screen.getByRole("button", { name: pane.open }));
-  for (const kind of ["files", "scratchpads", "artifacts", "sandboxes", "memories"])
-    assert.ok(screen.getByRole("button", { name: pane.pick[kind] }), kind);
-  fireEvent.click(screen.getByRole("button", { name: pane.pick.sandboxes }));
-  assert.deepEqual(views.at(-1)?.tabs, ["files", "sandboxes"]);
+  assert.equal(screen.getByRole("tab", { selected: true }).textContent, pane.kind.files);
+  // There is no + and no close on a section: the drawer is closed once, by its own button.
+  assert.equal(screen.queryByRole("button", { name: pane.open }), null);
+  assert.equal(screen.queryByRole("button", { name: pane.close(pane.kind.files) }), null);
+  fireEvent.click(screen.getByRole("tab", { name: pane.kind.sandboxes }));
   assert.equal(activeKey(views.at(-1) ?? {}), "sandboxes");
   assert.ok(await screen.findByText(words.sessionSandbox));
-  // Showing another tab keeps both open; closing one shows its neighbor.
   fireEvent.click(screen.getByRole("tab", { name: pane.kind.files }));
   assert.equal(views.at(-1)?.active, "files");
-  fireEvent.click(screen.getByRole("button", { name: pane.close(pane.kind.files) }));
-  assert.deepEqual(views.at(-1)?.tabs, ["sandboxes"]);
   // Expand and split are toggles in the address.
   fireEvent.click(screen.getByRole("button", { name: pane.expand }));
   assert.equal(views.at(-1)?.expanded, true);
@@ -183,8 +180,10 @@ test("Sandboxes shows the session sandbox and a nested sandbox per agent run", a
   assert.equal(writer.closest("li")?.getAttribute("style"), "padding-inline-start: 16px;");
   fireEvent.click(screen.getByRole("button", { name: /^.*Lead.*2 files/ }));
   assert.equal(activeKey(views.at(-1) ?? {}), "sandbox:r-lead");
-  // The tab is named for its run's agent.
-  assert.ok(screen.getByRole("tab", { name: "Lead" }));
+  // It is named for its run's agent, after the section it came from.
+  const path = screen.getByRole("navigation", { name: "Breadcrumb" });
+  assert.ok(within(path).getByText("Lead"));
+  assert.ok(within(path).getByRole("button", { name: pane.kind.sandboxes }));
   // The run's sandbox: its mounts, what it left, and what copyback refused.
   assert.ok(await screen.findByText("/work"));
   assert.ok(screen.getByText(`${words.mountKind.project}: Launch`));
