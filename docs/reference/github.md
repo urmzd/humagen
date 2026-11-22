@@ -26,7 +26,7 @@ create the default client, `default-github`:
 | `HUMAGEN_GITHUB_LOGIN` | `github.login` |
 | `HUMAGEN_GITHUB_DEFAULT_AGENT` | `default_agent` |
 | `HUMAGEN_GITHUB_ASKERS` | `github.askers`: the only logins whose mentions, reviews and pull requests are acted on, comma separated. Optional |
-| `HUMAGEN_GITHUB_PEOPLE` | `github.people`: `login=subject` pairs, comma separated, such as `urmzd=tailscale:urmzd@github`. The subject is the person's console sign-in subject. A malformed or repeated entry stops the server. Optional |
+| `HUMAGEN_GITHUB_PEOPLE` | `github.people`: `login=subject` pairs, comma separated, such as `urmzd=tailscale:urmzd@github`. The subject is the person's console sign-in subject. A malformed or repeated entry stops the server. Optional, and a fallback: people [link their own account](#linked-accounts) instead |
 | `HUMAGEN_GITHUB_AUTO_REVIEW` | `github.auto_review.enabled`: `false` switches automatic review off. Unset, it is on |
 | `HUMAGEN_GITHUB_AUTO_REVIEW_REPOSITORIES` | `github.auto_review.repositories`, as `owner/repo=on` or `owner/repo=off` pairs, comma separated |
 
@@ -37,12 +37,73 @@ The default client may route to any agent. One created through the API routes
 to its default agent and its `agents` list, and an event rule or a bot that
 names any other agent is refused when the client is saved.
 
+## Linked accounts
+
+Each person links their own GitHub account in the console: **Connect** on the
+GitHub row under Connected accounts (`/settings/connections`). This replaces
+`github.people` and `HUMAGEN_GITHUB_PEOPLE`, which stay as a fallback for a
+deployment that set them.
+
+```text
+console            Humagen                         GitHub
+Connect  ───────▶  state bound to the person  ───▶ authorize the GitHub App
+callback ◀───────  code + state               ◀─── redirect to the callback
+           ───────▶ exchange the code, GET /user ─▶ id, login, avatar
+                    link id ↔ person, drop the token
+```
+
+1. Humagen starts the GitHub App's user authorization with a `state` that only
+   the signed-in person's own callback can spend, once, within 10 minutes.
+   It sends a PKCE challenge.
+2. On the callback it exchanges the code with the app's client id and secret,
+   then reads `GET /user` with the user token.
+3. It links the numeric user id to the person, with the login and avatar for
+   display. The token is used for that one request and never stored, since
+   nothing Humagen does needs to act as the person on GitHub.
+
+| Rule | Behavior |
+|------|----------|
+| Key | GitHub's numeric user id. A renamed login still resolves |
+| One person per GitHub user | A second person's claim is refused until the first person disconnects |
+| One GitHub account per person | Linking another account replaces the first |
+| Scope | The workspace. Another workspace may link the same user to its own person |
+| Disconnect | The person's own row. The link is removed at once |
+
+**Resolution.** A delivery's `sender.id` is read from the signature-verified
+payload. The person who linked that id is who the run acts for; without a
+link, `github.people` maps the login. Linked people may also ask without write
+access to the repository, as mapped people may.
+
+Administrators see who linked an account on the GitHub app's sheet (Settings,
+Apps, GitHub), from `GET /api/clients/{id}/accounts`.
+
+**What the operator sets.** Linking signs in through the GitHub App's own OAuth
+client. In the GitHub App's settings:
+
+| Setting | Value |
+|---------|-------|
+| Callback URL | `<server.public_url>/connections/callback`, the same as `connections.redirect_url` when that is set |
+| Expire user authorization tokens | On. Humagen keeps no user token, so a token it read expires on its own |
+| Request user authorization (OAuth) during installation | Leave it as the console's app install needs it: on when people install the app from the console (`connections.github`), else off. Linking works either way |
+| Client secret | Generate one; give it to Humagen as below |
+
+In Humagen, [`connections`](connections.md) must be set (its `encryption_key`
+keeps the pending sign-in). The client id and secret come from
+`connections.github` when the console installs the app, else from the
+environment:
+
+| Variable | Value |
+|----------|-------|
+| `HUMAGEN_GITHUB_CLIENT_ID` | The GitHub App's client id |
+| `HUMAGEN_GITHUB_CLIENT_SECRET` | Its client secret, read through `env:HUMAGEN_GITHUB_CLIENT_SECRET` and never stored |
+
 ## Who may ask
 
 On a public repository anyone can comment, so the client acts only on people
 who may ask: those GitHub says can write to the repository (its owner, a
 member of its organization or a collaborator, read from the payload's
-`author_association`) and people the client maps (`github.people`). A
+`author_association`), people who [linked their account](#linked-accounts), and
+people the client maps (`github.people`). A
 comment, a review or a pull request from anyone else starts nothing, its
 event rules included, and the log says why. An issue from them still meets
 the client's event rules, which are written to read issues, but asks no
@@ -92,8 +153,8 @@ client's `default_agent` is not asked.
 A review, a review comment and a new issue or pull request are read the same
 way. Every run is filed where the client files it: the project its repository
 is linked to, else the client's [home](clients.md#the-record). It acts for the
-person the client maps the GitHub login to (`github.people`), and for nobody
-when the client maps the login to nobody. A comment addressed to the app on a
+person who [linked](#linked-accounts) that GitHub user, else the person the
+client maps the login to (`github.people`), and for nobody otherwise. A comment addressed to the app on a
 pull request posts no guide, since the guide names the agent that answers; the
 next one that names an agent does.
 
@@ -109,7 +170,7 @@ the pull request's head commit is then:
 | Owner | The agent that answered first. Another agent asked there answers in the same session, with a conversation of its own |
 | Filed in | The project and channel the run is filed in: the repository's linked project, else the client's home |
 | Title | The pull request's or issue's title, else `<owner>/<repo>#<n>` |
-| People | Each person the client maps a login that asked there to, added when they ask |
+| People | Each person who linked, or the client maps, a GitHub user that asked there, added when they ask |
 | Visibility | Private to those people |
 
 The key is the one the runtime already keeps the agent's conversation under,
@@ -118,9 +179,8 @@ The console lists it in Sessions and in Recent for each person in it, with
 Where set to GitHub, linked to the pull request or issue.
 
 **Who reads it.** Only the people who asked there read the session in the
-console. A person is found by `github.people` (for the default
-client, `HUMAGEN_GITHUB_PEOPLE`), so map each login whose sessions should
-show in the console. GitHub showed each of them the repository, so the session shows
+console. A person is found by their [linked account](#linked-accounts), else by
+`github.people` (for the default client, `HUMAGEN_GITHUB_PEOPLE`). GitHub showed each of them the repository, so the session shows
 them nothing they could not read. Humagen cannot check that anyone else can
 read the repository, so nobody else is added, and a login the client maps to
 nobody adds nobody. A workspace administrator reads it by exception, as any
@@ -560,7 +620,9 @@ in `[humagen]`. Its body links the verified source issue or PR; issue links use
 
 The requester must have a verified GitHub identity with current repository write
 permission. For console/Slack requests, `github.people` maps their workspace
-subject to a GitHub login; ambiguous mappings deny. An explicit cross-surface
+subject to a GitHub login; ambiguous mappings deny. A linked account is not
+used here yet: its login is the one at the last sign-in, and this check needs
+the current one. An explicit cross-surface
 repository write grant is also required. Creating a fix PR asks for human approval
 by default. Only explicit allow policies for both `write_files` and
 `external_messages` skip that approval; a deny in either category wins.

@@ -23,7 +23,7 @@ func TestConnectionPresetsAndHostRefusalsAreActionable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(all) != 16 {
+	if len(all) != 18 {
 		t.Fatalf("presets=%d", len(all))
 	}
 	for _, c := range all {

@@ -20,7 +20,19 @@ database and retain it across restarts. Missing configuration leaves OAuth
 unavailable. Optional `clients` entries configure registered MCP, Google
 Workspace, Drive, OneDrive, BigQuery or Slack applications; optional `github` configures the App ID, slug, OAuth
 client and deployment credential references. Provider callbacks must match the
-configured redirect URL.
+configured redirect URL. `redirect_url` may be left out: it is then
+`server.public_url` followed by `/connections/callback`.
+
+## Accounts a person links
+
+| Preset | Signs in with | Keeps |
+|--------|---------------|-------|
+| `github-account` | The GitHub App's user authorization: client id and secret from `github`, else `HUMAGEN_GITHUB_CLIENT_ID` and `HUMAGEN_GITHUB_CLIENT_SECRET` | The GitHub user's numeric id, login and avatar. No token |
+| `slack-account` | Sign in with Slack (`openid profile`): client id and secret from `clients.slack`, else `HUMAGEN_SLACK_CLIENT_ID` and `HUMAGEN_SLACK_CLIENT_SECRET` | The Slack user and team ids, name and picture. No token |
+
+They use the same `authorize`, `callback` and `DELETE` routes as every
+connection, and the preset's `account` field says who the person linked. See
+[GitHub](github.md#linked-accounts) and [Slack](slack.md#linked-accounts).
 
 ## Tool servers a person connects
 

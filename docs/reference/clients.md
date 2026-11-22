@@ -93,14 +93,14 @@ when the client:
 | Field | Meaning |
 |-------|---------|
 | `slack.machine` | The subject of the credential the app signs in with. No other credential may act for the client's people. |
-| `slack.people` | Slack user ids in the client's team, each mapped to the principal it is in this workspace, by subject. At most 500. |
+| `slack.people` | Slack user ids in the client's team, each mapped to the principal it is in this workspace, by subject. At most 500. A fallback: a person who [linked their Slack account](slack.md#linked-accounts) in the client's team is found first. |
 
 For the app a server starts itself, both come from the Platform document
 (`surfaces.slack.people` and `machine`, see
 [the spec](spec.md#whom-the-slack-app-acts-for)), and the server tells the app
 which client it is.
 
-Anyone the map does not name is refused with 403, and the app does not ask on
+Anyone who neither linked their account nor is named in the map is refused with 403, and the app does not ask on
 their behalf. To ask for a run or to answer, the person's own grant must include `runs:write`. A Slack click
 carries no groups, so someone who holds a role only through a group (`grant
 operator to group "..."`) holds nothing here and cannot ask or answer from Slack:
@@ -446,8 +446,15 @@ withheld. Explicit action-policy Ask still requires the native approval path;
 automatic delivery cannot grant it. Direction edits preserve binding identity and
 require the channel's current version and existing project/client permissions.
 
-GitHub installations may set `github.people`, a bounded exact GitHub-login to
-workspace-subject map. Only that verified installation's map applies. Bot,
+People link their own GitHub and Slack accounts in the console
+([GitHub](github.md#linked-accounts), [Slack](slack.md#linked-accounts)). A link
+is the workspace's, keyed by the surface and its stable user id, and holds no
+credential. A surface user resolves through a link first and a client's map
+second. `GET /api/clients/{id}/accounts` (`clients:read`) lists who linked an
+account on a client's surface; a Slack client lists its own team's.
+
+GitHub installations may also set `github.people`, a bounded exact GitHub-login to
+workspace-subject map, as a fallback. Only that verified installation's map applies. Bot,
 unmapped and disabled-installation actors act for nobody. A mapping does not
 grant membership or permissions; current project and policy checks still apply.
 Like a Slack client's `slack.people`, each subject a GitHub client maps is

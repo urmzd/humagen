@@ -999,15 +999,17 @@ file does not give.
 
 By default the app acts for nobody: it answers, and every run it asks for is
 the app's own. `people` names who is who, a Slack user id (`U...` or `W...`)
-in `team` to the subject that person signs in to Humagen with. With it the
+in `team` to the subject that person signs in to Humagen with. With it, or where people link their Slack accounts and the
+app's credential is known (under `tailscale`, or `machine`), the
 server keeps a [client](clients.md#people-a-slack-app-answers-for) for the app
 and starts the app with `HUMAGEN_CLIENT` set to that client's id, so a mapped
 person's message, runs, Home tab and answers to a run's questions are theirs.
-A Slack user the map does not name stays nobody.
+A Slack user the map does not name stays nobody, unless they
+[link their Slack account](slack.md#linked-accounts), which is found first.
 
 | Field | Default | Meaning |
 |-------|---------|---------|
-| `people` | none: the app acts for nobody, with no client record and no `HUMAGEN_CLIENT` | At most 500 Slack user ids, each mapped to a subject of 1 to 200 characters. `team` must then be a team id of at most 30 characters |
+| `people` | none: the app acts for people who linked their Slack account when linking is configured and its credential is known, else for nobody, with no client record and no `HUMAGEN_CLIENT` | At most 500 Slack user ids, each mapped to a subject of 1 to 200 characters. `team` must then be a team id of at most 30 characters |
 | `machine` | under `tailscale`, `slack-app:<team>`, the subject of the credential the server makes | The subject the app's own credential signs in as, the only credential that may act for `people`. Under `tailscale` it is refused, since the server knows it. Under every other sign-in it is required with `people`: the subject is the identity provider's to choose, so the server cannot know it |
 
 The record is `slack-app-<team id in lowercase>`, such as `slack-app-t0123456`,
@@ -1564,7 +1566,8 @@ for fields, deterministic checks, and approved regression overrides.
 ### Service connection authorization
 
 `System.spec.connections` defaults to disabled. It accepts an `encryption_key`
-secret reference, a `redirect_url`, optional registered `clients`, and optional
+secret reference, a `redirect_url` (by default `server.public_url` followed by
+`/connections/callback`), optional registered `clients`, and optional
 GitHub App installation configuration under `github`. The key resolves to a
 base64-encoded 32-byte value. Registered clients bind an issuer, client ID,
 optional secret reference and scopes; native providers use their fixed profiles.

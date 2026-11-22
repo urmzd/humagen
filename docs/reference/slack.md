@@ -26,12 +26,16 @@ or where nothing may listen on a public address. Do not point both at the same
 Slack app: both would answer.
 
 The app acts for a person only as a client whose `slack.machine` is its
-credential and whose `slack.people` maps them. An app the server starts
+credential, and only for a person who [linked their Slack
+account](#linked-accounts) or whom `slack.people` maps. An app the server starts
 (`surfaces.slack`) gets that client from the Platform document: `people`, and
 under a sign-in other than `tailscale` also `machine`, make the server keep
 the record `slack-app-<team>` and start the app with `HUMAGEN_CLIENT` naming
-it. With no `people` there is no record and no `HUMAGEN_CLIENT`, and the app
-acts for nobody. That record has no bot token, so files attached in Slack are
+it. Where people link their Slack accounts (Sign in with Slack is configured),
+the record is kept with no `people` too, under `tailscale` or with `machine`
+set, so the app acts for the people who linked one. Otherwise, with no
+`people` there is no record and no `HUMAGEN_CLIENT`, and the app acts for
+nobody. That record has no bot token, so files attached in Slack are
 not read through it. See
 [the spec](spec.md#whom-the-slack-app-acts-for).
 
@@ -516,6 +520,50 @@ The same values on a client created through the API are refused with a 400.
 
 The default client may route to any agent. One created through the API routes
 to its default agent and its `agents` list, and to nothing else.
+
+## Linked accounts
+
+Each person links their own Slack account in the console: **Connect** on the
+Slack row under Connected accounts (`/settings/connections`). This replaces the
+hand-set `slack.people` map (`surfaces.slack.people` in a Platform document),
+which stays as a fallback.
+
+1. Humagen starts **Sign in with Slack** (OpenID Connect, scopes `openid
+   profile`) at `openid/connect/authorize`, with a `state` that only the
+   signed-in person's own callback can spend, once, within 10 minutes.
+2. On the callback it exchanges the code at `openid.connect.token` with the
+   Slack app's client id and secret, then reads `openid.connect.userInfo`.
+3. It links the `https://slack.com/user_id` claim to the person, with the
+   `https://slack.com/team_id` claim and the name and picture for display. The
+   token is used for that one request and never stored.
+
+A link whose team is not the team of one of the workspace's Slack clients is
+refused. A Slack user is linked to one person per workspace: a second claim is
+refused until the first person disconnects. A person links one Slack account,
+and disconnects it from the same row.
+
+**Resolution.** A Slack user is the person who linked them in the client's
+team first, then the one `slack.people` maps. This holds for a connector's
+runs, for the Slack app's `act_as`, for mentions in a message, for who may not
+approve a run's calls, and for background results. Administrators see who
+linked an account on the Slack app's sheet (Settings, Apps, Slack).
+
+**What the operator sets.** Sign in with Slack uses the Slack app's own OAuth
+client. In the Slack app's settings (api.slack.com/apps, OAuth & Permissions):
+
+| Setting | Value |
+|---------|-------|
+| Redirect URL | `<server.public_url>/connections/callback`, the same as `connections.redirect_url` when that is set |
+| User token scopes | `openid`, `profile`. No bot scope is needed for linking |
+
+In Humagen, [`connections`](connections.md) must be set. The client id and secret
+come from `connections.clients.slack` when the console installs the app, else
+from the environment:
+
+| Variable | Value |
+|----------|-------|
+| `HUMAGEN_SLACK_CLIENT_ID` | The Slack app's client id |
+| `HUMAGEN_SLACK_CLIENT_SECRET` | Its client secret, read through `env:HUMAGEN_SLACK_CLIENT_SECRET` and never stored |
 
 ## Session status
 

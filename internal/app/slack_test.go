@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"github.com/urmzd/humagen/pkg/connectionauth"
 	"io"
 	"log/slog"
 	"maps"
@@ -650,6 +651,25 @@ func TestTheSlackAppsRecordFollowsTheFileAtEveryStart(t *testing.T) {
 	p, kept := start("tailscale", slackWith(""))
 	if all, err := p.Clients.List("default"); err != nil || len(all) != 0 || len(kept) != 0 {
 		t.Fatalf("with nobody mapped: %d clients, kept %v, %v", len(all), kept, err)
+	}
+	_ = p.Close()
+
+	// Where people link their Slack accounts, the record is kept with nobody
+	// mapped, so the app acts for the people who linked one.
+	p, _ = start("tailscale", "")
+	slackLink := platform.NativeConnectionProvider(platform.SlackAccount)
+	slackLink.ClientID, slackLink.ClientSecret = "123.456", "secret"
+	linking, err := connectionauth.New(state.NewMemory(), connectionauth.Config{Key: []byte(strings.Repeat("k", 32)), RedirectURL: "https://humagen.test/connections/callback", Providers: []connectionauth.Provider{slackLink}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.ConnectionAuth = linking
+	kept, err = applySlackClients(t.Context(), p, mustLoadSlack(t, "tailscale", slackWith("")), "tailscale", log)
+	if c, _ := p.Clients.Get("default", id); err != nil || kept["default"] != id || c.Slack == nil || c.Slack.Machine != "slack-app:T0123ACME" || len(c.Slack.People) != 0 {
+		t.Fatalf("linking with nobody mapped: kept %v, %+v, %v", kept, c.Slack, err)
+	}
+	if err := p.Clients.Delete("default", id); err != nil {
+		t.Fatal(err)
 	}
 	_ = p.Close()
 

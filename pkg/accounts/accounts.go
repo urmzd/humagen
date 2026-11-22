@@ -88,9 +88,10 @@ func personKey(surface, subject string) string {
 	return "p/" + surface + "/" + hex.EncodeToString(sum[:])
 }
 
-// Get is the account a surface user is linked as, or ErrNotFound.
+// Get is the account a surface user is linked as, or ErrNotFound. A nil
+// Store has none.
 func (s *Store) Get(tenant, surface, id string) (Account, error) {
-	if !valid(tenant, surface, id) {
+	if s == nil || !valid(tenant, surface, id) {
 		return Account{}, ErrNotFound
 	}
 	it, err := s.records.Lookup(tenant, accountKey(surface, id))
@@ -102,7 +103,7 @@ func (s *Store) Get(tenant, surface, id string) (Account, error) {
 
 // Of is the account a person linked on a surface, or ErrNotFound.
 func (s *Store) Of(tenant, surface, subject string) (Account, error) {
-	if tenant == "" || subject == "" || !known(surface) {
+	if s == nil || tenant == "" || subject == "" || !known(surface) {
 		return Account{}, ErrNotFound
 	}
 	p, err := s.records.Lookup(tenant, personKey(surface, subject))
@@ -124,7 +125,7 @@ func (s *Store) Of(tenant, surface, subject string) (Account, error) {
 // the surface, if another, is unlinked in the same write; linking the same
 // user again refreshes its login and avatar.
 func (s *Store) Link(tenant string, a Account) (Account, error) {
-	if !valid(tenant, a.Surface, a.ID) || a.Subject == "" || len(a.Subject) > 200 || len(a.Login) > 200 || len(a.Avatar) > 2048 || len(a.Team) > 64 {
+	if s == nil || !valid(tenant, a.Surface, a.ID) || a.Subject == "" || len(a.Subject) > 200 || len(a.Login) > 200 || len(a.Avatar) > 2048 || len(a.Team) > 64 {
 		return Account{}, ErrInvalid
 	}
 	err := state.Retry(func() error {
@@ -180,7 +181,7 @@ func (s *Store) dropOld(b *state.Batch[Account], tenant, surface, subject, id st
 // Unlink removes a person's account on a surface. Unlinking nothing is not
 // an error.
 func (s *Store) Unlink(tenant, surface, subject string) error {
-	if tenant == "" || subject == "" || !known(surface) {
+	if s == nil || tenant == "" || subject == "" || !known(surface) {
 		return ErrInvalid
 	}
 	return state.Retry(func() error {
@@ -202,6 +203,9 @@ func (s *Store) Unlink(tenant, surface, subject string) error {
 
 // List is up to limit of a workspace's accounts on a surface, by user id.
 func (s *Store) List(tenant, surface string, limit int) ([]Account, error) {
+	if s == nil {
+		return []Account{}, nil
+	}
 	if tenant == "" || !known(surface) {
 		return nil, ErrInvalid
 	}
