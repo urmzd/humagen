@@ -1151,6 +1151,102 @@ paths:
         '404': {$ref: '#/components/responses/NotFound'}
         '409': {$ref: '#/components/responses/Conflict'}
         '500': {$ref: '#/components/responses/ServerError'}
+  /api/clients/{id}/repositories:
+    get:
+      parameters:
+        - {$ref: '#/components/parameters/ClientID'}
+      operationId: listGitHubRepositories
+      tags: [clients]
+      summary: List the repositories a GitHub client covers, with what applies in each
+      description: |
+        The repositories the client's GitHub App installation covers, those
+        the client names, and those the workspace keeps settings for, at most
+        1000. Each shows its own settings, if any, and what applies there: the
+        repository's settings, else the client's defaults. A client on another
+        surface, or of another workspace, is not found.
+      x-permission: clients:read
+      responses:
+        '200':
+          description: The client's repositories
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/GitHubRepositories'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /api/clients/{id}/repositories/{owner}/{repo}:
+    get:
+      parameters:
+        - {$ref: '#/components/parameters/ClientID'}
+        - {name: owner, in: path, required: true, schema: {type: string, maxLength: 39}}
+        - {name: repo, in: path, required: true, schema: {type: string, maxLength: 100}}
+      operationId: getGitHubRepository
+      tags: [clients]
+      summary: Read one repository's settings and what applies there
+      description: A repository the client does not cover is not found.
+      x-permission: clients:read
+      responses:
+        '200':
+          description: The repository
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/GitHubRepository'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+    put:
+      operationId: putGitHubRepository
+      parameters:
+        - {$ref: '#/components/parameters/ClientID'}
+        - {name: owner, in: path, required: true, schema: {type: string, maxLength: 39}}
+        - {name: repo, in: path, required: true, schema: {type: string, maxLength: 100}}
+      tags: [clients]
+      summary: Set what applies in one repository
+      description: |
+        Replaces the repository's settings. A field left empty follows the
+        client; settings that change nothing return the repository to the
+        client. `version` is the version read, 0 while the repository follows
+        its client, and a write over a change made since is a conflict. The
+        agent must be one the client may route to.
+      x-permission: clients:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/GitHubRepositoryInput'}
+      responses:
+        '200':
+          description: The repository as it now is
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/GitHubRepository'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '429': {$ref: '#/components/responses/TooMany'}
+    delete:
+      operationId: resetGitHubRepository
+      tags: [clients]
+      summary: Return one repository to its client's defaults
+      x-permission: clients:write
+      parameters:
+        - {$ref: '#/components/parameters/ClientID'}
+        - {name: owner, in: path, required: true, schema: {type: string, maxLength: 39}}
+        - {name: repo, in: path, required: true, schema: {type: string, maxLength: 100}}
+        - {name: version, in: query, required: true, description: The version of the settings read., schema: {type: integer, minimum: 1}}
+      responses:
+        '200':
+          description: The repository, following its client
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/GitHubRepository'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
   /api/clients/{id}/delivery:
     get:
       operationId: clientBridgeDelivery
@@ -19111,6 +19207,74 @@ components:
           description: Read-only. What of a rule stored earlier is ignored now, such as a label (labels start nothing). Dropped when the rule is saved.
           type: string
           readOnly: true
+    GitHubRepoAutoReview:
+      type: object
+      description: When a pull request is reviewed automatically. Both false reviews nothing.
+      required: [opened, pushes]
+      additionalProperties: false
+      properties:
+        opened: {type: boolean, description: "Review a pull request when it opens or reopens ready for review, or leaves draft."}
+        pushes: {type: boolean, description: Review the commits each push adds.}
+    GitHubRepoSettings:
+      type: object
+      description: What the workspace set for one repository. A field left out follows the client.
+      required: [repository, updated_at]
+      properties:
+        repository: {type: string, description: '"owner/name".'}
+        auto_review: {$ref: '#/components/schemas/GitHubRepoAutoReview'}
+        agent: {type: string, maxLength: 63, description: Answers a mention that names no agent, and reviews pull requests, in place of the client's default agent.}
+        instructions: {type: string, maxLength: 4000, description: Given to every run on the repository, after the workspace's and the project's instructions.}
+        reads:
+          type: array
+          description: What the platform reads before a run here starts.
+          items: {type: string, enum: [pull_diff, linked_issues]}
+        updated_at: {type: string, format: date-time}
+        updated_by: {type: string}
+    GitHubRepository:
+      type: object
+      required: [repository, version, installed, auto_review]
+      properties:
+        repository: {type: string}
+        settings: {$ref: '#/components/schemas/GitHubRepoSettings'}
+        version: {type: integer, minimum: 0, description: The settings' version; 0 while the repository follows its client.}
+        installed: {type: boolean, description: The client's GitHub App installation covers it.}
+        auto_review: {$ref: '#/components/schemas/GitHubRepoAutoReview'}
+        agent: {type: string, description: The agent that answers here, the repository's or the client's default.}
+    GitHubRepositoryDefaults:
+      type: object
+      description: What a repository with no settings follows, from the client (and so from the environment for a client the environment configures).
+      required: [auto_review]
+      properties:
+        auto_review: {$ref: '#/components/schemas/GitHubRepoAutoReview'}
+        agent: {type: string}
+    GitHubRepositories:
+      type: object
+      required: [repositories, defaults, listed]
+      properties:
+        repositories:
+          type: array
+          maxItems: 1000
+          items: {$ref: '#/components/schemas/GitHubRepository'}
+        defaults: {$ref: '#/components/schemas/GitHubRepositoryDefaults'}
+        listed: {type: boolean, description: "The installation's list was read. Without it, only the repositories the client names or keeps settings for are shown."}
+        truncated: {type: boolean}
+    GitHubRepositoryInput:
+      type: object
+      required: [version]
+      additionalProperties: false
+      properties:
+        auto_review:
+          description: Absent or null follows the client.
+          oneOf:
+            - {$ref: '#/components/schemas/GitHubRepoAutoReview'}
+            - {type: 'null'}
+        agent: {type: string, maxLength: 63}
+        instructions: {type: string, maxLength: 4000}
+        reads:
+          type: array
+          maxItems: 2
+          items: {type: string, enum: [pull_diff, linked_issues]}
+        version: {type: integer, minimum: 0}
     GitHubOptions:
       type: object
       properties:
@@ -19133,12 +19297,13 @@ components:
           description: |
             Reviews a pull request when it opens or reopens ready for review,
             leaves draft, or gets a push, by the client's default agent.
-            Left out, it is on. Labels start nothing.
+            Left out, it is off. Labels start nothing. A repository's
+            settings (`/api/clients/{id}/repositories`) override it there.
           type: object
           additionalProperties: false
           properties:
             enabled:
-              description: The connection's switch. Left out, it is on.
+              description: The connection's switch. Left out, it is off.
               type: boolean
             repositories:
               description: Exact `owner/repo` names reviewed (true) or not (false), whatever `enabled` says.

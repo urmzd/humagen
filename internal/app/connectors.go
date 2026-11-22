@@ -45,9 +45,10 @@ const (
 	// reviews and pull requests the client acts on, among people with write
 	// access to the repository and people it maps.
 	EnvGitHubAskers = "HUMAGEN_GITHUB_ASKERS"
-	// EnvGitHubAutoReview switches automatic review of pull requests off
-	// (false) or on; unset, it is on. EnvGitHubAutoReviewRepositories turns
-	// it on or off for single repositories, as owner/repo=on|off pairs.
+	// EnvGitHubAutoReview switches automatic review of pull requests on
+	// (true) or off; unset, it is off. EnvGitHubAutoReviewRepositories turns
+	// it on or off for single repositories, as owner/repo=on|off pairs. Both
+	// are defaults: a repository's settings in the console override them.
 	EnvGitHubAutoReview             = "HUMAGEN_GITHUB_AUTO_REVIEW"
 	EnvGitHubAutoReviewRepositories = "HUMAGEN_GITHUB_AUTO_REVIEW_REPOSITORIES"
 	EnvGitHubGuides                 = "HUMAGEN_GITHUB_GUIDES"
@@ -186,7 +187,7 @@ func boolEnv(env func(string) string, name string) (bool, error) {
 }
 
 // autoReviewEnv reads automatic review's switch and its per-repository
-// overrides. Neither set leaves it on, as a client with no setting is.
+// overrides. Neither set leaves it off, as a client with no setting is.
 func autoReviewEnv(env func(string) string) (*clients.AutoReview, error) {
 	raw, repos := env(EnvGitHubAutoReview), env(EnvGitHubAutoReviewRepositories)
 	if raw == "" && repos == "" {
@@ -285,7 +286,7 @@ func githubClient(env func(string) string) (*platform.ClientInput, error) {
 	// Labels start nothing. A deployment that still sets the
 	// variable expects reviews it will not get, so it is told at start.
 	if env(retiredGitHubAutoLabels) != "" {
-		return nil, fmt.Errorf("$%s is no longer read: labels start nothing, and automatic review is the GitHub connection's auto_review switch, on by default; remove it", retiredGitHubAutoLabels)
+		return nil, fmt.Errorf("$%s is no longer read: labels start nothing, and automatic review is the GitHub connection's auto_review switch, off by default, or a repository's settings in the console; remove it", retiredGitHubAutoLabels)
 	}
 	return &platform.ClientInput{
 		Client: clients.Client{
