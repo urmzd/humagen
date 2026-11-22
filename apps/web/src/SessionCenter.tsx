@@ -9,14 +9,12 @@ import {
   FilterSelect,
   follow,
   ItemCard,
-  itemGrid,
   PriorityPill,
-  RowTable,
-  RowTableRow,
   StatusDot,
   StatusPill,
   Tag,
 } from "./cards.tsx";
+import { type Column, DataTable } from "./DataTable.tsx";
 import { type ProjectRef, readableProject } from "./projects.ts";
 import { href, type Route, SESSION_PLACES, type SessionPlaceFilter } from "./route.ts";
 import {
@@ -222,51 +220,47 @@ export function SessionRow({
   );
 }
 /** The Sessions table's columns: what it is, who answered, how it stands, where, when. */
-const SESSION_COLUMNS = [
-  { name: "Session", width: "minmax(0,1fr)" },
-  { name: "Agent", width: "10rem" },
-  { name: "Status", width: "7rem" },
-  { name: "Project", width: "8rem" },
-  { name: "Where", width: "6rem" },
-  { name: "Updated", width: "7rem" },
-];
-
-/** One session as a row of the Sessions table; an open alert stands beside its title. */
-function SessionTableRow({
-  session,
-  go,
-  alerts,
-  projects,
-  workspaceName,
-}: {
-  session: AgentSessionSummary;
-  go: (route: Route) => void;
-  alerts: Alert[];
-  projects: ProjectRef[];
-  workspaceName?: string;
-}) {
-  const attention = orderAlerts(alerts.filter((a) => a.session === session.id && openAlert(a)))[0];
-  const title = session.title || agentShown(session.agent);
-  return (
-    <RowTableRow
-      href={href({ page: "conversation", id: session.id })}
-      onOpen={() => go({ page: "conversation", id: session.id })}
-      label={title}
-      cells={[
-        <span key="t" className="inline-flex min-w-0 max-w-full items-center gap-2">
-          <span className="truncate">{title}</span>
-          {attention && <AlertMark alert={attention} />}
-        </span>,
-        <AgentCell key="a" name={session.agent} shown={agentShown(session.agent)} />,
-        <StatusDot key="s" status={session.status} />,
-        readableProject(session.project, projects, workspaceName),
-        sessionSource(session),
-        <time key="u" dateTime={session.updated_at}>
-          {ago(session.updated_at)}
-        </time>,
-      ]}
-    />
-  );
+function sessionColumns(
+  alerts: Alert[],
+  projects: ProjectRef[],
+  workspaceName?: string,
+): Column<AgentSessionSummary>[] {
+  return [
+    {
+      name: "Session",
+      cell: (s) => {
+        const attention = orderAlerts(alerts.filter((a) => a.session === s.id && openAlert(a)))[0];
+        return (
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="truncate">{s.title || agentShown(s.agent)}</span>
+            {attention && (
+              <>
+                {/* Read apart from the title: "Deploy failed, Urgent". */}
+                <span className="sr-only">, </span>
+                <AlertMark alert={attention} />
+              </>
+            )}
+          </span>
+        );
+      },
+    },
+    {
+      name: "Agent",
+      hide: "sm",
+      cell: (s) => <AgentCell name={s.agent} shown={agentShown(s.agent)} />,
+    },
+    { name: "Status", cell: (s) => <StatusDot status={s.status} /> },
+    {
+      name: "Project",
+      hide: "md",
+      cell: (s) => readableProject(s.project, projects, workspaceName),
+    },
+    { name: "Where", hide: "lg", cell: (s) => sessionSource(s) },
+    {
+      name: "Updated",
+      cell: (s) => <time dateTime={s.updated_at}>{ago(s.updated_at)}</time>,
+    },
+  ];
 }
 
 export function SessionsPage({
@@ -426,18 +420,16 @@ export function SessionsPage({
       {!sessions && !problem ? (
         <SkeletonRows count={4} />
       ) : shown.length ? (
-        <RowTable label="Sessions" columns={SESSION_COLUMNS}>
-          {shown.map((s) => (
-            <SessionTableRow
-              key={s.id}
-              session={s}
-              go={go}
-              alerts={alerts}
-              projects={projects}
-              workspaceName={workspaceName}
-            />
-          ))}
-        </RowTable>
+        <DataTable
+          label="Sessions"
+          rows={shown}
+          rowKey={(s) => s.id}
+          columns={sessionColumns(alerts, projects, workspaceName)}
+          link={(s) => ({
+            href: href({ page: "conversation", id: s.id }),
+            onOpen: () => go({ page: "conversation", id: s.id }),
+          })}
+        />
       ) : (
         <p className="text-aui-sm text-aui-muted">No sessions match these filters.</p>
       )}
@@ -691,10 +683,8 @@ export function AlertsPage({
             // Laid out as a table, so alerts line up: what it is, how pressing, when, and what to do.
             // It is a list to a screen reader: each row is its own grid with the same tracks,
             // and a narrow or touch row stacks, which a real table cannot do.
-            <div className="humagen-glass overflow-hidden rounded-aui-lg">
-              <div
-                className={`${alertRow} min-h-11 border-aui-border border-b py-2 text-aui-2xs text-aui-muted`}
-              >
+            <div className="flex min-w-0 flex-col gap-1.5">
+              <div className={`${alertRow} min-h-9 py-1 text-aui-2xs text-aui-muted`}>
                 <label className={alertCheck}>
                   {canWrite && (
                     <input
@@ -746,7 +736,7 @@ export function AlertsPage({
                   </>
                 )}
               </div>
-              <ul aria-label={words.table.label}>
+              <ul aria-label={words.table.label} className="flex min-w-0 flex-col gap-1.5">
                 {shown.map((a) => {
                   const to = alertDestination(a);
                   const label = alertActionLabel(a);
@@ -754,7 +744,8 @@ export function AlertsPage({
                   return (
                     <li
                       key={a.id}
-                      className={`${alertRow} border-aui-border border-b py-3 last:border-b-0 ${selected.has(a.id) ? "bg-aui-hover" : ""}`}
+                      // The same soft row, with space between rows, as every table (DataTable).
+                      className={`${alertRow} rounded-aui-lg py-3 transition-colors hover:bg-aui-hover ${selected.has(a.id) ? "bg-aui-hover" : "bg-[color-mix(in_oklab,var(--aui-hover)_55%,transparent)]"}`}
                     >
                       <label className={alertCheck}>
                         {canWrite && (

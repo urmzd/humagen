@@ -108,7 +108,8 @@ and evidence when implementing a requirement.
 
 New console pages use these and never hand-roll them:
 
-- **Cards are `ItemCard`** (`apps/web/src/cards.tsx`), in the `itemGrid` grid. The whole card is its link; there is no Open button. Slots: a leading mark, the title, one status at the top right (a Pill or a dot, never empty), a one-line description, a facts row, and a ⋯ menu.
+- **Things a person compares and opens are a `DataTable`** (`apps/web/src/DataTable.tsx`), built from shadcn's Table: a quiet header, soft rounded rows with space between them, the first column holding the row's link and the whole row opening it, a trailing ⋯ above that link. Sessions and Projects use it, and Alerts uses its row style.
+- **Cards are `ItemCard`** (`apps/web/src/cards.tsx`), in the `itemGrid` grid, for things browsed by picture. The whole card is its link; there is no Open button. Slots: a leading mark, the title, one status at the top right (a Pill or a dot, never empty), a one-line description, a facts row, and a ⋯ menu.
 - **References are `Reference`** (`apps/web/src/cards.tsx`): an origin, a source an agent pulled in, an item or backlink, a knowledge source, a search hit, a child session. A leading mark, a label, an optional count, and a link when it has a target.
 - **Status is a `Pill` or a dot.** Pills are for state only, never for references.
 - **Menus use the shared rows**: `MoreMenu`, or `menuRow` and `MenuSeparator` from `apps/web/src/ui.tsx` inside a `Popover`. Plain rows, an optional leading icon, destructive rows last after a separator.

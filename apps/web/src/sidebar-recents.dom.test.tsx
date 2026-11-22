@@ -268,7 +268,7 @@ test("Sessions lists newest first; an alert marks its row without moving it; ale
     .getAllByRole("link")
     .map((a) => a.textContent ?? "")
     .filter((t) => /MD5|deploy|Agent health/.test(t));
-  assert.deepEqual(titles, ["In one line: is MD5 acceptable", "Why did the deploy fail"]);
-  const deploy = screen.getByRole("link", { name: /Why did the deploy fail/ }).closest("li");
+  assert.deepEqual(titles, ["In one line: is MD5 acceptable", "Why did the deploy fail, Urgent"]);
+  const deploy = screen.getByRole("link", { name: /Why did the deploy fail/ }).closest("tr");
   assert.match(deploy?.textContent ?? "", /Urgent/, "the alert still marks its row");
 });
