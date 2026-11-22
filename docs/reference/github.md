@@ -26,6 +26,7 @@ create the default client, `default-github`:
 | `HUMAGEN_GITHUB_LOGIN` | `github.login` |
 | `HUMAGEN_GITHUB_DEFAULT_AGENT` | `default_agent` |
 | `HUMAGEN_GITHUB_ASKERS` | `github.askers`: the only logins whose mentions, reviews and pull requests are acted on, comma separated. Optional |
+| `HUMAGEN_GITHUB_PEOPLE` | `github.people`: `login=subject` pairs, comma separated, such as `urmzd=tailscale:urmzd@github`. The subject is the person's console sign-in subject. A malformed or repeated entry stops the server. Optional |
 | `HUMAGEN_GITHUB_AUTO_REVIEW` | `github.auto_review.enabled`: `false` switches automatic review off. Unset, it is on |
 | `HUMAGEN_GITHUB_AUTO_REVIEW_REPOSITORIES` | `github.auto_review.repositories`, as `owner/repo=on` or `owner/repo=off` pairs, comma separated |
 
@@ -89,10 +90,63 @@ summarize this`, since the first agent a comment names answers it. The
 client's `default_agent` is not asked.
 
 A review, a review comment and a new issue or pull request are read the same
-way. Every run is filed in the client's [home](clients.md#the-record), and
-acts for nobody, as every GitHub run does: no client maps GitHub logins to
-people. A comment addressed to the app on a pull request posts no guide, since
-the guide names the agent that answers; the next one that names an agent does.
+way. Every run is filed where the client files it: the project its repository
+is linked to, else the client's [home](clients.md#the-record). It acts for the
+person the client maps the GitHub login to (`github.people`), and for nobody
+when the client maps the login to nobody. A comment addressed to the app on a
+pull request posts no guide, since the guide names the agent that answers; the
+next one that names an agent does.
+
+## Sessions
+
+A pull request or an issue is one session, as a Slack thread is. The first
+mention there opens it, and every later mention there continues it, whatever
+the pull request's head commit is then:
+
+| Field | Value |
+|-------|-------|
+| Key | `github://<owner>/<repo>/pull/<n>` or `github://<owner>/<repo>/issues/<n>`, and the agent that answered first |
+| Owner | The agent that answered first. Another agent asked there answers in the same session, with a conversation of its own |
+| Filed in | The project and channel the run is filed in: the repository's linked project, else the client's home |
+| Title | The pull request's or issue's title, else `<owner>/<repo>#<n>` |
+| People | Each person the client maps a login that asked there to, added when they ask |
+| Visibility | Private to those people |
+
+The key is the one the runtime already keeps the agent's conversation under,
+so the session the console lists is the conversation the agent continues.
+The console lists it in Sessions and in Recent for each person in it, with
+Where set to GitHub, linked to the pull request or issue.
+
+**Who reads it.** Only the people who asked there read the session in the
+console. A person is found by `github.people` (for the default
+client, `HUMAGEN_GITHUB_PEOPLE`), so map each login whose sessions should
+show in the console. GitHub showed each of them the repository, so the session shows
+them nothing they could not read. Humagen cannot check that anyone else can
+read the repository, so nobody else is added, and a login the client maps to
+nobody adds nobody. A workspace administrator reads it by exception, as any
+private session.
+
+**What an answer may use.** The session is on the client's surface, so a
+turn there reads the corpora a GitHub thread may show: public corpora the
+whole workspace reads, never the asker's private sources
+([RFC 0010](../rfcs/0010-corpora.md#7-sensitivity-private-sessions-and-personal-context)). What is posted to GitHub, and how,
+is what it was before sessions: the same signed delivery, the same review
+checks and the same actions.
+
+**Memory.** A turn in a GitHub session is remembered as GitHub turns were
+before sessions: it may teach project memory, and it never becomes anyone's
+personal memory proposal, since anyone may have written on the pull request.
+
+**Agents it calls.** An agent the mention's run calls belongs to the same
+session and acts on GitHub as the mention's run does. A reply a person posts
+in the session from the console is a private turn: it does not act on GitHub.
+
+**Two clients on one repository.** The client that answered first holds the
+pull request's session. The other client's runs there stay their own
+conversations, as before sessions.
+
+A run an automation or the automatic review starts is not filed in the
+session: no person asked it.
 
 ## Automatic review
 

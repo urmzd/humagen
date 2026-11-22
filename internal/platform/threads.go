@@ -266,7 +266,9 @@ const (
 // was started from. "" is the console or the API, and a thread from before
 // either was kept.
 func threadSource(th threads.Thread) string {
-	if th.Surface != nil {
+	// A GitHub issue's or pull request's session is on its client's surface
+	// too, and says so by its place.
+	if th.Surface != nil && (th.Session == nil || !strings.HasPrefix(th.Session.Parent, "github://")) {
 		if directMessage(th.Surface.Channel) {
 			return SourceSlackDM
 		}

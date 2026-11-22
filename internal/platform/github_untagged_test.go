@@ -93,10 +93,19 @@ func fromGitHub(id, agent, text string) event.Envelope {
 // message in the workspace unless the test says so.
 func githubRoom(t *testing.T, b platform.Backends, mutate func(*platform.ClientInput)) (*platform.Platform, *raiser, *logs) {
 	t.Helper()
+	return githubRoomWith(t, b, mutate, nil)
+}
+
+// githubRoomWith is githubRoom on a configuration the test changes first.
+func githubRoomWith(t *testing.T, b platform.Backends, mutate func(*platform.ClientInput), configure func(*platform.Config)) (*platform.Platform, *raiser, *logs) {
+	t.Helper()
 	f := &fakes{}
 	c := &cast{says: map[string][][]saigetypes.Delta{"docs": {say("Docs here.")}, "ops": {say("Ops here.")}}}
 	cfg := f.config()
 	cfg.Backends = b
+	if configure != nil {
+		configure(&cfg)
+	}
 	said := &logs{}
 	cfg.Log = slog.New(slog.NewTextHandler(said, nil))
 	p := stage(t, c, cfg)
