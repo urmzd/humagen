@@ -129,7 +129,7 @@ type SessionState = "working" | "waiting" | "done" | "failed" | "stopped";
  * its own first, a small bounded read, so Home's line and the badge show it
  * without waiting for the alerts; once they are read the count is theirs.
  */
-export function useSessionAttention(canRead: boolean, _tick: unknown) {
+export function useSessionAttention(canRead: boolean, tick: unknown) {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [count, setCount] = useState(0);
   const request = useRef(0);
@@ -171,7 +171,7 @@ export function useSessionAttention(canRead: boolean, _tick: unknown) {
       request.current++;
       window.clearInterval(timer);
     };
-  }, [refresh]);
+  }, [refresh, tick]);
   return { alerts, problem, refresh, count };
 }
 export function AlertMark({ alert }: { alert: Alert }) {
@@ -269,7 +269,7 @@ export function SessionsPage({
     return () => {
       live = false;
     };
-  }, [key]);
+  }, [key, tick]);
   const more = async () => {
     setBusy(true);
     try {
@@ -449,7 +449,7 @@ export function AlertsPage({
     return () => {
       request.current++;
     };
-  }, [refresh]);
+  }, [refresh, tick]);
   const change = async (
     items: Alert[],
     state: "open" | "resolved" | "snoozed",
@@ -530,43 +530,45 @@ export function AlertsPage({
         </p>
       )}
       {route.tab === "watching" ? (
-        !rules ? (
-          <SkeletonRows count={3} />
-        ) : rules.length ? (
-          <ul>
-            {rules.map((rule) => (
-              <li
-                key={rule.name}
-                className="flex items-center gap-3 border-b border-aui-border py-3"
-              >
-                <span className="min-w-0 flex-1">
-                  <span className="block text-aui-sm font-medium">{rule.name}</span>
-                  <span className="text-aui-xs text-aui-muted">
-                    {rule.description || rule.kind} | {rule.paused ? "Paused" : "Watching"}
+        <>
+          {!rules ? (
+            <SkeletonRows count={3} />
+          ) : rules.length ? (
+            <ul>
+              {rules.map((rule) => (
+                <li
+                  key={rule.name}
+                  className="flex items-center gap-3 border-b border-aui-border py-3"
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-aui-sm font-medium">{rule.name}</span>
+                    <span className="text-aui-xs text-aui-muted">
+                      {rule.description || rule.kind} | {rule.paused ? "Paused" : "Watching"}
+                    </span>
                   </span>
-                </span>
-                {canWrite && (
-                  <>
-                    <button
-                      className={button}
-                      type="button"
-                      onClick={() => action(api.setAlertRulePaused(rule, !rule.paused))}
-                    >
-                      {rule.paused ? "Resume" : "Pause"}
-                    </button>
-                    <button className={textAction} type="button" onClick={() => setRemove(rule)}>
-                      Delete
-                    </button>
-                  </>
-                )}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="text-aui-sm text-aui-muted">
-            No standing alerts. Ask an agent what you want to watch.
-          </p>
-        )
+                  {canWrite && (
+                    <>
+                      <button
+                        className={button}
+                        type="button"
+                        onClick={() => action(api.setAlertRulePaused(rule, !rule.paused))}
+                      >
+                        {rule.paused ? "Resume" : "Pause"}
+                      </button>
+                      <button className={textAction} type="button" onClick={() => setRemove(rule)}>
+                        Delete
+                      </button>
+                    </>
+                  )}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-aui-sm text-aui-muted">
+              No standing alerts. Ask an agent what you want to watch.
+            </p>
+          )}
+        </>
       ) : (
         <>
           <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">

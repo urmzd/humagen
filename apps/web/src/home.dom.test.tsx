@@ -3,7 +3,6 @@ import { afterEach, test } from "node:test";
 import { defaultCopy } from "@humagen/components";
 import type { HomeNotification, HomeUpdate } from "@humagen/core";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import type { ProjectView } from "./api.ts";
 import { FindHelp } from "./FindHelp.tsx";
 import { HomeBoxes, HomePage } from "./HomePage.tsx";
 
@@ -54,15 +53,6 @@ test("Home's rows open what they name, and each box's text control goes to the r
   assert.ok(screen.getByRole("region", { name: /Needs you/ }));
   assert.ok(screen.getByRole("region", { name: "What's new" }));
 });
-
-const _project = (name: string, title: string, day: number, personal_owner?: string) =>
-  ({
-    name,
-    title,
-    kind: "team",
-    created_at: `2026-11-${day}T00:00:00Z`,
-    personal_owner,
-  }) as ProjectView;
 
 test("announcement actions use the retained inbox callbacks", () => {
   rendered = true;
