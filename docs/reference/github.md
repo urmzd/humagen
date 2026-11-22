@@ -133,6 +133,18 @@ whole workspace reads, never the asker's private sources
 is what it was before sessions: the same signed delivery, the same review
 checks and the same actions.
 
+**Memory.** A turn in a GitHub session is remembered as GitHub turns were
+before sessions: it may teach project memory, and it never becomes anyone's
+personal memory proposal, since anyone may have written on the pull request.
+
+**Agents it calls.** An agent the mention's run calls belongs to the same
+session and acts on GitHub as the mention's run does. A reply a person posts
+in the session from the console is a private turn: it does not act on GitHub.
+
+**Two clients on one repository.** The client that answered first holds the
+pull request's session. The other client's runs there stay their own
+conversations, as before sessions.
+
 A run an automation or the automatic review starts is not filed in the
 session: no person asked it.
 
