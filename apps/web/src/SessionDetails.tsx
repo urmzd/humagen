@@ -2,40 +2,24 @@ import { createContext, type ReactNode, useEffect, useState } from "react";
 import { call } from "./api.ts";
 import { type ConversationPanel, href } from "./route.ts";
 import { followSession } from "./sessionStream.ts";
-import { AgentMark, Problem, SkeletonRows, Tabs } from "./ui.tsx";
+import { AgentMark, Problem, SkeletonRows } from "./ui.tsx";
 
 export const DetailsNavigation = createContext<ReactNode>(null);
 
-/** All session inspectors share a single set of addressed sections. */
+/**
+ * The session's inspectors share no row of tabs. Each drawer has one job:
+ * Details is the overview, Files is what the session holds. What the session
+ * did, read and linked is in the conversation itself, where a reference to
+ * another session is a link, so no drawer repeats it.
+ */
 export function SessionDetailsProvider({
-  panel,
-  onPanel,
   children,
 }: {
   panel?: ConversationPanel;
   onPanel: (panel: ConversationPanel) => void;
   children: ReactNode;
 }) {
-  const tabs = [
-    { id: "workspace", label: "Files" },
-    { id: "context", label: "Sources" },
-    { id: "activity", label: "Steps" },
-    { id: "overview", label: "Sessions" },
-  ] as const;
-  return (
-    <DetailsNavigation.Provider
-      value={
-        <Tabs
-          label="Session details"
-          value={panel ?? "workspace"}
-          tabs={[...tabs]}
-          onChange={(next) => onPanel(next as ConversationPanel)}
-        />
-      }
-    >
-      {children}
-    </DetailsNavigation.Provider>
-  );
+  return <DetailsNavigation.Provider value={null}>{children}</DetailsNavigation.Provider>;
 }
 
 type Related = { id: string; agent: string; title?: string; status?: string };

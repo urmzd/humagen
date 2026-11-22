@@ -1,11 +1,16 @@
 import { defaultCopy } from "@humagen/components";
 import { type FormEvent, useEffect, useState } from "react";
 import { api, coworking, type Thread } from "./api.ts";
-import { AgentMark, button, Confirm, field, Label, Problem, primary } from "./ui.tsx";
+import { button, Confirm, field, Label, Problem, primary } from "./ui.tsx";
 
 const words = defaultCopy.conversationAccess;
 
-/** Conversation participation is narrower than project roles. The server owns both checks. */
+/**
+ * Who is in a conversation: its people, and a way to invite another. Agents
+ * are not invited: a conversation's agents are the ones its project turns on,
+ * so they are not listed here. Participation is narrower than project roles;
+ * the server owns both checks.
+ */
 export function ConversationAccess({
   thread,
   onChanged,
@@ -15,7 +20,6 @@ export function ConversationAccess({
 }) {
   const [current, setCurrent] = useState(thread);
   const [handle, setHandle] = useState("");
-  const [kind, setKind] = useState<"person" | "agent">("person");
   const [myHandle, setMyHandle] = useState("");
   const [write, setWrite] = useState(false);
   const [manage, setManage] = useState(false);
@@ -71,7 +75,7 @@ export function ConversationAccess({
       coworking
         .participants(current.id, {
           version: current.version,
-          add: [{ kind, name: handle.trim().replace(/^@/, "") }],
+          add: [{ kind: "person", name: handle.trim().replace(/^@/, "") }],
         })
         .then((next) => {
           setHandle("");
@@ -106,79 +110,66 @@ export function ConversationAccess({
           {words.makePrivate}
         </button>
       )}
-      <ul className="divide-aui-border divide-y">
-        {current.participants.map((person) => (
-          <li
-            key={`${person.kind}:${person.name}`}
-            className="flex min-w-0 flex-wrap items-center gap-2 py-3 text-aui-sm"
-          >
-            {person.kind === "agent" && <AgentMark name={person.name} size={15} />}
-            <span className="min-w-0 flex-1 break-words">{person.name}</span>
-            <span className="text-aui-xs text-aui-muted">
-              {person.owner ? words.owner : person.kind === "person" ? words.person : words.agent}
-            </span>
-            {write &&
-              !person.owner &&
-              (manage || (person.kind === "person" && person.name === myHandle)) &&
-              (remove === person.name ? (
-                <Confirm
-                  question={`${words.remove} ${person.name}?`}
-                  action={words.remove}
-                  onKeep={() => setRemove(null)}
-                  onConfirm={() => {
-                    setRemove(null);
-                    change(
-                      coworking.participants(current.id, {
-                        version: current.version,
-                        remove: [person.name],
-                      }),
-                    );
-                  }}
-                />
-              ) : (
-                <button
-                  type="button"
-                  className={button}
-                  disabled={saving}
-                  onClick={() => setRemove(person.name)}
-                >
-                  {words.remove}
-                </button>
-              ))}
-          </li>
-        ))}
+      <ul aria-label={words.people} className="divide-aui-border divide-y">
+        {current.participants
+          .filter((person) => person.kind === "person")
+          .map((person) => (
+            <li
+              key={`${person.kind}:${person.name}`}
+              className="flex min-w-0 flex-wrap items-center gap-2 py-3 text-aui-sm"
+            >
+              <span className="min-w-0 flex-1 break-words">{person.name}</span>
+              {person.owner && <span className="text-aui-xs text-aui-muted">{words.owner}</span>}
+              {write &&
+                !person.owner &&
+                (manage || person.name === myHandle) &&
+                (remove === person.name ? (
+                  <Confirm
+                    question={`${words.remove} ${person.name}?`}
+                    action={words.remove}
+                    onKeep={() => setRemove(null)}
+                    onConfirm={() => {
+                      setRemove(null);
+                      change(
+                        coworking.participants(current.id, {
+                          version: current.version,
+                          remove: [person.name],
+                        }),
+                      );
+                    }}
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    className={button}
+                    disabled={saving}
+                    onClick={() => setRemove(person.name)}
+                  >
+                    {words.remove}
+                  </button>
+                ))}
+            </li>
+          ))}
       </ul>
       {write && (
-        <form className="flex flex-col gap-3" onSubmit={add}>
-          <Label text={words.kind}>
-            <select
-              aria-label={words.kind}
-              className={field}
-              value={kind}
-              onChange={(event) => setKind(event.target.value as "person" | "agent")}
-            >
-              <option value="person">{words.person}</option>
-              <option value="agent">{words.agent}</option>
-            </select>
-          </Label>
+        // One field and its button on one line: a person is invited by their handle.
+        <form className="flex min-w-0 items-end gap-2" onSubmit={add}>
           <Label text={words.handle}>
             <input
               className={field}
               value={handle}
               onChange={(event) => setHandle(event.target.value)}
+              placeholder="@"
               maxLength={200}
               required
             />
           </Label>
-          <button
-            type="submit"
-            className={`${primary} self-start`}
-            disabled={saving || !handle.trim()}
-          >
+          <button type="submit" className={primary} disabled={saving || !handle.trim()}>
             {words.add}
           </button>
         </form>
       )}
+      <p className="text-aui-xs text-aui-muted">{words.agentsNote}</p>
       <Problem message={problem} />
     </div>
   );
