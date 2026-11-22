@@ -3803,7 +3803,7 @@ test("Retry on a failed call asks its own agent alone, for the person the run ac
     },
     initial,
   );
-  const retryName = `${defaultCopy.conversation.callFailure.retry} deployer`;
+  const retryName = `${defaultCopy.conversation.callFailure.retry} Deployer`;
   // Ana's answer offers Retry and Connect; Bo's, read by Ana, offers neither.
   await waitFor(() => assert.equal(screen.getAllByTestId("call-failure").length, 2));
   assert.equal(screen.getAllByRole("button", { name: retryName }).length, 1);
