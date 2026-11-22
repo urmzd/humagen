@@ -65,6 +65,7 @@ func TestInvalidLooks(t *testing.T) {
 	s, _ := Open(nil)
 	for _, l := range []Look{
 		{Shape: "dragon"},
+		{Character: "wizard"},
 		{Hat: "fedora"},
 		{Glasses: "monocle"},
 		{Face: "nose"},
@@ -82,6 +83,18 @@ func TestInvalidLooks(t *testing.T) {
 	}
 	if _, err := s.Set("acme", "#looks", Look{Hat: "crown"}, nil); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("the record's own key as a name: %v", err)
+	}
+}
+
+// A character is kept as written, in lower case, and read back.
+func TestCharacter(t *testing.T) {
+	s, _ := Open(nil)
+	if _, err := s.Set("acme", "barbara", Look{Character: " Detective "}, nil); err != nil {
+		t.Fatal(err)
+	}
+	looks, _ := s.Get("acme", []string{"barbara"})
+	if got := looks["barbara"].Character; got != "detective" {
+		t.Fatalf("character %q, want detective", got)
 	}
 }
 

@@ -156,6 +156,8 @@ function Bar({
     ...queue,
     send: (text: string) => seen.sent.push(text),
     sendNow: (text: string) => seen.now.push(text),
+    // A session at work here is the queue's own turn running.
+    running: busy,
   };
   return (
     <Composer
@@ -168,20 +170,24 @@ function Bar({
   );
 }
 
-test("while anything runs the box says how to send and queue, Enter sends now and Cmd+Enter queues", () => {
+test("while anything runs the box keeps its placeholder, Enter queues and Cmd+Enter sends now", () => {
   const seen: Seen = { sent: [], now: [], stops: 0 };
+  const idle = render(<Bar busy={false} seen={seen} />);
+  const placeholder = (screen.getByRole("textbox") as HTMLTextAreaElement).placeholder;
+  idle.unmount();
   render(<Bar busy seen={seen} />);
   const box = screen.getByRole("textbox") as HTMLTextAreaElement;
-  assert.match(box.placeholder, /to send, .+ to queue for later/);
+  // The box says nothing about keys: a message that waits is shown in the conversation.
+  assert.equal(box.placeholder, placeholder);
   fireEvent.change(box, { target: { value: "use the staging branch" } });
   fireEvent.keyDown(box, { key: "Enter" });
-  assert.deepEqual(seen.now, ["use the staging branch"]);
+  assert.deepEqual(seen.sent, ["use the staging branch"]);
   fireEvent.change(box, { target: { value: "then rebase" } });
   fireEvent.keyDown(box, { key: "Enter", metaKey: true });
-  assert.deepEqual(seen.sent, ["then rebase"]);
+  assert.deepEqual(seen.now, ["then rebase"]);
   fireEvent.change(box, { target: { value: "and on Windows" } });
   fireEvent.keyDown(box, { key: "Enter", ctrlKey: true });
-  assert.deepEqual(seen.sent, ["then rebase", "and on Windows"]);
+  assert.deepEqual(seen.now, ["then rebase", "and on Windows"]);
   assert.ok(screen.getByTestId("footer"), "the footer sits under the box");
 });
 
@@ -467,7 +473,7 @@ function open() {
   return screen.getByRole("dialog", { name: dock.usage.title });
 }
 
-test("the usage popover shows the session first, then each limit with when it resets, and See all", async () => {
+test("the usage popover is one grid of names and values, then each limit with when it resets, with no link and no close button", async () => {
   const { restore } = stubFetch({
     "GET /api/threads/s1/usage": () => usage(),
     "GET /api/usage": () => ({ scopes: [scope()] }),
@@ -479,19 +485,22 @@ test("the usage popover shows the session first, then each limit with when it re
     const pop = open();
     assert.match(pop.className, /z-\(--aui-z-popover\)/);
     assert.match(pop.className, /max-sm:z-\(--aui-z-sheet\)/, "a sheet on a phone");
-    assert.ok(within(pop).getByText(dock.usage.session));
+    // Each fact is one row: its name, then its value.
+    const facts = pop.querySelector('[data-layer="usage-facts"]');
+    assert.ok(facts);
+    assert.deepEqual(
+      [...facts.querySelectorAll("dt")].map((d) => d.textContent),
+      [dock.usage.context, dock.usage.model, dock.usage.tokens, dock.usage.topAgents],
+    );
     assert.ok(within(pop).getByText(dock.usage.contextUsed("60K", "200K")));
-    assert.ok(within(pop).getByText(dock.usage.topAgents));
+    assert.ok(within(pop).getByText("opus"));
     assert.ok(within(pop).getByText("lead"));
     assert.ok(within(pop).getByText("helper"));
     assert.ok(within(pop).getByText("Monthly tokens"));
     assert.ok(within(pop).getAllByText(/^Resets /).length >= 2);
-    assert.equal(
-      within(pop)
-        .getByRole("link", { name: /See all/ })
-        .getAttribute("href"),
-      "/settings/usage",
-    );
+    // Esc, a press outside and the ring put it away; nothing in it leads elsewhere.
+    assert.equal(within(pop).queryByRole("link"), null);
+    assert.equal(within(pop).queryByRole("button"), null);
   } finally {
     restore();
   }
@@ -509,7 +518,7 @@ test("usage loads as skeleton bars, and with no limits says so", async () => {
     assert.ok(within(pop).getAllByRole("status", { name: dock.usage.loading }).length > 0);
     answer(usage());
     await waitFor(() => assert.ok(within(pop).getByText(dock.usage.noLimits)));
-    assert.ok(within(pop).getByText(dock.usage.session));
+    assert.ok(within(pop).getByText(dock.usage.limits));
   } finally {
     restore();
   }
@@ -656,13 +665,19 @@ test("a call stopped before this page opened reads Stopped from its record, and 
 
 test("the footer has a left slot for where the session runs; empty, the rest stays at the right", () => {
   const { container, rerender } = render(
-    <ComposerFooter agent="lead" approval={<span>Ask</span>} usage={<span>ring</span>} />,
+    <ComposerFooter approval={<span>Ask</span>} usage={<span>ring</span>} />,
   );
   const left = container.querySelector<HTMLElement>('[data-layer="composer-footer-start"]');
   assert.ok(left);
   assert.equal(left.childElementCount, 0);
-  // The empty left group takes the free space, which pushes everything else right.
-  assert.match(left.className, /mr-auto/);
+  // The row is a grid: the left group first, the ring in the last group, at the right.
+  const end = container.querySelector<HTMLElement>('[data-layer="composer-footer-end"]');
+  assert.ok(end);
+  assert.equal(left.parentElement?.lastElementChild, end);
+  assert.match(left.parentElement?.className ?? "", /humagen-composer-footer/);
+  assert.ok(within(end).getByText("ring"));
+  // It names no agent and no model: each answer names who gave it.
+  assert.equal(end.querySelector("[data-accent=agent]"), null);
   rerender(
     <ComposerFooter
       start={
@@ -671,7 +686,6 @@ test("the footer has a left slot for where the session runs; empty, the rest sta
           <span data-label>Placeholder environment</span>
         </button>
       }
-      agent="lead"
       usage={<span>ring</span>}
     />,
   );

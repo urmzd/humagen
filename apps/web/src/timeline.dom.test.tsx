@@ -62,7 +62,8 @@ test("a turn reads as its words and runs of steps, in the order they came", () =
     order,
     "in the order they came",
   );
-  assert.ok(text.includes("Worked for 44s"));
+  // The message says when; no line sums how long the turn took.
+  assert.ok(!text.includes("Worked for"));
   // A failed call is counted, quietly.
   assert.ok(text.includes("1 failed"));
 });

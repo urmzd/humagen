@@ -1,7 +1,8 @@
 import { defaultCopy } from "@humagen/components";
 import { FileIcon, XIcon } from "@humagen/render-web";
-import { Modal, type QueueControls, QueueStrip } from "@humagen/web";
+import { Modal, type QueueControls, QueuedMessages, QueueStrip } from "@humagen/web";
 import {
+  createContext,
   type KeyboardEvent,
   type ReactNode,
   useEffect,
@@ -9,6 +10,8 @@ import {
   useRef,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
+import { productName, termsUrl } from "./branding.ts";
 import {
   type Command,
   commandsFor,
@@ -112,10 +115,11 @@ export type ComposerSeed =
 /**
  * The message box. Type, attach files, record a voice note (where the
  * deployment transcribes them) or dictate. Enter sends and
- * Shift+Enter adds a line. While anything in the session runs, the box says
- * so: Enter sends now (the work in flight stops for it), Cmd+Enter
- * (Ctrl+Enter) queues the message behind it, and Stop, or Esc with nothing
- * typed, stops everything running in the session.
+ * Shift+Enter adds a line. While anything in the session runs, Enter queues
+ * the message behind it, Cmd+Enter (Ctrl+Enter) sends it now (the work in
+ * flight stops for it), and Stop, or Esc with nothing typed, stops
+ * everything running in the session. The box itself says none of this: a
+ * message that waits is shown at the end of the conversation, with Send now.
  */
 /**
  * A line the bar says while a person types (no match, no skills yet, a refusal).
@@ -128,11 +132,13 @@ const floatNote =
 
 export function Composer({
   queue,
+  queuePlace,
   placeholder,
   emptyText,
   autoFocus,
   onDraft,
   leading,
+  beside,
   trailing,
   seed,
   tags,
@@ -143,7 +149,13 @@ export function Composer({
   onCancelHeld,
   stopAll,
   footer,
+  note,
+  hold,
 }: {
+  /** A line the bar says about the draft as it stands, such as what a "!" command will do. */
+  note?: ReactNode;
+  /** Why the draft, with its file count, may not be sent; the bar says it. */
+  hold?: (draft: string, files: number) => string | null;
   /**
    * Everything running in the session, whoever started it. While anything
    * runs the bar shows Stop, which (as Esc in an empty box does) stops all of
@@ -170,11 +182,20 @@ export function Composer({
   /** What the empty box says when nobody is mentioned. Left out, Home's words. */
   emptyText?: string;
   queue: QueueControls;
+  /**
+   * Where the conversation shows the messages that wait: an element at its
+   * end, or null until there is one. Given, they are drawn there, as the
+   * person's own messages, greyed, and the box holds only what is typed. Not
+   * given, they are a strip in the box.
+   */
+  queuePlace?: HTMLElement | null;
   autoFocus?: boolean;
   /** Called as the text changes, for anything that previews it. */
   onDraft?: (text: string) => void;
   /** Controls beside the plus, such as where the conversation is filed. */
   leading?: ReactNode;
+  /** A control right after + in the row, such as a new session's settings. */
+  beside?: ReactNode;
   /** Controls before the send or speak button. */
   trailing?: ReactNode;
   /**
@@ -452,6 +473,7 @@ export function Composer({
   );
 
   const ready = value.trim().length > 0 || files.length > 0;
+  const kept = hold?.(value, files.length) ?? null;
   // The bar's light (ComposerLight.tsx) shows only on a bar in use, so it is
   // read once the bar sits idle on screen, or the moment it is due.
   const [light, setLight] = useState(false);
@@ -472,7 +494,7 @@ export function Composer({
   const lit = String(asked);
 
   const send = (now: boolean) => {
-    if (!ready || held) return;
+    if (!ready || held || kept) return;
     const text =
       withAttached(
         quote
@@ -490,7 +512,9 @@ export function Composer({
           tags.options.filter((o) => o.kind === "skill").map((o) => o.token),
         ),
       );
-    if (now) queue.sendNow(text, pick, uploadsOf(files));
+    // Behind a turn of its own that runs, a message waits. With none running it
+    // goes at once, also past messages a failure or a Stop left held.
+    if (now || !queue.running) queue.sendNow(text, pick, uploadsOf(files));
     else queue.send(text, pick, uploadsOf(files));
     change("");
     setFiles([]);
@@ -547,10 +571,10 @@ export function Composer({
       stopEverything();
       return;
     }
-    // Enter sends now; Cmd+Enter (Ctrl+Enter) queues behind what is running.
+    // Enter sends, behind whatever is running; Cmd+Enter (Ctrl+Enter) sends now, stopping it.
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
-      send(!(e.metaKey || e.ctrlKey));
+      send(e.metaKey || e.ctrlKey);
     }
   };
 
@@ -663,6 +687,9 @@ export function Composer({
       ? "Stop dictating"
       : "Dictate";
 
+  // The footer row's place for the AI notice, when the footer has one.
+  const [noticeSlot, setNoticeSlot] = useState<HTMLElement | null>(null);
+
   return (
     <div className="humagen-composer-container relative z-(--aui-z-composer) flex min-w-0 flex-col gap-1.5">
       {chooseSession && (
@@ -703,7 +730,7 @@ export function Composer({
         aria-label="Message"
         onSubmit={(e) => {
           e.preventDefault();
-          send(true);
+          send(false);
         }}
         className="humagen-composer relative flex flex-col gap-1 rounded-[1.25rem] border border-aui-border bg-aui-surface p-1.5 transition-colors focus-within:border-aui-fg motion-reduce:transition-none"
       >
@@ -831,7 +858,7 @@ export function Composer({
             )}
           </Presence>
         )}
-        <QueueStrip queue={queue} />
+        {queuePlace === undefined && <QueueStrip queue={queue} />}
         {sessionPick && mentionsIn(value, [sessionPick.agent]).length > 0 && (
           <div className="flex items-center gap-2 px-2 text-aui-xs text-aui-muted">
             <span>
@@ -945,6 +972,11 @@ export function Composer({
             {notice}
           </p>
         )}
+        {!notice && (kept || note) && (
+          <output data-layer="note" className={floatNote}>
+            {kept || note}
+          </output>
+        )}
         {/*
           One row: + on the left, the words, and on the right two plain icon
           buttons of equal weight, Send (or Stop while anything runs) and the
@@ -988,6 +1020,7 @@ export function Composer({
               <Glyph d={PLUS} />
             </button>
           )}
+          {beside}
           <textarea
             id="composer-input"
             ref={input}
@@ -999,9 +1032,7 @@ export function Composer({
             placeholder={
               mentioned.length > 0
                 ? `Message ${mentioned.map((name) => `@${name}`).join(", ")}`
-                : running
-                  ? defaultCopy.dock.hint(mac)
-                  : emptyText || placeholder || defaultCopy.chat.placeholder
+                : emptyText || placeholder || defaultCopy.chat.placeholder
             }
             onChange={(e) => {
               change(e.target.value);
@@ -1091,12 +1122,54 @@ export function Composer({
           </div>
         )}
       </form>
-      {footer}
+      <NoticeSlotContext.Provider value={setNoticeSlot}>{footer}</NoticeSlotContext.Provider>
+      {noticeSlot ? createPortal(<AiNotice />, noticeSlot) : <AiNotice />}
+      {queuePlace && createPortal(<QueuedMessages queue={queue} />, queuePlace)}
     </div>
   );
 }
 
-/** Text with the runs a query matched highlighted. */
+/**
+ * How a footer row takes the AI notice into its middle: it gives the place
+ * (an element) to this. A composer whose footer gives none keeps the notice
+ * as a line of its own under the footer.
+ */
+export const NoticeSlotContext = createContext<((place: HTMLElement | null) => void) | null>(null);
+
+/**
+ * The line a composer ends with: the product is AI and can make mistakes.
+ * When the branding names a page of terms (branding.terms_url), the sentence
+ * itself is the link to it. Its height is aiNoticeHeight, which
+ * DockPlaceholder keeps free where the line is a row of its own.
+ */
+export const aiNoticeHeight = "h-6";
+
+function AiNotice() {
+  const terms = termsUrl();
+  const name = productName() || defaultCopy.product;
+  const sentence = defaultCopy.dock.aiNotice.split("{name}").join(name);
+  return (
+    <p
+      data-layer="ai-notice"
+      className="min-h-6 px-2 text-center text-aui-xs leading-6 text-aui-muted"
+    >
+      {terms ? (
+        <a
+          className="inline-block min-h-6 rounded-aui-sm leading-6 underline-offset-2 hover:text-aui-fg hover:underline focus-visible:text-aui-fg focus-visible:underline focus-visible:outline-2 focus-visible:outline-aui-accent"
+          href={terms}
+          target="_blank"
+          rel="noreferrer"
+          title={defaultCopy.dock.terms}
+        >
+          {sentence}
+        </a>
+      ) : (
+        sentence
+      )}
+    </p>
+  );
+}
+
 function Marked({ text, hits }: { text: string; hits: Hit[] }) {
   return (
     <>

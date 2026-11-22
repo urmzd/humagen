@@ -27,6 +27,25 @@ export interface Completion {
 }
 
 /**
+ * What was last read for each project, so a bar drawn again for it, as on a
+ * return to Home, completes at once and reads again behind the scenes.
+ * Only a list that was read is kept; one that failed is asked for again.
+ */
+interface Kept {
+  names?: { all: boolean; names: string[] };
+  defaultAgent?: string;
+  skills?: { project: string; items: Skill[]; failed: boolean };
+  kinds?: MentionKind[];
+}
+const kept = new Map<string, Kept>();
+const keep = (project: string, read: Kept) => kept.set(project, { ...kept.get(project), ...read });
+
+/** Forget what was read for every project: another workspace, or a test's own server. */
+export function forgetCompletions(): void {
+  kept.clear();
+}
+
+/**
  * Completion for a message in a project: `@` people, the agents that can
  * answer there and the mention kinds (`@sme:`, completed further to
  * their items as `@kind:` is typed); `$` the project's skills. With `*`, an
@@ -56,14 +75,16 @@ export function useCompletion(
 ): Completion {
   // undefined while it loads, null when it could not be read.
   const [names, setNames] = useState<{ all: boolean; names: string[] } | null | undefined>(
-    undefined,
+    () => kept.get(project)?.names,
   );
-  const [defaultAgent, setDefaultAgent] = useState<string>();
+  const [defaultAgent, setDefaultAgent] = useState<string | undefined>(
+    () => kept.get(project)?.defaultAgent,
+  );
   const [people, setPeople] = useState<DirectoryPerson[]>([]);
   const [skills, setSkills] = useState<{ project: string; items: Skill[]; failed: boolean } | null>(
-    null,
+    () => kept.get(project)?.skills ?? null,
   );
-  const [kinds, setKinds] = useState<MentionKind[] | null>(null);
+  const [kinds, setKinds] = useState<MentionKind[] | null>(() => kept.get(project)?.kinds ?? null);
   const [items, setItems] = useState<{ kind: string; name: string; description?: string }[]>([]);
   const timer = useRef<number | undefined>(undefined);
   // The newest lookup alone may answer: an older one that returns late is dropped.
@@ -76,13 +97,20 @@ export function useCompletion(
     // A lookup for the project before is not this one's.
     window.clearTimeout(timer.current);
     asked.current++;
-    setNames(undefined);
-    setDefaultAgent(undefined);
+    // What was read for the project before shows at once; the reads below refresh it.
+    const before = kept.get(project);
+    setNames(before?.names);
+    setDefaultAgent(before?.defaultAgent);
     setPeople([]);
-    setSkills(null);
+    setSkills(before?.skills ?? null);
+    if (before?.kinds) {
+      kindsNow.current = before.kinds;
+      setKinds(before.kinds);
+    }
     coworking
       .available(project)
       .then((a) => {
+        keep(project, { names: a.available, defaultAgent: a.default_resolved?.agent });
         if (live) {
           setNames(a.available);
           setDefaultAgent(a.default_resolved?.agent);
@@ -91,11 +119,16 @@ export function useCompletion(
       .catch(() => live && setNames(null));
     coworking
       .skills(project)
-      .then((items) => live && setSkills({ project, items, failed: false }))
+      .then((items) => {
+        const read = { project, items, failed: false };
+        keep(project, { skills: read });
+        if (live) setSkills(read);
+      })
       .catch(() => live && setSkills({ project, items: [], failed: true }));
     coworking
       .mentionKinds(project)
       .then((k) => {
+        keep(project, { kinds: k });
         if (!live) return;
         kindsNow.current = k;
         setKinds(k);

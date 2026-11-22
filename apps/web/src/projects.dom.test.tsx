@@ -880,16 +880,17 @@ function list(over: Partial<Listing> = {}) {
     rerender: (more: Partial<Listing>) => drawn.rerender(<ProjectsPage {...props} {...more} />),
   };
 }
+const projectsTable = () => screen.getByRole("table", { name: "Projects" });
 const cardTitles = () =>
-  within(screen.getByRole("list", { name: "Projects" }))
+  within(projectsTable())
     .getAllByRole("link")
-    .map((a) => a.textContent);
+    .map((a) => a.querySelector("span.truncate")?.textContent);
 const newProject = () => {
   fireEvent.click(screen.getByRole("button", { name: "New Project" }));
   return screen.getByRole("form", { name: "New project" });
 };
 
-test("the Projects page is a grid of cards, pinned first, each opening its project in place", async () => {
+test("the Projects page is a table of rows, pinned first, each opening its project in place", async () => {
   const { opened } = list({ pinned: ["Platform"], onPin: async () => {} });
   const titles = cardTitles();
   assert.equal(titles[0], "Platform", "pinned first");
@@ -902,12 +903,17 @@ test("the Projects page is a grid of cards, pinned first, each opening its proje
   // A modified click is the browser's: a new tab, not a move in place.
   fireEvent.click(globexLink, { metaKey: true });
   assert.deepEqual(opened, ["Globex"]);
-  const card = globexLink.closest("article") as HTMLElement;
-  assert.ok(within(card).getByText(/^Updated /));
-  assert.equal(within(card).getAllByRole("button").length, 1, "its ⋯ menu is its one control");
+  const row = globexLink.closest("tr") as HTMLElement;
+  // The column is named Updated, so its cells say only when.
+  assert.ok(within(row).getByText(/ ago$/));
+  assert.equal(within(row).getAllByRole("button").length, 1, "its ⋯ menu is its one control");
+  const headers = within(projectsTable())
+    .getAllByRole("columnheader")
+    .map((h) => h.textContent);
+  assert.deepEqual(headers, ["Project", "Updated", "More"]);
 });
 
-test("a card's ⋯ menu pins and unpins its project, and says so when that fails", async () => {
+test("a row's ⋯ menu pins and unpins its project, and says so when that fails", async () => {
   const calls: unknown[] = [];
   list({
     pinned: ["Globex"],
@@ -916,14 +922,16 @@ test("a card's ⋯ menu pins and unpins its project, and says so when that fails
       if (project === "Globex") throw new Error("refused");
     },
   });
-  const cardOf = (name: string) =>
-    screen.getByRole("link", { name }).closest("article") as HTMLElement;
+  const rowOf = (name: string) =>
+    screen
+      .getByRole("link", { name: new RegExp(`^(Pinned )?${name}$`) })
+      .closest("tr") as HTMLElement;
   const choose = (name: string, item: string) => {
-    const more = within(cardOf(name)).getByRole("button", { name: "More" });
+    const more = within(rowOf(name)).getByRole("button", { name: `More for ${name}` });
     fireEvent.keyDown(more, { key: "ArrowDown" });
     fireEvent.click(screen.getByRole("menuitem", { name: item }));
   };
-  assert.ok(within(cardOf("Globex").parentElement as HTMLElement).getByLabelText("Pinned"));
+  assert.ok(within(rowOf("Globex")).getByLabelText("Pinned"));
   choose("Platform", "Pin Project");
   choose("Globex", "Unpin Project");
   assert.deepEqual(calls, [
@@ -933,7 +941,7 @@ test("a card's ⋯ menu pins and unpins its project, and says so when that fails
   await screen.findByText("Could not unpin. Try again.");
 });
 
-test("the search and sort go to the address together, and the cards follow them", () => {
+test("the search and sort go to the address together, and the rows follow them", () => {
   const { filters, rerender } = list({ sort: "name" });
   fireEvent.change(screen.getByRole("searchbox", { name: "Search projects" }), {
     target: { value: "globex" },
@@ -943,7 +951,7 @@ test("the search and sort go to the address together, and the cards follow them"
   assert.deepEqual(cardTitles(), ["Globex", "Globex renewals"]);
   rerender({ q: "nothing like it" });
   assert.ok(screen.getByText("No project matches."));
-  assert.ok(!screen.queryByRole("list", { name: "Projects" }));
+  assert.ok(!screen.queryByRole("table", { name: "Projects" }));
   const dated = (name: string, created: string, active: string) =>
     projectView({ name, created_at: created, updated_at: created, active_at: active });
   const old = dated("Old", "2026-01-01T00:00:00Z", "2026-10-06T00:00:00Z");
@@ -958,7 +966,7 @@ test("the search and sort go to the address together, and the cards follow them"
   assert.deepEqual(cardTitles(), ["Fresh", "Middle", "Old"], "newest made first");
 });
 
-test("no kind filter shows unless the workspace defines kinds, and then it narrows the cards", () => {
+test("no kind filter shows unless the workspace defines kinds, and then it narrows the rows", () => {
   const { filters, rerender } = list();
   assert.ok(!screen.queryByRole("combobox", { name: "Kind" }));
   assert.ok(screen.getByRole("combobox", { name: "Sort by" }));

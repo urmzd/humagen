@@ -7,9 +7,7 @@ import type { ConversationSandboxes } from "../../../packages/client/src/generat
 import { coworking } from "./api.ts";
 import { stubFetch } from "./dom.ts";
 import { useHumanActivity } from "./humanActivity.tsx";
-import { PlusMenu } from "./Plus.tsx";
-import { ProjectPicker } from "./ProjectPicker.tsx";
-import { type SessionOptions, type SessionSetup, SessionSetupPickers } from "./SessionPickers.tsx";
+import { type SessionOptions, SessionSettings, type SessionSetup } from "./SessionPickers.tsx";
 import { EnvironmentSection } from "./SessionSections.tsx";
 import { type SessionView, SessionViews, useUnavailableViews } from "./SessionViews.tsx";
 import { DEFAULT_SETUP, useSessionOptions } from "./sessionOptions.ts";
@@ -18,6 +16,7 @@ import { type TerminalApi, WorkbenchTerminal } from "./WorkbenchTerminal.tsx";
 
 const words = defaultCopy.sessionSetup;
 const picker = defaultCopy.chat.picker;
+const setup = defaultCopy.chat.setup;
 const panel = defaultCopy.sessionPanel;
 
 afterEach(() => cleanup());
@@ -67,34 +66,104 @@ const options: SessionOptions = {
   repos: ["acme/billing", "acme/web"],
 };
 
-function Pickers({
+function Settings({
   given = options,
   seen,
+  fixed,
+  mentioned = [],
+  onMention = () => {},
+  agents = [
+    { name: "lead", description: "Plans the work" },
+    { name: "code-reviewer", description: "Reviews code" },
+    { name: "qa-reviewer", description: "Reviews behavior" },
+  ],
+  maxRepos,
 }: {
   given?: SessionOptions | null;
   seen: SessionSetup[];
+  fixed?: string;
+  mentioned?: string[];
+  onMention?: (name: string) => void;
+  agents?: { name: string; description?: string }[] | null;
+  maxRepos?: number;
 }) {
   const [value, setValue] = useState<SessionSetup>(DEFAULT_SETUP);
   return (
-    <SessionSetupPickers
-      options={given}
-      value={value}
-      onChange={(next) => {
-        seen.push(next);
-        setValue(next);
-      }}
-    />
+    <form aria-label="Message" onSubmit={() => assert.fail("the menu sent the message")}>
+      <SessionSettings
+        project={{
+          projects: [],
+          value: "personal",
+          personalProject: "personal",
+          onChange: () => {},
+          onCreated: () => {},
+        }}
+        agents={{ available: agents, mentioned, onMention }}
+        options={given}
+        setup={value}
+        onSetup={(next) => {
+          seen.push(next);
+          setValue(next);
+        }}
+        fixed={fixed}
+        connectHref="/settings/connections"
+        maxRepos={maxRepos}
+      />
+    </form>
   );
 }
 
+const open = async () => {
+  fireEvent.click(screen.getByRole("button", { name: setup.label }));
+  return await screen.findByRole("dialog", { name: setup.label });
+};
+const row = (menu: HTMLElement, id: string) =>
+  menu.querySelector<HTMLElement>(`[data-pane-row="${id}"]`) as HTMLElement;
+
+test("the settings menu has a row for every setting, each with its value", async () => {
+  render(<Settings seen={[]} given={{ ...options, images: options.images.slice(0, 1) }} />);
+  const menu = await open();
+  const rows = [...menu.querySelectorAll<HTMLElement>("[data-pane-row]")].map((r) =>
+    r.textContent?.trim(),
+  );
+  assert.deepEqual(rows, [
+    `${defaultCopy.chat.project}${defaultCopy.projects.personalTitle}`,
+    `${defaultCopy.chat.agents}${setup.anyAgent}`,
+    `${picker.repos}${setup.noRepos}`,
+    // The default alone is still named.
+    `${words.image}${words.defaultImage}`,
+  ]);
+});
+
+test("every row is there before the options are read, and a row that cannot change says why", async () => {
+  render(<Settings seen={[]} given={undefined} />);
+  let menu = await open();
+  assert.equal(menu.querySelectorAll("[data-pane-row]").length, 4, "nothing pops in later");
+  cleanup();
+  render(<Settings seen={[]} given={{ ...options, isolated: false }} />);
+  menu = await open();
+  assert.match(menu.textContent ?? "", new RegExp(setup.notSandboxed));
+  assert.equal(row(menu, "image").getAttribute("aria-haspopup"), null);
+  cleanup();
+  render(<Settings seen={[]} given={null} />);
+  menu = await open();
+  assert.equal(menu.querySelectorAll("[data-pane-row]").length, 4);
+  assert.match(menu.textContent ?? "", new RegExp(setup.unreadable));
+  cleanup();
+  render(<Settings seen={[]} fixed={setup.channelFixed} />);
+  menu = await open();
+  assert.match(menu.textContent ?? "", new RegExp(setup.channelFixed));
+});
+
 test("a new session runs the Default image until a ready one of the workspace's is picked", async () => {
   const seen: SessionSetup[] = [];
-  render(<Pickers seen={seen} />);
-  fireEvent.click(screen.getByRole("button", { name: `${words.image}: ${words.defaultImage}` }));
-  const menu = await screen.findByRole("menu", { name: words.image });
-  const rows = within(menu).getAllByRole("menuitemradio");
+  render(<Settings seen={seen} />);
+  const menu = await open();
+  fireEvent.click(row(menu, "image"));
+  const group = await within(menu).findByRole("radiogroup", { name: words.image });
+  const rows = within(group).getAllByRole("radio");
   assert.deepEqual(
-    rows.map((r) => r.getAttribute("data-image")),
+    rows.map((r) => r.getAttribute("data-setup-choice")),
     ["default", "img_a", "img_b", "img_c"],
   );
   assert.equal(rows[0]?.getAttribute("aria-checked"), "true");
@@ -108,7 +177,24 @@ test("a new session runs the Default image until a ready one of the workspace's 
   assert.equal(seen.length, 0);
   fireEvent.click(rows[1] as HTMLElement);
   assert.deepEqual(seen.at(-1), { image: "img_a", repos: [] });
-  assert.ok(screen.getByRole("button", { name: `${words.image}: Agent tools` }));
+  // A single pick closes the menu; the row says the new image.
+  assert.equal(screen.queryByRole("dialog", { name: setup.label }), null);
+  assert.match(row(await open(), "image").textContent ?? "", /Agent tools/);
+});
+
+test("the image picker ends with a way to manage images where the workspace may add them", async () => {
+  render(<Settings seen={[]} />);
+  let menu = await open();
+  fireEvent.click(row(menu, "image"));
+  assert.equal(
+    within(menu).getByRole("link", { name: words.manage }).getAttribute("href"),
+    "/settings/images",
+  );
+  cleanup();
+  render(<Settings seen={[]} given={{ ...options, imageRegistries: [] }} />);
+  menu = await open();
+  fireEvent.click(row(menu, "image"));
+  assert.equal(within(menu).queryByRole("link", { name: words.manage }), null);
 });
 
 test("an image still checking when the options were read can be chosen once it is ready, with no reload", async () => {
@@ -149,110 +235,71 @@ test("an image still checking when the options were read can be chosen once it i
   assert.equal(reads, settledAt);
 });
 
-test("the image menu ends with a way to manage images where the workspace may add them", async () => {
-  render(<Pickers seen={[]} />);
-  fireEvent.click(screen.getByRole("button", { name: `${words.image}: ${words.defaultImage}` }));
-  const menu = await screen.findByRole("menu", { name: words.image });
-  assert.equal(
-    within(menu).getByRole("menuitem", { name: words.manage }).getAttribute("href"),
-    "/settings/images",
-  );
-  cleanup();
+test("repositories are any number up to the most, and the picker stays open", async () => {
+  const seen: SessionSetup[] = [];
   render(
-    <Pickers
-      seen={[]}
-      given={{ ...options, images: options.images.slice(0, 2), imageRegistries: [] }}
+    <Settings
+      seen={seen}
+      given={{ ...options, repos: ["acme/billing", "acme/web", "acme/infra"] }}
+      maxRepos={2}
     />,
   );
-  fireEvent.click(screen.getByRole("button", { name: `${words.image}: ${words.defaultImage}` }));
-  const plain = await screen.findByRole("menu", { name: words.image });
-  assert.equal(within(plain).queryByRole("menuitem"), null);
-});
-
-test("with the default alone and nothing to add, or options unread, the picker draws nothing", () => {
-  render(
-    <Pickers
-      seen={[]}
-      given={{ ...options, images: options.images.slice(0, 1), imageRegistries: [] }}
-    />,
-  );
-  assert.equal(screen.queryByTestId("session-setup"), null);
-  cleanup();
-  render(<Pickers seen={[]} given={null} />);
-  assert.equal(screen.queryByTestId("session-setup"), null);
-});
-
-function Plus({ repos, seen }: { repos: readonly string[] | null; seen: string[][] }) {
-  const [value, setValue] = useState<string[]>([]);
-  return (
-    <PlusMenu
-      agents={[]}
-      onAttach={() => {}}
-      onClose={() => {}}
-      repos={{
-        options: repos,
-        value,
-        onChange: (next) => {
-          seen.push(next);
-          setValue(next);
-        },
-        connectHref: "/settings/connections",
-        max: 2,
-      }}
-    />
-  );
-}
-
-test("repositories are context from the plus menu: any number up to the most, and said on its row", async () => {
-  const seen: string[][] = [];
-  render(<Plus repos={["acme/billing", "acme/web", "acme/infra"]} seen={seen} />);
-  fireEvent.click(screen.getByRole("button", { name: new RegExp(picker.repos) }));
-  const group = await screen.findByRole("group", { name: picker.repos });
-  fireEvent.click(within(group).getByRole("button", { name: /acme\/billing/ }));
-  fireEvent.click(within(group).getByRole("button", { name: /acme\/web/ }));
-  assert.deepEqual(seen.at(-1), ["acme/billing", "acme/web"]);
+  const menu = await open();
+  fireEvent.click(row(menu, "repos"));
+  const group = await within(menu).findByRole("group", { name: picker.repos });
+  fireEvent.click(within(group).getByRole("checkbox", { name: /acme\/billing/ }));
+  fireEvent.click(within(group).getByRole("checkbox", { name: /acme\/web/ }));
+  assert.deepEqual(seen.at(-1)?.repos, ["acme/billing", "acme/web"]);
   // At the most, another is not taken; a second press takes one off.
-  const infra = within(group).getByRole("button", { name: /acme\/infra/ });
+  const infra = within(group).getByRole("checkbox", { name: /acme\/infra/ });
   assert.equal(infra.getAttribute("aria-disabled"), "true");
   fireEvent.click(infra);
-  assert.deepEqual(seen.at(-1), ["acme/billing", "acme/web"]);
-  fireEvent.click(within(group).getByRole("button", { name: /acme\/web/ }));
-  assert.deepEqual(seen.at(-1), ["acme/billing"]);
-  assert.equal(
-    within(group)
-      .getByRole("button", { name: /acme\/billing/ })
-      .getAttribute("aria-pressed"),
-    "true",
-  );
+  assert.deepEqual(seen.at(-1)?.repos, ["acme/billing", "acme/web"]);
+  fireEvent.click(within(group).getByRole("checkbox", { name: /acme\/web/ }));
+  assert.deepEqual(seen.at(-1)?.repos, ["acme/billing"]);
+  assert.ok(screen.getByRole("dialog", { name: setup.label }), "a multi-select picker stays open");
+  // Escape steps back to the rows, which say the count; Escape again closes.
+  fireEvent.keyDown(document.activeElement as Element, { key: "Escape" });
+  assert.match(row(menu, "repos").textContent ?? "", new RegExp(setup.repos(1)));
+  fireEvent.keyDown(document.activeElement as Element, { key: "Escape" });
+  assert.equal(screen.queryByRole("dialog", { name: setup.label }), null);
 });
 
-test("with no repository connected the plus menu says so and leads to Connections", async () => {
-  render(<Plus repos={[]} seen={[]} />);
-  fireEvent.click(screen.getByRole("button", { name: new RegExp(picker.repos) }));
-  assert.ok(await screen.findByText(picker.noRepos));
+test("with no repository connected the picker says so and leads to Connections", async () => {
+  render(<Settings seen={[]} given={{ ...options, repos: [] }} />);
+  const menu = await open();
+  fireEvent.click(row(menu, "repos"));
+  assert.ok(await within(menu).findByText(picker.noRepos));
   assert.equal(
-    screen.getByRole("link", { name: picker.connectGitHub }).getAttribute("href"),
+    within(menu).getByRole("link", { name: picker.connectGitHub }).getAttribute("href"),
     "/settings/connections",
   );
 });
 
-test("the project and image controls under Home's composer are its size", () => {
-  render(
-    <>
-      <ProjectPicker projects={[]} value="" onChange={() => {}} onCreated={() => {}} />
-      <Pickers seen={[]} />
-    </>,
+test("agents: search has focus, marks matches, Enter picks the first, and the words keep the mentions", async () => {
+  const picked: string[] = [];
+  render(<Settings seen={[]} onMention={(name) => picked.push(name)} mentioned={["lead"]} />);
+  const menu = await open();
+  assert.match(row(menu, "agents").textContent ?? "", /lead/);
+  fireEvent.click(row(menu, "agents"));
+  const search = within(menu).getByRole("searchbox", { name: defaultCopy.chat.findAgent });
+  await waitFor(() => assert.equal(document.activeElement, search));
+  assert.equal(
+    within(menu).getByRole("checkbox", { name: /^lead/ }).getAttribute("aria-checked"),
+    "true",
   );
-  for (const name of ["Select project: Workspace", `${words.image}: ${words.defaultImage}`]) {
-    const trigger = screen.getByRole("button", { name });
-    const classes = trigger.className.split(/\s+/);
-    // 32px tall, 44px on a touch screen, as Attach, Send, the microphone, approval and usage are.
-    assert.ok(classes.includes("h-8"), `${name} is 32px tall: ${classes.join(" ")}`);
-    assert.ok(classes.includes("pointer-coarse:h-11"), `${name} is 44px tall on touch`);
-    const icon = trigger.querySelector("svg");
-    assert.equal(icon?.getAttribute("width"), "18", `${name} has an 18px icon`);
-    assert.equal(icon?.getAttribute("height"), "18", `${name} has an 18px icon`);
-  }
+  fireEvent.change(search, { target: { value: "rev" } });
+  assert.deepEqual(
+    [...menu.querySelectorAll("mark")].map((m) => m.textContent),
+    ["rev", "rev"],
+  );
+  // Enter in the field picks the first match and never sends the message.
+  const allowed = fireEvent.keyDown(search, { key: "Enter" });
+  assert.equal(allowed, false);
+  assert.deepEqual(picked, ["code-reviewer"]);
+  fireEvent.click(within(menu).getByRole("checkbox", { name: /^qa-/ }));
+  assert.deepEqual(picked, ["code-reviewer", "qa-reviewer"]);
+  assert.ok(screen.getByRole("dialog", { name: setup.label }), "the agents picker stays open");
 });
 
 test("a private session is started with its image and repositories, and the default is not sent", async () => {

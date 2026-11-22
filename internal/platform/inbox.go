@@ -914,8 +914,10 @@ func (p *Platform) inboxMemoryCompletion(run runs.Run, owner string, notes []mem
 
 // inboxArtifact says in the inbox that a file was published. A new version
 // replaces the message about the one before it, so a file revised ten times
-// is one message about its latest version, not ten.
-func (p *Platform) inboxArtifact(tenant string, a artifacts.Artifact) {
+// is one message about its latest version, not ten. to, when set, is the one
+// person the message is addressed to (a publish aimed at person:<name>);
+// everyone who may read the file is told otherwise.
+func (p *Platform) inboxArtifact(tenant string, a artifacts.Artifact, to string) {
 	part := inbox.ArtifactPart{
 		ID: a.ID, Title: a.Title, Kind: string(a.Kind), Mime: a.Mime, Size: a.Size, Version: a.Version, Description: a.Description,
 	}
@@ -948,7 +950,7 @@ func (p *Platform) inboxArtifact(tenant string, a artifacts.Artifact) {
 		}
 	}
 	p.raiseInbox(tenant, artifactKey(a.ID), inbox.Message{
-		Kind: inbox.KindArtifact, Subject: subject, From: from, Severity: inbox.Info,
+		Kind: inbox.KindArtifact, Subject: subject, From: from, Severity: inbox.Info, To: to,
 		Source: inbox.Source{Run: a.Run, Thread: a.Thread, Agent: a.Agent, Project: a.Project},
 		Parts:  []inbox.Part{{Type: inbox.PartArtifact, State: inbox.PartInfo, Artifact: &part}},
 	}, a.CreatedAt)

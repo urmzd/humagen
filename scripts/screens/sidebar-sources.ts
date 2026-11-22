@@ -407,13 +407,12 @@ export async function assertSources(page: Page): Promise<void> {
     const badge = link.locator(`[data-state="${state}"]`);
     if (
       !(await badge.isVisible()) ||
-      (await badge.locator("svg").count()) !== 1 ||
+      // One small dot: no glyph, no text, the reason as its tooltip.
+      (await badge.locator("svg").count()) !== 0 ||
       (await badge.textContent())?.trim() !== "" ||
       (await badge.getAttribute("title")) !== reason
     )
-      throw new Error(
-        `the ${state} state must show an icon-only badge with the full reason as its tooltip`,
-      );
+      throw new Error(`the ${state} state must show one dot with the full reason as its tooltip`);
     const described = await link.evaluate(
       (el, text) =>
         el

@@ -170,6 +170,65 @@ test("Recents is one list by day, today under no heading, then Yesterday and Ear
   );
 });
 
+test("a new session shows its placeholder title at once, then its generated title, with nothing spinning in the title", async () => {
+  const placeholder = "Write four short sentences about the…";
+  const generated = "Sea and harbour sentences";
+  let title = placeholder;
+  let source: ThreadSummary["title_source"] = "placeholder";
+  const row = () => session("s_sea", title, newest, { title_source: source, active: 1 });
+  net = stubFetch({
+    "GET /api/marks": () => ({ archived: [], read: {}, tips: [] }),
+    "GET /api/sessions": () => ({
+      sessions: [row()].map((t) => ({
+        id: t.id,
+        parent: `console://${t.id}`,
+        agent: "lead",
+        project: "",
+        title: t.title,
+        status: "working",
+        updated_at: t.updated_at,
+        conversation: t,
+      })),
+      next: "",
+    }),
+  });
+  const sidebar = (threads: ThreadSummary[]) => (
+    <Sidebar
+      open
+      sessionMode
+      onToggle={() => {}}
+      route={{ page: "new" }}
+      go={() => {}}
+      me={me}
+      prefs={prefs}
+      can={(p) => me.permissions.includes(p)}
+      threads={threads}
+      projects={[]}
+      pinned={[]}
+      onPin={async () => {}}
+      inboxCount={0}
+      live
+      onSignOut={() => {}}
+      sessionAlerts={[]}
+    />
+  );
+  const view = render(sidebar([row()]));
+  const list = within(await screen.findByRole("list", { name: defaultCopy.sidebar.recents }));
+  // The placeholder is the title itself, whole: no spinner and no loading words beside it.
+  const shown = await list.findByText(placeholder);
+  assert.equal(shown.textContent, placeholder);
+  assert.equal(shown.querySelector("svg, [role='progressbar'], [aria-busy='true']"), null);
+  assert.equal(list.queryByText(generated), null);
+  // The generated title is kept; the thread's notice reads the list again.
+  title = generated;
+  source = "generated";
+  view.rerender(sidebar([row()]));
+  const named = await list.findByText(generated);
+  assert.equal(named.textContent, generated);
+  assert.equal(list.queryByText(placeholder), null, "the placeholder is replaced");
+  assert.equal(list.getAllByText(generated).length, 1, "listed once");
+});
+
 test("an agent's session under a listed one is shown as that row, not as a second with its title", async () => {
   const asked = session("s_asked", "Is MD5 fine for passwords?", yesterday, { agents: [] });
   // The agent that answered works in a session of its own, under the one the person started.
@@ -268,7 +327,7 @@ test("Sessions lists newest first; an alert marks its row without moving it; ale
     .getAllByRole("link")
     .map((a) => a.textContent ?? "")
     .filter((t) => /MD5|deploy|Agent health/.test(t));
-  assert.deepEqual(titles, ["In one line: is MD5 acceptable", "Why did the deploy fail"]);
-  const deploy = screen.getByRole("link", { name: /Why did the deploy fail/ }).closest("li");
+  assert.deepEqual(titles, ["In one line: is MD5 acceptable", "Why did the deploy fail, Urgent"]);
+  const deploy = screen.getByRole("link", { name: /Why did the deploy fail/ }).closest("tr");
   assert.match(deploy?.textContent ?? "", /Urgent/, "the alert still marks its row");
 });

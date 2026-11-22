@@ -137,17 +137,10 @@ export const WORKSPACE_SECTIONS: WorkspaceSection[] = [
 /**
  * The tabs of a session's workbench, the pane the Details panel opens
  * (workbench.ts declares what each shows). Details is the default, at the
- * panel's own address; every other tab is `?bench=`. All six are addresses
+ * panel's own address; every other tab is `?bench=`. All four are addresses
  * from the start, so a tab's own change adds no route.
  */
-export const WORKBENCH_TAB_IDS = [
-  "details",
-  "browser",
-  "terminal",
-  "changes",
-  "sidechat",
-  "search",
-] as const;
+export const WORKBENCH_TAB_IDS = ["details", "browser", "terminal", "changes"] as const;
 export type WorkbenchTabId = (typeof WORKBENCH_TAB_IDS)[number];
 /** The most characters of a workbench tab's own selection an address carries. */
 export const MAX_BENCH_REF = 512;
@@ -318,8 +311,8 @@ export type Route =
   /** One of a project's channels, with its shared threads. */
   | { page: "channel"; project: string; channel: string }
   | { page: "schedules"; name?: string }
-  /** Scheduled work: schedules, and with `tab` the background work agents keep at for you. */
-  | { page: "automations"; tab?: "background" }
+  /** Automations: work an agent starts without being asked, each on a schedule. */
+  | { page: "automations" }
   | { page: "monitor"; tab: MonitorTab }
   /** The inbox, at a message, at the message an alert raised, or narrowed to one kind. */
   | { page: "inbox"; message?: string; alert?: string; kind?: string; view?: NotificationView }
@@ -388,7 +381,7 @@ const PAGE_TITLES: Record<Page, string> = {
   project: "Project",
   channel: "Channel",
   schedules: "Schedules",
-  automations: "Schedules",
+  automations: "Automations",
   monitor: "Monitor",
   inbox: "Notifications",
   knowledge: "Knowledge",
@@ -606,7 +599,7 @@ export function href(r: Route): string {
     case "channel":
       return href({ page: "sessions", project: r.project });
     case "automations":
-      return r.tab === "background" ? "/scheduled/background" : "/scheduled";
+      return "/automations";
     case "schedules":
       return r.name ? `/schedules/${enc(r.name)}` : "/schedules";
     case "monitor":
@@ -1014,12 +1007,11 @@ function read(pathname: string, search: string): Route {
       if (b === "fork") return { page: "project", name: a === "~" ? "" : a, fork: true };
       return { page: "project", name: a === "~" ? "" : a };
     }
-    // Scheduled was called Automations; a schedule without a name is the list.
+    // Automations was called Scheduled for a while, and had a Background tab:
+    // both old addresses open the list. A schedule without a name is the list.
     case "scheduled":
     case "automations":
-      return a === "background"
-        ? { page: "automations", tab: "background" }
-        : { page: "automations" };
+      return { page: "automations" };
     case "schedules":
       return a ? { page: "schedules", name: a } : { page: "automations" };
     case "monitor":

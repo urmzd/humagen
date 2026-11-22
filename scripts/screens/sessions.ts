@@ -26,7 +26,6 @@ export interface SessionScreen {
 }
 
 const composer = (page: Page) => page.locator('form[aria-label="Message"] textarea');
-const details = (page: Page) => page.getByRole("dialog", { name: "Details", exact: true });
 
 async function readySession(page: Page): Promise<void> {
   await composer(page).waitFor();
@@ -34,33 +33,21 @@ async function readySession(page: Page): Promise<void> {
   await page.getByRole("button", { name: /^Details(, \d+ working)?$/ }).waitFor();
 }
 
-async function detailsReady(page: Page): Promise<void> {
-  const panel = details(page);
+/** The session's Files: the Workspace drawer, a dialog on a phone and beside the thread on a wide screen. */
+const workspace = (page: Page) => page.getByRole("dialog", { name: "Workspace", exact: true });
+
+async function workspaceReady(page: Page): Promise<void> {
+  const panel = workspace(page);
   await panel.waitFor();
-  const sections = panel.getByRole("tablist", { name: "Session details" });
-  assert.deepEqual(await sections.getByRole("tab").allTextContents(), [
-    "Files",
-    "Sources",
-    "Steps",
-    "Sessions",
-  ]);
   const viewport = page.viewportSize();
   assert.ok(viewport);
-  assert.equal(await panel.evaluate((el) => el.matches(":modal")), viewport.width < 1024);
   const bounds = await panel.boundingBox();
   assert.ok(bounds && bounds.x >= -1 && bounds.x + bounds.width <= viewport.width + 1);
-  if (viewport.width >= 1024) {
-    const box = await composer(page).boundingBox();
-    assert.ok(
-      box && box.width > 0 && box.x + box.width <= bounds.x + 1,
-      "Details reflows the composer rather than covering it",
-    );
-  }
 }
 
 async function filesReady(page: Page): Promise<void> {
-  await detailsReady(page);
-  const panel = details(page);
+  await workspaceReady(page);
+  const panel = workspace(page);
   const browser = panel.locator('[data-slot="file-browser"]');
   await browser.waitFor();
   const picker = browser.getByRole("button", {
@@ -104,7 +91,7 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
       path: `/messages/${ids.inlineCode.id}`,
       act: async (page) => {
         await readySession(page);
-        const answer = page.getByRole("article", { name: "screens-writer message", exact: true });
+        const answer = page.getByRole("article", { name: "Screens Writer message", exact: true });
         await answer.getByText("ok example.com/calc", { exact: true }).waitFor();
         await page.evaluate(() => document.fonts.ready);
         const fragments = await answer.locator(".aui-prose code").evaluateAll((nodes) =>
@@ -164,83 +151,6 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
       },
     },
     {
-      name: "home-projects",
-      path: "/",
-      act: async (page) => {
-        const load = Promise.withResolvers<void>();
-        await page.route(
-          (url) => url.pathname === "/api/projects" && url.searchParams.has("limit"),
-          async (route) => {
-            await load.promise;
-            await route.continue();
-          },
-        );
-        const projects = page.getByRole("region", {
-          name: defaultCopy.projects.title,
-          exact: true,
-        });
-        let before: { y: number } | null;
-        try {
-          await page.reload({ waitUntil: "domcontentloaded" });
-          await composer(page).waitFor();
-          await page.evaluate(() => document.fonts.ready);
-          assert.equal(await projects.count(), 0, "No section is drawn without project data");
-          before = await composer(page).boundingBox();
-        } finally {
-          load.resolve();
-        }
-        const project = projects.getByRole("link", { name: "Launch", exact: true });
-        await project.waitFor();
-        assert.equal(await project.getAttribute("href"), "/projects/Launch");
-        const after = await composer(page).boundingBox();
-        assert.ok(before && after && Math.abs(before.y - after.y) <= 1, "The composer stays put");
-      },
-    },
-    {
-      // Nothing seeds an artifact (there is no model to publish one), so the
-      // strip is drawn from three answered here, as the list route answers.
-      name: "home-made",
-      path: "/",
-      act: async (page) => {
-        const at = (days: number) => new Date(Date.now() - days * 86_400_000).toISOString();
-        const made = (id: string, title: string, kind: string, days: number) => ({
-          id,
-          title,
-          kind,
-          mime: "text/markdown",
-          size: 2048,
-          sha256: id,
-          version: 1,
-          run: `run-${id}`,
-          thread: ids.work.id,
-          agent: "screens-approval",
-          created_by: "screens-approval",
-          created_at: at(days),
-        });
-        await page.route(/\/api\/artifacts\?limit=3$/, (route) =>
-          route.fulfill({
-            json: {
-              artifacts: [
-                made("a_plan", "Launch plan", "document", 0),
-                made("a_budget", "Briefing budget", "spreadsheet", 2),
-                made("a_deck", "Owner briefing deck", "presentation", 5),
-              ],
-              next: null,
-            },
-          }),
-        );
-        await page.reload({ waitUntil: "domcontentloaded" });
-        await composer(page).waitFor();
-        const strip = page.getByRole("region", {
-          name: defaultCopy.home.recentlyMade,
-          exact: true,
-        });
-        await strip.getByRole("link", { name: "Launch plan", exact: true }).waitFor();
-        // The menu's Artifacts entry opens the full list: the strip does not link to it again.
-        assert.equal(await strip.getByRole("link", { name: "All artifacts" }).count(), 0);
-      },
-    },
-    {
       name: "navigation",
       path: "/",
       act: async (page) => {
@@ -254,7 +164,7 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
           "Alerts",
           "Projects",
           "Agents",
-          "Scheduled",
+          "Automations",
           "Artifacts",
         ])
           await sections.getByRole("link", { name: new RegExp(`^${name}(?:[ ,]|$)`) }).waitFor();
@@ -265,8 +175,11 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
       path: "/",
       act: async (page) => {
         await composer(page).fill("Keep this unsent draft while choosing context.");
-        await page.getByRole("button", { name: defaultCopy.chat.plus, exact: true }).click();
-        await page.getByRole("dialog", { name: "Add to this conversation", exact: true }).waitFor();
+        // The session's settings beside +: the menu opens with its rows, and the draft stays.
+        await page.getByRole("button", { name: defaultCopy.chat.setup.label, exact: true }).click();
+        const menu = page.getByRole("dialog", { name: defaultCopy.chat.setup.label, exact: true });
+        for (const id of ["project", "agents", "repos", "image"])
+          await menu.locator(`[data-pane-row="${id}"]`).waitFor();
         assert.equal(
           await composer(page).inputValue(),
           "Keep this unsent draft while choosing context.",
@@ -399,7 +312,8 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
         const slack = apps.getByRole("listitem", { name: "Slack", exact: true });
         const github = apps.getByRole("listitem", { name: "GitHub", exact: true });
         const enable = slack.getByRole("button", { name: "Enable", exact: true });
-        const manage = github.getByRole("button", { name: "Manage", exact: true });
+        // An installed app's status is its control: pressing it manages the app.
+        const manage = github.getByRole("button", { name: /^(Installed|Connected)$/ });
         await enable.waitFor();
         await manage.waitFor();
         const first = await slack.boundingBox();
@@ -433,9 +347,9 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
         assert.ok(action && menu && row);
         assert.ok(
           Math.abs(menu.y + menu.height / 2 - (action.y + action.height / 2)) <= 1,
-          "the menu shares Manage's line at every width",
+          "the menu shares the status button's line at every width",
         );
-        assert.ok(menu.x >= action.x + action.width, "the menu follows Manage");
+        assert.ok(menu.x >= action.x + action.width, "the menu follows the status button");
         assert.ok(
           Math.abs(menu.x + menu.width - (row.x + row.width)) <= 1,
           "the menu ends the row",
@@ -611,34 +525,45 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
         await readySession(page);
         const controls = page
           .locator(".humagen-composer-row > button")
-          .or(page.getByRole("button", { name: /^Approval mode: / }))
           .or(page.locator('[data-layer="usage-ring"]'));
         await page.locator('[data-layer="usage-ring"]').waitFor();
-        const geometry = await controls.evaluateAll((buttons) => ({
+        const measure = (buttons: Element[]) => ({
           target: matchMedia("(pointer: coarse)").matches ? 44 : 32,
           buttons: buttons.map((button) => {
             const { width, height } = button.getBoundingClientRect();
             const icon = button.querySelector("svg")?.getBoundingClientRect();
             return { width, height, icon: icon && { width: icon.width, height: icon.height } };
           }),
-        }));
-        assert.ok(geometry.buttons.length >= 4, "Compose, approval and usage controls are visible");
+        });
+        const geometry = await controls.evaluateAll(measure);
+        assert.ok(geometry.buttons.length >= 3, "Compose and usage controls are visible");
         for (const { width, height, icon } of geometry.buttons) {
           assert.equal(width, geometry.target, "Composer controls share a target width");
           assert.equal(height, geometry.target, "Composer controls share a target height");
           if (icon)
             assert.deepEqual(icon, { width: 18, height: 18 }, "Composer icons share a size");
         }
-        const worked = page.getByTestId("worked").first();
-        await worked.scrollIntoViewIfNeeded();
-        const bounds = await worked.boundingBox();
-        if (await page.evaluate(() => matchMedia("(pointer: coarse)").matches))
-          assert.ok(bounds && bounds.height >= 44, "Worked must have a 44px touch target");
-        await worked.click();
-        await detailsReady(page);
-        await details(page).getByRole("button", { name: "Close Details", exact: true }).click();
-        await details(page).waitFor({ state: "hidden" });
-        await worked.scrollIntoViewIfNeeded();
+        // The approval mode is a pill with its icon and word: as tall as the
+        // controls beside it, at least as wide, with a smaller icon.
+        const pill = await page
+          .getByRole("button", { name: /^Approval mode: / })
+          .evaluateAll(measure);
+        assert.equal(pill.buttons.length, 1, "the approval mode is one control");
+        for (const { width, height, icon } of pill.buttons) {
+          assert.equal(
+            height,
+            pill.target,
+            "the approval pill is as tall as the composer's controls",
+          );
+          assert.ok(width >= pill.target, "the approval pill is at least a target wide");
+          assert.deepEqual(icon, { width: 14, height: 14 }, "the approval pill's icon is 14px");
+        }
+        // An answer shows its steps and called agents in itself: nothing under it opens them again.
+        assert.equal(
+          await page.getByTestId("worked").count(),
+          0,
+          "no activity control under an answer",
+        );
       },
     },
     {
@@ -696,7 +621,7 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
       act: async (page) => {
         await readySession(page);
         const answer = page
-          .getByRole("article", { name: "screens-writer message", exact: true })
+          .getByRole("article", { name: "Screens Writer message", exact: true })
           .last();
         await answer.click({ position: { x: 4, y: 4 } });
         const down = answer.getByRole("button", { name: "Not helpful", exact: true }).last();
@@ -713,11 +638,12 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
         await dialog.getByRole("textbox").fill("Include the owner and the next review date.");
       },
     },
-    ...(["files", "sources", "steps", "sessions"] as const).map((panel) => ({
-      name: `session-details-${panel}`,
-      path: `${session}?panel=${panel}`,
-      act: panel === "files" ? filesReady : detailsReady,
-    })),
+    {
+      // Sources, Steps and Sessions left the drawer: the conversation shows them in place.
+      name: "session-details-files",
+      path: `${session}?panel=files`,
+      act: filesReady,
+    },
     {
       name: "session-approval",
       path: `/messages/${ids.approval.id}`,

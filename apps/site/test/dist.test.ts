@@ -6,11 +6,13 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { pages, site } from "../src/content/site.ts";
+import { terms, termsDate } from "../src/content/terms.ts";
 
 const dist = new URL("../dist", import.meta.url).pathname;
 const built = [
   { file: "index.html", page: pages.home, ld: "SoftwareApplication" },
   { file: "deploy/index.html", page: pages.deploy, ld: "TechArticle" },
+  { file: "terms/index.html", page: pages.terms },
   { file: "404.html" },
 ];
 
@@ -54,8 +56,13 @@ for (const b of built) {
     assert.equal(meta(html, "og:image:width"), "1200");
     assert.equal(meta(html, "og:image:height"), "630");
     if (b.page) {
-      assert.equal(meta(html, "og:url"), new URL(b.page.path, site.url).href);
+      const canonical = new URL(b.page.path, site.url).href;
+      assert.equal(meta(html, "og:url"), canonical);
       assert.equal(meta(html, "og:title"), b.page.title);
+      assert.ok(html.includes(`<link rel="canonical" href="${canonical}">`), "canonical");
+      assert.ok(
+        readFileSync(join(dist, "sitemap.xml"), "utf8").includes(`<loc>${canonical}</loc>`),
+      );
     }
   });
 
@@ -75,3 +82,30 @@ for (const b of built) {
     });
   }
 }
+
+/** Text as Astro writes it into HTML. */
+const escaped = (text: string) =>
+  text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+
+test("the terms page shows the whole of its text, its links and the day it changed", () => {
+  const html = readFileSync(join(dist, "terms/index.html"), "utf8");
+  assert.ok(html.includes(`<title>${escaped(pages.terms.title)}</title>`), "title");
+  assert.ok(html.includes(`<time datetime="${terms.updated}">${termsDate()}</time>`));
+  const shows = (text: string) =>
+    assert.ok(html.includes(escaped(text)) || html.includes(text), `the page lacks: ${text}`);
+  for (const p of terms.intro) shows(p);
+  for (const s of terms.sections) {
+    assert.ok(html.includes(`id="${s.id}"`), s.id);
+    shows(s.title);
+    for (const p of s.body) shows(p);
+    for (const l of s.links ?? []) {
+      assert.ok(html.includes(`href="${l.href}"`), l.href);
+      shows(l.label);
+    }
+  }
+});

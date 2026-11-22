@@ -119,6 +119,9 @@ func (p *Platform) registerRunTools() error {
 		reads(SystemTool{Name: ToolFileList, Category: read, Run: file(ToolFileList)}),
 		{Name: ToolFileWrite, Category: write, Idempotent: true, Run: file(ToolFileWrite)},
 		{Name: ToolPublish, Category: publish, Run: file(ToolPublish)},
+		// The published files beyond the working directory (artifact_tools.go).
+		reads(SystemTool{Name: ToolArtifactRead, Category: read, Run: of(p.artifactReadTool)}),
+		reads(SystemTool{Name: ToolArtifactList, Category: read, Run: of(p.artifactListTool)}),
 		{Name: ToolOutcome, Category: other, Run: file(ToolOutcome)},
 		{Name: ToolShell, Category: write, Destructive: true, Run: acting(p.shellTool)},
 

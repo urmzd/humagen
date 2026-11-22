@@ -12,6 +12,7 @@ export function botLook(look: AgentLook | undefined): BotLook | undefined {
   const seen = drawn.get(look);
   if (seen) return seen;
   const out: BotLook = {
+    character: look.character as BotLook["character"],
     shape: look.shape as BotLook["shape"],
     face: look.face as BotLook["face"],
     finish: look.finish as BotLook["finish"],

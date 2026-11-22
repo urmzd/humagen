@@ -1,0 +1,44 @@
+---
+import { pages } from "../content/site";
+import { terms, termsDate } from "../content/terms";
+import Base from "../layouts/Base.astro";
+import { inline } from "../lib/inline";
+
+const h2 = "humagen-display text-aui-xl font-semibold text-aui-fg";
+const text = "site-text max-w-[70ch] space-y-3 text-aui-base text-aui-muted";
+const section = "flex min-w-0 flex-col gap-4 border-t border-aui-border pt-10";
+---
+<Base page={pages.terms} type="article">
+  <div class="site-frame flex flex-col gap-10 px-5 pt-14 pb-16 md:px-10 md:pt-20">
+    <header class="flex flex-col gap-3">
+      <h1 class="humagen-display text-[1.875rem] leading-[1.15] font-semibold text-aui-fg md:text-[2.25rem]">
+        {terms.heading}
+      </h1>
+      <p class="text-aui-sm text-aui-muted">
+        {terms.changed} <time datetime={terms.updated}>{termsDate()}</time>
+      </p>
+      <div class="flex max-w-[70ch] flex-col gap-3 text-aui-base text-aui-muted">
+        {terms.intro.map((p) => <p>{p}</p>)}
+      </div>
+    </header>
+    {
+      terms.sections.map((s) => (
+        <section id={s.id} aria-labelledby={`${s.id}-title`} class={section}>
+          <h2 id={`${s.id}-title`} class={h2}>
+            {s.title}
+          </h2>
+          <div class={text}>
+            {s.body.map((p) => (
+              <p set:html={inline(p)} />
+            ))}
+            {s.links?.map((l) => (
+              <p>
+                <a href={l.href}>{l.label}</a>
+              </p>
+            ))}
+          </div>
+        </section>
+      ))
+    }
+  </div>
+</Base>

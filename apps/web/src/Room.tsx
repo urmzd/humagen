@@ -10,6 +10,7 @@ import {
 import { ForkIcon, GitHubRefKindsContext, githubRefKinds, WebSurface } from "@humagen/render-web";
 import {
   AgentMessage,
+  AgentNameContext,
   FileLinkContext,
   type FileLinks,
   MessageActionRow,
@@ -24,6 +25,7 @@ import {
 } from "@humagen/web";
 import { Fragment, type ReactNode, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { ApprovalToggle } from "./ApprovalToggle.tsx";
+import { AttachedDocument, opensAsDocument } from "./AttachedDocument.tsx";
 import { actedFor, citationOf, type Run, turnOf } from "./adapter.ts";
 import {
   ApiError,
@@ -45,7 +47,14 @@ import {
 } from "./api.ts";
 import { askedOf, asksOf, copyFor, type Refusal, stillAsks } from "./asks.ts";
 import { answersLine } from "./availability.ts";
-import { agentShown } from "./branding.ts";
+import {
+  bangCommand,
+  CommandMessage,
+  commandHint,
+  commandHold,
+  commandsHere,
+} from "./BangCommand.tsx";
+import { agentShown, brandShown } from "./branding.ts";
 import { Composer, type ComposerSeed } from "./Composer.tsx";
 import { type ConversationForkActions, ConversationForkPanels } from "./ConversationForkPanels.tsx";
 import { ConversationInfo, ConversationPage } from "./ConversationShell.tsx";
@@ -59,7 +68,7 @@ import { GitHubTab, reviewText, reviewView } from "./GitHubTab.tsx";
 import { HumanActivityList, HumanActivityNote } from "./humanActivity.tsx";
 import { itemActions } from "./itemActions.tsx";
 import { OLD_SYSTEM_SENDER } from "./legacy.ts";
-import { AnswerRefs } from "./MessageRefs.tsx";
+import { AnswerRefs, CallThreads } from "./MessageRefs.tsx";
 import { MessageTime } from "./MessageTime.tsx";
 import { OutcomeActions } from "./OutcomeActions.tsx";
 import { PersonMark } from "./PersonMark.tsx";
@@ -88,13 +97,9 @@ import { SessionDetailsProvider } from "./SessionDetails.tsx";
 import { sessionFiles, sessionProgress } from "./SessionPanel.tsx";
 import { OriginButton, referenceOfPlace, SessionPlace, usePlace } from "./SessionPlace.tsx";
 import { ComposerFooter, UsageRing } from "./SessionUsage.tsx";
-import {
-  type SessionView,
-  SessionViews,
-  useUnavailableViews,
-  useViewShortcuts,
-} from "./SessionViews.tsx";
+import { type SessionView, SessionViews, useUnavailableViews } from "./SessionViews.tsx";
 import { ShareDialog } from "./Share.tsx";
+import { useSessionOptions } from "./sessionOptions.ts";
 import { useItemStops, useSessionBackground, useSessionStop } from "./stops.tsx";
 import { topicsOf } from "./topics.ts";
 import { mergeTurns } from "./turns.ts";
@@ -226,6 +231,7 @@ export function postedLine(p: ThreadPosted): string {
  */
 function RoomComposer({
   thread,
+  queuePlace,
   placeholder,
   tags,
   autoFocus,
@@ -240,7 +246,13 @@ function RoomComposer({
   onBackgroundChanged,
   footer,
   sessionAgents,
+  commands,
 }: {
+  /**
+   * Whether a "!" message may run its command here: null when it may, else
+   * why not. Left out, "!" is plain text.
+   */
+  commands?: string | null;
   runs?: Run[];
   /** Every run in the session, whoever asked for it: the composer's Stop stops them all. */
   sessionRuns?: Run[];
@@ -261,10 +273,13 @@ function RoomComposer({
   /** Called as the text changes, so the + menu shows the agents it mentions. */
   onDraft?: (text: string) => void;
   plus?: Parameters<typeof Composer>[0]["plus"];
+  /** Where the conversation shows the messages that wait (Composer's queuePlace). */
+  queuePlace?: HTMLElement | null;
   onPost: (
     text: string,
     pick?: QueuedMessage["pick"],
     uploads?: QueuedMessage["uploads"],
+    command?: boolean,
   ) => Promise<ThreadPosted>;
 }) {
   const [problem, setProblem] = useState<string | null>(null);
@@ -284,10 +299,23 @@ function RoomComposer({
   const queue = useQueue({
     onStart: (m) => {
       setProblem(null);
+      // A "!" message runs its command and starts no run. Where none may
+      // run, it is not sent to the agent: it waits in the box, saying why.
+      const command = commands !== undefined && bangCommand(m.text) !== null;
+      if (command && commands) {
+        setProblem(commands);
+        queue.reject();
+        return;
+      }
       // What the person did by hand in the workbench since their last message
       // goes with this one, and is cleared once it is posted.
       const post = (text: string) => onPost(text, m.pick, m.uploads);
-      (thread ? postWithHumanActivity(thread, m.text, post) : post(m.text))
+      (command
+        ? onPost(m.text, undefined, undefined, true)
+        : thread
+          ? postWithHumanActivity(thread, m.text, post)
+          : post(m.text)
+      )
         .then((p) => {
           setProblem(postedLine(p) || null);
           const ids = p.runs.filter((run) => isWorking(run.status)).map((run) => run.id);
@@ -340,6 +368,7 @@ function RoomComposer({
       <Composer
         placeholder={placeholder}
         queue={queue}
+        queuePlace={queuePlace}
         autoFocus={autoFocus}
         seed={seed}
         onDraft={(text) => {
@@ -352,6 +381,8 @@ function RoomComposer({
         voice={voice}
         trailing={trailing}
         footer={footer}
+        note={commands !== undefined && commandHint(draft, commands)}
+        hold={(text, files) => commandHold(text, files, commands)}
         stopAll={
           thread
             ? { busy: session.busy, pending: session.pending, onStop: () => void stopAll() }
@@ -389,7 +420,6 @@ function MessageView({
   continued = false,
   fromWeb = false,
   refs,
-  onReply,
   actions,
 }: {
   m: ThreadMessage;
@@ -402,24 +432,33 @@ function MessageView({
   mine?: boolean;
   /** Follows a message from the same person. */
   continued?: boolean;
-  onReply?: () => void;
   actions?: ReactNode;
 }) {
+  const command = m.command;
+  if (command) return <CommandMessage m={{ ...m, command }} mine={mine} focused={focused} />;
   const who = m.name || m.by;
   const followup = followupNote(m);
   // What the person did by hand before sending is drawn closed, apart from their words.
   const { text: said, activity } = splitHumanActivity(m.text);
   const byHand = activity ? <HumanActivityNote activity={activity} mine={mine} /> : null;
+  // A text file opens as a document; any other file is named.
   const uploads = m.attachments?.length ? (
-    <ul className="flex max-w-full flex-wrap gap-1" aria-label={defaultCopy.details.used.uploads}>
+    <ul
+      className={`flex max-w-full flex-wrap gap-1 ${mine ? "justify-end" : ""}`}
+      aria-label={defaultCopy.details.used.uploads}
+    >
       {m.attachments.map((file, index) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: A retained message's files are immutable and may share both name and bytes.
         <li key={index} className="min-w-0 max-w-full">
-          <Reference
-            kind="file"
-            label={file.name || file.alt || file.media_type}
-            title={file.unread || file.media_type}
-          />
+          {opensAsDocument(file) ? (
+            <AttachedDocument session={m.thread} message={m.id} index={index} file={file} />
+          ) : (
+            <Reference
+              kind="file"
+              label={file.name || file.alt || file.media_type}
+              title={file.unread || file.media_type}
+            />
+          )}
         </li>
       ))}
     </ul>
@@ -433,11 +472,7 @@ function MessageView({
     </>
   );
   const row = (
-    <MessageActionRow
-      text={m.text}
-      copyLabel={defaultCopy.conversation.copyMessage}
-      onReply={onReply}
-    >
+    <MessageActionRow text={m.text} copyLabel={defaultCopy.conversation.copyMessage}>
       {actions}
     </MessageActionRow>
   );
@@ -451,19 +486,22 @@ function MessageView({
         tabIndex={-1}
         className={`group/message flex flex-col items-end gap-0.5 rounded-aui ${continued ? "-mt-2" : ""} ${focused ? "outline-2 outline-offset-4 outline-aui-accent" : ""}`}
       >
-        <p className="humagen-glass max-w-[85%] whitespace-pre-wrap break-words rounded-aui-lg px-3.5 py-2 text-aui-sm text-aui-fg sm:max-w-[70%]">
+        <p className="humagen-said max-w-[85%] whitespace-pre-wrap break-words rounded-aui-lg px-3.5 py-2 text-aui-sm text-aui-fg sm:max-w-[70%]">
           <Mentioned text={said} />
         </p>
         {byHand}
         {uploads}
-        {/* Its actions show on hover and keep their place when hidden. They share the
-            time's line, so a hidden row leaves no empty band under the message. */}
+        {/* Its actions are always there, against the right edge where the message is.
+            Only its time shows on hover, at the row's far (left) end, so nothing
+            between two actions comes or goes. */}
         <div className="flex max-w-full flex-wrap items-center justify-end gap-x-2">
-          {row}
           <p className="flex flex-wrap items-baseline justify-end gap-x-2 text-aui-2xs text-aui-muted">
+            <span className="opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100 motion-reduce:transition-none pointer-coarse:opacity-100">
+              <MessageTime at={m.at} />
+            </span>
             {notes}
-            <MessageTime at={m.at} />
           </p>
+          {row}
         </div>
         {refs && <div className="flex justify-end">{refs}</div>}
       </article>
@@ -580,12 +618,8 @@ function AnswerView({
   me,
   ask,
   refused,
-  routed,
   onAsk,
-  onReply,
   onRedirect,
-  onActivity,
-  activityOpen,
   actions,
   canStop = false,
   focused = false,
@@ -598,18 +632,11 @@ function AnswerView({
   /** The reader's background work from this session, which a step's own Stop ends. */
   background?: BackgroundTask[];
   onBackgroundChanged?: () => void;
-  /** Open or close this answer's activity in Details. */
-  onActivity?: (run: string) => void;
-  /** This answer's activity is open in Details. */
-  activityOpen?: boolean;
   me: string;
   live: boolean;
   ask?: ThreadAsk[];
   refused?: Refusal;
-  /** That it answers because the conversation routes to it, not because it was tagged. */
-  routed?: string;
   onAsk?: () => void;
-  onReply?: () => void;
   onRedirect?: () => void;
   actions?: ReactNode;
 }) {
@@ -626,10 +653,10 @@ function AnswerView({
     agentStop: stop ? { onStop: stop.onStop, pending: !!stop.pending } : undefined,
   });
   const turn = useRunTurn(run);
-  const name = agentShown(run.agent);
+  // The entry agent answers under the workspace's name; its mark is drawn from that name.
+  const name = brandShown(run.agent);
   const drawn = useMemo(() => {
     const read = turn ?? turnOf(run);
-    // The entry agent answers under the workspace's name.
     const base = read.agent.name === name ? read : { ...read, agent: { ...read.agent, name } };
     return run.citations !== undefined
       ? { ...base, citations: run.citations.map(citationOf) }
@@ -646,42 +673,41 @@ function AnswerView({
       id={`turn-${run.id}`}
       data-turn-id={run.id}
       className={`flex flex-col gap-2 ${focused ? "rounded-aui outline-2 outline-offset-4 outline-aui-accent" : ""}`}
-      aria-label={words.answeredBy(name)}
+      aria-label={words.answeredBy(agentShown(run.agent))}
     >
       {/* A run from before threads carries what was asked; one that answers a message does not repeat it. */}
       {!run.message && (
-        <p className="humagen-glass max-w-[80%] self-end whitespace-pre-wrap rounded-aui-lg px-3.5 py-2 text-aui-sm text-aui-fg">
+        <p className="humagen-said max-w-[80%] self-end whitespace-pre-wrap rounded-aui-lg px-3.5 py-2 text-aui-sm text-aui-fg">
           <Mentioned text={run.text} />
         </p>
       )}
-      {/* The answer names its agent; why it joined is said above it. */}
-      {(routed || run.picked) && (
-        <Checkpoint agent={run.agent}>{[routed, run.picked].filter(Boolean).join(". ")}</Checkpoint>
-      )}
+      {/* The answer names its agent, so where a message was routed is not said again. Why an agent joined is. */}
+      {run.picked && <Checkpoint agent={run.agent}>{run.picked}</Checkpoint>}
       <AgentTint name={run.agent}>
         <RunFeedbackHost turn={shown}>
           {(rated) => (
             <RetryCallContext.Provider value={ownsRun ? retryCalls : null}>
-              <AgentMessage
-                actions={actions}
-                stop={stop}
-                itemStops={itemStops}
-                disclaimer={false}
-                activity={false}
-                timestamp={<MessageTime at={run.created_at} />}
-                turn={ownsRun ? rated : { ...rated, needsConnection: undefined }}
-                copy={copyFor(ask)}
-                itemActions={itemActions(run)}
-                capabilities={{ regenerate: false }}
-                onAskAgent={onAsk}
-                onReply={onReply}
-                onRedirect={onRedirect}
-              />
+              <CallThreads run={run} calls={rated.tasks.some((t) => t.subagent)}>
+                <AgentMessage
+                  actions={actions}
+                  stop={stop}
+                  itemStops={itemStops}
+                  disclaimer={false}
+                  activity={false}
+                  timestamp={<MessageTime at={run.created_at} />}
+                  turn={ownsRun ? rated : { ...rated, needsConnection: undefined }}
+                  copy={copyFor(ask)}
+                  itemActions={itemActions(run)}
+                  capabilities={{ regenerate: false }}
+                  onAskAgent={onAsk}
+                  onRedirect={onRedirect}
+                />
+              </CallThreads>
             </RetryCallContext.Provider>
           )}
         </RunFeedbackHost>
       </AgentTint>
-      <AnswerRefs run={run} open={activityOpen} onActivity={onActivity} />
+      <AnswerRefs run={run} />
       <BrowserCard thread={run.thread} tasks={drawn.tasks} />
       {refused && stillAsks(shown, refused.question) && (
         <div className="pl-11">
@@ -795,6 +821,11 @@ export function ThreadRoom({
 }) {
   const [page, setPage] = useState<ThreadPage>(initial);
   const attention = useSessionAlerts(id, !!alertAccess, tick, onChanged);
+  // A session opened to review an alert never repeats that alert: it belongs
+  // on the conversation it came from.
+  const alertRows = attention.rows.filter((a) => a.id !== page.thread.session?.source_alert);
+  // Whether a "!" message may run a command in this session's sandbox.
+  const sessionOptions = useSessionOptions(id.startsWith("s_"));
   // Every turn read so far, oldest first. A refresh reads the newest page,
   // which moves on as the thread grows; the turns it no longer holds stay.
   const [turns, setTurns] = useState<ThreadTurn[]>(initial.turns);
@@ -828,6 +859,8 @@ export function ThreadRoom({
   const [problem, setProblem] = useState<string | null>(null);
   const [localView, setLocalView] = useState<ConversationView>({});
   const [seed, setSeed] = useState<ComposerSeed>();
+  // The end of the conversation, where messages that wait are shown.
+  const [queuePlace, setQueuePlace] = useState<HTMLElement | null>(null);
   const background = useSessionBackground(id);
   // Arriving from Home's first message, the bar slides down to its place.
   const dock = useRef<HTMLDivElement>(null);
@@ -852,8 +885,8 @@ export function ThreadRoom({
     if (v === "details") return openPanel("details", openBench(shownView, "details"));
     if (v === "files" || v === "artifacts")
       return openPanel("workspace", openPane(shownView, { kind: v }));
-    if (v === "progress") return openPanel("activity");
-    if (v === "background") return;
+    // A session carries its own background work: it is a section of its Details.
+    if (v === "background") return openPanel("details", openBench(shownView, "details"));
     openWorkbench(v);
   };
   // A file named in the thread opens at its changes in the workbench beside it,
@@ -964,20 +997,6 @@ export function ThreadRoom({
         : !started && !owner
           ? defaultCopy.chat.projectStarter
           : undefined;
-  // A run the conversation's selection started says so, as the run recorded
-  // it, so an older answer keeps its line whatever the selection becomes.
-  const routedOf = (run: Run): string | undefined => {
-    const c = defaultCopy.chat;
-    // A message routed to one agent alone says only where it went, whatever the mode was.
-    const alone = run.message
-      ? turns.filter((t) => t.run?.message === run.message && t.run?.routed).length <= 1
-      : false;
-    const name = agentShown(run.agent);
-    if (run.routed === "all") return alone ? c.routed(name) : c.routedAll(name);
-    // Among the selected agents, one that joined says where it went; `picked` says why it joined.
-    if (run.routed === "join" || run.routed === "best_fit") return c.routed(name);
-    return undefined;
-  };
   const shareButton = useRef<HTMLButtonElement>(null);
   // What sharing did: who was told, and who was not added and why.
   const [shareNote, setShareNote] = useState("");
@@ -1075,16 +1094,13 @@ export function ThreadRoom({
     );
   };
 
-  useViewShortcuts(openView, (v) => v !== "sidechat" || posts);
   const unavailable = useUnavailableViews(th.id, !!th.session);
   const activeView: SessionView | undefined =
     shownView.panel === "details"
       ? (shownView.bench ?? "details")
       : shownView.panel === "workspace"
         ? "files"
-        : shownView.panel === "activity"
-          ? "progress"
-          : undefined;
+        : undefined;
   return (
     <SessionDetailsProvider panel={shownView.panel} onPanel={(panel) => openPanel(panel)}>
       <WorkbenchOpen.Provider value={openWorkbench}>
@@ -1101,7 +1117,6 @@ export function ThreadRoom({
                   progress={sessionProgress(turns.flatMap((t) => (t.run ? [t.run] : [])))}
                   onOpen={openView}
                   onClose={() => openPanel()}
-                  hidden={posts ? [] : ["sidechat"]}
                   disabled={unavailable}
                 />
               }
@@ -1125,7 +1140,12 @@ export function ThreadRoom({
                 />
               }
               title={title}
-              project={projectTitle(projects, th.project, workspaceName, personalProject)}
+              // The reader's own Personal project is not named: a session is there unless it was filed elsewhere.
+              project={
+                th.project === personalProject
+                  ? ""
+                  : projectTitle(projects, th.project, workspaceName, personalProject)
+              }
               private={th.visibility === "private"}
               agents={answering}
               people={th.participants.filter((p) => p.kind === "person").map((p) => p.name)}
@@ -1234,285 +1254,250 @@ export function ThreadRoom({
                   actions={forkActions}
                 />
               )}
-              <WebSurface onAction={onAction} className="flex min-h-0 flex-1 flex-col">
-                <ThreadList
-                  className="w-full flex-1"
-                  column="mx-auto w-full max-w-4xl px-4"
-                  busy={busy}
-                  label="Thread"
-                  turns={wave}
-                  focus={focus}
-                  initialApproval={initialApproval}
-                  footer={
-                    <div
-                      ref={dock}
-                      className="mx-auto flex w-full max-w-4xl flex-col gap-2 px-4 pb-3"
-                    >
-                      <Problem message={problem} />
-                      {canRun && !posts && (
-                        <p className="text-aui-xs text-aui-muted">{words.viewerOnly}</p>
+              <AgentNameContext.Provider value={agentShown}>
+                <WebSurface onAction={onAction} className="flex min-h-0 flex-1 flex-col">
+                  <ThreadList
+                    className="w-full flex-1"
+                    column="mx-auto w-full max-w-4xl px-4"
+                    busy={busy}
+                    label="Thread"
+                    turns={wave}
+                    focus={focus}
+                    initialApproval={initialApproval}
+                    footer={
+                      <div
+                        ref={dock}
+                        className="mx-auto flex w-full max-w-4xl flex-col gap-2 px-4 pb-3"
+                      >
+                        <Problem message={problem} />
+                        {canRun && !posts && (
+                          <p className="text-aui-xs text-aui-muted">{words.viewerOnly}</p>
+                        )}
+                        {posts && (
+                          <RoomComposer
+                            queuePlace={queuePlace}
+                            sessionAgents={page.sessionAgents}
+                            sessionRuns={turns.flatMap((turn) => (turn.run ? [turn.run] : []))}
+                            background={background.items}
+                            onBackgroundChanged={background.refresh}
+                            runs={turns.flatMap((turn) =>
+                              turn.run && actedFor(turn.run) === me ? [turn.run] : [],
+                            )}
+                            thread={id}
+                            footer={(() => {
+                              // The ring reads again as runs end.
+                              const runs = turns.flatMap((turn) => (turn.run ? [turn.run] : []));
+                              return (
+                                <ComposerFooter
+                                  // Left, in order: project, image (footerStart), then approval.
+                                  start={
+                                    <>
+                                      {footerStart}
+                                      <ApprovalToggle thread={th} me={handle || me} />
+                                    </>
+                                  }
+                                  usage={
+                                    <UsageRing
+                                      thread={id}
+                                      project={th.project}
+                                      agents={answering}
+                                      version={`${runs.length}:${runs.filter((r) => isWorking(r.status)).length}`}
+                                    />
+                                  }
+                                />
+                              );
+                            })()}
+                            seed={seed}
+                            placeholder={words.message}
+                            tags={tags}
+                            plus={{
+                              // The draft's mentions are the + menu's agents.
+                              menu: (close, attach, leave, draft) => (
+                                <PlusMenu
+                                  onLeave={leave}
+                                  agents={tags.agents}
+                                  {...mentionPicks(draft, tags.agents, setSeed)}
+                                  onAttach={attach}
+                                  onClose={close}
+                                />
+                              ),
+                            }}
+                            autoFocus={sharing ? false : undefined}
+                            commands={commandsHere(sessionOptions?.terminal, id.startsWith("s_"))}
+                            onPost={(text, pick, uploads, command) =>
+                              // It follows the newest message, so a run it starts reads the conversation so far.
+                              coworking
+                                .post(id, {
+                                  text,
+                                  ...pick,
+                                  uploads,
+                                  ...(command ? { command } : {}),
+                                })
+                                .then((p) => {
+                                  // What was posted shows at once: the message, and any run its tags started.
+                                  setTurns((t) =>
+                                    mergeTurns(t, [
+                                      { kind: "message", message: p.message },
+                                      ...p.runs.map((run) => ({ kind: "run" as const, run })),
+                                    ]),
+                                  );
+                                  onChanged();
+                                  return p;
+                                })
+                            }
+                          />
+                        )}
+                      </div>
+                    }
+                  >
+                    <Problem message={attention.problem ?? null} />
+                    {attention.problem && (
+                      <button type="button" className={button} onClick={attention.refresh}>
+                        Reload alerts
+                      </button>
+                    )}
+                    {attention.undo && (
+                      <p role="status" className="text-aui-xs">
+                        Alert updated.{" "}
+                        <button
+                          type="button"
+                          className="underline"
+                          disabled={attention.busy}
+                          onClick={() => void attention.change(attention.undo!, "open")}
+                        >
+                          Undo
+                        </button>
+                      </p>
+                    )}
+                    <SessionAlerts
+                      alerts={alertRows.filter(
+                        (a) =>
+                          !duplicatesInlineApproval(a, turns) &&
+                          (!alertAnchor(a) ||
+                            !turns.some((t) => (t.message?.id ?? t.run?.id) === alertAnchor(a))),
                       )}
-                      {posts && (
-                        <RoomComposer
-                          sessionAgents={page.sessionAgents}
-                          sessionRuns={turns.flatMap((turn) => (turn.run ? [turn.run] : []))}
-                          background={background.items}
-                          onBackgroundChanged={background.refresh}
-                          runs={turns.flatMap((turn) =>
-                            turn.run && actedFor(turn.run) === me ? [turn.run] : [],
-                          )}
-                          thread={id}
-                          footer={(() => {
-                            // Who answers is whoever answered last; the ring reads again as runs end.
-                            const runs = turns.flatMap((turn) => (turn.run ? [turn.run] : []));
-                            const latest = runs[runs.length - 1];
-                            return (
-                              <ComposerFooter
-                                // Left, in order: project, image (footerStart), then approval.
-                                start={
-                                  <>
-                                    {footerStart}
-                                    <ApprovalToggle thread={th} me={handle || me} />
-                                  </>
-                                }
-                                agent={latest ? agentShown(latest.agent) : undefined}
-                                model={latest?.usage?.context?.model}
-                                usage={
-                                  <UsageRing
-                                    thread={id}
-                                    project={th.project}
-                                    agents={answering}
-                                    version={`${runs.length}:${runs.filter((r) => isWorking(r.status)).length}`}
-                                  />
-                                }
-                              />
-                            );
-                          })()}
-                          seed={seed}
-                          placeholder={words.message}
-                          tags={tags}
-                          plus={{
-                            // The draft's mentions are the + menu's agents.
-                            menu: (close, attach, leave, draft) => (
-                              <PlusMenu
-                                onLeave={leave}
-                                agents={tags.agents}
-                                {...mentionPicks(draft, tags.agents, setSeed)}
-                                skills={tags.skills}
-                                skillsFailed={tags.skillsFailed}
-                                onSkill={(name) => {
-                                  setSeed({ text: `/${name} `, mode: "prepend" });
-                                }}
-                                onAttach={attach}
-                                onClose={close}
-                              />
-                            ),
-                          }}
-                          autoFocus={sharing ? false : undefined}
-                          onPost={(text, pick, uploads) =>
-                            // It follows the newest message, so a run it starts reads the conversation so far.
-                            coworking
-                              .post(id, { text, ...pick, uploads })
-                              .then((p) => {
-                                // What was posted shows at once: the message, and any run its tags started.
-                                setTurns((t) =>
-                                  mergeTurns(t, [
-                                    { kind: "message", message: p.message },
-                                    ...p.runs.map((run) => ({ kind: "run" as const, run })),
-                                  ]),
-                                );
-                                onChanged();
-                                return p;
-                              })
-                          }
-                        />
-                      )}
-                    </div>
-                  }
-                >
-                  <Problem message={attention.problem ?? null} />
-                  {attention.problem && (
-                    <button type="button" className={button} onClick={attention.refresh}>
-                      Reload alerts
-                    </button>
-                  )}
-                  {attention.undo && (
-                    <p role="status" className="text-aui-xs">
-                      Alert updated.{" "}
+                      attention={attention}
+                      canWrite={!!alertAccess?.write}
+                      agents={posts ? agents.map((a) => a.spec.name) : []}
+                      onOpen={onOpenThread}
+                    />
+                    {before && (
                       <button
                         type="button"
-                        className="underline"
-                        disabled={attention.busy}
-                        onClick={() => void attention.change(attention.undo!, "open")}
+                        className={`${button} self-center`}
+                        onClick={loadEarlier}
                       >
-                        Undo
+                        {words.olderTurns}
                       </button>
-                    </p>
-                  )}
-                  <SessionAlerts
-                    alerts={attention.rows.filter(
-                      (a) =>
-                        !duplicatesInlineApproval(a, turns) &&
-                        (!alertAnchor(a) ||
-                          !turns.some((t) => (t.message?.id ?? t.run?.id) === alertAnchor(a))),
                     )}
-                    attention={attention}
-                    canWrite={!!alertAccess?.write}
-                    agents={posts ? agents.map((a) => a.spec.name) : []}
-                    onOpen={onOpenThread}
-                  />
-                  {before && (
-                    <button type="button" className={`${button} self-center`} onClick={loadEarlier}>
-                      {words.olderTurns}
-                    </button>
-                  )}
-                  {turns.map((t, i) => (
-                    <Fragment key={t.announcement?.id ?? t.message?.id ?? t.run?.id}>
-                      <SessionAlerts
-                        alerts={attention.rows.filter(
-                          (a) =>
-                            !duplicatesInlineApproval(a, turns) &&
-                            !!alertAnchor(a) &&
-                            alertAnchor(a) === (t.message?.id ?? t.run?.id),
-                        )}
-                        attention={attention}
-                        canWrite={!!alertAccess?.write}
-                        agents={posts ? agents.map((a) => a.spec.name) : []}
-                        onOpen={onOpenThread}
-                        beside
-                      />
-                      {t.announcement ? (
-                        <AnnouncementView key={`a:${t.announcement.id}`} a={t.announcement} />
-                      ) : t.message ? (
-                        <MessageView
-                          key={t.message.id}
-                          m={t.message}
-                          mine={t.message.by === me || (!!handle && t.message.by === handle)}
-                          continued={turns[i - 1]?.message?.by === t.message.by}
-                          focused={focus === t.message.id}
-                          fromWeb={place?.kind !== "console" && t.message.via === "console"}
-                          actions={
-                            posts ? (
-                              <>
-                                {forkActions?.onFork && (
-                                  <button
-                                    type="button"
-                                    className={messageActionButton}
-                                    aria-label={defaultCopy.forking.fromHere}
-                                    title={defaultCopy.forking.fromHere}
-                                    onClick={() => forkActions.onFork?.(t.message!.id)}
-                                  >
-                                    <ForkIcon size={16} />
-                                  </button>
-                                )}
-                              </>
-                            ) : undefined
-                          }
-                          onReply={
-                            posts
-                              ? () =>
-                                  setSeed({
-                                    quote: {
-                                      label: "this message",
-                                      text: t.message?.text,
-                                      url: href({
-                                        page: "conversation",
-                                        id,
-                                        message: t.message?.id,
-                                      }),
-                                    },
-                                  })
-                              : undefined
-                          }
+                    {turns.map((t, i) => (
+                      <Fragment key={t.announcement?.id ?? t.message?.id ?? t.run?.id}>
+                        <SessionAlerts
+                          alerts={alertRows.filter(
+                            (a) =>
+                              !duplicatesInlineApproval(a, turns) &&
+                              !!alertAnchor(a) &&
+                              alertAnchor(a) === (t.message?.id ?? t.run?.id),
+                          )}
+                          attention={attention}
+                          canWrite={!!alertAccess?.write}
+                          agents={posts ? agents.map((a) => a.spec.name) : []}
+                          onOpen={onOpenThread}
+                          beside
                         />
-                      ) : t.run ? (
-                        <AnswerView
-                          focused={focus === t.run.id}
-                          key={t.run.id}
-                          run={t.run}
-                          canStop={posts}
-                          background={background.items}
-                          onBackgroundChanged={background.refresh}
-                          actions={
-                            !th.read_only && t.run.status === "completed" ? (
-                              <>
-                                <OutcomeActions run={t.run} canWrite={canLearn} />
-                                {posts && forkActions?.onFork && (
-                                  <button
-                                    type="button"
-                                    className={messageActionButton}
-                                    aria-label={defaultCopy.forking.fromHere}
-                                    title={defaultCopy.forking.fromHere}
-                                    onClick={() => forkActions.onFork?.(t.run!.id)}
-                                  >
-                                    <ForkIcon size={16} />
-                                  </button>
-                                )}
-                              </>
-                            ) : undefined
-                          }
-                          routed={routedOf(t.run)}
-                          activityOpen={
-                            shownView.panel === "response" && shownView.run === t.run.id
-                          }
-                          onActivity={(run) =>
-                            shownView.panel === "response" && shownView.run === run
-                              ? openPanel()
-                              : openPanel("response", { run })
-                          }
-                          onAsk={
-                            posts
-                              ? () => setSeed({ text: `@${t.run?.agent} `, mode: "prepend" })
-                              : undefined
-                          }
-                          onReply={
-                            posts
-                              ? () =>
-                                  setSeed({
-                                    quote: {
-                                      label: `${agentShown(t.run?.agent ?? "")}'s answer`,
-                                      agent: t.run?.agent,
-                                      url: href({
-                                        page: "conversation",
-                                        id,
-                                        panel: "activity",
-                                        run: t.run?.id,
-                                      }),
-                                    },
-                                  })
-                              : undefined
-                          }
-                          onRedirect={
-                            posts
-                              ? () =>
-                                  setSeed({
-                                    text: defaultCopy.conversation.redirectPrompt(
-                                      t.run!.agent,
-                                      href({
-                                        page: "conversation",
-                                        id,
-                                        panel: "activity",
-                                        run: t.run!.id,
-                                      }),
-                                    ),
-                                    mode: "prepend",
-                                  })
-                              : undefined
-                          }
-                          me={me}
-                          ask={asksOf(t)}
-                          refused={refusals[t.run.id]}
-                          live={
-                            t === last ||
-                            asked.has(t.run.id) ||
-                            (t.run.status !== "completed" && t.run.status !== "failed")
-                          }
-                        />
-                      ) : null}
-                    </Fragment>
-                  ))}
-                </ThreadList>
-              </WebSurface>
+                        {t.announcement ? (
+                          <AnnouncementView key={`a:${t.announcement.id}`} a={t.announcement} />
+                        ) : t.message ? (
+                          <MessageView
+                            key={t.message.id}
+                            m={t.message}
+                            mine={t.message.by === me || (!!handle && t.message.by === handle)}
+                            continued={turns[i - 1]?.message?.by === t.message.by}
+                            focused={focus === t.message.id}
+                            fromWeb={place?.kind !== "console" && t.message.via === "console"}
+                            actions={
+                              posts ? (
+                                <>
+                                  {forkActions?.onFork && (
+                                    <button
+                                      type="button"
+                                      className={messageActionButton}
+                                      aria-label={defaultCopy.forking.fromHere}
+                                      title={defaultCopy.forking.fromHere}
+                                      onClick={() => forkActions.onFork?.(t.message!.id)}
+                                    >
+                                      <ForkIcon size={16} />
+                                    </button>
+                                  )}
+                                </>
+                              ) : undefined
+                            }
+                          />
+                        ) : t.run ? (
+                          <AnswerView
+                            focused={focus === t.run.id}
+                            key={t.run.id}
+                            run={t.run}
+                            canStop={posts}
+                            background={background.items}
+                            onBackgroundChanged={background.refresh}
+                            actions={
+                              !th.read_only && t.run.status === "completed" ? (
+                                <>
+                                  <OutcomeActions run={t.run} canWrite={canLearn} />
+                                  {posts && forkActions?.onFork && (
+                                    <button
+                                      type="button"
+                                      className={messageActionButton}
+                                      aria-label={defaultCopy.forking.fromHere}
+                                      title={defaultCopy.forking.fromHere}
+                                      onClick={() => forkActions.onFork?.(t.run!.id)}
+                                    >
+                                      <ForkIcon size={16} />
+                                    </button>
+                                  )}
+                                </>
+                              ) : undefined
+                            }
+                            onAsk={
+                              posts
+                                ? () => setSeed({ text: `@${t.run?.agent} `, mode: "prepend" })
+                                : undefined
+                            }
+                            onRedirect={
+                              posts
+                                ? () =>
+                                    setSeed({
+                                      text: defaultCopy.conversation.redirectPrompt(
+                                        t.run!.agent,
+                                        href({
+                                          page: "conversation",
+                                          id,
+                                          panel: "activity",
+                                          run: t.run!.id,
+                                        }),
+                                      ),
+                                      mode: "prepend",
+                                    })
+                                : undefined
+                            }
+                            me={me}
+                            ask={asksOf(t)}
+                            refused={refusals[t.run.id]}
+                            live={
+                              t === last ||
+                              asked.has(t.run.id) ||
+                              (t.run.status !== "completed" && t.run.status !== "failed")
+                            }
+                          />
+                        ) : null}
+                      </Fragment>
+                    ))}
+                    {/* Messages that wait behind the running turn, drawn by the composer. */}
+                    <div ref={setQueuePlace} data-layer="queued-place" className="empty:hidden" />
+                  </ThreadList>
+                </WebSurface>
+              </AgentNameContext.Provider>
             </ConversationPage>
             <ConversationInfo
               origin={referenceOfPlace(place)}
@@ -1844,11 +1829,6 @@ export function ChannelPage({
               <PlusMenu
                 agents={tags.agents}
                 {...mentionPicks(draft, tags.agents, setSeed)}
-                skills={tags.skills}
-                skillsFailed={tags.skillsFailed}
-                onSkill={(name) => {
-                  setSeed({ text: `/${name} `, mode: "prepend" });
-                }}
                 onAttach={attach}
                 onClose={close}
                 onLeave={leave}

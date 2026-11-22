@@ -1565,6 +1565,8 @@ export interface ThreadSummary {
   title: string;
   /** The title is a name, not just the first message. */
   named: boolean;
+  /** Who gave the title, as the thread's record says. `placeholder` is the start of the first message, shown until a generated title replaces it; `generated` is a short name a model gave it; `person` is a person's rename, which is never replaced. Absent when nobody named it, or for a record from before sources were kept. */
+  title_source?: "placeholder" | "generated" | "person";
   origin: string;
   project?: string;
   /** The project's channel it is in, `general` when its runs name none. */
@@ -1661,6 +1663,8 @@ export interface Thread {
   project: string;
   channel: string;
   title?: string;
+  /** Who gave the title. `placeholder` is the start of the first message, cut on a word, which a short generated name replaces once a model gives one; `generated` is that name; `person` is a person's rename. The platform replaces only a placeholder, so a rename is never overwritten. Absent for a record from before sources were kept, or one started with a title of its own. A title changed through this API is a person's. */
+  title_source?: "placeholder" | "generated" | "person";
   visibility: ThreadVisibility;
   /** Who takes part. An agent that lives in a project the caller may not read is left out unless it answered in the thread, as its runs there name it. The caller adds people and agents up to 50 they are shown; with the ones they are not shown, and the people who post and the agents who answer, who join on their own, the record holds at most 100. */
   participants: ThreadParticipant[];
@@ -1954,7 +1958,22 @@ export interface ThreadMessage {
   heard?: boolean;
   /** When its author last corrected a spoken message's words. */
   edited_at?: string;
+  command?: ThreadCommand;
   at: string;
+}
+
+/** A command the message's author ran in the session's sandbox, typed as `!` and the command, which is the message's text, and how it came out. The message started no run; the agent that answers the next message is sent the command and the end of its output. */
+export interface ThreadCommand {
+  command: string;
+  /** The command's exit status, or -1 when it was stopped at the time limit. */
+  exit_code: number;
+  /** Stopped at the time limit (15 seconds). */
+  timed_out?: boolean;
+  /** The end of stdout and stderr, as one stream, in at most 16384 bytes. Line endings are LF, and other control characters but tabs are removed. */
+  output: string;
+  /** Earlier output was cut. */
+  truncated?: boolean;
+  duration_ms: number;
 }
 
 /** The announcement a thread was started from, as it stands when the
@@ -2128,6 +2147,8 @@ export interface ThreadMessageInput {
   surface?: SurfaceRef;
   /** The person said it in voice mode and the words were transcribed. It only marks the message. */
   spoken?: boolean;
+  /** The text is `!` and a command to run at once, as the caller, in the session's sandbox, under the rules and limits of runSandboxCommand: only where GET /api/sessions/options says `terminal`, only for someone who may post in the session, and only while no work is under way there (409). The message is posted with how the command came out (ThreadMessage.command) and starts no run; the agent reads it with the next message. Refused with uploads, answers, act_as or surface. */
+  command?: boolean;
 }
 
 /** How a thread's selected agents answer an untagged message a person
@@ -2919,6 +2940,8 @@ name.
 export interface AgentLook {
   /** What people call the agent. Its handle, which people tag, does not change. */
   display_name?: string;
+  /** The mascot the agent is drawn as. Empty is the one its handle suggests. */
+  character?: "detective" | "writer" | "engineer" | "scientist" | "inspector" | "spy" | "plain";
   shape?: "clover" | "flower" | "triangle" | "square" | "blob" | "ghost" | "circle" | "drop" | "star" | "droid" | "mech" | "alien" | "hexagon" | "cat" | "cloud" | "pill" | "pebble" | "puddle";
   face?: "eyes" | "mouth";
   finish?: "fabric" | "plastic" | "smooth" | "flat";
@@ -3204,6 +3227,8 @@ export interface PersonalPreferences {
 export interface Branding {
   /** The product's name. */
   name: string;
+  /** The https address of the page of terms the console links to beside its notice that the product is AI. Null shows the notice without a link. */
+  terms_url: string | null;
   /** The entry agent's agent name. People see it as name, never as this. */
   entry_agent: string;
   /** The text beside the logo in the sidebar. Empty shows the logo alone. */
@@ -3913,9 +3938,10 @@ export interface Span {
 }
 
 /** `budget` is raised by a billing policy, never by a rule, and a rule
-cannot be created with it.
+cannot be created with it. `eval` is raised when an answer fails its
+online checks, on that answer, and never by a rule.
  */
-export type AlertKind = "run_failed" | "failure_rate" | "slow_run" | "eval_below" | "spend" | "budget" | "session" | "mention" | "source" | "approval" | "clarification" | "failure" | "operation" | "alert" | "connection" | "knowledge";
+export type AlertKind = "run_failed" | "failure_rate" | "slow_run" | "eval_below" | "eval" | "spend" | "budget" | "session" | "mention" | "source" | "approval" | "clarification" | "failure" | "operation" | "alert" | "connection" | "knowledge";
 
 export type AlertSeverity = "warning" | "critical";
 
@@ -3969,7 +3995,17 @@ lists every alert to them. At most 20 entries.
   updated_at?: string;
 }
 
+export interface MessageAttachmentText {
+  name: string;
+  media_type: string;
+  text: string;
+  /** The file is longer than the text returned. */
+  truncated?: boolean;
+}
+
 export interface Alert {
+  /** The session where a person reviews the alert with an agent, once someone has opened it. */
+  review?: string;
   who?: string[];
   resolve_when?: string;
   action?: string;
@@ -5897,6 +5933,8 @@ export interface SessionInput {
   image?: string;
   /** Repositories ("owner/name") the session works on, each listed by GET /api/sessions/options. Refused with surface. */
   repos?: string[];
+  /** Start the session with a command in place of a message to its agent: the text is `!` and the command, run in the new session's sandbox as for SessionPostInput.command. The session's first message is the command and how it came out, and no run starts. Refused with surface, act_as, post_only, listen, parent, source_alert and uploads, and where GET /api/sessions/options does not say `terminal` (409, and no session is made). */
+  command?: boolean;
 }
 
 /** What a person asks of a session's browser. */
@@ -6047,6 +6085,8 @@ export interface SessionPostInput {
   surface?: SurfaceRef;
   /** The person said it in voice mode and the words were transcribed. It only marks the message. */
   spoken?: boolean;
+  /** The text is `!` and a command to run at once, as the caller, in the session's sandbox, under the rules and limits of runSandboxCommand: only where GET /api/sessions/options says `terminal`, only for someone who may post in the session, and only while no work is under way there (409). The message is posted with how the command came out (ThreadMessage.command) and starts no run; the agent reads it with the next message. Refused with uploads, answers, act_as or surface. */
+  command?: boolean;
   /** The @agent in text whose child receives this request. */
   agent?: string;
   /** Start an independent child instead of continuing its existing session. */

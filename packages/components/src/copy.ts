@@ -531,6 +531,16 @@ export const defaultCopy = {
   },
   agentStore: {
     title: "Store",
+    /** What the Store is, under its title. */
+    lede: "Ready-made teams of agents. Installing a package adds its agents to your workspace, where you can change them like your own. Removing retires them; their history stays.",
+    configure: "Configure",
+    view: "View Agents",
+    moreFor: (title: string) => `More for ${title}`,
+    connect: (what: string) => `Connect ${what}`,
+    /** A system by its name alone, in "Connect GitHub". */
+    surface: (surface: string) =>
+      ({ github: "GitHub", slack: "Slack" })[surface] ??
+      surface.charAt(0).toUpperCase() + surface.slice(1),
     installed: "Installed",
     install: "Install",
     restore: "Restore Missing",
@@ -880,6 +890,12 @@ export const defaultCopy = {
       add: "Add",
       none: "None yet.",
       create: "Create Corpus",
+      /** The sources a new corpus starts with, chosen as it is made. */
+      sources: "Sources",
+      sourcesHint:
+        "What it searches. Pick sources already in the workspace and systems already connected; you can connect a new system or upload files once it is made.",
+      noSources:
+        "Nothing is in the workspace yet. Connect a system or upload files once it is made.",
       save: "Save",
       cancel: "Cancel",
       created: (name: string) => `${name} created`,
@@ -1814,13 +1830,21 @@ export const defaultCopy = {
   },
   conversationAccess: {
     title: "People & Access",
-    add: "Add Participant",
-    handle: "Person handle or agent name",
-    kind: "Participant type",
-    person: "Person",
-    agent: "Agent",
+    add: "Invite",
+    handle: "Add people",
+    search: "Search by name or @handle",
+    /** No one in the directory matches; Invite still adds the handle as typed. */
+    noMatch: "No one in the workspace matches. Invite adds this handle.",
+    added: "Added",
+    people: "People",
+    /** The list's heading, with how many people are in. */
+    inHere: (n: number) => `In this conversation · ${n}`,
+    /** Under the people: where a conversation's agents come from. */
+    agentsNote: "Agents are not invited: the ones its project turns on can answer here.",
     remove: "Remove",
+    removeOne: (name: string) => `Remove ${name}`,
     owner: "Owner",
+    you: "(you)",
     failed: "Access could not be changed.",
     updated: "Access updated.",
     makePrivate: "Make Private",
@@ -2067,8 +2091,9 @@ export const defaultCopy = {
     stepNeedsYou: "waiting for you",
     openProfile: "Open its profile to see how it is set up",
     stepFailed: (count: number) => `${count} failed`,
-    workedFor: (time: string) => `Worked for ${time}`,
-    worked: "Worked",
+    /** Under a long ask one agent gave another: show all of it, or its first lines again. */
+    askMore: "Show all",
+    askLess: "Show less",
     /**
      * A run of tool calls between two parts of an answer, as one line, and
      * each call in it as a row. `one` names what a lone call was pointed at;
@@ -2179,7 +2204,6 @@ export const defaultCopy = {
       more: (n: number) => `and ${n} more`,
     },
     askAgent: (agent: string) => `Ask ${agent}`,
-    reply: "Reply",
     question: "Clarification",
     answerChoice: "Use This Answer",
     questionHint: "This answers the question. Approvals for actions remain separate.",
@@ -2194,7 +2218,7 @@ export const defaultCopy = {
       "Review and download this version, or ask its agent for a revision in the conversation.",
   },
   agentLook: {
-    tab: "Look",
+    tab: "Appearance",
     name: "Display name",
     nameHint: "What people call it in the console and in Slack. People still tag it by its handle.",
     greeting: "Greeting",
@@ -2205,6 +2229,17 @@ export const defaultCopy = {
     starterPrompt: (n: number) => `Starter ${n} message`,
     starterTitlePlaceholder: "Summarize the latest reports",
     starterPromptPlaceholder: "The message it sends",
+    character: "Character",
+    /** Each mascot an agent may be drawn as. */
+    characters: {
+      detective: "Detective",
+      writer: "Writer",
+      engineer: "Engineer",
+      scientist: "Scientist",
+      inspector: "Inspector",
+      spy: "Secret agent",
+      plain: "Plain",
+    },
     shape: "Shape",
     color: "Color",
     colorTaken: "Another agent has this color",
@@ -2219,29 +2254,30 @@ export const defaultCopy = {
     headphones: "Headphones",
     bowTie: "Bow tie",
     shuffle: "Shuffle",
-    reset: "Use Default Look",
+    reset: "Use Default Appearance",
     discard: "Discard",
-    save: "Save Look",
-    saved: "Look saved",
+    save: "Save Appearance",
+    saved: "Appearance saved",
     defaultBadge: "Default",
     readOnly: "Only the agent's owners can change how it looks.",
     nameTaken: "Another agent is called that. Pick another name.",
     colorTakenNow: "Another agent took that color. Pick another.",
-    failed: "The look could not be saved.",
+    failed: "The appearance could not be saved.",
     atCreate: "How it looks",
-    notKeptAtCreate: "The agent was made, but its look was not kept. Set it on its Look tab.",
+    notKeptAtCreate:
+      "The agent was made, but its appearance was not kept. Set it on its Appearance tab.",
   },
   agentHome: {
     tab: "Home",
     ask: (name: string) => `Ask ${name}`,
     askPlaceholder: (name: string) => `Ask ${name} to…`,
     hello: (name: string) => `Hi, I'm ${name}.`,
-    editLook: "Edit Look",
+    editLook: "Edit Appearance",
     settings: "Settings",
     putToWork: (name: string) => `Put ${name} to work`,
     noGreeting: "Nobody has written what this agent says about itself yet.",
     noStarters: "It offers no starters yet.",
-    noStartersOwner: "It offers no starters yet. Add them on its Look tab.",
+    noStartersOwner: "It offers no starters yet. Add them on its Appearance tab.",
     addStarters: "Add Starters",
     paused: (name: string) => `${name} is paused and answers nobody until it is resumed.`,
     startFailed: "The session could not be started. Try again.",
@@ -2275,9 +2311,9 @@ export const defaultCopy = {
     taken: "An agent or a person already has that name. Try another.",
     retired: "An agent with that name was retired, and its name stays taken. Try another.",
     lookNotKept: (name: string) =>
-      `${name} was made, but its look, greeting and starters were not saved. Try again, or open it and set them in Look.`,
-    retryLook: "Save Look Again",
-    openWithoutLook: "Open Without Look",
+      `${name} was made, but its look, greeting and starters were not saved. Try again, or open it and set them in Appearance.`,
+    retryLook: "Save Appearance Again",
+    openWithoutLook: "Open Without Appearance",
     templatesFailed: "The templates could not be read.",
     unknownTemplate: "That template is not offered any more. Pick another.",
     retry: "Retry",
@@ -2288,7 +2324,7 @@ export const defaultCopy = {
     groups: { general: "General", access: "Access", tools: "Tools", behavior: "Behavior" },
     sections: {
       general: "General",
-      look: "Look",
+      look: "Appearance",
       prompt: "Instructions",
       access: "Sharing and Calls",
       slack: "Slack",
@@ -3335,6 +3371,14 @@ export const defaultCopy = {
       resolved: "Nothing is done yet.",
     } as Record<"open" | "snoozed" | "resolved", string>,
     reviewApproval: "Review Approval",
+    /** An alert's own actions: go to where it came from, ask the agent about it, settle it. */
+    view: "View",
+    review: "Review",
+    openReview: "Open Review",
+    reviewing: "Opening…",
+    reviewFailed: "The review could not be opened.",
+    /** The menu that holds an alert's lesser actions, such as Snooze. */
+    more: "More alert actions",
     markDone: "Mark Done",
     markDoneNamed: (title: string) => `Mark ${title} done`,
     /** What an alert's card in a session opens, by the alert's action. */
@@ -3360,6 +3404,14 @@ export const defaultCopy = {
     snoozeSelected: "Snooze Selected for 1 Hour",
     doneWhen: (condition: string) => `Done when: ${condition}`,
     updated: (n: number) => `Updated ${n} ${n === 1 ? "alert" : "alerts"}.`,
+  },
+  /** A text file attached to a message, shown as a card that opens it. */
+  attachedDocument: {
+    open: (name: string) => `Open ${name}`,
+    kind: (markdown: boolean) => (markdown ? "Document" : "Text file"),
+    unavailable: "The file could not be opened.",
+    truncated: "Only the start of this file is shown.",
+    close: "Close",
   },
   /** The Artifacts page: what agents published, and tiles that start a new one. */
   artifactsPage: {
@@ -3629,8 +3681,10 @@ export const defaultCopy = {
   approvals: {
     /** The menu's heading, and the control's name for assistive technology. */
     label: "Approval mode",
-    /** The two modes, each with the one line its menu row says. */
-    ask: "Ask",
+    /** The question over the menu's rows. */
+    question: "Who approves gated actions?",
+    /** The two modes, each with the one line its menu row says. The API calls Manual "ask". */
+    ask: "Manual",
     askHint: "You approve every gated action.",
     auto: "Auto",
     autoHint: "The approval agent approves and answers for you, and asks when unsure.",
@@ -3642,14 +3696,14 @@ export const defaultCopy = {
     /** In the menu of an approval waiting in a Slack thread: sets the conversation, not the call. */
     letAgentDecide: "Set this thread to Auto",
     /** Under the note that the thread is set to Auto, to set it back. */
-    switchToAsk: "Switch to Ask",
-    /** Under the note that the thread is set to Ask, to set it to Auto again. */
+    switchToAsk: "Switch to Manual",
+    /** Under the note that the thread is set to Manual, to set it to Auto again. */
     switchToAuto: "Switch to Auto",
     /** What changed in the thread, said where everyone in it reads it. */
     nowAuto: (who: string) =>
       `${who} set this thread to Auto. The approval agent now approves gated actions and answers questions the thread already settles, as ${who} could, and asks a person when unsure. An action already waiting still waits for a person.`,
     nowAsk: (who: string) =>
-      `${who} set this thread to Ask. A person approves every gated action again.`,
+      `${who} set this thread to Manual. A person approves every gated action again.`,
   },
   /** Over Home's chat bar: the person's own project, where a conversation in no project is filed (DES-057). */
   noProject: "No project",
@@ -3997,6 +4051,31 @@ export const defaultCopy = {
       noRepos: "No repositories are connected.",
       connectGitHub: "Connect GitHub",
     },
+    /**
+     * The row under Home's composer: one word control per setting a new
+     * session has, each saying its value and opening a picker.
+     */
+    setup: {
+      label: "Session settings",
+      /** The agents control with no agent mentioned and no default to name. */
+      anyAgent: "Any agent",
+      agents: (count: number) => `${count} agents`,
+      /** Said in the agents picker while the message mentions nobody. */
+      defaultAnswers: (agent: string) => `With no mention, ${agent} answers.`,
+      bestAnswers: "With no mention, the best fit answers.",
+      noRepos: "None",
+      /** Why a row cannot change. */
+      unreadable: "Could not be read. Reload to try again.",
+      notSandboxed: "Runs here are not sandboxed, so there is no image to choose.",
+      channelFixed: "A thread in a channel uses the channel's setup.",
+      imagesLoading: "Loading images",
+      repos: (count: number) => (count === 1 ? "1 repo" : `${count} repos`),
+      reposMax: (max: number) => `Pick up to ${max}.`,
+      findRepo: "Find a repository",
+      noRepoMatch: "No repository matches.",
+      findImage: "Find an image",
+      noImageMatch: "No image matches.",
+    },
     /** Where the conversation is filed, in the composer's bar, as a list. */
     selected: "Selected for this conversation",
     removeProject: (where: string) => `Remove ${where}`,
@@ -4013,9 +4092,6 @@ export const defaultCopy = {
     cancelHeldHint: "Keep editing instead (Esc)",
     /** The agents could not be read. The draft stays in the bar. */
     agentsFailed: "Agents could not be loaded.",
-    /** Under an answer that went to an agent because it was selected, not tagged. */
-    routedAll: (agent: string) => `Routed to ${agent}, with every agent selected`,
-    routed: (agent: string) => `Routed to ${agent}`,
     /** Home's suggestions, as a list. */
     suggestions: "Suggestions",
     scrollBack: "Scroll Back",
@@ -4121,22 +4197,19 @@ export const defaultCopy = {
   rated: { up: "Rated helpful", down: "Rated not helpful" },
   /** Where a schedule's answers go, and the weekly recap a project can add. */
   automations: {
-    title: "Scheduled",
-    lede: "Work that runs at set times. Each run is a session, and its answer goes where you choose.",
-    newSchedule: "New Schedule",
-    empty: "Nothing scheduled yet",
+    title: "Automations",
+    /** What starts an automation is its trigger. A schedule is the one trigger there is. */
+    lede: "Work an agent starts without being asked. Each one runs on a schedule, each run is a session, and its answer goes where you choose.",
+    newSchedule: "New Automation",
+    empty: "No automations yet",
     active: "Active",
     paused: "Paused",
-    tabs: "Scheduled work",
-    schedulesTab: "Schedules",
-    backgroundTab: "Background",
   },
+  /** Work a session's agents keep at for it: shown in that session's Details, nowhere else. */
   background: {
     title: "Background",
-    empty: "No background work",
+    stopLabel: (text: string) => `Stop: ${text}`,
     stop: "Stop",
-    retry: "Retry",
-    couldNotLoad: "Background work could not be loaded",
     couldNotStop: "It could not be stopped",
     kind: { watch: "Watch", goal: "Goal", task: "Task" } as Record<string, string>,
     state: {
@@ -4275,10 +4348,6 @@ export const defaultCopy = {
       },
     } as Record<string, { label: string; description: string; slack?: string }>,
     needsYou: "Needs you",
-    /** The strip under the chat bar on the web: the newest things the person's agents made. */
-    recentlyMade: "Recently made",
-    /** In place of the strip when it could not be read. */
-    madeFailed: "Recent artifacts could not be loaded.",
     nothingWaiting: "Nothing needs you right now, and no alerts are open.",
     /** The page's one-line point, after the greeting. */
     notificationCount: (n: number) =>
@@ -4312,7 +4381,7 @@ export const defaultCopy = {
       label: "Company announcement",
       markRead: "Mark as Read",
       hide: "Hide for Me",
-      open: "Open Announcement",
+      open: "Open",
     },
     findHelp: {
       title: "Find an Agent or Project",
@@ -4780,12 +4849,11 @@ export const defaultCopy = {
     item: (label: string) => `On ${label}`,
     clearItem: "Clear Item",
   },
-  /** A session's Details panel: its progress, agents, outputs, where it ran, and what it used. */
+  /** A session's Details panel: its agents, outputs, where it ran, and what it used. */
   details: {
     title: "Details",
     /** The header's Details button, with how many calls are running or waiting. */
     open: (n: number) => (n ? `Details, ${n} working` : "Details"),
-    progress: "Progress",
     working: (agents: number, tools: number) =>
       [
         "Working",
@@ -4830,15 +4898,7 @@ export const defaultCopy = {
       browser: "Browser",
       files: "Files",
       artifacts: "Artifacts",
-      sidechat: "Side Chat",
-      search: "Search",
       background: "Background Tasks",
-      progress: "Progress",
-    },
-    /** A view's key, as its menu row prints it. */
-    shortcut: {
-      sidechat: { mac: "⌘;", other: "Ctrl ;" },
-      search: { mac: "⌘⇧F", other: "Ctrl Shift F" },
     },
     /** Environment. */
     sandbox: "Sandbox",
@@ -4929,6 +4989,8 @@ export const defaultCopy = {
   sessionSetup: {
     image: "Image",
     defaultImage: "Default",
+    /** The default image, said on the control under the composer. */
+    defaultImageValue: "Default image",
     defaultHint: (ref: string) => (ref ? `Everyone's · ${ref}` : "Everyone's"),
     warm: "Ready now",
     cold: "Starts on first use",
@@ -4975,8 +5037,6 @@ export const defaultCopy = {
       browser: "Browser",
       terminal: "Terminal",
       changes: "Changes",
-      sidechat: "Side Chat",
-      search: "Search",
     },
     expand: "Expand Workbench",
     collapse: "Collapse Workbench",
@@ -5168,6 +5228,28 @@ export const defaultCopy = {
     exit: (code: number) => `exit ${code}`,
     timedOut: "stopped at the 15 second limit",
   },
+  /** A composer message that starts with "!": a command run in the session's sandbox (BangCommand.tsx). */
+  bangCommand: {
+    /** The hint while the draft starts with "!". */
+    hint: "Runs in this session's sandbox. The agent sees the output with your next message.",
+    hintHome:
+      "Starts a session and runs this in its sandbox. The agent sees the output with your next message.",
+    empty: "Type a command after !",
+    /** A command runs alone: a file attached to it would be run as part of it. */
+    withFiles: "A command runs alone. Remove the attached files to run it.",
+    /** Where no command can run. Said in the hint, and again when it is sent. */
+    noSandbox: "Commands cannot run here: this deployment has no isolated sandbox.",
+    /** The command block in the conversation. */
+    label: (who: string, command: string) => `${who} ran ${command}`,
+    you: "You",
+    ran: "ran a command",
+    exited: (code: number) => `Exit ${code}`,
+    timedOut: "Stopped at the 15 second limit",
+    cut: "Earlier output was cut.",
+    noOutput: "No output.",
+    showAll: (lines: number) => `Show All ${lines} Lines`,
+    showLess: "Show Less",
+  },
   /** The Changes tab (WorkbenchChanges.tsx). */
   workbenchChanges: {
     empty: "No changes yet",
@@ -5224,102 +5306,15 @@ export const defaultCopy = {
       `Created ${path} (${lines} ${lines === 1 ? "line" : "lines"})`,
     recordDeleted: (path: string) => `Deleted ${path}`,
   },
-  /** The Side Chat tab (WorkbenchSidechat.tsx). */
-  workbenchSidechat: {
-    /** The tab before anything is asked: its title, over the box. */
-    empty: "Ask about this session on the side",
-    /** The session has no saved turn a side chat could start from. */
-    nothing: "Nothing to ask about yet",
-    /** The reader may not post here, so may not start one. */
-    readOnly: "You can read this session, not ask in it",
-    placeholder: "Ask on the side",
-    earlier: "Earlier side chats",
-    /** A side chat that was given no title. */
-    untitled: "Side chat",
-    /** The title a side chat is saved under, from its first question. */
-    title: (question: string) => `Side chat: ${question}`,
-    all: "All Side Chats",
-    fresh: "New Side Chat",
-    openFull: "Open as Conversation",
-    /** Under a side chat's header: how much of the session it was given. */
-    from: (when: string) => `Reads this session as it was ${when}. Nothing here is posted in it.`,
-    thread: "Side chat",
-    saidBy: (name: string) => `Message from ${name}`,
-    answeredBy: (name: string) => `Answer from ${name}`,
-    add: "Add to Message",
-    added: "Added to Message",
-    /** What the main thread's agent reads above the answer. */
-    summary: (agent: string, question: string) =>
-      question
-        ? `Side chat answer from ${agent} to "${question}"`
-        : `Side chat answer from ${agent}`,
-    part: (summary: string, i: number, n: number) => `${summary} (part ${i} of ${n})`,
-    missing: "This side chat is unavailable",
-    failed: {
-      start: "The side chat could not be started. Try again.",
-      post: "The message could not be sent. Try again.",
-      list: "Earlier side chats could not be read.",
-      stop: "The answer could not be stopped.",
-    },
-  },
-  /** The Search tab (WorkbenchSearch.tsx). */
-  workbenchSearch: {
-    field: "Search this session",
-    /** The key that puts the cursor in the field, as the field shows it. */
-    shortcut: { mac: "⌘⇧F", other: "Ctrl Shift F" },
-    clear: "Clear Search",
-    results: "Results",
-    group: {
-      files: "Files",
-      pulls: "Pull requests and issues",
-      links: "Links",
-      commands: "Commands",
-      browser: "Browser steps",
-      tools: "Tools",
-      agents: "Agents",
-      attachments: "Attachments",
-    },
-    /** Where a result opens, at the end of its row. */
-    opens: {
-      workspace: "Workspace",
-      terminal: "Terminal",
-      browser: "Browser",
-      activity: "Activity",
-      session: "Session",
-      message: "Message",
-      page: "Page",
-      external: "New tab",
-    },
-    /** A link's second line. */
-    note: {
-      origin: "Where this session started",
-      child: "A session this one started",
-      context: "Linked for context",
-      evidence: "Linked as evidence",
-    },
-    calls: (n: number) => `${n} ${n === 1 ? "call" : "calls"}`,
-    count: (n: number) => `${n} ${n === 1 ? "result" : "results"}`,
-    showAll: (n: number) => `Show All ${n}`,
-    keys: "↑ ↓ to move, Enter to open",
-    empty: "Nothing in this session to find yet",
-    emptyAction: "Open Details",
-    none: (query: string) => `Nothing in this session matches "${query}"`,
-    /** The session's own record could not be read; the rest is still searched. */
-    partial: "Linked sessions and attachments could not be read.",
-    retry: "Retry",
-  },
   /** The control that returns to the end of a thread or of an answer's activity, named by what is there. */
   /** The composer that floats over a conversation: its keys, its two levels of Stop, its footer and usage. */
   dock: {
-    /** Said in the empty box while anything in the session runs. */
-    hint: (mac: boolean) =>
-      mac ? "↵ to send, ⌘↵ to queue for later" : "↵ to send, Ctrl+↵ to queue for later",
     sendNow: "Send now",
-    /** Send's tooltip: how to send, queue and add a line. */
+    /** Send's tooltip: how to send and add a line, and what the keys do while an agent works. */
     sendHint: (mac: boolean) =>
       mac
-        ? "Send (↵). ⌘↵ queues, Shift+↵ adds a line"
-        : "Send (Enter). Ctrl+Enter queues, Shift+Enter adds a line",
+        ? "Send (↵). Shift+↵ adds a line. While an agent works, ↵ queues and ⌘↵ sends now"
+        : "Send (Enter). Shift+Enter adds a line. While an agent works, Enter queues and Ctrl+Enter sends now",
     /** The composer's Stop: everything running in the session. */
     stopAll: "Stop",
     stopAllLabel: "Stop everything running in this session",
@@ -5334,17 +5329,21 @@ export const defaultCopy = {
     stoppingLabel: (what: string) => `Stopping ${what}`,
     stoppedLabel: (what: string) => `${what} stopped`,
     backgroundWork: (kind: string, text: string) => `the ${kind} "${text}"`,
-    /** The footer under the composer: who answers, the approval mode and the usage ring. */
+    /** The footer under the composer: the approval mode, the AI notice and the usage ring. */
     footer: "Session details",
-    answeredBy: (agent: string) => `Answered by ${agent}`,
     more: "More session controls",
+    /** The line under a composer. {name} is the product's name. */
+    aiNotice: "{name} is AI and can make mistakes.",
+    /** The link at the end of that line, to the workspace's page of terms. */
+    terms: "Terms",
     usage: {
       open: "Usage",
       ring: (what: string, pct: number) => `${what}: ${pct}% used. Open usage`,
       ringIdle: "Usage. Open usage",
       context: "Context",
       title: "Usage",
-      session: "This session",
+      /** Which model the context is on. */
+      model: "Model",
       contextUsed: (tokens: string, window: string) => `${tokens} of ${window} tokens`,
       spent: "Spent so far",
       tokens: "Tokens so far",
@@ -5354,14 +5353,12 @@ export const defaultCopy = {
       atLeast: "At least this much: the oldest runs were not counted.",
       nothingYet: "Nothing used yet.",
       limits: "Limits",
-      noLimits: "No limits set",
-      limitsHidden: "Limits are shown to people who can read billing.",
-      seeAll: "See all",
+      noLimits: "None set",
+      limitsHidden: "Shown to people who can read billing",
       resets: (when: string) => `Resets ${when}`,
       failed: "Usage could not be read.",
       retry: "Retry",
       loading: "Loading usage",
-      close: "Close usage",
       near: (what: string) => `Near the ${what} limit`,
       over: (what: string, when: string) =>
         `${what} is used up. New runs are blocked until ${when}.`,
@@ -5402,7 +5399,7 @@ export const defaultCopy = {
     /** On a call that does not wait: the agent carries on by itself and answers later. */
     delegated: "Delegated",
     asked: "Asked",
-    /** Under an answer: how long the response worked and how much it brought in. */
+    /** In Details: how long the response worked and how much it brought in. */
     worked: (time: string, agents: number, tools: number) =>
       [
         `Worked ${time}`,
@@ -5421,7 +5418,6 @@ export const defaultCopy = {
       agents
         ? `Failed after ${time} · ${unfinished} of ${agents} ${agents === 1 ? "agent" : "agents"} unfinished`
         : `Failed after ${time}`,
-    waitingForYou: "Waiting for you",
     thinking: "Thinking",
     input: "Input",
     result: "Result",

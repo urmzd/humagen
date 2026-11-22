@@ -342,24 +342,28 @@ export function preloadWhenIdle(): () => void {
       Automations,
       Storage,
       Settings,
+      PlusMenu,
     ])
       void view.preload();
   });
 }
 
 /**
- * A new session's environment and repository pickers, in the composer's
- * footer on Home: read when Home draws them, so their data code is not Home's.
+ * A conversation's + menu (Plus.tsx), read once the browser is idle on Home
+ * (preloadWhenIdle), so its first open waits on nothing.
  */
-export const SessionSetupPickers = lazyPage(
-  () => import("./SessionPickers.tsx"),
-  (m) => m.SessionSetupPickers,
-  { frame: "none" },
-);
-
-/** The composer's + menu, read when it is first opened (Plus.tsx). */
 export const PlusMenu = lazyPage(
   () => import("./Plus.tsx"),
   (m) => m.PlusMenu,
+  { frame: "none" },
+);
+
+/**
+ * The menu of a new session's settings, beside + on Home (SettingsMenu.tsx):
+ * read as soon as its control is drawn, so the first press waits on nothing.
+ */
+export const SettingsMenu = lazyPage(
+  () => import("./SettingsMenu.tsx"),
+  (m) => m.SettingsMenu,
   { frame: "none" },
 );

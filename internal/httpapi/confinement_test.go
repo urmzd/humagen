@@ -748,6 +748,11 @@ func (h hidden) value(path, param string) (string, bool) {
 		if prefix("/api/sessions/") {
 			return h.sessionMessage, h.sessionMessage != ""
 		}
+	case "n":
+		// The first file attached to the hidden session's message.
+		if prefix("/api/sessions/") {
+			return "0", h.sessionMessage != ""
+		}
 	}
 	return "", false
 }
