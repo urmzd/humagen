@@ -1831,13 +1831,20 @@ export const defaultCopy = {
   conversationAccess: {
     title: "People & Access",
     add: "Invite",
-    handle: "Invite a person",
+    handle: "Add people",
+    search: "Search by name or @handle",
+    /** No one in the directory matches; Invite still adds the handle as typed. */
+    noMatch: "No one in the workspace matches. Invite adds this handle.",
+    added: "Added",
     people: "People",
+    /** The list's heading, with how many people are in. */
+    inHere: (n: number) => `In this conversation · ${n}`,
     /** Under the people: where a conversation's agents come from. */
-    agentsNote:
-      "Agents are not invited: the ones this conversation's project turns on can answer here.",
+    agentsNote: "Agents are not invited: the ones its project turns on can answer here.",
     remove: "Remove",
+    removeOne: (name: string) => `Remove ${name}`,
     owner: "Owner",
+    you: "(you)",
     failed: "Access could not be changed.",
     updated: "Access updated.",
     makePrivate: "Make Private",
@@ -4787,12 +4794,11 @@ export const defaultCopy = {
     item: (label: string) => `On ${label}`,
     clearItem: "Clear Item",
   },
-  /** A session's Details panel: its progress, agents, outputs, where it ran, and what it used. */
+  /** A session's Details panel: its agents, outputs, where it ran, and what it used. */
   details: {
     title: "Details",
     /** The header's Details button, with how many calls are running or waiting. */
     open: (n: number) => (n ? `Details, ${n} working` : "Details"),
-    progress: "Progress",
     working: (agents: number, tools: number) =>
       [
         "Working",
