@@ -4,12 +4,16 @@ import { type ReactNode, useCallback, useEffect, useRef, useState } from "react"
 import { type AlertRuleConfig, api, type ProjectView } from "./api.ts";
 import { agentShown } from "./branding.ts";
 import {
+  AgentCell,
   AgentTag,
   FilterSelect,
   follow,
   ItemCard,
   itemGrid,
   PriorityPill,
+  RowTable,
+  RowTableRow,
+  StatusDot,
   StatusPill,
   Tag,
 } from "./cards.tsx";
@@ -215,6 +219,54 @@ export function SessionRow({
     </li>
   );
 }
+/** The Sessions table's columns: what it is, who answered, how it stands, where, when. */
+const SESSION_COLUMNS = [
+  { name: "Session", width: "minmax(0,1fr)" },
+  { name: "Agent", width: "10rem" },
+  { name: "Status", width: "7rem" },
+  { name: "Project", width: "8rem" },
+  { name: "Where", width: "6rem" },
+  { name: "Updated", width: "7rem" },
+];
+
+/** One session as a row of the Sessions table; an open alert stands beside its title. */
+function SessionTableRow({
+  session,
+  go,
+  alerts,
+  projects,
+  workspaceName,
+}: {
+  session: AgentSessionSummary;
+  go: (route: Route) => void;
+  alerts: Alert[];
+  projects: ProjectRef[];
+  workspaceName?: string;
+}) {
+  const attention = orderAlerts(alerts.filter((a) => a.session === session.id && openAlert(a)))[0];
+  const title = session.title || agentShown(session.agent);
+  return (
+    <RowTableRow
+      href={href({ page: "conversation", id: session.id })}
+      onOpen={() => go({ page: "conversation", id: session.id })}
+      label={title}
+      cells={[
+        <span key="t" className="inline-flex min-w-0 max-w-full items-center gap-2">
+          <span className="truncate">{title}</span>
+          {attention && <AlertMark alert={attention} />}
+        </span>,
+        <AgentCell key="a" name={session.agent} shown={agentShown(session.agent)} />,
+        <StatusDot key="s" status={session.status} />,
+        readableProject(session.project, projects, workspaceName),
+        sessionSource(session),
+        <time key="u" dateTime={session.updated_at}>
+          {ago(session.updated_at)}
+        </time>,
+      ]}
+    />
+  );
+}
+
 export function SessionsPage({
   route,
   go,
@@ -372,9 +424,9 @@ export function SessionsPage({
       {!sessions && !problem ? (
         <SkeletonRows count={4} />
       ) : shown.length ? (
-        <ul className={itemGrid}>
+        <RowTable label="Sessions" columns={SESSION_COLUMNS}>
           {shown.map((s) => (
-            <SessionRow
+            <SessionTableRow
               key={s.id}
               session={s}
               go={go}
@@ -383,7 +435,7 @@ export function SessionsPage({
               workspaceName={workspaceName}
             />
           ))}
-        </ul>
+        </RowTable>
       ) : (
         <p className="text-aui-sm text-aui-muted">No sessions match these filters.</p>
       )}
