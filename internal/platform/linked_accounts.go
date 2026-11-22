@@ -341,6 +341,20 @@ func (p *Platform) slackPeople(tenant string, c clients.Client) map[string]strin
 	return out
 }
 
+// actsFor is the person a Slack app's own credential (machine) asks for when
+// it acts for a Slack user of its client: the person who linked that user
+// in the client's team, else the client's people map (clients.ActsFor).
+// Only the credential the client names may ask, as before.
+func (p *Platform) actsFor(c clients.Client, machine, user string) (string, bool) {
+	if c.Surface != clients.Slack || !c.Enabled || c.Slack == nil || c.Slack.Machine == "" || machine != c.Slack.Machine {
+		return "", false
+	}
+	if who := p.linkedSlack(c.Tenant, c.Identity.Team, user); who != "" {
+		return who, true
+	}
+	return c.ActsFor(machine, user)
+}
+
 // githubSender is who sent a GitHub delivery, by the id GitHub gives every
 // user for good and the login they go by now. The connector reads the
 // login alone; the hand-off to it carries both on the request's context.

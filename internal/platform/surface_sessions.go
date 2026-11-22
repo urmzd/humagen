@@ -338,7 +338,7 @@ func (p *Platform) audienceOf(c clients.Client, ref SurfaceRef, person auth.Prin
 			machine = c.Slack.Machine
 		}
 		for _, u := range members {
-			s, ok := c.ActsFor(machine, u)
+			s, ok := p.actsFor(c, machine, u)
 			if !ok || s == "" {
 				aud.Unmapped++ // reads nothing here, and the knowledge gate fails closed on it
 				continue

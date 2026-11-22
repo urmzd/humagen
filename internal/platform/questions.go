@@ -861,7 +861,7 @@ func (p *Platform) answerer(who auth.Principal, as *ActAs) (inbox.Reader, string
 	if err != nil {
 		return inbox.Reader{}, "", fmt.Errorf("%w: this credential does not answer for people of that client", ErrForbidden)
 	}
-	subject, ok := c.ActsFor(who.Subject, as.User)
+	subject, ok := p.actsFor(c, who.Subject, as.User)
 	if !ok {
 		return inbox.Reader{}, "", fmt.Errorf("%w: that person is not mapped to anyone in this workspace", ErrForbidden)
 	}

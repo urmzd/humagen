@@ -347,4 +347,17 @@ func TestLinkedAccountsResolveBeforeThePeopleMap(t *testing.T) {
 	if people := p.slackPeople("t", created); people["U0ANA"] != "ana" || people["U0BOB"] != "bob-file" {
 		t.Fatalf("slack people %v", people)
 	}
+	// The Slack app's own credential acts for a linked person; no other may.
+	if _, err := p.Accounts.Link("t", accounts.Account{Surface: accounts.Slack, ID: "U0CAROL", Team: "T0TEAM", Login: "Carol", Subject: "carol"}); err != nil {
+		t.Fatal(err)
+	}
+	if who, ok := p.actsFor(created, "m", "U0CAROL"); !ok || who != "carol" {
+		t.Fatalf("app acts for %q %v", who, ok)
+	}
+	if who, ok := p.actsFor(created, "m", "U0BOB"); !ok || who != "bob-file" {
+		t.Fatalf("map fallback %q %v", who, ok)
+	}
+	if _, ok := p.actsFor(created, "someone-else", "U0CAROL"); ok {
+		t.Fatal("another credential acted for a linked person")
+	}
 }
