@@ -442,6 +442,19 @@ function SourceDetail({
   const mine = suites.filter((x) => x.target === "knowledge" && x.subject === source.name);
   return (
     <Page
+      sections={{
+        label: "Source sections",
+        value: tab,
+        onChange: (id) => onTab(id as typeof tab),
+        items: [
+          { id: "documents", label: "Documents", count: upstream ? undefined : docs.length },
+          { id: "search", label: "Try a Question" },
+          ...(!upstream
+            ? [{ id: "variants", label: "Variants", count: source.variants.length }]
+            : []),
+          { id: "evals", label: "Evals", count: mine.length },
+        ],
+      }}
       back={back}
       title={source.name}
       lede={source.description || undefined}
@@ -495,19 +508,6 @@ function SourceDetail({
         ) : undefined
       }
     >
-      <Tabs
-        label="Source sections"
-        value={tab}
-        onChange={onTab}
-        tabs={[
-          { id: "documents", label: "Documents", count: upstream ? undefined : docs.length },
-          { id: "search", label: "Try a Question" },
-          ...(!upstream
-            ? [{ id: "variants" as const, label: "Variants", count: source.variants.length }]
-            : []),
-          { id: "evals", label: "Evals", count: mine.length },
-        ]}
-      />
       <Problem message={problem} />
       <SourceLifecycle source={source} canWrite={canWrite} onChanged={onChanged} />
       <SourceAttachments

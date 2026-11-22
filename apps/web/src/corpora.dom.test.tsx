@@ -250,10 +250,14 @@ test("a corpus page has Sources, Search and Access tabs, members with what they 
   assert.ok(within(warehouse).getByText("· 4"));
   assert.ok(within(warehouse).getByText(words.status.failed));
   assert.ok(screen.getByText("What HR has written down"));
-  // The header names it by its title.
-  assert.ok(screen.getByText("HR policies", { selector: "span" }));
-  fireEvent.click(screen.getByRole("tab", { name: words.tabs.search }));
-  fireEvent.click(screen.getByRole("tab", { name: words.tabs.access }));
+  // The title line names it once, after the list it came from.
+  assert.equal(screen.getByRole("heading", { level: 1 }).textContent, "HR policies");
+  assert.ok(within(screen.getByRole("navigation", { name: "Breadcrumb" })).getByRole("button"));
+  // Its sections are a list beside its content, not a second row of tabs.
+  assert.equal(screen.queryByRole("tablist"), null);
+  const sections = screen.getByRole("navigation", { name: "HR policies" });
+  fireEvent.click(within(sections).getByRole("button", { name: words.tabs.search }));
+  fireEvent.click(within(sections).getByRole("button", { name: words.tabs.access }));
   assert.deepEqual(tabs, ["search", "access"]);
   assert.ok(screen.getByRole("button", { name: words.addSource }));
 });
@@ -707,7 +711,12 @@ test("Search runs at its address and shows hits, where each came from, and membe
   );
   const box = screen.getByRole("searchbox", { name: words.search.label });
   fireEvent.change(box, { target: { value: "nothing" } });
-  fireEvent.click(screen.getByRole("button", { name: words.search.action }));
+  // The Search section's own button, not the section list's entry of the same name.
+  fireEvent.click(
+    within(screen.getByRole("region", { name: words.tabs.search })).getByRole("button", {
+      name: words.search.action,
+    }),
+  );
   await screen.findByText(words.search.none);
   assert.deepEqual(searched, ["leave", "nothing"]);
   assert.deepEqual(typed, ["nothing"]);

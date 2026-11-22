@@ -875,28 +875,22 @@ export function CorpusPage({
     <Page
       title={title}
       back={{ label: words.back, onClick: onBack }}
-      meta={
-        <>
-          <span className="font-medium text-aui-fg">{title}</span>
-          {corpus.description && <span>{corpus.description}</span>}
-        </>
-      }
+      // The title line names it; under it, only what it is for.
+      meta={corpus.description ? <span>{corpus.description}</span> : undefined}
       actions={tab === "sources" && corpus.members.length > 0 ? addSource : undefined}
-      tabs={
-        <Tabs
-          label={title}
-          value={tab}
-          onChange={onTab}
-          tabs={[
-            { id: "sources", label: words.tabs.sources, count: corpus.members.length },
-            { id: "search", label: words.tabs.search },
-            { id: "graph", label: words.tabs.graph },
-            { id: "types", label: words.tabs.types },
-            { id: "evals", label: words.tabs.evals },
-            { id: "access", label: words.tabs.access },
-          ]}
-        />
-      }
+      sections={{
+        label: title,
+        value: tab,
+        onChange: (id) => onTab(id as CorpusTab),
+        items: [
+          { id: "sources", label: words.tabs.sources, count: corpus.members.length },
+          { id: "search", label: words.tabs.search },
+          { id: "graph", label: words.tabs.graph },
+          { id: "types", label: words.tabs.types },
+          { id: "evals", label: words.tabs.evals },
+          { id: "access", label: words.tabs.access },
+        ],
+      }}
     >
       <Problem message={problem} />
       {tab === "sources" &&
