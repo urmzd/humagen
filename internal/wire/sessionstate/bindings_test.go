@@ -206,3 +206,49 @@ func TestFailedBindingCommitDoesNotLeaveADuplicateMarker(t *testing.T) {
 		}
 	})
 }
+
+// bindBetween is a store that binds a run through another writer the first
+// time the ordered index is listed, after BindRunsInOrder has read its head.
+type bindBetween struct {
+	state.Store
+	once sync.Once
+	bind func()
+}
+
+func (b *bindBetween) List(ctx context.Context, namespace, tenant string, q state.Query) ([]state.Record, string, error) {
+	if len(q.Prefix) > 3 && q.Prefix[:3] == "rs:" {
+		b.once.Do(b.bind)
+	}
+	return b.Store.List(ctx, namespace, tenant, q)
+}
+
+// A run bound by a live mention between BindRunsInOrder's read of the head
+// and its read of the index is read again, not refused: both bindings
+// survive, the past run ahead of the newer ones.
+func TestBindRunsInOrderRetriesABindingMadeBetweenItsReads(t *testing.T) {
+	ctx := context.Background()
+	mem := state.NewMemory()
+	live := sessionstate.New(mem)
+	rec, err := live.Open(ctx, "acme", session.Open{Parent: "github://acme/handbook/pull/12", Agent: "docs"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := live.BindRun(ctx, "acme", rec.ID, "run-newer"); err != nil {
+		t.Fatal(err)
+	}
+	racing := &bindBetween{Store: mem}
+	racing.bind = func() {
+		if err := live.BindRun(ctx, "acme", rec.ID, "run-live"); err != nil {
+			t.Error(err)
+		}
+	}
+	at := map[string]int{"run-past": 1, "run-newer": 2, "run-live": 3}
+	later := func(a, b string) bool { return at[a] > at[b] }
+	if err := sessionstate.New(racing).BindRunsInOrder(ctx, "acme", rec.ID, []string{"run-past"}, later); err != nil {
+		t.Fatalf("a binding made between the reads stopped the ordered bind: %v", err)
+	}
+	got, err := live.Runs(ctx, "acme", rec.ID, 10)
+	if err != nil || !slices.Equal(got, []string{"run-past", "run-newer", "run-live"}) {
+		t.Fatalf("the session binds %v, %v", got, err)
+	}
+}
