@@ -6,12 +6,9 @@ export const messageActionButton =
   "inline-flex size-8 pointer-coarse:size-11 shrink-0 items-center justify-center rounded-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-pressed:text-aui-accent";
 
 /**
- * The same action row for a person's message and an agent's answer. A row is
- * shown in full or not at all, never greyed: the latest message's row is
- * always shown, and an earlier one's shows while its message (`group/message`)
- * is hovered, focused or tapped (theme.css). Its controls are small, so a row
- * that is always shown stays quiet. It only fades, so the thread never
- * shifts, and a pressed control keeps the row shown.
+ * The same action row for a person's message and an agent's answer. It is
+ * always shown, on every message, and its controls are small so that it
+ * stays quiet (theme.css). Nothing in it appears or fades on hover.
  */
 export function MessageActionRow({
   text,
@@ -32,7 +29,7 @@ export function MessageActionRow({
     <div
       role="toolbar"
       aria-label={copy.conversation.messageActions}
-      className="aui-message-actions mt-1 md:-ml-2 flex min-w-0 flex-wrap items-center gap-0.5 transition-opacity motion-reduce:transition-none"
+      className="aui-message-actions mt-1 md:-ml-2 flex min-w-0 flex-wrap items-center gap-0.5"
     >
       {text && (copyControl ?? <CopyButton text={text} label={copyLabel} note="above" />)}
       {onReply && (
