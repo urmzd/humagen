@@ -89,6 +89,26 @@ func TestAnInstallationGrantNeverAuthorizesWrites(t *testing.T) {
 	}
 }
 
+// The transport checks the owners a client serves before any grant, so an
+// installed repository of another owner stays refused to the read tools,
+// though the console reads it (docs/reference/github.md).
+func TestAnInstalledRepositoryOutsideTheOwnersIsRefusedToTheReadTools(t *testing.T) {
+	fake := github.NewFake()
+	ref := github.Ref{Owner: "partner", Repo: "tools", Number: 7}
+	if err := fake.SeedContext(ref, github.Context{Subject: github.ContextSubject{Title: "tools issue"}}); err != nil {
+		t.Fatal(err)
+	}
+	everything := func(context.Context, string, string) bool { return true }
+	c, err := github.New(github.Config{API: fake, Owners: []string{"acme"}, MayRead: everything})
+	if err != nil {
+		t.Fatal(err)
+	}
+	summary, err := action(t, c, "github_read_context")("slack://T01/C01", `{"address":"github://partner/tools/issues/7"}`)
+	if err == nil || !strings.Contains(err.Error(), "does not serve") {
+		t.Fatalf("summary %q error %v, want the owners refusal", summary, err)
+	}
+}
+
 const sourceSHAForGrant = "316c56f81540c3eaca02184173df322a48aebdd9"
 
 // A repository kept to its own runs is read by no other: not from Slack,

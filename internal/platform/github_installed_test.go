@@ -5,7 +5,9 @@ import (
 	"errors"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/clients"
@@ -124,5 +126,102 @@ func TestGitHubSourceReadsARepositoryTheInstallationCovers(t *testing.T) {
 	inst.mu.Unlock()
 	if _, err := p.GitHubSource(t.Context(), tenant, platform.SourceRequest{Repo: "partner/tools", SHA: sourceSHA, Path: "a.go", Start: 2, End: 2}); err != nil {
 		t.Fatalf("after a failed listing: %v", err)
+	}
+}
+
+// barrier is an installation whose listing waits until every installation
+// of the test is listing at once, so it answers only if they are read side
+// by side.
+type barrier struct {
+	*github.Fake
+	repos   []string
+	started *atomic.Int32
+	all     chan struct{}
+	want    int32
+}
+
+func (b *barrier) InstallationRepositories(ctx context.Context, _ int) ([]string, error) {
+	if b.started.Add(1) == b.want {
+		close(b.all)
+	}
+	select {
+	case <-b.all:
+		return b.repos, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+func TestSessionOptionsReadEveryInstallationSideBySide(t *testing.T) {
+	f := &fakes{}
+	started, all := &atomic.Int32{}, make(chan struct{})
+	apis := map[string]*barrier{
+		"token-a": {Fake: f.githubFor("token-a"), repos: []string{"acme/api"}, started: started, all: all, want: 2},
+		"token-b": {Fake: f.githubFor("token-b"), repos: []string{"globex/web"}, started: started, all: all, want: 2},
+	}
+	cfg := f.config()
+	cfg.GitHubAPI = func(token string) github.API { return apis[token] }
+	p := stage(t, &cast{}, cfg)
+	for id, owner := range map[string]string{"a": "acme", "b": "globex"} {
+		create(t, p, tenant, platform.ClientInput{
+			Client: clients.Client{
+				ID: "gh-" + id, Name: "gh-" + id, Surface: clients.GitHub, Enabled: true,
+				Identity: clients.Identity{Owners: []string{owner}}, DefaultAgent: "docs",
+			},
+			Token: clients.SecretInput{Value: "token-" + id}, SigningSecret: clients.SecretInput{Value: "secret-" + id},
+		})
+	}
+	// Read in turn, the first listing would wait out this deadline alone.
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+	defer cancel()
+	opts, err := p.SessionOptions(ctx, admin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(opts.Repos, ","); got != "acme/api,globex/web" {
+		t.Fatalf("repos = %s, want both installations' repositories", got)
+	}
+}
+
+func TestSessionOptionsWithACancelledContextOfferTheNamedRepositories(t *testing.T) {
+	f := &fakes{}
+	fake := f.githubFor("token-gh")
+	gate := make(chan struct{})
+	t.Cleanup(func() { close(gate) })
+	api := &slowInstallation{Fake: fake, gate: gate}
+	cfg := f.config()
+	cfg.GitHubAPI = func(string) github.API { return api }
+	p := stage(t, &cast{}, cfg)
+	create(t, p, tenant, platform.ClientInput{
+		Client: clients.Client{
+			ID: "gh", Name: "gh", Surface: clients.GitHub, Enabled: true,
+			Identity: clients.Identity{Owners: []string{"acme"}}, DefaultAgent: "docs",
+			GitHub: &clients.GitHubOptions{ReadRepositories: []string{"other/docs"}},
+		},
+		Token: clients.SecretInput{Value: "token-gh"}, SigningSecret: clients.SecretInput{Value: "secret-gh"},
+	})
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	opts, err := p.SessionOptions(ctx, admin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(opts.Repos, ","); got != "other/docs" {
+		t.Fatalf("repos = %s, want the named one while the listing has not answered", got)
+	}
+}
+
+// slowInstallation is an installation whose listing answers once gate closes.
+type slowInstallation struct {
+	*github.Fake
+	gate chan struct{}
+}
+
+func (g *slowInstallation) InstallationRepositories(ctx context.Context, _ int) ([]string, error) {
+	select {
+	case <-g.gate:
+		return []string{"acme/api"}, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
 	}
 }

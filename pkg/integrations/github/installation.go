@@ -104,7 +104,13 @@ func repoName(s string) (string, bool) {
 // first asked for and again once it is older than InstalledReposTTL. A read
 // that fails keeps the list it had (or none) and is tried again after
 // InstalledReposRetry, so a GitHub outage is not asked again on every call.
-// One read runs at a time; callers wait for it, at most InstalledReposTimeout.
+//
+// One read runs at a time, outside the lock, and every caller that finds the
+// list due waits for that same read, but only as long as its own context
+// allows: a caller whose deadline passes first is answered with the list as
+// it stands. The read itself does not end with any caller's context: it is
+// bounded by InstalledReposTimeout alone, so a caller that gives up does not
+// fail the read for the others.
 type InstalledRepos struct {
 	list    InstallationLister
 	clock   func() time.Time
@@ -115,6 +121,8 @@ type InstalledRepos struct {
 	index map[string]bool
 	have  bool
 	next  time.Time
+	// reading is closed when the read in flight ends; nil when none is.
+	reading chan struct{}
 }
 
 // NewInstalledRepos keeps list's repositories. clock is time.Now when nil;
@@ -132,10 +140,8 @@ func (c *InstalledRepos) Repos(ctx context.Context) ([]string, bool) {
 	if c == nil {
 		return nil, false
 	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.refresh(ctx)
-	return slices.Clone(c.repos), c.have
+	repos, _, have := c.current(ctx)
+	return slices.Clone(repos), have
 }
 
 // Covers says whether the installation covers "owner/name", in any case.
@@ -143,37 +149,65 @@ func (c *InstalledRepos) Covers(ctx context.Context, owner, repo string) bool {
 	if c == nil {
 		return false
 	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.refresh(ctx)
-	return c.index[strings.ToLower(owner+"/"+repo)]
+	_, index, _ := c.current(ctx)
+	return index[strings.ToLower(owner+"/"+repo)]
 }
 
-// refresh reads the list when it is due. c.mu is held.
-func (c *InstalledRepos) refresh(ctx context.Context) {
-	now := c.clock()
-	if now.Before(c.next) {
-		return
+// current is the list as it stands once a due read has ended, or once ctx
+// is done, whichever is first. It starts the read when none is in flight.
+// The slice and map it gives are never written again: a read replaces them.
+func (c *InstalledRepos) current(ctx context.Context) ([]string, map[string]bool, bool) {
+	c.mu.Lock()
+	var wait chan struct{}
+	if !c.clock().Before(c.next) {
+		if c.reading == nil {
+			c.reading = make(chan struct{})
+			go c.read(context.WithoutCancel(ctx), c.reading)
+		}
+		wait = c.reading
 	}
+	c.mu.Unlock()
+	if wait != nil {
+		select {
+		case <-wait:
+		case <-ctx.Done():
+		}
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.repos, c.index, c.have
+}
+
+// read reads the list once, at most InstalledReposTimeout, keeps it, and
+// closes done.
+func (c *InstalledRepos) read(ctx context.Context, done chan struct{}) {
 	ctx, cancel := context.WithTimeout(ctx, InstalledReposTimeout)
 	defer cancel()
 	got, err := c.list.InstallationRepositories(ctx, MaxInstallationRepos)
+	if err != nil && c.onError != nil {
+		c.onError(err)
+	}
+	var index map[string]bool
+	var repos []string
+	if err == nil {
+		index = make(map[string]bool, len(got))
+		repos = make([]string, 0, min(len(got), MaxInstallationRepos))
+		for _, r := range got[:min(len(got), MaxInstallationRepos)] {
+			key := strings.ToLower(r)
+			if !index[key] {
+				index[key] = true
+				repos = append(repos, r)
+			}
+		}
+		slices.SortFunc(repos, func(a, b string) int { return strings.Compare(strings.ToLower(a), strings.ToLower(b)) })
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if err != nil {
-		c.next = now.Add(InstalledReposRetry)
-		if c.onError != nil {
-			c.onError(err)
-		}
-		return
+		c.next = c.clock().Add(InstalledReposRetry)
+	} else {
+		c.repos, c.index, c.have, c.next = repos, index, true, c.clock().Add(InstalledReposTTL)
 	}
-	index := make(map[string]bool, len(got))
-	repos := make([]string, 0, min(len(got), MaxInstallationRepos))
-	for _, r := range got[:min(len(got), MaxInstallationRepos)] {
-		key := strings.ToLower(r)
-		if !index[key] {
-			index[key] = true
-			repos = append(repos, r)
-		}
-	}
-	slices.SortFunc(repos, func(a, b string) int { return strings.Compare(strings.ToLower(a), strings.ToLower(b)) })
-	c.repos, c.index, c.have, c.next = repos, index, true, now.Add(InstalledReposTTL)
+	c.reading = nil
+	close(done)
 }
