@@ -18,7 +18,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { type OrbState as Motion, ThinkingOrb } from "thinking-orbs";
-import { Mascot, mascotPersonaOf } from "./Mascot.tsx";
+import { Mascot, type MascotPersona, mascotPersonaOf } from "./Mascot.tsx";
 
 /**
  * What the orb depicts. The activities come from the runtime; `done`,
@@ -283,6 +283,8 @@ export const botShapes: readonly BotAvatarType[] = BOTS;
  * as it always was.
  */
 export interface BotLook {
+  /** The mascot it is drawn as; without one, the persona its handle suggests. */
+  character?: MascotPersona;
   shape?: BotAvatarType;
   face?: "eyes" | "mouth";
   finish?: "fabric" | "plastic" | "smooth" | "flat";
@@ -929,7 +931,7 @@ export function AgentInitials({
       >
         {/* Humagen's own mascot: a persona with arms that use its tools. */}
         <Mascot
-          persona={mascotPersonaOf(lookOf ?? name)}
+          persona={look?.character ?? mascotPersonaOf(lookOf ?? name)}
           state={state}
           size={size}
           color={ink}
