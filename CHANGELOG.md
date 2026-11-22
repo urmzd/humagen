@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.191.0 (2026-11-22)
+
+### Breaking
+
+- **github**: automatic review is off unless switched on ([a4e83b3](https://github.com/urmzd/humagen/commit/a4e83b365d1c0ef78896bb27b45337f4b5aa2272))
+
+### Features
+
+- **console**: a Repositories view for a GitHub app, and each repository's settings ([7507e03](https://github.com/urmzd/humagen/commit/7507e03d4c3ef99859ffdb3aea37ab76da1801dc))
+- **github**: repository settings drive review, agent, instructions, reads and cross-surface reads ([7fd9f3a](https://github.com/urmzd/humagen/commit/7fd9f3a83d9861a90609891068e48918ffe39542))
+- **github**: per-repository settings for GitHub clients (wip) ([6ea2619](https://github.com/urmzd/humagen/commit/6ea26197910f98e6b3ecc7d8c85e013ddf775a71))
+
+### Bug Fixes
+
+- **github**: quote repository settings descriptions in the API spec; lint ([87d553c](https://github.com/urmzd/humagen/commit/87d553c98313b4a5e67d868eeb56f684d48083d5))
+- **github**: show the workspace's cross-surface answer and who keeps it on every client; close a fence the read budget cuts ([ca89994](https://github.com/urmzd/humagen/commit/ca899945647616d4a916747206722f3a3bd4e645))
+- **console**: name the GitHub app in the path, one left edge for both pages, round row ends on a phone, even reads card ([1454f4f](https://github.com/urmzd/humagen/commit/1454f4f8ed708a9569a78d027fe8ecfe5a2041dc))
+- **github**: keep a repository to its own runs across every client; fence pre-run reads in a nonce block within 3 seconds; refuse an empty write over unread settings; cover only installed, named or kept repositories ([ae49fab](https://github.com/urmzd/humagen/commit/ae49fab7acdd55ec6c66fc39a5e5f91d77701192))
+- **console**: repository list fits a phone; empty state spacing ([fa1548c](https://github.com/urmzd/humagen/commit/fa1548c8495055f85be7816609a67df10ee43608))
+
+### Misc
+
+- **copy**: regenerate copy keys for the repositories view ([d87af1b](https://github.com/urmzd/humagen/commit/d87af1bcfd957e2c3cebdda4b302de511410c3da))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.190.0...v0.191.0)
+
+
 ## 0.190.0 (2026-11-22)
 
 ### Features
