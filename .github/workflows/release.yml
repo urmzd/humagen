@@ -153,7 +153,15 @@ jobs:
         id: exists
         run: |
           set -euo pipefail
-          has() { docker buildx imagetools inspect "$REGISTRY/humagen:$1" >/dev/null 2>&1; }
+          # Only a clear not-found counts as missing. Any other error (sign-in,
+          # network) fails the job, so it cannot build over a tag it did not see.
+          has() {
+            local out
+            if out=$(docker buildx imagetools inspect "$REGISTRY/humagen:$1" 2>&1); then return 0; fi
+            if grep -qiE ': not found$|manifest unknown' <<<"$out"; then return 1; fi
+            echo "::error::cannot tell whether humagen:$1 exists: $out"
+            exit 1
+          }
           tag=false sha=false
           if has "$TAG"; then tag=true; fi
           if has "$SHA"; then sha=true; fi
