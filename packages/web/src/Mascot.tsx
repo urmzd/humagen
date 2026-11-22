@@ -316,7 +316,7 @@ export function Mascot({
     <svg
       ref={ref}
       aria-hidden="true"
-      viewBox={fit ? "6 14 92 92" : "0 0 130 120"}
+      viewBox={fit ? "12 30 80 80" : "0 0 130 120"}
       width={fit ? size : (size * 130) / 120}
       height={size}
       data-quiet={quiet || undefined}
