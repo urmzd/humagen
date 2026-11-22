@@ -31,7 +31,6 @@ let lookup:
  */
 export interface AgentLook {
   display_name?: string;
-  /** The mascot it is drawn as; empty is the one its handle suggests. */
   character?: string;
   shape?: string;
   face?: string;
