@@ -26,6 +26,7 @@ create the default client, `default-github`:
 | `HUMAGEN_GITHUB_LOGIN` | `github.login` |
 | `HUMAGEN_GITHUB_DEFAULT_AGENT` | `default_agent` |
 | `HUMAGEN_GITHUB_ASKERS` | `github.askers`: the only logins whose mentions, reviews and pull requests are acted on, comma separated. Optional |
+| `HUMAGEN_GITHUB_PEOPLE` | `github.people`: `login=subject` pairs, comma separated, such as `urmzd=tailscale:urmzd@github`. The subject is the person's console sign-in subject. A malformed or repeated entry stops the server. Optional |
 | `HUMAGEN_GITHUB_AUTO_REVIEW` | `github.auto_review.enabled`: `false` switches automatic review off. Unset, it is on |
 | `HUMAGEN_GITHUB_AUTO_REVIEW_REPOSITORIES` | `github.auto_review.repositories`, as `owner/repo=on` or `owner/repo=off` pairs, comma separated |
 
@@ -117,7 +118,9 @@ The console lists it in Sessions and in Recent for each person in it, with
 Where set to GitHub, linked to the pull request or issue.
 
 **Who reads it.** Only the people who asked there read the session in the
-console. GitHub showed each of them the repository, so the session shows
+console. A person is found by `github.people` (for the default
+client, `HUMAGEN_GITHUB_PEOPLE`), so map each login whose sessions should
+show in the console. GitHub showed each of them the repository, so the session shows
 them nothing they could not read. Humagen cannot check that anyone else can
 read the repository, so nobody else is added, and a login the client maps to
 nobody adds nobody. A workspace administrator reads it by exception, as any
