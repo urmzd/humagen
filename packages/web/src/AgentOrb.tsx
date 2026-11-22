@@ -1,10 +1,5 @@
 import type { AgentActivity, Turn, TurnStatus } from "@humagen/core";
-import {
-  autoInk,
-  type BotAvatarGlasses,
-  type BotAvatarHat,
-  type BotAvatarType,
-} from "bot-avatars";
+import { autoInk, type BotAvatarGlasses, type BotAvatarHat, type BotAvatarType } from "bot-avatars";
 import {
   type CSSProperties,
   forwardRef,
@@ -971,6 +966,7 @@ export const AgentStill = forwardRef<
         size={size}
         color={color}
         quiet
+        still
       />
     </span>
   );
