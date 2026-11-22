@@ -12,7 +12,7 @@ import {
   worked,
 } from "@humagen/core";
 import { CheckIcon, ChevronRightIcon, CopyIcon, MaximizeIcon, Shimmer } from "@humagen/render-web";
-import { Inspector } from "@humagen/web";
+import { AgentMessage, Inspector } from "@humagen/web";
 import {
   createContext,
   type FormEvent,
@@ -24,6 +24,7 @@ import {
 } from "react";
 import type { Run } from "./adapter.ts";
 import { api, call } from "./api.ts";
+import { turnOfCall } from "./callTurn.ts";
 import { took, usd } from "./format.ts";
 import { Chips, inApp } from "./refChips.tsx";
 import {
@@ -586,6 +587,34 @@ function Lane({
       {result}
     </>
   );
+  // In an answer, the thread opens to the agent's own stream, drawn with the
+  // parts the answer itself is drawn with: its thinking, its words, each step
+  // with what it was given and returned, and the agents it called as threads
+  // of their own. A question that waits on a person keeps its controls.
+  const asks =
+    inMessage && tool
+      ? blocks.filter(
+          (b): b is ResponseTool =>
+            b.type === "tool" && !b.hidden && b.kind !== "agent" && isAwaiting(b.status),
+        )
+      : [];
+  const stream =
+    inMessage && tool ? (
+      <>
+        {tool.progress && shown === "running" && (
+          <p className="text-aui-muted text-aui-xs">{tool.progress}</p>
+        )}
+        <AgentMessage embedded turn={turnOfCall(tool)} disclaimer={false} activity={false} />
+        {asks.length > 0 && (
+          <ul className="flex flex-col gap-1.5">
+            {asks.map((b) => (
+              <ToolPart key={b.id} tool={b} messageId={messageId} onAnswered={onAnswered} />
+            ))}
+          </ul>
+        )}
+        {hidden > 0 && <p className="text-aui-muted text-aui-xs">{words.privateSteps(hidden)}</p>}
+      </>
+    ) : null;
   if (root)
     return (
       <section
@@ -615,7 +644,7 @@ function Lane({
           {line}
         </summary>
         <div className="mt-1 ml-1.5 flex flex-col gap-2 border-[var(--humagen-rule)] border-l pl-3">
-          {body}
+          {stream ?? body}
         </div>
       </details>
     </section>

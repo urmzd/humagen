@@ -80,7 +80,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-032 | The conversation header shows which agents took part, not a count | Implemented: `Involved` in `ConversationShell.tsx`; `ui.test.tsx` passes; checked in the browser |
 | DES-033 | A turn shows its thinking and steps inline, where they happened, with what each was given and returned | Implemented in `WorkSteps.tsx` and render-web `StepIO`; web and core tests pass; checked live |
 | DES-034 | A finished turn says how long it worked | Superseded by DES-086 (2026-11-21): the console shows no "Worked" line and no control under an answer. `turn.completed` still carries `durationMs`, which Slack's plan title uses |
-| DES-086 | A turn is its own activity: steps and called agents in time order where they happened, each called agent a thread of its own, agents that ran together shown together, and no line or control that sums the turn | Implemented: `withCallsTogether` in `packages/core/src/timeline.ts`, `CallThreadContext` in `AgentMessage.tsx`, `CallThreads` in `MessageRefs.tsx`; core, web and console tests pass; checked in the browser on a real run with two agents in parallel |
+| DES-086 | A turn is its own activity: steps and called agents in time order where they happened, each called agent a thread that opens to its own full stream, and no line or control that sums the turn | Implemented: `CallThreadContext` and the `embedded` form in `AgentMessage.tsx`, `CallThreads` in `MessageRefs.tsx`, `turnOfCall` in `callTurn.ts`; core, web and console tests pass; checked in the browser on a real run with two agents in parallel |
 | DES-035 | Agents are told apart by a bot in their color; a mention opens a profile on hover | Implemented: `AgentInitials` (drawn by `bot-avatars`, initials where there is no canvas), `MentionLink`; `ui.test.tsx` passes; marks checked in the browser on `/gallery.html`, dark and light |
 | DES-036 | The composer holds what is picked, and the first message posts before anything else runs | Implemented in `Composer.tsx` and `Chat.tsx`; web tests and the `home` screens pass |
 | DES-037 | Health reports active model providers and dependencies. Workspace settings group configured and available providers, put Add in the header and offer a reversible switch for workspace-managed providers | Implemented: `GET /api/health`, `Health.tsx`, `ModelProviders.tsx`, `PATCH /api/model-providers/{name}`; platform, HTTP and web DOM coverage |
@@ -1313,9 +1313,17 @@ same activity again makes no sense.
   Its own calls are threads under it. Nothing on the line leads away (owner
   request, 2026-11-21: no expand sign); in Details a lane still links to its
   agent's message on its own.
-- Agents that ran at the same time are drawn as one group, labelled
-  "2 agents at the same time", in the order they started. Two calls are at
-  the same time when the second started before the first ended.
+- Calls are drawn one under the other, in the order they started, also when
+  they ran at the same time. No label counts them ("2 agents at the same
+  time" was removed on owner request, 2026-11-21): the order is the
+  progression.
+- Selecting a thread opens that agent's own stream, drawn with the parts the
+  answer itself is drawn with (`turnOfCall`, `AgentMessage embedded`): its
+  thinking, its words, each step with what it was given and returned, and
+  the agents it called as threads of their own. A person can read the whole
+  transcript of every agent in the turn without leaving it. A question that
+  waits on a person keeps its controls in the thread. Steps the reader may
+  not see are counted, not shown.
 - A thread is open while its agent works, waits on a person or failed, and
   closed once it is done.
 - No line sums how long the turn took, and nothing under the answer opens its
@@ -1323,8 +1331,8 @@ same activity again makes no sense.
   how long it took. Under the answer are its references and its actions only.
 - Details still shows a response's activity, reached from search and from the
   session panel, with how long it worked: "Worked 14s · 2 agents · 3 tools".
-- Acceptance: a run that called `researcher` and `writer` together shows one
-  group with two threads above the answer, no "Worked" text and no button
+- Acceptance: a run that called `researcher` and `writer` together shows two
+  threads above the answer, each opening to that agent's stream, no "Worked" text and no button
   under the answer besides the message's actions.
 
 ### DES-035: Initials and mention profiles

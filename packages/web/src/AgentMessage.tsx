@@ -14,10 +14,8 @@ import {
   formatUsd,
   readReview,
   type Task,
-  type Together,
   type Turn,
   type Usage,
-  withCallsTogether,
 } from "@humagen/core";
 import {
   ActionContext,
@@ -654,6 +652,7 @@ export function AgentMessage({
   itemStops,
   disclaimer = true,
   activity: sayActivity = true,
+  embedded = false,
 }: {
   turn: Turn;
   /**
@@ -698,6 +697,13 @@ export function AgentMessage({
   onRedirect?: () => void;
   onAskAgent?: () => void;
   onReply?: () => void;
+  /**
+   * The stream alone, inside something that already names the agent and says
+   * its state: a called agent's thread in another answer. No header, no
+   * action row, and it is not a message of the conversation (the wave and
+   * the keys that step through messages pass it by).
+   */
+  embedded?: boolean;
 }) {
   const inherited = useContext(ItemActionsContext);
   const inheritedStops = useContext(ItemStopsContext);
@@ -778,83 +784,71 @@ export function AgentMessage({
         )}
       </Fragment>
     );
-  // Calls that ran at the same time, as one group where they started.
-  const together = (g: Together) => (
-    // biome-ignore lint/a11y/useSemanticElements: a fieldset is for form controls
-    <div
-      key={g.key}
-      role="group"
-      data-aui="calls-together"
-      aria-label={copy.conversation.callsTogether(g.calls.length)}
-      className="flex min-w-0 flex-col gap-1.5"
-    >
-      <p className="text-aui-2xs text-aui-muted">
-        {copy.conversation.callsTogether(g.calls.length)}
-      </p>
-      <div className="flex min-w-0 flex-col gap-1.5 border-aui-border border-l pl-3">
-        {g.calls.map(block)}
-      </div>
-    </div>
-  );
-  const drawn = useMemo(() => withCallsTogether(blocks), [blocks]);
 
+  const Frame = embedded ? "div" : "article";
   return (
-    <article
-      aria-label={`${turn.agent.name} message`}
-      aria-busy={busy || undefined}
-      data-turn-id={turn.id}
-      data-aui-still={turn.detached || undefined}
-      // A tap focuses the message, which shows its actions (theme.css).
-      tabIndex={-1}
-      // Flat: the reply runs the full width of the column, under one quiet line naming who said it.
-      className="group/message aui-fade-up flex min-w-0 scroll-mt-4 flex-col gap-2"
+    <Frame
+      {...(embedded
+        ? { "data-aui": "thread-stream", className: "flex min-w-0 flex-col gap-2" }
+        : {
+            "aria-label": `${turn.agent.name} message`,
+            "aria-busy": busy || undefined,
+            "data-turn-id": turn.id,
+            "data-aui-still": turn.detached || undefined,
+            // A tap focuses the message, which shows its actions (theme.css).
+            tabIndex: -1,
+            // Flat: the reply runs the full width of the column, under one quiet line naming who said it.
+            className: "group/message aui-fade-up flex min-w-0 scroll-mt-4 flex-col gap-2",
+          })}
     >
       <div className="flex min-w-0 flex-col gap-2">
-        <header className="flex min-h-7 min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-aui-sm">
-          <StoppableMark agent={turn.agent.name} state={orb} stop={stop} copy={copy}>
-            <AgentAvatar agent={turn.agent} state={orb} />
-          </StoppableMark>
-          {onAskAgent ? (
-            <button
-              type="button"
-              className="min-h-6 pointer-coarse:min-h-11 max-w-full break-words rounded-aui text-left font-semibold text-aui-fg hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent"
-              aria-label={copy.conversation.askAgent(turn.agent.name)}
-              onClick={onAskAgent}
-            >
-              {turn.agent.name}
-            </button>
-          ) : (
-            <span className="max-w-full break-words font-semibold text-aui-fg">
-              {turn.agent.name}
+        {!embedded && (
+          <header className="flex min-h-7 min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-aui-sm">
+            <StoppableMark agent={turn.agent.name} state={orb} stop={stop} copy={copy}>
+              <AgentAvatar agent={turn.agent} state={orb} />
+            </StoppableMark>
+            {onAskAgent ? (
+              <button
+                type="button"
+                className="min-h-6 pointer-coarse:min-h-11 max-w-full break-words rounded-aui text-left font-semibold text-aui-fg hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent"
+                aria-label={copy.conversation.askAgent(turn.agent.name)}
+                onClick={onAskAgent}
+              >
+                {turn.agent.name}
+              </button>
+            ) : (
+              <span className="max-w-full break-words font-semibold text-aui-fg">
+                {turn.agent.name}
+              </span>
+            )}
+            <span className="flex min-w-0 items-center gap-1.5 text-aui-2xs text-aui-muted">
+              {activity ? (
+                <ShimmerVerb className="truncate">{activity}</ShimmerVerb>
+              ) : turn.status !== "done" && (sayActivity || !busy) ? (
+                <>
+                  <span aria-hidden className={`size-1.5 rounded-full ${dot[turn.status]}`} />
+                  <span>{copy.status[turn.status]}</span>
+                </>
+              ) : null}
             </span>
-          )}
-          <span className="flex min-w-0 items-center gap-1.5 text-aui-2xs text-aui-muted">
-            {activity ? (
-              <ShimmerVerb className="truncate">{activity}</ShimmerVerb>
-            ) : turn.status !== "done" && (sayActivity || !busy) ? (
-              <>
-                <span aria-hidden className={`size-1.5 rounded-full ${dot[turn.status]}`} />
-                <span>{copy.status[turn.status]}</span>
-              </>
-            ) : null}
-          </span>
-          {timestamp && (
-            <span className="text-aui-xs text-aui-muted opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100 motion-reduce:transition-none pointer-coarse:opacity-100">
-              {timestamp}
-            </span>
-          )}
-          {/* The agent's own Stop, in words at the top of its answer, beside the mark that also stops it. */}
-          {stop && (working(orb) || stop.pending) && (
-            <span className="ml-auto">
-              <ItemStopControl
-                stop={{ what: turn.agent.name, onStop: stop.onStop, pending: stop.pending }}
-                words={stopWords(copy)}
-              />
-            </span>
-          )}
-          {/* Announce state changes, not every streamed token. */}
-          <output className="sr-only">{copy.status[turn.status]}</output>
-        </header>
+            {timestamp && (
+              <span className="text-aui-xs text-aui-muted opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100 motion-reduce:transition-none pointer-coarse:opacity-100">
+                {timestamp}
+              </span>
+            )}
+            {/* The agent's own Stop, in words at the top of its answer, beside the mark that also stops it. */}
+            {stop && (working(orb) || stop.pending) && (
+              <span className="ml-auto">
+                <ItemStopControl
+                  stop={{ what: turn.agent.name, onStop: stop.onStop, pending: stop.pending }}
+                  words={stopWords(copy)}
+                />
+              </span>
+            )}
+            {/* Announce state changes, not every streamed token. */}
+            <output className="sr-only">{copy.status[turn.status]}</output>
+          </header>
+        )}
         {turn.reasoning && !turn.thoughts?.length && (
           <Reasoning text={turn.reasoning} streaming={reasoningLive} />
         )}
@@ -866,7 +860,7 @@ export function AgentMessage({
                   <SuppressContext.Provider value={suppressed}>
                     <div className="aui-stack">
                       {/* What happened, in the order it happened, before the last words. */}
-                      {drawn.map((b) => (b.kind === "together" ? together(b) : block(b)))}
+                      {blocks.map(block)}
                       <TurnView
                         turn={{ ...turn, text: tail }}
                         copy={copy}
@@ -893,7 +887,7 @@ export function AgentMessage({
               </GitHubRefKindsContext.Provider>
             </GitHubRefWordsContext.Provider>
           </ItemStopsContext.Provider>
-          {(settledTurn || actions) && (
+          {!embedded && (settledTurn || actions) && (
             <FeedbackPromptContext.Provider value={feedbackPrompt}>
               <MessageActions
                 turn={turn}
@@ -913,7 +907,7 @@ export function AgentMessage({
           </p>
         )}
       </div>
-    </article>
+    </Frame>
   );
 }
 
