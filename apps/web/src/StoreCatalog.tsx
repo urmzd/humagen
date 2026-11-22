@@ -3,8 +3,20 @@ import { BotIcon } from "@humagen/render-web";
 import type { ReactNode } from "react";
 import { useState } from "react";
 import type { StoreAgent, StorePackage } from "./api.ts";
-import { follow, ItemCard, itemGrid, Pill, Reference, Tag } from "./cards.tsx";
+import { Button } from "@humagen/render-web/ui/button";
+import {
+  Item,
+  ItemActions,
+  ItemContent,
+  ItemDescription,
+  ItemGroup,
+  ItemMedia,
+  ItemTitle,
+} from "@humagen/render-web/ui/item";
+import { agentShown } from "./branding.ts";
+import { follow, Pill, Reference, Tag } from "./cards.tsx";
 import { href } from "./route.ts";
+import { SplitButton } from "./SplitButton.tsx";
 import { AgentMark, button, Confirm, primary } from "./ui.tsx";
 
 /**
@@ -30,8 +42,6 @@ const customizedIn = (pkg: StorePackage) =>
 const takenIn = (pkg: StorePackage) => pkg.agents.filter((a) => a.taken).map((a) => a.name);
 const partial = (pkg: StorePackage) => pkg.installed && pkg.missing.length > 0;
 const unique = (all: string[]) => [...new Set(all)].sort();
-
-const hasStatus = (pkg: StorePackage) => pkg.installed || takenIn(pkg).length > 0;
 
 /** One state for a package, or none: a package not installed has no pill. */
 function PackageStatus({ pkg }: { pkg: StorePackage }) {
@@ -117,7 +127,12 @@ function PackageActions({
   );
 }
 
-/** The catalog: one card per package. The card opens the package's page. */
+/**
+ * The catalog: one row per package, as a list to compare and act on. A row
+ * says what the package is, the agents it adds and what they need, and its
+ * state; its one control installs it, or, once installed, opens it to
+ * configure, with the rest under the control's arrow.
+ */
 export function StoreCatalog({
   packages,
   actions,
@@ -129,28 +144,114 @@ export function StoreCatalog({
 }) {
   if (packages.length === 0) return <p className="text-aui-sm text-aui-muted">{words.empty}</p>;
   return (
-    <div className={itemGrid}>
+    <ItemGroup aria-label={words.title} className="gap-2">
       {packages.map((pkg) => (
-        <ItemCard
-          key={pkg.name}
-          title={pkg.title}
-          status={hasStatus(pkg) ? <PackageStatus pkg={pkg} /> : undefined}
-          href={href({ page: "agent-store", package: pkg.name })}
-          onOpen={() => onOpen(pkg)}
-          actions={
-            actions.canWrite && (!pkg.installed || partial(pkg)) ? (
-              <PackageActions pkg={pkg} actions={actions} quiet />
-            ) : undefined
-          }
-        >
-          {/* Two lines, not the card's one: a package is chosen by what it says it does. */}
-          <p className="line-clamp-2 min-h-[2lh] text-aui-muted text-aui-xs">{pkg.description}</p>
-          <div className="mt-3 flex min-w-0 flex-wrap items-center gap-1.5">
-            <Tag>{words.agentCount(pkg.agents.length)}</Tag>
-            <Needs pkg={pkg} />
-          </div>
-        </ItemCard>
+        <PackageRow key={pkg.name} pkg={pkg} actions={actions} onOpen={() => onOpen(pkg)} />
       ))}
+    </ItemGroup>
+  );
+}
+
+function PackageRow({
+  pkg,
+  actions,
+  onOpen,
+}: {
+  pkg: StorePackage;
+  actions: StoreActions;
+  onOpen: () => void;
+}) {
+  const [removing, setRemoving] = useState(false);
+  const working = actions.busy === pkg.name;
+  const customized = customizedIn(pkg);
+  const restore = partial(pkg);
+  const blocked = takenIn(pkg).length > 0;
+  const needs = unique(pkg.agents.flatMap((a) => a.connectors));
+  const control = !actions.canWrite ? (
+    <Button size="sm" variant="outline" onClick={onOpen}>
+      {words.view}
+    </Button>
+  ) : removing ? (
+    <Confirm
+      question={words.removeQuestion(pkg.title, customized)}
+      action={words.remove}
+      onConfirm={() => {
+        setRemoving(false);
+        actions.onRemove(pkg, customized.length > 0);
+      }}
+      onKeep={() => setRemoving(false)}
+    />
+  ) : restore ? (
+    // Some of its agents were retired: putting them back is what the row is for now.
+    <SplitButton
+      primary
+      label={words.restore}
+      name={`${words.restore} ${pkg.title}`}
+      onClick={() => actions.onInstall(pkg)}
+      busy={working ? words.installing : undefined}
+      menuLabel={words.moreFor(pkg.title)}
+      choices={[
+        { label: words.configure, onSelect: onOpen },
+        { label: words.remove, destructive: true, onSelect: () => setRemoving(true) },
+      ]}
+    />
+  ) : pkg.installed ? (
+    <SplitButton
+      label={words.configure}
+      name={`${words.configure} ${pkg.title}`}
+      onClick={onOpen}
+      menuLabel={words.moreFor(pkg.title)}
+      busy={working ? words.removing : undefined}
+      choices={[
+        ...needs.map((surface) => ({
+          label: words.connect(words.connector(surface)),
+          onSelect: () => {
+            window.location.assign(href({ page: "connections" }));
+          },
+        })),
+        { label: words.remove, destructive: true, onSelect: () => setRemoving(true) },
+      ]}
+    />
+  ) : (
+    <SplitButton
+      primary
+      label={words.install}
+      name={`${words.install} ${pkg.title}`}
+      onClick={() => actions.onInstall(pkg)}
+      disabled={blocked}
+      busy={working ? words.installing : undefined}
+      menuLabel={words.moreFor(pkg.title)}
+      choices={[{ label: words.view, onSelect: onOpen }]}
+    />
+  );
+  return (
+    <div role="listitem" aria-label={pkg.title}>
+      <Item variant="outline" size="sm">
+        <ItemMedia variant="icon">
+          <BotIcon size={16} aria-hidden />
+        </ItemMedia>
+        <ItemContent className="min-w-0">
+          <ItemTitle>
+            <a
+              href={href({ page: "agent-store", package: pkg.name })}
+              onClick={(event) => follow(event, onOpen)}
+              className="rounded-aui hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent"
+            >
+              {pkg.title}
+            </a>
+            <PackageStatus pkg={pkg} />
+          </ItemTitle>
+          <ItemDescription>{pkg.description}</ItemDescription>
+          <p className="flex min-w-0 flex-wrap items-center gap-1.5 pt-0.5 text-aui-muted text-aui-xs">
+            {/* Which agents it adds, by name: what a person gets is said in the row. */}
+            <span className="min-w-0 truncate">
+              {pkg.agents.map((a) => agentShown(a.name)).join(", ")}
+            </span>
+            <Needs pkg={pkg} />
+          </p>
+        </ItemContent>
+        <ItemActions>{control}</ItemActions>
+      </Item>
     </div>
   );
 }

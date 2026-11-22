@@ -531,6 +531,12 @@ export const defaultCopy = {
   },
   agentStore: {
     title: "Store",
+    /** What the Store is, under its title. */
+    lede: "Ready-made teams of agents. Installing a package adds its agents to your workspace, where you can change them like your own. Removing retires them; their history stays.",
+    configure: "Configure",
+    view: "View Agents",
+    moreFor: (title: string) => `More for ${title}`,
+    connect: (what: string) => `Connect ${what}`,
     installed: "Installed",
     install: "Install",
     restore: "Restore Missing",
