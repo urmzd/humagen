@@ -20,7 +20,7 @@ import {
   type ToolCredentials,
 } from "./api.ts";
 import { ClientConnect } from "./ClientConnect.tsx";
-import { ConnectedAccounts } from "./ConnectedAccounts.tsx";
+import { ConnectedAccounts, LinkedPeople } from "./ConnectedAccounts.tsx";
 import { ConnectionDetail } from "./ConnectionDetail.tsx";
 import { ConnectionHealth } from "./ConnectionHealth.tsx";
 import { ConnectionLogo } from "./ConnectionLogo.tsx";
@@ -1137,6 +1137,9 @@ export function Connections({
                             canWrite={c.managed !== "file"}
                             onChanged={changed}
                           />
+                        )}
+                        {(c.surface === "github" || c.surface === "slack") && (
+                          <LinkedPeople client={c.id} />
                         )}
                         {link(
                           {

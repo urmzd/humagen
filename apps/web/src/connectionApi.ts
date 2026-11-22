@@ -4,9 +4,10 @@ import type {
   ConnectionDetail,
   ConnectionHealth,
   ConnectionPreset,
+  LinkedAccount,
 } from "../../../packages/client/src/generated/types.ts";
 import { call } from "./api.ts";
-export type { ConnectionPreset, ConnectionHealth, ConnectionDetail };
+export type { ConnectionPreset, ConnectionHealth, ConnectionDetail, LinkedAccount };
 const path = (provider: string) => `/api/connections/${encodeURIComponent(provider)}`;
 export const connectionApi = {
   detail: (provider: string) => call<ConnectionDetail>("GET", path(provider)),
@@ -23,6 +24,12 @@ export const connectionApi = {
   check: (provider: string) => call<ConnectionHealth>("POST", `${path(provider)}/check`),
   checkClient: (id: string) =>
     call<ConnectionHealth>("POST", `/api/clients/${encodeURIComponent(id)}/check`),
+  /** Who linked a GitHub or Slack account on a client's surface. */
+  linkedAccounts: (client: string) =>
+    call<{ accounts: LinkedAccount[] }>(
+      "GET",
+      `/api/clients/${encodeURIComponent(client)}/accounts`,
+    ).then((r) => r.accounts),
   useSource: (name: string, oauth: "drive" | "onedrive") =>
     call("PUT", `/api/knowledge/${encodeURIComponent(name)}/credential`, { oauth }),
 };

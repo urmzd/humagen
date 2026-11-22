@@ -1,6 +1,7 @@
 import { defaultCopy } from "@humagen/components";
+import { useEffect, useState } from "react";
 import { ConnectionLogo } from "./ConnectionLogo.tsx";
-import type { ConnectionPreset } from "./connectionApi.ts";
+import { type ConnectionPreset, connectionApi, type LinkedAccount } from "./connectionApi.ts";
 import { SplitButton } from "./SplitButton.tsx";
 
 const words = defaultCopy.plugins.accounts;
@@ -97,5 +98,50 @@ export function ConnectedAccounts({
         })}
       </ul>
     </section>
+  );
+}
+
+/**
+ * The people who linked an account on a client's surface, for its
+ * administrators: the account, and the person it acts for. Nothing is shown
+ * until someone has linked one.
+ */
+export function LinkedPeople({ client }: { client: string }) {
+  const [linked, setLinked] = useState<LinkedAccount[]>([]);
+  useEffect(() => {
+    let live = true;
+    connectionApi
+      .linkedAccounts(client)
+      .then((a) => live && setLinked(a))
+      .catch(() => live && setLinked([]));
+    return () => {
+      live = false;
+    };
+  }, [client]);
+  if (linked.length === 0) return null;
+  return (
+    <div className="flex min-w-0 flex-col gap-1">
+      <h4 className="font-medium text-aui-sm text-aui-fg">{words.linkedPeople}</h4>
+      <ul aria-label={words.linkedPeople} className="flex min-w-0 flex-col gap-1">
+        {linked.map((a) => (
+          <li key={a.id} className="flex min-w-0 items-center gap-2 text-aui-sm">
+            {a.avatar_url && (
+              <img
+                src={a.avatar_url}
+                alt=""
+                width={16}
+                height={16}
+                className="size-4 shrink-0 rounded-full"
+                referrerPolicy="no-referrer"
+              />
+            )}
+            <span className="min-w-0 truncate text-aui-fg">
+              {a.surface === "github" ? `@${a.login}` : a.login}
+            </span>
+            <span className="min-w-0 truncate text-aui-muted text-aui-xs">{a.subject}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }

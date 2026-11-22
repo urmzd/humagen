@@ -3443,6 +3443,8 @@ export const defaultCopy = {
       connect: "Connect",
       disconnect: "Disconnect",
       notConnected: "Not connected",
+      /** On a GitHub or Slack app: who linked an account there. */
+      linkedPeople: "Linked people",
     },
     /** The shelves MCPs sit on. */
     families: {

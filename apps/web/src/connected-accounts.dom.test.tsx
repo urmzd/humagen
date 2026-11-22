@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { ConnectedAccounts } from "./ConnectedAccounts.tsx";
+import { ConnectedAccounts, LinkedPeople } from "./ConnectedAccounts.tsx";
 import { Connections } from "./Connections.tsx";
 import type { ConnectionPreset } from "./connectionApi.ts";
 import { stubFetch } from "./dom.ts";
@@ -175,4 +175,29 @@ test("a claim another person holds is said on the page", async () => {
   render(<Connections provider="callback" />);
   await waitFor(() => assert.ok(screen.getByText(/linked to another person in this workspace/)));
   assert.ok(screen.getByRole("button", { name: "Connect GitHub" }));
+});
+
+test("an app lists who linked an account there, and nothing before anyone has", async () => {
+  net = stubFetch({
+    "GET /api/clients/gh/accounts": () => ({
+      accounts: [
+        {
+          surface: "github",
+          id: "42",
+          login: "octocat",
+          subject: "ana",
+          linked_at: "2026-11-22T12:00:00Z",
+        },
+      ],
+    }),
+    "GET /api/clients/empty/accounts": () => ({ accounts: [] }),
+  });
+  render(<LinkedPeople client="gh" />);
+  const list = await screen.findByRole("list", { name: "Linked people" });
+  assert.ok(within(list).getByText("@octocat"));
+  assert.ok(within(list).getByText("ana"));
+  cleanup();
+  const { container } = render(<LinkedPeople client="empty" />);
+  await waitFor(() => assert.ok(net?.seen.some((r) => r.path === "/api/clients/empty/accounts")));
+  assert.equal(container.textContent, "");
 });
