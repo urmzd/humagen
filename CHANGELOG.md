@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.188.1 (2026-11-22)
+
+### Bug Fixes
+
+- **platform**: read corpora for a Slack session tree's audience in every session of it ([0e67e4e](https://github.com/urmzd/humagen/commit/0e67e4e9481664f6a662a9924597e475ce458718))
+- **slack**: check delivery before posting a new inbox item about a run ([5fb6937](https://github.com/urmzd/humagen/commit/5fb6937282387922f7eaec04d8095cd159ca349e))
+- **platform**: keep a Slack session tree out of personal tools and deliver only to its own thread ([ca178e9](https://github.com/urmzd/humagen/commit/ca178e968d659d0d4f5c89a8e3c824ad20f40621))
+- **slack**: deliver a Slack thread's own private session back to its conversation ([3bb0562](https://github.com/urmzd/humagen/commit/3bb05629c6b0731fee12615e038edfcaad48ce43))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.188.0...v0.188.1)
+
+
 ## 0.188.0 (2026-11-22)
 
 ### Features

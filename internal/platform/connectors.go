@@ -27,6 +27,7 @@ import (
 	"github.com/urmzd/humagen/pkg/authz"
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/egressguard"
+	"github.com/urmzd/humagen/pkg/integrations/github"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/threads"
@@ -93,6 +94,10 @@ type seat struct {
 	// files reads source at a commit for the console (GitHubSource). Nil
 	// for a surface with no files.
 	files sourceReader
+	// installed keeps the repositories the client's GitHub App installation
+	// covers (github_installed.go). Nil for a client that is no
+	// installation, which reads only what it names.
+	installed *github.InstalledRepos
 	// guard holds the client's writes to its surface to the egress policy
 	// (egress_guard.go). Nil for a Connection, and for a client whose API
 	// the embedding program supplied: their calls are not the platform's.
@@ -730,7 +735,7 @@ func (s *surface) Deliver(ctx context.Context, to address.Address, e event.Envel
 				return nil
 			}
 			run, err := s.p.Runs.Get(e.Tenant, e.Run)
-			if err != nil || !s.p.bridgeMayDeliver(ctx, current, to.Path[0], run) {
+			if err != nil || !s.p.bridgeMayDeliver(ctx, current, to.Path[0], "", run) {
 				return nil
 			}
 		}

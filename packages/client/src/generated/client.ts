@@ -1041,7 +1041,10 @@ visible older history pages on reset.
   /** The images are the deployment's default, then the caller's
 workspace's own, oldest first; only a ready one may be chosen. The
 repositories are those the caller's tenant's enabled GitHub clients
-may read or write, sorted, at most 100.
+cover: the ones each client's GitHub App installation is installed
+on, and the ones its read_repositories or action_repositories name,
+deduplicated, sorted, at most 100. A session may choose any
+repository they cover, including one past the first 100.
  */
   async getSessionOptions(options?: RequestOptions): Promise<SessionOptions> {
     const path = "/api/sessions/options";
@@ -1360,12 +1363,13 @@ afterwards. Nothing is sent to the agent.
   }
 
   /** Recheck a native host's current permission to deliver this visible run */
-  async clientBridgeDelivery(id: string, run: string, channel: string, options?: RequestOptions): Promise<ClientBridgeDeliveryResponse> {
+  async clientBridgeDelivery(id: string, run: string, channel: string, ts?: string, options?: RequestOptions): Promise<ClientBridgeDeliveryResponse> {
     let path = "/api/clients/{id}/delivery";
     path = path.replace("{id}", encodeURIComponent(String(id)));
     const _q = new URLSearchParams();
     if (run !== undefined && run !== null) _q.set("run", String(run));
     if (channel !== undefined && channel !== null) _q.set("channel", String(channel));
+    if (ts !== undefined && ts !== null) _q.set("ts", String(ts));
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
     return this.request<ClientBridgeDeliveryResponse>("GET", path, {
@@ -1373,12 +1377,13 @@ afterwards. Nothing is sent to the agent.
     });
   }
 
-  async clientBridgeDeliveryRaw(id: string, run: string, channel: string, options?: RequestOptions): Promise<ApiResponse<ClientBridgeDeliveryResponse>> {
+  async clientBridgeDeliveryRaw(id: string, run: string, channel: string, ts?: string, options?: RequestOptions): Promise<ApiResponse<ClientBridgeDeliveryResponse>> {
     let path = "/api/clients/{id}/delivery";
     path = path.replace("{id}", encodeURIComponent(String(id)));
     const _q = new URLSearchParams();
     if (run !== undefined && run !== null) _q.set("run", String(run));
     if (channel !== undefined && channel !== null) _q.set("channel", String(channel));
+    if (ts !== undefined && ts !== null) _q.set("ts", String(ts));
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
     return this.rawRequest<ClientBridgeDeliveryResponse>("GET", path, {
@@ -3700,7 +3705,7 @@ agents answering the next message are sent.
     });
   }
 
-  /** The lines an evidence permalink points at, with context around them, read through a GitHub client of the caller's workspace so its token stays on the server. A client may read repositories its owners include or its read_repositories name. Any other file, or one GitHub does not give, answers 404. All four of repo, sha, file and start are required. */
+  /** The lines an evidence permalink points at, with context around them, read through a GitHub client of the caller's workspace so its token stays on the server. A client may read repositories its owners include, its GitHub App installation covers, or its read_repositories name. Any other file, or one GitHub does not give, answers 404. All four of repo, sha, file and start are required. */
   async getGitHubSource(file: string, repo?: string, sha?: string, start?: number, end?: number, context?: number, options?: RequestOptions): Promise<SourceExcerpt> {
     let path = "/api/github/source";
     const _q = new URLSearchParams();

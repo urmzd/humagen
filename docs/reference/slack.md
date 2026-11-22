@@ -224,6 +224,34 @@ client's `slack.machine` may, and the platform decides where the thread goes:
 | A thread in an unbound channel | A shared thread in the client's home |
 | A direct message, or the assistant pane | A private thread in the client's home |
 
+Outside a bound channel the Slack thread is a root session (`POST /api/sessions`
+with `surface`), filed in the client's home. Its audience follows the Slack
+conversation the app reports, and a thread that reports none is private to the
+person asking. The answer goes back to the same Slack conversation in every
+case: a public channel, a private channel, a group direct message or a direct
+message. Before each write the app asks `GET /api/clients/{id}/delivery` with
+the channel and the thread's `ts`. The server allows a private run in a Slack
+channel only in the Slack thread that started the run's session: the session,
+or the root of its session tree, has that Slack thread as its surface on this
+client. It answers in no other thread, and a request without `ts` is refused.
+Only the client's machine starts a session with a surface, so a private
+session started anywhere else, such as in the console, is never posted in a
+channel. When the server refuses, the app posts nothing and logs it once for
+the run: `run <id> not delivered to <channel>: <reason>`.
+
+A session in that tree belongs to the Slack thread, even where the console
+shows it as private. This includes a child an agent hands work to and a child
+a person opens under it in the console. Its answers are posted in the Slack
+thread. So text or a file a person adds to such a session in the console can be
+quoted there, in front of everyone in that Slack conversation. No session in
+the tree is the person's own private conversation, so tools that use a person's
+own credential or show their connection status and consent links
+(`list_connections`, `connect_connection`, `catalog_query`, a person's own
+`catalog_search` entries) refuse in all of them. Ask for those in a private
+console session of your own. Corpora are read for the Slack thread's
+audience in every session of the tree, and no session of the tree is published
+or moved into a project.
+
 The platform reads Slack's text in the one tag grammar: the app's own mention
 is not a tag, a bot in `client.bots` is its agent, a person in `slack.people`
 is their handle, and anyone else stays plain and is refused. When the app is
