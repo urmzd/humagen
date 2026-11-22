@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/urmzd/humagen/internal/mcptools"
+	"github.com/urmzd/humagen/pkg/accounts"
 	"github.com/urmzd/humagen/pkg/audit"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/clients"
@@ -28,6 +29,9 @@ type ConnectionPreset struct {
 	Scope             string            `json:"scope"`
 	GrantedScopes     *[]string         `json:"granted_scopes,omitempty"`
 	Health            *ConnectionHealth `json:"health,omitempty"`
+	// Account is the account a person linked through an account_oauth
+	// preset: who they are on GitHub or Slack. It holds no credential.
+	Account *accounts.Account `json:"account,omitempty"`
 	// client names the registered application a preset signs in through when
 	// its service takes no registration of its own: "google" for the Google
 	// Workspace tool servers, which share one Google Cloud OAuth client.
@@ -42,6 +46,9 @@ const GoogleClient = "google"
 var connectionPresets = []ConnectionPreset{
 	{ID: "slack", Name: "Slack", Kind: "client_oauth", Endpoint: "https://slack.com/api/", Scope: "workspace"},
 	{ID: "github", Name: "GitHub", Kind: "github_install", Scope: "workspace"},
+	// Who a person is on GitHub and on Slack, linked by signing in there.
+	{ID: GitHubAccount, Name: "GitHub", Kind: accountKind, Scope: "person"},
+	{ID: SlackAccount, Name: "Slack", Kind: accountKind, Scope: "person"},
 	{ID: "notion", Name: "Notion", Kind: "oauth", Endpoint: "https://mcp.notion.com/mcp", Scope: "person"},
 	{ID: "linear", Name: "Linear", Kind: "oauth", Endpoint: "https://mcp.linear.app/mcp", Scope: "person"},
 	{ID: "granola", Name: "Granola", Kind: "oauth", Endpoint: "https://mcp.granola.ai/mcp", Scope: "person"},
@@ -90,6 +97,12 @@ func (p *Platform) ConnectionPresets(who auth.Principal) ([]ConnectionPreset, er
 	out := slices.Clone(connectionPresets)
 	for i := range out {
 		c := &out[i]
+		if c.Kind == accountKind {
+			if err := p.accountPreset(who, c); err != nil {
+				return nil, err
+			}
+			continue
+		}
 		if c.ID == "github" {
 			c.Available = p.GitHubInstall.Available() && who.Kind != auth.Machine
 			if !c.Available {
@@ -210,7 +223,7 @@ func (p *Platform) ConnectionPresets(who auth.Principal) ([]ConnectionPreset, er
 		}
 	}
 	for i := range out {
-		if out[i].Connected || out[i].ReconnectRequired {
+		if (out[i].Connected || out[i].ReconnectRequired) && out[i].Kind != accountKind {
 			out[i].Health, err = p.lastConnectionHealth(who, out[i].ID, false)
 			if err != nil {
 				return nil, err
@@ -279,6 +292,12 @@ func (p *Platform) AuthorizeConnection(ctx context.Context, who auth.Principal, 
 	if in.Scope != "" && in.Scope != "person" && in.Scope != "workspace" {
 		return connectionauth.Authorization{}, personctx.ErrInvalid
 	}
+	if _, account := accountSurface(strings.TrimPrefix(name, "workspace-")); account {
+		if strings.HasPrefix(name, "workspace-") {
+			return connectionauth.Authorization{}, personctx.ErrInvalid
+		}
+		return p.authorizeAccount(ctx, who, name, in)
+	}
 	shared := in.Scope == "workspace" || strings.HasPrefix(name, "workspace-")
 	if shared && !who.Can(auth.ClientsWrite) {
 		return connectionauth.Authorization{}, ErrForbidden
@@ -346,9 +365,12 @@ func (p *Platform) CompleteConnection(ctx context.Context, who auth.Principal, n
 	if who.Kind == auth.Machine {
 		return ErrForbidden
 	}
+	if _, account := accountSurface(name); account {
+		return p.completeAccount(ctx, who, name, nonce, code)
+	}
 	base := strings.TrimPrefix(name, "workspace-")
 	c, known := preset(base)
-	if !known && !strings.HasPrefix(base, "other-") {
+	if !known && !strings.HasPrefix(base, "other-") || c.Kind == accountKind {
 		return ErrProviderNotFound
 	}
 	if (oauthSource(base) || base == "bigquery") && strings.HasPrefix(name, "workspace-") {
@@ -388,6 +410,9 @@ func (p *Platform) DisconnectConnection(who auth.Principal, name string) error {
 	}
 	if name == "github" {
 		return p.DisconnectGitHubInstall(context.Background(), who)
+	}
+	if _, account := accountSurface(name); account {
+		return p.disconnectAccount(who, name)
 	}
 	owner := connectionOwner(who, name)
 	if name == "slack" {

@@ -28,6 +28,7 @@ import (
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/internal/ready"
 	"github.com/urmzd/humagen/internal/wire"
+	"github.com/urmzd/humagen/pkg/accounts"
 	"github.com/urmzd/humagen/pkg/alerts"
 	"github.com/urmzd/humagen/pkg/artifacts"
 	"github.com/urmzd/humagen/pkg/audit"
@@ -1307,6 +1308,10 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 		return
 	}
 	switch {
+	case errors.Is(err, accounts.ErrClaimed):
+		fail(w, http.StatusConflict, detail(err, accounts.ErrClaimed))
+	case errors.Is(err, platform.ErrAccountRefused):
+		fail(w, http.StatusConflict, detail(err, platform.ErrAccountRefused))
 	case errors.Is(err, connectionauth.ErrUnavailable):
 		fail(w, 503, "connection authentication is unavailable")
 	case errors.Is(err, connectionauth.ErrInvalid):

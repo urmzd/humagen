@@ -180,7 +180,7 @@ func (p *Platform) recordSurfaceFeedback(ctx context.Context, c clients.Client, 
 	}
 	nativeID := surfaceHash(c.ID, id)
 	tag := event.Envelope{Data: event.MessagePosted{Request: event.Request{Actor: b.Actor}}}
-	subject := p.surfacePerson(current, tag)
+	subject := p.surfacePerson(ctx, current, tag)
 	if subject == "" {
 		subject = "native:" + string(c.Surface) + ":" + surfaceHash(c.ID, b.Actor.ID)
 	}

@@ -159,23 +159,35 @@ func PersonActor(subject string) event.Actor {
 	return event.Actor{ID: subject, Display: subject, User: subject}
 }
 
-// surfacePerson is the person a tag a client's connector raised acts for:
-// the one subject that the enabled Slack clients serving the client's team
-// map the tag's Slack user to. The map is often on another client than the
+// surfacePerson is the person a tag a client's connector raised acts for.
+// A person who linked their account (Accounts) is found first: on GitHub
+// by the numeric user id of the delivery's sender, which ctx carries from
+// the signature-verified delivery (withGitHubSender), and on Slack by the
+// user and the client's team. Without a link, the client's own map is the
+// fallback: a GitHub installation's exact verified login map, or the one
+// subject that the enabled Slack clients serving the client's team map the
+// tag's Slack user to. The Slack map is often on another client than the
 // one that received the message (a people map needs a machine, so an app
 // built on the API holds it). No mapping, or two clients mapping the user to
-// different people, is nobody. GitHub uses only its own installation’s exact
-// verified login map. A bot always acts for nobody.
-func (p *Platform) surfacePerson(c clients.Client, tag event.Envelope) string {
+// different people, is nobody. A bot always acts for nobody.
+func (p *Platform) surfacePerson(ctx context.Context, c clients.Client, tag event.Envelope) string {
 	id := strings.TrimSpace(wire.ActorOf(tag).ID)
 	if c.Surface == clients.GitHub {
 		if !c.Enabled || wire.ActorOf(tag).Bot || c.GitHub == nil {
 			return ""
 		}
+		if sender, ok := githubSenderOf(ctx, wire.ActorOf(tag).ID); ok {
+			if who := p.linkedGitHub(c.Tenant, sender); who != "" {
+				return who
+			}
+		}
 		return c.GitHub.People[wire.ActorOf(tag).ID]
 	}
 	if c.Surface != clients.Slack || wire.ActorOf(tag).Bot || id == "" || c.Identity.Team == "" {
 		return ""
+	}
+	if who := p.linkedSlack(c.Tenant, c.Identity.Team, id); who != "" {
+		return who
 	}
 	person := ""
 	all, err := p.Clients.List(c.Tenant)

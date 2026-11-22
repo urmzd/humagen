@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/urmzd/humagen/pkg/accounts"
 	"log/slog"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -350,6 +351,7 @@ func (p *Platform) openStores(cfg Config) error {
 	// same way.
 	p.Credentials, err = credentials.Open(perRequest, p.secrets)
 	keep("credentials", err)
+	p.Accounts = accounts.Open(perRequest)
 	p.connectionHealth = state.NewTable[connectionObservation](perRequest, "connection_health")
 	p.deliveryFailures = state.NewTable[deliveryFailure](perRequest, "delivery_failures")
 	p.memoryFailures = egressguard.NewMemoryFailures()

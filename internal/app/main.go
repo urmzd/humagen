@@ -455,7 +455,7 @@ func serve(o Options, args []string, d serveDefaults) error {
 	if err != nil {
 		return err
 	}
-	connectionAuth, err := connectionAuthorization(ctx, file.cfg.System, keys)
+	connectionAuth, err := connectionAuthorization(ctx, file.cfg.System, keys, getenv)
 	if err != nil {
 		return err
 	}

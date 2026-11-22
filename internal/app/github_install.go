@@ -20,7 +20,7 @@ func githubInstallation(ctx context.Context, system spec.System, keys credref.Re
 	if !g.ClientSecret.Set() || !g.PrivateKey.Set() || !g.WebhookSecret.Set() {
 		return nil, errors.New("GitHub installation credentials must use deployment references")
 	}
-	config := &githubinstall.Config{AppID: g.AppID, AppSlug: g.AppSlug, ClientID: g.ClientID, RedirectURL: settings.RedirectURL, PrivateKeyRef: g.PrivateKey.Ref, SigningSecretRef: g.WebhookSecret.Ref}
+	config := &githubinstall.Config{AppID: g.AppID, AppSlug: g.AppSlug, ClientID: g.ClientID, RedirectURL: RedirectURL(system), PrivateKeyRef: g.PrivateKey.Ref, SigningSecretRef: g.WebhookSecret.Ref}
 	var err error
 	if config.ClientSecret, err = keys.Resolve(ctx, g.ClientSecret.Ref); err != nil {
 		return nil, errors.New("GitHub client secret unavailable")

@@ -253,7 +253,7 @@ func (s *surface) stamp(ctx context.Context, st *seat, tag event.Envelope) []eve
 		}
 	}
 
-	person := s.p.surfacePerson(c, tag)
+	person := s.p.surfacePerson(ctx, c, tag)
 	if err := s.p.mayRaise(c, person, project, bound); err != nil {
 		s.p.log.Warn("platform: a client's message was refused", "surface", s.name, "tenant", c.Tenant, "client", c.ID, "project", project, "person", person, "event", tag.ID, "why", err.Error())
 		return nil
@@ -628,12 +628,15 @@ func (s *surface) hand(st *seat, w http.ResponseWriter, r *http.Request, body []
 			return
 		}
 		if current.Surface == clients.GitHub {
+			// The connector reads the sender's login; the person they
+			// linked is found by the id GitHub gives them for good.
+			r = r.WithContext(withGitHubSender(r.Context(), body))
 			kind := r.Header.Get("X-GitHub-Event")
 			// Only people who may ask are acted on (GitHubAsker). A comment,
 			// a review or a pull request from anyone else starts nothing at
 			// all; an issue from them still meets the client's own rules,
 			// which are written to read issues, but asks no agent.
-			if _, allowed, why := current.GitHubAsker(kind, body); !allowed {
+			if _, allowed, why := current.GitHubAsker(kind, body, func(id int64) bool { return s.p.linkedGitHub(current.Tenant, id) != "" }); !allowed {
 				if kind != "issues" {
 					s.logIgnored(r, body, &current, http.StatusOK, why)
 					w.WriteHeader(http.StatusOK)

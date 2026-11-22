@@ -8,6 +8,8 @@ import (
 // scopes separate from MCP credentials. Client secrets come from deployment refs.
 func NativeConnectionProvider(name string) connectionauth.Provider {
 	switch name {
+	case GitHubAccount, SlackAccount:
+		return accountProvider(name)
 	case "drive":
 		return connectionauth.Provider{Name: name, Resource: "https://www.googleapis.com/drive/v3/", Issuer: "https://accounts.google.com", AuthorizationURL: "https://accounts.google.com/o/oauth2/v2/auth", TokenURL: "https://oauth2.googleapis.com/token", Offline: true, Scopes: []string{"https://www.googleapis.com/auth/drive.readonly"}}
 	case "onedrive":

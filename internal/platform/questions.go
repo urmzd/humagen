@@ -185,6 +185,9 @@ func (p *Platform) resolveRequester(tenant string, tag event.Envelope, client st
 	if team == "" {
 		return out
 	}
+	if who := p.linkedSlack(tenant, team, id); who != "" && !slices.Contains(out, who) {
+		out = append(out, who)
+	}
 	all, err := p.Clients.List(tenant)
 	if err != nil {
 		p.log.Error("platform: clients could not be read", "tenant", tenant, "error", err)

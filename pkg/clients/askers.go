@@ -17,13 +17,16 @@ var writeAccess = []string{"OWNER", "MEMBER", "COLLABORATOR"}
 // they can write to the repository (owner, member or collaborator) or the
 // client maps them to a person, and, when the client names askers, they are
 // one of them. A delivery nobody asks through (a push, a check run) is
-// allowed. why says why someone may not.
-func (c Client) GitHubAsker(kind string, body []byte) (login string, allowed bool, why string) {
+// allowed. why says why someone may not. linked, when given, reports whether
+// a person in the workspace linked the GitHub user of that numeric id, which
+// counts as mapped.
+func (c Client) GitHubAsker(kind string, body []byte, linked func(id int64) bool) (login string, allowed bool, why string) {
 	if c.Surface != GitHub || c.GitHub == nil {
 		return "", true, ""
 	}
 	type author struct {
 		User struct {
+			ID    int64  `json:"id"`
 			Login string `json:"login"`
 		} `json:"user"`
 		Association string `json:"author_association"`
@@ -31,6 +34,7 @@ func (c Client) GitHubAsker(kind string, body []byte) (login string, allowed boo
 	var p struct {
 		Action string `json:"action"`
 		Sender struct {
+			ID    int64  `json:"id"`
 			Login string `json:"login"`
 		} `json:"sender"`
 		Comment     author `json:"comment"`
@@ -52,7 +56,7 @@ func (c Client) GitHubAsker(kind string, body []byte) (login string, allowed boo
 	case "pull_request":
 		if p.Action == "review_requested" {
 			// Only people with write access may request a review.
-			who.User.Login, who.Association = p.Sender.Login, "COLLABORATOR"
+			who.User.ID, who.User.Login, who.Association = p.Sender.ID, p.Sender.Login, "COLLABORATOR"
 			break
 		}
 		who = p.PullRequest
@@ -63,7 +67,7 @@ func (c Client) GitHubAsker(kind string, body []byte) (login string, allowed boo
 	if login == "" {
 		return "", false, "it names nobody who asks"
 	}
-	mapped := c.GitHub.People[login] != ""
+	mapped := c.GitHub.People[login] != "" || linked != nil && who.User.ID > 0 && linked(who.User.ID)
 	if !mapped && !slices.Contains(writeAccess, who.Association) {
 		return login, false, login + " has no write access to the repository (" + strings.ToLower(cmpOr(who.Association, "none")) + ")"
 	}

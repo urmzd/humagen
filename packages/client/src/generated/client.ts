@@ -129,6 +129,7 @@ import type {
   ListAuditResponse,
   ListChannelsResponse,
   ListClientBindingsResponse,
+  ListClientLinkedAccountsResponse,
   ListClientsResponse,
   ListCorporaResponse,
   ListDeletionsResponse,
@@ -8950,6 +8951,26 @@ is left out.
     let path = "/api/clients/{id}/bindings";
     path = path.replace("{id}", encodeURIComponent(String(id)));
     return this.rawRequest<ListClientBindingsResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** The GitHub or Slack accounts people in the workspace linked to
+themselves, which this client's users are resolved through before
+its people map. A Slack client lists its own team's. At most 200.
+ */
+  async listClientLinkedAccounts(id: string, options?: RequestOptions): Promise<ListClientLinkedAccountsResponse> {
+    let path = "/api/clients/{id}/accounts";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<ListClientLinkedAccountsResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listClientLinkedAccountsRaw(id: string, options?: RequestOptions): Promise<ApiResponse<ListClientLinkedAccountsResponse>> {
+    let path = "/api/clients/{id}/accounts";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<ListClientLinkedAccountsResponse>("GET", path, {
       ...options,
     });
   }

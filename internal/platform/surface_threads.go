@@ -162,9 +162,7 @@ func (p *Platform) surfaceText(tenant string, c clients.Client, ref SurfaceRef, 
 		who, err := p.People.Get(tenant, subject)
 		return who.Handle, err == nil && who.Handle != ""
 	}}
-	if c.Slack != nil {
-		cx.People = c.Slack.People
-	}
+	cx.People = p.slackPeople(tenant, c)
 	cx.Deferred = p.ownAppBots(tenant, c)
 	out, refused := slackText(text, cx)
 	var tags []threads.Mention

@@ -182,13 +182,13 @@ func TestGitHubPersonUsesOnlyExactVerifiedInstallationMapping(t *testing.T) {
 		bot  bool
 		want string
 	}{{"octocat", false, "ada"}, {"Octocat", false, ""}, {" octocat", false, ""}, {"other", false, ""}, {"octocat", true, ""}} {
-		got := p.surfacePerson(c, wire.NewEvent(wire.Raise{Actor: event.Actor{ID: test.id, Bot: test.bot}}))
+		got := p.surfacePerson(t.Context(), c, wire.NewEvent(wire.Raise{Actor: event.Actor{ID: test.id, Bot: test.bot}}))
 		if got != test.want {
 			t.Fatalf("person(%q,bot=%v)=%q want%q", test.id, test.bot, got, test.want)
 		}
 	}
 	c.Enabled = false
-	if got := p.surfacePerson(c, wire.NewEvent(wire.Raise{Actor: event.Actor{ID: "octocat"}})); got != "" {
+	if got := p.surfacePerson(t.Context(), c, wire.NewEvent(wire.Raise{Actor: event.Actor{ID: "octocat"}})); got != "" {
 		t.Fatal("disabled client mapped person", got)
 	}
 }

@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"slices"
@@ -282,48 +283,11 @@ func (m *Manager) Complete(ctx context.Context, tenant, person, provider, nonce,
 	return m.CompleteFor(ctx, tenant, person, person, provider, nonce, code)
 }
 func (m *Manager) CompleteFor(ctx context.Context, tenant, person, owner, provider, nonce, code string) error {
-	if m == nil {
-		return ErrUnavailable
-	}
-	if !identity(tenant, person) || (owner != person && owner != WorkspaceOwner) || nonce == "" || code == "" || len(code) > 8192 {
-		return ErrInvalid
-	}
-	key := recordKey("pending", owner, provider)
-	item, err := m.records.Lookup(tenant, key)
+	tx, tok, details, err := m.exchange(ctx, tenant, person, owner, provider, nonce, code)
 	if err != nil {
-		return ErrInvalid
+		return err
 	}
-	var pending struct {
-		State       string
-		Transaction transaction
-	}
-	if m.open(tenant, key, item.Value, &pending) != nil || pending.State != nonce || pending.Transaction.Person != person || pending.Transaction.Owner != owner || pending.Transaction.Provider != provider || !m.now().Before(pending.Transaction.Expires) {
-		return ErrInvalid
-	}
-	batch := m.records.Batch()
-	batch.DeleteAt(tenant, key, item.Version)
-	if err = batch.Commit(); err != nil {
-		return ErrInvalid
-	}
-	tx := pending.Transaction
-	config := m.oauth(tx)
-	options := []oauth2.AuthCodeOption{oauth2.VerifierOption(tx.Verifier)}
-	if !tx.Native {
-		options = append(options, oauth2.SetAuthURLParam("resource", tx.Resource))
-	}
-	tok, err := config.Exchange(context.WithValue(ctx, oauth2.HTTPClient, m.client), code, options...)
-	if err != nil {
-		if rejectedToken(err) {
-			m.authFailure(ctx, tenant, tx)
-		}
-		return fmt.Errorf("%w: authorization was refused; connect again", ErrReconnect)
-	}
-	details, valid := nativeToken(tx, tok)
-	if !valid {
-		return ErrReconnect
-	}
-	tx.Verifier = ""
-	key = recordKey("account", owner, provider)
+	key := recordKey("account", owner, provider)
 	scopes, known := grantedScopes(tok)
 	encrypted, err := m.seal(tenant, key, account{Transaction: tx, Token: *tok, Details: details, GrantedScopes: scopes, ScopesKnown: known})
 	if err != nil {
@@ -336,6 +300,87 @@ func (m *Manager) CompleteFor(ctx context.Context, tenant, person, owner, provid
 		m.authRecovered(ctx, tenant, tx)
 	}
 	return nil
+}
+
+// MaxIdentity bounds the identity document CompleteIdentity reads.
+const MaxIdentity = 1 << 20
+
+// CompleteIdentity consumes a person's own state like Complete, then asks
+// the provider who signed in: a GET of path under the provider's Resource
+// with the new token. It returns that response's body and keeps nothing: the
+// token is used once here and never written, so no account is connected.
+// It is for a sign-in that proves an identity and needs no credential.
+func (m *Manager) CompleteIdentity(ctx context.Context, tenant, person, provider, nonce, code, path string) ([]byte, error) {
+	if strings.Contains(path, "://") || strings.HasPrefix(path, "/") || strings.Contains(path, "..") {
+		return nil, ErrInvalid
+	}
+	tx, tok, _, err := m.exchange(ctx, tenant, person, person, provider, nonce, code)
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(tx.Resource, "/")+"/"+path, nil)
+	if err != nil {
+		return nil, ErrInvalid
+	}
+	req.Header.Set("Authorization", "Bearer "+tok.AccessToken)
+	req.Header.Set("Accept", "application/json")
+	resp, err := m.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("%w: the service could not be reached; connect again", ErrReconnect)
+	}
+	defer resp.Body.Close()
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, MaxIdentity+1))
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 || err != nil || len(raw) > MaxIdentity {
+		return nil, fmt.Errorf("%w: the service did not say who signed in; connect again", ErrReconnect)
+	}
+	return raw, nil
+}
+
+// exchange consumes a pending authorization once, before the code is
+// exchanged, and returns the token without storing it.
+func (m *Manager) exchange(ctx context.Context, tenant, person, owner, provider, nonce, code string) (transaction, *oauth2.Token, map[string]string, error) {
+	if m == nil {
+		return transaction{}, nil, nil, ErrUnavailable
+	}
+	if !identity(tenant, person) || (owner != person && owner != WorkspaceOwner) || nonce == "" || code == "" || len(code) > 8192 {
+		return transaction{}, nil, nil, ErrInvalid
+	}
+	key := recordKey("pending", owner, provider)
+	item, err := m.records.Lookup(tenant, key)
+	if err != nil {
+		return transaction{}, nil, nil, ErrInvalid
+	}
+	var pending struct {
+		State       string
+		Transaction transaction
+	}
+	if m.open(tenant, key, item.Value, &pending) != nil || pending.State != nonce || pending.Transaction.Person != person || pending.Transaction.Owner != owner || pending.Transaction.Provider != provider || !m.now().Before(pending.Transaction.Expires) {
+		return transaction{}, nil, nil, ErrInvalid
+	}
+	batch := m.records.Batch()
+	batch.DeleteAt(tenant, key, item.Version)
+	if err = batch.Commit(); err != nil {
+		return transaction{}, nil, nil, ErrInvalid
+	}
+	tx := pending.Transaction
+	config := m.oauth(tx)
+	options := []oauth2.AuthCodeOption{oauth2.VerifierOption(tx.Verifier)}
+	if !tx.Native {
+		options = append(options, oauth2.SetAuthURLParam("resource", tx.Resource))
+	}
+	tok, err := config.Exchange(context.WithValue(ctx, oauth2.HTTPClient, m.client), code, options...)
+	if err != nil {
+		if rejectedToken(err) {
+			m.authFailure(ctx, tenant, tx)
+		}
+		return transaction{}, nil, nil, fmt.Errorf("%w: authorization was refused; connect again", ErrReconnect)
+	}
+	details, valid := nativeToken(tx, tok)
+	if !valid {
+		return transaction{}, nil, nil, ErrReconnect
+	}
+	tx.Verifier = ""
+	return tx, tok, details, nil
 }
 func (m *Manager) oauth(tx transaction) *oauth2.Config {
 	return &oauth2.Config{ClientID: tx.ClientID, ClientSecret: tx.ClientSecret, RedirectURL: m.cfg.RedirectURL, Endpoint: oauth2.Endpoint{TokenURL: tx.TokenURL, AuthStyle: tx.AuthStyle}}

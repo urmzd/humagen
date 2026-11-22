@@ -7,6 +7,7 @@ import (
 
 // ConnectionAuthorization enables OAuth for personal service connections.
 // The encryption key is a reference to 32 random bytes encoded as base64.
+// RedirectURL defaults to server.public_url's /connections/callback.
 type ConnectionAuthorization struct {
 	EncryptionKey *Ref                             `json:"encryption_key"`
 	RedirectURL   string                           `json:"redirect_url"`
@@ -51,7 +52,11 @@ func (c *ConnectionAuthorization) check() error {
 			}
 		}
 	}
+	// An empty redirect_url is server.public_url's /connections/callback.
 	u, err := url.Parse(c.RedirectURL)
+	if c.RedirectURL == "" {
+		u, err = &url.URL{Scheme: "https", Host: "public-url"}, nil
+	}
 	if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Scheme != "https" && (u.Scheme != "http" || (u.Hostname() != "localhost" && u.Hostname() != "127.0.0.1" && u.Hostname() != "::1"))) {
 		return fmt.Errorf("connections: redirect_url must be HTTPS or loopback HTTP")
 	}

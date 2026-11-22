@@ -6348,6 +6348,24 @@ export interface ConnectionPreset {
   /** A confirmed provider rejection requires renewed consent. */
   reconnect_required?: boolean;
   health?: ConnectionHealth;
+  account?: LinkedAccount;
+}
+
+/** One GitHub or Slack user linked to one person in a workspace. The
+id is the surface's stable id for the user (GitHub's numeric user
+id, Slack's user id); the login is for display only.
+ */
+export interface LinkedAccount {
+  surface: "github" | "slack";
+  id: string;
+  /** The Slack team the user signed in from. Empty on GitHub. */
+  team?: string;
+  /** The GitHub login or Slack name at the last sign-in. */
+  login: string;
+  avatar_url?: string;
+  /** The person the account is linked to. */
+  subject: string;
+  linked_at: string;
 }
 
 export interface ConnectionRegistration {
@@ -7209,6 +7227,10 @@ export interface ListClientsResponse {
 
 export interface ListClientBindingsResponse {
   bindings: ClientBinding[];
+}
+
+export interface ListClientLinkedAccountsResponse {
+  accounts: LinkedAccount[];
 }
 
 export interface GetAgentRosterResponse {
