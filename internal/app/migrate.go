@@ -39,7 +39,8 @@ func migrateCmd(args []string, out io.Writer) error {
 		return nil
 	}
 	if args[0] != "sessions" {
-		return errors.New(migrateUsage)
+		fmt.Fprintln(out, migrateUsage)
+		return fmt.Errorf("unknown migration %q", args[0])
 	}
 	return migrateSessions(context.Background(), args[1:], out, os.Getenv)
 }
