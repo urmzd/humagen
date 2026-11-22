@@ -36,6 +36,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-079 | Run and Answer: in a session set to it, the approval agent also answers a question an agent asks a person when the session already settles it, as the person who chose it, and hands them the rest | Implemented: `threads.ApprovalDecide` (`pkg/threads/approval.go`), `internal/platform/approval_questions.go`, the `answer` field and `DescribeQuestion` in `pkg/approve`, `PUT /api/threads/{id}/approval` with `decide`, Answer Questions beside Run in `ApprovalToggle.tsx`, and the judgement on a question's card (`ClarificationCard`). Evidence: `TestRunAndAnswerAnswersAChoiceTheSessionSettles`, `TestRunAndAnswerAnswersAReply`, `TestWhatRunAndAnswerDoesNotSettleWaitsForAPerson`, `TestRunAndAnswerNeverAnswersForSomeoneElse`, `TestRunAndAnswerLeavesWhatSomeoneElseAskedFor`, `TestRunLeavesQuestionsForAPerson`, `TestRunAndAnswerIsAModeAPersonChooses`, `TestApprovalModeIsSetOnItsOwnAndKept`, `TestAQuestionsAnswerIsReadBesideTheDecision`; `approval-toggle.dom.test.tsx`, `ui.test.tsx`. Not run: `pnpm validate:slack` (needs the Slack bench) and a screen check in a running console. |
 | DES-081 | An agent is made goal first and is met on its home: a new agent starts from a searchable list of outcomes (Start from scratch first), is given a name, a shape and a color with its bot drawn as it will be, and opens on a home where it introduces itself, offers jobs to hand it and takes a message addressed to it; its settings are grouped as General, Access, Tools and Behavior, and General shows what it completed this week, how it answers in Slack, Pause and Retire | Implemented: see [DES-081](#des-081-goal-first-agents-a-home-and-grouped-settings). |
 | DES-084 | An agent's health says what is checked and what to do next: one row (status pill, recent pass rate, a How evaluation works icon with the docs, an icon Refresh health that spins while it reads and says when it last read), checks on recent runs beside each eval suite's last result, schedule and Run Now, runs flagged for review linking to the queue, a schedule editor with presets inside the one hour to thirty day bound that says who the schedule runs as, and figures that show a value or an explained dash | Implemented: `AgentHealth.tsx` (`AgentHealth`, `AgentStats`), `evalHealth.ts`, the schedule editor in `Evals.tsx`, `next_run_at` and `created_by_name` on `GET /api/evals` and `flagged` on agent health, words in `copy.agentHealth`, `copy.agentStats` and `copy.evalSchedule`. Composes with #480's health row: one header row with an actions slot, pills, no separators and no explanatory paragraph. Evidence: `TestNextRunCountsFromTheLatestStart`, `TestAgentHealthCountsTheRunsFlaggedForReview`, `TestASuiteListingSaysWhenItsScheduleNextRunsAndForWhom`, `agent-health.dom.test.tsx`, `evalHealth.test.tsx`; before and after captures at 1280 and 390, light and dark, in pull request 482. Pass-rate bars are neutral when a run reached its threshold, warn below it and bad only when it could not run, each labelled by how long ago it ran; the schedule presets wrap rather than scroll at phone width. The refresh glyph turning is the one spinner on the page; it is a control's own state, and the content it refreshes stays on view. |
+| DES-089 | A session has no Side Chat: a second line of questions is a new session that refers to this one | Implemented: `WorkbenchSidechat.tsx`, `sidechat.ts`, the `sidechat` tab id, its header view and its key are removed; `session-context-panel.dom.test.tsx` and `route.test.ts` pass; checked in the browser that More Views and the workbench strip no longer list it |
 | DES-088 | The destination for work an agent starts without being asked is Automations, with a lightning mark, and has no Background tab: a session's background work is a section of that session's Details | Implemented: `Automations.tsx`, the entry in `Sidebar.tsx`, `/automations` in `route.ts` (old `/scheduled` addresses open it), `SessionBackground` in `Background.tsx` shown by `SessionPanel.tsx`; `automations.dom.test.tsx`, `background.dom.test.tsx`, `route.test.ts` and the sidebar tests pass; the page and the sidebar checked in the browser, the Background section by DOM tests only |
 | DES-087 | The composer is flat: the AI notice is in the middle of the footer row, the sentence is the link to the terms, messages that wait show greyed at the end of the conversation with Send now, and the box keeps its placeholder while agents work | Implemented: `NoticeSlotContext` and `queuePlace` in `Composer.tsx`, `ComposerFooter` in `SessionUsage.tsx`, `QueuedMessages` in `packages/web`, `.humagen-composer-footer` in `styles.css`; `composer-notice.dom.test.tsx`, `queued-messages.dom.test.tsx` and `composer-overlay.dom.test.tsx` pass; checked in the browser in a session and on Home, light and dark, at 1280 and 390 wide, with a real run and two waiting messages |
 | DES-085 | Under every composer, one line says the product is AI and can make mistakes, with a Terms link when the workspace's branding names a page of terms | Implemented: `AiNotice` in `Composer.tsx`, `branding.terms_url` in `pkg/spec`, `terms_url` on `GET /api/branding`; `composer-notice.dom.test.tsx`, `pkg/spec` and `internal/httpapi` tests pass; checked in the browser on Home and in a session, light and dark, at 1280 and 390 wide, with and without a terms address |
@@ -1155,9 +1156,7 @@ any. This reverses the first point of DES-030.
   row and is wide enough, the line is in the middle of that row (DES-087).
   Otherwise it is a line of its own under the row, centered: the second line
   under the box that DES-080 allows.
-- Every composer shows it, the Side Chat's too: on a phone, and with the
-  workbench expanded, the Side Chat's is the only composer on view. Side by
-  side on a wide screen, the line is then on view twice.
+- Every composer shows it. No composer has an option to turn it off.
 - The console links to no page unless one is named: the terms a person uses a
   deployment under are its operator's. A deployment or a workspace names its page
   in `branding.terms_url`, an `https` address in plain ASCII; the sentence is
@@ -1174,6 +1173,22 @@ any. This reverses the first point of DES-030.
   desktop width in both themes; with `branding.terms_url` set, the sentence
   links to that address, and an address that is not `https` is refused by the
   spec and never drawn as a link.
+
+### DES-089: No Side Chat
+
+Owner request, 2026-11-21: "remove the side chat". A chat nested in the
+session's panel put one conversation inside another. If a second line of
+questions becomes a feature of its own, it is a thread or a new session that
+refers to the first, not a tab.
+
+- The workbench has no Side Chat tab, the header's More Views has no Side
+  Chat row, and Command ; (Control ;) opens nothing.
+- An old address that names it (`?bench=sidechat`) opens Details.
+- A person who wants a second conversation starts a new session and pastes
+  the first one's link, or uses Fork on a message.
+- Acceptance: More Views lists Artifacts, Search, Background Tasks and
+  Progress; the workbench strip lists Details, Browser, Terminal, Changes and
+  Search where each has something to show.
 
 ### DES-088: Automations, and background work in its session
 
@@ -1214,7 +1229,7 @@ which key DES-080 gives to Send now.
   right who answers, the model and the usage ring. The notice is centered on
   the row, whatever the widths of the two sides.
 - The row measures the composer, not the window. Narrower than 44rem (a
-  phone, a Side Chat, a session beside an open panel), the notice is a line
+  phone, a session beside an open panel), the notice is a line
   of its own under the row, centered.
 - With `branding.terms_url` set, the sentence is the link. No word is added
   for it.
@@ -1225,7 +1240,7 @@ which key DES-080 gives to Send now.
   after a failure or a Stop says why there, with Resume.
 - The box says nothing about keys while agents work: its placeholder does not
   change, and no strip of waiting messages is in it. A composer with no
-  conversation beside it (Home, an agent's page, the Side Chat) keeps the
+  conversation beside it (Home, an agent's page) keeps the
   strip in the box.
 - While a turn of the reader's runs, Enter queues the message behind it and
   Cmd+Enter (Ctrl+Enter) sends it now, which stops the work in flight. With
@@ -2732,45 +2747,13 @@ and the list above the composer after a restore, a delete and a save in the
 editor, and the pane filling the page. Not seen: a refused write and a file
 that cannot be read.
 
-#### Side Chat tab
+#### Side Chat tab (removed)
 
-Side Chat (`WorkbenchSidechat.tsx`, `sidechat.ts`) asks a question about the
-session beside it. A side chat is a private fork of the session
-(`POST /api/threads/{id}/fork`) through its newest saved turn: a finished answer,
-or the message an answer still being written replies to, so a working agent is
-left alone. The fork carries the session's history as read-only context, is
-answered by the session's own agents, and posts nothing in the session. With
-nothing selected the tab is a title and the box, over the reader's earlier side
-chats of the session (`GET /api/threads/{id}/forks`, added for this, `runs:read`,
-at most 50 and without their saved history). The first message starts the fork
-and takes its address (`?bench=sidechat&benchRef=<its id>`), so it opens again
-after a reload, and it is a conversation like any other at `/messages/{id}`.
-The thread is drawn with the shared `Thread`, `AgentMessage` and `Composer`.
-
-Add to Message on a finished answer records it as done by hand (source
-`other`): one record of the question and up to 600 characters of the answer, or
-up to three for a longer answer, each with a key so adding it twice keeps one
-copy. It shows above the session's composer and goes with the reader's next
-message there; pressing it again, or removing the line, takes it back. Nothing
-is posted in the session for them.
-
-Not built: a side chat is not listed under the session's Linked sessions,
-because `POST /api/sessions/{id}/links` takes only a session as its target and
-a fork is a thread without a session identity. A child session was not used
-instead, since it is given none of its parent's history.
-
-Evidence: `workbench-sidechat.dom.test.tsx` covers the registry entry, the empty
-states, the first question (the fork's turn, title and agents, and that nothing
-is posted in the session), reopening from the address, a fork that is not this
-session's, a refused fork, and Add to Message with the list above the composer;
-`TestForksOfListsOnlyTheReadersOwnLiveForksNewestFirst` and
-`internal/httpapi/openapi_test.go` cover the listing. Seen in Chrome against a
-local server with a stand-in model at 1280x800 and 390x844, light and dark:
-empty, the list of earlier side chats, an answer, the same after a reload, the
-answer added and listed above the composer, the pane filling the page, an
-address that names no side chat, and a side chat answered while the session's
-agent worked. Not seen: a refused fork, an answer long enough for three
-records, and an agent's question card inside a side chat.
+Removed on 2026-11-21 (DES-089). A chat nested in a session's panel was a
+second conversation inside the first. A second line of questions is a new
+session that refers to this one: paste its link, or use Fork on a message.
+`GET /api/threads/{id}/forks`, added for the tab, still answers and has no
+caller in the console.
 
 **Search tab** (`WorkbenchSearch.tsx`, `workbenchSearch.ts`). One field finds
 what belongs to the session and opens each thing where it lives. Results are
@@ -2816,8 +2799,7 @@ Terminal and Browser tabs taking a result.
   which opens its run, and Retry where the host can post (`RetryCallContext`):
   it asks the same agent the same brief as the conversation's next message,
   tagging that agent alone (other agents the brief names become plain words).
-  Retry is offered only to the person the run acted for, never in a private
-  side chat (its brief would reach the shared session), and never for a brief
+  Retry is offered only to the person the run acted for, and never for a brief
   too long for one message. A refused post leaves Retry ready again; a sent
   one reads "Asked again". There is no Retry on a single tool call, since no
   route runs one call again.
@@ -3021,12 +3003,11 @@ mark; rows that open a view show a chevron.
 
 The header's view controls are, in order: Details (with how many calls are
 working), Terminal, Changes, Browser and Files, then More Views. More Views
-holds Artifacts, Side Chat (⌘; or Ctrl ;), Search (⌘⇧F or Ctrl Shift F),
+holds Artifacts, Search (⌘⇧F or Ctrl Shift F),
 Background Tasks (this session's Details, where its Background section is:
 DES-088) and Progress (the Activity panel), each with its key printed beside it. A control is pressed
 while its view is open, and pressing it again closes the pane. On a phone
-only Details and More Views show, and More Views holds every view. A reader
-who may not post has no Side Chat.
+only Details and More Views show, and More Views holds every view.
 
 The title is the session's menu (Share, Rename, Move to Project, Archive,
 Delete), opened from the title with a chevron. Rename edits the title in

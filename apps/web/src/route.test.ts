@@ -73,7 +73,6 @@ test("canonical session selections survive copied links", () => {
     { page: "conversation", id: "t-1", panel: "details", bench: "browser" },
     { page: "conversation", id: "t-1", panel: "details", bench: "terminal", expanded: true },
     { page: "conversation", id: "t-1", panel: "details", bench: "changes", benchRef: "src/a b.ts" },
-    { page: "conversation", id: "t-1", panel: "details", bench: "sidechat" },
     { page: "conversation", id: "t-1", panel: "details", bench: "search", benchRef: "pull #42" },
     {
       page: "conversation",

@@ -3,7 +3,6 @@ import type { HumanActivityInput, HumanActivityRecord, ResponseState } from "@hu
 import {
   DiffIcon,
   ListChecksIcon,
-  MessageSquareIcon,
   MonitorIcon,
   SearchIcon,
   TerminalIcon,
@@ -98,14 +97,13 @@ export interface WorkbenchTab extends WorkbenchTabEntry {
   icon: ComponentType<{ size?: number }>;
 }
 
-// What every tab is called and marked with. All six are here from the start,
+// What every tab is called and marked with. All five are here from the start,
 // so a tab's own change touches neither this table nor copy's `workbench.tab`.
 const icons: Record<WorkbenchTabId, ComponentType<{ size?: number }>> = {
   details: ListChecksIcon,
   browser: MonitorIcon,
   terminal: TerminalIcon,
   changes: DiffIcon,
-  sidechat: MessageSquareIcon,
   search: SearchIcon,
 };
 
@@ -152,15 +150,6 @@ const entries: Record<WorkbenchTabId, WorkbenchTabEntry | undefined> = {
       (m) => m.WorkbenchChanges,
     ),
     available: changesAvailable,
-  },
-  // Side chat slot: a chat beside the thread that does not post in it (WorkbenchSidechat.tsx).
-  sidechat: {
-    view: lazyView(
-      () => import("./WorkbenchSidechat.tsx"),
-      (m) => m.WorkbenchSidechat,
-    ),
-    available: (session) => session.canPost,
-    fill: true,
   },
   // Search slot: pull requests, artifacts and tools (WorkbenchSearch.tsx).
   search: {

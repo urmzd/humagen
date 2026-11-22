@@ -505,7 +505,7 @@ test("the header opens Details, Terminal, Changes, Browser and Files, each press
   );
 });
 
-test("More Views holds Artifacts, Side Chat, Search, Background Tasks and Progress, with their keys", async () => {
+test("More Views holds Artifacts, Search, Background Tasks and Progress, with their keys", async () => {
   const { opened } = views();
   fireEvent.click(screen.getByRole("button", { name: words.more }));
   const menu = await screen.findByRole("menu", { name: words.more });
@@ -519,32 +519,31 @@ test("More Views holds Artifacts, Side Chat, Search, Background Tasks and Progre
     "browser",
     "files",
     "artifacts",
-    "sidechat",
     "search",
     "background",
     "progress",
   ]);
-  const side = within(menu).getByRole("menuitem", { name: new RegExp(words.view.sidechat) });
-  assert.match(side.textContent ?? "", /;/);
+  const search = within(menu).getByRole("menuitem", { name: new RegExp(words.view.search) });
+  assert.match(search.textContent ?? "", /F/);
+  // The Side Chat is gone: a second chat is a new session that refers to this one.
+  assert.equal(within(menu).queryByRole("menuitem", { name: /Side Chat/ }), null);
   // Background is the session's own: the row opens a view of this session, and leads nowhere else.
   assert.equal(
     within(menu).getByRole("menuitem", { name: words.view.background }).getAttribute("href"),
     null,
   );
-  fireEvent.click(side);
-  assert.deepEqual(opened, ["sidechat"]);
+  fireEvent.click(search);
+  assert.deepEqual(opened, ["search"]);
 });
 
-test("a reader who may not post gets no Side Chat, and the keys open Side Chat and Search", async () => {
-  views(undefined, ["sidechat"]);
+test("a hidden view is left out of More Views, and the one key opens Search", async () => {
+  views(undefined, ["search"]);
   fireEvent.click(screen.getByRole("button", { name: words.more }));
   const menu = await screen.findByRole("menu", { name: words.more });
-  assert.equal(
-    within(menu).queryByRole("menuitem", { name: new RegExp(words.view.sidechat) }),
-    null,
-  );
+  assert.equal(within(menu).queryByRole("menuitem", { name: new RegExp(words.view.search) }), null);
   const key = { metaKey: true, ctrlKey: false, shiftKey: false, altKey: false };
-  assert.equal(viewShortcut({ ...key, key: ";" }), "sidechat");
+  // Command ; opened the Side Chat. It opens nothing now.
+  assert.equal(viewShortcut({ ...key, key: ";" }), undefined);
   assert.equal(viewShortcut({ ...key, key: "F", shiftKey: true }), "search");
   assert.equal(viewShortcut({ ...key, key: ";", metaKey: false }), undefined);
   assert.equal(viewShortcut({ ...key, key: "k" }), undefined);

@@ -475,8 +475,8 @@ export interface RetryCall {
  * as the conversation's next message. `ask` settles when the host has posted,
  * or refused: a refusal leaves Retry ready to press again, and the host says
  * why. `allows` leaves Retry off a call the host could not post (one too long
- * for a message). Without a host, or where a host provides `null` (a private
- * side chat, another person's answer), a failed call offers no Retry.
+ * for a message). Without a host, or where a host provides `null` (another
+ * person's answer), a failed call offers no Retry.
  */
 export interface RetryCalls {
   ask: (call: RetryCall) => Promise<void>;
