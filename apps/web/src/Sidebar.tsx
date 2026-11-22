@@ -32,6 +32,7 @@ import {
   TrashIcon,
   UserIcon,
   XCircleIcon,
+  ZapIcon,
 } from "@humagen/render-web";
 import { Separator } from "@humagen/render-web/ui/separator";
 import { HumagenMark } from "@humagen/web";
@@ -332,29 +333,25 @@ function SourceLabel({ source }: { source: RowSource }) {
   );
 }
 
-/** A distinct glyph for each status, with the full reason on the badge. */
-const STATE_ICONS = {
-  approval: ShieldIcon,
-  question: MessageSquareIcon,
-  waiting: HourglassIcon,
-  failed: XCircleIcon,
-  working: ClockIcon,
-  alert: BellIcon,
+/**
+ * A row's status as one small dot where the unread dot sits: amber when it
+ * needs you, red when it failed, a soft pulse while it works, grey otherwise.
+ * The reason is the dot's title and is said in words to assistive technology.
+ */
+const STATE_DOT: Record<RowState["tone"], string> = {
+  warn: "bg-aui-warn",
+  bad: "bg-aui-bad",
+  neutral: "bg-aui-muted/70",
 };
 
 function RowStatusBadge({ state }: { state: RowState }) {
-  const Icon = STATE_ICONS[state.kind];
   return (
     <span
       aria-hidden
       data-state={state.kind}
       title={state.text}
-      className="ml-auto inline-flex shrink-0"
-    >
-      <Pill tone={state.tone} size="compact">
-        <Icon size={12} />
-      </Pill>
-    </span>
+      className={`size-2 shrink-0 rounded-full ${STATE_DOT[state.tone]} ${state.kind === "working" ? "motion-safe:animate-pulse" : ""}`}
+    />
   );
 }
 
@@ -507,16 +504,25 @@ function TaskRow({
           >
             {ageText && <span className="shrink-0 whitespace-nowrap">{ageText}</span>}
             <SourceLabel source={source} />
-            {state ? (
-              <RowStatusBadge state={state} />
-            ) : unread ? (
-              <span
-                aria-hidden
-                data-dot="unread"
-                className="ml-auto size-1.5 shrink-0 rounded-full bg-[var(--humagen-unread)]"
-              />
-            ) : null}
           </span>
+          {(state || unread) && (
+            // The status sits in the menu button's column, centered under it, on the second line.
+            <span
+              data-row-status
+              // Centered under the ⋯ button, which is 28px on a mouse so the two never meet.
+              className="absolute right-0.5 bottom-1.5 flex h-4 w-8 items-center justify-center pointer-coarse:bottom-2 pointer-coarse:w-11 [@media(pointer:fine)]:w-7"
+            >
+              {state ? (
+                <RowStatusBadge state={state} />
+              ) : (
+                <span
+                  aria-hidden
+                  data-dot="unread"
+                  className="size-1.5 shrink-0 rounded-full bg-[var(--humagen-unread)]"
+                />
+              )}
+            </span>
+          )}
           <span className="sr-only">, {words.sources[source]}</span>
         </a>
       )}
@@ -537,7 +543,7 @@ function TaskRow({
               align="right"
               label={`Manage ${title}`}
               popup="menu"
-              className={`${rowAction} opacity-0 group-hover/task:opacity-100 group-focus-within/task:opacity-100 focus-visible:opacity-100 aria-expanded:opacity-100 aria-expanded:bg-aui-hover aria-expanded:text-aui-fg [@media(pointer:coarse)]:size-11 ${current || peek.at ? "[@media(pointer:coarse)]:opacity-100" : "[@media(pointer:coarse)]:pointer-events-none [@media(pointer:coarse)]:group-focus-within/task:pointer-events-auto"}`}
+              className={`${rowAction} opacity-0 group-hover/task:opacity-100 group-focus-within/task:opacity-100 focus-visible:opacity-100 aria-expanded:opacity-100 aria-expanded:bg-aui-hover aria-expanded:text-aui-fg [@media(pointer:fine)]:size-7 [@media(pointer:coarse)]:size-11 ${current || peek.at ? "[@media(pointer:coarse)]:opacity-100" : "[@media(pointer:coarse)]:pointer-events-none [@media(pointer:coarse)]:group-focus-within/task:pointer-events-auto"}`}
               button={<EllipsisIcon size={16} />}
             >
               {(close) => (
@@ -1103,8 +1109,8 @@ export function Sidebar({
     },
     {
       to: { page: "automations" } as Route,
-      label: "Scheduled",
-      icon: <CalendarIcon />,
+      label: "Automations",
+      icon: <ZapIcon />,
       show: can("schedules:read"),
       active: here("automations", "schedules"),
     },
@@ -1569,15 +1575,6 @@ export function Sidebar({
                         </div>
                       )}
                     </Popover>
-                  }
-                  count={
-                    view === "archived"
-                      ? lists.archived.length
-                      : loading === "first" && noConversations
-                        ? undefined
-                        : hasMore
-                          ? defaultCopy.sidebar.countMore(recentRows.length)
-                          : recentRows.length
                   }
                 >
                   {view === "archived" ? defaultCopy.sidebar.archived : defaultCopy.sidebar.recent}

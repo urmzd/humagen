@@ -160,7 +160,7 @@ export function projectOrder(rows: ThreadSummary[], others: string[]): string[] 
  * the agents it tags at the start, capitalized, cut at a word under 60
  * characters.
  */
-export function deriveTitle(first: string): string {
+export function deriveTitle(first: string, limit = 60): string {
   const line = first.trim().split("\n")[0] ?? "";
   let words = line.split(/\s+/).filter(Boolean);
   while (words.length > 1 && words[0]!.startsWith("@")) words = words.slice(1);
@@ -168,11 +168,20 @@ export function deriveTitle(first: string): string {
   if (words.length === 1 && words[0]!.startsWith("@")) return words[0]!;
   let title = words.join(" ").replace(/[ ,;:-]+$/, "");
   const runes = [...title];
-  if (runes.length > 60) {
-    let cut = runes.slice(0, 60).join("");
+  if (runes.length > limit) {
+    let cut = runes.slice(0, limit).join("");
     const i = cut.lastIndexOf(" ");
-    if (i > 30) cut = cut.slice(0, i);
+    if (i > limit / 2) cut = cut.slice(0, i);
     title = `${cut.replace(/[ ,;:.-]+$/, "")}…`;
   }
   return title.charAt(0).toUpperCase() + title.slice(1);
+}
+
+/**
+ * A session's placeholder title, the same as the server's runs.SessionTitle:
+ * deriveTitle cut at a word under 40 characters, so a sidebar row shows it
+ * whole until the generated title replaces it.
+ */
+export function placeholderTitle(first: string): string {
+  return deriveTitle(first, 39);
 }

@@ -1,6 +1,5 @@
 import { defaultCopy } from "@humagen/components";
 import { CheckIcon, FolderPlusIcon, ProjectIcon } from "@humagen/render-web";
-import { Inspector } from "@humagen/web";
 import { useEffect, useRef, useState } from "react";
 import { ApiError, api, type ProjectKindSpec, type ProjectView } from "./api.ts";
 import { above, kindWord, matches, titleOf } from "./projects.ts";
@@ -264,35 +263,16 @@ export function ProjectChoices({
   );
 }
 
-/** Choose where new work belongs without leaving or clearing the message. */
-export function ProjectPicker({
-  projects,
-  kinds,
-  value,
-  personalProject,
-  channel,
-  canCreate = true,
-  personalLabel,
-  className = "",
-  locked,
-  onChange,
-  onCreated,
-}: {
-  className?: string;
-  /** Why the session must stay in this project. */
-  locked?: string;
-  /** What the person's own project reads as: "No project" over Home's chat bar. */
-  personalLabel?: string;
-  projects: ProjectView[] | null;
-  kinds?: ProjectKindSpec[];
-  value: string | null;
-  personalProject?: string;
-  channel?: string;
-  canCreate?: boolean;
-  onChange: (name: string) => void;
-  onCreated: (project: ProjectView) => void;
-}) {
-  const [open, setOpen] = useState(false);
+/**
+ * Where a new session is filed, in words: the project's title, "Personal"
+ * for the person's own, or the workspace, and its channel when not general.
+ */
+export function projectLabel(
+  value: string | null,
+  projects: ProjectView[] | null,
+  personalProject?: string,
+  channel?: string,
+): string {
   const chosen = value ? projects?.find((project) => project.name === value) : undefined;
   const project =
     value === null
@@ -300,44 +280,9 @@ export function ProjectPicker({
       : value === ""
         ? words.companyName
         : value === personalProject
-          ? (personalLabel ?? words.personalTitle)
+          ? words.personalTitle
           : chosen
             ? titleOf(chosen)
             : value;
-  const label = channel && channel !== "general" ? `${project} / #${channel}` : project;
-  return (
-    <div className={`humagen-project-picker min-w-0 ${className}`}>
-      <button
-        type="button"
-        aria-label={value === null ? "Select project" : `Select project: ${label}`}
-        aria-haspopup={locked ? undefined : "dialog"}
-        aria-expanded={locked ? undefined : open}
-        aria-disabled={!!locked}
-        title={locked || label}
-        onClick={() => {
-          if (!locked) setOpen(!open);
-        }}
-        // As tall as the controls beside it under the composer.
-        className="inline-flex h-8 pointer-coarse:h-11 max-w-full items-center gap-2 rounded-aui px-1.5 text-aui-sm text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
-      >
-        <ProjectIcon size={18} />
-        <span className="truncate" data-label>
-          {label}
-        </span>
-        {locked && <span className="sr-only">{locked}</span>}
-      </button>
-      <Inspector open={open} title={defaultCopy.chat.chooseProject} onClose={() => setOpen(false)}>
-        <ProjectChoices
-          projects={projects}
-          kinds={kinds}
-          value={value}
-          personalProject={personalProject}
-          canCreate={canCreate}
-          onChange={onChange}
-          onCreated={onCreated}
-          close={() => setOpen(false)}
-        />
-      </Inspector>
-    </div>
-  );
+  return channel && channel !== "general" ? `${project} / #${channel}` : project;
 }

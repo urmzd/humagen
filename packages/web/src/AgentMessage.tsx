@@ -46,6 +46,7 @@ import {
   Children,
   type CSSProperties,
   createContext,
+  Fragment,
   type ReactNode,
   useContext,
   useMemo,
@@ -59,7 +60,7 @@ import { MessageActionRow, messageActionButton } from "./MessageActionRow";
 import { MessageMore } from "./MessageMore";
 import { Reasoning } from "./Reasoning";
 import { TurnChanges } from "./TurnChanges";
-import { type Block, Elapsed, failureLine, interleave, StepGroup, WorkedFor } from "./WorkSteps";
+import { type Block, Elapsed, failureLine, interleave, StepGroup } from "./WorkSteps";
 
 function seconds(ms?: number) {
   if (ms === undefined) return null;
@@ -238,6 +239,50 @@ function UsageChip({ usage }: { usage: Usage }) {
 
 const actionBtn = messageActionButton;
 
+/**
+ * What an agent asked another, as its own words in the conversation: the
+ * agent it turned to, tagged, and the whole of what it gave it. A long ask
+ * shows its first lines and opens to the rest.
+ */
+function CallAsk({ task, copy }: { task: Task; copy: Copy }) {
+  const [open, setOpen] = useState(false);
+  const name = useContext(AgentNameContext)(task.subagent?.name ?? task.title);
+  const asked = callPrompt(task) || callTitle(task);
+  const long = asked.length > 320 || asked.split("\n").length > 4;
+  return (
+    <div data-aui="call-ask" className="flex min-w-0 flex-col items-start gap-1">
+      <p
+        className={`min-w-0 whitespace-pre-wrap break-words text-aui-base text-aui-fg ${long && !open ? "line-clamp-4" : ""}`}
+      >
+        <span className="font-medium text-aui-accent">@{name}</span>
+        {asked ? ` ${asked}` : ""}
+      </p>
+      {long && (
+        <button
+          type="button"
+          aria-expanded={open}
+          onClick={() => setOpen(!open)}
+          className="min-h-6 rounded-aui text-aui-muted text-aui-xs hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent pointer-coarse:min-h-11"
+        >
+          {open ? copy.conversation.askLess : copy.conversation.askMore}
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** Who speaks next, where other agents spoke in between: the agent's mark and name, as on its first words. */
+function Speaker({ agent }: { agent: Turn["agent"] }) {
+  return (
+    <p data-aui="speaker" className="flex min-h-7 min-w-0 items-center gap-x-2 text-aui-sm">
+      <AgentAvatar agent={agent} />
+      <span className="max-w-full break-words font-semibold text-aui-fg">
+        {useContext(AgentNameContext)(agent.name)}
+      </span>
+    </p>
+  );
+}
+
 /** What a call gave the other agent: the prompt in its arguments, else the arguments. */
 export function callPrompt(task: Task): string {
   const raw = task.input?.trim() ?? "";
@@ -291,6 +336,24 @@ export function callTitle(task: Task): string {
 }
 
 /**
+ * A called agent's own thread, drawn where the call happened: what that agent
+ * said and did, in its own order, under its own line. A run is several
+ * threads, the caller's and each agent's it called, and a host that holds
+ * them gives each call its thread here. Null, or a call with no thread yet,
+ * leaves the call as one line.
+ */
+export const CallThreadContext = createContext<((task: Task) => ReactNode) | null>(null);
+
+/**
+ * The name people see for an agent, from the name it is known by: a host
+ * that knows its agents' display names gives them here ("security-reviewer"
+ * is shown "Security Reviewer"). The mark is still drawn from the name the
+ * agent is known by, so a shown name never changes its face. Without a host,
+ * an agent is shown by that name.
+ */
+export const AgentNameContext = createContext<(name: string) => string>((name) => name);
+
+/**
  * A call this turn made to another agent, as one item where it happened:
  * the agent's mark, its name, where it stands and one line of what it was
  * asked. Its name shimmers while it works. The item opens the run it
@@ -311,6 +374,7 @@ function AgentCall({
   const onAction = useContext(ActionContext);
   const stops = useContext(ItemStopsContext);
   const turn = useContext(TurnMetaContext);
+  const nameOf = useContext(AgentNameContext);
   const sub = task.subagent as NonNullable<Task["subagent"]>;
   const stop = stops && turn ? stops.of({ kind: "subagent", turn, task }) : null;
   const stopped = Boolean(stop?.stopped);
@@ -355,7 +419,7 @@ function AgentCall({
           <span className="sr-only">{copy.conversation.callAsked(caller)} </span>
           <AgentInitials name={sub.name} size={18} />
           <span className="shrink-0 font-medium text-aui-fg">
-            {live ? <Shimmer>{sub.name}</Shimmer> : sub.name}
+            {live ? <Shimmer>{nameOf(sub.name)}</Shimmer> : nameOf(sub.name)}
           </span>
           {word && (
             <span
@@ -421,7 +485,7 @@ function AgentCall({
                   : retry === "pending"
                     ? copy.conversation.callFailure.retrying
                     : copy.conversation.callFailure.retried}
-                <span className="sr-only"> {sub.name}</span>
+                <span className="sr-only"> {nameOf(sub.name)}</span>
               </button>
             )}
           </span>
@@ -463,8 +527,8 @@ export interface RetryCall {
  * as the conversation's next message. `ask` settles when the host has posted,
  * or refused: a refusal leaves Retry ready to press again, and the host says
  * why. `allows` leaves Retry off a call the host could not post (one too long
- * for a message). Without a host, or where a host provides `null` (a private
- * side chat, another person's answer), a failed call offers no Retry.
+ * for a message). Without a host, or where a host provides `null` (another
+ * person's answer), a failed call offers no Retry.
  */
 export interface RetryCalls {
   ask: (call: RetryCall) => Promise<void>;
@@ -540,7 +604,6 @@ function MessageActions({
   copy,
   rate,
   regenerate,
-  onReply,
   actions,
   onRedirect,
 }: {
@@ -550,7 +613,6 @@ function MessageActions({
   copy: Copy;
   rate: boolean;
   regenerate: boolean;
-  onReply?: () => void;
 }) {
   const onAction = useContext(ActionContext);
   const itemActions = useContext(ItemActionsContext);
@@ -567,7 +629,6 @@ function MessageActions({
       copy={copy}
       copyLabel={copy.conversation.copyAnswer}
       copyControl={hostCopy}
-      onReply={onReply}
     >
       {rate && (
         <Rating
@@ -634,7 +695,6 @@ export function AgentMessage({
   feedbackPrompt = true,
   capabilities,
   onAskAgent,
-  onReply,
   timestamp,
   actions,
   onRedirect,
@@ -642,6 +702,8 @@ export function AgentMessage({
   itemStops,
   disclaimer = true,
   activity: sayActivity = true,
+  embedded = false,
+  task,
 }: {
   turn: Turn;
   /**
@@ -685,11 +747,24 @@ export function AgentMessage({
   actions?: ReactNode;
   onRedirect?: () => void;
   onAskAgent?: () => void;
-  onReply?: () => void;
+  /**
+   * The stream alone, inside something that already names the agent and says
+   * its state: a called agent's thread in another answer. No header, no
+   * action row, and it is not a message of the conversation (the wave and
+   * the keys that step through messages pass it by).
+   */
+  embedded?: boolean;
+  /**
+   * What the agent was asked, in a few words, beside its name: an agent
+   * another agent called says what it was called for.
+   */
+  task?: ReactNode;
 }) {
   const inherited = useContext(ItemActionsContext);
   const inheritedStops = useContext(ItemStopsContext);
   const stops = itemStops ?? inheritedStops;
+  const nameOf = useContext(AgentNameContext);
+  const who = nameOf(turn.agent.name);
   const statusLine = `**${turn.agent.name}**: ${copy.status[turn.status]}`;
   const final = turn.status === "done";
   const settledTurn = final || turn.status === "failed" || turn.status === "stopped";
@@ -721,6 +796,7 @@ export function AgentMessage({
       if (kind === "pull" || !kinds.has(label)) kinds.set(label, kind);
     return kinds;
   }, [sessionKinds, turn.text]);
+  const callThread = useContext(CallThreadContext);
   const doing = useTurnActivity(turn);
   const activity = sayActivity ? doing : null;
   const orb = turn.detached ? "idle" : turnOrbState(turn);
@@ -739,7 +815,6 @@ export function AgentMessage({
     !turn.detached &&
     lastThought?.at === turn.text.length &&
     lastThought.after === turn.tasks.length;
-  const [traceOpen, setTraceOpen] = useState(true);
   // A review's Ask Follow-up writes in the composer, which a host that may ask this agent has.
   const followUp = capabilities?.followUp ?? onAskAgent !== undefined;
   const block = (b: Block) =>
@@ -759,69 +834,125 @@ export function AgentMessage({
     ) : b.kind === "tools" ? (
       <StepGroup key={b.key} turn={turn} tasks={b.tasks} copy={copy} />
     ) : (
+      // Where the host does not hold the agent's own thread: the call as one line.
       <AgentCall key={b.key} task={b.task} caller={turn.agent.name} turnId={turn.id} copy={copy} />
     );
 
+  // The turn as a conversation between the agents in it. Where this agent
+  // turns to others, what it asked each is its own words, and each agent
+  // answers as a message of its own. Calls next to each other are asked
+  // first, all of them, then answered. The agent is named again when it
+  // speaks after the others, so every word has its speaker.
+  const chat = (list: Block[], handed: boolean): { nodes: ReactNode[]; handed: boolean } => {
+    const nodes: ReactNode[] = [];
+    let after = handed;
+    const threadOf = (b: Block | undefined) =>
+      b?.kind === "call" ? (callThread?.(b.task) ?? undefined) : undefined;
+    for (let i = 0; i < list.length; i++) {
+      const b = list[i] as Block;
+      const thread = threadOf(b);
+      if (after) nodes.push(<Speaker key={`speaker-${b.key}`} agent={turn.agent} />);
+      after = false;
+      if (b.kind !== "call" || !thread) {
+        nodes.push(block(b));
+        continue;
+      }
+      const answers: ReactNode[] = [<Fragment key={b.key}>{thread}</Fragment>];
+      nodes.push(<CallAsk key={`ask-${b.key}`} task={b.task} copy={copy} />);
+      for (let next = list[i + 1]; next?.kind === "call"; next = list[i + 1]) {
+        const beside = threadOf(next);
+        if (!beside) break;
+        nodes.push(<CallAsk key={`ask-${next.key}`} task={next.task} copy={copy} />);
+        answers.push(<Fragment key={next.key}>{beside}</Fragment>);
+        i++;
+      }
+      nodes.push(...answers);
+      after = true;
+    }
+    return { nodes, handed: after };
+  };
+  const before = chat(blocks, false);
+  const lastWords = tail.trim() !== "";
+  const later = chat(rest, before.handed && !lastWords);
+
+  const Frame = embedded ? "div" : "article";
   return (
-    <article
-      aria-label={`${turn.agent.name} message`}
-      aria-busy={busy || undefined}
-      data-turn-id={turn.id}
-      data-aui-still={turn.detached || undefined}
-      // A tap focuses the message, which shows its actions (theme.css).
-      tabIndex={-1}
-      // Flat: the reply runs the full width of the column, under one quiet line naming who said it.
-      className="group/message aui-fade-up flex min-w-0 scroll-mt-4 flex-col gap-2"
+    <Frame
+      {...(embedded
+        ? { "data-aui": "thread-stream", className: "flex min-w-0 flex-col gap-2" }
+        : {
+            "aria-label": `${who} message`,
+            "aria-busy": busy || undefined,
+            "data-turn-id": turn.id,
+            "data-aui-still": turn.detached || undefined,
+            // A tap focuses the message, which shows its actions (theme.css).
+            tabIndex: -1,
+            // Flat: the reply runs the full width of the column, under one quiet line naming who said it.
+            className: "group/message aui-fade-up flex min-w-0 scroll-mt-4 flex-col gap-2",
+          })}
     >
       <div className="flex min-w-0 flex-col gap-2">
-        <header className="flex min-h-7 min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-aui-sm">
-          <StoppableMark agent={turn.agent.name} state={orb} stop={stop} copy={copy}>
-            <AgentAvatar agent={turn.agent} state={orb} />
-          </StoppableMark>
-          {onAskAgent ? (
-            <button
-              type="button"
-              className="min-h-6 pointer-coarse:min-h-11 max-w-full break-words rounded-aui text-left font-semibold text-aui-fg hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent"
-              aria-label={copy.conversation.askAgent(turn.agent.name)}
-              onClick={onAskAgent}
-            >
-              {turn.agent.name}
-            </button>
-          ) : (
-            <span className="max-w-full break-words font-semibold text-aui-fg">
-              {turn.agent.name}
+        {!embedded && (
+          <header className="flex min-h-7 min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-aui-sm">
+            <StoppableMark agent={turn.agent.name} state={orb} stop={stop} copy={copy}>
+              <AgentAvatar agent={turn.agent} state={orb} />
+            </StoppableMark>
+            {onAskAgent ? (
+              <button
+                type="button"
+                className="min-h-6 pointer-coarse:min-h-11 max-w-full break-words rounded-aui text-left font-semibold text-aui-fg hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent"
+                aria-label={copy.conversation.askAgent(who)}
+                onClick={onAskAgent}
+              >
+                {who}
+              </button>
+            ) : (
+              <span className="max-w-full break-words font-semibold text-aui-fg">{who}</span>
+            )}
+            {task && <span className="min-w-0 truncate text-aui-muted text-aui-xs">{task}</span>}
+            <span className="flex min-w-0 items-center gap-1.5 text-aui-2xs text-aui-muted">
+              {activity ? (
+                <ShimmerVerb className="truncate">{activity}</ShimmerVerb>
+              ) : turn.status !== "done" && (sayActivity || !busy) ? (
+                <>
+                  <span aria-hidden className={`size-1.5 rounded-full ${dot[turn.status]}`} />
+                  <span>{copy.status[turn.status]}</span>
+                </>
+              ) : null}
             </span>
-          )}
-          <span className="flex min-w-0 items-center gap-1.5 text-aui-2xs text-aui-muted">
-            {activity ? (
-              <ShimmerVerb className="truncate">{activity}</ShimmerVerb>
-            ) : turn.status !== "done" && (sayActivity || !busy) ? (
-              <>
-                <span aria-hidden className={`size-1.5 rounded-full ${dot[turn.status]}`} />
-                <span>{copy.status[turn.status]}</span>
-              </>
-            ) : null}
-          </span>
-          {timestamp && (
-            <span className="text-aui-xs text-aui-muted opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100 motion-reduce:transition-none pointer-coarse:opacity-100">
-              {timestamp}
-            </span>
-          )}
-          {/* The agent's own Stop, in words at the top of its answer, beside the mark that also stops it. */}
-          {stop && (working(orb) || stop.pending) && (
-            <span className="ml-auto">
-              <ItemStopControl
-                stop={{ what: turn.agent.name, onStop: stop.onStop, pending: stop.pending }}
-                words={stopWords(copy)}
-              />
-            </span>
-          )}
-          {/* Announce state changes, not every streamed token. */}
-          <output className="sr-only">{copy.status[turn.status]}</output>
-        </header>
+            {timestamp && (
+              <span className="text-aui-xs text-aui-muted opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100 motion-reduce:transition-none pointer-coarse:opacity-100">
+                {timestamp}
+              </span>
+            )}
+            {/* The agent's own Stop, in words at the top of its answer, beside the mark that also stops it. */}
+            {stop && (working(orb) || stop.pending) && (
+              <span className="ml-auto">
+                <ItemStopControl
+                  stop={{ what: who, onStop: stop.onStop, pending: stop.pending }}
+                  words={stopWords(copy)}
+                />
+              </span>
+            )}
+            {/* Announce state changes, not every streamed token. */}
+            <output className="sr-only">{copy.status[turn.status]}</output>
+          </header>
+        )}
         {turn.reasoning && !turn.thoughts?.length && (
           <Reasoning text={turn.reasoning} streaming={reasoningLive} />
         )}
+        {/* Before its first word, step or thought, a working answer says what it is doing,
+            so a turn never sits empty under its name. */}
+        {busy &&
+          !turn.detached &&
+          !turn.text &&
+          turn.tasks.length === 0 &&
+          !turn.thoughts?.length &&
+          !turn.reasoning && (
+            <p data-aui="turn-starting" className="text-aui-muted text-aui-sm">
+              <ShimmerVerb>{doing ?? copy.status.working}</ShimmerVerb>
+            </p>
+          )}
         <ItemActionsContext.Provider value={itemActions ?? inherited}>
           <ItemStopsContext.Provider value={stops}>
             <GitHubRefWordsContext.Provider value={copy.conversation.githubRef}>
@@ -829,15 +960,9 @@ export function AgentMessage({
                 <TurnMetaContext.Provider value={turn}>
                   <SuppressContext.Provider value={suppressed}>
                     <div className="aui-stack">
-                      {settledTurn && blocks.length > 0 && (
-                        <WorkedFor
-                          ms={turn.durationMs}
-                          open={traceOpen}
-                          onToggle={() => setTraceOpen((o) => !o)}
-                          copy={copy}
-                        />
-                      )}
-                      {(!settledTurn || traceOpen) && blocks.map(block)}
+                      {/* What happened, in the order it happened, before the last words. */}
+                      {before.nodes}
+                      {before.handed && lastWords && <Speaker agent={turn.agent} />}
                       <TurnView
                         turn={{ ...turn, text: tail }}
                         copy={copy}
@@ -848,7 +973,7 @@ export function AgentMessage({
                       {settledTurn && turn.needsConnection?.length ? (
                         <ConnectCards needs={turn.needsConnection} copy={copy} />
                       ) : null}
-                      {rest.map(block)}
+                      {later.nodes}
                       {turn.status === "stopped" && turn.stop && (
                         <StopBanner
                           turnId={turn.id}
@@ -864,14 +989,13 @@ export function AgentMessage({
               </GitHubRefKindsContext.Provider>
             </GitHubRefWordsContext.Provider>
           </ItemStopsContext.Provider>
-          {(settledTurn || actions) && (
+          {!embedded && (settledTurn || actions) && (
             <FeedbackPromptContext.Provider value={feedbackPrompt}>
               <MessageActions
                 turn={turn}
                 copy={copy}
                 rate={final && capabilities?.feedback !== false}
                 regenerate={final && capabilities?.regenerate !== false}
-                onReply={settledTurn ? onReply : undefined}
                 actions={actions}
                 onRedirect={final ? onRedirect : undefined}
               />
@@ -884,7 +1008,7 @@ export function AgentMessage({
           </p>
         )}
       </div>
-    </article>
+    </Frame>
   );
 }
 

@@ -723,13 +723,22 @@ export function SkillsLibrary({
                   {dirty ? copy.changes : copy.clean}
                 </Badge>
               </header>
-              <Tabs value={tab} onValueChange={(value) => locate(value as typeof tab)}>
-                <TabsList variant="line">
+              {/* A skill's sections are a list beside its content, as every item's are: never a second row of tabs. */}
+              <Tabs
+                orientation="vertical"
+                value={tab}
+                onValueChange={(value) => locate(value as typeof tab)}
+                className="gap-6 max-md:flex-col md:gap-10"
+              >
+                <TabsList
+                  variant="line"
+                  className="h-fit shrink-0 items-stretch max-md:w-full max-md:flex-row max-md:overflow-x-auto md:w-40 md:flex-col"
+                >
                   <TabsTrigger value="overview">{copy.overview}</TabsTrigger>
                   <TabsTrigger value="contents">{copy.contents}</TabsTrigger>
                   <TabsTrigger value="versions">{copy.versions}</TabsTrigger>
                 </TabsList>
-                <TabsContent value="overview" className="space-y-6 pt-4">
+                <TabsContent value="overview" className="min-w-0 flex-1 space-y-6">
                   <p className="max-w-[70ch] text-sm leading-6">
                     {selected?.description || definition.description}
                   </p>
@@ -779,7 +788,7 @@ export function SkillsLibrary({
                     </section>
                   )}
                 </TabsContent>
-                <TabsContent value="contents" className="pt-4">
+                <TabsContent value="contents" className="min-w-0 flex-1">
                   <FileBrowser
                     paths={files.map((file) => file.path)}
                     selected={path}
@@ -906,7 +915,7 @@ export function SkillsLibrary({
                     <p className="mt-3 text-sm text-muted-foreground">{copy.readOnly}</p>
                   )}
                 </TabsContent>
-                <TabsContent value="versions" className="space-y-6 pt-4">
+                <TabsContent value="versions" className="min-w-0 flex-1 space-y-6">
                   <ul className="divide-y divide-border">
                     {history.map((row) => (
                       <li

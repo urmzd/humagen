@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { Automations } from "./Automations.tsx";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { SessionBackground } from "./Background.tsx";
 import { stubFetch } from "./dom.ts";
 
 afterEach(cleanup);
@@ -55,47 +55,43 @@ const task = {
   ended_at: "2026-11-20T09:30:00Z",
 };
 
-const page = (onConversation: (id: string) => void = () => {}) =>
-  render(
-    <Automations
-      schedules={[]}
-      agents={[]}
-      projects={[]}
-      can={() => true}
-      onChanged={() => {}}
-      onSchedule={() => {}}
-      tab="background"
-      onTab={() => {}}
-      onConversation={onConversation}
-    />,
-  );
+const section = (session = "s-asked", version: unknown = 0) =>
+  render(<SessionBackground session={session} version={version} />);
 
-test("Background lists watches, goals and tasks under the Scheduled tabs, and opens where each runs", async () => {
+test("a session's Details lists the background work that session carries, running first, and no other session's", async () => {
+  const other = {
+    ...task,
+    id: "bg_9",
+    text: "another session's task",
+    session: "s-x",
+    thread: "s-y",
+  };
   const { restore } = stubFetch({
-    "GET /api/me/background": () => ({ items: [watch, goal, task] }),
+    "GET /api/me/background": () => ({ items: [task, other, watch, goal] }),
   });
-  const opened: string[] = [];
   try {
-    page((id) => opened.push(id));
-    assert.ok(screen.getByRole("tab", { name: "Background", selected: true }));
-    assert.ok(screen.getByRole("tab", { name: "Schedules", selected: false }));
-    assert.equal(screen.queryByRole("button", { name: "New Schedule" }), null);
-    await waitFor(() => assert.ok(screen.getByText("the release workflow on main passes")));
-    assert.ok(screen.getByText("Every 15m"));
-    assert.equal(screen.getAllByText(/^Stops in (19|20) hours$/).length, 2);
-    assert.ok(screen.getByText(/^Next in 1[12] minutes$/));
-    assert.ok(screen.getByText("Turn 2 of 10"));
-    assert.ok(screen.getByText("Working"));
-    assert.ok(screen.getByText("Found 12 callers"));
-    assert.ok(screen.getByText("Done"));
-    fireEvent.click(screen.getByText("find every caller of Open"));
-    assert.deepEqual(opened, ["s-task"]);
+    // The watch was asked for here, the goal runs here; the task ran in a session of its own.
+    section("s-asked");
+    const list = await screen.findByRole("region", { name: "Background" });
+    const rows = within(list).getAllByTestId("details-background");
+    assert.deepEqual(
+      rows.map((r) => r.dataset.state),
+      ["active", "active", "done"],
+    );
+    assert.ok(within(list).getByText("the release workflow on main passes"));
+    assert.ok(
+      within(list).getByText(/Watch · lead · Every 15m · Next in 1[12] minutes · Stops in/),
+    );
+    assert.ok(within(list).getByText(/Goal · lead · Turn 2 of 10/));
+    assert.ok(within(list).getByText("Working"));
+    assert.ok(within(list).getByText("Done"));
+    assert.equal(within(list).queryByText("another session's task"), null);
   } finally {
     restore();
   }
 });
 
-test("Stop ends one still running, and only those have a menu", async () => {
+test("Stop is on the row of work still running, and only there", async () => {
   const { seen, restore } = stubFetch({
     "GET /api/me/background": () => ({ items: [watch, task] }),
     "POST /api/me/background/bg_1/stop": () => ({
@@ -105,35 +101,55 @@ test("Stop ends one still running, and only those have a menu", async () => {
     }),
   });
   try {
-    page();
-    await waitFor(() => assert.ok(screen.getByText("the release workflow on main passes")));
-    assert.equal(
-      screen.queryByRole("button", { name: "More for find every caller of Open" }),
-      null,
-    );
+    section("s-asked");
+    await screen.findByText("the release workflow on main passes");
+    assert.equal(screen.queryByRole("button", { name: "Stop: find every caller of Open" }), null);
     fireEvent.click(
-      screen.getByRole("button", { name: "More for the release workflow on main passes" }),
+      screen.getByRole("button", { name: "Stop: the release workflow on main passes" }),
     );
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Stop" }));
     await waitFor(() => assert.ok(screen.getByText("Stopped")));
     assert.ok(seen.some((s) => s.method === "POST" && s.path === "/api/me/background/bg_1/stop"));
+    assert.equal(screen.queryByRole("button", { name: /^Stop: / }), null);
   } finally {
     restore();
   }
 });
 
-test("Background says when there is none, and offers Retry when it cannot be read", async () => {
+test("a session with no background work has no Background section, also when it cannot be read", async () => {
   let fail = true;
   const { restore } = stubFetch({
     "GET /api/me/background": () =>
-      fail ? new Response(JSON.stringify({ error: "down" }), { status: 500 }) : { items: [] },
+      fail ? new Response(JSON.stringify({ error: "down" }), { status: 500 }) : { items: [task] },
   });
   try {
-    page();
-    await waitFor(() => assert.ok(screen.getByText("Background work could not be loaded")));
+    const { container, rerender } = section("s-none", 0);
+    await new Promise((done) => setTimeout(done, 20));
+    assert.equal(container.textContent, "");
     fail = false;
-    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
-    await waitFor(() => assert.ok(screen.getByText("No background work")));
+    rerender(<SessionBackground session="s-none" version={1} />);
+    await new Promise((done) => setTimeout(done, 20));
+    assert.equal(container.textContent, "", "another session's work is not listed here");
+  } finally {
+    restore();
+  }
+});
+
+test("the section is read again as the session's runs start and end, so an ended task stops offering Stop", async () => {
+  let ended = false;
+  const { restore } = stubFetch({
+    "GET /api/me/background": () => ({
+      items: [
+        ended ? { ...watch, state: "done", result: "Deploy is green", next: undefined } : watch,
+      ],
+    }),
+  });
+  try {
+    const { rerender } = section("s-asked", 0);
+    await screen.findByRole("button", { name: "Stop: the release workflow on main passes" });
+    ended = true;
+    rerender(<SessionBackground session="s-asked" version={1} />);
+    await waitFor(() => assert.ok(screen.getByText("Done")));
+    assert.equal(screen.queryByRole("button", { name: /^Stop: / }), null);
   } finally {
     restore();
   }
@@ -145,42 +161,4 @@ test("durations read as a person writes them", async () => {
   assert.equal(span("1h0m0s"), "1h");
   assert.equal(span("1h30m0s"), "1h30m");
   assert.equal(span("24h0m0s"), "24h");
-});
-
-test("the list is read again when a run starts or ends, so an ended task stops offering Stop", async () => {
-  let ended = false;
-  const { restore } = stubFetch({
-    "GET /api/me/background": () => ({
-      items: [
-        ended ? { ...watch, state: "done", result: "Deploy is green", next: undefined } : watch,
-      ],
-    }),
-  });
-  const props = {
-    schedules: [],
-    agents: [],
-    projects: [],
-    can: () => true,
-    onChanged: () => {},
-    onSchedule: () => {},
-    tab: "background" as const,
-    onTab: () => {},
-  };
-  try {
-    const { rerender } = render(<Automations {...props} tick={0} />);
-    await waitFor(() =>
-      assert.ok(
-        screen.getByRole("button", { name: "More for the release workflow on main passes" }),
-      ),
-    );
-    ended = true;
-    rerender(<Automations {...props} tick={1} />);
-    await waitFor(() => assert.ok(screen.getByText("Done")));
-    assert.equal(
-      screen.queryByRole("button", { name: "More for the release workflow on main passes" }),
-      null,
-    );
-  } finally {
-    restore();
-  }
 });

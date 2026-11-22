@@ -502,7 +502,7 @@ export interface Turn {
   detached?: boolean;
   usage?: Usage;
   handoff?: Handoff;
-  /** Wall time so far; a finished plan is titled with it ("Worked for 12s"). */
+  /** Wall time so far; Slack's finished plan is titled with it ("Worked for 12s"). */
   durationMs?: number;
   /** Deep link to the full session, if the host has one. */
   sessionUrl?: string;

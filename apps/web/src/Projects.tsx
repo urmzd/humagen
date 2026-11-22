@@ -47,8 +47,9 @@ import {
   type Revision,
   type ScheduleView,
 } from "./api.ts";
-import { FilterSelect, ItemCard, itemGrid, Tag } from "./cards.tsx";
+import { FilterSelect, itemGrid, Tag } from "./cards.tsx";
 import { inWords, presets } from "./cron.ts";
+import { DataTable } from "./DataTable.tsx";
 import { ProjectPeople } from "./ProjectTabs.tsx";
 import {
   cardsOf,
@@ -241,18 +242,41 @@ export function ProjectsPage({
       ) : cards.length === 0 ? (
         <output className="block text-aui-sm text-aui-muted">{words.noMatch}</output>
       ) : (
-        <ul aria-label={words.title} className={grid}>
-          {cards.map((p) => (
-            <li key={p.name} className="min-w-0">
-              <ProjectCard
-                project={p}
-                pinned={pinned.includes(p.name)}
-                onPin={onPin}
-                onOpen={() => onOpen(p.name)}
-              />
-            </li>
-          ))}
-        </ul>
+        <DataTable
+          label={words.title}
+          rows={cards}
+          rowKey={(p) => p.name}
+          columns={[
+            {
+              name: "Project",
+              cell: (p) => (
+                <span className="flex min-w-0 items-center gap-3">
+                  {pinned.includes(p.name) ? (
+                    <span role="img" aria-label={words.pinned} className="inline-flex shrink-0">
+                      <PinIcon size={14} fill="currentColor" />
+                    </span>
+                  ) : (
+                    <FolderIcon size={16} className="shrink-0 text-aui-muted" />
+                  )}
+                  <span className="truncate">{titleOf(p)}</span>
+                  {/* A personal project is always its owner's alone, so it does not say so. */}
+                  {isPrivate(p) && !p.personal_owner && <Tag>{words.private}</Tag>}
+                </span>
+              ),
+            },
+            {
+              name: "Updated",
+              cell: (p) => <time dateTime={lastActive(p)}>{ago(lastActive(p))}</time>,
+            },
+          ]}
+          link={(p) => ({ href: projectHref(p.name), onOpen: () => onOpen(p.name) })}
+          control={
+            onPin
+              ? (p) => <ProjectMenu project={p} pinned={pinned.includes(p.name)} onPin={onPin} />
+              : undefined
+          }
+          controlLabel="More"
+        />
       )}
       <Sheet open={creating} onOpenChange={(next) => !next && setCreating(false)}>
         <SheetContent
@@ -288,62 +312,36 @@ const grid = itemGrid;
 /** The cards that stand in for the grid while it loads. */
 const LOADING_CARDS = ["a", "b", "c", "d", "e", "f"];
 
-/**
- * One project as the shared card: its title, which opens it, a folder mark (a
- * pin once pinned), when something last happened in it at the top right,
- * Private when only one person reads it, and Pin or Unpin in its ⋯ menu.
- */
-function ProjectCard({
+/** A project's ⋯ menu: Pin or Unpin, with a note when that fails. */
+function ProjectMenu({
   project,
   pinned,
   onPin,
-  onOpen,
 }: {
   project: ProjectView;
   pinned: boolean;
-  onPin?: (project: string, pinned: boolean) => Promise<void>;
-  onOpen: () => void;
+  onPin: (project: string, pinned: boolean) => Promise<void>;
 }) {
-  const title = titleOf(project);
-  const when = lastActive(project);
   const { flash, say, clear } = useFlash();
   const pin = () => {
     clear();
-    onPin?.(project.name, !pinned).catch(() =>
+    onPin(project.name, !pinned).catch(() =>
       say(pinned ? defaultCopy.pins.unpinFailed : defaultCopy.pins.pinFailed, true),
     );
   };
   return (
-    <div className="relative h-full min-w-0">
-      <ItemCard
-        title={title}
-        href={projectHref(project.name)}
-        onOpen={onOpen}
-        mark={
-          pinned ? (
-            <PinIcon size={14} fill="currentColor" aria-label={words.pinned} />
-          ) : (
-            <FolderIcon size={16} className="text-aui-muted" />
-          )
-        }
-        time={<time dateTime={when}>{words.updated(ago(when))}</time>}
-        // A personal project is always its owner's alone, so it does not say so.
-        facts={
-          isPrivate(project) && !project.personal_owner ? <Tag>{words.private}</Tag> : undefined
-        }
-        menu={
-          onPin
-            ? [
-                {
-                  label: pinned ? defaultCopy.pins.unpinProject : defaultCopy.pins.pinProject,
-                  onSelect: pin,
-                },
-              ]
-            : undefined
-        }
+    <span className="relative inline-flex">
+      <MoreMenu
+        label={`More for ${titleOf(project)}`}
+        items={[
+          {
+            label: pinned ? defaultCopy.pins.unpinProject : defaultCopy.pins.pinProject,
+            onSelect: pin,
+          },
+        ]}
       />
       <FlashNote flash={flash} align="right" />
-    </div>
+    </span>
   );
 }
 

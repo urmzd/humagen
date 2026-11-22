@@ -145,6 +145,11 @@ body {
   box-shadow: var(--humagen-bevel);
 }
 
+/* A person's own message: one flat fill, with no edge and no bevel, so only its words catch the eye. */
+.humagen-said {
+  background: var(--aui-hover);
+}
+
 /*
  * The sidebar's glass (aui-chrome in the theme). On a phone it is a drawer
  * over the page, square at the top, edged by a neutral hairline there.
@@ -197,6 +202,14 @@ body {
     --aui-chrome-bg: color-mix(in oklab, var(--humagen-plane) 90%, transparent);
     --aui-chrome-solid: var(--humagen-plane);
   }
+}
+
+/*
+ * The sidebar sits on the frame, so it draws no edge of its own: the chrome's
+ * highlight along its top read as a stray line over the sidebar.
+ */
+.humagen-sidebar {
+  box-shadow: none;
 }
 
 /* A header that sticks while the page scrolls under it: glass over the page. */
@@ -1021,7 +1034,29 @@ body {
 
 
 /* Composer controls adapt to their own column, including beside Details. */
-.humagen-composer-container { container: composer / inline-size; }
+.humagen-composer-container,
+.humagen-composer-placeholder { container: composer / inline-size; }
+/*
+ * The row under the bar: where the session runs on the left, who answers on
+ * the right, and the AI notice in the middle. A composer too narrow for the
+ * three on one line puts the notice on a line of its own under them.
+ */
+.humagen-composer-footer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "start end" "notice notice";
+}
+.humagen-composer-footer > [data-layer="composer-footer-start"] { grid-area: start; justify-self: start; }
+.humagen-composer-footer > [data-layer="composer-footer-end"] { grid-area: end; justify-self: end; }
+.humagen-composer-footer > [data-layer="composer-footer-notice"] { grid-area: notice; justify-self: center; }
+@container composer (min-width: 44rem) {
+  .humagen-composer-footer {
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    grid-template-areas: "start notice end";
+  }
+  /* The notice is in the row, so its own line is not kept free. */
+  [data-layer="composer-placeholder-notice"] { display: none; }
+}
 .humagen-composer-bar { flex-wrap: wrap; }
 .humagen-composer-input { min-width: 0; }
 @container composer (max-width: 36rem) {

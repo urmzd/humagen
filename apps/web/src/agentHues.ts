@@ -31,6 +31,7 @@ let lookup:
  */
 export interface AgentLook {
   display_name?: string;
+  character?: string;
   shape?: string;
   face?: string;
   finish?: string;

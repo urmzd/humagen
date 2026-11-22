@@ -1,5 +1,5 @@
 import { defaultCopy } from "@humagen/components";
-import { PlusIcon, SearchIcon } from "@humagen/render-web";
+import { CheckIcon, SearchIcon } from "@humagen/render-web";
 import {
   Sheet,
   SheetContent,
@@ -39,6 +39,7 @@ import {
 import { GitHubRules } from "./GitHubRules.tsx";
 import { InstalledClientSetup } from "./InstalledClientSetup.tsx";
 import { href, type Route } from "./route.ts";
+import { SplitButton } from "./SplitButton.tsx";
 import { AddToolServer, ToolList, YourToolServers } from "./ToolServers.tsx";
 import { credentialWords, hostOf, withoutToolServer } from "./toolServers.ts";
 import {
@@ -408,15 +409,17 @@ export function Connections({
   const selectConnection = useCallback((id?: string) => {
     if (selectedRef.current === id) return;
     if (id) {
-      // Focus goes back to what opened the sheet: the row's button, or its ⋯
-      // button when a menu item did (the menu hands focus back to it first).
+      // Focus goes back to what opened the sheet: the row's button, or, when a
+      // menu's item did, the arrow that opened that menu.
       const active = document.activeElement;
+      const menu =
+        active instanceof HTMLElement ? active.closest<HTMLElement>('[role="menu"]') : null;
+      const trigger = menu?.id
+        ? document.querySelector<HTMLElement>(`[aria-controls="${CSS.escape(menu.id)}"]`)
+        : null;
       sheetOpener.current =
-        active instanceof HTMLElement &&
-        active !== document.body &&
-        !active.closest('[role="menu"]')
-          ? active
-          : null;
+        trigger ??
+        (active instanceof HTMLElement && active !== document.body && !menu ? active : null);
     }
     selectedRef.current = id;
     reviewRequest.current++;
@@ -793,6 +796,46 @@ export function Connections({
     return <p className="text-aui-sm text-aui-muted">{reason}</p>;
   };
 
+  // A row's one control. Once the item is the person's, its status is the control
+  // ("Connected", "Installed"): pressing it manages it, and its arrow holds the rest
+  // (the row's own action, such as Review Tools, then Remove). Before that, the verb that
+  // makes it theirs (Connect, Enable, Install), with any other choices under its arrow.
+  const rowControl = (it: Item) => {
+    const choices = it.menu.map((m) => ({
+      label: m.label,
+      onSelect: m.run,
+      destructive: m.destructive,
+      disabled: busy && m.destructive,
+    }));
+    const manage = () => (it.go ? it.go() : open(it.id));
+    if (it.pill?.tone === "ok")
+      return (
+        <SplitButton
+          label={it.pill.text}
+          icon={<CheckIcon size={14} aria-hidden />}
+          onClick={manage}
+          menuLabel={`More for ${it.name}`}
+          choices={[
+            ...(it.action
+              ? [{ label: it.action.label, onSelect: it.action.run, disabled: it.action.disabled }]
+              : [{ label: "Manage", onSelect: manage }]),
+            ...choices,
+          ]}
+        />
+      );
+    if (it.action)
+      return (
+        <SplitButton
+          label={it.action.label}
+          onClick={it.action.run}
+          disabled={it.action.disabled}
+          menuLabel={`More for ${it.name}`}
+          choices={choices}
+        />
+      );
+    return choices.length > 0 ? <MoreMenu items={choices} label={`More for ${it.name}`} /> : null;
+  };
+
   const rows = (label: string, shown: Item[]) => (
     <ul
       aria-label={label}
@@ -835,63 +878,20 @@ export function Connections({
             In a column narrower than the group it wraps inside the row, the status first, so the
             menu still ends the row beside its action.
           */}
-          {(it.pill || it.action || it.menu.length > 0) && (
-            <span
-              className={
-                scope === "apps"
-                  ? "ml-auto flex max-w-full shrink-0 flex-wrap items-center justify-end gap-x-3 gap-y-1"
-                  : "contents"
-              }
-            >
-              {it.pill && (
-                <span className="relative z-10 shrink-0">
-                  <Pill tone={it.pill.tone}>{it.pill.text}</Pill>
-                </span>
-              )}
-              {/* The action and its menu stay on one line; elsewhere they are plain row items. */}
-              <span
-                className={
-                  scope === "apps" ? "flex shrink-0 items-center gap-x-3 empty:hidden" : "contents"
-                }
-              >
-                {it.action &&
-                  (scope !== "apps" && ADDS.has(it.action.label) ? (
-                    <button
-                      type="button"
-                      aria-label={it.action.label}
-                      title={`${it.action.label} ${it.name}`}
-                      disabled={it.action.disabled}
-                      onClick={it.action.run}
-                      className="relative z-10 inline-flex size-8 shrink-0 items-center justify-center rounded-aui text-aui-muted transition-colors hover:bg-aui-bg hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent disabled:opacity-50 pointer-coarse:size-11"
-                    >
-                      <PlusIcon size={16} />
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      className={`${button} relative z-10 shrink-0`}
-                      disabled={it.action.disabled}
-                      onClick={it.action.run}
-                    >
-                      {it.action.label}
-                    </button>
-                  ))}
-                {it.menu.length > 0 && (
-                  <span className="relative z-10 shrink-0">
-                    <MoreMenu
-                      items={it.menu.map((m) => ({
-                        label: m.label,
-                        onSelect: m.run,
-                        destructive: m.destructive,
-                        disabled: busy && m.destructive,
-                      }))}
-                      label={`More for ${it.name}`}
-                    />
-                  </span>
-                )}
-              </span>
-            </span>
-          )}
+          {/*
+            One control at the row's end, as a person reads it: a verb to do the next thing
+            (Connect, Enable, Install), or, once it is theirs, "Connected" with what else they
+            can do (Manage, Replace, Remove) under its arrow. A status that needs attention
+            stays beside it; "Not enabled" beside an Enable says nothing more.
+          */}
+          <span className="relative z-10 ml-auto flex max-w-full shrink-0 flex-wrap items-center justify-end gap-x-3 gap-y-1">
+            {/* A status that is not the control: why it is off, or what needs attention. "Not
+                enabled" beside Enable says nothing more, so it is left out there. */}
+            {it.pill && it.pill.tone !== "ok" && !(it.action && it.pill.text === "Not enabled") && (
+              <Pill tone={it.pill.tone}>{it.pill.text}</Pill>
+            )}
+            {rowControl(it)}
+          </span>
         </li>
       ))}
     </ul>

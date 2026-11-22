@@ -1,6 +1,14 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
-import { RAIL_MIN_TURNS, slotAt, Thread, type TurnRailEntry } from "@humagen/web";
+import type { TurnStatus } from "@humagen/core";
+import {
+  RAIL_MIN_TURNS,
+  slotAt,
+  Thread,
+  TurnRail,
+  type TurnRailEntry,
+  wavePath,
+} from "@humagen/web";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 
 afterEach(cleanup);
@@ -136,4 +144,38 @@ test("an addressed message scrolls only its transcript once, including a later l
   } finally {
     HTMLElement.prototype.scrollTo = old;
   }
+});
+
+test("the wave is one connected line: it swings from side to side, as far as each turn's amplitude, with no break", () => {
+  const path = wavePath([2, 8, 4], 12, 12);
+  // One line: it starts at the top of the center line and is never lifted.
+  assert.match(path, /^M12 0C/);
+  assert.equal(path.match(/M/g)?.length, 1, "one line, not one mark per turn");
+  assert.ok(!path.includes("Z"), "a line, not a filled shape");
+  // Each turn is one crest, on alternate sides of the center line, and the line ends on the center.
+  for (const point of ["14 6", "4 18", "16 30"]) assert.ok(path.includes(` ${point}C`), point);
+  assert.ok(path.endsWith(" 12 36"));
+  // The same turns give the same commands, so a change of amplitude animates.
+  const count = (p: string) => p.match(/C/g)?.length;
+  assert.equal(count(path), count(wavePath([9, 1, 9], 12, 12)));
+  assert.equal(count(path), 4, "one curve to each crest and one back to the center");
+  assert.equal(wavePath([]), "");
+});
+
+test("the rail draws the wave once and marks the turn in view in it", () => {
+  const scroller = { current: document.createElement("div") };
+  const turns = ["a", "b", "c"].map((id, i) => ({
+    id,
+    agent: "lead",
+    preview: id,
+    status: (i === 1 ? "failed" : "done") as TurnStatus,
+    weight: 100 * (i + 1),
+  }));
+  const { container } = render(<TurnRail turns={turns} scroller={scroller} />);
+  assert.equal(container.querySelectorAll('[data-layer="wave-shape"] path').length, 1);
+  const stops = [...container.querySelectorAll<SVGStopElement>("stop")];
+  assert.equal(stops.length, 3, "one tone per turn");
+  // The last turn is the one in view at first: full ink. A failed turn keeps its colour.
+  assert.match(stops[2]?.getAttribute("style") ?? "", /--aui-fg/);
+  assert.match(stops[1]?.getAttribute("style") ?? "", /--aui-bad/);
 });

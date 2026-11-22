@@ -396,6 +396,13 @@ export const BellIcon = icon(
   <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" />,
   "BellIcon",
 );
+export const UserPlusIcon = icon(
+  <>
+    <circle cx="9" cy="8" r="4" />
+    <path d="M2 21v-2a6 6 0 0 1 12 0v2M19 8v6M22 11h-6" />
+  </>,
+  "UserPlusIcon",
+);
 export const SearchIcon = icon(
   <>
     <circle cx="11" cy="11" r="7" />
@@ -412,6 +419,16 @@ export const ForkIcon = icon(
     <path d="M6 6v3a6 6 0 0 0 6 6m6-9v3a6 6 0 0 1-6 6v3" />
   </>,
   "ForkIcon",
+);
+/** A branch off a line of work: a code repository. */
+export const GitBranchIcon = icon(
+  <>
+    <path d="M6 3v12" />
+    <circle cx="18" cy="6" r="3" />
+    <circle cx="6" cy="18" r="3" />
+    <path d="M18 9a9 9 0 0 1-9 9" />
+  </>,
+  "GitBranchIcon",
 );
 export const BringBackIcon = icon(
   <path d="m9 10-5 5 5 5M4 15h10a6 6 0 0 0 0-12" />,

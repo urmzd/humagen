@@ -1,8 +1,16 @@
 import { defaultCopy } from "@humagen/components";
-import { allTools } from "@humagen/core";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { allTools, type ResponseState, type Task } from "@humagen/core";
+import { CallThreadContext } from "@humagen/web";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Run } from "./adapter.ts";
-import { responseChips, summaryOf, useResponse, WorkedButton } from "./ResponseActivity.tsx";
+import { agentShown } from "./branding.ts";
+import {
+  AgentCallLane,
+  LaneInMessage,
+  responseChips,
+  summaryOf,
+  useResponse,
+} from "./ResponseActivity.tsx";
 import { Chips } from "./refChips.tsx";
 import { type TraceLoader, traceSource } from "./responseSource.ts";
 import type { Chip, Reference } from "./trace.ts";
@@ -43,25 +51,73 @@ function useRunResponse(run: Run, seen: boolean, loader?: TraceLoader) {
   return useResponse(source);
 }
 
+/** The call in a response that a turn's step is: by the run it started, or by its own id. */
+export function callIn(state: ResponseState, task: Task) {
+  const run = task.subagent?.runId;
+  return allTools(state).find(
+    (t) => t.kind === "agent" && ((run !== undefined && t.runId === run) || t.id === task.id),
+  );
+}
+
+/** A response's calls as threads, for a message to draw where each call happened. */
+export function callThreadsOf(state: ResponseState, messageId?: string) {
+  return (task: Task): ReactNode => {
+    const tool = callIn(state, task);
+    return tool ? (
+      <LaneInMessage.Provider value={true}>
+        <AgentCallLane tool={tool} messageId={messageId} />
+      </LaneInMessage.Provider>
+    ) : null;
+  };
+}
+
 /**
- * Under an answer: its references as quiet chips and, when it used a tool or
- * brought in another agent, "Worked 42s · 3 agents · 7 tools", which opens the
- * response's activity in Details. Time, cost and model are in the activity.
+ * Around an answer: each agent it called gets its own thread in the answer,
+ * where the call happened. A run is several threads, the answering agent's
+ * and each agent's it called; the message shows them as one, in order. The
+ * run's activity is read only for an answer that called someone, and until
+ * it is read each call is one line.
+ */
+export function CallThreads({
+  run,
+  calls,
+  loader,
+  children,
+}: {
+  run: Run;
+  /** Whether the answer called another agent: without one, nothing is read. */
+  calls: boolean;
+  loader?: TraceLoader;
+  children: ReactNode;
+}) {
+  // biome-ignore lint/correctness/useExhaustiveDependencies: keyed by the run's id and status, not its object.
+  const source = useMemo(
+    () => (calls ? traceSource(run, loader) : undefined),
+    [calls, run.id, run.status, loader],
+  );
+  const { state, version } = useResponse(source);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the state is one object, changed in place; version says when.
+  const thread = useCallback(callThreadsOf(state, run.message), [state, version, run.message]);
+  return (
+    <CallThreadContext.Provider value={calls ? thread : null}>
+      {children}
+    </CallThreadContext.Provider>
+  );
+}
+
+/**
+ * Under an answer: its references as quiet chips. What the answer did is in
+ * the answer itself, each step and each called agent where it happened, so
+ * nothing here opens it a second time.
  */
 export function AnswerRefs({
   run,
   eager,
   loader,
-  open = false,
-  onActivity,
 }: {
   run: Run;
   eager?: boolean;
   loader?: TraceLoader;
-  /** This answer's activity is open in Details. */
-  open?: boolean;
-  /** Open or close this response's activity in Details. Without it, no control is offered. */
-  onActivity?: (run: string) => void;
 }) {
   const { at, seen } = useSeen(eager);
   const { state, ended } = useRunResponse(run, seen, loader);
@@ -71,9 +127,6 @@ export function AnswerRefs({
   return (
     <div ref={at} className="flex flex-col gap-1" data-testid="answer-refs">
       <Chips chips={chips} />
-      {ended && onActivity && (
-        <WorkedButton state={state} open={open} onToggle={() => onActivity(run.id)} />
-      )}
     </div>
   );
 }
@@ -112,12 +165,14 @@ function ReferenceRow({
           href={`#turn-${run.id}`}
           className="inline-flex min-h-6 items-center rounded-aui text-aui-fg hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent pointer-coarse:min-h-11"
         >
-          {run.agent}
+          {agentShown(run.agent)}
         </a>
         {ended && <span className="text-aui-muted">{summaryOf(state)}</span>}
       </p>
       {agents.length > 0 && (
-        <p className="pl-6 text-aui-2xs text-aui-muted">{words.delegatedTo(agents.join(", "))}</p>
+        <p className="pl-6 text-aui-2xs text-aui-muted">
+          {words.delegatedTo(agents.map(agentShown).join(", "))}
+        </p>
       )}
       <div className="pl-6">
         <Chips chips={ended ? responseChips(state, origin) : []} origin={origin} />

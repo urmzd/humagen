@@ -120,7 +120,7 @@ func (s *Store) Purge(tenantName, id, by string, at time.Time) error {
 		when := at
 		next.Archive = next.Archive.clone()
 		next.Archive.Deleted, next.Archive.DeletedBy = &when, by
-		next.Title, next.Head, next.First = "", 0, ""
+		next.Title, next.TitleSource, next.Head, next.First = "", "", 0, ""
 		return nil
 	})
 	if err != nil {

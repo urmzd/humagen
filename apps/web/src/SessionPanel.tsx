@@ -19,9 +19,10 @@ import {
 import { Inspector } from "@humagen/web";
 import { type ReactNode, useEffect, useState } from "react";
 import type { Run } from "./adapter.ts";
+import { SessionBackground } from "./Background.tsx";
+import { agentShown } from "./branding.ts";
 import { Reference } from "./cards.tsx";
-import { took } from "./format.ts";
-import { ActivityLanes, AgentCallLane, outcomeOf } from "./ResponseActivity.tsx";
+import { AgentCallLane } from "./ResponseActivity.tsx";
 import { OriginMark } from "./refChips.tsx";
 import {
   defaultTraceLoader,
@@ -92,7 +93,6 @@ const ENDED_RUN = new Set(["completed", "failed", "stopped"]);
 
 type View =
   | { kind: "summary" }
-  | { kind: "progress" }
   | { kind: "agent"; name: string }
   | { kind: "used"; key: UsedKey | "origin" };
 
@@ -132,20 +132,10 @@ function memoryValue(items: UsedItem[]): string {
     .join("; ");
 }
 
-/** The progress line: what the current response is doing, or how it ended. */
-export function progressWords(summary: SessionSummary, current?: ResponseState): string {
-  const p = summary.progress;
-  if (!p || !current) return "";
-  if (p.status === "running") return p.waiting ? words.waiting : words.working(p.agents, p.tools);
-  // A stopped or failed response says how it ended; a finished session says what it took.
-  if (p.status !== "done") return outcomeOf(current);
-  return defaultCopy.trace.worked(took(p.ms), p.agents, p.tools);
-}
-
 /**
- * The session's Details: its progress, the agents it brought in, what it
- * produced, where it ran, and what it used. Each row opens what it names:
- * the activity, an agent's calls, a file or link, or the list behind a value.
+ * The session's Details: the agents it brought in, what it produced, where
+ * it ran, and what it used. The thread itself is the progress. Each row
+ * opens what it names: an agent's calls, a file or link, or the list behind a value.
  * Empty sections are left out.
  */
 export function SessionPanel({
@@ -185,13 +175,11 @@ export function SessionPanel({
 function titleOf(view: View): string {
   return view.kind === "summary"
     ? words.title
-    : view.kind === "progress"
-      ? words.progress
-      : view.kind === "agent"
-        ? view.name
-        : view.key === "origin"
-          ? words.used.origin
-          : words.used[view.key];
+    : view.kind === "agent"
+      ? view.name
+      : view.key === "origin"
+        ? words.used.origin
+        : words.used[view.key];
 }
 
 /**
@@ -247,7 +235,6 @@ function SessionDetailsBody({
   onOpenFile?: (artifactId: string) => void;
   messageId?: string;
 }) {
-  const current = responses?.[responses.length - 1];
   const back = () => setView({ kind: "summary" });
   return (
     <div className="flex flex-col gap-4" data-testid="session-panel" data-view={view.kind}>
@@ -264,8 +251,6 @@ function SessionDetailsBody({
       )}
       {!summary || !responses ? (
         <SkeletonRows count={4} />
-      ) : view.kind === "progress" && current ? (
-        <ActivityLanes state={current} messageId={messageId} />
       ) : view.kind === "agent" ? (
         <div className="flex flex-col gap-4">
           {responses.flatMap((r) =>
@@ -310,7 +295,6 @@ function SessionDetailsBody({
         <Summary
           summary={summary}
           responses={responses}
-          current={current}
           origin={origin}
           onView={setView}
           onOpenFile={onOpenFile}
@@ -324,7 +308,6 @@ function SessionDetailsBody({
 function Summary({
   summary,
   responses,
-  current,
   origin,
   onView,
   onOpenFile,
@@ -333,37 +316,17 @@ function Summary({
   summary: SessionSummary;
   responses: ResponseState[];
   panel?: { thread: string; runs: Run[]; open: PanelOpen; chosen?: SessionChoice };
-  current?: ResponseState;
   origin?: Ref;
   onView: (v: View) => void;
   onOpenFile?: (artifactId: string) => void;
 }) {
-  const progress = progressWords(summary, current);
   // In the workbench, connections have a section of their own, and pull requests are changes.
   const used = (Object.keys(summary.used) as UsedKey[]).filter(
     (k) => summary.used[k].length > 0 && !(panel && k === "connections"),
   );
   const outputs = panel ? summary.outputs.filter((o) => o.kind !== "pr") : summary.outputs;
-  const tone =
-    summary.progress?.status === "running"
-      ? summary.progress.waiting
-        ? "bg-aui-warn"
-        : "bg-aui-accent"
-      : summary.progress?.status === "done"
-        ? "bg-aui-ok"
-        : "bg-aui-bad";
   return (
     <>
-      {progress && (
-        <Section label={words.progress}>
-          <Row
-            testId="details-progress"
-            mark={<span aria-hidden className={`size-2 rounded-full ${tone}`} />}
-            label={progress}
-            onOpen={() => onView({ kind: "progress" })}
-          />
-        </Section>
-      )}
       {summary.agents.length > 0 && (
         <Section label={words.agents}>
           {summary.agents.map((a) => (
@@ -371,13 +334,14 @@ function Summary({
               key={a.name}
               testId="details-agent"
               mark={<AgentMark name={a.name} size={18} />}
-              label={a.name}
+              label={agentShown(a.name)}
               value={words.calls(a.calls)}
               onOpen={() => onView({ kind: "agent", name: a.name })}
             />
           ))}
         </Section>
       )}
+      {panel && <SessionBackground session={panel.thread} version={panel.runs.length} />}
       {panel && (
         <SessionSections
           thread={panel.thread}

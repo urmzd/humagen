@@ -23,18 +23,19 @@ import {
   type ThreadSummary,
 } from "./api.ts";
 import { asksOf } from "./asks.ts";
+import { bangCommand, commandHint, commandHold, commandsHere } from "./BangCommand.tsx";
 import { aiNoticeHeight, Composer, type ComposerSeed } from "./Composer.tsx";
 import type { ConversationForkActions } from "./ConversationForkPanels.tsx";
 import { type Completion, useCompletion } from "./completion.ts";
 import { rememberDock, useDockArrival } from "./dockArrival.ts";
-import { FindHelp, type HelpSuggestion } from "./FindHelp.tsx";
+import type { HelpSuggestion } from "./FindHelp.tsx";
 import { type HomeAnnouncement, HomePage } from "./HomePage.tsx";
 import { LazyFrame } from "./lazy.tsx";
-import { ProjectPicker } from "./ProjectPicker.tsx";
-import { PlusMenu, RunsConversation, SessionSetupPickers, ThreadRoom } from "./pages.ts";
+import { PlusMenu, RunsConversation, ThreadRoom } from "./pages.ts";
 import { emptySelection, mentionPicks, type Selection } from "./plusSelection.ts";
 import { type ConversationPanel, type ConversationView, href } from "./route.ts";
 import { Scroller } from "./Scroller.tsx";
+import { SessionSettings } from "./SessionPickers.tsx";
 import { ComposerFooter } from "./SessionUsage.tsx";
 import { DEFAULT_SETUP, type SessionSetup, useSessionOptions } from "./sessionOptions.ts";
 import { mentionsIn } from "./tags.ts";
@@ -149,10 +150,13 @@ function ChatBar({
   me,
   handle,
   plus,
+  besideFor,
   onAvailable,
   agentsRead,
   ...rest
 }: Omit<Parameters<typeof Composer>[0], "tags" | "plus"> & {
+  /** The row under the bar, built from what the bar completes, in place of `footer`. */
+  besideFor?: (choices: Completion) => ReactNode;
   /** Called with the agents that may answer in the project, once they are read. */
   onAvailable?: (available: { name: string }[]) => void;
   project: string;
@@ -182,7 +186,9 @@ function ChatBar({
     if (tags.agents) onAvailable?.(tags.agents);
   }, [tags.agents]);
   const voice = useVoiceNotes();
-  return <Composer {...rest} tags={tags} plus={plus?.(tags)} voice={voice} />;
+  return (
+    <Composer {...rest} beside={besideFor?.(tags)} tags={tags} plus={plus?.(tags)} voice={voice} />
+  );
 }
 
 /**
@@ -306,6 +312,8 @@ export function Chat({
   const [room, setRoom] = useState<ThreadPage | null>(null);
   const [chosen, setChosen] = useState<Record<string, string>>({});
   // An agent a link named is mentioned at the start of the draft, ahead of what it asks.
+  // The end of the conversation, where messages that wait are shown.
+  const [queuePlace, setQueuePlace] = useState<HTMLElement | null>(null);
   const [seed, setSeed] = useState<ComposerSeed | undefined>(() =>
     startAgent || startAsk
       ? { text: `${startAgent ? `@${startAgent} ` : ""}${startAsk ?? ""}` }
@@ -336,6 +344,9 @@ export function Chat({
   // Read when the project's agents arrive, not drawn: kept out of state so a
   // key typed does not render the conversation again.
   const draft = useRef("");
+  // The agents the draft mentions, for the setup row: set only when they
+  // change, so a key typed renders nothing here.
+  const [mentioned, setMentioned] = useState<string[]>([]);
   // Home's bar, remembered as it leaves for the conversation its first message opens.
   const bar = useRef<HTMLDivElement>(null);
   // The agents that can answer in the picked project, once read.
@@ -560,9 +571,14 @@ export function Chat({
     };
     const failed = (e: unknown) =>
       giveBack(m, e instanceof ApiError ? e.message : words.failed.post);
+    // A "!" message runs a command and starts no run. Where none may run,
+    // it is not sent to an agent: it comes back, saying why.
+    const command = commandsRefused !== undefined && bangCommand(m.text) !== null;
+    if (command && commandsRefused) return giveBack(m, commandsRefused);
     // Home starts a private conversation in the picked project, or a
     // shared thread when it was opened from a channel. Either opens at
-    // its address, where the next message goes.
+    // its address, where the next message goes. A command starts the
+    // session and runs in its sandbox.
     if (!threadId) {
       coworking
         .start({
@@ -572,6 +588,7 @@ export function Chat({
           uploads: m.uploads,
           visibility: startChannel ? "shared" : "private",
           ...(startChannel ? {} : setup),
+          ...(command ? { command } : {}),
         })
         .then((p) => {
           // Run, chosen before the session started, is applied to it now.
@@ -588,7 +605,12 @@ export function Chat({
     // A conversation of runs takes the message after the turn on screen.
     // Posted, it is a room: the message, and any run its tags started.
     coworking
-      .post(threadId, { text: m.text, uploads: m.uploads, ...(tail ? { after: tail.id } : {}) })
+      .post(threadId, {
+        text: m.text,
+        uploads: m.uploads,
+        ...(tail ? { after: tail.id } : {}),
+        ...(command ? { command } : {}),
+      })
       .then((p) => {
         setRoom((r) =>
           r
@@ -711,6 +733,14 @@ export function Chat({
   // image beside the plus, the repositories as context from the plus menu.
   const [setup, setSetup] = useState<SessionSetup>(DEFAULT_SETUP);
   const sessionOptions = useSessionOptions(!startChannel);
+  // Why a "!" message may not run here, or null; and what the bar says of one.
+  const commandsRefused = commandsHere(
+    sessionOptions?.terminal,
+    threadId ? threadId.startsWith("s_") : !startChannel,
+  );
+  // Only whether the draft is a command, and an empty one, is kept, so the
+  // bar is not drawn again on every key.
+  const [commandDraft, setCommandDraft] = useState<"!" | "!x" | null>(null);
   // A message here is its text alone: the agent it goes to is the one its
   // tags or the conversation name, never a pick the composer carries.
   const sending: typeof queue = {
@@ -782,43 +812,98 @@ export function Chat({
         }
         emptyText={placeholderFor}
         queue={sending}
+        // In a conversation, messages that wait are shown at its end, not in the box.
+        queuePlace={threadId && !composerOnly ? queuePlace : undefined}
         held={holding}
         onCancelHeld={unhold}
         autoFocus={!threadId}
         seed={seed}
         onDraft={(text) => {
           draft.current = text;
+          const command = bangCommand(text);
+          setCommandDraft(command === null ? null : command === "" ? "!" : "!x");
+          if (threadId) return;
+          const now = mentionsIn(
+            text,
+            agents.map((a) => a.spec.name),
+          );
+          const same = (was: string[], now: string[]) =>
+            was.length === now.length && was.every((n, i) => n === now[i]);
+          setMentioned((was) => (same(was, now) ? was : now));
         }}
-        // Under the bar, one quiet row: on the left where the conversation is
-        // filed and its approval mode; the bar itself holds only +, the words,
-        // Send and the microphone.
+        note={
+          commandDraft &&
+          commandsRefused !== undefined &&
+          commandHint(commandDraft, commandsRefused, !threadId)
+        }
+        hold={(text, files) => commandHold(text, files, commandsRefused)}
+        // Under the bar, its approval mode, always in the same place: in a
+        // conversation once its mode is read (until then it waits, disabled),
+        // and on Home held for the session it starts.
         footer={
           <ComposerFooter
             start={
               threadId ? (
-                room?.thread && <ApprovalToggle thread={room.thread} me={handle || me} />
+                <ApprovalToggle thread={room?.thread} disabled={!room?.thread} me={handle || me} />
               ) : (
-                <>
-                  <ProjectPicker
-                    projects={projects}
-                    value={project}
-                    personalProject={personalProject}
-                    personalLabel={defaultCopy.noProject}
-                    channel={selection.channel}
-                    onChange={(name) => select({ ...selection, project: name, channel: "general" })}
-                    onCreated={onProjectCreated}
-                  />
-                  {/* The image a new session runs in. */}
-                  {!startChannel && <SessionSetupPickers value={setup} onChange={setSetup} />}
-                  <ApprovalToggle
-                    me={handle || me}
-                    pending={pendingApproval}
-                    onPending={setPendingApproval}
-                  />
-                </>
+                <ApprovalToggle
+                  me={handle || me}
+                  pending={pendingApproval}
+                  onPending={setPendingApproval}
+                />
               )
             }
           />
+        }
+        // On Home, beside +, the new session's settings: one menu of rows.
+        besideFor={
+          threadId
+            ? undefined
+            : ({ agents: available, defaultAgent }) => {
+                return (
+                  <SessionSettings
+                    project={{
+                      projects,
+                      value: project,
+                      personalProject,
+                      channel: selection.channel,
+                      onChange: (name) =>
+                        select({ ...selection, project: name, channel: "general" }),
+                      onCreated: onProjectCreated,
+                    }}
+                    agents={{
+                      available,
+                      mentioned,
+                      defaultAgent,
+                      onMention: (name) =>
+                        setSeed({ mention: name, remove: mentioned.includes(name) }),
+                      finder: findHelp
+                        ? {
+                            onSearch: findHelp,
+                            draft: () => draft.current,
+                            // The match is mentioned: ahead of what was described, or where the cursor was.
+                            onChoose: (match, description) => {
+                              setSeed(
+                                draft.current.trim()
+                                  ? { mention: match.agent }
+                                  : { text: `@${match.agent} ${description}` },
+                              );
+                              // Chosen, the work is ready to send: the box takes focus from the menu.
+                              queueMicrotask(() =>
+                                document.getElementById("composer-input")?.focus(),
+                              );
+                            },
+                          }
+                        : undefined,
+                    }}
+                    options={sessionOptions}
+                    setup={setup}
+                    onSetup={setSetup}
+                    fixed={startChannel ? defaultCopy.chat.setup.channelFixed : undefined}
+                    connectHref={href({ page: "settings", section: "connections" })}
+                  />
+                );
+              }
         }
         // An agent the project picked does not offer is not kept for it.
         onAvailable={
@@ -835,70 +920,23 @@ export function Chat({
                 if (dropped.length > 0) setProblem(defaultCopy.chat.notHere(dropped));
               }
         }
+        // In a conversation of runs, + is a menu that selects its agents as a
+        // room does, so a follow-up goes to them; its project is fixed by its
+        // runs. On Home, + attaches files and the row under the bar holds the rest.
         plus={
           threadId
-            ? // A conversation of runs selects its agents as a room does, so a
-              // follow-up goes to them; its project is fixed by its runs.
-              ({ agents: available, skills, skillsFailed }) => ({
+            ? ({ agents: available }) => ({
                 menu: (close, attach, leave, draft) => (
                   <PlusMenu
                     onLeave={leave}
                     agents={available}
                     {...mentionPicks(draft, available, setSeed)}
-                    skills={skills}
-                    skillsFailed={skillsFailed}
-                    onSkill={(name) => {
-                      setSeed({ text: `/${name} `, mode: "prepend" });
-                    }}
                     onAttach={attach}
                     onClose={close}
                   />
                 ),
               })
-            : ({ agents: available, skills, skillsFailed }) => ({
-                menu: (close, attach, leave, draft) => (
-                  <PlusMenu
-                    onLeave={leave}
-                    agents={available}
-                    {...mentionPicks(draft, available, setSeed)}
-                    skills={skills}
-                    skillsFailed={skillsFailed}
-                    onSkill={(name) => {
-                      setSeed({ text: `/${name} `, mode: "prepend" });
-                    }}
-                    onAttach={attach}
-                    onClose={close}
-                    repos={
-                      startChannel || sessionOptions === null
-                        ? undefined
-                        : {
-                            options: sessionOptions?.repos ?? null,
-                            value: setup.repos,
-                            onChange: (repos) => setSetup({ ...setup, repos }),
-                            connectHref: href({ page: "settings", section: "connections" }),
-                          }
-                    }
-                    finder={
-                      findHelp ? (
-                        <FindHelp
-                          initialDescription={draft}
-                          onSearch={findHelp}
-                          canChoose={canRun}
-                          onChoose={(match, description) => {
-                            // The match is mentioned: ahead of what was described, or where the cursor was.
-                            setSeed(
-                              draft.trim()
-                                ? { mention: match.agent }
-                                : { text: `@${match.agent} ${description}` },
-                            );
-                            close();
-                          }}
-                        />
-                      ) : undefined
-                    }
-                  />
-                ),
-              })
+            : undefined
         }
       />
     </div>
@@ -1047,6 +1085,7 @@ export function Chat({
         setChosen={setChosen}
         setSeed={setSeed}
         composer={composer}
+        onQueuePlace={setQueuePlace}
         activity={activity ?? lastActivity.current}
         activityOpen={activity !== null}
       />
@@ -1103,7 +1142,7 @@ function DockPlaceholder() {
     <div
       ref={dock}
       data-layer="composer-placeholder"
-      className="mx-auto flex w-full max-w-4xl flex-col gap-1.5 px-4 pb-3"
+      className="humagen-composer-placeholder mx-auto flex w-full max-w-4xl flex-col gap-1.5 px-4 pb-3"
     >
       {html ? (
         <div ref={picture} inert aria-hidden className="pointer-events-none" />

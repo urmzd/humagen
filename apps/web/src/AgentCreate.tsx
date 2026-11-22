@@ -1,9 +1,9 @@
 import { defaultCopy } from "@humagen/components";
 import { ChevronRightIcon, PlusIcon, RefreshIcon } from "@humagen/render-web";
-import { AgentInitials, type BotLook } from "@humagen/web";
+import { AgentInitials, type BotLook, type MascotPersona, mascotPersonaOf } from "@humagen/web";
 import { type ReactNode, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import type { FallbackCondition } from "../../../packages/client/src/generated/types.ts";
-import { HuePicker, ShapePicker, SWATCHES, shuffled, tintOf } from "./AgentLookEditor.tsx";
+import { CharacterPicker, HuePicker, SWATCHES, shuffled, tintOf } from "./AgentLookEditor.tsx";
 import { agentHue, setAgentHues, setAgentLooks, subscribeHues } from "./agentHues.ts";
 import {
   type AgentLook,
@@ -268,7 +268,7 @@ function Goal({
             <button
               type="button"
               onClick={onDescribe}
-              className="mr-auto min-h-9 rounded-aui text-aui-sm text-aui-muted underline-offset-4 hover:text-aui-fg hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent"
+              className="mr-auto min-h-9 rounded-aui text-aui-sm text-aui-muted underline-offset-4 pointer-coarse:min-h-11 hover:text-aui-fg hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent"
             >
               {words.describe(builder)}
             </button>
@@ -311,7 +311,7 @@ function Customize({
     [known],
   );
   const [name, setName] = useState(template.id === "blank" ? "" : template.title);
-  const [look, setLook] = useState<AgentLook>({ shape: template.shape as AgentLook["shape"] });
+  const [look, setLook] = useState<AgentLook>({});
   const [hue, setHue] = useState<number | undefined>(() => freeHue(taken));
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState("");
@@ -451,12 +451,11 @@ function Customize({
             {handle ? words.handle(handle) : ""}
           </span>
         </div>
-        <ShapePicker
+        <CharacterPicker
           base={shown}
-          look={drawn}
-          shape={drawn.shape ?? template.shape}
+          character={(look.character ?? mascotPersonaOf(shown)) as MascotPersona}
           hue={hue ?? 0}
-          onPick={(s) => setLook((l) => ({ ...l, shape: s as AgentLook["shape"] }))}
+          onPick={(c) => setLook((l) => ({ ...l, character: c }))}
         />
         <HuePicker hues={SWATCHES} hue={hue} taken={taken} onPick={setHue} />
         <p className="text-aui-xs text-aui-muted">

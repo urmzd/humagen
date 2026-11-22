@@ -7,6 +7,7 @@ import {
   brandCopy,
   servedBranding,
   setEntryAgent,
+  titled,
 } from "./branding.ts";
 import { documentTitle } from "./route.ts";
 
@@ -78,13 +79,19 @@ test("a tab title follows the workspace's words for the page", async () => {
   }
 });
 
-test("the entry agent is shown by the workspace's name, every other agent by its own", () => {
+test("the entry agent is shown by the workspace's name, every other agent by its handle written as a name", () => {
   setEntryAgent("", "");
-  assert.equal(agentShown("humagen"), "humagen");
+  assert.equal(agentShown("humagen"), "Humagen");
   brandCopy({}, { ...servedBranding("Acme"), entry_agent: "humagen" });
   assert.equal(agentShown("humagen"), "Acme");
-  assert.equal(agentShown("billing"), "billing");
+  assert.equal(agentShown("billing"), "Billing");
+  assert.equal(agentShown("security-reviewer"), "Security Reviewer");
+  assert.equal(agentShown("data_analyst"), "Data Analyst");
   brandCopy({}, { ...servedBranding("Acme"), entry_agent: "front-desk" });
   assert.equal(agentShown("front-desk"), "Acme");
-  assert.equal(agentShown("humagen"), "humagen");
+  assert.equal(agentShown("humagen"), "Humagen");
+  // A name already written as one is kept as it is.
+  assert.equal(titled("GitHub-bot"), "GitHub Bot");
+  // A short word a name writes in capitals stays in capitals.
+  assert.equal(agentShown("qa-reviewer"), "QA Reviewer");
 });

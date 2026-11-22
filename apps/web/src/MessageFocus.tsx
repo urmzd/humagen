@@ -166,7 +166,7 @@ export function MessageFocus({
               </span>
             </nav>
             {self.text && (
-              <p className="humagen-glass max-w-[80%] self-end whitespace-pre-wrap rounded-aui-lg px-3.5 py-2 text-aui-fg text-aui-sm">
+              <p className="humagen-said max-w-[80%] self-end whitespace-pre-wrap rounded-aui-lg px-3.5 py-2 text-aui-fg text-aui-sm">
                 {self.text}
               </p>
             )}

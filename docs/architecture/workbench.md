@@ -3,7 +3,7 @@
 A session's page keeps the thread on the left. The pane Details opens on the
 right is a workbench: tabs that show what the agent is working with (a
 browser or computer view, a terminal, its changes) and tools of the reader's
-own (a side chat, a search). This file is the contract for whoever builds a
+own (a search). This file is the contract for whoever builds a
 tab. Read it before adding one.
 
 ## What exists
@@ -16,7 +16,7 @@ tab. Read it before adding one.
 | Tab addresses | `apps/web/src/route.ts` | `WORKBENCH_TAB_IDS`, `WorkbenchTabId`, `MAX_BENCH_REF`, `ConversationView.bench`, `ConversationView.benchRef` |
 | What was done by hand, no React | `packages/core/src/human-activity.ts` | `humanActivity`, `createHumanActivityStore`, `HumanActivityStore`, `HumanActivityRecord`, `HumanActivityInput`, `HumanActivitySource`, `foldHumanActivity`, `splitHumanActivity`, `postWithHumanActivity`, `HUMAN_DETAIL_LEFT_OUT`, the `MAX_*` limits |
 | The same, on the page | `apps/web/src/humanActivity.tsx` | `useHumanActivity`, `HumanActivityList`, `HumanActivityNote` |
-| Words | `packages/components/src/copy.ts` | `workbench`, and one block per tab: `workbenchBrowser`, `workbenchTerminal`, `workbenchChanges`, `workbenchSidechat`, `workbenchSearch` |
+| Words | `packages/components/src/copy.ts` | `workbench`, and one block per tab: `workbenchBrowser`, `workbenchTerminal`, `workbenchChanges`, `workbenchSearch` |
 
 `SessionWorkbench` is mounted by `ThreadRoom` in `apps/web/src/Room.tsx`
 where `SessionDetailsPanel` was. With only Details to show there is no tab
@@ -26,9 +26,9 @@ pane draws its tabs after a reload.
 
 ## Tabs and their addresses
 
-The six ids are fixed in `WORKBENCH_TAB_IDS`: `details`, `browser`,
-`terminal`, `changes`, `sidechat`, `search`. The strip shows them in that
-order. All six are addresses already, so a tab adds no route.
+The five ids are fixed in `WORKBENCH_TAB_IDS`: `details`, `browser`,
+`terminal`, `changes`, `search`. The strip shows them in that
+order. All five are addresses already, so a tab adds no route.
 
 | Address | Opens |
 | --- | --- |
@@ -56,7 +56,7 @@ A tab's change is one new file and one entry.
 
 1. Write `apps/web/src/Workbench<Name>.tsx` exporting a component that takes
    `WorkbenchTabProps`: `WorkbenchBrowser`, `WorkbenchTerminal`,
-   `WorkbenchChanges`, `WorkbenchSidechat`, `WorkbenchSearch`.
+   `WorkbenchChanges`, `WorkbenchSearch`.
 2. In `workbench.ts`, replace your slot's one line in `entries`. Keep the
    comment line above it. Import `lazyView` from `./lazy.tsx` if no tab has
    yet.
@@ -127,9 +127,8 @@ prop down from a console file instead.
 
 ### Side Chat
 
-Built (`WorkbenchSidechat.tsx`, `sidechat.ts`). Its `benchRef` is the id of a
-fork of the session, or nothing for the box and the list of earlier side chats.
-It records an answer with source `other` and the key `sidechat:<run>:<part>`.
+Removed on 2026-11-21 (DES-089). A second conversation is a new session that
+refers to this one.
 
 ## What a person did by hand
 

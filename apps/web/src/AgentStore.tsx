@@ -86,7 +86,7 @@ export function AgentStore({
   const actions = { canWrite, busy, onInstall: install, onRemove: remove };
   const open = selected ? packages?.find((p) => p.name === selected) : undefined;
   return (
-    <Page title={words.title}>
+    <Page title={words.title} lede={open ? undefined : words.lede}>
       <Problem message={problem} />
       {packages === null ? (
         !problem && <SkeletonRows count={3} height="7rem" />
