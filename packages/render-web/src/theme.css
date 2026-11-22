@@ -485,6 +485,23 @@
   padding-inline: 0.875rem;
 }
 
+/*
+ * A failure is said as a quiet line, not a box: the header already says
+ * "Failed", so the card would only repeat it louder. Its recovery row sits
+ * under the words, lined up with them.
+ */
+.aui-stack > [data-aui="callout"][data-tone="bad"] {
+  border: 0;
+  background: none;
+  padding: 0;
+}
+.aui-stack > [data-aui="callout"][data-tone="bad"] + [data-aui="actions"] {
+  margin-top: calc(-0.5 * var(--aui-gap));
+  border: 0;
+  background: none;
+  padding: 0 0 0 1.625rem;
+}
+
 /* Tone variables for callouts; siblings read them through the selectors above. */
 [data-aui="callout"],
 [data-aui="callout"] + [data-aui="actions"] {
