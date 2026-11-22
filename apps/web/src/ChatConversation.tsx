@@ -12,6 +12,7 @@ import { type Dispatch, type ReactNode, type SetStateAction, useMemo } from "rea
 import { citationOf, type Run, turnOf } from "./adapter.ts";
 import type { ProjectView, ThreadAsk, ThreadPage, ThreadSummary } from "./api.ts";
 import { askedOf, copyFor } from "./asks.ts";
+import { agentShown } from "./branding.ts";
 import { notAskable, siblingsOf } from "./Chat.tsx";
 import type { ComposerSeed } from "./Composer.tsx";
 import { type ConversationForkActions, ConversationForkPanels } from "./ConversationForkPanels.tsx";
@@ -19,7 +20,6 @@ import { ConversationInfo, ConversationPage } from "./ConversationShell.tsx";
 import { Deliverables, revisionPrompt } from "./Deliverables.tsx";
 import { GitHubTab, reviewText, reviewView } from "./GitHubTab.tsx";
 import { itemActions } from "./itemActions.tsx";
-import { agentShown } from "./branding.ts";
 import { AnswerRefs, CallThreads, OriginRef } from "./MessageRefs.tsx";
 import { MessageTime } from "./MessageTime.tsx";
 import { OutcomeActions } from "./OutcomeActions.tsx";
