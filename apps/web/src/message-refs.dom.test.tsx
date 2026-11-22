@@ -767,9 +767,11 @@ test("a called agent's thread in an answer is one clickable line that opens to i
   const lane = within(container).getAllByTestId("activity-lane")[0];
   assert.ok(lane);
   assert.equal(lane.querySelector("a[title]"), null, "no expand sign on the line");
-  // The whole line is the control.
+  // The whole line is the control: it has no chevron, and it does not say how long the call took.
   const line = lane.querySelector("summary");
   assert.ok(line);
+  assert.equal(line.querySelector("svg.lucide-chevron-right, svg[class*='rotate-90']"), null);
+  assert.equal(line.querySelector(".tabular-nums"), null);
   assert.match(line.className, /cursor-pointer/);
   assert.match(line.className, /hover:bg-aui-hover/);
   // It opens to the agent's own stream, drawn as an answer's is: no header and no action row of its own.
@@ -784,6 +786,9 @@ test("a called agent's thread in an answer is one clickable line that opens to i
   // In Details the same lane still links to its agent's message on its own, and lists its blocks.
   const detail = render(<AgentCallLane tool={call} />);
   assert.ok(detail.container.querySelector(`a[title="${words.focus(call.agent ?? call.name)}"]`));
+  // Details keeps the chevron and, for a finished call, how long it took.
+  const detailLine = detail.container.querySelector("summary");
+  assert.ok(detailLine?.querySelector("svg"));
   assert.equal(detail.container.querySelector('[data-aui="thread-stream"]'), null);
 });
 
