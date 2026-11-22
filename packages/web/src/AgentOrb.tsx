@@ -9,7 +9,6 @@ import {
 import {
   type CSSProperties,
   forwardRef,
-  type ReactNode,
   type RefObject,
   useEffect,
   useId,
@@ -19,6 +18,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { type OrbState as Motion, ThinkingOrb } from "thinking-orbs";
+import { Mascot, mascotPersonaOf } from "./Mascot.tsx";
 
 /**
  * What the orb depicts. The activities come from the runtime; `done`,
@@ -893,7 +893,7 @@ export function AgentInitials({
   lookOf?: string;
 }) {
   const live = !["idle", "done", "error", "stopped", "waiting"].includes(state);
-  const { ref, ink, dark } = useInk<HTMLSpanElement>();
+  const { ref, ink } = useInk<HTMLSpanElement>();
   const kept = useBotLook(lookOf ?? name);
   const look = given ?? kept;
   // Under the pointer a mark comes alive: it moves and its eyes follow, whatever its size.
@@ -927,27 +927,15 @@ export function AgentInitials({
         onPointerLeave={() => setHovered(false)}
         style={{ "--initials-size": `${size}px` } as CSSProperties}
       >
-        <BotAvatar
-          type={look?.shape ?? agentBot(name)}
-          face={look?.face}
-          hat={look?.hat ?? "none"}
-          glasses={look?.glasses ?? "none"}
-          headphones={look?.headphones ?? false}
-          bowTie={look?.bowTie ?? false}
-          state={moving ? "working" : "default"}
+        {/* Humagen's own mascot: a persona with arms that use its tools. */}
+        <Mascot
+          persona={mascotPersonaOf(lookOf ?? name)}
+          state={state}
           size={size}
           color={ink}
-          theme={dark ? "dark" : "light"}
-          shading={size < 24 ? "flat" : (look?.finish ?? "fabric")}
-          interactive={size >= 32 || hovered}
-          // Small marks hold still unless they work, are under the pointer,
-          // are finishing a move or take their rare glance: a list of agents
-          // does not fidget. Their glance has no hop and only half the head turn.
-          paused={!stirring && !glancing && !finishing && size < 32}
-          jumpEvery={size < 32 ? 0 : undefined}
-          turn={size < 32 ? 0.5 : undefined}
+          fit
+          quiet={!live && !hovered}
         />
-        {prop && <PropMark key={prop} prop={prop} leaving={leaving} size={size} />}
       </span>
     );
   return (

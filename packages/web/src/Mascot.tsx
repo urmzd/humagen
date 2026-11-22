@@ -274,7 +274,13 @@ export function Mascot({
   size = 96,
   color,
   className,
+  fit,
+  quiet,
 }: {
+  /** Frame the bot itself in a square of `size`, its tools drawn past the frame. */
+  fit?: boolean;
+  /** Hold still: an idle mark in a list does not fidget. */
+  quiet?: boolean;
   persona?: MascotPersona;
   state?: OrbState;
   size?: number;
@@ -310,9 +316,10 @@ export function Mascot({
     <svg
       ref={ref}
       aria-hidden="true"
-      viewBox="0 0 130 120"
-      width={(size * 130) / 120}
+      viewBox={fit ? "6 14 92 92" : "0 0 130 120"}
+      width={fit ? size : (size * 130) / 120}
       height={size}
+      data-quiet={quiet || undefined}
       className={`hm-mascot ${className ?? ""}`}
       data-pose={pose}
       data-persona={persona}

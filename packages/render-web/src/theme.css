@@ -1407,6 +1407,10 @@
     overflow: visible;
     flex-shrink: 0;
   }
+  .hm-mascot[data-quiet],
+  .hm-mascot[data-quiet] * {
+    animation: none !important;
+  }
   .hm-mascot .m-limb {
     color: color-mix(in oklab, currentColor 86%, black);
   }
