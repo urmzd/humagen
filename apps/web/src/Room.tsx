@@ -227,6 +227,7 @@ export function postedLine(p: ThreadPosted): string {
  */
 function RoomComposer({
   thread,
+  queuePlace,
   placeholder,
   tags,
   autoFocus,
@@ -262,6 +263,8 @@ function RoomComposer({
   /** Called as the text changes, so the + menu shows the agents it mentions. */
   onDraft?: (text: string) => void;
   plus?: Parameters<typeof Composer>[0]["plus"];
+  /** Where the conversation shows the messages that wait (Composer's queuePlace). */
+  queuePlace?: HTMLElement | null;
   onPost: (
     text: string,
     pick?: QueuedMessage["pick"],
@@ -341,6 +344,7 @@ function RoomComposer({
       <Composer
         placeholder={placeholder}
         queue={queue}
+        queuePlace={queuePlace}
         autoFocus={autoFocus}
         seed={seed}
         onDraft={(text) => {
@@ -390,7 +394,6 @@ function MessageView({
   continued = false,
   fromWeb = false,
   refs,
-  onReply,
   actions,
 }: {
   m: ThreadMessage;
@@ -403,7 +406,6 @@ function MessageView({
   mine?: boolean;
   /** Follows a message from the same person. */
   continued?: boolean;
-  onReply?: () => void;
   actions?: ReactNode;
 }) {
   const who = m.name || m.by;
@@ -434,11 +436,7 @@ function MessageView({
     </>
   );
   const row = (
-    <MessageActionRow
-      text={m.text}
-      copyLabel={defaultCopy.conversation.copyMessage}
-      onReply={onReply}
-    >
+    <MessageActionRow text={m.text} copyLabel={defaultCopy.conversation.copyMessage}>
       {actions}
     </MessageActionRow>
   );
@@ -457,14 +455,17 @@ function MessageView({
         </p>
         {byHand}
         {uploads}
-        {/* Its actions show on hover and keep their place when hidden. They share the
-            time's line, so a hidden row leaves no empty band under the message. */}
+        {/* Its actions are always there, against the right edge where the message is.
+            Only its time shows on hover, at the row's far (left) end, so nothing
+            between two actions comes or goes. */}
         <div className="flex max-w-full flex-wrap items-center justify-end gap-x-2">
-          {row}
           <p className="flex flex-wrap items-baseline justify-end gap-x-2 text-aui-2xs text-aui-muted">
+            <span className="opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100 motion-reduce:transition-none pointer-coarse:opacity-100">
+              <MessageTime at={m.at} />
+            </span>
             {notes}
-            <MessageTime at={m.at} />
           </p>
+          {row}
         </div>
         {refs && <div className="flex justify-end">{refs}</div>}
       </article>
@@ -582,7 +583,6 @@ function AnswerView({
   ask,
   refused,
   onAsk,
-  onReply,
   onRedirect,
   actions,
   canStop = false,
@@ -601,7 +601,6 @@ function AnswerView({
   ask?: ThreadAsk[];
   refused?: Refusal;
   onAsk?: () => void;
-  onReply?: () => void;
   onRedirect?: () => void;
   actions?: ReactNode;
 }) {
@@ -665,7 +664,6 @@ function AnswerView({
                   itemActions={itemActions(run)}
                   capabilities={{ regenerate: false }}
                   onAskAgent={onAsk}
-                  onReply={onReply}
                   onRedirect={onRedirect}
                 />
               </CallThreads>
@@ -820,6 +818,8 @@ export function ThreadRoom({
   const [problem, setProblem] = useState<string | null>(null);
   const [localView, setLocalView] = useState<ConversationView>({});
   const [seed, setSeed] = useState<ComposerSeed>();
+  // The end of the conversation, where messages that wait are shown.
+  const [queuePlace, setQueuePlace] = useState<HTMLElement | null>(null);
   const background = useSessionBackground(id);
   // Arriving from Home's first message, the bar slides down to its place.
   const dock = useRef<HTMLDivElement>(null);
@@ -1238,6 +1238,7 @@ export function ThreadRoom({
                         )}
                         {posts && (
                           <RoomComposer
+                            queuePlace={queuePlace}
                             sessionAgents={page.sessionAgents}
                             sessionRuns={turns.flatMap((turn) => (turn.run ? [turn.run] : []))}
                             background={background.items}
@@ -1247,9 +1248,8 @@ export function ThreadRoom({
                             )}
                             thread={id}
                             footer={(() => {
-                              // Who answers is whoever answered last; the ring reads again as runs end.
+                              // The ring reads again as runs end.
                               const runs = turns.flatMap((turn) => (turn.run ? [turn.run] : []));
-                              const latest = runs[runs.length - 1];
                               return (
                                 <ComposerFooter
                                   // Left, in order: project, image (footerStart), then approval.
@@ -1259,8 +1259,6 @@ export function ThreadRoom({
                                       <ApprovalToggle thread={th} me={handle || me} />
                                     </>
                                   }
-                                  agent={latest ? agentShown(latest.agent) : undefined}
-                                  model={latest?.usage?.context?.model}
                                   usage={
                                     <UsageRing
                                       thread={id}
@@ -1396,22 +1394,6 @@ export function ThreadRoom({
                                 </>
                               ) : undefined
                             }
-                            onReply={
-                              posts
-                                ? () =>
-                                    setSeed({
-                                      quote: {
-                                        label: "this message",
-                                        text: t.message?.text,
-                                        url: href({
-                                          page: "conversation",
-                                          id,
-                                          message: t.message?.id,
-                                        }),
-                                      },
-                                    })
-                                : undefined
-                            }
                           />
                         ) : t.run ? (
                           <AnswerView
@@ -1444,23 +1426,6 @@ export function ThreadRoom({
                                 ? () => setSeed({ text: `@${t.run?.agent} `, mode: "prepend" })
                                 : undefined
                             }
-                            onReply={
-                              posts
-                                ? () =>
-                                    setSeed({
-                                      quote: {
-                                        label: `${agentShown(t.run?.agent ?? "")}'s answer`,
-                                        agent: t.run?.agent,
-                                        url: href({
-                                          page: "conversation",
-                                          id,
-                                          panel: "activity",
-                                          run: t.run?.id,
-                                        }),
-                                      },
-                                    })
-                                : undefined
-                            }
                             onRedirect={
                               posts
                                 ? () =>
@@ -1490,6 +1455,8 @@ export function ThreadRoom({
                         ) : null}
                       </Fragment>
                     ))}
+                    {/* Messages that wait behind the running turn, drawn by the composer. */}
+                    <div ref={setQueuePlace} data-layer="queued-place" className="empty:hidden" />
                   </ThreadList>
                 </WebSurface>
               </AgentNameContext.Provider>

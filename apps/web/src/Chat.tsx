@@ -306,6 +306,8 @@ export function Chat({
   const [room, setRoom] = useState<ThreadPage | null>(null);
   const [chosen, setChosen] = useState<Record<string, string>>({});
   // An agent a link named is mentioned at the start of the draft, ahead of what it asks.
+  // The end of the conversation, where messages that wait are shown.
+  const [queuePlace, setQueuePlace] = useState<HTMLElement | null>(null);
   const [seed, setSeed] = useState<ComposerSeed | undefined>(() =>
     startAgent || startAsk
       ? { text: `${startAgent ? `@${startAgent} ` : ""}${startAsk ?? ""}` }
@@ -782,6 +784,8 @@ export function Chat({
         }
         emptyText={placeholderFor}
         queue={sending}
+        // In a conversation, messages that wait are shown at its end, not in the box.
+        queuePlace={threadId && !composerOnly ? queuePlace : undefined}
         held={holding}
         onCancelHeld={unhold}
         autoFocus={!threadId}
@@ -1047,6 +1051,7 @@ export function Chat({
         setChosen={setChosen}
         setSeed={setSeed}
         composer={composer}
+        onQueuePlace={setQueuePlace}
         activity={activity ?? lastActivity.current}
         activityOpen={activity !== null}
       />
@@ -1103,7 +1108,7 @@ function DockPlaceholder() {
     <div
       ref={dock}
       data-layer="composer-placeholder"
-      className="mx-auto flex w-full max-w-4xl flex-col gap-1.5 px-4 pb-3"
+      className="humagen-composer-placeholder mx-auto flex w-full max-w-4xl flex-col gap-1.5 px-4 pb-3"
     >
       {html ? (
         <div ref={picture} inert aria-hidden className="pointer-events-none" />

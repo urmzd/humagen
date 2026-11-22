@@ -36,6 +36,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-079 | Run and Answer: in a session set to it, the approval agent also answers a question an agent asks a person when the session already settles it, as the person who chose it, and hands them the rest | Implemented: `threads.ApprovalDecide` (`pkg/threads/approval.go`), `internal/platform/approval_questions.go`, the `answer` field and `DescribeQuestion` in `pkg/approve`, `PUT /api/threads/{id}/approval` with `decide`, Answer Questions beside Run in `ApprovalToggle.tsx`, and the judgement on a question's card (`ClarificationCard`). Evidence: `TestRunAndAnswerAnswersAChoiceTheSessionSettles`, `TestRunAndAnswerAnswersAReply`, `TestWhatRunAndAnswerDoesNotSettleWaitsForAPerson`, `TestRunAndAnswerNeverAnswersForSomeoneElse`, `TestRunAndAnswerLeavesWhatSomeoneElseAskedFor`, `TestRunLeavesQuestionsForAPerson`, `TestRunAndAnswerIsAModeAPersonChooses`, `TestApprovalModeIsSetOnItsOwnAndKept`, `TestAQuestionsAnswerIsReadBesideTheDecision`; `approval-toggle.dom.test.tsx`, `ui.test.tsx`. Not run: `pnpm validate:slack` (needs the Slack bench) and a screen check in a running console. |
 | DES-081 | An agent is made goal first and is met on its home: a new agent starts from a searchable list of outcomes (Start from scratch first), is given a name, a shape and a color with its bot drawn as it will be, and opens on a home where it introduces itself, offers jobs to hand it and takes a message addressed to it; its settings are grouped as General, Access, Tools and Behavior, and General shows what it completed this week, how it answers in Slack, Pause and Retire | Implemented: see [DES-081](#des-081-goal-first-agents-a-home-and-grouped-settings). |
 | DES-084 | An agent's health says what is checked and what to do next: one row (status pill, recent pass rate, a How evaluation works icon with the docs, an icon Refresh health that spins while it reads and says when it last read), checks on recent runs beside each eval suite's last result, schedule and Run Now, runs flagged for review linking to the queue, a schedule editor with presets inside the one hour to thirty day bound that says who the schedule runs as, and figures that show a value or an explained dash | Implemented: `AgentHealth.tsx` (`AgentHealth`, `AgentStats`), `evalHealth.ts`, the schedule editor in `Evals.tsx`, `next_run_at` and `created_by_name` on `GET /api/evals` and `flagged` on agent health, words in `copy.agentHealth`, `copy.agentStats` and `copy.evalSchedule`. Composes with #480's health row: one header row with an actions slot, pills, no separators and no explanatory paragraph. Evidence: `TestNextRunCountsFromTheLatestStart`, `TestAgentHealthCountsTheRunsFlaggedForReview`, `TestASuiteListingSaysWhenItsScheduleNextRunsAndForWhom`, `agent-health.dom.test.tsx`, `evalHealth.test.tsx`; before and after captures at 1280 and 390, light and dark, in pull request 482. Pass-rate bars are neutral when a run reached its threshold, warn below it and bad only when it could not run, each labelled by how long ago it ran; the schedule presets wrap rather than scroll at phone width. The refresh glyph turning is the one spinner on the page; it is a control's own state, and the content it refreshes stays on view. |
+| DES-087 | The composer is flat: the AI notice is in the middle of the footer row, the sentence is the link to the terms, messages that wait show greyed at the end of the conversation with Send now, and the box keeps its placeholder while agents work | Implemented: `NoticeSlotContext` and `queuePlace` in `Composer.tsx`, `ComposerFooter` in `SessionUsage.tsx`, `QueuedMessages` in `packages/web`, `.humagen-composer-footer` in `styles.css`; `composer-notice.dom.test.tsx`, `queued-messages.dom.test.tsx` and `composer-overlay.dom.test.tsx` pass; checked in the browser in a session and on Home, light and dark, at 1280 and 390 wide, with a real run and two waiting messages |
 | DES-085 | Under every composer, one line says the product is AI and can make mistakes, with a Terms link when the workspace's branding names a page of terms | Implemented: `AiNotice` in `Composer.tsx`, `branding.terms_url` in `pkg/spec`, `terms_url` on `GET /api/branding`; `composer-notice.dom.test.tsx`, `pkg/spec` and `internal/httpapi` tests pass; checked in the browser on Home and in a session, light and dark, at 1280 and 390 wide, with and without a terms address |
 | DES-079 | Auto answers questions: in a session set to Auto, the approval agent also answers a question an agent asks a person when the session already settles it, as the person who chose it, and hands them the rest. Two modes, Ask and Auto; Run and Answer folded into Auto | Implemented: `threads.ApprovalAuto` and `threads.ApprovalModeOf`, which reads a stored `decide` as `auto` (`pkg/threads/approval.go`), `internal/platform/approval_questions.go`, the `answer` field and `DescribeQuestion` in `pkg/approve`, `PUT /api/threads/{id}/approval` with `auto` (`decide` still taken as `auto`), the Ask and Auto menu in `ApprovalToggle.tsx`, and the judgement on a question's card (`ClarificationCard`). Evidence: `TestAutoAnswersAChoiceTheSessionSettles`, `TestAutoAnswersAReply`, `TestWhatAutoDoesNotSettleWaitsForAPerson`, `TestAutoNeverAnswersForSomeoneElse`, `TestAutoLeavesWhatSomeoneElseAskedFor`, `TestAskLeavesQuestionsForAPerson`, `TestDecideIsTakenAsAuto`, `TestAutoIsAModeAPersonChooses`, `TestApprovalModeIsSetOnItsOwnAndKept`, `TestStoredApprovalModesReadAsAuto`, `TestAQuestionsAnswerIsReadBesideTheDecision`; `approval-toggle.dom.test.tsx`, `ui.test.tsx`. Not run: `pnpm validate:slack` (needs the Slack bench) and a screen check in a running console. |
 | DES-076 | A session's Details pane is a workbench of tabs, and what a person does by hand in one goes with their next message | Implemented: the tab registry (`workbench.ts`), the pane (`Workbench.tsx`), six tab addresses (`?panel=details&bench=`), and the record, list and fold of what was done by hand (`human-activity.ts`, `humanActivity.tsx`). All six tabs are built: Details, Browser (`WorkbenchBrowser.tsx`, `POST /api/sessions/{id}/browser`), Terminal (`WorkbenchTerminal.tsx`, `POST /api/threads/{id}/sandboxes/commands` on a docker sandbox), Changes (`WorkbenchChanges.tsx`), Side Chat (`WorkbenchSidechat.tsx`, `GET /api/threads/{id}/forks`) and Search (`WorkbenchSearch.tsx`). Browser, Terminal, Changes, Side Chat and the Workspace file editor record what a person did; Search records nothing. Not built: the agent's own screenshots and live video in Browser, a persistent shell in Terminal, a baseline from before the session in Changes, and keeping the list of what was done by hand across a reload. The Details tab keeps its earlier 12px and 13px labels. Evidence: `workbench.dom.test.tsx`, `workbench-browser.dom.test.tsx`, `workbench-terminal.dom.test.tsx`, `workbench-changes.dom.test.tsx`, `workbench-sidechat.dom.test.tsx`, `workbench-search.dom.test.tsx`, `room.dom.test.tsx`, `route.test.ts`, core `human-activity.test.ts`, `TestWhatWasDoneByHandTagsNobody`, `TestAPersonActsOnTheSessionsBrowserByHand`, `TestAPersonsCommand*`, `TestSandboxCommandRouteRunsForItsPosterAndNobodyElse`; the six tabs seen together in a running console at 1280x800 and 390x844, light and dark, where five things done by hand in four tabs reached the agent in one message and the list then cleared. |
@@ -1009,11 +1010,11 @@ project settings", with a clean outlook.
   same place; the words land in the box to edit before sending, and Send stays
   ready if there are words. Shift+Enter adds a line.
 - While anything in the session runs, whoever started it, Send is Stop (a
-  square) and the empty box says "↵ to send, ⌘↵ to queue for later". Stop, or Esc in an empty box, stops every run in the
+  square) and the box keeps its placeholder (DES-087). Stop, or Esc in an empty box, stops every run in the
   session and its child sessions (`POST /api/sessions/{id}/stop` with
   `children`) and the reader's background work started from it
-  (`POST /api/me/background/{id}/stop`). Enter sends now; Cmd+Enter
-  (Ctrl+Enter) queues behind what runs.
+  (`POST /api/me/background/{id}/stop`). Enter queues behind what runs;
+  Cmd+Enter (Ctrl+Enter) sends now (DES-087, which reversed these two keys).
 - Each running item has its own Stop, a square and the word at the top of its
   row, never in a menu or behind hover: the agent (beside its mark, which still
   stops it), a call to another agent (`POST /api/runs/{child}/stop`),
@@ -1056,7 +1057,7 @@ a Stop for the whole session, and each running item has a Stop in words.
 - A run waiting on a person is not working: its mark is still and offers no
   stop by hover. Anything waiting on a person must not animate.
 - The composer only sends. While the reply to the last message works, a new
-  message queues behind it and the queue shows above the composer. Esc in an
+  message queues behind it and waits at the end of the conversation (DES-087). Esc in an
   empty composer stops the agents the last message started.
 - Nothing else about the composer changes while agents work: no list of
   threads at work in the box, no Stop button in the bar, no moving border.
@@ -1149,26 +1150,75 @@ any. This reverses the first point of DES-030.
   {name} is the product's name from the branding (`branding.name`), not the
   copy key `product`, which names the sender of the product's own messages.
   A workspace may reword the sentence with the copy key `dock.aiNotice`.
-- It is a line of its own under the footer row, centered, in the footer row's
-  muted text size, so nothing in the footer row moves for it. This is the
-  second line under the box that DES-080 allows.
+- It is in the footer row's muted text size. Where the composer has a footer
+  row and is wide enough, the line is in the middle of that row (DES-087).
+  Otherwise it is a line of its own under the row, centered: the second line
+  under the box that DES-080 allows.
 - Every composer shows it, the Side Chat's too: on a phone, and with the
   workbench expanded, the Side Chat's is the only composer on view. Side by
   side on a wide screen, the line is then on view twice.
 - The console links to no page unless one is named: the terms a person uses a
   deployment under are its operator's. A deployment or a workspace names its page
-  in `branding.terms_url`, an `https` address in plain ASCII; the line then ends
-  with a Terms link that opens it in a new tab. Left out, the line has no link.
+  in `branding.terms_url`, an `https` address in plain ASCII; the sentence is
+  then itself the link, which opens the page in a new tab, underlines on hover
+  and focus, and is titled "Terms" (DES-087). Left out, the line has no link.
 - The line is 24px high with or without the link. A long name, or a long
   sentence a workspace wrote, wraps at a narrow width and makes it taller.
 - The place kept for the composer while a session loads (DES-080) keeps this
-  line's height too, so the bar does not jump when the composer arrives.
+  line's height too where the line is a row of its own, so the bar does not
+  jump when the composer arrives.
 - An agent's answer in the console still adds no disclaimer of its own
   (`disclaimer={false}` on `AgentMessage`), and the Slack app keeps its own.
 - Acceptance: Home and a session show the line under the composer at phone and
-  desktop width in both themes; with `branding.terms_url` set, the line ends
-  with a Terms link to that address, and an address that is not `https` is
-  refused by the spec and never drawn as a link.
+  desktop width in both themes; with `branding.terms_url` set, the sentence
+  links to that address, and an address that is not `https` is refused by the
+  spec and never drawn as a link.
+
+### DES-087: A flat composer: one footer line, and waiting messages in the conversation
+
+Owner request, 2026-11-21: put "Humagen is AI" in the middle of the row with
+the permissions, make the sentence itself the link to the terms, and show
+messages that wait in the chat, greyed, where each can be sent now, so the
+box is only its placeholder. This changes where DES-085 puts the line and
+which key DES-080 gives to Send now.
+
+- The row under the box is one line of three groups: on the left where the
+  session runs and its approval mode, in the middle the AI notice, on the
+  right the usage ring. It names no agent and no model (owner request,
+  2026-11-21): a session is not one agent's, each answer names who gave it,
+  and an agent's model is the agent's own.
+- A message's actions are always shown, on every message, at 28px with a
+  14px mark for a mouse and a 44px target for a finger. Nothing about them
+  changes on hover. Only a message's time shows on hover, at the far end of
+  its row (the left end under a person's message, which sits on the right),
+  so nothing between two actions comes or goes.
+- No message has a Reply action (owner request, 2026-11-21): the composer
+  is the one place to answer. The notice is centered on
+  the row, whatever the widths of the two sides.
+- The row measures the composer, not the window. Narrower than 44rem (a
+  phone, a Side Chat, a session beside an open panel), the notice is a line
+  of its own under the row, centered.
+- With `branding.terms_url` set, the sentence is the link. No word is added
+  for it.
+- A message sent while a turn of the reader's runs waits at the end of the
+  conversation, where it will be sent: the person's own message, right
+  aligned, greyed, in a dashed outline, with "Queued", Send now, Edit and
+  Remove under it. More than one has Clear queue under the last. A queue held
+  after a failure or a Stop says why there, with Resume.
+- The box says nothing about keys while agents work: its placeholder does not
+  change, and no strip of waiting messages is in it. A composer with no
+  conversation beside it (Home, an agent's page, the Side Chat) keeps the
+  strip in the box.
+- While a turn of the reader's runs, Enter queues the message behind it and
+  Cmd+Enter (Ctrl+Enter) sends it now, which stops the work in flight. With
+  none running, Enter sends at once, also past messages a failure or a Stop
+  left held. Send now on a waiting message does what Cmd+Enter does.
+- Not kept in the conversation: the Auto-send switch and reordering by drag
+  or arrow keys. The strip still has both.
+- Acceptance: with a turn running, two messages sent with Enter show greyed
+  at the end of the conversation in the order sent and the box shows its
+  placeholder; when the turn ends the first one is sent and leaves the queue;
+  Send now on one stops the turn and sends it next.
 
 ### DES-031: Checkpoints, not agent lines
 

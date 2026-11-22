@@ -1562,29 +1562,20 @@
 }
 
 /*
- * Message actions stay out of the way. The latest message in a thread keeps
- * its row; an earlier one shows its row only while it is hovered, focused or
- * tapped (a message takes focus when tapped), or while one of its actions is
- * pressed. On a phone an earlier row takes no room until then; with a mouse
- * it keeps its room, so nothing moves under the pointer.
+ * A message's actions are always there, on every message, and small so that
+ * they stay quiet: 28px with a 14px mark for a mouse, a full 44px target for
+ * a finger. Nothing about them changes on hover. Only a message's time shows
+ * on hover.
  */
-.aui-thread-turns > :not(:last-child) .aui-message-actions {
-  transition: opacity 150ms ease-out;
-}
-:is(
-    .aui-thread-turns > .group\/message:not(:last-child),
-    .aui-thread-turns > :not(:last-child) .group\/message
-  ):not(:hover, :focus-within)
-  .aui-message-actions:not(:has([aria-pressed="true"])) {
-  opacity: 0;
-}
-@media (pointer: coarse) {
-  :is(
-      .aui-thread-turns > .group\/message:not(:last-child),
-      .aui-thread-turns > :not(:last-child) .group\/message
-    ):not(:focus-within)
-    .aui-message-actions:not(:has([aria-pressed="true"])) {
-    display: none;
+@media (pointer: fine) {
+  /* Only a control that is one mark: a control with words keeps its own size. */
+  .aui-message-actions :is(button, a):has(> svg:only-child) {
+    width: 1.75rem;
+    height: 1.75rem;
+  }
+  .aui-message-actions :is(button, a) > svg:only-child {
+    width: 0.875rem;
+    height: 0.875rem;
   }
 }
 .group\/message:focus {

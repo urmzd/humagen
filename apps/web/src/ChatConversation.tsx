@@ -51,7 +51,6 @@ function TurnView({
   ask,
   onSwitch,
   onAsk,
-  onReply,
   onRedirect,
   actions,
   canStop = false,
@@ -70,7 +69,6 @@ function TurnView({
   live: boolean;
   onSwitch: (id: string) => void;
   onAsk?: () => void;
-  onReply?: () => void;
   onRedirect?: () => void;
   actions?: ReactNode;
 }) {
@@ -130,7 +128,6 @@ function TurnView({
                 itemActions={itemActions(run)}
                 capabilities={{ regenerate: !refused }}
                 onAskAgent={onAsk}
-                onReply={onReply}
                 onRedirect={onRedirect}
               />
             </CallThreads>
@@ -197,6 +194,7 @@ export function RunsConversation({
   setChosen,
   setSeed,
   composer,
+  onQueuePlace,
   activity,
   activityOpen,
 }: {
@@ -226,6 +224,8 @@ export function RunsConversation({
   setChosen: Dispatch<SetStateAction<Record<string, string>>>;
   setSeed: (seed: ComposerSeed) => void;
   composer: ReactNode;
+  /** Takes the end of the conversation, where the composer shows the messages that wait. */
+  onQueuePlace?: (place: HTMLElement | null) => void;
   /** What the activity drawer shows, kept while it leaves, and whether it is open. */
   activity: { focus: string | null } | null;
   activityOpen: boolean;
@@ -319,23 +319,6 @@ export function RunsConversation({
                         ? () => setSeed({ text: `@${run.agent} `, mode: "prepend" })
                         : undefined
                     }
-                    onReply={
-                      canRun
-                        ? () =>
-                            setSeed({
-                              quote: {
-                                label: `${run.agent}'s answer`,
-                                agent: run.agent,
-                                url: href({
-                                  page: "conversation",
-                                  id: threadId,
-                                  panel: "activity",
-                                  run: run.id,
-                                }),
-                              },
-                            })
-                        : undefined
-                    }
                     onRedirect={
                       canRun
                         ? () =>
@@ -355,6 +338,8 @@ export function RunsConversation({
                     }
                   />
                 ))}
+                {/* Messages that wait behind the running turn, drawn by the composer. */}
+                <div ref={onQueuePlace} data-layer="queued-place" className="empty:hidden" />
               </Thread>
             </WebSurface>
           </AgentNameContext.Provider>

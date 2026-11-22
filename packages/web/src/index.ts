@@ -16,6 +16,7 @@ export * from "./MessageActionRow";
 export * from "./Modal";
 export * from "./Presence";
 export * from "./PromptInput";
+export * from "./QueuedMessages";
 export * from "./QueueStrip";
 export * from "./Reasoning";
 export * from "./ResourceBrowser";

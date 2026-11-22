@@ -413,6 +413,16 @@ export const ForkIcon = icon(
   </>,
   "ForkIcon",
 );
+/** A branch off a line of work: a code repository. */
+export const GitBranchIcon = icon(
+  <>
+    <path d="M6 3v12" />
+    <circle cx="18" cy="6" r="3" />
+    <circle cx="6" cy="18" r="3" />
+    <path d="M18 9a9 9 0 0 1-9 9" />
+  </>,
+  "GitBranchIcon",
+);
 export const BringBackIcon = icon(
   <path d="m9 10-5 5 5 5M4 15h10a6 6 0 0 0 0-12" />,
   "BringBackIcon",

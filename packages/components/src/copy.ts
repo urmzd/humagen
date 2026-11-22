@@ -2180,7 +2180,6 @@ export const defaultCopy = {
       more: (n: number) => `and ${n} more`,
     },
     askAgent: (agent: string) => `Ask ${agent}`,
-    reply: "Reply",
     question: "Clarification",
     answerChoice: "Use This Answer",
     questionHint: "This answers the question. Approvals for actions remain separate.",
@@ -5309,15 +5308,12 @@ export const defaultCopy = {
   /** The control that returns to the end of a thread or of an answer's activity, named by what is there. */
   /** The composer that floats over a conversation: its keys, its two levels of Stop, its footer and usage. */
   dock: {
-    /** Said in the empty box while anything in the session runs. */
-    hint: (mac: boolean) =>
-      mac ? "↵ to send, ⌘↵ to queue for later" : "↵ to send, Ctrl+↵ to queue for later",
     sendNow: "Send now",
-    /** Send's tooltip: how to send, queue and add a line. */
+    /** Send's tooltip: how to send and add a line, and what the keys do while an agent works. */
     sendHint: (mac: boolean) =>
       mac
-        ? "Send (↵). ⌘↵ queues, Shift+↵ adds a line"
-        : "Send (Enter). Ctrl+Enter queues, Shift+Enter adds a line",
+        ? "Send (↵). Shift+↵ adds a line. While an agent works, ↵ queues and ⌘↵ sends now"
+        : "Send (Enter). Shift+Enter adds a line. While an agent works, Enter queues and Ctrl+Enter sends now",
     /** The composer's Stop: everything running in the session. */
     stopAll: "Stop",
     stopAllLabel: "Stop everything running in this session",
@@ -5332,9 +5328,8 @@ export const defaultCopy = {
     stoppingLabel: (what: string) => `Stopping ${what}`,
     stoppedLabel: (what: string) => `${what} stopped`,
     backgroundWork: (kind: string, text: string) => `the ${kind} "${text}"`,
-    /** The footer under the composer: who answers, the approval mode and the usage ring. */
+    /** The footer under the composer: the approval mode, the AI notice and the usage ring. */
     footer: "Session details",
-    answeredBy: (agent: string) => `Answered by ${agent}`,
     more: "More session controls",
     /** The line under a composer. {name} is the product's name. */
     aiNotice: "{name} is AI and can make mistakes.",
@@ -5346,7 +5341,8 @@ export const defaultCopy = {
       ringIdle: "Usage. Open usage",
       context: "Context",
       title: "Usage",
-      session: "This session",
+      /** Which model the context is on. */
+      model: "Model",
       contextUsed: (tokens: string, window: string) => `${tokens} of ${window} tokens`,
       spent: "Spent so far",
       tokens: "Tokens so far",
@@ -5356,14 +5352,12 @@ export const defaultCopy = {
       atLeast: "At least this much: the oldest runs were not counted.",
       nothingYet: "Nothing used yet.",
       limits: "Limits",
-      noLimits: "No limits set",
-      limitsHidden: "Limits are shown to people who can read billing.",
-      seeAll: "See all",
+      noLimits: "None set",
+      limitsHidden: "Shown to people who can read billing",
       resets: (when: string) => `Resets ${when}`,
       failed: "Usage could not be read.",
       retry: "Retry",
       loading: "Loading usage",
-      close: "Close usage",
       near: (what: string) => `Near the ${what} limit`,
       over: (what: string, when: string) =>
         `${what} is used up. New runs are blocked until ${when}.`,
