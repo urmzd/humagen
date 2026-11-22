@@ -127,7 +127,9 @@ test("the Files drawer has one fixed row of sections, no tab per thing opened, a
   const first = await screen.findAllByRole("tab");
   assert.deepEqual(
     first.map((t) => t.textContent),
-    (["files", "scratchpads", "artifacts", "sandboxes", "memories"] as const).map((k) => pane.kind[k]),
+    (["files", "scratchpads", "artifacts", "sandboxes", "memories"] as const).map(
+      (k) => pane.kind[k],
+    ),
   );
   assert.equal(screen.getByRole("tab", { selected: true }).textContent, pane.kind.files);
   // There is no + and no close on a section: the drawer is closed once, by its own button.
