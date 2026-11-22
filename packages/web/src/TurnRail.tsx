@@ -65,46 +65,38 @@ export function slotAt(y: number, top: number, height: number, n: number): numbe
 const WAVE_W = 24;
 
 /**
- * The wave's outline: one closed, smooth shape about a center line, as wide
- * at each turn's slot as that turn's amplitude, and closed to a point at
- * both ends. Each side is one curve through every slot, so neighbours run
- * into each other with no step between them. The same number of commands
- * for the same number of turns, so a change of amplitude can be animated.
+ * The wave's line: one smooth curve down the rail that swings from side to
+ * side of a center line, as far at each turn's slot as that turn's
+ * amplitude, like a sound wave. Turns alternate sides, so every turn is one
+ * crest, and neighbours run into each other with no break. The same number
+ * of commands for the same number of turns, so a change of amplitude can be
+ * animated.
  */
 export function wavePath(amps: readonly number[], slot = SLOT_PX, center = WAVE_W / 2): string {
   const n = amps.length;
   if (n === 0) return "";
-  const height = n * slot;
   const f = (v: number) => Number(v.toFixed(2));
-  // One side: from the top point, through each slot's middle, to the bottom point.
-  const side = (sign: 1 | -1) => {
-    const points = [
-      { x: center, y: 0 },
-      ...amps.map((a, i) => ({ x: center + sign * a, y: (i + 0.5) * slot })),
-      { x: center, y: height },
-    ];
-    return points;
-  };
-  const curve = (points: { x: number; y: number }[]) =>
-    points
-      .slice(1)
-      .map((p, i) => {
-        const from = points[i] as { x: number; y: number };
-        // Handles along the rail: the outline is upright at each slot, so it swells and never kinks.
-        const reach = (p.y - from.y) / 2;
-        return `C${f(from.x)} ${f(from.y + reach)} ${f(p.x)} ${f(p.y - reach)} ${f(p.x)} ${f(p.y)}`;
-      })
-      .join("");
-  const down = side(1);
-  const up = side(-1).reverse();
-  return `M${f(center)} 0${curve(down)}${curve(up)}Z`;
+  const points = [
+    { x: center, y: 0 },
+    ...amps.map((a, i) => ({ x: center + (i % 2 === 0 ? a : -a), y: (i + 0.5) * slot })),
+    { x: center, y: n * slot },
+  ];
+  return `M${f(center)} 0${points
+    .slice(1)
+    .map((p, i) => {
+      const from = points[i] as { x: number; y: number };
+      // Handles along the rail: the line is upright at each crest, so it swings and never kinks.
+      const reach = (p.y - from.y) / 2;
+      return `C${f(from.x)} ${f(from.y + reach)} ${f(p.x)} ${f(p.y - reach)} ${f(p.x)} ${f(p.y)}`;
+    })
+    .join("")}`;
 }
 
 /**
- * The conversation's wave, down its left edge: one connected shape, wider
- * where a turn did more, so a long conversation reads like a sound wave.
- * It swells about the turn in view or under the pointer, which is also the
- * brightest part of it. It rests faint and brightens while the reader
+ * The conversation's wave, down its left edge: one connected line that
+ * swings wider where a turn did more, so a long conversation reads like a
+ * sound wave. It swells about the turn in view or under the pointer, which
+ * is also the brightest part of it. It rests faint and brightens while the reader
  * scrolls or reaches for it.
  *
  * It is one vertical slider. Hover shows the turn's prompt; press, or on a
@@ -275,7 +267,7 @@ export function TurnRail({
   const nearOf = (i: number) => Math.max(0, 1 - Math.abs(i - focus) / 3);
   const amps = turns.map((_, i) => {
     const norm = max > min ? ((logs[i] ?? min) - min) / (max - min) : 0.5;
-    return 2 + norm * 6 + nearOf(i) * 3;
+    return 2.5 + norm * 5 + nearOf(i) * 3;
   });
   const current = turns[activeIndex];
   const shown = hovered !== null ? turns[hovered] : undefined;
@@ -350,7 +342,16 @@ export function TurnRail({
               ))}
             </linearGradient>
           </defs>
-          <path className="aui-wave-shape" d={wavePath(amps)} fill={`url(#${CSS.escape(paint)})`} />
+          <path
+            className="aui-wave-shape"
+            d={wavePath(amps)}
+            fill="none"
+            stroke={`url(#${CSS.escape(paint)})`}
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            vectorEffect="non-scaling-stroke"
+          />
         </svg>
       </div>
       {shown && hovered !== null && (
