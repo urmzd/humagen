@@ -106,7 +106,7 @@ func (p *Platform) alertBrief(ctx context.Context, tenant, subject, id string) s
 // briefRun writes what the brief says of the run that raised an alert.
 func (p *Platform) briefRun(b *strings.Builder, tenant string, a alerts.Alert, run runs.Run) {
 	fmt.Fprintf(b, "Run: %s by @%s, %s, in session %s\n", run.ID, run.Agent, run.Status, run.Thread)
-	if link := p.answerLink(run); link != "" {
+	if link := answerLink(run); link != "" {
 		fmt.Fprintf(b, "Link to the answer: %s\nEnd the recap with this link, as [the answer](%s).\n", link, link)
 	}
 	if online, err := p.Evals.Online(tenant, run.ID); err == nil {
@@ -189,14 +189,11 @@ func briefTools(b *strings.Builder, events []event.Envelope) {
 	}
 }
 
-// answerLink is the console address of a run's answer, in its session.
-func (p *Platform) answerLink(run runs.Run) string {
+// answerLink is the console address of a run's answer, in its session. It
+// is a path: the review session that carries it is read in the console.
+func answerLink(run runs.Run) string {
 	if !strings.HasPrefix(run.Thread, "s_") {
 		return ""
 	}
-	path := "/messages/" + url.PathEscape(run.Thread) + "?" + url.Values{"message": {run.ID}}.Encode()
-	if base := strings.TrimRight(p.cfg.PublicURL, "/"); base != "" {
-		return base + path
-	}
-	return path
+	return "/messages/" + url.PathEscape(run.Thread) + "?" + url.Values{"message": {run.ID}}.Encode()
 }
