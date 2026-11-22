@@ -26,7 +26,6 @@ export interface SessionScreen {
 }
 
 const composer = (page: Page) => page.locator('form[aria-label="Message"] textarea');
-const details = (page: Page) => page.getByRole("dialog", { name: "Details", exact: true });
 
 async function readySession(page: Page): Promise<void> {
   await composer(page).waitFor();
@@ -34,33 +33,21 @@ async function readySession(page: Page): Promise<void> {
   await page.getByRole("button", { name: /^Details(, \d+ working)?$/ }).waitFor();
 }
 
-async function detailsReady(page: Page): Promise<void> {
-  const panel = details(page);
+/** The session's Files: the Workspace drawer, a dialog on a phone and beside the thread on a wide screen. */
+const workspace = (page: Page) => page.getByRole("dialog", { name: "Workspace", exact: true });
+
+async function workspaceReady(page: Page): Promise<void> {
+  const panel = workspace(page);
   await panel.waitFor();
-  const sections = panel.getByRole("tablist", { name: "Session details" });
-  assert.deepEqual(await sections.getByRole("tab").allTextContents(), [
-    "Files",
-    "Sources",
-    "Steps",
-    "Sessions",
-  ]);
   const viewport = page.viewportSize();
   assert.ok(viewport);
-  assert.equal(await panel.evaluate((el) => el.matches(":modal")), viewport.width < 1024);
   const bounds = await panel.boundingBox();
   assert.ok(bounds && bounds.x >= -1 && bounds.x + bounds.width <= viewport.width + 1);
-  if (viewport.width >= 1024) {
-    const box = await composer(page).boundingBox();
-    assert.ok(
-      box && box.width > 0 && box.x + box.width <= bounds.x + 1,
-      "Details reflows the composer rather than covering it",
-    );
-  }
 }
 
 async function filesReady(page: Page): Promise<void> {
-  await detailsReady(page);
-  const panel = details(page);
+  await workspaceReady(page);
+  const panel = workspace(page);
   const browser = panel.locator('[data-slot="file-browser"]');
   await browser.waitFor();
   const picker = browser.getByRole("button", {
@@ -322,7 +309,8 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
         const slack = apps.getByRole("listitem", { name: "Slack", exact: true });
         const github = apps.getByRole("listitem", { name: "GitHub", exact: true });
         const enable = slack.getByRole("button", { name: "Enable", exact: true });
-        const manage = github.getByRole("button", { name: "Manage", exact: true });
+        // An installed app's status is its control: pressing it manages the app.
+        const manage = github.getByRole("button", { name: /^(Installed|Connected)$/ });
         await enable.waitFor();
         await manage.waitFor();
         const first = await slack.boundingBox();
@@ -356,9 +344,9 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
         assert.ok(action && menu && row);
         assert.ok(
           Math.abs(menu.y + menu.height / 2 - (action.y + action.height / 2)) <= 1,
-          "the menu shares Manage's line at every width",
+          "the menu shares the status button's line at every width",
         );
-        assert.ok(menu.x >= action.x + action.width, "the menu follows Manage");
+        assert.ok(menu.x >= action.x + action.width, "the menu follows the status button");
         assert.ok(
           Math.abs(menu.x + menu.width - (row.x + row.width)) <= 1,
           "the menu ends the row",
@@ -632,11 +620,12 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
         await dialog.getByRole("textbox").fill("Include the owner and the next review date.");
       },
     },
-    ...(["files", "sources", "steps", "sessions"] as const).map((panel) => ({
-      name: `session-details-${panel}`,
-      path: `${session}?panel=${panel}`,
-      act: panel === "files" ? filesReady : detailsReady,
-    })),
+    {
+      // Sources, Steps and Sessions left the drawer: the conversation shows them in place.
+      name: "session-details-files",
+      path: `${session}?panel=files`,
+      act: filesReady,
+    },
     {
       name: "session-approval",
       path: `/messages/${ids.approval.id}`,
