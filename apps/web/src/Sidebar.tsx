@@ -509,7 +509,8 @@ function TaskRow({
             // The status sits in the menu button's column, centered under it, on the second line.
             <span
               data-row-status
-              className="absolute right-0.5 bottom-1.5 flex h-4 w-8 items-center justify-center pointer-coarse:bottom-2 pointer-coarse:w-11"
+              // Centered under the ⋯ button, which is 28px on a mouse so the two never meet.
+              className="absolute right-0.5 bottom-1.5 flex h-4 w-8 items-center justify-center pointer-coarse:bottom-2 pointer-coarse:w-11 [@media(pointer:fine)]:w-7"
             >
               {state ? (
                 <RowStatusBadge state={state} />
@@ -542,7 +543,7 @@ function TaskRow({
               align="right"
               label={`Manage ${title}`}
               popup="menu"
-              className={`${rowAction} opacity-0 group-hover/task:opacity-100 group-focus-within/task:opacity-100 focus-visible:opacity-100 aria-expanded:opacity-100 aria-expanded:bg-aui-hover aria-expanded:text-aui-fg [@media(pointer:coarse)]:size-11 ${current || peek.at ? "[@media(pointer:coarse)]:opacity-100" : "[@media(pointer:coarse)]:pointer-events-none [@media(pointer:coarse)]:group-focus-within/task:pointer-events-auto"}`}
+              className={`${rowAction} opacity-0 group-hover/task:opacity-100 group-focus-within/task:opacity-100 focus-visible:opacity-100 aria-expanded:opacity-100 aria-expanded:bg-aui-hover aria-expanded:text-aui-fg [@media(pointer:fine)]:size-7 [@media(pointer:coarse)]:size-11 ${current || peek.at ? "[@media(pointer:coarse)]:opacity-100" : "[@media(pointer:coarse)]:pointer-events-none [@media(pointer:coarse)]:group-focus-within/task:pointer-events-auto"}`}
               button={<EllipsisIcon size={16} />}
             >
               {(close) => (
