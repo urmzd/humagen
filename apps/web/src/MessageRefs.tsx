@@ -3,7 +3,13 @@ import { allTools, type ResponseState, type Task } from "@humagen/core";
 import { CallThreadContext } from "@humagen/web";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Run } from "./adapter.ts";
-import { AgentCallLane, responseChips, summaryOf, useResponse } from "./ResponseActivity.tsx";
+import {
+  AgentCallLane,
+  LaneInMessage,
+  responseChips,
+  summaryOf,
+  useResponse,
+} from "./ResponseActivity.tsx";
 import { Chips } from "./refChips.tsx";
 import { type TraceLoader, traceSource } from "./responseSource.ts";
 import type { Chip, Reference } from "./trace.ts";
@@ -56,7 +62,11 @@ export function callIn(state: ResponseState, task: Task) {
 export function callThreadsOf(state: ResponseState, messageId?: string) {
   return (task: Task): ReactNode => {
     const tool = callIn(state, task);
-    return tool ? <AgentCallLane tool={tool} messageId={messageId} /> : null;
+    return tool ? (
+      <LaneInMessage.Provider value={true}>
+        <AgentCallLane tool={tool} messageId={messageId} />
+      </LaneInMessage.Provider>
+    ) : null;
   };
 }
 
