@@ -113,7 +113,6 @@ export const defaultCopy = {
   githubRepos: {
     title: "Repositories",
     back: "Apps",
-    backToList: "Repositories",
     open: "Repositories",
     search: "Find a repository",
     loading: "Reading repositories",

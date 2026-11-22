@@ -85,6 +85,7 @@ function RepositoryList({
   const [data, setData] = useState<Repositories | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [name, setName] = useState<string | null>(null);
   const load = useCallback(() => {
     setProblem(null);
     setData(null);
@@ -92,6 +93,11 @@ function RepositoryList({
       .list(client)
       .then(setData)
       .catch((e: unknown) => setProblem(e instanceof Error ? e.message : words.failed));
+    // The app's own name heads the path, so two GitHub apps are told apart.
+    api
+      .clients()
+      .then((r) => setName(r.clients.find((c) => c.id === client)?.name ?? null))
+      .catch(() => setName(null));
   }, [client]);
   useEffect(load, [load]);
   const q = query.trim().toLowerCase();
@@ -107,7 +113,7 @@ function RepositoryList({
     <Page
       title={words.title}
       back={{
-        label: words.back,
+        label: name ?? words.back,
         onClick: () => onNavigate({ page: "connections", scope: "apps", provider: "github" }),
       }}
     >
@@ -169,7 +175,9 @@ function RepositoryList({
                   },
                   {
                     name: words.columns.review,
-                    className: "max-sm:w-32 max-sm:min-w-32",
+                    // A table cell keeps to one line by default; this one
+                    // wraps, so a phone row ends inside the page.
+                    className: "max-sm:whitespace-normal",
                     cell: (r) => <span>{words.review[reviewOf(r.auto_review)]}</span>,
                   },
                   {
@@ -309,7 +317,13 @@ function RepositorySettings({
   const toggleRead = (read: string, on: boolean) =>
     setReads((prev) => (on ? [...new Set([...prev, read])] : prev.filter((r) => r !== read)));
   return (
-    <Page title={repo} narrow back={{ label: words.backToList, onClick: () => onNavigate(list) }}>
+    <Page
+      title={repo}
+      back={{
+        label: app?.name ?? words.title,
+        onClick: () => onNavigate(list),
+      }}
+    >
       {problem && !view ? (
         <Problem
           message={problem}
@@ -322,7 +336,7 @@ function RepositorySettings({
       ) : view === null ? (
         <SkeletonRows count={6} height="2.5rem" />
       ) : (
-        <form aria-label={repo} onSubmit={save} className="flex min-w-0 flex-col gap-5">
+        <form aria-label={repo} onSubmit={save} className="flex min-w-0 max-w-2xl flex-col gap-5">
           {!canWrite && <p className="text-aui-sm text-aui-muted">{words.form.readOnly}</p>}
           <Problem message={problem} />
           {conflict && (
@@ -371,9 +385,12 @@ function RepositorySettings({
                 onChange={(e) => setInstructions(e.target.value)}
               />
             </Label>
-            <fieldset className={`${card} flex min-w-0 flex-col gap-3`}>
-              <legend className="sr-only">{words.form.reads}</legend>
-              <span aria-hidden className="text-aui-xs font-medium text-aui-muted">
+            <div
+              role="group"
+              aria-labelledby="repo-reads"
+              className={`${card} flex min-w-0 flex-col gap-3 [&>label]:items-center pointer-coarse:gap-1 pointer-coarse:pb-2`}
+            >
+              <span id="repo-reads" className="text-aui-xs font-medium text-aui-muted">
                 {words.form.reads}
               </span>
               <Switch
@@ -386,7 +403,7 @@ function RepositorySettings({
                 checked={reads.includes("linked_issues")}
                 onChange={(on) => toggleRead("linked_issues", on)}
               />
-            </fieldset>
+            </div>
             <div className={card}>
               <Switch
                 label={words.form.crossSurface}

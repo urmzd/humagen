@@ -1290,6 +1290,9 @@ default; a Repositories view for a GitHub app lists the installed repositories,
 and each opens its settings, kept to what the platform can enforce with one
 control per job.
 
+- The path names the app (`GitHub / Repositories`, `GitHub / acme/site`), so
+  two GitHub apps are told apart, and both pages share the settings column's
+  left edge.
 - The list is a `DataTable`: the repository (with Custom when it has settings),
   its automatic review, the agent that answers there and whether other surfaces
   may read it. The last two hide on a phone. A search field appears past eight

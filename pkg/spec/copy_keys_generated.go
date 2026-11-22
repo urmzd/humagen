@@ -1414,7 +1414,6 @@ var copyKeyList = []string{
 	"forking.through",
 	"forking.title",
 	"githubRepos.back",
-	"githubRepos.backToList",
 	"githubRepos.checkAgain",
 	"githubRepos.columns.agent",
 	"githubRepos.columns.reads",

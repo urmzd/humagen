@@ -122,6 +122,8 @@ test("the repositories list shows what applies in each, and a row opens its sett
     const api = rows.find((r) => r.textContent?.includes("acme/api"));
     assert.ok(api?.textContent?.includes(words.review.off));
     assert.ok(!api?.textContent?.includes(words.custom));
+    // The path names the app, so two GitHub apps are told apart.
+    assert.ok(await screen.findByRole("button", { name: "GitHub" }));
     const link = within(api as HTMLElement).getByRole("link", { name: "acme/api" });
     assert.equal(link.getAttribute("href"), "/settings/apps/github/gh/repositories/acme/api");
     fireEvent.click(link);
@@ -162,6 +164,7 @@ test("a repository's settings are saved with the version read, and reset to the 
       </WebSurface>,
     );
     const form = await screen.findByRole("form", { name: "acme/api" });
+    assert.ok(await screen.findByRole("button", { name: "GitHub" }));
     const review = within(form).getByLabelText(words.form.review) as HTMLSelectElement;
     // The app's own default is the first choice, and says what it is.
     await waitFor(() =>
