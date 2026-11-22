@@ -148,8 +148,15 @@ function pump() {
   pumping = true;
   const run = (deadline?: IdleDeadline) => {
     const start = performance.now();
-    do jobs.shift()?.();
-    while (
+    do {
+      // One failing job (an old browser without Path2D.roundRect, say) leaves that
+      // picture plain; it never stops the jobs after it.
+      try {
+        jobs.shift()?.();
+      } catch {
+        // Its promise stays pending and the mark keeps its plain shape.
+      }
+    } while (
       jobs.length &&
       performance.now() - start < 10 &&
       (!deadline || deadline.timeRemaining() > 4)
@@ -206,6 +213,11 @@ function bake(key: string, box: [number, number, number, number], body: string, 
     img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
   });
   baked.set(key, made);
+  // A picture that could not be made is tried again next time, not kept as a failure.
+  made.then(
+    (url) => url || baked.delete(key),
+    () => baked.delete(key),
+  );
   made.catch(() => baked.delete(key));
   return made;
 }
@@ -289,6 +301,13 @@ function hexOf(color: string): string {
 
 const fabrics = new Map<string, Promise<string>>();
 
+/** The surface the fur is drawn for: the page's theme, else the system's. Part of every cache key. */
+function themeNow(): "light" | "dark" {
+  const set = document.documentElement.dataset.theme;
+  if (set === "light" || set === "dark") return set;
+  return window.matchMedia?.("(prefers-color-scheme: light)").matches ? "light" : "dark";
+}
+
 /** How many angles a turn is drawn at. */
 export const TURN_FRAMES = 16;
 const turns = new Map<string, Promise<string>>();
@@ -304,7 +323,7 @@ function bakeTurn(key: string, path: () => Path2D, color: string, unit: number) 
   if (hit) return hit;
   const box = Math.max(24, Math.round(100 * unit));
   const side = Math.round(box * BOT_AVATAR_OVERSCAN);
-  const theme = document.documentElement.dataset.theme === "light" ? "light" : "dark";
+  const theme = themeNow();
   const made = new Promise<string>((resolve) => {
     const strip = document.createElement("canvas");
     strip.width = side * TURN_FRAMES;
@@ -344,6 +363,11 @@ function bakeTurn(key: string, path: () => Path2D, color: string, unit: number) 
       });
   });
   turns.set(key, made);
+  // A picture that could not be made is tried again next time, not kept as a failure.
+  made.then(
+    (url) => url || turns.delete(key),
+    () => turns.delete(key),
+  );
   return made;
 }
 
@@ -352,12 +376,7 @@ function bakeFabric(key: string, path: () => Path2D, color: string, unit: number
   if (hit) return hit;
   const box = Math.max(24, Math.round(100 * unit));
   const side = Math.round(box * BOT_AVATAR_OVERSCAN);
-  const theme =
-    document.documentElement.dataset.theme === "light" ||
-    (!document.documentElement.dataset.theme &&
-      window.matchMedia?.("(prefers-color-scheme: light)").matches)
-      ? "light"
-      : "dark";
+  const theme = themeNow();
   const made = new Promise<string>((resolve) => {
     const canvas = document.createElement("canvas");
     canvas.width = canvas.height = side;
@@ -388,14 +407,30 @@ function bakeFabric(key: string, path: () => Path2D, color: string, unit: number
     });
   });
   fabrics.set(key, made);
+  // A picture that could not be made is tried again next time, not kept as a failure.
+  made.then(
+    (url) => url || fabrics.delete(key),
+    () => fabrics.delete(key),
+  );
   return made;
+}
+
+/** A rounded rectangle, drawn with arcs where Path2D.roundRect is missing. */
+function rounded(p: Path2D, x: number, y: number, w: number, h: number, r: number) {
+  if (typeof p.roundRect === "function") return p.roundRect(x, y, w, h, r);
+  p.moveTo(x + r, y);
+  p.arcTo(x + w, y, x + w, y + h, r);
+  p.arcTo(x + w, y + h, x, y + h, r);
+  p.arcTo(x, y + h, x, y, r);
+  p.arcTo(x, y, x + w, y, r);
+  p.closePath();
 }
 
 function bodyPath(shape: Shape, cy: number) {
   // Design units: the body's centre at 50,50, the feet below it as one form.
   const p = new Path2D();
   if (shape.kind === "oval") p.ellipse(50, 50, shape.rx, shape.ry, 0, 0, Math.PI * 2);
-  else p.roundRect(50 - shape.w / 2, 50 - shape.h / 2, shape.w, shape.h, 20);
+  else rounded(p, 50 - shape.w / 2, 50 - shape.h / 2, shape.w, shape.h, 20);
   const fy = 50 + (BASE + 3 - cy);
   p.ellipse(50 - 11, fy, 8, 4.5, 0, 0, Math.PI * 2);
   p.ellipse(50 + 11, fy, 8, 4.5, 0, 0, Math.PI * 2);
@@ -405,7 +440,7 @@ function bodyPath(shape: Shape, cy: number) {
 function limbPath(len: number, width: number, hand: boolean) {
   // A capsule along x, centred at 50,50; the forearm's ends in a mitt with a thumb.
   const p = new Path2D();
-  p.roundRect(50 - len / 2 - width / 2, 50 - width / 2, len + width, width, width / 2);
+  rounded(p, 50 - len / 2 - width / 2, 50 - width / 2, len + width, width, width / 2);
   if (hand) {
     p.moveTo(50 + len / 2 + 6.6, 50);
     p.ellipse(50 + len / 2, 50, 6.6, 6.6, 0, 0, Math.PI * 2);
@@ -431,9 +466,11 @@ function useFur(
   useEffect(() => {
     // Nothing is drawn for a bot that has not come into view.
     if (!ink || !seen || typeof document === "undefined") return;
+    // A new color, shape or size: the old spin strip no longer matches.
+    setFur((f) => (f.turn ? { ...f, turn: undefined } : f));
     const limb = `color-mix(in oklab, ${ink} 88%, black)`;
     const px = Math.min(6, Math.max(2, (size / 120) * (window.devicePixelRatio || 1) * 1.5));
-    const k = `${ink}|${sleeve ?? ""}|${JSON.stringify(shape)}|${px.toFixed(2)}`;
+    const k = `${ink}|${sleeve ?? ""}|${JSON.stringify(shape)}|${px.toFixed(2)}|${themeNow()}`;
     const parts: Record<keyof typeof BOX, string> = {
       body: `<g filter="url(#fur)"><ellipse cx="${CX - 11}" cy="${BASE + 3}" rx="8" ry="4.5" fill="${limb}"/><ellipse cx="${CX + 11}" cy="${BASE + 3}" rx="8" ry="4.5" fill="${limb}"/></g>
 <g filter="url(#fur)">${shapeMarkup(shape, cy, ink)}</g>${shapeMarkup(shape, cy, "url(#shade)")}
@@ -458,7 +495,7 @@ function useFur(
     const unit = Math.min(2.2, Math.max(0.8, (size / 80) * (window.devicePixelRatio || 1)));
     const hex = hexOf(ink);
     const limbHex = hexOf(`color-mix(in oklab, ${ink} 90%, black)`);
-    const fk = `${hex}|${JSON.stringify(shape)}|${unit.toFixed(2)}`;
+    const fk = `${hex}|${JSON.stringify(shape)}|${unit.toFixed(2)}|${themeNow()}`;
     bakeFabric(`body|${fk}`, () => bodyPath(shape, cy), hex, unit).then(keep("body"));
     // The turn is drawn on first need, smaller than the still body.
     const turnUnit = Math.min(unit, 1.4);
@@ -476,9 +513,12 @@ function useFur(
         limbHex,
         unit,
       ).then(keep("upper"));
-      bakeFabric(`fore|${limbHex}|${unit}`, () => limbPath(FORE, 10.4, true), limbHex, unit).then(
-        keep("fore"),
-      );
+      bakeFabric(
+        `fore|${limbHex}|${unit}|${themeNow()}`,
+        () => limbPath(FORE, 10.4, true),
+        limbHex,
+        unit,
+      ).then(keep("fore"));
     }
     return () => {
       live = false;

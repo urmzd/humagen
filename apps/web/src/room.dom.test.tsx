@@ -2137,7 +2137,7 @@ test("a message that tags an agent starts its run, shown with the agent's answer
     );
     fireEvent.change(box, { target: { value: asked.text } });
     fireEvent.keyDown(box, { key: "Enter" });
-    assert.ok(await screen.findByRole("article", { name: "Answered by helper" }));
+    assert.ok(await screen.findByRole("article", { name: "Answered by Helper" }));
     // Both messages are there: the one that started nothing, then the one that tagged helper.
     assert.equal(screen.getAllByRole("article", { name: "Message from Ana" }).length, 2);
   } finally {
@@ -3422,7 +3422,7 @@ test("human and completed-agent fork actions share the Copy and Reply footer", a
   });
   assert.ok(within(actions).getByRole("button", { name: defaultCopy.conversation.copyMessage }));
   fireEvent.click(within(actions).getByRole("button", { name: defaultCopy.forking.fromHere }));
-  const agent = screen.getByRole("article", { name: "Answered by helper" });
+  const agent = screen.getByRole("article", { name: "Answered by Helper" });
   // Fork sits in the answer's row, never behind More actions.
   assert.equal(within(agent).queryByRole("button", { name: "More actions" }), null);
   fireEvent.click(within(agent).getByRole("button", { name: defaultCopy.forking.fromHere }));

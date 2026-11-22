@@ -138,7 +138,7 @@ test("a message gets one answer in its root: the entry agent's, under the worksp
 test("the one agent a message mentions answers in the root itself, with no link to a session of its own", async () => {
   setEntryAgent("humagen", "Acme");
   open(() => rootSession([answer("billing", "Globex owes $4,200.")]));
-  const said = await screen.findByRole("article", { name: words.answeredBy("billing") });
+  const said = await screen.findByRole("article", { name: words.answeredBy("Billing") });
   assert.ok(within(said).getByText("Globex owes $4,200."));
   assert.equal(screen.queryByRole("link", { name: /open session/i }), null);
 });

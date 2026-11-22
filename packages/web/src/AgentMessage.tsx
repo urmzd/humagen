@@ -374,6 +374,7 @@ function AgentCall({
   const onAction = useContext(ActionContext);
   const stops = useContext(ItemStopsContext);
   const turn = useContext(TurnMetaContext);
+  const nameOf = useContext(AgentNameContext);
   const sub = task.subagent as NonNullable<Task["subagent"]>;
   const stop = stops && turn ? stops.of({ kind: "subagent", turn, task }) : null;
   const stopped = Boolean(stop?.stopped);
@@ -418,7 +419,7 @@ function AgentCall({
           <span className="sr-only">{copy.conversation.callAsked(caller)} </span>
           <AgentInitials name={sub.name} size={18} />
           <span className="shrink-0 font-medium text-aui-fg">
-            {live ? <Shimmer>{sub.name}</Shimmer> : sub.name}
+            {live ? <Shimmer>{nameOf(sub.name)}</Shimmer> : nameOf(sub.name)}
           </span>
           {word && (
             <span

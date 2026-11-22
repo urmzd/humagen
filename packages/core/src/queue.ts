@@ -46,6 +46,8 @@ export interface QueueState {
   heldReason?: "manual" | "failed" | "stopped";
   /** Set by Send Now: the message to run as soon as the interrupted turn ends. */
   interruptFor?: string;
+  /** A message was sent past held ones: hold them again, for this reason, when it ends. */
+  holdAfter?: "manual" | "failed" | "stopped";
 }
 
 export type QueueAction =
@@ -107,7 +109,14 @@ export function queueReduce(state: QueueState, action: QueueAction): [QueueState
     case "sendNow":
       if (state.status === "idle" || state.status === "held") {
         return [
-          { ...state, status: "running", current: action.message, heldReason: undefined },
+          {
+            ...state,
+            status: "running",
+            current: action.message,
+            heldReason: undefined,
+            // Sending past held messages does not release them: they wait again after it.
+            holdAfter: state.status === "held" ? state.heldReason : undefined,
+          },
           { type: "start", message: action.message },
         ];
       }
@@ -180,7 +189,13 @@ export function queueReduce(state: QueueState, action: QueueAction): [QueueState
         return startNext(ended);
       }
       if (ended.pending.length === 0)
-        return [{ ...ended, status: "idle", heldReason: undefined }, none];
+        return [{ ...ended, status: "idle", heldReason: undefined, holdAfter: undefined }, none];
+      // A message sent past held ones: they stay held until the person resumes them.
+      if (state.holdAfter)
+        return [
+          { ...ended, status: "held", heldReason: state.holdAfter, holdAfter: undefined },
+          none,
+        ];
       // Never run queued work after a failure or a plain Stop without the user saying so.
       if (action.outcome === "failed")
         return [{ ...ended, status: "held", heldReason: "failed" }, none];

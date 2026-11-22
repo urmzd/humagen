@@ -3,6 +3,7 @@ import { allTools, type ResponseState, type Task } from "@humagen/core";
 import { CallThreadContext } from "@humagen/web";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Run } from "./adapter.ts";
+import { agentShown } from "./branding.ts";
 import {
   AgentCallLane,
   LaneInMessage,
@@ -164,12 +165,14 @@ function ReferenceRow({
           href={`#turn-${run.id}`}
           className="inline-flex min-h-6 items-center rounded-aui text-aui-fg hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent pointer-coarse:min-h-11"
         >
-          {run.agent}
+          {agentShown(run.agent)}
         </a>
         {ended && <span className="text-aui-muted">{summaryOf(state)}</span>}
       </p>
       {agents.length > 0 && (
-        <p className="pl-6 text-aui-2xs text-aui-muted">{words.delegatedTo(agents.join(", "))}</p>
+        <p className="pl-6 text-aui-2xs text-aui-muted">
+          {words.delegatedTo(agents.map(agentShown).join(", "))}
+        </p>
       )}
       <div className="pl-6">
         <Chips chips={ended ? responseChips(state, origin) : []} origin={origin} />

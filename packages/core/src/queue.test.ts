@@ -186,4 +186,21 @@ describe("adopt", () => {
       queueReduce(run([{ type: "adopt", message: msg("a") }]).state, { type: "stop" })[1].type,
     ).toBe("interrupt");
   });
+
+  it("a message sent past held ones leaves them held when it ends", () => {
+    let state = emptyQueue("auto");
+    const a = msg("a");
+    const b = msg("b");
+    const c = msg("c");
+    [state] = queueReduce(state, { type: "send", message: a });
+    [state] = queueReduce(state, { type: "send", message: b });
+    [state] = queueReduce(state, { type: "turnEnded", outcome: "failed" });
+    expect(state).toMatchObject({ status: "held", heldReason: "failed" });
+    [state] = queueReduce(state, { type: "sendNow", message: c });
+    expect(state).toMatchObject({ status: "running", current: c });
+    const [after, effect] = queueReduce(state, { type: "turnEnded", outcome: "done" });
+    expect(after).toMatchObject({ status: "held", heldReason: "failed" });
+    expect(after.pending.map((m) => m.id)).toEqual(["b"]);
+    expect(effect).toEqual({ type: "none" });
+  });
 });

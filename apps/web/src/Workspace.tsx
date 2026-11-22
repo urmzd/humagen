@@ -30,7 +30,6 @@ import { GitHubPicker, GitHubTab } from "./GitHubTab.tsx";
 import { Memories } from "./Memories.tsx";
 import {
   activeKey,
-  closeTab,
   openTab,
   type PaneKind,
   type PaneTab,
@@ -374,11 +373,7 @@ export function Workspace({
       setLabels((l) => (l[`artifact:${id}`] === label ? l : { ...l, [`artifact:${id}`]: label })),
     [],
   );
-  const close = (key: string) => {
-    const next = closeTab(view, key);
-    if (next) onView(next);
-    else onClose();
-  };
+
   const toggle = (field: "expanded" | "split") =>
     onView({ ...view, [field]: !view[field] || undefined });
 
@@ -521,13 +516,18 @@ export function Workspace({
   // An item names itself above its content, after the list it came from.
   const itemPath = current.ref ? (
     <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1.5 pb-3 text-aui-xs">
-      <button
-        type="button"
-        onClick={() => onView(openTab(view, { kind: section }))}
-        className="min-h-6 shrink-0 rounded-aui text-aui-muted hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent pointer-coarse:min-h-11"
-      >
-        {pane.kind[section]}
-      </button>
+      {/* Only a list the drawer shows is a way back; a pull request's or a review's is a name. */}
+      {PICKS.includes(section) ? (
+        <button
+          type="button"
+          onClick={() => onView(openTab(view, { kind: section }))}
+          className="min-h-6 shrink-0 rounded-aui text-aui-muted hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent pointer-coarse:min-h-11"
+        >
+          {pane.kind[section]}
+        </button>
+      ) : (
+        <span className="shrink-0 text-aui-muted">{pane.kind[section]}</span>
+      )}
       <span aria-hidden className="text-aui-muted/60">
         /
       </span>

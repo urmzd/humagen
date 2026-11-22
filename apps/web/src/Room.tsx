@@ -666,7 +666,7 @@ function AnswerView({
       id={`turn-${run.id}`}
       data-turn-id={run.id}
       className={`flex flex-col gap-2 ${focused ? "rounded-aui outline-2 outline-offset-4 outline-aui-accent" : ""}`}
-      aria-label={words.answeredBy(name)}
+      aria-label={words.answeredBy(agentShown(run.agent))}
     >
       {/* A run from before threads carries what was asked; one that answers a message does not repeat it. */}
       {!run.message && (
