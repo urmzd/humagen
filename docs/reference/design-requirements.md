@@ -1184,7 +1184,13 @@ which key DES-080 gives to Send now.
 
 - The row under the box is one line of three groups: on the left where the
   session runs and its approval mode, in the middle the AI notice, on the
-  right who answers, the model and the usage ring. The notice is centered on
+  right the usage ring. It names no agent and no model (owner request,
+  2026-11-21): a session is not one agent's, each answer names who gave it,
+  and an agent's model is the agent's own.
+- A message's actions are always shown, on every message, at 28px with a
+  14px mark for a mouse and a 44px target for a finger. Nothing about them
+  changes on hover. Only a message's time shows on hover, at the end of its
+  row, so nothing between two actions comes or goes. The notice is centered on
   the row, whatever the widths of the two sides.
 - The row measures the composer, not the window. Narrower than 44rem (a
   phone, a Side Chat, a session beside an open panel), the notice is a line

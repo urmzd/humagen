@@ -1254,9 +1254,8 @@ export function ThreadRoom({
                           )}
                           thread={id}
                           footer={(() => {
-                            // Who answers is whoever answered last; the ring reads again as runs end.
+                            // The ring reads again as runs end.
                             const runs = turns.flatMap((turn) => (turn.run ? [turn.run] : []));
-                            const latest = runs[runs.length - 1];
                             return (
                               <ComposerFooter
                                 // Left, in order: project, image (footerStart), then approval.
@@ -1266,8 +1265,6 @@ export function ThreadRoom({
                                     <ApprovalToggle thread={th} me={handle || me} />
                                   </>
                                 }
-                                agent={latest ? agentShown(latest.agent) : undefined}
-                                model={latest?.usage?.context?.model}
                                 usage={
                                   <UsageRing
                                     thread={id}
