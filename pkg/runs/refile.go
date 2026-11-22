@@ -1,6 +1,7 @@
 package runs
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"slices"
@@ -31,7 +32,11 @@ func (x *Index) Each(tenant string, fn func(Run) bool) error {
 // Both are in one project: a move into a conversation filed elsewhere is
 // refused, and so is a housekeeping run's. A conversation already moved, or
 // moved into itself, changes nothing. It returns how many runs it moved.
-func (x *Index) Refile(tenant, from, to string) (int, error) {
+//
+// title, when given, is to's title from now on: what the place it is about
+// is called, such as a pull request's title. Without one, to keeps its own,
+// or takes from's when from was asked first.
+func (x *Index) Refile(tenant, from, to, title string) (int, error) {
 	if tenant == "" || from == "" || to == "" {
 		return 0, fmt.Errorf("%w: a tenant and two conversations", ErrRefile)
 	}
@@ -108,8 +113,11 @@ func (x *Index) Refile(tenant, from, to string) (int, error) {
 		if opened {
 			dst.Origin, dst.Project, dst.Channel, dst.Opened = src.Origin, src.Project, src.Channel, src.Opened
 		}
+		if title != "" {
+			dst.Title = title
+		}
 		if first {
-			dst.Title, dst.CreatedAt = src.Title, src.CreatedAt
+			dst.Title, dst.CreatedAt = cmp.Or(title, src.Title), src.CreatedAt
 			dst.Agents, dst.People = union(src.Agents, dst.Agents), union(src.People, dst.People)
 		} else {
 			dst.Agents, dst.People = union(dst.Agents, src.Agents), union(dst.People, src.People)

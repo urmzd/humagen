@@ -38,7 +38,7 @@ func TestRefileMovesAConversation(t *testing.T) {
 	record(t, x, "acme", "later", "docs", OriginAPI, 2*time.Hour, map[string]string{MetaThread: "s_session"})
 	opened := x.ProjectCounts("acme")[""].Threads
 
-	moved, err := x.Refile("acme", past, "s_session")
+	moved, err := x.Refile("acme", past, "s_session", "")
 	if err != nil || moved != 2 {
 		t.Fatalf("refile moved %d, %v", moved, err)
 	}
@@ -66,11 +66,19 @@ func TestRefileMovesAConversation(t *testing.T) {
 		t.Fatalf("the project holds %d conversations, want %d", got, opened-1)
 	}
 
-	if moved, err := x.Refile("acme", past, "s_session"); err != nil || moved != 0 {
+	if moved, err := x.Refile("acme", past, "s_session", ""); err != nil || moved != 0 {
 		t.Fatalf("a second refile moved %d, %v", moved, err)
 	}
+	// A title, such as the pull request's, names the conversation.
+	record(t, x, "acme", "titled", "docs", "github", 4*time.Hour, nil)
+	if _, err := x.Refile("acme", "titled", "s_session", "Fix the handbook"); err != nil {
+		t.Fatal(err)
+	}
+	if sum, _ := x.ConversationSummary("acme", "s_session"); sum.Title != "Fix the handbook" || sum.Turns != 3 {
+		t.Fatalf("the titled session's summary = %+v", sum)
+	}
 	record(t, x, "acme", "elsewhere", "docs", OriginAPI, 3*time.Hour, map[string]string{MetaProject: "Launch"})
-	if _, err := x.Refile("acme", "elsewhere", "s_session"); !errors.Is(err, ErrRefile) {
+	if _, err := x.Refile("acme", "elsewhere", "s_session", ""); !errors.Is(err, ErrRefile) {
 		t.Fatalf("a move between projects = %v", err)
 	}
 }

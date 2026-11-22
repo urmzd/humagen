@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/runs"
@@ -50,10 +51,15 @@ const (
 // one tenant: one line for each change or each thing it left, and how many
 // of each kind.
 type BackfillReport struct {
-	Tenant string         `json:"tenant"`
-	Apply  bool           `json:"apply"`
-	Lines  []BackfillLine `json:"lines"`
-	Counts map[string]int `json:"counts"`
+	Tenant string `json:"tenant"`
+	Apply  bool   `json:"apply"`
+	// Runs is how many runs of the tenant it read.
+	Runs int `json:"runs"`
+	// Warnings are what an operator should fix before an apply, such as a
+	// GitHub client that maps no logins to people.
+	Warnings []string       `json:"warnings"`
+	Lines    []BackfillLine `json:"lines"`
+	Counts   map[string]int `json:"counts"`
 }
 
 // BackfillLine is one change, or one thing left and why.
@@ -96,7 +102,7 @@ type githubBackfill struct {
 // comment above says: with apply unset it reads only, and reports what it
 // would do.
 func (p *Platform) BackfillSessions(ctx context.Context, tenant string, apply bool) (BackfillReport, error) {
-	rep := BackfillReport{Tenant: tenant, Apply: apply, Lines: []BackfillLine{}, Counts: map[string]int{}}
+	rep := BackfillReport{Tenant: tenant, Apply: apply, Warnings: []string{}, Lines: []BackfillLine{}, Counts: map[string]int{}}
 	if strings.TrimSpace(tenant) == "" {
 		return rep, fmt.Errorf("%w: a backfill names its tenant", threads.ErrInvalid)
 	}
@@ -113,6 +119,7 @@ func (p *Platform) BackfillSessions(ctx context.Context, tenant string, apply bo
 func (p *Platform) backfillGitHub(ctx context.Context, tenant string, apply bool, rep *BackfillReport) error {
 	var past []runs.Run
 	if err := p.Runs.Each(tenant, func(r runs.Run) bool {
+		rep.Runs++
 		if r.Origin == runs.OriginGitHub && r.Parent == "" {
 			past = append(past, r)
 		}
@@ -120,6 +127,7 @@ func (p *Platform) backfillGitHub(ctx context.Context, tenant string, apply bool
 	}); err != nil {
 		return err
 	}
+	p.warnGitHubClients(tenant, past, rep)
 	// Oldest first, as they were asked: the first decides the owner.
 	slices.SortStableFunc(past, func(a, b runs.Run) int { return a.CreatedAt.Compare(b.CreatedAt) })
 	groups := map[string][]githubBackfill{}
@@ -145,12 +153,40 @@ func (p *Platform) backfillGitHub(ctx context.Context, tenant string, apply bool
 		}
 		groups[key] = append(groups[key], githubBackfill{run: r, place: place, sf: sf, person: p.backfillPerson(tenant, r)})
 	}
+	// The session each place opens, by id, and the place: two clients on
+	// one repository with one owner name the same session, which only the
+	// first may hold (errGitHubSessionElsewhere).
+	claimed := map[string]string{}
 	for _, key := range order {
-		if err := p.backfillGitHubPlace(ctx, tenant, apply, groups[key], rep); err != nil {
+		if err := p.backfillGitHubPlace(ctx, tenant, apply, groups[key], claimed, rep); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// warnGitHubClients warns of each GitHub client past runs came through
+// that maps no login to a person: their sessions would get no people, and
+// runs every member read until now would be read by administrators alone.
+func (p *Platform) warnGitHubClients(tenant string, past []runs.Run, rep *BackfillReport) {
+	var ids []string
+	for _, r := range past {
+		if r.Client != "" && !slices.Contains(ids, r.Client) {
+			ids = append(ids, r.Client)
+		}
+	}
+	slices.Sort(ids)
+	for _, id := range ids {
+		c, err := p.Clients.Get(tenant, id)
+		switch {
+		case err != nil:
+			rep.Warnings = append(rep.Warnings, "GitHub client "+id+" is not in the store: its askers map to nobody, so its sessions get no people")
+		case c.GitHub == nil || len(c.GitHub.People) == 0:
+			rep.Warnings = append(rep.Warnings, "GitHub client "+id+" maps no GitHub login to a person (github.people, HUMAGEN_GITHUB_PEOPLE): its sessions get no people, and its past runs would be read by administrators alone. Start a server with the map first")
+		case !c.Enabled:
+			rep.Warnings = append(rep.Warnings, "GitHub client "+id+" is turned off: its askers map to nobody, so its sessions get no people")
+		}
+	}
 }
 
 // backfillPerson is the person a past GitHub run's asker is now: the
@@ -166,7 +202,7 @@ func (p *Platform) backfillPerson(tenant string, r runs.Run) string {
 
 // backfillGitHubPlace files the past runs asked at one issue or pull
 // request, oldest first, in its session.
-func (p *Platform) backfillGitHubPlace(ctx context.Context, tenant string, apply bool, past []githubBackfill, rep *BackfillReport) error {
+func (p *Platform) backfillGitHubPlace(ctx context.Context, tenant string, apply bool, past []githubBackfill, claimed map[string]string, rep *BackfillReport) error {
 	first := past[0]
 	th, found, err := p.Threads.BySurface(tenant, first.sf)
 	if err != nil {
@@ -195,13 +231,37 @@ func (p *Platform) backfillGitHubPlace(ctx context.Context, tenant string, apply
 			return nil
 		}
 		id = session.Key{Tenant: tenant, Parent: first.place, Agent: owner}.Normalize().ID()
+		here := first.sf.Client + "/" + first.sf.Channel + "/" + first.sf.TS
+		held := claimed[id] != "" && claimed[id] != here
+		if !held {
+			if _, err := p.Threads.Get(tenant, id); err == nil {
+				held = true
+			} else if !errors.Is(err, threads.ErrNotFound) {
+				return err
+			}
+		}
+		if held {
+			// What a mention there does now: the run stays its own
+			// conversation (errGitHubSessionElsewhere).
+			for _, b := range past {
+				rep.add(BackfillRunLeft, b.run.ID, id, "another client on this repository holds the session of "+first.place+" for "+owner)
+			}
+			return nil
+		}
+		claimed[id] = here
 		rep.add(BackfillSessionOpened, first.place, id, fmt.Sprintf("owned by %s, filed in %q, private to the people who asked", owner, project))
 		if apply {
 			tag := wire.Clone(first.run.Tag())
 			actor := wire.ActorOf(tag)
 			actor.User = first.person
 			wire.SetActor(&tag, actor)
-			if th, err = p.openGitHubSession(ctx, tag, project, first.place, first.sf, owner, first.person); err != nil {
+			if th, err = p.openGitHubSession(ctx, tag, project, first.place, first.sf, owner, first.person); errors.Is(err, errGitHubSessionElsewhere) {
+				// Opened by another client since the place was read.
+				for _, b := range past {
+					rep.add(BackfillRunLeft, b.run.ID, id, "another client on this repository holds the session of "+first.place+" for "+owner)
+				}
+				return nil
+			} else if err != nil {
 				return fmt.Errorf("backfill: open the session of %s: %w", first.place, err)
 			}
 			if th.ID != id {
@@ -221,6 +281,7 @@ func (p *Platform) backfillGitHubPlace(ctx context.Context, tenant string, apply
 	for _, r := range ids {
 		bound[r] = true
 	}
+	var bind []runs.Run
 	people := []string{}
 	for _, pt := range th.Participants {
 		if pt.Kind == threads.Person {
@@ -242,7 +303,7 @@ func (p *Platform) backfillGitHubPlace(ctx context.Context, tenant string, apply
 		} else {
 			rep.add(BackfillRunFiled, r.ID, id, "asked by "+cmp.Or(b.person, "nobody the client maps"))
 			if apply {
-				if _, err := p.Runs.Refile(tenant, r.Thread, id); err != nil {
+				if _, err := p.Runs.Refile(tenant, r.Thread, id, cmp.Or(wire.GitHubTitleOf(r.Tag()), wire.GitHubTitleOf(first.run.Tag()))); err != nil {
 					return fmt.Errorf("backfill: file %s in %s: %w", r.ID, id, err)
 				}
 			}
@@ -251,12 +312,8 @@ func (p *Platform) backfillGitHubPlace(ctx context.Context, tenant string, apply
 		// keeps one of its own there, as it does when asked there now.
 		if strings.EqualFold(strings.TrimSpace(r.Agent), owner) && !bound[r.ID] {
 			bound[r.ID] = true
+			bind = append(bind, r)
 			rep.add(BackfillRunBound, r.ID, id, "")
-			if apply {
-				if err := p.Sessions.BindRun(ctx, tenant, id, r.ID); err != nil {
-					return fmt.Errorf("backfill: bind %s to %s: %w", r.ID, id, err)
-				}
-			}
 		}
 		if b.person == "" || b.person == th.CreatedBy || slices.Contains(people, b.person) {
 			continue
@@ -274,7 +331,45 @@ func (p *Platform) backfillGitHubPlace(ctx context.Context, tenant string, apply
 			}
 		}
 	}
+	if apply && len(bind) > 0 {
+		if err := p.bindInOrder(ctx, tenant, id, ids, bind); err != nil {
+			return fmt.Errorf("backfill: bind runs to %s: %w", id, err)
+		}
+	}
 	return nil
+}
+
+// orderedBinder binds runs to a session in the order they were asked
+// (sessionstate.Store.BindRunsInOrder).
+type orderedBinder interface {
+	BindRunsInOrder(ctx context.Context, tenant, id string, runs []string, later func(a, b string) bool) error
+}
+
+// bindInOrder binds past runs to a session, each ahead of the runs already
+// bound that were asked after it, so the session's latest run
+// (Sessions.Runs) stays its newest.
+func (p *Platform) bindInOrder(ctx context.Context, tenant, id string, bound []string, past []runs.Run) error {
+	o, ok := p.Sessions.(orderedBinder)
+	if !ok {
+		return errors.New("the session store cannot bind runs in order")
+	}
+	at := map[string]time.Time{}
+	known, err := p.Runs.Many(tenant, bound)
+	if err != nil {
+		return err
+	}
+	for id, r := range known {
+		at[id] = r.CreatedAt
+	}
+	ids := make([]string, len(past))
+	for i, r := range past {
+		ids[i], at[r.ID] = r.ID, r.CreatedAt
+	}
+	return o.BindRunsInOrder(ctx, tenant, id, ids, func(a, b string) bool {
+		ta, okA := at[a]
+		tb, okB := at[b]
+		return okA && okB && ta.After(tb)
+	})
 }
 
 // backfillThreads reports the conversations from before sessions, which

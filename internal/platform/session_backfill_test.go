@@ -2,6 +2,7 @@ package platform_test
 
 import (
 	"context"
+	"maps"
 	"reflect"
 	"slices"
 	"strings"
@@ -15,6 +16,7 @@ import (
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/humagen/pkg/threads"
@@ -26,9 +28,16 @@ import (
 // thread and no project, with GitHub's own body, and answered.
 func pastGitHubRun(t *testing.T, p *platform.Platform, id, agent, at, login string, number int, when time.Time, private bool) runs.Run {
 	t.Helper()
-	tag := wire.NewEvent(wire.Raise{ID: id, Agent: agent, Tenant: tenant, Origin: "github", Text: "@" + agent + " what changed?", Channel: at, Actor: event.Actor{ID: login}, At: when, Context: map[string]string{
-		runs.MetaClient: "gh", "github_event": "issue_comment", "github_owner": "acme", "github_repo": "handbook", "github_sender": login,
-	}})
+	return pastGitHubRunWith(t, p, id, agent, at, login, number, when, private, nil)
+}
+
+// pastGitHubRunWith is pastGitHubRun with what meta says in its context
+// over the defaults (its client, gh).
+func pastGitHubRunWith(t *testing.T, p *platform.Platform, id, agent, at, login string, number int, when time.Time, private bool, meta map[string]string) runs.Run {
+	t.Helper()
+	context := map[string]string{runs.MetaClient: "gh", "github_event": "issue_comment", "github_owner": "acme", "github_repo": "handbook", "github_sender": login}
+	maps.Copy(context, meta)
+	tag := wire.NewEvent(wire.Raise{ID: id, Agent: agent, Tenant: tenant, Origin: "github", Text: "@" + agent + " what changed?", Channel: at, Actor: event.Actor{ID: login}, At: when, Context: context})
 	tag.Source, tag.Type = at, event.TypeGitHubIssueCommentCreated
 	tag.Data = event.GitHubIssueCommentCreated{
 		Request:   event.Request{Text: "@" + agent + " what changed?", Actor: event.Actor{ID: login}, Mentions: []string{agent}, Context: wire.ContextOf(tag)},
@@ -47,7 +56,7 @@ func pastGitHubRun(t *testing.T, p *platform.Platform, id, agent, at, login stri
 		t.Fatalf("run %s did not end", runID)
 	}
 	r, err := p.Runs.Get(tenant, runID)
-	if err != nil || r.Thread != runID || r.Project != "" || r.Origin != runs.OriginGitHub {
+	if err != nil || (r.Thread != runID && meta[wire.MetaSession] == "") || r.Project != meta[runs.MetaProject] || r.Origin != runs.OriginGitHub {
 		t.Fatalf("the past run is %+v, %v", r, err)
 	}
 	return r
@@ -176,7 +185,7 @@ func TestBackfillFilesPastGitHubRunsInTheirSessions(t *testing.T) {
 	if err != nil || len(turns) != 3 || turns[0].ID != a.ID || turns[2].ID != c.ID {
 		t.Fatalf("pull 12's turns = %v, %v", turns, err)
 	}
-	if sum, err := p.Runs.ConversationSummary(tenant, th.ID); err != nil || sum.Turns != 3 || !slices.Equal(sum.Agents, []string{"docs", "ops"}) {
+	if sum, err := p.Runs.ConversationSummary(tenant, th.ID); err != nil || sum.Turns != 3 || sum.Title != "Fix the handbook" || !slices.Equal(sum.Agents, []string{"docs", "ops"}) {
 		t.Fatalf("pull 12's summary = %+v, %v", sum, err)
 	}
 	if bound, err := p.Sessions.Runs(ctx, tenant, th.ID, 10); err != nil || !slices.Equal(bound, []string{a.ID, b.ID}) {
@@ -231,5 +240,89 @@ func TestBackfillFilesPastGitHubRunsInTheirSessions(t *testing.T) {
 	}
 	if again.Changes() != 0 || again.Counts[platform.BackfillSessionFound] != 2 || again.Counts[platform.BackfillRunAlreadyFiled] != 4 {
 		t.Fatalf("a second apply did %v", again.Counts)
+	}
+}
+
+// What a dry run cannot see coming does not stop an apply halfway, and what
+// was bound before keeps its place:
+//   - a second GitHub client on the repository, with the same owner, names
+//     the session the first client's pull request opens; its runs are left,
+//     as a mention there is left now (errGitHubSessionElsewhere);
+//   - a past run filed in another project than its session is left;
+//   - a past run is bound ahead of a newer run the server bound already, so
+//     the session's latest run is still the newest.
+func TestBackfillLeavesWhatItCannotFileAndKeepsTheLatestRunLatest(t *testing.T) {
+	ctx := t.Context()
+	st := state.NewMemory()
+	p, _, _ := githubRoom(t, platform.Backends{State: st}, func(in *platform.ClientInput) {
+		in.GitHub.People = map[string]string{"octocat": "ana"}
+		in.Identity.Installation = "101"
+	})
+	second := platform.ClientInput{
+		Client: clients.Client{
+			ID: "gh2", Name: "gh2", Surface: clients.GitHub, Enabled: true,
+			Identity: clients.Identity{Owners: []string{"acme"}, Installation: "202"}, DefaultAgent: "docs",
+			GitHub: &clients.GitHubOptions{Login: "other[bot]", People: map[string]string{"octocat": "ana"}},
+			Home:   &clients.Home{Project: "Launch"},
+		},
+		Token: clients.SecretInput{Value: "token-gh2"}, SigningSecret: clients.SecretInput{Value: "secret-gh2"},
+	}
+	create(t, p, tenant, second)
+	pull12 := "github://acme/handbook/pull/12"
+	head := pull12 + "?head_sha=" + strings.Repeat("a", 40)
+	t0 := time.Date(2026, 10, 1, 9, 0, 0, 0, time.UTC)
+	past := pastGitHubRun(t, p, "gh-order-past", "docs", head, "octocat", 12, t0, false)
+	launch := pastGitHubRunWith(t, p, "gh-order-launch", "docs", head, "octocat", 12, t0.Add(time.Hour), false, map[string]string{runs.MetaProject: "Launch"})
+	other := pastGitHubRunWith(t, p, "gh-order-other", "docs", head, "octocat", 12, t0.Add(2*time.Hour), false, map[string]string{runs.MetaClient: "gh2"})
+	// The server filed and bound a newer mention there already, in the
+	// session's record, before the backfill ran.
+	rec, err := p.Sessions.Open(ctx, tenant, session.Open{Parent: pull12, Agent: "docs"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	newer := pastGitHubRunWith(t, p, "gh-order-newer", "docs", head, "octocat", 12, t0.Add(24*time.Hour), false, map[string]string{wire.MetaSession: rec.ID})
+	if err := p.Sessions.BindRun(ctx, tenant, rec.ID, newer.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	dry, err := p.BackfillSessions(ctx, tenant, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	applied, err := p.BackfillSessions(ctx, tenant, true)
+	if err != nil {
+		t.Fatalf("the apply stopped: %v", err)
+	}
+	if !reflect.DeepEqual(applied.Lines, dry.Lines) {
+		t.Fatalf("the apply did\n%+v\nthe dry run said\n%+v", applied.Lines, dry.Lines)
+	}
+	left := map[string]string{}
+	for _, l := range dry.Lines {
+		if l.Kind == platform.BackfillRunLeft {
+			left[l.Subject] = l.Detail
+		}
+	}
+	if !strings.Contains(left[other.ID], "another client") {
+		t.Fatalf("gh2's run on the same pull request was not left: %v", left)
+	}
+	if !strings.Contains(left[launch.ID], `filed in "Launch"`) {
+		t.Fatalf("the run filed in Launch was not left: %v", left)
+	}
+	for _, r := range []runs.Run{launch, other} {
+		if got, _ := p.Runs.Get(tenant, r.ID); got.Thread != r.ID {
+			t.Fatalf("run %s, which is left, moved to %q", r.ID, got.Thread)
+		}
+	}
+	if got, _ := p.Runs.Get(tenant, past.ID); got.Thread != rec.ID {
+		t.Fatalf("the past run is in %q, want %q", got.Thread, rec.ID)
+	}
+	if bound, err := p.Sessions.Runs(ctx, tenant, rec.ID, 10); err != nil || !slices.Equal(bound, []string{past.ID, newer.ID}) {
+		t.Fatalf("the session binds %v, %v; want the past run ahead of the newer one", bound, err)
+	}
+	if latest, err := p.Sessions.Runs(ctx, tenant, rec.ID, 1); err != nil || !slices.Equal(latest, []string{newer.ID}) {
+		t.Fatalf("the session's latest run is %v, %v; want %s", latest, err, newer.ID)
+	}
+	if again, err := p.BackfillSessions(ctx, tenant, true); err != nil || again.Changes() != 0 {
+		t.Fatalf("a second apply did %v, %v", again.Counts, err)
 	}
 }
