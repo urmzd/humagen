@@ -325,6 +325,7 @@ function Customize({
     glasses: look.glasses as BotLook["glasses"],
     headphones: look.headphones,
     bowTie: look.bow_tie,
+    character: look.character as BotLook["character"],
   };
   const model = catalog.model;
   // The agent once it is made: a failed look is retried for it, never made again.
