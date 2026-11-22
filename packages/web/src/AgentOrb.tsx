@@ -1,5 +1,6 @@
 import type { AgentActivity, Turn, TurnStatus } from "@humagen/core";
 import {
+  autoInk,
   BotAvatar,
   type BotAvatarGlasses,
   type BotAvatarHat,
@@ -336,16 +337,18 @@ export function agentBot(name: string): BotAvatarType {
 
 /**
  * The small thing an agent holds while it works, drawn beside its bot: a
- * magnifier while it searches, a thought bubble while it thinks, a pencil
- * while it writes, two bubbles while it hands work to another agent, and an
- * hourglass while it waits on a person. A state without one (a tool call)
- * keeps the orb on the bot's corner.
+ * microscope while it searches or investigates, a thought bubble while it
+ * thinks, a wrench while it runs a tool, a pencil while it writes, two
+ * bubbles while it hands work to another agent, and an hourglass while it
+ * waits on a person. A mascot never carries the orb: the bot's own motion
+ * and its prop say what it is doing.
  */
-export type AgentProp = "magnifier" | "thought" | "pencil" | "bubbles" | "hourglass";
+export type AgentProp = "microscope" | "thought" | "wrench" | "pencil" | "bubbles" | "hourglass";
 
 const PROPS: Partial<Record<OrbState, AgentProp>> = {
-  searching: "magnifier",
+  searching: "microscope",
   thinking: "thought",
+  calling: "wrench",
   composing: "pencil",
   delegating: "bubbles",
   waiting: "hourglass",
@@ -378,11 +381,17 @@ function useShownProp(prop: AgentProp | undefined) {
 
 // Each prop on a 16-unit grid. `.aui-prop-move` is the part that loops.
 const PROP_ART: Record<AgentProp, ReactNode> = {
-  magnifier: (
-    <g className="aui-prop-move">
-      <circle cx="6.5" cy="6.5" r="4.25" />
-      <path d="M9.6 9.6 14 14" />
-    </g>
+  microscope: (
+    <>
+      <path className="aui-prop-move" d="M3.9 3.6 7 1.8l3.2 5.5-3.1 1.8z" />
+      <path d="M2.4 14.4h11.2M9.6 14.4c2.6-1.6 3.1-5 1.1-7.3M4.2 11.6h4.6" />
+    </>
+  ),
+  wrench: (
+    <path
+      className="aui-prop-move"
+      d="M10.4 2.2a3.4 3.4 0 0 0-3.8 4.7l-4.3 4.3a1.5 1.5 0 0 0 2.1 2.1l4.3-4.3a3.4 3.4 0 0 0 4.7-3.8l-2.1 2.1-2.2-.5-.5-2.2z"
+    />
   ),
   thought: (
     <>
@@ -559,15 +568,126 @@ export function useIdleGlance(
   return active && glancing;
 }
 
+/** How long a small mark keeps moving after its motion stops, in milliseconds. */
+export const SETTLE_MS = 1_400;
+
+/**
+ * True while `moving`, and for `SETTLE_MS` after it stops: a small mark that
+ * loses the pointer, or whose agent stops working, finishes its move (lands
+ * its hop and eases back to rest) instead of freezing mid-move. Moving again
+ * within that time just keeps it moving. Under reduced motion it stops at
+ * once, and the timer is cleared when the mark goes.
+ */
+export function useSettle(moving: boolean, timers: GlanceTimers = realTimers): boolean {
+  const reduced = useReducedMotion();
+  const [was, setWas] = useState(moving);
+  const [settling, setSettling] = useState(false);
+  // Set during render, so the frame the motion stops is never drawn paused.
+  if (was !== moving) {
+    setWas(moving);
+    setSettling(!moving && !reduced);
+  }
+  useEffect(() => {
+    if (!settling) return;
+    const id = timers.set(() => setSettling(false), SETTLE_MS);
+    return () => timers.clear(id);
+  }, [settling, timers]);
+  return moving || settling;
+}
+
+/** The longest a bot keeps moving to finish a blink, in milliseconds. */
+export const FINISH_MS = 1_200;
+
+/**
+ * Whether the latest of these counts of face-ink pixels, one per frame, shows
+ * the eyes open: near the most seen over the last 0.6 s and not closing. A
+ * blink shrinks the eyes to a line for about 0.17 s, so the count drops well
+ * below that most; a glance or a small turn moves it far less.
+ */
+export function eyesOpen(counts: readonly number[]): boolean {
+  if (counts.length < 6) return false;
+  const recent = counts.slice(-36);
+  const most = Math.max(...recent);
+  const now = counts[counts.length - 1] ?? 0;
+  const before = counts[counts.length - 2] ?? 0;
+  return most > 0 && now >= most * 0.8 && now >= before * 0.95;
+}
+
+/** The pixels of the face's ink on the bot's canvas. */
+function inkPixels(canvas: HTMLCanvasElement, ink: [number, number, number]): number {
+  const g = canvas.getContext("2d");
+  if (!g || !canvas.width || !canvas.height) return 0;
+  const d = g.getImageData(0, 0, canvas.width, canvas.height).data;
+  let n = 0;
+  for (let i = 0; i < d.length; i += 4) {
+    if ((d[i + 3] ?? 0) < 200) continue;
+    const r = (d[i] ?? 0) - ink[0];
+    const gr = (d[i + 1] ?? 0) - ink[1];
+    const b = (d[i + 2] ?? 0) - ink[2];
+    if (r * r + gr * gr + b * b < 4900) n++;
+  }
+  return n;
+}
+
+const hexRgb = (hex: string): [number, number, number] => {
+  const v = Number.parseInt(hex.replace("#", ""), 16);
+  return [(v >> 16) & 255, (v >> 8) & 255, v & 255];
+};
+
+/**
+ * True for a moment after `moving` stops: the bot keeps going until its eyes
+ * are open, read from its canvas each frame, so it never holds still with
+ * its eyes part closed. It gives up after `FINISH_MS`, and at once where
+ * there is no canvas to read or under reduced motion.
+ */
+function useFinish(ref: RefObject<HTMLElement | null>, moving: boolean, color?: string): boolean {
+  const reduced = useReducedMotion();
+  const [was, setWas] = useState(moving);
+  const [finishing, setFinishing] = useState(false);
+  if (was !== moving) {
+    setWas(moving);
+    setFinishing(!moving && !reduced && !!color);
+  }
+  useEffect(() => {
+    if (!finishing || !color) return;
+    const canvas = ref.current?.querySelector("canvas");
+    if (!canvas || typeof requestAnimationFrame === "undefined") {
+      setFinishing(false);
+      return;
+    }
+    const ink = hexRgb(autoInk(color));
+    const counts: number[] = [];
+    let frame = 0;
+    const look = () => {
+      try {
+        counts.push(inkPixels(canvas, ink));
+      } catch {
+        setFinishing(false);
+        return;
+      }
+      if (eyesOpen(counts)) setFinishing(false);
+      else frame = requestAnimationFrame(look);
+    };
+    frame = requestAnimationFrame(look);
+    const cap = setTimeout(() => setFinishing(false), FINISH_MS);
+    return () => {
+      cancelAnimationFrame(frame);
+      clearTimeout(cap);
+    };
+  }, [finishing, color, ref]);
+  return finishing;
+}
+
 /**
  * An agent's face: a small bot in the agent's color, its shape drawn from
  * its name, which no person's mark looks like. It hops while the agent
  * works, sits still while it waits on a person, and from 32px looks toward
  * the pointer. A smaller idle mark holds still but blinks or glances now and
- * then (`useIdleGlance`). From 24px it holds a prop at its top right that
- * says what it is doing (`AgentProp`), or the orb on its corner for a state
- * without one. Where there is no canvas to draw on it is the agent's
- * initials in a thin ring, with the same prop or orb.
+ * then (`useIdleGlance`), and when the pointer leaves or the work stops it
+ * finishes its move, on open eyes, before it holds still (`useSettle`).
+ * From 24px it holds a prop at its top right that says what it is doing
+ * (`AgentProp`); it never carries the orb. Where there is no canvas to draw
+ * on it is the agent's initials in a thin ring, with the same prop.
  */
 export function AgentInitials({
   name,
@@ -595,12 +715,16 @@ export function AgentInitials({
   const [hovered, setHovered] = useState(false);
   // A small idle mark holds still, but now and then makes a small move of
   // its own. A mark waiting on a person never moves.
+  const moving = live || hovered;
+  // When the pointer leaves or the work stops, the move in progress finishes.
+  const stirring = useSettle(moving);
   const glancing = useIdleGlance(
     ref,
-    !!ink && !live && !hovered && state !== "waiting" && size < 32,
+    !!ink && !stirring && state !== "waiting" && size < 32,
     lookOf ?? name,
   );
-  const moving = live || hovered;
+  // And it stops on open eyes, never mid-blink.
+  const finishing = useFinish(ref, stirring || glancing, size < 32 ? ink : undefined);
   const { shown: prop, leaving } = useShownProp(agentPropOf(state, size));
   if (ink)
     return (
@@ -611,6 +735,7 @@ export function AgentInitials({
         data-live={live || undefined}
         data-hovered={hovered || undefined}
         data-glancing={glancing || undefined}
+        data-settling={(stirring && !moving) || finishing || undefined}
         onPointerEnter={(e) => {
           if (e.pointerType === "mouse") setHovered(true);
         }}
@@ -630,22 +755,14 @@ export function AgentInitials({
           theme={dark ? "dark" : "light"}
           shading={size < 24 ? "flat" : (look?.finish ?? "fabric")}
           interactive={size >= 32 || hovered}
-          // Small marks hold still unless they work, are under the pointer or
-          // take their rare glance: a list of agents does not fidget. Their
-          // glance has no hop and only half the head turn.
-          paused={!moving && !glancing && size < 32}
+          // Small marks hold still unless they work, are under the pointer,
+          // are finishing a move or take their rare glance: a list of agents
+          // does not fidget. Their glance has no hop and only half the head turn.
+          paused={!stirring && !glancing && !finishing && size < 32}
           jumpEvery={size < 32 ? 0 : undefined}
           turn={size < 32 ? 0.5 : undefined}
         />
         {prop && <PropMark key={prop} prop={prop} leaving={leaving} size={size} />}
-        {live && !prop && size >= 24 && (
-          <AgentOrb
-            state={state}
-            size={Math.max(12, Math.round(size * 0.42))}
-            label=""
-            className="absolute -right-1 -bottom-1"
-          />
-        )}
       </span>
     );
   return (
@@ -658,14 +775,6 @@ export function AgentInitials({
     >
       {agentInitials(look?.label || name)}
       {prop && <PropMark key={prop} prop={prop} leaving={leaving} size={size} />}
-      {live && !prop && size >= 20 && (
-        <AgentOrb
-          state={state}
-          size={Math.max(10, Math.round(size * 0.42))}
-          label=""
-          className="absolute -right-1 -bottom-1"
-        />
-      )}
     </span>
   );
 }

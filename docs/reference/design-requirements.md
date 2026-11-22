@@ -36,7 +36,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-079 | Run and Answer: in a session set to it, the approval agent also answers a question an agent asks a person when the session already settles it, as the person who chose it, and hands them the rest | Implemented: `threads.ApprovalDecide` (`pkg/threads/approval.go`), `internal/platform/approval_questions.go`, the `answer` field and `DescribeQuestion` in `pkg/approve`, `PUT /api/threads/{id}/approval` with `decide`, Answer Questions beside Run in `ApprovalToggle.tsx`, and the judgement on a question's card (`ClarificationCard`). Evidence: `TestRunAndAnswerAnswersAChoiceTheSessionSettles`, `TestRunAndAnswerAnswersAReply`, `TestWhatRunAndAnswerDoesNotSettleWaitsForAPerson`, `TestRunAndAnswerNeverAnswersForSomeoneElse`, `TestRunAndAnswerLeavesWhatSomeoneElseAskedFor`, `TestRunLeavesQuestionsForAPerson`, `TestRunAndAnswerIsAModeAPersonChooses`, `TestApprovalModeIsSetOnItsOwnAndKept`, `TestAQuestionsAnswerIsReadBesideTheDecision`; `approval-toggle.dom.test.tsx`, `ui.test.tsx`. Not run: `pnpm validate:slack` (needs the Slack bench) and a screen check in a running console. |
 | DES-081 | An agent is made goal first and is met on its home: a new agent starts from a searchable list of outcomes (Start from scratch first), is given a name, a shape and a color with its bot drawn as it will be, and opens on a home where it introduces itself, offers jobs to hand it and takes a message addressed to it; its settings are grouped as General, Access, Tools and Behavior, and General shows what it completed this week, how it answers in Slack, Pause and Retire | Implemented: see [DES-081](#des-081-goal-first-agents-a-home-and-grouped-settings). |
 | DES-084 | An agent's health says what is checked and what to do next: one row (status pill, recent pass rate, a How evaluation works icon with the docs, an icon Refresh health that spins while it reads and says when it last read), checks on recent runs beside each eval suite's last result, schedule and Run Now, runs flagged for review linking to the queue, a schedule editor with presets inside the one hour to thirty day bound that says who the schedule runs as, and figures that show a value or an explained dash | Implemented: `AgentHealth.tsx` (`AgentHealth`, `AgentStats`), `evalHealth.ts`, the schedule editor in `Evals.tsx`, `next_run_at` and `created_by_name` on `GET /api/evals` and `flagged` on agent health, words in `copy.agentHealth`, `copy.agentStats` and `copy.evalSchedule`. Composes with #480's health row: one header row with an actions slot, pills, no separators and no explanatory paragraph. Evidence: `TestNextRunCountsFromTheLatestStart`, `TestAgentHealthCountsTheRunsFlaggedForReview`, `TestASuiteListingSaysWhenItsScheduleNextRunsAndForWhom`, `agent-health.dom.test.tsx`, `evalHealth.test.tsx`; before and after captures at 1280 and 390, light and dark, in pull request 482. Pass-rate bars are neutral when a run reached its threshold, warn below it and bad only when it could not run, each labelled by how long ago it ran; the schedule presets wrap rather than scroll at phone width. The refresh glyph turning is the one spinner on the page; it is a control's own state, and the content it refreshes stays on view. |
-| DES-090 | An agent's mark feels alive and says what it is doing without drawing the eye: a small idle mark makes a rare blink or glance, and from 24px it holds a small prop that names its activity | Implemented: `useIdleGlance`, `AgentProp`, `agentPropOf` and `PropMark` in `packages/web/src/AgentOrb.tsx`, `.aui-prop` in `packages/render-web/src/theme.css`. Evidence: `agent-props.dom.test.tsx`; gallery and transcript captures at 2x, light and dark, before and after, in the pull request text; 30 seconds sampled in Chrome showed glances of 1.2 to 2 seconds and none under reduced motion. Known limit: a glance that ends during a blink holds the bot with its eyes part closed until the next glance (`bot-avatars` freezes the frame it is on). |
+| DES-090 | An agent's mascot feels alive and says what it is doing without drawing the eye: a small idle mark makes a rare blink or glance, finishes its move on open eyes when the pointer leaves or its work stops, and from 24px holds a prop that names its activity; a mascot never carries the orb | Implemented: `useIdleGlance`, `useSettle`, `eyesOpen`, `AgentProp`, `agentPropOf` and `PropMark` in `packages/web/src/AgentOrb.tsx`, `.aui-prop` in `packages/render-web/src/theme.css`. Evidence: `agent-props.dom.test.tsx`; gallery and transcript captures at 2x, light and dark, before and after, in the pull request text; in Chrome, 30 seconds sampled showed glances of 1.2 to 2 seconds and none under reduced motion, and frames after the pointer left a mark showed it land its hop and hold still with open eyes. The orb stays only where no mascot is drawn: an `AgentMark` under 16px, a host's avatar picture and the status line. |
 | DES-089 | A session has no Side Chat: a second line of questions is a new session that refers to this one | Implemented: `WorkbenchSidechat.tsx`, `sidechat.ts`, the `sidechat` tab id, its header view and its key are removed; `session-context-panel.dom.test.tsx` and `route.test.ts` pass; checked in the browser that More Views and the workbench strip no longer list it |
 | DES-088 | The destination for work an agent starts without being asked is Automations, with a lightning mark, and has no Background tab: a session's background work is a section of that session's Details | Implemented: `Automations.tsx`, the entry in `Sidebar.tsx`, `/automations` in `route.ts` (old `/scheduled` addresses open it), `SessionBackground` in `Background.tsx` shown by `SessionPanel.tsx`; `automations.dom.test.tsx`, `background.dom.test.tsx`, `route.test.ts` and the sidebar tests pass; the page and the sidebar checked in the browser, the Background section by DOM tests only |
 | DES-087 | The composer is flat: the AI notice is in the middle of the footer row, the sentence is the link to the terms, messages that wait show greyed at the end of the conversation with Send now, and the box keeps its placeholder while agents work | Implemented: `NoticeSlotContext` and `queuePlace` in `Composer.tsx`, `ComposerFooter` in `SessionUsage.tsx`, `QueuedMessages` in `packages/web`, `.humagen-composer-footer` in `styles.css`; `composer-notice.dom.test.tsx`, `queued-messages.dom.test.tsx` and `composer-overlay.dom.test.tsx` pass; checked in the browser in a session and on Home, light and dark, at 1280 and 390 wide, with a real run and two waiting messages |
@@ -1178,8 +1178,9 @@ any. This reverses the first point of DES-030.
 ### DES-090: A mark that feels alive and says what it is doing
 
 Owner request, 2026-11-21: make the agents' mascots feel alive, "not often so
-it's distracting", and show what an agent is doing with a small prop, "a
-little microscope when investigating".
+it's distracting", show what an agent is doing with a small prop, "a little
+microscope when investigating", and "on hover it starts; off hover, let it
+complete the cycle".
 
 - A mark under 32px that is idle, done, failed or stopped holds still, but
   every 12 to 25 seconds it moves for 1.2 to 2 seconds: a blink, a glance or
@@ -1187,22 +1188,32 @@ little microscope when investigating".
   agent's name, so a list of agents does not move in unison.
 - A mark that waits on a person never moves of its own accord. Under reduced
   motion no mark moves of its own accord. A mark off screen schedules
-  nothing, and a mark that goes clears its timer.
-- Under the pointer a mark still moves at once, as before.
+  nothing, and a mark that goes clears its timers.
+- Under the pointer a mark moves at once. When the pointer leaves, or the
+  agent stops working, it does not freeze: it keeps moving for 1.4 seconds,
+  so its hop lands and it eases back to rest, then until its eyes are open
+  (read from its canvas, for at most 1.2 seconds more), and then holds
+  still. A glance ends on open eyes the same way. A pointer that comes back
+  meanwhile keeps it moving.
 - From 24px a mark holds a prop at its top right, clear of the face, at
   about 40% of its size, in the muted text color:
 
   | State | Prop | Motion |
   | --- | --- | --- |
-  | searching | a magnifier | sweeps a few degrees |
+  | searching | a microscope | the tube moves a little, as if focusing |
   | thinking | two dots rising to a cloud | the dots rise and fade in turn |
+  | calling | a wrench | turns a few degrees each way |
   | composing | a pencil | a small writing stroke |
   | delegating | two overlapping bubbles | the back bubble fades in and out |
   | waiting | an hourglass | none |
 
-- A state without a prop (a tool call) keeps the orb on the mark's corner. A
-  mark never shows a prop and the orb at once. A prop fades in and out in
-  150 ms, and its loop stops under reduced motion.
+- A mascot never carries the orb (owner request, 2026-11-21: "remove the
+  orbs if the mascots exist"), in the drawn bot or in its initials ring.
+  Under 24px a working mascot shows its work by its own hop alone. The orb
+  stays where no mascot is drawn: an `AgentMark` under 16px, a host's avatar
+  picture and the status line.
+- A prop fades in and out in 150 ms, and its loop stops under reduced
+  motion.
 - The bot's shape, color and look do not change: only its motion and the
   prop do.
 - Acceptance: `agent-props.dom.test.tsx` passes; in the gallery at 2x, light

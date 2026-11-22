@@ -1129,7 +1129,7 @@
   /* ---------- Agent initials ----------
    * An agent's face: its initials in its own color, inside a thin ring of
    * that color. No glow: it would spill past the edge of a scrolling thread.
-   * While it works the ring breathes; the orb sits on its corner as the live badge.
+   * While it works the ring breathes, and from 24px it holds its prop (AgentProp).
    */
   .aui-initials {
     --s: var(--initials-size, 28px);
@@ -1191,9 +1191,12 @@
   .aui-prop[data-motion="loop"] .aui-prop-move {
     transform-box: view-box;
   }
-  .aui-prop[data-prop="magnifier"] .aui-prop-move {
-    transform-origin: 14px 14px;
-    animation: aui-prop-sweep 3.2s ease-in-out infinite alternate;
+  .aui-prop[data-prop="microscope"] .aui-prop-move {
+    animation: aui-prop-focus 2.6s ease-in-out infinite;
+  }
+  .aui-prop[data-prop="wrench"] .aui-prop-move {
+    transform-origin: 8px 8px;
+    animation: aui-prop-sweep 2.4s ease-in-out infinite alternate;
   }
   .aui-prop[data-prop="thought"] .aui-prop-move {
     animation: aui-prop-rise 2.8s ease-in-out infinite;
@@ -1218,6 +1221,15 @@
     }
     to {
       transform: rotate(9deg);
+    }
+  }
+  @keyframes aui-prop-focus {
+    0%,
+    100% {
+      transform: translate(0, 0);
+    }
+    50% {
+      transform: translate(0.45px, 0.8px);
     }
   }
   @keyframes aui-prop-rise {
