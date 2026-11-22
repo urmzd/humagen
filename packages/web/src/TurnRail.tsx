@@ -314,7 +314,7 @@ export function TurnRail({
         style={{ height: `min(${turns.length * SLOT_PX}px, ${MAX_RAIL})` }}
       >
         <svg
-          aria-hidden
+          aria-hidden="true"
           data-layer="wave-shape"
           width="100%"
           height="100%"
