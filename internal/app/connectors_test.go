@@ -65,6 +65,8 @@ func TestAMalformedEnvironmentIsAnError(t *testing.T) {
 		"auto review not a boolean":     {EnvGitHubToken: "t", EnvGitHubSecret: "s", EnvGitHubOwners: "acme", EnvGitHubAutoReview: "sometimes"},
 		"auto review repo not on/off":   {EnvGitHubToken: "t", EnvGitHubSecret: "s", EnvGitHubOwners: "acme", EnvGitHubAutoReviewRepositories: "acme/site=maybe"},
 		"github labels, now retired":    {EnvGitHubToken: "t", EnvGitHubSecret: "s", EnvGitHubOwners: "acme", retiredGitHubAutoLabels: `{"acme/site":{"auto":"helper"}}`},
+		"github people with no subject": {EnvGitHubToken: "t", EnvGitHubSecret: "s", EnvGitHubOwners: "acme", EnvGitHubPeople: "urmzd="},
+		"github people mapped twice":    {EnvGitHubToken: "t", EnvGitHubSecret: "s", EnvGitHubOwners: "acme", EnvGitHubPeople: "urmzd=a,urmzd=b"},
 	} {
 		if _, err := defaultClients(envOf(vars)); err == nil {
 			t.Errorf("%s was accepted", name)
@@ -493,5 +495,24 @@ func TestTheEnvironmentSwitchesAutomaticReview(t *testing.T) {
 	a := read(map[string]string{EnvGitHubAutoReview: "false", EnvGitHubAutoReviewRepositories: "acme/test=on, acme/site=off"})
 	if a.Reviews("acme/site") || a.Reviews("acme/other") || !a.Reviews("acme/test") {
 		t.Fatalf("switched off with acme/test on: %+v", a)
+	}
+}
+
+// HUMAGEN_GITHUB_PEOPLE maps GitHub logins to people on the client the
+// environment configures, subjects such as a Tailscale sign-in included.
+func TestTheEnvironmentMapsGitHubLoginsToPeople(t *testing.T) {
+	defaults, err := defaultClients(envOf(map[string]string{
+		EnvGitHubToken: "t", EnvGitHubSecret: "s", EnvGitHubOwners: "urmzd",
+		EnvGitHubPeople: "urmzd=tailscale:urmzd@github, octocat = okta|octo",
+	}))
+	if err != nil || len(defaults) != 1 {
+		t.Fatalf("%d clients, %v", len(defaults), err)
+	}
+	got := defaults[0].GitHub.People
+	if len(got) != 2 || got["urmzd"] != "tailscale:urmzd@github" || got["octocat"] != "okta|octo" {
+		t.Fatalf("people = %v", got)
+	}
+	if err := defaults[0].Validate(); err != nil {
+		t.Fatalf("the mapped client is refused: %v", err)
 	}
 }

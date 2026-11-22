@@ -56,7 +56,12 @@ const (
 	// EnvGitHubLogin is the app's own login. A comment that mentions it and
 	// names no agent is answered by the client's default (EnvGitHubDefault),
 	// else by the default chain of the client's home.
-	EnvGitHubLogin   = "HUMAGEN_GITHUB_LOGIN"
+	EnvGitHubLogin = "HUMAGEN_GITHUB_LOGIN"
+	// EnvGitHubPeople maps GitHub logins to the people they are in the
+	// workspace, "login=subject,login=subject" (github.people): a run a
+	// mapped login asks for acts for that person, and the session of the
+	// pull request or issue lists them.
+	EnvGitHubPeople  = "HUMAGEN_GITHUB_PEOPLE"
 	EnvGitHubDefault = "HUMAGEN_GITHUB_DEFAULT_AGENT"
 )
 
@@ -271,6 +276,9 @@ func githubClient(env func(string) string) (*platform.ClientInput, error) {
 	}
 	opts := &clients.GitHubOptions{ReadRepositories: list(env(EnvGitHubReadRepositories)), Login: env(EnvGitHubLogin), Askers: list(env(EnvGitHubAskers))}
 	var err error
+	if opts.People, err = peopleEnv(env, EnvGitHubPeople); err != nil {
+		return nil, err
+	}
 	if opts.Mutations, err = boolEnv(env, EnvGitHubMutations); err != nil {
 		return nil, err
 	}
@@ -299,6 +307,28 @@ func githubClient(env func(string) string) (*platform.ClientInput, error) {
 		Token:         clients.SecretInput{Ref: "env:" + EnvGitHubToken},
 		SigningSecret: clients.SecretInput{Ref: "env:" + EnvGitHubSecret},
 	}, nil
+}
+
+// peopleEnv reads "login=subject,login=subject". Unlike pairs, an entry
+// with no login or no subject is an error: a person left out is not added
+// to the sessions they ask in.
+func peopleEnv(env func(string) string, name string) (map[string]string, error) {
+	out := map[string]string{}
+	for _, entry := range list(env(name)) {
+		login, subject, ok := strings.Cut(entry, "=")
+		login, subject = strings.TrimSpace(login), strings.TrimSpace(subject)
+		if !ok || login == "" || subject == "" {
+			return nil, fmt.Errorf("invalid $%s: %q is not login=subject", name, entry)
+		}
+		if _, seen := out[login]; seen {
+			return nil, fmt.Errorf("invalid $%s: %s is mapped twice", name, login)
+		}
+		out[login] = subject
+	}
+	if len(out) == 0 {
+		return nil, nil
+	}
+	return out, nil
 }
 
 // pairs parses "k=v,k=v" into a map. Empty entries are skipped so that a

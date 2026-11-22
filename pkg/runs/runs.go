@@ -551,10 +551,11 @@ func (x *Index) Record(runID string, tag event.Envelope, rev int) error {
 		}
 		prev, picked, routed = wire.Meta(tag)[MetaPrev], wire.Meta(tag)[MetaPicked], wire.Meta(tag)[MetaRouted]
 		channel, message = wire.Meta(tag)[MetaChannel], wire.Meta(tag)[MetaMessage]
-	} else if schedule != "" {
+	} else if schedule != "" || wire.Origin(tag) == OriginGitHub {
 		// The platform files a schedule's run in a session of its own, in
-		// the schedule's project, and names it here (Platform.Invoke drops
-		// any the tag brought).
+		// the schedule's project, and a GitHub run in the session of the
+		// issue or pull request it was asked on, and names it here
+		// (Platform.Invoke drops any the tag brought).
 		if v := wire.Meta(tag)[MetaThread]; v != "" {
 			thread = v
 		}

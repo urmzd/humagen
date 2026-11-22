@@ -33,6 +33,7 @@ import {
   sessionCenter,
   sessionSource,
 } from "./sessionCenter.ts";
+import { sessionSourceLink } from "./sourceLink.ts";
 import { referenceOf } from "./trace.ts";
 import {
   ago,
@@ -219,6 +220,27 @@ export function SessionRow({
     </li>
   );
 }
+/**
+ * Where a session started. A GitHub one links to its issue or pull request,
+ * above the row's own link, so it opens GitHub and not the session.
+ */
+function SessionWhere({ session }: { session: AgentSessionSummary }) {
+  const where = sessionSource(session);
+  const link = sessionSourceLink(session.parent);
+  if (!link?.url) return <>{where}</>;
+  return (
+    <a
+      href={link.url}
+      target="_blank"
+      rel="noreferrer"
+      title={link.label}
+      aria-label={`${where}: ${link.label}`}
+      className="relative z-10 rounded-aui-sm underline underline-offset-4 hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
+    >
+      {where}
+    </a>
+  );
+}
 /** The Sessions table's columns: what it is, who answered, how it stands, where, when. */
 function sessionColumns(
   alerts: Alert[],
@@ -255,7 +277,7 @@ function sessionColumns(
       hide: "md",
       cell: (s) => readableProject(s.project, projects, workspaceName),
     },
-    { name: "Where", hide: "lg", cell: (s) => sessionSource(s) },
+    { name: "Where", hide: "lg", cell: (s) => <SessionWhere session={s} /> },
     {
       name: "Updated",
       cell: (s) => <time dateTime={s.updated_at}>{ago(s.updated_at)}</time>,
