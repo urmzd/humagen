@@ -188,3 +188,140 @@ jobs:
             || { docker logs browser; exit 1; }
           if grep -q -- '--- SKIP' test.log; then echo "a browser test was skipped"; exit 1; fi
           [ "$(grep -c -- '--- PASS: TestBrowser' test.log)" -ge 6 ] || { echo "fewer browser tests ran than there are"; exit 1; }
+
+  helm:
+    name: Helm chart
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: azure/setup-helm@v4
+        with:
+          version: v4.3.0
+      - run: python3 -m pip install PyYAML==6.0.3
+      - run: go install github.com/yannh/kubeconform/cmd/kubeconform@v0.8.0
+      - run: make chart-check
+
+  js:
+    name: UI, console and Slack
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec biome check
+      - run: pnpm run typecheck
+      - run: pnpm test
+      - run: pnpm --filter @humagen/console build
+      - name: Slack app against a real server
+        run: |
+          set -o pipefail
+          pnpm test:server 2>&1 | tee server-test.log
+          grep -q '^ℹ pass 4$' server-test.log
+          ! grep -q '# SKIP' server-test.log
+
+  screens:
+    name: Console screens (${{ matrix.color-scheme }})
+    # On pull requests that change the console, the shared UI or this check,
+    # and on every push to main, so a break that lands is seen when it lands.
+    # Release calls this workflow too; it is checked once, by CI itself.
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.workflow == 'CI')
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        color-scheme: [light, dark]
+    env:
+      SCREENS_SUITE: sessions
+      SCREENS_VIEWPORTS: 390x844,480x900,768x1024,1024x768,1280x800
+      SCREENS_COLOR_SCHEME: ${{ matrix.color-scheme }}
+      SCREENS_OUT: .screens/${{ matrix.color-scheme }}
+      SCREENS_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Did the change touch the console?
+        id: changed
+        run: |
+          if [ "${{ github.event_name }}" = push ]; then
+            echo "ui=true" >> "$GITHUB_OUTPUT"
+          elif git diff --name-only "origin/${{ github.base_ref }}...HEAD" | grep -qE '^(apps/web/|packages/|scripts/screens/|Makefile$|pnpm-lock\.yaml$|\.github/workflows/ci\.yml$)'; then
+            echo "ui=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.changed.outputs.ui == 'true'
+        uses: pnpm/action-setup@v4
+      - if: steps.changed.outputs.ui == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - if: steps.changed.outputs.ui == 'true'
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      # The runner's own Chrome takes the screenshots: nothing is downloaded.
+      - name: Capture every screen and check its layout
+        if: steps.changed.outputs.ui == 'true'
+        run: make screens
+      - name: Upload the screenshots for review
+        if: always() && steps.changed.outputs.ui == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: console-screens-${{ matrix.color-scheme }}
+          path: .screens/
+          include-hidden-files: true
+          if-no-files-found: ignore
+
+  slack-blocks:
+    name: Slack Block Kit (allowed to fail)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm validate:slack
+
+  contract:
+    name: API contract and client
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.6.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Lint the spec
+        run: make spec-lint
+      - name: Install oag (pinned, sha256 checked)
+        run: |
+          make oag-install OAG_DIR="$RUNNER_TEMP/bin"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      - name: Regenerate the client
+        run: make client
+      - name: Fail if the committed client is stale
+        run: |
+          if [ -n "$(git status --porcelain -- packages/client)" ]; then
+            echo "packages/client differs from a fresh generation. Run 'make client' and commit the result."
+            git status --porcelain -- packages/client
+            git diff -- packages/client
+            exit 1
+          fi
+      - name: Typecheck and test the client
+        run: make client-check
