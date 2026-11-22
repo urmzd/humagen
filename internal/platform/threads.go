@@ -203,7 +203,10 @@ const (
 // what its record adds.
 type ThreadSummary struct {
 	runs.ThreadSummary
-	Visibility threads.Visibility `json:"visibility"`
+	// TitleSource is who gave its title, as its record says
+	// (threads.Thread.TitleSource): "" when nobody named it.
+	TitleSource string             `json:"title_source,omitempty"`
+	Visibility  threads.Visibility `json:"visibility"`
 	// Messages is how many messages people have posted in it.
 	Messages int `json:"messages"`
 	// Source is where it started when that was not the console or the API:
@@ -2558,7 +2561,7 @@ func (p *Platform) threadPage(tenant string, q runs.ThreadQuery, seer *Seer, kee
 		sum.Project, sum.Channel, sum.Visibility, sum.Messages = rec.Project, rec.Channel, rec.Visibility, rec.Messages
 		sum.Source = threadSource(rec.Thread)
 		if rec.Title != "" {
-			sum.Title, sum.Named = rec.Title, true
+			sum.Title, sum.Named, sum.TitleSource = rec.Title, true, rec.TitleSource
 		}
 		if rec.UpdatedAt.After(sum.UpdatedAt) {
 			sum.UpdatedAt = rec.UpdatedAt

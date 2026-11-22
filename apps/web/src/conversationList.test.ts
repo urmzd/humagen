@@ -7,6 +7,7 @@ import {
   isUnread,
   NO_MARKS,
   partition,
+  placeholderTitle,
   projectOrder,
   rowState,
   standingOf,
@@ -117,6 +118,21 @@ test("an unnamed conversation is titled from its first message, as the server ti
     ],
   ];
   for (const [input, want] of cases) assert.equal(deriveTitle(input), want, input);
+});
+
+test("a session's placeholder title is cut on a word under 40 characters, as the server cuts it", () => {
+  const cases: [string, string][] = [
+    [
+      "Write four short sentences about the sea, the tide and the boats",
+      "Write four short sentences about the…",
+    ],
+    ["@lead check the build", "Check the build"],
+    ["hi", "Hi"],
+  ];
+  for (const [input, want] of cases) {
+    assert.equal(placeholderTitle(input), want, input);
+    assert.ok([...placeholderTitle(input)].length <= 40, input);
+  }
 });
 
 test("a row badge prioritizes waiting, failure, work and open alerts", async () => {
