@@ -46,8 +46,11 @@ const input = (value: Record<string, unknown>) =>
  *
  * An agent that wrote no words of its own has its call's result as its
  * words, so what it came back with is never missing.
+ *
+ * `omit` leaves a step out: one the caller draws itself, as a question that
+ * waits on a person is drawn once, with its controls.
  */
-export function turnOfCall(call: ResponseTool): Turn {
+export function turnOfCall(call: ResponseTool, omit?: (step: ResponseTool) => boolean): Turn {
   let text = "";
   const tasks: Task[] = [];
   const thoughts: Thought[] = [];
@@ -61,7 +64,7 @@ export function turnOfCall(call: ResponseTool): Turn {
       if (b.text.trim()) thoughts.push({ at: text.length, after: tasks.length, text: b.text });
       continue;
     }
-    if (b.type !== "tool" || b.hidden) continue;
+    if (b.type !== "tool" || b.hidden || omit?.(b)) continue;
     if (b.kind === "agent") {
       const name = b.agent ?? b.name;
       tasks.push({
