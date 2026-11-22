@@ -44,6 +44,10 @@ var Shapes = []string{
 	"droid", "mech", "alien", "hexagon", "cat", "cloud", "pill", "pebble", "puddle",
 }
 
+// Characters are the mascots an agent may be drawn as: a persona with its
+// outfit and tools. Empty is the one its handle suggests.
+var Characters = []string{"detective", "writer", "engineer", "scientist", "inspector", "spy", "plain"}
+
 // Faces, Finishes, Hats and Glasses are the other choices, as bot-avatars
 // names them. The first of each is the default and is stored as empty.
 var (
@@ -58,6 +62,10 @@ type Look struct {
 	// DisplayName is what people call the agent: "Barbara". The handle,
 	// which people tag and which never changes here, stays the agent's name.
 	DisplayName string `json:"display_name,omitempty"`
+	// Character is the mascot it is drawn as. Empty is the one its handle
+	// suggests. Shape and what follows it are kept for looks saved before
+	// characters, and no longer change how the console draws an agent.
+	Character string `json:"character,omitempty"`
 	// Shape is the bot's body. Empty is the shape the handle hashes to.
 	Shape      string `json:"shape,omitempty"`
 	Face       string `json:"face,omitempty"`
@@ -93,7 +101,8 @@ func (l Look) IsZero() bool { return l.Equal(Look{}) }
 
 // Equal reports whether two looks are the same.
 func (l Look) Equal(o Look) bool {
-	return l.DisplayName == o.DisplayName && l.Shape == o.Shape && l.Face == o.Face &&
+	return l.DisplayName == o.DisplayName && l.Character == o.Character &&
+		l.Shape == o.Shape && l.Face == o.Face &&
 		l.Finish == o.Finish && l.Hat == o.Hat && l.Glasses == o.Glasses &&
 		l.Headphones == o.Headphones && l.BowTie == o.BowTie && l.Greeting == o.Greeting &&
 		slices.Equal(l.Starters, o.Starters)
@@ -104,6 +113,7 @@ func (l Look) Equal(o Look) bool {
 func (l Look) Normalize() Look {
 	l.DisplayName = strings.Join(strings.Fields(l.DisplayName), " ")
 	l.Shape = strings.ToLower(strings.TrimSpace(l.Shape))
+	l.Character = strings.ToLower(strings.TrimSpace(l.Character))
 	clear := func(v string, choices []string) string {
 		v = strings.ToLower(strings.TrimSpace(v))
 		if v == choices[0] {
@@ -142,6 +152,7 @@ func (l Look) Validate() error {
 			problems = append(problems, fmt.Sprintf("%s must be one of %s", field, strings.Join(choices, ", ")))
 		}
 	}
+	check("character", l.Character, Characters)
 	check("shape", l.Shape, Shapes)
 	check("face", l.Face, Faces)
 	check("finish", l.Finish, Finishes)

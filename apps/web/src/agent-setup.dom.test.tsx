@@ -183,7 +183,7 @@ test("People & Access leaves sharing to the header's Share and offers no second 
   assert.ok(net.seen.every((request) => request.method === "GET"));
 });
 
-test("a new agent's look is chosen while it is set up: its name, greeting and shape", async () => {
+test("a new agent's appearance is chosen while it is set up: its name, greeting and character", async () => {
   net = stubFetch({
     "GET /api/me": () => me,
     "GET /api/projects": () => ({ projects: [], next: null }),
@@ -197,7 +197,9 @@ test("a new agent's look is chosen while it is set up: its name, greeting and sh
   ) as HTMLInputElement;
   fireEvent.change(shown, { target: { value: "Barbara" } });
   assert.equal(shown.value, "Barbara");
-  const ghost = screen.getByLabelText("ghost") as HTMLButtonElement;
-  fireEvent.click(ghost);
-  assert.equal(ghost.getAttribute("aria-pressed"), "true");
+  const writer = screen.getByRole("button", {
+    name: defaultCopy.agentLook.characters.writer,
+  }) as HTMLButtonElement;
+  fireEvent.click(writer);
+  assert.equal(writer.getAttribute("aria-pressed"), "true");
 });

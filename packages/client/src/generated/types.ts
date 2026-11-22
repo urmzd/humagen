@@ -2940,6 +2940,8 @@ name.
 export interface AgentLook {
   /** What people call the agent. Its handle, which people tag, does not change. */
   display_name?: string;
+  /** The mascot the agent is drawn as. Empty is the one its handle suggests. */
+  character?: "detective" | "writer" | "engineer" | "scientist" | "inspector" | "spy" | "plain";
   shape?: "clover" | "flower" | "triangle" | "square" | "blob" | "ghost" | "circle" | "drop" | "star" | "droid" | "mech" | "alien" | "hexagon" | "cat" | "cloud" | "pill" | "pebble" | "puddle";
   face?: "eyes" | "mouth";
   finish?: "fabric" | "plastic" | "smooth" | "flat";

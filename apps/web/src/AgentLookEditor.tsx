@@ -1,27 +1,32 @@
 import { defaultCopy } from "@humagen/components";
-import { AgentInitials, AgentStill, agentBot, type BotLook, botShapes, toRgb } from "@humagen/web";
+import {
+  AgentInitials,
+  AgentStill,
+  type BotLook,
+  type MascotPersona,
+  mascotPersonaOf,
+  mascotPersonas,
+  mascotPicture,
+  toRgb,
+} from "@humagen/web";
 import { type CSSProperties, useEffect, useRef, useState } from "react";
 import { setAgentHues, setAgentLooks } from "./agentHues.ts";
 import { botLook } from "./agentLooks.ts";
 import { type AgentLook, type AgentLookView, ApiError, api } from "./api.ts";
-import { brandShown } from "./branding.ts";
-import { button, field, Label, Problem, primary, Segmented, SkeletonRows, Switch } from "./ui.tsx";
+import { agentShown, brandShown } from "./branding.ts";
+import { button, field, Label, Problem, primary, SkeletonRows } from "./ui.tsx";
 
 const words = defaultCopy.agentLook;
 
 /** The hues a picker offers: the twelve the console has always drawn. */
 export const SWATCHES = Array.from({ length: 12 }, (_, i) => i * 30);
 
-type Face = NonNullable<AgentLook["face"]>;
-type Finish = NonNullable<AgentLook["finish"]>;
-type Hat = NonNullable<AgentLook["hat"]>;
-type Glasses = NonNullable<AgentLook["glasses"]>;
-
 /** A look with every default left out, as the server keeps it, so two ways of writing one look compare equal. */
 export function trimLook(look: AgentLook): AgentLook {
   const out: AgentLook = {};
   const name = (look.display_name ?? "").trim().replace(/\s+/g, " ");
   if (name) out.display_name = name;
+  if (look.character) out.character = look.character;
   if (look.shape) out.shape = look.shape;
   if (look.face && look.face !== "eyes") out.face = look.face;
   if (look.finish && look.finish !== "fabric") out.finish = look.finish;
@@ -41,7 +46,7 @@ export function trimLook(look: AgentLook): AgentLook {
 export const sameLook = (a: AgentLook, b: AgentLook) =>
   JSON.stringify(trimLook(a)) === JSON.stringify(trimLook(b));
 
-/** A random look and free hue, for Shuffle. `random` is injectable so a test can pin it. */
+/** A random character and free hue, for Shuffle. `random` is injectable so a test can pin it. */
 export function shuffled(
   taken: readonly number[],
   random: () => number = Math.random,
@@ -51,13 +56,7 @@ export function shuffled(
   const free = SWATCHES.filter((h) => !taken.includes(h));
   const look: AgentLook = {
     display_name: keep?.display_name,
-    shape: pick(botShapes) as AgentLook["shape"],
-    face: pick(["eyes", "mouth"] as const),
-    finish: pick(["fabric", "fabric", "plastic", "smooth"] as const),
-    hat: random() < 0.4 ? pick(["beret", "beanie", "party", "crown"] as const) : "none",
-    glasses: random() < 0.35 ? pick(["round", "square", "shades"] as const) : "none",
-    headphones: random() < 0.2,
-    bow_tie: random() < 0.2,
+    character: pick(mascotPersonas),
   };
   return { look: trimLook(look), hue: free.length ? pick(free) : undefined };
 }
@@ -66,58 +65,46 @@ export function shuffled(
 export const tintOf = (hue: number) => ({ "--aui-accent-h": hue }) as CSSProperties;
 
 /**
- * The bots an agent may be drawn as, each in the look being edited without
- * what it wears, and the one picked pressed. The look editor and a new
- * agent's Customize step both pick from it.
+ * The characters an agent may be drawn as, each in the color being edited and
+ * named under it, with the one picked pressed. The appearance editor and a
+ * new agent's Customize step both pick from it.
  */
-export function ShapePicker({
+export function CharacterPicker({
   base,
-  look,
-  shape,
+  character,
   hue,
   onPick,
-  label = words.shape,
+  label = words.character,
 }: {
-  /** The name the bot's default shape and initials come from. */
+  /** The handle the agent's marks are drawn for. */
   base: string;
-  look: BotLook;
-  shape: string;
+  character: MascotPersona;
   hue: number;
-  onPick: (shape: string) => void;
+  onPick: (character: MascotPersona) => void;
   label?: string;
 }) {
   return (
     <fieldset className="flex min-w-0 flex-col gap-2">
       <legend className="mb-2 text-aui-xs font-medium text-aui-muted">{label}</legend>
-      <div className="grid grid-cols-6 gap-2 sm:grid-cols-9">
-        {botShapes.map((s) => (
+      <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+        {mascotPersonas.map((c) => (
           <button
-            key={s}
+            key={c}
             type="button"
-            aria-pressed={shape === s}
-            aria-label={s}
-            title={s}
-            data-shape={s}
-            onClick={() => onPick(s)}
-            className={`flex aspect-square items-center justify-center rounded-aui border ${
-              shape === s
+            aria-pressed={character === c}
+            data-character={c}
+            onClick={() => onPick(c)}
+            className={`flex min-w-0 flex-col items-center gap-1.5 rounded-aui border px-2 pt-3 pb-2 ${
+              character === c
                 ? "border-aui-accent bg-aui-accent-soft"
                 : "border-aui-border hover:bg-aui-hover"
             }`}
           >
             <span key={hue} data-accent="agent" style={tintOf(hue)} className="inline-flex">
-              <AgentInitials
-                name={base}
-                look={{
-                  ...look,
-                  shape: s as BotLook["shape"],
-                  hat: "none",
-                  glasses: "none",
-                  headphones: false,
-                  bowTie: false,
-                }}
-                size={30}
-              />
+              <AgentInitials name={base} look={{ character: c }} size={48} />
+            </span>
+            <span className="max-w-full truncate text-aui-2xs text-aui-fg">
+              {words.characters[c]}
             </span>
           </button>
         ))}
@@ -213,7 +200,7 @@ export function AgentLookEditor({
   // save sends as the agent's picture. Its color is read from the page, as a
   // mark's is.
   const tinted = useRef<HTMLSpanElement>(null);
-  const still = useRef<HTMLCanvasElement>(null);
+  const still = useRef<HTMLSpanElement>(null);
   const [ink, setInk] = useState<string>();
   // biome-ignore lint/correctness/useExhaustiveDependencies: read again when the color changes
   useEffect(() => {
@@ -223,7 +210,7 @@ export function AgentLookEditor({
   if (!view) return problem ? <Problem message={problem} /> : <SkeletonRows count={4} />;
 
   const base = brandShown(name);
-  const shape = (look.shape ?? agentBot(base)) as NonNullable<BotLook["shape"]>;
+  const character = (look.character ?? mascotPersonaOf(name)) as MascotPersona;
   const dirty = !sameLook(look, view.look) || hue !== view.hue;
   const isDefault = Object.keys(trimLook(look)).length === 0;
   const set = (patch: Partial<AgentLook>) => {
@@ -232,7 +219,7 @@ export function AgentLookEditor({
   };
   const drawn = (l: AgentLook): BotLook => ({
     ...botLook(trimLook(l)),
-    shape: (l.shape ?? shape) as BotLook["shape"],
+    character: (l.character ?? character) as MascotPersona,
   });
   const tint = (h: number | undefined) => ({ "--aui-accent-h": h ?? view.hue }) as CSSProperties;
   const swatches = SWATCHES.includes(view.hue)
@@ -268,15 +255,9 @@ export function AgentLookEditor({
    */
   const drawPicture = async () => {
     await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
-    const canvas = still.current;
-    if (!canvas || typeof canvas.toBlob !== "function") return;
-    const png = await new Promise<Blob | null>((done) => {
-      try {
-        canvas.toBlob(done, "image/png");
-      } catch {
-        done(null);
-      }
-    });
+    const root = still.current;
+    if (!root || typeof HTMLCanvasElement.prototype.toBlob !== "function") return;
+    const png = await mascotPicture(root).catch(() => null);
     if (!png || png.size === 0) return;
     try {
       const v = await api.setAgentMark(name, png);
@@ -295,7 +276,7 @@ export function AgentLookEditor({
     set({ starters: next });
   };
 
-  const shown = (look.display_name ?? "").trim() || base;
+  const shown = (look.display_name ?? "").trim() || agentShown(name);
 
   return (
     <div className="flex flex-col gap-6" data-testid="agent-look">
@@ -324,9 +305,13 @@ export function AgentLookEditor({
             style={{
               ...tint(hue),
               color: "var(--aui-accent)",
-              position: "absolute",
-              left: -10000,
+              // In view, so its fur is drawn, but never seen or pointed at.
+              position: "fixed",
+              left: 0,
               top: 0,
+              opacity: 0,
+              pointerEvents: "none",
+              zIndex: -1,
             }}
           >
             {ink && (
@@ -394,12 +379,11 @@ export function AgentLookEditor({
             ))}
           </fieldset>
 
-          <ShapePicker
+          <CharacterPicker
             base={base}
-            look={drawn(look)}
-            shape={shape}
+            character={character}
             hue={hue ?? view.hue}
-            onPick={(s) => set({ shape: s as AgentLook["shape"] })}
+            onPick={(c) => set({ character: c })}
           />
 
           <HuePicker
@@ -411,77 +395,6 @@ export function AgentLookEditor({
               setHue(h);
             }}
           />
-
-          <div className="grid min-w-0 gap-4 sm:grid-cols-2">
-            <div className="flex min-w-0 flex-col gap-1">
-              <span aria-hidden className="text-aui-xs font-medium text-aui-muted">
-                {words.face}
-              </span>
-              <Segmented<Face>
-                label={words.face}
-                value={(look.face ?? "eyes") as Face}
-                options={(["eyes", "mouth"] as Face[]).map((id) => ({
-                  id,
-                  label: words.faces[id],
-                }))}
-                onChange={(face) => set({ face })}
-              />
-            </div>
-            <div className="flex min-w-0 flex-col gap-1">
-              <span aria-hidden className="text-aui-xs font-medium text-aui-muted">
-                {words.finish}
-              </span>
-              <Segmented<Finish>
-                label={words.finish}
-                value={(look.finish ?? "fabric") as Finish}
-                options={(["fabric", "plastic", "smooth", "flat"] as Finish[]).map((id) => ({
-                  id,
-                  label: words.finishes[id],
-                }))}
-                onChange={(finish) => set({ finish })}
-              />
-            </div>
-            <div className="flex min-w-0 flex-col gap-1">
-              <span aria-hidden className="text-aui-xs font-medium text-aui-muted">
-                {words.hat}
-              </span>
-              <Segmented<Hat>
-                label={words.hat}
-                value={(look.hat ?? "none") as Hat}
-                options={(["none", "beret", "beanie", "party", "crown"] as Hat[]).map((id) => ({
-                  id,
-                  label: words.hats[id],
-                }))}
-                onChange={(hat) => set({ hat })}
-              />
-            </div>
-            <div className="flex min-w-0 flex-col gap-1">
-              <span aria-hidden className="text-aui-xs font-medium text-aui-muted">
-                {words.glasses}
-              </span>
-              <Segmented<Glasses>
-                label={words.glasses}
-                value={(look.glasses ?? "none") as Glasses}
-                options={(["none", "round", "square", "shades"] as Glasses[]).map((id) => ({
-                  id,
-                  label: words.glassesKinds[id],
-                }))}
-                onChange={(glasses) => set({ glasses })}
-              />
-            </div>
-          </div>
-          <div className="flex flex-col gap-3">
-            <Switch
-              label={words.headphones}
-              checked={!!look.headphones}
-              onChange={(headphones) => set({ headphones })}
-            />
-            <Switch
-              label={words.bowTie}
-              checked={!!look.bow_tie}
-              onChange={(bow_tie) => set({ bow_tie })}
-            />
-          </div>
 
           <Problem message={problem} />
           {canWrite && (

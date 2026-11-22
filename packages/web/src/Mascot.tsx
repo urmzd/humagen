@@ -628,7 +628,10 @@ export function Mascot({
   className,
   fit,
   quiet,
+  still,
 }: {
+  /** Never move at all, not even now and then: a picture being taken. */
+  still?: boolean;
   /** Frame the bot itself in a square of `size`, its tools drawn past the frame. */
   fit?: boolean;
   /** Hold still: an idle mark in a list does not fidget. */
@@ -688,7 +691,7 @@ export function Mascot({
   const fur = useFur(ink, shape, cy, size, seen, persona === "spy" ? "#16181d" : undefined);
   // An idle bot plays now and then, and at once when pointed at; rarely in a list.
   const { act, play } = useAct(
-    pose === "idle" && !away,
+    pose === "idle" && !away && !still,
     fit ? [14000, 30000] : [4000, 9000],
     !!fur.turn,
     fur.wantTurn,
@@ -1317,4 +1320,74 @@ function handProp(pose: Pose, persona: MascotPersona) {
   if (pose === "calling") return (u: (n: string) => string) => <Wrench u={u} />;
   if (persona === "spy" && pose === "idle") return (u: (n: string) => string) => <Remote u={u} />;
   return undefined;
+}
+
+/** A blob: picture as a data URL, so a serialized drawing still carries it. */
+async function inlined(url: string): Promise<string> {
+  if (!url.startsWith("blob:")) return url;
+  const blob = await (await fetch(url)).blob();
+  return new Promise((done, fail) => {
+    const r = new FileReader();
+    r.onload = () => done(String(r.result));
+    r.onerror = () => fail(r.error);
+    r.readAsDataURL(blob);
+  });
+}
+
+/**
+ * The mascot drawn inside `root` as a PNG of `px` square, at rest: what a
+ * surface that shows only images, such as Slack, shows for the agent. It
+ * waits for the fur to be drawn, and gives null where the page cannot draw.
+ */
+export async function mascotPicture(root: Element, px = 256): Promise<Blob | null> {
+  const frame = () => new Promise((done) => requestAnimationFrame(() => done(undefined)));
+  let svg: SVGSVGElement | null = null;
+  let count = -1;
+  let calm = 0;
+  // The fur is baked on idle time: wait until its pictures stop arriving.
+  for (let tries = 0; tries < 80; tries++) {
+    svg = root.querySelector("svg.hm-mascot");
+    const now = svg
+      ? [...svg.querySelectorAll("image")].filter((i) => i.getAttribute("href")).length
+      : 0;
+    calm = now > 0 && now === count ? calm + 1 : 0;
+    if (calm >= 4) break;
+    count = now;
+    await new Promise((done) => setTimeout(done, 50));
+    await frame();
+  }
+  if (!svg) return null;
+  const copy = svg.cloneNode(true) as SVGSVGElement;
+  // The page's style sheet does not go with the copy: leave out what it hides.
+  const shown = [svg, ...svg.querySelectorAll("*")];
+  const copied = [copy, ...copy.querySelectorAll("*")];
+  shown.forEach((el, i) => {
+    if (i > 0 && getComputedStyle(el).display === "none") copied[i]?.remove();
+  });
+  for (const image of copy.querySelectorAll("image")) {
+    const href = image.getAttribute("href");
+    if (href) image.setAttribute("href", await inlined(href));
+  }
+  copy.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+  copy.setAttribute("width", String(px));
+  copy.setAttribute("height", String(px));
+  copy.style.color = getComputedStyle(svg).color;
+  const url = URL.createObjectURL(
+    new Blob([new XMLSerializer().serializeToString(copy)], { type: "image/svg+xml" }),
+  );
+  try {
+    const img = new Image();
+    img.src = url;
+    await img.decode();
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = px;
+    const g = canvas.getContext("2d");
+    if (!g) return null;
+    g.drawImage(img, 0, 0, px, px);
+    return await new Promise<Blob | null>((done) => canvas.toBlob(done, "image/png"));
+  } catch {
+    return null;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
 }

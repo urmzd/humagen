@@ -86,7 +86,7 @@ test("General shows the agent, what it completed, its Slack app and its instruct
 });
 
 test("the name is renamed in place, and a taken one is said plainly", async () => {
-  setAgentLooks({ barbara: { display_name: "Barbara", shape: "ghost" } });
+  setAgentLooks({ barbara: { display_name: "Barbara", character: "detective" } });
   const sent: unknown[] = [];
   net = stubFetch({
     "PUT /api/agents/barbara/look": (body) => {
@@ -115,7 +115,7 @@ test("the name is renamed in place, and a taken one is said plainly", async () =
   fireEvent.change(box, { target: { value: "Barb" } });
   fireEvent.click(screen.getByRole("button", { name: "Save" }));
   await waitFor(() => assert.equal(screen.getByTestId("general-name").textContent, "Barb"));
-  assert.deepEqual(sent[1], { look: { display_name: "Barb", shape: "ghost" } });
+  assert.deepEqual(sent[1], { look: { display_name: "Barb", character: "detective" } });
 });
 
 test("Pause stops it and Resume undoes it; Retire asks first and then retires it", async () => {
