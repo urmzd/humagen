@@ -6804,6 +6804,36 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
         "500": {$ref: "#/components/responses/ServerError"}
+  /api/alerts/{id}/review:
+    post:
+      operationId: reviewAlert
+      tags: [alerts]
+      summary: Review an alert
+      description: >-
+        Opens the session where the caller reviews the alert, under the
+        alert's session. Its first turn is the agent's recap of the alert,
+        sent the alert, its failed checks and the trace of the run that
+        raised it. A second call returns the same session and starts nothing.
+      x-permission: runs:write
+      parameters:
+        - {name: id, in: path, required: true, description: The alert's id., schema: {type: string}}
+      responses:
+        "200":
+          description: The review session, which already existed.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AgentSession"}
+        "201":
+          description: The review session, started.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AgentSession"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/ServerError"}
   /api/alert-rules:
     get:
       operationId: listAlertRules
@@ -17788,8 +17818,9 @@ components:
       type: string
       description: |
         `budget` is raised by a billing policy, never by a rule, and a rule
-        cannot be created with it.
-      enum: [run_failed, failure_rate, slow_run, eval_below, spend, budget, session, mention, source, approval, clarification, failure, operation, alert, connection, knowledge]
+        cannot be created with it. `eval` is raised when an answer fails its
+        online checks, on that answer, and never by a rule.
+      enum: [run_failed, failure_rate, slow_run, eval_below, eval, spend, budget, session, mention, source, approval, clarification, failure, operation, alert, connection, knowledge]
     AlertSeverity:
       type: string
       enum: [warning, critical]

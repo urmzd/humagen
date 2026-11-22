@@ -27,6 +27,7 @@ import {
   isRootSession,
   openAlert,
   orderAlerts,
+  reviewable,
   sessionCenter,
   sessionSource,
 } from "./sessionCenter.ts";
@@ -36,6 +37,7 @@ import {
   button,
   Confirm,
   LoadMore,
+  MoreMenu,
   Page,
   Problem,
   SearchField,
@@ -70,7 +72,7 @@ export function placeOfSession(s: AgentSessionSummary): SessionPlaceFilter | und
 
 /** One set of tracks for the header and rows. The action column fits all three controls. */
 const alertRow =
-  "grid grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-x-3 gap-y-2 px-4 @3xl:pointer-fine:grid-cols-[1.5rem_minmax(0,1fr)_6.5rem_4.25rem_5.5rem_14.5rem]";
+  "grid grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-x-3 gap-y-2 px-4 @3xl:pointer-fine:grid-cols-[1.5rem_minmax(0,1fr)_6.5rem_4.25rem_5.5rem_15rem]";
 const alertActions =
   "col-start-2 grid min-w-0 grid-cols-[repeat(2,minmax(0,max-content))] items-center gap-2 @lg:flex @3xl:pointer-fine:col-start-auto @3xl:pointer-fine:justify-end";
 /**
@@ -498,6 +500,21 @@ export function AlertsPage({
       (e) => setProblem(failure(e)),
     );
   };
+  const [reviewing, setReviewing] = useState<string>();
+  // Review opens a session that starts with the agent's recap of the alert.
+  const review = async (a: Alert) => {
+    if (reviewing) return;
+    setReviewing(a.id);
+    setProblem(undefined);
+    try {
+      const session = await sessionCenter.review(a.id);
+      go({ page: "conversation", id: session.id });
+    } catch (e) {
+      setProblem(failure(e));
+    } finally {
+      setReviewing(undefined);
+    }
+  };
   const shown = (rows ?? []).filter((a) => !route.source || a.kind === route.source);
   const picked = shown.filter((a) => selected.has(a.id));
   return (
@@ -735,17 +752,31 @@ export function AlertsPage({
                         </span>
                       </span>
                       <span className={alertActions}>
-                        <button
-                          type="button"
-                          className={`${button} col-span-2 w-[9.5rem] max-w-full`}
-                          title={label}
-                          onClick={() => {
-                            const page = alertPage(a) ?? to;
-                            if (page) go(page);
-                          }}
-                        >
-                          <span className="min-w-0 truncate">{label}</span>
-                        </button>
+                        {/* The title views where it came from; the button asks the agent about it. */}
+                        {canWrite && reviewable(a) ? (
+                          <button
+                            type="button"
+                            className={`${button} col-span-2 w-[9.5rem] max-w-full`}
+                            disabled={!!reviewing}
+                            onClick={() => void review(a)}
+                          >
+                            <span className="min-w-0 truncate">
+                              {reviewing === a.id ? words.reviewing : words.review}
+                            </span>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            className={`${button} col-span-2 w-[9.5rem] max-w-full`}
+                            title={label}
+                            onClick={() => {
+                              const page = alertPage(a) ?? to;
+                              if (page) go(page);
+                            }}
+                          >
+                            <span className="min-w-0 truncate">{label}</span>
+                          </button>
+                        )}
                         {canWrite && (
                           <>
                             <RowAction
@@ -754,11 +785,16 @@ export function AlertsPage({
                               disabled={busy}
                               onClick={() => void change([a], "resolved")}
                             />
-                            <RowAction
-                              label={words.snooze}
-                              icon={<ClockIcon size={16} />}
-                              disabled={busy}
-                              onClick={() => void change([a], "snoozed")}
+                            <MoreMenu
+                              label={words.more}
+                              items={[
+                                {
+                                  label: words.snooze,
+                                  icon: <ClockIcon size={16} />,
+                                  disabled: busy,
+                                  onSelect: () => void change([a], "snoozed"),
+                                },
+                              ]}
                             />
                           </>
                         )}

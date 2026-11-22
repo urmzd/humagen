@@ -2819,6 +2819,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/sessions/{id}/links":                   {"id": sessionContract["id"]},
 		"/api/sessions/{id}/alerts":                  {"id": sessionContract["id"]},
 		"/api/alerts/{id}":                           {"id": sessionContract["alert"]},
+		"/api/alerts/{id}/review":                    {"id": sessionContract["alert"]},
 		"/api/sessions/{id}/messages/{mid}/feedback": {"id": sessionContract["id"], "mid": sessionContract["run"]},
 
 		"/api/threads/{id}/files":                             {"id": workspaceID},
@@ -3094,6 +3095,8 @@ var unexercised = map[string]string{
 	"POST /api/sessions/{id}/messages 409":               "deleted-project admission uses the same PostMessage path tested by thread/run responses",
 	"POST /api/sessions/{id}/people 409":                 "concurrent participant changes fail thread version CAS covered by participant race tests",
 	"POST /api/sessions/{id}/alerts 409":                 "random alert identity collision fails CreateSession CAS; callers cannot supply the ID",
+	"POST /api/alerts/{id}/review 400":                   "a review session whose key another source alert holds, the same StartSession check POST /api/sessions makes",
+	"POST /api/alerts/{id}/review 409":                   "deleted-project admission, the same StartSession path POST /api/sessions takes",
 	"PUT /api/sessions/{id}/messages/{mid}/feedback 409": "same putFeedback handler unfinished-run409 is exercised via legacy feedback route",
 
 	// Voice mode's refusals, each covered by its own test in voice_session_test.go.

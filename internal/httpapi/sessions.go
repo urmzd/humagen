@@ -37,6 +37,22 @@ func (s *Server) sessionRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/sessions/{id}/messages/{mid}/feedback", s.authed(auth.RunsRead, s.seenSession(s.deleteSessionFeedback)))
 	mux.HandleFunc("POST /api/sessions/{id}/alerts", s.authed(auth.AlertsWrite, s.seenSession(s.createSessionAlert)))
 	mux.HandleFunc("PATCH /api/alerts/{id}", s.authed(auth.AlertsWrite, s.seenAlert(s.patchAlert)))
+	mux.HandleFunc("POST /api/alerts/{id}/review", s.authed(auth.RunsWrite, s.seenAlert(s.reviewAlert)))
+}
+
+// reviewAlert opens the session where the caller reviews an alert, which
+// starts with the agent's recap of it.
+func (s *Server) reviewAlert(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	v, started, err := s.P.ReviewAlert(r.Context(), who, r.PathValue("id"))
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	status := http.StatusOK
+	if started {
+		status = http.StatusCreated
+	}
+	ok(w, status, v)
 }
 func (s *Server) seenSession(next handler) handler {
 	return func(w http.ResponseWriter, r *http.Request, who auth.Principal) {

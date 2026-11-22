@@ -9,12 +9,14 @@ import { AlertMark } from "./SessionCenter.tsx";
 import {
   type Alert,
   alertActionLabel,
+  alertOrigin,
   alertPage,
   openAlert,
   orderAlerts,
+  reviewable,
   sessionCenter,
 } from "./sessionCenter.ts";
-import { button, field, Problem, primary } from "./ui.tsx";
+import { button, field, MoreMenu, Problem, primary } from "./ui.tsx";
 
 export function useSessionAlerts(
   id: string,
@@ -116,6 +118,24 @@ export function SessionAlerts({
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string>();
+  const [reviewing, setReviewing] = useState<string>();
+  const [reviewProblem, setReviewProblem] = useState<{ id: string; message: string }>();
+  const review = async (alert: Alert) => {
+    if (reviewing) return;
+    setReviewing(alert.id);
+    setReviewProblem(undefined);
+    try {
+      const session = await sessionCenter.review(alert.id);
+      onOpen?.(session.id);
+    } catch (error) {
+      setReviewProblem({
+        id: alert.id,
+        message: error instanceof Error ? error.message : defaultCopy.attention.reviewFailed,
+      });
+    } finally {
+      setReviewing(undefined);
+    }
+  };
   const startFix = async () => {
     if (!fix || busy) return;
     setBusy(true);
@@ -141,12 +161,17 @@ export function SessionAlerts({
         const agent = alert.kind === "eval_below" ? "humagen" : alert.agent;
         // A knowledge alert's action is the page it is about, such as its corpus.
         const page = alertPage(alert);
-        const opens = defaultCopy.attention.open;
+        const words = defaultCopy.attention;
+        const opens = words.open;
+        // An alert about a message is viewed there; one with no message opens its session.
         const action = page
           ? alertActionLabel(alert)
-          : ((opens as Record<string, string>)[alert.action ?? ""] ?? opens.session);
+          : ((opens as Record<string, string>)[alert.action ?? ""] ??
+            (anchor ? words.view : opens.session));
         // Beside its own message, a link back into this session goes nowhere new.
         const link = !!page || alert.action === "reconnect" || !beside;
+        // Asking about it opens a session of its own, which starts with the agent's recap.
+        const reviews = !!onOpen && agents.length > 0 && reviewable(alert);
         return (
           <section
             key={alert.id}
@@ -155,17 +180,16 @@ export function SessionAlerts({
             className="flex flex-col gap-2 rounded-aui border border-aui-border bg-aui-surface p-3 text-aui-sm"
           >
             <div className="flex items-start gap-3">
-              <AlertMark alert={alert} />
+              {/* Only urgency is worth saying: a normal alert is every alert. */}
+              {alert.priority === "urgent" && <AlertMark alert={alert} />}
               <strong className="min-w-0 flex-1 font-medium">{alert.title}</strong>
             </div>
             {alert.body && <p className="whitespace-pre-wrap text-aui-muted">{alert.body}</p>}
             {alert.resolve_when && (
-              <p className="text-aui-xs text-aui-muted">
-                {defaultCopy.attention.doneWhen(alert.resolve_when)}
-              </p>
+              <p className="text-aui-xs text-aui-muted">{words.doneWhen(alert.resolve_when)}</p>
             )}
             {/* A reader who may not change alerts has nothing here beside a message. */}
-            <div className="flex flex-wrap gap-2 empty:hidden">
+            <div className="flex flex-wrap items-center gap-2 empty:hidden">
               {link && (
                 <a
                   className={button}
@@ -174,37 +198,24 @@ export function SessionAlerts({
                       ? href(page)
                       : alert.action === "reconnect"
                         ? "/connections"
-                        : href({
-                            page: "conversation",
-                            id: alert.session!,
-                            ...(anchor ? { message: anchor } : {}),
-                          })
+                        : href(alertOrigin(alert))
                   }
                 >
                   {action}
                 </a>
               )}
-              {canWrite && (
-                <>
-                  <button
-                    type="button"
-                    className={button}
-                    disabled={attention.busy}
-                    onClick={() => void attention.change(alert, "resolved")}
-                  >
-                    {defaultCopy.attention.markDone}
-                  </button>
-                  <button
-                    type="button"
-                    className={button}
-                    disabled={attention.busy}
-                    onClick={() => void attention.change(alert, "snoozed")}
-                  >
-                    {defaultCopy.attention.snooze}
-                  </button>
-                </>
+              {reviews && (
+                <button
+                  type="button"
+                  className={button}
+                  disabled={!!reviewing}
+                  onClick={() => void review(alert)}
+                >
+                  {reviewing === alert.id ? words.reviewing : words.review}
+                </button>
               )}
               {onOpen &&
+                !reviews &&
                 agent &&
                 agents.includes(agent) &&
                 (["retry", "answer"].includes(alert.action ?? "") ||
@@ -222,7 +233,30 @@ export function SessionAlerts({
                     Fix with @{agent}
                   </button>
                 )}
+              {canWrite && (
+                <>
+                  <button
+                    type="button"
+                    className={button}
+                    disabled={attention.busy}
+                    onClick={() => void attention.change(alert, "resolved")}
+                  >
+                    {words.markDone}
+                  </button>
+                  <MoreMenu
+                    label={words.more}
+                    items={[
+                      {
+                        label: words.snooze,
+                        disabled: attention.busy,
+                        onSelect: () => void attention.change(alert, "snoozed"),
+                      },
+                    ]}
+                  />
+                </>
+              )}
             </div>
+            {reviewProblem?.id === alert.id && <Problem message={reviewProblem.message} />}
           </section>
         );
       })}

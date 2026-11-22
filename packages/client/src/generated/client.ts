@@ -6009,6 +6009,23 @@ priority other than `low`, without the alerts themselves.
     });
   }
 
+  /** Opens the session where the caller reviews the alert, under the alert's session. Its first turn is the agent's recap of the alert, sent the alert, its failed checks and the trace of the run that raised it. A second call returns the same session and starts nothing. */
+  async reviewAlert(id: string, options?: RequestOptions): Promise<AgentSession> {
+    let path = "/api/alerts/{id}/review";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<AgentSession>("POST", path, {
+      ...options,
+    });
+  }
+
+  async reviewAlertRaw(id: string, options?: RequestOptions): Promise<ApiResponse<AgentSession>> {
+    let path = "/api/alerts/{id}/review";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<AgentSession>("POST", path, {
+      ...options,
+    });
+  }
+
   /** List alert rules */
   async listAlertRules(options?: RequestOptions): Promise<ListAlertRulesResponse> {
     const path = "/api/alert-rules";
