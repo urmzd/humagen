@@ -23,6 +23,7 @@ import {
   type ThreadSummary,
 } from "./api.ts";
 import { asksOf } from "./asks.ts";
+import { bangCommand, commandHint, commandsHere } from "./BangCommand.tsx";
 import { aiNoticeHeight, Composer, type ComposerSeed } from "./Composer.tsx";
 import type { ConversationForkActions } from "./ConversationForkPanels.tsx";
 import { type Completion, useCompletion } from "./completion.ts";
@@ -562,9 +563,14 @@ export function Chat({
     };
     const failed = (e: unknown) =>
       giveBack(m, e instanceof ApiError ? e.message : words.failed.post);
+    // A "!" message runs a command and starts no run. Where none may run,
+    // it is not sent to an agent: it comes back, saying why.
+    const command = bangCommand(m.text) !== null;
+    if (command && commandsRefused) return giveBack(m, commandsRefused);
     // Home starts a private conversation in the picked project, or a
     // shared thread when it was opened from a channel. Either opens at
-    // its address, where the next message goes.
+    // its address, where the next message goes. A command starts the
+    // session and runs in its sandbox.
     if (!threadId) {
       coworking
         .start({
@@ -574,6 +580,7 @@ export function Chat({
           uploads: m.uploads,
           visibility: startChannel ? "shared" : "private",
           ...(startChannel ? {} : setup),
+          ...(command ? { command } : {}),
         })
         .then((p) => {
           // Run, chosen before the session started, is applied to it now.
@@ -590,7 +597,12 @@ export function Chat({
     // A conversation of runs takes the message after the turn on screen.
     // Posted, it is a room: the message, and any run its tags started.
     coworking
-      .post(threadId, { text: m.text, uploads: m.uploads, ...(tail ? { after: tail.id } : {}) })
+      .post(threadId, {
+        text: m.text,
+        uploads: m.uploads,
+        ...(tail ? { after: tail.id } : {}),
+        ...(command ? { command } : {}),
+      })
       .then((p) => {
         setRoom((r) =>
           r
@@ -713,6 +725,14 @@ export function Chat({
   // image beside the plus, the repositories as context from the plus menu.
   const [setup, setSetup] = useState<SessionSetup>(DEFAULT_SETUP);
   const sessionOptions = useSessionOptions(!startChannel);
+  // Why a "!" message may not run here, or null; and what the bar says of one.
+  const commandsRefused = commandsHere(
+    sessionOptions?.terminal,
+    threadId ? threadId.startsWith("s_") : !startChannel,
+  );
+  // Only whether the draft is a command, and an empty one, is kept, so the
+  // bar is not drawn again on every key.
+  const [commandDraft, setCommandDraft] = useState<"!" | "!x" | null>(null);
   // A message here is its text alone: the agent it goes to is the one its
   // tags or the conversation name, never a pick the composer carries.
   const sending: typeof queue = {
@@ -792,7 +812,10 @@ export function Chat({
         seed={seed}
         onDraft={(text) => {
           draft.current = text;
+          const command = bangCommand(text);
+          setCommandDraft(command === null ? null : command === "" ? "!" : "!x");
         }}
+        note={commandDraft && commandHint(commandDraft, commandsRefused, !threadId)}
         // Under the bar, one quiet row: on the left where the conversation is
         // filed and its approval mode; the bar itself holds only +, the words,
         // Send and the microphone.

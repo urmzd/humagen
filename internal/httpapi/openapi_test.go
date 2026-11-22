@@ -2782,6 +2782,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 
 	workspaceID := exerciseWorkspaceFileContract(t, c, auditAdmin, globex)
 	exerciseSandboxCommandContract(t, c)
+	exerciseBangCommandContract(t, c)
 	padID := exerciseScratchpadContract(t, c, auditAdmin, globex, workspaceID)
 	exerciseSaveContract(t, c, auditAdmin, globex, workspaceID, padID)
 	c.call(auditAdmin, "GET", "/api/threads/{id}/usage", "/api/threads/"+workspaceID+"/usage", "", http.StatusOK)
@@ -3086,6 +3087,8 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 var unexercised = map[string]string{
 	"POST /api/agents/{name}/slack-app 404":              "an agent that does not exist, the same seenAgent and catalog read the GET covers",
 	"PUT /api/agents/{name}/home 409":                    "a home is refused only while the agent's default skills would not fit it; the guard is in platform.homeUsers",
+	"POST /api/sessions/{id}/messages 503":               "a sandbox that cannot start an instance for a command, the same postCommand path POST /api/sessions answers 503 from (exerciseBangCommandContract)",
+	"POST /api/threads/{id}/messages 503":                "a sandbox that cannot start an instance for a command, the same postCommand path POST /api/sessions answers 503 from (exerciseBangCommandContract)",
 	"POST /api/sessions 409":                             "governed admission to a deleted project uses the same path tested by POST /api/runs deleted-project response",
 	"POST /api/sessions 200":                             "a chat surface's reply landing in its existing root, covered by TestAChatServiceFindsOrStartsASlackThreadsRootSession",
 	"POST /api/messages/{id} 409":                        "a full or moved conversation, the same PostMessage path POST /api/sessions/{id}/messages takes",

@@ -111,6 +111,10 @@ type MessageInput struct {
 	// Spoken says the person said it in voice mode, and the words were
 	// transcribed. It is theirs to say, and only marks the message.
 	Spoken bool `json:"spoken,omitempty"`
+	// Command says the text is "!" and a command to run in the session's
+	// sandbox, as the person, at once. It is posted with how it came out
+	// and starts no run (postCommand).
+	Command bool `json:"command,omitempty"`
 	// reply is a reply to a mention, from the inbox.
 	reply bool
 	// heard is a message on a surface that addressed nobody, posted with
@@ -945,6 +949,9 @@ func clientOf(as *ActAs) string {
 // second post with a surface's id already posted is the first, and starts
 // nothing again.
 func (p *Platform) PostMessage(ctx context.Context, who auth.Principal, id string, in MessageInput) (Posted, error) {
+	if in.Command {
+		return p.postCommand(ctx, who, id, in)
+	}
 	if err := checkUploads(in.Uploads); err != nil {
 		return Posted{}, err
 	}
@@ -1566,7 +1573,10 @@ func (p *Platform) answerDirect(ctx context.Context, tenant string, th threads.T
 		if cfg.History == HistoryRecent && (th.Session == nil || th.Session.Agent != agent) {
 			return room()
 		}
-		return m.Text
+		// The room's transcript carries the commands run before the
+		// message; an agent sent its words alone is sent those commands
+		// ahead of them.
+		return p.commandsFor(tenant, th, m)
 	}
 	var out []runs.Run
 	var firstErr error

@@ -55,6 +55,11 @@ type SessionInput struct {
 	// one that is listening (threads.Thread.Listening) the agent is asked
 	// whether the message calls for it; anywhere else it is ErrNotListening.
 	Listen bool `json:"listen,omitempty"`
+	// Command starts the session with a command run in its sandbox, typed
+	// as "!" and the command, in place of a message to its agent: the
+	// session's first message is the command and how it came out, and no
+	// run starts (postCommand).
+	Command bool `json:"command,omitempty"`
 	// spoken marks the first message as said in voice mode, for a
 	// conversation the messages API starts (sendToNewConsoleRoot).
 	spoken bool
@@ -207,6 +212,19 @@ func (p *Platform) StartSession(ctx context.Context, who auth.Principal, in Sess
 	}
 	in.Text = uploadText(in.Text, in.Uploads)
 	ctx = context.WithValue(ctx, sessionReaderKey{}, who)
+	if in.Command {
+		// Refused before the session is made, so a command that cannot
+		// run leaves no empty session behind.
+		if in.Surface != nil || in.ActAs != nil || in.PostOnly || in.Listen || in.Parent != "" || in.SourceAlert != "" {
+			return SessionView{}, fmt.Errorf("%w: a command starts only a new session of your own, from the console", threads.ErrInvalid)
+		}
+		if _, err := p.checkCommandInput(MessageInput{Text: in.Text, Uploads: in.Uploads}); err != nil {
+			return SessionView{}, err
+		}
+		if !who.Can(auth.RunsWrite) {
+			return SessionView{}, auth.ErrForbidden
+		}
+	}
 	if in.Surface != nil {
 		v, _, err := p.StartSurfaceSession(ctx, who, in)
 		return v, err
@@ -302,7 +320,7 @@ func (p *Platform) StartSession(ctx context.Context, who auth.Principal, in Sess
 	if existing.Session == nil || existing.Session.SourceAlert != in.SourceAlert {
 		return SessionView{}, fmt.Errorf("%w: this session belongs to another source alert", threads.ErrInvalid)
 	}
-	if _, err := p.PostMessage(ctx, who, rec.ID, MessageInput{Text: in.Text, Spoken: in.spoken, Uploads: in.Uploads}); err != nil {
+	if _, err := p.PostMessage(ctx, who, rec.ID, MessageInput{Text: in.Text, Spoken: in.spoken, Uploads: in.Uploads, Command: in.Command}); err != nil {
 		return SessionView{}, err
 	}
 	return p.ReadSession(ctx, who, rec.ID, "", "", false)
@@ -343,7 +361,7 @@ func (p *Platform) PostSession(ctx context.Context, who auth.Principal, id strin
 	if len(options) > 0 {
 		option = options[0]
 	}
-	if (in.PostOnly || in.Answers != nil) && (option.Agent != "" || option.Fresh || option.Label != "") {
+	if (in.PostOnly || in.Answers != nil || in.Command) && (option.Agent != "" || option.Fresh || option.Label != "") {
 		return SessionView{}, fmt.Errorf("%w: child routing is only for a new agent request", threads.ErrInvalid)
 	}
 	th, err := p.SessionRecord(ctx, who, id)

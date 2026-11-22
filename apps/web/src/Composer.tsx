@@ -148,7 +148,10 @@ export function Composer({
   onCancelHeld,
   stopAll,
   footer,
+  note,
 }: {
+  /** A line the bar says about the draft as it stands, such as what a "!" command will do. */
+  note?: ReactNode;
   /**
    * Everything running in the session, whoever started it. While anything
    * runs the bar shows Stop, which (as Esc in an empty box does) stops all of
@@ -961,6 +964,11 @@ export function Composer({
           <p role="status" className={floatNote}>
             {notice}
           </p>
+        )}
+        {!notice && note && (
+          <output data-layer="note" className={floatNote}>
+            {note}
+          </output>
         )}
         {/*
           One row: + on the left, the words, and on the right two plain icon

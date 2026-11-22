@@ -1954,7 +1954,22 @@ export interface ThreadMessage {
   heard?: boolean;
   /** When its author last corrected a spoken message's words. */
   edited_at?: string;
+  command?: ThreadCommand;
   at: string;
+}
+
+/** A command the message's author ran in the session's sandbox, typed as `!` and the command, which is the message's text, and how it came out. The message started no run; the agent that answers the next message is sent the command and the end of its output. */
+export interface ThreadCommand {
+  command: string;
+  /** The command's exit status, or -1 when it was stopped at the time limit. */
+  exit_code: number;
+  /** Stopped at the time limit (15 seconds). */
+  timed_out?: boolean;
+  /** The end of stdout and stderr, as one stream, in at most 16384 bytes. Line endings are LF, and other control characters but tabs are removed. */
+  output: string;
+  /** Earlier output was cut. */
+  truncated?: boolean;
+  duration_ms: number;
 }
 
 /** The announcement a thread was started from, as it stands when the
@@ -2128,6 +2143,8 @@ export interface ThreadMessageInput {
   surface?: SurfaceRef;
   /** The person said it in voice mode and the words were transcribed. It only marks the message. */
   spoken?: boolean;
+  /** The text is `!` and a command to run at once, as the caller, in the session's sandbox, under the rules and limits of runSandboxCommand: only where GET /api/sessions/options says `terminal`, only for someone who may post in the session, and only while no work is under way there (409). The message is posted with how the command came out (ThreadMessage.command) and starts no run; the agent reads it with the next message. Refused with uploads, answers, act_as or surface. */
+  command?: boolean;
 }
 
 /** How a thread's selected agents answer an untagged message a person
@@ -5899,6 +5916,8 @@ export interface SessionInput {
   image?: string;
   /** Repositories ("owner/name") the session works on, each listed by GET /api/sessions/options. Refused with surface. */
   repos?: string[];
+  /** Start the session with a command in place of a message to its agent: the text is `!` and the command, run in the new session's sandbox as for SessionPostInput.command. The session's first message is the command and how it came out, and no run starts. Refused with surface, act_as, post_only, listen, parent, source_alert and uploads, and where GET /api/sessions/options does not say `terminal` (409, and no session is made). */
+  command?: boolean;
 }
 
 /** What a person asks of a session's browser. */
@@ -6049,6 +6068,8 @@ export interface SessionPostInput {
   surface?: SurfaceRef;
   /** The person said it in voice mode and the words were transcribed. It only marks the message. */
   spoken?: boolean;
+  /** The text is `!` and a command to run at once, as the caller, in the session's sandbox, under the rules and limits of runSandboxCommand: only where GET /api/sessions/options says `terminal`, only for someone who may post in the session, and only while no work is under way there (409). The message is posted with how the command came out (ThreadMessage.command) and starts no run; the agent reads it with the next message. Refused with uploads, answers, act_as or surface. */
+  command?: boolean;
   /** The @agent in text whose child receives this request. */
   agent?: string;
   /** Start an independent child instead of continuing its existing session. */
