@@ -36,6 +36,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-079 | Run and Answer: in a session set to it, the approval agent also answers a question an agent asks a person when the session already settles it, as the person who chose it, and hands them the rest | Implemented: `threads.ApprovalDecide` (`pkg/threads/approval.go`), `internal/platform/approval_questions.go`, the `answer` field and `DescribeQuestion` in `pkg/approve`, `PUT /api/threads/{id}/approval` with `decide`, Answer Questions beside Run in `ApprovalToggle.tsx`, and the judgement on a question's card (`ClarificationCard`). Evidence: `TestRunAndAnswerAnswersAChoiceTheSessionSettles`, `TestRunAndAnswerAnswersAReply`, `TestWhatRunAndAnswerDoesNotSettleWaitsForAPerson`, `TestRunAndAnswerNeverAnswersForSomeoneElse`, `TestRunAndAnswerLeavesWhatSomeoneElseAskedFor`, `TestRunLeavesQuestionsForAPerson`, `TestRunAndAnswerIsAModeAPersonChooses`, `TestApprovalModeIsSetOnItsOwnAndKept`, `TestAQuestionsAnswerIsReadBesideTheDecision`; `approval-toggle.dom.test.tsx`, `ui.test.tsx`. Not run: `pnpm validate:slack` (needs the Slack bench) and a screen check in a running console. |
 | DES-081 | An agent is made goal first and is met on its home: a new agent starts from a searchable list of outcomes (Start from scratch first), is given a name, a shape and a color with its bot drawn as it will be, and opens on a home where it introduces itself, offers jobs to hand it and takes a message addressed to it; its settings are grouped as General, Access, Tools and Behavior, and General shows what it completed this week, how it answers in Slack, Pause and Retire | Implemented: see [DES-081](#des-081-goal-first-agents-a-home-and-grouped-settings). |
 | DES-084 | An agent's health says what is checked and what to do next: one row (status pill, recent pass rate, a How evaluation works icon with the docs, an icon Refresh health that spins while it reads and says when it last read), checks on recent runs beside each eval suite's last result, schedule and Run Now, runs flagged for review linking to the queue, a schedule editor with presets inside the one hour to thirty day bound that says who the schedule runs as, and figures that show a value or an explained dash | Implemented: `AgentHealth.tsx` (`AgentHealth`, `AgentStats`), `evalHealth.ts`, the schedule editor in `Evals.tsx`, `next_run_at` and `created_by_name` on `GET /api/evals` and `flagged` on agent health, words in `copy.agentHealth`, `copy.agentStats` and `copy.evalSchedule`. Composes with #480's health row: one header row with an actions slot, pills, no separators and no explanatory paragraph. Evidence: `TestNextRunCountsFromTheLatestStart`, `TestAgentHealthCountsTheRunsFlaggedForReview`, `TestASuiteListingSaysWhenItsScheduleNextRunsAndForWhom`, `agent-health.dom.test.tsx`, `evalHealth.test.tsx`; before and after captures at 1280 and 390, light and dark, in pull request 482. Pass-rate bars are neutral when a run reached its threshold, warn below it and bad only when it could not run, each labelled by how long ago it ran; the schedule presets wrap rather than scroll at phone width. The refresh glyph turning is the one spinner on the page; it is a control's own state, and the content it refreshes stays on view. |
+| DES-088 | The destination for work an agent starts without being asked is Automations, with a lightning mark, and has no Background tab: a session's background work is a section of that session's Details | Implemented: `Automations.tsx`, the entry in `Sidebar.tsx`, `/automations` in `route.ts` (old `/scheduled` addresses open it), `SessionBackground` in `Background.tsx` shown by `SessionPanel.tsx`; `automations.dom.test.tsx`, `background.dom.test.tsx`, `route.test.ts` and the sidebar tests pass; the page and the sidebar checked in the browser, the Background section by DOM tests only |
 | DES-087 | The composer is flat: the AI notice is in the middle of the footer row, the sentence is the link to the terms, messages that wait show greyed at the end of the conversation with Send now, and the box keeps its placeholder while agents work | Implemented: `NoticeSlotContext` and `queuePlace` in `Composer.tsx`, `ComposerFooter` in `SessionUsage.tsx`, `QueuedMessages` in `packages/web`, `.humagen-composer-footer` in `styles.css`; `composer-notice.dom.test.tsx`, `queued-messages.dom.test.tsx` and `composer-overlay.dom.test.tsx` pass; checked in the browser in a session and on Home, light and dark, at 1280 and 390 wide, with a real run and two waiting messages |
 | DES-085 | Under every composer, one line says the product is AI and can make mistakes, with a Terms link when the workspace's branding names a page of terms | Implemented: `AiNotice` in `Composer.tsx`, `branding.terms_url` in `pkg/spec`, `terms_url` on `GET /api/branding`; `composer-notice.dom.test.tsx`, `pkg/spec` and `internal/httpapi` tests pass; checked in the browser on Home and in a session, light and dark, at 1280 and 390 wide, with and without a terms address |
 | DES-079 | Auto answers questions: in a session set to Auto, the approval agent also answers a question an agent asks a person when the session already settles it, as the person who chose it, and hands them the rest. Two modes, Ask and Auto; Run and Answer folded into Auto | Implemented: `threads.ApprovalAuto` and `threads.ApprovalModeOf`, which reads a stored `decide` as `auto` (`pkg/threads/approval.go`), `internal/platform/approval_questions.go`, the `answer` field and `DescribeQuestion` in `pkg/approve`, `PUT /api/threads/{id}/approval` with `auto` (`decide` still taken as `auto`), the Ask and Auto menu in `ApprovalToggle.tsx`, and the judgement on a question's card (`ClarificationCard`). Evidence: `TestAutoAnswersAChoiceTheSessionSettles`, `TestAutoAnswersAReply`, `TestWhatAutoDoesNotSettleWaitsForAPerson`, `TestAutoNeverAnswersForSomeoneElse`, `TestAutoLeavesWhatSomeoneElseAskedFor`, `TestAskLeavesQuestionsForAPerson`, `TestDecideIsTakenAsAuto`, `TestAutoIsAModeAPersonChooses`, `TestApprovalModeIsSetOnItsOwnAndKept`, `TestStoredApprovalModesReadAsAuto`, `TestAQuestionsAnswerIsReadBesideTheDecision`; `approval-toggle.dom.test.tsx`, `ui.test.tsx`. Not run: `pnpm validate:slack` (needs the Slack bench) and a screen check in a running console. |
@@ -1173,6 +1174,32 @@ any. This reverses the first point of DES-030.
   desktop width in both themes; with `branding.terms_url` set, the sentence
   links to that address, and an address that is not `https` is refused by the
   spec and never drawn as a link.
+
+### DES-088: Automations, and background work in its session
+
+Owner request, 2026-11-21: rename Scheduled to Automations and improve its
+icon, since an automation can have triggers other than a clock; and show
+background tasks per session, "since each session carries it as needed", not
+in one global list beside the automations.
+
+- The sidebar entry and the page are named Automations. The mark is a
+  lightning bolt. The address is `/automations`; `/scheduled` and
+  `/scheduled/background` open it.
+- An automation is work an agent starts without being asked. What starts it
+  is its trigger. A schedule is the one trigger there is today, shown on each
+  card with a calendar mark. The page's button is New Automation.
+- The page has no tabs. Background work is not listed on it.
+- A session's Details has a Background section when the session carries
+  background work: the watches, goals and tasks asked for in it or running in
+  it, still running first. A row shows what it is, its kind, agent and
+  progress, and its state. A running row has Stop.
+- The header's More Views keeps Background Tasks, which opens that session's
+  Details.
+- A session's own source still reads "Scheduled" where a schedule started it:
+  that names the trigger, not the page.
+- Acceptance: the sidebar links Automations to `/automations`; the page shows
+  schedules and no tablist; a session that asked for a watch lists it under
+  Background in its Details with Stop, and another session does not.
 
 ### DES-087: A flat composer: one footer line, and waiting messages in the conversation
 
@@ -2995,8 +3022,8 @@ mark; rows that open a view show a chevron.
 The header's view controls are, in order: Details (with how many calls are
 working), Terminal, Changes, Browser and Files, then More Views. More Views
 holds Artifacts, Side Chat (⌘; or Ctrl ;), Search (⌘⇧F or Ctrl Shift F),
-Background Tasks (the Scheduled page's Background tab) and Progress (the
-Activity panel), each with its key printed beside it. A control is pressed
+Background Tasks (this session's Details, where its Background section is:
+DES-088) and Progress (the Activity panel), each with its key printed beside it. A control is pressed
 while its view is open, and pressing it again closes the pane. On a phone
 only Details and More Views show, and More Views holds every view. A reader
 who may not post has no Side Chat.
