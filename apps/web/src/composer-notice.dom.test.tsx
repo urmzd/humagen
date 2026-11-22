@@ -123,7 +123,7 @@ test("a footer row takes the notice into its middle, between where the session r
       <Composer
         placeholder="Reply"
         queue={queue}
-        footer={<ComposerFooter start={<span data-testid="start" />} agent="lead" />}
+        footer={<ComposerFooter start={<span data-testid="start" />} />}
       />
     );
   }
