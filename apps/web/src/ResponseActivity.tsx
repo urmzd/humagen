@@ -28,8 +28,8 @@ import { api, call } from "./api.ts";
 import { agentShown } from "./branding.ts";
 import { turnOfCall } from "./callTurn.ts";
 import { took, usd } from "./format.ts";
-import { Chips, inApp } from "./refChips.tsx";
 import { RunFeedbackHost } from "./RunFeedback.tsx";
+import { Chips, inApp } from "./refChips.tsx";
 import {
   defaultTraceLoader,
   messageIdOf,
