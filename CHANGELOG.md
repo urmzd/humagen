@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.187.0 (2026-11-22)
+
+### Features
+
+- **console**: Appearance everywhere an agent is styled; tests pick characters ([4a6316d](https://github.com/urmzd/humagen/commit/4a6316d676c1081bd97f7fc131f47324cec260e0))
+- **console**: Appearance picks a character and its color ([9983dc4](https://github.com/urmzd/humagen/commit/9983dc4aeea8189c57b1c18905414814cb15e858))
+- **agents**: a look keeps the character its mascot is drawn as ([15251dd](https://github.com/urmzd/humagen/commit/15251ddf091a3f900198c88ae17c2b64e138a3c0))
+
+### Bug Fixes
+
+- **agents**: the saved picture leaves out what the page hides, and its still never moves ([1526489](https://github.com/urmzd/humagen/commit/152648932dee2591b282c714359caf5704919837))
+- **agents**: the saved picture and the create preview draw the chosen character ([4394203](https://github.com/urmzd/humagen/commit/43942036cc26d82fe5b1bed547e0b9a3af6509cd))
+- **console**: the character picker names each character in full; the preview names the agent properly ([e657dae](https://github.com/urmzd/humagen/commit/e657dae782ddb820c7ffef8967eddbb16d203306))
+
+### Misc
+
+- merge the preview branch; keep Home within its budget ([8fd3995](https://github.com/urmzd/humagen/commit/8fd399566b7c57cd23479796b28229efbbf713c5))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.186.0...v0.187.0)
+
+
 ## 0.186.0 (2026-11-22)
 
 ### Features
