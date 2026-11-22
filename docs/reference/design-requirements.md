@@ -2514,16 +2514,12 @@ request totals remain open.
 
 ### DES-075: A calm Home and states that say whose move it is
 
-Home keeps the greeting and composer in place as project and artifact cards load. Its
-Projects strip shows up to three readable named projects using the Projects
-page order, with pinned projects first and then the latest activity. Each
-card opens its project. The workspace root and automatic Personal project are
-excluded. Loading, unavailable and empty project listings leave out the strip.
-Recently made shows the three newest artifacts the person may read from the
-existing `GET /api/artifacts`, each card opening it at `/artifacts/{id}`. The
-sidebar's Artifacts entry opens the full list. Alerts owns approvals and its
-sidebar badge carries the count. Recent sessions are in the sidebar's Recents
-and on Sessions.
+Home is the greeting and the composer, with nothing listed under them (owner
+request, 2026-11-21: "no need to show projects or anything"). The Projects
+strip and the Recently made strip that were here are removed. Projects,
+Artifacts and Sessions are each one entry of the sidebar. Alerts owns
+approvals and its sidebar badge carries the count. Recent sessions are in the
+sidebar's Recents and on Sessions.
 
 The alert center lists alerts as one table: a box to select, the alert and its
 agent, then its source, priority, age and actions in columns. The header holds
@@ -2548,14 +2544,10 @@ actions. A project's inbox switch reads Waiting, Done and All. The API, the
 stored states and the addresses keep `open`, `snoozed` and `resolved`, so
 existing links hold. The words are in `copy.ts` (`attention`, `show`, `home`).
 
-Evidence: `session-center.dom.test.tsx` checks the artifact strip and its
-destinations, and that nothing is drawn or asked for
-when there is nothing to show or no permission; `session-ux.dom.test.tsx` and
-`roles.dom.test.tsx` check the new words. Console screens `new` and `alerts`
-and `home-made` pass at 1280x800 and 390x844 in light and dark. The
-`home-projects` screen checks that the composer stays put when projects
-load. Home DOM tests cover omission, project order and links. Artifact cards show no preview
-of their content. An artifact strip that cannot be read says so in one line.
+Evidence: `session-center.dom.test.tsx` checks that Home draws nothing under
+the composer and reads no artifacts for it; `session-ux.dom.test.tsx` and
+`roles.dom.test.tsx` check the words. Console screens `new` and `alerts`
+pass at 1280x800 and 390x844 in light and dark.
 
 ### DES-076: Continue an imported conversation
 

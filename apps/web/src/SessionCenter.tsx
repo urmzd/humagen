@@ -30,7 +30,6 @@ import {
   sessionCenter,
   sessionSource,
 } from "./sessionCenter.ts";
-import { kindWord, type StorageTransport, type Stored, transport as storage } from "./storage.ts";
 import { referenceOf } from "./trace.ts";
 import {
   ago,
@@ -69,8 +68,6 @@ export function placeOfSession(s: AgentSessionSummary): SessionPlaceFilter | und
                 : undefined;
 }
 
-/** How many of the newest artifacts Home shows. The rest are under Artifacts. */
-const HOME_MADE = 3;
 /** One set of tracks for the header and rows. The action column fits all three controls. */
 const alertRow =
   "grid grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-x-3 gap-y-2 px-4 @3xl:pointer-fine:grid-cols-[1.5rem_minmax(0,1fr)_6.5rem_4.25rem_5.5rem_14.5rem]";
@@ -791,30 +788,20 @@ export function AlertsPage({
   );
 }
 /**
- * Under the chat bar: one strip of the newest things the person's agents
- * made. Alerts are counted on the Alerts entry of the menu, so Home does not
- * repeat them. With nothing made, Home is the greeting and the chat bar.
+ * Home is the greeting and the chat bar, with nothing listed under it:
+ * projects, artifacts and sessions are each one entry of the menu. This draws
+ * nothing. It reads only whether the person has started anything yet, which
+ * decides the starters above the bar.
  */
-export function HomeSessionGlance({
-  go,
+export function HomeStarted({
   tick,
   onHasSessions,
-  canArtifacts = true,
-  via = storage,
 }: {
-  go: (route: Route) => void;
   tick: unknown;
-  onHasSessions?: (has: boolean) => void;
-  /** False when the person may not read artifacts, so none are asked for. */
-  canArtifacts?: boolean;
-  via?: Pick<StorageTransport, "list">;
+  onHasSessions: (has: boolean) => void;
 }) {
-  const [made, setMade] = useState<Stored[]>([]);
-  const [madeFailed, setMadeFailed] = useState(false);
-  // Whether the person has started anything yet, which decides the starters above.
   // biome-ignore lint/correctness/useExhaustiveDependencies: tick asks for a fresh read
   useEffect(() => {
-    if (!onHasSessions) return;
     let live = true;
     sessionCenter.sessions({ roots: "true", mine: "true", limit: "1" }).then(
       (r) => {
@@ -826,64 +813,5 @@ export function HomeSessionGlance({
       live = false;
     };
   }, [tick, onHasSessions]);
-  // A strip that could not be read says so in one quiet line: Home still works without it.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: tick asks for a fresh read
-  useEffect(() => {
-    if (!canArtifacts) {
-      setMade([]);
-      setMadeFailed(false);
-      return;
-    }
-    let live = true;
-    via.list({ project: "", agent: "", kind: "", q: "", limit: HOME_MADE }).then(
-      (r) => {
-        if (!live) return;
-        setMade(r.artifacts.slice(0, HOME_MADE));
-        setMadeFailed(false);
-      },
-      () => {
-        // What was read before stays; only a strip with nothing to show says it failed.
-        if (live) setMadeFailed(true);
-      },
-    );
-    return () => {
-      live = false;
-    };
-  }, [tick, canArtifacts, via]);
-  const failed = madeFailed && made.length === 0;
-  if (made.length === 0 && !failed) return null;
-  const c = defaultCopy.home;
-  return (
-    <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-4 pt-6">
-      {failed && <p className="text-center text-aui-xs text-aui-muted">{c.madeFailed}</p>}
-      {made.length > 0 && (
-        <section aria-labelledby="home-made">
-          <h2 id="home-made" className="pb-2 font-medium text-aui-xs text-aui-muted">
-            {c.recentlyMade}
-          </h2>
-          <ul className="grid gap-3 sm:grid-cols-3">
-            {made.map((file) => {
-              const to: Route = { page: "artifacts", artifact: file.id };
-              return (
-                <li key={file.id} className="min-w-0">
-                  <ItemCard
-                    title={file.title}
-                    href={href(to)}
-                    onOpen={() => go(to)}
-                    time={<time dateTime={file.created_at}>{ago(file.created_at)}</time>}
-                    facts={
-                      <>
-                        <Tag>{kindWord[file.kind]}</Tag>
-                        {file.agent && <AgentTag name={file.agent} />}
-                      </>
-                    }
-                  />
-                </li>
-              );
-            })}
-          </ul>
-        </section>
-      )}
-    </div>
-  );
+  return null;
 }
