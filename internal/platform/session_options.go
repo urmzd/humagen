@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"sync"
 
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/images"
@@ -56,7 +57,8 @@ func (p *Platform) SessionOptions(ctx context.Context, who auth.Principal) (Sess
 // read_repositories or action_repositories name. They are deduplicated in
 // any case and sorted. An installation's list is capped at
 // github.MaxInstallationRepos, and a client's named ones at what
-// clients.Validate takes, so the whole is bounded.
+// clients.Validate takes, so the whole is bounded. A client whose list is
+// not read before ctx is done adds the list it last read, or none.
 func (p *Platform) tenantRepos(ctx context.Context, tenant string) []string {
 	out := []string{}
 	seen := map[string]bool{}
@@ -66,20 +68,36 @@ func (p *Platform) tenantRepos(ctx context.Context, tenant string) []string {
 			out = append(out, r)
 		}
 	}
+	var seats []*seat
 	if s := p.surfaces["github"]; s != nil {
 		for _, st := range s.all() {
-			c := st.client
-			if c.Tenant != tenant || !c.Enabled || (c.GitHub == nil && st.installed == nil) {
-				continue
+			if c := st.client; c.Tenant == tenant && c.Enabled && (c.GitHub != nil || st.installed != nil) {
+				seats = append(seats, st)
 			}
-			installed, _ := st.installed.Repos(ctx)
-			for _, r := range installed {
+		}
+	}
+	// Each installation's list is read at once, side by side, so the first
+	// use waits for the slowest client, not for all of them in turn.
+	installed := make([][]string, len(seats))
+	var wg sync.WaitGroup
+	for i, st := range seats {
+		if st.installed == nil {
+			continue
+		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			installed[i], _ = st.installed.Repos(ctx)
+		}()
+	}
+	wg.Wait()
+	for i, st := range seats {
+		for _, r := range installed[i] {
+			add(r)
+		}
+		if g := st.client.GitHub; g != nil {
+			for _, r := range slices.Concat(g.ReadRepositories, g.ActionRepositories) {
 				add(r)
-			}
-			if c.GitHub != nil {
-				for _, r := range slices.Concat(c.GitHub.ReadRepositories, c.GitHub.ActionRepositories) {
-					add(r)
-				}
 			}
 		}
 	}

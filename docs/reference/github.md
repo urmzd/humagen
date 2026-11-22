@@ -226,12 +226,19 @@ token reaches nothing else, so Humagen grants nothing else.
 - **Reads.** `github_read_context`, `github_read_file` and
   `github_workflow_status` from another surface, and the console's source,
   issue and pull request reads, reach any repository the installation covers.
-  The owners the client serves still apply.
+  The read tools check the client's `owners` first, so they refuse an
+  installed repository of an account `owners` does not list. The console's
+  reads do not: they reach any repository the installation covers. Keep
+  `owners` to the installation's account so the two agree.
 - **Writes.** Unchanged. A write stays bound to the original signed request,
   or to `action_repositories`.
 
 The list is read when first needed and kept for 5 minutes. It holds at most
 1,000 repositories, 100 to a page, and one read gives up after 10 seconds.
+Callers that find the list due share one read. Each one waits only until its
+own request ends, and then uses the list as it stands. A caller that gives up
+does not stop the read for the others. The picker reads every client's list
+at the same time.
 When a read fails, Humagen keeps the list it had, or uses only the named
 repositories when it had none, logs the failure, and tries again after a
 minute. A repository added to the installation appears within 5 minutes; one
