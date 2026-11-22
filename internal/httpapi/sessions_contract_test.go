@@ -57,6 +57,11 @@ func exerciseSessionContract(t *testing.T, c *contract) map[string]string {
 	c.call(token, "GET", "/api/agents/{name}/health", "/api/agents/helper/health", "", 200)
 	c.call(token, "GET", "/api/agents/{name}/changes", "/api/agents/helper/changes", "", 200)
 	alert := c.call(token, "POST", "/api/sessions/{id}/alerts", path+"/alerts", `{"title":"Service needs review","priority":"normal"}`, 201)
+	// Review opens one session under the alert's, and the same one again.
+	review := c.call(token, "POST", "/api/alerts/{id}/review", "/api/alerts/"+alert.str("id")+"/review", "", 201)
+	if again := c.call(token, "POST", "/api/alerts/{id}/review", "/api/alerts/"+alert.str("id")+"/review", "", 200); again.str("id") != review.str("id") || review.str("parent") != id {
+		t.Fatalf("review opened %s then %s under %s, want one under %s", review.str("id"), again.str("id"), review.str("parent"), id)
+	}
 	c.call(token, "PATCH", "/api/alerts/{id}", "/api/alerts/"+alert.str("id"), `{"state":"resolved"}`, 200)
 	c.call(token, "POST", "/api/sessions/{id}/stop", path+"/stop", `{"children":true}`, 204)
 	exerciseMessagesContract(t, c, token, f.person(t, "session-contract", "cy", "Cy", "humagen-operators"))

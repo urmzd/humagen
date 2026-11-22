@@ -72,28 +72,41 @@ func (p *Platform) RecordFeedbackCandidate(tenant string, record feedback.Record
 	return p.Evals.SaveCandidate(tenant, record.Subject, evals.Candidate{Run: run.ID, Agent: run.Agent, Project: run.Project, Input: run.Text, Reason: record.Reason, Comment: record.Comment, At: record.UpdatedAt})
 }
 
+// raiseOnlineHealth raises the alert for a run that failed its online checks.
+// The alert sits on the answer that failed: its session and its run. Only
+// the people who read that session see the alert, so nothing reaches anyone
+// the answer did not. A run outside a session has no answer to point at; its
+// alert gets a place of its own, as before.
 func (p *Platform) raiseOnlineHealth(run runs.Run, result evals.Online) error {
-	if err := p.EnsureBuiltins(context.Background(), run.Tenant); err != nil {
-		return err
-	}
-	owner := personOf(run.Actor)
-	// Private source content never reaches a shared builder session.
-	if run.UsesPrivateContext() && owner == "" {
-		return nil
-	}
-	if !p.openWork(run.Tenant, run.Project)(run) && owner == "" {
-		return nil
-	}
-	sessionID, err := p.EnsureAlertSession(context.Background(), run.Tenant, p.cfg.EntryAgent, run.Project, owner, "Agent health: "+run.Agent)
-	if err != nil {
-		return err
-	}
 	checks := []string{}
 	for _, v := range result.Verdicts {
 		if !v.Passed {
 			checks = append(checks, v.Check)
 		}
 	}
-	_, err = p.Alerts.ProjectSession(run.Tenant, "online-eval:"+run.ID, alerts.Alert{Session: sessionID, RunID: run.ID, Project: run.Project, Agent: run.Agent, Kind: alerts.Kind("eval"), Title: fmt.Sprintf("%s needs review: %s", run.Agent, strings.Join(checks, ", ")), Priority: alerts.Normal, State: alerts.OpenState, At: p.now(), Action: "review"})
+	owner := personOf(run.Actor)
+	a := alerts.Alert{RunID: run.ID, Project: run.Project, Agent: run.Agent, Kind: alerts.Kind("eval"), Title: fmt.Sprintf("%s needs review: %s", run.Agent, strings.Join(checks, ", ")), Priority: alerts.Normal, State: alerts.OpenState, At: p.now(), Action: "review"}
+	if th, err := p.Threads.Get(run.Tenant, run.Thread); err == nil && th.Session != nil {
+		a.Session, a.Message, a.Project = th.ID, run.ID, th.Project
+		if owner != "" {
+			a.Who = []string{owner}
+		}
+	} else {
+		if err := p.EnsureBuiltins(context.Background(), run.Tenant); err != nil {
+			return err
+		}
+		// Private source content never reaches a shared builder session.
+		if run.UsesPrivateContext() && owner == "" {
+			return nil
+		}
+		if !p.openWork(run.Tenant, run.Project)(run) && owner == "" {
+			return nil
+		}
+		a.Session, err = p.EnsureAlertSession(context.Background(), run.Tenant, p.cfg.EntryAgent, run.Project, owner, "Agent health: "+run.Agent)
+		if err != nil {
+			return err
+		}
+	}
+	_, err := p.Alerts.ProjectSession(run.Tenant, "online-eval:"+run.ID, a)
 	return err
 }

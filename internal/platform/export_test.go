@@ -219,3 +219,7 @@ func SweepImages(p *Platform) {
 func SessionDigest(p *Platform, tenant, thread string) (string, error) {
 	return p.imageOf(tenant, thread)
 }
+
+// ScoreOnline scores a finished run against its online checks, as the hook
+// a run's end calls does.
+func (p *Platform) ScoreOnline(run runs.Run) error { return p.scoreOnline(run) }
