@@ -809,6 +809,8 @@ var copyKeyList = []string{
 	"conversation.artifactSuggestMemory",
 	"conversation.artifactUse",
 	"conversation.artifactVersions",
+	"conversation.askLess",
+	"conversation.askMore",
 	"conversation.callFailure.details",
 	"conversation.callFailure.retried",
 	"conversation.callFailure.retry",

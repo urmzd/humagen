@@ -1224,20 +1224,28 @@ same activity again makes no sense.
 
 - A turn reads top to bottom in time order: its words, its runs of steps and
   the agents it called, each where it happened.
-- A called agent is a message of its own in the turn, at full size (owner
-  request, 2026-11-21, replacing a line that opened): its mark and name, what
-  it was asked beside the name, and under them its whole stream, drawn with
-  the parts the answer itself is drawn with (`turnOfCall`): its thinking, its
-  words, each step with what it was given and returned. The answer that
-  called it only orchestrates: its own words come before and after.
+- A turn that brought in other agents reads as a conversation between them,
+  as people's messages read in a group chat (owner request, 2026-11-21): no
+  agent's part is folded, set in or summed up.
+- What an agent asked another is that agent's own words in the conversation:
+  the agent it turned to, tagged, then the whole of what it gave it. A long
+  ask shows four lines and opens to the rest. Nothing an agent was told is
+  hidden behind a title.
+- Each called agent answers as a message of its own, at full size and as wide
+  as its caller's: its mark in its own color, its name, then its whole
+  stream, drawn with the parts any answer is drawn with (`turnOfCall`): its
+  thinking, its words, each step with what it was given and returned.
 - An agent's message has its own actions: Copy, and Helpful or Not helpful,
   which rate that agent's run (`/api/runs/{id}/feedback`) apart from the
   answer that called it. It has no Regenerate: it answered its caller.
-- Messages of called agents are set in from the answer by a thin rule, so the
-  caller's own words read as the caller's. An agent that one of them called
-  is a message under it, set in again.
-- Calls are drawn one under the other, in the order they started, also when
-  they ran at the same time. No label counts them, no chevron folds them and
+- When an agent speaks again after others have, its mark and name are said
+  again before its words, so every word has its speaker. An agent that a
+  called agent called is one more participant, drawn the same way.
+- An agent's thinking is shown where it thought, when the model returned
+  any. None is made up for a run that recorded none.
+- Agents asked next to each other are asked first, all of them, then each
+  answers, in the order they were asked, also when they ran at the same
+  time. No label counts them, no chevron folds them and
   no line says how long a call took; Details has the durations.
 - While an agent works its mark moves and stops it, as an answer's does. One
   that failed, was denied or was stopped says so beside its task. A question
@@ -1248,9 +1256,10 @@ same activity again makes no sense.
   how long it took. Under the answer are its references and its actions only.
 - Details still shows a response's activity, reached from search and from the
   session panel, with how long it worked: "Worked 14s · 2 agents · 3 tools".
-- Acceptance: a run that called `researcher` and `writer` together shows two
-  messages above the answer's last words, each with that agent's stream and
-  its own Helpful and Not helpful, no "Worked" text and no button
+- Acceptance: a run that called `researcher` and `writer` together shows the
+  caller's two asks, each tagged, then a message from each agent with its
+  stream and its own Helpful and Not helpful, then the caller named again
+  before its last words, no "Worked" text and no button
   under the answer besides the message's actions.
 
 ### DES-035: Initials and mention profiles

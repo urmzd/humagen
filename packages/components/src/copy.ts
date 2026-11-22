@@ -2067,6 +2067,9 @@ export const defaultCopy = {
     stepNeedsYou: "waiting for you",
     openProfile: "Open its profile to see how it is set up",
     stepFailed: (count: number) => `${count} failed`,
+    /** Under a long ask one agent gave another: show all of it, or its first lines again. */
+    askMore: "Show all",
+    askLess: "Show less",
     /**
      * A run of tool calls between two parts of an answer, as one line, and
      * each call in it as a row. `one` names what a lone call was pointed at;
