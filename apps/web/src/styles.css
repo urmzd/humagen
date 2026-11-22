@@ -145,6 +145,11 @@ body {
   box-shadow: var(--humagen-bevel);
 }
 
+/* A person's own message: one flat fill, with no edge and no bevel, so only its words catch the eye. */
+.humagen-said {
+  background: var(--aui-hover);
+}
+
 /*
  * The sidebar's glass (aui-chrome in the theme). On a phone it is a drawer
  * over the page, square at the top, edged by a neutral hairline there.

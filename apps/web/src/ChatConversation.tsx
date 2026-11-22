@@ -100,7 +100,7 @@ function TurnView({
       className="flex flex-col gap-3"
       aria-label={`Turn answered by ${run.agent}`}
     >
-      <p className="humagen-glass max-w-[80%] self-end whitespace-pre-wrap rounded-aui-lg px-3.5 py-2 text-aui-sm text-aui-fg">
+      <p className="humagen-said max-w-[80%] self-end whitespace-pre-wrap rounded-aui-lg px-3.5 py-2 text-aui-sm text-aui-fg">
         <Mentioned text={run.text} />
       </p>
       {origin && <div className="flex justify-end">{origin}</div>}
