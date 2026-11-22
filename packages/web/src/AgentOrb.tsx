@@ -360,6 +360,9 @@ export function AgentInitials({
   const { ref, ink, dark } = useInk<HTMLSpanElement>();
   const kept = useBotLook(lookOf ?? name);
   const look = given ?? kept;
+  // Under the pointer a mark comes alive: it moves and its eyes follow, whatever its size.
+  const [hovered, setHovered] = useState(false);
+  const moving = live || hovered;
   if (ink)
     return (
       <span
@@ -367,6 +370,11 @@ export function AgentInitials({
         aria-hidden
         className={`aui-bot ${className ?? ""}`}
         data-live={live || undefined}
+        data-hovered={hovered || undefined}
+        onPointerEnter={(e) => {
+          if (e.pointerType === "mouse") setHovered(true);
+        }}
+        onPointerLeave={() => setHovered(false)}
         style={{ "--initials-size": `${size}px` } as CSSProperties}
       >
         <BotAvatar
@@ -376,14 +384,14 @@ export function AgentInitials({
           glasses={look?.glasses ?? "none"}
           headphones={look?.headphones ?? false}
           bowTie={look?.bowTie ?? false}
-          state={live ? "working" : "default"}
+          state={moving ? "working" : "default"}
           size={size}
           color={ink}
           theme={dark ? "dark" : "light"}
           shading={size < 24 ? "flat" : (look?.finish ?? "fabric")}
-          interactive={size >= 32}
-          // Small marks hold still unless they work: a list of agents does not fidget.
-          paused={!live && size < 32}
+          interactive={size >= 32 || hovered}
+          // Small marks hold still unless they work or are under the pointer: a list of agents does not fidget.
+          paused={!moving && size < 32}
         />
         {live && size >= 24 && (
           <AgentOrb
