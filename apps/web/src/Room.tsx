@@ -1271,11 +1271,6 @@ export function ThreadRoom({
                                   onLeave={leave}
                                   agents={tags.agents}
                                   {...mentionPicks(draft, tags.agents, setSeed)}
-                                  skills={tags.skills}
-                                  skillsFailed={tags.skillsFailed}
-                                  onSkill={(name) => {
-                                    setSeed({ text: `/${name} `, mode: "prepend" });
-                                  }}
                                   onAttach={attach}
                                   onClose={close}
                                 />
@@ -1782,11 +1777,6 @@ export function ChannelPage({
               <PlusMenu
                 agents={tags.agents}
                 {...mentionPicks(draft, tags.agents, setSeed)}
-                skills={tags.skills}
-                skillsFailed={tags.skillsFailed}
-                onSkill={(name) => {
-                  setSeed({ text: `/${name} `, mode: "prepend" });
-                }}
                 onAttach={attach}
                 onClose={close}
                 onLeave={leave}

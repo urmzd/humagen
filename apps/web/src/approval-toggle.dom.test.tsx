@@ -6,9 +6,9 @@ import { ApprovalToggle, forgetApprover } from "./ApprovalToggle.tsx";
 import { stubFetch } from "./dom.ts";
 import { forgetConfiguredProviders } from "./ModelChain.tsx";
 
-// A session's approval mode: one icon control under the composer, named
-// "Approval mode: Ask" or "Approval mode: Auto" and shown so in a tooltip,
-// that opens a menu of the two under an "Approval mode" heading, each with
+// A session's approval mode: one pill under the composer, the mode's icon
+// and word, named "Approval mode: Manual" or "Approval mode: Auto", that
+// opens a menu of the two under a one-line question, each with its icon and
 // one line on what happens in it.
 
 let net: ReturnType<typeof stubFetch> | undefined;
@@ -43,24 +43,25 @@ test("the control opens a menu of the two modes under a heading, each with a sho
     "GET /api/model-providers": () => providers,
   });
   render(<ApprovalToggle thread={{ id: "th-1" }} me="ada" />);
-  // One control, found by its name, that shows the mode's word and nothing else.
+  // One control, found by its name: the mode's icon and its word.
   assert.equal(screen.getAllByRole("button").length, 1);
-  const control = screen.getByRole("button", { name: "Approval mode: Ask" });
-  assert.equal(control.textContent, "Ask");
-  assert.equal(control.getAttribute("title"), null);
+  const control = screen.getByRole("button", { name: "Approval mode: Manual" });
+  assert.equal(control.textContent, "Manual");
+  assert.ok(control.querySelector("svg"), "the mode's icon is beside its word");
   assert.equal(control.getAttribute("aria-haspopup"), "menu");
-  // The word is on screen, so no tooltip repeats it.
-  fireEvent.focus(control);
-  assert.equal(screen.queryByRole("tooltip"), null);
   fireEvent.click(control);
   const menu = await screen.findByRole("menu", { name: "Approval mode" });
-  // The heading names the menu; then exactly two rows.
-  assert.equal(menu.firstElementChild?.textContent, "Approval mode");
+  // A one-line question heads the menu; then exactly two rows, each with its icon.
+  assert.equal(menu.firstElementChild?.textContent, words.question);
   const rows = [...menu.querySelectorAll('[role="menuitemradio"]')];
   assert.deepEqual(
     rows.map((r) => r.textContent),
-    [`Ask${words.askHint}`, `Auto${words.autoHint}`],
+    [`Manual${words.askHint}`, `Auto${words.autoHint}`],
   );
+  assert.ok(rows.every((r) => r.querySelector("svg")));
+  // Auto acts without a person: its row carries the warning tint.
+  assert.match(rows[1]?.className ?? "", /bg-aui-warn/);
+  assert.doesNotMatch(rows[0]?.className ?? "", /bg-aui-warn/);
   assert.deepEqual(
     rows.map((r) => r.getAttribute("aria-checked")),
     ["true", "false"],
@@ -78,10 +79,10 @@ test("the control opens a menu of the two modes under a heading, each with a sho
   assert.equal(focused(), "auto");
   // Escape closes it; so does Tab, which would otherwise leave it open behind the focus.
   const expanded = () =>
-    screen.getByRole("button", { name: "Approval mode: Ask" }).getAttribute("aria-expanded");
+    screen.getByRole("button", { name: "Approval mode: Manual" }).getAttribute("aria-expanded");
   fireEvent.keyDown(menu, { key: "Escape" });
   await waitFor(() => assert.equal(expanded(), "false"));
-  fireEvent.click(screen.getByRole("button", { name: "Approval mode: Ask" }));
+  fireEvent.click(screen.getByRole("button", { name: "Approval mode: Manual" }));
   await waitFor(() => assert.equal(expanded(), "true"));
   fireEvent.keyDown(await screen.findByRole("menu"), { key: "Tab" });
   await waitFor(() => assert.equal(expanded(), "false"));
@@ -99,7 +100,7 @@ test("a mode picked from the menu is saved for the session, and the menu closes"
     },
   });
   render(<ApprovalToggle thread={{ id: "th-1" }} me="ada" />);
-  await pick("Approval mode: Ask", "auto");
+  await pick("Approval mode: Manual", "auto");
   await screen.findByRole("button", { name: "Approval mode: Auto" });
   await waitFor(() =>
     assert.equal(
@@ -110,7 +111,7 @@ test("a mode picked from the menu is saved for the session, and the menu closes"
   // Picking the mode already set changes nothing.
   await pick("Approval mode: Auto", "auto");
   await pick("Approval mode: Auto", "ask");
-  await screen.findByRole("button", { name: "Approval mode: Ask" });
+  await screen.findByRole("button", { name: "Approval mode: Manual" });
   await waitFor(() =>
     assert.deepEqual(
       net?.seen.filter((r) => r.method === "PUT").map((r) => r.body),
@@ -133,13 +134,12 @@ test("someone else's choice is named, and a refusal puts the mode back", async (
       nameOf={() => "Mira"}
     />,
   );
-  // The control shows the mode; who chose it is in its name and in the menu.
   const control = screen.getByRole("button", { name: "Approval mode: Auto, chosen by Mira" });
   assert.equal(control.textContent, "Auto");
   fireEvent.click(control);
   const menu = await screen.findByRole("menu");
   assert.ok(menu.textContent?.includes(words.chosenBy("Mira")));
-  fireEvent.click(screen.getByRole("menuitemradio", { name: /^Ask/ }));
+  fireEvent.click(screen.getByRole("menuitemradio", { name: /^Manual/ }));
   await screen.findByRole("alert");
   assert.ok(screen.getByRole("button", { name: "Approval mode: Auto, chosen by Mira" }));
 });
@@ -151,10 +151,20 @@ test("with no session yet the choice is held, and an approver with no model says
   });
   const chosen: string[] = [];
   render(<ApprovalToggle me="ada" onPending={(m) => chosen.push(m)} />);
-  fireEvent.click(screen.getByRole("button", { name: "Approval mode: Ask" }));
+  fireEvent.click(screen.getByRole("button", { name: "Approval mode: Manual" }));
   const menu = await screen.findByRole("menu");
   await waitFor(() => assert.ok(menu.textContent?.includes(words.waiting)));
   fireEvent.click(screen.getByRole("menuitemradio", { name: /^Auto/ }));
   assert.deepEqual(chosen, ["auto"]);
   assert.equal(net.seen.filter((r) => r.method === "PUT").length, 0);
+});
+
+test("a conversation's pill holds its place, disabled, until the session's mode is read", () => {
+  net = stubFetch({});
+  render(<ApprovalToggle disabled me="ada" />);
+  const control = screen.getByRole("button", { name: words.label });
+  assert.equal(control.getAttribute("aria-disabled"), "true");
+  assert.equal(control.textContent, "Manual");
+  fireEvent.click(control);
+  assert.equal(screen.queryByRole("menu"), null);
 });

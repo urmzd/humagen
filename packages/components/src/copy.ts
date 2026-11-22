@@ -3653,8 +3653,10 @@ export const defaultCopy = {
   approvals: {
     /** The menu's heading, and the control's name for assistive technology. */
     label: "Approval mode",
-    /** The two modes, each with the one line its menu row says. */
-    ask: "Ask",
+    /** The question over the menu's rows. */
+    question: "Who approves gated actions?",
+    /** The two modes, each with the one line its menu row says. The API calls Manual "ask". */
+    ask: "Manual",
     askHint: "You approve every gated action.",
     auto: "Auto",
     autoHint: "The approval agent approves and answers for you, and asks when unsure.",
@@ -3666,14 +3668,14 @@ export const defaultCopy = {
     /** In the menu of an approval waiting in a Slack thread: sets the conversation, not the call. */
     letAgentDecide: "Set this thread to Auto",
     /** Under the note that the thread is set to Auto, to set it back. */
-    switchToAsk: "Switch to Ask",
-    /** Under the note that the thread is set to Ask, to set it to Auto again. */
+    switchToAsk: "Switch to Manual",
+    /** Under the note that the thread is set to Manual, to set it to Auto again. */
     switchToAuto: "Switch to Auto",
     /** What changed in the thread, said where everyone in it reads it. */
     nowAuto: (who: string) =>
       `${who} set this thread to Auto. The approval agent now approves gated actions and answers questions the thread already settles, as ${who} could, and asks a person when unsure. An action already waiting still waits for a person.`,
     nowAsk: (who: string) =>
-      `${who} set this thread to Ask. A person approves every gated action again.`,
+      `${who} set this thread to Manual. A person approves every gated action again.`,
   },
   /** Over Home's chat bar: the person's own project, where a conversation in no project is filed (DES-057). */
   noProject: "No project",
@@ -4021,6 +4023,31 @@ export const defaultCopy = {
       noRepos: "No repositories are connected.",
       connectGitHub: "Connect GitHub",
     },
+    /**
+     * The row under Home's composer: one word control per setting a new
+     * session has, each saying its value and opening a picker.
+     */
+    setup: {
+      label: "Session settings",
+      /** The agents control with no agent mentioned and no default to name. */
+      anyAgent: "Any agent",
+      agents: (count: number) => `${count} agents`,
+      /** Said in the agents picker while the message mentions nobody. */
+      defaultAnswers: (agent: string) => `With no mention, ${agent} answers.`,
+      bestAnswers: "With no mention, the best fit answers.",
+      noRepos: "None",
+      /** Why a row cannot change. */
+      unreadable: "Could not be read. Reload to try again.",
+      notSandboxed: "Runs here are not sandboxed, so there is no image to choose.",
+      channelFixed: "A thread in a channel uses the channel's setup.",
+      imagesLoading: "Loading images",
+      repos: (count: number) => (count === 1 ? "1 repo" : `${count} repos`),
+      reposMax: (max: number) => `Pick up to ${max}.`,
+      findRepo: "Find a repository",
+      noRepoMatch: "No repository matches.",
+      findImage: "Find an image",
+      noImageMatch: "No image matches.",
+    },
     /** Where the conversation is filed, in the composer's bar, as a list. */
     selected: "Selected for this conversation",
     removeProject: (where: string) => `Remove ${where}`,
@@ -4326,7 +4353,7 @@ export const defaultCopy = {
       label: "Company announcement",
       markRead: "Mark as Read",
       hide: "Hide for Me",
-      open: "Open Announcement",
+      open: "Open",
     },
     findHelp: {
       title: "Find an Agent or Project",
@@ -4934,6 +4961,8 @@ export const defaultCopy = {
   sessionSetup: {
     image: "Image",
     defaultImage: "Default",
+    /** The default image, said on the control under the composer. */
+    defaultImageValue: "Default image",
     defaultHint: (ref: string) => (ref ? `Everyone's · ${ref}` : "Everyone's"),
     warm: "Ready now",
     cold: "Starts on first use",

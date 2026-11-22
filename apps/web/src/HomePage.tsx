@@ -7,8 +7,7 @@ import {
   orderNotifications,
   orderUpdates,
 } from "@humagen/core";
-import { EyeOffIcon } from "@humagen/render-web";
-import { Button } from "@humagen/render-web/ui/button";
+import { XIcon } from "@humagen/render-web";
 import type { ReactNode } from "react";
 import { ago, RowButton, Section, textAction } from "./ui.tsx";
 
@@ -42,7 +41,7 @@ export function HomePage({
     // the middle of the page, at any height.
     <section
       aria-label="New session"
-      className="humagen-home aui-scroll humagen-fade flex min-h-0 flex-1 flex-col overflow-y-auto pt-8 pb-2 md:pt-[clamp(2rem,calc(45dvh-5rem),24rem)] md:pb-8"
+      className="humagen-home aui-scroll humagen-fade relative flex min-h-0 flex-1 flex-col overflow-y-auto pt-8 pb-2 md:pt-[clamp(2rem,calc(45dvh-5rem),24rem)] md:pb-8"
     >
       <div className="flex w-full min-w-0 flex-1 flex-col md:block md:flex-none">
         {banner && <AnnouncementBanner announcement={banner} />}
@@ -229,47 +228,40 @@ export interface HomeAnnouncement {
   onHide: () => void;
   onOpen?: () => void;
 }
+/**
+ * A company announcement on Home: one quiet card at the top of the page,
+ * its title, a link to open it, and X to hide it for the reader. It sits
+ * over the page's top edge, so the greeting and prompt never move for it.
+ */
 export function AnnouncementBanner({ announcement: a }: { announcement: HomeAnnouncement }) {
   const c = defaultCopy.home.banner;
   return (
     <section
       aria-label={c.label}
-      className="mx-auto mb-6 w-[calc(100%_-_2rem)] max-w-3xl rounded-xl border border-aui-border bg-aui-muted/5 p-4 text-aui-sm"
+      className="absolute inset-x-0 top-16 z-10 mx-auto flex w-[calc(100%_-_2rem)] max-w-xl items-center gap-3 rounded-aui-lg bg-aui-hover/70 py-1.5 pr-1.5 pl-4 text-aui-sm md:top-4"
     >
-      <div className="flex items-start gap-3">
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-aui-xs text-aui-muted">
-            <span>{a.source}</span>
-            {a.unread && (
-              <span className="rounded-full bg-aui-muted/10 px-2 py-0.5">
-                {defaultCopy.mailbox.unread}
-              </span>
-            )}
-          </div>
-          <p className="mt-1 break-words font-medium text-aui-fg">{a.title}</p>
-        </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label={c.hide}
-          title={c.hide}
-          disabled={a.busy}
-          onClick={() => {
-            if (!a.busy) a.onHide();
-          }}
-          className="-mr-1 -mt-1 text-aui-muted"
-        >
-          <EyeOffIcon aria-hidden="true" />
-        </Button>
-      </div>
-      <p className="mt-2 max-w-[70ch] whitespace-pre-wrap break-words leading-relaxed text-aui-muted">
-        {a.text}
-      </p>
+      <p className="min-w-0 flex-1 truncate text-aui-fg">{a.title}</p>
       {a.onOpen && (
-        <Button variant="outline" size="sm" className="mt-3" onClick={a.onOpen}>
+        <button
+          type="button"
+          onClick={a.onOpen}
+          className="shrink-0 rounded-aui-sm text-aui-xs text-aui-muted underline underline-offset-4 hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
+        >
           {c.open}
-        </Button>
+        </button>
       )}
+      <button
+        type="button"
+        aria-label={c.hide}
+        title={c.hide}
+        disabled={a.busy}
+        onClick={() => {
+          if (!a.busy) a.onHide();
+        }}
+        className="inline-flex size-8 pointer-coarse:size-11 shrink-0 items-center justify-center rounded-aui text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent disabled:opacity-50"
+      >
+        <XIcon size={14} aria-hidden="true" />
+      </button>
     </section>
   );
 }
