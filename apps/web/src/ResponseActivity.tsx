@@ -473,7 +473,8 @@ function Lane({
     (shown !== undefined && isAwaiting(shown));
   const line = (
     <>
-      {!root && (
+      {/* In an answer the line itself is the control: no chevron, and the mark leads. */}
+      {!root && !inMessage && (
         <ChevronRightIcon
           size={12}
           aria-hidden
@@ -497,7 +498,8 @@ function Lane({
           {words.status[shown]}
         </span>
       )}
-      {tool?.elapsedMs !== undefined && status === "done" && (
+      {/* How long a call took is in Details. An answer says who did what, in order. */}
+      {tool?.elapsedMs !== undefined && status === "done" && !inMessage && (
         <span className="ml-auto shrink-0 text-aui-muted text-aui-xs tabular-nums">
           {took(tool.elapsedMs)}
         </span>

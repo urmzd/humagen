@@ -1266,7 +1266,9 @@ same activity again makes no sense.
 - A turn reads top to bottom in time order: its words, its runs of steps and
   the agents it called, each where it happened.
 - A called agent is a thread of its own in the turn: one line with its mark,
-  name, task and how long it took. The line is the one control: all of it is
+  name and task, and its state in words while it works, waits or failed. The
+  line has no chevron and does not say how long the call took (owner request,
+  2026-11-21); Details has both. The line is the one control: all of it is
   clickable, it shows a hover, and it opens to what that agent did and said.
   Its own calls are threads under it. Nothing on the line leads away (owner
   request, 2026-11-21: no expand sign); in Details a lane still links to its
