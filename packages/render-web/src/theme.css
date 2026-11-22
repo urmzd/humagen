@@ -1407,9 +1407,137 @@
     overflow: visible;
     flex-shrink: 0;
   }
-  .hm-mascot[data-quiet],
-  .hm-mascot[data-quiet] * {
+  .hm-mascot[data-quiet]:not([data-act]),
+  .hm-mascot[data-quiet]:not([data-act]) * {
     animation: none !important;
+  }
+  /* Playful moves of an idle bot: it hops, spins, waves or wiggles, then rests. */
+  .hm-mascot .m-actor {
+    transform-box: view-box;
+    transform-origin: 52px 107px;
+  }
+  .hm-mascot .m-shadow {
+    transform-box: fill-box;
+    transform-origin: center;
+  }
+  .hm-mascot[data-act="hop"] .m-actor {
+    animation: m-hop 0.7s cubic-bezier(0.3, 0.7, 0.4, 1) !important;
+  }
+  .hm-mascot[data-act="hop"] .m-shadow,
+  .hm-mascot[data-act="spin"] .m-shadow {
+    animation: m-shadow 0.7s ease-in-out !important;
+  }
+  .hm-mascot[data-act="spin"] .m-actor {
+    animation: m-spin 1s ease-in-out !important;
+  }
+  .hm-mascot[data-act="wave"] .m-right-upper {
+    animation: m-wave-up 1.3s ease-in-out !important;
+  }
+  .hm-mascot[data-act="wave"] .m-right-fore {
+    animation: m-wave 1.3s ease-in-out !important;
+  }
+  .hm-mascot[data-act="wiggle"] .m-actor {
+    animation: m-wiggle 0.8s ease-in-out !important;
+  }
+  @keyframes m-hop {
+    0% {
+      transform: none;
+    }
+    16% {
+      transform: scale(1.1, 0.86);
+    }
+    42% {
+      transform: translateY(-16px) scale(0.93, 1.1);
+    }
+    62% {
+      transform: translateY(-15px) scale(1, 1);
+    }
+    86% {
+      transform: scale(1.08, 0.9);
+    }
+    100% {
+      transform: none;
+    }
+  }
+  @keyframes m-shadow {
+    0%,
+    100% {
+      transform: none;
+      opacity: 0.22;
+    }
+    45%,
+    60% {
+      transform: scale(0.6);
+      opacity: 0.12;
+    }
+  }
+  @keyframes m-spin {
+    0% {
+      transform: none;
+    }
+    12% {
+      transform: scale(1.06, 0.92);
+    }
+    30% {
+      transform: translateY(-10px) scaleX(0.05);
+    }
+    50% {
+      transform: translateY(-12px) scaleX(-1);
+    }
+    70% {
+      transform: translateY(-10px) scaleX(0.05);
+    }
+    88% {
+      transform: scale(1.06, 0.93);
+    }
+    100% {
+      transform: none;
+    }
+  }
+  @keyframes m-wave-up {
+    0%,
+    100% {
+      transform: rotate(0deg);
+    }
+    20%,
+    80% {
+      transform: rotate(-125deg);
+    }
+  }
+  @keyframes m-wave {
+    0%,
+    20%,
+    80%,
+    100% {
+      transform: rotate(0deg);
+    }
+    30%,
+    50%,
+    70% {
+      transform: rotate(28deg);
+    }
+    40%,
+    60% {
+      transform: rotate(-24deg);
+    }
+  }
+  @keyframes m-wiggle {
+    0%,
+    100% {
+      transform: rotate(0deg);
+    }
+    20% {
+      transform: rotate(-8deg);
+    }
+    40% {
+      transform: rotate(7deg);
+    }
+    60% {
+      transform: rotate(-5deg);
+    }
+    80% {
+      transform: rotate(3deg);
+    }
   }
   .hm-mascot .m-limb {
     color: color-mix(in oklab, currentColor 86%, black);

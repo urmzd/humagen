@@ -268,6 +268,63 @@ function FurImage({ url, box }: { url: string; box: [number, number, number, num
   return <image href={url} x={x} y={y} width={w} height={h} preserveAspectRatio="none" />;
 }
 
+/** The playful moves of an idle bot, and how long each takes. */
+const ACTS = { hop: 700, spin: 1000, wave: 1300, wiggle: 800 } as const;
+type Act = keyof typeof ACTS;
+
+const reducedMotion = () =>
+  typeof window !== "undefined" &&
+  !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+
+/**
+ * A playful move now and then while idle: a hop, a spin, a wave or a wiggle,
+ * never the same twice in a row. `play` starts one at once, as a pointer
+ * does. Nothing plays while the bot works or waits, in a hidden tab, or under
+ * reduced motion.
+ */
+function useAct(on: boolean, every: [number, number]) {
+  const [act, setAct] = useState<Act>();
+  const last = useRef<Act | undefined>(undefined);
+  const busy = useRef(false);
+  const ends = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const play = () => {
+    if (!on || busy.current || reducedMotion()) return;
+    const choices = (Object.keys(ACTS) as Act[]).filter((a) => a !== last.current);
+    const next = choices[Math.floor(Math.random() * choices.length)] ?? "hop";
+    last.current = next;
+    busy.current = true;
+    setAct(next);
+    ends.current = setTimeout(() => {
+      busy.current = false;
+      setAct(undefined);
+    }, ACTS[next]);
+  };
+  const playRef = useRef(play);
+  playRef.current = play;
+  const [low, high] = every;
+  useEffect(() => {
+    if (!on) return;
+    let timer: ReturnType<typeof setTimeout>;
+    const plan = () => {
+      timer = setTimeout(
+        () => {
+          if (!document.hidden) playRef.current();
+          plan();
+        },
+        low + Math.random() * (high - low),
+      );
+    };
+    plan();
+    return () => {
+      clearTimeout(timer);
+      clearTimeout(ends.current);
+      busy.current = false;
+      setAct(undefined);
+    };
+  }, [on, low, high]);
+  return { act, play };
+}
+
 export function Mascot({
   persona = "plain",
   state = "idle",
@@ -312,6 +369,8 @@ export function Mascot({
     if (ref.current) setInk(getComputedStyle(ref.current).color);
   }, [color]);
   const fur = useFur(ink, shape, cy, size, persona === "spy" ? "#16181d" : undefined);
+  // An idle bot plays now and then, and at once when pointed at; rarely in a list.
+  const { act, play } = useAct(pose === "idle", fit ? [14000, 30000] : [4000, 9000]);
   return (
     <svg
       ref={ref}
@@ -320,6 +379,10 @@ export function Mascot({
       width={fit ? size : (size * 130) / 120}
       height={size}
       data-quiet={quiet || undefined}
+      data-act={act}
+      onPointerEnter={(e) => {
+        if (e.pointerType === "mouse") play();
+      }}
       className={`hm-mascot ${className ?? ""}`}
       data-pose={pose}
       data-persona={persona}
@@ -387,56 +450,67 @@ export function Mascot({
       </defs>
 
       {/* The ground under it. */}
-      <ellipse cx={CX} cy={BASE + 7} rx={half - 2} ry="3" fill="#000" opacity="0.22" />
+      <ellipse
+        className="m-shadow"
+        cx={CX}
+        cy={BASE + 7}
+        rx={half - 2}
+        ry="3"
+        fill="#000"
+        opacity="0.22"
+      />
       {/* What stands beside it. */}
       {pose === "searching" && <Microscope u={u} />}
       {pose === "waiting" && <Hourglass u={u} />}
 
-      <g className="m-body">
-        {/* The body and feet in fur, drawn once; a plain shape until then. */}
-        {fur.body ? (
-          <FurImage url={fur.body} box={BOX.body} />
-        ) : (
-          <g>
-            <g className="m-limb">
-              <ellipse cx={CX - 11} cy={BASE + 3} rx="8" ry="4.5" fill="currentColor" />
-              <ellipse cx={CX + 11} cy={BASE + 3} rx="8" ry="4.5" fill="currentColor" />
+      {/* The bot itself, body and arms together, so it hops and spins as one. */}
+      <g className="m-actor">
+        <g className="m-body">
+          {/* The body and feet in fur, drawn once; a plain shape until then. */}
+          {fur.body ? (
+            <FurImage url={fur.body} box={BOX.body} />
+          ) : (
+            <g>
+              <g className="m-limb">
+                <ellipse cx={CX - 11} cy={BASE + 3} rx="8" ry="4.5" fill="currentColor" />
+                <ellipse cx={CX + 11} cy={BASE + 3} rx="8" ry="4.5" fill="currentColor" />
+              </g>
+              <BodyShape shape={shape} cy={cy} fill="currentColor" />
+              <BodyShape shape={shape} cy={cy} fill={u("shade")} />
             </g>
-            <BodyShape shape={shape} cy={cy} fill="currentColor" />
-            <BodyShape shape={shape} cy={cy} fill={u("shade")} />
-          </g>
-        )}
-        <Outfit persona={persona} u={u} top={top} cy={cy} half={half} />
-        <EyePair kind={EYES[persona]} y={eyeY} pose={pose} persona={persona} />
-        {persona === "detective" && (pose === "idle" || pose === "thinking") && (
-          <Pipe x={CX + 9} y={eyeY + 13} u={u} />
-        )}
-      </g>
+          )}
+          <Outfit persona={persona} u={u} top={top} cy={cy} half={half} />
+          <EyePair kind={EYES[persona]} y={eyeY} pose={pose} persona={persona} />
+          {persona === "detective" && (pose === "idle" || pose === "thinking") && (
+            <Pipe x={CX + 9} y={eyeY + 13} u={u} />
+          )}
+        </g>
 
-      <Arm
-        at={leftShoulder}
-        angles={arm.left}
-        u={u}
-        fur={fur}
-        upper="m-left-upper"
-        fore="m-left-fore"
-        hold={
-          pose === "composing" ? (
-            <Notepad u={u} />
-          ) : persona === "spy" && pose === "delegating" ? (
-            <Remote u={u} signal />
-          ) : undefined
-        }
-      />
-      <Arm
-        at={rightShoulder}
-        angles={arm.right}
-        u={u}
-        fur={fur}
-        upper="m-right-upper"
-        fore="m-right-fore"
-        hold={hold?.(u)}
-      />
+        <Arm
+          at={leftShoulder}
+          angles={arm.left}
+          u={u}
+          fur={fur}
+          upper="m-left-upper"
+          fore="m-left-fore"
+          hold={
+            pose === "composing" ? (
+              <Notepad u={u} />
+            ) : persona === "spy" && pose === "delegating" ? (
+              <Remote u={u} signal />
+            ) : undefined
+          }
+        />
+        <Arm
+          at={rightShoulder}
+          angles={arm.right}
+          u={u}
+          fur={fur}
+          upper="m-right-upper"
+          fore="m-right-fore"
+          hold={hold?.(u)}
+        />
+      </g>
 
       {pose === "thinking" && <ThoughtCloud u={u} />}
       {pose === "delegating" && <Bubbles u={u} />}
