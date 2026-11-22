@@ -1430,6 +1430,36 @@
   .hm-mascot[data-act="spin"] .m-actor {
     animation: m-spin 1s ease-in-out !important;
   }
+  .hm-mascot .m-turn,
+  .hm-mascot .m-only-hat > g > :not(.m-hat),
+  .hm-mascot .m-no-hat .m-hat {
+    display: none;
+  }
+  .hm-mascot[data-act="spin"] .m-turn {
+    display: inline;
+  }
+  .hm-mascot[data-act="spin"] .m-still {
+    visibility: hidden;
+  }
+  .hm-mascot :is(.m-front, .m-turn-hat, .m-arm-l, .m-arm-r) {
+    transform-box: view-box;
+    transform-origin: 52px 0;
+  }
+  .hm-mascot[data-act="spin"] .m-strip {
+    animation: m-strip 0.76s steps(16, end) 0.12s backwards !important;
+  }
+  .hm-mascot[data-act="spin"] .m-front {
+    animation: m-spin-front 0.76s linear 0.12s backwards !important;
+  }
+  .hm-mascot[data-act="spin"] .m-turn-hat {
+    animation: m-spin-hat 0.76s linear 0.12s backwards !important;
+  }
+  .hm-mascot[data-act="spin"] .m-arm-r {
+    animation: m-spin-arm-r 0.76s linear 0.12s backwards !important;
+  }
+  .hm-mascot[data-act="spin"] .m-arm-l {
+    animation: m-spin-arm-l 0.76s linear 0.12s backwards !important;
+  }
   .hm-mascot[data-act="wave"] .m-right-upper {
     animation: m-wave-up 1.3s ease-in-out !important;
   }
@@ -1472,28 +1502,124 @@
     }
   }
   @keyframes m-spin {
-    0% {
+    0%,
+    100% {
       transform: none;
     }
     12% {
       transform: scale(1.06, 0.92);
     }
-    30% {
-      transform: translateY(-10px) scaleX(0.05);
-    }
-    50% {
-      transform: translateY(-12px) scaleX(-1);
-    }
+    30%,
     70% {
-      transform: translateY(-10px) scaleX(0.05);
+      transform: translateY(-12px);
     }
     88% {
       transform: scale(1.06, 0.93);
     }
+  }
+  /* The turn itself, in the air: the body frame by frame, its front sliding
+     round and hiding behind it, its hat and arms turning with it. */
+  @keyframes m-strip {
+    from {
+      transform: translateX(0);
+    }
+    to {
+      transform: translateX(-2400px);
+    }
+  }
+  @keyframes m-spin-front {
+    0%,
+    100% {
+      transform: none;
+      opacity: 1;
+    }
+    12.5% {
+      transform: translateX(8.5px) scaleX(0.71);
+    }
+    23% {
+      transform: translateX(11.6px) scaleX(0.2);
+      opacity: 1;
+    }
+    24%,
+    76% {
+      opacity: 0;
+    }
+    77% {
+      transform: translateX(-11.6px) scaleX(0.2);
+      opacity: 1;
+    }
+    87.5% {
+      transform: translateX(-8.5px) scaleX(0.71);
+    }
+  }
+  @keyframes m-spin-hat {
+    0%,
     100% {
       transform: none;
     }
+    12.5% {
+      transform: scaleX(0.75);
+    }
+    25% {
+      transform: scaleX(0.4);
+    }
+    37.5% {
+      transform: scaleX(-0.75);
+    }
+    50% {
+      transform: scaleX(-1);
+    }
+    62.5% {
+      transform: scaleX(-0.75);
+    }
+    75% {
+      transform: scaleX(-0.4);
+    }
+    87.5% {
+      transform: scaleX(0.75);
+    }
   }
+  /* The arms are in front of the body: they turn with it and hide behind it
+     while it faces away. */
+  @keyframes m-spin-arm-r {
+    0%,
+    100% {
+      transform: none;
+      opacity: 1;
+    }
+    12% {
+      transform: translateX(6px) scaleX(0.6);
+      opacity: 1;
+    }
+    14%,
+    86% {
+      opacity: 0;
+    }
+    88% {
+      transform: translateX(-6px) scaleX(0.6);
+      opacity: 1;
+    }
+  }
+  @keyframes m-spin-arm-l {
+    0%,
+    100% {
+      transform: none;
+      opacity: 1;
+    }
+    12% {
+      transform: translateX(6px) scaleX(0.6);
+      opacity: 1;
+    }
+    14%,
+    86% {
+      opacity: 0;
+    }
+    88% {
+      transform: translateX(-6px) scaleX(0.6);
+      opacity: 1;
+    }
+  }
+
   @keyframes m-wave-up {
     0%,
     100% {

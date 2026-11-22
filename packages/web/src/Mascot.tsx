@@ -1,4 +1,10 @@
-import { BOT_AVATAR_OVERSCAN, BOT_AVATAR_RISE, drawBotAvatarFrame, restPose } from "bot-avatars";
+import {
+  BOT_AVATAR_OVERSCAN,
+  BOT_AVATAR_RISE,
+  drawBotAvatarFrame,
+  restPose,
+  warmBotAvatarPlastic,
+} from "bot-avatars";
 import {
   type CSSProperties,
   type ReactNode,
@@ -83,7 +89,7 @@ type Shape = { kind: "oval"; rx: number; ry: number } | { kind: "box"; w: number
 const SHAPES: Record<MascotPersona, Shape> = {
   detective: { kind: "oval", rx: 27, ry: 33 },
   writer: { kind: "oval", rx: 30, ry: 30 },
-  engineer: { kind: "box", w: 58, h: 58 },
+  engineer: { kind: "oval", rx: 31, ry: 29 },
   scientist: { kind: "oval", rx: 30, ry: 31 },
   inspector: { kind: "oval", rx: 29, ry: 30 },
   spy: { kind: "oval", rx: 29, ry: 32 },
@@ -245,6 +251,65 @@ function hexOf(color: string): string {
 
 const fabrics = new Map<string, Promise<string>>();
 
+/** How many angles a turn is drawn at. */
+export const TURN_FRAMES = 16;
+const turns = new Map<string, Promise<string>>();
+
+/**
+ * The body at every angle of a full turn, side by side in one image, drawn
+ * on idle time after the still body: the spin shows it frame by frame, so it
+ * turns in depth rather than flipping like a card.
+ */
+function bakeTurn(key: string, path: () => Path2D, color: string, unit: number) {
+  const hit = turns.get(key);
+  if (hit) return hit;
+  const box = Math.max(24, Math.round(100 * unit));
+  const side = Math.round(box * BOT_AVATAR_OVERSCAN);
+  const theme = document.documentElement.dataset.theme === "light" ? "light" : "dark";
+  const made = new Promise<string>((resolve) => {
+    const idle = (fn: () => void) =>
+      "requestIdleCallback" in window ? window.requestIdleCallback(fn) : setTimeout(fn, 200);
+    idle(() => {
+      const strip = document.createElement("canvas");
+      strip.width = side * TURN_FRAMES;
+      strip.height = side;
+      const sctx = strip.getContext("2d");
+      const frame = document.createElement("canvas");
+      frame.width = frame.height = side;
+      const fctx = frame.getContext("2d");
+      if (!sctx || !fctx) return resolve("");
+      const p = path();
+      warmBotAvatarPlastic(key, p, box, undefined, true);
+      for (let i = 0; i < TURN_FRAMES; i++) {
+        fctx.clearRect(0, 0, side, side);
+        drawBotAvatarFrame(
+          fctx,
+          box,
+          { ...restPose("default"), yaw: (i / TURN_FRAMES) * Math.PI * 2 },
+          {
+            path: p,
+            face: "eyes",
+            faceX: 50,
+            faceY: 50,
+            faceScale: 0,
+            color,
+            ink: "#111111",
+            shading: "fabric",
+            still: true,
+            typeKey: key,
+            theme,
+            dpr: 1,
+          },
+        );
+        sctx.drawImage(frame, i * side, 0);
+      }
+      resolve(strip.toDataURL("image/png"));
+    });
+  });
+  turns.set(key, made);
+  return made;
+}
+
 function bakeFabric(key: string, path: () => Path2D, color: string, unit: number) {
   const hit = fabrics.get(key);
   if (hit) return hit;
@@ -278,12 +343,10 @@ function bakeFabric(key: string, path: () => Path2D, color: string, unit: number
         dpr: 1,
       });
     };
+    // Build the form and grow its pile now, so one draw has the fur.
+    warmBotAvatarPlastic(key, path(), box, undefined, true);
     draw();
-    // The pile is grown on idle time; draw again once it has landed.
-    setTimeout(() => {
-      draw();
-      resolve(canvas.toDataURL("image/png"));
-    }, 350);
+    resolve(canvas.toDataURL("image/png"));
   });
   fabrics.set(key, made);
   return made;
@@ -313,7 +376,7 @@ function limbPath(len: number, width: number, hand: boolean) {
   return p;
 }
 
-type Fur = Partial<Record<keyof typeof BOX, string>> & { cloth?: boolean };
+type Fur = Partial<Record<keyof typeof BOX, string>> & { cloth?: boolean; turn?: string };
 
 /** The furry parts as images, once the ink is known; none until they are drawn. */
 function useFur(
@@ -352,7 +415,14 @@ function useFur(
     const hex = hexOf(ink);
     const limbHex = hexOf(`color-mix(in oklab, ${ink} 90%, black)`);
     const fk = `${hex}|${JSON.stringify(shape)}|${unit.toFixed(2)}`;
-    bakeFabric(`body|${fk}`, () => bodyPath(shape, cy), hex, unit).then(keep("body"));
+    bakeFabric(`body|${fk}`, () => bodyPath(shape, cy), hex, unit).then((url) => {
+      keep("body")(url);
+      // Once the pile is grown, the turn reuses it.
+      if (url)
+        bakeTurn(`body|${fk}`, () => bodyPath(shape, cy), hex, unit).then(
+          (turn) => live && turn && setFur((f) => ({ ...f, turn })),
+        );
+    });
     if (sleeve)
       for (const name of ["upper", "fore"] as const)
         bake(`${name}|${k}`, BOX[name], parts[name], px).then(keep(name), () => {});
@@ -393,14 +463,16 @@ const reducedMotion = () =>
  * does. Nothing plays while the bot works or waits, in a hidden tab, or under
  * reduced motion.
  */
-function useAct(on: boolean, every: [number, number]) {
+function useAct(on: boolean, every: [number, number], canSpin: boolean) {
   const [act, setAct] = useState<Act>();
   const last = useRef<Act | undefined>(undefined);
   const busy = useRef(false);
   const ends = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const play = () => {
     if (!on || busy.current || reducedMotion()) return;
-    const choices = (Object.keys(ACTS) as Act[]).filter((a) => a !== last.current);
+    const choices = (Object.keys(ACTS) as Act[]).filter(
+      (a) => a !== last.current && (a !== "spin" || canSpin),
+    );
     const next = choices[Math.floor(Math.random() * choices.length)] ?? "hop";
     last.current = next;
     busy.current = true;
@@ -481,7 +553,7 @@ export function Mascot({
   }, [color]);
   const fur = useFur(ink, shape, cy, size, persona === "spy" ? "#16181d" : undefined);
   // An idle bot plays now and then, and at once when pointed at; rarely in a list.
-  const { act, play } = useAct(pose === "idle", fit ? [14000, 30000] : [4000, 9000]);
+  const { act, play } = useAct(pose === "idle", fit ? [14000, 30000] : [4000, 9000], !!fur.turn);
   return (
     <svg
       ref={ref}
@@ -558,6 +630,14 @@ export function Mascot({
           <stop offset="1" stopColor="#ffcf4a" stopOpacity="0" />
         </radialGradient>
         <PropDefs id={id} />
+        <clipPath id={`${id}-frame`}>
+          <rect
+            x={fabricPlace([CX, cy])[0]}
+            y={fabricPlace([CX, cy])[1]}
+            width={SPAN}
+            height={SPAN}
+          />
+        </clipPath>
       </defs>
 
       {/* The ground under it. */}
@@ -579,7 +659,9 @@ export function Mascot({
         <g className="m-body">
           {/* The body and feet in fur, drawn once; a plain shape until then. */}
           {fur.body ? (
-            <FurImage url={fur.body} box={fabricPlace([CX, cy])} />
+            <g className="m-still">
+              <FurImage url={fur.body} box={fabricPlace([CX, cy])} />
+            </g>
           ) : (
             <g>
               <g className="m-limb">
@@ -590,37 +672,64 @@ export function Mascot({
               <BodyShape shape={shape} cy={cy} fill={u("shade")} />
             </g>
           )}
-          <Outfit persona={persona} u={u} top={top} cy={cy} half={half} />
-          <EyePair kind={EYES[persona]} y={eyeY} pose={pose} persona={persona} />
-          {persona === "detective" && (pose === "idle" || pose === "thinking") && (
-            <Pipe x={CX + 9} y={eyeY + 13} u={u} />
+          {fur.turn && (
+            // The body drawn at every angle of a turn, shown frame by frame as it spins.
+            <g className="m-turn" clipPath={`url(#${id}-frame)`}>
+              <image
+                className="m-strip"
+                href={fur.turn}
+                x={fabricPlace([CX, cy])[0]}
+                y={fabricPlace([CX, cy])[1]}
+                width={SPAN * TURN_FRAMES}
+                height={SPAN}
+                preserveAspectRatio="none"
+              />
+            </g>
           )}
+          {/* What is on its front slides round the body as it turns, and hides behind it. */}
+          <g className="m-front">
+            <g className="m-no-hat">
+              <Outfit persona={persona} u={u} top={top} cy={cy} half={half} />
+            </g>
+            <EyePair kind={EYES[persona]} y={eyeY} pose={pose} persona={persona} />
+            {persona === "detective" && (pose === "idle" || pose === "thinking") && (
+              <Pipe x={CX + 9} y={eyeY + 13} u={u} />
+            )}
+          </g>
+          {/* A hat turns with the head and stays in sight. */}
+          <g className="m-turn-hat m-only-hat">
+            <Outfit persona={persona} u={u} top={top} cy={cy} half={half} />
+          </g>
         </g>
 
-        <Arm
-          at={leftShoulder}
-          angles={arm.left}
-          u={u}
-          fur={fur}
-          upper="m-left-upper"
-          fore="m-left-fore"
-          hold={
-            pose === "composing" ? (
-              <Notepad u={u} />
-            ) : persona === "spy" && pose === "delegating" ? (
-              <Remote u={u} signal />
-            ) : undefined
-          }
-        />
-        <Arm
-          at={rightShoulder}
-          angles={arm.right}
-          u={u}
-          fur={fur}
-          upper="m-right-upper"
-          fore="m-right-fore"
-          hold={hold?.(u)}
-        />
+        <g className="m-arm-l">
+          <Arm
+            at={leftShoulder}
+            angles={arm.left}
+            u={u}
+            fur={fur}
+            upper="m-left-upper"
+            fore="m-left-fore"
+            hold={
+              pose === "composing" ? (
+                <Notepad u={u} />
+              ) : persona === "spy" && pose === "delegating" ? (
+                <Remote u={u} signal />
+              ) : undefined
+            }
+          />
+        </g>
+        <g className="m-arm-r">
+          <Arm
+            at={rightShoulder}
+            angles={arm.right}
+            u={u}
+            fur={fur}
+            upper="m-right-upper"
+            fore="m-right-fore"
+            hold={hold?.(u)}
+          />
+        </g>
       </g>
 
       {pose === "thinking" && <ThoughtCloud u={u} />}
@@ -815,7 +924,7 @@ function Outfit({
             stroke="#4f3a22"
             strokeWidth="1"
           />
-          <g transform={`translate(0 ${top - 34})`}>
+          <g className="m-hat" transform={`translate(0 ${top - 34})`}>
             <path
               d="M27 45C27 22 77 22 77 45Z"
               fill={u("tweed")}
@@ -873,7 +982,7 @@ function Outfit({
             stroke="#8e2f27"
             strokeWidth="0.6"
           />
-          <g transform={`translate(0 ${top - 37}) rotate(-12 50 40)`}>
+          <g className="m-hat" transform={`translate(0 ${top - 37}) rotate(-12 50 40)`}>
             <ellipse cx="50" cy="40" rx="24" ry="8.5" fill="#c43b30" />
             <ellipse cx="50" cy="38" rx="20" ry="5" fill="#d9493d" />
             <path
@@ -899,7 +1008,7 @@ function Outfit({
           />
           <circle cx={CX - 11} cy={cy + 17} r="1.4" fill="#e2c15a" />
           <circle cx={CX + 11} cy={cy + 17} r="1.4" fill="#e2c15a" />
-          <g transform={`translate(0 ${top - 40})`}>
+          <g className="m-hat" transform={`translate(0 ${top - 40})`}>
             <path
               d="M30 44C30 23 74 23 74 44Z"
               fill={u("hat")}
@@ -937,7 +1046,7 @@ function Outfit({
             strokeWidth="0.8"
           />
           <rect x={R - 12} y={cy + 22} width="5" height="7" rx="1" fill="#3a78d8" />
-          <g transform={`translate(0 ${top - 37})`}>
+          <g className="m-hat" transform={`translate(0 ${top - 37})`}>
             <path d="M22 50Q52 42 82 50" stroke="#2c3038" strokeWidth="3" fill="none" />
             <circle
               cx="42"
@@ -969,7 +1078,7 @@ function Outfit({
           <path d={`M${CX - 1} ${cy + 15}l-8-4v9z`} fill="#c0392b" />
           <path d={`M${CX + 1} ${cy + 15}l8-4v9z`} fill="#c0392b" />
           <circle cx={CX} cy={cy + 15.5} r="2.2" fill="#9b2c21" />
-          <g transform={`translate(0 ${top - 37})`}>
+          <g className="m-hat" transform={`translate(0 ${top - 37})`}>
             <path
               d="M27 45C29 29 73 27 79 41L90 46C74 49 40 49 27 45Z"
               fill={u("grey")}
@@ -1009,7 +1118,7 @@ function Outfit({
           <path d={`M${CX - 1} ${cy + 13}l-7-3.6v7.2z`} fill="#0b0c0f" />
           <path d={`M${CX + 1} ${cy + 13}l7-3.6v7.2z`} fill="#0b0c0f" />
           <rect x={CX - 1.8} y={cy + 11.2} width="3.6" height="3.6" rx="1" fill="#0b0c0f" />
-          <g transform={`translate(0 ${top - 34})`}>
+          <g className="m-hat" transform={`translate(0 ${top - 34})`}>
             {/* Slicked back with a side part: a sweep of dark hair and its shine. */}
             <path
               d="M33 41C32 30 42 24 55 25C67 26 74 32 72 40C67 35 60 32.5 52 33.5L44 33C39 35 35 37.5 33 41Z"
