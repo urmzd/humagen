@@ -2294,7 +2294,7 @@ In Slack (the Slack app, `apps/slack`):
   a refusal is said to the presser alone in Humagen's words. The change is
   said in the thread, naming who made it, that the approval agent now
   approves and answers what the thread settles and that the action already
-  waiting still waits, with one button back (Switch to Ask, or Switch to
+  waiting still waits, with one button back (Switch to Manual, or Switch to
   Auto).
 - An approval the approval agent decided says so on its card in the
   thread, with its reason, as the inbox does: the run's answer carries the
@@ -2973,7 +2973,7 @@ Auto, the most useful of the three.
 
 Rules:
 
-- There are two approval modes: `ask` (**Ask**, the default), where a person
+- There are two approval modes: `ask` (**Manual**, the default), where a person
   approves every gated action, and `auto` (**Auto**), where the approval agent
   decides gated actions, answers what the session already settles, and asks a
   person when unsure. Auto is chosen by a person who may post in the session,
@@ -3010,12 +3010,14 @@ Rules:
   under the answer, or **Approval agent: Asked a person** with the reason
   above the options. The answer is recorded as the person's, so they see it
   and can correct the agent in the session.
-- The composer shows one control: an icon and **Ask** or **Auto**. It opens a
-  menu headed **Approval mode** with the two, each with one line on what
-  happens in that mode and a check on the one in use. Someone else's choice
+- The composer shows one control under the bar: a pill with the mode's icon
+  (a hand for **Manual**, fast-forward for **Auto**) and its word. It opens a
+  menu headed by one question, "Who approves gated actions?", with the two,
+  each with its icon, one line on what happens in that mode and a check on
+  the one in use; Auto's row carries the warning tint. Someone else's choice
   reads "Auto, chosen by <name>", and the menu says so; it also says when the
   approval agent has no model to run on. Slack sets a thread to Auto from a
-  waiting call's menu and back with **Switch to Ask** (DES-057).
+  waiting call's menu and back with **Switch to Manual** (DES-057).
 - A workspace's own output schema for the approval agent keeps working: the
   `answer` field is optional, and a schema without it decides calls only, so
   every question goes to a person.

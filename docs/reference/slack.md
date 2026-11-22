@@ -155,7 +155,7 @@ them alone. A Slack user the client maps to nobody is told they cannot, and
 Humagen is not asked. The change is said in the thread, naming who made it:
 the approval agent approves and answers from the next action on, as that
 person could, and an action already waiting still waits for a person. Under
-it, **Switch to Ask** sets the conversation back, and that change is said the
+it, **Switch to Manual** sets the conversation back, and that change is said the
 same way, with **Switch to Auto** under it.
 
 A call the approval agent decided settles its card with what it decided and
