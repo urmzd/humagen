@@ -25,6 +25,7 @@ import {
 } from "react";
 import type { Run } from "./adapter.ts";
 import { api, call } from "./api.ts";
+import { agentShown } from "./branding.ts";
 import { turnOfCall } from "./callTurn.ts";
 import { took, usd } from "./format.ts";
 import { Chips, inApp } from "./refChips.tsx";
@@ -486,7 +487,7 @@ function Lane({
       )}
       <AgentMark name={agent} size={18} />
       <span className="max-w-[50%] shrink-0 truncate font-medium text-aui-fg">
-        {running && !root ? <Shimmer>{agent}</Shimmer> : agent}
+        {running && !root ? <Shimmer>{agentShown(agent)}</Shimmer> : agentShown(agent)}
       </span>
       {delegated && (
         <span className="shrink-0 rounded-full border border-aui-border px-1.5 text-aui-2xs text-aui-muted">

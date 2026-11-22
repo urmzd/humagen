@@ -285,7 +285,7 @@ test("the log shows what the agents ran, is reachable from the keyboard, and off
   assert.equal(entries.length, 3);
   assert.equal(
     entries[0]?.getAttribute("aria-label"),
-    words.entry("lead", "pnpm test", words.state.exited(1)),
+    words.entry("Lead", "pnpm test", words.state.exited(1)),
   );
   assert.ok(within(entries[0] as HTMLElement).getByText(words.state.exited(1)));
   // Long output is folded to its end, and opens.
