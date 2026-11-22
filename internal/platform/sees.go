@@ -402,6 +402,16 @@ func (p *Platform) Seer(who auth.Principal) *Seer {
 	return &Seer{own: tree.Roles(ordinary), p: p, who: who, tree: tree, roles: tree.Roles(r), govern: r.Govern && r.Subject != "", threads: map[string]*threadAccess{}, gone: map[string]projects.Access{}, hosts: map[string]bool{}}
 }
 
+// Ordinary returns the same reader without projects:govern: what they read by
+// their own roles alone. A run that reads for a person asks this, so an
+// agent never makes the exceptional read an administrator may.
+func (s *Seer) Ordinary() *Seer {
+	ordinary := *s
+	ordinary.govern = false
+	ordinary.roles = s.own
+	return &ordinary
+}
+
 // Sees reports whether a reader may read what lives in a place: a role of at
 // least viewer in its project, and in a private thread to take part in it, or
 // projects:govern. What a deleted project held is read, not continued, by

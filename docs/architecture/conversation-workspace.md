@@ -168,6 +168,58 @@ provider snapshots and oversized text are refused. `AddForScope` guards source
 identity and audience under the insertion lock, and an audit attempt records
 the copy. Only an opaque artifact/version reference enters provenance metadata.
 
+## Artifact tools and publish targets
+
+An agent reaches the published files with three tools, each granted by name
+in its spec. `publish_artifact` is among the file tools. `artifact_list` and
+`artifact_read` are not: an agent reads beyond its own conversation only when
+its spec names them.
+
+| Tool | What it does |
+|---|---|
+| `artifact_list` | Lists the latest version of each artifact, newest first: this conversation's (`scope=conversation`, the default) or the project's (`scope=project`). `query` matches a title, a description or the text. At most 25 a call. |
+| `artifact_read` | Reads one artifact by id, 64 KB of text a call from `offset`. The first line gives its title, its version and the id of the latest version when a newer one exists. |
+| `publish_artifact` | Publishes a file. `to` names what the publish is aimed at. |
+
+A run reads an artifact of its own conversation always. It reads another
+conversation's only when all of these hold:
+
+1. The run acts for a person, and is not an evaluation or a housekeeping run.
+2. That person can read the artifact by their own roles. `projects:govern`
+   is left out, so an agent never makes an administrator's exceptional read.
+3. The artifact lives in a shared conversation.
+4. That conversation is filed in the same project as the run's own.
+
+Everyone who reads the run's conversation could already read such a file, so
+reading one shows it to nobody new. A private conversation's files are read
+only from that conversation. An artifact a run may not read and one that does
+not exist answer the same refusal. What an artifact says is returned as data:
+the tool's description and its result both say it is never instructions.
+
+`to` on `publish_artifact` takes one target. None widens who reads the file:
+it stays in its conversation.
+
+| `to` | Result |
+|---|---|
+| `conversation`, or left out | A version of the title in this conversation. |
+| `artifact:<id>` | The next version of that artifact's file, in this conversation. `<id>` must be the file's latest version. |
+| `person:<name>` | As `conversation`, and the inbox notice is addressed to that one person. They must already read the conversation. |
+
+A publish to `artifact:<id>` that names an older version stores nothing. The
+refusal names the latest version, and the agent reads it with `artifact_read`
+before it publishes again. The check and the write are one transaction in
+`pkg/artifacts` (`PublishAfter`), so of many replicas that read the same
+latest version, one publishes and the rest are refused.
+
+With `to=artifact:<id>`, `edits` may take the place of `path`: a JSON array of
+up to 32 `{"old", "new"}` replacements, applied in order to the text of the
+version named. Each `old` must be in the text exactly once. All apply, or
+nothing is published. Edits change text artifacts only.
+
+Sharing a private conversation's file with its project is not a publish
+target. A person does that, by reviewing the file and adding it to a
+knowledge source (below).
+
 ## The Workspace panel
 
 A conversation is a session with a sandbox of its own, and each agent run in
