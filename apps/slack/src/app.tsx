@@ -2970,7 +2970,15 @@ export class App {
     const about = message.about.find((s) => s.kind === "run");
     const run = about ? await this.humagen.getRun(about.id) : null;
     const session = run ? await this.sessionOfRun(run) : null;
-    if (!session || session.team !== this.opts.team) return;
+    if (!run || !session || session.team !== this.opts.team) return;
+    // Held to the rule every answer is, as an edit of a posted one is (showMail).
+    const refusal = await this.deliveryRefusal(session.channel, run.id, session.threadTs);
+    if (refusal) {
+      this.log(
+        `inbox message ${message.id} about run ${run.id} not posted to ${session.channel}: ${refusal}`,
+      );
+      return;
+    }
     const ts = await this.postView(
       session,
       renderToSlack(<MessageView message={forSlack(message)} />),

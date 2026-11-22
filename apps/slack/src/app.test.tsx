@@ -1420,6 +1420,39 @@ test("an inbox item about a run in a humagen thread lands in the run's Slack thr
   await watch;
 });
 
+test("an inbox item about a run is not posted where humagen refuses the run's delivery", async () => {
+  const w = mapped();
+  const watching = new AbortController();
+  const watch = w.app.watchInbox(watching.signal);
+  await deliver(w, mention("check the deploy", TS));
+  const run = w.humagen.last.id;
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.completed.v1", { text: "On it." });
+  await w.app.idle();
+  const before = w.slack.of("chat.postMessage").length;
+  assert.ok(before + w.slack.of("chat.startStream").length > 0, "the answer itself was delivered");
+
+  const asked: { run: string; ts: string | undefined }[] = [];
+  w.humagen.deliveryAllowed = async (_client, _channel, about, ts) => {
+    asked.push({ run: about, ts });
+    return false;
+  };
+  w.humagen.raise(resultMail(run));
+  await settle();
+  await w.app.idle();
+  assert.equal(w.slack.of("chat.postMessage").length, before, "nothing more is posted");
+  assert.deepEqual(asked, [{ run, ts: TS }], "delivery is asked for the run in its thread");
+  assert.ok(
+    w.logs.some((l) =>
+      new RegExp(`about run ${run} not posted to ${CHANNEL}: humagen refused`).test(l),
+    ),
+    w.logs.join("\n"),
+  );
+
+  watching.abort();
+  await watch;
+});
+
 test("the Home tab shows a person what waits on them, and an operator the whole inbox", async () => {
   const w = world({ operators: [OTHER_USER] });
   await deliver(w, mention("deploy it", TS));
