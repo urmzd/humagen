@@ -1215,11 +1215,16 @@ which key DES-080 gives to Send now.
 
 - A person's message has no line under it naming the agent: the answer below
   names it.
-- When a router picked the agent, or one of several joined, a checkpoint says
-  so between the message and the answer: a rule, a small route icon, the
-  agent's mark and why. Nothing else is drawn for a plain answer.
-- Acceptance: a direct answer has no line under the message; a routed one has
-  one checkpoint naming the agent and the reason.
+- When an agent joined for a reason of its own (a router's pick, a match), a
+  checkpoint says why between the message and the answer: a rule, a small
+  route icon, the agent's mark and the reason. Nothing else is drawn for a
+  plain answer.
+- An answer that came from the conversation's selection has no "Routed to
+  <agent>" line (owner request, 2026-11-21): the answer names its agent, so
+  the line said it twice.
+- Acceptance: a direct answer and an answer the selection routed have no line
+  under the message; an agent that joined for a reason has one checkpoint
+  with its mark and the reason.
 
 ### DES-032: Who took part, by name
 
@@ -1633,11 +1638,15 @@ did not keep the latest message in view as the keyboard shrank it.
 
 Rules:
 
-- A conversation of two or more turns has a wave down its left edge: a tick
-  per message and per answer, longer the more it says, swelling near the turn
-  in view or under the pointer. The turn in view is drawn in the brand's
-  sweep. It rests faint and brightens while the reader scrolls or reaches for
-  it.
+- A conversation of two or more turns has a wave down its left edge: one
+  connected shape about a center line (owner request, 2026-11-21, replacing a
+  tick per turn), wider where a message or an answer says more, swelling near
+  the turn in view or under the pointer. The turn in view is full ink and its
+  tone runs into its neighbours'; a failed turn and one waiting on a person
+  keep their colours. It rests faint and brightens while the reader scrolls
+  or reaches for it.
+- A person's own message is one flat fill, with no edge and no bevel (owner
+  request, 2026-11-21), so only its words catch the eye.
 - It is one vertical slider. Hover previews a turn: a person's own words, an
   answer's first line. Press, or on a touch screen press and drag, to scrub
   through the conversation; arrows, Home and End step through it. On a phone

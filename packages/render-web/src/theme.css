@@ -1458,12 +1458,14 @@
   }
 
   /* ---------- Turn rail ---------- */
-  .aui-rail-tick {
+  /* The wave swells toward the turn in view, where the browser animates a path's shape. */
+  .aui-wave-shape {
+    transition: d 320ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .aui-wave-stop {
     transition:
-      height 420ms cubic-bezier(0.34, 1.56, 0.64, 1),
-      width 420ms cubic-bezier(0.34, 1.56, 0.64, 1),
-      background-color 200ms ease-out,
-      opacity 200ms ease-out;
+      stop-color 200ms ease-out,
+      stop-opacity 200ms ease-out;
   }
 
   /* ---------- Toasts ---------- */
@@ -1521,7 +1523,8 @@
     .aui-orb *::after {
       animation: none !important;
     }
-    .aui-rail-tick,
+    .aui-wave-shape,
+    .aui-wave-stop,
     .aui-toast-in {
       transition: none;
       animation: none;
@@ -1551,20 +1554,10 @@
   width: 1.75rem;
   padding-inline: 0.25rem;
 }
-.aui-wave-tick {
-  width: var(--aui-wave-w, 8px);
-}
-/* The turn in view: neutral ink, so colour stays for meaning, not position. */
-.aui-wave-now {
-  background: var(--aui-fg);
-}
 @media (max-width: 47.99rem) {
   .aui-wave-rail {
     width: 1rem;
     padding-inline: 2px 0;
-  }
-  .aui-wave-tick {
-    width: calc(var(--aui-wave-w, 8px) * 0.55);
   }
 }
 

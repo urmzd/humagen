@@ -4013,9 +4013,6 @@ export const defaultCopy = {
     cancelHeldHint: "Keep editing instead (Esc)",
     /** The agents could not be read. The draft stays in the bar. */
     agentsFailed: "Agents could not be loaded.",
-    /** Under an answer that went to an agent because it was selected, not tagged. */
-    routedAll: (agent: string) => `Routed to ${agent}, with every agent selected`,
-    routed: (agent: string) => `Routed to ${agent}`,
     /** Home's suggestions, as a list. */
     suggestions: "Suggestions",
     scrollBack: "Scroll Back",

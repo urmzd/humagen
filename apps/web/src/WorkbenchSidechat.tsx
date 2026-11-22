@@ -373,7 +373,7 @@ export function WorkbenchSidechat({
                   aria-label={words.saidBy(turn.message.name || turn.message.by)}
                   className="flex flex-col items-end gap-0.5"
                 >
-                  <p className="humagen-glass max-w-[85%] whitespace-pre-wrap break-words rounded-aui-lg px-3.5 py-2 text-aui-base text-aui-fg">
+                  <p className="humagen-said max-w-[85%] whitespace-pre-wrap break-words rounded-aui-lg px-3.5 py-2 text-aui-base text-aui-fg">
                     <Mentioned text={turn.message.text} />
                   </p>
                 </article>
