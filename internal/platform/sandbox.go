@@ -806,7 +806,9 @@ func (p *Platform) fileTool(name string, req runtime.Request, action func(event.
 				}
 				data, _ := json.Marshal(a)
 				_ = action(event.Action{Name: ToolPublish, Summary: fmt.Sprintf("Published %s, version %d", a.Title, a.Version), Data: data})
-				out := fmt.Sprintf("Published %s as version %d (%d bytes), id %s. The person can open it now.", a.Title, a.Version, a.Size, a.ID)
+				// The id is for the tools. A model handed one alone makes up
+				// an address for it, so the result says not to.
+				out := fmt.Sprintf("Published %s as version %d (%d bytes). The person can open it now from its card in this conversation. Its id is %s, for %s and to=artifact:<id>. Name the file by its title and write no link to it.", a.Title, a.Version, a.Size, a.ID, ToolArtifactRead)
 				if person := strings.TrimPrefix(strings.TrimSpace(arg(args, "to")), targetPerson); person != strings.TrimSpace(arg(args, "to")) {
 					out += " The notice is addressed to " + strings.TrimSpace(person) + "."
 				}

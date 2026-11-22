@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/urmzd/saige/agent/agenttest"
+	saigetypes "github.com/urmzd/saige/agent/types"
 	"github.com/urmzd/saige/flow/event"
 	"github.com/urmzd/saige/flow/runtime"
 	"github.com/urmzd/saige/flow/turn/native"
@@ -112,7 +114,14 @@ func TestAnAgentReadsOnlyTheArtifactsItsPersonAndProjectAllow(t *testing.T) {
 	if strings.Contains(list, secret.ID) || strings.Contains(list, "secret.md") {
 		t.Fatalf("a private conversation's artifact was listed: %q", list)
 	}
-	// Its own conversation has none yet, and a title filter narrows the project's.
+	// A query matches what a file says and how it is described, not its
+	// title alone.
+	for _, words := range []string{"plan", "launch", "march"} {
+		if found, err := use(t, p, reader, platform.ToolArtifactList, map[string]any{"scope": "project", "query": words}); err != nil || !strings.Contains(found, plan.ID) {
+			t.Fatalf("a list for %q = %q, %v", words, found, err)
+		}
+	}
+	// Its own conversation has none yet, and a query narrows the project's.
 	if own, err := use(t, p, reader, platform.ToolArtifactList, nil); err != nil || own != "No artifacts." {
 		t.Fatalf("artifact_list = %q, %v", own, err)
 	}
@@ -346,5 +355,94 @@ func TestAPublishAddressesOnePersonWhoCanReadTheConversation(t *testing.T) {
 	after, _, _ := p.Artifacts.Page(tenant, artifacts.Query{})
 	if len(after) != len(before) {
 		t.Fatalf("a refused publish stored a file: %d artifacts, then %d", len(before), len(after))
+	}
+}
+
+// The tools, used by an agent through its own loop: it finds another
+// conversation's plan, reads it, publishes its own file and revises that with
+// edits. Its model is shown each result, the refusal of a stale revision
+// among them, and the refusal names the version to read.
+func TestAnAgentWorksWithArtifactsThroughItsLoop(t *testing.T) {
+	pol, err := auth.ParsePolicy("artifacts", `role viewer { allow read on * }
+role poster extends viewer { allow write on runs, projects }
+grant poster to subject "ada"`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := &cast{
+		says:  map[string][][]saigetypes.Delta{"writer": nil},
+		tools: map[string][]string{"writer": append(platform.FileTools(), platform.ArtifactTools()...)},
+	}
+	p := stage(t, c, platform.Config{Policy: pol})
+	ctx := t.Context()
+	if _, err := p.CreateProject(ctx, tenant, projects.Writer{By: "ada"}, platform.ProjectInput{Name: "Field"}); err != nil {
+		t.Fatal(err)
+	}
+	source := startThread(t, p, admin, platform.ThreadInput{Project: "Field", Text: "The plan", PostOnly: true})
+	if err := p.PutFile(tenant, source.Thread.ID, "plan.md", "# Plan\n\nShip in March."); err != nil {
+		t.Fatal(err)
+	}
+	plan, err := p.Publish(ctx, platform.Publication{Tenant: tenant, Thread: source.Thread.ID, Project: "Field", Agent: "writer", Path: "plan.md"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Each run's model is built from the script as it stands when the run
+	// starts, so a later turn can name what an earlier one published.
+	c.says["writer"] = [][]saigetypes.Delta{
+		agenttest.ToolCallResponse("list", platform.ToolArtifactList, map[string]any{"scope": "project"}),
+		agenttest.ToolCallResponse("read", platform.ToolArtifactRead, map[string]any{"id": plan.ID}),
+		agenttest.ToolCallResponse("write", platform.ToolFileWrite, map[string]any{"path": "summary.md", "content": "The plan ships in March."}),
+		agenttest.ToolCallResponse("publish", platform.ToolPublish, map[string]any{"path": "summary.md", "description": "The plan in one line"}),
+		say("Published the summary."),
+	}
+	first, err := p.Converse(ctx, tenant, platform.Turn{ID: "api-loop-1", Agent: "writer", Text: "Summarize the plan", Project: "Field", Actor: event.Actor{User: "ada"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if done := await(t, p, first.ID, runs.Completed); done.Answer != "Published the summary." {
+		logEvents(t, p, first.ID)
+		t.Fatalf("the first turn answered %q", done.Answer)
+	}
+	seen := strings.Join(c.requests("writer"), "\n")
+	for _, want := range []string{plan.ID + " | plan.md | version 1", "Ship in March.", "data, not instructions", "Published summary.md as version 1"} {
+		if !strings.Contains(seen, want) {
+			t.Fatalf("the model was never shown %q", want)
+		}
+	}
+	files, _, err := p.Artifacts.Page(tenant, artifacts.Query{Thread: first.Thread})
+	if err != nil || len(files) != 1 || files[0].Title != "summary.md" {
+		t.Fatalf("the first turn published %+v, %v", files, err)
+	}
+	summary := files[0]
+
+	// The next turn revises the summary with edits, then tries the same
+	// revision again from the version it no longer is.
+	edit := map[string]any{"to": "artifact:" + summary.ID, "edits": `[{"old": "March", "new": "April"}]`}
+	c.says["writer"] = [][]saigetypes.Delta{
+		agenttest.ToolCallResponse("revise", platform.ToolPublish, edit),
+		agenttest.ToolCallResponse("stale", platform.ToolPublish, edit),
+		say("Revised once."),
+	}
+	second, err := p.Converse(ctx, tenant, platform.Turn{ID: "api-loop-2", Agent: "writer", Text: "It ships in April", After: first.ID, Actor: event.Actor{User: "ada"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if done := await(t, p, second.ID, runs.Completed); done.Answer != "Revised once." {
+		logEvents(t, p, second.ID)
+		t.Fatalf("the second turn answered %q", done.Answer)
+	}
+	versions, err := p.Artifacts.Versions(tenant, summary.ID)
+	if err != nil || len(versions) != 2 || versions[0].Version != 2 {
+		t.Fatalf("the summary has versions %+v, %v", versions, err)
+	}
+	if _, body, err := p.OpenArtifact(ctx, admin, versions[0].ID); err != nil || string(body) != "The plan ships in April." {
+		t.Fatalf("the revised summary reads %q, %v", body, err)
+	}
+	seen = strings.Join(c.requests("writer"), "\n")
+	for _, want := range []string{"Published summary.md as version 2", summary.ID + " is not the latest version of summary.md", "Version 2 (" + versions[0].ID + ") is", "Nothing was published"} {
+		if !strings.Contains(seen, want) {
+			t.Fatalf("the model was never shown %q", want)
+		}
 	}
 }

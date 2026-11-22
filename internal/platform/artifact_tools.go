@@ -136,7 +136,7 @@ func (p *Platform) artifactListTool(req runtime.Request) saigetypes.Tool {
 			Description: "List published artifacts, newest first, the latest version of each. scope=conversation (the default) lists this conversation's. scope=project lists those of the shared conversations in this conversation's project that the person you act for may read. Use it to find the id artifact_read and publish_artifact take. Private conversations and other projects are never listed.",
 			Parameters: schema(nil, map[string]string{
 				"scope": "conversation (the default) or project",
-				"query": "Keep titles that contain this",
+				"query": "Keep artifacts whose title, description or text match these words",
 				"kind":  "One of document, spreadsheet, presentation, image, pdf, html, code, data, archive",
 				"limit": fmt.Sprintf("How many to list, up to %d. Defaults to %d", ArtifactListMax, ArtifactListDefault),
 			}),
@@ -146,7 +146,7 @@ func (p *Platform) artifactListTool(req runtime.Request) saigetypes.Tool {
 			if err != nil {
 				return "", err
 			}
-			query := artifacts.Query{Title: strings.TrimSpace(arg(args, "query")), Kind: artifacts.Kind(strings.TrimSpace(arg(args, "kind"))), Limit: ArtifactListDefault}
+			query := artifacts.Query{Search: strings.TrimSpace(arg(args, "query")), Kind: artifacts.Kind(strings.TrimSpace(arg(args, "kind"))), Limit: ArtifactListDefault}
 			if query.Kind != "" && !containsKind(query.Kind) {
 				return "", fmt.Errorf("%w: kind %q is not one of %v", artifacts.ErrInvalid, query.Kind, artifacts.Kinds())
 			}

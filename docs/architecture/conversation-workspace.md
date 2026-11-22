@@ -177,7 +177,7 @@ its spec names them.
 
 | Tool | What it does |
 |---|---|
-| `artifact_list` | Lists the latest version of each artifact, newest first: this conversation's (`scope=conversation`, the default) or the project's (`scope=project`). At most 25 a call. |
+| `artifact_list` | Lists the latest version of each artifact, newest first: this conversation's (`scope=conversation`, the default) or the project's (`scope=project`). `query` matches a title, a description or the text. At most 25 a call. |
 | `artifact_read` | Reads one artifact by id, 64 KB of text a call from `offset`. The first line gives its title, its version and the id of the latest version when a newer one exists. |
 | `publish_artifact` | Publishes a file. `to` names what the publish is aimed at. |
 
