@@ -236,11 +236,14 @@ export function RunsConversation({
       <section className="flex min-h-0 flex-1">
         <ConversationPage
           title={summary?.title ?? path[0]?.text ?? "Conversation"}
+          // The reader's own Personal project is not named: a session is there unless it was filed elsewhere.
           project={
-            projects?.find((p) => p.name === where)?.title ||
-            (where === personalProject ? defaultCopy.projects.personalTitle : where) ||
-            workspaceName ||
-            defaultCopy.projects.workspace
+            where === personalProject
+              ? ""
+              : projects?.find((p) => p.name === where)?.title ||
+                where ||
+                workspaceName ||
+                defaultCopy.projects.workspace
           }
           private={room?.thread.visibility === "private"}
           origin={<OriginButton place={chatPlace} />}

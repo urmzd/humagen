@@ -108,6 +108,11 @@ export function ConversationPage({
   /** The title as a control, such as a menu of what can be done to the session. */
   titleControl?: ReactNode;
   title: string;
+  /**
+   * The project the session is filed in, named under the title. Empty for a
+   * person's own Personal project: every session is in it unless it was filed
+   * elsewhere, so naming it says nothing.
+   */
   project: string;
   private: boolean;
   agents: string[];
@@ -134,10 +139,12 @@ export function ConversationPage({
         layout="conversation"
         title={titleControl ?? title}
         meta={
-          <span className="inline-flex flex-wrap items-center gap-x-3">
-            <span>{project}</span>
-            {location}
-          </span>
+          project || location ? (
+            <span className="inline-flex flex-wrap items-center gap-x-3">
+              {project && <span>{project}</span>}
+              {location}
+            </span>
+          ) : undefined
         }
         actions={
           <>
