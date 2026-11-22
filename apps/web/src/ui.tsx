@@ -1535,9 +1535,14 @@ export function Popover({
     place();
     window.addEventListener("resize", place);
     window.addEventListener("scroll", place, true);
+    // A panel that grows or shrinks, as a list loads or a search narrows it,
+    // stays against its control.
+    const resized = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(place);
+    if (panel.current) resized?.observe(panel.current);
     return () => {
       window.removeEventListener("resize", place);
       window.removeEventListener("scroll", place, true);
+      resized?.disconnect();
     };
   }, [open, present.mounted, align, up, side]);
 

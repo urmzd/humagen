@@ -3,6 +3,8 @@
  * Nothing here is used by the app.
  */
 
+import { forgetCompletions } from "./completion.ts";
+
 /** A request a stubbed fetch saw. */
 export interface Seen {
   method: string;
@@ -23,6 +25,8 @@ export function stubFetch(
 ): { seen: Seen[]; restore: () => void } {
   const real = globalThis.fetch;
   const seen: Seen[] = [];
+  // A new server: nothing read from the last one stands for it.
+  forgetCompletions();
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(
       typeof input === "string" ? input : input instanceof URL ? input.href : input.url,

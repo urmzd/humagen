@@ -36,6 +36,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-079 | Run and Answer: in a session set to it, the approval agent also answers a question an agent asks a person when the session already settles it, as the person who chose it, and hands them the rest | Implemented: `threads.ApprovalDecide` (`pkg/threads/approval.go`), `internal/platform/approval_questions.go`, the `answer` field and `DescribeQuestion` in `pkg/approve`, `PUT /api/threads/{id}/approval` with `decide`, Answer Questions beside Run in `ApprovalToggle.tsx`, and the judgement on a question's card (`ClarificationCard`). Evidence: `TestRunAndAnswerAnswersAChoiceTheSessionSettles`, `TestRunAndAnswerAnswersAReply`, `TestWhatRunAndAnswerDoesNotSettleWaitsForAPerson`, `TestRunAndAnswerNeverAnswersForSomeoneElse`, `TestRunAndAnswerLeavesWhatSomeoneElseAskedFor`, `TestRunLeavesQuestionsForAPerson`, `TestRunAndAnswerIsAModeAPersonChooses`, `TestApprovalModeIsSetOnItsOwnAndKept`, `TestAQuestionsAnswerIsReadBesideTheDecision`; `approval-toggle.dom.test.tsx`, `ui.test.tsx`. Not run: `pnpm validate:slack` (needs the Slack bench) and a screen check in a running console. |
 | DES-081 | An agent is made goal first and is met on its home: a new agent starts from a searchable list of outcomes (Start from scratch first), is given a name, a shape and a color with its bot drawn as it will be, and opens on a home where it introduces itself, offers jobs to hand it and takes a message addressed to it; its settings are grouped as General, Access, Tools and Behavior, and General shows what it completed this week, how it answers in Slack, Pause and Retire | Implemented: see [DES-081](#des-081-goal-first-agents-a-home-and-grouped-settings). |
 | DES-084 | An agent's health says what is checked and what to do next: one row (status pill, recent pass rate, a How evaluation works icon with the docs, an icon Refresh health that spins while it reads and says when it last read), checks on recent runs beside each eval suite's last result, schedule and Run Now, runs flagged for review linking to the queue, a schedule editor with presets inside the one hour to thirty day bound that says who the schedule runs as, and figures that show a value or an explained dash | Implemented: `AgentHealth.tsx` (`AgentHealth`, `AgentStats`), `evalHealth.ts`, the schedule editor in `Evals.tsx`, `next_run_at` and `created_by_name` on `GET /api/evals` and `flagged` on agent health, words in `copy.agentHealth`, `copy.agentStats` and `copy.evalSchedule`. Composes with #480's health row: one header row with an actions slot, pills, no separators and no explanatory paragraph. Evidence: `TestNextRunCountsFromTheLatestStart`, `TestAgentHealthCountsTheRunsFlaggedForReview`, `TestASuiteListingSaysWhenItsScheduleNextRunsAndForWhom`, `agent-health.dom.test.tsx`, `evalHealth.test.tsx`; before and after captures at 1280 and 390, light and dark, in pull request 482. Pass-rate bars are neutral when a run reached its threshold, warn below it and bad only when it could not run, each labelled by how long ago it ran; the schedule presets wrap rather than scroll at phone width. The refresh glyph turning is the one spinner on the page; it is a control's own state, and the content it refreshes stays on view. |
+| DES-090 | An agent's mascot feels alive and says what it is doing without drawing the eye: a small idle mark makes a rare blink or glance, finishes its move on open eyes when the pointer leaves or its work stops, and from 24px holds a prop that names its activity; a mascot never carries the orb | Implemented: `useIdleGlance`, `useSettle`, `eyesOpen`, `AgentProp`, `agentPropOf` and `PropMark` in `packages/web/src/AgentOrb.tsx`, `.aui-prop` in `packages/render-web/src/theme.css`. Evidence: `agent-props.dom.test.tsx`; gallery and transcript captures at 2x, light and dark, before and after, in the pull request text; in Chrome, 30 seconds sampled showed glances of 1.2 to 2 seconds and none under reduced motion, and frames after the pointer left a mark showed it land its hop and hold still with open eyes. The orb stays only where no mascot is drawn: an `AgentMark` under 16px, a host's avatar picture and the status line. |
 | DES-091 | One component vocabulary (shadcn/ui) and one layout rule for every page: one row of tabs at most, an item's sections as a side list, the path on the title line, rows for things to compare and act on, cards only for things browsed by picture, one control per row (a split button for the rest), and drawers with one job | Implemented for the parts and the pages named in its section: `packages/render-web/src/ui/` (item, card, field, button-group, breadcrumb, table), `SplitButton.tsx`, `Page` `sections` and the breadcrumb title line in `ui.tsx`; Knowledge, a source, a skill, the Store, Connections, the People drawer and the session drawers follow it; web tests pass; checked in the browser at 1280 and 390, light and dark. The pages listed under "Not yet" in its section still use their own parts |
 | DES-089 | A session has no Side Chat: a second line of questions is a new session that refers to this one | Implemented: `WorkbenchSidechat.tsx`, `sidechat.ts`, the `sidechat` tab id, its header view and its key are removed; `session-context-panel.dom.test.tsx` and `route.test.ts` pass; checked in the browser that More Views and the workbench strip no longer list it |
 | DES-088 | The destination for work an agent starts without being asked is Automations, with a lightning mark, and has no Background tab: a session's background work is a section of that session's Details | Implemented: `Automations.tsx`, the entry in `Sidebar.tsx`, `/automations` in `route.ts` (old `/scheduled` addresses open it), `SessionBackground` in `Background.tsx` shown by `SessionPanel.tsx`; `automations.dom.test.tsx`, `background.dom.test.tsx`, `route.test.ts` and the sidebar tests pass; the page and the sidebar checked in the browser, the Background section by DOM tests only |
@@ -1175,6 +1176,59 @@ any. This reverses the first point of DES-030.
   links to that address, and an address that is not `https` is refused by the
   spec and never drawn as a link.
 
+### DES-090: A mark that feels alive and says what it is doing
+
+Owner request, 2026-11-21: make the agents' mascots feel alive, "not often so
+it's distracting", show what an agent is doing with a small prop, "a little
+microscope when investigating", and "on hover it starts; off hover, let it
+complete the cycle".
+
+- A mark under 32px that is idle, done, failed or stopped holds still, but
+  every 12 to 25 seconds it moves for 1.2 to 2 seconds: a blink, a glance or
+  a small turn of the head, never a hop. The first wait is set by the
+  agent's name, so a list of agents does not move in unison.
+- A mark that waits on a person never moves of its own accord. Under reduced
+  motion no mark moves of its own accord. A mark off screen schedules
+  nothing, and a mark that goes clears its timers.
+- Under the pointer a mark moves at once. When the pointer leaves, or the
+  agent stops working, it does not freeze: it keeps moving for 1.4 seconds,
+  so its hop lands and it eases back to rest, then until its eyes are open
+  (read from its canvas, for at most 1.2 seconds more), and then holds
+  still. A glance ends on open eyes the same way. A pointer that comes back
+  meanwhile keeps it moving.
+- From 24px a mark holds a prop at its top right, clear of the face, at
+  about 40% of its size, in the muted text color:
+
+  | State | Prop | Motion |
+  | --- | --- | --- |
+  | searching | a microscope | the tube moves a little, as if focusing |
+  | thinking | two dots rising to a cloud | the dots rise and fade in turn |
+  | calling | a wrench | turns a few degrees each way |
+  | composing | a pencil | a small writing stroke |
+  | delegating | two overlapping bubbles | the back bubble fades in and out |
+  | waiting | an hourglass | none |
+
+- A mascot never carries the orb (owner request, 2026-11-21: "remove the
+  orbs if the mascots exist"), in the drawn bot or in its initials ring.
+  Under 24px a working mascot shows its work by its own hop alone. The orb
+  stays where no mascot is drawn: an `AgentMark` under 16px, a host's avatar
+  picture and the status line.
+- A prop fades in and out in 150 ms, and its loop stops under reduced
+  motion.
+- The bot's shape, color and look do not change: only its motion and the
+  prop do.
+- Acceptance: `agent-props.dom.test.tsx` passes; in the gallery at 2x, light
+  and dark, each prop reads at 24px and 32px and covers no face.
+
+The props are drawn as the objects themselves, in their own colors and
+shading: a lab microscope (base, lamp, stage with a slide, arm, a tube that
+eases down to focus, a turning knob), a cloud with three dots that come in
+turn, a steel wrench that turns, a yellow pencil that writes a line, a grey
+message and a blue answer that types, and a wooden hourglass that holds
+still. A thought or a message floats above the head; a thing the bot uses
+stands at its side. `/mascot-gallery.html` on the dev server shows every
+state at 28, 48 and 96px, with `?theme=light` for the light theme.
+
 ### DES-091: One component vocabulary, one layout rule
 
 Owner request, 2026-11-21: "use the best interfaces for those specific
@@ -2245,7 +2299,7 @@ In Slack (the Slack app, `apps/slack`):
   a refusal is said to the presser alone in Humagen's words. The change is
   said in the thread, naming who made it, that the approval agent now
   approves and answers what the thread settles and that the action already
-  waiting still waits, with one button back (Switch to Ask, or Switch to
+  waiting still waits, with one button back (Switch to Manual, or Switch to
   Auto).
 - An approval the approval agent decided says so on its card in the
   thread, with its reason, as the inbox does: the run's answer carries the
@@ -2924,7 +2978,7 @@ Auto, the most useful of the three.
 
 Rules:
 
-- There are two approval modes: `ask` (**Ask**, the default), where a person
+- There are two approval modes: `ask` (**Manual**, the default), where a person
   approves every gated action, and `auto` (**Auto**), where the approval agent
   decides gated actions, answers what the session already settles, and asks a
   person when unsure. Auto is chosen by a person who may post in the session,
@@ -2961,12 +3015,14 @@ Rules:
   under the answer, or **Approval agent: Asked a person** with the reason
   above the options. The answer is recorded as the person's, so they see it
   and can correct the agent in the session.
-- The composer shows one control: an icon and **Ask** or **Auto**. It opens a
-  menu headed **Approval mode** with the two, each with one line on what
-  happens in that mode and a check on the one in use. Someone else's choice
+- The composer shows one control under the bar: a pill with the mode's icon
+  (a hand for **Manual**, fast-forward for **Auto**) and its word. It opens a
+  menu headed by one question, "Who approves gated actions?", with the two,
+  each with its icon, one line on what happens in that mode and a check on
+  the one in use; Auto's row carries the warning tint. Someone else's choice
   reads "Auto, chosen by <name>", and the menu says so; it also says when the
   approval agent has no model to run on. Slack sets a thread to Auto from a
-  waiting call's menu and back with **Switch to Ask** (DES-057).
+  waiting call's menu and back with **Switch to Manual** (DES-057).
 - A workspace's own output schema for the approval agent keeps working: the
   `answer` field is optional, and a schema without it decides calls only, so
   every question goes to a person.

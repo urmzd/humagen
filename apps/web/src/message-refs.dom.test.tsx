@@ -571,7 +571,7 @@ test("Details collects each answer's references, with how it worked, its cost an
     rows[0]?.textContent ?? "",
     /Worked 14s · 2 agents · 3 tools · \$0\.01 · claude-sonnet/,
   );
-  assert.match(rows[0]?.textContent ?? "", new RegExp(words.delegatedTo("ops, analyst")));
+  assert.match(rows[0]?.textContent ?? "", new RegExp(words.delegatedTo("Ops, Analyst")));
   const first = rows[0]?.querySelector("[data-chip]");
   assert.equal(first?.getAttribute("data-chip"), "origin");
 });

@@ -239,10 +239,13 @@ func (r Rule) scope() string {
 // Alert is one firing of a rule.
 type Alert struct {
 	// Projection identifies the authoritative internal attention record, never a public message anchor.
-	Projection   string     `json:"-"`
-	ID           string     `json:"id"`
-	Session      string     `json:"session,omitempty"`
-	Message      string     `json:"message,omitempty"`
+	Projection string `json:"-"`
+	ID         string `json:"id"`
+	Session    string `json:"session,omitempty"`
+	Message    string `json:"message,omitempty"`
+	// Review is the session where a person reviews the alert with an agent,
+	// once someone has opened it.
+	Review       string     `json:"review,omitempty"`
 	Priority     Priority   `json:"priority,omitempty"`
 	State        AlertState `json:"state,omitempty"`
 	SnoozedUntil time.Time  `json:"snoozed_until,omitzero"`

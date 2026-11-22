@@ -1,5 +1,6 @@
 import { createContext, type ReactNode, useEffect, useState } from "react";
 import { call } from "./api.ts";
+import { follow } from "./cards.tsx";
 import { type ConversationPanel, href } from "./route.ts";
 import { followSession } from "./sessionStream.ts";
 import { AgentMark, Problem, SkeletonRows } from "./ui.tsx";
@@ -132,6 +133,7 @@ export function SessionRelations({ id, canWrite = false }: { id: string; canWrit
               <li key={child.id}>
                 <a
                   href={href({ page: "conversation", id: child.id })}
+                  onClick={(event) => follow(event)}
                   className="flex min-h-11 items-center gap-2 rounded-aui px-2 text-aui-sm hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
                 >
                   <AgentMark name={child.agent} size={18} />
@@ -154,6 +156,7 @@ export function SessionRelations({ id, canWrite = false }: { id: string; canWrit
                 <a
                   className="inline-flex min-h-11 items-center text-aui-sm underline"
                   href={href({ page: "conversation", id: link.target })}
+                  onClick={(event) => follow(event)}
                 >
                   {link.kind || `Related session ${i + 1}`}
                 </a>

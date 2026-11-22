@@ -430,7 +430,7 @@ test("Auto is offered for the thread from a waiting call's menu, set as the pers
   assert.equal(note?.text, defaultCopy.approvals.nowAuto(`<@${OTHER_USER}>`));
   // The note names the two modes as the console does.
   assert.match(note?.text ?? "", /set this thread to Auto\. .* answers questions/);
-  assert.equal(defaultCopy.approvals.switchToAsk, "Switch to Ask");
+  assert.equal(defaultCopy.approvals.switchToAsk, "Switch to Manual");
   assert.equal(defaultCopy.approvals.switchToAuto, "Switch to Auto");
   assert.equal(defaultCopy.approvals.letAgentDecide, "Set this thread to Auto");
   assert.deepEqual(buttons(note?.blocks as unknown[]), [defaultCopy.approvals.switchToAsk]);

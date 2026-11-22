@@ -908,6 +908,42 @@ func (s *Store) Update(tenantName, id string, version int, at time.Time, fn func
 	return s.update(tenantName, id, version, at, fn, false)
 }
 
+// Retitle names a thread for the platform, not for a person. fn reads the
+// record as it stands and returns the title and its source, TitlePlaceholder
+// or TitleGenerated, or ok false to leave it. A title a person gave is never
+// replaced: fn is not called for one. The record's version moves, as for any
+// change of its title, and when it was last active does not. It reports
+// whether the title changed.
+func (s *Store) Retitle(tenantName, id string, at time.Time, fn func(Thread) (title, source string, ok bool)) (Thread, bool, error) {
+	changed := false
+	h, err := s.edit(tenantName, id, func(next *head, _ *write) error {
+		changed = false
+		if next.TitleSource == TitlePerson || next.Archive != nil {
+			return state.ErrUnchanged
+		}
+		title, source, ok := fn(next.clone())
+		if !ok || title == next.Title && source == next.TitleSource {
+			return state.ErrUnchanged
+		}
+		if source != TitlePlaceholder && source != TitleGenerated {
+			return fmt.Errorf("%w: the platform gives a placeholder or a generated title", ErrInvalid)
+		}
+		next.Title, next.TitleSource = title, source
+		if err := next.validate(); err != nil {
+			return err
+		}
+		next.Version, changed = next.Version+1, true
+		return nil
+	})
+	if err != nil {
+		return Thread{}, false, err
+	}
+	if changed {
+		s.tell(tenantName, Notice{ID: id, At: at})
+	}
+	return h.Thread, changed, nil
+}
+
 // UpdateMoving is Update that may also move a private thread to another
 // project or channel: a shared thread, and one on a surface or started from
 // an announcement, stays where it is (ErrInvalid), and a project it moves to
@@ -946,6 +982,12 @@ func (s *Store) update(tenantName, id string, version int, at time.Time, fn func
 			return fmt.Errorf("%w: participants are changed on their own", ErrInvalid)
 		}
 		next.Version, next.CreatedBy, next.CreatedAt, next.UpdatedAt = cur.Version, cur.CreatedBy, cur.CreatedAt, cur.UpdatedAt
+		// A title changed here is a person's: the platform names a
+		// thread only through Retitle, which never replaces one.
+		next.TitleSource = cur.TitleSource
+		if next.Title != cur.Title {
+			next.TitleSource = TitlePerson
+		}
 		next.Default = legacy.Default(next.Default)
 		if err := next.validate(); err != nil {
 			return err

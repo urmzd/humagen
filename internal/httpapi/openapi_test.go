@@ -2782,6 +2782,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 
 	workspaceID := exerciseWorkspaceFileContract(t, c, auditAdmin, globex)
 	exerciseSandboxCommandContract(t, c)
+	exerciseBangCommandContract(t, c)
 	padID := exerciseScratchpadContract(t, c, auditAdmin, globex, workspaceID)
 	exerciseSaveContract(t, c, auditAdmin, globex, workspaceID, padID)
 	c.call(auditAdmin, "GET", "/api/threads/{id}/usage", "/api/threads/"+workspaceID+"/usage", "", http.StatusOK)
@@ -2801,25 +2802,27 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "PUT", "/api/projects/{name}/memory/{id}", "/api/projects/Launch/memory/"+freshProjectNote.str("id"), `{"text":""}`, http.StatusBadRequest)
 	freshPersonalNote := c.call(auditAdmin, "POST", "/api/me/memory", "/api/me/memory", `{"text":"Personal correction source"}`, http.StatusCreated)
 	real := map[string]map[string]string{
-		"/api/sessions/{id}":                         {"id": sessionContract["id"]},
-		"/api/messages/{id}":                         {"id": sessionContract["id"]},
-		"/api/messages/{id}/trace":                   {"id": sessionContract["id"]},
-		"/api/messages/{id}/answer":                  {"id": sessionContract["id"]},
-		"/api/messages/{id}/feedback":                {"id": sessionContract["id"]},
-		"/api/messages/{id}/stop":                    {"id": sessionContract["id"]},
-		"/api/messages/{id}/context":                 {"id": sessionContract["id"]},
-		"/api/sessions/{id}/messages":                {"id": sessionContract["id"]},
-		"/api/sessions/{id}/stream":                  {"id": sessionContract["id"]},
-		"/api/sessions/{id}/voice/transcriptions":    {"id": sessionContract["id"]},
-		"/api/sessions/{id}/voice/speech":            {"id": sessionContract["id"]},
-		"/api/sessions/{id}/messages/{mid}":          {"id": sessionContract["id"], "mid": "m-1"},
-		"/api/sessions/{id}/stop":                    {"id": sessionContract["id"]},
-		"/api/sessions/{id}/browser":                 {"id": sessionContract["id"]},
-		"/api/sessions/{id}/people":                  {"id": sessionContract["id"]},
-		"/api/sessions/{id}/links":                   {"id": sessionContract["id"]},
-		"/api/sessions/{id}/alerts":                  {"id": sessionContract["id"]},
-		"/api/alerts/{id}":                           {"id": sessionContract["alert"]},
-		"/api/sessions/{id}/messages/{mid}/feedback": {"id": sessionContract["id"], "mid": sessionContract["run"]},
+		"/api/sessions/{id}":                                {"id": sessionContract["id"]},
+		"/api/messages/{id}":                                {"id": sessionContract["id"]},
+		"/api/messages/{id}/trace":                          {"id": sessionContract["id"]},
+		"/api/messages/{id}/answer":                         {"id": sessionContract["id"]},
+		"/api/messages/{id}/feedback":                       {"id": sessionContract["id"]},
+		"/api/messages/{id}/stop":                           {"id": sessionContract["id"]},
+		"/api/messages/{id}/context":                        {"id": sessionContract["id"]},
+		"/api/sessions/{id}/messages":                       {"id": sessionContract["id"]},
+		"/api/sessions/{id}/stream":                         {"id": sessionContract["id"]},
+		"/api/sessions/{id}/voice/transcriptions":           {"id": sessionContract["id"]},
+		"/api/sessions/{id}/voice/speech":                   {"id": sessionContract["id"]},
+		"/api/sessions/{id}/messages/{mid}":                 {"id": sessionContract["id"], "mid": "m-1"},
+		"/api/sessions/{id}/stop":                           {"id": sessionContract["id"]},
+		"/api/sessions/{id}/browser":                        {"id": sessionContract["id"]},
+		"/api/sessions/{id}/people":                         {"id": sessionContract["id"]},
+		"/api/sessions/{id}/links":                          {"id": sessionContract["id"]},
+		"/api/sessions/{id}/alerts":                         {"id": sessionContract["id"]},
+		"/api/alerts/{id}":                                  {"id": sessionContract["alert"]},
+		"/api/alerts/{id}/review":                           {"id": sessionContract["alert"]},
+		"/api/sessions/{id}/messages/{mid}/attachments/{n}": {"id": sessionContract["review"], "mid": "m-1", "n": "0"},
+		"/api/sessions/{id}/messages/{mid}/feedback":        {"id": sessionContract["id"], "mid": sessionContract["run"]},
 
 		"/api/threads/{id}/files":                             {"id": workspaceID},
 		"/api/threads/{id}/files/content":                     {"id": workspaceID},
@@ -3086,6 +3089,8 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 var unexercised = map[string]string{
 	"POST /api/agents/{name}/slack-app 404":              "an agent that does not exist, the same seenAgent and catalog read the GET covers",
 	"PUT /api/agents/{name}/home 409":                    "a home is refused only while the agent's default skills would not fit it; the guard is in platform.homeUsers",
+	"POST /api/sessions/{id}/messages 503":               "a sandbox that cannot start an instance for a command, the same postCommand path POST /api/sessions answers 503 from (exerciseBangCommandContract)",
+	"POST /api/threads/{id}/messages 503":                "a sandbox that cannot start an instance for a command, the same postCommand path POST /api/sessions answers 503 from (exerciseBangCommandContract)",
 	"POST /api/sessions 409":                             "governed admission to a deleted project uses the same path tested by POST /api/runs deleted-project response",
 	"POST /api/sessions 200":                             "a chat surface's reply landing in its existing root, covered by TestAChatServiceFindsOrStartsASlackThreadsRootSession",
 	"POST /api/messages/{id} 409":                        "a full or moved conversation, the same PostMessage path POST /api/sessions/{id}/messages takes",
@@ -3094,6 +3099,8 @@ var unexercised = map[string]string{
 	"POST /api/sessions/{id}/messages 409":               "deleted-project admission uses the same PostMessage path tested by thread/run responses",
 	"POST /api/sessions/{id}/people 409":                 "concurrent participant changes fail thread version CAS covered by participant race tests",
 	"POST /api/sessions/{id}/alerts 409":                 "random alert identity collision fails CreateSession CAS; callers cannot supply the ID",
+	"POST /api/alerts/{id}/review 400":                   "a review session whose key another source alert holds, the same StartSession check POST /api/sessions makes",
+	"POST /api/alerts/{id}/review 409":                   "deleted-project admission, the same StartSession path POST /api/sessions takes",
 	"PUT /api/sessions/{id}/messages/{mid}/feedback 409": "same putFeedback handler unfinished-run409 is exercised via legacy feedback route",
 
 	// Voice mode's refusals, each covered by its own test in voice_session_test.go.

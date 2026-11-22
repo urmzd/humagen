@@ -2137,7 +2137,7 @@ test("a message that tags an agent starts its run, shown with the agent's answer
     );
     fireEvent.change(box, { target: { value: asked.text } });
     fireEvent.keyDown(box, { key: "Enter" });
-    assert.ok(await screen.findByRole("article", { name: "Answered by helper" }));
+    assert.ok(await screen.findByRole("article", { name: "Answered by Helper" }));
     // Both messages are there: the one that started nothing, then the one that tagged helper.
     assert.equal(screen.getAllByRole("article", { name: "Message from Ana" }).length, 2);
   } finally {
@@ -3002,20 +3002,19 @@ test("an answer routed to the one agent a message went to has no routing line", 
   }
 });
 
-test("the + menu returns focus to its category when leaving Agents and Skills", async () => {
+test("the + menu returns focus to Agents when leaving its pane, and has no Skills", async () => {
   net = stubFetch({
     "GET /api/projects/Globex/channels": () => ({ channels: [] }),
   });
   render(
     <PlusMenu
       agents={[{ name: "helper" }, { name: "lead" }]}
-      skills={[]}
-      onSkill={() => {}}
       onAttach={() => {}}
       onClose={() => {}}
     />,
   );
   const menu = screen.getByRole("dialog", { name: defaultCopy.chat.menu });
+  assert.equal(within(menu).queryByRole("button", { name: /^Skills\b/ }), null);
   const agents = within(menu).getByRole("button", { name: /^Agents\b/ });
   fireEvent.click(agents);
   const search = within(menu).getByRole("searchbox", { name: defaultCopy.chat.findAgent });
@@ -3025,12 +3024,6 @@ test("the + menu returns focus to its category when leaving Agents and Skills", 
   fireEvent.keyDown(document.activeElement as Element, { key: "Escape" });
   await waitFor(() =>
     assert.equal(document.activeElement?.textContent?.startsWith("Agents"), true),
-  );
-  fireEvent.click(within(menu).getByRole("button", { name: /^Skills\b/ }));
-  await within(menu).findByRole("searchbox");
-  fireEvent.keyDown(document.activeElement as Element, { key: "Escape" });
-  await waitFor(() =>
-    assert.equal(document.activeElement?.textContent?.startsWith("Skills"), true),
   );
   assert.ok(
     screen.getByRole("dialog", { name: defaultCopy.chat.menu }),
@@ -3429,7 +3422,7 @@ test("human and completed-agent fork actions share the Copy and Reply footer", a
   });
   assert.ok(within(actions).getByRole("button", { name: defaultCopy.conversation.copyMessage }));
   fireEvent.click(within(actions).getByRole("button", { name: defaultCopy.forking.fromHere }));
-  const agent = screen.getByRole("article", { name: "Answered by helper" });
+  const agent = screen.getByRole("article", { name: "Answered by Helper" });
   // Fork sits in the answer's row, never behind More actions.
   assert.equal(within(agent).queryByRole("button", { name: "More actions" }), null);
   fireEvent.click(within(agent).getByRole("button", { name: defaultCopy.forking.fromHere }));
@@ -3525,7 +3518,7 @@ test("multiple replies by the same agent each retain one accessible Copy footer"
 });
 
 for (const kind of ["conversation", "channel"] as const) {
-  test(`the ${kind} composer inserts a project skill without submitting the draft`, async () => {
+  test(`the ${kind} composer writes a project skill typed with / without submitting the draft`, async () => {
     net = stubFetch({
       "GET /api/threads/th-00000000000000aa": () => mine,
       "GET /api/threads": () => ({ threads: [], next: null }),
@@ -3614,14 +3607,13 @@ for (const kind of ["conversation", "channel"] as const) {
     const box = (await screen.findByPlaceholderText(
       kind === "conversation" ? words.message : words.startThread,
     )) as HTMLTextAreaElement;
-    fireEvent.change(box, { target: { value: "Keep this request." } });
-    fireEvent.click(screen.getByRole("button", { name: defaultCopy.chat.plus }));
-    const menu = await screen.findByRole("dialog", { name: defaultCopy.chat.menu });
-    fireEvent.click(within(menu).getByRole("button", { name: /^Skills\b/ }));
-    fireEvent.click(await within(menu).findByRole("button", { name: /^\$?review(?:\s|$)/i }));
-    await waitFor(() => assert.equal(box.value, "/review Keep this request."));
-    assert.equal(!!screen.queryByRole("dialog", { name: defaultCopy.chat.menu }), false);
+    // A skill is typed: / opens its completion, and a pick writes it without sending.
+    fireEvent.change(box, { target: { value: "/rev" } });
+    await screen.findByRole("listbox", { name: defaultCopy.threads.commands });
+    fireEvent.keyDown(box, { key: "Enter" });
+    await waitFor(() => assert.equal(box.value, "/review "));
     assert.equal(net.seen.filter((request) => request.method === "POST").length, 0);
+    fireEvent.change(box, { target: { value: "/review Keep this request." } });
     fireEvent.keyDown(box, { key: "Enter" });
     await waitFor(() =>
       assert.equal(net?.seen.filter((request) => request.method === "POST").length, 1),
@@ -3811,7 +3803,7 @@ test("Retry on a failed call asks its own agent alone, for the person the run ac
     },
     initial,
   );
-  const retryName = `${defaultCopy.conversation.callFailure.retry} deployer`;
+  const retryName = `${defaultCopy.conversation.callFailure.retry} Deployer`;
   // Ana's answer offers Retry and Connect; Bo's, read by Ana, offers neither.
   await waitFor(() => assert.equal(screen.getAllByTestId("call-failure").length, 2));
   assert.equal(screen.getAllByRole("button", { name: retryName }).length, 1);

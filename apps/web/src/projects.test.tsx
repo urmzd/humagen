@@ -4,7 +4,7 @@ import { defaultCopy as copy } from "@humagen/components";
 import type { ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { Me, Preferences, ProjectChange, ProjectView, Settings as Workspace } from "./api.ts";
-import { ProjectChoices, ProjectPicker, placeOf } from "./ProjectPicker.tsx";
+import { ProjectChoices, placeOf, projectLabel } from "./ProjectPicker.tsx";
 import { ProjectsPage } from "./Projects.tsx";
 import {
   east,
@@ -334,11 +334,8 @@ test("the picker shows each project's path and kind, and searches its customer",
     ),
     /Partner in Field engineering/,
   );
-  // The closed picker names the chosen project by its title.
-  assert.match(
-    html(<ProjectPicker projects={tree} value="Field" onChange={noop} onCreated={noop} />),
-    /aria-label="Select project: Field engineering"/,
-  );
+  // The settings menu's Project row names the chosen project by its title.
+  assert.equal(projectLabel("Field", tree), "Field engineering");
 });
 
 test("settings no longer edit projects: the workspace section links to Projects and to the workspace itself", () => {

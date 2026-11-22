@@ -5,6 +5,7 @@ import type { Revision, ScheduleView } from "./api.ts";
 import { AgentTag, ItemCard, itemGrid, Pill, Tag } from "./cards.tsx";
 import { inWords } from "./cron.ts";
 import type { ProjectRef } from "./projects.ts";
+import { href } from "./route.ts";
 import { ScheduleForm } from "./Schedules.tsx";
 import { ago, Empty, Page, primary } from "./ui.tsx";
 
@@ -67,6 +68,8 @@ export function Automations({
             <li key={s.name} className="min-w-0">
               <ItemCard
                 title={s.name}
+                // A real link, so a modified click opens the automation in a new tab.
+                href={href({ page: "schedules", name: s.name })}
                 onOpen={() => onSchedule(s.name)}
                 time={s.recent[0] ? ago(s.recent[0].created_at) : undefined}
                 facts={

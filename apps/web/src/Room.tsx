@@ -25,6 +25,7 @@ import {
 } from "@humagen/web";
 import { Fragment, type ReactNode, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { ApprovalToggle } from "./ApprovalToggle.tsx";
+import { AttachedDocument, opensAsDocument } from "./AttachedDocument.tsx";
 import { actedFor, citationOf, type Run, turnOf } from "./adapter.ts";
 import {
   ApiError,
@@ -46,6 +47,13 @@ import {
 } from "./api.ts";
 import { askedOf, asksOf, copyFor, type Refusal, stillAsks } from "./asks.ts";
 import { answersLine } from "./availability.ts";
+import {
+  bangCommand,
+  CommandMessage,
+  commandHint,
+  commandHold,
+  commandsHere,
+} from "./BangCommand.tsx";
 import { agentShown, brandShown } from "./branding.ts";
 import { Composer, type ComposerSeed } from "./Composer.tsx";
 import { type ConversationForkActions, ConversationForkPanels } from "./ConversationForkPanels.tsx";
@@ -91,6 +99,7 @@ import { OriginButton, referenceOfPlace, SessionPlace, usePlace } from "./Sessio
 import { ComposerFooter, UsageRing } from "./SessionUsage.tsx";
 import { type SessionView, SessionViews, useUnavailableViews } from "./SessionViews.tsx";
 import { ShareDialog } from "./Share.tsx";
+import { useSessionOptions } from "./sessionOptions.ts";
 import { useItemStops, useSessionBackground, useSessionStop } from "./stops.tsx";
 import { topicsOf } from "./topics.ts";
 import { mergeTurns } from "./turns.ts";
@@ -237,7 +246,13 @@ function RoomComposer({
   onBackgroundChanged,
   footer,
   sessionAgents,
+  commands,
 }: {
+  /**
+   * Whether a "!" message may run its command here: null when it may, else
+   * why not. Left out, "!" is plain text.
+   */
+  commands?: string | null;
   runs?: Run[];
   /** Every run in the session, whoever asked for it: the composer's Stop stops them all. */
   sessionRuns?: Run[];
@@ -264,6 +279,7 @@ function RoomComposer({
     text: string,
     pick?: QueuedMessage["pick"],
     uploads?: QueuedMessage["uploads"],
+    command?: boolean,
   ) => Promise<ThreadPosted>;
 }) {
   const [problem, setProblem] = useState<string | null>(null);
@@ -283,10 +299,23 @@ function RoomComposer({
   const queue = useQueue({
     onStart: (m) => {
       setProblem(null);
+      // A "!" message runs its command and starts no run. Where none may
+      // run, it is not sent to the agent: it waits in the box, saying why.
+      const command = commands !== undefined && bangCommand(m.text) !== null;
+      if (command && commands) {
+        setProblem(commands);
+        queue.reject();
+        return;
+      }
       // What the person did by hand in the workbench since their last message
       // goes with this one, and is cleared once it is posted.
       const post = (text: string) => onPost(text, m.pick, m.uploads);
-      (thread ? postWithHumanActivity(thread, m.text, post) : post(m.text))
+      (command
+        ? onPost(m.text, undefined, undefined, true)
+        : thread
+          ? postWithHumanActivity(thread, m.text, post)
+          : post(m.text)
+      )
         .then((p) => {
           setProblem(postedLine(p) || null);
           const ids = p.runs.filter((run) => isWorking(run.status)).map((run) => run.id);
@@ -352,6 +381,8 @@ function RoomComposer({
         voice={voice}
         trailing={trailing}
         footer={footer}
+        note={commands !== undefined && commandHint(draft, commands)}
+        hold={(text, files) => commandHold(text, files, commands)}
         stopAll={
           thread
             ? { busy: session.busy, pending: session.pending, onStop: () => void stopAll() }
@@ -403,21 +434,31 @@ function MessageView({
   continued?: boolean;
   actions?: ReactNode;
 }) {
+  const command = m.command;
+  if (command) return <CommandMessage m={{ ...m, command }} mine={mine} focused={focused} />;
   const who = m.name || m.by;
   const followup = followupNote(m);
   // What the person did by hand before sending is drawn closed, apart from their words.
   const { text: said, activity } = splitHumanActivity(m.text);
   const byHand = activity ? <HumanActivityNote activity={activity} mine={mine} /> : null;
+  // A text file opens as a document; any other file is named.
   const uploads = m.attachments?.length ? (
-    <ul className="flex max-w-full flex-wrap gap-1" aria-label={defaultCopy.details.used.uploads}>
+    <ul
+      className={`flex max-w-full flex-wrap gap-1 ${mine ? "justify-end" : ""}`}
+      aria-label={defaultCopy.details.used.uploads}
+    >
       {m.attachments.map((file, index) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: A retained message's files are immutable and may share both name and bytes.
         <li key={index} className="min-w-0 max-w-full">
-          <Reference
-            kind="file"
-            label={file.name || file.alt || file.media_type}
-            title={file.unread || file.media_type}
-          />
+          {opensAsDocument(file) ? (
+            <AttachedDocument session={m.thread} message={m.id} index={index} file={file} />
+          ) : (
+            <Reference
+              kind="file"
+              label={file.name || file.alt || file.media_type}
+              title={file.unread || file.media_type}
+            />
+          )}
         </li>
       ))}
     </ul>
@@ -632,7 +673,7 @@ function AnswerView({
       id={`turn-${run.id}`}
       data-turn-id={run.id}
       className={`flex flex-col gap-2 ${focused ? "rounded-aui outline-2 outline-offset-4 outline-aui-accent" : ""}`}
-      aria-label={words.answeredBy(name)}
+      aria-label={words.answeredBy(agentShown(run.agent))}
     >
       {/* A run from before threads carries what was asked; one that answers a message does not repeat it. */}
       {!run.message && (
@@ -780,6 +821,11 @@ export function ThreadRoom({
 }) {
   const [page, setPage] = useState<ThreadPage>(initial);
   const attention = useSessionAlerts(id, !!alertAccess, tick, onChanged);
+  // A session opened to review an alert never repeats that alert: it belongs
+  // on the conversation it came from.
+  const alertRows = attention.rows.filter((a) => a.id !== page.thread.session?.source_alert);
+  // Whether a "!" message may run a command in this session's sandbox.
+  const sessionOptions = useSessionOptions(id.startsWith("s_"));
   // Every turn read so far, oldest first. A refresh reads the newest page,
   // which moves on as the thread grows; the turns it no longer holds stay.
   const [turns, setTurns] = useState<ThreadTurn[]>(initial.turns);
@@ -1271,21 +1317,22 @@ export function ThreadRoom({
                                   onLeave={leave}
                                   agents={tags.agents}
                                   {...mentionPicks(draft, tags.agents, setSeed)}
-                                  skills={tags.skills}
-                                  skillsFailed={tags.skillsFailed}
-                                  onSkill={(name) => {
-                                    setSeed({ text: `/${name} `, mode: "prepend" });
-                                  }}
                                   onAttach={attach}
                                   onClose={close}
                                 />
                               ),
                             }}
                             autoFocus={sharing ? false : undefined}
-                            onPost={(text, pick, uploads) =>
+                            commands={commandsHere(sessionOptions?.terminal, id.startsWith("s_"))}
+                            onPost={(text, pick, uploads, command) =>
                               // It follows the newest message, so a run it starts reads the conversation so far.
                               coworking
-                                .post(id, { text, ...pick, uploads })
+                                .post(id, {
+                                  text,
+                                  ...pick,
+                                  uploads,
+                                  ...(command ? { command } : {}),
+                                })
                                 .then((p) => {
                                   // What was posted shows at once: the message, and any run its tags started.
                                   setTurns((t) =>
@@ -1323,7 +1370,7 @@ export function ThreadRoom({
                       </p>
                     )}
                     <SessionAlerts
-                      alerts={attention.rows.filter(
+                      alerts={alertRows.filter(
                         (a) =>
                           !duplicatesInlineApproval(a, turns) &&
                           (!alertAnchor(a) ||
@@ -1346,7 +1393,7 @@ export function ThreadRoom({
                     {turns.map((t, i) => (
                       <Fragment key={t.announcement?.id ?? t.message?.id ?? t.run?.id}>
                         <SessionAlerts
-                          alerts={attention.rows.filter(
+                          alerts={alertRows.filter(
                             (a) =>
                               !duplicatesInlineApproval(a, turns) &&
                               !!alertAnchor(a) &&
@@ -1782,11 +1829,6 @@ export function ChannelPage({
               <PlusMenu
                 agents={tags.agents}
                 {...mentionPicks(draft, tags.agents, setSeed)}
-                skills={tags.skills}
-                skillsFailed={tags.skillsFailed}
-                onSkill={(name) => {
-                  setSeed({ text: `/${name} `, mode: "prepend" });
-                }}
                 onAttach={attach}
                 onClose={close}
                 onLeave={leave}

@@ -103,7 +103,7 @@ function TurnView({
       id={`turn-${run.id}`}
       data-turn-id={run.id}
       className="flex flex-col gap-3"
-      aria-label={`Turn answered by ${run.agent}`}
+      aria-label={`Turn answered by ${agentShown(run.agent)}`}
     >
       <p className="humagen-said max-w-[80%] self-end whitespace-pre-wrap rounded-aui-lg px-3.5 py-2 text-aui-sm text-aui-fg">
         <Mentioned text={run.text} />
@@ -148,7 +148,10 @@ function TurnView({
             >
               ‹
             </button>
-            <span className="tabular-nums" title={siblings.map((s) => s.agent).join(", ")}>
+            <span
+              className="tabular-nums"
+              title={siblings.map((s) => agentShown(s.agent)).join(", ")}
+            >
               {index + 1} / {siblings.length}
             </span>
             <button

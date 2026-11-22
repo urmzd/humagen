@@ -3359,6 +3359,14 @@ export const defaultCopy = {
       resolved: "Nothing is done yet.",
     } as Record<"open" | "snoozed" | "resolved", string>,
     reviewApproval: "Review Approval",
+    /** An alert's own actions: go to where it came from, ask the agent about it, settle it. */
+    view: "View",
+    review: "Review",
+    openReview: "Open Review",
+    reviewing: "Opening…",
+    reviewFailed: "The review could not be opened.",
+    /** The menu that holds an alert's lesser actions, such as Snooze. */
+    more: "More alert actions",
     markDone: "Mark Done",
     markDoneNamed: (title: string) => `Mark ${title} done`,
     /** What an alert's card in a session opens, by the alert's action. */
@@ -3384,6 +3392,14 @@ export const defaultCopy = {
     snoozeSelected: "Snooze Selected for 1 Hour",
     doneWhen: (condition: string) => `Done when: ${condition}`,
     updated: (n: number) => `Updated ${n} ${n === 1 ? "alert" : "alerts"}.`,
+  },
+  /** A text file attached to a message, shown as a card that opens it. */
+  attachedDocument: {
+    open: (name: string) => `Open ${name}`,
+    kind: (markdown: boolean) => (markdown ? "Document" : "Text file"),
+    unavailable: "The file could not be opened.",
+    truncated: "Only the start of this file is shown.",
+    close: "Close",
   },
   /** The Artifacts page: what agents published, and tiles that start a new one. */
   artifactsPage: {
@@ -3653,8 +3669,10 @@ export const defaultCopy = {
   approvals: {
     /** The menu's heading, and the control's name for assistive technology. */
     label: "Approval mode",
-    /** The two modes, each with the one line its menu row says. */
-    ask: "Ask",
+    /** The question over the menu's rows. */
+    question: "Who approves gated actions?",
+    /** The two modes, each with the one line its menu row says. The API calls Manual "ask". */
+    ask: "Manual",
     askHint: "You approve every gated action.",
     auto: "Auto",
     autoHint: "The approval agent approves and answers for you, and asks when unsure.",
@@ -3666,14 +3684,14 @@ export const defaultCopy = {
     /** In the menu of an approval waiting in a Slack thread: sets the conversation, not the call. */
     letAgentDecide: "Set this thread to Auto",
     /** Under the note that the thread is set to Auto, to set it back. */
-    switchToAsk: "Switch to Ask",
-    /** Under the note that the thread is set to Ask, to set it to Auto again. */
+    switchToAsk: "Switch to Manual",
+    /** Under the note that the thread is set to Manual, to set it to Auto again. */
     switchToAuto: "Switch to Auto",
     /** What changed in the thread, said where everyone in it reads it. */
     nowAuto: (who: string) =>
       `${who} set this thread to Auto. The approval agent now approves gated actions and answers questions the thread already settles, as ${who} could, and asks a person when unsure. An action already waiting still waits for a person.`,
     nowAsk: (who: string) =>
-      `${who} set this thread to Ask. A person approves every gated action again.`,
+      `${who} set this thread to Manual. A person approves every gated action again.`,
   },
   /** Over Home's chat bar: the person's own project, where a conversation in no project is filed (DES-057). */
   noProject: "No project",
@@ -4021,6 +4039,31 @@ export const defaultCopy = {
       noRepos: "No repositories are connected.",
       connectGitHub: "Connect GitHub",
     },
+    /**
+     * The row under Home's composer: one word control per setting a new
+     * session has, each saying its value and opening a picker.
+     */
+    setup: {
+      label: "Session settings",
+      /** The agents control with no agent mentioned and no default to name. */
+      anyAgent: "Any agent",
+      agents: (count: number) => `${count} agents`,
+      /** Said in the agents picker while the message mentions nobody. */
+      defaultAnswers: (agent: string) => `With no mention, ${agent} answers.`,
+      bestAnswers: "With no mention, the best fit answers.",
+      noRepos: "None",
+      /** Why a row cannot change. */
+      unreadable: "Could not be read. Reload to try again.",
+      notSandboxed: "Runs here are not sandboxed, so there is no image to choose.",
+      channelFixed: "A thread in a channel uses the channel's setup.",
+      imagesLoading: "Loading images",
+      repos: (count: number) => (count === 1 ? "1 repo" : `${count} repos`),
+      reposMax: (max: number) => `Pick up to ${max}.`,
+      findRepo: "Find a repository",
+      noRepoMatch: "No repository matches.",
+      findImage: "Find an image",
+      noImageMatch: "No image matches.",
+    },
     /** Where the conversation is filed, in the composer's bar, as a list. */
     selected: "Selected for this conversation",
     removeProject: (where: string) => `Remove ${where}`,
@@ -4326,7 +4369,7 @@ export const defaultCopy = {
       label: "Company announcement",
       markRead: "Mark as Read",
       hide: "Hide for Me",
-      open: "Open Announcement",
+      open: "Open",
     },
     findHelp: {
       title: "Find an Agent or Project",
@@ -4934,6 +4977,8 @@ export const defaultCopy = {
   sessionSetup: {
     image: "Image",
     defaultImage: "Default",
+    /** The default image, said on the control under the composer. */
+    defaultImageValue: "Default image",
     defaultHint: (ref: string) => (ref ? `Everyone's · ${ref}` : "Everyone's"),
     warm: "Ready now",
     cold: "Starts on first use",
@@ -5170,6 +5215,28 @@ export const defaultCopy = {
     ran: (command: string, outcome: string) => `Ran ${command}: ${outcome}`,
     exit: (code: number) => `exit ${code}`,
     timedOut: "stopped at the 15 second limit",
+  },
+  /** A composer message that starts with "!": a command run in the session's sandbox (BangCommand.tsx). */
+  bangCommand: {
+    /** The hint while the draft starts with "!". */
+    hint: "Runs in this session's sandbox. The agent sees the output with your next message.",
+    hintHome:
+      "Starts a session and runs this in its sandbox. The agent sees the output with your next message.",
+    empty: "Type a command after !",
+    /** A command runs alone: a file attached to it would be run as part of it. */
+    withFiles: "A command runs alone. Remove the attached files to run it.",
+    /** Where no command can run. Said in the hint, and again when it is sent. */
+    noSandbox: "Commands cannot run here: this deployment has no isolated sandbox.",
+    /** The command block in the conversation. */
+    label: (who: string, command: string) => `${who} ran ${command}`,
+    you: "You",
+    ran: "ran a command",
+    exited: (code: number) => `Exit ${code}`,
+    timedOut: "Stopped at the 15 second limit",
+    cut: "Earlier output was cut.",
+    noOutput: "No output.",
+    showAll: (lines: number) => `Show All ${lines} Lines`,
+    showLess: "Show Less",
   },
   /** The Changes tab (WorkbenchChanges.tsx). */
   workbenchChanges: {

@@ -211,6 +211,8 @@ func (s *speakers) lines(t Turn) []string {
 			return []string{by + ": (announcement, since withdrawn)"}
 		}
 		return []string{by + ": (announcement: " + flat(a.Subject) + ") " + flat(a.Text)}
+	case t.Message != nil && t.Message.Command != nil:
+		return []string{s.asker(askers(t)[0]) + ": " + commandLine(*t.Message.Command, maxCommandLine)}
 	case t.Message != nil:
 		return []string{s.asker(askers(t)[0]) + ": " + flat(t.Message.Text)}
 	case t.Run != nil && t.Run.Message != "":

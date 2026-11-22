@@ -12,6 +12,7 @@ export * from "./Inspector";
 export * from "./Latest";
 export * from "./latestState";
 export * from "./Mailbox";
+export * from "./Mascot";
 export * from "./MessageActionRow";
 export * from "./Modal";
 export * from "./Presence";

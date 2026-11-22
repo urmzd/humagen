@@ -350,7 +350,7 @@ function RowStatusBadge({ state }: { state: RowState }) {
       aria-hidden
       data-state={state.kind}
       title={state.text}
-      className={`ml-auto size-2 shrink-0 rounded-full ${STATE_DOT[state.tone]} ${state.kind === "working" ? "motion-safe:animate-pulse" : ""}`}
+      className={`size-2 shrink-0 rounded-full ${STATE_DOT[state.tone]} ${state.kind === "working" ? "motion-safe:animate-pulse" : ""}`}
     />
   );
 }
@@ -504,16 +504,25 @@ function TaskRow({
           >
             {ageText && <span className="shrink-0 whitespace-nowrap">{ageText}</span>}
             <SourceLabel source={source} />
-            {state ? (
-              <RowStatusBadge state={state} />
-            ) : unread ? (
-              <span
-                aria-hidden
-                data-dot="unread"
-                className="ml-auto size-1.5 shrink-0 rounded-full bg-[var(--humagen-unread)]"
-              />
-            ) : null}
           </span>
+          {(state || unread) && (
+            // The status sits in the menu button's column, centered under it, on the second line.
+            <span
+              data-row-status
+              // Centered under the ⋯ button, which is 28px on a mouse so the two never meet.
+              className="absolute right-0.5 bottom-1.5 flex h-4 w-8 items-center justify-center pointer-coarse:bottom-2 pointer-coarse:w-11 [@media(pointer:fine)]:w-7"
+            >
+              {state ? (
+                <RowStatusBadge state={state} />
+              ) : (
+                <span
+                  aria-hidden
+                  data-dot="unread"
+                  className="size-1.5 shrink-0 rounded-full bg-[var(--humagen-unread)]"
+                />
+              )}
+            </span>
+          )}
           <span className="sr-only">, {words.sources[source]}</span>
         </a>
       )}
@@ -534,7 +543,7 @@ function TaskRow({
               align="right"
               label={`Manage ${title}`}
               popup="menu"
-              className={`${rowAction} opacity-0 group-hover/task:opacity-100 group-focus-within/task:opacity-100 focus-visible:opacity-100 aria-expanded:opacity-100 aria-expanded:bg-aui-hover aria-expanded:text-aui-fg [@media(pointer:coarse)]:size-11 ${current || peek.at ? "[@media(pointer:coarse)]:opacity-100" : "[@media(pointer:coarse)]:pointer-events-none [@media(pointer:coarse)]:group-focus-within/task:pointer-events-auto"}`}
+              className={`${rowAction} opacity-0 group-hover/task:opacity-100 group-focus-within/task:opacity-100 focus-visible:opacity-100 aria-expanded:opacity-100 aria-expanded:bg-aui-hover aria-expanded:text-aui-fg [@media(pointer:fine)]:size-7 [@media(pointer:coarse)]:size-11 ${current || peek.at ? "[@media(pointer:coarse)]:opacity-100" : "[@media(pointer:coarse)]:pointer-events-none [@media(pointer:coarse)]:group-focus-within/task:pointer-events-auto"}`}
               button={<EllipsisIcon size={16} />}
             >
               {(close) => (

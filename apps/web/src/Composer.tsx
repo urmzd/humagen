@@ -138,6 +138,7 @@ export function Composer({
   autoFocus,
   onDraft,
   leading,
+  beside,
   trailing,
   seed,
   tags,
@@ -148,7 +149,13 @@ export function Composer({
   onCancelHeld,
   stopAll,
   footer,
+  note,
+  hold,
 }: {
+  /** A line the bar says about the draft as it stands, such as what a "!" command will do. */
+  note?: ReactNode;
+  /** Why the draft, with its file count, may not be sent; the bar says it. */
+  hold?: (draft: string, files: number) => string | null;
   /**
    * Everything running in the session, whoever started it. While anything
    * runs the bar shows Stop, which (as Esc in an empty box does) stops all of
@@ -187,6 +194,8 @@ export function Composer({
   onDraft?: (text: string) => void;
   /** Controls beside the plus, such as where the conversation is filed. */
   leading?: ReactNode;
+  /** A control right after + in the row, such as a new session's settings. */
+  beside?: ReactNode;
   /** Controls before the send or speak button. */
   trailing?: ReactNode;
   /**
@@ -464,6 +473,7 @@ export function Composer({
   );
 
   const ready = value.trim().length > 0 || files.length > 0;
+  const kept = hold?.(value, files.length) ?? null;
   // The bar's light (ComposerLight.tsx) shows only on a bar in use, so it is
   // read once the bar sits idle on screen, or the moment it is due.
   const [light, setLight] = useState(false);
@@ -484,7 +494,7 @@ export function Composer({
   const lit = String(asked);
 
   const send = (now: boolean) => {
-    if (!ready || held) return;
+    if (!ready || held || kept) return;
     const text =
       withAttached(
         quote
@@ -962,6 +972,11 @@ export function Composer({
             {notice}
           </p>
         )}
+        {!notice && (kept || note) && (
+          <output data-layer="note" className={floatNote}>
+            {kept || note}
+          </output>
+        )}
         {/*
           One row: + on the left, the words, and on the right two plain icon
           buttons of equal weight, Send (or Stop while anything runs) and the
@@ -1005,6 +1020,7 @@ export function Composer({
               <Glyph d={PLUS} />
             </button>
           )}
+          {beside}
           <textarea
             id="composer-input"
             ref={input}

@@ -175,8 +175,11 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
       path: "/",
       act: async (page) => {
         await composer(page).fill("Keep this unsent draft while choosing context.");
-        await page.getByRole("button", { name: defaultCopy.chat.plus, exact: true }).click();
-        await page.getByRole("dialog", { name: "Add to this conversation", exact: true }).waitFor();
+        // The session's settings beside +: the menu opens with its rows, and the draft stays.
+        await page.getByRole("button", { name: defaultCopy.chat.setup.label, exact: true }).click();
+        const menu = page.getByRole("dialog", { name: defaultCopy.chat.setup.label, exact: true });
+        for (const id of ["project", "agents", "repos", "image"])
+          await menu.locator(`[data-pane-row="${id}"]`).waitFor();
         assert.equal(
           await composer(page).inputValue(),
           "Keep this unsent draft while choosing context.",
@@ -522,23 +525,38 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
         await readySession(page);
         const controls = page
           .locator(".humagen-composer-row > button")
-          .or(page.getByRole("button", { name: /^Approval mode: / }))
           .or(page.locator('[data-layer="usage-ring"]'));
         await page.locator('[data-layer="usage-ring"]').waitFor();
-        const geometry = await controls.evaluateAll((buttons) => ({
+        const measure = (buttons: Element[]) => ({
           target: matchMedia("(pointer: coarse)").matches ? 44 : 32,
           buttons: buttons.map((button) => {
             const { width, height } = button.getBoundingClientRect();
             const icon = button.querySelector("svg")?.getBoundingClientRect();
             return { width, height, icon: icon && { width: icon.width, height: icon.height } };
           }),
-        }));
-        assert.ok(geometry.buttons.length >= 4, "Compose, approval and usage controls are visible");
+        });
+        const geometry = await controls.evaluateAll(measure);
+        assert.ok(geometry.buttons.length >= 3, "Compose and usage controls are visible");
         for (const { width, height, icon } of geometry.buttons) {
           assert.equal(width, geometry.target, "Composer controls share a target width");
           assert.equal(height, geometry.target, "Composer controls share a target height");
           if (icon)
             assert.deepEqual(icon, { width: 18, height: 18 }, "Composer icons share a size");
+        }
+        // The approval mode is a pill with its icon and word: as tall as the
+        // controls beside it, at least as wide, with a smaller icon.
+        const pill = await page
+          .getByRole("button", { name: /^Approval mode: / })
+          .evaluateAll(measure);
+        assert.equal(pill.buttons.length, 1, "the approval mode is one control");
+        for (const { width, height, icon } of pill.buttons) {
+          assert.equal(
+            height,
+            pill.target,
+            "the approval pill is as tall as the composer's controls",
+          );
+          assert.ok(width >= pill.target, "the approval pill is at least a target wide");
+          assert.deepEqual(icon, { width: 14, height: 14 }, "the approval pill's icon is 14px");
         }
         // An answer shows its steps and called agents in itself: nothing under it opens them again.
         assert.equal(

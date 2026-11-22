@@ -18,7 +18,7 @@ import { LimitsPanel } from "./Limits.tsx";
 import { overLimit, parentBound, sessionBound, unlimited } from "./limits.fixtures.ts";
 import { amount, binding, byAgent, byRun, forRun, scopeWords } from "./limits.ts";
 import { AskAnalyst, FiredStrip, Monitor } from "./Monitor.tsx";
-import { ProjectChoices, ProjectPicker } from "./ProjectPicker.tsx";
+import { ProjectChoices, projectLabel } from "./ProjectPicker.tsx";
 import { RunItem, runManifest, runMarkdown, statusOf } from "./RunItem.tsx";
 import { replay } from "./Runs.tsx";
 import { Schedules } from "./Schedules.tsx";
@@ -171,10 +171,9 @@ test("project selection: an empty directory offers the explicit Workspace home a
   );
   assert.match(loading, /Loading projects/);
   assert.doesNotMatch(loading, /No projects yet/);
-  const untouched = renderToStaticMarkup(<ProjectPicker projects={[]} value={null} {...actions} />);
-  assert.match(untouched, /aria-label="Select project"/);
-  const projectless = renderToStaticMarkup(<ProjectPicker projects={[]} value="" {...actions} />);
-  assert.match(projectless, /aria-label="Select project: Workspace"/);
+  assert.equal(projectLabel(null, []), "Select project");
+  assert.equal(projectLabel("", []), "Workspace");
+  assert.equal(projectLabel("mine", [], "mine"), "Personal");
 });
 
 import { ActionId, messageState, messageTemplate, partTarget, type UiAction } from "@humagen/core";
