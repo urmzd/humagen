@@ -38,6 +38,22 @@ func (s *Server) sessionRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/sessions/{id}/alerts", s.authed(auth.AlertsWrite, s.seenSession(s.createSessionAlert)))
 	mux.HandleFunc("PATCH /api/alerts/{id}", s.authed(auth.AlertsWrite, s.seenAlert(s.patchAlert)))
 	mux.HandleFunc("POST /api/alerts/{id}/review", s.authed(auth.RunsWrite, s.seenAlert(s.reviewAlert)))
+	mux.HandleFunc("GET /api/sessions/{id}/messages/{mid}/attachments/{n}", s.authed(auth.RunsRead, s.seenSession(s.messageAttachment)))
+}
+
+// messageAttachment opens a text file attached to a message in a session.
+func (s *Server) messageAttachment(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	n, err := strconv.Atoi(r.PathValue("n"))
+	if err != nil || n < 0 {
+		fail(w, http.StatusBadRequest, "n must be a file's index")
+		return
+	}
+	text, err := s.P.MessageAttachment(r.Context(), who, r.PathValue("id"), r.PathValue("mid"), n)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, text)
 }
 
 // reviewAlert opens the session where the caller reviews an alert, which

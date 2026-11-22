@@ -25,6 +25,7 @@ import {
 } from "@humagen/web";
 import { Fragment, type ReactNode, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { ApprovalToggle } from "./ApprovalToggle.tsx";
+import { AttachedDocument, opensAsDocument } from "./AttachedDocument.tsx";
 import { actedFor, citationOf, type Run, turnOf } from "./adapter.ts";
 import {
   ApiError,
@@ -408,16 +409,24 @@ function MessageView({
   // What the person did by hand before sending is drawn closed, apart from their words.
   const { text: said, activity } = splitHumanActivity(m.text);
   const byHand = activity ? <HumanActivityNote activity={activity} mine={mine} /> : null;
+  // A text file opens as a document; any other file is named.
   const uploads = m.attachments?.length ? (
-    <ul className="flex max-w-full flex-wrap gap-1" aria-label={defaultCopy.details.used.uploads}>
+    <ul
+      className={`flex max-w-full flex-wrap gap-1 ${mine ? "justify-end" : ""}`}
+      aria-label={defaultCopy.details.used.uploads}
+    >
       {m.attachments.map((file, index) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: A retained message's files are immutable and may share both name and bytes.
         <li key={index} className="min-w-0 max-w-full">
-          <Reference
-            kind="file"
-            label={file.name || file.alt || file.media_type}
-            title={file.unread || file.media_type}
-          />
+          {opensAsDocument(file) ? (
+            <AttachedDocument session={m.thread} message={m.id} index={index} file={file} />
+          ) : (
+            <Reference
+              kind="file"
+              label={file.name || file.alt || file.media_type}
+              title={file.unread || file.media_type}
+            />
+          )}
         </li>
       ))}
     </ul>
@@ -780,6 +789,9 @@ export function ThreadRoom({
 }) {
   const [page, setPage] = useState<ThreadPage>(initial);
   const attention = useSessionAlerts(id, !!alertAccess, tick, onChanged);
+  // A session opened to review an alert never repeats that alert: it belongs
+  // on the conversation it came from.
+  const alertRows = attention.rows.filter((a) => a.id !== page.thread.session?.source_alert);
   // Every turn read so far, oldest first. A refresh reads the newest page,
   // which moves on as the thread grows; the turns it no longer holds stay.
   const [turns, setTurns] = useState<ThreadTurn[]>(initial.turns);
@@ -1318,7 +1330,7 @@ export function ThreadRoom({
                       </p>
                     )}
                     <SessionAlerts
-                      alerts={attention.rows.filter(
+                      alerts={alertRows.filter(
                         (a) =>
                           !duplicatesInlineApproval(a, turns) &&
                           (!alertAnchor(a) ||
@@ -1341,7 +1353,7 @@ export function ThreadRoom({
                     {turns.map((t, i) => (
                       <Fragment key={t.announcement?.id ?? t.message?.id ?? t.run?.id}>
                         <SessionAlerts
-                          alerts={attention.rows.filter(
+                          alerts={alertRows.filter(
                             (a) =>
                               !duplicatesInlineApproval(a, turns) &&
                               !!alertAnchor(a) &&

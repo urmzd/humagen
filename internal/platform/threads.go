@@ -1568,14 +1568,9 @@ func (p *Platform) answerDirect(ctx context.Context, tenant string, th threads.T
 		}
 		return m.Text
 	}
-	// A session opened from an alert starts with the alert's brief, sent to
-	// its own agent once: its transcript keeps it for later turns.
-	brief := sync.OnceValue(func() string {
-		if th.Session == nil || th.Session.SourceAlert == "" || m.Prev != "" {
-			return ""
-		}
-		return p.alertBrief(ctx, tenant, actor.User, th.Session.SourceAlert)
-	})
+	// The first message of a review session carries the alert's document;
+	// its own agent is told, beside it, to start with a recap.
+	ask := reviewing(th, m)
 	var out []runs.Run
 	var firstErr error
 	for _, a := range who {
@@ -1585,10 +1580,8 @@ func (p *Platform) answerDirect(ctx context.Context, tenant string, th threads.T
 		}
 		a.picked = cmp.Or(a.picked, pickedOf(ctx))
 		body := bodyFor(a.agent)
-		if th.Session != nil && a.agent == th.Session.Agent {
-			if b := brief(); b != "" {
-				body = b + "\n\n" + body
-			}
+		if ask != "" && a.agent == th.Session.Agent {
+			body = ask + "\n\n" + body
 		}
 		text := body
 		if hints := p.entryHintsFor(ctx, tenant, th.Project, a.agent, m.Text, sees); hints != "" {

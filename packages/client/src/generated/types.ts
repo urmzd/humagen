@@ -3972,7 +3972,17 @@ lists every alert to them. At most 20 entries.
   updated_at?: string;
 }
 
+export interface MessageAttachmentText {
+  name: string;
+  media_type: string;
+  text: string;
+  /** The file is longer than the text returned. */
+  truncated?: boolean;
+}
+
 export interface Alert {
+  /** The session where a person reviews the alert with an agent, once someone has opened it. */
+  review?: string;
   who?: string[];
   resolve_when?: string;
   action?: string;
