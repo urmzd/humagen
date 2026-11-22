@@ -398,27 +398,10 @@ import type {
   SlackBinding,
 } from "../../../packages/client/src/generated/types.ts";
 export type BridgeDirection = NonNullable<SlackBinding["direction"]>;
-export type {
-  GitHubRepoAutoReview,
-  GitHubRepositories,
-  GitHubRepository,
-  GitHubRepositoryInput,
-} from "../../../packages/client/src/generated/types.ts";
-import type {
-  GitHubRepositories,
-  GitHubRepository,
-  GitHubRepositoryInput,
-} from "../../../packages/client/src/generated/types.ts";
 export type ClientCapabilities = InstallationCapabilities;
 export type ClientCapabilityInput = ClientCapabilityPolicy & PutClientCapabilitiesBodyPart2;
 
 export type SourceLinkSuggestion = GeneratedSourceLinkSuggestion;
-
-/** A repository of a GitHub client, as owner and name path segments. */
-function githubRepoAt(client: string, repo: string): string {
-  const [owner = "", name = ""] = repo.split("/");
-  return `/api/clients/${encodeURIComponent(client)}/repositories/${encodeURIComponent(owner)}/${encodeURIComponent(name)}`;
-}
 
 export type SourceAttachment = KnowledgeAttachment;
 
@@ -1852,14 +1835,6 @@ export const api = {
     call<ClientCapabilities>("GET", `/api/clients/${encodeURIComponent(id)}/capabilities`),
   saveClientCapabilities: (id: string, input: ClientCapabilityInput) =>
     call<ClientCapabilities>("PUT", `/api/clients/${encodeURIComponent(id)}/capabilities`, input),
-  githubRepositories: (client: string) =>
-    call<GitHubRepositories>("GET", `/api/clients/${encodeURIComponent(client)}/repositories`),
-  githubRepository: (client: string, repo: string) =>
-    call<GitHubRepository>("GET", githubRepoAt(client, repo)),
-  saveGitHubRepository: (client: string, repo: string, input: GitHubRepositoryInput) =>
-    call<GitHubRepository>("PUT", githubRepoAt(client, repo), input),
-  resetGitHubRepository: (client: string, repo: string, version: number) =>
-    call<GitHubRepository>("DELETE", `${githubRepoAt(client, repo)}?version=${version}`),
   setSlackDirection: (project: string, channel: Channel, direction: BridgeDirection) =>
     call<Channel>("PUT", `${projectAt(project)}/channels/${encodeURIComponent(channel.name)}`, {
       version: channel.version,
