@@ -26,7 +26,7 @@ create the default client, `default-github`:
 | `HUMAGEN_GITHUB_LOGIN` | `github.login` |
 | `HUMAGEN_GITHUB_DEFAULT_AGENT` | `default_agent` |
 | `HUMAGEN_GITHUB_ASKERS` | `github.askers`: the only logins whose mentions, reviews and pull requests are acted on, comma separated. Optional |
-| `HUMAGEN_GITHUB_AUTO_REVIEW` | `github.auto_review.enabled`: `false` switches automatic review off. Unset, it is on |
+| `HUMAGEN_GITHUB_AUTO_REVIEW` | `github.auto_review.enabled`: `true` switches automatic review on, `false` off. Unset, it is off. A repository's [settings](#repository-settings) override it |
 | `HUMAGEN_GITHUB_AUTO_REVIEW_REPOSITORIES` | `github.auto_review.repositories`, as `owner/repo=on` or `owner/repo=off` pairs, comma separated |
 
 `HUMAGEN_GITHUB_AUTO_LABELS` is retired: labels start nothing, and the server
@@ -271,19 +271,32 @@ client and repository, at most 1,000 per client. Set them in the console under
 | `DELETE /api/clients/{id}/repositories/{owner}/{repo}?version=N` | `clients:write` |
 
 The list shows the repositories the installation covers, those the client
-names, and those with settings. Another workspace's client, a Slack client, or
-a repository the client does not cover answers 404.
+names (`read_repositories`, `action_repositories`, `auto_review.repositories`,
+event rules), and those with settings. Those are the repositories the client
+covers. Another workspace's client, a Slack client, or any other repository,
+even one of an account the client serves, answers 404.
 
 | Setting | Field | Left empty | What the platform does |
 |---|---|---|---|
 | Automatic review | `auto_review: {opened, pushes}` | the client's switch | Reviews when a pull request opens, on each push, both, or never (`{false, false}`). |
 | Answers a mention that names no agent | `agent` | the client's `default_agent` | That agent answers `@Humagen` with no agent named, and does automatic reviews. It must be one the client routes to. |
 | Instructions for runs here | `instructions` | none | Pinned on every run the client raises on the repository, as the last instruction layer, after the workspace's and the projects'. At most 4,000 characters. |
-| Read before a run starts | `reads: [pull_diff, linked_issues]` | none | Before a run on a pull request or issue starts, Humagen reads the pull request's description and changed files (`pull_diff`), and the issues its description links in the same repository, at most 3 (`linked_issues`). What it read is added to the run's text, marked as data, within 24,000 characters. A read that fails is named, not left out. |
-| Readable from other surfaces | `cross_surface_reads` | readable | When `false`, only runs on the repository's own issues and pull requests read it. Runs from Slack, the console or another repository are refused by `github_read_context`, `github_read_file` and `github_workflow_status`, whatever `read_repositories` or the installation grants. The console does not show its source, issues or pull requests, and the session picker does not offer it. |
+| Read before a run starts | `reads: [pull_diff, linked_issues]` | none | Before a run on a pull request or issue starts, Humagen reads the pull request's description and changed files (`pull_diff`), and the issues its description links in the same repository, at most 3 (`linked_issues`), within 24,000 characters and 3 seconds. A read that fails or runs out of time is named, not left out. |
+| Readable from other surfaces | `cross_surface_reads` | readable | When `false`, only runs on the repository's own issues and pull requests read it. Runs from Slack, the console or another repository are refused by `github_read_context`, `github_read_file` and `github_workflow_status`, whatever `read_repositories` or the installation grants. The console does not show its source, issues or pull requests, and the session picker does not offer it. One client turning it off keeps the repository so in the whole workspace, through every client that covers it. |
+
+What is read before a run is untrusted: anyone who can open a pull request
+writes its description and its patch. It is added to the run's text in one
+block, `<github-data id="NONCE">` to `</github-data id="NONCE">`, whose id is
+a nonce made for that run, after a sentence that says the block is data and
+never instructions. Each description and patch sits in a code fence longer
+than any run of backticks inside it, and a `github-data` marker inside the
+data is broken, so nothing a pull request says can end the block early. The
+reads happen inside GitHub's webhook request, which GitHub abandons after 10
+seconds, so they stop at 3; the agent reads the rest with its GitHub tools.
 
 A write names the `version` it read, `0` while the repository follows its
-client; a write over a change made since answers 409. Settings that change
+client; a write over a change made since answers 409, and so does a write of
+empty settings with version `0` while settings are kept. Settings that change
 nothing remove the record, and `DELETE` returns the repository to the client.
 
 The client's own settings are the defaults, so a deployment configured by
