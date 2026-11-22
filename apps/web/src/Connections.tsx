@@ -1153,7 +1153,7 @@ export function Connections({
                     ))}
                   {(selected === "slack" || selected === "github") && (
                     <details className="text-aui-sm">
-                      <summary className="w-fit cursor-pointer rounded-aui text-aui-muted focus-visible:outline-2 focus-visible:outline-aui-accent">
+                      <summary className="-mx-1.5 w-fit cursor-pointer rounded-aui px-1.5 py-0.5 text-aui-muted focus-visible:outline-2 focus-visible:outline-aui-accent">
                         Set up by hand
                       </summary>
                       <div className="pt-3">
