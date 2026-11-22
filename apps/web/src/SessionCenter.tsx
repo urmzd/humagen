@@ -33,7 +33,8 @@ import {
   sessionCenter,
   sessionSource,
 } from "./sessionCenter.ts";
-import { referenceOf, sessionSourceLink } from "./trace.ts";
+import { sessionSourceLink } from "./sourceLink.ts";
+import { referenceOf } from "./trace.ts";
 import {
   ago,
   button,

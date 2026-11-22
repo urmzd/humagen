@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { firstLines, placeOf, referenceOf, sessionSourceLink, slackUrl } from "./trace.ts";
+import { firstLines, placeOf, referenceOf, slackUrl } from "./trace.ts";
 
 test("references read as places with links back", () => {
   assert.deepEqual(referenceOf("slack://T1/C1/1699.1"), {
@@ -80,19 +80,4 @@ test("the audience a place reported names it exactly: which kind of Slack channe
   assert.equal(placeOf(pr, "", "direct").audience, "private");
   // The console reports none, and a reported one does not change it.
   assert.equal(placeOf({ visibility: "private" }, "", "public").audience, "private");
-});
-
-test("a GitHub session links to the issue or pull request it was asked on", () => {
-  assert.deepEqual(sessionSourceLink("github://urmzd/humagen/pull/512"), {
-    kind: "github",
-    label: "urmzd/humagen PR #512",
-    url: "https://github.com/urmzd/humagen/pull/512",
-  });
-  assert.equal(
-    sessionSourceLink("github://urmzd/humagen/issues/7")?.url,
-    "https://github.com/urmzd/humagen/issues/7",
-  );
-  assert.equal(sessionSourceLink("slack://T1/C1/1699.1"), undefined);
-  assert.equal(sessionSourceLink("console:ana"), undefined);
-  assert.equal(sessionSourceLink("s_parent"), undefined);
 });
