@@ -8,7 +8,7 @@ import { Popover } from "./ui.tsx";
 
 /** The approval control: the mode's icon and word in a quiet pill, as tall as the composer's controls. */
 const pill =
-  "inline-flex h-7 pointer-coarse:h-11 shrink-0 items-center gap-1.5 rounded-full bg-aui-hover/60 px-2.5 text-aui-xs text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-expanded:bg-aui-hover aria-expanded:text-aui-fg";
+  "inline-flex h-8 pointer-coarse:h-11 shrink-0 items-center gap-1.5 rounded-full bg-aui-hover/60 px-2.5 text-aui-xs text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-expanded:bg-aui-hover aria-expanded:text-aui-fg";
 
 /**
  * How a session's gated actions are approved: ✋ Ask, a person, or ⏩ Auto,
