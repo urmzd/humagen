@@ -9882,6 +9882,33 @@ paths:
             application/json:
               schema: {$ref: "#/components/schemas/ErrorBody"}
         "500": {$ref: "#/components/responses/ServerError"}
+  /api/sessions/{id}/messages/{mid}/attachments/{n}:
+    get:
+      operationId: readMessageAttachment
+      tags: [sessions]
+      summary: Open a text file attached to a message
+      description: >-
+        The text of the file at index `n` of the message's attachments, for a
+        reader of the session. Only a text file can be opened here (400 for
+        any other). At most 1 MiB of text is returned; `truncated` says when
+        there was more.
+      x-permission: runs:read
+      x-readonly: true
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+        - {name: mid, in: path, required: true, schema: {type: string}}
+        - {name: n, in: path, required: true, schema: {type: integer, minimum: 0}}
+      responses:
+        "200":
+          description: The file's text.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/MessageAttachmentText"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
   /api/sessions/{id}/messages/{mid}:
     patch:
       operationId: correctSpokenMessage
@@ -17895,10 +17922,22 @@ components:
           description: Who last replaced the rule. Absent until it is replaced.
           type: string
         updated_at: {type: string, format: date-time}
+    MessageAttachmentText:
+      type: object
+      additionalProperties: false
+      required: [name, media_type, text]
+      properties:
+        name: {type: string}
+        media_type: {type: string}
+        text: {type: string}
+        truncated: {type: boolean, description: The file is longer than the text returned.}
     Alert:
       type: object
       required: [id, rule, kind, severity, title, at]
       properties:
+        review:
+          type: string
+          description: The session where a person reviews the alert with an agent, once someone has opened it.
         who:
           type: "array"
           items:

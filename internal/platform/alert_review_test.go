@@ -91,7 +91,7 @@ func TestAHealthAlertSitsOnTheAnswerThatFailed(t *testing.T) {
 	}
 }
 
-func TestReviewingAnAlertBriefsTheAgentOnce(t *testing.T) {
+func TestReviewingAnAlertStartsWithItsDocument(t *testing.T) {
 	p := startWith(t, platform.Config{TestBuiltinProvider: "offline", TestBuiltinModel: "offline"})
 	field(t, p)
 	p.SeePerson(admin)
@@ -110,33 +110,51 @@ func TestReviewingAnAlertBriefsTheAgentOnce(t *testing.T) {
 		t.Fatalf("wrong review session: started %v, %+v", started, review)
 	}
 	recap := firstRun(t, p, review)
-	brief := wire.TextOf(recap.Tag())
+	// The person sees the alert's title, with the document attached.
+	first, err := p.Threads.Message(admin.Tenant, review.ID, recap.Message)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Text != a.Title || len(first.Attachments) != 1 || first.Attachments[0].Name != platform.AlertDocumentName {
+		t.Fatalf("the first message is not the title with the document: %q %+v", first.Text, first.Attachments)
+	}
+	doc, err := p.MessageAttachment(t.Context(), admin, review.ID, first.ID, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, want := range []string{
-		a.Title,
-		"tool_errors: 3 tools failed",
+		"# " + a.Title,
+		"- tool_errors: 3 tools failed",
 		"Tool calls in the run's trace: 4, 3 failed",
-		`web_fetch failed 2 times: "403 Forbidden"`,
-		`search failed 1 time: "timeout after 30s"`,
-		"/messages/" + root.ID + "?message=" + run.ID,
-		"Find the quarterly report",
+		`- web_fetch failed 2 times: "403 Forbidden"`,
+		`- search failed 1 time: "timeout after 30s"`,
+		"[the answer](/messages/" + root.ID + "?message=" + run.ID + ")",
+		"> Find the quarterly report",
 	} {
-		if !strings.Contains(brief, want) {
-			t.Errorf("the brief lacks %q:\n%s", want, brief)
+		if !strings.Contains(doc.Text, want) {
+			t.Errorf("the document lacks %q:\n%s", want, doc.Text)
 		}
 	}
-	if !strings.HasPrefix(recap.Text, "Recap the alert") {
-		t.Fatalf("the visible ask is not the recap request: %q", recap.Text)
+	// The agent gets the document with the message, and is asked to recap.
+	if got := wire.RequestOf(recap.Tag()); len(got.Attachments) != 1 || !strings.Contains(got.Text, "review the alert in the attached document") {
+		t.Fatalf("the recap was not asked with the document: %d files, %q", len(got.Attachments), got.Text)
+	}
+	if recap.Text != a.Title {
+		t.Fatalf("the visible ask is not the title: %q", recap.Text)
+	}
+	if got, err := p.Alerts.Alert(admin.Tenant, a.ID); err != nil || got.Review != review.ID {
+		t.Fatalf("the alert does not name its review: %+v %v", got, err)
 	}
 
-	// A follow-up is not briefed again: the transcript keeps the brief.
+	// A follow-up is not asked for a recap: the transcript keeps the document.
 	next, err := p.PostSession(t.Context(), admin, review.ID, platform.MessageInput{Text: "Which tool failed most?"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, m := range next.Messages {
 		if m.Run != nil && m.Run.ID != recap.ID {
-			if r := await(t, p, m.Run.ID, runs.Completed); strings.Contains(wire.TextOf(r.Tag()), "<alert>") {
-				t.Fatal("a follow-up was briefed again")
+			if r := await(t, p, m.Run.ID, runs.Completed); strings.Contains(wire.TextOf(r.Tag()), "attached document") {
+				t.Fatal("a follow-up was asked for a recap again")
 			}
 		}
 	}
@@ -146,8 +164,11 @@ func TestReviewingAnAlertBriefsTheAgentOnce(t *testing.T) {
 	if err != nil || started || again.ID != review.ID {
 		t.Fatalf("second review: %v, started %v, %s want %s", err, started, again.ID, review.ID)
 	}
-	// A person who may not read the answer cannot review its alert.
+	// A person who may not read the answer cannot review its alert or open its document.
 	if _, _, err := p.ReviewAlert(t.Context(), operator, a.ID); err == nil {
 		t.Fatal("a person outside the session reviewed its alert")
+	}
+	if _, err := p.MessageAttachment(t.Context(), operator, review.ID, first.ID, 0); err == nil {
+		t.Fatal("a person outside the session opened its document")
 	}
 }

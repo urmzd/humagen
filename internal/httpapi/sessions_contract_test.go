@@ -62,6 +62,14 @@ func exerciseSessionContract(t *testing.T, c *contract) map[string]string {
 	if again := c.call(token, "POST", "/api/alerts/{id}/review", "/api/alerts/"+alert.str("id")+"/review", "", 200); again.str("id") != review.str("id") || review.str("parent") != id {
 		t.Fatalf("review opened %s then %s under %s, want one under %s", review.str("id"), again.str("id"), review.str("parent"), id)
 	}
+	// Its first message carries the alert's document, which a reader opens.
+	attached := "/api/sessions/" + review.str("id") + "/messages/m-1/attachments/"
+	doc := c.call(token, "GET", "/api/sessions/{id}/messages/{mid}/attachments/{n}", attached+"0", "", 200)
+	if doc.str("name") != "Alert context.md" || !strings.Contains(doc.str("text"), "# Service needs review") {
+		t.Fatalf("the review's document: %s", doc.raw)
+	}
+	c.call(token, "GET", "/api/sessions/{id}/messages/{mid}/attachments/{n}", attached+"1", "", 404)
+	c.call(token, "GET", "/api/sessions/{id}/messages/{mid}/attachments/{n}", attached+"x", "", 400)
 	c.call(token, "PATCH", "/api/alerts/{id}", "/api/alerts/"+alert.str("id"), `{"state":"resolved"}`, 200)
 	c.call(token, "POST", "/api/sessions/{id}/stop", path+"/stop", `{"children":true}`, 204)
 	exerciseMessagesContract(t, c, token, f.person(t, "session-contract", "cy", "Cy", "humagen-operators"))
@@ -101,5 +109,5 @@ func exerciseSessionContract(t *testing.T, c *contract) map[string]string {
 	if err := scan.Err(); err != nil {
 		t.Fatal(err)
 	}
-	return map[string]string{"token": token, "id": id, "run": runID, "alert": alert.str("id")}
+	return map[string]string{"token": token, "id": id, "run": runID, "alert": alert.str("id"), "review": review.str("id")}
 }

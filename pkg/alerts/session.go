@@ -206,6 +206,28 @@ func (e *Engine) ProjectSession(tenant, key string, a Alert) (Alert, error) {
 	return out, wrap(err)
 }
 
+// SetReview records the session where an alert is reviewed. An alert keeps
+// the first one it is given.
+func (e *Engine) SetReview(tenant, id, session string) (Alert, error) {
+	if session == "" {
+		return Alert{}, fmt.Errorf("%w: session is required", ErrInvalid)
+	}
+	var out Alert
+	_, err := e.kept.Update(tenant, alertKey(id), func(s stored, exists bool) (stored, error) {
+		if !exists || s.Alert == nil || s.Alert.ID != id {
+			return s, ErrNotFound
+		}
+		a := *s.Alert
+		if a.Review == "" {
+			a.Review = session
+		}
+		s.Alert = &a
+		out = a.alert()
+		return s, nil
+	})
+	return out, wrap(err)
+}
+
 // AttachSession anchors a legacy rule alert when its owning session is known.
 func (e *Engine) AttachSession(tenant, id, session, action string) (Alert, error) {
 	if session == "" {

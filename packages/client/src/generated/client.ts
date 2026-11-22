@@ -178,6 +178,7 @@ import type {
   MemoryFiles,
   MemoryRestoreInput,
   MemoryWriteInput,
+  MessageAttachmentText,
   MessageCreated,
   MessageFeedbackInput,
   MessageNode,
@@ -8560,6 +8561,27 @@ not answer in time.
     return this.rawRequest<VoiceTranscript>("POST", path, {
       body,
       contentType: "application/octet-stream",
+      ...options,
+    });
+  }
+
+  /** The text of the file at index `n` of the message's attachments, for a reader of the session. Only a text file can be opened here (400 for any other). At most 1 MiB of text is returned; `truncated` says when there was more. */
+  async readMessageAttachment(id: string, mid: string, n: number, options?: RequestOptions): Promise<MessageAttachmentText> {
+    let path = "/api/sessions/{id}/messages/{mid}/attachments/{n}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    path = path.replace("{mid}", encodeURIComponent(String(mid)));
+    path = path.replace("{n}", encodeURIComponent(String(n)));
+    return this.request<MessageAttachmentText>("GET", path, {
+      ...options,
+    });
+  }
+
+  async readMessageAttachmentRaw(id: string, mid: string, n: number, options?: RequestOptions): Promise<ApiResponse<MessageAttachmentText>> {
+    let path = "/api/sessions/{id}/messages/{mid}/attachments/{n}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    path = path.replace("{mid}", encodeURIComponent(String(mid)));
+    path = path.replace("{n}", encodeURIComponent(String(n)));
+    return this.rawRequest<MessageAttachmentText>("GET", path, {
       ...options,
     });
   }

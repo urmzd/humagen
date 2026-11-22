@@ -206,3 +206,26 @@ func TestProjectedSessionAlertReplayDoesNotReopenResolved(t *testing.T) {
 		t.Fatalf("replay duplicated alert: %v %v", all, err)
 	}
 }
+
+func TestAnAlertKeepsTheFirstSessionItIsReviewedIn(t *testing.T) {
+	e := NewEngine()
+	a, err := e.ProjectSession("acme", "online-eval:r1", Alert{Session: "s_origin", Message: "r1", Title: "lead needs review: tool_errors", Priority: Normal, At: time.Now().UTC()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = e.SetReview("acme", a.ID, ""); err == nil {
+		t.Fatal("an empty review session was kept")
+	}
+	if got, err := e.SetReview("acme", a.ID, "s_review"); err != nil || got.Review != "s_review" {
+		t.Fatalf("review not kept: %+v %v", got, err)
+	}
+	if got, err := e.SetReview("acme", a.ID, "s_other"); err != nil || got.Review != "s_review" {
+		t.Fatalf("a second review replaced the first: %+v %v", got, err)
+	}
+	if read, err := e.Alert("acme", a.ID); err != nil || read.Review != "s_review" {
+		t.Fatalf("review not read back: %+v %v", read, err)
+	}
+	if _, err = e.SetReview("acme", "missing", "s_review"); err == nil {
+		t.Fatal("a missing alert took a review")
+	}
+}
