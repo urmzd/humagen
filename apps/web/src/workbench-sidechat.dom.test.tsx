@@ -202,7 +202,7 @@ test("the first question forks the session privately, asks there and takes the f
     false,
   );
   select(side);
-  await screen.findByRole("article", { name: words.answeredBy("helper") });
+  await screen.findByRole("article", { name: words.answeredBy("Helper") });
   assert.ok(screen.getByRole("article", { name: words.saidBy("ana") }));
   assert.equal(
     screen.getByRole("link", { name: words.openFull }).getAttribute("href"),
@@ -215,7 +215,7 @@ test("the first question forks the session privately, asks there and takes the f
   const records = humanActivity.list(session);
   assert.equal(records.length, 1);
   assert.equal(records[0]?.source, "other");
-  assert.equal(records[0]?.summary, 'Side chat answer from helper to "Why did the test fail?"');
+  assert.equal(records[0]?.summary, 'Side chat answer from Helper to "Why did the test fail?"');
   assert.equal(records[0]?.detail, "The fixture is stale.");
   assert.equal(net.seen.length, sent);
   const added = screen.getByRole("button", { name: words.added });
