@@ -424,9 +424,44 @@ function PropArt({ prop, id }: { prop: AgentProp; id: string }) {
         <stop offset="0" stopColor="#fff3c4" />
         <stop offset="1" stopColor="#ffcf4a" stopOpacity="0" />
       </radialGradient>
+      <radialGradient id={`${id}-palm`} cx="0.35" cy="0.3" r="0.85">
+        <stop offset="0" stopColor="#ffffff" stopOpacity="0.4" />
+        <stop offset="0.5" stopColor="#ffffff" stopOpacity="0" />
+        <stop offset="1" stopColor="#000000" stopOpacity="0.35" />
+      </radialGradient>
+      {/* The bot's own fur on its arm and hand: a soft, broken edge. */}
+      <filter id={`${id}-fur`} x="-30%" y="-30%" width="160%" height="160%">
+        <feTurbulence type="fractalNoise" baseFrequency="1.6" numOctaves="2" seed="3" />
+        <feDisplacementMap in="SourceGraphic" scale="1.4" />
+      </filter>
     </defs>
   );
   const edge = { stroke: "#2a2f36", strokeWidth: 0.5 };
+  // The bot's arm, from inside its body to its hand, in its own color.
+  const hand = (from: [number, number], at: [number, number], className = "") => (
+    <g
+      className={`aui-prop-hand ${className}`}
+      // A hand on a knob turns at the hand; a wave or a tap moves the whole arm.
+      style={{
+        transformOrigin:
+          className === "aui-prop-twist" ? `${at[0]}px ${at[1]}px` : `${from[0]}px ${from[1]}px`,
+      }}
+    >
+      <path
+        d={`M${from[0]} ${from[1]}Q${(from[0] + at[0]) / 2} ${Math.max(from[1], at[1]) + 2} ${at[0]} ${at[1]}`}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="4.2"
+        strokeLinecap="round"
+        filter={u("fur")}
+      />
+      <g filter={u("fur")}>
+        <ellipse cx={at[0]} cy={at[1]} rx="3.9" ry="3.4" fill="currentColor" />
+        <ellipse cx={at[0] - 3} cy={at[1] - 2} rx="1.6" ry="1.3" fill="currentColor" />
+      </g>
+      <ellipse cx={at[0]} cy={at[1]} rx="3.9" ry="3.4" fill={u("palm")} />
+    </g>
+  );
   switch (prop) {
     case "microscope":
       return (
@@ -472,11 +507,12 @@ function PropArt({ prop, id }: { prop: AgentProp; id: string }) {
               <rect x="13.9" y="16.3" width="2.2" height="0.6" fill="#d9a441" />
             </g>
           </g>
-          {/* The focus knob turns. */}
+          {/* The focus knob turns, under the bot's hand. */}
           <g className="aui-prop-knob">
             <circle cx="21.6" cy="17.6" r="2.5" fill={u("knob")} {...edge} />
             <path d="M21.6 15.6v1.3" stroke="#2a2f36" strokeWidth="0.8" strokeLinecap="round" />
           </g>
+          {hand([30, 13], [22.4, 18.2], "aui-prop-twist")}
         </>
       );
     case "thought":
@@ -500,6 +536,7 @@ function PropArt({ prop, id }: { prop: AgentProp; id: string }) {
           <circle className="aui-prop-dot" cx="13.2" cy="16.2" r="1.35" fill="#56606c" />
           <circle className="aui-prop-dot" cx="17.8" cy="16.2" r="1.35" fill="#56606c" />
           <circle className="aui-prop-dot" cx="22.4" cy="16.2" r="1.35" fill="#56606c" />
+          {hand([0, 41], [7, 37], "aui-prop-tap")}
         </>
       );
     case "wrench":
@@ -515,6 +552,7 @@ function PropArt({ prop, id }: { prop: AgentProp; id: string }) {
               strokeLinejoin="round"
             />
             <circle cx="6.7" cy="24.5" r="1" fill="#4b545e" />
+            {hand([2, 13], [9.4, 22.6])}
           </g>
         </>
       );
@@ -541,6 +579,7 @@ function PropArt({ prop, id }: { prop: AgentProp; id: string }) {
               <path d="M13 23h6l-3 6.6z" fill="#f0cf9e" />
               <path d="M15.1 27.6h1.8L16 29.6z" fill="#3b3b3b" />
             </g>
+            {hand([2, 12], [12.6, 19.6])}
           </g>
         </>
       );
@@ -563,6 +602,7 @@ function PropArt({ prop, id }: { prop: AgentProp; id: string }) {
           <circle className="aui-prop-dot" cx="17.4" cy="19.9" r="1.2" fill="#ffffff" />
           <circle className="aui-prop-dot" cx="21" cy="19.9" r="1.2" fill="#ffffff" />
           <circle className="aui-prop-dot" cx="24.6" cy="19.9" r="1.2" fill="#ffffff" />
+          {hand([2, 44], [9, 32], "aui-prop-wave")}
         </>
       );
     case "hourglass":
@@ -583,6 +623,7 @@ function PropArt({ prop, id }: { prop: AgentProp; id: string }) {
           <rect x="23.4" y="5" width="1.6" height="22" fill={u("wood")} />
           <rect x="5.6" y="2" width="20.8" height="3.2" rx="1" fill={u("wood")} />
           <rect x="5.6" y="26.8" width="20.8" height="3.2" rx="1" fill={u("wood")} />
+          {hand([2, 14], [8.6, 3])}
         </>
       );
   }

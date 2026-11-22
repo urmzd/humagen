@@ -1239,10 +1239,25 @@
   .aui-prop[data-prop="thought"] .aui-prop-late {
     animation-delay: 0.5s;
   }
-  /* Wrench: it turns back and forth on the bolt. */
+  /* The bot's hand: it turns the knob, taps its chin, or waves. */
+  .aui-prop .aui-prop-hand {
+    transform-box: view-box;
+    /* A little darker than the face, as the bot's fur is in shade at its side. */
+    color: color-mix(in oklab, currentColor 80%, black);
+  }
+  .aui-prop[data-motion="loop"] .aui-prop-twist {
+    animation: aui-prop-twist 2.8s ease-in-out infinite;
+  }
+  .aui-prop[data-motion="loop"] .aui-prop-tap {
+    animation: aui-prop-tap 1.4s ease-in-out infinite;
+  }
+  .aui-prop[data-motion="loop"] .aui-prop-wave {
+    animation: aui-prop-wave 1.2s ease-in-out infinite alternate;
+  }
+  /* Wrench: the hand swings the handle back and forth on the bolt. */
   .aui-prop[data-prop="wrench"] .aui-prop-move {
     transform-box: view-box;
-    transform-origin: 16px 16px;
+    transform-origin: 21px 9px;
     animation: aui-prop-sweep 1.6s ease-in-out infinite alternate;
   }
   /* Pencil: it writes a line, and the line draws under it. */
@@ -1265,10 +1280,10 @@
   }
   @keyframes aui-prop-sweep {
     from {
-      transform: rotate(-14deg);
+      transform: rotate(-22deg);
     }
     to {
-      transform: rotate(14deg);
+      transform: rotate(10deg);
     }
   }
   @keyframes aui-prop-focus {
@@ -1343,6 +1358,32 @@
     70%,
     100% {
       stroke-dashoffset: 0;
+    }
+  }
+  @keyframes aui-prop-twist {
+    0%,
+    100% {
+      transform: rotate(-12deg);
+    }
+    50% {
+      transform: rotate(18deg);
+    }
+  }
+  @keyframes aui-prop-tap {
+    0%,
+    100% {
+      transform: translateY(0) rotate(0deg);
+    }
+    50% {
+      transform: translateY(-1.2px) rotate(-8deg);
+    }
+  }
+  @keyframes aui-prop-wave {
+    from {
+      transform: rotate(-22deg);
+    }
+    to {
+      transform: rotate(22deg);
     }
   }
   @keyframes aui-prop-rock {
