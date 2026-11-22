@@ -194,8 +194,9 @@ export function ApprovalToggle({
                     close();
                     choose(o.mode);
                   }}
-                  // Auto acts without a person, so its row carries the warning tint.
-                  className={`flex min-h-11 w-full items-start gap-2.5 rounded-aui px-2.5 py-2 text-left outline-none ${o.mode === "auto" ? "bg-aui-warn/10 hover:bg-aui-warn/15 focus-visible:bg-aui-warn/15" : "hover:bg-aui-hover focus-visible:bg-aui-hover"}`}
+                  // Auto acts without a person, so its icon carries the warning color. A filled
+                  // row would read as the chosen one, which only the check says.
+                  className="flex min-h-11 w-full items-start gap-2.5 rounded-aui px-2.5 py-2 text-left outline-none hover:bg-aui-hover focus-visible:bg-aui-hover"
                 >
                   <RowIcon
                     size={16}
