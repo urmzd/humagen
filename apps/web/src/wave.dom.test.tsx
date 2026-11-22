@@ -146,19 +146,19 @@ test("an addressed message scrolls only its transcript once, including a later l
   }
 });
 
-test("the wave is one connected shape: closed, as wide as each turn's amplitude, with no step between turns", () => {
+test("the wave is one connected line: it swings from side to side, as far as each turn's amplitude, with no break", () => {
   const path = wavePath([2, 8, 4], 12, 12);
-  // One outline: it starts at the top point, and closes.
+  // One line: it starts at the top of the center line and is never lifted.
   assert.match(path, /^M12 0C/);
-  assert.match(path, /Z$/);
-  assert.equal(path.match(/M/g)?.length, 1, "one shape, not one mark per turn");
-  // Each side passes each turn's slot at its amplitude from the center line.
-  for (const point of ["14 6", "20 18", "16 30", "10 6", "4 18", "8 30"])
-    assert.ok(path.includes(` ${point}C`) || path.endsWith(` ${point}Z`), point);
+  assert.equal(path.match(/M/g)?.length, 1, "one line, not one mark per turn");
+  assert.ok(!path.includes("Z"), "a line, not a filled shape");
+  // Each turn is one crest, on alternate sides of the center line, and the line ends on the center.
+  for (const point of ["14 6", "4 18", "16 30"]) assert.ok(path.includes(` ${point}C`), point);
+  assert.ok(path.endsWith(" 12 36"));
   // The same turns give the same commands, so a change of amplitude animates.
   const count = (p: string) => p.match(/C/g)?.length;
   assert.equal(count(path), count(wavePath([9, 1, 9], 12, 12)));
-  assert.equal(count(path), 8, "four curves a side for three turns");
+  assert.equal(count(path), 4, "one curve to each crest and one back to the center");
   assert.equal(wavePath([]), "");
 });
 
