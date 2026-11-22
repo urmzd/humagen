@@ -30,9 +30,9 @@ func commandOf(text string) (string, error) {
 	command := strings.TrimSpace(rest)
 	switch {
 	case !ok:
-		return "", fmt.Errorf("%w: a command's message starts with !", threads.ErrInvalid)
+		return "", fmt.Errorf("%w: a command's message starts with an exclamation mark", threads.ErrInvalid)
 	case command == "":
-		return "", fmt.Errorf("%w: type a command after !", threads.ErrInvalid)
+		return "", fmt.Errorf("%w: type a command after the exclamation mark", threads.ErrInvalid)
 	case len(command) > MaxPersonCommand:
 		return "", fmt.Errorf("%w: a command is at most %d bytes", threads.ErrInvalid, MaxPersonCommand)
 	}
