@@ -860,6 +860,11 @@ test("a called agent's record becomes a turn: thinking, words, steps and its own
     result: { text: "Done: two facts.", sources: [], isError: false },
   });
   assert.equal(quiet.text, "Done: two facts.");
+  // A step the caller draws itself is left out.
+  assert.deepEqual(
+    turnOfCall(call, (step) => step.id === "t1").tasks.map((t) => t.id),
+    ["c2"],
+  );
   // Failed, stopped or denied is said on the thread's line, not again in the stream.
   assert.equal(turnOfCall({ ...call, status: "error" }).status, "done");
   assert.equal(turnOfCall({ ...call, status: "awaiting_approval" }).status, "waiting");
