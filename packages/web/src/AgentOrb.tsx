@@ -1,7 +1,6 @@
 import type { AgentActivity, Turn, TurnStatus } from "@humagen/core";
 import {
   autoInk,
-  BotAvatar,
   type BotAvatarGlasses,
   type BotAvatarHat,
   type BotAvatarType,
@@ -955,32 +954,24 @@ export function AgentInitials({
 }
 
 /**
- * An agent's bot held still, for a picture of it: the look given, in the
- * color given, with no motion and no pointer play, on a canvas the caller
- * reads (the ref). The console draws one to a PNG when a look is saved, so a
- * surface that shows images, such as Slack, shows the same bot.
+ * An agent's mascot held still, for a picture of it: its character, in the
+ * color given, with no motion. The console reads it with `mascotPicture`
+ * into a PNG when an appearance is saved, so a surface that shows images,
+ * such as Slack, shows the same character.
  */
 export const AgentStill = forwardRef<
-  HTMLCanvasElement,
+  HTMLSpanElement,
   { name: string; look?: BotLook; color: string; size?: number }
 >(function AgentStill({ name, look, color, size = 256 }, ref) {
   return (
-    <BotAvatar
-      ref={ref}
-      type={look?.shape ?? agentBot(name)}
-      face={look?.face}
-      hat={look?.hat ?? "none"}
-      glasses={look?.glasses ?? "none"}
-      headphones={look?.headphones ?? false}
-      bowTie={look?.bowTie ?? false}
-      state="default"
-      size={size}
-      color={color}
-      theme="light"
-      shading={look?.finish ?? "fabric"}
-      interactive={false}
-      paused
-      seed={0.5}
-    />
+    <span ref={ref} className="inline-flex">
+      <Mascot
+        persona={look?.character ?? mascotPersonaOf(name)}
+        state="idle"
+        size={size}
+        color={color}
+        quiet
+      />
+    </span>
   );
 });
