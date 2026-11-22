@@ -604,7 +604,13 @@ function Lane({
         {tool.progress && shown === "running" && (
           <p className="text-aui-muted text-aui-xs">{tool.progress}</p>
         )}
-        <AgentMessage embedded turn={turnOfCall(tool)} disclaimer={false} activity={false} />
+        <AgentMessage
+          embedded
+          // A step that waits on a person is drawn once, below, with its controls.
+          turn={turnOfCall(tool, (step) => asks.includes(step))}
+          disclaimer={false}
+          activity={false}
+        />
         {asks.length > 0 && (
           <ul className="flex flex-col gap-1.5">
             {asks.map((b) => (
