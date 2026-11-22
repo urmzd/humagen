@@ -13,7 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@humagen/render-web/ui/select";
-import type { CSSProperties, MouseEvent, ReactNode } from "react";
+import type { MouseEvent, ReactNode } from "react";
 import { ConnectionLogo } from "./ConnectionLogo.tsx";
 import { AgentMark, MoreMenu, type PageAction } from "./ui.tsx";
 
@@ -105,7 +105,7 @@ const dotTone: Record<string, string> = {
 /** A state as a small dot and its word, for a table's status column. */
 export function StatusDot({ status }: { status: string }) {
   return (
-    <span className="inline-flex items-center gap-2 text-aui-muted text-aui-xs">
+    <span className="flex items-center gap-2 text-aui-muted text-aui-xs">
       <span
         aria-hidden
         className={`size-2 shrink-0 rounded-full ${dotTone[status] ?? "bg-aui-muted/70"}`}
@@ -119,86 +119,10 @@ export function StatusDot({ status }: { status: string }) {
 /** An agent as its mark and its proper name, for a table's agent column. */
 export function AgentCell({ name, shown }: { name: string; shown: string }) {
   return (
-    <span className="inline-flex min-w-0 items-center gap-2 text-aui-xs text-aui-fg">
+    <span className="flex min-w-0 items-center gap-2 text-aui-xs text-aui-fg">
       <AgentMark name={name} size={18} />
       <span className="truncate">{shown}</span>
     </span>
-  );
-}
-
-/**
- * Things to compare, as a table: one quiet header, then each thing as one
- * soft rounded row with space between rows, its cells in shared columns.
- * The whole row is its link. On a phone the first cell takes the row's width
- * and the rest follow under it as a line of small facts.
- */
-export function RowTable({
-  label,
-  columns,
-  children,
-}: {
-  label: string;
-  /** Each column's name and width, as a grid track such as "minmax(0,1fr)" or "8rem". */
-  columns: { name: string; width: string }[];
-  children: ReactNode;
-}) {
-  const cols = columns.map((c) => c.width).join(" ");
-  return (
-    <div
-      role="table"
-      aria-label={label}
-      className="flex min-w-0 flex-col gap-1.5"
-      style={{ "--cols": cols } as CSSProperties}
-    >
-      <div
-        role="row"
-        className="hidden px-4 pb-1 text-aui-2xs text-aui-muted md:grid md:grid-cols-[var(--cols)] md:gap-4"
-      >
-        {columns.map((c) => (
-          <span key={c.name} role="columnheader" className="min-w-0 truncate">
-            {c.name}
-          </span>
-        ))}
-      </div>
-      <div role="rowgroup" className="flex min-w-0 flex-col gap-1.5">
-        {children}
-      </div>
-    </div>
-  );
-}
-
-/** One row of a RowTable: its cells in the table's columns, the whole row a link. */
-export function RowTableRow({
-  href,
-  onOpen,
-  cells,
-  label,
-}: {
-  href: string;
-  onOpen?: () => void;
-  /** The row's name for assistive technology: what the link opens. */
-  label: string;
-  cells: ReactNode[];
-}) {
-  const [first, ...rest] = cells;
-  return (
-    <a
-      role="row"
-      href={href}
-      aria-label={label}
-      onClick={(event) => follow(event, onOpen)}
-      className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1.5 rounded-aui-lg bg-[color-mix(in_oklab,var(--aui-hover)_55%,transparent)] px-4 py-3 text-aui-sm transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent md:grid md:grid-cols-[var(--cols)]"
-    >
-      <span role="cell" className="w-full min-w-0 truncate font-medium text-aui-fg md:w-auto">
-        {first}
-      </span>
-      {rest.map((cell, i) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: cells are positional columns.
-        <span key={i} role="cell" className="min-w-0 truncate text-aui-muted text-aui-xs">
-          {cell}
-        </span>
-      ))}
-    </a>
   );
 }
 
