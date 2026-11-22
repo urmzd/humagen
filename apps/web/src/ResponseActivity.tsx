@@ -40,7 +40,7 @@ import {
 import { href } from "./route.ts";
 import { DetailsNavigation } from "./SessionDetails.tsx";
 import type { Chip, Reference } from "./trace.ts";
-import { AgentMark, SkeletonRows } from "./ui.tsx";
+import { AgentMark, AgentTint, SkeletonRows } from "./ui.tsx";
 
 const words = defaultCopy.trace;
 
@@ -653,7 +653,10 @@ function Lane({
         aria-label={agent}
         className="ml-1.5 flex scroll-mt-4 flex-col gap-2 border-[var(--humagen-rule)] border-l pl-3"
       >
-        {run ? <RunFeedbackHost turn={turn}>{message}</RunFeedbackHost> : message(turn)}
+        {/* Its own color, not its caller's. */}
+        <AgentTint name={agent}>
+          {run ? <RunFeedbackHost turn={turn}>{message}</RunFeedbackHost> : message(turn)}
+        </AgentTint>
         {tool.progress && running && <p className="text-aui-muted text-aui-xs">{tool.progress}</p>}
         {asks.length > 0 && (
           <ul className="flex flex-col gap-1.5">
