@@ -630,7 +630,11 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
             assert.deepEqual(icon, { width: 18, height: 18 }, "Composer icons share a size");
         }
         // An answer shows its steps and called agents in itself: nothing under it opens them again.
-        assert.equal(await page.getByTestId("worked").count(), 0, "no activity control under an answer");
+        assert.equal(
+          await page.getByTestId("worked").count(),
+          0,
+          "no activity control under an answer",
+        );
       },
     },
     {

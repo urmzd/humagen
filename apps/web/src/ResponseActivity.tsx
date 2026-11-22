@@ -9,7 +9,6 @@ import {
   type ResponseBlock,
   type ResponseState,
   type ResponseTool,
-  waiting,
   worked,
 } from "@humagen/core";
 import { CheckIcon, ChevronRightIcon, CopyIcon, MaximizeIcon, Shimmer } from "@humagen/render-web";
