@@ -574,7 +574,7 @@ func (p *Platform) dial(c clients.Client, secrets resolved) (*seat, error) {
 		// A repository its settings keep to its own runs is read by no other
 		// run, whatever grants it (github_repo_settings.go).
 		cfg.ReadRefused = func(_ context.Context, owner, repo string) bool {
-			return !p.readableElsewhere(c, owner+"/"+repo)
+			return !p.readableElsewhere(c.Tenant, owner+"/"+repo)
 		}
 		peer, err := github.New(cfg)
 		if err != nil {

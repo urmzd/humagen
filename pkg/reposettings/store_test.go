@@ -111,6 +111,17 @@ func TestZeroSettingsRemoveTheRecord(t *testing.T) {
 	if got, err := s.Put("acme", "gh", Settings{Repository: "acme/site"}, 0, "ada", now); err != nil || got.Version != 0 {
 		t.Fatalf("zero settings on nothing: %+v, %v", got, err)
 	}
+	// Writing nothing over settings the caller has not read is refused, and
+	// they stay in force.
+	if _, err := s.Put("acme", "gh", Settings{Repository: "acme/kept", Agent: "x"}, 0, "ada", now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Put("acme", "gh", Settings{Repository: "acme/kept"}, 0, "ada", now); !errors.Is(err, ErrVersion) {
+		t.Fatalf("zero settings over a record not read: %v, want ErrVersion", err)
+	}
+	if got, err := s.Get("acme", "gh", "acme/kept"); err != nil || got.Agent != "x" {
+		t.Fatalf("the record not read was changed: %+v, %v", got, err)
+	}
 	// Automatic review switched off is a setting, not nothing.
 	off, err := s.Put("acme", "gh", Settings{Repository: "acme/site", AutoReview: &AutoReview{}}, 0, "ada", now)
 	if err != nil || off.Version != 1 || off.AutoReview == nil || off.AutoReview.On() {

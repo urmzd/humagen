@@ -156,6 +156,11 @@ func (p *Platform) sourceReader(ctx context.Context, tenant, owner, repo string)
 	if s == nil {
 		return nil
 	}
+	// A repository the workspace keeps to its own runs is not shown here,
+	// through any client.
+	if !p.readableElsewhere(tenant, owner+"/"+repo) {
+		return nil
+	}
 	for _, st := range s.all() {
 		c := st.client
 		if c.Tenant != tenant || !c.Enabled || st.files == nil {
@@ -167,10 +172,6 @@ func (p *Platform) sourceReader(ctx context.Context, tenant, owner, repo string)
 		}
 		if !granted {
 			granted = st.installed.Covers(ctx, owner, repo)
-		}
-		// A repository its settings keep to its own runs is not shown here.
-		if granted && !p.readableElsewhere(c, owner+"/"+repo) {
-			granted = false
 		}
 		if granted {
 			return st.files

@@ -42,7 +42,7 @@ func repoStage(t *testing.T) (*platform.Platform, *fakes, func(kind, delivery, b
 		Client: clients.Client{
 			ID: "gh", Name: "GitHub", Surface: clients.GitHub, Enabled: true, Agents: []string{clients.AnyAgent},
 			Identity:     clients.Identity{Owners: []string{"acme"}, Installation: "101"},
-			DefaultAgent: "lead", GitHub: &clients.GitHubOptions{Login: "humagen[bot]"},
+			DefaultAgent: "lead", GitHub: &clients.GitHubOptions{Login: "humagen[bot]", ReadRepositories: []string{"acme/site", "acme/other", "acme/quiet"}},
 		},
 		Token: clients.SecretInput{Value: "token-gh"}, SigningSecret: clients.SecretInput{Value: "secret-gh"},
 	})
@@ -212,6 +212,11 @@ func TestRepositorySettingsAreCheckedAndTenantScoped(t *testing.T) {
 	if _, err := p.SetGitHubRepository(t.Context(), admin, "gh", "globex/site", reposettings.Settings{Agent: "lead"}, 0); !errors.Is(err, clients.ErrNotFound) {
 		t.Fatalf("a repository the client does not cover: %v", err)
 	}
+	// Serving the account is not covering the repository: only the
+	// installation's repositories, the named ones and those with settings are.
+	if _, err := p.GitHubRepository(t.Context(), tenant, "gh", "acme/unnamed"); !errors.Is(err, clients.ErrNotFound) {
+		t.Fatalf("a repository of an account the client serves, but not covered: %v", err)
+	}
 	kept, err := p.SetGitHubRepository(t.Context(), admin, "gh", "acme/site", reposettings.Settings{Agent: "lead"}, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -264,5 +269,54 @@ func TestARepositoryKeptToItsOwnRunsIsNotReadElsewhere(t *testing.T) {
 		if want := r.Repository != "partner/tools"; r.CrossSurfaceReads != want {
 			t.Errorf("%s is listed readable elsewhere = %v", r.Repository, r.CrossSurfaceReads)
 		}
+	}
+}
+
+// A repository one client keeps to its own runs is kept so in the whole
+// workspace: a second client that covers it reads it no more than the first.
+func TestARepositoryKeptToItsOwnRunsByOneClientIsKeptByEvery(t *testing.T) {
+	p, _ := installedStage(t, nil)
+	create(t, p, tenant, platform.ClientInput{
+		Client: clients.Client{
+			ID: "gh-partner", Name: "gh-partner", Surface: clients.GitHub, Enabled: true,
+			Identity:     clients.Identity{Owners: []string{"partner"}},
+			DefaultAgent: "docs", GitHub: &clients.GitHubOptions{ReadRepositories: []string{"partner/tools"}},
+		},
+		Token: clients.SecretInput{Value: "token-gh-partner"}, SigningSecret: clients.SecretInput{Value: "secret-gh-partner"},
+	})
+	read := func() error {
+		_, err := p.GitHubSource(t.Context(), tenant, platform.SourceRequest{Repo: "partner/tools", SHA: sourceSHA, Path: "a.go", Start: 1, End: 1})
+		return err
+	}
+	if err := read(); err != nil {
+		t.Fatalf("before any setting: %v", err)
+	}
+	off := false
+	// The second client keeps it; the first, whose installation covers it,
+	// is the one the console would otherwise read through.
+	if _, err := p.SetGitHubRepository(t.Context(), admin, "gh-partner", "partner/tools", reposettings.Settings{CrossSurfaceReads: &off}, 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := read(); !errors.Is(err, platform.ErrSourceNotFound) {
+		t.Fatalf("the console read it through the other client: %v", err)
+	}
+	opts, err := p.SessionOptions(t.Context(), admin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if slices.Contains(opts.Repos, "partner/tools") {
+		t.Fatalf("the picker offers it through the other client: %v", opts.Repos)
+	}
+	if _, err := p.StartSession(t.Context(), admin, platform.SessionInput{Project: "~", Text: "look", Repos: []string{"partner/tools"}}); !errors.Is(err, threads.ErrInvalid) {
+		t.Fatalf("a session chose it through the other client: %v", err)
+	}
+	// What the first client's list says of it shows the workspace's answer
+	// only where its own settings say so: it is the second client's setting.
+	list, err := p.GitHubRepositories(t.Context(), tenant, "gh-partner")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if i := slices.IndexFunc(list.Repositories, func(r platform.GitHubRepository) bool { return r.Repository == "partner/tools" }); i < 0 || list.Repositories[i].CrossSurfaceReads {
+		t.Fatalf("partner/tools is listed as %+v", list.Repositories)
 	}
 }

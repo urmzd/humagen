@@ -2160,7 +2160,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "POST", "/api/clients", "/api/clients", slackBody("support", "A01CONTRACT", "helper"), http.StatusConflict)
 	c.call(acme, "POST", "/api/clients", "/api/clients", `{"id":"odd","surface":"fax"}`, http.StatusBadRequest)
 	// A GitHub installation names the login its app is mentioned by.
-	gh := `{"id":"gh","name":"GitHub","surface":"github","identity":{"owners":["acme"]},"default_agent":"helper","github":{"login":"humagen[bot]"},` +
+	gh := `{"id":"gh","name":"GitHub","surface":"github","identity":{"owners":["acme"]},"default_agent":"helper","github":{"login":"humagen[bot]","read_repositories":["acme/site"]},` +
 		`"credentials":{"token":{"value":"` + botToken + `"},"signing_secret":{"value":"` + signingSecret + `"}}}`
 	if got := c.call(acme, "POST", "/api/clients", "/api/clients", gh, http.StatusCreated); obj(got.field("github"))["login"] != "humagen[bot]" {
 		t.Errorf("the GitHub client's login is %s", got.raw)

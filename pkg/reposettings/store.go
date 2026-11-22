@@ -269,6 +269,13 @@ func (s *Store) Put(tenant, client string, v Settings, version int64, by string,
 	}
 	if v.IsZero() {
 		if version == 0 {
+			// Nothing to keep, but only if nothing is kept: settings the
+			// caller has not read stay in force, so the write is refused.
+			if _, err := s.t.Lookup(tenant, k); err == nil {
+				return Item{}, ErrVersion
+			} else if !errors.Is(err, state.ErrNotFound) {
+				return Item{}, err
+			}
 			return Item{Settings: Settings{Repository: v.Repository}}, nil
 		}
 		return Item{Settings: Settings{Repository: v.Repository}}, s.Delete(tenant, client, v.Repository, version)

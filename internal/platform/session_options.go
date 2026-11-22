@@ -91,13 +91,13 @@ func (p *Platform) tenantRepos(ctx context.Context, tenant string) []string {
 		}()
 	}
 	wg.Wait()
+	// A repository the workspace keeps to its own runs is not one a session
+	// elsewhere may read, whichever client covers it.
+	kept, ok := p.keptToOwnRuns(tenant)
+	if !ok {
+		return out
+	}
 	for i, st := range seats {
-		// A repository its settings keep to its own runs is not one a
-		// session elsewhere may read.
-		kept, ok := p.keptToOwnRuns(st.client)
-		if !ok {
-			continue
-		}
 		offer := func(r string) {
 			if !kept[strings.ToLower(strings.TrimSpace(r))] {
 				add(r)
