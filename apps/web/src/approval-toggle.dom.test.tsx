@@ -43,21 +43,15 @@ test("the control opens a menu of the two modes under a heading, each with a sho
     "GET /api/model-providers": () => providers,
   });
   render(<ApprovalToggle thread={{ id: "th-1" }} me="ada" />);
-  // One control, found by its name: the mode's icon alone, no words beside it.
+  // One control, found by its name, that shows the mode's word and nothing else.
   assert.equal(screen.getAllByRole("button").length, 1);
   const control = screen.getByRole("button", { name: "Approval mode: Ask" });
-  assert.equal(control.textContent, "");
+  assert.equal(control.textContent, "Ask");
   assert.equal(control.getAttribute("title"), null);
   assert.equal(control.getAttribute("aria-haspopup"), "menu");
-  // Its name is shown in a tooltip on focus (and hover), and goes with the focus.
+  // The word is on screen, so no tooltip repeats it.
   fireEvent.focus(control);
-  assert.equal(screen.getByRole("tooltip").textContent, "Approval mode: Ask");
-  assert.ok(control.getAttribute("aria-describedby"));
-  fireEvent.blur(control);
   assert.equal(screen.queryByRole("tooltip"), null);
-  fireEvent.mouseEnter(control);
-  assert.equal(screen.getByRole("tooltip").textContent, "Approval mode: Ask");
-  fireEvent.mouseLeave(control);
   fireEvent.click(control);
   const menu = await screen.findByRole("menu", { name: "Approval mode" });
   // The heading names the menu; then exactly two rows.
@@ -139,10 +133,9 @@ test("someone else's choice is named, and a refusal puts the mode back", async (
       nameOf={() => "Mira"}
     />,
   );
+  // The control shows the mode; who chose it is in its name and in the menu.
   const control = screen.getByRole("button", { name: "Approval mode: Auto, chosen by Mira" });
-  assert.equal(control.textContent, "");
-  fireEvent.focus(control);
-  assert.equal(screen.getByRole("tooltip").textContent, "Approval mode: Auto, chosen by Mira");
+  assert.equal(control.textContent, "Auto");
   fireEvent.click(control);
   const menu = await screen.findByRole("menu");
   assert.ok(menu.textContent?.includes(words.chosenBy("Mira")));
