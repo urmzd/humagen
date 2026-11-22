@@ -653,6 +653,7 @@ export function AgentMessage({
   disclaimer = true,
   activity: sayActivity = true,
   embedded = false,
+  task,
 }: {
   turn: Turn;
   /**
@@ -704,6 +705,11 @@ export function AgentMessage({
    * the keys that step through messages pass it by).
    */
   embedded?: boolean;
+  /**
+   * What the agent was asked, in a few words, beside its name: an agent
+   * another agent called says what it was called for.
+   */
+  task?: ReactNode;
 }) {
   const inherited = useContext(ItemActionsContext);
   const inheritedStops = useContext(ItemStopsContext);
@@ -821,6 +827,7 @@ export function AgentMessage({
                 {turn.agent.name}
               </span>
             )}
+            {task && <span className="min-w-0 truncate text-aui-muted text-aui-xs">{task}</span>}
             <span className="flex min-w-0 items-center gap-1.5 text-aui-2xs text-aui-muted">
               {activity ? (
                 <ShimmerVerb className="truncate">{activity}</ShimmerVerb>

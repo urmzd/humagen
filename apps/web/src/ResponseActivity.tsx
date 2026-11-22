@@ -9,6 +9,7 @@ import {
   type ResponseBlock,
   type ResponseState,
   type ResponseTool,
+  type Turn,
   worked,
 } from "@humagen/core";
 import { CheckIcon, ChevronRightIcon, CopyIcon, MaximizeIcon, Shimmer } from "@humagen/render-web";
@@ -27,6 +28,7 @@ import { api, call } from "./api.ts";
 import { turnOfCall } from "./callTurn.ts";
 import { took, usd } from "./format.ts";
 import { Chips, inApp } from "./refChips.tsx";
+import { RunFeedbackHost } from "./RunFeedback.tsx";
 import {
   defaultTraceLoader,
   messageIdOf,
@@ -459,6 +461,7 @@ function Lane({
   // open while it works, waits on someone or failed, and closed once done.
   const focus = useContext(Focus);
   const inMessage = useContext(LaneInMessage);
+  const [stopping, setStopping] = useState(false);
   const focused = !!tool && marks(tool, focus);
   const arrive = useArrive(focused);
   // A call that does not wait is delegated: the agent carries on by itself
@@ -589,30 +592,69 @@ function Lane({
       {result}
     </>
   );
-  // In an answer, the thread opens to the agent's own stream, drawn with the
-  // parts the answer itself is drawn with: its thinking, its words, each step
-  // with what it was given and returned, and the agents it called as threads
-  // of their own. A question that waits on a person keeps its controls.
-  const asks =
-    inMessage && tool
-      ? blocks.filter(
-          (b): b is ResponseTool =>
-            b.type === "tool" && !b.hidden && b.kind !== "agent" && isAwaiting(b.status),
-        )
-      : [];
-  const stream =
-    inMessage && tool ? (
+  // In an answer, a called agent is a message of its own, at full size: its
+  // name and what it was asked, its whole stream (thinking, words, each step
+  // with what it was given and returned), the agents it called as messages
+  // under it, and its own actions, so its work can be copied and rated apart
+  // from the answer that called it. A question that waits on a person keeps
+  // its controls.
+  if (inMessage && tool) {
+    const asks = blocks.filter(
+      (b): b is ResponseTool =>
+        b.type === "tool" && !b.hidden && b.kind !== "agent" && isAwaiting(b.status),
+    );
+    // A step that waits on a person is drawn once, below, with its controls.
+    const turn = turnOfCall(tool, (step) => asks.includes(step));
+    const run = tool.runId;
+    const ended = shown === "error" || shown === "denied" || shown === "stopped";
+    const task = (
       <>
-        {tool.progress && shown === "running" && (
-          <p className="text-aui-muted text-aui-xs">{tool.progress}</p>
+        {title}
+        {delegated && (
+          <span className="ml-2 rounded-full border border-aui-border px-1.5 text-aui-2xs">
+            {words.delegated}
+          </span>
         )}
-        <AgentMessage
-          embedded
-          // A step that waits on a person is drawn once, below, with its controls.
-          turn={turnOfCall(tool, (step) => asks.includes(step))}
-          disclaimer={false}
-          activity={false}
-        />
+        {ended && shown && (
+          <span className={`ml-2 ${shown === "stopped" ? "" : "text-aui-bad"}`}>
+            {words.status[shown]}
+          </span>
+        )}
+      </>
+    );
+    const message = (rated: Turn) => (
+      <AgentMessage
+        turn={rated}
+        task={task}
+        disclaimer={false}
+        activity={false}
+        // It answers its caller, not the person: there is nothing to ask again, and only a run can be rated.
+        capabilities={{ regenerate: false, feedback: !!run }}
+        stop={
+          run && running
+            ? {
+                pending: stopping,
+                onStop: () => {
+                  setStopping(true);
+                  api.stopRun(run).catch(() => setStopping(false));
+                },
+              }
+            : undefined
+        }
+      />
+    );
+    return (
+      <section
+        ref={arrive}
+        data-testid="activity-lane"
+        data-agent={agent}
+        data-focused={focused || undefined}
+        data-delegated={delegated || undefined}
+        aria-label={agent}
+        className="ml-1.5 flex scroll-mt-4 flex-col gap-2 border-[var(--humagen-rule)] border-l pl-3"
+      >
+        {run ? <RunFeedbackHost turn={turn}>{message}</RunFeedbackHost> : message(turn)}
+        {tool.progress && running && <p className="text-aui-muted text-aui-xs">{tool.progress}</p>}
         {asks.length > 0 && (
           <ul className="flex flex-col gap-1.5">
             {asks.map((b) => (
@@ -621,8 +663,9 @@ function Lane({
           </ul>
         )}
         {hidden > 0 && <p className="text-aui-muted text-aui-xs">{words.privateSteps(hidden)}</p>}
-      </>
-    ) : null;
+      </section>
+    );
+  }
   if (root)
     return (
       <section
@@ -652,7 +695,7 @@ function Lane({
           {line}
         </summary>
         <div className="mt-1 ml-1.5 flex flex-col gap-2 border-[var(--humagen-rule)] border-l pl-3">
-          {stream ?? body}
+          {body}
         </div>
       </details>
     </section>

@@ -755,41 +755,53 @@ test("a called agent is one closed item once done, and the tree opens on a step 
   );
 });
 
-test("a called agent's thread in an answer is one clickable line that opens to its own stream, with no link away", () => {
+test("a called agent is a message of its own in the answer: full size, with its task, its stream and its own actions", async () => {
   const state = foldAll(responseStreams.parallelAgents);
   const call = allTools(state).find((t) => t.kind === "agent" && t.runId);
   assert.ok(call);
-  // The turn's step for that call: its id, and the run it started.
-  const task = { id: call.id, subagent: { runId: call.runId } } as Parameters<
-    ReturnType<typeof callThreadsOf>
-  >[0];
-  const { container } = render(<WebSurface>{callThreadsOf(state)(task)}</WebSurface>);
-  const lane = within(container).getAllByTestId("activity-lane")[0];
-  assert.ok(lane);
-  assert.equal(lane.querySelector("a[title]"), null, "no expand sign on the line");
-  // The whole line is the control: it has no chevron, and it does not say how long the call took.
-  const line = lane.querySelector("summary");
-  assert.ok(line);
-  assert.equal(line.querySelector("svg.lucide-chevron-right, svg[class*='rotate-90']"), null);
-  assert.equal(line.querySelector(".tabular-nums"), null);
-  assert.match(line.className, /cursor-pointer/);
-  assert.match(line.className, /hover:bg-aui-hover/);
-  // It opens to the agent's own stream, drawn as an answer's is: no header and no action row of its own.
-  const stream = lane.querySelector('[data-aui="thread-stream"]');
-  assert.ok(stream, "the agent's stream");
-  assert.equal(stream.querySelector("header"), null);
-  assert.equal(stream.querySelector('[role="toolbar"]'), null);
-  assert.equal(lane.querySelector("article"), null, "not a message of the conversation");
-  const turn = turnOfCall(call);
-  if (turn.text) assert.ok((stream.textContent ?? "").includes(turn.text.slice(0, 24)));
-  cleanup();
-  // In Details the same lane still links to its agent's message on its own, and lists its blocks.
-  const detail = render(<AgentCallLane tool={call} />);
-  assert.ok(detail.container.querySelector(`a[title="${words.focus(call.agent ?? call.name)}"]`));
-  // Details keeps the chevron and, for a finished call, how long it took.
-  const detailLine = detail.container.querySelector("summary");
-  assert.ok(detailLine?.querySelector("svg"));
-  assert.equal(detail.container.querySelector('[data-aui="thread-stream"]'), null);
+  const net = stubFetch({
+    [`GET /api/runs/${call.runId}/feedback`]: () => ({ feedback: [] }),
+  });
+  try {
+    // The turn's step for that call: its id, and the run it started.
+    const task = { id: call.id, subagent: { runId: call.runId } } as Parameters<
+      ReturnType<typeof callThreadsOf>
+    >[0];
+    const { container } = render(<WebSurface>{callThreadsOf(state)(task)}</WebSurface>);
+    const lane = within(container).getAllByTestId("activity-lane")[0];
+    assert.ok(lane);
+    // A message, not a line to open: nothing is folded, and nothing leads away.
+    assert.equal(lane.querySelector("details"), null);
+    assert.equal(lane.querySelector("summary"), null);
+    assert.equal(lane.querySelector("a[title]"), null);
+    const name = call.agent ?? call.name;
+    const message = within(lane).getByRole("article", { name: `${name} message` });
+    // Its header names the agent and what it was asked. It does not say how long the call took.
+    const header = message.querySelector("header");
+    assert.ok(header);
+    assert.ok((header.textContent ?? "").includes(name));
+    if (call.title) assert.ok((header.textContent ?? "").includes(call.title));
+    assert.equal(header.querySelector(".tabular-nums"), null);
+    // Its words are drawn as an answer's are.
+    const turn = turnOfCall(call);
+    if (turn.text) assert.ok((message.textContent ?? "").includes(turn.text.slice(0, 24)));
+    // Its own actions: its work is copied and rated apart from the answer that called it.
+    const actions = within(message).getByRole("toolbar");
+    assert.ok(within(actions).getByRole("button", { name: defaultCopy.helpful }));
+    assert.ok(within(actions).getByRole("button", { name: defaultCopy.notHelpful }));
+    assert.equal(within(actions).queryByRole("button", { name: "Regenerate" }), null);
+    await waitFor(() =>
+      assert.ok(net.seen.some((s) => s.path === `/api/runs/${call.runId}/feedback`)),
+    );
+    cleanup();
+    // In Details the same call is a lane that folds, lists its blocks and links to its agent's message.
+    const detail = render(<AgentCallLane tool={call} />);
+    assert.ok(detail.container.querySelector(`a[title="${words.focus(name)}"]`));
+    assert.ok(detail.container.querySelector("summary svg"));
+    assert.equal(detail.container.querySelector("article"), null);
+  } finally {
+    net.restore();
+  }
 });
 
 test("a called agent's record becomes a turn: thinking, words, steps and its own calls, in the order they came", () => {
