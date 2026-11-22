@@ -20,6 +20,7 @@ import {
   type ToolCredentials,
 } from "./api.ts";
 import { ClientConnect } from "./ClientConnect.tsx";
+import { ConnectedAccounts } from "./ConnectedAccounts.tsx";
 import { ConnectionDetail } from "./ConnectionDetail.tsx";
 import { ConnectionHealth } from "./ConnectionHealth.tsx";
 import { ConnectionLogo } from "./ConnectionLogo.tsx";
@@ -920,6 +921,15 @@ export function Connections({
       {scope === "apps" && apps.length > 0 && rows(words.apps.title, apps)}
       {scope !== "apps" && (
         <>
+          {kind === "mcps" && (
+            <ConnectedAccounts
+              presets={presets}
+              busy={busy}
+              canConnect={canConnect}
+              onConnect={(preset) => connect(preset, "person")}
+              onDisconnect={disconnect}
+            />
+          )}
           <div className={kind === "mcps" ? "flex min-w-0 flex-wrap items-center gap-3" : "hidden"}>
             <label className="flex h-9 min-w-0 flex-1 basis-56 items-center gap-2 rounded-aui border border-aui-border bg-aui-bg px-3 text-aui-muted transition-colors focus-within:border-aui-fg pointer-coarse:h-11">
               <SearchIcon size={14} />
