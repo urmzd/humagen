@@ -393,7 +393,6 @@ function MessageView({
   continued = false,
   fromWeb = false,
   refs,
-  onReply,
   actions,
 }: {
   m: ThreadMessage;
@@ -406,7 +405,6 @@ function MessageView({
   mine?: boolean;
   /** Follows a message from the same person. */
   continued?: boolean;
-  onReply?: () => void;
   actions?: ReactNode;
 }) {
   const who = m.name || m.by;
@@ -437,11 +435,7 @@ function MessageView({
     </>
   );
   const row = (
-    <MessageActionRow
-      text={m.text}
-      copyLabel={defaultCopy.conversation.copyMessage}
-      onReply={onReply}
-    >
+    <MessageActionRow text={m.text} copyLabel={defaultCopy.conversation.copyMessage}>
       {actions}
     </MessageActionRow>
   );
@@ -460,16 +454,17 @@ function MessageView({
         </p>
         {byHand}
         {uploads}
-        {/* Its actions are always there. Only its time shows on hover, at the row's end,
-            so nothing between two actions comes or goes. */}
+        {/* Its actions are always there, against the right edge where the message is.
+            Only its time shows on hover, at the row's far (left) end, so nothing
+            between two actions comes or goes. */}
         <div className="flex max-w-full flex-wrap items-center justify-end gap-x-2">
-          {row}
           <p className="flex flex-wrap items-baseline justify-end gap-x-2 text-aui-2xs text-aui-muted">
-            {notes}
             <span className="opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100 motion-reduce:transition-none pointer-coarse:opacity-100">
               <MessageTime at={m.at} />
             </span>
+            {notes}
           </p>
+          {row}
         </div>
         {refs && <div className="flex justify-end">{refs}</div>}
       </article>
@@ -587,7 +582,6 @@ function AnswerView({
   ask,
   refused,
   onAsk,
-  onReply,
   onRedirect,
   actions,
   canStop = false,
@@ -606,7 +600,6 @@ function AnswerView({
   ask?: ThreadAsk[];
   refused?: Refusal;
   onAsk?: () => void;
-  onReply?: () => void;
   onRedirect?: () => void;
   actions?: ReactNode;
 }) {
@@ -670,7 +663,6 @@ function AnswerView({
                   itemActions={itemActions(run)}
                   capabilities={{ regenerate: false }}
                   onAskAgent={onAsk}
-                  onReply={onReply}
                   onRedirect={onRedirect}
                 />
               </CallThreads>
@@ -1396,22 +1388,6 @@ export function ThreadRoom({
                               </>
                             ) : undefined
                           }
-                          onReply={
-                            posts
-                              ? () =>
-                                  setSeed({
-                                    quote: {
-                                      label: "this message",
-                                      text: t.message?.text,
-                                      url: href({
-                                        page: "conversation",
-                                        id,
-                                        message: t.message?.id,
-                                      }),
-                                    },
-                                  })
-                              : undefined
-                          }
                         />
                       ) : t.run ? (
                         <AnswerView
@@ -1442,23 +1418,6 @@ export function ThreadRoom({
                           onAsk={
                             posts
                               ? () => setSeed({ text: `@${t.run?.agent} `, mode: "prepend" })
-                              : undefined
-                          }
-                          onReply={
-                            posts
-                              ? () =>
-                                  setSeed({
-                                    quote: {
-                                      label: `${agentShown(t.run?.agent ?? "")}'s answer`,
-                                      agent: t.run?.agent,
-                                      url: href({
-                                        page: "conversation",
-                                        id,
-                                        panel: "activity",
-                                        run: t.run?.id,
-                                      }),
-                                    },
-                                  })
                               : undefined
                           }
                           onRedirect={
