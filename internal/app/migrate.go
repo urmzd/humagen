@@ -66,7 +66,10 @@ func migrateSessions(ctx context.Context, args []string, out io.Writer, getenv f
 		return err
 	}
 	defer func() { _ = os.RemoveAll(dir) }()
-	p, err := platform.New(platform.Config{Backends: backends, Log: log, Workspace: dir})
+	// What the platform says of itself on opening (its sandbox, say) is
+	// not this command's business: only its errors are shown.
+	quiet := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
+	p, err := platform.New(platform.Config{Backends: backends, Log: quiet, Workspace: dir})
 	if err != nil {
 		return err
 	}

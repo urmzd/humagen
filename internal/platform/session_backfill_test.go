@@ -138,6 +138,9 @@ func TestBackfillFilesPastGitHubRunsInTheirSessions(t *testing.T) {
 		platform.BackfillThreadLeft:       1,
 		platform.BackfillSlackThreadLeft:  1,
 	}
+	for _, l := range dry.Lines {
+		t.Logf("%s: %s -> %s (%s)", l.Kind, l.Subject, l.Session, l.Detail)
+	}
 	if !reflect.DeepEqual(dry.Counts, want) {
 		t.Fatalf("the dry run counts %v, want %v", dry.Counts, want)
 	}
