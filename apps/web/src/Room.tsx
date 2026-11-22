@@ -580,7 +580,6 @@ function AnswerView({
   me,
   ask,
   refused,
-  routed,
   onAsk,
   onReply,
   onRedirect,
@@ -600,8 +599,6 @@ function AnswerView({
   live: boolean;
   ask?: ThreadAsk[];
   refused?: Refusal;
-  /** That it answers because the conversation routes to it, not because it was tagged. */
-  routed?: string;
   onAsk?: () => void;
   onReply?: () => void;
   onRedirect?: () => void;
@@ -648,10 +645,8 @@ function AnswerView({
           <Mentioned text={run.text} />
         </p>
       )}
-      {/* The answer names its agent; why it joined is said above it. */}
-      {(routed || run.picked) && (
-        <Checkpoint agent={run.agent}>{[routed, run.picked].filter(Boolean).join(". ")}</Checkpoint>
-      )}
+      {/* The answer names its agent, so where a message was routed is not said again. Why an agent joined is. */}
+      {run.picked && <Checkpoint agent={run.agent}>{run.picked}</Checkpoint>}
       <AgentTint name={run.agent}>
         <RunFeedbackHost turn={shown}>
           {(rated) => (
@@ -960,20 +955,6 @@ export function ThreadRoom({
         : !started && !owner
           ? defaultCopy.chat.projectStarter
           : undefined;
-  // A run the conversation's selection started says so, as the run recorded
-  // it, so an older answer keeps its line whatever the selection becomes.
-  const routedOf = (run: Run): string | undefined => {
-    const c = defaultCopy.chat;
-    // A message routed to one agent alone says only where it went, whatever the mode was.
-    const alone = run.message
-      ? turns.filter((t) => t.run?.message === run.message && t.run?.routed).length <= 1
-      : false;
-    const name = agentShown(run.agent);
-    if (run.routed === "all") return alone ? c.routed(name) : c.routedAll(name);
-    // Among the selected agents, one that joined says where it went; `picked` says why it joined.
-    if (run.routed === "join" || run.routed === "best_fit") return c.routed(name);
-    return undefined;
-  };
   const shareButton = useRef<HTMLButtonElement>(null);
   // What sharing did: who was told, and who was not added and why.
   const [shareNote, setShareNote] = useState("");
@@ -1447,7 +1428,6 @@ export function ThreadRoom({
                               </>
                             ) : undefined
                           }
-                          routed={routedOf(t.run)}
                           onAsk={
                             posts
                               ? () => setSeed({ text: `@${t.run?.agent} `, mode: "prepend" })

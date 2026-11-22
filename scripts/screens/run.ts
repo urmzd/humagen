@@ -951,10 +951,8 @@ function chats(ids: Ids, call: ReturnType<typeof api>): Screen[] {
       name: "chat-routed",
       path: `/conversations/${ids.routedChat}`,
       act: async (page) => {
-        await page
-          .getByText(/^Routed to /)
-          .first()
-          .waitFor();
+        // An answer names its agent; no line says where a message was routed (DES-031).
+        await page.getByRole("article").first().waitFor();
         // Reproduce a long conversation whose earlier messages are clipped above the log.
         await page.getByRole("log", { name: "Thread", exact: true }).evaluate((element) => {
           element.scrollTop = element.scrollHeight;
