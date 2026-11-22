@@ -5235,9 +5235,10 @@ export const defaultCopy = {
     hintHome:
       "Starts a session and runs this in its sandbox. The agent sees the output with your next message.",
     empty: "Type a command after !",
+    /** A command runs alone: a file attached to it would be run as part of it. */
+    withFiles: "A command runs alone. Remove the attached files to run it.",
     /** Where no command can run. Said in the hint, and again when it is sent. */
     noSandbox: "Commands cannot run here: this deployment has no isolated sandbox.",
-    noSession: "Commands run only in a session, not in a shared thread.",
     /** The command block in the conversation. */
     label: (who: string, command: string) => `${who} ran ${command}`,
     you: "You",

@@ -205,8 +205,10 @@ function PackageRow({
       choices={[
         ...needs.map((surface) => ({
           label: words.connect(words.surface(surface)),
+          // In-app, as a link would: no full page load.
           onSelect: () => {
-            window.location.assign(href({ page: "connections" }));
+            window.history.pushState(null, "", href({ page: "connections" }));
+            window.dispatchEvent(new PopStateEvent("popstate"));
           },
         })),
         { label: words.remove, destructive: true, onSelect: () => setRemoving(true) },

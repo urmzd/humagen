@@ -272,7 +272,7 @@ export function SessionsPage({
   tick,
 }: {
   route: Extract<Route, { page: "sessions" }>;
-  go: (route: Route) => void;
+  go: (route: Route, opts?: { replace?: boolean }) => void;
   projects?: ProjectView[];
   workspaceName?: string;
   alerts?: Alert[];
@@ -346,7 +346,8 @@ export function SessionsPage({
         <SearchField
           label="Search sessions"
           value={route.q ?? ""}
-          onChange={(q) => go({ ...route, q: q || undefined })}
+          // Typing replaces the address, so Back leaves the page rather than each letter.
+          onChange={(q) => go({ ...route, q: q || undefined }, { replace: true })}
           placeholder="Search by title or agent"
           className="sm:w-72"
         />

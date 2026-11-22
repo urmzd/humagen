@@ -47,7 +47,13 @@ import {
 } from "./api.ts";
 import { askedOf, asksOf, copyFor, type Refusal, stillAsks } from "./asks.ts";
 import { answersLine } from "./availability.ts";
-import { bangCommand, CommandMessage, commandHint, commandsHere } from "./BangCommand.tsx";
+import {
+  bangCommand,
+  CommandMessage,
+  commandHint,
+  commandHold,
+  commandsHere,
+} from "./BangCommand.tsx";
 import { agentShown, brandShown } from "./branding.ts";
 import { Composer, type ComposerSeed } from "./Composer.tsx";
 import { type ConversationForkActions, ConversationForkPanels } from "./ConversationForkPanels.tsx";
@@ -376,6 +382,7 @@ function RoomComposer({
         trailing={trailing}
         footer={footer}
         note={commands !== undefined && commandHint(draft, commands)}
+        hold={(text, files) => commandHold(text, files, commands)}
         stopAll={
           thread
             ? { busy: session.busy, pending: session.pending, onStop: () => void stopAll() }
@@ -666,7 +673,7 @@ function AnswerView({
       id={`turn-${run.id}`}
       data-turn-id={run.id}
       className={`flex flex-col gap-2 ${focused ? "rounded-aui outline-2 outline-offset-4 outline-aui-accent" : ""}`}
-      aria-label={words.answeredBy(name)}
+      aria-label={words.answeredBy(agentShown(run.agent))}
     >
       {/* A run from before threads carries what was asked; one that answers a message does not repeat it. */}
       {!run.message && (

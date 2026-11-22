@@ -2,6 +2,7 @@ package platform_test
 
 import (
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -171,4 +172,86 @@ func TestReviewingAnAlertStartsWithItsDocument(t *testing.T) {
 	if _, err := p.MessageAttachment(t.Context(), operator, review.ID, first.ID, 0); err == nil {
 		t.Fatal("a person outside the session opened its document")
 	}
+}
+
+// Two Review clicks at once open one session and start one recap.
+func TestConcurrentReviewsOfAnAlertStartOneRecap(t *testing.T) {
+	p := startWith(t, platform.Config{TestBuiltinProvider: "offline", TestBuiltinModel: "offline"})
+	field(t, p)
+	p.SeePerson(admin)
+	root, err := p.StartSession(t.Context(), admin, platform.SessionInput{Project: "Field", Agent: "lead", Text: "Find the quarterly report"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := failedTools(t, p, firstRun(t, p, root))
+	const clicks = 6
+	var (
+		wg      sync.WaitGroup
+		mu      sync.Mutex
+		ids     = map[string]bool{}
+		started int
+	)
+	for range clicks {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			v, ok, err := p.ReviewAlert(t.Context(), admin, a.ID)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			mu.Lock()
+			defer mu.Unlock()
+			ids[v.ID] = true
+			if ok {
+				started++
+			}
+		}()
+	}
+	wg.Wait()
+	if len(ids) != 1 || started != 1 {
+		t.Fatalf("%d clicks opened %d sessions and started %d recaps", clicks, len(ids), started)
+	}
+	var id string
+	for k := range ids {
+		id = k
+	}
+	v, err := p.ReadSession(t.Context(), admin, id, "", "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	asks := 0
+	for _, m := range v.Messages {
+		if m.Run != nil {
+			await(t, p, m.Run.ID, runs.Completed)
+			asks++
+		}
+	}
+	if asks != 1 {
+		t.Fatalf("the review session holds %d asks", asks)
+	}
+}
+
+// A review session's label is reserved: no request opens one with words of
+// its own, so the document and recap are never skipped.
+func TestAReviewSessionIsOpenedOnlyByReview(t *testing.T) {
+	p := startWith(t, platform.Config{TestBuiltinProvider: "offline", TestBuiltinModel: "offline"})
+	field(t, p)
+	p.SeePerson(admin)
+	root, err := p.StartSession(t.Context(), admin, platform.SessionInput{Project: "Field", Agent: "lead", Text: "Find the quarterly report"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := failedTools(t, p, firstRun(t, p, root))
+	if _, err := p.StartSession(t.Context(), admin, platform.SessionInput{Parent: root.ID, SourceAlert: a.ID, Agent: "lead", Label: "review-" + a.ID, Text: "hello"}); err == nil {
+		t.Fatal("a request opened a review session")
+	}
+	if _, err := p.PostSession(t.Context(), admin, root.ID, platform.MessageInput{Text: "hello"}, platform.SessionMessageOptions{Agent: "lead", Label: "review-" + a.ID}); err == nil {
+		t.Fatal("a message opened a review session")
+	}
+	review, started, err := p.ReviewAlert(t.Context(), admin, a.ID)
+	if err != nil || !started {
+		t.Fatalf("review after refused attempts: started %v, %v", started, err)
+	}
+	firstRun(t, p, review)
 }

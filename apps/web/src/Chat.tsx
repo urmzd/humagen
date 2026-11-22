@@ -23,7 +23,7 @@ import {
   type ThreadSummary,
 } from "./api.ts";
 import { asksOf } from "./asks.ts";
-import { bangCommand, commandHint, commandsHere } from "./BangCommand.tsx";
+import { bangCommand, commandHint, commandHold, commandsHere } from "./BangCommand.tsx";
 import { aiNoticeHeight, Composer, type ComposerSeed } from "./Composer.tsx";
 import type { ConversationForkActions } from "./ConversationForkPanels.tsx";
 import { type Completion, useCompletion } from "./completion.ts";
@@ -573,7 +573,7 @@ export function Chat({
       giveBack(m, e instanceof ApiError ? e.message : words.failed.post);
     // A "!" message runs a command and starts no run. Where none may run,
     // it is not sent to an agent: it comes back, saying why.
-    const command = bangCommand(m.text) !== null;
+    const command = commandsRefused !== undefined && bangCommand(m.text) !== null;
     if (command && commandsRefused) return giveBack(m, commandsRefused);
     // Home starts a private conversation in the picked project, or a
     // shared thread when it was opened from a channel. Either opens at
@@ -831,7 +831,12 @@ export function Chat({
             was.length === now.length && was.every((n, i) => n === now[i]);
           setMentioned((was) => (same(was, now) ? was : now));
         }}
-        note={commandDraft && commandHint(commandDraft, commandsRefused, !threadId)}
+        note={
+          commandDraft &&
+          commandsRefused !== undefined &&
+          commandHint(commandDraft, commandsRefused, !threadId)
+        }
+        hold={(text, files) => commandHold(text, files, commandsRefused)}
         // Under the bar, its approval mode, always in the same place: in a
         // conversation once its mode is read (until then it waits, disabled),
         // and on Home held for the session it starts.
