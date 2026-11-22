@@ -38,9 +38,11 @@ export function HomePage({
   return (
     // Optional sections flow below the desktop prompt and above the phone's
     // bottom composer. Their arrival must not recenter the greeting or prompt.
+    // On a desktop the top padding puts the greeting and prompt a little above
+    // the middle of the page, at any height.
     <section
       aria-label="New session"
-      className="humagen-home aui-scroll humagen-fade flex min-h-0 flex-1 flex-col overflow-y-auto pt-8 pb-2 md:pt-[clamp(2rem,24dvh,14rem)] md:pb-8"
+      className="humagen-home aui-scroll humagen-fade flex min-h-0 flex-1 flex-col overflow-y-auto pt-8 pb-2 md:pt-[clamp(2rem,calc(45dvh-5rem),24rem)] md:pb-8"
     >
       <div className="flex w-full min-w-0 flex-1 flex-col md:block md:flex-none">
         {banner && <AnnouncementBanner announcement={banner} />}
