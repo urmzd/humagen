@@ -25,7 +25,7 @@ const looks: Record<MascotPersona, [string, string]> = {
   engineer: ["Engineer", "oklch(0.68 0.15 135)"],
   scientist: ["Analyst", "oklch(0.66 0.15 300)"],
   inspector: ["QA Reviewer", "oklch(0.66 0.14 250)"],
-  conductor: ["Humagen", "oklch(0.64 0.19 25)"],
+  spy: ["Humagen", "oklch(0.64 0.19 25)"],
   plain: ["Helper", "oklch(0.72 0.13 85)"],
 };
 if (new URLSearchParams(location.search).get("theme") === "light")

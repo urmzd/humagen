@@ -1,4 +1,12 @@
-import { type CSSProperties, type ReactNode, useId } from "react";
+import {
+  type CSSProperties,
+  type ReactNode,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import type { OrbState } from "./AgentOrb.tsx";
 
 /**
@@ -14,7 +22,7 @@ export type MascotPersona =
   | "engineer"
   | "scientist"
   | "inspector"
-  | "conductor"
+  | "spy"
   | "plain";
 
 export const mascotPersonas: MascotPersona[] = [
@@ -23,7 +31,7 @@ export const mascotPersonas: MascotPersona[] = [
   "engineer",
   "scientist",
   "inspector",
-  "conductor",
+  "spy",
   "plain",
 ];
 
@@ -47,7 +55,7 @@ export function mascotPose(state: OrbState): Pose {
 /** A persona from an agent's handle, for agents with no look of their own. */
 export function mascotPersonaOf(handle: string): MascotPersona {
   const h = handle.toLowerCase();
-  if (h === "humagen" || h === "lead" || h.includes("orchestr")) return "conductor";
+  if (h === "humagen" || h === "lead" || h.includes("orchestr")) return "spy";
   if (h.includes("research") || h.includes("investig") || h.includes("detect")) return "detective";
   if (h.includes("writ") || h.includes("editor") || h.includes("copy")) return "writer";
   if (h.includes("engineer") || h.includes("dev") || h.includes("build") || h.includes("ops"))
@@ -66,18 +74,18 @@ const SHAPES: Record<MascotPersona, Shape> = {
   engineer: { kind: "box", w: 58, h: 58 },
   scientist: { kind: "oval", rx: 30, ry: 31 },
   inspector: { kind: "oval", rx: 29, ry: 30 },
-  conductor: { kind: "oval", rx: 30, ry: 32 },
+  spy: { kind: "oval", rx: 29, ry: 32 },
   plain: { kind: "oval", rx: 30, ry: 31 },
 };
 
-type Eyes = "dot" | "keen" | "happy" | "wide";
+type Eyes = "dot" | "keen" | "happy" | "wide" | "suave";
 const EYES: Record<MascotPersona, Eyes> = {
   detective: "keen",
   writer: "dot",
   engineer: "dot",
   scientist: "wide",
   inspector: "keen",
-  conductor: "happy",
+  spy: "suave",
   plain: "dot",
 };
 
@@ -96,6 +104,120 @@ const ARMS: Record<Pose, { left: [number, number]; right: [number, number] }> = 
   delegating: { left: [110, -14], right: [-40, -30] },
   waiting: { left: [70, -50], right: [110, 50] },
 };
+
+/**
+ * Fur is drawn once, not on every frame. An SVG filter runs again whenever
+ * anything in its picture moves, so the furry parts (the body with its feet,
+ * an upper arm, a forearm, a hand) are drawn to images once per color, shape
+ * and size, and the moving parts move those images.
+ */
+const baked = new Map<string, Promise<string>>();
+
+function furDefs(box: [number, number, number, number]) {
+  const [x, y, w, h] = box;
+  return `<defs>
+<filter id="fur" filterUnits="userSpaceOnUse" x="${x}" y="${y}" width="${w}" height="${h}">
+<feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="3" seed="7"/>
+<feDisplacementMap in="SourceGraphic" scale="3.2"/></filter>
+<filter id="grain" x="0" y="0" width="100%" height="100%">
+<feTurbulence type="fractalNoise" baseFrequency="2.4" numOctaves="2" seed="2"/>
+<feColorMatrix type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 -1.4 1.1"/>
+<feComposite in2="SourceGraphic" operator="in"/></filter>
+<radialGradient id="shade" cx="0.36" cy="0.3" r="0.85">
+<stop offset="0" stop-color="#fff" stop-opacity="0.42"/>
+<stop offset="0.45" stop-color="#fff" stop-opacity="0"/>
+<stop offset="1" stop-color="#000" stop-opacity="0.45"/></radialGradient></defs>`;
+}
+
+function bake(key: string, box: [number, number, number, number], body: string, px: number) {
+  const hit = baked.get(key);
+  if (hit) return hit;
+  const [x, y, w, h] = box;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${Math.ceil(w * px)}" height="${Math.ceil(h * px)}" viewBox="${x} ${y} ${w} ${h}">${furDefs(box)}${body}</svg>`;
+  const made = new Promise<string>((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.ceil(w * px);
+      canvas.height = Math.ceil(h * px);
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return reject(new Error("no canvas"));
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL("image/png"));
+    };
+    img.onerror = () => reject(new Error("fur could not be drawn"));
+    img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+  });
+  baked.set(key, made);
+  made.catch(() => baked.delete(key));
+  return made;
+}
+
+const BOX = {
+  body: [0, 0, 130, 120] as [number, number, number, number],
+  upper: [-8, -8, UPPER + 16, 16] as [number, number, number, number],
+  fore: [-8, -8, FORE + 16, 16] as [number, number, number, number],
+  hand: [-10, -10, 20, 20] as [number, number, number, number],
+};
+
+function shapeMarkup(shape: Shape, cy: number, fill: string) {
+  return shape.kind === "oval"
+    ? `<ellipse cx="${CX}" cy="${cy}" rx="${shape.rx}" ry="${shape.ry}" fill="${fill}"/>`
+    : `<rect x="${CX - shape.w / 2}" y="${cy - shape.h / 2}" width="${shape.w}" height="${shape.h}" rx="20" fill="${fill}"/>`;
+}
+
+type Fur = Partial<Record<keyof typeof BOX, string>>;
+
+/** The furry parts as images, once the ink is known; none until they are drawn. */
+function useFur(
+  ink: string | undefined,
+  shape: Shape,
+  cy: number,
+  size: number,
+  sleeve?: string,
+): Fur {
+  const [fur, setFur] = useState<Fur>({});
+  useEffect(() => {
+    if (!ink || typeof document === "undefined") return;
+    const limb = `color-mix(in oklab, ${ink} 86%, black)`;
+    const px = Math.min(6, Math.max(1, (size / 120) * (window.devicePixelRatio || 1)));
+    const k = `${ink}|${sleeve ?? ""}|${JSON.stringify(shape)}|${px.toFixed(2)}`;
+    // A suit's sleeves are cloth, not fur, with a white cuff at the hand.
+    const cloth = (len: number, width: number, cuff: boolean) =>
+      `<path d="M0 0L${len} 0" stroke="${sleeve}" stroke-width="${width}" stroke-linecap="round"/>` +
+      `<path d="M0 ${-width / 2 + 1}L${len} ${-width / 2 + 1}" stroke="#fff" stroke-opacity="0.12" stroke-width="1.4" stroke-linecap="round"/>` +
+      (cuff
+        ? `<rect x="${len - 1.6}" y="${-width / 2}" width="2.6" height="${width}" rx="1" fill="#f4f6f8"/>`
+        : "");
+    const parts: Record<keyof typeof BOX, string> = {
+      body: `<g filter="url(#fur)"><ellipse cx="${CX - 11}" cy="${BASE + 3}" rx="8" ry="4.5" fill="${limb}"/><ellipse cx="${CX + 11}" cy="${BASE + 3}" rx="8" ry="4.5" fill="${limb}"/></g>
+<g filter="url(#fur)">${shapeMarkup(shape, cy, ink)}</g>${shapeMarkup(shape, cy, "url(#shade)")}
+<g filter="url(#grain)" opacity="0.5">${shapeMarkup(shape, cy, "#fff")}</g>`,
+      upper: sleeve
+        ? cloth(UPPER, 9.4, false)
+        : `<path d="M0 0L${UPPER} 0" stroke="${limb}" stroke-width="9" stroke-linecap="round" filter="url(#fur)"/>`,
+      fore: sleeve
+        ? cloth(FORE, 8.8, true)
+        : `<path d="M0 0L${FORE} 0" stroke="${limb}" stroke-width="8.4" stroke-linecap="round" filter="url(#fur)"/>`,
+      hand: `<g filter="url(#fur)"><circle r="6.4" fill="${limb}"/></g><circle r="6.4" fill="url(#shade)"/>`,
+    };
+    let live = true;
+    for (const name of Object.keys(parts) as (keyof typeof BOX)[])
+      bake(`${name}|${k}`, BOX[name], parts[name], px).then(
+        (url) => live && setFur((f) => ({ ...f, [name]: url })),
+        () => {},
+      );
+    return () => {
+      live = false;
+    };
+  }, [ink, shape, cy, size, sleeve]);
+  return fur;
+}
+
+function FurImage({ url, box }: { url: string; box: [number, number, number, number] }) {
+  const [x, y, w, h] = box;
+  return <image href={url} x={x} y={y} width={w} height={h} preserveAspectRatio="none" />;
+}
 
 export function Mascot({
   persona = "plain",
@@ -122,10 +244,21 @@ export function Mascot({
   const leftShoulder: [number, number] = [CX - half + 5, shoulderY];
   const rightShoulder: [number, number] = [CX + half - 5, shoulderY];
   const eyeY = cy - 4;
-  const arm = ARMS[pose];
+  // The agent gives its orders at the earpiece, the remote held out in its other hand.
+  const arm =
+    persona === "spy" && pose === "delegating"
+      ? { left: [200, -20] as [number, number], right: [-60, -110] as [number, number] }
+      : ARMS[pose];
   const hold = handProp(pose, persona);
+  const ref = useRef<SVGSVGElement>(null);
+  const [ink, setInk] = useState<string>();
+  useLayoutEffect(() => {
+    if (ref.current) setInk(getComputedStyle(ref.current).color);
+  }, [color]);
+  const fur = useFur(ink, shape, cy, size, persona === "spy" ? "#16181d" : undefined);
   return (
     <svg
+      ref={ref}
       aria-hidden="true"
       viewBox="0 0 130 120"
       width={(size * 130) / 120}
@@ -136,22 +269,6 @@ export function Mascot({
       style={{ color, "--m-size": `${size}px` } as CSSProperties}
     >
       <defs>
-        <filter
-          id={`${id}-fur`}
-          filterUnits="userSpaceOnUse"
-          x="-20"
-          y="-20"
-          width="170"
-          height="160"
-        >
-          <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="3" seed="7" />
-          <feDisplacementMap in="SourceGraphic" scale="3.2" />
-        </filter>
-        <filter id={`${id}-grain`} x="0" y="0" width="100%" height="100%">
-          <feTurbulence type="fractalNoise" baseFrequency="2.4" numOctaves="2" seed="2" />
-          <feColorMatrix type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 -1.4 1.1" />
-          <feComposite in2="SourceGraphic" operator="in" />
-        </filter>
         <radialGradient id={`${id}-shade`} cx="0.36" cy="0.3" r="0.85">
           <stop offset="0" stopColor="#fff" stopOpacity="0.42" />
           <stop offset="0.45" stopColor="#fff" stopOpacity="0" />
@@ -218,19 +335,19 @@ export function Mascot({
       {pose === "waiting" && <Hourglass u={u} />}
 
       <g className="m-body">
-        {/* Feet. */}
-        <g filter={u("fur")} className="m-limb">
-          <ellipse cx={CX - 11} cy={BASE + 3} rx="8" ry="4.5" fill="currentColor" />
-          <ellipse cx={CX + 11} cy={BASE + 3} rx="8" ry="4.5" fill="currentColor" />
-        </g>
-        {/* The body, in fur, shaded and grained. */}
-        <g filter={u("fur")}>
-          <BodyShape shape={shape} cy={cy} fill="currentColor" />
-        </g>
-        <BodyShape shape={shape} cy={cy} fill={u("shade")} />
-        <g filter={u("grain")} opacity="0.5">
-          <BodyShape shape={shape} cy={cy} fill="#fff" />
-        </g>
+        {/* The body and feet in fur, drawn once; a plain shape until then. */}
+        {fur.body ? (
+          <FurImage url={fur.body} box={BOX.body} />
+        ) : (
+          <g>
+            <g className="m-limb">
+              <ellipse cx={CX - 11} cy={BASE + 3} rx="8" ry="4.5" fill="currentColor" />
+              <ellipse cx={CX + 11} cy={BASE + 3} rx="8" ry="4.5" fill="currentColor" />
+            </g>
+            <BodyShape shape={shape} cy={cy} fill="currentColor" />
+            <BodyShape shape={shape} cy={cy} fill={u("shade")} />
+          </g>
+        )}
         <Outfit persona={persona} u={u} top={top} cy={cy} half={half} />
         <EyePair kind={EYES[persona]} y={eyeY} pose={pose} persona={persona} />
         {persona === "detective" && (pose === "idle" || pose === "thinking") && (
@@ -242,14 +359,22 @@ export function Mascot({
         at={leftShoulder}
         angles={arm.left}
         u={u}
+        fur={fur}
         upper="m-left-upper"
         fore="m-left-fore"
-        hold={pose === "composing" ? <Notepad /> : undefined}
+        hold={
+          pose === "composing" ? (
+            <Notepad />
+          ) : persona === "spy" && pose === "delegating" ? (
+            <Remote signal />
+          ) : undefined
+        }
       />
       <Arm
         at={rightShoulder}
         angles={arm.right}
         u={u}
+        fur={fur}
         upper="m-right-upper"
         fore="m-right-fore"
         hold={hold?.(u)}
@@ -281,6 +406,7 @@ function Arm({
   at,
   angles,
   u,
+  fur,
   upper,
   fore,
   hold,
@@ -288,6 +414,7 @@ function Arm({
   at: [number, number];
   angles: [number, number];
   u: (n: string) => string;
+  fur: Fur;
   upper: string;
   fore: string;
   hold?: ReactNode;
@@ -296,31 +423,41 @@ function Arm({
   return (
     <g transform={`translate(${at[0]} ${at[1]}) rotate(${a})`}>
       <g className={`m-upper ${upper}`}>
-        <path
-          d={`M0 0L${UPPER} 0`}
-          stroke="currentColor"
-          strokeWidth="9"
-          strokeLinecap="round"
-          filter={u("fur")}
-          className="m-limb"
-        />
+        {fur.upper ? (
+          <FurImage url={fur.upper} box={BOX.upper} />
+        ) : (
+          <path
+            d={`M0 0L${UPPER} 0`}
+            stroke="currentColor"
+            strokeWidth="9"
+            strokeLinecap="round"
+            className="m-limb"
+          />
+        )}
         <g transform={`translate(${UPPER} 0) rotate(${b})`}>
           <g className={`m-fore ${fore}`}>
-            <path
-              d={`M0 0L${FORE} 0`}
-              stroke="currentColor"
-              strokeWidth="8.4"
-              strokeLinecap="round"
-              filter={u("fur")}
-              className="m-limb"
-            />
+            {fur.fore ? (
+              <FurImage url={fur.fore} box={BOX.fore} />
+            ) : (
+              <path
+                d={`M0 0L${FORE} 0`}
+                stroke="currentColor"
+                strokeWidth="8.4"
+                strokeLinecap="round"
+                className="m-limb"
+              />
+            )}
             <g transform={`translate(${FORE} 0)`}>
               {/* What the hand holds stays upright, whatever the arm's angle. */}
               <g transform={`rotate(${-(a + b)})`}>{hold}</g>
-              <g filter={u("fur")} className="m-limb">
-                <circle r="6.4" fill="currentColor" />
-              </g>
-              <circle r="6.4" fill={u("shade")} />
+              {fur.hand ? (
+                <FurImage url={fur.hand} box={BOX.hand} />
+              ) : (
+                <g>
+                  <circle r="6.4" fill="currentColor" className="m-limb" />
+                  <circle r="6.4" fill={u("shade")} />
+                </g>
+              )}
             </g>
           </g>
         </g>
@@ -375,6 +512,20 @@ function EyePair({
           <path
             d={`M${x - r - 1} ${y - r * 0.6}Q${x} ${y - r * 0.1} ${x + r + 1} ${y - r * 0.9}L${x + r + 1} ${y - r - 3}L${x - r - 1} ${y - r - 3}Z`}
             fill="currentColor"
+          />
+        )}
+        {kind === "suave" && (
+          // One brow level, one raised: calm, and a step ahead.
+          <path
+            d={
+              x < CX
+                ? `M${x - r} ${y - r - 2.4}L${x + r} ${y - r - 2.4}`
+                : `M${x - r} ${y - r - 2.6}Q${x} ${y - r - 6} ${x + r} ${y - r - 3.6}`
+            }
+            stroke="#1b1d2a"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            fill="none"
           />
         )}
       </g>
@@ -587,25 +738,57 @@ function Outfit({
           </g>
         </g>
       );
-    case "conductor":
-      // Humagen leads the others: a tailcoat's lapels, a white collar, a bow tie.
+    case "spy":
+      // Humagen runs the others, as a secret agent would: a tuxedo with satin
+      // lapels, a white shirt and black bow tie, a pocket square, slicked hair
+      // and an earpiece on its coiled wire.
       return (
         <g>
           <path
-            d={`M${L + 3} ${cy + 6}L${CX - 4} ${BASE + 1}L${L + 6} ${BASE + 1}Q${L} ${cy + 24} ${L + 3} ${cy + 6}Z`}
-            fill="#1d2027"
+            d={`M${L + 1} ${cy + 4}Q${L - 1} ${cy + 26} ${L + 7} ${BASE + 1}L${R - 7} ${BASE + 1}Q${R + 1} ${cy + 26} ${R - 1} ${cy + 4}Q${CX} ${cy + 12} ${L + 1} ${cy + 4}Z`}
+            fill="#16181d"
           />
           <path
-            d={`M${R - 3} ${cy + 6}L${CX + 4} ${BASE + 1}L${R - 6} ${BASE + 1}Q${R} ${cy + 24} ${R - 3} ${cy + 6}Z`}
-            fill="#1d2027"
+            d={`M${CX - 11} ${cy + 9}L${CX} ${BASE - 4}L${CX + 11} ${cy + 9}Q${CX} ${cy + 13} ${CX - 11} ${cy + 9}Z`}
+            fill="#f6f7f9"
+          />
+          <path d={`M${CX} ${cy + 20}v${BASE - cy - 26}`} stroke="#d5d9df" strokeWidth="0.6" />
+          <circle cx={CX} cy={cy + 23} r="0.9" fill="#1b1d22" />
+          <circle cx={CX} cy={cy + 28} r="0.9" fill="#1b1d22" />
+          <path
+            d={`M${CX - 11} ${cy + 9}L${CX - 3} ${BASE - 10}L${CX - 15} ${cy + 22}Z`}
+            fill="#2b2f38"
           />
           <path
-            d={`M${CX - 10} ${cy + 11}L${CX} ${cy + 17}L${CX + 10} ${cy + 11}L${CX + 8} ${cy + 8}L${CX} ${cy + 13}L${CX - 8} ${cy + 8}Z`}
-            fill="#f4f6f8"
+            d={`M${CX + 11} ${cy + 9}L${CX + 3} ${BASE - 10}L${CX + 15} ${cy + 22}Z`}
+            fill="#2b2f38"
           />
-          <path d={`M${CX - 1} ${cy + 15}l-7-4v8z`} fill="#111" />
-          <path d={`M${CX + 1} ${cy + 15}l7-4v8z`} fill="#111" />
-          <circle cx={CX} cy={cy + 15} r="2" fill="#111" />
+          <path d={`M${L + 9} ${cy + 19}l7-1.2-1.8 3.6z`} fill="#f6f7f9" />
+          <path d={`M${CX - 1} ${cy + 13}l-7-3.6v7.2z`} fill="#0b0c0f" />
+          <path d={`M${CX + 1} ${cy + 13}l7-3.6v7.2z`} fill="#0b0c0f" />
+          <rect x={CX - 1.8} y={cy + 11.2} width="3.6" height="3.6" rx="1" fill="#0b0c0f" />
+          <g transform={`translate(0 ${top - 34})`}>
+            {/* Slicked back with a side part: a sweep of dark hair and its shine. */}
+            <path
+              d="M33 41C32 30 42 24 55 25C67 26 74 32 72 40C67 35 60 32.5 52 33.5L44 33C39 35 35 37.5 33 41Z"
+              fill="#1e1a17"
+            />
+            <path d="M44 33L41 27" stroke="#0e0c0b" strokeWidth="1" strokeLinecap="round" />
+            <path
+              d="M47 29Q57 26.5 67 31.5"
+              stroke="#6a6058"
+              strokeWidth="1.1"
+              fill="none"
+              strokeLinecap="round"
+            />
+          </g>
+          <circle cx={R - 2} cy={cy - 4} r="2.2" fill="#22252b" />
+          <path
+            d={`M${R - 2} ${cy - 2}c2 2-2 3 0 5s-2 3 0 5s-2 3 0 5`}
+            stroke="#c9ced6"
+            strokeWidth="0.8"
+            fill="none"
+          />
         </g>
       );
     default:
@@ -662,14 +845,26 @@ function handProp(pose: Pose, persona: MascotPersona) {
         />
       </g>
     );
-  if (persona === "conductor" && (pose === "delegating" || pose === "idle"))
-    return () => (
-      <g>
-        <path d="M0 0L16 -16" stroke="#f4f6f8" strokeWidth="1.6" strokeLinecap="round" />
-        <path d="M-1 1L3 -3" stroke="#6e3f1c" strokeWidth="3" strokeLinecap="round" />
-      </g>
-    );
+  if (persona === "spy" && pose === "idle") return () => <Remote />;
   return undefined;
+}
+
+/** The agent's gadget: a slim remote with a light that blinks, sending its signal. */
+function Remote({ signal }: { signal?: boolean }) {
+  return (
+    <g transform="translate(-2.6 -15)">
+      <rect width="5.2" height="15" rx="1.6" fill="#1b1e24" stroke="#4a505a" strokeWidth="0.5" />
+      <rect x="1" y="5.5" width="3.2" height="1.2" rx="0.5" fill="#4a505a" />
+      <rect x="1" y="8" width="3.2" height="1.2" rx="0.5" fill="#4a505a" />
+      <circle className="m-led" cx="2.6" cy="2.6" r="1.1" fill="#ff4d4d" />
+      {signal && (
+        <g fill="none" stroke="#ff8a8a" strokeWidth="0.9" strokeLinecap="round">
+          <path className="m-signal" d="M-1 -1.5a5 5 0 0 1 7.2 0" />
+          <path className="m-signal m-late" d="M-3.6 -4a8.6 8.6 0 0 1 12.4 0" />
+        </g>
+      )}
+    </g>
+  );
 }
 
 function Notepad() {

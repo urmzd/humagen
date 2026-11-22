@@ -1484,6 +1484,30 @@
     transform-origin: center;
     animation: m-rock 2.4s ease-in-out infinite;
   }
+  /* The agent's remote: its light blinks, and sends its signal while it works. */
+  .hm-mascot .m-led {
+    animation: m-led 1.6s steps(1, end) infinite;
+  }
+  .hm-mascot .m-signal {
+    transform-box: fill-box;
+    transform-origin: 50% 100%;
+    animation: m-signal 1.2s ease-out infinite;
+  }
+  @keyframes m-led {
+    50% {
+      opacity: 0.25;
+    }
+  }
+  @keyframes m-signal {
+    from {
+      opacity: 1;
+      transform: scale(0.7);
+    }
+    to {
+      opacity: 0;
+      transform: scale(1.3);
+    }
+  }
   @keyframes m-blink {
     0%,
     94%,
