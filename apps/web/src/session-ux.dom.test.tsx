@@ -612,6 +612,45 @@ test("session UX a health alert is viewed on its answer and reviewed in a sessio
     within(old).getByRole("link", { name: "View" }).getAttribute("href"),
     `/messages/${older.run_id}`,
   );
+  // Once reviewed, the alert is one quiet line: open the review, or mark it done.
+  const reviewed = {
+    ...health,
+    id: "al-reviewed",
+    title: "lead needs review: cost",
+    review: "s_done",
+    severity: "warning" as const,
+  };
+  view.rerender(
+    <SessionAlerts
+      alerts={[reviewed]}
+      attention={{
+        rows: [],
+        problem: undefined,
+        busy: false,
+        undo: undefined,
+        refresh() {},
+        change: async () => {},
+      }}
+      canWrite
+      agents={["humagen"]}
+      beside
+      onOpen={(id) => {
+        opened = id;
+      }}
+    />,
+  );
+  const line = await screen.findByRole("region", { name: `Alert: ${reviewed.title}` });
+  assert.ok(line.hasAttribute("data-reviewed"));
+  assert.deepEqual(
+    within(line)
+      .getAllByRole("button")
+      .map((b) => b.textContent),
+    ["Open Review", "Mark Done"],
+  );
+  fireEvent.click(within(line).getByRole("button", { name: "Open Review" }));
+  assert.equal(opened, "s_done");
+  opened = "";
+
   // Beside its answer, the card asks about it: Review opens the recap session.
   view.rerender(<View beside />);
   const card = await screen.findByRole("region", { name: `Alert: ${health.title}` });
@@ -780,6 +819,122 @@ test("session UX synthetic sessions show alerts before any message and load an o
       reads.some((query) => query.includes("before=")),
       false,
     );
+  } finally {
+    cleanup();
+    restoreEvents();
+  }
+});
+
+test("session UX a review session shows its alert's document and never the alert", async () => {
+  const { Chat } = await import("./Chat.tsx");
+  const { stubEventSource } = await import("./dom.ts");
+  const restoreEvents = stubEventSource();
+  const thread = {
+    id: "s_review",
+    version: 1,
+    visibility: "private" as const,
+    title: "humagen needs review: tool_errors",
+    project: "",
+    channel: "general",
+    participants: [],
+    created_by: "ada",
+    created_at: "",
+    updated_at: "",
+    session: { agent: "humagen", parent: "s_origin", label: "review-al-1", source_alert: "al-1" },
+  };
+  const message = {
+    id: "m-1",
+    thread: thread.id,
+    by: "ada",
+    name: "Ada",
+    text: "humagen needs review: tool_errors",
+    mentions: [],
+    via: "console",
+    at: "2026-11-22T00:00:00Z",
+    attachments: [
+      { digest: "sha256:1", media_type: "text/markdown", size: 120, name: "Alert context.md" },
+    ],
+  };
+  const opened: string[] = [];
+  net = stubFetch({
+    "GET /api/sessions/s_review": () => ({
+      id: thread.id,
+      agent: "humagen",
+      thread,
+      parent: "s_origin",
+      project: "",
+      title: thread.title,
+      status: "done",
+      messages: [
+        {
+          id: message.id,
+          session: thread.id,
+          author: { kind: "person", name: "Ada" },
+          status: "done",
+          parts: [{ type: "text", text: message.text }],
+          at: message.at,
+          message,
+        },
+      ],
+      children: [],
+      links: [],
+      people: [],
+      cursor: "cursor",
+    }),
+    "GET /api/sessions/s_review/messages/m-1/attachments/0": () => {
+      opened.push("0");
+      return {
+        name: "Alert context.md",
+        media_type: "text/markdown",
+        text: "# humagen needs review: tool_errors\n\n## Tool errors\n\n- runs_summary failed 2 times",
+      };
+    },
+    // Even were the alert listed here, the session it is reviewed in does not show it.
+    "GET /api/alerts": () => ({
+      alerts: [
+        {
+          id: "al-1",
+          session: thread.id,
+          title: "humagen needs review: tool_errors",
+          rule: "",
+          kind: "eval",
+          priority: "normal",
+          state: "open",
+          at: "",
+        },
+      ],
+    }),
+    "GET /api/projects/~/agents": () => ({ available: { all: false, names: [] } }),
+    "GET /api/skills": () => ({ skills: [] }),
+    "GET /api/mentions": () => ({ kinds: [] }),
+    "GET /api/people": () => ({ people: [] }),
+    "GET /api/approvals/calls": () => ({ messages: [] }),
+  });
+  try {
+    render(
+      <Chat
+        threadId={thread.id}
+        me="ada"
+        summary={undefined}
+        tick={0}
+        agents={[]}
+        projects={[]}
+        canRun={false}
+        canCreateProject={false}
+        greeting=""
+        alertAccess={{ write: true }}
+        onThread={() => {}}
+        onChanged={() => {}}
+        onProjectCreated={() => {}}
+      />,
+    );
+    const card = await screen.findByRole("button", { name: "Open Alert context.md" });
+    assert.equal(screen.queryByRole("region", { name: /^Alert: / }), null);
+    assert.equal(opened.length, 0);
+    fireEvent.click(card);
+    const dialog = await screen.findByRole("dialog", { name: "Alert context.md" });
+    await within(dialog).findByText("runs_summary failed 2 times");
+    assert.deepEqual(opened, ["0"]);
   } finally {
     cleanup();
     restoreEvents();

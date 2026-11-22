@@ -2209,7 +2209,14 @@ export interface Thread {
   /** The Slack thread this thread is, when it was started from Slack. It never changes. */
   surface?: { client: string; channel: string; ts: string };
   /** A session's own: its agent, and what it was set up with before its first message. */
-  session?: { agent: string; parent: string; image?: string; repos?: string[] };
+  session?: {
+    agent: string;
+    parent: string;
+    label?: string;
+    source_alert?: string;
+    image?: string;
+    repos?: string[];
+  };
   version: number;
   created_by: string;
   created_at: string;

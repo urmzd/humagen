@@ -3362,6 +3362,7 @@ export const defaultCopy = {
     /** An alert's own actions: go to where it came from, ask the agent about it, settle it. */
     view: "View",
     review: "Review",
+    openReview: "Open Review",
     reviewing: "Opening…",
     reviewFailed: "The review could not be opened.",
     /** The menu that holds an alert's lesser actions, such as Snooze. */
@@ -3391,6 +3392,13 @@ export const defaultCopy = {
     snoozeSelected: "Snooze Selected for 1 Hour",
     doneWhen: (condition: string) => `Done when: ${condition}`,
     updated: (n: number) => `Updated ${n} ${n === 1 ? "alert" : "alerts"}.`,
+  },
+  /** A text file attached to a message, shown as a card that opens it. */
+  attachedDocument: {
+    open: (name: string) => `Open ${name}`,
+    kind: (markdown: boolean) => (markdown ? "Document" : "Text file"),
+    unavailable: "The file could not be opened.",
+    truncated: "Only the start of this file is shown.",
   },
   /** The Artifacts page: what agents published, and tiles that start a new one. */
   artifactsPage: {

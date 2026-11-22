@@ -1,4 +1,5 @@
 import { defaultCopy } from "@humagen/components";
+import { BellIcon } from "@humagen/render-web";
 import { Modal } from "@humagen/web";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AgentSession } from "../../../packages/client/src/generated/types.ts";
@@ -84,6 +85,9 @@ export function useSessionAlerts(
 }
 export type SessionAttention = ReturnType<typeof useSessionAlerts>;
 export const alertAnchor = (alert: Alert) => alert.message || alert.run_id;
+/** A reviewed alert's actions: text, as quiet as the line they sit on. */
+const quiet =
+  "inline-flex min-h-6 pointer-coarse:min-h-11 items-center rounded-aui font-medium text-aui-fg underline underline-offset-4 hover:no-underline focus-visible:outline-2 focus-visible:outline-aui-accent disabled:opacity-50";
 
 /** Suppress only projected approvals whose run actually renders a pending approval. */
 export function duplicatesInlineApproval(alert: Alert, turns: ThreadTurn[]): boolean {
@@ -172,6 +176,40 @@ export function SessionAlerts({
         const link = !!page || alert.action === "reconnect" || !beside;
         // Asking about it opens a session of its own, which starts with the agent's recap.
         const reviews = !!onOpen && agents.length > 0 && reviewable(alert);
+        // Once someone reviews it, the work is in the review: the alert is one quiet line.
+        if (alert.review)
+          return (
+            <section
+              key={alert.id}
+              aria-label={`Alert: ${alert.title}`}
+              data-alert-message={anchor}
+              data-reviewed=""
+              className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-aui-xs text-aui-muted"
+            >
+              <BellIcon size={14} aria-hidden />
+              <span className="min-w-0 truncate">{alert.title}</span>
+              {link && (
+                <a className={quiet} href={href(alertOrigin(alert))}>
+                  {action}
+                </a>
+              )}
+              {onOpen && (
+                <button type="button" className={quiet} onClick={() => onOpen(alert.review!)}>
+                  {words.openReview}
+                </button>
+              )}
+              {canWrite && (
+                <button
+                  type="button"
+                  className={quiet}
+                  disabled={attention.busy}
+                  onClick={() => void attention.change(alert, "resolved")}
+                >
+                  {words.markDone}
+                </button>
+              )}
+            </section>
+          );
         return (
           <section
             key={alert.id}

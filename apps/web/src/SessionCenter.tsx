@@ -503,6 +503,7 @@ export function AlertsPage({
   const [reviewing, setReviewing] = useState<string>();
   // Review opens a session that starts with the agent's recap of the alert.
   const review = async (a: Alert) => {
+    if (a.review) return go({ page: "conversation", id: a.review });
     if (reviewing) return;
     setReviewing(a.id);
     setProblem(undefined);
@@ -761,7 +762,11 @@ export function AlertsPage({
                             onClick={() => void review(a)}
                           >
                             <span className="min-w-0 truncate">
-                              {reviewing === a.id ? words.reviewing : words.review}
+                              {reviewing === a.id
+                                ? words.reviewing
+                                : a.review
+                                  ? words.openReview
+                                  : words.review}
                             </span>
                           </button>
                         ) : (
