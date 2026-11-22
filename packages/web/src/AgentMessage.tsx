@@ -592,7 +592,6 @@ function MessageActions({
   copy,
   rate,
   regenerate,
-  onReply,
   actions,
   onRedirect,
 }: {
@@ -602,7 +601,6 @@ function MessageActions({
   copy: Copy;
   rate: boolean;
   regenerate: boolean;
-  onReply?: () => void;
 }) {
   const onAction = useContext(ActionContext);
   const itemActions = useContext(ItemActionsContext);
@@ -619,7 +617,6 @@ function MessageActions({
       copy={copy}
       copyLabel={copy.conversation.copyAnswer}
       copyControl={hostCopy}
-      onReply={onReply}
     >
       {rate && (
         <Rating
@@ -686,7 +683,6 @@ export function AgentMessage({
   feedbackPrompt = true,
   capabilities,
   onAskAgent,
-  onReply,
   timestamp,
   actions,
   onRedirect,
@@ -739,7 +735,6 @@ export function AgentMessage({
   actions?: ReactNode;
   onRedirect?: () => void;
   onAskAgent?: () => void;
-  onReply?: () => void;
   /**
    * The stream alone, inside something that already names the agent and says
    * its state: a called agent's thread in another answer. No header, no
@@ -977,7 +972,6 @@ export function AgentMessage({
                 copy={copy}
                 rate={final && capabilities?.feedback !== false}
                 regenerate={final && capabilities?.regenerate !== false}
-                onReply={settledTurn ? onReply : undefined}
                 actions={actions}
                 onRedirect={final ? onRedirect : undefined}
               />
