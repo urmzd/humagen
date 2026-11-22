@@ -204,7 +204,7 @@ function PackageRow({
       busy={working ? words.removing : undefined}
       choices={[
         ...needs.map((surface) => ({
-          label: words.connect(words.connector(surface)),
+          label: words.connect(words.surface(surface)),
           onSelect: () => {
             window.location.assign(href({ page: "connections" }));
           },

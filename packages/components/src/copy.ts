@@ -537,6 +537,10 @@ export const defaultCopy = {
     view: "View Agents",
     moreFor: (title: string) => `More for ${title}`,
     connect: (what: string) => `Connect ${what}`,
+    /** A system by its name alone, in "Connect GitHub". */
+    surface: (surface: string) =>
+      ({ github: "GitHub", slack: "Slack" })[surface] ??
+      surface.charAt(0).toUpperCase() + surface.slice(1),
     installed: "Installed",
     install: "Install",
     restore: "Restore Missing",
