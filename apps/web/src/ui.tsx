@@ -396,7 +396,7 @@ export function Page({
                       <button
                         type="button"
                         onClick={back.onClick}
-                        className={`${pageTitle} rounded-aui font-medium text-aui-muted transition-colors hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent`}
+                        className={`${pageTitle} rounded-aui font-medium text-aui-muted transition-colors hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent pointer-coarse:min-h-11`}
                       >
                         {back.label}
                       </button>

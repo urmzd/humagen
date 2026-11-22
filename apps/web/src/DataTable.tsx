@@ -87,7 +87,7 @@ export function DataTable<T>({
                   href={to.href}
                   onClick={(event) => follow(event, to.onOpen)}
                   aria-current={to.current ? "true" : undefined}
-                  className="block truncate font-medium text-aui-fg outline-none after:absolute after:inset-0 after:rounded-aui-lg focus-visible:after:outline-2 focus-visible:after:outline-aui-accent"
+                  className="block truncate font-medium text-aui-fg outline-none -my-3 py-3 after:absolute after:inset-0 after:rounded-aui-lg focus-visible:after:outline-2 focus-visible:after:outline-aui-accent"
                 >
                   {first.cell(row)}
                 </a>
