@@ -910,6 +910,14 @@ func (p *Platform) Invoke(ctx context.Context, tag event.Envelope) (runs.Run, er
 	if edge.Parent == "" && scheduledOrigin(tag) {
 		tag = p.fileInScheduleSession(ctx, tag, project)
 	}
+	// A GitHub run is filed in its issue's or pull request's session.
+	if wire.Origin(tag) == runs.OriginGitHub {
+		if edge.Parent == "" {
+			tag = p.fileInGitHubSession(ctx, tag, project, client)
+		} else {
+			wire.DeleteMeta(&tag, runs.MetaThread)
+		}
+	}
 	if wire.Meta(tag)[MetaPersonalMemoryContext] == "true" || wire.Meta(tag)[MetaPrivateLibraryContext] == "true" {
 		if err := p.ContextFlags.Mark(tag.Tenant, runID); err != nil {
 			p.appendUsage(usage.Entry{Kind: usage.Ended, Tenant: tag.Tenant, RunID: runID, At: p.now()})

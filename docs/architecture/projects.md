@@ -1043,6 +1043,14 @@ message naming nobody is the entry agent's.
 The request may not say where to file the session or who owns it. A Slack
 thread that started as a conversation before root sessions stays one (409).
 
+A GitHub pull request or issue has one root session too, keyed by its address
+(`github://<owner>/<repo>/pull/<n>` or `.../issues/<n>`, with the head
+commit left out) and the agent that answered first, which is the key the
+runtime keeps that agent's conversation there under. The platform files the
+run when it admits it (`internal/platform/github_sessions.go`), in the
+project and channel the run is filed in, private to each person the client
+maps an asker's login to ([GitHub sessions](../reference/github.md#sessions)).
+
 ### The dynamic router
 
 A message that names no agent, where the default it inherits is `*`
