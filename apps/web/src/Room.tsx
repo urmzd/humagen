@@ -1054,7 +1054,7 @@ export function ThreadRoom({
     );
   };
 
-  useViewShortcuts(openView, (v) => v !== "sidechat" || posts);
+  useViewShortcuts(openView, () => true);
   const unavailable = useUnavailableViews(th.id, !!th.session);
   const activeView: SessionView | undefined =
     shownView.panel === "details"
@@ -1080,7 +1080,6 @@ export function ThreadRoom({
                   progress={sessionProgress(turns.flatMap((t) => (t.run ? [t.run] : [])))}
                   onOpen={openView}
                   onClose={() => openPanel()}
-                  hidden={posts ? [] : ["sidechat"]}
                   disabled={unavailable}
                 />
               }

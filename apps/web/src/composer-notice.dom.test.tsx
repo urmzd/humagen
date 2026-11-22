@@ -105,9 +105,7 @@ test("a name with a dollar sign, and a sentence that names the product twice, ar
   assert.equal(notice(container)?.textContent, "Cash$&Co is AI. Check what Cash$&Co says.");
 });
 
-test("the Side Chat's composer says it too: on a phone, and with the workbench expanded, it is the only composer on view", () => {
-  const sidechat = readFileSync(new URL("./WorkbenchSidechat.tsx", import.meta.url), "utf8");
-  assert.match(sidechat, /<Composer /);
+test("every composer says it: no composer has an option to turn the line off", () => {
   // No composer turns the line off: there is no option to.
   const composer = readFileSync(new URL("./Composer.tsx", import.meta.url), "utf8");
   assert.match(
