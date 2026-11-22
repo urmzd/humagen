@@ -72,17 +72,6 @@ export function referenceOf(ref: string): Reference {
   return { kind: "other", label: ref };
 }
 
-/**
- * The page a session's source is on, by the session's parent, when it is
- * one a person can open from the Sessions table: the GitHub issue or pull
- * request it was asked on.
- */
-export function sessionSourceLink(parent: string): Reference | undefined {
-  if (!parent.startsWith("github://")) return undefined;
-  const ref = referenceOf(parent);
-  return ref.kind === "github" && ref.url ? ref : undefined;
-}
-
 /** A Slack thread, or channel, in Slack's web client. Without a team only the channel can be opened. */
 export function slackUrl(team: string, channel: string, ts?: string): string {
   const e = encodeURIComponent;
