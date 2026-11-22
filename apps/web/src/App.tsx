@@ -27,7 +27,6 @@ import {
 import { accentAttribute, agentShown, brandCopy, servedBranding } from "./branding.ts";
 import { Chat } from "./Chat.tsx";
 import { CONNECT_PERMISSION } from "./connections.ts";
-import { HomeProjects } from "./HomePage.tsx";
 import type { Source as About } from "./mail.ts";
 import { useNotifications } from "./notificationDelivery.ts";
 import {
@@ -86,12 +85,7 @@ import {
   useRoute,
 } from "./route.ts";
 import { reflects } from "./runsRead.ts";
-import {
-  AlertsPage,
-  HomeSessionGlance,
-  SessionsPage,
-  useSessionAttention,
-} from "./SessionCenter.tsx";
+import { AlertsPage, HomeStarted, SessionsPage, useSessionAttention } from "./SessionCenter.tsx";
 import { DrawerButton, Sidebar, useEdgeSwipe } from "./Sidebar.tsx";
 import { DRAWER_BELOW, SIDEBAR_KEY, sidebarStartsOpen } from "./sidebarState.ts";
 import { syncThemeColor } from "./standalone.ts";
@@ -1192,24 +1186,8 @@ function Console({
                       greeting={greeting(shownName)}
                       personalProject={me.personal_project}
                       findHelp={can("projects:read") ? api.findHelp : undefined}
-                      home={
-                        <>
-                          {can("projects:read") && (
-                            <HomeProjects
-                              projects={projects}
-                              personal={me.personal_project}
-                              pinned={prefs.pinned_projects}
-                              go={go}
-                            />
-                          )}
-                          <HomeSessionGlance
-                            onHasSessions={setHasSessions}
-                            go={go}
-                            canArtifacts={can("artifacts:read")}
-                            tick={tick}
-                          />
-                        </>
-                      }
+                      // Home is the greeting and the chat bar: nothing is listed under it.
+                      home={<HomeStarted onHasSessions={setHasSessions} tick={tick} />}
                       onProjectCreated={(project) => {
                         setProjects((current) => [
                           ...(current ?? []).filter((p) => p.name !== project.name),
@@ -1330,16 +1308,6 @@ function Console({
                       can={can}
                       onChanged={loadSchedules}
                       onSchedule={(name) => go({ page: "schedules", name })}
-                      tab={route.tab ?? "schedules"}
-                      onTab={(tab) =>
-                        go(
-                          tab === "background"
-                            ? { page: "automations", tab }
-                            : { page: "automations" },
-                        )
-                      }
-                      onConversation={(id) => go({ page: "conversation", id })}
-                      tick={tick}
                     />
                   )}
                   {route.page === "schedules" && (

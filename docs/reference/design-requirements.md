@@ -36,6 +36,11 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-079 | Run and Answer: in a session set to it, the approval agent also answers a question an agent asks a person when the session already settles it, as the person who chose it, and hands them the rest | Implemented: `threads.ApprovalDecide` (`pkg/threads/approval.go`), `internal/platform/approval_questions.go`, the `answer` field and `DescribeQuestion` in `pkg/approve`, `PUT /api/threads/{id}/approval` with `decide`, Answer Questions beside Run in `ApprovalToggle.tsx`, and the judgement on a question's card (`ClarificationCard`). Evidence: `TestRunAndAnswerAnswersAChoiceTheSessionSettles`, `TestRunAndAnswerAnswersAReply`, `TestWhatRunAndAnswerDoesNotSettleWaitsForAPerson`, `TestRunAndAnswerNeverAnswersForSomeoneElse`, `TestRunAndAnswerLeavesWhatSomeoneElseAskedFor`, `TestRunLeavesQuestionsForAPerson`, `TestRunAndAnswerIsAModeAPersonChooses`, `TestApprovalModeIsSetOnItsOwnAndKept`, `TestAQuestionsAnswerIsReadBesideTheDecision`; `approval-toggle.dom.test.tsx`, `ui.test.tsx`. Not run: `pnpm validate:slack` (needs the Slack bench) and a screen check in a running console. |
 | DES-081 | An agent is made goal first and is met on its home: a new agent starts from a searchable list of outcomes (Start from scratch first), is given a name, a shape and a color with its bot drawn as it will be, and opens on a home where it introduces itself, offers jobs to hand it and takes a message addressed to it; its settings are grouped as General, Access, Tools and Behavior, and General shows what it completed this week, how it answers in Slack, Pause and Retire | Implemented: see [DES-081](#des-081-goal-first-agents-a-home-and-grouped-settings). |
 | DES-084 | An agent's health says what is checked and what to do next: one row (status pill, recent pass rate, a How evaluation works icon with the docs, an icon Refresh health that spins while it reads and says when it last read), checks on recent runs beside each eval suite's last result, schedule and Run Now, runs flagged for review linking to the queue, a schedule editor with presets inside the one hour to thirty day bound that says who the schedule runs as, and figures that show a value or an explained dash | Implemented: `AgentHealth.tsx` (`AgentHealth`, `AgentStats`), `evalHealth.ts`, the schedule editor in `Evals.tsx`, `next_run_at` and `created_by_name` on `GET /api/evals` and `flagged` on agent health, words in `copy.agentHealth`, `copy.agentStats` and `copy.evalSchedule`. Composes with #480's health row: one header row with an actions slot, pills, no separators and no explanatory paragraph. Evidence: `TestNextRunCountsFromTheLatestStart`, `TestAgentHealthCountsTheRunsFlaggedForReview`, `TestASuiteListingSaysWhenItsScheduleNextRunsAndForWhom`, `agent-health.dom.test.tsx`, `evalHealth.test.tsx`; before and after captures at 1280 and 390, light and dark, in pull request 482. Pass-rate bars are neutral when a run reached its threshold, warn below it and bad only when it could not run, each labelled by how long ago it ran; the schedule presets wrap rather than scroll at phone width. The refresh glyph turning is the one spinner on the page; it is a control's own state, and the content it refreshes stays on view. |
+| DES-090 | An agent's mascot feels alive and says what it is doing without drawing the eye: a small idle mark makes a rare blink or glance, finishes its move on open eyes when the pointer leaves or its work stops, and from 24px holds a prop that names its activity; a mascot never carries the orb | Implemented: `useIdleGlance`, `useSettle`, `eyesOpen`, `AgentProp`, `agentPropOf` and `PropMark` in `packages/web/src/AgentOrb.tsx`, `.aui-prop` in `packages/render-web/src/theme.css`. Evidence: `agent-props.dom.test.tsx`; gallery and transcript captures at 2x, light and dark, before and after, in the pull request text; in Chrome, 30 seconds sampled showed glances of 1.2 to 2 seconds and none under reduced motion, and frames after the pointer left a mark showed it land its hop and hold still with open eyes. The orb stays only where no mascot is drawn: an `AgentMark` under 16px, a host's avatar picture and the status line. |
+| DES-091 | One component vocabulary (shadcn/ui) and one layout rule for every page: one row of tabs at most, an item's sections as a side list, the path on the title line, rows for things to compare and act on, cards only for things browsed by picture, one control per row (a split button for the rest), and drawers with one job | Implemented for the parts and the pages named in its section: `packages/render-web/src/ui/` (item, card, field, button-group, breadcrumb, table), `SplitButton.tsx`, `Page` `sections` and the breadcrumb title line in `ui.tsx`; Knowledge, a source, a skill, the Store, Connections, the People drawer and the session drawers follow it; web tests pass; checked in the browser at 1280 and 390, light and dark. The pages listed under "Not yet" in its section still use their own parts |
+| DES-089 | A session has no Side Chat: a second line of questions is a new session that refers to this one | Implemented: `WorkbenchSidechat.tsx`, `sidechat.ts`, the `sidechat` tab id, its header view and its key are removed; `session-context-panel.dom.test.tsx` and `route.test.ts` pass; checked in the browser that More Views and the workbench strip no longer list it |
+| DES-088 | The destination for work an agent starts without being asked is Automations, with a lightning mark, and has no Background tab: a session's background work is a section of that session's Details | Implemented: `Automations.tsx`, the entry in `Sidebar.tsx`, `/automations` in `route.ts` (old `/scheduled` addresses open it), `SessionBackground` in `Background.tsx` shown by `SessionPanel.tsx`; `automations.dom.test.tsx`, `background.dom.test.tsx`, `route.test.ts` and the sidebar tests pass; the page and the sidebar checked in the browser, the Background section by DOM tests only |
+| DES-087 | The composer is flat: the AI notice is in the middle of the footer row, the sentence is the link to the terms, messages that wait show greyed at the end of the conversation with Send now, and the box keeps its placeholder while agents work | Implemented: `NoticeSlotContext` and `queuePlace` in `Composer.tsx`, `ComposerFooter` in `SessionUsage.tsx`, `QueuedMessages` in `packages/web`, `.humagen-composer-footer` in `styles.css`; `composer-notice.dom.test.tsx`, `queued-messages.dom.test.tsx` and `composer-overlay.dom.test.tsx` pass; checked in the browser in a session and on Home, light and dark, at 1280 and 390 wide, with a real run and two waiting messages |
 | DES-085 | Under every composer, one line says the product is AI and can make mistakes, with a Terms link when the workspace's branding names a page of terms | Implemented: `AiNotice` in `Composer.tsx`, `branding.terms_url` in `pkg/spec`, `terms_url` on `GET /api/branding`; `composer-notice.dom.test.tsx`, `pkg/spec` and `internal/httpapi` tests pass; checked in the browser on Home and in a session, light and dark, at 1280 and 390 wide, with and without a terms address |
 | DES-079 | Auto answers questions: in a session set to Auto, the approval agent also answers a question an agent asks a person when the session already settles it, as the person who chose it, and hands them the rest. Two modes, Ask and Auto; Run and Answer folded into Auto | Implemented: `threads.ApprovalAuto` and `threads.ApprovalModeOf`, which reads a stored `decide` as `auto` (`pkg/threads/approval.go`), `internal/platform/approval_questions.go`, the `answer` field and `DescribeQuestion` in `pkg/approve`, `PUT /api/threads/{id}/approval` with `auto` (`decide` still taken as `auto`), the Ask and Auto menu in `ApprovalToggle.tsx`, and the judgement on a question's card (`ClarificationCard`). Evidence: `TestAutoAnswersAChoiceTheSessionSettles`, `TestAutoAnswersAReply`, `TestWhatAutoDoesNotSettleWaitsForAPerson`, `TestAutoNeverAnswersForSomeoneElse`, `TestAutoLeavesWhatSomeoneElseAskedFor`, `TestAskLeavesQuestionsForAPerson`, `TestDecideIsTakenAsAuto`, `TestAutoIsAModeAPersonChooses`, `TestApprovalModeIsSetOnItsOwnAndKept`, `TestStoredApprovalModesReadAsAuto`, `TestAQuestionsAnswerIsReadBesideTheDecision`; `approval-toggle.dom.test.tsx`, `ui.test.tsx`. Not run: `pnpm validate:slack` (needs the Slack bench) and a screen check in a running console. |
 | DES-076 | A session's Details pane is a workbench of tabs, and what a person does by hand in one goes with their next message | Implemented: the tab registry (`workbench.ts`), the pane (`Workbench.tsx`), six tab addresses (`?panel=details&bench=`), and the record, list and fold of what was done by hand (`human-activity.ts`, `humanActivity.tsx`). All six tabs are built: Details, Browser (`WorkbenchBrowser.tsx`, `POST /api/sessions/{id}/browser`), Terminal (`WorkbenchTerminal.tsx`, `POST /api/threads/{id}/sandboxes/commands` on a docker sandbox), Changes (`WorkbenchChanges.tsx`), Side Chat (`WorkbenchSidechat.tsx`, `GET /api/threads/{id}/forks`) and Search (`WorkbenchSearch.tsx`). Browser, Terminal, Changes, Side Chat and the Workspace file editor record what a person did; Search records nothing. Not built: the agent's own screenshots and live video in Browser, a persistent shell in Terminal, a baseline from before the session in Changes, and keeping the list of what was done by hand across a reload. The Details tab keeps its earlier 12px and 13px labels. Evidence: `workbench.dom.test.tsx`, `workbench-browser.dom.test.tsx`, `workbench-terminal.dom.test.tsx`, `workbench-changes.dom.test.tsx`, `workbench-sidechat.dom.test.tsx`, `workbench-search.dom.test.tsx`, `room.dom.test.tsx`, `route.test.ts`, core `human-activity.test.ts`, `TestWhatWasDoneByHandTagsNobody`, `TestAPersonActsOnTheSessionsBrowserByHand`, `TestAPersonsCommand*`, `TestSandboxCommandRouteRunsForItsPosterAndNobodyElse`; the six tabs seen together in a running console at 1280x800 and 390x844, light and dark, where five things done by hand in four tabs reached the agent in one message and the list then cleared. |
@@ -76,7 +81,8 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-031 | A message names no agent under it; a router's pick is a checkpoint | Implemented: `Checkpoint` in Chat and Room for a run the dynamic router joined. In a root session a message gets one answer, and why it came from where it did (a mentioned agent, a search match) is in the answer's activity, never a line of the conversation (`traceEvents` in `responseSource.ts`, `session-answers.dom.test.tsx`, `message-refs.dom.test.tsx`); not rechecked in the browser since |
 | DES-032 | The conversation header shows which agents took part, not a count | Implemented: `Involved` in `ConversationShell.tsx`; `ui.test.tsx` passes; checked in the browser |
 | DES-033 | A turn shows its thinking and steps inline, where they happened, with what each was given and returned | Implemented in `WorkSteps.tsx` and render-web `StepIO`; web and core tests pass; checked live |
-| DES-034 | A finished turn says how long it worked | Implemented: `turn.completed` carries `durationMs`, from the run's events or its record; adapter and core tests pass |
+| DES-034 | A finished turn says how long it worked | Superseded by DES-086 (2026-11-21): the console shows no "Worked" line and no control under an answer. `turn.completed` still carries `durationMs`, which Slack's plan title uses |
+| DES-086 | A turn is its own activity: steps and called agents in time order where they happened, each called agent a full message of its own with its stream and its own rating, and no line or control that sums the turn | Implemented: `CallThreadContext` and the `embedded` form in `AgentMessage.tsx`, `CallThreads` in `MessageRefs.tsx`, `turnOfCall` in `callTurn.ts`; core, web and console tests pass; checked in the browser on a real run with two agents in parallel |
 | DES-035 | Agents are told apart by a bot in their color; a mention opens a profile on hover | Implemented: `AgentInitials` (drawn by `bot-avatars`, initials where there is no canvas), `MentionLink`; `ui.test.tsx` passes; marks checked in the browser on `/gallery.html`, dark and light |
 | DES-036 | The composer holds what is picked, and the first message posts before anything else runs | Implemented in `Composer.tsx` and `Chat.tsx`; web tests and the `home` screens pass |
 | DES-037 | Health reports active model providers and dependencies. Workspace settings group configured and available providers, put Add in the header and offer a reversible switch for workspace-managed providers | Implemented: `GET /api/health`, `Health.tsx`, `ModelProviders.tsx`, `PATCH /api/model-providers/{name}`; platform, HTTP and web DOM coverage |
@@ -1008,11 +1014,11 @@ project settings", with a clean outlook.
   same place; the words land in the box to edit before sending, and Send stays
   ready if there are words. Shift+Enter adds a line.
 - While anything in the session runs, whoever started it, Send is Stop (a
-  square) and the empty box says "↵ to send, ⌘↵ to queue for later". Stop, or Esc in an empty box, stops every run in the
+  square) and the box keeps its placeholder (DES-087). Stop, or Esc in an empty box, stops every run in the
   session and its child sessions (`POST /api/sessions/{id}/stop` with
   `children`) and the reader's background work started from it
-  (`POST /api/me/background/{id}/stop`). Enter sends now; Cmd+Enter
-  (Ctrl+Enter) queues behind what runs.
+  (`POST /api/me/background/{id}/stop`). Enter queues behind what runs;
+  Cmd+Enter (Ctrl+Enter) sends now (DES-087, which reversed these two keys).
 - Each running item has its own Stop, a square and the word at the top of its
   row, never in a menu or behind hover: the agent (beside its mark, which still
   stops it), a call to another agent (`POST /api/runs/{child}/stop`),
@@ -1055,7 +1061,7 @@ a Stop for the whole session, and each running item has a Stop in words.
 - A run waiting on a person is not working: its mark is still and offers no
   stop by hover. Anything waiting on a person must not animate.
 - The composer only sends. While the reply to the last message works, a new
-  message queues behind it and the queue shows above the composer. Esc in an
+  message queues behind it and waits at the end of the conversation (DES-087). Esc in an
   empty composer stops the agents the last message started.
 - Nothing else about the composer changes while agents work: no list of
   threads at work in the box, no Stop button in the bar, no moving border.
@@ -1148,36 +1154,235 @@ any. This reverses the first point of DES-030.
   {name} is the product's name from the branding (`branding.name`), not the
   copy key `product`, which names the sender of the product's own messages.
   A workspace may reword the sentence with the copy key `dock.aiNotice`.
-- It is a line of its own under the footer row, centered, in the footer row's
-  muted text size, so nothing in the footer row moves for it. This is the
-  second line under the box that DES-080 allows.
-- Every composer shows it, the Side Chat's too: on a phone, and with the
-  workbench expanded, the Side Chat's is the only composer on view. Side by
-  side on a wide screen, the line is then on view twice.
+- It is in the footer row's muted text size. Where the composer has a footer
+  row and is wide enough, the line is in the middle of that row (DES-087).
+  Otherwise it is a line of its own under the row, centered: the second line
+  under the box that DES-080 allows.
+- Every composer shows it. No composer has an option to turn it off.
 - The console links to no page unless one is named: the terms a person uses a
   deployment under are its operator's. A deployment or a workspace names its page
-  in `branding.terms_url`, an `https` address in plain ASCII; the line then ends
-  with a Terms link that opens it in a new tab. Left out, the line has no link.
+  in `branding.terms_url`, an `https` address in plain ASCII; the sentence is
+  then itself the link, which opens the page in a new tab, underlines on hover
+  and focus, and is titled "Terms" (DES-087). Left out, the line has no link.
 - The line is 24px high with or without the link. A long name, or a long
   sentence a workspace wrote, wraps at a narrow width and makes it taller.
 - The place kept for the composer while a session loads (DES-080) keeps this
-  line's height too, so the bar does not jump when the composer arrives.
+  line's height too where the line is a row of its own, so the bar does not
+  jump when the composer arrives.
 - An agent's answer in the console still adds no disclaimer of its own
   (`disclaimer={false}` on `AgentMessage`), and the Slack app keeps its own.
 - Acceptance: Home and a session show the line under the composer at phone and
-  desktop width in both themes; with `branding.terms_url` set, the line ends
-  with a Terms link to that address, and an address that is not `https` is
-  refused by the spec and never drawn as a link.
+  desktop width in both themes; with `branding.terms_url` set, the sentence
+  links to that address, and an address that is not `https` is refused by the
+  spec and never drawn as a link.
+
+### DES-090: A mark that feels alive and says what it is doing
+
+Owner request, 2026-11-21: make the agents' mascots feel alive, "not often so
+it's distracting", show what an agent is doing with a small prop, "a little
+microscope when investigating", and "on hover it starts; off hover, let it
+complete the cycle".
+
+- A mark under 32px that is idle, done, failed or stopped holds still, but
+  every 12 to 25 seconds it moves for 1.2 to 2 seconds: a blink, a glance or
+  a small turn of the head, never a hop. The first wait is set by the
+  agent's name, so a list of agents does not move in unison.
+- A mark that waits on a person never moves of its own accord. Under reduced
+  motion no mark moves of its own accord. A mark off screen schedules
+  nothing, and a mark that goes clears its timers.
+- Under the pointer a mark moves at once. When the pointer leaves, or the
+  agent stops working, it does not freeze: it keeps moving for 1.4 seconds,
+  so its hop lands and it eases back to rest, then until its eyes are open
+  (read from its canvas, for at most 1.2 seconds more), and then holds
+  still. A glance ends on open eyes the same way. A pointer that comes back
+  meanwhile keeps it moving.
+- From 24px a mark holds a prop at its top right, clear of the face, at
+  about 40% of its size, in the muted text color:
+
+  | State | Prop | Motion |
+  | --- | --- | --- |
+  | searching | a microscope | the tube moves a little, as if focusing |
+  | thinking | two dots rising to a cloud | the dots rise and fade in turn |
+  | calling | a wrench | turns a few degrees each way |
+  | composing | a pencil | a small writing stroke |
+  | delegating | two overlapping bubbles | the back bubble fades in and out |
+  | waiting | an hourglass | none |
+
+- A mascot never carries the orb (owner request, 2026-11-21: "remove the
+  orbs if the mascots exist"), in the drawn bot or in its initials ring.
+  Under 24px a working mascot shows its work by its own hop alone. The orb
+  stays where no mascot is drawn: an `AgentMark` under 16px, a host's avatar
+  picture and the status line.
+- A prop fades in and out in 150 ms, and its loop stops under reduced
+  motion.
+- The bot's shape, color and look do not change: only its motion and the
+  prop do.
+- Acceptance: `agent-props.dom.test.tsx` passes; in the gallery at 2x, light
+  and dark, each prop reads at 24px and 32px and covers no face.
+
+The props are drawn as the objects themselves, in their own colors and
+shading: a lab microscope (base, lamp, stage with a slide, arm, a tube that
+eases down to focus, a turning knob), a cloud with three dots that come in
+turn, a steel wrench that turns, a yellow pencil that writes a line, a grey
+message and a blue answer that types, and a wooden hourglass that holds
+still. A thought or a message floats above the head; a thing the bot uses
+stands at its side. `/mascot-gallery.html` on the dev server shows every
+state at 28, 48 and 96px, with `?theme=light` for the light theme.
+
+### DES-091: One component vocabulary, one layout rule
+
+Owner request, 2026-11-21: "use the best interfaces for those specific
+things as references and then consolidate them so our UI, components and
+items have consistent behaviour across", after shadcn/ui
+(https://ui.shadcn.com) was named as the reference. The console takes its
+parts from shadcn/ui, styled with the console's own tokens, and puts each
+kind of thing in one kind of part:
+
+| A thing | Is drawn with | Not with |
+|---|---|---|
+| Something a person compares and acts on (a package, a source, a connection, an automation) | a row: `Item` in an `ItemGroup`, with its media, title, description and one control | a card in a grid |
+| Records compared by column | `Table` | rows of cards |
+| Something browsed by its picture (an artifact, a file) | `Card` | a row |
+| Nothing here yet | `Empty`, with the one action inside it | a heading and a button apart |
+| A form | `FieldSet`, `Field`, with its label and hint | a loose label over an input |
+| An action and the choices that go with it | a split button: `ButtonGroup` and `DropdownMenu` (`SplitButton`) | a second row of buttons |
+| A hub's areas (Agents, Skills, Knowledge, Store) | one row of `Tabs` | |
+| An item's sections | a list beside its content (`Page` `sections`); one menu on a phone | a second row of tabs |
+| Where a page sits | its path on the title line: "Knowledge / HR policies" | a back link over a small title |
+| A status | a `Badge`, or the control itself once it is the person's ("Connected") | a pill beside a button that says the same |
+
+- A page has at most one row of tabs. A page under a hub's tabs puts its own
+  sections in a side list.
+- A row ends with one control. Before a thing is the person's, the control
+  is the verb that makes it theirs (Install, Connect, Enable). Once it is,
+  the control is its state (Installed, Connected), which opens it to manage,
+  and the arrow beside it holds the rest (Review Tools, Replace, Remove,
+  with Remove last, after a rule, in the failure color).
+- A drawer has one job and no row of tabs of its own. What a session did,
+  read and linked is in the conversation, where each step and each
+  reference opens; no drawer repeats it. The People drawer lists people and
+  invites them; agents come from the project.
+- Something new is made with what it needs in the same form: a knowledge
+  base with its sources.
+
+Not yet: the Files drawer still opens files as chips with their own close
+buttons; Alerts, Monitor and the Memory library keep their own row of tabs
+(each is the page's only row); `Pill` and `Tag` are not yet `Badge`, and
+some pages still draw buttons and boxes by hand.
+
+People drawer: a search field ("Search by name or @handle") reads the
+workspace directory as the person types and lists matches with their mark,
+name and handle; a press adds one, and someone already in shows Added. The
+people in the conversation follow under "In this conversation · N", each
+with their mark, Owner or a Remove icon. Invite adds a handle as typed.
+
+Sidebar sessions: Recent has no count beside its name. A session's status
+is one small dot where the unread dot sits, never a boxed icon: amber when
+it needs you, red when it failed, a soft pulse while it works, grey
+otherwise. The reason is the dot's title and is read out with the row.
+
+### DES-089: No Side Chat
+
+Owner request, 2026-11-21: "remove the side chat". A chat nested in the
+session's panel put one conversation inside another. If a second line of
+questions becomes a feature of its own, it is a thread or a new session that
+refers to the first, not a tab.
+
+- The workbench has no Side Chat tab, the header's More Views has no Side
+  Chat row, and Command ; (Control ;) opens nothing.
+- An old address that names it (`?bench=sidechat`) opens Details.
+- A person who wants a second conversation starts a new session and pastes
+  the first one's link, or uses Fork on a message.
+- Acceptance: More Views lists Artifacts, Search, Background Tasks and
+  Progress; the workbench strip lists Details, Browser, Terminal, Changes and
+  Search where each has something to show.
+
+### DES-088: Automations, and background work in its session
+
+Owner request, 2026-11-21: rename Scheduled to Automations and improve its
+icon, since an automation can have triggers other than a clock; and show
+background tasks per session, "since each session carries it as needed", not
+in one global list beside the automations.
+
+- The sidebar entry and the page are named Automations. The mark is a
+  lightning bolt. The address is `/automations`; `/scheduled` and
+  `/scheduled/background` open it.
+- An automation is work an agent starts without being asked. What starts it
+  is its trigger. A schedule is the one trigger there is today, shown on each
+  card with a calendar mark. The page's button is New Automation.
+- The page has no tabs. Background work is not listed on it.
+- A session's Details has a Background section when the session carries
+  background work: the watches, goals and tasks asked for in it or running in
+  it, still running first. A row shows what it is, its kind, agent and
+  progress, and its state. A running row has Stop.
+- The header's More Views keeps Background Tasks, which opens that session's
+  Details.
+- A session's own source still reads "Scheduled" where a schedule started it:
+  that names the trigger, not the page.
+- Acceptance: the sidebar links Automations to `/automations`; the page shows
+  schedules and no tablist; a session that asked for a watch lists it under
+  Background in its Details with Stop, and another session does not.
+
+### DES-087: A flat composer: one footer line, and waiting messages in the conversation
+
+Owner request, 2026-11-21: put "Humagen is AI" in the middle of the row with
+the permissions, make the sentence itself the link to the terms, and show
+messages that wait in the chat, greyed, where each can be sent now, so the
+box is only its placeholder. This changes where DES-085 puts the line and
+which key DES-080 gives to Send now.
+
+- The row under the box is one line of three groups: on the left where the
+  session runs and its approval mode, in the middle the AI notice, on the
+  right the usage ring. It names no agent and no model (owner request,
+  2026-11-21): a session is not one agent's, each answer names who gave it,
+  and an agent's model is the agent's own.
+- A message's actions are always shown, on every message, at 28px with a
+  14px mark for a mouse and a 44px target for a finger. Nothing about them
+  changes on hover. Only a message's time shows on hover, at the far end of
+  its row (the left end under a person's message, which sits on the right),
+  so nothing between two actions comes or goes.
+- No message has a Reply action (owner request, 2026-11-21): the composer
+  is the one place to answer. The notice is centered on
+  the row, whatever the widths of the two sides.
+- The row measures the composer, not the window. Narrower than 44rem (a
+  phone, a session beside an open panel), the notice is a line
+  of its own under the row, centered.
+- With `branding.terms_url` set, the sentence is the link. No word is added
+  for it.
+- A message sent while a turn of the reader's runs waits at the end of the
+  conversation, where it will be sent: the person's own message, right
+  aligned, greyed, in a dashed outline, with "Queued", Send now, Edit and
+  Remove under it. More than one has Clear queue under the last. A queue held
+  after a failure or a Stop says why there, with Resume.
+- The box says nothing about keys while agents work: its placeholder does not
+  change, and no strip of waiting messages is in it. A composer with no
+  conversation beside it (Home, an agent's page) keeps the
+  strip in the box.
+- While a turn of the reader's runs, Enter queues the message behind it and
+  Cmd+Enter (Ctrl+Enter) sends it now, which stops the work in flight. With
+  none running, Enter sends at once, also past messages a failure or a Stop
+  left held. Send now on a waiting message does what Cmd+Enter does.
+- Not kept in the conversation: the Auto-send switch and reordering by drag
+  or arrow keys. The strip still has both.
+- Acceptance: with a turn running, two messages sent with Enter show greyed
+  at the end of the conversation in the order sent and the box shows its
+  placeholder; when the turn ends the first one is sent and leaves the queue;
+  Send now on one stops the turn and sends it next.
 
 ### DES-031: Checkpoints, not agent lines
 
 - A person's message has no line under it naming the agent: the answer below
   names it.
-- When a router picked the agent, or one of several joined, a checkpoint says
-  so between the message and the answer: a rule, a small route icon, the
-  agent's mark and why. Nothing else is drawn for a plain answer.
-- Acceptance: a direct answer has no line under the message; a routed one has
-  one checkpoint naming the agent and the reason.
+- When an agent joined for a reason of its own (a router's pick, a match), a
+  checkpoint says why between the message and the answer: a rule, a small
+  route icon, the agent's mark and the reason. Nothing else is drawn for a
+  plain answer.
+- An answer that came from the conversation's selection has no "Routed to
+  <agent>" line (owner request, 2026-11-21): the answer names its agent, so
+  the line said it twice.
+- Acceptance: a direct answer and an answer the selection routed have no line
+  under the message; an agent that joined for a reason has one checkpoint
+  with its mark and the reason.
 
 ### DES-032: Who took part, by name
 
@@ -1195,19 +1400,72 @@ any. This reverses the first point of DES-030.
   ("Read plan.md", "Searched the web, read files"). Open, each step shows the
   input it was given and the output it returned. A step waiting on a person
   keeps its group open; a failed one is counted in the line (DES-048).
-- A finished turn folds its steps under one "Worked" line.
+- A finished turn keeps its steps where they happened (DES-086). No line
+  folds the whole turn.
 - Acceptance: a turn that read, wrote, then answered shows the read and the
   write between the words they came between, each with its input and output.
 
 ### DES-034: How long a turn worked
 
-- The Worked/tools control has a minimum 44px touch target on a coarse pointer.
-  The canonical `session` browser state scrolls it into view, measures it and
-  opens/closes Details before capture.
-- A finished turn's "Worked" line says how long it worked: "Worked for 32s".
-  The time runs from the run's acceptance to its completion on the stream, or
-  from the run record's creation to its last change when the stream is gone.
-- Acceptance: a run accepted at 0s and completed at 32s reads "Worked for 32s".
+Superseded by DES-086 on 2026-11-21 for the console. What stays:
+
+- `turn.completed` carries `durationMs`. The time runs from the run's
+  acceptance to its completion on the stream, or from the run record's
+  creation to its last change when the stream is gone.
+- Slack's plan card still ends as "Worked for 32s" (`planDone`).
+
+### DES-086: A turn is its own activity
+
+Owner request, 2026-11-21: "Worked for 32s" says nothing the timestamps do
+not, the work should read in the order it happened, each called agent should
+own its thread in the turn, and a control under the answer that opens the
+same activity again makes no sense.
+
+- A turn reads top to bottom in time order: its words, its runs of steps and
+  the agents it called, each where it happened.
+- An agent is shown by a proper name (owner request, 2026-11-21): its
+  look's display name, else the workspace's name for its entry agent, else
+  its handle written as a name ("security-reviewer" is "Security
+  Reviewer"). A handle is still what a person types to tag an agent. Its
+  mark is drawn from the name it is known by, so a shown name never changes
+  its face.
+- A turn that brought in other agents reads as a conversation between them,
+  as people's messages read in a group chat (owner request, 2026-11-21): no
+  agent's part is folded, set in or summed up.
+- What an agent asked another is that agent's own words in the conversation:
+  the agent it turned to, tagged, then the whole of what it gave it. A long
+  ask shows four lines and opens to the rest. Nothing an agent was told is
+  hidden behind a title.
+- Each called agent answers as a message of its own, at full size and as wide
+  as its caller's: its mark in its own color, its name, then its whole
+  stream, drawn with the parts any answer is drawn with (`turnOfCall`): its
+  thinking, its words, each step with what it was given and returned.
+- An agent's message has its own actions: Copy, and Helpful or Not helpful,
+  which rate that agent's run (`/api/runs/{id}/feedback`) apart from the
+  answer that called it. It has no Regenerate: it answered its caller.
+- When an agent speaks again after others have, its mark and name are said
+  again before its words, so every word has its speaker. An agent that a
+  called agent called is one more participant, drawn the same way.
+- An agent's thinking is shown where it thought, when the model returned
+  any. None is made up for a run that recorded none.
+- Agents asked next to each other are asked first, all of them, then each
+  answers, in the order they were asked, also when they ran at the same
+  time. No label counts them, no chevron folds them and
+  no line says how long a call took; Details has the durations.
+- While an agent works its mark moves and stops it, as an answer's does. One
+  that failed, was denied or was stopped says so beside its task. A question
+  that waits on a person keeps its controls under the agent's message. Steps
+  the reader may not see are counted, not shown.
+- No line sums how long the turn took, and nothing under the answer opens its
+  activity a second time. The message says when; each step and each call says
+  how long it took. Under the answer are its references and its actions only.
+- Details still shows a response's activity, reached from search and from the
+  session panel, with how long it worked: "Worked 14s · 2 agents · 3 tools".
+- Acceptance: a run that called `researcher` and `writer` together shows the
+  caller's two asks, each tagged, then a message from each agent with its
+  stream and its own Helpful and Not helpful, then the caller named again
+  before its last words, no "Worked" text and no button
+  under the answer besides the message's actions.
 
 ### DES-035: Initials and mention profiles
 
@@ -1564,11 +1822,15 @@ did not keep the latest message in view as the keyboard shrank it.
 
 Rules:
 
-- A conversation of two or more turns has a wave down its left edge: a tick
-  per message and per answer, longer the more it says, swelling near the turn
-  in view or under the pointer. The turn in view is drawn in the brand's
-  sweep. It rests faint and brightens while the reader scrolls or reaches for
-  it.
+- A conversation of two or more turns has a wave down its left edge: one
+  connected line that swings from side to side of a center line (owner
+  request, 2026-11-21, replacing a tick per turn), wider where a message or
+  an answer says more, swelling near the turn in view or under the pointer. The turn in view is full ink and its
+  tone runs into its neighbours'; a failed turn and one waiting on a person
+  keep their colours. It rests faint and brightens while the reader scrolls
+  or reaches for it.
+- A person's own message is one flat fill, with no edge and no bevel (owner
+  request, 2026-11-21), so only its words catch the eye.
 - It is one vertical slider. Hover previews a turn: a person's own words, an
   answer's first line. Press, or on a touch screen press and drag, to scrub
   through the conversation; arrows, Home and End step through it. On a phone
@@ -2037,7 +2299,7 @@ In Slack (the Slack app, `apps/slack`):
   a refusal is said to the presser alone in Humagen's words. The change is
   said in the thread, naming who made it, that the approval agent now
   approves and answers what the thread settles and that the action already
-  waiting still waits, with one button back (Switch to Ask, or Switch to
+  waiting still waits, with one button back (Switch to Manual, or Switch to
   Auto).
 - An approval the approval agent decided says so on its card in the
   thread, with its reason, as the inbox does: the run's answer carries the
@@ -2401,16 +2663,12 @@ request totals remain open.
 
 ### DES-075: A calm Home and states that say whose move it is
 
-Home keeps the greeting and composer in place as project and artifact cards load. Its
-Projects strip shows up to three readable named projects using the Projects
-page order, with pinned projects first and then the latest activity. Each
-card opens its project. The workspace root and automatic Personal project are
-excluded. Loading, unavailable and empty project listings leave out the strip.
-Recently made shows the three newest artifacts the person may read from the
-existing `GET /api/artifacts`, each card opening it at `/artifacts/{id}`. The
-sidebar's Artifacts entry opens the full list. Alerts owns approvals and its
-sidebar badge carries the count. Recent sessions are in the sidebar's Recents
-and on Sessions.
+Home is the greeting and the composer, with nothing listed under them (owner
+request, 2026-11-21: "no need to show projects or anything"). The Projects
+strip and the Recently made strip that were here are removed. Projects,
+Artifacts and Sessions are each one entry of the sidebar. Alerts owns
+approvals and its sidebar badge carries the count. Recent sessions are in the
+sidebar's Recents and on Sessions.
 
 The alert center lists alerts as one table: a box to select, the alert and its
 agent, then its source, priority, age and actions in columns. The header holds
@@ -2435,14 +2693,10 @@ actions. A project's inbox switch reads Waiting, Done and All. The API, the
 stored states and the addresses keep `open`, `snoozed` and `resolved`, so
 existing links hold. The words are in `copy.ts` (`attention`, `show`, `home`).
 
-Evidence: `session-center.dom.test.tsx` checks the artifact strip and its
-destinations, and that nothing is drawn or asked for
-when there is nothing to show or no permission; `session-ux.dom.test.tsx` and
-`roles.dom.test.tsx` check the new words. Console screens `new` and `alerts`
-and `home-made` pass at 1280x800 and 390x844 in light and dark. The
-`home-projects` screen checks that the composer stays put when projects
-load. Home DOM tests cover omission, project order and links. Artifact cards show no preview
-of their content. An artifact strip that cannot be read says so in one line.
+Evidence: `session-center.dom.test.tsx` checks that Home draws nothing under
+the composer and reads no artifacts for it; `session-ux.dom.test.tsx` and
+`roles.dom.test.tsx` check the words. Console screens `new` and `alerts`
+pass at 1280x800 and 390x844 in light and dark.
 
 ### DES-076: Continue an imported conversation
 
@@ -2633,45 +2887,13 @@ and the list above the composer after a restore, a delete and a save in the
 editor, and the pane filling the page. Not seen: a refused write and a file
 that cannot be read.
 
-#### Side Chat tab
+#### Side Chat tab (removed)
 
-Side Chat (`WorkbenchSidechat.tsx`, `sidechat.ts`) asks a question about the
-session beside it. A side chat is a private fork of the session
-(`POST /api/threads/{id}/fork`) through its newest saved turn: a finished answer,
-or the message an answer still being written replies to, so a working agent is
-left alone. The fork carries the session's history as read-only context, is
-answered by the session's own agents, and posts nothing in the session. With
-nothing selected the tab is a title and the box, over the reader's earlier side
-chats of the session (`GET /api/threads/{id}/forks`, added for this, `runs:read`,
-at most 50 and without their saved history). The first message starts the fork
-and takes its address (`?bench=sidechat&benchRef=<its id>`), so it opens again
-after a reload, and it is a conversation like any other at `/messages/{id}`.
-The thread is drawn with the shared `Thread`, `AgentMessage` and `Composer`.
-
-Add to Message on a finished answer records it as done by hand (source
-`other`): one record of the question and up to 600 characters of the answer, or
-up to three for a longer answer, each with a key so adding it twice keeps one
-copy. It shows above the session's composer and goes with the reader's next
-message there; pressing it again, or removing the line, takes it back. Nothing
-is posted in the session for them.
-
-Not built: a side chat is not listed under the session's Linked sessions,
-because `POST /api/sessions/{id}/links` takes only a session as its target and
-a fork is a thread without a session identity. A child session was not used
-instead, since it is given none of its parent's history.
-
-Evidence: `workbench-sidechat.dom.test.tsx` covers the registry entry, the empty
-states, the first question (the fork's turn, title and agents, and that nothing
-is posted in the session), reopening from the address, a fork that is not this
-session's, a refused fork, and Add to Message with the list above the composer;
-`TestForksOfListsOnlyTheReadersOwnLiveForksNewestFirst` and
-`internal/httpapi/openapi_test.go` cover the listing. Seen in Chrome against a
-local server with a stand-in model at 1280x800 and 390x844, light and dark:
-empty, the list of earlier side chats, an answer, the same after a reload, the
-answer added and listed above the composer, the pane filling the page, an
-address that names no side chat, and a side chat answered while the session's
-agent worked. Not seen: a refused fork, an answer long enough for three
-records, and an agent's question card inside a side chat.
+Removed on 2026-11-21 (DES-089). A chat nested in a session's panel was a
+second conversation inside the first. A second line of questions is a new
+session that refers to this one: paste its link, or use Fork on a message.
+`GET /api/threads/{id}/forks`, added for the tab, still answers and has no
+caller in the console.
 
 **Search tab** (`WorkbenchSearch.tsx`, `workbenchSearch.ts`). One field finds
 what belongs to the session and opens each thing where it lives. Results are
@@ -2717,8 +2939,7 @@ Terminal and Browser tabs taking a result.
   which opens its run, and Retry where the host can post (`RetryCallContext`):
   it asks the same agent the same brief as the conversation's next message,
   tagging that agent alone (other agents the brief names become plain words).
-  Retry is offered only to the person the run acted for, never in a private
-  side chat (its brief would reach the shared session), and never for a brief
+  Retry is offered only to the person the run acted for, and never for a brief
   too long for one message. A refused post leaves Retry ready again; a sent
   one reads "Asked again". There is no Retry on a single tool call, since no
   route runs one call again.
@@ -2757,7 +2978,7 @@ Auto, the most useful of the three.
 
 Rules:
 
-- There are two approval modes: `ask` (**Ask**, the default), where a person
+- There are two approval modes: `ask` (**Manual**, the default), where a person
   approves every gated action, and `auto` (**Auto**), where the approval agent
   decides gated actions, answers what the session already settles, and asks a
   person when unsure. Auto is chosen by a person who may post in the session,
@@ -2794,12 +3015,14 @@ Rules:
   under the answer, or **Approval agent: Asked a person** with the reason
   above the options. The answer is recorded as the person's, so they see it
   and can correct the agent in the session.
-- The composer shows one control: an icon and **Ask** or **Auto**. It opens a
-  menu headed **Approval mode** with the two, each with one line on what
-  happens in that mode and a check on the one in use. Someone else's choice
+- The composer shows one control under the bar: a pill with the mode's icon
+  (a hand for **Manual**, fast-forward for **Auto**) and its word. It opens a
+  menu headed by one question, "Who approves gated actions?", with the two,
+  each with its icon, one line on what happens in that mode and a check on
+  the one in use; Auto's row carries the warning tint. Someone else's choice
   reads "Auto, chosen by <name>", and the menu says so; it also says when the
   approval agent has no model to run on. Slack sets a thread to Auto from a
-  waiting call's menu and back with **Switch to Ask** (DES-057).
+  waiting call's menu and back with **Switch to Manual** (DES-057).
 - A workspace's own output schema for the approval agent keeps working: the
   `answer` field is optional, and a schema without it decides calls only, so
   every question goes to a person.
@@ -2887,7 +3110,8 @@ in `TestResponsesMatchTheSpec`. Before and after screens at 1280x800 and
 ### DES-080: One session panel, reached from the header
 
 The panel a session's header opens (the workbench's Details tab, DES-076)
-answers five questions in order, under Progress and Agents:
+answers five questions in order, under Agents. It has no Progress
+section, since the thread itself shows the progress:
 
 - **Environment.** The sandbox and where it stands: Isolated (its runs
   lease an instance), Not started (an isolated deployment whose runs have
@@ -2922,12 +3146,11 @@ mark; rows that open a view show a chevron.
 
 The header's view controls are, in order: Details (with how many calls are
 working), Terminal, Changes, Browser and Files, then More Views. More Views
-holds Artifacts, Side Chat (⌘; or Ctrl ;), Search (⌘⇧F or Ctrl Shift F),
-Background Tasks (the Scheduled page's Background tab) and Progress (the
-Activity panel), each with its key printed beside it. A control is pressed
+holds Artifacts, Search (⌘⇧F or Ctrl Shift F),
+Background Tasks (this session's Details, where its Background section is:
+DES-088) and Progress (the Activity panel), each with its key printed beside it. A control is pressed
 while its view is open, and pressing it again closes the pane. On a phone
-only Details and More Views show, and More Views holds every view. A reader
-who may not post has no Side Chat.
+only Details and More Views show, and More Views holds every view.
 
 The title is the session's menu (Share, Rename, Move to Project, Archive,
 Delete), opened from the title with a chevron. Rename edits the title in

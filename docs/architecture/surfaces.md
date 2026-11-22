@@ -69,7 +69,7 @@ Shared components use only primitives, never DOM or Block Kit. When a concept ca
 |---|---|---|---|
 | Lifecycle | Orb (thinking, searching, calling, delegating, composing, waiting, done, error) | One reaction on the user's message (👀 ✋ ✅ ❌ ⏹️) plus `agents.sessions.setStatus`, and a one-line status (`assistant.threads.setStatus`) naming the running step | Each emoji has one meaning |
 | Composer | `PromptInput`: suggestions, attachments, and Stop while running | Slack's own composer | Suggestions map to `setSuggestedPrompts`, up to 4 |
-| Queue | Queued strip (edit, reorder, remove, send now), Cmd+Enter to send now, auto or manual mode | The host queues per thread and marks queued messages with ⏳ | `queueReduce`; nothing queued runs after a failure or a plain Stop |
+| Queue | In a conversation, waiting messages at its end, greyed (send now, edit, remove); elsewhere a strip in the box (also reorder, auto or manual mode). Enter queues behind a running turn, Cmd+Enter sends now | The host queues per thread and marks queued messages with ⏳ | `queueReduce`; nothing queued runs after a failure or a plain Stop |
 | Status line | Lualine-style segments: status, model, approval mode, context meter, compaction, budget, queue | `SessionNotices` when something changes | `contextPressure`, `budgetPressure`, `headroom` |
 | Compaction | Shimmer while compacting, then "freed 127k" | `context` line, plus a warning when compaction fails | |
 | Budget | Meter that goes from warn to critical, and a spend banner | Callout plus "Add Budget" | Warns before the next turn would go over the cap |

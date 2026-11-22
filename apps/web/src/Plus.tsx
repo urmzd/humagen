@@ -1,13 +1,5 @@
 import { defaultCopy } from "@humagen/components";
-import {
-  BotIcon,
-  CheckIcon,
-  CodeIcon,
-  FileIcon,
-  ProjectIcon,
-  WrenchIcon,
-  XIcon,
-} from "@humagen/render-web";
+import { BotIcon, CheckIcon, PaperclipIcon, ProjectIcon, XIcon } from "@humagen/render-web";
 import { type KeyboardEvent, type ReactNode, useLayoutEffect, useRef, useState } from "react";
 import type { ProjectView } from "./api.ts";
 import { PaneMenu, type PaneMenuRow, paneMenuRow as row } from "./PaneMenu.tsx";
@@ -28,7 +20,10 @@ export { emptySelection, mentionPicks, type Selection } from "./plusSelection.ts
 
 type Choice = { name: string; description?: string };
 
-/** The composer groups choices by intent: files, the agents a message goes to, and skills. */
+/**
+ * A conversation's + menu: files, and the agents a message goes to. Skills
+ * are the `/` completion in the words, never a pane here.
+ */
 export function PlusMenu({
   agents,
   mentioned = [],
@@ -38,10 +33,6 @@ export function PlusMenu({
   onLeave,
   projectFixed,
   finder,
-  skills,
-  skillsFailed = false,
-  onSkill,
-  repos,
 }: {
   /** The agents that may answer where the conversation lives. Null while they load. */
   agents: Choice[] | null;
@@ -56,21 +47,9 @@ export function PlusMenu({
   finder?: ReactNode;
   /** Why the conversation's project and channel cannot change. */
   projectFixed?: string;
-  /** Resolved skills for this project, not the skill-management library. */
-  skills?: Choice[] | null;
-  skillsFailed?: boolean;
-  /** Prepares the message through the host's existing skill-tag insertion. */
-  onSkill?: (name: string) => void;
-  /**
-   * The repositories a new session may work in, as context for its first
-   * message: those the workspace's GitHub apps may read, and the chosen ones.
-   * Left out where repositories are not chosen.
-   */
-  repos?: RepoChoice;
 }) {
   const c = words.picker;
   const [agentQuery, setAgentQuery] = useState("");
-  const [skillQuery, setSkillQuery] = useState("");
   const panel = useRef<HTMLDivElement>(null);
   const search = useRef<HTMLInputElement>(null);
 
@@ -93,19 +72,13 @@ export function PlusMenu({
   const shownAgents = (agents ?? []).filter((agent) =>
     matches(agent, agentQuery.trim().toLowerCase()),
   );
-  const shownSkills = (skills ?? []).filter((skill) =>
-    matches(skill, skillQuery.trim().toLowerCase()),
-  );
 
   // Enter picks, and in a search field never sends the message the menu sits in.
   const onKey = (event: KeyboardEvent<HTMLDivElement>, pane: string | null) => {
     if (event.key !== "Enter") return;
     const target = event.target as HTMLElement;
     const choice = target.dataset.paneItem === "choice";
-    if (pane === "skills" && choice) {
-      event.preventDefault();
-      target.click();
-    } else if (pane === "agents" && (target === search.current || choice)) {
+    if (pane === "agents" && (target === search.current || choice)) {
       event.preventDefault();
       if (choice) target.click();
       else if (shownAgents.length === 1) onMention?.(shownAgents[0]!.name);
@@ -117,7 +90,7 @@ export function PlusMenu({
     {
       id: "attach",
       label: words.attach,
-      icon: <FileIcon size={16} className="text-aui-muted" />,
+      icon: <PaperclipIcon size={16} className="text-aui-muted" />,
       onSelect: onAttach,
     },
     {
@@ -196,78 +169,6 @@ export function PlusMenu({
       },
     },
   ];
-  if (onSkill)
-    rows.push({
-      id: "skills",
-      label: defaultCopy.navigation.skills,
-      icon: <WrenchIcon size={16} className="text-aui-muted" />,
-      pane: {
-        title: defaultCopy.navigation.skills,
-        body: (
-          <>
-            <div className="p-1">
-              <SearchField
-                label={c.findSkill}
-                value={skillQuery}
-                onChange={setSkillQuery}
-                inputRef={search}
-              />
-            </div>
-            {skillsFailed ? (
-              <p role="alert" className="px-2.5 py-3 text-aui-xs text-aui-muted">
-                {c.skillsFailed}
-              </p>
-            ) : skills == null ? (
-              <p role="status" className="px-2.5 py-3 text-aui-xs text-aui-muted">
-                {c.skillsLoading}
-              </p>
-            ) : shownSkills.length === 0 ? (
-              <p role="status" className="px-2.5 py-3 text-aui-xs text-aui-muted">
-                {skills.length === 0 ? c.noSkills : c.noSkillMatch}
-              </p>
-            ) : (
-              <div
-                role="group"
-                aria-label={defaultCopy.navigation.skills}
-                className="flex flex-col"
-              >
-                {shownSkills.map((skill) => (
-                  <button
-                    key={skill.name}
-                    type="button"
-                    data-pane-item="choice"
-                    className={row}
-                    onClick={() => {
-                      onSkill(skill.name);
-                      onClose();
-                    }}
-                  >
-                    <WrenchIcon size={16} className="text-aui-muted" />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate">{skill.name}</span>
-                      {skill.description && (
-                        <span className="block truncate text-aui-xs text-aui-muted">
-                          {skill.description}
-                        </span>
-                      )}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </>
-        ),
-      },
-    });
-  if (repos)
-    rows.push({
-      id: "repos",
-      label: c.repos,
-      icon: <CodeIcon size={16} className="text-aui-muted" />,
-      value: repos.value.length > 0 ? c.selected(repos.value.length) : undefined,
-      pane: { title: c.repos, body: <RepoChoices {...repos} /> },
-    });
-
   return (
     <PaneMenu
       ref={panel}
@@ -357,69 +258,5 @@ export function SelectionChips({
         )}
       </li>
     </ul>
-  );
-}
-
-/** The repositories a new session may be given as context, and those it was. */
-export interface RepoChoice {
-  /** Null while they load. */
-  options: readonly string[] | null;
-  value: readonly string[];
-  onChange: (repos: string[]) => void;
-  /** Where to connect GitHub when there are none. */
-  connectHref?: string;
-  max?: number;
-}
-
-/** Repositories as a list of checkable rows: any number up to max, none is fine. */
-function RepoChoices({ options, value, onChange, connectHref, max = 10 }: RepoChoice) {
-  const c = words.picker;
-  if (options === null)
-    return (
-      <p role="status" className="px-2.5 py-3 text-aui-xs text-aui-muted">
-        {c.reposLoading}
-      </p>
-    );
-  if (options.length === 0)
-    return (
-      <div className="flex flex-col items-start gap-2 px-2.5 py-3">
-        <p className="text-aui-xs text-aui-muted">{c.noRepos}</p>
-        {connectHref && (
-          <a
-            href={connectHref}
-            className="inline-flex min-h-9 items-center rounded-aui text-aui-sm text-aui-fg underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-aui-accent"
-          >
-            {c.connectGitHub}
-          </a>
-        )}
-      </div>
-    );
-  return (
-    <div role="group" aria-label={c.repos} className="flex flex-col" data-testid="plus-repos">
-      {options.map((r) => {
-        const on = value.includes(r);
-        const full = !on && value.length >= max;
-        return (
-          <button
-            key={r}
-            type="button"
-            data-pane-item="choice"
-            data-repo={r}
-            aria-pressed={on}
-            aria-disabled={full || undefined}
-            className={`${row} aria-disabled:opacity-50`}
-            onClick={() => {
-              if (full) return;
-              onChange(on ? value.filter((x) => x !== r) : [...value, r]);
-            }}
-          >
-            <span className="min-w-0 flex-1 truncate">{r}</span>
-            <span aria-hidden className="inline-flex size-4 shrink-0 items-center justify-center">
-              {on && <CheckIcon size={14} />}
-            </span>
-          </button>
-        );
-      })}
-    </div>
   );
 }

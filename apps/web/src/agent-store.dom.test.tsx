@@ -118,8 +118,8 @@ test("the catalog lists each package by what it does, and Install adds its agent
   // The card is the link to the package's page.
   assert.equal(card.getAttribute("href"), "/agent-store/humagen/core");
   assert.ok(screen.getByText("A writer and an analyst."));
-  assert.equal(screen.getAllByText(words.agentCount(2)).length, 2);
-  assert.equal(words.agentCount(1), "1 agent");
+  // A row names the agents it adds, by their shown names.
+  assert.ok(screen.getByText("Humagen Writer, Humagen Analyst"));
   // What a package needs is on its card; what each agent is granted is not.
   assert.ok(screen.getByText(words.connector("github")));
   assert.equal(container.querySelector("[data-agent]"), null);

@@ -88,7 +88,8 @@ async function record(browser: Browser, scheme: "light" | "dark", dir: string) {
   await box.pressSequentially(prompt, { delay: 22 });
   await page.waitForTimeout(500);
   await page.keyboard.press("Enter");
-  await page.waitForSelector("text=/Worked for/", { timeout: 120_000 });
+  // A finished answer can be rated; a working one cannot.
+  await page.getByRole("button", { name: "Helpful" }).first().waitFor({ timeout: 120_000 });
   await page.waitForTimeout(4500);
   await cdp.send("Page.stopScreencast");
   const answer = await page.locator("text=/agents?$/").count();

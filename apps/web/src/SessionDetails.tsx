@@ -1,41 +1,26 @@
 import { createContext, type ReactNode, useEffect, useState } from "react";
 import { call } from "./api.ts";
+import { follow } from "./cards.tsx";
 import { type ConversationPanel, href } from "./route.ts";
 import { followSession } from "./sessionStream.ts";
-import { AgentMark, Problem, SkeletonRows, Tabs } from "./ui.tsx";
+import { AgentMark, Problem, SkeletonRows } from "./ui.tsx";
 
 export const DetailsNavigation = createContext<ReactNode>(null);
 
-/** All session inspectors share a single set of addressed sections. */
+/**
+ * The session's inspectors share no row of tabs. Each drawer has one job:
+ * Details is the overview, Files is what the session holds. What the session
+ * did, read and linked is in the conversation itself, where a reference to
+ * another session is a link, so no drawer repeats it.
+ */
 export function SessionDetailsProvider({
-  panel,
-  onPanel,
   children,
 }: {
   panel?: ConversationPanel;
   onPanel: (panel: ConversationPanel) => void;
   children: ReactNode;
 }) {
-  const tabs = [
-    { id: "workspace", label: "Files" },
-    { id: "context", label: "Sources" },
-    { id: "activity", label: "Steps" },
-    { id: "overview", label: "Sessions" },
-  ] as const;
-  return (
-    <DetailsNavigation.Provider
-      value={
-        <Tabs
-          label="Session details"
-          value={panel ?? "workspace"}
-          tabs={[...tabs]}
-          onChange={(next) => onPanel(next as ConversationPanel)}
-        />
-      }
-    >
-      {children}
-    </DetailsNavigation.Provider>
-  );
+  return <DetailsNavigation.Provider value={null}>{children}</DetailsNavigation.Provider>;
 }
 
 type Related = { id: string; agent: string; title?: string; status?: string };
@@ -148,6 +133,7 @@ export function SessionRelations({ id, canWrite = false }: { id: string; canWrit
               <li key={child.id}>
                 <a
                   href={href({ page: "conversation", id: child.id })}
+                  onClick={(event) => follow(event)}
                   className="flex min-h-11 items-center gap-2 rounded-aui px-2 text-aui-sm hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
                 >
                   <AgentMark name={child.agent} size={18} />
@@ -170,6 +156,7 @@ export function SessionRelations({ id, canWrite = false }: { id: string; canWrit
                 <a
                   className="inline-flex min-h-11 items-center text-aui-sm underline"
                   href={href({ page: "conversation", id: link.target })}
+                  onClick={(event) => follow(event)}
                 >
                   {link.kind || `Related session ${i + 1}`}
                 </a>

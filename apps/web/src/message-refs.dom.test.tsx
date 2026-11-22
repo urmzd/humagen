@@ -1,15 +1,18 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { defaultCopy } from "@humagen/components";
-import { allTools, answerOf, foldAll } from "@humagen/core";
+import { allTools, answerOf, foldAll, type Turn } from "@humagen/core";
 import { responseStreams } from "@humagen/core/fixtures/responses";
+import { WebSurface } from "@humagen/render-web";
+import { AgentMessage, CallThreadContext } from "@humagen/web";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { Run } from "./adapter.ts";
 import type { MessageTrace, Thread, TraceNode, TraceQuestion } from "./api.ts";
+import { turnOfCall } from "./callTurn.ts";
 import { stubFetch } from "./dom.ts";
 import { type FocusLoader, MessageFocus } from "./MessageFocus.tsx";
-import { AnswerRefs, SessionReferences } from "./MessageRefs.tsx";
-import { ResponseActivityPanel } from "./ResponseActivity.tsx";
+import { AnswerRefs, callThreadsOf, SessionReferences } from "./MessageRefs.tsx";
+import { AgentCallLane, ResponseActivityPanel } from "./ResponseActivity.tsx";
 import {
   type ResponseSource,
   replaySource,
@@ -266,30 +269,18 @@ test("what the reader may not see stays private: withheld calls and hidden runs"
   assert.equal(state.content.filter((b) => b.type === "hidden").length, 2);
 });
 
-test("under an answer: its chips, and Worked … that opens its activity", async () => {
-  const opened: string[] = [];
-  render(<AnswerRefs run={root} eager loader={loader} onActivity={(id) => opened.push(id)} />);
+test("under an answer: its chips, and nothing that opens its activity a second time", async () => {
+  render(<AnswerRefs run={root} eager loader={loader} />);
   const refs = await screen.findByTestId("answer-refs");
-  const worked = await within(refs).findByTestId("worked");
-  assert.equal(worked.getAttribute("aria-expanded"), "false");
-  assert.equal(worked.textContent, words.worked("14s", 2, 3));
+  await within(refs).findByText("Deploy runbook");
   assert.deepEqual(
     [...refs.querySelectorAll("[data-chip]")].map((c) => c.textContent),
     // What get_context pulled, then what the answer cites.
     ["Ana in #deploys", "Deploy runbook"],
   );
   assert.equal(within(refs).queryByText(/\$0\.01/), null, "no cost inline");
-  fireEvent.click(worked);
-  assert.deepEqual(opened, [R1]);
-});
-
-test("an answer that used no tool and called no one has no Worked", async () => {
-  const alone = run(R1, { calls: 0 });
-  const quiet: TraceLoader = { trace: async () => traceOf([node(alone)]) };
-  render(<AnswerRefs run={alone} eager loader={quiet} onActivity={() => {}} />);
-  await screen.findByText("Deploy runbook");
-  await new Promise((r) => setTimeout(r, 20));
-  assert.equal(screen.queryByTestId("worked"), null);
+  // The answer shows each step and each called agent where it happened.
+  assert.equal(within(refs).queryByRole("button"), null);
 });
 
 test("two agents in parallel are two lanes; the root's own answer stays beside the panel", async () => {
@@ -522,11 +513,9 @@ test("a delegation someone approved keeps who decided on its agent call, once", 
 });
 
 test("a stopped response says how it ended once, in plain words", async () => {
-  const { WorkedButton } = await import("./ResponseActivity.tsx");
+  const { outcomeOf } = await import("./ResponseActivity.tsx");
   const state = foldAll(responseStreams.stopped);
-  render(<WorkedButton state={state} open={false} onToggle={() => {}} />);
-  assert.equal(screen.getByTestId("worked").textContent, words.stoppedAfter("3.0s", 1, 1));
-  cleanup();
+  assert.equal(outcomeOf(state), words.stoppedAfter("3.0s", 1, 1));
   render(
     <ResponseActivityPanel
       source={replaySource("s", responseStreams.stopped)}
@@ -582,7 +571,7 @@ test("Details collects each answer's references, with how it worked, its cost an
     rows[0]?.textContent ?? "",
     /Worked 14s · 2 agents · 3 tools · \$0\.01 · claude-sonnet/,
   );
-  assert.match(rows[0]?.textContent ?? "", new RegExp(words.delegatedTo("ops, analyst")));
+  assert.match(rows[0]?.textContent ?? "", new RegExp(words.delegatedTo("Ops, Analyst")));
   const first = rows[0]?.querySelector("[data-chip]");
   assert.equal(first?.getAttribute("data-chip"), "origin");
 });
@@ -764,5 +753,208 @@ test("a called agent is one closed item once done, and the tree opens on a step 
   assert.match(
     trail.textContent ?? "",
     new RegExp(holder?.getAttribute("data-agent") ?? "missing"),
+  );
+});
+
+test("a called agent is a message of its own in the answer: full size, with its stream and its own actions", async () => {
+  const state = foldAll(responseStreams.parallelAgents);
+  const call = allTools(state).find((t) => t.kind === "agent" && t.runId);
+  assert.ok(call);
+  const net = stubFetch({
+    [`GET /api/runs/${call.runId}/feedback`]: () => ({ feedback: [] }),
+  });
+  try {
+    // The turn's step for that call: its id, and the run it started.
+    const task = { id: call.id, subagent: { runId: call.runId } } as Parameters<
+      ReturnType<typeof callThreadsOf>
+    >[0];
+    const { container } = render(<WebSurface>{callThreadsOf(state)(task)}</WebSurface>);
+    const lane = within(container).getAllByTestId("activity-lane")[0];
+    assert.ok(lane);
+    // A message, not a line to open: nothing is folded, and nothing leads away.
+    assert.equal(lane.querySelector("details"), null);
+    assert.equal(lane.querySelector("summary"), null);
+    assert.equal(lane.querySelector("a[title]"), null);
+    const name = call.agent ?? call.name;
+    const message = within(lane).getByRole("article", { name: `${name} message` });
+    // Its header names the agent, as any participant's does. What it was asked is its
+    // caller's words above it, and how long the call took is in Details.
+    const header = message.querySelector("header");
+    assert.ok(header);
+    assert.ok((header.textContent ?? "").includes(name));
+    if (call.title) assert.ok(!(header.textContent ?? "").includes(call.title));
+    assert.equal(header.querySelector(".tabular-nums"), null);
+    // It is not set in: one more participant, as wide as its caller.
+    assert.ok(!/border-l|pl-3/.test(lane.className));
+    // Its words are drawn as an answer's are.
+    const turn = turnOfCall(call);
+    if (turn.text) assert.ok((message.textContent ?? "").includes(turn.text.slice(0, 24)));
+    // Its own actions: its work is copied and rated apart from the answer that called it.
+    const actions = within(message).getByRole("toolbar");
+    assert.ok(within(actions).getByRole("button", { name: defaultCopy.helpful }));
+    assert.ok(within(actions).getByRole("button", { name: defaultCopy.notHelpful }));
+    assert.equal(within(actions).queryByRole("button", { name: "Regenerate" }), null);
+    await waitFor(() =>
+      assert.ok(net.seen.some((s) => s.path === `/api/runs/${call.runId}/feedback`)),
+    );
+    cleanup();
+    // In Details the same call is a lane that folds, lists its blocks and links to its agent's message.
+    const detail = render(<AgentCallLane tool={call} />);
+    assert.ok(detail.container.querySelector(`a[title="${words.focus(name)}"]`));
+    assert.ok(detail.container.querySelector("summary svg"));
+    assert.equal(detail.container.querySelector("article"), null);
+  } finally {
+    net.restore();
+  }
+});
+
+test("a called agent's record becomes a turn: thinking, words, steps and its own calls, in the order they came", () => {
+  const call = {
+    type: "tool",
+    id: "c1",
+    name: "call_agent",
+    kind: "agent",
+    agent: "researcher",
+    runId: "r2",
+    title: "Two facts",
+    input: {},
+    depth: 1,
+    status: "done",
+    elapsedMs: 1300,
+    content: [
+      { type: "thinking", text: "Which sources are primary?" },
+      { type: "text", text: "I will check the docs.", citations: [] },
+      {
+        type: "tool",
+        id: "t1",
+        name: "search",
+        kind: "tool",
+        title: "Searched the docs",
+        input: { q: "self-host" },
+        depth: 2,
+        status: "done",
+        elapsedMs: 40,
+        result: { text: "3 pages", sources: [], isError: false },
+        content: [],
+      },
+      { type: "hidden" },
+      { type: "thinking", text: "Two are enough." },
+      {
+        type: "tool",
+        id: "c2",
+        name: "call_agent",
+        kind: "agent",
+        agent: "writer",
+        runId: "r3",
+        title: "Tidy the facts",
+        input: {},
+        depth: 2,
+        status: "running",
+        content: [],
+      },
+      { type: "text", text: "Here are two facts.", citations: [] },
+    ],
+  } as unknown as Parameters<typeof turnOfCall>[0];
+  const turn = turnOfCall(call);
+  assert.equal(turn.id, "r2");
+  assert.equal(turn.agent.name, "researcher");
+  assert.equal(turn.status, "done");
+  assert.equal(turn.text, "I will check the docs.\n\nHere are two facts.");
+  // Each thought sits where it happened: before the first words, and after the first step.
+  assert.deepEqual(turn.thoughts, [
+    { at: 0, after: 0, text: "Which sources are primary?" },
+    { at: "I will check the docs.".length, after: 1, text: "Two are enough." },
+  ]);
+  assert.deepEqual(
+    turn.tasks.map((t) => [t.id, t.tool, t.status, t.at, t.subagent?.runId]),
+    [
+      ["t1", "search", "complete", 22, undefined],
+      ["c2", "call_agent", "in_progress", 22, "r3"],
+    ],
+  );
+  assert.equal(turn.tasks[0]?.input, '{"q":"self-host"}');
+  assert.equal(turn.tasks[0]?.output, "3 pages");
+  // An agent that wrote no words has its result as its words.
+  const quiet = turnOfCall({
+    ...call,
+    content: [],
+    result: { text: "Done: two facts.", sources: [], isError: false },
+  });
+  assert.equal(quiet.text, "Done: two facts.");
+  // A step the caller draws itself is left out.
+  assert.deepEqual(
+    turnOfCall(call, (step) => step.id === "t1").tasks.map((t) => t.id),
+    ["c2"],
+  );
+  // Failed, stopped or denied is said on the thread's line, not again in the stream.
+  assert.equal(turnOfCall({ ...call, status: "error" }).status, "done");
+  assert.equal(turnOfCall({ ...call, status: "awaiting_approval" }).status, "waiting");
+});
+
+test("a turn reads as a conversation: the agent's asks are its words, each agent answers, and the agent is named again after them", () => {
+  const call = (id: string, agent: string, brief: string, at: number) =>
+    ({
+      id,
+      title: agent,
+      tool: "call_agent",
+      status: "complete",
+      input: JSON.stringify({ agent, title: brief.slice(0, 12), brief }),
+      subagent: { name: agent, runId: `run-${id}` },
+      at,
+    }) as Turn["tasks"][number];
+  const opening = "I will ask both.";
+  const turn = {
+    id: "r1",
+    agent: { name: "lead" },
+    status: "done",
+    text: `${opening} Here are both.`,
+    tasks: [
+      call("c1", "researcher", "Find two facts on why teams self-host agents.", opening.length + 1),
+      call("c2", "writer", "Write a two-sentence launch note.", opening.length + 1),
+    ],
+    thoughts: [{ at: 0, after: 0, text: "Two jobs, two agents." }],
+    citations: [],
+    interrupts: [],
+    notices: [],
+  } as unknown as Turn;
+  const { container } = render(
+    <WebSurface>
+      <CallThreadContext.Provider
+        value={(task) => <div data-testid="reply">{`${task.subagent?.name} answers`}</div>}
+      >
+        <AgentMessage turn={turn} disclaimer={false} activity={false} />
+      </CallThreadContext.Provider>
+    </WebSurface>,
+  );
+  const text = container.textContent ?? "";
+  const order = [
+    "Two jobs, two agents.",
+    opening,
+    "@researcher Find two facts on why teams self-host agents.",
+    "@writer Write a two-sentence launch note.",
+    "researcher answers",
+    "writer answers",
+    "Here are both.",
+  ].map((s) => text.indexOf(s));
+  assert.ok(
+    order.every((i) => i >= 0),
+    `every part is shown: ${order}`,
+  );
+  assert.deepEqual(
+    [...order].sort((a, b) => a - b),
+    order,
+    "its thinking, its words, both asks, both answers, then its last words",
+  );
+  // Each ask tags the agent it went to.
+  const asks = [...container.querySelectorAll('[data-aui="call-ask"]')];
+  assert.equal(asks.length, 2);
+  // After the others spoke, the agent is named again before its last words, once.
+  const speakers = [...container.querySelectorAll('[data-aui="speaker"]')];
+  assert.equal(speakers.length, 1);
+  assert.equal(speakers[0]?.querySelector(".font-semibold")?.textContent, "lead");
+  const last = screen.getByText("Here are both.");
+  assert.ok(
+    speakers[0]?.compareDocumentPosition(last) & Node.DOCUMENT_POSITION_FOLLOWING,
+    "the name comes before its words",
   );
 });

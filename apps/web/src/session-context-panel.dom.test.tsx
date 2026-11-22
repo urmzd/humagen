@@ -16,7 +16,7 @@ import {
   PanelChanges,
   PULLS_SHOWN,
 } from "./SessionSections.tsx";
-import { type SessionView, SessionViews, viewShortcut } from "./SessionViews.tsx";
+import { type SessionView, SessionViews } from "./SessionViews.tsx";
 import {
   contextUse,
   localChanges,
@@ -505,7 +505,7 @@ test("the header opens Details, Terminal, Changes, Browser and Files, each press
   );
 });
 
-test("More Views holds Artifacts, Side Chat, Search, Background Tasks and Progress, with their keys", async () => {
+test("More Views holds Artifacts and Background Tasks; steps, search and side chats are not views of their own", async () => {
   const { opened } = views();
   fireEvent.click(screen.getByRole("button", { name: words.more }));
   const menu = await screen.findByRole("menu", { name: words.more });
@@ -513,40 +513,25 @@ test("More Views holds Artifacts, Side Chat, Search, Background Tasks and Progre
     .getAllByRole("menuitem")
     .map((i) => i.getAttribute("data-session-view"));
   // The primary views are in the menu too, shown there only on a phone.
-  assert.deepEqual(items, [
-    "terminal",
-    "changes",
-    "browser",
-    "files",
-    "artifacts",
-    "sidechat",
-    "search",
-    "background",
-    "progress",
-  ]);
-  const side = within(menu).getByRole("menuitem", { name: new RegExp(words.view.sidechat) });
-  assert.match(side.textContent ?? "", /;/);
-  assert.equal(
-    within(menu).getByRole("menuitem", { name: words.view.background }).getAttribute("href"),
-    "/scheduled/background",
-  );
-  fireEvent.click(side);
-  assert.deepEqual(opened, ["sidechat"]);
+  assert.deepEqual(items, ["terminal", "changes", "browser", "files", "artifacts", "background"]);
+  // What a turn did is in the turn itself: there is no Progress, Search or Side Chat to open.
+  for (const gone of [/Progress/, /Search/, /Side Chat/])
+    assert.equal(within(menu).queryByRole("menuitem", { name: gone }), null);
+  // Background is the session's own: the row opens a view of this session, and leads nowhere else.
+  const background = within(menu).getByRole("menuitem", { name: words.view.background });
+  assert.equal(background.getAttribute("href"), null);
+  fireEvent.click(background);
+  assert.deepEqual(opened, ["background"]);
 });
 
-test("a reader who may not post gets no Side Chat, and the keys open Side Chat and Search", async () => {
-  views(undefined, ["sidechat"]);
+test("a hidden view is left out of More Views", async () => {
+  views(undefined, ["artifacts"]);
   fireEvent.click(screen.getByRole("button", { name: words.more }));
   const menu = await screen.findByRole("menu", { name: words.more });
   assert.equal(
-    within(menu).queryByRole("menuitem", { name: new RegExp(words.view.sidechat) }),
+    within(menu).queryByRole("menuitem", { name: new RegExp(words.view.artifacts) }),
     null,
   );
-  const key = { metaKey: true, ctrlKey: false, shiftKey: false, altKey: false };
-  assert.equal(viewShortcut({ ...key, key: ";" }), "sidechat");
-  assert.equal(viewShortcut({ ...key, key: "F", shiftKey: true }), "search");
-  assert.equal(viewShortcut({ ...key, key: ";", metaKey: false }), undefined);
-  assert.equal(viewShortcut({ ...key, key: "k" }), undefined);
 });
 
 test("the title is the session's menu, and Rename edits it in place", async () => {

@@ -49,11 +49,12 @@ settings' allowed tools (`run.ceilings.tools` in
 
 ## See and stop yours
 
-Open **Scheduled**, then **Background** (`/scheduled/background`). Each card is
-one watch, goal or task, still running first. It shows its agent, how often it
-checks or which turn it is on, and its last result. Open a card to read the
-session its runs are in. Choose **Stop** from its menu to end one that is still
-running. The API is `GET /api/me/background` and
+Open the session that carries the work, then **Details**. Its **Background**
+section lists that session's watches, goals and tasks, still running first.
+Each row shows its kind, its agent, how often it checks or which turn it is
+on, and its state. Choose **Stop** on a row to end one that is still running.
+A session with no background work has no such section, and no page lists
+every session's together. The API is `GET /api/me/background` and
 `POST /api/me/background/{id}/stop`; nobody sees or stops another person's.
 
 ## How it reaches people

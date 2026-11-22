@@ -4,15 +4,17 @@ import { type ReactNode, useCallback, useEffect, useRef, useState } from "react"
 import { type AlertRuleConfig, api, type ProjectView } from "./api.ts";
 import { agentShown } from "./branding.ts";
 import {
+  AgentCell,
   AgentTag,
   FilterSelect,
   follow,
   ItemCard,
-  itemGrid,
   PriorityPill,
+  StatusDot,
   StatusPill,
   Tag,
 } from "./cards.tsx";
+import { type Column, DataTable } from "./DataTable.tsx";
 import { type ProjectRef, readableProject } from "./projects.ts";
 import { href, type Route, SESSION_PLACES, type SessionPlaceFilter } from "./route.ts";
 import {
@@ -27,16 +29,17 @@ import {
   isRootSession,
   openAlert,
   orderAlerts,
+  reviewable,
   sessionCenter,
   sessionSource,
 } from "./sessionCenter.ts";
-import { kindWord, type StorageTransport, type Stored, transport as storage } from "./storage.ts";
 import { referenceOf } from "./trace.ts";
 import {
   ago,
   button,
   Confirm,
   LoadMore,
+  MoreMenu,
   Page,
   Problem,
   SearchField,
@@ -69,11 +72,9 @@ export function placeOfSession(s: AgentSessionSummary): SessionPlaceFilter | und
                 : undefined;
 }
 
-/** How many of the newest artifacts Home shows. The rest are under Artifacts. */
-const HOME_MADE = 3;
 /** One set of tracks for the header and rows. The action column fits all three controls. */
 const alertRow =
-  "grid grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-x-3 gap-y-2 px-4 @3xl:pointer-fine:grid-cols-[1.5rem_minmax(0,1fr)_6.5rem_4.25rem_5.5rem_14.5rem]";
+  "grid grid-cols-[1.5rem_minmax(0,1fr)] items-center gap-x-3 gap-y-2 px-4 @3xl:pointer-fine:grid-cols-[1.5rem_minmax(0,1fr)_6.5rem_4.25rem_5.5rem_15rem]";
 const alertActions =
   "col-start-2 grid min-w-0 grid-cols-[repeat(2,minmax(0,max-content))] items-center gap-2 @lg:flex @3xl:pointer-fine:col-start-auto @3xl:pointer-fine:justify-end";
 /**
@@ -218,6 +219,50 @@ export function SessionRow({
     </li>
   );
 }
+/** The Sessions table's columns: what it is, who answered, how it stands, where, when. */
+function sessionColumns(
+  alerts: Alert[],
+  projects: ProjectRef[],
+  workspaceName?: string,
+): Column<AgentSessionSummary>[] {
+  return [
+    {
+      name: "Session",
+      cell: (s) => {
+        const attention = orderAlerts(alerts.filter((a) => a.session === s.id && openAlert(a)))[0];
+        return (
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="truncate">{s.title || agentShown(s.agent)}</span>
+            {attention && (
+              <>
+                {/* Read apart from the title: "Deploy failed, Urgent". */}
+                <span className="sr-only">, </span>
+                <AlertMark alert={attention} />
+              </>
+            )}
+          </span>
+        );
+      },
+    },
+    {
+      name: "Agent",
+      hide: "sm",
+      cell: (s) => <AgentCell name={s.agent} shown={agentShown(s.agent)} />,
+    },
+    { name: "Status", cell: (s) => <StatusDot status={s.status} /> },
+    {
+      name: "Project",
+      hide: "md",
+      cell: (s) => readableProject(s.project, projects, workspaceName),
+    },
+    { name: "Where", hide: "lg", cell: (s) => sessionSource(s) },
+    {
+      name: "Updated",
+      cell: (s) => <time dateTime={s.updated_at}>{ago(s.updated_at)}</time>,
+    },
+  ];
+}
+
 export function SessionsPage({
   route,
   go,
@@ -227,7 +272,7 @@ export function SessionsPage({
   tick,
 }: {
   route: Extract<Route, { page: "sessions" }>;
-  go: (route: Route) => void;
+  go: (route: Route, opts?: { replace?: boolean }) => void;
   projects?: ProjectView[];
   workspaceName?: string;
   alerts?: Alert[];
@@ -301,7 +346,8 @@ export function SessionsPage({
         <SearchField
           label="Search sessions"
           value={route.q ?? ""}
-          onChange={(q) => go({ ...route, q: q || undefined })}
+          // Typing replaces the address, so Back leaves the page rather than each letter.
+          onChange={(q) => go({ ...route, q: q || undefined }, { replace: true })}
           placeholder="Search by title or agent"
           className="sm:w-72"
         />
@@ -375,18 +421,16 @@ export function SessionsPage({
       {!sessions && !problem ? (
         <SkeletonRows count={4} />
       ) : shown.length ? (
-        <ul className={itemGrid}>
-          {shown.map((s) => (
-            <SessionRow
-              key={s.id}
-              session={s}
-              go={go}
-              alerts={alerts}
-              projects={projects}
-              workspaceName={workspaceName}
-            />
-          ))}
-        </ul>
+        <DataTable
+          label="Sessions"
+          rows={shown}
+          rowKey={(s) => s.id}
+          columns={sessionColumns(alerts, projects, workspaceName)}
+          link={(s) => ({
+            href: href({ page: "conversation", id: s.id }),
+            onOpen: () => go({ page: "conversation", id: s.id }),
+          })}
+        />
       ) : (
         <p className="text-aui-sm text-aui-muted">No sessions match these filters.</p>
       )}
@@ -500,6 +544,22 @@ export function AlertsPage({
       },
       (e) => setProblem(failure(e)),
     );
+  };
+  const [reviewing, setReviewing] = useState<string>();
+  // Review opens a session that starts with the agent's recap of the alert.
+  const review = async (a: Alert) => {
+    if (a.review) return go({ page: "conversation", id: a.review });
+    if (reviewing) return;
+    setReviewing(a.id);
+    setProblem(undefined);
+    try {
+      const session = await sessionCenter.review(a.id);
+      go({ page: "conversation", id: session.id });
+    } catch (e) {
+      setProblem(failure(e));
+    } finally {
+      setReviewing(undefined);
+    }
   };
   const shown = (rows ?? []).filter((a) => !route.source || a.kind === route.source);
   const picked = shown.filter((a) => selected.has(a.id));
@@ -625,10 +685,8 @@ export function AlertsPage({
             // Laid out as a table, so alerts line up: what it is, how pressing, when, and what to do.
             // It is a list to a screen reader: each row is its own grid with the same tracks,
             // and a narrow or touch row stacks, which a real table cannot do.
-            <div className="humagen-glass overflow-hidden rounded-aui-lg">
-              <div
-                className={`${alertRow} min-h-11 border-aui-border border-b py-2 text-aui-2xs text-aui-muted`}
-              >
+            <div className="flex min-w-0 flex-col gap-1.5">
+              <div className={`${alertRow} min-h-9 py-1 text-aui-2xs text-aui-muted`}>
                 <label className={alertCheck}>
                   {canWrite && (
                     <input
@@ -680,7 +738,7 @@ export function AlertsPage({
                   </>
                 )}
               </div>
-              <ul aria-label={words.table.label}>
+              <ul aria-label={words.table.label} className="flex min-w-0 flex-col gap-1.5">
                 {shown.map((a) => {
                   const to = alertDestination(a);
                   const label = alertActionLabel(a);
@@ -688,7 +746,8 @@ export function AlertsPage({
                   return (
                     <li
                       key={a.id}
-                      className={`${alertRow} border-aui-border border-b py-3 last:border-b-0 ${selected.has(a.id) ? "bg-aui-hover" : ""}`}
+                      // The same soft row, with space between rows, as every table (DataTable).
+                      className={`${alertRow} rounded-aui-lg py-3 transition-colors hover:bg-aui-hover ${selected.has(a.id) ? "bg-aui-hover" : "bg-[color-mix(in_oklab,var(--aui-hover)_55%,transparent)]"}`}
                     >
                       <label className={alertCheck}>
                         {canWrite && (
@@ -738,17 +797,35 @@ export function AlertsPage({
                         </span>
                       </span>
                       <span className={alertActions}>
-                        <button
-                          type="button"
-                          className={`${button} col-span-2 w-[9.5rem] max-w-full`}
-                          title={label}
-                          onClick={() => {
-                            const page = alertPage(a) ?? to;
-                            if (page) go(page);
-                          }}
-                        >
-                          <span className="min-w-0 truncate">{label}</span>
-                        </button>
+                        {/* The title views where it came from; the button asks the agent about it. */}
+                        {canWrite && reviewable(a) ? (
+                          <button
+                            type="button"
+                            className={`${button} col-span-2 w-[9.5rem] max-w-full`}
+                            disabled={!!reviewing}
+                            onClick={() => void review(a)}
+                          >
+                            <span className="min-w-0 truncate">
+                              {reviewing === a.id
+                                ? words.reviewing
+                                : a.review
+                                  ? words.openReview
+                                  : words.review}
+                            </span>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            className={`${button} col-span-2 w-[9.5rem] max-w-full`}
+                            title={label}
+                            onClick={() => {
+                              const page = alertPage(a) ?? to;
+                              if (page) go(page);
+                            }}
+                          >
+                            <span className="min-w-0 truncate">{label}</span>
+                          </button>
+                        )}
                         {canWrite && (
                           <>
                             <RowAction
@@ -757,11 +834,16 @@ export function AlertsPage({
                               disabled={busy}
                               onClick={() => void change([a], "resolved")}
                             />
-                            <RowAction
-                              label={words.snooze}
-                              icon={<ClockIcon size={16} />}
-                              disabled={busy}
-                              onClick={() => void change([a], "snoozed")}
+                            <MoreMenu
+                              label={words.more}
+                              items={[
+                                {
+                                  label: words.snooze,
+                                  icon: <ClockIcon size={16} />,
+                                  disabled: busy,
+                                  onSelect: () => void change([a], "snoozed"),
+                                },
+                              ]}
                             />
                           </>
                         )}
@@ -791,30 +873,20 @@ export function AlertsPage({
   );
 }
 /**
- * Under the chat bar: one strip of the newest things the person's agents
- * made. Alerts are counted on the Alerts entry of the menu, so Home does not
- * repeat them. With nothing made, Home is the greeting and the chat bar.
+ * Home is the greeting and the chat bar, with nothing listed under it:
+ * projects, artifacts and sessions are each one entry of the menu. This draws
+ * nothing. It reads only whether the person has started anything yet, which
+ * decides the starters above the bar.
  */
-export function HomeSessionGlance({
-  go,
+export function HomeStarted({
   tick,
   onHasSessions,
-  canArtifacts = true,
-  via = storage,
 }: {
-  go: (route: Route) => void;
   tick: unknown;
-  onHasSessions?: (has: boolean) => void;
-  /** False when the person may not read artifacts, so none are asked for. */
-  canArtifacts?: boolean;
-  via?: Pick<StorageTransport, "list">;
+  onHasSessions: (has: boolean) => void;
 }) {
-  const [made, setMade] = useState<Stored[]>([]);
-  const [madeFailed, setMadeFailed] = useState(false);
-  // Whether the person has started anything yet, which decides the starters above.
   // biome-ignore lint/correctness/useExhaustiveDependencies: tick asks for a fresh read
   useEffect(() => {
-    if (!onHasSessions) return;
     let live = true;
     sessionCenter.sessions({ roots: "true", mine: "true", limit: "1" }).then(
       (r) => {
@@ -826,64 +898,5 @@ export function HomeSessionGlance({
       live = false;
     };
   }, [tick, onHasSessions]);
-  // A strip that could not be read says so in one quiet line: Home still works without it.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: tick asks for a fresh read
-  useEffect(() => {
-    if (!canArtifacts) {
-      setMade([]);
-      setMadeFailed(false);
-      return;
-    }
-    let live = true;
-    via.list({ project: "", agent: "", kind: "", q: "", limit: HOME_MADE }).then(
-      (r) => {
-        if (!live) return;
-        setMade(r.artifacts.slice(0, HOME_MADE));
-        setMadeFailed(false);
-      },
-      () => {
-        // What was read before stays; only a strip with nothing to show says it failed.
-        if (live) setMadeFailed(true);
-      },
-    );
-    return () => {
-      live = false;
-    };
-  }, [tick, canArtifacts, via]);
-  const failed = madeFailed && made.length === 0;
-  if (made.length === 0 && !failed) return null;
-  const c = defaultCopy.home;
-  return (
-    <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-4 pt-6">
-      {failed && <p className="text-center text-aui-xs text-aui-muted">{c.madeFailed}</p>}
-      {made.length > 0 && (
-        <section aria-labelledby="home-made">
-          <h2 id="home-made" className="pb-2 font-medium text-aui-xs text-aui-muted">
-            {c.recentlyMade}
-          </h2>
-          <ul className="grid gap-3 sm:grid-cols-3">
-            {made.map((file) => {
-              const to: Route = { page: "artifacts", artifact: file.id };
-              return (
-                <li key={file.id} className="min-w-0">
-                  <ItemCard
-                    title={file.title}
-                    href={href(to)}
-                    onOpen={() => go(to)}
-                    time={<time dateTime={file.created_at}>{ago(file.created_at)}</time>}
-                    facts={
-                      <>
-                        <Tag>{kindWord[file.kind]}</Tag>
-                        {file.agent && <AgentTag name={file.agent} />}
-                      </>
-                    }
-                  />
-                </li>
-              );
-            })}
-          </ul>
-        </section>
-      )}
-    </div>
-  );
+  return null;
 }

@@ -60,6 +60,7 @@ import type {
   StoreInstall,
   StorePackage,
   StoreRemoval,
+  ThreadCommand,
   ThreadFollowup,
   ThreadImport,
   ThreadShare,
@@ -449,6 +450,8 @@ export interface ThreadSummary {
   title: string;
   /** The title is a name, not just the first message. */
   named: boolean;
+  /** Who gave the title: the start of the first message until a short generated name replaces it, or a person. */
+  title_source?: TitleSource;
   origin: string;
   project?: string;
   /** The project's channel it is in, `general` when its runs name none. */
@@ -2171,11 +2174,15 @@ export interface ThreadParticipant {
 }
 
 /** A shared thread's record. A conversation from before threads reads at version 0. */
+/** Who gave a session its title. The server replaces only a placeholder, so a person's title stays. */
+export type TitleSource = "placeholder" | "generated" | "person";
+
 export interface Thread {
   id: string;
   project: string;
   channel: string;
   title?: string;
+  title_source?: TitleSource;
   visibility: "shared" | "private";
   participants: ThreadParticipant[];
   default?: string;
@@ -2209,7 +2216,14 @@ export interface Thread {
   /** The Slack thread this thread is, when it was started from Slack. It never changes. */
   surface?: { client: string; channel: string; ts: string };
   /** A session's own: its agent, and what it was set up with before its first message. */
-  session?: { agent: string; parent: string; image?: string; repos?: string[] };
+  session?: {
+    agent: string;
+    parent: string;
+    label?: string;
+    source_alert?: string;
+    image?: string;
+    repos?: string[];
+  };
   version: number;
   created_by: string;
   created_at: string;
@@ -2240,6 +2254,8 @@ export interface ThreadMessage {
   surface_id?: string;
   /** Files posted with it, by name where the poster gave one. */
   attachments?: { name?: string; alt?: string; media_type: string; unread?: string }[];
+  /** A command its author ran in the session's sandbox ("!" and the command), and how it came out. */
+  command?: ThreadCommand;
   at: string;
 }
 
@@ -2581,6 +2597,8 @@ export const coworking = {
     /** A private session's image and repositories, chosen before its first message. */
     image?: string;
     repos?: string[];
+    /** The text is "!" and a command to run in the new session's sandbox, in place of a message to its agent. */
+    command?: boolean;
   }) =>
     t.visibility === "shared"
       ? call<ThreadPosted>("POST", "/api/threads", t)
@@ -2591,6 +2609,7 @@ export const coworking = {
           agent: t.agents?.[0],
           ...(t.image && t.image !== "default" ? { image: t.image } : {}),
           ...(t.repos?.length ? { repos: t.repos } : {}),
+          ...(t.command ? { command: true } : {}),
         }).then(sessionPosted),
   /**
    * Shares a private thread in a project's channel (general unless named)

@@ -485,6 +485,23 @@
   padding-inline: 0.875rem;
 }
 
+/*
+ * A failure is said as a quiet line, not a box: the header already says
+ * "Failed", so the card would only repeat it louder. Its recovery row sits
+ * under the words, lined up with them.
+ */
+.aui-stack > [data-aui="callout"][data-tone="bad"] {
+  border: 0;
+  background: none;
+  padding: 0;
+}
+.aui-stack > [data-aui="callout"][data-tone="bad"] + [data-aui="actions"] {
+  margin-top: calc(-0.5 * var(--aui-gap));
+  border: 0;
+  background: none;
+  padding: 0 0 0 1.625rem;
+}
+
 /* Tone variables for callouts; siblings read them through the selectors above. */
 [data-aui="callout"],
 [data-aui="callout"] + [data-aui="actions"] {
@@ -1129,7 +1146,7 @@
   /* ---------- Agent initials ----------
    * An agent's face: its initials in its own color, inside a thin ring of
    * that color. No glow: it would spill past the edge of a scrolling thread.
-   * While it works the ring breathes; the orb sits on its corner as the live badge.
+   * While it works the ring breathes, and from 24px it holds its prop (AgentProp).
    */
   .aui-initials {
     --s: var(--initials-size, 28px);
@@ -1159,6 +1176,911 @@
     width: var(--s);
     height: var(--s);
     color: var(--aui-accent);
+  }
+  /* What an agent holds while it works (AgentProp): at the mark's top right
+     corner, clear of the face and inside the row's height (rows clip), with
+     a thin halo of the page behind it so it reads over the body too. */
+  .aui-prop {
+    position: absolute;
+    top: calc(var(--prop-size) * -0.2);
+    right: calc(var(--prop-size) * -0.5);
+    display: block;
+    width: var(--prop-size);
+    height: var(--prop-size);
+    pointer-events: none;
+    filter: drop-shadow(0 0 0.75px var(--aui-bg)) drop-shadow(0 1px 1.5px rgb(0 0 0 / 0.35));
+    animation: aui-prop-in 150ms ease-out;
+    transition: opacity 150ms ease-out;
+  }
+  .aui-prop svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+  }
+  .aui-prop[data-leaving] {
+    opacity: 0;
+  }
+  .aui-prop[data-anchor="beside"] {
+    top: auto;
+    bottom: calc(var(--prop-size) * -0.08);
+    right: calc(var(--prop-size) * -0.45);
+  }
+  .aui-prop[data-prop="microscope"] svg {
+    transform: scaleX(-1);
+  }
+  .aui-prop :is(.aui-prop-move, .aui-prop-knob, .aui-prop-dot, .aui-prop-trail) {
+    transform-box: fill-box;
+    transform-origin: center;
+  }
+  /* Microscope: the tube eases down to focus, the knob turns, the lamp glows. */
+  .aui-prop[data-prop="microscope"] .aui-prop-move {
+    animation: aui-prop-focus 2.8s ease-in-out infinite;
+  }
+  .aui-prop[data-prop="microscope"] .aui-prop-knob {
+    animation: aui-prop-spin 2.8s ease-in-out infinite;
+  }
+  .aui-prop[data-prop="microscope"] .aui-prop-glow {
+    animation: aui-prop-pulse 2.8s ease-in-out infinite;
+  }
+  /* Thought: the dots come one by one, the small clouds rise. */
+  .aui-prop .aui-prop-dot {
+    animation: aui-prop-dot 1.4s ease-in-out infinite;
+  }
+  .aui-prop .aui-prop-dot:nth-of-type(2) {
+    animation-delay: 0.2s;
+  }
+  .aui-prop .aui-prop-dot:nth-of-type(3) {
+    animation-delay: 0.4s;
+  }
+  .aui-prop[data-prop="thought"] .aui-prop-trail {
+    animation: aui-prop-rise 2.8s ease-in-out infinite;
+  }
+  .aui-prop[data-prop="thought"] .aui-prop-late {
+    animation-delay: 0.5s;
+  }
+  /* The bot's hand: it turns the knob, taps its chin, or waves. */
+  .aui-prop .aui-prop-hand {
+    transform-box: view-box;
+    /* A little darker than the face, as the bot's fur is in shade at its side. */
+    color: color-mix(in oklab, currentColor 80%, black);
+  }
+  .aui-prop[data-motion="loop"] .aui-prop-twist {
+    animation: aui-prop-twist 2.8s ease-in-out infinite;
+  }
+  .aui-prop[data-motion="loop"] .aui-prop-tap {
+    animation: aui-prop-tap 1.4s ease-in-out infinite;
+  }
+  .aui-prop[data-motion="loop"] .aui-prop-wave {
+    animation: aui-prop-wave 1.2s ease-in-out infinite alternate;
+  }
+  /* Wrench: the hand swings the handle back and forth on the bolt. */
+  .aui-prop[data-prop="wrench"] .aui-prop-move {
+    transform-box: view-box;
+    transform-origin: 21px 9px;
+    animation: aui-prop-sweep 1.6s ease-in-out infinite alternate;
+  }
+  /* Pencil: it writes a line, and the line draws under it. */
+  .aui-prop[data-prop="pencil"] .aui-prop-move {
+    animation: aui-prop-write 1.8s ease-in-out infinite;
+  }
+  .aui-prop[data-prop="pencil"] .aui-prop-ink {
+    stroke-dasharray: 1;
+    animation: aui-prop-ink 1.8s ease-in-out infinite;
+  }
+  /* Bubbles: the first message rocks, the answer types. */
+  .aui-prop[data-prop="bubbles"] .aui-prop-move {
+    animation: aui-prop-rock 2.4s ease-in-out infinite;
+  }
+  @keyframes aui-prop-in {
+    from {
+      opacity: 0;
+      transform: scale(0.8);
+    }
+  }
+  @keyframes aui-prop-sweep {
+    from {
+      transform: rotate(-22deg);
+    }
+    to {
+      transform: rotate(10deg);
+    }
+  }
+  @keyframes aui-prop-focus {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(1.4px);
+    }
+  }
+  @keyframes aui-prop-spin {
+    0%,
+    100% {
+      transform: rotate(0deg);
+    }
+    50% {
+      transform: rotate(160deg);
+    }
+  }
+  @keyframes aui-prop-pulse {
+    0%,
+    100% {
+      opacity: 0.35;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
+  @keyframes aui-prop-dot {
+    0%,
+    60%,
+    100% {
+      opacity: 0.35;
+      transform: translateY(0);
+    }
+    30% {
+      opacity: 1;
+      transform: translateY(-1.2px);
+    }
+  }
+  @keyframes aui-prop-rise {
+    0%,
+    100% {
+      opacity: 0.55;
+      transform: translateY(0.8px);
+    }
+    50% {
+      opacity: 1;
+      transform: translateY(-0.8px);
+    }
+  }
+  @keyframes aui-prop-write {
+    0%,
+    100% {
+      transform: translate(0, 0);
+    }
+    25% {
+      transform: translate(1.6px, -0.6px);
+    }
+    50% {
+      transform: translate(3.2px, 0.4px);
+    }
+    75% {
+      transform: translate(4.8px, -0.4px);
+    }
+  }
+  @keyframes aui-prop-ink {
+    0% {
+      stroke-dashoffset: 1;
+    }
+    70%,
+    100% {
+      stroke-dashoffset: 0;
+    }
+  }
+  @keyframes aui-prop-twist {
+    0%,
+    100% {
+      transform: rotate(-12deg);
+    }
+    50% {
+      transform: rotate(18deg);
+    }
+  }
+  @keyframes aui-prop-tap {
+    0%,
+    100% {
+      transform: translateY(0) rotate(0deg);
+    }
+    50% {
+      transform: translateY(-1.2px) rotate(-8deg);
+    }
+  }
+  @keyframes aui-prop-wave {
+    from {
+      transform: rotate(-22deg);
+    }
+    to {
+      transform: rotate(22deg);
+    }
+  }
+  @keyframes aui-prop-rock {
+    0%,
+    100% {
+      transform: rotate(-4deg);
+    }
+    50% {
+      transform: rotate(4deg);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .aui-prop,
+    .aui-prop * {
+      animation: none !important;
+      transition: none;
+    }
+  }
+  /* ---------- Mascots (Mascot.tsx): poses that move as the work does ---------- */
+  .hm-mascot {
+    overflow: visible;
+    flex-shrink: 0;
+  }
+  /* A bot out of view holds still: nothing of it is drawn again. */
+  .hm-mascot[data-away],
+  .hm-mascot[data-away] * {
+    animation-play-state: paused !important;
+  }
+  .hm-mascot[data-quiet]:not([data-act]),
+  .hm-mascot[data-quiet]:not([data-act]) * {
+    animation: none !important;
+  }
+  /* Playful moves of an idle bot: it hops, spins, waves or wiggles, then rests. */
+  .hm-mascot .m-actor {
+    transform-box: view-box;
+    transform-origin: 52px 107px;
+  }
+  .hm-mascot .m-shadow {
+    transform-box: fill-box;
+    transform-origin: center;
+  }
+  .hm-mascot[data-act="hop"] .m-actor {
+    animation: m-hop 0.7s cubic-bezier(0.3, 0.7, 0.4, 1) !important;
+  }
+  .hm-mascot[data-act="hop"] .m-shadow,
+  .hm-mascot[data-act="spin"] .m-shadow {
+    animation: m-shadow 0.7s ease-in-out !important;
+  }
+  .hm-mascot[data-act="spin"] .m-actor {
+    animation: m-spin 1s ease-in-out !important;
+  }
+  .hm-mascot .m-turn,
+  .hm-mascot .m-only-hat > g > :not(.m-hat),
+  .hm-mascot .m-no-hat .m-hat {
+    display: none;
+  }
+  .hm-mascot[data-act="spin"] .m-turn {
+    display: inline;
+  }
+  .hm-mascot[data-act="spin"] .m-still {
+    visibility: hidden;
+  }
+  .hm-mascot :is(.m-front, .m-turn-hat, .m-arm-l, .m-arm-r) {
+    transform-box: view-box;
+    transform-origin: 52px 0;
+  }
+  .hm-mascot[data-act="spin"] .m-strip {
+    animation: m-strip 0.76s steps(16, end) 0.12s backwards !important;
+  }
+  .hm-mascot[data-act="spin"] .m-front {
+    animation: m-spin-front 0.76s linear 0.12s backwards !important;
+  }
+  .hm-mascot[data-act="spin"] .m-turn-hat {
+    animation: m-spin-hat 0.76s linear 0.12s backwards !important;
+  }
+  .hm-mascot[data-act="spin"] .m-arm-r {
+    animation: m-spin-arm-r 0.76s linear 0.12s backwards !important;
+  }
+  .hm-mascot[data-act="spin"] .m-arm-l {
+    animation: m-spin-arm-l 0.76s linear 0.12s backwards !important;
+  }
+  .hm-mascot[data-act="wave"] .m-right-upper {
+    animation: m-wave-up 1.3s ease-in-out !important;
+  }
+  .hm-mascot[data-act="wave"] .m-right-fore {
+    animation: m-wave 1.3s ease-in-out !important;
+  }
+  .hm-mascot[data-act="wiggle"] .m-actor {
+    animation: m-wiggle 0.8s ease-in-out !important;
+  }
+  @keyframes m-hop {
+    0% {
+      transform: none;
+    }
+    16% {
+      transform: scale(1.1, 0.86);
+    }
+    42% {
+      transform: translateY(-16px) scale(0.93, 1.1);
+    }
+    62% {
+      transform: translateY(-15px) scale(1, 1);
+    }
+    86% {
+      transform: scale(1.08, 0.9);
+    }
+    100% {
+      transform: none;
+    }
+  }
+  @keyframes m-shadow {
+    0%,
+    100% {
+      transform: none;
+      opacity: 0.22;
+    }
+    45%,
+    60% {
+      transform: scale(0.6);
+      opacity: 0.12;
+    }
+  }
+  @keyframes m-spin {
+    0%,
+    100% {
+      transform: none;
+    }
+    12% {
+      transform: scale(1.06, 0.92);
+    }
+    30%,
+    70% {
+      transform: translateY(-12px);
+    }
+    88% {
+      transform: scale(1.06, 0.93);
+    }
+  }
+  /* The turn itself, in the air: the body frame by frame, its front sliding
+     round and hiding behind it, its hat and arms turning with it. */
+  @keyframes m-strip {
+    from {
+      transform: translateX(0);
+    }
+    to {
+      transform: translateX(-2400px);
+    }
+  }
+  @keyframes m-spin-front {
+    0%,
+    100% {
+      transform: none;
+      opacity: 1;
+    }
+    12.5% {
+      transform: translateX(8.5px) scaleX(0.71);
+    }
+    23% {
+      transform: translateX(11.6px) scaleX(0.2);
+      opacity: 1;
+    }
+    24%,
+    76% {
+      opacity: 0;
+    }
+    77% {
+      transform: translateX(-11.6px) scaleX(0.2);
+      opacity: 1;
+    }
+    87.5% {
+      transform: translateX(-8.5px) scaleX(0.71);
+    }
+  }
+  @keyframes m-spin-hat {
+    0%,
+    100% {
+      transform: none;
+    }
+    12.5% {
+      transform: scaleX(0.75);
+    }
+    25% {
+      transform: scaleX(0.4);
+    }
+    37.5% {
+      transform: scaleX(-0.75);
+    }
+    50% {
+      transform: scaleX(-1);
+    }
+    62.5% {
+      transform: scaleX(-0.75);
+    }
+    75% {
+      transform: scaleX(-0.4);
+    }
+    87.5% {
+      transform: scaleX(0.75);
+    }
+  }
+  /* The arms are in front of the body: they turn with it and hide behind it
+     while it faces away. */
+  @keyframes m-spin-arm-r {
+    0%,
+    100% {
+      transform: none;
+      opacity: 1;
+    }
+    12% {
+      transform: translateX(6px) scaleX(0.6);
+      opacity: 1;
+    }
+    14%,
+    86% {
+      opacity: 0;
+    }
+    88% {
+      transform: translateX(-6px) scaleX(0.6);
+      opacity: 1;
+    }
+  }
+  @keyframes m-spin-arm-l {
+    0%,
+    100% {
+      transform: none;
+      opacity: 1;
+    }
+    12% {
+      transform: translateX(6px) scaleX(0.6);
+      opacity: 1;
+    }
+    14%,
+    86% {
+      opacity: 0;
+    }
+    88% {
+      transform: translateX(-6px) scaleX(0.6);
+      opacity: 1;
+    }
+  }
+
+  @keyframes m-wave-up {
+    0%,
+    100% {
+      transform: rotate(0deg);
+    }
+    20%,
+    80% {
+      transform: rotate(-125deg);
+    }
+  }
+  @keyframes m-wave {
+    0%,
+    20%,
+    80%,
+    100% {
+      transform: rotate(0deg);
+    }
+    30%,
+    50%,
+    70% {
+      transform: rotate(28deg);
+    }
+    40%,
+    60% {
+      transform: rotate(-24deg);
+    }
+  }
+  @keyframes m-wiggle {
+    0%,
+    100% {
+      transform: rotate(0deg);
+    }
+    20% {
+      transform: rotate(-8deg);
+    }
+    40% {
+      transform: rotate(7deg);
+    }
+    60% {
+      transform: rotate(-5deg);
+    }
+    80% {
+      transform: rotate(3deg);
+    }
+  }
+  .hm-mascot .m-limb {
+    color: color-mix(in oklab, currentColor 86%, black);
+  }
+  .hm-mascot:not([data-pose="waiting"]) .m-blink {
+    animation: m-blink 5.2s ease-in-out infinite;
+  }
+  .hm-mascot[data-pose="idle"] .m-body {
+    animation: m-breathe 3.4s ease-in-out infinite;
+  }
+  .hm-mascot:not([data-pose="idle"], [data-pose="waiting"]) .m-body {
+    animation: m-bob 1.4s ease-in-out infinite;
+  }
+  .hm-mascot[data-pose="idle"] .m-right-fore {
+    animation: m-sway 3.4s ease-in-out infinite alternate;
+  }
+  .hm-mascot .m-smoke {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: m-smoke 2.8s ease-out infinite;
+  }
+  .hm-mascot .m-late {
+    animation-delay: 0.6s;
+  }
+  /* Investigating: the hand turns the knob, the tube eases down, the lamp glows. */
+  .hm-mascot[data-pose="searching"] .m-right-fore {
+    animation: m-twist 2.8s ease-in-out infinite;
+  }
+  .hm-mascot[data-pose="searching"] .m-focus {
+    animation: m-focus 2.8s ease-in-out infinite;
+  }
+  .hm-mascot[data-pose="searching"] .m-glow {
+    animation: m-pulse 2.8s ease-in-out infinite;
+  }
+  /* Thinking: the hand taps the chin; the dots come one by one. */
+  .hm-mascot[data-pose="thinking"] .m-right-fore {
+    animation: m-tap 1.4s ease-in-out infinite;
+  }
+  .hm-mascot .m-dot {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: m-dot 1.4s ease-in-out infinite;
+  }
+  .hm-mascot .m-dot:nth-of-type(2) {
+    animation-delay: 0.2s;
+  }
+  .hm-mascot .m-dot:nth-of-type(3) {
+    animation-delay: 0.4s;
+  }
+  .hm-mascot .m-trail {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: m-rise 2.8s ease-in-out infinite;
+  }
+  /* Using a tool: the arm swings the wrench back and forth. */
+  .hm-mascot[data-pose="calling"] .m-right-upper {
+    animation: m-swing 0.8s ease-in-out infinite alternate;
+  }
+  /* Writing: the hand moves the pencil and the lines fill the page. */
+  .hm-mascot[data-pose="composing"] .m-right-fore {
+    animation: m-write 0.45s ease-in-out infinite alternate;
+  }
+  .hm-mascot[data-pose="composing"] .m-right-upper {
+    animation: m-across 2.7s ease-in-out infinite;
+  }
+  .hm-mascot .m-ink {
+    stroke-dasharray: 1;
+    animation: m-ink 2.7s linear infinite;
+  }
+  /* Handing off: it conducts, or waves the work over. */
+  .hm-mascot[data-pose="delegating"] .m-right-fore {
+    animation: m-conduct 0.7s ease-in-out infinite alternate;
+  }
+  .hm-mascot .m-rock {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: m-rock 2.4s ease-in-out infinite;
+  }
+  /* The agent's remote: its light blinks, and sends its signal while it works. */
+  .hm-mascot .m-led {
+    animation: m-led 1.6s steps(1, end) infinite;
+  }
+  .hm-mascot .m-signal {
+    transform-box: fill-box;
+    transform-origin: 50% 100%;
+    animation: m-signal 1.2s ease-out infinite;
+  }
+  @keyframes m-led {
+    50% {
+      opacity: 0.25;
+    }
+  }
+  @keyframes m-signal {
+    from {
+      opacity: 1;
+      transform: scale(0.7);
+    }
+    to {
+      opacity: 0;
+      transform: scale(1.3);
+    }
+  }
+  /* The tools (MascotProps.tsx): each moves as the real thing would. */
+  .hm-mascot :is(.p-knob, .p-cloud, .p-bead, .p-trail, .p-pop, .p-spark, .p-glint, .p-lamp) {
+    transform-box: fill-box;
+    transform-origin: center;
+  }
+  .hm-mascot .p-late {
+    animation-delay: 0.35s !important;
+  }
+  .hm-mascot .p-later {
+    animation-delay: 0.7s !important;
+  }
+  .hm-mascot[data-pose="searching"] .p-knob {
+    animation: p-turn 2.8s ease-in-out infinite;
+  }
+  .hm-mascot[data-pose="searching"] .p-focus {
+    animation: m-focus 2.8s ease-in-out infinite;
+  }
+  .hm-mascot[data-pose="searching"] .p-beam {
+    animation: p-flicker 2.8s ease-in-out infinite;
+  }
+  .hm-mascot[data-pose="searching"] .p-lamp {
+    animation: p-lamp 2.8s ease-in-out infinite;
+  }
+  .hm-mascot[data-pose="searching"] .p-glint {
+    animation: p-glint 2.8s ease-in-out infinite;
+  }
+  .hm-mascot .p-cloud {
+    transform-origin: 50% 80%;
+    animation: p-breathe 2.6s ease-in-out infinite;
+  }
+  .hm-mascot .p-bead {
+    animation: p-bead 1.2s cubic-bezier(0.3, 0, 0.3, 1) infinite;
+  }
+  .hm-mascot .p-bead:nth-of-type(2n) {
+    animation-delay: 0.15s;
+  }
+  .hm-mascot .p-bead:nth-last-of-type(1) {
+    animation-delay: 0.3s;
+  }
+  .hm-mascot .p-trail {
+    animation: m-rise 2.6s ease-in-out infinite;
+  }
+  .hm-mascot .p-pop {
+    transform-origin: 20% 100%;
+    animation: p-pop 2.8s cubic-bezier(0.34, 1.56, 0.64, 1) infinite;
+  }
+  .hm-mascot .p-spark {
+    animation: p-spark 0.8s ease-out infinite;
+  }
+  .hm-mascot .p-ink {
+    stroke-dasharray: 1;
+    animation: m-ink 2.7s linear infinite;
+  }
+  .hm-mascot .p-led {
+    animation: p-led 1.4s ease-in-out infinite;
+  }
+  .hm-mascot .p-signal {
+    transform-box: fill-box;
+    transform-origin: 50% 100%;
+    animation: m-signal 1.2s ease-out infinite;
+  }
+  @keyframes p-turn {
+    0%,
+    100% {
+      transform: rotate(-35deg);
+    }
+    50% {
+      transform: rotate(40deg);
+    }
+  }
+  @keyframes p-flicker {
+    0%,
+    100% {
+      opacity: 0.45;
+    }
+    50% {
+      opacity: 0.95;
+    }
+  }
+  @keyframes p-lamp {
+    0%,
+    100% {
+      opacity: 0.55;
+      transform: scale(0.9);
+    }
+    50% {
+      opacity: 1;
+      transform: scale(1.15);
+    }
+  }
+  @keyframes p-glint {
+    0%,
+    40% {
+      opacity: 0;
+      transform: translateX(0);
+    }
+    55% {
+      opacity: 0.95;
+    }
+    75%,
+    100% {
+      opacity: 0;
+      transform: translateX(8px);
+    }
+  }
+  @keyframes p-breathe {
+    0%,
+    100% {
+      transform: scale(1) translateY(0);
+    }
+    50% {
+      transform: scale(1.04) translateY(-0.8px);
+    }
+  }
+  @keyframes p-bead {
+    0%,
+    60%,
+    100% {
+      transform: translateY(0) scale(1);
+    }
+    25% {
+      transform: translateY(-2.6px) scale(1.12);
+    }
+  }
+  @keyframes p-pop {
+    0% {
+      transform: scale(0.2);
+      opacity: 0;
+    }
+    18%,
+    82% {
+      transform: scale(1);
+      opacity: 1;
+    }
+    100% {
+      transform: scale(0.9);
+      opacity: 0;
+    }
+  }
+  @keyframes p-spark {
+    0% {
+      opacity: 0;
+      transform: translate(0, 0) scale(0.4);
+    }
+    30% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0;
+      transform: translate(2.4px, -2px) scale(1.2);
+    }
+  }
+  @keyframes p-led {
+    0%,
+    100% {
+      opacity: 0.35;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
+  @keyframes m-blink {
+    0%,
+    94%,
+    100% {
+      transform: scaleY(1);
+    }
+    97% {
+      transform: scaleY(0.12);
+    }
+  }
+  @keyframes m-breathe {
+    50% {
+      transform: translateY(-0.8px);
+    }
+  }
+  @keyframes m-bob {
+    50% {
+      transform: translateY(-1.6px);
+    }
+  }
+  @keyframes m-sway {
+    from {
+      transform: rotate(-4deg);
+    }
+    to {
+      transform: rotate(4deg);
+    }
+  }
+  @keyframes m-smoke {
+    from {
+      opacity: 0.7;
+      transform: translateY(0) scale(0.8);
+    }
+    to {
+      opacity: 0;
+      transform: translateY(-6px) scale(1.5);
+    }
+  }
+  @keyframes m-twist {
+    0%,
+    100% {
+      transform: rotate(-7deg);
+    }
+    50% {
+      transform: rotate(9deg);
+    }
+  }
+  @keyframes m-focus {
+    50% {
+      transform: translateY(1.2px);
+    }
+  }
+  @keyframes m-pulse {
+    0%,
+    100% {
+      opacity: 0.35;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
+  @keyframes m-tap {
+    0%,
+    100% {
+      transform: rotate(0deg);
+    }
+    50% {
+      transform: rotate(-9deg);
+    }
+  }
+  @keyframes m-dot {
+    0%,
+    60%,
+    100% {
+      opacity: 0.35;
+      transform: translateY(0);
+    }
+    30% {
+      opacity: 1;
+      transform: translateY(-1.2px);
+    }
+  }
+  @keyframes m-rise {
+    0%,
+    100% {
+      opacity: 0.55;
+      transform: translateY(0.8px);
+    }
+    50% {
+      opacity: 1;
+      transform: translateY(-0.8px);
+    }
+  }
+  @keyframes m-swing {
+    from {
+      transform: rotate(-16deg);
+    }
+    to {
+      transform: rotate(10deg);
+    }
+  }
+  @keyframes m-write {
+    from {
+      transform: rotate(-5deg);
+    }
+    to {
+      transform: rotate(5deg);
+    }
+  }
+  @keyframes m-across {
+    0%,
+    100% {
+      transform: rotate(4deg);
+    }
+    50% {
+      transform: rotate(-8deg);
+    }
+  }
+  @keyframes m-ink {
+    0% {
+      stroke-dashoffset: 1;
+    }
+    80%,
+    100% {
+      stroke-dashoffset: 0;
+    }
+  }
+  @keyframes m-conduct {
+    from {
+      transform: rotate(-26deg);
+    }
+    to {
+      transform: rotate(18deg);
+    }
+  }
+  @keyframes m-rock {
+    0%,
+    100% {
+      transform: rotate(-4deg);
+    }
+    50% {
+      transform: rotate(4deg);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .hm-mascot,
+    .hm-mascot * {
+      animation: none !important;
+    }
   }
   /* The drawn orb (AgentOrb): the canvas takes this color as its ink. */
   .aui-orb-drawn {
@@ -1458,12 +2380,14 @@
   }
 
   /* ---------- Turn rail ---------- */
-  .aui-rail-tick {
+  /* The wave swells toward the turn in view, where the browser animates a path's shape. */
+  .aui-wave-shape {
+    transition: d 320ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .aui-wave-stop {
     transition:
-      height 420ms cubic-bezier(0.34, 1.56, 0.64, 1),
-      width 420ms cubic-bezier(0.34, 1.56, 0.64, 1),
-      background-color 200ms ease-out,
-      opacity 200ms ease-out;
+      stop-color 200ms ease-out,
+      stop-opacity 200ms ease-out;
   }
 
   /* ---------- Toasts ---------- */
@@ -1521,7 +2445,8 @@
     .aui-orb *::after {
       animation: none !important;
     }
-    .aui-rail-tick,
+    .aui-wave-shape,
+    .aui-wave-stop,
     .aui-toast-in {
       transition: none;
       animation: none;
@@ -1551,47 +2476,28 @@
   width: 1.75rem;
   padding-inline: 0.25rem;
 }
-.aui-wave-tick {
-  width: var(--aui-wave-w, 8px);
-}
-/* The turn in view: neutral ink, so colour stays for meaning, not position. */
-.aui-wave-now {
-  background: var(--aui-fg);
-}
 @media (max-width: 47.99rem) {
   .aui-wave-rail {
     width: 1rem;
     padding-inline: 2px 0;
   }
-  .aui-wave-tick {
-    width: calc(var(--aui-wave-w, 8px) * 0.55);
-  }
 }
 
 /*
- * Message actions stay out of the way. The latest message in a thread keeps
- * its row; an earlier one shows its row only while it is hovered, focused or
- * tapped (a message takes focus when tapped), or while one of its actions is
- * pressed. On a phone an earlier row takes no room until then; with a mouse
- * it keeps its room, so nothing moves under the pointer.
+ * A message's actions are always there, on every message, and small so that
+ * they stay quiet: 28px with a 14px mark for a mouse, a full 44px target for
+ * a finger. Nothing about them changes on hover. Only a message's time shows
+ * on hover.
  */
-.aui-thread-turns > :not(:last-child) .aui-message-actions {
-  transition: opacity 150ms ease-out;
-}
-:is(
-    .aui-thread-turns > .group\/message:not(:last-child),
-    .aui-thread-turns > :not(:last-child) .group\/message
-  ):not(:hover, :focus-within)
-  .aui-message-actions:not(:has([aria-pressed="true"])) {
-  opacity: 0;
-}
-@media (pointer: coarse) {
-  :is(
-      .aui-thread-turns > .group\/message:not(:last-child),
-      .aui-thread-turns > :not(:last-child) .group\/message
-    ):not(:focus-within)
-    .aui-message-actions:not(:has([aria-pressed="true"])) {
-    display: none;
+@media (pointer: fine) {
+  /* Only a control that is one mark: a control with words keeps its own size. */
+  .aui-message-actions :is(button, a):has(> svg:only-child) {
+    width: 1.75rem;
+    height: 1.75rem;
+  }
+  .aui-message-actions :is(button, a) > svg:only-child {
+    width: 0.875rem;
+    height: 0.875rem;
   }
 }
 .group\/message:focus {

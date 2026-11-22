@@ -1,13 +1,6 @@
 import { defaultCopy } from "@humagen/components";
 import type { HumanActivityInput, HumanActivityRecord, ResponseState } from "@humagen/core";
-import {
-  DiffIcon,
-  ListChecksIcon,
-  MessageSquareIcon,
-  MonitorIcon,
-  SearchIcon,
-  TerminalIcon,
-} from "@humagen/render-web";
+import { DiffIcon, ListChecksIcon, MonitorIcon, TerminalIcon } from "@humagen/render-web";
 import { type ComponentType, createContext, useContext } from "react";
 import type { Run } from "./adapter.ts";
 import { lazyView } from "./lazy.tsx";
@@ -27,8 +20,7 @@ import { ranCommands } from "./workbenchTerminal.ts";
 /*
  * The session's workbench: the pane Details opens, as tabs. The thread stays
  * on the left; a tab shows what the agent is working with (a browser, a
- * terminal, its changes) or a tool of the reader's own (a side chat, a
- * search). This file is the registry: what each tab is called, what it
+ * terminal, its changes). This file is the registry: what each tab is called, what it
  * draws, and when it has anything to show. Workbench.tsx draws the pane.
  * docs/architecture/workbench.md is the contract for a tab's author.
  */
@@ -98,15 +90,13 @@ export interface WorkbenchTab extends WorkbenchTabEntry {
   icon: ComponentType<{ size?: number }>;
 }
 
-// What every tab is called and marked with. All six are here from the start,
+// What every tab is called and marked with. All five are here from the start,
 // so a tab's own change touches neither this table nor copy's `workbench.tab`.
 const icons: Record<WorkbenchTabId, ComponentType<{ size?: number }>> = {
   details: ListChecksIcon,
   browser: MonitorIcon,
   terminal: TerminalIcon,
   changes: DiffIcon,
-  sidechat: MessageSquareIcon,
-  search: SearchIcon,
 };
 
 /*
@@ -152,23 +142,6 @@ const entries: Record<WorkbenchTabId, WorkbenchTabEntry | undefined> = {
       (m) => m.WorkbenchChanges,
     ),
     available: changesAvailable,
-  },
-  // Side chat slot: a chat beside the thread that does not post in it (WorkbenchSidechat.tsx).
-  sidechat: {
-    view: lazyView(
-      () => import("./WorkbenchSidechat.tsx"),
-      (m) => m.WorkbenchSidechat,
-    ),
-    available: (session) => session.canPost,
-    fill: true,
-  },
-  // Search slot: pull requests, artifacts and tools (WorkbenchSearch.tsx).
-  search: {
-    view: lazyView(
-      () => import("./WorkbenchSearch.tsx"),
-      (m) => m.WorkbenchSearch,
-    ),
-    fill: true,
   },
 };
 

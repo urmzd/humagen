@@ -1,10 +1,10 @@
 import { readReview, type Turn, type TurnStatus } from "@humagen/core";
 import {
-  type CSSProperties,
   type KeyboardEvent,
   type PointerEvent,
   type RefObject,
   useEffect,
+  useId,
   useRef,
   useState,
 } from "react";
@@ -61,11 +61,43 @@ export function slotAt(y: number, top: number, height: number, n: number): numbe
   return Math.min(n - 1, Math.max(0, Math.floor(((y - top) / height) * n)));
 }
 
+/** The wave's width in its own units; it is drawn about the middle of this. */
+const WAVE_W = 24;
+
 /**
- * The conversation's wave, down its left edge: one tick per turn, longer when
- * the turn did more, so a long conversation reads like a sound wave. Ticks
- * near the one in view or under the pointer swell. It rests faint and
- * brightens while the reader scrolls or reaches for it.
+ * The wave's line: one smooth curve down the rail that swings from side to
+ * side of a center line, as far at each turn's slot as that turn's
+ * amplitude, like a sound wave. Turns alternate sides, so every turn is one
+ * crest, and neighbours run into each other with no break. The same number
+ * of commands for the same number of turns, so a change of amplitude can be
+ * animated.
+ */
+export function wavePath(amps: readonly number[], slot = SLOT_PX, center = WAVE_W / 2): string {
+  const n = amps.length;
+  if (n === 0) return "";
+  const f = (v: number) => Number(v.toFixed(2));
+  const points = [
+    { x: center, y: 0 },
+    ...amps.map((a, i) => ({ x: center + (i % 2 === 0 ? a : -a), y: (i + 0.5) * slot })),
+    { x: center, y: n * slot },
+  ];
+  return `M${f(center)} 0${points
+    .slice(1)
+    .map((p, i) => {
+      const from = points[i] as { x: number; y: number };
+      // Handles along the rail: the line is upright at each crest, so it swings and never kinks.
+      const reach = (p.y - from.y) / 2;
+      return `C${f(from.x)} ${f(from.y + reach)} ${f(p.x)} ${f(p.y - reach)} ${f(p.x)} ${f(p.y)}`;
+    })
+    .join("")}`;
+}
+
+/**
+ * The conversation's wave, down its left edge: one connected line that
+ * swings wider where a turn did more, so a long conversation reads like a
+ * sound wave. It swells about the turn in view or under the pointer, which
+ * is also the brightest part of it. It rests faint and brightens while the reader
+ * scrolls or reaches for it.
  *
  * It is one vertical slider. Hover shows the turn's prompt; press, or on a
  * touch screen press and drag, to scrub through the conversation, which
@@ -78,6 +110,7 @@ export function TurnRail({
   turns: TurnRailEntry[];
   scroller: RefObject<HTMLElement | null>;
 }) {
+  const paint = useId();
   const [active, setActive] = useState<string | null>(turns.at(-1)?.id ?? null);
   const [hovered, setHovered] = useState<number | null>(null);
   const [scrubbing, setScrubbing] = useState(false);
@@ -230,9 +263,25 @@ export function TurnRail({
   const max = Math.max(...logs);
   const min = Math.min(...logs);
   const focus = hovered ?? activeIndex;
+  // How near each turn is to the one in view or under the pointer: the wave swells there.
+  const nearOf = (i: number) => Math.max(0, 1 - Math.abs(i - focus) / 3);
+  const amps = turns.map((_, i) => {
+    const norm = max > min ? ((logs[i] ?? min) - min) / (max - min) : 0.5;
+    return 2.5 + norm * 5 + nearOf(i) * 3;
+  });
   const current = turns[activeIndex];
   const shown = hovered !== null ? turns[hovered] : undefined;
   const lit = scrolling || scrubbing || hovered !== null;
+  // The turn in view is neutral ink, so colour stays for meaning: a failure, a wait on a person.
+  const tones = turns.map((t, i) =>
+    t.status === "failed"
+      ? { color: "var(--aui-bad)", opacity: 1 }
+      : i === activeIndex
+        ? { color: "var(--aui-fg)", opacity: 1 }
+        : t.status === "waiting"
+          ? { color: "var(--aui-warn)", opacity: 1 }
+          : { color: "var(--aui-fg)", opacity: nearOf(i) > 0 && lit ? 0.45 : 0.25 },
+  );
 
   return (
     <nav
@@ -264,35 +313,46 @@ export function TurnRail({
         className="aui-wave-rail flex cursor-pointer touch-none select-none flex-col rounded-full outline-none focus-visible:ring-2 focus-visible:ring-aui-accent"
         style={{ height: `min(${turns.length * SLOT_PX}px, ${MAX_RAIL})` }}
       >
-        {turns.map((t, i) => {
-          const norm = max > min ? ((logs[i] ?? min) - min) / (max - min) : 0.5;
-          // Ticks near the one in view, or under the pointer, swell like a wave under the playhead.
-          const near = Math.max(0, 1 - Math.abs(i - focus) / 3);
-          const isActive = i === activeIndex;
-          const tone =
-            t.status === "failed"
-              ? "bg-aui-bad"
-              : isActive
-                ? "aui-wave-now"
-                : t.status === "waiting"
-                  ? "bg-aui-warn"
-                  : near > 0 && lit
-                    ? "bg-aui-fg/45"
-                    : "bg-aui-fg/25";
-          return (
-            <span key={t.id} aria-hidden className="flex min-h-0 flex-1 items-center">
-              <span
-                className={`aui-rail-tick aui-wave-tick block rounded-full ${tone}`}
-                style={
-                  {
-                    "--aui-wave-w": `${6 + norm * 10 + near * 6}px`,
-                    height: isActive ? 4 : 3,
-                  } as CSSProperties
-                }
-              />
-            </span>
-          );
-        })}
+        <svg
+          aria-hidden="true"
+          data-layer="wave-shape"
+          width="100%"
+          height="100%"
+          viewBox={`0 0 ${WAVE_W} ${turns.length * SLOT_PX}`}
+          preserveAspectRatio="none"
+          className="block overflow-visible"
+        >
+          <defs>
+            {/* Each turn's tone at its slot; between slots one tone runs into the next. */}
+            <linearGradient
+              id={paint}
+              gradientUnits="userSpaceOnUse"
+              x1={0}
+              y1={0}
+              x2={0}
+              y2={turns.length * SLOT_PX}
+            >
+              {tones.map((tone, i) => (
+                <stop
+                  key={turns[i]?.id}
+                  offset={(i + 0.5) / turns.length}
+                  className="aui-wave-stop"
+                  style={{ stopColor: tone.color, stopOpacity: tone.opacity }}
+                />
+              ))}
+            </linearGradient>
+          </defs>
+          <path
+            className="aui-wave-shape"
+            d={wavePath(amps)}
+            fill="none"
+            stroke={`url(#${CSS.escape(paint)})`}
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            vectorEffect="non-scaling-stroke"
+          />
+        </svg>
       </div>
       {shown && hovered !== null && (
         <div

@@ -73,8 +73,6 @@ test("canonical session selections survive copied links", () => {
     { page: "conversation", id: "t-1", panel: "details", bench: "browser" },
     { page: "conversation", id: "t-1", panel: "details", bench: "terminal", expanded: true },
     { page: "conversation", id: "t-1", panel: "details", bench: "changes", benchRef: "src/a b.ts" },
-    { page: "conversation", id: "t-1", panel: "details", bench: "sidechat" },
-    { page: "conversation", id: "t-1", panel: "details", bench: "search", benchRef: "pull #42" },
     {
       page: "conversation",
       id: "t-1",
@@ -585,11 +583,17 @@ test("a workbench tab is an address of Details, and Details is its default", () 
     id: "t-1",
     panel: "details",
   });
-  assert.deepEqual(at(`/messages/t-1?panel=details&bench=search&benchRef=${"q".repeat(513)}`), {
+  assert.deepEqual(at(`/messages/t-1?panel=details&bench=changes&benchRef=${"q".repeat(513)}`), {
     page: "conversation",
     id: "t-1",
     panel: "details",
-    bench: "search",
+    bench: "changes",
+  });
+  // The Search tab was removed: its old address opens Details.
+  assert.deepEqual(at("/messages/t-1?panel=details&bench=search&benchRef=pull"), {
+    page: "conversation",
+    id: "t-1",
+    panel: "details",
   });
   // The path form of the panel reads the same tab.
   assert.deepEqual(at("/conversations/t-1/details?bench=browser&full=1"), {
@@ -601,9 +605,10 @@ test("a workbench tab is an address of Details, and Details is its default", () 
   });
 });
 
-test("background work is a tab of Scheduled with an address of its own", () => {
-  assert.equal(href({ page: "automations", tab: "background" }), "/scheduled/background");
-  assert.deepEqual(at("/scheduled/background"), { page: "automations", tab: "background" });
+test("Automations has one address, and its old ones (Scheduled, its Background tab) open it", () => {
+  assert.equal(href({ page: "automations" }), "/automations");
+  assert.deepEqual(at("/automations"), { page: "automations" });
   assert.deepEqual(at("/scheduled"), { page: "automations" });
+  assert.deepEqual(at("/scheduled/background"), { page: "automations" });
   assert.deepEqual(at("/scheduled/other"), { page: "automations" });
 });
