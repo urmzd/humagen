@@ -333,29 +333,25 @@ function SourceLabel({ source }: { source: RowSource }) {
   );
 }
 
-/** A distinct glyph for each status, with the full reason on the badge. */
-const STATE_ICONS = {
-  approval: ShieldIcon,
-  question: MessageSquareIcon,
-  waiting: HourglassIcon,
-  failed: XCircleIcon,
-  working: ClockIcon,
-  alert: BellIcon,
+/**
+ * A row's status as one small dot where the unread dot sits: amber when it
+ * needs you, red when it failed, a soft pulse while it works, grey otherwise.
+ * The reason is the dot's title and is said in words to assistive technology.
+ */
+const STATE_DOT: Record<RowState["tone"], string> = {
+  warn: "bg-aui-warn",
+  bad: "bg-aui-bad",
+  neutral: "bg-aui-muted/70",
 };
 
 function RowStatusBadge({ state }: { state: RowState }) {
-  const Icon = STATE_ICONS[state.kind];
   return (
     <span
       aria-hidden
       data-state={state.kind}
       title={state.text}
-      className="ml-auto inline-flex shrink-0"
-    >
-      <Pill tone={state.tone} size="compact">
-        <Icon size={12} />
-      </Pill>
-    </span>
+      className={`ml-auto size-2 shrink-0 rounded-full ${STATE_DOT[state.tone]} ${state.kind === "working" ? "motion-safe:animate-pulse" : ""}`}
+    />
   );
 }
 
@@ -1570,15 +1566,6 @@ export function Sidebar({
                         </div>
                       )}
                     </Popover>
-                  }
-                  count={
-                    view === "archived"
-                      ? lists.archived.length
-                      : loading === "first" && noConversations
-                        ? undefined
-                        : hasMore
-                          ? defaultCopy.sidebar.countMore(recentRows.length)
-                          : recentRows.length
                   }
                 >
                   {view === "archived" ? defaultCopy.sidebar.archived : defaultCopy.sidebar.recent}
