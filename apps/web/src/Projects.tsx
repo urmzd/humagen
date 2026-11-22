@@ -252,7 +252,9 @@ export function ProjectsPage({
               cell: (p) => (
                 <span className="flex min-w-0 items-center gap-3">
                   {pinned.includes(p.name) ? (
-                    <PinIcon size={14} fill="currentColor" aria-label={words.pinned} />
+                    <span role="img" aria-label={words.pinned} className="inline-flex shrink-0">
+                      <PinIcon size={14} fill="currentColor" />
+                    </span>
                   ) : (
                     <FolderIcon size={16} className="shrink-0 text-aui-muted" />
                   )}

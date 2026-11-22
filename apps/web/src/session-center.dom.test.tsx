@@ -172,13 +172,13 @@ test("session rows retain readable project context and age on narrow surfaces", 
     />,
   );
   const personal = await screen.findByRole("link", { name: /Work s_private/ });
-  assert.match(personal.closest("li")?.textContent ?? "", /Personal/);
-  assert.doesNotMatch(personal.closest("li")?.textContent ?? "", /personal-7e5222/);
+  assert.match(personal.closest("tr")?.textContent ?? "", /Personal/);
+  assert.doesNotMatch(personal.closest("tr")?.textContent ?? "", /personal-7e5222/);
   assert.match(
-    screen.getByRole("link", { name: /Work s_launch/ }).closest("li")?.textContent ?? "",
+    screen.getByRole("link", { name: /Work s_launch/ }).closest("tr")?.textContent ?? "",
     /Spring launch/,
   );
-  assert.ok(personal.closest("li")?.querySelector("time[datetime]"));
+  assert.ok(personal.closest("tr")?.querySelector("time[datetime]"));
 });
 test("Alerts opens the decision for review", async () => {
   net = stubFetch({

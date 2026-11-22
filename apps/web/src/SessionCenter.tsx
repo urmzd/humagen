@@ -231,7 +231,13 @@ function sessionColumns(
         return (
           <span className="flex min-w-0 items-center gap-2">
             <span className="truncate">{s.title || agentShown(s.agent)}</span>
-            {attention && <AlertMark alert={attention} />}
+            {attention && (
+              <>
+                {/* Read apart from the title: "Deploy failed, Urgent". */}
+                <span className="sr-only">, </span>
+                <AlertMark alert={attention} />
+              </>
+            )}
           </span>
         );
       },
