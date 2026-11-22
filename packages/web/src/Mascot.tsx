@@ -8,6 +8,17 @@ import {
   useState,
 } from "react";
 import type { OrbState } from "./AgentOrb.tsx";
+import {
+  Bubbles,
+  Hourglass,
+  Microscope,
+  Notepad,
+  Pencil,
+  PropDefs,
+  Remote,
+  ThoughtCloud,
+  Wrench,
+} from "./MascotProps.tsx";
 
 /**
  * Humagen's own mascots: one rig (a furry body, eyes, two arms with elbows
@@ -98,7 +109,7 @@ const FORE = 11;
 const REST: [number, number] = [140, -80];
 const ARMS: Record<Pose, { left: [number, number]; right: [number, number] }> = {
   idle: { left: REST, right: [40, 80] },
-  searching: { left: REST, right: [10, 35] },
+  searching: { left: REST, right: [62, -97] },
   thinking: { left: REST, right: [105, -225] },
   calling: { left: REST, right: [30, -20] },
   composing: { left: [60, -60], right: [120, 80] },
@@ -290,6 +301,7 @@ export function Mascot({
   const hold = handProp(pose, persona);
   const ref = useRef<SVGSVGElement>(null);
   const [ink, setInk] = useState<string>();
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the ink is read again when the color changes.
   useLayoutEffect(() => {
     if (ref.current) setInk(getComputedStyle(ref.current).color);
   }, [color]);
@@ -364,6 +376,7 @@ export function Mascot({
           <stop offset="0" stopColor="#fff3c4" />
           <stop offset="1" stopColor="#ffcf4a" stopOpacity="0" />
         </radialGradient>
+        <PropDefs id={id} />
       </defs>
 
       {/* The ground under it. */}
@@ -402,9 +415,9 @@ export function Mascot({
         fore="m-left-fore"
         hold={
           pose === "composing" ? (
-            <Notepad />
+            <Notepad u={u} />
           ) : persona === "spy" && pose === "delegating" ? (
-            <Remote signal />
+            <Remote u={u} signal />
           ) : undefined
         }
       />
@@ -859,158 +872,8 @@ function Pipe({ x, y, u }: { x: number; y: number; u: (n: string) => string }) {
 
 /** What the right hand holds in each pose; drawn upright, with the hand at 0,0. */
 function handProp(pose: Pose, persona: MascotPersona) {
-  if (pose === "composing")
-    return () => (
-      <g transform="rotate(25) translate(-16 -21)">
-        <rect x="13" y="1.6" width="6" height="4.4" rx="1.6" fill="#ef8a9b" />
-        <rect x="13" y="5.6" width="6" height="3.4" fill="#c9d0d7" />
-        <rect x="13" y="9" width="6" height="14" fill="#f2b630" />
-        <rect x="15" y="9" width="2" height="14" fill="#ffd45e" />
-        <path d="M13 23h6l-3 6.6z" fill="#f0cf9e" />
-        <path d="M15.1 27.6h1.8L16 29.6z" fill="#3b3b3b" />
-      </g>
-    );
-  if (pose === "calling")
-    return (u: (n: string) => string) => (
-      <g transform="translate(-6 -22) scale(1.15)">
-        <path
-          d="M20.8 4.4a6.8 6.8 0 0 0-7.6 9.4l-8.6 8.6a3 3 0 0 0 4.2 4.2l8.6-8.6a6.8 6.8 0 0 0 9.4-7.6l-4.2 4.2-4.4-1-1-4.4z"
-          fill={u("steel")}
-          stroke="#4b545e"
-          strokeWidth="0.7"
-          strokeLinejoin="round"
-        />
-      </g>
-    );
-  if (persona === "spy" && pose === "idle") return () => <Remote />;
+  if (pose === "composing") return (u: (n: string) => string) => <Pencil u={u} />;
+  if (pose === "calling") return (u: (n: string) => string) => <Wrench u={u} />;
+  if (persona === "spy" && pose === "idle") return (u: (n: string) => string) => <Remote u={u} />;
   return undefined;
-}
-
-/** The agent's gadget: a slim remote with a light that blinks, sending its signal. */
-function Remote({ signal }: { signal?: boolean }) {
-  return (
-    <g transform="translate(-2.6 -15)">
-      <rect width="5.2" height="15" rx="1.6" fill="#1b1e24" stroke="#4a505a" strokeWidth="0.5" />
-      <rect x="1" y="5.5" width="3.2" height="1.2" rx="0.5" fill="#4a505a" />
-      <rect x="1" y="8" width="3.2" height="1.2" rx="0.5" fill="#4a505a" />
-      <circle className="m-led" cx="2.6" cy="2.6" r="1.1" fill="#ff4d4d" />
-      {signal && (
-        <g fill="none" stroke="#ff8a8a" strokeWidth="0.9" strokeLinecap="round">
-          <path className="m-signal" d="M-1 -1.5a5 5 0 0 1 7.2 0" />
-          <path className="m-signal m-late" d="M-3.6 -4a8.6 8.6 0 0 1 12.4 0" />
-        </g>
-      )}
-    </g>
-  );
-}
-
-function Notepad() {
-  return (
-    <g transform="translate(-3 -9)">
-      <rect width="24" height="21" rx="1.5" fill="#fbfbf7" stroke="#c9cdd2" strokeWidth="0.7" />
-      <rect width="24" height="3" rx="1.2" fill="#c43b30" />
-      <path
-        className="m-ink"
-        d="M4 8h15M4 12h12M4 16h14"
-        stroke="#3b4048"
-        strokeWidth="1"
-        strokeLinecap="round"
-        pathLength={1}
-      />
-    </g>
-  );
-}
-
-function Microscope({ u }: { u: (n: string) => string }) {
-  const edge = { stroke: "#2a2f36", strokeWidth: 0.5 };
-  // Turned so its eyepiece leans toward the bot; its knob sits under the bot's hand.
-  return (
-    <g transform="translate(81.4 65.4) scale(1.4) translate(32 0) scale(-1 1)">
-      <rect x="4" y="27" width="23" height="3.4" rx="1.5" fill={u("dark")} />
-      <rect x="15.5" y="24.2" width="8.5" height="3.2" rx="1" fill={u("dark")} />
-      <ellipse className="m-glow" cx="11.6" cy="21.6" rx="3.4" ry="2.6" fill={u("glow")} />
-      <rect x="9.6" y="22.6" width="4" height="2.4" rx="0.7" fill={u("dark")} />
-      <rect x="5" y="19.4" width="14" height="2.1" rx="0.7" fill={u("dark")} />
-      <rect x="7.6" y="18.5" width="7.6" height="1" rx="0.3" fill="#bfe3ff" />
-      <path
-        d="M20.6 25.2C26.4 21.4 26.6 12.2 19.8 8.2L17.9 10.9C22.6 13.6 22.6 20 18.2 23.4Z"
-        fill={u("body")}
-        {...edge}
-      />
-      <g className="m-focus">
-        <g transform="rotate(25 15 13)">
-          <rect x="13.2" y="0.6" width="3.6" height="1.2" rx="0.4" fill={u("knob")} />
-          <rect x="13.6" y="1.6" width="2.8" height="2.8" rx="0.5" fill={u("dark")} />
-          <rect x="13" y="4.2" width="4" height="9.8" rx="1" fill={u("body")} {...edge} />
-          <rect x="13" y="8.8" width="4" height="1.1" fill="#2a2f36" />
-          <rect x="12.4" y="13.8" width="5.2" height="1.7" rx="0.6" fill={u("knob")} {...edge} />
-          <rect x="13.9" y="15.4" width="2.2" height="2.7" rx="0.4" fill={u("dark")} />
-          <rect x="13.9" y="16.3" width="2.2" height="0.6" fill="#d9a441" />
-        </g>
-      </g>
-      <circle cx="21.6" cy="17.6" r="2.5" fill={u("knob")} {...edge} />
-    </g>
-  );
-}
-
-function Hourglass({ u }: { u: (n: string) => string }) {
-  return (
-    <g transform="translate(90 72) scale(1.05)">
-      <path
-        d="M10 5c0 7 5 8.5 5 11s-5 4-5 11h12c0-7-5-8.5-5-11s5-4 5-11z"
-        fill="#dff1ff"
-        fillOpacity="0.6"
-        stroke="#8fb8d8"
-        strokeWidth="0.6"
-      />
-      <path d="M11.6 9c.9 3 3.4 4.4 3.8 6h1.2c.4-1.6 2.9-3 3.8-6z" fill="#e6b25a" />
-      <rect x="15.7" y="15" width="0.6" height="7.6" fill="#e6b25a" />
-      <path d="M11 27c1-3.5 3.5-4.5 5-4.5s4 1 5 4.5z" fill="#e6b25a" />
-      <rect x="7" y="5" width="1.6" height="22" fill={u("wood")} />
-      <rect x="23.4" y="5" width="1.6" height="22" fill={u("wood")} />
-      <rect x="5.6" y="2" width="20.8" height="3.2" rx="1" fill={u("wood")} />
-      <rect x="5.6" y="26.8" width="20.8" height="3.2" rx="1" fill={u("wood")} />
-    </g>
-  );
-}
-
-function ThoughtCloud({ u }: { u: (n: string) => string }) {
-  const edge = { stroke: "#2a2f36", strokeWidth: 0.5 };
-  return (
-    <g transform="translate(78 0) scale(1.45)">
-      <circle className="m-trail" cx="3.4" cy="29" r="1.5" fill={u("cloud")} {...edge} />
-      <circle className="m-trail m-late" cx="7.2" cy="24.6" r="2.4" fill={u("cloud")} {...edge} />
-      <path
-        d="M10.4 21.4C6.6 21.4 5.2 16.6 8.6 14.8 7.6 10.4 12.6 8 15.4 10.4 17 5.8 24 6.4 24.4 11 28.6 10.8 30.4 15.6 27.4 18 28.4 21 25.6 22.4 23.4 21.4Z"
-        fill={u("cloud")}
-        {...edge}
-      />
-      <circle className="m-dot" cx="13.2" cy="16.2" r="1.35" fill="#56606c" />
-      <circle className="m-dot" cx="17.8" cy="16.2" r="1.35" fill="#56606c" />
-      <circle className="m-dot" cx="22.4" cy="16.2" r="1.35" fill="#56606c" />
-    </g>
-  );
-}
-
-function Bubbles({ u }: { u: (n: string) => string }) {
-  return (
-    <g transform="translate(84 4) scale(1.35)">
-      <path
-        className="m-rock"
-        d="M4.6 3h12a3 3 0 0 1 3 3v5a3 3 0 0 1-3 3H10l-4 3.2V14H4.6a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3z"
-        fill={u("cloud")}
-        stroke="#2a2f36"
-        strokeWidth="0.5"
-      />
-      <path
-        d="M15 14.4h12a3 3 0 0 1 3 3v5a3 3 0 0 1-3 3h-1.4v3.2l-4-3.2H15a3 3 0 0 1-3-3v-5a3 3 0 0 1 3-3z"
-        fill={u("accent")}
-        stroke="#1f4fae"
-        strokeWidth="0.5"
-      />
-      <circle className="m-dot" cx="17.4" cy="19.9" r="1.2" fill="#fff" />
-      <circle className="m-dot" cx="21" cy="19.9" r="1.2" fill="#fff" />
-      <circle className="m-dot" cx="24.6" cy="19.9" r="1.2" fill="#fff" />
-    </g>
-  );
 }
