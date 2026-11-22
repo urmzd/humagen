@@ -101,13 +101,19 @@ test("Recent lists sessions newest first with their source, time, and compact st
     "GET /api/marks": () => marks,
     "GET /api/threads": () => ({
       threads: [
+        // Each row has a time of its own. Left to the fixture's default, two
+        // rows made a millisecond apart could trade places.
         task("t1", "Waiting on me", {
           project: "Launch",
           active: 1,
           waiting: 1,
           waiting_on_you: true,
+          updated_at: new Date(Date.now() - 2 * hour).toISOString(),
         }),
-        task("t2", "Still going", { active: 1 }),
+        task("t2", "Still going", {
+          active: 1,
+          updated_at: new Date(Date.now() - 3 * hour).toISOString(),
+        }),
         task("t3", "Answered", { last_agent: true, updated_at: new Date().toISOString() }),
         task("t4", "Quiet", { project: "Launch", updated_at: "2026-01-01T00:00:00Z" }),
       ],
