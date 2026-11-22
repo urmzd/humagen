@@ -46,9 +46,18 @@ jobs:
           go-version-file: go.mod
       - uses: golangci/golangci-lint-action@v7
 
-  test:
-    name: Test
+  # The Go tests in three shards, each on its own runner with its own
+  # Postgres. internal/platform and internal/httpapi take most of the time,
+  # so each has a runner. "rest" is every other package `go list ./...`
+  # finds, so a new package is tested with no edit here. The Test job below
+  # checks that every package ran exactly once.
+  test-shard:
+    name: Test (${{ matrix.shard }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [platform, httpapi, rest]
     # The Postgres backends are held to the same suites as the in-memory
     # ones (pkg/state/statetest, the fiber upgrade test in internal/legacy). The
     # image is the one `make integration` uses: the knowledge store needs
@@ -75,6 +84,18 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      - name: Packages in this shard
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          go list ./... > all-packages.txt
+          module=$(go list -m)
+          case "$SHARD" in
+            rest) grep -vxE "$module/internal/(platform|httpapi)" all-packages.txt > packages.txt ;;
+            *) grep -xF "$module/internal/$SHARD" all-packages.txt > packages.txt ;;
+          esac
+          echo "$(wc -l < packages.txt) of $(wc -l < all-packages.txt) packages"
       - name: Test, with Postgres
         # A package gets 20 minutes, not go test's default 10. Under the race
         # detector on a shared runner internal/httpapi has taken from 390 s to
@@ -82,16 +103,73 @@ jobs:
         # failure with no test hung. A test that hangs still fails the job.
         run: |
           set -o pipefail
-          go test ./... -race -v -timeout 20m 2>&1 | tee test.log | grep -vE '^(=== (RUN|PAUSE|CONT|NAME)|\s*--- PASS|PASS$)'
+          # shellcheck disable=SC2046 # one argument per package
+          go test $(cat packages.txt) -race -v -timeout 20m 2>&1 | tee test.log | grep -vE '^(=== (RUN|PAUSE|CONT|NAME)|\s*--- PASS|PASS$)'
+      - name: Keep the log for the Test job
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-log-${{ matrix.shard }}
+          path: |
+            test.log
+            all-packages.txt
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # The one check for the Go tests, under the name the single job had: it
+  # passes only when every shard passed, every package ran exactly once and
+  # no Postgres suite skipped. It also records the tree CI tested, which
+  # Release reads to skip a second run of CI on the same tree.
+  test:
+    name: Test
+    needs: test-shard
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every shard passed
+        if: needs.test-shard.result != 'success'
+        run: |
+          echo "A test shard did not pass: ${{ needs.test-shard.result }}"
+          exit 1
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: test-log-*
+          path: logs
+      - name: Every package ran exactly once
+        run: |
+          set -euo pipefail
+          sort -u logs/test-log-rest/all-packages.txt > want.txt
+          module=$(awk '$1 == "module" { print $2; exit }' go.mod)
+          # go test prints one ok, FAIL or ? line per package it ran.
+          cat logs/test-log-*/test.log \
+            | grep -aoE "^(ok|FAIL|\?)[[:space:]]+${module//./\\.}(/[^[:space:]]*)?" | awk '{print $2}' | sort > got.txt
+          missing=$(comm -23 want.txt <(sort -u got.txt))
+          extra=$(comm -13 want.txt <(sort -u got.txt))
+          twice=$(uniq -d got.txt)
+          [ -z "$missing" ] || { echo "Not tested in any shard:"; echo "$missing"; exit 1; }
+          [ -z "$extra" ] || { echo "Tested but not in go list ./...:"; echo "$extra"; exit 1; }
+          [ -z "$twice" ] || { echo "Tested in more than one shard:"; echo "$twice"; exit 1; }
+          echo "$(wc -l < want.txt) packages, each tested once"
       # Each backend suite skips when its variable is unset, so a renamed
-      # variable would turn them into silent passes. Fail on any such skip.
-      # Suites that also need Redis are left out: no Redis runs here.
+      # variable would turn them into silent passes. Fail on any such skip,
+      # in any shard. Suites that also need Redis are left out: no Redis
+      # runs here.
       - name: Fail if a Postgres suite skipped
         run: |
-          if grep -nE 'set (HUMAGEN_POSTGRES_TEST_URL|FLOW_POSTGRES_TEST_URL)' test.log | grep -v FLOW_REDIS_ADDR; then
+          if cat logs/test-log-*/test.log | grep -nE 'set (HUMAGEN_POSTGRES_TEST_URL|FLOW_POSTGRES_TEST_URL)' | grep -v FLOW_REDIS_ADDR; then
             echo "A Postgres suite skipped. Check the variable names above."
             exit 1
           fi
+      # The tree this run checked out: on a pull request, the merge of the
+      # head into the base. Release compares it with the tree it would tag
+      # (docs/guides/ci-and-release.md).
+      - name: Record the tested tree
+        run: git rev-parse 'HEAD^{tree}' > tested-tree
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tested-tree
+          path: tested-tree
 
   image:
     name: Container image
