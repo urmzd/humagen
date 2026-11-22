@@ -1,6 +1,7 @@
 import { defaultCopy } from "@humagen/components";
-import { type ReactNode, useCallback, useEffect, useId, useRef, useState } from "react";
+import { type ReactNode, useCallback, useContext, useEffect, useId, useRef, useState } from "react";
 import { ApiError, api, type ScopeUsage, type ThreadUsage } from "./api.ts";
+import { NoticeSlotContext } from "./Composer.tsx";
 import { usd } from "./format.ts";
 import { PaneMenu } from "./PaneMenu.tsx";
 import { href } from "./route.ts";
@@ -453,8 +454,10 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 }
 
 /**
- * The row under the composer: who answers (and on which model), the
- * approval mode, the usage ring. One line; on a phone the agent is its mark.
+ * The row under the composer: on the left where the session runs and its
+ * approval mode, in the middle the AI notice, on the right who answers (and
+ * on which model) and the usage ring. One line; where the composer is too
+ * narrow for all three, the notice is a line of its own under the row.
  */
 export function ComposerFooter({
   start,
@@ -474,32 +477,37 @@ export function ComposerFooter({
   approval?: ReactNode;
   usage?: ReactNode;
 }) {
+  const notice = useContext(NoticeSlotContext);
   return (
     <div
       data-layer="composer-footer"
       aria-label={defaultCopy.dock.footer}
       role="group"
-      className="flex min-h-7 min-w-0 items-center gap-3 px-2 text-aui-xs text-aui-muted"
+      className="humagen-composer-footer min-h-7 min-w-0 items-center gap-x-3 px-2 text-aui-xs text-aui-muted"
     >
       <div
         data-layer="composer-footer-start"
-        className="mr-auto flex min-w-0 items-center gap-3 max-[30rem]:[&_[data-label]]:sr-only"
+        className="flex min-w-0 items-center gap-3 max-[30rem]:[&_[data-label]]:sr-only"
       >
         {start}
       </div>
-      {agent && (
-        <span
-          className="inline-flex min-w-0 items-center gap-1.5"
-          title={defaultCopy.dock.answeredBy(agent)}
-        >
-          <AgentMark name={agent} size={14} />
-          <span className="truncate text-aui-fg">{agent}</span>
-          {model && <span className="truncate max-[40rem]:hidden">{model}</span>}
-        </span>
-      )}
-      {approval && <span className="inline-flex max-[30rem]:hidden">{approval}</span>}
-      {approval && <MoreControls>{approval}</MoreControls>}
-      {usage}
+      {/* The composer puts its AI notice here. */}
+      {notice && <div ref={notice} data-layer="composer-footer-notice" className="min-w-0" />}
+      <div data-layer="composer-footer-end" className="flex min-w-0 items-center gap-3">
+        {agent && (
+          <span
+            className="inline-flex min-w-0 items-center gap-1.5"
+            title={defaultCopy.dock.answeredBy(agent)}
+          >
+            <AgentMark name={agent} size={14} />
+            <span className="truncate text-aui-fg">{agent}</span>
+            {model && <span className="truncate max-[40rem]:hidden">{model}</span>}
+          </span>
+        )}
+        {approval && <span className="inline-flex max-[30rem]:hidden">{approval}</span>}
+        {approval && <MoreControls>{approval}</MoreControls>}
+        {usage}
+      </div>
     </div>
   );
 }

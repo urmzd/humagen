@@ -5311,15 +5311,12 @@ export const defaultCopy = {
   /** The control that returns to the end of a thread or of an answer's activity, named by what is there. */
   /** The composer that floats over a conversation: its keys, its two levels of Stop, its footer and usage. */
   dock: {
-    /** Said in the empty box while anything in the session runs. */
-    hint: (mac: boolean) =>
-      mac ? "↵ to send, ⌘↵ to queue for later" : "↵ to send, Ctrl+↵ to queue for later",
     sendNow: "Send now",
-    /** Send's tooltip: how to send, queue and add a line. */
+    /** Send's tooltip: how to send and add a line, and what the keys do while an agent works. */
     sendHint: (mac: boolean) =>
       mac
-        ? "Send (↵). ⌘↵ queues, Shift+↵ adds a line"
-        : "Send (Enter). Ctrl+Enter queues, Shift+Enter adds a line",
+        ? "Send (↵). Shift+↵ adds a line. While an agent works, ↵ queues and ⌘↵ sends now"
+        : "Send (Enter). Shift+Enter adds a line. While an agent works, Enter queues and Ctrl+Enter sends now",
     /** The composer's Stop: everything running in the session. */
     stopAll: "Stop",
     stopAllLabel: "Stop everything running in this session",

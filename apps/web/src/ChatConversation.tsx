@@ -190,6 +190,7 @@ export function RunsConversation({
   setChosen,
   setSeed,
   composer,
+  onQueuePlace,
   activity,
   activityOpen,
 }: {
@@ -219,6 +220,8 @@ export function RunsConversation({
   setChosen: Dispatch<SetStateAction<Record<string, string>>>;
   setSeed: (seed: ComposerSeed) => void;
   composer: ReactNode;
+  /** Takes the end of the conversation, where the composer shows the messages that wait. */
+  onQueuePlace?: (place: HTMLElement | null) => void;
   /** What the activity drawer shows, kept while it leaves, and whether it is open. */
   activity: { focus: string | null } | null;
   activityOpen: boolean;
@@ -339,6 +342,8 @@ export function RunsConversation({
                   }
                 />
               ))}
+              {/* Messages that wait behind the running turn, drawn by the composer. */}
+              <div ref={onQueuePlace} data-layer="queued-place" className="empty:hidden" />
             </Thread>
           </WebSurface>
         </ConversationPage>

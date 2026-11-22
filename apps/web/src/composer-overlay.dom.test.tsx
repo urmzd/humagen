@@ -156,6 +156,8 @@ function Bar({
     ...queue,
     send: (text: string) => seen.sent.push(text),
     sendNow: (text: string) => seen.now.push(text),
+    // A session at work here is the queue's own turn running.
+    running: busy,
   };
   return (
     <Composer
@@ -168,20 +170,24 @@ function Bar({
   );
 }
 
-test("while anything runs the box says how to send and queue, Enter sends now and Cmd+Enter queues", () => {
+test("while anything runs the box keeps its placeholder, Enter queues and Cmd+Enter sends now", () => {
   const seen: Seen = { sent: [], now: [], stops: 0 };
+  const idle = render(<Bar busy={false} seen={seen} />);
+  const placeholder = (screen.getByRole("textbox") as HTMLTextAreaElement).placeholder;
+  idle.unmount();
   render(<Bar busy seen={seen} />);
   const box = screen.getByRole("textbox") as HTMLTextAreaElement;
-  assert.match(box.placeholder, /to send, .+ to queue for later/);
+  // The box says nothing about keys: a message that waits is shown in the conversation.
+  assert.equal(box.placeholder, placeholder);
   fireEvent.change(box, { target: { value: "use the staging branch" } });
   fireEvent.keyDown(box, { key: "Enter" });
-  assert.deepEqual(seen.now, ["use the staging branch"]);
+  assert.deepEqual(seen.sent, ["use the staging branch"]);
   fireEvent.change(box, { target: { value: "then rebase" } });
   fireEvent.keyDown(box, { key: "Enter", metaKey: true });
-  assert.deepEqual(seen.sent, ["then rebase"]);
+  assert.deepEqual(seen.now, ["then rebase"]);
   fireEvent.change(box, { target: { value: "and on Windows" } });
   fireEvent.keyDown(box, { key: "Enter", ctrlKey: true });
-  assert.deepEqual(seen.sent, ["then rebase", "and on Windows"]);
+  assert.deepEqual(seen.now, ["then rebase", "and on Windows"]);
   assert.ok(screen.getByTestId("footer"), "the footer sits under the box");
 });
 
@@ -661,8 +667,13 @@ test("the footer has a left slot for where the session runs; empty, the rest sta
   const left = container.querySelector<HTMLElement>('[data-layer="composer-footer-start"]');
   assert.ok(left);
   assert.equal(left.childElementCount, 0);
-  // The empty left group takes the free space, which pushes everything else right.
-  assert.match(left.className, /mr-auto/);
+  // The row is a grid: the left group first, who answers and the ring in the last group, at the right.
+  const end = container.querySelector<HTMLElement>('[data-layer="composer-footer-end"]');
+  assert.ok(end);
+  assert.equal(left.parentElement?.lastElementChild, end);
+  assert.match(left.parentElement?.className ?? "", /humagen-composer-footer/);
+  assert.ok(within(end).getByText("lead"));
+  assert.ok(within(end).getByText("ring"));
   rerender(
     <ComposerFooter
       start={

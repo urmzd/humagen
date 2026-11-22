@@ -226,6 +226,7 @@ export function postedLine(p: ThreadPosted): string {
  */
 function RoomComposer({
   thread,
+  queuePlace,
   placeholder,
   tags,
   autoFocus,
@@ -261,6 +262,8 @@ function RoomComposer({
   /** Called as the text changes, so the + menu shows the agents it mentions. */
   onDraft?: (text: string) => void;
   plus?: Parameters<typeof Composer>[0]["plus"];
+  /** Where the conversation shows the messages that wait (Composer's queuePlace). */
+  queuePlace?: HTMLElement | null;
   onPost: (
     text: string,
     pick?: QueuedMessage["pick"],
@@ -340,6 +343,7 @@ function RoomComposer({
       <Composer
         placeholder={placeholder}
         queue={queue}
+        queuePlace={queuePlace}
         autoFocus={autoFocus}
         seed={seed}
         onDraft={(text) => {
@@ -824,6 +828,8 @@ export function ThreadRoom({
   const [problem, setProblem] = useState<string | null>(null);
   const [localView, setLocalView] = useState<ConversationView>({});
   const [seed, setSeed] = useState<ComposerSeed>();
+  // The end of the conversation, where messages that wait are shown.
+  const [queuePlace, setQueuePlace] = useState<HTMLElement | null>(null);
   const background = useSessionBackground(id);
   // Arriving from Home's first message, the bar slides down to its place.
   const dock = useRef<HTMLDivElement>(null);
@@ -1250,6 +1256,7 @@ export function ThreadRoom({
                       )}
                       {posts && (
                         <RoomComposer
+                          queuePlace={queuePlace}
                           sessionAgents={page.sessionAgents}
                           sessionRuns={turns.flatMap((turn) => (turn.run ? [turn.run] : []))}
                           background={background.items}
@@ -1499,6 +1506,8 @@ export function ThreadRoom({
                       ) : null}
                     </Fragment>
                   ))}
+                  {/* Messages that wait behind the running turn, drawn by the composer. */}
+                  <div ref={setQueuePlace} data-layer="queued-place" className="empty:hidden" />
                 </ThreadList>
               </WebSurface>
             </ConversationPage>

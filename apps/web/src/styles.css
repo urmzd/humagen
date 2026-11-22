@@ -1021,7 +1021,29 @@ body {
 
 
 /* Composer controls adapt to their own column, including beside Details. */
-.humagen-composer-container { container: composer / inline-size; }
+.humagen-composer-container,
+.humagen-composer-placeholder { container: composer / inline-size; }
+/*
+ * The row under the bar: where the session runs on the left, who answers on
+ * the right, and the AI notice in the middle. A composer too narrow for the
+ * three on one line puts the notice on a line of its own under them.
+ */
+.humagen-composer-footer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "start end" "notice notice";
+}
+.humagen-composer-footer > [data-layer="composer-footer-start"] { grid-area: start; justify-self: start; }
+.humagen-composer-footer > [data-layer="composer-footer-end"] { grid-area: end; justify-self: end; }
+.humagen-composer-footer > [data-layer="composer-footer-notice"] { grid-area: notice; justify-self: center; }
+@container composer (min-width: 44rem) {
+  .humagen-composer-footer {
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    grid-template-areas: "start notice end";
+  }
+  /* The notice is in the row, so its own line is not kept free. */
+  [data-layer="composer-placeholder-notice"] { display: none; }
+}
 .humagen-composer-bar { flex-wrap: wrap; }
 .humagen-composer-input { min-width: 0; }
 @container composer (max-width: 36rem) {
