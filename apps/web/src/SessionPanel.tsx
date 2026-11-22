@@ -19,6 +19,7 @@ import {
 import { Inspector } from "@humagen/web";
 import { type ReactNode, useEffect, useState } from "react";
 import type { Run } from "./adapter.ts";
+import { SessionBackground } from "./Background.tsx";
 import { Reference } from "./cards.tsx";
 import { took } from "./format.ts";
 import { ActivityLanes, AgentCallLane, outcomeOf } from "./ResponseActivity.tsx";
@@ -378,6 +379,7 @@ function Summary({
           ))}
         </Section>
       )}
+      {panel && <SessionBackground session={panel.thread} version={panel.runs.length} />}
       {panel && (
         <SessionSections
           thread={panel.thread}

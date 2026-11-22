@@ -81,7 +81,7 @@ function sidebar(over: Partial<Parameters<typeof Sidebar>[0]> = {}) {
   );
 }
 
-test("the sidebar exposes seven canonical destinations, Projects and Scheduled among them, Settings and Connections in the account menu, with distinct icons and current-section state", () => {
+test("the sidebar exposes seven canonical destinations, Projects and Automations among them, Settings and Connections in the account menu, with distinct icons and current-section state", () => {
   const out = sidebar();
   assert.match(out, /aria-label="Sections"/);
   const nav = out.slice(out.indexOf('aria-label="Sections"'), out.indexOf("</nav>"));
@@ -91,7 +91,7 @@ test("the sidebar exposes seven canonical destinations, Projects and Scheduled a
     "/alerts",
     "/projects",
     "/agents",
-    "/scheduled",
+    "/automations",
     "/artifacts",
   ])
     assert.ok(nav.includes(`href="${route}"`), route);

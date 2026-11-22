@@ -526,9 +526,10 @@ test("More Views holds Artifacts, Side Chat, Search, Background Tasks and Progre
   ]);
   const side = within(menu).getByRole("menuitem", { name: new RegExp(words.view.sidechat) });
   assert.match(side.textContent ?? "", /;/);
+  // Background is the session's own: the row opens a view of this session, and leads nowhere else.
   assert.equal(
     within(menu).getByRole("menuitem", { name: words.view.background }).getAttribute("href"),
-    "/scheduled/background",
+    null,
   );
   fireEvent.click(side);
   assert.deepEqual(opened, ["sidechat"]);

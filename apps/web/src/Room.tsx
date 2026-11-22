@@ -850,7 +850,8 @@ export function ThreadRoom({
     if (v === "files" || v === "artifacts")
       return openPanel("workspace", openPane(shownView, { kind: v }));
     if (v === "progress") return openPanel("activity");
-    if (v === "background") return;
+    // A session carries its own background work: it is a section of its Details.
+    if (v === "background") return openPanel("details", openBench(shownView, "details"));
     openWorkbench(v);
   };
   // A file named in the thread opens at its changes in the workbench beside it,

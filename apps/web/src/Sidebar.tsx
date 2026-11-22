@@ -32,6 +32,7 @@ import {
   TrashIcon,
   UserIcon,
   XCircleIcon,
+  ZapIcon,
 } from "@humagen/render-web";
 import { Separator } from "@humagen/render-web/ui/separator";
 import { HumagenMark } from "@humagen/web";
@@ -1103,8 +1104,8 @@ export function Sidebar({
     },
     {
       to: { page: "automations" } as Route,
-      label: "Scheduled",
-      icon: <CalendarIcon />,
+      label: "Automations",
+      icon: <ZapIcon />,
       show: can("schedules:read"),
       active: here("automations", "schedules"),
     },

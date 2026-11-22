@@ -177,7 +177,7 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
           "Alerts",
           "Projects",
           "Agents",
-          "Scheduled",
+          "Automations",
           "Artifacts",
         ])
           await sections.getByRole("link", { name: new RegExp(`^${name}(?:[ ,]|$)`) }).waitFor();
