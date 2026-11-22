@@ -4,7 +4,6 @@ import { ApiError, api, type ScopeUsage, type ThreadUsage } from "./api.ts";
 import { NoticeSlotContext } from "./Composer.tsx";
 import { usd } from "./format.ts";
 import { PaneMenu } from "./PaneMenu.tsx";
-import { href } from "./route.ts";
 import { AgentMark, composerIconControl } from "./ui.tsx";
 
 /*
@@ -283,8 +282,10 @@ function SessionSection({ usage }: { usage: Read<ThreadUsage> }) {
             <dt className={term}>{words.topAgents}</dt>
             <dd className={`${value} flex flex-col items-end gap-1`}>
               {top.map((a) => (
-                <span key={a.agent} className="inline-flex max-w-full items-center gap-1.5">
-                  <AgentMark name={a.agent} size={14} />
+                <span key={a.agent} className="inline-flex max-w-full items-baseline gap-1.5">
+                  <span className="self-center">
+                    <AgentMark name={a.agent} size={14} />
+                  </span>
                   <span className="truncate">{a.agent}</span>
                   <span className="text-aui-muted">
                     {a.usage.cost?.currency === "USD" && a.usage.cost.micros

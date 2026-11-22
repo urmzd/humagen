@@ -1565,23 +1565,28 @@
  * Message actions stay out of the way. The latest message in a thread keeps
  * its row; an earlier one shows its row only while it is hovered, focused or
  * tapped (a message takes focus when tapped), or while one of its actions is
- * pressed. On a phone an earlier row takes no room until then; with a mouse
- * it keeps its room, so nothing moves under the pointer.
+ * pressed. A row is all shown or all hidden, never some of its actions. On a
+ * phone an earlier row takes no room until then; with a mouse it keeps its
+ * room, so nothing moves under the pointer.
+ *
+ * "Earlier" is a turn with a message after it. What else follows the turns
+ * (the place for messages that wait, a marker) does not make the latest
+ * message an earlier one.
  */
-.aui-thread-turns > :not(:last-child) .aui-message-actions {
+.aui-thread-turns > :has(~ .group\/message, ~ * .group\/message) .aui-message-actions {
   transition: opacity 150ms ease-out;
 }
 :is(
-    .aui-thread-turns > .group\/message:not(:last-child),
-    .aui-thread-turns > :not(:last-child) .group\/message
+    .aui-thread-turns > .group\/message:has(~ .group\/message, ~ * .group\/message),
+    .aui-thread-turns > :has(~ .group\/message, ~ * .group\/message) .group\/message
   ):not(:hover, :focus-within)
   .aui-message-actions:not(:has([aria-pressed="true"])) {
   opacity: 0;
 }
 @media (pointer: coarse) {
   :is(
-      .aui-thread-turns > .group\/message:not(:last-child),
-      .aui-thread-turns > :not(:last-child) .group\/message
+      .aui-thread-turns > .group\/message:has(~ .group\/message, ~ * .group\/message),
+      .aui-thread-turns > :has(~ .group\/message, ~ * .group\/message) .group\/message
     ):not(:focus-within)
     .aui-message-actions:not(:has([aria-pressed="true"])) {
     display: none;
