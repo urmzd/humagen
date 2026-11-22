@@ -1,50 +1,77 @@
-import type { OrbState } from "@humagen/web";
+import { Mascot, type MascotPersona, mascotPersonas, type OrbState } from "@humagen/web";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "@humagen/render-web/fonts.css";
 import "./styles.css";
-import { AgentMark, setAgentHues } from "./ui.tsx";
 
 /**
- * Every working state of an agent's mark, with the prop it holds, at the
- * sizes the console draws. Open /mascot-gallery.html on the dev server; add
- * `?theme=light` for the light theme. It calls nothing on the platform and is
- * not part of the built console.
+ * Humagen's mascots: each persona in each pose, moving as it would at work.
+ * Open /mascot-gallery.html on the dev server; add `?theme=light` for the
+ * light theme. It calls nothing on the platform and is not part of the built
+ * console.
  */
 const states: [OrbState, string][] = [
+  ["idle", "Idle"],
   ["searching", "Investigating"],
   ["thinking", "Thinking"],
   ["calling", "Using a tool"],
   ["composing", "Writing"],
   ["delegating", "Handing off"],
   ["waiting", "Waiting for you"],
-  ["idle", "Idle"],
 ];
-const agents = ["researcher", "writer", "humagen", "qa-reviewer", "planner", "analyst", "lead"];
-setAgentHues(Object.fromEntries(agents.map((a, i) => [a, (20 + i * 51) % 360])));
+const looks: Record<MascotPersona, [string, string]> = {
+  detective: ["Researcher", "oklch(0.62 0.14 40)"],
+  writer: ["Writer", "oklch(0.7 0.13 190)"],
+  engineer: ["Engineer", "oklch(0.68 0.15 135)"],
+  scientist: ["Analyst", "oklch(0.66 0.15 300)"],
+  inspector: ["QA Reviewer", "oklch(0.66 0.14 250)"],
+  conductor: ["Humagen", "oklch(0.64 0.19 25)"],
+  plain: ["Helper", "oklch(0.72 0.13 85)"],
+};
 if (new URLSearchParams(location.search).get("theme") === "light")
   document.documentElement.dataset.theme = "light";
 
 function Gallery() {
   return (
-    <main className="min-h-dvh bg-aui-bg p-10 text-aui-fg">
-      <h1 className="mb-8 font-medium text-aui-lg">Agent marks and their props</h1>
-      <div className="grid grid-cols-[10rem_repeat(3,8rem)] items-center gap-y-10">
+    <main className="min-h-dvh bg-aui-bg p-8 text-aui-fg">
+      <h1 className="mb-6 font-medium text-aui-lg">Humagen mascots</h1>
+      <div
+        className="grid items-end gap-x-4 gap-y-8"
+        style={{ gridTemplateColumns: `8rem repeat(${states.length}, 9rem)` }}
+      >
         <span />
-        {[28, 48, 96].map((size) => (
-          <span key={size} className="text-aui-muted text-aui-xs">
-            {size}px
+        {states.map(([s, label]) => (
+          <span key={s} className="text-aui-muted text-aui-xs">
+            {label}
           </span>
         ))}
-        {states.map(([state, label], i) => (
-          <div key={state} className="contents">
-            <span className="text-aui-sm">{label}</span>
-            {[28, 48, 96].map((size) => (
-              <span key={size} className="inline-flex">
-                <AgentMark name={agents[i] ?? "researcher"} state={state} size={size} />
-              </span>
+        {mascotPersonas.map((persona) => (
+          <div key={persona} className="contents">
+            <span className="self-center text-aui-sm">{looks[persona][0]}</span>
+            {states.map(([state]) => (
+              <Mascot
+                key={state}
+                persona={persona}
+                state={state}
+                size={110}
+                color={looks[persona][1]}
+              />
             ))}
           </div>
+        ))}
+      </div>
+      <h2 className="mt-10 mb-4 text-aui-muted text-aui-sm">In a thread, at 32px</h2>
+      <div className="flex items-center gap-6">
+        {mascotPersonas.map((persona, i) => (
+          <span key={persona} className="inline-flex items-center gap-2 text-aui-sm">
+            <Mascot
+              persona={persona}
+              state={states[(i % 6) + 1]?.[0] ?? "idle"}
+              size={32}
+              color={looks[persona][1]}
+            />
+            {looks[persona][0]}
+          </span>
         ))}
       </div>
     </main>

@@ -1402,6 +1402,238 @@
       transition: none;
     }
   }
+  /* ---------- Mascots (Mascot.tsx): poses that move as the work does ---------- */
+  .hm-mascot {
+    overflow: visible;
+    flex-shrink: 0;
+  }
+  .hm-mascot .m-limb {
+    color: color-mix(in oklab, currentColor 86%, black);
+  }
+  .hm-mascot:not([data-pose="waiting"]) .m-blink {
+    animation: m-blink 5.2s ease-in-out infinite;
+  }
+  .hm-mascot[data-pose="idle"] .m-body {
+    animation: m-breathe 3.4s ease-in-out infinite;
+  }
+  .hm-mascot:not([data-pose="idle"], [data-pose="waiting"]) .m-body {
+    animation: m-bob 1.4s ease-in-out infinite;
+  }
+  .hm-mascot[data-pose="idle"] .m-right-fore {
+    animation: m-sway 3.4s ease-in-out infinite alternate;
+  }
+  .hm-mascot .m-smoke {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: m-smoke 2.8s ease-out infinite;
+  }
+  .hm-mascot .m-late {
+    animation-delay: 0.6s;
+  }
+  /* Investigating: the hand turns the knob, the tube eases down, the lamp glows. */
+  .hm-mascot[data-pose="searching"] .m-right-fore {
+    animation: m-twist 2.8s ease-in-out infinite;
+  }
+  .hm-mascot[data-pose="searching"] .m-focus {
+    animation: m-focus 2.8s ease-in-out infinite;
+  }
+  .hm-mascot[data-pose="searching"] .m-glow {
+    animation: m-pulse 2.8s ease-in-out infinite;
+  }
+  /* Thinking: the hand taps the chin; the dots come one by one. */
+  .hm-mascot[data-pose="thinking"] .m-right-fore {
+    animation: m-tap 1.4s ease-in-out infinite;
+  }
+  .hm-mascot .m-dot {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: m-dot 1.4s ease-in-out infinite;
+  }
+  .hm-mascot .m-dot:nth-of-type(2) {
+    animation-delay: 0.2s;
+  }
+  .hm-mascot .m-dot:nth-of-type(3) {
+    animation-delay: 0.4s;
+  }
+  .hm-mascot .m-trail {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: m-rise 2.8s ease-in-out infinite;
+  }
+  /* Using a tool: the arm swings the wrench back and forth. */
+  .hm-mascot[data-pose="calling"] .m-right-upper {
+    animation: m-swing 0.8s ease-in-out infinite alternate;
+  }
+  /* Writing: the hand moves the pencil and the lines fill the page. */
+  .hm-mascot[data-pose="composing"] .m-right-fore {
+    animation: m-write 0.45s ease-in-out infinite alternate;
+  }
+  .hm-mascot[data-pose="composing"] .m-right-upper {
+    animation: m-across 2.7s ease-in-out infinite;
+  }
+  .hm-mascot .m-ink {
+    stroke-dasharray: 1;
+    animation: m-ink 2.7s linear infinite;
+  }
+  /* Handing off: it conducts, or waves the work over. */
+  .hm-mascot[data-pose="delegating"] .m-right-fore {
+    animation: m-conduct 0.7s ease-in-out infinite alternate;
+  }
+  .hm-mascot .m-rock {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: m-rock 2.4s ease-in-out infinite;
+  }
+  @keyframes m-blink {
+    0%,
+    94%,
+    100% {
+      transform: scaleY(1);
+    }
+    97% {
+      transform: scaleY(0.12);
+    }
+  }
+  @keyframes m-breathe {
+    50% {
+      transform: translateY(-0.8px);
+    }
+  }
+  @keyframes m-bob {
+    50% {
+      transform: translateY(-1.6px);
+    }
+  }
+  @keyframes m-sway {
+    from {
+      transform: rotate(-4deg);
+    }
+    to {
+      transform: rotate(4deg);
+    }
+  }
+  @keyframes m-smoke {
+    from {
+      opacity: 0.7;
+      transform: translateY(0) scale(0.8);
+    }
+    to {
+      opacity: 0;
+      transform: translateY(-6px) scale(1.5);
+    }
+  }
+  @keyframes m-twist {
+    0%,
+    100% {
+      transform: rotate(-7deg);
+    }
+    50% {
+      transform: rotate(9deg);
+    }
+  }
+  @keyframes m-focus {
+    50% {
+      transform: translateY(1.2px);
+    }
+  }
+  @keyframes m-pulse {
+    0%,
+    100% {
+      opacity: 0.35;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
+  @keyframes m-tap {
+    0%,
+    100% {
+      transform: rotate(0deg);
+    }
+    50% {
+      transform: rotate(-9deg);
+    }
+  }
+  @keyframes m-dot {
+    0%,
+    60%,
+    100% {
+      opacity: 0.35;
+      transform: translateY(0);
+    }
+    30% {
+      opacity: 1;
+      transform: translateY(-1.2px);
+    }
+  }
+  @keyframes m-rise {
+    0%,
+    100% {
+      opacity: 0.55;
+      transform: translateY(0.8px);
+    }
+    50% {
+      opacity: 1;
+      transform: translateY(-0.8px);
+    }
+  }
+  @keyframes m-swing {
+    from {
+      transform: rotate(-16deg);
+    }
+    to {
+      transform: rotate(10deg);
+    }
+  }
+  @keyframes m-write {
+    from {
+      transform: rotate(-5deg);
+    }
+    to {
+      transform: rotate(5deg);
+    }
+  }
+  @keyframes m-across {
+    0%,
+    100% {
+      transform: rotate(4deg);
+    }
+    50% {
+      transform: rotate(-8deg);
+    }
+  }
+  @keyframes m-ink {
+    0% {
+      stroke-dashoffset: 1;
+    }
+    80%,
+    100% {
+      stroke-dashoffset: 0;
+    }
+  }
+  @keyframes m-conduct {
+    from {
+      transform: rotate(-26deg);
+    }
+    to {
+      transform: rotate(18deg);
+    }
+  }
+  @keyframes m-rock {
+    0%,
+    100% {
+      transform: rotate(-4deg);
+    }
+    50% {
+      transform: rotate(4deg);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .hm-mascot,
+    .hm-mascot * {
+      animation: none !important;
+    }
+  }
   /* The drawn orb (AgentOrb): the canvas takes this color as its ink. */
   .aui-orb-drawn {
     display: inline-flex;
