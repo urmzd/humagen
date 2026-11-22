@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.190.0 (2026-11-22)
+
+### Features
+
+- **github**: map GitHub logins to people from HUMAGEN_GITHUB_PEOPLE ([f36601b](https://github.com/urmzd/humagen/commit/f36601bbe17b7eb4de513ca8182050e523aafe8a))
+- **github**: file each pull request and issue as one session ([27e3ef2](https://github.com/urmzd/humagen/commit/27e3ef2207ad5eb1d1ef9ba0f571ab005dc29215))
+
+### Bug Fixes
+
+- **github**: judge GitHub sessions by the root run, keep memory as before, and keep clients apart ([50dc0e8](https://github.com/urmzd/humagen/commit/50dc0e80abe1c01ebf1fc4ec511ce9c66493cce2))
+- **console**: keep the GitHub link out of trace.ts and give Home's budget room for it ([ee3a7ae](https://github.com/urmzd/humagen/commit/ee3a7ae0e7878f1482bc5aab3003fc20d4977961))
+
+### Misc
+
+- **github**: grant the mapped askers runs:write and ask on an issue through the connector ([147d372](https://github.com/urmzd/humagen/commit/147d372c07cf441209426e5a78dc222d90d559b5))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.189.0...v0.190.0)
+
+
 ## 0.189.0 (2026-11-22)
 
 ### Features
