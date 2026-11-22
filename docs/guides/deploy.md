@@ -251,6 +251,10 @@ Humagen is published on `127.0.0.1:8080` by default. To reach it from other
 machines, set `HUMAGEN_BIND=0.0.0.0` behind TLS, and `public_url` to the address
 browsers use.
 
+A browser for agents is a second file beside `compose.yaml`, not for the
+development overlay: `docker compose -f compose.yaml -f compose.browser.yaml up -d --build`.
+See [the bundled browser image](browser.md#run-the-bundled-browser-image).
+
 ### Without an identity provider
 
 [`compose.dev.yaml`](https://github.com/urmzd/humagen/blob/main/deploy/compose/compose.dev.yaml) mounts
@@ -437,6 +441,10 @@ while still connecting to the local port forwards. Without it, each request
 uses its URL's host. `HUMAGEN_E2E_LOGIN` supplies `Tailscale-User-Login` for a
 pod's trusted loopback connection. The check starts a real model run and
 compares both replicas' live and stored events; it does not stop either pod.
+
+`browser.enabled` adds a browser for agents as one more pod, reached only by
+the release's own pods: see
+[the bundled browser image](browser.md#run-the-bundled-browser-image).
 
 ## Flux
 

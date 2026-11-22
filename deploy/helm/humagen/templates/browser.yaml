@@ -1,0 +1,231 @@
+{{- /* The browser for agents: Chromium and the Playwright MCP server in one
+pod (deploy/browser), with a Service only this release's pods may reach. The
+tool server that names it is added to one workspace's spec (_helpers.tpl,
+humagen.spec). */}}
+{{- $b := .Values.browser | default dict -}}
+{{- if $b.enabled }}
+{{- $name := include "humagen.browserFullname" . -}}
+{{- $port := int (include "humagen.browserPort" .) -}}
+{{- if eq $name (include "humagen.fullname" .) -}}
+{{- fail "the release's own name already ends in -browser at its full length, so the browser's objects would be the server's: shorten fullnameOverride" -}}
+{{- end -}}
+{{- $outputRaw := $b.outputMaxBytes | default 268435456 -}}
+{{- $outputMax := int64 $outputRaw -}}
+{{- if or (lt $outputMax 1048576) (gt $outputMax 1073741824) -}}
+{{- fail (printf "browser.outputMaxBytes %v is not a size for the output files: a number of bytes from 1048576 (1 MiB) to 1073741824 (1 GiB), under the pod's disk" $outputRaw) -}}
+{{- end -}}
+{{- $image := $b.image | default dict -}}
+{{- $_ := required "browser.image.repository is required with browser.enabled: build deploy/browser and push it" $image.repository -}}
+{{- $_ := required "browser.image.tag is required with browser.enabled: the image is not the chart's version" $image.tag -}}
+{{/* Reused values from before the browser have none of these keys. What
+keeps a page out of the cluster is on unless it is turned off by name, and
+every bound has its default: nothing here is open because a key is absent. */}}
+{{- $np := $b.networkPolicy | default dict -}}
+{{- $policy := true -}}
+{{- if hasKey $np "enabled" }}{{- $policy = ne (toString $np.enabled) "false" -}}{{- end -}}
+{{- $ports := $np.ports | default (list 80 443) -}}
+{{- $blocked := include "humagen.browserBlockedCIDRs" . | fromYamlArray -}}
+{{- if kindIs "slice" $np.blockedCIDRs }}{{- $blocked = $np.blockedCIDRs -}}{{- end -}}
+{{- $dns := $np.dns | default dict -}}
+{{- $dnsNamespace := "kube-system" -}}
+{{- if hasKey $dns "namespace" }}{{- $dnsNamespace = $dns.namespace | default "" -}}{{- end -}}
+{{- $dnsCIDRs := list "169.254.20.10/32" "169.254.169.254/32" -}}
+{{- if kindIs "slice" $dns.cidrs }}{{- $dnsCIDRs = $dns.cidrs -}}{{- end -}}
+{{- $dnsPorts := $dns.ports | default (list 53) -}}
+{{- if and $policy (not $dnsNamespace) (not $dnsCIDRs) -}}
+{{- fail "browser.networkPolicy.dns names nowhere to ask for names: set its namespace or its cidrs" -}}
+{{- end -}}
+{{- $resources := $b.resources | default (dict "requests" (dict "cpu" "250m" "memory" "1Gi" "ephemeral-storage" "2Gi") "limits" (dict "memory" "2Gi" "ephemeral-storage" "2Gi")) -}}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "humagen.browserLabels" . | nindent 4 }}
+# The browser calls no cluster API, and holds no identity a page could use.
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "humagen.browserLabels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "humagen.browserSelectorLabels" . | nindent 4 }}
+  ports:
+    - name: mcp
+      port: {{ $port }}
+      targetPort: mcp
+      protocol: TCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "humagen.browserLabels" . | nindent 4 }}
+spec:
+  # One browser: a second pod would be a second page, and a client would be
+  # sent to either. The old pod goes before the new one starts.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "humagen.browserSelectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with $b.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "humagen.browserLabels" . | nindent 8 }}
+        {{- with $b.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ $name }}
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      {{- with .Values.browser.runtimeClassName }}
+      runtimeClassName: {{ . }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: browser
+          image: "{{ $image.repository }}:{{ $image.tag }}"
+          imagePullPolicy: {{ $image.pullPolicy | default "IfNotPresent" }}
+          {{- with $b.extraArgs }}
+          args:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          env:
+            - name: HOME
+              value: /home/browser
+            - name: HUMAGEN_BROWSER_MCP_PORT
+              value: {{ $port | quote }}
+            - name: HUMAGEN_BROWSER_OUTPUT_MAX_BYTES
+              value: {{ $outputMax | quote }}
+            # The names this release's pods reach the Service by. The server
+            # answers a request for any other Host with 403, so a page the
+            # browser opens cannot reach it by a name of its own.
+            - name: HUMAGEN_BROWSER_ALLOWED_HOSTS
+              value: "{{ $name }}:{{ $port }},{{ $name }}.{{ .Release.Namespace }}:{{ $port }},{{ $name }}.{{ .Release.Namespace }}.svc:{{ $port }},{{ $name }}.{{ .Release.Namespace }}.svc.cluster.local:{{ $port }}"
+          ports:
+            - name: mcp
+              containerPort: {{ $port }}
+              protocol: TCP
+          # The port, not a request: a probe's Host is the pod's address,
+          # which the server refuses.
+          startupProbe:
+            tcpSocket: {port: mcp}
+            periodSeconds: 2
+            failureThreshold: 60
+          readinessProbe:
+            tcpSocket: {port: mcp}
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket: {port: mcp}
+            periodSeconds: 20
+            failureThreshold: 3
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml $resources | nindent 12 }}
+          volumeMounts:
+            - name: home
+              mountPath: /home/browser
+            - name: output
+              mountPath: /var/lib/humagen-browser
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        # The profile: the browser's sign-ins, gone with the pod. All three
+        # count against the pod's ephemeral-storage limit.
+        - name: home
+          emptyDir: {}
+        - name: output
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- if $policy }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "humagen.browserLabels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "humagen.browserSelectorLabels" . | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    # Only this release's server and worker pods.
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "humagen.selectorLabels" . | nindent 14 }}
+        - podSelector:
+            matchLabels:
+              {{- include "humagen.workerSelectorLabels" . | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: {{ $port }}
+  egress:
+    # Names, from the cluster's own resolvers only.
+    - to:
+        {{- if $dnsNamespace }}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $dnsNamespace }}
+        {{- end }}
+        {{- range $dnsCIDRs }}
+        - ipBlock:
+            cidr: {{ . }}
+        {{- end }}
+      ports:
+        {{- range $dnsPorts }}
+        - protocol: UDP
+          port: {{ int . }}
+        - protocol: TCP
+          port: {{ int . }}
+        {{- end }}
+    # The internet, and nothing in the blocked ranges: not the cluster, its
+    # nodes or a metadata server.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            {{- with $blocked }}
+            except:
+              {{- toYaml . | nindent 14 }}
+            {{- end }}
+      ports:
+        {{- range $ports }}
+        - protocol: TCP
+          port: {{ int . }}
+        {{- end }}
+{{- end }}
+{{- end }}

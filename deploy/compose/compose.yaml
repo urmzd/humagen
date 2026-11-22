@@ -4,6 +4,7 @@
 #   $EDITOR config/warp.yaml                   # the identity provider, public URL
 #   docker compose up -d --build               # Humagen and Postgres
 #   docker compose --profile s3 up -d --build   # and MinIO
+#   docker compose -f compose.yaml -f compose.browser.yaml up -d --build   # and a browser for agents
 #
 # `make up` and `make down` at the repository root wrap these, and take the
 # profiles from COMPOSE_PROFILES in .env. See docs/guides/deploy.md.
