@@ -3359,6 +3359,13 @@ export const defaultCopy = {
       resolved: "Nothing is done yet.",
     } as Record<"open" | "snoozed" | "resolved", string>,
     reviewApproval: "Review Approval",
+    /** An alert's own actions: go to where it came from, ask the agent about it, settle it. */
+    view: "View",
+    review: "Review",
+    reviewing: "Opening…",
+    reviewFailed: "The review could not be opened.",
+    /** The menu that holds an alert's lesser actions, such as Snooze. */
+    more: "More alert actions",
     markDone: "Mark Done",
     markDoneNamed: (title: string) => `Mark ${title} done`,
     /** What an alert's card in a session opens, by the alert's action. */
