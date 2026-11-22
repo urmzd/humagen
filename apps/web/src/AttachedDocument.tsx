@@ -5,7 +5,7 @@ import { Modal } from "@humagen/web";
 import { useState } from "react";
 import type { MessageAttachmentText } from "../../../packages/client/src/generated/types.ts";
 import { call } from "./api.ts";
-import { Problem, SkeletonRows } from "./ui.tsx";
+import { button, Problem, SkeletonRows } from "./ui.tsx";
 
 /** What the card reads of an attached file. */
 type Attached = { name?: string; alt?: string; media_type: string };
@@ -73,7 +73,13 @@ export function AttachedDocument({
       </button>
       {open && (
         <Modal title={name} onClose={() => setOpen(false)}>
-          <div className="flex max-h-[75vh] flex-col gap-3 overflow-y-auto p-5 text-aui-sm">
+          <div className="flex items-center justify-between gap-3 border-aui-border border-b px-5 py-3">
+            <span className="min-w-0 truncate font-medium text-aui-sm">{name}</span>
+            <button type="button" className={button} onClick={() => setOpen(false)}>
+              {words.close}
+            </button>
+          </div>
+          <div className="flex max-h-[70vh] flex-col gap-3 overflow-y-auto p-5 text-aui-sm">
             <Problem message={problem ?? null} />
             {!doc && !problem && <SkeletonRows count={4} />}
             {doc &&

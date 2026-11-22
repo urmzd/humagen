@@ -126,8 +126,8 @@ func TestReviewingAnAlertStartsWithItsDocument(t *testing.T) {
 		"# " + a.Title,
 		"- tool_errors: 3 tools failed",
 		"Tool calls in the run's trace: 4, 3 failed",
-		`- web_fetch failed 2 times: "403 Forbidden"`,
-		`- search failed 1 time: "timeout after 30s"`,
+		"- web_fetch failed 2 times: `403 Forbidden`",
+		"- search failed 1 time: `timeout after 30s`",
 		"[the answer](/messages/" + root.ID + "?message=" + run.ID + ")",
 		"> Find the quarterly report",
 	} {

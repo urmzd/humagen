@@ -208,7 +208,7 @@ func briefTools(b *strings.Builder, events []event.Envelope) {
 		}
 		quoted := make([]string, len(f.errors))
 		for j, e := range f.errors {
-			quoted[j] = fmt.Sprintf("%q", e)
+			quoted[j] = "`" + strings.ReplaceAll(e, "`", "'") + "`"
 		}
 		fmt.Fprintf(b, "- %s failed %d %s: %s\n", f.name, f.count, times, strings.Join(quoted, "; "))
 	}

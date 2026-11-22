@@ -3399,6 +3399,7 @@ export const defaultCopy = {
     kind: (markdown: boolean) => (markdown ? "Document" : "Text file"),
     unavailable: "The file could not be opened.",
     truncated: "Only the start of this file is shown.",
+    close: "Close",
   },
   /** The Artifacts page: what agents published, and tiles that start a new one. */
   artifactsPage: {
