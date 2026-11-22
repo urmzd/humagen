@@ -5,8 +5,7 @@ import type { HomeNotification, HomeUpdate } from "@humagen/core";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { ProjectView } from "./api.ts";
 import { FindHelp } from "./FindHelp.tsx";
-import { HomeBoxes, HomePage, HomeProjects } from "./HomePage.tsx";
-import type { Route } from "./route.ts";
+import { HomeBoxes, HomePage } from "./HomePage.tsx";
 
 // The loader runs every DOM file in one process, so this cleans up only after its own tests.
 let rendered = false;
@@ -56,7 +55,7 @@ test("Home's rows open what they name, and each box's text control goes to the r
   assert.ok(screen.getByRole("region", { name: "What's new" }));
 });
 
-const project = (name: string, title: string, day: number, personal_owner?: string) =>
+const _project = (name: string, title: string, day: number, personal_owner?: string) =>
   ({
     name,
     title,
@@ -64,50 +63,6 @@ const project = (name: string, title: string, day: number, personal_owner?: stri
     created_at: `2026-11-${day}T00:00:00Z`,
     personal_owner,
   }) as ProjectView;
-
-test("Home opens the three highest-ranked readable projects", () => {
-  rendered = true;
-  const opened: Route[] = [];
-  render(
-    <HomeProjects
-      projects={[
-        project("", "Workspace", 24),
-        project("~", "Workspace alias", 24),
-        project("personal-dev", "Personal", 24),
-        project("personal-peer", "Other Personal", 24, "peer"),
-        project("docs", "Docs refresh", 11),
-        project("launch", "Launch", 20),
-        project("support", "Support", 21),
-        project("older", "Backlog", 19),
-      ]}
-      pinned={["docs"]}
-      personal="personal-dev"
-      go={(route) => opened.push(route)}
-    />,
-  );
-
-  const section = screen.getByRole("region", { name: "Projects" });
-  const links = Array.from(section.querySelectorAll("a"));
-  assert.deepEqual(
-    links.map((link) => link.textContent),
-    ["Docs refresh", "Support", "Launch"],
-  );
-  const launch = screen.getByRole("link", { name: "Launch" });
-  assert.equal(launch.getAttribute("href"), "/projects/launch");
-  fireEvent.click(launch);
-  assert.deepEqual(opened, [{ page: "project", name: "launch" }]);
-});
-
-test("Home omits the Projects section while awaiting readable work projects", () => {
-  rendered = true;
-  const go = () => {};
-  const { rerender } = render(<HomeProjects projects={null} go={go} />);
-  assert.equal(screen.queryByRole("region", { name: "Projects" }), null);
-  rerender(<HomeProjects projects={[]} go={go} />);
-  assert.equal(screen.queryByRole("region", { name: "Projects" }), null);
-  rerender(<HomeProjects projects={[project("automatic", "Personal", 20, "you")]} go={go} />);
-  assert.equal(screen.queryByRole("region", { name: "Projects" }), null);
-});
 
 test("announcement actions use the retained inbox callbacks", () => {
   rendered = true;

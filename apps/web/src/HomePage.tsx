@@ -7,13 +7,9 @@ import {
   orderNotifications,
   orderUpdates,
 } from "@humagen/core";
-import { EyeOffIcon, FolderIcon, PinIcon } from "@humagen/render-web";
+import { EyeOffIcon } from "@humagen/render-web";
 import { Button } from "@humagen/render-web/ui/button";
 import type { ReactNode } from "react";
-import type { ProjectView } from "./api.ts";
-import { ItemCard } from "./cards.tsx";
-import { cardsOf, titleOf } from "./projects.ts";
-import { href, type Route } from "./route.ts";
 import { ago, RowButton, Section, textAction } from "./ui.tsx";
 
 /** The urgency word's tint, the same tones the Notifications list uses. */
@@ -69,63 +65,6 @@ export function HomePage({
         )}
         {below && <div className="max-md:pb-6">{below}</div>}
       </div>
-    </section>
-  );
-}
-
-/** A few real projects to return to, ordered as they are on Projects. */
-export function HomeProjects({
-  projects,
-  personal,
-  pinned,
-  go,
-}: {
-  projects: ProjectView[] | null;
-  personal?: string;
-  pinned?: readonly string[];
-  go: (route: Route) => void;
-}) {
-  const list = cardsOf(
-    (projects ?? []).filter((p) => p.name !== "~" && p.name !== personal && !p.personal_owner),
-    { pinned },
-  ).slice(0, 3);
-  if (list.length === 0) return null;
-
-  return (
-    <section aria-labelledby="home-projects" className="mx-auto w-full max-w-4xl px-4 pt-6">
-      <h2 id="home-projects" className="pb-2 font-medium text-aui-xs text-aui-muted">
-        {defaultCopy.projects.title}
-      </h2>
-      <ul className="grid gap-3 sm:grid-cols-3">
-        {list.map((project) => {
-          const to = { page: "project", name: project.name } satisfies Route;
-          const title = titleOf(project);
-          return (
-            <li key={project.name} className="min-w-0">
-              <ItemCard
-                title={
-                  <span className="block truncate" title={title}>
-                    {title}
-                  </span>
-                }
-                mark={
-                  pinned?.includes(project.name) ? (
-                    <PinIcon
-                      size={14}
-                      fill="currentColor"
-                      aria-label={defaultCopy.projects.pinned}
-                    />
-                  ) : (
-                    <FolderIcon size={16} className="text-aui-muted" />
-                  )
-                }
-                href={href(to)}
-                onOpen={() => go(to)}
-              />
-            </li>
-          );
-        })}
-      </ul>
     </section>
   );
 }

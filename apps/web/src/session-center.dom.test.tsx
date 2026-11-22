@@ -4,16 +4,9 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { ItemCard } from "./cards.tsx";
 import { stubFetch } from "./dom.ts";
 import { unreadPrefs } from "./preferences.ts";
-import { href } from "./route.ts";
-import {
-  AlertsPage,
-  HomeSessionGlance,
-  SessionsPage,
-  useSessionAttention,
-} from "./SessionCenter.tsx";
+import { AlertsPage, HomeStarted, SessionsPage, useSessionAttention } from "./SessionCenter.tsx";
 import { Sidebar } from "./Sidebar.tsx";
 import type { AgentSessionSummary, Alert } from "./sessionCenter.ts";
-import { sampleFiles } from "./storage.fixtures.ts";
 
 let net: ReturnType<typeof stubFetch> | undefined;
 afterEach(() => {
@@ -70,23 +63,29 @@ const alert = (
   severity: "warning",
   at: now,
 });
-test("Home does not repeat the alert count: the menu's Alerts entry carries it", async () => {
-  net = stubFetch({ "GET /api/sessions": () => ({ sessions: [session("s_root")], next: "" }) });
-  let sessionsLoaded = false;
+test("Home lists nothing under the chat bar: it reads only whether the person has started anything", async () => {
+  const asked: string[] = [];
+  net = stubFetch({
+    "GET /api/sessions": () => ({ sessions: [session("s_root")], next: "" }),
+    "GET /api/artifacts": () => {
+      asked.push("artifacts");
+      return { artifacts: [], next: null };
+    },
+  });
+  let has: boolean | undefined;
   const { container } = render(
-    <HomeSessionGlance
-      go={() => {}}
+    <HomeStarted
       tick={0}
-      via={{ list: async () => ({ artifacts: [], next: null }) }}
-      onHasSessions={() => {
-        sessionsLoaded = true;
+      onHasSessions={(h) => {
+        has = h;
       }}
     />,
   );
-  await waitFor(() => assert.equal(sessionsLoaded, true));
-  assert.equal(screen.queryByText(/waiting on you/), null);
-  assert.equal(screen.queryByRole("link"), null);
+  await waitFor(() => assert.equal(has, true));
   assert.equal(container.textContent, "");
+  assert.equal(screen.queryByRole("link"), null);
+  assert.equal(screen.queryByRole("region"), null);
+  assert.deepEqual(asked, [], "no artifacts are read for Home");
 });
 
 test("the badge's count comes from the count alone, before the alerts are read", async () => {
@@ -130,74 +129,6 @@ test("once the alerts are read the count is theirs, and the count alone is not a
   await waitFor(() => assert.equal(listed, 2));
   assert.equal(screen.getByLabelText("badge").textContent, "2");
   assert.equal(net.seen.filter((r) => r.path === "/api/alerts/count").length, 1);
-});
-
-test("Home shows the three newest artifacts in one strip, each opening where it lives", async () => {
-  net = stubFetch({ "GET /api/sessions": () => ({ sessions: [], next: "" }) });
-  const asked: number[] = [];
-  const went: unknown[] = [];
-  render(
-    <HomeSessionGlance
-      go={(route) => went.push(route)}
-      tick={0}
-      via={{
-        list: async (q) => {
-          asked.push(q.limit);
-          return { artifacts: sampleFiles().slice(0, 4), next: null };
-        },
-      }}
-    />,
-  );
-  const strip = await screen.findByRole("region", { name: "Recently made" });
-  assert.deepEqual(asked, [3]);
-  const cards = within(strip).getAllByRole("listitem");
-  assert.equal(cards.length, 3);
-  const first = sampleFiles()[0];
-  assert.ok(first);
-  const card = within(strip).getByRole("link", { name: first.title });
-  assert.equal(card.getAttribute("href"), href({ page: "artifacts", artifact: first.id }));
-  fireEvent.click(card);
-  assert.deepEqual(went, [{ page: "artifacts", artifact: first.id }]);
-  // The menu's Artifacts entry opens the full list, so the strip does not link to it again.
-  assert.equal(within(strip).queryByRole("link", { name: "All artifacts" }), null);
-});
-
-test("Home says in one line when its recent artifacts could not be read", async () => {
-  net = stubFetch({ "GET /api/sessions": () => ({ sessions: [], next: "" }) });
-  render(
-    <HomeSessionGlance
-      go={() => {}}
-      tick={0}
-      via={{
-        list: async () => {
-          throw new Error("offline");
-        },
-      }}
-    />,
-  );
-  assert.ok(await screen.findByText("Recent artifacts could not be loaded."));
-  assert.equal(screen.queryByRole("region", { name: "Recently made" }), null);
-});
-
-test("Home with nothing made draws nothing, and asks for no artifacts it may not read", async () => {
-  net = stubFetch({ "GET /api/sessions": () => ({ sessions: [], next: "" }) });
-  let asked = 0;
-  const { container } = render(
-    <HomeSessionGlance
-      go={() => {}}
-      tick={0}
-      canArtifacts={false}
-      via={{
-        list: async () => {
-          asked++;
-          return { artifacts: sampleFiles(), next: null };
-        },
-      }}
-    />,
-  );
-  await new Promise((done) => setTimeout(done, 0));
-  assert.equal(asked, 0);
-  assert.equal(container.textContent, "");
 });
 
 test("alert source filters reach the server and do not expose another source", async () => {
