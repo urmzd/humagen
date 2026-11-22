@@ -1576,6 +1576,18 @@
 .aui-thread-turns > :has(~ .group\/message, ~ * .group\/message) .aui-message-actions {
   transition: opacity 150ms ease-out;
 }
+/* Small controls: 28px with a 14px mark for a mouse, a full 44px target for a finger. */
+@media (pointer: fine) {
+  /* Only a control that is one mark: a control with words keeps its own size. */
+  .aui-message-actions :is(button, a):has(> svg:only-child) {
+    width: 1.75rem;
+    height: 1.75rem;
+  }
+  .aui-message-actions :is(button, a) > svg:only-child {
+    width: 0.875rem;
+    height: 0.875rem;
+  }
+}
 :is(
     .aui-thread-turns > .group\/message:has(~ .group\/message, ~ * .group\/message),
     .aui-thread-turns > :has(~ .group\/message, ~ * .group\/message) .group\/message
