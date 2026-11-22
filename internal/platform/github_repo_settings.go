@@ -48,6 +48,9 @@ type GitHubRepository struct {
 	// settings, else the client's.
 	AutoReview reposettings.AutoReview `json:"auto_review"`
 	Agent      string                  `json:"agent,omitempty"`
+	// CrossSurfaceReads says runs other than the repository's own, and the
+	// console, may read it.
+	CrossSurfaceReads bool `json:"cross_surface_reads"`
 }
 
 // GitHubRepositoryDefaults is what a repository with no settings follows.
@@ -91,10 +94,11 @@ func clientDefaults(c clients.Client, repo string) GitHubRepositoryDefaults {
 
 func repositoryView(c clients.Client, repo string, it *reposettings.Item, installed bool) GitHubRepository {
 	d := clientDefaults(c, repo)
-	v := GitHubRepository{Repository: repo, Installed: installed, AutoReview: d.AutoReview, Agent: d.Agent}
+	v := GitHubRepository{Repository: repo, Installed: installed, AutoReview: d.AutoReview, Agent: d.Agent, CrossSurfaceReads: true}
 	if it != nil {
 		s := it.Settings
 		v.Settings, v.Version = &s, it.Version
+		v.CrossSurfaceReads = s.ReadableElsewhere()
 		if s.AutoReview != nil {
 			v.AutoReview = *s.AutoReview
 		}
@@ -289,6 +293,34 @@ func (p *Platform) repoSettingsOf(c clients.Client, repo string) (reposettings.S
 		return reposettings.Settings{}, false
 	}
 	return it.Settings, true
+}
+
+// readableElsewhere reports whether a run not on one of repo's own issues or
+// pull requests, or the console, may read repo through c. Settings that
+// cannot be read refuse: the repository may have been kept to its own runs.
+func (p *Platform) readableElsewhere(c clients.Client, repo string) bool {
+	s, ok := p.repoSettingsOf(c, repo)
+	return ok && s.ReadableElsewhere()
+}
+
+// keptToOwnRuns is the lowercase names of the repositories c keeps to their
+// own runs, read once for a list. ok is false when they could not be read.
+func (p *Platform) keptToOwnRuns(c clients.Client) (map[string]bool, bool) {
+	out := map[string]bool{}
+	if p.RepoSettings == nil {
+		return out, true
+	}
+	kept, err := p.RepoSettings.List(c.Tenant, c.ID)
+	if err != nil {
+		p.log.Warn("platform: a GitHub client's repository settings could not be read, so none of its repositories are offered", "tenant", c.Tenant, "client", c.ID, "error", err)
+		return nil, false
+	}
+	for _, it := range kept {
+		if !it.ReadableElsewhere() {
+			out[strings.ToLower(it.Repository)] = true
+		}
+	}
+	return out, true
 }
 
 // inRepo is c as it acts in repo: the repository's agent in place of the

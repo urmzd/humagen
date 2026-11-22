@@ -72,13 +72,24 @@ func (p *Platform) tenantRepos(ctx context.Context, tenant string) []string {
 			if c.Tenant != tenant || !c.Enabled || (c.GitHub == nil && st.installed == nil) {
 				continue
 			}
+			// A repository its settings keep to its own runs is not one a
+			// session elsewhere may read.
+			kept, ok := p.keptToOwnRuns(c)
+			if !ok {
+				continue
+			}
+			offer := func(r string) {
+				if !kept[strings.ToLower(strings.TrimSpace(r))] {
+					add(r)
+				}
+			}
 			installed, _ := st.installed.Repos(ctx)
 			for _, r := range installed {
-				add(r)
+				offer(r)
 			}
 			if c.GitHub != nil {
 				for _, r := range slices.Concat(c.GitHub.ReadRepositories, c.GitHub.ActionRepositories) {
-					add(r)
+					offer(r)
 				}
 			}
 		}

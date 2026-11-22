@@ -98,6 +98,9 @@ import type {
   GetUsageResponse,
   GitHubIssue,
   GitHubPull,
+  GitHubRepositories,
+  GitHubRepository,
+  GitHubRepositoryInput,
   GraphNodeView,
   GraphView,
   HandoffContract,
@@ -1358,6 +1361,108 @@ afterwards. Nothing is sent to the agent.
     return this.rawRequest<InstallationCapabilities>("PUT", path, {
       body,
       contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** The repositories the client's GitHub App installation covers, those
+the client names, and those the workspace keeps settings for, at most
+1000. Each shows its own settings, if any, and what applies there: the
+repository's settings, else the client's defaults. A client on another
+surface, or of another workspace, is not found.
+ */
+  async listGitHubRepositories(id: string, options?: RequestOptions): Promise<GitHubRepositories> {
+    let path = "/api/clients/{id}/repositories";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<GitHubRepositories>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listGitHubRepositoriesRaw(id: string, options?: RequestOptions): Promise<ApiResponse<GitHubRepositories>> {
+    let path = "/api/clients/{id}/repositories";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<GitHubRepositories>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** A repository the client does not cover is not found. */
+  async getGitHubRepository(id: string, owner: string, repo: string, options?: RequestOptions): Promise<GitHubRepository> {
+    let path = "/api/clients/{id}/repositories/{owner}/{repo}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    path = path.replace("{owner}", encodeURIComponent(String(owner)));
+    path = path.replace("{repo}", encodeURIComponent(String(repo)));
+    return this.request<GitHubRepository>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getGitHubRepositoryRaw(id: string, owner: string, repo: string, options?: RequestOptions): Promise<ApiResponse<GitHubRepository>> {
+    let path = "/api/clients/{id}/repositories/{owner}/{repo}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    path = path.replace("{owner}", encodeURIComponent(String(owner)));
+    path = path.replace("{repo}", encodeURIComponent(String(repo)));
+    return this.rawRequest<GitHubRepository>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Replaces the repository's settings. A field left empty follows the
+client; settings that change nothing return the repository to the
+client. `version` is the version read, 0 while the repository follows
+its client, and a write over a change made since is a conflict. The
+agent must be one the client may route to.
+ */
+  async putGitHubRepository(id: string, owner: string, repo: string, body: GitHubRepositoryInput, options?: RequestOptions): Promise<GitHubRepository> {
+    let path = "/api/clients/{id}/repositories/{owner}/{repo}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    path = path.replace("{owner}", encodeURIComponent(String(owner)));
+    path = path.replace("{repo}", encodeURIComponent(String(repo)));
+    return this.request<GitHubRepository>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async putGitHubRepositoryRaw(id: string, owner: string, repo: string, body: GitHubRepositoryInput, options?: RequestOptions): Promise<ApiResponse<GitHubRepository>> {
+    let path = "/api/clients/{id}/repositories/{owner}/{repo}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    path = path.replace("{owner}", encodeURIComponent(String(owner)));
+    path = path.replace("{repo}", encodeURIComponent(String(repo)));
+    return this.rawRequest<GitHubRepository>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Return one repository to its client's defaults */
+  async resetGitHubRepository(id: string, owner: string, repo: string, version: number, options?: RequestOptions): Promise<GitHubRepository> {
+    let path = "/api/clients/{id}/repositories/{owner}/{repo}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    path = path.replace("{owner}", encodeURIComponent(String(owner)));
+    path = path.replace("{repo}", encodeURIComponent(String(repo)));
+    const _q = new URLSearchParams();
+    if (version !== undefined && version !== null) _q.set("version", String(version));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<GitHubRepository>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  async resetGitHubRepositoryRaw(id: string, owner: string, repo: string, version: number, options?: RequestOptions): Promise<ApiResponse<GitHubRepository>> {
+    let path = "/api/clients/{id}/repositories/{owner}/{repo}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    path = path.replace("{owner}", encodeURIComponent(String(owner)));
+    path = path.replace("{repo}", encodeURIComponent(String(repo)));
+    const _q = new URLSearchParams();
+    if (version !== undefined && version !== null) _q.set("version", String(version));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<GitHubRepository>("DELETE", path, {
       ...options,
     });
   }

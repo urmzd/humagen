@@ -19231,11 +19231,12 @@ components:
           type: array
           description: What the platform reads before a run here starts.
           items: {type: string, enum: [pull_diff, linked_issues]}
+        cross_surface_reads: {type: boolean, description: "False keeps the repository to its own runs: a run raised on another surface or another repository may not read it, and the console does not show its source. Left out, it is readable."}
         updated_at: {type: string, format: date-time}
         updated_by: {type: string}
     GitHubRepository:
       type: object
-      required: [repository, version, installed, auto_review]
+      required: [repository, version, installed, auto_review, cross_surface_reads]
       properties:
         repository: {type: string}
         settings: {$ref: '#/components/schemas/GitHubRepoSettings'}
@@ -19243,6 +19244,7 @@ components:
         installed: {type: boolean, description: The client's GitHub App installation covers it.}
         auto_review: {$ref: '#/components/schemas/GitHubRepoAutoReview'}
         agent: {type: string, description: The agent that answers here, the repository's or the client's default.}
+        cross_surface_reads: {type: boolean, description: "Runs other than the repository's own, and the console, may read it."}
     GitHubRepositoryDefaults:
       type: object
       description: What a repository with no settings follows, from the client (and so from the environment for a client the environment configures).
@@ -19277,6 +19279,7 @@ components:
           type: array
           maxItems: 2
           items: {type: string, enum: [pull_diff, linked_issues]}
+        cross_surface_reads: {type: boolean, description: "False keeps the repository to its own runs. Absent or true leaves it readable."}
         version: {type: integer, minimum: 0}
     GitHubOptions:
       type: object

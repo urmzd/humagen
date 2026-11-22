@@ -89,15 +89,24 @@ type Settings struct {
 	Instructions string `json:"instructions,omitempty"`
 	// Reads are what the platform reads before a run here starts, from
 	// Reads.
-	Reads     []string  `json:"reads,omitempty"`
-	UpdatedAt time.Time `json:"updated_at"`
-	UpdatedBy string    `json:"updated_by,omitempty"`
+	Reads []string `json:"reads,omitempty"`
+	// CrossSurfaceReads, when false, keeps the repository to its own runs:
+	// a run raised on another surface (Slack, the console) or on another
+	// repository may not read it, and the console does not show its source.
+	// Left out, it is readable, as every repository a client covers is.
+	CrossSurfaceReads *bool     `json:"cross_surface_reads,omitempty"`
+	UpdatedAt         time.Time `json:"updated_at"`
+	UpdatedBy         string    `json:"updated_by,omitempty"`
 }
 
 // IsZero reports whether the settings change nothing.
 func (s Settings) IsZero() bool {
-	return s.AutoReview == nil && s.Agent == "" && s.Instructions == "" && len(s.Reads) == 0
+	return s.AutoReview == nil && s.Agent == "" && s.Instructions == "" && len(s.Reads) == 0 && s.CrossSurfaceReads == nil
 }
+
+// ReadableElsewhere reports whether runs other than the repository's own may
+// read it.
+func (s Settings) ReadableElsewhere() bool { return s.CrossSurfaceReads == nil || *s.CrossSurfaceReads }
 
 // ReadsOn reports whether the settings turn on a read.
 func (s Settings) ReadsOn(read string) bool { return slices.Contains(s.Reads, read) }
@@ -111,6 +120,13 @@ func (s Settings) Normalize() Settings {
 	if s.AutoReview != nil {
 		a := *s.AutoReview
 		s.AutoReview = &a
+	}
+	// Readable is the default, so it is kept as nothing.
+	if s.CrossSurfaceReads != nil && *s.CrossSurfaceReads {
+		s.CrossSurfaceReads = nil
+	} else if s.CrossSurfaceReads != nil {
+		off := false
+		s.CrossSurfaceReads = &off
 	}
 	var reads []string
 	for _, r := range Reads {

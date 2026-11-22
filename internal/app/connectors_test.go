@@ -463,9 +463,10 @@ func TestEnabledFalseTurnsTheFilesGitHubClientOff(t *testing.T) {
 	}
 }
 
-// Automatic review is on unless the environment switches it off, and single
-// repositories can be turned back on or off, so a deployment configured by
-// its environment controls it without the API.
+// Automatic review is off unless the environment switches it on, and single
+// repositories can be turned on or off, so a deployment configured by its
+// environment controls it without the API. A repository's settings in the
+// console override both.
 func TestTheEnvironmentSwitchesAutomaticReview(t *testing.T) {
 	base := map[string]string{EnvGitHubToken: "t", EnvGitHubSecret: "s", EnvGitHubOwners: "acme"}
 	read := func(extra map[string]string) *clients.AutoReview {
@@ -483,8 +484,11 @@ func TestTheEnvironmentSwitchesAutomaticReview(t *testing.T) {
 		}
 		return defaults[0].GitHub.AutoReview
 	}
-	if a := read(nil); a != nil || !a.Reviews("acme/site") {
+	if a := read(nil); a != nil || a.Reviews("acme/site") {
 		t.Fatalf("unset: %+v", a)
+	}
+	if a := read(map[string]string{EnvGitHubAutoReview: "true"}); !a.Reviews("acme/site") {
+		t.Fatalf("switched on: %+v", a)
 	}
 	a := read(map[string]string{EnvGitHubAutoReview: "false", EnvGitHubAutoReviewRepositories: "acme/test=on, acme/site=off"})
 	if a.Reviews("acme/site") || a.Reviews("acme/other") || !a.Reviews("acme/test") {

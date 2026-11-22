@@ -16,21 +16,23 @@ func pullEvent(action, repo string, number int, sha string, draft bool, state st
 	return b
 }
 
-// Automatic review is on unless the connection or the repository turns it
-// off; a repository's own setting wins either way.
-func TestAutoReviewIsOnUnlessTurnedOff(t *testing.T) {
+// Automatic review is off unless the connection or the repository turns it
+// on; a repository's own setting wins either way.
+func TestAutoReviewIsOffUnlessTurnedOn(t *testing.T) {
 	off, on := false, true
 	for _, tc := range []struct {
 		name string
 		a    *AutoReview
 		want bool
 	}{
-		{"left out", nil, true},
-		{"no switch", &AutoReview{}, true},
+		{"left out", nil, false},
+		{"no switch", &AutoReview{}, false},
+		{"switched on", &AutoReview{Enabled: &on}, true},
 		{"switched off", &AutoReview{Enabled: &off}, false},
 		{"off, but on here", &AutoReview{Enabled: &off, Repositories: map[string]bool{"ACME/Site": true}}, true},
 		{"on, but off here", &AutoReview{Enabled: &on, Repositories: map[string]bool{"acme/site": false}}, false},
-		{"off elsewhere", &AutoReview{Repositories: map[string]bool{"acme/other": false}}, true},
+		{"off elsewhere", &AutoReview{Repositories: map[string]bool{"acme/other": false}}, false},
+		{"on elsewhere", &AutoReview{Enabled: &on, Repositories: map[string]bool{"acme/other": false}}, true},
 	} {
 		if got := tc.a.Reviews("acme/site"); got != tc.want {
 			t.Errorf("%s: reviews = %v", tc.name, got)
@@ -44,7 +46,8 @@ func TestAutoReviewIsOnUnlessTurnedOff(t *testing.T) {
 func TestAutoReviewMatchesReadyPullRequestsOnly(t *testing.T) {
 	sha := strings.Repeat("a", 40)
 	gh := githubOf("gh", "acme")
-	gh.GitHub = &GitHubOptions{}
+	on := true
+	gh.GitHub = &GitHubOptions{AutoReview: &AutoReview{Enabled: &on}}
 	for _, tc := range []struct {
 		name string
 		kind string
@@ -79,8 +82,9 @@ func TestAutoReviewMatchesReadyPullRequestsOnly(t *testing.T) {
 func TestAutoReviewNeedsTheSwitchAnAgentAndTheEvent(t *testing.T) {
 	sha := strings.Repeat("b", 40)
 	body := pullEvent("opened", "acme/site", 7, sha, false, "open")
-	off := false
+	off, on := false, true
 	for name, change := range map[string]func(*Client){
+		"left out":               func(c *Client) { c.GitHub.AutoReview = nil },
 		"switched off":           func(c *Client) { c.GitHub.AutoReview = &AutoReview{Enabled: &off} },
 		"off for the repo":       func(c *Client) { c.GitHub.AutoReview = &AutoReview{Repositories: map[string]bool{"acme/site": false}} },
 		"no default agent":       func(c *Client) { c.DefaultAgent = "" },
@@ -89,7 +93,7 @@ func TestAutoReviewNeedsTheSwitchAnAgentAndTheEvent(t *testing.T) {
 		"slack":                  func(c *Client) { c.Surface = Slack },
 	} {
 		c := githubOf("gh", "acme")
-		c.GitHub = &GitHubOptions{}
+		c.GitHub = &GitHubOptions{AutoReview: &AutoReview{Enabled: &on}}
 		change(&c)
 		if _, ok := c.MatchAutoReview("pull_request", body); ok {
 			t.Errorf("%s: reviewed", name)

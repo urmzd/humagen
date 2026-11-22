@@ -24,11 +24,12 @@ func (s *Server) githubRepoRoutes(mux *http.ServeMux) {
 // githubRepoBody is a repository's settings as a caller writes them, with
 // the version they read: 0 while it follows its client.
 type githubRepoBody struct {
-	AutoReview   *reposettings.AutoReview `json:"auto_review"`
-	Agent        string                   `json:"agent"`
-	Instructions string                   `json:"instructions"`
-	Reads        []string                 `json:"reads"`
-	Version      int64                    `json:"version"`
+	AutoReview        *reposettings.AutoReview `json:"auto_review"`
+	Agent             string                   `json:"agent"`
+	Instructions      string                   `json:"instructions"`
+	Reads             []string                 `json:"reads"`
+	CrossSurfaceReads *bool                    `json:"cross_surface_reads"`
+	Version           int64                    `json:"version"`
 }
 
 func repoPath(r *http.Request) string { return r.PathValue("owner") + "/" + r.PathValue("repo") }
@@ -56,7 +57,7 @@ func (s *Server) putGitHubRepository(w http.ResponseWriter, r *http.Request, who
 	if !decode(w, r, &body) {
 		return
 	}
-	in := reposettings.Settings{AutoReview: body.AutoReview, Agent: body.Agent, Instructions: body.Instructions, Reads: body.Reads}
+	in := reposettings.Settings{AutoReview: body.AutoReview, Agent: body.Agent, Instructions: body.Instructions, Reads: body.Reads, CrossSurfaceReads: body.CrossSurfaceReads}
 	out, err := s.P.SetGitHubRepository(r.Context(), who, r.PathValue("id"), repoPath(r), in, body.Version)
 	if err != nil {
 		s.problem(w, err)

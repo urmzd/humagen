@@ -168,6 +168,10 @@ func (p *Platform) sourceReader(ctx context.Context, tenant, owner, repo string)
 		if !granted {
 			granted = st.installed.Covers(ctx, owner, repo)
 		}
+		// A repository its settings keep to its own runs is not shown here.
+		if granted && !p.readableElsewhere(c, owner+"/"+repo) {
+			granted = false
+		}
 		if granted {
 			return st.files
 		}
