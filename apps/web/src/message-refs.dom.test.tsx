@@ -8,8 +8,8 @@ import type { Run } from "./adapter.ts";
 import type { MessageTrace, Thread, TraceNode, TraceQuestion } from "./api.ts";
 import { stubFetch } from "./dom.ts";
 import { type FocusLoader, MessageFocus } from "./MessageFocus.tsx";
-import { AnswerRefs, SessionReferences } from "./MessageRefs.tsx";
-import { ResponseActivityPanel } from "./ResponseActivity.tsx";
+import { AnswerRefs, callThreadsOf, SessionReferences } from "./MessageRefs.tsx";
+import { AgentCallLane, ResponseActivityPanel } from "./ResponseActivity.tsx";
 import {
   type ResponseSource,
   replaySource,
@@ -751,4 +751,32 @@ test("a called agent is one closed item once done, and the tree opens on a step 
     trail.textContent ?? "",
     new RegExp(holder?.getAttribute("data-agent") ?? "missing"),
   );
+});
+
+test("a called agent's thread in an answer is one clickable line that opens its steps, with no link away", () => {
+  const state = foldAll(responseStreams.parallelAgents);
+  const call = allTools(state).find((t) => t.kind === "agent" && t.runId);
+  assert.ok(call);
+  // The turn's step for that call: its id, and the run it started.
+  const task = { id: call.id, subagent: { runId: call.runId } } as Parameters<
+    ReturnType<typeof callThreadsOf>
+  >[0];
+  const { container } = render(<>{callThreadsOf(state)(task)}</>);
+  const lane = within(container).getAllByTestId("activity-lane")[0];
+  assert.ok(lane);
+  assert.equal(lane.querySelector("a"), null, "no expand sign on the line");
+  // The whole line is the control.
+  const line = lane.querySelector("summary");
+  assert.ok(line);
+  assert.match(line.className, /cursor-pointer/);
+  assert.match(line.className, /hover:bg-aui-hover/);
+  const details = lane.querySelector("details") as HTMLDetailsElement;
+  const was = details.open;
+  fireEvent.click(line);
+  details.open = !was;
+  assert.notEqual(details.open, was);
+  cleanup();
+  // In Details the same lane still links to its agent's message on its own.
+  const detail = render(<AgentCallLane tool={call} />);
+  assert.ok(detail.container.querySelector(`a[title="${words.focus(call.agent ?? call.name)}"]`));
 });

@@ -1225,9 +1225,11 @@ same activity again makes no sense.
 - A turn reads top to bottom in time order: its words, its runs of steps and
   the agents it called, each where it happened.
 - A called agent is a thread of its own in the turn: one line with its mark,
-  name, task and how long it took. The line opens to what that agent did and
-  said, and its own calls are threads under it. A link on the line opens the
-  agent's own message.
+  name, task and how long it took. The line is the one control: all of it is
+  clickable, it shows a hover, and it opens to what that agent did and said.
+  Its own calls are threads under it. Nothing on the line leads away (owner
+  request, 2026-11-21: no expand sign); in Details a lane still links to its
+  agent's message on its own.
 - Agents that ran at the same time are drawn as one group, labelled
   "2 agents at the same time", in the order they started. Two calls are at
   the same time when the second started before the first ended.

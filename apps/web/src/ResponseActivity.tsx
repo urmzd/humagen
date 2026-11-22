@@ -149,6 +149,13 @@ export function responseChips(state: ResponseState, origin?: Reference): Chip[] 
  */
 const Focus = createContext<{ run?: string; step?: string }>({});
 
+/**
+ * Whether a lane is drawn in an answer, as one of its threads. There its line
+ * is the one control: it opens to what the agent did, and nothing on it leads
+ * away. In Details a lane also links to its agent's message on its own.
+ */
+export const LaneInMessage = createContext(false);
+
 const marks = (t: ResponseTool, f: { run?: string; step?: string }) =>
   (f.run !== undefined && t.runId === f.run) || (f.step !== undefined && t.id === f.step);
 
@@ -450,6 +457,7 @@ function Lane({
   // A called agent is one item: its line, and under it what it did. It is
   // open while it works, waits on someone or failed, and closed once done.
   const focus = useContext(Focus);
+  const inMessage = useContext(LaneInMessage);
   const focused = !!tool && marks(tool, focus);
   const arrive = useArrive(focused);
   // A call that does not wait is delegated: the agent carries on by itself
@@ -494,7 +502,7 @@ function Lane({
         </span>
       )}
       {tool?.runId && running && !root && <LaneStop run={tool.runId} agent={agent} />}
-      {tool?.runId && (
+      {tool?.runId && !inMessage && (
         <a
           href={href({ page: "message", id: tool.runId })}
           onClick={inApp}
