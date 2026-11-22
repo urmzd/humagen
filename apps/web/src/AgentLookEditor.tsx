@@ -6,6 +6,7 @@ import {
   type MascotPersona,
   mascotPersonaOf,
   mascotPersonas,
+  mascotPicture,
   toRgb,
 } from "@humagen/web";
 import { type CSSProperties, useEffect, useRef, useState } from "react";
@@ -199,7 +200,7 @@ export function AgentLookEditor({
   // save sends as the agent's picture. Its color is read from the page, as a
   // mark's is.
   const tinted = useRef<HTMLSpanElement>(null);
-  const still = useRef<HTMLCanvasElement>(null);
+  const still = useRef<HTMLSpanElement>(null);
   const [ink, setInk] = useState<string>();
   // biome-ignore lint/correctness/useExhaustiveDependencies: read again when the color changes
   useEffect(() => {
@@ -254,15 +255,9 @@ export function AgentLookEditor({
    */
   const drawPicture = async () => {
     await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
-    const canvas = still.current;
-    if (!canvas || typeof canvas.toBlob !== "function") return;
-    const png = await new Promise<Blob | null>((done) => {
-      try {
-        canvas.toBlob(done, "image/png");
-      } catch {
-        done(null);
-      }
-    });
+    const root = still.current;
+    if (!root || typeof HTMLCanvasElement.prototype.toBlob !== "function") return;
+    const png = await mascotPicture(root).catch(() => null);
     if (!png || png.size === 0) return;
     try {
       const v = await api.setAgentMark(name, png);
@@ -310,9 +305,13 @@ export function AgentLookEditor({
             style={{
               ...tint(hue),
               color: "var(--aui-accent)",
-              position: "absolute",
-              left: -10000,
+              // In view, so its fur is drawn, but never seen or pointed at.
+              position: "fixed",
+              left: 0,
               top: 0,
+              opacity: 0,
+              pointerEvents: "none",
+              zIndex: -1,
             }}
           >
             {ink && (
