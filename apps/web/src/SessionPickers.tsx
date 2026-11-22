@@ -4,15 +4,13 @@ import type { KeyboardEvent } from "react";
 import { href } from "./route.ts";
 import type { SessionImage, SessionOptions, SessionSetup } from "./sessionOptions.ts";
 import { useSessionOptions } from "./sessionOptions.ts";
-import { Popover } from "./ui.tsx";
+import { composerTextControl, Popover } from "./ui.tsx";
 
 const words = defaultCopy.sessionSetup;
 
 export type { SessionImage, SessionOptions, SessionSetup };
 
-/** Text controls under the composer, as the approval mode is: no boxes, the composer's sizes. */
-const control =
-  "inline-flex h-8 min-w-8 pointer-coarse:h-11 pointer-coarse:min-w-11 shrink-0 items-center justify-center gap-1.5 rounded-aui px-2 text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-expanded:bg-aui-hover aria-expanded:text-aui-fg";
+const control = composerTextControl;
 const row =
   "flex min-h-11 w-full items-start gap-2.5 rounded-aui px-2.5 py-2 text-left outline-none hover:bg-aui-hover focus-visible:bg-aui-hover aria-disabled:cursor-not-allowed aria-disabled:opacity-60 aria-disabled:hover:bg-transparent";
 

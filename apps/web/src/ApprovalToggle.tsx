@@ -1,10 +1,10 @@
 import { defaultCopy } from "@humagen/components";
-import { CheckIcon, FastForwardIcon, HandIcon } from "@humagen/render-web";
+import { CheckIcon } from "@humagen/render-web";
 import { type KeyboardEvent, useEffect, useState } from "react";
 import { ApiError, api, coworking, type Revision, type Thread } from "./api.ts";
 import { useConfiguredProviders } from "./ModelChain.tsx";
 import { POLICY } from "./models.ts";
-import { composerIconControl, Popover } from "./ui.tsx";
+import { composerTextControl as control, Popover } from "./ui.tsx";
 
 /**
  * How a session's gated actions are approved: ✋ Ask, a person, or ⏩ Auto,
@@ -137,7 +137,6 @@ export function ApprovalToggle({
     e.preventDefault();
     rows[to]?.focus();
   };
-  const Icon = mode === "ask" ? HandIcon : FastForwardIcon;
   return (
     <span className="inline-flex min-w-0 items-center gap-1" data-approval-mode={mode}>
       <Popover
@@ -145,11 +144,9 @@ export function ApprovalToggle({
         align="right"
         popup="menu"
         label={`${words.label}: ${label}`}
-        // The trigger is the mode's icon alone, so its name is said on hover and focus too.
-        tooltip={`${words.label}: ${label}`}
-        tooltipSide="top"
-        className={`${composerIconControl} text-aui-muted hover:text-aui-fg aria-expanded:bg-aui-hover aria-expanded:text-aui-fg`}
-        button={<Icon size={18} />}
+        // The trigger is the mode's word, as the footer's other settings are: no icon to decode.
+        className={control}
+        button={<span className="text-aui-xs">{mode === "ask" ? words.ask : words.auto}</span>}
       >
         {(close) => (
           <div
@@ -162,7 +159,6 @@ export function ApprovalToggle({
               {words.label}
             </p>
             {options.map((o) => {
-              const RowIcon = o.mode === "ask" ? HandIcon : FastForwardIcon;
               const on = o.mode === mode;
               return (
                 <button
@@ -179,7 +175,6 @@ export function ApprovalToggle({
                   }}
                   className="flex min-h-11 w-full items-start gap-2.5 rounded-aui px-2.5 py-2 text-left outline-none hover:bg-aui-hover focus-visible:bg-aui-hover"
                 >
-                  <RowIcon size={16} className="mt-0.5 shrink-0 text-aui-muted" />
                   <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                     <span className="text-aui-sm text-aui-fg">{o.name}</span>
                     <span className="text-aui-xs text-aui-muted">{o.hint}</span>

@@ -47,6 +47,10 @@ export const button = buttonVariants({ variant: "outline" });
 
 export const primary = buttonVariants();
 
+/** A setting under the composer said in words (approval mode, image): no box, the composer's sizes. */
+export const composerTextControl =
+  "inline-flex h-8 min-w-8 pointer-coarse:h-11 pointer-coarse:min-w-11 shrink-0 items-center justify-center gap-1.5 rounded-aui px-2 text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-expanded:bg-aui-hover aria-expanded:text-aui-fg";
+
 /** The composer and its footer use the same icon button geometry. */
 export const composerIconControl =
   "inline-flex size-8 shrink-0 items-center justify-center rounded-aui pointer-coarse:size-11 transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent";
