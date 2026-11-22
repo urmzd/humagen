@@ -12,7 +12,7 @@ import { type CSSProperties, useEffect, useRef, useState } from "react";
 import { setAgentHues, setAgentLooks } from "./agentHues.ts";
 import { botLook } from "./agentLooks.ts";
 import { type AgentLook, type AgentLookView, ApiError, api } from "./api.ts";
-import { brandShown } from "./branding.ts";
+import { agentShown, brandShown } from "./branding.ts";
 import { button, field, Label, Problem, primary, SkeletonRows } from "./ui.tsx";
 
 const words = defaultCopy.agentLook;
@@ -85,7 +85,7 @@ export function CharacterPicker({
   return (
     <fieldset className="flex min-w-0 flex-col gap-2">
       <legend className="mb-2 text-aui-xs font-medium text-aui-muted">{label}</legend>
-      <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-7">
+      <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
         {mascotPersonas.map((c) => (
           <button
             key={c}
@@ -281,7 +281,7 @@ export function AgentLookEditor({
     set({ starters: next });
   };
 
-  const shown = (look.display_name ?? "").trim() || base;
+  const shown = (look.display_name ?? "").trim() || agentShown(name);
 
   return (
     <div className="flex flex-col gap-6" data-testid="agent-look">
