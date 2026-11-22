@@ -350,7 +350,7 @@ function RowStatusBadge({ state }: { state: RowState }) {
       aria-hidden
       data-state={state.kind}
       title={state.text}
-      className={`ml-auto size-2 shrink-0 rounded-full ${STATE_DOT[state.tone]} ${state.kind === "working" ? "motion-safe:animate-pulse" : ""}`}
+      className={`size-2 shrink-0 rounded-full ${STATE_DOT[state.tone]} ${state.kind === "working" ? "motion-safe:animate-pulse" : ""}`}
     />
   );
 }
@@ -504,16 +504,24 @@ function TaskRow({
           >
             {ageText && <span className="shrink-0 whitespace-nowrap">{ageText}</span>}
             <SourceLabel source={source} />
-            {state ? (
-              <RowStatusBadge state={state} />
-            ) : unread ? (
-              <span
-                aria-hidden
-                data-dot="unread"
-                className="ml-auto size-1.5 shrink-0 rounded-full bg-[var(--humagen-unread)]"
-              />
-            ) : null}
           </span>
+          {(state || unread) && (
+            // The status sits in the menu button's column, centered under it, on the second line.
+            <span
+              data-row-status
+              className="absolute right-0.5 bottom-1.5 flex h-4 w-8 items-center justify-center pointer-coarse:bottom-2 pointer-coarse:w-11"
+            >
+              {state ? (
+                <RowStatusBadge state={state} />
+              ) : (
+                <span
+                  aria-hidden
+                  data-dot="unread"
+                  className="size-1.5 shrink-0 rounded-full bg-[var(--humagen-unread)]"
+                />
+              )}
+            </span>
+          )}
           <span className="sr-only">, {words.sources[source]}</span>
         </a>
       )}
