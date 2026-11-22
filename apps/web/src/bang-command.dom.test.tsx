@@ -3,7 +3,13 @@ import { afterEach, test } from "node:test";
 import { defaultCopy } from "@humagen/components";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { Revision, ThreadMessage, ThreadPage } from "./api.ts";
-import { bangCommand, CommandMessage, commandHint, commandsHere } from "./BangCommand.tsx";
+import {
+  bangCommand,
+  CommandMessage,
+  commandHint,
+  commandHold,
+  commandsHere,
+} from "./BangCommand.tsx";
 import { Chat } from "./Chat.tsx";
 import { stubEventSource, stubFetch } from "./dom.ts";
 import { ThreadRoom } from "./Room.tsx";
@@ -114,9 +120,20 @@ test("a draft is a command when it starts with !, and the hint says what it does
   assert.equal(commandHint("!ls", null), words.hint);
   assert.equal(commandHint("!ls", null, true), words.hintHome);
   assert.equal(commandHint("!ls", commandsHere(false, true)), words.noSandbox);
-  assert.equal(commandsHere(true, false), words.noSession);
+  // Outside a session "!" is plain text, so nothing refuses it.
+  assert.equal(commandsHere(true, false), undefined);
   // Until the server's options are read, the server decides.
   assert.equal(commandsHere(undefined, true), null);
+});
+
+test("a command draft is held while it has files attached or nothing after the !", () => {
+  // A file attached to a command would be run as part of it.
+  assert.equal(commandHold("!ls", 1, null), words.withFiles);
+  assert.equal(commandHold("!", 0, null), words.empty);
+  assert.equal(commandHold("!ls", 0, null), null);
+  assert.equal(commandHold("hello", 2, null), null);
+  // Where "!" is plain text, nothing is held.
+  assert.equal(commandHold("!", 1, undefined), null);
 });
 
 test("on Home, a ! first message starts the session with its setup and runs the command, and nothing is asked of an agent", async () => {
@@ -242,7 +259,7 @@ test("in a session, a ! message posts with command: true and shows as a command 
   await waitFor(() => assert.equal(box().value, ""));
 });
 
-test("in a shared thread a ! message is not sent: the bar says commands run only in a session", async () => {
+test("in a shared thread a ! message is plain text: it is posted as words, with no hint", async () => {
   const shared = {
     ...sessionPage,
     thread: { ...sessionPage.thread, id: "th-00000000000000cd", visibility: "shared" },
@@ -257,13 +274,29 @@ test("in a shared thread a ! message is not sent: the bar says commands run only
       },
     ],
   } as unknown as ThreadPage;
-  sessionRoom(shared);
+  sessionRoom(shared, { "POST /api/threads/th-00000000000000cd/messages": () => ({ runs: [] }) });
   await screen.findByText("hello");
-  fireEvent.change(box(), { target: { value: "!rm -rf build" } });
-  await waitFor(() => assert.equal(note(), words.noSession));
+  fireEvent.change(box(), { target: { value: "!!! deploy done" } });
+  await new Promise((r) => setTimeout(r, 50));
+  assert.equal(note(), null);
   fireEvent.keyDown(box(), { key: "Enter" });
-  assert.ok(await screen.findByText(words.noSession, { selector: ":not([data-layer=note])" }));
-  assert.equal(posts().length, 0, "nothing is sent to an agent");
+  await waitFor(() => assert.equal(posts().length, 1));
+  const body = posts()[0]?.body as { text?: string; command?: boolean };
+  assert.equal(body.text, "!!! deploy done");
+  assert.equal(body.command, undefined);
+});
+
+test("in a session a lone ! is held in the box, saying it needs a command", async () => {
+  sessionRoom(sessionPage);
+  await screen
+    .findByRole("article", { name: words.label(words.you, "echo hello") })
+    .catch(() => {});
+  fireEvent.change(box(), { target: { value: "!" } });
+  await waitFor(() => assert.equal(note(), words.empty));
+  fireEvent.keyDown(box(), { key: "Enter" });
+  await new Promise((r) => setTimeout(r, 50));
+  assert.equal(posts().length, 0);
+  assert.equal(box().value, "!");
 });
 
 test("a command's block folds long output, says when output was cut, and says how a timed-out command ended", () => {
