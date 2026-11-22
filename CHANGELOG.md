@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.188.0 (2026-11-22)
+
+### Features
+
+- **artifacts**: match list queries on text, say where a published file opens ([aea5451](https://github.com/urmzd/humagen/commit/aea5451d37f6dfe04d2df79a3db01f8b819e6b14))
+- **artifacts**: artifact_read, artifact_list and publish targets for agents ([c36c15d](https://github.com/urmzd/humagen/commit/c36c15d6681ab9c6a9531e1821862dcd52be5faa))
+- **deploy**: the chart and compose run the browser image ([8415670](https://github.com/urmzd/humagen/commit/84156707a7c4e551ad0344e2ea390680b807174a))
+- **deploy**: the browser image is one browser for every Humagen process ([ad69268](https://github.com/urmzd/humagen/commit/ad69268b2f9817ae1731af9a7062a8cfe76b635b))
+- **deploy**: a browser image, Chromium with the pinned Playwright MCP server ([a15cd53](https://github.com/urmzd/humagen/commit/a15cd533d64a137fb8f9497789f80568029e0d0f))
+
+### Bug Fixes
+
+- **deploy**: name the browser's reach under Compose and let the chart sandbox its pod ([d6cd138](https://github.com/urmzd/humagen/commit/d6cd1382b3c39d5eedfc34aba80e6aa5304863b4))
+- **deploy**: the browser overlay, a keep-open client that checks, and bounds ([abb8de1](https://github.com/urmzd/humagen/commit/abb8de1a2ae33703facdf3dcdb0901dcc055692e))
+- **ci**: restore the five jobs an edit cut from the workflow ([6eeb47b](https://github.com/urmzd/humagen/commit/6eeb47b800c498727d0625fa1251387bd7266466))
+- **deploy**: the bundled browser holds to what it says, from a review ([f94aa5f](https://github.com/urmzd/humagen/commit/f94aa5f75760beba70ff7ffb7b3c8aa2dbc66c10))
+- **platform**: a tool server that starts late is reached without a restart ([872f033](https://github.com/urmzd/humagen/commit/872f0336f3d406b777a7cd15b98f12b4cd00cd0f))
+
+### Misc
+
+- **browser**: print the browser's logs when it is not up to refuse a request ([7308cab](https://github.com/urmzd/humagen/commit/7308cab11ddeebbc30d4a86e942ad050f7511171))
+- **artifacts**: a run for an administrator outside the project reads by their own roles ([868bda8](https://github.com/urmzd/humagen/commit/868bda875b4aeb50dbd4b7d8f17da57078589447))
+- **console**: the Recent order test gives each row its own time ([f54cbd8](https://github.com/urmzd/humagen/commit/f54cbd8bad67bb2733a624f04c2b26b9279c3357))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.187.0...v0.188.0)
+
+
 ## 0.186.0 (2026-11-22)
 
 ### Features
