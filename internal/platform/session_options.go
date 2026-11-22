@@ -33,42 +33,58 @@ type SessionOptions struct {
 }
 
 // SessionOptions lists the images the caller's workspace may run a session
-// in and the repositories its enabled GitHub clients may read. The tenant
-// is the principal's.
-func (p *Platform) SessionOptions(_ context.Context, who auth.Principal) (SessionOptions, error) {
+// in and the repositories its enabled GitHub clients may read: the first
+// MaxSessionOptionRepos of them. The tenant is the principal's.
+func (p *Platform) SessionOptions(ctx context.Context, who auth.Principal) (SessionOptions, error) {
 	imgs, err := p.SessionImages(who)
 	if err != nil {
 		return SessionOptions{}, err
 	}
+	repos := p.tenantRepos(ctx, who.Tenant)
 	return SessionOptions{
 		Images:          imgs,
 		ImageRegistries: p.ImageRegistries(),
 		Sandbox:         p.cfg.Sandbox.String(),
 		Isolated:        p.cfg.Sandbox.Isolated(),
 		Terminal:        p.PersonCommands(),
-		Repos:           p.tenantRepos(who.Tenant),
+		Repos:           repos[:min(len(repos), MaxSessionOptionRepos)],
 	}, nil
 }
 
 // tenantRepos are the "owner/name" repositories the tenant's enabled GitHub
-// clients list for reading or for writes: deduplicated, sorted, capped.
-func (p *Platform) tenantRepos(tenant string) []string {
+// clients cover: those each client's installation covers, and those its
+// read_repositories or action_repositories name. They are deduplicated in
+// any case and sorted. An installation's list is capped at
+// github.MaxInstallationRepos, and a client's named ones at what
+// clients.Validate takes, so the whole is bounded.
+func (p *Platform) tenantRepos(ctx context.Context, tenant string) []string {
 	out := []string{}
+	seen := map[string]bool{}
+	add := func(r string) {
+		if r = strings.TrimSpace(r); r != "" && !seen[strings.ToLower(r)] {
+			seen[strings.ToLower(r)] = true
+			out = append(out, r)
+		}
+	}
 	if s := p.surfaces["github"]; s != nil {
 		for _, st := range s.all() {
 			c := st.client
-			if c.Tenant != tenant || !c.Enabled || c.GitHub == nil {
+			if c.Tenant != tenant || !c.Enabled || (c.GitHub == nil && st.installed == nil) {
 				continue
 			}
-			for _, r := range slices.Concat(c.GitHub.ReadRepositories, c.GitHub.ActionRepositories) {
-				if r = strings.TrimSpace(r); r != "" && !slices.Contains(out, r) {
-					out = append(out, r)
+			installed, _ := st.installed.Repos(ctx)
+			for _, r := range installed {
+				add(r)
+			}
+			if c.GitHub != nil {
+				for _, r := range slices.Concat(c.GitHub.ReadRepositories, c.GitHub.ActionRepositories) {
+					add(r)
 				}
 			}
 		}
 	}
-	slices.Sort(out)
-	return out[:min(len(out), MaxSessionOptionRepos)]
+	slices.SortFunc(out, func(a, b string) int { return strings.Compare(strings.ToLower(a), strings.ToLower(b)) })
+	return out
 }
 
 // checkSessionChoice refuses an image or repositories this tenant was not
@@ -88,6 +104,10 @@ func (p *Platform) checkSessionChoice(ctx context.Context, who auth.Principal, i
 	if err != nil {
 		return err
 	}
+	// A repository is checked against every one the tenant covers, not only
+	// the ones the options list, so an installation with more than the list
+	// shows can still start a session on any of them.
+	repos := p.tenantRepos(ctx, who.Tenant)
 	if in.Image != "" {
 		i := slices.IndexFunc(opts.Images, func(img SessionImage) bool { return img.ID == in.Image })
 		if i < 0 {
@@ -103,7 +123,7 @@ func (p *Platform) checkSessionChoice(ctx context.Context, who auth.Principal, i
 		if !ok || owner == "" || name == "" || strings.Contains(name, "/") {
 			return fmt.Errorf("%w: a repo is owner/name", threads.ErrInvalid)
 		}
-		if !slices.Contains(opts.Repos, r) {
+		if !slices.Contains(repos, r) {
 			return fmt.Errorf("%w: %s is not a repository you may choose", threads.ErrInvalid, r)
 		}
 		if seen[r] {
