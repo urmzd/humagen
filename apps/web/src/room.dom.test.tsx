@@ -2440,7 +2440,7 @@ test("scratch-only sharing waits for the file audience preview, sends its token,
   assert.equal(previewReads, 2);
 });
 
-test("an agent picked in a conversation's + menu is @mentioned in the box, never saved on the thread, and an answer an earlier selection routed still says so", async () => {
+test("an agent picked in a conversation's + menu is @mentioned in the box, never saved on the thread, and an answer an earlier selection routed says nothing of routing", async () => {
   const restore = stubEventSource();
   try {
     const routedRun = {
@@ -2541,7 +2541,9 @@ test("an agent picked in a conversation's + menu is @mentioned in the box, never
         onChanged={() => {}}
       />,
     );
-    assert.ok(await screen.findByText(defaultCopy.chat.routedAll("helper")));
+    // The answer names its agent: no line says where the message was routed.
+    await screen.findAllByRole("article", { name: /helper/i });
+    assert.equal(screen.queryByText(/^Routed to /), null);
     // The composer picks no project: a session moves from its menu.
     assert.equal(screen.queryByRole("list", { name: defaultCopy.chat.selected }), null);
     cleanup();
@@ -2745,7 +2747,7 @@ test("someone added to a private conversation may change its agents, and the com
   );
 });
 
-test("an answer says it was routed as its run recorded it, whatever the conversation's selection is now", async () => {
+test("an answer says why its agent joined, and never where a message was routed: the answer names its agent", async () => {
   const restore = stubEventSource();
   try {
     const run = (id: string, agent: string, extra: object) =>
@@ -2803,17 +2805,8 @@ test("an answer says it was routed as its run recorded it, whatever the conversa
         onChanged={() => {}}
       />,
     );
-    assert.ok(
-      await screen.findByText(
-        `${defaultCopy.chat.routed("helper")}. Joined on its own: matched renewals.`,
-      ),
-    );
-    assert.ok(screen.getByText(defaultCopy.chat.routedAll("lead")));
-    assert.equal(
-      screen.getAllByText(/^Routed to /).length,
-      2,
-      "the tagged answer says nothing of routing",
-    );
+    assert.ok(await screen.findByText("Joined on its own: matched renewals."));
+    assert.equal(screen.queryByText(/Routed to /), null, "no answer says where it was routed");
     cleanup();
   } finally {
     restore();
@@ -2951,7 +2944,7 @@ test("a move someone else beat says so in words and reads the conversation again
   await waitFor(() => assert.ok(reads >= 1, "the conversation is read again"));
 });
 
-test("an answer routed to the one agent a message went to says only where it went", async () => {
+test("an answer routed to the one agent a message went to has no routing line", async () => {
   const restore = stubEventSource();
   try {
     const lone: ThreadPage = {
@@ -3001,8 +2994,8 @@ test("an answer routed to the one agent a message went to says only where it wen
         onChanged={() => {}}
       />,
     );
-    assert.ok(await screen.findByText(defaultCopy.chat.routed("helper")));
-    assert.ok(!screen.queryByText(defaultCopy.chat.routedAll("helper")));
+    await screen.findAllByRole("article", { name: /helper/i });
+    assert.equal(screen.queryByText(/Routed to /), null);
     cleanup();
   } finally {
     restore();
@@ -3216,7 +3209,7 @@ test("Share says who the platform did not add, and why, beside who was told", as
 
 test("human and agent replies keep Copy and Reply in the same footer", async () => {
   room();
-  for (const label of ["Message from Ana", "helper message"]) {
+  for (const label of ["Message from Ana", "Helper message"]) {
     const message = await screen.findByRole("article", { name: label });
     const toolbar = within(message).getByRole("toolbar", { name: "Message actions" });
     assert.ok(within(toolbar).getByRole("button", { name: /Copy (message|answer)/ }));
@@ -3227,7 +3220,7 @@ test("human and agent replies keep Copy and Reply in the same footer", async () 
 
 test("agent replies expose their recorded instant with the same accessible timestamp", async () => {
   room();
-  const message = await screen.findByRole("article", { name: "helper message" });
+  const message = await screen.findByRole("article", { name: "Helper message" });
   const exact = new Date(at).toLocaleString(undefined, { dateStyle: "full", timeStyle: "long" });
   const time = within(message).getByRole("button", { name: words.posted(exact) });
   assert.equal(time.querySelector("time")?.dateTime, at);
@@ -3299,7 +3292,7 @@ test("recorded outcomes lead with recommendations and Redirect prepares human in
     ),
   };
   room({}, initial);
-  const message = await screen.findByRole("article", { name: "helper message" });
+  const message = await screen.findByRole("article", { name: "Helper message" });
   assert.ok(within(message).getByText("Recommendation"));
   assert.ok(within(message).getByText("Keep the current term"));
   assert.ok(within(message).getByText("Confirm the owner"));
@@ -3323,7 +3316,7 @@ test("copying an answer puts its Markdown on the clipboard in one click, with no
   });
   try {
     room();
-    const answer = await screen.findByRole("article", { name: "helper message" });
+    const answer = await screen.findByRole("article", { name: "Helper message" });
     const copy = within(answer).getByRole("button", { name: "Copy answer" });
     assert.equal(copy.getAttribute("aria-haspopup"), null);
     fireEvent.click(copy);
@@ -3514,7 +3507,7 @@ test("multiple replies by the same agent each retain one accessible Copy and Rep
     { "GET /api/runs/r2/events": () => ({ events: [] }) },
     { ...page, turns: [...page.turns, followup, secondRun] },
   );
-  const agents = await screen.findAllByRole("article", { name: "helper message" });
+  const agents = await screen.findAllByRole("article", { name: "Helper message" });
   assert.equal(agents.length, 2);
   const humans = screen.getAllByRole("article", { name: "Message from Ana" });
   assert.equal(humans.length, 2);

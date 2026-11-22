@@ -2067,8 +2067,9 @@ export const defaultCopy = {
     stepNeedsYou: "waiting for you",
     openProfile: "Open its profile to see how it is set up",
     stepFailed: (count: number) => `${count} failed`,
-    workedFor: (time: string) => `Worked for ${time}`,
-    worked: "Worked",
+    /** Under a long ask one agent gave another: show all of it, or its first lines again. */
+    askMore: "Show all",
+    askLess: "Show less",
     /**
      * A run of tool calls between two parts of an answer, as one line, and
      * each call in it as a row. `one` names what a lone call was pointed at;
@@ -4013,9 +4014,6 @@ export const defaultCopy = {
     cancelHeldHint: "Keep editing instead (Esc)",
     /** The agents could not be read. The draft stays in the bar. */
     agentsFailed: "Agents could not be loaded.",
-    /** Under an answer that went to an agent because it was selected, not tagged. */
-    routedAll: (agent: string) => `Routed to ${agent}, with every agent selected`,
-    routed: (agent: string) => `Routed to ${agent}`,
     /** Home's suggestions, as a list. */
     suggestions: "Suggestions",
     scrollBack: "Scroll Back",
@@ -5406,7 +5404,7 @@ export const defaultCopy = {
     /** On a call that does not wait: the agent carries on by itself and answers later. */
     delegated: "Delegated",
     asked: "Asked",
-    /** Under an answer: how long the response worked and how much it brought in. */
+    /** In Details: how long the response worked and how much it brought in. */
     worked: (time: string, agents: number, tools: number) =>
       [
         `Worked ${time}`,
@@ -5425,7 +5423,6 @@ export const defaultCopy = {
       agents
         ? `Failed after ${time} · ${unfinished} of ${agents} ${agents === 1 ? "agent" : "agents"} unfinished`
         : `Failed after ${time}`,
-    waitingForYou: "Waiting for you",
     thinking: "Thinking",
     input: "Input",
     result: "Result",

@@ -64,12 +64,20 @@ export function setEntryAgent(agent: string, name: string): void {
 }
 
 /**
- * The name people see for an agent: the display name its look gives it,
- * else the workspace's name for its entry agent, which nobody sees by its
- * own, and else its own name.
+ * The name people see for an agent: its look's display name, else the
+ * workspace's name for its entry agent, else its handle in title case.
  */
 export function agentShown(name: string): string {
-  return agentLook(name)?.display_name || brandShown(name);
+  return agentLook(name)?.display_name || titled(brandShown(name));
+}
+
+/** A handle as words in title case. */
+export function titled(handle: string): string {
+  return handle
+    .split(/[-_\s]+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
 }
 
 /**

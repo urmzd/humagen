@@ -145,6 +145,11 @@ body {
   box-shadow: var(--humagen-bevel);
 }
 
+/* A person's own message: one flat fill, with no edge and no bevel, so only its words catch the eye. */
+.humagen-said {
+  background: var(--aui-hover);
+}
+
 /*
  * The sidebar's glass (aui-chrome in the theme). On a phone it is a drawer
  * over the page, square at the top, edged by a neutral hairline there.
@@ -197,6 +202,14 @@ body {
     --aui-chrome-bg: color-mix(in oklab, var(--humagen-plane) 90%, transparent);
     --aui-chrome-solid: var(--humagen-plane);
   }
+}
+
+/*
+ * The sidebar sits on the frame, so it draws no edge of its own: the chrome's
+ * highlight along its top read as a stray line over the sidebar.
+ */
+.humagen-sidebar {
+  box-shadow: none;
 }
 
 /* A header that sticks while the page scrolls under it: glass over the page. */

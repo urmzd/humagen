@@ -104,7 +104,7 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
       path: `/messages/${ids.inlineCode.id}`,
       act: async (page) => {
         await readySession(page);
-        const answer = page.getByRole("article", { name: "screens-writer message", exact: true });
+        const answer = page.getByRole("article", { name: "Screens Writer message", exact: true });
         await answer.getByText("ok example.com/calc", { exact: true }).waitFor();
         await page.evaluate(() => document.fonts.ready);
         const fragments = await answer.locator(".aui-prose code").evaluateAll((nodes) =>
@@ -629,16 +629,12 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
           if (icon)
             assert.deepEqual(icon, { width: 18, height: 18 }, "Composer icons share a size");
         }
-        const worked = page.getByTestId("worked").first();
-        await worked.scrollIntoViewIfNeeded();
-        const bounds = await worked.boundingBox();
-        if (await page.evaluate(() => matchMedia("(pointer: coarse)").matches))
-          assert.ok(bounds && bounds.height >= 44, "Worked must have a 44px touch target");
-        await worked.click();
-        await detailsReady(page);
-        await details(page).getByRole("button", { name: "Close Details", exact: true }).click();
-        await details(page).waitFor({ state: "hidden" });
-        await worked.scrollIntoViewIfNeeded();
+        // An answer shows its steps and called agents in itself: nothing under it opens them again.
+        assert.equal(
+          await page.getByTestId("worked").count(),
+          0,
+          "no activity control under an answer",
+        );
       },
     },
     {
@@ -696,7 +692,7 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
       act: async (page) => {
         await readySession(page);
         const answer = page
-          .getByRole("article", { name: "screens-writer message", exact: true })
+          .getByRole("article", { name: "Screens Writer message", exact: true })
           .last();
         await answer.click({ position: { x: 4, y: 4 } });
         const down = answer.getByRole("button", { name: "Not helpful", exact: true }).last();

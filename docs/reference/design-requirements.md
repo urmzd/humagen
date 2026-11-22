@@ -76,7 +76,8 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-031 | A message names no agent under it; a router's pick is a checkpoint | Implemented: `Checkpoint` in Chat and Room for a run the dynamic router joined. In a root session a message gets one answer, and why it came from where it did (a mentioned agent, a search match) is in the answer's activity, never a line of the conversation (`traceEvents` in `responseSource.ts`, `session-answers.dom.test.tsx`, `message-refs.dom.test.tsx`); not rechecked in the browser since |
 | DES-032 | The conversation header shows which agents took part, not a count | Implemented: `Involved` in `ConversationShell.tsx`; `ui.test.tsx` passes; checked in the browser |
 | DES-033 | A turn shows its thinking and steps inline, where they happened, with what each was given and returned | Implemented in `WorkSteps.tsx` and render-web `StepIO`; web and core tests pass; checked live |
-| DES-034 | A finished turn says how long it worked | Implemented: `turn.completed` carries `durationMs`, from the run's events or its record; adapter and core tests pass |
+| DES-034 | A finished turn says how long it worked | Superseded by DES-086 (2026-11-21): the console shows no "Worked" line and no control under an answer. `turn.completed` still carries `durationMs`, which Slack's plan title uses |
+| DES-086 | A turn is its own activity: steps and called agents in time order where they happened, each called agent a full message of its own with its stream and its own rating, and no line or control that sums the turn | Implemented: `CallThreadContext` and the `embedded` form in `AgentMessage.tsx`, `CallThreads` in `MessageRefs.tsx`, `turnOfCall` in `callTurn.ts`; core, web and console tests pass; checked in the browser on a real run with two agents in parallel |
 | DES-035 | Agents are told apart by a bot in their color; a mention opens a profile on hover | Implemented: `AgentInitials` (drawn by `bot-avatars`, initials where there is no canvas), `MentionLink`; `ui.test.tsx` passes; marks checked in the browser on `/gallery.html`, dark and light |
 | DES-036 | The composer holds what is picked, and the first message posts before anything else runs | Implemented in `Composer.tsx` and `Chat.tsx`; web tests and the `home` screens pass |
 | DES-037 | Health reports active model providers and dependencies. Workspace settings group configured and available providers, put Add in the header and offer a reversible switch for workspace-managed providers | Implemented: `GET /api/health`, `Health.tsx`, `ModelProviders.tsx`, `PATCH /api/model-providers/{name}`; platform, HTTP and web DOM coverage |
@@ -1173,11 +1174,16 @@ any. This reverses the first point of DES-030.
 
 - A person's message has no line under it naming the agent: the answer below
   names it.
-- When a router picked the agent, or one of several joined, a checkpoint says
-  so between the message and the answer: a rule, a small route icon, the
-  agent's mark and why. Nothing else is drawn for a plain answer.
-- Acceptance: a direct answer has no line under the message; a routed one has
-  one checkpoint naming the agent and the reason.
+- When an agent joined for a reason of its own (a router's pick, a match), a
+  checkpoint says why between the message and the answer: a rule, a small
+  route icon, the agent's mark and the reason. Nothing else is drawn for a
+  plain answer.
+- An answer that came from the conversation's selection has no "Routed to
+  <agent>" line (owner request, 2026-11-21): the answer names its agent, so
+  the line said it twice.
+- Acceptance: a direct answer and an answer the selection routed have no line
+  under the message; an agent that joined for a reason has one checkpoint
+  with its mark and the reason.
 
 ### DES-032: Who took part, by name
 
@@ -1195,19 +1201,72 @@ any. This reverses the first point of DES-030.
   ("Read plan.md", "Searched the web, read files"). Open, each step shows the
   input it was given and the output it returned. A step waiting on a person
   keeps its group open; a failed one is counted in the line (DES-048).
-- A finished turn folds its steps under one "Worked" line.
+- A finished turn keeps its steps where they happened (DES-086). No line
+  folds the whole turn.
 - Acceptance: a turn that read, wrote, then answered shows the read and the
   write between the words they came between, each with its input and output.
 
 ### DES-034: How long a turn worked
 
-- The Worked/tools control has a minimum 44px touch target on a coarse pointer.
-  The canonical `session` browser state scrolls it into view, measures it and
-  opens/closes Details before capture.
-- A finished turn's "Worked" line says how long it worked: "Worked for 32s".
-  The time runs from the run's acceptance to its completion on the stream, or
-  from the run record's creation to its last change when the stream is gone.
-- Acceptance: a run accepted at 0s and completed at 32s reads "Worked for 32s".
+Superseded by DES-086 on 2026-11-21 for the console. What stays:
+
+- `turn.completed` carries `durationMs`. The time runs from the run's
+  acceptance to its completion on the stream, or from the run record's
+  creation to its last change when the stream is gone.
+- Slack's plan card still ends as "Worked for 32s" (`planDone`).
+
+### DES-086: A turn is its own activity
+
+Owner request, 2026-11-21: "Worked for 32s" says nothing the timestamps do
+not, the work should read in the order it happened, each called agent should
+own its thread in the turn, and a control under the answer that opens the
+same activity again makes no sense.
+
+- A turn reads top to bottom in time order: its words, its runs of steps and
+  the agents it called, each where it happened.
+- An agent is shown by a proper name (owner request, 2026-11-21): its
+  look's display name, else the workspace's name for its entry agent, else
+  its handle written as a name ("security-reviewer" is "Security
+  Reviewer"). A handle is still what a person types to tag an agent. Its
+  mark is drawn from the name it is known by, so a shown name never changes
+  its face.
+- A turn that brought in other agents reads as a conversation between them,
+  as people's messages read in a group chat (owner request, 2026-11-21): no
+  agent's part is folded, set in or summed up.
+- What an agent asked another is that agent's own words in the conversation:
+  the agent it turned to, tagged, then the whole of what it gave it. A long
+  ask shows four lines and opens to the rest. Nothing an agent was told is
+  hidden behind a title.
+- Each called agent answers as a message of its own, at full size and as wide
+  as its caller's: its mark in its own color, its name, then its whole
+  stream, drawn with the parts any answer is drawn with (`turnOfCall`): its
+  thinking, its words, each step with what it was given and returned.
+- An agent's message has its own actions: Copy, and Helpful or Not helpful,
+  which rate that agent's run (`/api/runs/{id}/feedback`) apart from the
+  answer that called it. It has no Regenerate: it answered its caller.
+- When an agent speaks again after others have, its mark and name are said
+  again before its words, so every word has its speaker. An agent that a
+  called agent called is one more participant, drawn the same way.
+- An agent's thinking is shown where it thought, when the model returned
+  any. None is made up for a run that recorded none.
+- Agents asked next to each other are asked first, all of them, then each
+  answers, in the order they were asked, also when they ran at the same
+  time. No label counts them, no chevron folds them and
+  no line says how long a call took; Details has the durations.
+- While an agent works its mark moves and stops it, as an answer's does. One
+  that failed, was denied or was stopped says so beside its task. A question
+  that waits on a person keeps its controls under the agent's message. Steps
+  the reader may not see are counted, not shown.
+- No line sums how long the turn took, and nothing under the answer opens its
+  activity a second time. The message says when; each step and each call says
+  how long it took. Under the answer are its references and its actions only.
+- Details still shows a response's activity, reached from search and from the
+  session panel, with how long it worked: "Worked 14s · 2 agents · 3 tools".
+- Acceptance: a run that called `researcher` and `writer` together shows the
+  caller's two asks, each tagged, then a message from each agent with its
+  stream and its own Helpful and Not helpful, then the caller named again
+  before its last words, no "Worked" text and no button
+  under the answer besides the message's actions.
 
 ### DES-035: Initials and mention profiles
 
@@ -1564,11 +1623,15 @@ did not keep the latest message in view as the keyboard shrank it.
 
 Rules:
 
-- A conversation of two or more turns has a wave down its left edge: a tick
-  per message and per answer, longer the more it says, swelling near the turn
-  in view or under the pointer. The turn in view is drawn in the brand's
-  sweep. It rests faint and brightens while the reader scrolls or reaches for
-  it.
+- A conversation of two or more turns has a wave down its left edge: one
+  connected line that swings from side to side of a center line (owner
+  request, 2026-11-21, replacing a tick per turn), wider where a message or
+  an answer says more, swelling near the turn in view or under the pointer. The turn in view is full ink and its
+  tone runs into its neighbours'; a failed turn and one waiting on a person
+  keep their colours. It rests faint and brightens while the reader scrolls
+  or reaches for it.
+- A person's own message is one flat fill, with no edge and no bevel (owner
+  request, 2026-11-21), so only its words catch the eye.
 - It is one vertical slider. Hover previews a turn: a person's own words, an
   answer's first line. Press, or on a touch screen press and drag, to scrub
   through the conversation; arrows, Home and End step through it. On a phone

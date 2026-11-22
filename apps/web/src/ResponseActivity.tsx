@@ -9,11 +9,11 @@ import {
   type ResponseBlock,
   type ResponseState,
   type ResponseTool,
-  waiting,
+  type Turn,
   worked,
 } from "@humagen/core";
 import { CheckIcon, ChevronRightIcon, CopyIcon, MaximizeIcon, Shimmer } from "@humagen/render-web";
-import { Inspector } from "@humagen/web";
+import { AgentMessage, Inspector } from "@humagen/web";
 import {
   createContext,
   type FormEvent,
@@ -25,7 +25,10 @@ import {
 } from "react";
 import type { Run } from "./adapter.ts";
 import { api, call } from "./api.ts";
+import { agentShown } from "./branding.ts";
+import { turnOfCall } from "./callTurn.ts";
 import { took, usd } from "./format.ts";
+import { RunFeedbackHost } from "./RunFeedback.tsx";
 import { Chips, inApp } from "./refChips.tsx";
 import {
   defaultTraceLoader,
@@ -38,7 +41,7 @@ import {
 import { href } from "./route.ts";
 import { DetailsNavigation } from "./SessionDetails.tsx";
 import type { Chip, Reference } from "./trace.ts";
-import { AgentMark, SkeletonRows } from "./ui.tsx";
+import { AgentMark, AgentTint, SkeletonRows } from "./ui.tsx";
 
 const words = defaultCopy.trace;
 
@@ -111,52 +114,6 @@ export function useResponse(source: ResponseSource | undefined) {
   return { state: state.current, version, ended, said };
 }
 
-/** "42s", or "Working 12s" while it runs. */
-function timeWords(state: ResponseState): string {
-  return took(worked(state).ms);
-}
-
-/**
- * Under an answer: "Worked 42s · 3 agents · 7 tools", a button that opens the
- * response's activity beside it. A response that used no tool and called no
- * agent has none. While a person is awaited, it says so.
- */
-export function WorkedButton({
-  state,
-  open,
-  onToggle,
-}: {
-  state: ResponseState;
-  open: boolean;
-  onToggle: () => void;
-}) {
-  const w = worked(state);
-  if (!w.agents && !w.tools) return null;
-  const awaited = waiting(state).length > 0;
-  const label =
-    state.status === "running"
-      ? awaited
-        ? words.waitingForYou
-        : words.working(timeWords(state))
-      : outcomeOf(state);
-  return (
-    <button
-      type="button"
-      aria-expanded={open}
-      onClick={onToggle}
-      data-testid="worked"
-      className={`inline-flex min-h-7 pointer-coarse:min-h-11 items-center gap-1 self-start rounded-aui px-1.5 text-aui-xs hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent ${awaited ? "text-aui-warn" : "text-aui-muted"}`}
-    >
-      <ChevronRightIcon
-        size={12}
-        aria-hidden
-        className={`shrink-0 transition-transform ${open ? "rotate-90" : ""}`}
-      />
-      {label}
-    </button>
-  );
-}
-
 /**
  * A response's references, as chips under its answer: where it started (on
  * the root message only), what `get_context` pulled, and what the answer
@@ -195,6 +152,13 @@ export function responseChips(state: ResponseState, origin?: Reference): Chip[] 
  * scrolled to.
  */
 const Focus = createContext<{ run?: string; step?: string }>({});
+
+/**
+ * Whether a lane is drawn in an answer, as one of its threads. There its line
+ * is the one control: it opens to what the agent did, and nothing on it leads
+ * away. In Details a lane also links to its agent's message on its own.
+ */
+export const LaneInMessage = createContext(false);
 
 const marks = (t: ResponseTool, f: { run?: string; step?: string }) =>
   (f.run !== undefined && t.runId === f.run) || (f.step !== undefined && t.id === f.step);
@@ -497,6 +461,8 @@ function Lane({
   // A called agent is one item: its line, and under it what it did. It is
   // open while it works, waits on someone or failed, and closed once done.
   const focus = useContext(Focus);
+  const inMessage = useContext(LaneInMessage);
+  const [stopping, setStopping] = useState(false);
   const focused = !!tool && marks(tool, focus);
   const arrive = useArrive(focused);
   // A call that does not wait is delegated: the agent carries on by itself
@@ -511,7 +477,8 @@ function Lane({
     (shown !== undefined && isAwaiting(shown));
   const line = (
     <>
-      {!root && (
+      {/* In an answer the line itself is the control: no chevron, and the mark leads. */}
+      {!root && !inMessage && (
         <ChevronRightIcon
           size={12}
           aria-hidden
@@ -520,7 +487,7 @@ function Lane({
       )}
       <AgentMark name={agent} size={18} />
       <span className="max-w-[50%] shrink-0 truncate font-medium text-aui-fg">
-        {running && !root ? <Shimmer>{agent}</Shimmer> : agent}
+        {running && !root ? <Shimmer>{agentShown(agent)}</Shimmer> : agentShown(agent)}
       </span>
       {delegated && (
         <span className="shrink-0 rounded-full border border-aui-border px-1.5 text-aui-2xs text-aui-muted">
@@ -535,13 +502,14 @@ function Lane({
           {words.status[shown]}
         </span>
       )}
-      {tool?.elapsedMs !== undefined && status === "done" && (
+      {/* How long a call took is in Details. An answer says who did what, in order. */}
+      {tool?.elapsedMs !== undefined && status === "done" && !inMessage && (
         <span className="ml-auto shrink-0 text-aui-muted text-aui-xs tabular-nums">
           {took(tool.elapsedMs)}
         </span>
       )}
       {tool?.runId && running && !root && <LaneStop run={tool.runId} agent={agent} />}
-      {tool?.runId && (
+      {tool?.runId && !inMessage && (
         <a
           href={href({ page: "message", id: tool.runId })}
           onClick={inApp}
@@ -625,6 +593,89 @@ function Lane({
       {result}
     </>
   );
+  // In an answer, a called agent is a message of its own, at full size: its
+  // name and what it was asked, its whole stream (thinking, words, each step
+  // with what it was given and returned), the agents it called as messages
+  // under it, and its own actions, so its work can be copied and rated apart
+  // from the answer that called it. A question that waits on a person keeps
+  // its controls.
+  if (inMessage && tool) {
+    const asks = blocks.filter(
+      (b): b is ResponseTool =>
+        b.type === "tool" && !b.hidden && b.kind !== "agent" && isAwaiting(b.status),
+    );
+    // A step that waits on a person is drawn once, below, with its controls.
+    const turn = turnOfCall(tool, (step) => asks.includes(step));
+    const run = tool.runId;
+    const ended = shown === "error" || shown === "denied" || shown === "stopped";
+    // What it was asked is said above it, as its caller's words. Beside its
+    // name is only what its message does not show: that it was sent off to
+    // work on its own, or how it ended when it did not finish.
+    const task =
+      delegated || (ended && shown) ? (
+        <>
+          {delegated && (
+            <span className="rounded-full border border-aui-border px-1.5 text-aui-2xs">
+              {words.delegated}
+            </span>
+          )}
+          {ended && shown && (
+            <span
+              className={`${delegated ? "ml-2" : ""} ${shown === "stopped" ? "" : "text-aui-bad"}`}
+            >
+              {words.status[shown]}
+            </span>
+          )}
+        </>
+      ) : undefined;
+    const message = (rated: Turn) => (
+      <AgentMessage
+        turn={rated}
+        task={task}
+        disclaimer={false}
+        activity={false}
+        // It answers its caller, not the person: there is nothing to ask again, and only a run can be rated.
+        capabilities={{ regenerate: false, feedback: !!run }}
+        stop={
+          run && running
+            ? {
+                pending: stopping,
+                onStop: () => {
+                  setStopping(true);
+                  api.stopRun(run).catch(() => setStopping(false));
+                },
+              }
+            : undefined
+        }
+      />
+    );
+    return (
+      <section
+        ref={arrive}
+        data-testid="activity-lane"
+        data-agent={agent}
+        data-focused={focused || undefined}
+        data-delegated={delegated || undefined}
+        aria-label={agent}
+        // One more participant of the conversation: as wide as its caller, and not set in.
+        className="flex scroll-mt-4 flex-col gap-2"
+      >
+        {/* Its own color, not its caller's. */}
+        <AgentTint name={agent}>
+          {run ? <RunFeedbackHost turn={turn}>{message}</RunFeedbackHost> : message(turn)}
+        </AgentTint>
+        {tool.progress && running && <p className="text-aui-muted text-aui-xs">{tool.progress}</p>}
+        {asks.length > 0 && (
+          <ul className="flex flex-col gap-1.5">
+            {asks.map((b) => (
+              <ToolPart key={b.id} tool={b} messageId={messageId} onAnswered={onAnswered} />
+            ))}
+          </ul>
+        )}
+        {hidden > 0 && <p className="text-aui-muted text-aui-xs">{words.privateSteps(hidden)}</p>}
+      </section>
+    );
+  }
   if (root)
     return (
       <section
