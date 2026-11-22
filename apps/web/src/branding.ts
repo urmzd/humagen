@@ -65,8 +65,7 @@ export function setEntryAgent(agent: string, name: string): void {
 
 /**
  * The name people see for an agent: its look's display name, else the
- * workspace's name for its entry agent, else its handle as a name
- * ("security-reviewer" is "Security Reviewer"). People still tag the handle.
+ * workspace's name for its entry agent, else its handle in title case.
  */
 export function agentShown(name: string): string {
   return agentLook(name)?.display_name || titled(brandShown(name));
@@ -75,7 +74,7 @@ export function agentShown(name: string): string {
 /** Words a name writes in capitals: "qa-reviewer" is "QA Reviewer". */
 const ACRONYMS = new Set(["ai", "api", "ci", "hr", "id", "pr", "qa", "sql", "ui", "ux"]);
 
-/** A handle as a name: each word capitalized, dashes and underscores as spaces. */
+/** A handle as words in title case. */
 export function titled(handle: string): string {
   return handle
     .split(/[-_\s]+/)
