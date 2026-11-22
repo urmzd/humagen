@@ -940,6 +940,18 @@ export function AgentMessage({
         {turn.reasoning && !turn.thoughts?.length && (
           <Reasoning text={turn.reasoning} streaming={reasoningLive} />
         )}
+        {/* Before its first word, step or thought, a working answer says what it is doing,
+            so a turn never sits empty under its name. */}
+        {busy &&
+          !turn.detached &&
+          !turn.text &&
+          turn.tasks.length === 0 &&
+          !turn.thoughts?.length &&
+          !turn.reasoning && (
+            <p data-aui="turn-starting" className="text-aui-muted text-aui-sm">
+              <ShimmerVerb>{doing ?? copy.status.working}</ShimmerVerb>
+            </p>
+          )}
         <ItemActionsContext.Provider value={itemActions ?? inherited}>
           <ItemStopsContext.Provider value={stops}>
             <GitHubRefWordsContext.Provider value={copy.conversation.githubRef}>
