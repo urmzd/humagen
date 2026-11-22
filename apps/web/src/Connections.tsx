@@ -1120,6 +1120,11 @@ export function Connections({
                             onChanged={changed}
                           />
                         )}
+                        {c.surface === "github" &&
+                          link(
+                            { page: "repositories", client: c.id },
+                            defaultCopy.githubRepos.open,
+                          )}
                         {c.surface === "github" && (
                           <GitHubRules
                             key={`${c.id}:rules:${c.version}`}

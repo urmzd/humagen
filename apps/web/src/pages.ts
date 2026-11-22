@@ -92,6 +92,11 @@ export const Connections = lazyPage(
     title: () => "Plugins",
   },
 );
+export const GitHubRepositories = lazyPage(
+  () => import("./GitHubRepositories.tsx"),
+  (m) => m.GitHubRepositories,
+  { title: () => defaultCopy.githubRepos.title },
+);
 export const YourConnections = lazyPage(
   () => import("./Connections.tsx"),
   (m) => m.YourConnections,
@@ -272,6 +277,8 @@ function viewsOf(route: Route): Preloads {
       return [PersonalPreferences];
     case "connections":
       return [Connections];
+    case "repositories":
+      return [GitHubRepositories, SettingsFrame];
     case "knowledge":
     case "corpus":
       return [KnowledgePage];

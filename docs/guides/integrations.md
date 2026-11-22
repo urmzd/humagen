@@ -147,8 +147,10 @@ one Slack app will be installed in the team.
 `HUMAGEN_SLACK_COMMANDS` is a JSON array of command names, descriptions and
 argument hints. Advertise only tasks supported by the chosen agent; registering
 `create-pr` does not itself add a PR-creation tool. GitHub mutations cannot be
-authorized by a Slack command. Cross-source GitHub reads require exact repository
-grants in `HUMAGEN_GITHUB_READ_REPOSITORIES`.
+authorized by a Slack command. Cross-source GitHub reads reach the repositories
+the GitHub App is installed on. `HUMAGEN_GITHUB_READ_REPOSITORIES` is optional: it
+adds exact repository names, and empty means what the app is installed on (see
+[Repositories the app is installed on](../reference/github.md#repositories-the-app-is-installed-on)).
 
 Session and code-channel availability depends on Slack's workspace features.
 Permanent feature/permission refusals are logged; normal threaded answers remain

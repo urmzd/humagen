@@ -1,5 +1,80 @@
 # Changelog
 
+## 0.191.0 (2026-11-22)
+
+### Breaking
+
+- **github**: automatic review is off unless switched on ([a4e83b3](https://github.com/urmzd/humagen/commit/a4e83b365d1c0ef78896bb27b45337f4b5aa2272))
+
+### Features
+
+- **console**: a Repositories view for a GitHub app, and each repository's settings ([7507e03](https://github.com/urmzd/humagen/commit/7507e03d4c3ef99859ffdb3aea37ab76da1801dc))
+- **github**: repository settings drive review, agent, instructions, reads and cross-surface reads ([7fd9f3a](https://github.com/urmzd/humagen/commit/7fd9f3a83d9861a90609891068e48918ffe39542))
+- **github**: per-repository settings for GitHub clients (wip) ([6ea2619](https://github.com/urmzd/humagen/commit/6ea26197910f98e6b3ecc7d8c85e013ddf775a71))
+
+### Bug Fixes
+
+- **github**: quote repository settings descriptions in the API spec; lint ([87d553c](https://github.com/urmzd/humagen/commit/87d553c98313b4a5e67d868eeb56f684d48083d5))
+- **github**: show the workspace's cross-surface answer and who keeps it on every client; close a fence the read budget cuts ([ca89994](https://github.com/urmzd/humagen/commit/ca899945647616d4a916747206722f3a3bd4e645))
+- **console**: name the GitHub app in the path, one left edge for both pages, round row ends on a phone, even reads card ([1454f4f](https://github.com/urmzd/humagen/commit/1454f4f8ed708a9569a78d027fe8ecfe5a2041dc))
+- **github**: keep a repository to its own runs across every client; fence pre-run reads in a nonce block within 3 seconds; refuse an empty write over unread settings; cover only installed, named or kept repositories ([ae49fab](https://github.com/urmzd/humagen/commit/ae49fab7acdd55ec6c66fc39a5e5f91d77701192))
+- **console**: repository list fits a phone; empty state spacing ([fa1548c](https://github.com/urmzd/humagen/commit/fa1548c8495055f85be7816609a67df10ee43608))
+
+### Misc
+
+- **copy**: regenerate copy keys for the repositories view ([d87af1b](https://github.com/urmzd/humagen/commit/d87af1bcfd957e2c3cebdda4b302de511410c3da))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.190.0...v0.191.0)
+
+
+## 0.190.0 (2026-11-22)
+
+### Features
+
+- **github**: map GitHub logins to people from HUMAGEN_GITHUB_PEOPLE ([f36601b](https://github.com/urmzd/humagen/commit/f36601bbe17b7eb4de513ca8182050e523aafe8a))
+- **github**: file each pull request and issue as one session ([27e3ef2](https://github.com/urmzd/humagen/commit/27e3ef2207ad5eb1d1ef9ba0f571ab005dc29215))
+
+### Bug Fixes
+
+- **github**: judge GitHub sessions by the root run, keep memory as before, and keep clients apart ([50dc0e8](https://github.com/urmzd/humagen/commit/50dc0e80abe1c01ebf1fc4ec511ce9c66493cce2))
+- **console**: keep the GitHub link out of trace.ts and give Home's budget room for it ([ee3a7ae](https://github.com/urmzd/humagen/commit/ee3a7ae0e7878f1482bc5aab3003fc20d4977961))
+
+### Misc
+
+- **github**: grant the mapped askers runs:write and ask on an issue through the connector ([147d372](https://github.com/urmzd/humagen/commit/147d372c07cf441209426e5a78dc222d90d559b5))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.189.0...v0.190.0)
+
+
+## 0.189.0 (2026-11-22)
+
+### Features
+
+- **github**: offer and read the repositories the app installation covers ([ca422e0](https://github.com/urmzd/humagen/commit/ca422e0a77df533dbf50f51aee0c539ebc649d62))
+
+### Bug Fixes
+
+- **github**: share one installation read outside the lock, keep each caller's deadline ([56a639a](https://github.com/urmzd/humagen/commit/56a639a25d5caa8fcc62db0a3d8807b257f7d685))
+
+### Misc
+
+- **github**: installed repositories, the picker and reads; docs and contract ([ed0031c](https://github.com/urmzd/humagen/commit/ed0031c9cb8f681e4cc0d129cbbcb04a1938dd28))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.188.1...v0.189.0)
+
+
+## 0.188.1 (2026-11-22)
+
+### Bug Fixes
+
+- **platform**: read corpora for a Slack session tree's audience in every session of it ([0e67e4e](https://github.com/urmzd/humagen/commit/0e67e4e9481664f6a662a9924597e475ce458718))
+- **slack**: check delivery before posting a new inbox item about a run ([5fb6937](https://github.com/urmzd/humagen/commit/5fb6937282387922f7eaec04d8095cd159ca349e))
+- **platform**: keep a Slack session tree out of personal tools and deliver only to its own thread ([ca178e9](https://github.com/urmzd/humagen/commit/ca178e968d659d0d4f5c89a8e3c824ad20f40621))
+- **slack**: deliver a Slack thread's own private session back to its conversation ([3bb0562](https://github.com/urmzd/humagen/commit/3bb05629c6b0731fee12615e038edfcaad48ce43))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.188.0...v0.188.1)
+
+
 ## 0.188.0 (2026-11-22)
 
 ### Features

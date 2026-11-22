@@ -114,7 +114,7 @@ func (p *Platform) builderPlacementPreview(req runtime.Request, spec wire.AgentS
 					}
 				}
 				if c.DefaultAgent == spec.Name {
-					on := c.GitHub.AutoReview == nil || c.GitHub.AutoReview.Enabled == nil || *c.GitHub.AutoReview.Enabled
+					on := c.GitHub.AutoReview != nil && c.GitHub.AutoReview.Enabled != nil && *c.GitHub.AutoReview.Enabled
 					listens = append(listens, builderListen{Connection: c.Name, Place: "GitHub pull requests: automatic review", Project: project, Enabled: c.Enabled && c.AllowsEvent("pull_request") && on})
 				}
 			}

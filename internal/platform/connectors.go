@@ -27,7 +27,9 @@ import (
 	"github.com/urmzd/humagen/pkg/authz"
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/egressguard"
+	"github.com/urmzd/humagen/pkg/integrations/github"
 	"github.com/urmzd/humagen/pkg/projects"
+	"github.com/urmzd/humagen/pkg/reposettings"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/threads"
 )
@@ -93,6 +95,13 @@ type seat struct {
 	// files reads source at a commit for the console (GitHubSource). Nil
 	// for a surface with no files.
 	files sourceReader
+	// installed keeps the repositories the client's GitHub App installation
+	// covers (github_installed.go). Nil for a client that is no
+	// installation, which reads only what it names.
+	installed *github.InstalledRepos
+	// context reads an issue or pull request for the reads a repository's
+	// settings ask for (github_repo_settings.go). Nil for a surface without.
+	context github.ContextAPI
 	// guard holds the client's writes to its surface to the egress policy
 	// (egress_guard.go). Nil for a Connection, and for a client whose API
 	// the embedding program supplied: their calls are not the platform's.
@@ -234,6 +243,19 @@ func (s *surface) stamp(ctx context.Context, st *seat, tag event.Envelope) []eve
 		return nil
 	}
 	c = current
+	// A run on a repository follows what the workspace set for it, else
+	// its client (github_repo_settings.go).
+	var repo, repoKind string
+	var repoNumber int
+	var repoSet reposettings.Settings
+	onRepo := false
+	if c.Surface == clients.GitHub {
+		if repo, repoKind, repoNumber, onRepo = channelRepository(tag.Channel); onRepo {
+			repoSet, _ = s.p.repoSettingsOf(c, repo)
+			repoSet.Repository = repo
+			c, _ = inRepo(c, repoSet)
+		}
+	}
 	resource, hasResource := clientResource(c, tag)
 	if hasResource {
 		if err := s.p.observeClientResource(c, resource); err != nil {
@@ -283,6 +305,12 @@ func (s *surface) stamp(ctx context.Context, st *seat, tag event.Envelope) []eve
 			who = append(who, answer{agent: d.Agent, id: id, picked: d.Picked})
 		}
 	}
+	// What the repository's settings ask to be read is read once, for every
+	// agent that answers.
+	read := ""
+	if onRepo {
+		read = repoReads(ctx, st.context, repoSet, repo, repoKind, repoNumber)
+	}
 	var out []event.Envelope
 	for _, a := range who {
 		if !c.Routes(a.agent) {
@@ -292,6 +320,9 @@ func (s *surface) stamp(ctx context.Context, st *seat, tag event.Envelope) []eve
 		t := wire.Clone(tag)
 		t.ID, t.Tenant = a.id, c.Tenant
 		wire.SetAgent(&t, a.agent)
+		if read != "" {
+			wire.SetText(&t, wire.TextOf(t)+"\n\n"+read)
+		}
 		wire.SetMeta(&t, runs.MetaClient, c.ID)
 		// Where the run is filed is the binding's: the channel a Slack
 		// channel is bound to, or else the client's home. What the connector
@@ -636,6 +667,13 @@ func (s *surface) hand(st *seat, w http.ResponseWriter, r *http.Request, body []
 				}
 				refused = why
 			}
+			// Automatic review follows the repository's settings, else the
+			// client's switch; a repository whose settings cannot be read is
+			// not reviewed.
+			repo := webhookRepository(body)
+			repoSet, repoRead := s.p.repoSettingsOf(current, repo)
+			repoSet.Repository = repo
+			inRepoClient, review := inRepo(current, repoSet)
 			delivery := r.Header.Get("X-GitHub-Delivery")
 			if delivery != "" && len(delivery) <= 128 {
 				for _, rule := range current.MatchAutomations(kind, body) {
@@ -663,9 +701,12 @@ func (s *surface) hand(st *seat, w http.ResponseWriter, r *http.Request, body []
 				}
 				// A reviewer from the store that the workspace has not
 				// installed reviews nothing; the delivery is still taken.
-				req, ok := current.MatchAutoReview(kind, body)
+				req, ok := inRepoClient.MatchAutoReview(kind, body)
+				if ok && (!repoRead || req.Push && !review.Pushes || !req.Push && !review.Opened) {
+					ok = false
+				}
 				if ok {
-					if why := s.p.NotInstalled(r.Context(), current.Tenant, current.DefaultAgent); why != "" {
+					if why := s.p.NotInstalled(r.Context(), current.Tenant, inRepoClient.DefaultAgent); why != "" {
 						s.p.log.Info("platform: automatic review skipped", "tenant", current.Tenant, "client", current.ID, "repository", req.Repository, "pull", req.Number, "why", why)
 						ok = false
 					}
@@ -680,7 +721,7 @@ func (s *surface) hand(st *seat, w http.ResponseWriter, r *http.Request, body []
 						s.p.log.Info("automatic review paused", "client", current.ID, "repository", req.Repository, "pull", req.Number, "pushes", AutoReviewPushes)
 					}
 					if review {
-						for _, raised := range s.stamp(r.Context(), st, autoReviewTag(current, kind, req, from)) {
+						for _, raised := range s.stamp(r.Context(), st, autoReviewTag(inRepoClient, kind, req, from)) {
 							if _, err := s.p.Invoke(r.Context(), raised); err != nil {
 								http.Error(w, "automatic review admission failed", http.StatusServiceUnavailable)
 								return
@@ -730,7 +771,7 @@ func (s *surface) Deliver(ctx context.Context, to address.Address, e event.Envel
 				return nil
 			}
 			run, err := s.p.Runs.Get(e.Tenant, e.Run)
-			if err != nil || !s.p.bridgeMayDeliver(ctx, current, to.Path[0], run) {
+			if err != nil || !s.p.bridgeMayDeliver(ctx, current, to.Path[0], "", run) {
 				return nil
 			}
 		}

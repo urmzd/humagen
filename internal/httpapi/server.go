@@ -55,6 +55,7 @@ import (
 	"github.com/urmzd/humagen/pkg/prefs"
 	"github.com/urmzd/humagen/pkg/projectforks"
 	"github.com/urmzd/humagen/pkg/projects"
+	"github.com/urmzd/humagen/pkg/reposettings"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/scratchpads"
 	"github.com/urmzd/humagen/pkg/sourcelinks"
@@ -279,6 +280,7 @@ func (s *Server) Handler() http.Handler {
 	s.threadRoutes(mux)
 	s.billingRoutes(mux)
 	s.clientRoutes(mux)
+	s.githubRepoRoutes(mux)
 	s.brandingRoutes(mux)
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, _ *http.Request) { fail(w, http.StatusNotFound, "no such route") })
 
@@ -1405,6 +1407,14 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 		fail(w, http.StatusConflict, detail(err, platform.ErrScheduleManaged))
 	case errors.Is(err, clients.ErrInvalid), errors.Is(err, callpolicy.ErrInvalid):
 		fail(w, http.StatusBadRequest, err.Error())
+	case errors.Is(err, reposettings.ErrInvalid):
+		fail(w, http.StatusBadRequest, detail(err, reposettings.ErrInvalid))
+	case errors.Is(err, reposettings.ErrNotFound):
+		fail(w, http.StatusNotFound, "not found")
+	case errors.Is(err, reposettings.ErrVersion):
+		fail(w, http.StatusConflict, "these settings changed since they were read; reload and try again")
+	case errors.Is(err, reposettings.ErrLimit):
+		fail(w, http.StatusTooManyRequests, detail(err, reposettings.ErrLimit))
 	case errors.Is(err, projectforks.ErrInvalid), errors.Is(err, projects.ErrInvalid):
 		fail(w, http.StatusBadRequest, detail(err, projects.ErrInvalid))
 	case errors.Is(err, projectforks.ErrLimit), errors.Is(err, projects.ErrLimit):
