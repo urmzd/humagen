@@ -311,7 +311,7 @@ function Customize({
     [known],
   );
   const [name, setName] = useState(template.id === "blank" ? "" : template.title);
-  const [look, setLook] = useState<AgentLook>({ shape: template.shape as AgentLook["shape"] });
+  const [look, setLook] = useState<AgentLook>({});
   const [hue, setHue] = useState<number | undefined>(() => freeHue(taken));
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState("");

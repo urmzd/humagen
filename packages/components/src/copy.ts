@@ -2311,9 +2311,9 @@ export const defaultCopy = {
     taken: "An agent or a person already has that name. Try another.",
     retired: "An agent with that name was retired, and its name stays taken. Try another.",
     lookNotKept: (name: string) =>
-      `${name} was made, but its look, greeting and starters were not saved. Try again, or open it and set them in Look.`,
-    retryLook: "Save Look Again",
-    openWithoutLook: "Open Without Look",
+      `${name} was made, but its look, greeting and starters were not saved. Try again, or open it and set them in Appearance.`,
+    retryLook: "Save Appearance Again",
+    openWithoutLook: "Open Without Appearance",
     templatesFailed: "The templates could not be read.",
     unknownTemplate: "That template is not offered any more. Pick another.",
     retry: "Retry",

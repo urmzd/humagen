@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
+import { defaultCopy } from "@humagen/components";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { AgentCreate, freeHue, handleOf, matching } from "./AgentCreate.tsx";
 import { configureAgentHues, setAgentHues } from "./agentHues.ts";
@@ -141,7 +142,7 @@ test("Customize previews the bot, then creates the agent from its template and k
   assert.ok(screen.getByText("People tag it as @report-bot."));
   // Another agent's color cannot be picked.
   assert.equal((screen.getByRole("button", { name: "Hue 0" }) as HTMLButtonElement).disabled, true);
-  fireEvent.click(screen.getByRole("button", { name: "ghost" }));
+  fireEvent.click(screen.getByRole("button", { name: "Detective" }));
   fireEvent.click(screen.getByRole("button", { name: "Hue 90" }));
   assert.ok(screen.getByText("It starts on anthropic / claude-sonnet-5-5."));
   fireEvent.click(screen.getByRole("button", { name: "Create Agent" }));
@@ -160,7 +161,7 @@ test("Customize previews the bot, then creates the agent from its template and k
   assert.deepEqual(styled, [
     {
       look: {
-        shape: "ghost",
+        character: "detective",
         display_name: "Report Bot",
         greeting: "I turn notes into documents.",
         starters: [{ title: "Draft a brief", prompt: "Draft a one-page brief." }],
@@ -254,17 +255,14 @@ test("a look that fails to save keeps the draft, says so, and is retried for the
   );
   fireEvent.click(screen.getByRole("button", { name: "Create Agent" }));
   const alert = await screen.findByRole("alert");
-  assert.equal(
-    alert.textContent,
-    "Document Writer was made, but its look, greeting and starters were not saved. Try again, or open it and set them in Look.",
-  );
+  assert.equal(alert.textContent, defaultCopy.agentCreate.lookNotKept("Document Writer"));
   assert.equal(made.length, 0);
   // The draft is kept: the name stays, and the handle it was made with cannot change.
   const name = screen.getByRole("textbox", { name: "Name" }) as HTMLInputElement;
   assert.equal(name.value, "Document Writer");
   assert.equal(name.readOnly, true);
-  assert.ok(screen.getByRole("button", { name: "Open Without Look" }));
-  fireEvent.click(screen.getByRole("button", { name: "Save Look Again" }));
+  assert.ok(screen.getByRole("button", { name: defaultCopy.agentCreate.openWithoutLook }));
+  fireEvent.click(screen.getByRole("button", { name: defaultCopy.agentCreate.retryLook }));
   await waitFor(() => assert.equal(made.length, 1));
   assert.equal(creates, 1, "the agent is made once");
   assert.equal(looks, 2);

@@ -1,11 +1,11 @@
 import { answerOfAction, answers } from "@humagen/adapter/question";
 import { defaultCopy } from "@humagen/components";
 import { WebSurface } from "@humagen/render-web";
-import { AgentInitials, AgentMessage, agentBot, botShapes } from "@humagen/web";
+import { AgentMessage, type MascotPersona, mascotPersonaOf } from "@humagen/web";
 import { useEffect, useMemo, useState } from "react";
 import type { AgentSetup, AgentSetupPlan } from "../../../packages/client/src/generated/types.ts";
 import { PublishedSkillPicker } from "./AgentDefaultSkills.tsx";
-import { trimLook } from "./AgentLookEditor.tsx";
+import { CharacterPicker, trimLook } from "./AgentLookEditor.tsx";
 import { type Run, turnOf } from "./adapter.ts";
 import { setAgentLooks } from "./agentHues.ts";
 import { type AgentTemplate, agentTemplates, setupTools } from "./agentTemplates.ts";
@@ -377,28 +377,14 @@ export function AgentSetupWizard({
                 />
               </Label>
             </div>
-            <div className="flex flex-wrap gap-1.5">
-              {botShapes.map((shape) => {
-                const on = (look.shape ?? agentBot(plan.spec.name || "agent")) === shape;
-                return (
-                  <button
-                    key={shape}
-                    type="button"
-                    aria-pressed={on}
-                    aria-label={shape}
-                    title={shape}
-                    onClick={() => setLook((l) => ({ ...l, shape: shape as AgentLook["shape"] }))}
-                    className={`flex size-10 items-center justify-center rounded-aui border ${
-                      on
-                        ? "border-aui-accent bg-aui-accent-soft"
-                        : "border-aui-border hover:bg-aui-hover"
-                    }`}
-                  >
-                    <AgentInitials name={plan.spec.name || "agent"} look={{ shape }} size={26} />
-                  </button>
-                );
-              })}
-            </div>
+            <CharacterPicker
+              base={plan.spec.name || "agent"}
+              character={
+                (look.character ?? mascotPersonaOf(plan.spec.name || "agent")) as MascotPersona
+              }
+              hue={0}
+              onPick={(c) => setLook((l) => ({ ...l, character: c }))}
+            />
           </fieldset>
         )}
         {step === 0 && (
