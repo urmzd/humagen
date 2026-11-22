@@ -3207,13 +3207,13 @@ test("Share says who the platform did not add, and why, beside who was told", as
   assert.ok(!screen.queryByText(/they were not added/), "the server's words are not shown");
 });
 
-test("human and agent replies keep Copy and Reply in the same footer", async () => {
+test("human and agent replies keep Copy in the same footer, and no Reply", async () => {
   room();
   for (const label of ["Message from Ana", "helper message"]) {
     const message = await screen.findByRole("article", { name: label });
     const toolbar = within(message).getByRole("toolbar", { name: "Message actions" });
     assert.ok(within(toolbar).getByRole("button", { name: /Copy (message|answer)/ }));
-    assert.ok(within(toolbar).getByRole("button", { name: "Reply" }));
+    assert.equal(within(toolbar).queryByRole("button", { name: "Reply" }), null);
     assert.equal(message.querySelectorAll('[role="toolbar"]').length, 1);
   }
 });
@@ -3488,7 +3488,7 @@ test("a read-only conversation archive presents saved context and exposes no com
   );
 });
 
-test("multiple replies by the same agent each retain one accessible Copy and Reply footer", async () => {
+test("multiple replies by the same agent each retain one accessible Copy footer", async () => {
   const followup = {
     kind: "message",
     message: { ...page.turns[0]!.message!, id: "m-2", text: "Who owns the next step?" },
@@ -3520,16 +3520,8 @@ test("multiple replies by the same agent each retain one accessible Copy and Rep
       within(actions[0]!).getAllByRole("button", { name: /^Copy (message|answer)/ }).length,
       1,
     );
-    assert.equal(within(actions[0]!).getAllByRole("button", { name: "Reply" }).length, 1);
+    assert.equal(within(actions[0]!).queryByRole("button", { name: "Reply" }), null);
   }
-  fireEvent.click(within(agents[1]!).getByRole("button", { name: "Reply" }));
-  await waitFor(() =>
-    assert.ok(document.querySelector("[data-reply-quote] a")?.getAttribute("href")?.includes("r2")),
-  );
-  assert.equal(
-    (document.querySelector('form[aria-label="Message"] textarea') as HTMLTextAreaElement).value,
-    "",
-  );
 });
 
 for (const kind of ["conversation", "channel"] as const) {

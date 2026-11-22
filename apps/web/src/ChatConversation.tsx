@@ -44,7 +44,6 @@ function TurnView({
   ask,
   onSwitch,
   onAsk,
-  onReply,
   onRedirect,
   actions,
   canStop = false,
@@ -63,7 +62,6 @@ function TurnView({
   live: boolean;
   onSwitch: (id: string) => void;
   onAsk?: () => void;
-  onReply?: () => void;
   onRedirect?: () => void;
   actions?: ReactNode;
 }) {
@@ -123,7 +121,6 @@ function TurnView({
                 itemActions={itemActions(run)}
                 capabilities={{ regenerate: !refused }}
                 onAskAgent={onAsk}
-                onReply={onReply}
                 onRedirect={onRedirect}
               />
             </CallThreads>
@@ -308,23 +305,6 @@ export function RunsConversation({
                   onSwitch={(id) => setChosen((c) => ({ ...c, [run.prev ?? ""]: id }))}
                   onAsk={
                     canRun ? () => setSeed({ text: `@${run.agent} `, mode: "prepend" }) : undefined
-                  }
-                  onReply={
-                    canRun
-                      ? () =>
-                          setSeed({
-                            quote: {
-                              label: `${run.agent}'s answer`,
-                              agent: run.agent,
-                              url: href({
-                                page: "conversation",
-                                id: threadId,
-                                panel: "activity",
-                                run: run.id,
-                              }),
-                            },
-                          })
-                      : undefined
                   }
                   onRedirect={
                     canRun

@@ -1216,8 +1216,11 @@ which key DES-080 gives to Send now.
   and an agent's model is the agent's own.
 - A message's actions are always shown, on every message, at 28px with a
   14px mark for a mouse and a 44px target for a finger. Nothing about them
-  changes on hover. Only a message's time shows on hover, at the end of its
-  row, so nothing between two actions comes or goes. The notice is centered on
+  changes on hover. Only a message's time shows on hover, at the far end of
+  its row (the left end under a person's message, which sits on the right),
+  so nothing between two actions comes or goes.
+- No message has a Reply action (owner request, 2026-11-21): the composer
+  is the one place to answer. The notice is centered on
   the row, whatever the widths of the two sides.
 - The row measures the composer, not the window. Narrower than 44rem (a
   phone, a Side Chat, a session beside an open panel), the notice is a line
