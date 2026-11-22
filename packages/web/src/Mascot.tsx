@@ -130,6 +130,43 @@ const ARMS: Record<Pose, { left: [number, number]; right: [number, number] }> = 
  * an upper arm, a forearm, a hand) are drawn to images once per color, shape
  * and size, and the moving parts move those images.
  */
+/**
+ * The 3D drawing is heavy, so it never runs all at once: each piece of work
+ * is a small job, and jobs run in idle time a few at a time, with the page
+ * free to respond between them. Pictures are handed out as blob URLs, which
+ * the browser decodes once, rather than long data URLs copied into the page.
+ */
+type Job = () => void;
+const jobs: Job[] = [];
+let pumping = false;
+function work(job: Job, soon = false) {
+  if (soon) jobs.unshift(job);
+  else jobs.push(job);
+  if (!pumping) pump();
+}
+function pump() {
+  pumping = true;
+  const run = (deadline?: IdleDeadline) => {
+    const start = performance.now();
+    do jobs.shift()?.();
+    while (
+      jobs.length &&
+      performance.now() - start < 10 &&
+      (!deadline || deadline.timeRemaining() > 4)
+    );
+    if (jobs.length) pump();
+    else pumping = false;
+  };
+  if (typeof window.requestIdleCallback === "function")
+    window.requestIdleCallback(run, { timeout: 400 });
+  else setTimeout(run, 16);
+}
+function urlOf(canvas: HTMLCanvasElement): Promise<string> {
+  return new Promise((resolve) =>
+    canvas.toBlob((blob) => resolve(blob ? URL.createObjectURL(blob) : ""), "image/png"),
+  );
+}
+
 const baked = new Map<string, Promise<string>>();
 
 function furDefs(box: [number, number, number, number]) {
@@ -155,15 +192,16 @@ function bake(key: string, box: [number, number, number, number], body: string, 
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${Math.ceil(w * px)}" height="${Math.ceil(h * px)}" viewBox="${x} ${y} ${w} ${h}">${furDefs(box)}${body}</svg>`;
   const made = new Promise<string>((resolve, reject) => {
     const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement("canvas");
-      canvas.width = Math.ceil(w * px);
-      canvas.height = Math.ceil(h * px);
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return reject(new Error("no canvas"));
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      resolve(canvas.toDataURL("image/png"));
-    };
+    img.onload = () =>
+      work(() => {
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.ceil(w * px);
+        canvas.height = Math.ceil(h * px);
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return reject(new Error("no canvas"));
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        urlOf(canvas).then(resolve);
+      });
     img.onerror = () => reject(new Error("fur could not be drawn"));
     img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
   });
@@ -256,9 +294,10 @@ export const TURN_FRAMES = 16;
 const turns = new Map<string, Promise<string>>();
 
 /**
- * The body at every angle of a full turn, side by side in one image, drawn
- * on idle time after the still body: the spin shows it frame by frame, so it
- * turns in depth rather than flipping like a card.
+ * The body at every angle of a full turn, side by side in one image: the
+ * spin shows it frame by frame, so it turns in depth rather than flipping
+ * like a card. It is drawn only when a bot is first about to spin, at a
+ * modest size, one angle per job.
  */
 function bakeTurn(key: string, path: () => Path2D, color: string, unit: number) {
   const hit = turns.get(key);
@@ -267,20 +306,19 @@ function bakeTurn(key: string, path: () => Path2D, color: string, unit: number) 
   const side = Math.round(box * BOT_AVATAR_OVERSCAN);
   const theme = document.documentElement.dataset.theme === "light" ? "light" : "dark";
   const made = new Promise<string>((resolve) => {
-    const idle = (fn: () => void) =>
-      "requestIdleCallback" in window ? window.requestIdleCallback(fn) : setTimeout(fn, 200);
-    idle(() => {
-      const strip = document.createElement("canvas");
-      strip.width = side * TURN_FRAMES;
-      strip.height = side;
-      const sctx = strip.getContext("2d");
-      const frame = document.createElement("canvas");
-      frame.width = frame.height = side;
-      const fctx = frame.getContext("2d");
-      if (!sctx || !fctx) return resolve("");
-      const p = path();
-      warmBotAvatarPlastic(key, p, box, undefined, true);
-      for (let i = 0; i < TURN_FRAMES; i++) {
+    const strip = document.createElement("canvas");
+    strip.width = side * TURN_FRAMES;
+    strip.height = side;
+    const sctx = strip.getContext("2d");
+    const frame = document.createElement("canvas");
+    frame.width = frame.height = side;
+    const fctx = frame.getContext("2d");
+    if (!sctx || !fctx) return resolve("");
+    const p = path();
+    // One job builds the form, then one job draws each angle.
+    work(() => warmBotAvatarPlastic(key, p, box, undefined, true));
+    for (let i = 0; i < TURN_FRAMES; i++)
+      work(() => {
         fctx.clearRect(0, 0, side, side);
         drawBotAvatarFrame(
           fctx,
@@ -302,9 +340,8 @@ function bakeTurn(key: string, path: () => Path2D, color: string, unit: number) 
           },
         );
         sctx.drawImage(frame, i * side, 0);
-      }
-      resolve(strip.toDataURL("image/png"));
-    });
+        if (i === TURN_FRAMES - 1) urlOf(strip).then(resolve);
+      });
   });
   turns.set(key, made);
   return made;
@@ -343,10 +380,12 @@ function bakeFabric(key: string, path: () => Path2D, color: string, unit: number
         dpr: 1,
       });
     };
-    // Build the form and grow its pile now, so one draw has the fur.
-    warmBotAvatarPlastic(key, path(), box, undefined, true);
-    draw();
-    resolve(canvas.toDataURL("image/png"));
+    // Build the form and grow its pile, then draw it once with its fur.
+    work(() => {
+      warmBotAvatarPlastic(key, path(), box, undefined, true);
+      draw();
+      urlOf(canvas).then(resolve);
+    });
   });
   fabrics.set(key, made);
   return made;
@@ -384,11 +423,14 @@ function useFur(
   shape: Shape,
   cy: number,
   size: number,
+  seen: boolean,
   sleeve?: string,
-): Fur {
+): Fur & { wantTurn: () => void } {
   const [fur, setFur] = useState<Fur>({});
+  const turnKey = useRef<() => void>(() => {});
   useEffect(() => {
-    if (!ink || typeof document === "undefined") return;
+    // Nothing is drawn for a bot that has not come into view.
+    if (!ink || !seen || typeof document === "undefined") return;
     const limb = `color-mix(in oklab, ${ink} 88%, black)`;
     const px = Math.min(6, Math.max(2, (size / 120) * (window.devicePixelRatio || 1) * 1.5));
     const k = `${ink}|${sleeve ?? ""}|${JSON.stringify(shape)}|${px.toFixed(2)}`;
@@ -411,18 +453,19 @@ function useFur(
     let live = true;
     const keep = (name: keyof typeof BOX) => (url: string) =>
       live && url && setFur((f) => ({ ...f, [name]: url }));
-    const unit = Math.min(8, Math.max(1.5, (size / 80) * (window.devicePixelRatio || 1)));
+    // Sharp enough for the size it is shown at, and no larger: the form's
+    // cost grows with it.
+    const unit = Math.min(2.2, Math.max(0.8, (size / 80) * (window.devicePixelRatio || 1)));
     const hex = hexOf(ink);
     const limbHex = hexOf(`color-mix(in oklab, ${ink} 90%, black)`);
     const fk = `${hex}|${JSON.stringify(shape)}|${unit.toFixed(2)}`;
-    bakeFabric(`body|${fk}`, () => bodyPath(shape, cy), hex, unit).then((url) => {
-      keep("body")(url);
-      // Once the pile is grown, the turn reuses it.
-      if (url)
-        bakeTurn(`body|${fk}`, () => bodyPath(shape, cy), hex, unit).then(
-          (turn) => live && turn && setFur((f) => ({ ...f, turn })),
-        );
-    });
+    bakeFabric(`body|${fk}`, () => bodyPath(shape, cy), hex, unit).then(keep("body"));
+    // The turn is drawn on first need, smaller than the still body.
+    const turnUnit = Math.min(unit, 1.4);
+    turnKey.current = () =>
+      bakeTurn(`turn|${fk}|${turnUnit}`, () => bodyPath(shape, cy), hex, turnUnit).then(
+        (turn) => live && turn && setFur((f) => ({ ...f, turn })),
+      );
     if (sleeve)
       for (const name of ["upper", "fore"] as const)
         bake(`${name}|${k}`, BOX[name], parts[name], px).then(keep(name), () => {});
@@ -440,8 +483,9 @@ function useFur(
     return () => {
       live = false;
     };
-  }, [ink, shape, cy, size, sleeve]);
-  return sleeve ? { ...fur, cloth: true } : fur;
+  }, [ink, shape, cy, size, sleeve, seen]);
+  const wantTurn = () => turnKey.current();
+  return sleeve ? { ...fur, cloth: true, wantTurn } : { ...fur, wantTurn };
 }
 
 function FurImage({ url, box }: { url: string; box: [number, number, number, number] }) {
@@ -463,13 +507,20 @@ const reducedMotion = () =>
  * does. Nothing plays while the bot works or waits, in a hidden tab, or under
  * reduced motion.
  */
-function useAct(on: boolean, every: [number, number], canSpin: boolean) {
+function useAct(
+  on: boolean,
+  every: [number, number],
+  canSpin: boolean,
+  /** Asks for the turn to be drawn, when a spin comes up before it is. */
+  wantSpin: () => void,
+) {
   const [act, setAct] = useState<Act>();
   const last = useRef<Act | undefined>(undefined);
   const busy = useRef(false);
   const ends = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const play = () => {
     if (!on || busy.current || reducedMotion()) return;
+    if (!canSpin) wantSpin();
     const choices = (Object.keys(ACTS) as Act[]).filter(
       (a) => a !== last.current && (a !== "spin" || canSpin),
     );
@@ -551,9 +602,36 @@ export function Mascot({
   useLayoutEffect(() => {
     if (ref.current) setInk(getComputedStyle(ref.current).color);
   }, [color]);
-  const fur = useFur(ink, shape, cy, size, persona === "spy" ? "#16181d" : undefined);
+  // Whether it is on screen: it is drawn once it first comes into view, and
+  // it holds still while out of view.
+  const [seen, setSeen] = useState(false);
+  const [away, setAway] = useState(true);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof IntersectionObserver === "undefined") {
+      setSeen(true);
+      setAway(false);
+      return;
+    }
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        const on = !!entry?.isIntersecting;
+        setAway(!on);
+        if (on) setSeen(true);
+      },
+      { rootMargin: "200px" },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+  const fur = useFur(ink, shape, cy, size, seen, persona === "spy" ? "#16181d" : undefined);
   // An idle bot plays now and then, and at once when pointed at; rarely in a list.
-  const { act, play } = useAct(pose === "idle", fit ? [14000, 30000] : [4000, 9000], !!fur.turn);
+  const { act, play } = useAct(
+    pose === "idle" && !away,
+    fit ? [14000, 30000] : [4000, 9000],
+    !!fur.turn,
+    fur.wantTurn,
+  );
   return (
     <svg
       ref={ref}
@@ -563,6 +641,7 @@ export function Mascot({
       height={size}
       data-quiet={quiet || undefined}
       data-act={act}
+      data-away={away || undefined}
       onPointerEnter={(e) => {
         if (e.pointerType === "mouse") play();
       }}

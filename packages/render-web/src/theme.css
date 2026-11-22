@@ -1407,6 +1407,11 @@
     overflow: visible;
     flex-shrink: 0;
   }
+  /* A bot out of view holds still: nothing of it is drawn again. */
+  .hm-mascot[data-away],
+  .hm-mascot[data-away] * {
+    animation-play-state: paused !important;
+  }
   .hm-mascot[data-quiet]:not([data-act]),
   .hm-mascot[data-quiet]:not([data-act]) * {
     animation: none !important;
