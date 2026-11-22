@@ -4118,22 +4118,19 @@ export const defaultCopy = {
   rated: { up: "Rated helpful", down: "Rated not helpful" },
   /** Where a schedule's answers go, and the weekly recap a project can add. */
   automations: {
-    title: "Scheduled",
-    lede: "Work that runs at set times. Each run is a session, and its answer goes where you choose.",
-    newSchedule: "New Schedule",
-    empty: "Nothing scheduled yet",
+    title: "Automations",
+    /** What starts an automation is its trigger. A schedule is the one trigger there is. */
+    lede: "Work an agent starts without being asked. Each one runs on a schedule, each run is a session, and its answer goes where you choose.",
+    newSchedule: "New Automation",
+    empty: "No automations yet",
     active: "Active",
     paused: "Paused",
-    tabs: "Scheduled work",
-    schedulesTab: "Schedules",
-    backgroundTab: "Background",
   },
+  /** Work a session's agents keep at for it: shown in that session's Details, nowhere else. */
   background: {
     title: "Background",
-    empty: "No background work",
+    stopLabel: (text: string) => `Stop: ${text}`,
     stop: "Stop",
-    retry: "Retry",
-    couldNotLoad: "Background work could not be loaded",
     couldNotStop: "It could not be stopped",
     kind: { watch: "Watch", goal: "Goal", task: "Task" } as Record<string, string>,
     state: {

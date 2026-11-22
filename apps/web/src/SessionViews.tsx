@@ -224,18 +224,7 @@ export function SessionViews({
                 </>
               );
               const cls = `${menuRow()} ${primary ? "md:hidden" : ""}`;
-              return v === "background" ? (
-                <a
-                  key={v}
-                  role="menuitem"
-                  href={href({ page: "automations", tab: "background" })}
-                  data-session-view={v}
-                  className={cls}
-                  onClick={close}
-                >
-                  {body}
-                </a>
-              ) : (
+              return (
                 <button
                   key={v}
                   type="button"

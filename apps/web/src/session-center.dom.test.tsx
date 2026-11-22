@@ -303,7 +303,7 @@ test("Sessions fetches mine roots, one card each, with nothing listed beneath a 
   assert.ok(net.seen.some((r) => r.path.includes("roots=true") && r.path.includes("mine=true")));
   assert.ok(!net.seen.some((r) => r.path.includes("parent=")));
 });
-test("the main navigation has seven destinations, Projects and Scheduled among them, and one alert count", async () => {
+test("the main navigation has seven destinations, Projects and Automations among them, and one alert count", async () => {
   net = stubFetch({
     "GET /api/sessions": () => ({ sessions: [], next: "" }),
     "GET /api/marks": () => ({ archived: [], read: {}, tips: [] }),
@@ -332,7 +332,7 @@ test("the main navigation has seven destinations, Projects and Scheduled among t
   const links = within(screen.getByRole("navigation", { name: "Sections" })).getAllByRole("link");
   assert.deepEqual(
     links.map((a) => a.getAttribute("href")),
-    ["/", "/sessions", "/alerts", "/projects", "/agents", "/scheduled", "/artifacts"],
+    ["/", "/sessions", "/alerts", "/projects", "/agents", "/automations", "/artifacts"],
   );
   // The open sidebar names the link by the label and count it shows.
   assert.equal(
