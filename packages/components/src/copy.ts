@@ -5216,6 +5216,27 @@ export const defaultCopy = {
     exit: (code: number) => `exit ${code}`,
     timedOut: "stopped at the 15 second limit",
   },
+  /** A composer message that starts with "!": a command run in the session's sandbox (BangCommand.tsx). */
+  bangCommand: {
+    /** The hint while the draft starts with "!". */
+    hint: "Runs in this session's sandbox. The agent sees the output with your next message.",
+    hintHome:
+      "Starts a session and runs this in its sandbox. The agent sees the output with your next message.",
+    empty: "Type a command after !",
+    /** Where no command can run. Said in the hint, and again when it is sent. */
+    noSandbox: "Commands cannot run here: this deployment has no isolated sandbox.",
+    noSession: "Commands run only in a session, not in a shared thread.",
+    /** The command block in the conversation. */
+    label: (who: string, command: string) => `${who} ran ${command}`,
+    you: "You",
+    ran: "ran a command",
+    exited: (code: number) => `Exit ${code}`,
+    timedOut: "Stopped at the 15 second limit",
+    cut: "Earlier output was cut.",
+    noOutput: "No output.",
+    showAll: (lines: number) => `Show All ${lines} Lines`,
+    showLess: "Show Less",
+  },
   /** The Changes tab (WorkbenchChanges.tsx). */
   workbenchChanges: {
     empty: "No changes yet",

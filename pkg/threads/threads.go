@@ -446,9 +446,31 @@ type Message struct {
 	EditedAt *time.Time `json:"edited_at,omitempty"`
 	// SurfaceID is the surface's own id for it, such as a Slack ts. A second
 	// post with the same one is the first.
-	SurfaceID string    `json:"surface_id,omitempty"`
-	At        time.Time `json:"at"`
+	SurfaceID string `json:"surface_id,omitempty"`
+	// Command is set on a message that records a command its writer ran in
+	// the session's sandbox, typed as "!" and the command. It starts no run:
+	// the agent reads it with the next message posted after it (Commands).
+	Command *Command  `json:"command,omitempty"`
+	At      time.Time `json:"at"`
 }
+
+// Command is a command a person ran in a session's sandbox, and how it came
+// out. Its message's text is "!" and the command.
+type Command struct {
+	Command string `json:"command"`
+	// ExitCode is the command's exit status, or -1 when it was stopped at
+	// the time limit.
+	ExitCode int  `json:"exit_code"`
+	TimedOut bool `json:"timed_out,omitempty"`
+	// Output is the end of stdout and stderr, as one stream, at most
+	// MaxCommandOutput bytes. Truncated says earlier output was cut.
+	Output     string `json:"output"`
+	Truncated  bool   `json:"truncated,omitempty"`
+	DurationMS int64  `json:"duration_ms"`
+}
+
+// MaxCommandOutput is the most output one command message keeps, in bytes.
+const MaxCommandOutput = 16 << 10
 
 func (m Message) clone() Message {
 	if m.Followup != nil {
@@ -465,6 +487,10 @@ func (m Message) clone() Message {
 	if m.EditedAt != nil {
 		at := *m.EditedAt
 		m.EditedAt = &at
+	}
+	if m.Command != nil {
+		c := *m.Command
+		m.Command = &c
 	}
 	return m
 }
@@ -661,6 +687,10 @@ func (m Message) validate() error {
 		return fmt.Errorf("%w: a message follows a message of its thread or a run", ErrInvalid)
 	case m.Followup != nil && m.Answers != nil:
 		return fmt.Errorf("%w: an answer is no follow-up", ErrInvalid)
+	case m.Command != nil && (m.Followup != nil || m.Answers != nil || m.Text != "!"+m.Command.Command):
+		return fmt.Errorf("%w: a command's message is \"!\" and the command, and nothing else", ErrInvalid)
+	case m.Command != nil && (len(m.Command.Output) > MaxCommandOutput || !plain(m.Command.Output) || m.Command.DurationMS < 0):
+		return fmt.Errorf("%w: a command's output is plain text of at most %d bytes", ErrInvalid, MaxCommandOutput)
 	}
 	if m.Followup != nil {
 		if err := m.Followup.validate(); err != nil {

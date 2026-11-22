@@ -47,6 +47,7 @@ import {
 } from "./api.ts";
 import { askedOf, asksOf, copyFor, type Refusal, stillAsks } from "./asks.ts";
 import { answersLine } from "./availability.ts";
+import { bangCommand, CommandMessage, commandHint, commandsHere } from "./BangCommand.tsx";
 import { agentShown, brandShown } from "./branding.ts";
 import { Composer, type ComposerSeed } from "./Composer.tsx";
 import { type ConversationForkActions, ConversationForkPanels } from "./ConversationForkPanels.tsx";
@@ -92,6 +93,7 @@ import { OriginButton, referenceOfPlace, SessionPlace, usePlace } from "./Sessio
 import { ComposerFooter, UsageRing } from "./SessionUsage.tsx";
 import { type SessionView, SessionViews, useUnavailableViews } from "./SessionViews.tsx";
 import { ShareDialog } from "./Share.tsx";
+import { useSessionOptions } from "./sessionOptions.ts";
 import { useItemStops, useSessionBackground, useSessionStop } from "./stops.tsx";
 import { topicsOf } from "./topics.ts";
 import { mergeTurns } from "./turns.ts";
@@ -238,7 +240,13 @@ function RoomComposer({
   onBackgroundChanged,
   footer,
   sessionAgents,
+  commands,
 }: {
+  /**
+   * Whether a "!" message may run its command here: null when it may, else
+   * why not. Left out, "!" is plain text.
+   */
+  commands?: string | null;
   runs?: Run[];
   /** Every run in the session, whoever asked for it: the composer's Stop stops them all. */
   sessionRuns?: Run[];
@@ -265,6 +273,7 @@ function RoomComposer({
     text: string,
     pick?: QueuedMessage["pick"],
     uploads?: QueuedMessage["uploads"],
+    command?: boolean,
   ) => Promise<ThreadPosted>;
 }) {
   const [problem, setProblem] = useState<string | null>(null);
@@ -284,10 +293,23 @@ function RoomComposer({
   const queue = useQueue({
     onStart: (m) => {
       setProblem(null);
+      // A "!" message runs its command and starts no run. Where none may
+      // run, it is not sent to the agent: it waits in the box, saying why.
+      const command = commands !== undefined && bangCommand(m.text) !== null;
+      if (command && commands) {
+        setProblem(commands);
+        queue.reject();
+        return;
+      }
       // What the person did by hand in the workbench since their last message
       // goes with this one, and is cleared once it is posted.
       const post = (text: string) => onPost(text, m.pick, m.uploads);
-      (thread ? postWithHumanActivity(thread, m.text, post) : post(m.text))
+      (command
+        ? onPost(m.text, undefined, undefined, true)
+        : thread
+          ? postWithHumanActivity(thread, m.text, post)
+          : post(m.text)
+      )
         .then((p) => {
           setProblem(postedLine(p) || null);
           const ids = p.runs.filter((run) => isWorking(run.status)).map((run) => run.id);
@@ -353,6 +375,7 @@ function RoomComposer({
         voice={voice}
         trailing={trailing}
         footer={footer}
+        note={commands !== undefined && commandHint(draft, commands)}
         stopAll={
           thread
             ? { busy: session.busy, pending: session.pending, onStop: () => void stopAll() }
@@ -404,6 +427,8 @@ function MessageView({
   continued?: boolean;
   actions?: ReactNode;
 }) {
+  const command = m.command;
+  if (command) return <CommandMessage m={{ ...m, command }} mine={mine} focused={focused} />;
   const who = m.name || m.by;
   const followup = followupNote(m);
   // What the person did by hand before sending is drawn closed, apart from their words.
@@ -792,6 +817,8 @@ export function ThreadRoom({
   // A session opened to review an alert never repeats that alert: it belongs
   // on the conversation it came from.
   const alertRows = attention.rows.filter((a) => a.id !== page.thread.session?.source_alert);
+  // Whether a "!" message may run a command in this session's sandbox.
+  const sessionOptions = useSessionOptions(id.startsWith("s_"));
   // Every turn read so far, oldest first. A refresh reads the newest page,
   // which moves on as the thread grows; the turns it no longer holds stay.
   const [turns, setTurns] = useState<ThreadTurn[]>(initial.turns);
@@ -1289,10 +1316,16 @@ export function ThreadRoom({
                               ),
                             }}
                             autoFocus={sharing ? false : undefined}
-                            onPost={(text, pick, uploads) =>
+                            commands={commandsHere(sessionOptions?.terminal, id.startsWith("s_"))}
+                            onPost={(text, pick, uploads, command) =>
                               // It follows the newest message, so a run it starts reads the conversation so far.
                               coworking
-                                .post(id, { text, ...pick, uploads })
+                                .post(id, {
+                                  text,
+                                  ...pick,
+                                  uploads,
+                                  ...(command ? { command } : {}),
+                                })
                                 .then((p) => {
                                   // What was posted shows at once: the message, and any run its tags started.
                                   setTurns((t) =>

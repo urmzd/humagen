@@ -60,6 +60,7 @@ import type {
   StoreInstall,
   StorePackage,
   StoreRemoval,
+  ThreadCommand,
   ThreadFollowup,
   ThreadImport,
   ThreadShare,
@@ -2247,6 +2248,8 @@ export interface ThreadMessage {
   surface_id?: string;
   /** Files posted with it, by name where the poster gave one. */
   attachments?: { name?: string; alt?: string; media_type: string; unread?: string }[];
+  /** A command its author ran in the session's sandbox ("!" and the command), and how it came out. */
+  command?: ThreadCommand;
   at: string;
 }
 
@@ -2588,6 +2591,8 @@ export const coworking = {
     /** A private session's image and repositories, chosen before its first message. */
     image?: string;
     repos?: string[];
+    /** The text is "!" and a command to run in the new session's sandbox, in place of a message to its agent. */
+    command?: boolean;
   }) =>
     t.visibility === "shared"
       ? call<ThreadPosted>("POST", "/api/threads", t)
@@ -2598,6 +2603,7 @@ export const coworking = {
           agent: t.agents?.[0],
           ...(t.image && t.image !== "default" ? { image: t.image } : {}),
           ...(t.repos?.length ? { repos: t.repos } : {}),
+          ...(t.command ? { command: true } : {}),
         }).then(sessionPosted),
   /**
    * Shares a private thread in a project's channel (general unless named)
