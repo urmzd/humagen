@@ -16507,6 +16507,10 @@ components:
           description: What people call the agent. Its handle, which people tag, does not change.
           type: string
           maxLength: 40
+        character:
+          description: The mascot the agent is drawn as. Empty is the one its handle suggests.
+          type: string
+          enum: [detective, writer, engineer, scientist, inspector, spy, plain]
         shape: {type: string, enum: [clover, flower, triangle, square, blob, ghost, circle, drop, star, droid, mech, alien, hexagon, cat, cloud, pill, pebble, puddle]}
         face: {type: string, enum: [eyes, mouth]}
         finish: {type: string, enum: [fabric, plastic, smooth, flat]}
