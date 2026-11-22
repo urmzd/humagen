@@ -473,7 +473,7 @@ function open() {
   return screen.getByRole("dialog", { name: dock.usage.title });
 }
 
-test("the usage popover shows the session first, then each limit with when it resets, and See all", async () => {
+test("the usage popover is one grid of names and values, then each limit with when it resets, with no link and no close button", async () => {
   const { restore } = stubFetch({
     "GET /api/threads/s1/usage": () => usage(),
     "GET /api/usage": () => ({ scopes: [scope()] }),
@@ -485,19 +485,22 @@ test("the usage popover shows the session first, then each limit with when it re
     const pop = open();
     assert.match(pop.className, /z-\(--aui-z-popover\)/);
     assert.match(pop.className, /max-sm:z-\(--aui-z-sheet\)/, "a sheet on a phone");
-    assert.ok(within(pop).getByText(dock.usage.session));
+    // Each fact is one row: its name, then its value.
+    const facts = pop.querySelector('[data-layer="usage-facts"]');
+    assert.ok(facts);
+    assert.deepEqual(
+      [...facts.querySelectorAll("dt")].map((d) => d.textContent),
+      [dock.usage.context, dock.usage.model, dock.usage.tokens, dock.usage.topAgents],
+    );
     assert.ok(within(pop).getByText(dock.usage.contextUsed("60K", "200K")));
-    assert.ok(within(pop).getByText(dock.usage.topAgents));
+    assert.ok(within(pop).getByText("opus"));
     assert.ok(within(pop).getByText("lead"));
     assert.ok(within(pop).getByText("helper"));
     assert.ok(within(pop).getByText("Monthly tokens"));
     assert.ok(within(pop).getAllByText(/^Resets /).length >= 2);
-    assert.equal(
-      within(pop)
-        .getByRole("link", { name: /See all/ })
-        .getAttribute("href"),
-      "/settings/usage",
-    );
+    // Esc, a press outside and the ring put it away; nothing in it leads elsewhere.
+    assert.equal(within(pop).queryByRole("link"), null);
+    assert.equal(within(pop).queryByRole("button"), null);
   } finally {
     restore();
   }
@@ -515,7 +518,7 @@ test("usage loads as skeleton bars, and with no limits says so", async () => {
     assert.ok(within(pop).getAllByRole("status", { name: dock.usage.loading }).length > 0);
     answer(usage());
     await waitFor(() => assert.ok(within(pop).getByText(dock.usage.noLimits)));
-    assert.ok(within(pop).getByText(dock.usage.session));
+    assert.ok(within(pop).getByText(dock.usage.limits));
   } finally {
     restore();
   }

@@ -223,7 +223,14 @@ const toneOf = (x: { near: boolean; over: boolean }) =>
   x.over ? "over" : x.near ? "near" : "plain";
 const pct = (f: number) => Math.round(f * 100);
 
-/** What the session used: context, spend or tokens, and the agents that used most. */
+const term = "text-aui-muted";
+const value = "min-w-0 text-right tabular-nums text-aui-fg";
+
+/**
+ * What the session used, as one grid of names and values: context (with its
+ * bar), the model, spend or tokens, and the agents that used most. Each fact
+ * is one row, so nothing wraps into the next and the popover stays small.
+ */
 function SessionSection({ usage }: { usage: Read<ThreadUsage> }) {
   if (usage.state === "loading") return <Skeleton rows={2} />;
   if (usage.state === "failed") return null;
@@ -235,50 +242,63 @@ function SessionSection({ usage }: { usage: Read<ThreadUsage> }) {
   if (u.runs === 0 || (!tokens && !c))
     return <p className="text-aui-xs text-aui-muted">{words.nothingYet}</p>;
   return (
-    <div className="flex flex-col gap-2.5">
-      {c?.window && c.tokens !== undefined && (
-        <div className="flex flex-col gap-1">
-          <p className="flex items-baseline justify-between gap-3 text-aui-xs">
-            <span className="text-aui-fg">
-              {words.context}
-              {c.model && <span className="pl-2 text-aui-muted">{c.model}</span>}
-            </span>
-            <span className="flex gap-3 tabular-nums text-aui-muted">
-              <span>{words.contextUsed(count(c.tokens), count(c.window))}</span>
-              <span className="text-aui-fg">{pct(c.tokens / c.window)}%</span>
-            </span>
-          </p>
-          <Bar
-            fraction={c.tokens / c.window}
-            tone={toneOf({ near: c.tokens / c.window >= CONTEXT_NEAR, over: c.tokens >= c.window })}
-          />
-        </div>
-      )}
-      <p className="flex items-baseline justify-between gap-3 text-aui-xs">
-        <span className="text-aui-fg">{cost ? words.spent : words.tokens}</span>
-        <span className="flex gap-3 tabular-nums text-aui-muted">
-          <span>{cost ? usd(cost) : words.tokenCount(count(tokens))}</span>
-          <span>{words.runs(u.runs)}</span>
-        </span>
-      </p>
-      {top.length > 0 && (
-        <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-aui-xs text-aui-muted">
-          <span>{words.topAgents}</span>
-          {top.map((a) => (
-            <span key={a.agent} className="inline-flex items-center gap-1 text-aui-fg">
-              <AgentMark name={a.agent} size={14} />
-              {a.agent}
-              <span className="tabular-nums text-aui-muted">
-                {a.usage.cost?.currency === "USD" && a.usage.cost.micros
-                  ? usd(a.usage.cost.micros)
-                  : count((a.usage.prompt_tokens ?? 0) + (a.usage.completion_tokens ?? 0))}
-              </span>
-            </span>
-          ))}
-        </p>
-      )}
+    <>
+      <dl
+        data-layer="usage-facts"
+        className="grid grid-cols-[auto_minmax(0,1fr)] items-baseline gap-x-4 gap-y-1.5 text-aui-xs"
+      >
+        {c?.window && c.tokens !== undefined && (
+          <>
+            <dt className={term}>{words.context}</dt>
+            <dd className={value}>
+              {words.contextUsed(count(c.tokens), count(c.window))}
+              <span className="pl-2">{pct(c.tokens / c.window)}%</span>
+            </dd>
+            <dd className="col-span-2 pb-1">
+              <Bar
+                fraction={c.tokens / c.window}
+                tone={toneOf({
+                  near: c.tokens / c.window >= CONTEXT_NEAR,
+                  over: c.tokens >= c.window,
+                })}
+              />
+            </dd>
+            {c.model && (
+              <>
+                <dt className={term}>{words.model}</dt>
+                <dd className={`${value} truncate`} title={c.model}>
+                  {c.model}
+                </dd>
+              </>
+            )}
+          </>
+        )}
+        <dt className={term}>{cost ? words.spent : words.tokens}</dt>
+        <dd className={value}>
+          {cost ? usd(cost) : words.tokenCount(count(tokens))}
+          <span className="pl-2 text-aui-muted">{words.runs(u.runs)}</span>
+        </dd>
+        {top.length > 0 && (
+          <>
+            <dt className={term}>{words.topAgents}</dt>
+            <dd className={`${value} flex flex-col items-end gap-1`}>
+              {top.map((a) => (
+                <span key={a.agent} className="inline-flex max-w-full items-center gap-1.5">
+                  <AgentMark name={a.agent} size={14} />
+                  <span className="truncate">{a.agent}</span>
+                  <span className="text-aui-muted">
+                    {a.usage.cost?.currency === "USD" && a.usage.cost.micros
+                      ? usd(a.usage.cost.micros)
+                      : count((a.usage.prompt_tokens ?? 0) + (a.usage.completion_tokens ?? 0))}
+                  </span>
+                </span>
+              ))}
+            </dd>
+          </>
+        )}
+      </dl>
       {u.truncated && <p className="text-aui-2xs text-aui-muted">{words.atLeast}</p>}
-    </div>
+    </>
   );
 }
 
@@ -303,12 +323,22 @@ function LimitsSection({
   rows: LimitRow[];
 }) {
   if (limits.state === "loading") return <Skeleton rows={1} />;
-  if (limits.state === "hidden")
-    return <p className="text-aui-xs text-aui-muted">{words.limitsHidden}</p>;
   if (limits.state === "failed") return null;
-  if (rows.length === 0) return <p className="text-aui-xs text-aui-muted">{words.noLimits}</p>;
+  // No limit to show is one row of the same grid, not a section of its own.
+  if (limits.state === "hidden" || rows.length === 0)
+    return (
+      <p className="grid grid-cols-[auto_minmax(0,1fr)] items-baseline gap-x-4 text-aui-xs">
+        <span className={term}>{words.limits}</span>
+        <span className="min-w-0 text-right text-aui-muted">
+          {limits.state === "hidden" ? words.limitsHidden : words.noLimits}
+        </span>
+      </p>
+    );
   return (
-    <ul className="flex flex-col gap-3">
+    <ul
+      aria-label={words.limits}
+      className="flex flex-col gap-3 border-[var(--humagen-rule)] border-t pt-3"
+    >
       {rows.map((row) => (
         <li
           key={row.key}
@@ -396,26 +426,9 @@ export function UsageRing({
           onLeave={leave}
           className="p-4 sm:right-0 sm:bottom-full sm:mb-2 sm:w-80"
         >
-          <div className="flex flex-col gap-4">
-            <header className="flex items-center justify-between gap-3">
-              <h2 className="text-aui-sm font-medium text-aui-fg">{words.title}</h2>
-              <span className="flex items-center gap-1">
-                <a
-                  href={href({ page: "usage" })}
-                  className="rounded-aui px-1.5 py-0.5 text-aui-xs text-aui-fg hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
-                >
-                  {words.seeAll} <span aria-hidden>→</span>
-                </a>
-                <button
-                  type="button"
-                  aria-label={words.close}
-                  onClick={() => close()}
-                  className="inline-flex size-7 pointer-coarse:size-11 items-center justify-center rounded-aui text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
-                >
-                  <span aria-hidden>×</span>
-                </button>
-              </span>
-            </header>
+          <div className="flex flex-col gap-3">
+            {/* Esc, a press outside and the ring itself put it away: it has no button of its own. */}
+            <h2 className="text-aui-sm font-medium text-aui-fg">{words.title}</h2>
             {failed ? (
               <p className="flex items-center justify-between gap-3 text-aui-xs text-aui-muted">
                 {words.failed}
@@ -429,27 +442,14 @@ export function UsageRing({
               </p>
             ) : (
               <>
-                <Section title={words.session}>
-                  <SessionSection usage={usage} />
-                </Section>
-                <Section title={words.limits}>
-                  <LimitsSection limits={limits} rows={rows} />
-                </Section>
+                <SessionSection usage={usage} />
+                <LimitsSection limits={limits} rows={rows} />
               </>
             )}
           </div>
         </PaneMenu>
       )}
     </span>
-  );
-}
-
-function Section({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section className="flex flex-col gap-2">
-      <h3 className="text-aui-2xs font-medium text-aui-muted uppercase tracking-wide">{title}</h3>
-      {children}
-    </section>
   );
 }
 
