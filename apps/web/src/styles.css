@@ -204,6 +204,14 @@ body {
   }
 }
 
+/*
+ * The sidebar sits on the frame, so it draws no edge of its own: the chrome's
+ * highlight along its top read as a stray line over the sidebar.
+ */
+.humagen-sidebar {
+  box-shadow: none;
+}
+
 /* A header that sticks while the page scrolls under it: glass over the page. */
 .humagen-sticky {
   --aui-chrome-bg: color-mix(in oklab, var(--aui-bg) 78%, transparent);
