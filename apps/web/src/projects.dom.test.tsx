@@ -904,7 +904,8 @@ test("the Projects page is a table of rows, pinned first, each opening its proje
   fireEvent.click(globexLink, { metaKey: true });
   assert.deepEqual(opened, ["Globex"]);
   const row = globexLink.closest("tr") as HTMLElement;
-  assert.ok(within(row).getByText(/^Updated /));
+  // The column is named Updated, so its cells say only when.
+  assert.ok(within(row).getByText(/ ago$/));
   assert.equal(within(row).getAllByRole("button").length, 1, "its ⋯ menu is its one control");
   const headers = within(projectsTable())
     .getAllByRole("columnheader")

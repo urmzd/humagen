@@ -266,9 +266,7 @@ export function ProjectsPage({
             },
             {
               name: "Updated",
-              cell: (p) => (
-                <time dateTime={lastActive(p)}>{words.updated(ago(lastActive(p)))}</time>
-              ),
+              cell: (p) => <time dateTime={lastActive(p)}>{ago(lastActive(p))}</time>,
             },
           ]}
           link={(p) => ({ href: projectHref(p.name), onOpen: () => onOpen(p.name) })}

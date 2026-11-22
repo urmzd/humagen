@@ -103,7 +103,7 @@ test("the projects page is one title over a flat table of rows: every project bu
     /running</,
   ])
     assert.doesNotMatch(out, gone);
-  assert.match(out, /<time dateTime="2026-10-01T09:00:00Z">Updated [^<]+<\/time>/);
+  assert.match(out, /<time dateTime="2026-10-01T09:00:00Z">[^<]+ ago<\/time>/);
   assert.doesNotMatch(out, /New Project/);
   assert.equal((page({ canCreate: true }).match(/New Project/g) ?? []).length, 1);
   assert.match(page({ projects: null }), /data-testid="skeleton"/);
@@ -183,7 +183,7 @@ test("a row is its title, when it last changed and a pin: no agents, counts or u
   assert.doesNotMatch(out, /Unread updates|1 running|4 conversations/);
   assert.match(
     out,
-    /<time dateTime="2026-10-02T09:00:00Z">Updated /,
+    /<time dateTime="2026-10-02T09:00:00Z">[^<]+ ago</,
     "last activity, not last change",
   );
   assert.doesNotMatch(out, /animate-/);
