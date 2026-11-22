@@ -77,3 +77,72 @@ func TestBridgeDeliveryRechecksPolicyDirectionAndPrivateContext(t *testing.T) {
 	}
 	check(false)
 }
+
+// A session a Slack thread started answers in that Slack conversation,
+// whatever kind it is, and nowhere else; a private console session reaches
+// no Slack conversation at all.
+func TestASlackThreadsOwnSessionIsDeliveredWhereItWasAsked(t *testing.T) {
+	p, machine := slackRoom(t, nil)
+	deliverable := func(t *testing.T, channel, run string) bool {
+		t.Helper()
+		got, err := p.BridgeDeliveryAllowed(t.Context(), machine, "app", channel, run)
+		if err != nil {
+			t.Fatalf("delivery of %s to %s: %v", run, channel, err)
+		}
+		return got
+	}
+	places := []struct {
+		name, channel, typ string
+		members            []string
+		vis                threads.Visibility
+	}{
+		// What the Slack app sends today: no audience, so private to the asker.
+		{"public channel, no audience reported", "C0PUBLIC", "", nil, threads.Private},
+		{"public channel", "C0SHARED", platform.ChannelPublic, nil, threads.Shared},
+		{"private channel", "C0PRIVATE", platform.ChannelPrivate, []string{"U0ANA", "U0VIC"}, threads.Private},
+		{"legacy private channel", "G0PRIVATE", platform.ChannelPrivate, []string{"U0ANA"}, threads.Private},
+		{"group direct message", "C0GROUP", platform.ChannelGroupDM, []string{"U0ANA", "U0VIC"}, threads.Private},
+		{"legacy group direct message", "G0GROUP", platform.ChannelGroupDM, []string{"U0ANA", "U0VIC"}, threads.Private},
+		{"direct message", "D0ANA", platform.ChannelDM, nil, threads.Private},
+	}
+	started := map[string]string{}
+	for i, pl := range places {
+		t.Run(pl.name, func(t *testing.T) {
+			in := slackSession(pl.channel, "1700000000.00010"+string(rune('0'+i)), "", "<@UAPP> howdy")
+			if pl.typ != "" {
+				in = withAudience(in, pl.typ, pl.members...)
+			}
+			v, _, err := p.StartSurfaceSession(t.Context(), machine, in)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if v.Thread.Visibility != pl.vis {
+				t.Fatalf("visibility = %s, want %s", v.Thread.Visibility, pl.vis)
+			}
+			run := await(t, p, sessionRun(t, v).ID, runs.Completed)
+			started[pl.channel] = run.ID
+			if !deliverable(t, pl.channel, run.ID) {
+				t.Fatalf("the answer of the session %s started is refused there", pl.channel)
+			}
+		})
+	}
+	// A private Slack session answers only in its own conversation.
+	for _, from := range []string{"C0PUBLIC", "C0PRIVATE", "G0PRIVATE", "C0GROUP", "G0GROUP"} {
+		if deliverable(t, "C0SHARED", started[from]) {
+			t.Fatalf("the private session %s started is delivered to another channel", from)
+		}
+	}
+	// A private console session reaches no Slack channel.
+	who := auth.Principal{Kind: auth.User, Tenant: tenant, Subject: "ana", Roles: []auth.Role{auth.Admin}}
+	posted, err := p.StartThread(t.Context(), who, platform.ThreadInput{Project: "Initech", Visibility: threads.Private, Agents: []string{"lead"}, Text: "@lead keep this between us"})
+	if err != nil || len(posted.Runs) != 1 {
+		t.Fatal(posted, err)
+	}
+	console := await(t, p, posted.Runs[0].ID, runs.Completed)
+	for _, channel := range []string{"C0PUBLIC", "C0SHARED", "C0PRIVATE", "G0GROUP"} {
+		got, err := p.BridgeDeliveryAllowed(t.Context(), machine, "app", channel, console.ID)
+		if err == nil && got {
+			t.Fatalf("a private console session's run is delivered to %s", channel)
+		}
+	}
+}

@@ -1215,6 +1215,7 @@ export class App {
       return "done" as const;
     }
     let outputRun = "";
+    let refusedRun: string | undefined;
     // Continue in a Code Channel is offered under an answer this app keyed by its thread.
     let movable = false;
     const items = new Mailbox<Item>();
@@ -1226,7 +1227,17 @@ export class App {
       authorOf: this.authorOf,
       native: this.native,
       outcomesOnly: controls.policy.bound,
-      canDeliver: async () => this.bridgeOutputAllowed(job.session.channel, outputRun),
+      // A refused delivery is said once per run, never dropped without a word.
+      canDeliver: async () => {
+        const refusal = await this.deliveryRefusal(job.session.channel, outputRun);
+        if (refusal && refusedRun !== outputRun) {
+          refusedRun = outputRun;
+          this.log(
+            `run ${outputRun || "(none yet)"} not delivered to ${job.session.channel}: ${refusal}`,
+          );
+        }
+        return !refusal;
+      },
       copy: this.copy,
       capabilities: this.capabilities,
       log: (line) => this.log(line),
@@ -2539,11 +2550,19 @@ export class App {
     }
   }
   private async bridgeOutputAllowed(channel: string, run = ""): Promise<boolean> {
+    return (await this.deliveryRefusal(channel, run)) === "";
+  }
+  /** Why a run may not be posted in a Slack channel, or "" when it may. */
+  private async deliveryRefusal(channel: string, run = ""): Promise<string> {
     const controls = await this.bridgeControls(channel);
-    if (!controls.policy.outbound) return false;
-    if (run && this.opts.clientId)
-      return this.humagen.deliveryAllowed(this.opts.clientId, channel, run);
-    return true;
+    if (!controls.policy.outbound) return "this client or channel delivers no outcomes";
+    if (
+      run &&
+      this.opts.clientId &&
+      !(await this.humagen.deliveryAllowed(this.opts.clientId, channel, run))
+    )
+      return "humagen refused delivery of this run here";
+    return "";
   }
   private async isBound(channel: string): Promise<boolean> {
     return (await this.bound()).some((b) => b.slack_channel === channel);

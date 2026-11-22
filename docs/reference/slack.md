@@ -224,6 +224,20 @@ client's `slack.machine` may, and the platform decides where the thread goes:
 | A thread in an unbound channel | A shared thread in the client's home |
 | A direct message, or the assistant pane | A private thread in the client's home |
 
+Outside a bound channel the Slack thread is a root session (`POST /api/sessions`
+with `surface`), filed in the client's home. Its audience follows the Slack
+conversation the app reports, and a thread that reports none is private to the
+person asking. The answer goes back to the same Slack conversation in every
+case: a public channel, a private channel, a group direct message or a direct
+message. Before each write the app asks `GET /api/clients/{id}/delivery`. The
+server allows a private run in a Slack channel only when that channel's thread
+started the run's session: the session, or the root of its session tree, has
+that Slack thread as its surface on this client. Only the client's machine
+starts a session with a surface, so a private session started anywhere else,
+such as in the console, is never posted in a channel. When the server refuses,
+the app posts nothing and logs it once for the run:
+`run <id> not delivered to <channel>: <reason>`.
+
 The platform reads Slack's text in the one tag grammar: the app's own mention
 is not a tag, a bot in `client.bots` is its agent, a person in `slack.people`
 is their handle, and anyone else stays plain and is refused. When the app is

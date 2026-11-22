@@ -85,8 +85,13 @@ func (p *Platform) bridgeMayDeliver(ctx context.Context, c clients.Client, chann
 			return false
 		}
 	}
-	if !directMessage(channel) && (p.privateThread(c.Tenant, run.Thread) || p.RunRequiresReviewedSummary(ctx, run, p.RunPlace(c.Tenant, run).Project)) {
-		return false
+	if !directMessage(channel) {
+		if p.privateThread(c.Tenant, run.Thread) && !p.startedIn(c, channel, run.Thread) {
+			return false
+		}
+		if p.RunRequiresReviewedSummary(ctx, run, p.RunPlace(c.Tenant, run).Project) {
+			return false
+		}
 	}
 	if bound {
 		level := p.ActionDecision(c.Tenant, p.RunPlace(c.Tenant, run).Project, run.Agent, p.operationPerson(run), operations.ExternalMessages)
@@ -95,4 +100,32 @@ func (p *Platform) bridgeMayDeliver(ctx context.Context, c clients.Client, chann
 		}
 	}
 	return true
+}
+
+// startedIn reports a conversation that a Slack thread in channel started
+// through client c: the session itself, or the root of the session tree it
+// is in, carries that Slack thread as its surface. A private session of that
+// kind answers in the Slack conversation it was asked in, whatever kind of
+// channel that is, because its people are that conversation's people.
+//
+// Only the client's own machine starts a session with a surface
+// (StartSurfaceSession), so a session started anywhere else never matches:
+// a private console session stays out of every channel, even one that names
+// a Slack place as its parent.
+func (p *Platform) startedIn(c clients.Client, channel, thread string) bool {
+	id := thread
+	for range 64 {
+		th, err := p.Threads.Get(c.Tenant, id)
+		if err != nil {
+			return false
+		}
+		if th.Surface != nil {
+			return th.Surface.Client == c.ID && th.Surface.Channel == channel
+		}
+		if th.Session == nil || !strings.HasPrefix(th.Session.Parent, "s_") {
+			return false
+		}
+		id = th.Session.Parent
+	}
+	return false
 }

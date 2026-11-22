@@ -2050,6 +2050,30 @@ test("a server refusal to deliver private context prevents every native bridge o
   assert.equal(w.slack.of("chat.postMessage").length, 0);
   assert.equal(w.slack.of("chat.startStream").length, 0);
 });
+test("a refused delivery in a session thread posts nothing and is logged once for its run", async () => {
+  const w = mapped();
+  const asked: string[] = [];
+  w.humagen.deliveryAllowed = async (_client, _channel, run) => {
+    asked.push(run);
+    return false;
+  };
+  await deliver(w, mention("@lead howdy", TS));
+  const run = w.humagen.last.id;
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.delta.text.v1", { text: "Howdy" });
+  await emit(w, "run.completed.v1", { text: "Howdy! How can I help you today?" });
+  await w.app.idle();
+  assert.deepEqual(w.humagen.routes, ["session"], "the unbound channel thread is a session");
+  assert.ok(asked.length > 1, "delivery is asked before each write");
+  assert.equal(w.slack.of("chat.postMessage").length, 0);
+  assert.equal(w.slack.of("chat.startStream").length, 0);
+  const refused = w.logs.filter((l) => l.includes("not delivered"));
+  assert.equal(refused.length, 1, refused.join("\n"));
+  assert.match(
+    refused[0] ?? "",
+    new RegExp(`run ${run} not delivered to ${CHANNEL}: humagen refused`),
+  );
+});
 test("disabled installation event subscriptions do not post or start native work", async () => {
   const w = mapped();
   const c = w.humagen.clients.get(CLIENT);
