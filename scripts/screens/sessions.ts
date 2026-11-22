@@ -104,7 +104,7 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
       path: `/messages/${ids.inlineCode.id}`,
       act: async (page) => {
         await readySession(page);
-        const answer = page.getByRole("article", { name: "screens-writer message", exact: true });
+        const answer = page.getByRole("article", { name: "Screens Writer message", exact: true });
         await answer.getByText("ok example.com/calc", { exact: true }).waitFor();
         await page.evaluate(() => document.fonts.ready);
         const fragments = await answer.locator(".aui-prose code").evaluateAll((nodes) =>
@@ -615,7 +615,7 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
       act: async (page) => {
         await readySession(page);
         const answer = page
-          .getByRole("article", { name: "screens-writer message", exact: true })
+          .getByRole("article", { name: "Screens Writer message", exact: true })
           .last();
         await answer.click({ position: { x: 4, y: 4 } });
         const down = answer.getByRole("button", { name: "Not helpful", exact: true }).last();
