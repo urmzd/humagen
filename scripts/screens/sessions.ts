@@ -629,16 +629,8 @@ export function sessionScreens(ids: SessionFixtures): SessionScreen[] {
           if (icon)
             assert.deepEqual(icon, { width: 18, height: 18 }, "Composer icons share a size");
         }
-        const worked = page.getByTestId("worked").first();
-        await worked.scrollIntoViewIfNeeded();
-        const bounds = await worked.boundingBox();
-        if (await page.evaluate(() => matchMedia("(pointer: coarse)").matches))
-          assert.ok(bounds && bounds.height >= 44, "Worked must have a 44px touch target");
-        await worked.click();
-        await detailsReady(page);
-        await details(page).getByRole("button", { name: "Close Details", exact: true }).click();
-        await details(page).waitFor({ state: "hidden" });
-        await worked.scrollIntoViewIfNeeded();
+        // An answer shows its steps and called agents in itself: nothing under it opens them again.
+        assert.equal(await page.getByTestId("worked").count(), 0, "no activity control under an answer");
       },
     },
     {

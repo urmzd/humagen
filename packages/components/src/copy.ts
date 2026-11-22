@@ -5406,14 +5406,10 @@ export const defaultCopy = {
     /** On a call that does not wait: the agent carries on by itself and answers later. */
     delegated: "Delegated",
     asked: "Asked",
-    /**
-     * Under an answer: what the response brought in, which opens its
-     * activity. No duration: the message says when, and each step and call
-     * says how long it took.
-     */
-    worked: (agents: number, tools: number) =>
+    /** In Details: how long the response worked and how much it brought in. */
+    worked: (time: string, agents: number, tools: number) =>
       [
-        "Activity",
+        `Worked ${time}`,
         agents ? `${agents} ${agents === 1 ? "agent" : "agents"}` : "",
         tools ? `${tools} ${tools === 1 ? "tool" : "tools"}` : "",
       ]
@@ -5429,7 +5425,6 @@ export const defaultCopy = {
       agents
         ? `Failed after ${time} · ${unfinished} of ${agents} ${agents === 1 ? "agent" : "agents"} unfinished`
         : `Failed after ${time}`,
-    waitingForYou: "Waiting for you",
     thinking: "Thinking",
     input: "Input",
     result: "Result",

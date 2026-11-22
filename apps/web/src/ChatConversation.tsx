@@ -13,7 +13,7 @@ import { ConversationInfo, ConversationPage } from "./ConversationShell.tsx";
 import { Deliverables, revisionPrompt } from "./Deliverables.tsx";
 import { GitHubTab, reviewText, reviewView } from "./GitHubTab.tsx";
 import { itemActions } from "./itemActions.tsx";
-import { AnswerRefs, OriginRef } from "./MessageRefs.tsx";
+import { AnswerRefs, CallThreads, OriginRef } from "./MessageRefs.tsx";
 import { MessageTime } from "./MessageTime.tsx";
 import { OutcomeActions } from "./OutcomeActions.tsx";
 import { openPane } from "./pane.ts";
@@ -49,15 +49,9 @@ function TurnView({
   actions,
   canStop = false,
   origin,
-  onActivity,
-  activityOpen,
 }: {
   run: Run;
   canStop?: boolean;
-  /** Open or close this answer's activity in Details. */
-  onActivity?: (run: string) => void;
-  /** This answer's activity is open in Details. */
-  activityOpen?: boolean;
   /** Where the session started, as a chip under the first message. */
   origin?: ReactNode;
   /** The reader's subject. */
@@ -116,25 +110,27 @@ function TurnView({
       <AgentTint name={run.agent}>
         <RunFeedbackHost turn={shown}>
           {(rated) => (
-            <AgentMessage
-              actions={actions}
-              stop={stop}
-              itemStops={itemStops}
-              disclaimer={false}
-              activity={false}
-              timestamp={<MessageTime at={run.created_at} />}
-              turn={rated}
-              copy={copyFor(ask)}
-              itemActions={itemActions(run)}
-              capabilities={{ regenerate: !refused }}
-              onAskAgent={onAsk}
-              onReply={onReply}
-              onRedirect={onRedirect}
-            />
+            <CallThreads run={run} calls={rated.tasks.some((t) => t.subagent)}>
+              <AgentMessage
+                actions={actions}
+                stop={stop}
+                itemStops={itemStops}
+                disclaimer={false}
+                activity={false}
+                timestamp={<MessageTime at={run.created_at} />}
+                turn={rated}
+                copy={copyFor(ask)}
+                itemActions={itemActions(run)}
+                capabilities={{ regenerate: !refused }}
+                onAskAgent={onAsk}
+                onReply={onReply}
+                onRedirect={onRedirect}
+              />
+            </CallThreads>
           )}
         </RunFeedbackHost>
       </AgentTint>
-      <AnswerRefs run={run} open={activityOpen} onActivity={onActivity} />
+      <AnswerRefs run={run} />
 
       <div className="flex flex-wrap items-center gap-2 pl-11 text-aui-xs text-aui-muted">
         {siblings.length > 1 && (
@@ -278,12 +274,6 @@ export function RunsConversation({
                   key={run.id}
                   run={run}
                   origin={i === 0 ? <OriginRef origin={referenceOfPlace(chatPlace)} /> : undefined}
-                  activityOpen={shownView.panel === "response" && shownView.run === run.id}
-                  onActivity={(id) =>
-                    shownView.panel === "response" && shownView.run === id
-                      ? openPanel()
-                      : openPanel("response", { run: id })
-                  }
                   canStop={canRun && !room?.thread.read_only}
                   actions={
                     !room?.thread.read_only && run.status === "completed" ? (

@@ -3,13 +3,7 @@ import { allTools, type ResponseState, type Task } from "@humagen/core";
 import { CallThreadContext } from "@humagen/web";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Run } from "./adapter.ts";
-import {
-  AgentCallLane,
-  responseChips,
-  summaryOf,
-  useResponse,
-  WorkedButton,
-} from "./ResponseActivity.tsx";
+import { AgentCallLane, responseChips, summaryOf, useResponse } from "./ResponseActivity.tsx";
 import { Chips } from "./refChips.tsx";
 import { type TraceLoader, traceSource } from "./responseSource.ts";
 import type { Chip, Reference } from "./trace.ts";
@@ -101,24 +95,18 @@ export function CallThreads({
 }
 
 /**
- * Under an answer: its references as quiet chips and, when it used a tool or
- * brought in another agent, "Worked 42s · 3 agents · 7 tools", which opens the
- * response's activity in Details. Time, cost and model are in the activity.
+ * Under an answer: its references as quiet chips. What the answer did is in
+ * the answer itself, each step and each called agent where it happened, so
+ * nothing here opens it a second time.
  */
 export function AnswerRefs({
   run,
   eager,
   loader,
-  open = false,
-  onActivity,
 }: {
   run: Run;
   eager?: boolean;
   loader?: TraceLoader;
-  /** This answer's activity is open in Details. */
-  open?: boolean;
-  /** Open or close this response's activity in Details. Without it, no control is offered. */
-  onActivity?: (run: string) => void;
 }) {
   const { at, seen } = useSeen(eager);
   const { state, ended } = useRunResponse(run, seen, loader);
@@ -128,9 +116,6 @@ export function AnswerRefs({
   return (
     <div ref={at} className="flex flex-col gap-1" data-testid="answer-refs">
       <Chips chips={chips} />
-      {ended && onActivity && (
-        <WorkedButton state={state} open={open} onToggle={() => onActivity(run.id)} />
-      )}
     </div>
   );
 }

@@ -70,9 +70,9 @@ test("each step sits where it happened, as one line that opens to its input and 
   assert.equal(input.querySelector("dd")?.textContent, "plan.md");
   assert.ok(screen.getByText("Result"));
   assert.match(document.body.textContent ?? "", /The embargo stays on November 12/);
-  // The trace folds under "Worked", leaving the answer.
-  fireEvent.click(screen.getByRole("button", { name: /^Worked/ }));
-  assert.equal(screen.queryByText("Read plan.md"), null);
+  // No line folds the whole turn: the step stays where it happened.
+  assert.equal(screen.queryByRole("button", { name: /^Worked/ }), null);
+  assert.ok(screen.getByRole("button", { name: "Read plan.md" }));
   assert.ok(screen.getByText(/The launch brief is ready\./));
 });
 

@@ -584,8 +584,6 @@ function AnswerView({
   onAsk,
   onReply,
   onRedirect,
-  onActivity,
-  activityOpen,
   actions,
   canStop = false,
   focused = false,
@@ -598,10 +596,6 @@ function AnswerView({
   /** The reader's background work from this session, which a step's own Stop ends. */
   background?: BackgroundTask[];
   onBackgroundChanged?: () => void;
-  /** Open or close this answer's activity in Details. */
-  onActivity?: (run: string) => void;
-  /** This answer's activity is open in Details. */
-  activityOpen?: boolean;
   me: string;
   live: boolean;
   ask?: ThreadAsk[];
@@ -683,7 +677,7 @@ function AnswerView({
           )}
         </RunFeedbackHost>
       </AgentTint>
-      <AnswerRefs run={run} open={activityOpen} onActivity={onActivity} />
+      <AnswerRefs run={run} />
       <BrowserCard thread={run.thread} tasks={drawn.tasks} />
       {refused && stillAsks(shown, refused.question) && (
         <div className="pl-11">
@@ -1454,14 +1448,6 @@ export function ThreadRoom({
                             ) : undefined
                           }
                           routed={routedOf(t.run)}
-                          activityOpen={
-                            shownView.panel === "response" && shownView.run === t.run.id
-                          }
-                          onActivity={(run) =>
-                            shownView.panel === "response" && shownView.run === run
-                              ? openPanel()
-                              : openPanel("response", { run })
-                          }
                           onAsk={
                             posts
                               ? () => setSeed({ text: `@${t.run?.agent} `, mode: "prepend" })

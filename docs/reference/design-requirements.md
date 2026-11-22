@@ -76,7 +76,8 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-031 | A message names no agent under it; a router's pick is a checkpoint | Implemented: `Checkpoint` in Chat and Room for a run the dynamic router joined. In a root session a message gets one answer, and why it came from where it did (a mentioned agent, a search match) is in the answer's activity, never a line of the conversation (`traceEvents` in `responseSource.ts`, `session-answers.dom.test.tsx`, `message-refs.dom.test.tsx`); not rechecked in the browser since |
 | DES-032 | The conversation header shows which agents took part, not a count | Implemented: `Involved` in `ConversationShell.tsx`; `ui.test.tsx` passes; checked in the browser |
 | DES-033 | A turn shows its thinking and steps inline, where they happened, with what each was given and returned | Implemented in `WorkSteps.tsx` and render-web `StepIO`; web and core tests pass; checked live |
-| DES-034 | A finished turn says how long it worked | Implemented: `turn.completed` carries `durationMs`, from the run's events or its record; adapter and core tests pass |
+| DES-034 | A finished turn says how long it worked | Superseded by DES-086 (2026-11-21): the console shows no "Worked" line and no control under an answer. `turn.completed` still carries `durationMs`, which Slack's plan title uses |
+| DES-086 | A turn is its own activity: steps and called agents in time order where they happened, each called agent a thread of its own, agents that ran together shown together, and no line or control that sums the turn | Implemented: `withCallsTogether` in `packages/core/src/timeline.ts`, `CallThreadContext` in `AgentMessage.tsx`, `CallThreads` in `MessageRefs.tsx`; core, web and console tests pass; checked in the browser on a real run with two agents in parallel |
 | DES-035 | Agents are told apart by a bot in their color; a mention opens a profile on hover | Implemented: `AgentInitials` (drawn by `bot-avatars`, initials where there is no canvas), `MentionLink`; `ui.test.tsx` passes; marks checked in the browser on `/gallery.html`, dark and light |
 | DES-036 | The composer holds what is picked, and the first message posts before anything else runs | Implemented in `Composer.tsx` and `Chat.tsx`; web tests and the `home` screens pass |
 | DES-037 | Health reports active model providers and dependencies. Workspace settings group configured and available providers, put Add in the header and offer a reversible switch for workspace-managed providers | Implemented: `GET /api/health`, `Health.tsx`, `ModelProviders.tsx`, `PATCH /api/model-providers/{name}`; platform, HTTP and web DOM coverage |
@@ -1195,19 +1196,46 @@ any. This reverses the first point of DES-030.
   ("Read plan.md", "Searched the web, read files"). Open, each step shows the
   input it was given and the output it returned. A step waiting on a person
   keeps its group open; a failed one is counted in the line (DES-048).
-- A finished turn folds its steps under one "Worked" line.
+- A finished turn keeps its steps where they happened (DES-086). No line
+  folds the whole turn.
 - Acceptance: a turn that read, wrote, then answered shows the read and the
   write between the words they came between, each with its input and output.
 
 ### DES-034: How long a turn worked
 
-- The Worked/tools control has a minimum 44px touch target on a coarse pointer.
-  The canonical `session` browser state scrolls it into view, measures it and
-  opens/closes Details before capture.
-- A finished turn's "Worked" line says how long it worked: "Worked for 32s".
-  The time runs from the run's acceptance to its completion on the stream, or
-  from the run record's creation to its last change when the stream is gone.
-- Acceptance: a run accepted at 0s and completed at 32s reads "Worked for 32s".
+Superseded by DES-086 on 2026-11-21 for the console. What stays:
+
+- `turn.completed` carries `durationMs`. The time runs from the run's
+  acceptance to its completion on the stream, or from the run record's
+  creation to its last change when the stream is gone.
+- Slack's plan card still ends as "Worked for 32s" (`planDone`).
+
+### DES-086: A turn is its own activity
+
+Owner request, 2026-11-21: "Worked for 32s" says nothing the timestamps do
+not, the work should read in the order it happened, each called agent should
+own its thread in the turn, and a control under the answer that opens the
+same activity again makes no sense.
+
+- A turn reads top to bottom in time order: its words, its runs of steps and
+  the agents it called, each where it happened.
+- A called agent is a thread of its own in the turn: one line with its mark,
+  name, task and how long it took. The line opens to what that agent did and
+  said, and its own calls are threads under it. A link on the line opens the
+  agent's own message.
+- Agents that ran at the same time are drawn as one group, labelled
+  "2 agents at the same time", in the order they started. Two calls are at
+  the same time when the second started before the first ended.
+- A thread is open while its agent works, waits on a person or failed, and
+  closed once it is done.
+- No line sums how long the turn took, and nothing under the answer opens its
+  activity a second time. The message says when; each step and each call says
+  how long it took. Under the answer are its references and its actions only.
+- Details still shows a response's activity, reached from search and from the
+  session panel, with how long it worked: "Worked 14s · 2 agents · 3 tools".
+- Acceptance: a run that called `researcher` and `writer` together shows one
+  group with two threads above the answer, no "Worked" text and no button
+  under the answer besides the message's actions.
 
 ### DES-035: Initials and mention profiles
 

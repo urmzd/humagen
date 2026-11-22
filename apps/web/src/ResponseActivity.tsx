@@ -111,52 +111,6 @@ export function useResponse(source: ResponseSource | undefined) {
   return { state: state.current, version, ended, said };
 }
 
-/** "42s", or "Working 12s" while it runs. */
-function timeWords(state: ResponseState): string {
-  return took(worked(state).ms);
-}
-
-/**
- * Under an answer: "Worked 42s · 3 agents · 7 tools", a button that opens the
- * response's activity beside it. A response that used no tool and called no
- * agent has none. While a person is awaited, it says so.
- */
-export function WorkedButton({
-  state,
-  open,
-  onToggle,
-}: {
-  state: ResponseState;
-  open: boolean;
-  onToggle: () => void;
-}) {
-  const w = worked(state);
-  if (!w.agents && !w.tools) return null;
-  const awaited = waiting(state).length > 0;
-  const label =
-    state.status === "running"
-      ? awaited
-        ? words.waitingForYou
-        : words.working(timeWords(state))
-      : outcomeOf(state);
-  return (
-    <button
-      type="button"
-      aria-expanded={open}
-      onClick={onToggle}
-      data-testid="worked"
-      className={`inline-flex min-h-7 pointer-coarse:min-h-11 items-center gap-1 self-start rounded-aui px-1.5 text-aui-xs hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent ${awaited ? "text-aui-warn" : "text-aui-muted"}`}
-    >
-      <ChevronRightIcon
-        size={12}
-        aria-hidden
-        className={`shrink-0 transition-transform ${open ? "rotate-90" : ""}`}
-      />
-      {label}
-    </button>
-  );
-}
-
 /**
  * A response's references, as chips under its answer: where it started (on
  * the root message only), what `get_context` pulled, and what the answer
@@ -737,7 +691,7 @@ export function outcomeOf(state: ResponseState): string {
       calls.length,
     );
   }
-  return words.worked(w.agents, w.tools);
+  return words.worked(time, w.agents, w.tools);
 }
 
 /** What a response cost and the models it ran on: "$0.02 · claude-sonnet". */

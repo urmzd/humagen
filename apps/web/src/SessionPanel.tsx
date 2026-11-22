@@ -139,7 +139,7 @@ export function progressWords(summary: SessionSummary, current?: ResponseState):
   if (p.status === "running") return p.waiting ? words.waiting : words.working(p.agents, p.tools);
   // A stopped or failed response says how it ended; a finished session says what it took.
   if (p.status !== "done") return outcomeOf(current);
-  return defaultCopy.trace.worked(p.agents, p.tools);
+  return defaultCopy.trace.worked(took(p.ms), p.agents, p.tools);
 }
 
 /**

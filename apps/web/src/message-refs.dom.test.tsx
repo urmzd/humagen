@@ -266,30 +266,18 @@ test("what the reader may not see stays private: withheld calls and hidden runs"
   assert.equal(state.content.filter((b) => b.type === "hidden").length, 2);
 });
 
-test("under an answer: its chips, and Worked … that opens its activity", async () => {
-  const opened: string[] = [];
-  render(<AnswerRefs run={root} eager loader={loader} onActivity={(id) => opened.push(id)} />);
+test("under an answer: its chips, and nothing that opens its activity a second time", async () => {
+  render(<AnswerRefs run={root} eager loader={loader} />);
   const refs = await screen.findByTestId("answer-refs");
-  const worked = await within(refs).findByTestId("worked");
-  assert.equal(worked.getAttribute("aria-expanded"), "false");
-  assert.equal(worked.textContent, words.worked("14s", 2, 3));
+  await within(refs).findByText("Deploy runbook");
   assert.deepEqual(
     [...refs.querySelectorAll("[data-chip]")].map((c) => c.textContent),
     // What get_context pulled, then what the answer cites.
     ["Ana in #deploys", "Deploy runbook"],
   );
   assert.equal(within(refs).queryByText(/\$0\.01/), null, "no cost inline");
-  fireEvent.click(worked);
-  assert.deepEqual(opened, [R1]);
-});
-
-test("an answer that used no tool and called no one has no Worked", async () => {
-  const alone = run(R1, { calls: 0 });
-  const quiet: TraceLoader = { trace: async () => traceOf([node(alone)]) };
-  render(<AnswerRefs run={alone} eager loader={quiet} onActivity={() => {}} />);
-  await screen.findByText("Deploy runbook");
-  await new Promise((r) => setTimeout(r, 20));
-  assert.equal(screen.queryByTestId("worked"), null);
+  // The answer shows each step and each called agent where it happened.
+  assert.equal(within(refs).queryByRole("button"), null);
 });
 
 test("two agents in parallel are two lanes; the root's own answer stays beside the panel", async () => {
@@ -522,11 +510,9 @@ test("a delegation someone approved keeps who decided on its agent call, once", 
 });
 
 test("a stopped response says how it ended once, in plain words", async () => {
-  const { WorkedButton } = await import("./ResponseActivity.tsx");
+  const { outcomeOf } = await import("./ResponseActivity.tsx");
   const state = foldAll(responseStreams.stopped);
-  render(<WorkedButton state={state} open={false} onToggle={() => {}} />);
-  assert.equal(screen.getByTestId("worked").textContent, words.stoppedAfter("3.0s", 1, 1));
-  cleanup();
+  assert.equal(outcomeOf(state), words.stoppedAfter("3.0s", 1, 1));
   render(
     <ResponseActivityPanel
       source={replaySource("s", responseStreams.stopped)}
