@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.189.0 (2026-11-22)
+
+### Features
+
+- **github**: offer and read the repositories the app installation covers ([ca422e0](https://github.com/urmzd/humagen/commit/ca422e0a77df533dbf50f51aee0c539ebc649d62))
+
+### Bug Fixes
+
+- **github**: share one installation read outside the lock, keep each caller's deadline ([56a639a](https://github.com/urmzd/humagen/commit/56a639a25d5caa8fcc62db0a3d8807b257f7d685))
+
+### Misc
+
+- **github**: installed repositories, the picker and reads; docs and contract ([ed0031c](https://github.com/urmzd/humagen/commit/ed0031c9cb8f681e4cc0d129cbbcb04a1938dd28))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.188.1...v0.189.0)
+
+
 ## 0.188.1 (2026-11-22)
 
 ### Bug Fixes
