@@ -59,6 +59,12 @@ func SessionTitle(text string) string {
 	return deriveTitle(dropSlackMentions(text), MaxSessionTitle-1)
 }
 
+// CommandTitle is the placeholder title of a session started with a "!"
+// command. A command can hold a secret, so it is never shown as the title
+// or sent to a model to name the session; the first message that asks for
+// something names it, as after a greeting.
+const CommandTitle = "Shell command"
+
 func dropSlackMentions(text string) string {
 	for {
 		loc := slackMention.FindStringIndex(text)

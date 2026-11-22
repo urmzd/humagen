@@ -99,6 +99,16 @@ func thinTitle(text string) bool {
 	return words < thinWords
 }
 
+// startTitle is the placeholder title a console session starts with: the
+// start of its first message, or CommandTitle for a "!" command, whose words
+// are never shown as a title.
+func startTitle(in SessionInput) string {
+	if in.Command {
+		return runs.CommandTitle
+	}
+	return runs.SessionTitle(in.Text)
+}
+
 // nameSessionAtStart names a session that was just started with text, unless
 // text is too thin to name it by: a greeting waits for the first message
 // that asks for something (retitleAfterGreeting), and a short message for
