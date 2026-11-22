@@ -1109,7 +1109,12 @@ export function ThreadRoom({
                 />
               }
               title={title}
-              project={projectTitle(projects, th.project, workspaceName, personalProject)}
+              // The reader's own Personal project is not named: a session is there unless it was filed elsewhere.
+              project={
+                th.project === personalProject
+                  ? ""
+                  : projectTitle(projects, th.project, workspaceName, personalProject)
+              }
               private={th.visibility === "private"}
               agents={answering}
               people={th.participants.filter((p) => p.kind === "person").map((p) => p.name)}

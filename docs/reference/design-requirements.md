@@ -79,7 +79,7 @@ planned collections, browser, protocol and improvement work from this UI pass.
 | DES-032 | The conversation header shows which agents took part, not a count | Implemented: `Involved` in `ConversationShell.tsx`; `ui.test.tsx` passes; checked in the browser |
 | DES-033 | A turn shows its thinking and steps inline, where they happened, with what each was given and returned | Implemented in `WorkSteps.tsx` and render-web `StepIO`; web and core tests pass; checked live |
 | DES-034 | A finished turn says how long it worked | Superseded by DES-086 (2026-11-21): the console shows no "Worked" line and no control under an answer. `turn.completed` still carries `durationMs`, which Slack's plan title uses |
-| DES-086 | A turn is its own activity: steps and called agents in time order where they happened, each called agent a thread that opens to its own full stream, and no line or control that sums the turn | Implemented: `CallThreadContext` and the `embedded` form in `AgentMessage.tsx`, `CallThreads` in `MessageRefs.tsx`, `turnOfCall` in `callTurn.ts`; core, web and console tests pass; checked in the browser on a real run with two agents in parallel |
+| DES-086 | A turn is its own activity: steps and called agents in time order where they happened, each called agent a full message of its own with its stream and its own rating, and no line or control that sums the turn | Implemented: `CallThreadContext` and the `embedded` form in `AgentMessage.tsx`, `CallThreads` in `MessageRefs.tsx`, `turnOfCall` in `callTurn.ts`; core, web and console tests pass; checked in the browser on a real run with two agents in parallel |
 | DES-035 | Agents are told apart by a bot in their color; a mention opens a profile on hover | Implemented: `AgentInitials` (drawn by `bot-avatars`, initials where there is no canvas), `MentionLink`; `ui.test.tsx` passes; marks checked in the browser on `/gallery.html`, dark and light |
 | DES-036 | The composer holds what is picked, and the first message posts before anything else runs | Implemented in `Composer.tsx` and `Chat.tsx`; web tests and the `home` screens pass |
 | DES-037 | Health reports active model providers and dependencies. Workspace settings group configured and available providers, put Add in the header and offer a reversible switch for workspace-managed providers | Implemented: `GET /api/health`, `Health.tsx`, `ModelProviders.tsx`, `PATCH /api/model-providers/{name}`; platform, HTTP and web DOM coverage |
@@ -1292,34 +1292,33 @@ same activity again makes no sense.
 
 - A turn reads top to bottom in time order: its words, its runs of steps and
   the agents it called, each where it happened.
-- A called agent is a thread of its own in the turn: one line with its mark,
-  name and task, and its state in words while it works, waits or failed. The
-  line has no chevron and does not say how long the call took (owner request,
-  2026-11-21); Details has both. The line is the one control: all of it is
-  clickable, it shows a hover, and it opens to what that agent did and said.
-  Its own calls are threads under it. Nothing on the line leads away (owner
-  request, 2026-11-21: no expand sign); in Details a lane still links to its
-  agent's message on its own.
+- A called agent is a message of its own in the turn, at full size (owner
+  request, 2026-11-21, replacing a line that opened): its mark and name, what
+  it was asked beside the name, and under them its whole stream, drawn with
+  the parts the answer itself is drawn with (`turnOfCall`): its thinking, its
+  words, each step with what it was given and returned. The answer that
+  called it only orchestrates: its own words come before and after.
+- An agent's message has its own actions: Copy, and Helpful or Not helpful,
+  which rate that agent's run (`/api/runs/{id}/feedback`) apart from the
+  answer that called it. It has no Regenerate: it answered its caller.
+- Messages of called agents are set in from the answer by a thin rule, so the
+  caller's own words read as the caller's. An agent that one of them called
+  is a message under it, set in again.
 - Calls are drawn one under the other, in the order they started, also when
-  they ran at the same time. No label counts them ("2 agents at the same
-  time" was removed on owner request, 2026-11-21): the order is the
-  progression.
-- Selecting a thread opens that agent's own stream, drawn with the parts the
-  answer itself is drawn with (`turnOfCall`, `AgentMessage embedded`): its
-  thinking, its words, each step with what it was given and returned, and
-  the agents it called as threads of their own. A person can read the whole
-  transcript of every agent in the turn without leaving it. A question that
-  waits on a person keeps its controls in the thread. Steps the reader may
-  not see are counted, not shown.
-- A thread is open while its agent works, waits on a person or failed, and
-  closed once it is done.
+  they ran at the same time. No label counts them, no chevron folds them and
+  no line says how long a call took; Details has the durations.
+- While an agent works its mark moves and stops it, as an answer's does. One
+  that failed, was denied or was stopped says so beside its task. A question
+  that waits on a person keeps its controls under the agent's message. Steps
+  the reader may not see are counted, not shown.
 - No line sums how long the turn took, and nothing under the answer opens its
   activity a second time. The message says when; each step and each call says
   how long it took. Under the answer are its references and its actions only.
 - Details still shows a response's activity, reached from search and from the
   session panel, with how long it worked: "Worked 14s · 2 agents · 3 tools".
 - Acceptance: a run that called `researcher` and `writer` together shows two
-  threads above the answer, each opening to that agent's stream, no "Worked" text and no button
+  messages above the answer's last words, each with that agent's stream and
+  its own Helpful and Not helpful, no "Worked" text and no button
   under the answer besides the message's actions.
 
 ### DES-035: Initials and mention profiles
