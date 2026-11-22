@@ -874,7 +874,6 @@ var copyKeyList = []string{
 	"conversation.question",
 	"conversation.questionHint",
 	"conversation.redirect",
-	"conversation.reply",
 	"conversation.settings",
 	"conversation.shared",
 	"conversation.skills",

@@ -1,5 +1,5 @@
 import { type Copy, defaultCopy } from "@humagen/components";
-import { CopyButton, ReplyIcon } from "@humagen/render-web";
+import { CopyButton } from "@humagen/render-web";
 import type { ReactNode } from "react";
 
 export const messageActionButton =
@@ -15,14 +15,12 @@ export function MessageActionRow({
   copy = defaultCopy,
   copyLabel,
   copyControl,
-  onReply,
   children,
 }: {
   text: string;
   copy?: Copy;
   copyLabel: string;
   copyControl?: ReactNode;
-  onReply?: () => void;
   children?: ReactNode;
 }) {
   return (
@@ -32,17 +30,6 @@ export function MessageActionRow({
       className="aui-message-actions mt-1 md:-ml-2 flex min-w-0 flex-wrap items-center gap-0.5"
     >
       {text && (copyControl ?? <CopyButton text={text} label={copyLabel} note="above" />)}
-      {onReply && (
-        <button
-          type="button"
-          className={messageActionButton}
-          aria-label={copy.conversation.reply}
-          title={copy.conversation.reply}
-          onClick={onReply}
-        >
-          <ReplyIcon size={16} />
-        </button>
-      )}
       {children}
     </div>
   );

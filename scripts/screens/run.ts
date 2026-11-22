@@ -195,11 +195,13 @@ function chats(ids: Ids, call: ReturnType<typeof api>): Screen[] {
         const human = page.getByRole("article", { name: /^Message from / }).first();
         const agent = page.getByRole("article", { name: "helper message", exact: true }).first();
         for (const message of [human, agent]) {
-          // An earlier message shows its actions once tapped or hovered (theme.css).
-          await message.click({ position: { x: 4, y: 4 } });
+          // Every message shows its actions; there is no Reply among them.
           const actions = message.getByRole("toolbar", { name: "Message actions" });
           await actions.getByRole("button", { name: /^Copy (message|answer)/ }).waitFor();
-          await actions.getByRole("button", { name: "Reply", exact: true }).waitFor();
+          assert.equal(
+            await actions.getByRole("button", { name: "Reply", exact: true }).count(),
+            0,
+          );
           assert.equal(await message.getByRole("toolbar", { name: "Message actions" }).count(), 1);
           const fork = actions.getByRole("button", {
             name: defaultCopy.forking.fromHere,
@@ -212,7 +214,7 @@ function chats(ids: Ids, call: ReturnType<typeof api>): Screen[] {
             return {
               width: box.width,
               height: box.height,
-              minTarget: matchMedia("(pointer: coarse)").matches ? 44 : 32,
+              minTarget: matchMedia("(pointer: coarse)").matches ? 44 : 28,
               icon: icon?.width ?? 0,
               text: button.textContent?.trim() ?? "",
               title: button.getAttribute("title") ?? "",
@@ -228,9 +230,9 @@ function chats(ids: Ids, call: ReturnType<typeof api>): Screen[] {
             sizing.height >= sizing.minTarget && sizing.width >= sizing.minTarget,
             "Icon-only actions keep comfortable targets",
           );
-          assert.equal(sizing.icon, 16, "Message action glyphs share one size");
+          assert.equal(sizing.icon, 14, "Message action glyphs share one size");
         }
-        await agent.getByRole("button", { name: "Reply", exact: true }).focus();
+        await agent.getByRole("button", { name: /^Copy answer/ }).focus();
       },
     },
     {

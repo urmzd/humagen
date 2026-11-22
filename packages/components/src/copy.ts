@@ -2180,7 +2180,6 @@ export const defaultCopy = {
       more: (n: number) => `and ${n} more`,
     },
     askAgent: (agent: string) => `Ask ${agent}`,
-    reply: "Reply",
     question: "Clarification",
     answerChoice: "Use This Answer",
     questionHint: "This answers the question. Approvals for actions remain separate.",
