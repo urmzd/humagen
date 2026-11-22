@@ -1261,6 +1261,12 @@ buttons; Alerts, Monitor and the Memory library keep their own row of tabs
 (each is the page's only row); `Pill` and `Tag` are not yet `Badge`, and
 some pages still draw buttons and boxes by hand.
 
+People drawer: a search field ("Search by name or @handle") reads the
+workspace directory as the person types and lists matches with their mark,
+name and handle; a press adds one, and someone already in shows Added. The
+people in the conversation follow under "In this conversation · N", each
+with their mark, Owner or a Remove icon. Invite adds a handle as typed.
+
 ### DES-089: No Side Chat
 
 Owner request, 2026-11-21: "remove the side chat". A chat nested in the

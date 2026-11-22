@@ -20,6 +20,7 @@ import { Inspector } from "@humagen/web";
 import { type ReactNode, useEffect, useState } from "react";
 import type { Run } from "./adapter.ts";
 import { SessionBackground } from "./Background.tsx";
+import { agentShown } from "./branding.ts";
 import { Reference } from "./cards.tsx";
 import { AgentCallLane } from "./ResponseActivity.tsx";
 import { OriginMark } from "./refChips.tsx";
@@ -333,7 +334,7 @@ function Summary({
               key={a.name}
               testId="details-agent"
               mark={<AgentMark name={a.name} size={18} />}
-              label={a.name}
+              label={agentShown(a.name)}
               value={words.calls(a.calls)}
               onOpen={() => onView({ kind: "agent", name: a.name })}
             />
