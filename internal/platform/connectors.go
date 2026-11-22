@@ -636,7 +636,9 @@ func (s *surface) hand(st *seat, w http.ResponseWriter, r *http.Request, body []
 			// a review or a pull request from anyone else starts nothing at
 			// all; an issue from them still meets the client's own rules,
 			// which are written to read issues, but asks no agent.
-			if _, allowed, why := current.GitHubAsker(kind, body, func(id int64) bool { return s.p.linkedGitHub(current.Tenant, id) != "" }); !allowed {
+			if _, allowed, why := current.GitHubAsker(kind, body, func(id int64, login string) bool {
+				return s.p.linkedGitHub(current.Tenant, id) != "" || s.p.githubMapped(current, login) != ""
+			}); !allowed {
 				if kind != "issues" {
 					s.logIgnored(r, body, &current, http.StatusOK, why)
 					w.WriteHeader(http.StatusOK)

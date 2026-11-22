@@ -20,9 +20,10 @@ import (
 )
 
 // A person links their own GitHub or Slack account through the connection
-// flow every person-scoped service uses (AuthorizeConnection, then
-// CompleteConnection on the consent's return): the state is theirs alone,
-// bound to their session, and spent once. The callback asks the surface who
+// consent every person-scoped service uses, begun and finished only in their
+// own browser (AuthorizeAccount, then CompleteAccount on the consent's
+// return): the state is theirs alone, bound to a secret that browser holds,
+// and spent once. An agent's tool or an MCP client is refused. The callback asks the surface who
 // signed in (GitHub's GET /user, Slack's OpenID Connect userInfo) and keeps
 // only the answer, in Accounts. The token is used for that one request and
 // never written: nothing Humagen does needs to act as the person on the
@@ -96,10 +97,28 @@ func (p *Platform) accountPreset(who auth.Principal, c *ConnectionPreset) error 
 	return nil
 }
 
-// authorizeAccount starts a person's account link.
-func (p *Platform) authorizeAccount(ctx context.Context, who auth.Principal, name string, in ConnectionAuthorizationInput) (connectionauth.Authorization, error) {
+// ErrAccountInConsole refuses an account link begun or finished anywhere but
+// the person's own browser: an agent's tool, an MCP client, a token.
+var ErrAccountInConsole = fmt.Errorf("%w: connect your account from the console, in your own browser", ErrForbidden)
+
+// IsAccountLink reports whether a connection links a surface account.
+func IsAccountLink(name string) bool {
+	_, ok := accountSurface(name)
+	return ok
+}
+
+// AuthorizeAccount starts a person's account link from their own browser.
+// binding is a secret only that browser holds (a cookie the API sets), and
+// the consent completes only with it (CompleteAccount).
+func (p *Platform) AuthorizeAccount(ctx context.Context, who auth.Principal, name string, in ConnectionAuthorizationInput, binding string) (connectionauth.Authorization, error) {
+	if !IsAccountLink(name) {
+		return connectionauth.Authorization{}, ErrProviderNotFound
+	}
 	if who.Kind != auth.User || who.Subject == "" {
 		return connectionauth.Authorization{}, ErrForbidden
+	}
+	if binding == "" {
+		return connectionauth.Authorization{}, ErrAccountInConsole
 	}
 	if (in.Scope != "" && in.Scope != "person") || in.Endpoint != "" || in.Registration != nil {
 		return connectionauth.Authorization{}, personctx.ErrInvalid
@@ -111,33 +130,40 @@ func (p *Platform) authorizeAccount(ctx context.Context, who auth.Principal, nam
 	if err != nil {
 		return connectionauth.Authorization{}, err
 	}
-	out, err := p.ConnectionAuth.BeginFor(ctx, who.Tenant, who.Subject, who.Subject, name, accountProvider(name).Resource)
+	out, err := p.ConnectionAuth.BeginBound(ctx, who.Tenant, who.Subject, name, accountProvider(name).Resource, binding)
 	if completion := attempt.Finish(err); completion != nil {
 		p.LogAuditCompletionFailure(completion)
 	}
 	return out, err
 }
 
-// completeAccount finishes a person's account link: their own state, spent
-// once, then who the surface says signed in, linked to them. A user another
-// person linked is refused (accounts.ErrClaimed).
-func (p *Platform) completeAccount(ctx context.Context, who auth.Principal, name, nonce, code string) error {
+// CompleteAccount finishes a person's account link: their own state, spent
+// once, in the browser that began it (binding), then who the surface says
+// signed in, linked to them. A user another person linked is refused
+// (accounts.ErrClaimed).
+func (p *Platform) CompleteAccount(ctx context.Context, who auth.Principal, name, nonce, code, binding string) error {
+	if !IsAccountLink(name) {
+		return ErrProviderNotFound
+	}
 	if who.Kind != auth.User || who.Subject == "" {
 		return ErrForbidden
+	}
+	if binding == "" {
+		return ErrAccountInConsole
 	}
 	attempt, err := p.BeginAudit(who, audit.Change{Action: "connection.connect", Resource: "connection", ID: name, Subject: who.Subject, Route: "POST /api/connections/{provider}/callback", Rule: string(auth.RunsWrite)})
 	if err != nil {
 		return err
 	}
-	err = p.linkAccount(ctx, who, name, nonce, code)
+	err = p.linkAccount(ctx, who, name, nonce, code, binding)
 	if completion := attempt.Finish(err); completion != nil {
 		p.LogAuditCompletionFailure(completion)
 	}
 	return err
 }
 
-func (p *Platform) linkAccount(ctx context.Context, who auth.Principal, name, nonce, code string) error {
-	raw, err := p.ConnectionAuth.CompleteIdentity(ctx, who.Tenant, who.Subject, name, nonce, code, identityPath[name])
+func (p *Platform) linkAccount(ctx context.Context, who auth.Principal, name, nonce, code, binding string) error {
+	raw, err := p.ConnectionAuth.CompleteIdentity(ctx, who.Tenant, who.Subject, name, nonce, code, identityPath[name], binding)
 	if err != nil {
 		return err
 	}
@@ -182,15 +208,15 @@ func (p *Platform) disconnectAccount(who auth.Principal, name string) error {
 	return err
 }
 
-// servesSlackTeam reports whether one of a workspace's Slack clients is
-// installed in a Slack team.
+// servesSlackTeam reports whether one of a workspace's enabled Slack clients
+// is installed in a Slack team.
 func (p *Platform) servesSlackTeam(tenant, team string) bool {
 	all, err := p.Clients.List(tenant)
 	if err != nil || team == "" {
 		return false
 	}
 	for _, c := range all {
-		if c.Surface == clients.Slack && c.Identity.Team == team {
+		if c.Surface == clients.Slack && c.Enabled && c.Identity.Team == team {
 			return true
 		}
 	}
@@ -263,19 +289,49 @@ func (p *Platform) LinkedAccounts(who auth.Principal, client string) ([]accounts
 	default:
 		return []accounts.Account{}, nil
 	}
-	all, err := p.Accounts.List(who.Tenant, surface, accounts.MaxList)
-	if err != nil {
-		return nil, err
-	}
-	out := all[:0]
-	for _, a := range all {
+	team := ""
+	if surface == accounts.Slack {
 		// A Slack client lists the people of its own team.
-		if surface == accounts.Slack && a.Team != c.Identity.Team {
-			continue
+		if team = c.Identity.Team; team == "" {
+			return []accounts.Account{}, nil
 		}
-		out = append(out, a)
 	}
-	return out, nil
+	return p.Accounts.List(who.Tenant, surface, team, accounts.MaxList)
+}
+
+// UnlinkAccount removes the account a surface user linked, on a client's
+// surface, as the workspace's administrator does for someone who left or
+// whose account was taken. Another tenant's client, or a user nobody linked
+// there, is not found.
+func (p *Platform) UnlinkAccount(who auth.Principal, client, id string) error {
+	if !who.Can(auth.ClientsWrite) {
+		return ErrForbidden
+	}
+	c, err := p.Clients.Get(who.Tenant, client)
+	if err != nil {
+		return err
+	}
+	surface, team := "", ""
+	switch c.Surface {
+	case clients.GitHub:
+		surface = accounts.GitHub
+	case clients.Slack:
+		surface, team = accounts.Slack, c.Identity.Team
+	default:
+		return accounts.ErrNotFound
+	}
+	attempt, err := p.BeginAudit(who, audit.Change{Action: "account.unlink", Resource: "linked_account", ID: surface + ":" + id, Scope: "workspace", Route: "DELETE /api/clients/{id}/accounts/{account}", Rule: string(auth.ClientsWrite)})
+	if err != nil {
+		return err
+	}
+	removed, err := p.Accounts.Remove(who.Tenant, surface, team, id)
+	if err == nil {
+		p.log.Info("platform: an administrator unlinked an account", "tenant", who.Tenant, "by", who.Subject, "surface", surface, "account", id, "person", removed.Subject)
+	}
+	if completion := attempt.Finish(err); completion != nil {
+		p.LogAuditCompletionFailure(completion)
+	}
+	return err
 }
 
 // linkedGitHub is the person a GitHub user id is linked to in a workspace.
@@ -283,7 +339,7 @@ func (p *Platform) linkedGitHub(tenant string, id int64) string {
 	if id <= 0 || p.Accounts == nil {
 		return ""
 	}
-	a, err := p.Accounts.Get(tenant, accounts.GitHub, strconv.FormatInt(id, 10))
+	a, err := p.Accounts.Get(tenant, accounts.GitHub, "", strconv.FormatInt(id, 10))
 	if err != nil {
 		if !errors.Is(err, accounts.ErrNotFound) {
 			p.log.Warn("platform: linked GitHub accounts could not be read", "tenant", tenant, "error", err)
@@ -299,17 +355,35 @@ func (p *Platform) linkedSlack(tenant, team, user string) string {
 	if user == "" || team == "" || p.Accounts == nil {
 		return ""
 	}
-	a, err := p.Accounts.Get(tenant, accounts.Slack, user)
+	a, err := p.Accounts.Get(tenant, accounts.Slack, team, user)
 	if err != nil {
 		if !errors.Is(err, accounts.ErrNotFound) {
 			p.log.Warn("platform: linked Slack accounts could not be read", "tenant", tenant, "error", err)
 		}
 		return ""
 	}
-	if a.Team != team {
+	return a.Subject
+}
+
+// githubMapped is the person a GitHub client's login map names for login,
+// unless that person linked their GitHub account. A link names the user by
+// the id GitHub gives them for good; a login can be renamed and registered by
+// someone else, so the map stops speaking for anyone who linked.
+func (p *Platform) githubMapped(c clients.Client, login string) string {
+	if c.GitHub == nil {
 		return ""
 	}
-	return a.Subject
+	who := c.GitHub.People[login]
+	if who == "" {
+		return ""
+	}
+	if _, err := p.Accounts.Of(c.Tenant, accounts.GitHub, who); err == nil {
+		return ""
+	} else if !errors.Is(err, accounts.ErrNotFound) {
+		p.log.Warn("platform: linked GitHub accounts could not be read, so the login map is not used", "tenant", c.Tenant, "error", err)
+		return ""
+	}
+	return who
 }
 
 // slackPeople is who a Slack client's users are: the people who linked an
@@ -324,15 +398,12 @@ func (p *Platform) slackPeople(tenant string, c clients.Client) map[string]strin
 	if p.Accounts == nil || c.Surface != clients.Slack || c.Identity.Team == "" {
 		return out
 	}
-	linked, err := p.Accounts.List(tenant, accounts.Slack, accounts.MaxList)
+	linked, err := p.Accounts.List(tenant, accounts.Slack, c.Identity.Team, accounts.MaxList)
 	if err != nil {
 		p.log.Warn("platform: linked Slack accounts could not be read", "tenant", tenant, "error", err)
 		return out
 	}
 	for _, a := range linked {
-		if a.Team != c.Identity.Team {
-			continue
-		}
 		if out == nil {
 			out = map[string]string{}
 		}

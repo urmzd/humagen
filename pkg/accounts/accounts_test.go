@@ -22,7 +22,7 @@ func TestOnePersonPerSurfaceUser(t *testing.T) {
 	if _, err := s.Link("t", account(accounts.GitHub, "42", "bob")); !errors.Is(err, accounts.ErrClaimed) {
 		t.Fatalf("second claim: %v", err)
 	}
-	got, err := s.Get("t", accounts.GitHub, "42")
+	got, err := s.Get("t", accounts.GitHub, "", "42")
 	if err != nil || got.Subject != "ada" {
 		t.Fatalf("claim moved: %+v %v", got, err)
 	}
@@ -36,7 +36,9 @@ func TestOnePersonPerSurfaceUser(t *testing.T) {
 		t.Fatalf("login not refreshed: %+v", got)
 	}
 	// The same id on another surface is another user.
-	if _, err := s.Link("t", account(accounts.Slack, "42", "bob")); err != nil {
+	slack := account(accounts.Slack, "U42", "bob")
+	slack.Team = "T1"
+	if _, err := s.Link("t", slack); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -68,13 +70,13 @@ func TestRelinkingAnotherUserDropsTheFirst(t *testing.T) {
 	if _, err := s.Link("t", account(accounts.GitHub, "2", "ada")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Get("t", accounts.GitHub, "1"); !errors.Is(err, accounts.ErrNotFound) {
+	if _, err := s.Get("t", accounts.GitHub, "", "1"); !errors.Is(err, accounts.ErrNotFound) {
 		t.Fatalf("old account kept: %v", err)
 	}
 	if got, _ := s.Of("t", accounts.GitHub, "ada"); got.ID != "2" {
 		t.Fatalf("person points at %q", got.ID)
 	}
-	list, err := s.List("t", accounts.GitHub, 10)
+	list, err := s.List("t", accounts.GitHub, "", 10)
 	if err != nil || len(list) != 1 || list[0].ID != "2" {
 		t.Fatalf("list: %+v %v", list, err)
 	}
@@ -85,13 +87,13 @@ func TestTenantsAreApart(t *testing.T) {
 	if _, err := s.Link("t1", account(accounts.GitHub, "42", "ada")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Get("t2", accounts.GitHub, "42"); !errors.Is(err, accounts.ErrNotFound) {
+	if _, err := s.Get("t2", accounts.GitHub, "", "42"); !errors.Is(err, accounts.ErrNotFound) {
 		t.Fatalf("another tenant read it: %v", err)
 	}
 	if _, err := s.Link("t2", account(accounts.GitHub, "42", "bob")); err != nil {
 		t.Fatalf("another tenant's claim blocked this one: %v", err)
 	}
-	if list, _ := s.List("t2", accounts.GitHub, 10); len(list) != 1 || list[0].Subject != "bob" {
+	if list, _ := s.List("t2", accounts.GitHub, "", 10); len(list) != 1 || list[0].Subject != "bob" {
 		t.Fatalf("t2 list: %+v", list)
 	}
 }
@@ -133,5 +135,73 @@ func TestInvalidAccounts(t *testing.T) {
 		if _, err := s.Link("t", a); !errors.Is(err, accounts.ErrInvalid) {
 			t.Fatalf("%+v: %v", a, err)
 		}
+	}
+}
+
+// A Slack user is keyed by user and team: an Enterprise Grid user keeps one id
+// across teams, and linking in a second team leaves the first team's link.
+func TestSlackAccountsAreKeyedByTeam(t *testing.T) {
+	s := accounts.Open(state.NewMemory())
+	in := func(team, id, subject string) accounts.Account {
+		a := account(accounts.Slack, id, subject)
+		a.Team = team
+		return a
+	}
+	if _, err := s.Link("t", in("T1", "W1", "ana")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Link("t", in("T2", "W1", "ana")); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := s.Get("t", accounts.Slack, "T1", "W1"); err != nil || got.Subject != "ana" {
+		t.Fatalf("the first team's link moved: %+v %v", got, err)
+	}
+	if mine, _ := s.Mine("t", accounts.Slack, "ana"); len(mine) != 2 {
+		t.Fatalf("ana's Slack accounts: %+v", mine)
+	}
+	// Another person in another team is another claim.
+	if _, err := s.Link("t", in("T3", "W1", "bob")); err != nil {
+		t.Fatalf("a third team: %v", err)
+	}
+	if _, err := s.Link("t", in("T1", "W1", "bob")); !errors.Is(err, accounts.ErrClaimed) {
+		t.Fatalf("a claim in ana's team: %v", err)
+	}
+	if list, _ := s.List("t", accounts.Slack, "T1", 10); len(list) != 1 || list[0].Subject != "ana" {
+		t.Fatalf("T1's list: %+v", list)
+	}
+	if _, err := s.Link("t", in("", "W1", "ana")); !errors.Is(err, accounts.ErrInvalid) {
+		t.Fatalf("a Slack account without a team: %v", err)
+	}
+	if err := s.Unlink("t", accounts.Slack, "ana"); err != nil {
+		t.Fatal(err)
+	}
+	if mine, _ := s.Mine("t", accounts.Slack, "ana"); len(mine) != 0 {
+		t.Fatalf("ana still has %+v", mine)
+	}
+	if got, _ := s.Get("t", accounts.Slack, "T3", "W1"); got.Subject != "bob" {
+		t.Fatalf("bob's link went with ana's: %+v", got)
+	}
+}
+
+func TestRemoveUnlinksWhoeverLinkedIt(t *testing.T) {
+	s := accounts.Open(state.NewMemory())
+	if _, err := s.Link("t", account(accounts.GitHub, "42", "ana")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Remove("t2", accounts.GitHub, "", "42"); !errors.Is(err, accounts.ErrNotFound) {
+		t.Fatalf("another tenant removed it: %v", err)
+	}
+	got, err := s.Remove("t", accounts.GitHub, "", "42")
+	if err != nil || got.Subject != "ana" {
+		t.Fatalf("removed %+v %v", got, err)
+	}
+	if _, err := s.Of("t", accounts.GitHub, "ana"); !errors.Is(err, accounts.ErrNotFound) {
+		t.Fatalf("ana still points at it: %v", err)
+	}
+	if _, err := s.Remove("t", accounts.GitHub, "", "42"); !errors.Is(err, accounts.ErrNotFound) {
+		t.Fatalf("removed twice: %v", err)
+	}
+	if _, err := s.Link("t", account(accounts.GitHub, "42", "bob")); err != nil {
+		t.Fatalf("claim after removal: %v", err)
 	}
 }

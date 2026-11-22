@@ -2246,6 +2246,13 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		t.Errorf("the app's linked accounts are %s, only its own team's", linked.raw)
 	}
 	c.call(globex, "GET", "/api/clients/{id}/accounts", "/api/clients/app/accounts", "", http.StatusNotFound)
+	// An administrator unlinks one; a viewer may not, and another tenant
+	// finds no such client.
+	unlink := "/api/clients/{id}/accounts/{account}"
+	c.call(vic, "DELETE", unlink, "/api/clients/app/accounts/U01ANA", "", http.StatusForbidden)
+	c.call(globex, "DELETE", unlink, "/api/clients/app/accounts/U01ANA", "", http.StatusNotFound)
+	c.call(acme, "DELETE", unlink, "/api/clients/app/accounts/U01ANA", "", http.StatusNoContent)
+	c.call(acme, "DELETE", unlink, "/api/clients/app/accounts/U01ANA", "", http.StatusNotFound)
 	c.call(acme, "POST", "/api/projects", "/api/projects", `{"name":"Crowded"}`, http.StatusCreated)
 	for i := range projects.MaxChannels - 1 {
 		c.call(acme, "POST", channels, "/api/projects/Crowded/channels", fmt.Sprintf(`{"name":"c%d"}`, i), http.StatusCreated)

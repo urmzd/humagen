@@ -30,6 +30,12 @@ export const connectionApi = {
       "GET",
       `/api/clients/${encodeURIComponent(client)}/accounts`,
     ).then((r) => r.accounts),
+  /** An administrator unlinks the account a surface user linked. */
+  unlinkAccount: (client: string, account: string) =>
+    call<void>(
+      "DELETE",
+      `/api/clients/${encodeURIComponent(client)}/accounts/${encodeURIComponent(account)}`,
+    ),
   useSource: (name: string, oauth: "drive" | "onedrive") =>
     call("PUT", `/api/knowledge/${encodeURIComponent(name)}/credential`, { oauth }),
 };

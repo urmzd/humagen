@@ -8,6 +8,7 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -87,6 +88,9 @@ type transaction struct {
 	AuthStyle    oauth2.AuthStyle
 	Verifier     string
 	Expires      time.Time
+	// Binding is a digest of a secret the browser that began the consent
+	// holds (BeginBound). Its callback must present the same secret.
+	Binding string `json:",omitempty"`
 }
 
 type account struct {
@@ -211,7 +215,7 @@ func (m *Manager) open(tenant, key, encoded string, v any) error {
 func (m *Manager) Begin(ctx context.Context, tenant, person, provider string) (Authorization, error) {
 	return m.BeginFor(ctx, tenant, person, person, provider, "")
 }
-func (m *Manager) begin(ctx context.Context, tenant, person, owner, provider string, p Provider) (Authorization, error) {
+func (m *Manager) begin(ctx context.Context, tenant, person, owner, provider string, p Provider, binding string) (Authorization, error) {
 	md, err := m.providerMetadata(ctx, p)
 	if err != nil {
 		return Authorization{}, err
@@ -248,7 +252,7 @@ func (m *Manager) begin(ctx context.Context, tenant, person, owner, provider str
 	}
 	nonceText := base64.RawURLEncoding.EncodeToString(nonce)
 	verifier := oauth2.GenerateVerifier()
-	tx := transaction{Grant: nonceText, Native: p.AuthorizationURL != "", Owner: owner, Provider: provider, Person: person, Resource: p.Resource, Issuer: md.Issuer, ClientID: clientID, ClientSecret: clientSecret, TokenURL: md.TokenEndpoint, AuthStyle: style, Verifier: verifier, Expires: m.now().Add(10 * time.Minute)}
+	tx := transaction{Grant: nonceText, Native: p.AuthorizationURL != "", Owner: owner, Provider: provider, Person: person, Resource: p.Resource, Issuer: md.Issuer, ClientID: clientID, ClientSecret: clientSecret, TokenURL: md.TokenEndpoint, AuthStyle: style, Verifier: verifier, Expires: m.now().Add(10 * time.Minute), Binding: bindingDigest(binding)}
 	// The state hash is stored with the encrypted transaction. It is not a key
 	// supplied by the callback and cannot select another person's record.
 	pending := struct {
@@ -277,13 +281,23 @@ func (m *Manager) begin(ctx context.Context, tenant, person, owner, provider str
 	return Authorization{Provider: provider, URL: config.AuthCodeURL(nonceText, options...), ExpiresAt: tx.Expires}, nil
 }
 
+// bindingDigest is what a pending consent keeps of a browser's secret:
+// nothing for none.
+func bindingDigest(secret string) string {
+	if secret == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte("connectionauth binding\x00" + secret))
+	return hex.EncodeToString(sum[:])
+}
+
 // Complete consumes state once, before exchange. Callers bind tenant/person to
 // their authenticated Principal. Errors never include remote bodies or tokens.
 func (m *Manager) Complete(ctx context.Context, tenant, person, provider, nonce, code string) error {
 	return m.CompleteFor(ctx, tenant, person, person, provider, nonce, code)
 }
 func (m *Manager) CompleteFor(ctx context.Context, tenant, person, owner, provider, nonce, code string) error {
-	tx, tok, details, err := m.exchange(ctx, tenant, person, owner, provider, nonce, code)
+	tx, tok, details, err := m.exchange(ctx, tenant, person, owner, provider, nonce, code, "")
 	if err != nil {
 		return err
 	}
@@ -309,12 +323,14 @@ const MaxIdentity = 1 << 20
 // the provider who signed in: a GET of path under the provider's Resource
 // with the new token. It returns that response's body and keeps nothing: the
 // token is used once here and never written, so no account is connected.
-// It is for a sign-in that proves an identity and needs no credential.
-func (m *Manager) CompleteIdentity(ctx context.Context, tenant, person, provider, nonce, code, path string) ([]byte, error) {
-	if strings.Contains(path, "://") || strings.HasPrefix(path, "/") || strings.Contains(path, "..") {
+// It is for a sign-in that proves an identity and needs no credential, and
+// takes only a consent begun with BeginBound: binding must be the secret the
+// browser that began it holds.
+func (m *Manager) CompleteIdentity(ctx context.Context, tenant, person, provider, nonce, code, path, binding string) ([]byte, error) {
+	if strings.Contains(path, "://") || strings.HasPrefix(path, "/") || strings.Contains(path, "..") || binding == "" {
 		return nil, ErrInvalid
 	}
-	tx, tok, _, err := m.exchange(ctx, tenant, person, person, provider, nonce, code)
+	tx, tok, _, err := m.exchange(ctx, tenant, person, person, provider, nonce, code, binding)
 	if err != nil {
 		return nil, err
 	}
@@ -337,8 +353,10 @@ func (m *Manager) CompleteIdentity(ctx context.Context, tenant, person, provider
 }
 
 // exchange consumes a pending authorization once, before the code is
-// exchanged, and returns the token without storing it.
-func (m *Manager) exchange(ctx context.Context, tenant, person, owner, provider, nonce, code string) (transaction, *oauth2.Token, map[string]string, error) {
+// exchanged, and returns the token without storing it. A consent bound to a
+// browser is completed only with that browser's secret, and an unbound one
+// only without one.
+func (m *Manager) exchange(ctx context.Context, tenant, person, owner, provider, nonce, code, binding string) (transaction, *oauth2.Token, map[string]string, error) {
 	if m == nil {
 		return transaction{}, nil, nil, ErrUnavailable
 	}
@@ -354,7 +372,8 @@ func (m *Manager) exchange(ctx context.Context, tenant, person, owner, provider,
 		State       string
 		Transaction transaction
 	}
-	if m.open(tenant, key, item.Value, &pending) != nil || pending.State != nonce || pending.Transaction.Person != person || pending.Transaction.Owner != owner || pending.Transaction.Provider != provider || !m.now().Before(pending.Transaction.Expires) {
+	if m.open(tenant, key, item.Value, &pending) != nil || pending.State != nonce || pending.Transaction.Person != person || pending.Transaction.Owner != owner || pending.Transaction.Provider != provider || !m.now().Before(pending.Transaction.Expires) ||
+		subtle.ConstantTimeCompare([]byte(pending.Transaction.Binding), []byte(bindingDigest(binding))) != 1 {
 		return transaction{}, nil, nil, ErrInvalid
 	}
 	batch := m.records.Batch()

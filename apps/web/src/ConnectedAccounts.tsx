@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { ConnectionLogo } from "./ConnectionLogo.tsx";
 import { type ConnectionPreset, connectionApi, type LinkedAccount } from "./connectionApi.ts";
 import { SplitButton } from "./SplitButton.tsx";
+import { Problem } from "./ui.tsx";
 
 const words = defaultCopy.plugins.accounts;
 
@@ -103,11 +104,23 @@ export function ConnectedAccounts({
 
 /**
  * The people who linked an account on a client's surface, for its
- * administrators: the account, and the person it acts for. Nothing is shown
- * until someone has linked one.
+ * administrators: the account, the person it acts for, and Disconnect for
+ * someone who left or whose account was taken. Nothing is shown until
+ * someone has linked one.
  */
-export function LinkedPeople({ client }: { client: string }) {
+export function LinkedPeople({
+  client,
+  canUnlink = false,
+}: {
+  client: string;
+  /** May unlink, which the server holds to clients:write. */
+  canUnlink?: boolean;
+}) {
   const [linked, setLinked] = useState<LinkedAccount[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  const [revision, setRevision] = useState(0);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: revision reloads after an unlink
   useEffect(() => {
     let live = true;
     connectionApi
@@ -117,14 +130,30 @@ export function LinkedPeople({ client }: { client: string }) {
     return () => {
       live = false;
     };
-  }, [client]);
+  }, [client, revision]);
+  const unlink = (a: LinkedAccount) => {
+    if (busy) return;
+    setBusy(true);
+    setProblem(null);
+    connectionApi
+      .unlinkAccount(client, a.id)
+      .then(() => setRevision((v) => v + 1))
+      .catch((e: unknown) => setProblem(e instanceof Error ? e.message : words.unlinkFailed))
+      .finally(() => setBusy(false));
+  };
   if (linked.length === 0) return null;
+  const shown = (a: LinkedAccount) => (a.surface === "github" ? `@${a.login}` : a.login);
   return (
     <div className="flex min-w-0 flex-col gap-1">
       <h4 className="font-medium text-aui-sm text-aui-fg">{words.linkedPeople}</h4>
+      <Problem message={problem} />
       <ul aria-label={words.linkedPeople} className="flex min-w-0 flex-col gap-1">
         {linked.map((a) => (
-          <li key={a.id} className="flex min-w-0 items-center gap-2 text-aui-sm">
+          <li
+            key={`${a.team ?? ""}/${a.id}`}
+            aria-label={shown(a)}
+            className="flex min-h-9 min-w-0 items-center gap-2 text-aui-sm"
+          >
             {a.avatar_url && (
               <img
                 src={a.avatar_url}
@@ -135,10 +164,17 @@ export function LinkedPeople({ client }: { client: string }) {
                 referrerPolicy="no-referrer"
               />
             )}
-            <span className="min-w-0 truncate text-aui-fg">
-              {a.surface === "github" ? `@${a.login}` : a.login}
-            </span>
-            <span className="min-w-0 truncate text-aui-muted text-aui-xs">{a.subject}</span>
+            <span className="min-w-0 truncate text-aui-fg">{shown(a)}</span>
+            <span className="min-w-0 flex-1 truncate text-aui-muted text-aui-xs">{a.subject}</span>
+            {canUnlink && (
+              <SplitButton
+                label={words.disconnect}
+                name={`${words.disconnect} ${shown(a)}`}
+                menuLabel={`More for ${shown(a)}`}
+                disabled={busy}
+                onClick={() => unlink(a)}
+              />
+            )}
           </li>
         ))}
       </ul>

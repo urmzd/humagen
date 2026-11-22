@@ -1139,7 +1139,7 @@ export function Connections({
                           />
                         )}
                         {(c.surface === "github" || c.surface === "slack") && (
-                          <LinkedPeople client={c.id} />
+                          <LinkedPeople client={c.id} canUnlink={canWrite} />
                         )}
                         {link(
                           {
@@ -1153,7 +1153,9 @@ export function Connections({
                     ))}
                   {(selected === "slack" || selected === "github") && (
                     <details className="text-aui-sm">
-                      <summary className="cursor-pointer text-aui-muted">Set up by hand</summary>
+                      <summary className="w-fit cursor-pointer rounded-aui text-aui-muted focus-visible:outline-2 focus-visible:outline-aui-accent">
+                        Set up by hand
+                      </summary>
                       <div className="pt-3">
                         <ClientConnect
                           key={selected}

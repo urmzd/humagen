@@ -164,7 +164,8 @@ func PersonActor(subject string) event.Actor {
 // by the numeric user id of the delivery's sender, which ctx carries from
 // the signature-verified delivery (withGitHubSender), and on Slack by the
 // user and the client's team. Without a link, the client's own map is the
-// fallback: a GitHub installation's exact verified login map, or the one
+// fallback: a GitHub installation's exact verified login map, which no longer
+// speaks for a person who linked an account (githubMapped), or the one
 // subject that the enabled Slack clients serving the client's team map the
 // tag's Slack user to. The Slack map is often on another client than the
 // one that received the message (a people map needs a machine, so an app
@@ -181,7 +182,7 @@ func (p *Platform) surfacePerson(ctx context.Context, c clients.Client, tag even
 				return who
 			}
 		}
-		return c.GitHub.People[wire.ActorOf(tag).ID]
+		return p.githubMapped(c, wire.ActorOf(tag).ID)
 	}
 	if c.Surface != clients.Slack || wire.ActorOf(tag).Bot || id == "" || c.Identity.Team == "" {
 		return ""

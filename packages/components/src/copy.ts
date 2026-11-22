@@ -3445,6 +3445,7 @@ export const defaultCopy = {
       notConnected: "Not connected",
       /** On a GitHub or Slack app: who linked an account there. */
       linkedPeople: "Linked people",
+      unlinkFailed: "The account could not be disconnected.",
     },
     /** The shelves MCPs sit on. */
     families: {

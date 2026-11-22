@@ -32,8 +32,11 @@ func (p *Platform) authorizeFixPull(c clients.Client, api transport.API) func(co
 		if login == "" {
 			person := runs.AskedBy(run)
 			if person != "" {
-				for name, subject := range current.GitHub.People {
-					if subject == person {
+				for name := range current.GitHub.People {
+					// The map no longer speaks for a person who linked an
+					// account (githubMapped): their old login may be someone
+					// else's now.
+					if p.githubMapped(current, name) == person {
 						if login != "" {
 							return fmt.Errorf("github: requester has ambiguous GitHub identity")
 						}

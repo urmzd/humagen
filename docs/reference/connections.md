@@ -21,7 +21,8 @@ unavailable. Optional `clients` entries configure registered MCP, Google
 Workspace, Drive, OneDrive, BigQuery or Slack applications; optional `github` configures the App ID, slug, OAuth
 client and deployment credential references. Provider callbacks must match the
 configured redirect URL. `redirect_url` may be left out: it is then
-`server.public_url` followed by `/connections/callback`.
+`server.public_url` followed by `/connections/callback`, held to the same
+rule: HTTPS, or plain HTTP only on a loopback address.
 
 ## Accounts a person links
 

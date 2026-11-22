@@ -296,7 +296,9 @@ func (p *Platform) AuthorizeConnection(ctx context.Context, who auth.Principal, 
 		if strings.HasPrefix(name, "workspace-") {
 			return connectionauth.Authorization{}, personctx.ErrInvalid
 		}
-		return p.authorizeAccount(ctx, who, name, in)
+		// Only the person's own browser begins an account link
+		// (AuthorizeAccount): its state never reaches an agent or a token.
+		return connectionauth.Authorization{}, ErrAccountInConsole
 	}
 	shared := in.Scope == "workspace" || strings.HasPrefix(name, "workspace-")
 	if shared && !who.Can(auth.ClientsWrite) {
@@ -366,7 +368,7 @@ func (p *Platform) CompleteConnection(ctx context.Context, who auth.Principal, n
 		return ErrForbidden
 	}
 	if _, account := accountSurface(name); account {
-		return p.completeAccount(ctx, who, name, nonce, code)
+		return ErrAccountInConsole
 	}
 	base := strings.TrimPrefix(name, "workspace-")
 	c, known := preset(base)

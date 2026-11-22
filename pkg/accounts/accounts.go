@@ -5,8 +5,10 @@
 //
 // One record per surface user is the claim: a surface user is linked to one
 // person in a workspace, and a second person's claim is refused until the
-// first is unlinked. One record per person and surface points back at it, so
-// a person has one account on each surface. Both are written together, at the
+// first is unlinked. A Slack user is keyed by user and team, since an
+// Enterprise Grid user (W...) keeps one id across the grid's teams. One
+// record per person, surface and team points back at it, so a person has one
+// GitHub account and one Slack account in each team. Both are written together, at the
 // versions read, so two claims at once cannot both win. Every record is the
 // tenant's, keyed for one tenant's reads.
 //
@@ -61,8 +63,8 @@ type Account struct {
 }
 
 // Store keeps the links of every workspace. A person's record is an Account
-// holding only the ID of the user they linked, so both kinds of record are
-// written in one batch.
+// holding only the ID and Team of the user they linked, so both kinds of
+// record are written in one batch.
 type Store struct {
 	records *state.Table[Account]
 }
@@ -75,85 +77,127 @@ func Open(st state.Store) *Store {
 	return &Store{records: state.NewTable[Account](st, "linked_accounts")}
 }
 
+// MaxPerPerson is the most accounts a person keeps on one surface: one on
+// GitHub, one per Slack team.
+const MaxPerPerson = 20
+
 func known(surface string) bool { return surface == GitHub || surface == Slack }
 
-func valid(tenant, surface, id string) bool {
-	return tenant != "" && known(surface) && id != "" && len(id) <= 64 && !strings.ContainsAny(id, "/\x00") && !strings.ContainsRune(tenant, 0)
+func part(v string, empty bool) bool {
+	return (v != "" || empty) && len(v) <= 64 && !strings.ContainsAny(v, "/\x00")
 }
 
-func accountKey(surface, id string) string { return "a/" + surface + "/" + id }
+// valid reports a surface user the store can key: a Slack user names its
+// team, a GitHub user names none.
+func valid(tenant, surface, team, id string) bool {
+	return tenant != "" && !strings.ContainsRune(tenant, 0) && known(surface) && part(id, false) &&
+		(surface == Slack && part(team, false) || surface == GitHub && team == "")
+}
 
-func personKey(surface, subject string) string {
+func accountKey(surface, team, id string) string {
+	if surface == Slack {
+		return "a/" + surface + "/" + team + "/" + id
+	}
+	return "a/" + surface + "/" + id
+}
+
+func personPrefix(surface, subject string) string {
 	sum := sha256.Sum256([]byte(subject))
-	return "p/" + surface + "/" + hex.EncodeToString(sum[:])
+	return "p/" + surface + "/" + hex.EncodeToString(sum[:]) + "/"
 }
 
-// Get is the account a surface user is linked as, or ErrNotFound. A nil
-// Store has none.
-func (s *Store) Get(tenant, surface, id string) (Account, error) {
-	if s == nil || !valid(tenant, surface, id) {
+func personKey(surface, team, subject string) string {
+	return personPrefix(surface, subject) + "t-" + team
+}
+
+// Get is the account a surface user is linked as, or ErrNotFound. team is
+// the Slack team, empty on GitHub. A nil Store has none.
+func (s *Store) Get(tenant, surface, team, id string) (Account, error) {
+	if s == nil || !valid(tenant, surface, team, id) {
 		return Account{}, ErrNotFound
 	}
-	it, err := s.records.Lookup(tenant, accountKey(surface, id))
+	it, err := s.records.Lookup(tenant, accountKey(surface, team, id))
 	if errors.Is(err, state.ErrNotFound) {
 		return Account{}, ErrNotFound
 	}
 	return it.Value, err
 }
 
-// Of is the account a person linked on a surface, or ErrNotFound.
-func (s *Store) Of(tenant, surface, subject string) (Account, error) {
+// Mine is every account a person linked on a surface: at most one on GitHub,
+// one per Slack team.
+func (s *Store) Mine(tenant, surface, subject string) ([]Account, error) {
 	if s == nil || tenant == "" || subject == "" || !known(surface) {
-		return Account{}, ErrNotFound
+		return nil, nil
 	}
-	p, err := s.records.Lookup(tenant, personKey(surface, subject))
-	if errors.Is(err, state.ErrNotFound) {
-		return Account{}, ErrNotFound
+	ptrs, _, err := s.records.List(tenant, state.Query{Prefix: personPrefix(surface, subject), Limit: MaxPerPerson})
+	if err != nil {
+		return nil, err
 	}
+	var out []Account
+	for _, p := range ptrs {
+		a, err := s.Get(tenant, surface, p.Value.Team, p.Value.ID)
+		if errors.Is(err, ErrNotFound) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		if a.Subject == subject {
+			out = append(out, a)
+		}
+	}
+	return out, nil
+}
+
+// Of is the first account a person linked on a surface, or ErrNotFound.
+func (s *Store) Of(tenant, surface, subject string) (Account, error) {
+	all, err := s.Mine(tenant, surface, subject)
 	if err != nil {
 		return Account{}, err
 	}
-	a, err := s.Get(tenant, surface, p.Value.ID)
-	if err != nil || a.Subject != subject {
+	if len(all) == 0 {
 		return Account{}, ErrNotFound
 	}
-	return a, nil
+	return all[0], nil
 }
 
-// Link records a as its person's account on its surface. A user another
-// person linked is refused with ErrClaimed. The person's earlier account on
-// the surface, if another, is unlinked in the same write; linking the same
-// user again refreshes its login and avatar.
+// Link records a as its person's account on its surface (and Slack team). A
+// user another person linked is refused with ErrClaimed. The person's earlier
+// account there, if another, is unlinked in the same write; linking the same
+// user again refreshes its login and avatar. Linking in another Slack team
+// leaves the first team's link alone.
 func (s *Store) Link(tenant string, a Account) (Account, error) {
-	if s == nil || !valid(tenant, a.Surface, a.ID) || a.Subject == "" || len(a.Subject) > 200 || len(a.Login) > 200 || len(a.Avatar) > 2048 || len(a.Team) > 64 {
+	if s == nil || !valid(tenant, a.Surface, a.Team, a.ID) || a.Subject == "" || len(a.Subject) > 200 || len(a.Login) > 200 || len(a.Avatar) > 2048 {
 		return Account{}, ErrInvalid
 	}
 	err := state.Retry(func() error {
 		b := s.records.Batch()
-		held, err := s.records.Lookup(tenant, accountKey(a.Surface, a.ID))
+		key := accountKey(a.Surface, a.Team, a.ID)
+		held, err := s.records.Lookup(tenant, key)
 		switch {
 		case errors.Is(err, state.ErrNotFound):
-			b.Create(tenant, accountKey(a.Surface, a.ID), a)
+			b.Create(tenant, key, a)
 		case err != nil:
 			return err
 		case held.Value.Subject != a.Subject:
 			return ErrClaimed
 		default:
-			b.PutAt(tenant, accountKey(a.Surface, a.ID), a, held.Version)
+			b.PutAt(tenant, key, a, held.Version)
 		}
-		mine, err := s.records.Lookup(tenant, personKey(a.Surface, a.Subject))
+		pkey := personKey(a.Surface, a.Team, a.Subject)
+		mine, err := s.records.Lookup(tenant, pkey)
 		switch {
 		case errors.Is(err, state.ErrNotFound):
-			b.Create(tenant, personKey(a.Surface, a.Subject), Account{ID: a.ID})
+			b.Create(tenant, pkey, Account{ID: a.ID, Team: a.Team})
 		case err != nil:
 			return err
 		default:
 			if mine.Value.ID != a.ID {
-				if err := s.dropOld(b, tenant, a.Surface, a.Subject, mine.Value.ID); err != nil {
+				if err := s.dropOld(b, tenant, a.Surface, a.Team, a.Subject, mine.Value.ID); err != nil {
 					return err
 				}
 			}
-			b.PutAt(tenant, personKey(a.Surface, a.Subject), Account{ID: a.ID}, mine.Version)
+			b.PutAt(tenant, pkey, Account{ID: a.ID, Team: a.Team}, mine.Version)
 		}
 		return b.Commit()
 	})
@@ -164,8 +208,8 @@ func (s *Store) Link(tenant string, a Account) (Account, error) {
 }
 
 // dropOld deletes a person's earlier account record when it is still theirs.
-func (s *Store) dropOld(b *state.Batch[Account], tenant, surface, subject, id string) error {
-	old, err := s.records.Lookup(tenant, accountKey(surface, id))
+func (s *Store) dropOld(b *state.Batch[Account], tenant, surface, team, subject, id string) error {
+	old, err := s.records.Lookup(tenant, accountKey(surface, team, id))
 	if errors.Is(err, state.ErrNotFound) {
 		return nil
 	}
@@ -173,44 +217,81 @@ func (s *Store) dropOld(b *state.Batch[Account], tenant, surface, subject, id st
 		return err
 	}
 	if old.Value.Subject == subject {
-		b.DeleteAt(tenant, accountKey(surface, id), old.Version)
+		b.DeleteAt(tenant, accountKey(surface, team, id), old.Version)
 	}
 	return nil
 }
 
-// Unlink removes a person's account on a surface. Unlinking nothing is not
-// an error.
+// Unlink removes every account a person linked on a surface. Unlinking
+// nothing is not an error.
 func (s *Store) Unlink(tenant, surface, subject string) error {
 	if s == nil || tenant == "" || subject == "" || !known(surface) {
 		return ErrInvalid
 	}
 	return state.Retry(func() error {
-		mine, err := s.records.Lookup(tenant, personKey(surface, subject))
-		if errors.Is(err, state.ErrNotFound) {
+		ptrs, _, err := s.records.List(tenant, state.Query{Prefix: personPrefix(surface, subject), Limit: MaxPerPerson})
+		if err != nil {
+			return err
+		}
+		b := s.records.Batch()
+		for _, p := range ptrs {
+			if err := s.dropOld(b, tenant, surface, p.Value.Team, subject, p.Value.ID); err != nil {
+				return err
+			}
+			b.DeleteAt(tenant, p.Key, p.Version)
+		}
+		if b.Len() == 0 {
 			return nil
+		}
+		return b.Commit()
+	})
+}
+
+// Remove unlinks one surface user from whoever linked it, as an
+// administrator does for someone who left or whose account was taken, and
+// returns the account it removed. A user nobody linked is ErrNotFound.
+func (s *Store) Remove(tenant, surface, team, id string) (Account, error) {
+	if s == nil || !valid(tenant, surface, team, id) {
+		return Account{}, ErrNotFound
+	}
+	var removed Account
+	err := state.Retry(func() error {
+		held, err := s.records.Lookup(tenant, accountKey(surface, team, id))
+		if errors.Is(err, state.ErrNotFound) {
+			return ErrNotFound
 		}
 		if err != nil {
 			return err
 		}
 		b := s.records.Batch()
-		if err := s.dropOld(b, tenant, surface, subject, mine.Value.ID); err != nil {
+		b.DeleteAt(tenant, held.Key, held.Version)
+		pkey := personKey(surface, team, held.Value.Subject)
+		if mine, err := s.records.Lookup(tenant, pkey); err == nil && mine.Value.ID == id {
+			b.DeleteAt(tenant, pkey, mine.Version)
+		} else if err != nil && !errors.Is(err, state.ErrNotFound) {
 			return err
 		}
-		b.DeleteAt(tenant, personKey(surface, subject), mine.Version)
+		removed = held.Value
 		return b.Commit()
 	})
+	return removed, err
 }
 
-// List is up to limit of a workspace's accounts on a surface, by user id.
-func (s *Store) List(tenant, surface string, limit int) ([]Account, error) {
+// List is up to limit of a workspace's accounts on a surface, by user id. A
+// Slack team narrows it to that team's; on GitHub team is empty.
+func (s *Store) List(tenant, surface, team string, limit int) ([]Account, error) {
 	if s == nil {
 		return []Account{}, nil
 	}
-	if tenant == "" || !known(surface) {
+	if tenant == "" || !known(surface) || !part(team, true) {
 		return nil, ErrInvalid
 	}
+	prefix := "a/" + surface + "/"
+	if surface == Slack && team != "" {
+		prefix += team + "/"
+	}
 	limit = min(max(limit, 1), MaxList)
-	items, _, err := s.records.List(tenant, state.Query{Prefix: "a/" + surface + "/", Limit: limit})
+	items, _, err := s.records.List(tenant, state.Query{Prefix: prefix, Limit: limit})
 	if err != nil {
 		return nil, err
 	}

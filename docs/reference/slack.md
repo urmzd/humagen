@@ -530,17 +530,21 @@ which stays as a fallback.
 
 1. Humagen starts **Sign in with Slack** (OpenID Connect, scopes `openid
    profile`) at `openid/connect/authorize`, with a `state` that only the
-   signed-in person's own callback can spend, once, within 10 minutes.
+   signed-in person's own callback, from the same browser, can spend, once,
+   within 10 minutes. Only the console starts or finishes a link.
 2. On the callback it exchanges the code at `openid.connect.token` with the
    Slack app's client id and secret, then reads `openid.connect.userInfo`.
 3. It links the `https://slack.com/user_id` claim to the person, with the
    `https://slack.com/team_id` claim and the name and picture for display. The
    token is used for that one request and never stored.
 
-A link whose team is not the team of one of the workspace's Slack clients is
-refused. A Slack user is linked to one person per workspace: a second claim is
-refused until the first person disconnects. A person links one Slack account,
-and disconnects it from the same row.
+A link whose team is not the team of one of the workspace's enabled Slack
+clients is refused. A Slack user is keyed by user and team, so an Enterprise
+Grid user (`W...`) linked in one team keeps that link when they link in
+another. A Slack user in a team is linked to one person per workspace: a
+second claim is refused until the first person disconnects, or an
+administrator disconnects it on the Slack app's sheet. A person links one
+Slack account per team, and Disconnect on their row removes them all.
 
 **Resolution.** A Slack user is the person who linked them in the client's
 team first, then the one `slack.people` maps. This holds for a connector's

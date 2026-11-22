@@ -82,10 +82,13 @@ func person(tenant, subject string) auth.Principal {
 	return auth.Principal{Tenant: tenant, Subject: subject, Kind: auth.User, Scopes: []auth.Permission{auth.RunsRead, auth.RunsWrite}}
 }
 
+// browser is the secret a person's browser holds for their link.
+func browser(who auth.Principal) string { return "browser-" + who.Tenant + "-" + who.Subject }
+
 // beginLink starts a link and returns the state the consent carries.
 func beginLink(t *testing.T, p *Platform, who auth.Principal, name string) string {
 	t.Helper()
-	a, err := p.AuthorizeConnection(t.Context(), who, name, ConnectionAuthorizationInput{Scope: "person"})
+	a, err := p.AuthorizeAccount(t.Context(), who, name, ConnectionAuthorizationInput{Scope: "person"}, browser(who))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +103,7 @@ func TestGitHubAccountLinksByIDAndKeepsNoToken(t *testing.T) {
 	p, fake := linkFixture(t)
 	ana := person("t", "ana")
 	state := beginLink(t, p, ana, GitHubAccount)
-	if err := p.CompleteConnection(t.Context(), ana, GitHubAccount, state, "code"); err != nil {
+	if err := p.CompleteAccount(t.Context(), ana, GitHubAccount, state, "code", browser(ana)); err != nil {
 		t.Fatal(err)
 	}
 	if fake.bearer != "Bearer gh-user-token" {
@@ -130,7 +133,7 @@ func TestGitHubAccountLinksByIDAndKeepsNoToken(t *testing.T) {
 		}
 	}
 	// The state is spent.
-	if err := p.CompleteConnection(t.Context(), ana, GitHubAccount, state, "code"); !errors.Is(err, connectionauth.ErrInvalid) {
+	if err := p.CompleteAccount(t.Context(), ana, GitHubAccount, state, "code", browser(ana)); !errors.Is(err, connectionauth.ErrInvalid) {
 		t.Fatalf("state replayed: %v", err)
 	}
 	if err := p.DisconnectConnection(ana, GitHubAccount); err != nil {
@@ -145,14 +148,14 @@ func TestAccountLinkRefusesAWrongState(t *testing.T) {
 	p, _ := linkFixture(t)
 	ana := person("t", "ana")
 	state := beginLink(t, p, ana, GitHubAccount)
-	if err := p.CompleteConnection(t.Context(), ana, GitHubAccount, state+"x", "code"); !errors.Is(err, connectionauth.ErrInvalid) {
+	if err := p.CompleteAccount(t.Context(), ana, GitHubAccount, state+"x", "code", browser(ana)); !errors.Is(err, connectionauth.ErrInvalid) {
 		t.Fatalf("wrong state: %v", err)
 	}
 	if _, err := p.Accounts.Of("t", accounts.GitHub, "ana"); !errors.Is(err, accounts.ErrNotFound) {
 		t.Fatal("a wrong state linked")
 	}
 	// The right one still works: a wrong guess does not spend it.
-	if err := p.CompleteConnection(t.Context(), ana, GitHubAccount, state, "code"); err != nil {
+	if err := p.CompleteAccount(t.Context(), ana, GitHubAccount, state, "code", browser(ana)); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -161,14 +164,14 @@ func TestAccountLinkRefusesAnotherPersonsState(t *testing.T) {
 	p, _ := linkFixture(t)
 	ana, bob := person("t", "ana"), person("t", "bob")
 	state := beginLink(t, p, ana, GitHubAccount)
-	if err := p.CompleteConnection(t.Context(), bob, GitHubAccount, state, "code"); !errors.Is(err, connectionauth.ErrInvalid) {
+	if err := p.CompleteAccount(t.Context(), bob, GitHubAccount, state, "code", browser(bob)); !errors.Is(err, connectionauth.ErrInvalid) {
 		t.Fatalf("bob completed ana's consent: %v", err)
 	}
 	if _, err := p.Accounts.Of("t", accounts.GitHub, "bob"); !errors.Is(err, accounts.ErrNotFound) {
 		t.Fatal("bob was linked through ana's state")
 	}
 	// Nor in another workspace.
-	if err := p.CompleteConnection(t.Context(), person("t2", "ana"), GitHubAccount, state, "code"); !errors.Is(err, connectionauth.ErrInvalid) {
+	if err := p.CompleteAccount(t.Context(), person("t2", "ana"), GitHubAccount, state, "code", browser(person("t2", "ana"))); !errors.Is(err, connectionauth.ErrInvalid) {
 		t.Fatalf("another tenant completed it: %v", err)
 	}
 }
@@ -182,12 +185,12 @@ func TestAccountLinkFailsWhenTheSurfaceSaysNothing(t *testing.T) {
 	} {
 		set("")
 		state := beginLink(t, p, ana, name)
-		if err := p.CompleteConnection(t.Context(), ana, name, state, "code"); !errors.Is(err, connectionauth.ErrReconnect) {
+		if err := p.CompleteAccount(t.Context(), ana, name, state, "code", browser(ana)); !errors.Is(err, connectionauth.ErrReconnect) {
 			t.Fatalf("%s identity failure: %v", name, err)
 		}
 		set(`{"ok":false}`)
 		state = beginLink(t, p, ana, name)
-		if err := p.CompleteConnection(t.Context(), ana, name, state, "code"); !errors.Is(err, ErrAccountRefused) {
+		if err := p.CompleteAccount(t.Context(), ana, name, state, "code", browser(ana)); !errors.Is(err, ErrAccountRefused) {
 			t.Fatalf("%s empty identity: %v", name, err)
 		}
 	}
@@ -201,24 +204,24 @@ func TestAccountLinkFailsWhenTheSurfaceSaysNothing(t *testing.T) {
 func TestAccountLinkOnePersonPerUserUntilUnlinked(t *testing.T) {
 	p, _ := linkFixture(t)
 	ana, bob := person("t", "ana"), person("t", "bob")
-	if err := p.CompleteConnection(t.Context(), ana, GitHubAccount, beginLink(t, p, ana, GitHubAccount), "code"); err != nil {
+	if err := p.CompleteAccount(t.Context(), ana, GitHubAccount, beginLink(t, p, ana, GitHubAccount), "code", browser(ana)); err != nil {
 		t.Fatal(err)
 	}
-	if err := p.CompleteConnection(t.Context(), bob, GitHubAccount, beginLink(t, p, bob, GitHubAccount), "code"); !errors.Is(err, accounts.ErrClaimed) {
+	if err := p.CompleteAccount(t.Context(), bob, GitHubAccount, beginLink(t, p, bob, GitHubAccount), "code", browser(bob)); !errors.Is(err, accounts.ErrClaimed) {
 		t.Fatalf("second claim: %v", err)
 	}
 	// In another workspace the same GitHub user is free.
 	carol := person("t2", "carol")
-	if err := p.CompleteConnection(t.Context(), carol, GitHubAccount, beginLink(t, p, carol, GitHubAccount), "code"); err != nil {
+	if err := p.CompleteAccount(t.Context(), carol, GitHubAccount, beginLink(t, p, carol, GitHubAccount), "code", browser(carol)); err != nil {
 		t.Fatalf("another tenant refused: %v", err)
 	}
 	if err := p.DisconnectConnection(ana, GitHubAccount); err != nil {
 		t.Fatal(err)
 	}
-	if err := p.CompleteConnection(t.Context(), bob, GitHubAccount, beginLink(t, p, bob, GitHubAccount), "code"); err != nil {
+	if err := p.CompleteAccount(t.Context(), bob, GitHubAccount, beginLink(t, p, bob, GitHubAccount), "code", browser(bob)); err != nil {
 		t.Fatalf("claim after unlink: %v", err)
 	}
-	if got, _ := p.Accounts.Get("t2", accounts.GitHub, "42"); got.Subject != "carol" {
+	if got, _ := p.Accounts.Get("t2", accounts.GitHub, "", "42"); got.Subject != "carol" {
 		t.Fatalf("t2's link moved: %+v", got)
 	}
 }
@@ -226,17 +229,17 @@ func TestAccountLinkOnePersonPerUserUntilUnlinked(t *testing.T) {
 func TestSlackAccountNeedsTheWorkspacesTeam(t *testing.T) {
 	p, fake := linkFixture(t)
 	ana := person("t", "ana")
-	if err := p.CompleteConnection(t.Context(), ana, SlackAccount, beginLink(t, p, ana, SlackAccount), "code"); !errors.Is(err, ErrAccountRefused) {
+	if err := p.CompleteAccount(t.Context(), ana, SlackAccount, beginLink(t, p, ana, SlackAccount), "code", browser(ana)); !errors.Is(err, ErrAccountRefused) {
 		t.Fatalf("a team with no client: %v", err)
 	}
-	if _, err := p.Clients.Create("t", clients.Client{ID: "slack", Name: "Slack", Surface: clients.Slack, Identity: clients.Identity{Team: "T0TEAM"}, Slack: &clients.SlackOptions{}}, clients.DefaultCaps(), time.Now()); err != nil {
+	if _, err := p.Clients.Create("t", clients.Client{ID: "slack", Name: "Slack", Surface: clients.Slack, Enabled: true, Identity: clients.Identity{Team: "T0TEAM"}, Slack: &clients.SlackOptions{}}, clients.DefaultCaps(), time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	// Another tenant's client on the team is not this workspace's.
-	if _, err := p.Clients.Create("t2", clients.Client{ID: "slack", Name: "Slack", Surface: clients.Slack, Identity: clients.Identity{Team: "T0TEAM"}, Slack: &clients.SlackOptions{}}, clients.DefaultCaps(), time.Now()); err != nil {
+	if _, err := p.Clients.Create("t2", clients.Client{ID: "slack", Name: "Slack", Surface: clients.Slack, Enabled: true, Identity: clients.Identity{Team: "T0TEAM"}, Slack: &clients.SlackOptions{}}, clients.DefaultCaps(), time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	if err := p.CompleteConnection(t.Context(), ana, SlackAccount, beginLink(t, p, ana, SlackAccount), "code"); err != nil {
+	if err := p.CompleteAccount(t.Context(), ana, SlackAccount, beginLink(t, p, ana, SlackAccount), "code", browser(ana)); err != nil {
 		t.Fatal(err)
 	}
 	if fake.bearer != "Bearer slack-user-token" {
@@ -250,12 +253,12 @@ func TestSlackAccountNeedsTheWorkspacesTeam(t *testing.T) {
 		t.Fatal("a Slack token was stored")
 	}
 	bob := person("t", "bob")
-	if err := p.CompleteConnection(t.Context(), bob, SlackAccount, beginLink(t, p, bob, SlackAccount), "code"); !errors.Is(err, accounts.ErrClaimed) {
+	if err := p.CompleteAccount(t.Context(), bob, SlackAccount, beginLink(t, p, bob, SlackAccount), "code", browser(bob)); !errors.Is(err, accounts.ErrClaimed) {
 		t.Fatalf("second Slack claim: %v", err)
 	}
 	fake.slackUser = strings.Replace(slackAna, "T0TEAM", "T0ELSE", 1)
 	carol := person("t", "carol")
-	if err := p.CompleteConnection(t.Context(), carol, SlackAccount, beginLink(t, p, carol, SlackAccount), "code"); !errors.Is(err, ErrAccountRefused) {
+	if err := p.CompleteAccount(t.Context(), carol, SlackAccount, beginLink(t, p, carol, SlackAccount), "code", browser(carol)); !errors.Is(err, ErrAccountRefused) {
 		t.Fatalf("a team none of the clients serves: %v", err)
 	}
 	listed, err := p.LinkedAccounts(person("t", "admin"), "slack")
@@ -274,10 +277,10 @@ func TestAccountLinkRefusesMachinesAndSharedScope(t *testing.T) {
 	p, _ := linkFixture(t)
 	machine := person("t", "svc")
 	machine.Kind = auth.Machine
-	if _, err := p.AuthorizeConnection(t.Context(), machine, GitHubAccount, ConnectionAuthorizationInput{}); !errors.Is(err, ErrForbidden) {
+	if _, err := p.AuthorizeAccount(t.Context(), machine, GitHubAccount, ConnectionAuthorizationInput{}, browser(machine)); !errors.Is(err, ErrForbidden) {
 		t.Fatalf("machine: %v", err)
 	}
-	if _, err := p.AuthorizeConnection(t.Context(), person("t", "ana"), GitHubAccount, ConnectionAuthorizationInput{Scope: "workspace"}); err == nil {
+	if _, err := p.AuthorizeAccount(t.Context(), person("t", "ana"), GitHubAccount, ConnectionAuthorizationInput{Scope: "workspace"}, "b"); err == nil {
 		t.Fatal("workspace scope accepted")
 	}
 	if _, err := p.AuthorizeConnection(t.Context(), person("t", "ana"), "workspace-"+GitHubAccount, ConnectionAuthorizationInput{}); err == nil {
@@ -359,5 +362,138 @@ func TestLinkedAccountsResolveBeforeThePeopleMap(t *testing.T) {
 	}
 	if _, ok := p.actsFor(created, "someone-else", "U0CAROL"); ok {
 		t.Fatal("another credential acted for a linked person")
+	}
+}
+
+// An account link begins and ends only in the person's own browser: an agent's
+// tool, an MCP client or a token reaches it through the generic connection
+// calls, which refuse it, and a callback from another browser is refused.
+func TestAccountLinkIsBoundToTheBrowserThatBeganIt(t *testing.T) {
+	p, _ := linkFixture(t)
+	ana := person("t", "ana")
+	for _, name := range []string{GitHubAccount, SlackAccount} {
+		if _, err := p.AuthorizeConnection(t.Context(), ana, name, ConnectionAuthorizationInput{Scope: "person"}); !errors.Is(err, ErrAccountInConsole) {
+			t.Fatalf("%s through the generic connection call: %v", name, err)
+		}
+		// The builder's connect_connection tool calls BeginConnection.
+		if _, err := p.BeginConnection(t.Context(), ana, name); !errors.Is(err, ErrAccountInConsole) {
+			t.Fatalf("%s through an agent's tool: %v", name, err)
+		}
+		if err := p.CompleteConnection(t.Context(), ana, name, "state", "code"); !errors.Is(err, ErrAccountInConsole) {
+			t.Fatalf("%s completed through the generic call: %v", name, err)
+		}
+		if _, err := p.AuthorizeAccount(t.Context(), ana, name, ConnectionAuthorizationInput{}, ""); !errors.Is(err, ErrAccountInConsole) {
+			t.Fatalf("%s begun with no browser secret: %v", name, err)
+		}
+	}
+	state := beginLink(t, p, ana, GitHubAccount)
+	// Ana's own state and code, carried to another browser.
+	if err := p.CompleteAccount(t.Context(), ana, GitHubAccount, state, "code", "another-browser"); !errors.Is(err, connectionauth.ErrInvalid) {
+		t.Fatalf("another browser: %v", err)
+	}
+	if err := p.CompleteAccount(t.Context(), ana, GitHubAccount, state, "code", ""); !errors.Is(err, ErrAccountInConsole) {
+		t.Fatalf("no browser: %v", err)
+	}
+	if _, err := p.Accounts.Of("t", accounts.GitHub, "ana"); !errors.Is(err, accounts.ErrNotFound) {
+		t.Fatal("linked from another browser")
+	}
+	if err := p.CompleteAccount(t.Context(), ana, GitHubAccount, state, "code", browser(ana)); err != nil {
+		t.Fatalf("her own browser: %v", err)
+	}
+}
+
+// A login the map names for a person who linked their account no longer
+// speaks for them: GitHub lets anyone register a login its owner renamed away
+// from, so only the linked id does.
+func TestTheLoginMapStopsSpeakingForAPersonWhoLinked(t *testing.T) {
+	p, _ := linkFixture(t)
+	gh := clients.Client{ID: "github", Tenant: "t", Surface: clients.GitHub, Enabled: true, GitHub: &clients.GitHubOptions{People: map[string]string{"alice": "ana", "bob": "bo"}}}
+	tag := func(login string) event.Envelope { return wire.NewEvent(wire.Raise{Actor: event.Actor{ID: login}}) }
+	delivery := func(id, login string) context.Context {
+		return withGitHubSender(t.Context(), []byte(`{"sender":{"id":`+id+`,"login":"`+login+`"}}`))
+	}
+	if got := p.surfacePerson(delivery("2", "alice"), gh, tag("alice")); got != "ana" {
+		t.Fatalf("before linking, the map: %q", got)
+	}
+	if _, err := p.Accounts.Link("t", accounts.Account{Surface: accounts.GitHub, ID: "1", Login: "alice", Subject: "ana"}); err != nil {
+		t.Fatal(err)
+	}
+	// alice renamed; someone else registered "alice" (id 2).
+	if got := p.surfacePerson(delivery("2", "alice"), gh, tag("alice")); got != "" {
+		t.Fatalf("the new owner of the login acts for %q", got)
+	}
+	if got := p.surfacePerson(t.Context(), gh, tag("alice")); got != "" {
+		t.Fatalf("with no sender id, the map acts for %q", got)
+	}
+	if got := p.surfacePerson(delivery("1", "alice-renamed"), gh, tag("alice-renamed")); got != "ana" {
+		t.Fatalf("ana by her id: %q", got)
+	}
+	// Someone who did not link is still mapped.
+	if got := p.surfacePerson(delivery("3", "bob"), gh, tag("bob")); got != "bo" {
+		t.Fatalf("bob: %q", got)
+	}
+	asks := func(id int64, login string) bool {
+		return p.linkedGitHub("t", id) != "" || p.githubMapped(gh, login) != ""
+	}
+	body := func(id, login string) []byte {
+		return []byte(`{"action":"created","sender":{"id":` + id + `,"login":"` + login + `"},"comment":{"user":{"id":` + id + `,"login":"` + login + `"},"author_association":"NONE"}}`)
+	}
+	if _, ok, _ := gh.GitHubAsker("issue_comment", body("2", "alice"), asks); ok {
+		t.Fatal("the new owner of a linked person's old login may ask")
+	}
+	if _, ok, why := gh.GitHubAsker("issue_comment", body("1", "alice-renamed"), asks); !ok {
+		t.Fatalf("the linked person may not ask: %s", why)
+	}
+	if _, ok, why := gh.GitHubAsker("issue_comment", body("3", "bob"), asks); !ok {
+		t.Fatalf("a mapped person may not ask: %s", why)
+	}
+}
+
+func TestAnAdministratorUnlinksAnAccount(t *testing.T) {
+	p, _ := linkFixture(t)
+	admin := person("t", "admin")
+	admin.Scopes = append(admin.Scopes, auth.ClientsWrite)
+	for _, tenant := range []string{"t", "t2"} {
+		if _, err := p.Clients.Create(tenant, clients.Client{ID: "gh", Name: "GitHub", Surface: clients.GitHub, Enabled: true, Identity: clients.Identity{Owners: []string{"acme"}}, GitHub: &clients.GitHubOptions{}}, clients.DefaultCaps(), time.Now()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := p.Accounts.Link("t", accounts.Account{Surface: accounts.GitHub, ID: "42", Login: "octocat", Subject: "ana"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.UnlinkAccount(person("t", "viewer"), "gh", "42"); !errors.Is(err, ErrForbidden) {
+		t.Fatalf("without clients:write: %v", err)
+	}
+	other := admin
+	other.Tenant = "t3"
+	if err := p.UnlinkAccount(other, "gh", "42"); !errors.Is(err, clients.ErrNotFound) {
+		t.Fatalf("another tenant's client: %v", err)
+	}
+	t2 := admin
+	t2.Tenant = "t2"
+	if err := p.UnlinkAccount(t2, "gh", "42"); !errors.Is(err, accounts.ErrNotFound) {
+		t.Fatalf("an account another tenant linked: %v", err)
+	}
+	if err := p.UnlinkAccount(admin, "gh", "42"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.Accounts.Of("t", accounts.GitHub, "ana"); !errors.Is(err, accounts.ErrNotFound) {
+		t.Fatal("still linked")
+	}
+	// The claim is free for someone else.
+	bob := person("t", "bob")
+	if err := p.CompleteAccount(t.Context(), bob, GitHubAccount, beginLink(t, p, bob, GitHubAccount), "code", browser(bob)); err != nil {
+		t.Fatalf("claim after an administrator unlinked: %v", err)
+	}
+}
+
+func TestADisabledSlackClientServesNoTeam(t *testing.T) {
+	p, _ := linkFixture(t)
+	if _, err := p.Clients.Create("t", clients.Client{ID: "slack", Name: "Slack", Surface: clients.Slack, Identity: clients.Identity{Team: "T0TEAM"}, Slack: &clients.SlackOptions{}}, clients.DefaultCaps(), time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	ana := person("t", "ana")
+	if err := p.CompleteAccount(t.Context(), ana, SlackAccount, beginLink(t, p, ana, SlackAccount), "code", browser(ana)); !errors.Is(err, ErrAccountRefused) {
+		t.Fatalf("a disabled client's team: %v", err)
 	}
 }

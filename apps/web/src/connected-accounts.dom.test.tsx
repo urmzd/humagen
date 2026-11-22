@@ -201,3 +201,39 @@ test("an app lists who linked an account there, and nothing before anyone has", 
   await waitFor(() => assert.ok(net?.seen.some((r) => r.path === "/api/clients/empty/accounts")));
   assert.equal(container.textContent, "");
 });
+
+test("an administrator disconnects someone's account from the app's list", async () => {
+  let linked = true;
+  net = stubFetch({
+    "GET /api/clients/gh/accounts": () => ({
+      accounts: linked
+        ? [
+            {
+              surface: "github",
+              id: "42",
+              login: "octocat",
+              subject: "ana",
+              linked_at: "2026-11-22T12:00:00Z",
+            },
+          ]
+        : [],
+    }),
+    "DELETE /api/clients/gh/accounts/42": () => {
+      linked = false;
+      return undefined;
+    },
+  });
+  const { container } = render(<LinkedPeople client="gh" canUnlink />);
+  const row = await screen.findByRole("listitem", { name: "@octocat" });
+  assert.equal(within(row).getAllByRole("button").length, 1);
+  fireEvent.click(within(row).getByRole("button", { name: "Disconnect @octocat" }));
+  await waitFor(() => assert.equal(container.textContent, ""));
+  assert.ok(
+    net.seen.some((r) => r.method === "DELETE" && r.path === "/api/clients/gh/accounts/42"),
+  );
+  cleanup();
+  linked = true;
+  render(<LinkedPeople client="gh" />);
+  await screen.findByRole("listitem", { name: "@octocat" });
+  assert.equal(screen.queryAllByRole("button").length, 0);
+});

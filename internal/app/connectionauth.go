@@ -1,11 +1,9 @@
 package app
 
 import (
-	"cmp"
 	"context"
 	"encoding/base64"
 	"errors"
-	"strings"
 
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/connectionauth"
@@ -27,10 +25,7 @@ const (
 // RedirectURL is where every connection's consent returns: the spec's
 // connections.redirect_url, else server.public_url's /connections/callback.
 func RedirectURL(system spec.System) string {
-	if u := system.Spec.Connections.RedirectURL; u != "" {
-		return u
-	}
-	return strings.TrimRight(cmp.Or(system.Spec.Server.PublicURL, "http://localhost:8080"), "/") + "/connections/callback"
+	return system.Spec.Connections.Redirect(system.Spec.Server.PublicURL)
 }
 
 func connectionAuthorization(ctx context.Context, system spec.System, keys credref.Resolver, env func(string) string) (*connectionauth.Config, error) {

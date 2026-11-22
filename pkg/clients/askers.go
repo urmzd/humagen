@@ -17,10 +17,11 @@ var writeAccess = []string{"OWNER", "MEMBER", "COLLABORATOR"}
 // they can write to the repository (owner, member or collaborator) or the
 // client maps them to a person, and, when the client names askers, they are
 // one of them. A delivery nobody asks through (a push, a check run) is
-// allowed. why says why someone may not. linked, when given, reports whether
-// a person in the workspace linked the GitHub user of that numeric id, which
-// counts as mapped.
-func (c Client) GitHubAsker(kind string, body []byte, linked func(id int64) bool) (login string, allowed bool, why string) {
+// allowed. why says why someone may not. mapped, when given, decides whether
+// the GitHub user (by numeric id and login) is someone the workspace knows,
+// in place of the client's login map: the platform answers from linked
+// accounts first.
+func (c Client) GitHubAsker(kind string, body []byte, mapped func(id int64, login string) bool) (login string, allowed bool, why string) {
 	if c.Surface != GitHub || c.GitHub == nil {
 		return "", true, ""
 	}
@@ -67,8 +68,11 @@ func (c Client) GitHubAsker(kind string, body []byte, linked func(id int64) bool
 	if login == "" {
 		return "", false, "it names nobody who asks"
 	}
-	mapped := c.GitHub.People[login] != "" || linked != nil && who.User.ID > 0 && linked(who.User.ID)
-	if !mapped && !slices.Contains(writeAccess, who.Association) {
+	known := c.GitHub.People[login] != ""
+	if mapped != nil {
+		known = mapped(who.User.ID, login)
+	}
+	if !known && !slices.Contains(writeAccess, who.Association) {
 		return login, false, login + " has no write access to the repository (" + strings.ToLower(cmpOr(who.Association, "none")) + ")"
 	}
 	if len(c.GitHub.Askers) > 0 && !slices.ContainsFunc(c.GitHub.Askers, func(a string) bool { return strings.EqualFold(a, login) }) {

@@ -10406,6 +10406,30 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
         "500": {$ref: "#/components/responses/ServerError"}
+  /api/clients/{id}/accounts/{account}:
+    delete:
+      operationId: unlinkClientAccount
+      tags: [clients]
+      summary: Unlink a person's GitHub or Slack account
+      description: |
+        Removes the link a person made to this GitHub or Slack user (the
+        surface's user id; a Slack client's own team), as an administrator
+        does for someone who left or whose account was taken. The person may
+        link again. Audited.
+      x-permission: clients:write
+      parameters:
+        - {$ref: "#/components/parameters/ClientID"}
+        - name: account
+          in: path
+          required: true
+          description: The surface's user id, such as a GitHub numeric id or a Slack user id.
+          schema: {type: string, maxLength: 64}
+      responses:
+        "204": {description: Unlinked.}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
   /api/clients/{id}:
     get:
       operationId: getClient

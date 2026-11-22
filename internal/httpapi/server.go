@@ -1308,6 +1308,8 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 		return
 	}
 	switch {
+	case errors.Is(err, accounts.ErrNotFound):
+		fail(w, http.StatusNotFound, "not found")
 	case errors.Is(err, accounts.ErrClaimed):
 		fail(w, http.StatusConflict, detail(err, accounts.ErrClaimed))
 	case errors.Is(err, platform.ErrAccountRefused):

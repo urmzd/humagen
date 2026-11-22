@@ -8975,6 +8975,29 @@ its people map. A Slack client lists its own team's. At most 200.
     });
   }
 
+  /** Removes the link a person made to this GitHub or Slack user (the
+surface's user id; a Slack client's own team), as an administrator
+does for someone who left or whose account was taken. The person may
+link again. Audited.
+ */
+  async unlinkClientAccount(id: string, account: string, options?: RequestOptions): Promise<void> {
+    let path = "/api/clients/{id}/accounts/{account}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    path = path.replace("{account}", encodeURIComponent(String(account)));
+    await this.request<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  async unlinkClientAccountRaw(id: string, account: string, options?: RequestOptions): Promise<ApiResponse<void>> {
+    let path = "/api/clients/{id}/accounts/{account}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    path = path.replace("{account}", encodeURIComponent(String(account)));
+    return this.rawRequest<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
   /** Get a client */
   async getClient(id: string, options?: RequestOptions): Promise<ClientView> {
     let path = "/api/clients/{id}";

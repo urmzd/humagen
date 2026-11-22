@@ -69,10 +69,10 @@ func TestAskersAreLogins(t *testing.T) {
 func TestGitHubAskerCountsALinkedAccountAsMapped(t *testing.T) {
 	gh := Client{Surface: GitHub, GitHub: &GitHubOptions{}}
 	body := []byte(`{"action":"created","sender":{"id":7,"login":"mallory"},"comment":{"user":{"id":7,"login":"mallory"},"author_association":"NONE"}}`)
-	if _, ok, _ := gh.GitHubAsker("issue_comment", body, func(int64) bool { return false }); ok {
+	if _, ok, _ := gh.GitHubAsker("issue_comment", body, func(int64, string) bool { return false }); ok {
 		t.Fatal("an unlinked reader without write access may ask")
 	}
-	if _, ok, why := gh.GitHubAsker("issue_comment", body, func(id int64) bool { return id == 7 }); !ok {
+	if _, ok, why := gh.GitHubAsker("issue_comment", body, func(id int64, _ string) bool { return id == 7 }); !ok {
 		t.Fatalf("a linked person may not ask: %s", why)
 	}
 }

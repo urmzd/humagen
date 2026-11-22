@@ -53,8 +53,10 @@ callback ◀───────  code + state               ◀─── redir
 ```
 
 1. Humagen starts the GitHub App's user authorization with a `state` that only
-   the signed-in person's own callback can spend, once, within 10 minutes.
-   It sends a PKCE challenge.
+   the signed-in person's own callback, from the same browser, can spend,
+   once, within 10 minutes. The browser holds an HttpOnly cookie the consent
+   is bound to. It sends a PKCE challenge. Only the console starts or finishes
+   a link: an agent's tool, an MCP client or an API token is refused.
 2. On the callback it exchanges the code with the app's client id and secret,
    then reads `GET /user` with the user token.
 3. It links the numeric user id to the person, with the login and avatar for
@@ -67,12 +69,14 @@ callback ◀───────  code + state               ◀─── redir
 | One person per GitHub user | A second person's claim is refused until the first person disconnects |
 | One GitHub account per person | Linking another account replaces the first |
 | Scope | The workspace. Another workspace may link the same user to its own person |
-| Disconnect | The person's own row. The link is removed at once |
+| Disconnect | The person's own row, or an administrator on the GitHub app's sheet (`DELETE /api/clients/{id}/accounts/{account}`, `clients:write`, audited) for someone who left or whose account was taken |
 
 **Resolution.** A delivery's `sender.id` is read from the signature-verified
 payload. The person who linked that id is who the run acts for; without a
-link, `github.people` maps the login. Linked people may also ask without write
-access to the repository, as mapped people may.
+link, `github.people` maps the login. A map entry that names a person who
+linked an account is not used: GitHub lets anyone register a login its owner
+renamed away from, so only the linked id speaks for that person. Linked people
+may also ask without write access to the repository, as mapped people may.
 
 Administrators see who linked an account on the GitHub app's sheet (Settings,
 Apps, GitHub), from `GET /api/clients/{id}/accounts`.

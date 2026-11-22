@@ -452,6 +452,9 @@ is the workspace's, keyed by the surface and its stable user id, and holds no
 credential. A surface user resolves through a link first and a client's map
 second. `GET /api/clients/{id}/accounts` (`clients:read`) lists who linked an
 account on a client's surface; a Slack client lists its own team's.
+`DELETE /api/clients/{id}/accounts/{account}` (`clients:write`, audited)
+removes one, by the surface's user id. A GitHub `github.people` entry that
+names a person who linked an account is no longer used.
 
 GitHub installations may also set `github.people`, a bounded exact GitHub-login to
 workspace-subject map, as a fallback. Only that verified installation's map applies. Bot,
