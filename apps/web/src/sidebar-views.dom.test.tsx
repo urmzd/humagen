@@ -156,11 +156,8 @@ test("Recent lists sessions newest first with their source, time, and compact st
   assert.match(quiet.querySelector("[data-row-age]")?.textContent ?? "", /ago\s*Web \/ Console$/);
   assert.equal(quiet.querySelector("[data-state]"), null);
   assert.equal(quiet.querySelector("[data-dot]"), null);
-  // The header says how many each section holds.
-  assert.equal(
-    screen.getByRole("button", { name: /^Recent/ }).querySelector("[data-count]")?.textContent,
-    "4",
-  );
+  // Recent needs no count beside its name.
+  assert.equal(screen.getByRole("button", { name: /^Recent/ }).querySelector("[data-count]"), null);
 });
 
 test("a row's second line says how long ago it moved and where it started, in words with its glyph", async () => {
@@ -269,16 +266,16 @@ test("status badges distinguish approvals, questions, failures, and running work
   render(<Bar sessionMode />);
   const list = within(await screen.findByRole("list", { name: "Recents" }));
   const statuses = [
-    [/^Approve contract/, "approval", "Waiting for you: approve file_write", "text-aui-warn"],
+    [/^Approve contract/, "approval", "Waiting for you: approve file_write", "bg-aui-warn"],
     [
       /^Pick a scope/,
       "question",
       "Waiting for you: Which repositories should I check?",
-      "text-aui-warn",
+      "bg-aui-warn",
     ],
-    [/^Someone else's call/, "approval", "Waiting for approval: deploy", "text-aui-muted"],
-    [/^Broke/, "failed", "Failed: provider: rate limited (429)", "text-aui-bad", true],
-    [/^Deploying/, "working", "Working", "text-aui-muted"],
+    [/^Someone else's call/, "approval", "Waiting for approval: deploy", "bg-aui-muted/70"],
+    [/^Broke/, "failed", "Failed: provider: rate limited (429)", "bg-aui-bad", true],
+    [/^Deploying/, "working", "Working", "bg-aui-muted/70"],
   ] as const;
   for (const [name, state, reason, tone, unread] of statuses) {
     const row = await list.findByRole("link", {
@@ -288,10 +285,11 @@ test("status badges distinguish approvals, questions, failures, and running work
     const badge = row.querySelector(`[data-state="${state}"]`);
     assert.ok(badge);
     assert.equal(badge.getAttribute("title"), reason);
-    assert.ok(badge.querySelector("svg"));
+    // One small dot in its tone, no glyph and no box.
+    assert.equal(badge.querySelector("svg"), null);
     assert.equal(badge.textContent, "");
-    assert.ok(badge.firstElementChild?.classList.contains("rounded-full"));
-    assert.ok(badge.firstElementChild?.classList.contains(tone), `${state} uses ${tone}`);
+    assert.ok(badge.classList.contains("rounded-full"));
+    assert.ok(badge.classList.contains(tone), `${state} uses ${tone}`);
     assert.equal(row.querySelector("[data-dot]"), null, "the badge carries the alert by itself");
     assert.ok(
       !row.textContent?.includes(reason),
@@ -341,8 +339,8 @@ test("a parked session the reader's inbox holds nothing of waits on someone, nev
   );
   const badge = row.querySelector('[data-state="waiting"]');
   assert.equal(badge?.getAttribute("title"), "Waiting for someone");
-  assert.ok(badge?.firstElementChild?.classList.contains("text-aui-muted"));
-  assert.ok(!badge?.firstElementChild?.classList.contains("text-aui-warn"));
+  assert.ok(badge?.classList.contains("bg-aui-muted/70"));
+  assert.ok(!badge?.classList.contains("bg-aui-warn"));
   assert.equal(row.querySelector("[data-dot]"), null);
   assert.doesNotMatch(row.parentElement?.innerHTML ?? "", /Waiting for you/);
 });
@@ -434,7 +432,7 @@ test("sessions someone else started that the reader joined have their own sectio
     screen.getByRole("button", { name }).querySelector("[data-count]")?.textContent;
   assert.equal(count(/^Participated/), "1");
   assert.equal(count(/^Pinned/), "1");
-  assert.equal(count(/^Recent/), "1");
+  assert.equal(count(/^Recent/), undefined, "Recent needs no count");
   // Participated sits above Pinned, which sits above Recent.
   const order = [...document.querySelectorAll("section[aria-label]")].map((s) =>
     s.getAttribute("aria-label"),
@@ -601,26 +599,26 @@ test("a session waiting on someone else never reads as waiting for you, as the l
     const row = await list.findByRole("link", { name, description: said });
     const el = row.querySelector<HTMLElement>("[data-state]");
     assert.equal(el?.getAttribute("title"), said);
-    return { row, kind: el?.getAttribute("data-state"), pill: el?.firstElementChild };
+    return { row, kind: el?.getAttribute("data-state"), pill: el };
   };
   const bob = await badge(/^Deploy the API/, "Waiting for approval: deploy");
   assert.equal(bob.kind, "approval");
-  assert.ok(bob.pill?.classList.contains("text-aui-muted"));
-  assert.ok(!bob.pill?.classList.contains("text-aui-warn"));
+  assert.ok(bob.pill?.classList.contains("bg-aui-muted/70"));
+  assert.ok(!bob.pill?.classList.contains("bg-aui-warn"));
   assert.equal(bob.row.querySelector("[data-dot]"), null);
   // A listing that names nothing waited on and no one: it waits on someone.
   const old = await badge(/^An older listing/, "Waiting for someone");
   assert.equal(old.kind, "waiting");
-  assert.ok(old.pill?.classList.contains("text-aui-muted"));
-  assert.ok(!old.pill?.classList.contains("text-aui-warn"));
+  assert.ok(old.pill?.classList.contains("bg-aui-muted/70"));
+  assert.ok(!old.pill?.classList.contains("bg-aui-warn"));
   assert.equal(old.row.querySelector("[data-dot]"), null);
   // The listing could not tell whom: it waits, on no one named, in the neutral tone.
   const far = await badge(/^Past the inbox's reach/, "Waiting: approve file_write");
-  assert.ok(far.pill?.classList.contains("text-aui-muted"));
-  assert.ok(!far.pill?.classList.contains("text-aui-warn"));
+  assert.ok(far.pill?.classList.contains("bg-aui-muted/70"));
+  assert.ok(!far.pill?.classList.contains("bg-aui-warn"));
   assert.equal(far.row.querySelector("[data-dot]"), null);
   const ada = await badge(/^Ship the docs/, "Waiting for you: approve publish");
-  assert.ok(ada.pill?.classList.contains("text-aui-warn"));
+  assert.ok(ada.pill?.classList.contains("bg-aui-warn"));
   for (const row of document.querySelectorAll("[data-thread-row]"))
     if (!row.textContent?.startsWith("Ship the docs"))
       assert.doesNotMatch(row.parentElement?.innerHTML ?? "", /Waiting for you/);

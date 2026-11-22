@@ -268,7 +268,7 @@ function Goal({
             <button
               type="button"
               onClick={onDescribe}
-              className="mr-auto min-h-9 rounded-aui text-aui-sm text-aui-muted underline-offset-4 hover:text-aui-fg hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent"
+              className="mr-auto min-h-9 rounded-aui text-aui-sm text-aui-muted underline-offset-4 pointer-coarse:min-h-11 hover:text-aui-fg hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent"
             >
               {words.describe(builder)}
             </button>

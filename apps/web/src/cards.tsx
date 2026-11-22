@@ -94,6 +94,38 @@ export function PriorityPill({ priority }: { priority: "urgent" | "normal" | "lo
   );
 }
 
+const dotTone: Record<string, string> = {
+  working: "bg-aui-accent motion-safe:animate-pulse",
+  waiting: "bg-aui-warn",
+  failed: "bg-aui-bad",
+  done: "bg-aui-ok",
+  stopped: "bg-aui-muted/70",
+};
+
+/** A state as a small dot and its word, for a table's status column. */
+export function StatusDot({ status }: { status: string }) {
+  return (
+    <span className="flex items-center gap-2 text-aui-muted text-aui-xs">
+      <span
+        aria-hidden
+        className={`size-2 shrink-0 rounded-full ${dotTone[status] ?? "bg-aui-muted/70"}`}
+      />
+      {status[0]?.toUpperCase()}
+      {status.slice(1)}
+    </span>
+  );
+}
+
+/** An agent as its mark and its proper name, for a table's agent column. */
+export function AgentCell({ name, shown }: { name: string; shown: string }) {
+  return (
+    <span className="flex min-w-0 items-center gap-2 text-aui-xs text-aui-fg">
+      <AgentMark name={name} size={18} />
+      <span className="truncate">{shown}</span>
+    </span>
+  );
+}
+
 /** The grid every entity's cards sit in: as many 20rem columns as fit, one on a phone. */
 export const itemGrid =
   "grid min-w-0 grid-cols-[repeat(auto-fill,minmax(min(100%,20rem),1fr))] gap-3";

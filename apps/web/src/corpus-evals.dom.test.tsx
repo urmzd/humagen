@@ -380,7 +380,7 @@ test("a corpus page has an Evals tab that shows the corpus's suite", async () =>
       onOpenSource={() => {}}
     />,
   );
-  fireEvent.click(await screen.findByRole("tab", { name: defaultCopy.corpora.tabs.evals }));
+  fireEvent.click(await screen.findByRole("button", { name: defaultCopy.corpora.tabs.evals }));
   assert.deepEqual(tabs, ["evals"]);
   view.rerender(
     <CorpusPage

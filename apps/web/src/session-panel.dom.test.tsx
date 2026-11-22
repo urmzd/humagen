@@ -80,7 +80,7 @@ test("a session's summary sorts what it did into agents, outputs, environment an
   );
 });
 
-test("a waiting session says so in Progress and counts what is open", () => {
+test("a waiting session counts what is open", () => {
   const summary = summarize([foldAll(responseStreams.nestedApproval)]);
   assert.equal(summary.progress?.waiting, true);
   assert.ok(summary.open >= 1);
@@ -103,18 +103,8 @@ test("the panel shows only sections with something in them, and each row opens w
   const sections = within(panel)
     .getAllByTestId("details-section")
     .map((s) => s.getAttribute("aria-label"));
-  assert.deepEqual(sections, [
-    words.progress,
-    words.agents,
-    words.outputs,
-    words.environment,
-    words.usedTitle,
-  ]);
-  // The progress line counts the whole session, as the Agents section does.
-  assert.equal(
-    within(panel).getByTestId("details-progress").textContent,
-    defaultCopy.trace.worked("15s", 2, 10),
-  );
+  // No Progress: the thread is the progress.
+  assert.deepEqual(sections, [words.agents, words.outputs, words.environment, words.usedTitle]);
   // Each agent row carries its mark.
   for (const row of within(panel).getAllByTestId("details-agent"))
     assert.ok(row.querySelector("[data-accent=agent]"), "agent mark");
@@ -161,15 +151,12 @@ test("the panel shows only sections with something in them, and each row opens w
   );
 });
 
-test("a session with no agents, outputs or tools shows only its progress", () => {
+test("a session with no agents, outputs or tools shows no sections", () => {
   const responses = [
     foldAll(responseStreams.singleAgent.filter((e) => !String(JSON.stringify(e)).includes("htu_"))),
   ];
   render(<SessionPanel responses={responses} summary={summarize(responses)} onClose={() => {}} />);
-  assert.deepEqual(
-    screen.getAllByTestId("details-section").map((s) => s.getAttribute("aria-label")),
-    [words.progress],
-  );
+  assert.deepEqual(screen.queryAllByTestId("details-section"), []);
 });
 
 test("the header's Details icon counts calls running or waiting and is highlighted while working", () => {
