@@ -1,5 +1,51 @@
 # Changelog
 
+## 0.185.0 (2026-11-22)
+
+### Features
+
+- **console**: tests read Sessions and Projects as tables; the pin mark and alert label are announced apart ([0020c46](https://github.com/urmzd/humagen/commit/0020c46cb2ad30a76b42dcd5bc8422b3ede7402a))
+- **console**: Sessions as a table: aligned columns, soft rows with space between them ([07acffb](https://github.com/urmzd/humagen/commit/07acffbeec5fdff224d71816c7f902c151bcdfa6))
+- **console**: sidebar status as one dot, and no count beside Recent ([9e7b0e9](https://github.com/urmzd/humagen/commit/9e7b0e959c129616942c98310892aa860aedd2a5))
+- **console**: proper agent names in Details; document the People search ([114b1be](https://github.com/urmzd/humagen/commit/114b1be84c2f815855cd97cc1da423e756ce5a0f))
+- **console**: search and add people in the People drawer ([4bc9e11](https://github.com/urmzd/humagen/commit/4bc9e11b168a0864791bb783a1c8c7ad356e74ad))
+- **console**: drop Progress from session Details ([42ae79b](https://github.com/urmzd/humagen/commit/42ae79bb8999b6c38aa7a30cb393d1185075beca))
+- **console**: a knowledge base is made with its sources, in one form ([5067702](https://github.com/urmzd/humagen/commit/5067702bc7c77365cef0c6d51e0a7592350b9c47))
+- **console**: focused drawers: no Search, Steps, Sources or Sessions tabs, and People invites people only ([0c3befd](https://github.com/urmzd/humagen/commit/0c3befde60a2fccbb688bab5339fa908ac7419f3))
+- **console**: a connection row has one control: the verb to connect it, or Connected with a menu ([3ed7249](https://github.com/urmzd/humagen/commit/3ed72498e7b9fcf15d5f85e75548bd967a51d18e))
+- **console**: the Store explains itself and lists packages as rows with a split button ([beb18fe](https://github.com/urmzd/humagen/commit/beb18fe963126ff55bfad964a2159100dd681150))
+- **console**: shadcn Item, Card, Field, ButtonGroup, Breadcrumb and Table; one title line and a side list for an item's sections ([cf49c78](https://github.com/urmzd/humagen/commit/cf49c78fd7df989cf464b6c3dd6d67097097d36f))
+- **console**: no Reply on a message, and a person's message time sits at the left end ([4b29d9b](https://github.com/urmzd/humagen/commit/4b29d9bb0fd850b6a8e719bfd576c35b8fb9d8ca))
+- **console**: the composer's footer names no agent and no model ([91a03d7](https://github.com/urmzd/humagen/commit/91a03d797b3a258dee51697e989bb05921251401))
+- **console**: a message's actions are always shown, and only its time shows on hover ([ac0eb60](https://github.com/urmzd/humagen/commit/ac0eb609bba121c5f1be9536138eb1528b797487))
+- **console**: an agent's mascot moves while the pointer is over it ([7ee9fa1](https://github.com/urmzd/humagen/commit/7ee9fa1b2e551af4d9653ea5665a0bdb1bc7405b))
+- **console**: a message's actions show in full or not at all, and are smaller ([66459f9](https://github.com/urmzd/humagen/commit/66459f90af919064f5baf287cf38eb761fefbb71))
+- **console**: remove the Side Chat ([e454023](https://github.com/urmzd/humagen/commit/e4540234a96b1c34e3e45a3a5cdab918b3946e13))
+- **console**: Automations, and background work in its session ([1d406af](https://github.com/urmzd/humagen/commit/1d406af3956d511473e5fdebbcde155645f1eb61))
+- **console**: clearer icons in the composer's + menu ([52e177c](https://github.com/urmzd/humagen/commit/52e177c9b572dfae4565060eb20ea47e127248a9))
+- **console**: the Usage popover is one grid of names and values ([dc1fc8c](https://github.com/urmzd/humagen/commit/dc1fc8cb09512f8580dc9ea48516d72a49ac7a53))
+- **console**: Home lists nothing under the chat bar ([7c4bd1a](https://github.com/urmzd/humagen/commit/7c4bd1acb11dd50e0d1c51f965160fa0c3851169))
+- **console**: a flat composer footer, and waiting messages in the conversation ([e94f1a4](https://github.com/urmzd/humagen/commit/e94f1a4f8125560125666c750fa6e8f5224bed19))
+
+### Bug Fixes
+
+- **console**: screens follow the redesigned drawers, Apps and status dot; table and title links meet touch size ([151d42b](https://github.com/urmzd/humagen/commit/151d42b55f8e1672b56210e8fc314df4669d9e01))
+- **console**: the Projects table's Updated column says only when ([29093ed](https://github.com/urmzd/humagen/commit/29093edad13cf1d84bd25ceceb0b5b50fb2ebfb6))
+- **console**: align People search results with the list ([1b326d8](https://github.com/urmzd/humagen/commit/1b326d833fdab673a8f96c55b2500c1ca39a252c))
+- **console**: a working answer says what it is doing before its first word ([b4e256c](https://github.com/urmzd/humagen/commit/b4e256c6077b01a5d8828f2ad2367e3663ee8165))
+- **console**: "Connect GitHub", and short words in capitals in agents' names (QA Reviewer) ([ce6c4b4](https://github.com/urmzd/humagen/commit/ce6c4b4b7f0a180640fce9c09ce9115cee82efe5))
+- **console**: restore what an unsafe lint fix changed in the session center ([bac9616](https://github.com/urmzd/humagen/commit/bac96166a3ae89672822216ac6e1a3a8271822ec))
+- **console**: the latest message keeps its action row when something follows the turns ([05b9804](https://github.com/urmzd/humagen/commit/05b98045e99ad65b16716ba87befc4dd85e0905b))
+
+### Misc
+
+- **screens**: Home has 27 session states after dropping its project and made strips ([ff51695](https://github.com/urmzd/humagen/commit/ff516951adca77799de198501b75bb0af17fb50e))
+- **console**: format a test ([1db1288](https://github.com/urmzd/humagen/commit/1db1288967f0e7c0feb61ae8735dd2fb82303811))
+- **console**: align the usage popover's agent row and drop an unused import ([7b6d7a2](https://github.com/urmzd/humagen/commit/7b6d7a2be0c63f6d244bde0514007d2a713a0725))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.184.0...v0.185.0)
+
+
 ## 0.183.0 (2026-11-21)
 
 ### Features
