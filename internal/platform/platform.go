@@ -914,6 +914,12 @@ func (p *Platform) Invoke(ctx context.Context, tag event.Envelope) (runs.Run, er
 	if wire.Origin(tag) == runs.OriginGitHub {
 		if edge.Parent == "" {
 			tag = p.fileInGitHubSession(ctx, tag, project, client)
+			// Admission read no thread, so the session's own state is
+			// checked here, now that it is known.
+			if th, err := p.Threads.Get(tag.Tenant, wire.Meta(tag)[runs.MetaThread]); err == nil && th.ReadOnly {
+				p.appendUsage(usage.Entry{Kind: usage.Ended, Tenant: tag.Tenant, RunID: runID, At: p.now()})
+				return runs.Run{}, ErrForbidden
+			}
 		} else {
 			wire.DeleteMeta(&tag, runs.MetaThread)
 		}

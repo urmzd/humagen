@@ -90,16 +90,14 @@ func (p *Platform) fileInGitHubSession(ctx context.Context, tag event.Envelope, 
 	agent := wire.AgentOf(tag)
 	person := personOf(wire.ActorOf(tag))
 	th, found, err := p.Threads.BySurface(tag.Tenant, sf)
+	if err == nil && !found {
+		th, err = p.openGitHubSession(ctx, tag, project, place, sf, agent, person)
+	}
 	if err != nil {
-		p.log.Warn("platform: a GitHub run stays its own conversation", "place", place, "error", err)
+		p.log.Warn("platform: a GitHub run stays its own conversation", "place", place, "client", client, "error", err)
 		return tag
 	}
-	if !found {
-		if th, err = p.openGitHubSession(ctx, tag, project, place, sf, agent, person); err != nil {
-			p.log.Warn("platform: a GitHub run stays its own conversation", "place", place, "error", err)
-			return tag
-		}
-	} else if person != "" && !sessionOf(th, person) {
+	if person != "" && !sessionOf(th, person) {
 		pt := threads.Participant{Kind: threads.Person, Name: person, At: p.now()}
 		if _, err := p.Threads.Participants(tag.Tenant, th.ID, th.Version, []threads.Participant{pt}, nil, func(threads.Participant) bool { return true }, "github", p.now()); err != nil {
 			// The run is still filed: they asked, and may be added on
@@ -110,6 +108,12 @@ func (p *Platform) fileInGitHubSession(ctx context.Context, tag event.Envelope, 
 	wire.SetMeta(&tag, runs.MetaThread, th.ID)
 	return tag
 }
+
+// errGitHubSessionElsewhere reports an issue's or pull request's session
+// that another client on the same repository opened. Each client's runs
+// keep to their own surface, so the run stays its own conversation, as it
+// was before sessions.
+var errGitHubSessionElsewhere = errors.New("another client on this repository holds its session")
 
 // openGitHubSession opens the session of an issue or pull request for its
 // first run, or finds the one another process opened at the same time.
@@ -134,29 +138,56 @@ func (p *Platform) openGitHubSession(ctx context.Context, tag event.Envelope, pr
 		Session: &threads.SessionIdentity{Agent: agent, Parent: rec.Key.Parent, Label: rec.Key.Label},
 	}
 	created, err := p.Threads.Create(tag.Tenant, th, p.now())
-	if errors.Is(err, threads.ErrExists) {
-		// Another process filed the first run, or another client on the
-		// same repository opened the same agent's session.
-		if got, found, err := p.Threads.BySurface(tag.Tenant, sf); err != nil || found {
-			return got, err
-		}
-		return p.Threads.Get(tag.Tenant, rec.ID)
+	if !errors.Is(err, threads.ErrExists) {
+		return created, err
 	}
-	return created, err
+	// Another process filed the first run on this surface: it is the
+	// session. Otherwise the record's thread is another client's.
+	if got, found, err := p.Threads.BySurface(tag.Tenant, sf); err != nil || found {
+		return got, err
+	}
+	return threads.Thread{}, errGitHubSessionElsewhere
 }
 
-// onItsGitHubSession reports that a run was raised on GitHub by its client
-// and is filed in that client's session of the issue or pull request. Its
+// githubSessionOf is the GitHub session a thread belongs to: the thread
+// itself, or the root of the session it is a child of.
+func (p *Platform) githubSessionOf(tenant, id string) (threads.Thread, bool) {
+	for range 64 {
+		th, err := p.Threads.Get(tenant, id)
+		if err != nil || th.Session == nil {
+			return threads.Thread{}, false
+		}
+		if strings.HasPrefix(th.Session.Parent, "s_") {
+			id = th.Session.Parent
+			continue
+		}
+		return th, th.Surface != nil && strings.HasPrefix(th.Session.Parent, "github://")
+	}
+	return threads.Thread{}, false
+}
+
+// onItsGitHubSession reports that a run belongs to a tree a GitHub client
+// raised and is in that client's session of the issue or pull request, or
+// a child session of it: the root run, or an agent it called. Its
 // conversation is the one on GitHub, so what it posts or does there is
 // held to the rules it was held to before GitHub runs were filed, not to a
 // private conversation's: the session is private only so that Humagen
-// shows it to nobody who did not ask there.
+// shows it to nobody who did not ask there. A person's reply posted in
+// the console is not such a run.
 func (p *Platform) onItsGitHubSession(run runs.Run) bool {
-	if run.Origin != runs.OriginGitHub || run.Client == "" {
+	root := run
+	if run.Parent != "" {
+		top, err := p.Runs.Get(run.Tenant, run.Root)
+		if err != nil {
+			return false
+		}
+		root = top
+	}
+	if root.Origin != runs.OriginGitHub || root.Client == "" || run.Client != root.Client {
 		return false
 	}
-	th, err := p.Threads.Get(run.Tenant, run.Thread)
-	return err == nil && th.Surface != nil && th.Surface.Client == run.Client && th.Session != nil && strings.HasPrefix(th.Session.Parent, "github://")
+	th, ok := p.githubSessionOf(run.Tenant, run.Thread)
+	return ok && th.ID == root.Thread && th.Surface.Client == root.Client
 }
 
 // publishesPrivately reports that a run is in a conversation only its
