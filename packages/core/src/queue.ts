@@ -85,7 +85,7 @@ export function emptyQueue(mode: QueueMode = "auto"): QueueState {
 
 function startNext(state: QueueState): [QueueState, QueueEffect] {
   const [next, ...rest] = state.pending;
-  const base = { ...state, heldReason: undefined, interruptFor: undefined };
+  const base = { ...state, heldReason: undefined, interruptFor: undefined, holdAfter: undefined };
   if (!next) return [{ ...base, status: "idle", current: null }, { type: "none" }];
   return [
     { ...base, status: "running", current: next, pending: rest },
@@ -160,7 +160,12 @@ export function queueReduce(state: QueueState, action: QueueAction): [QueueState
 
     case "clear":
       return [
-        { ...state, pending: [], ...(state.status === "held" ? { status: "idle" as const } : {}) },
+        {
+          ...state,
+          pending: [],
+          holdAfter: undefined,
+          ...(state.status === "held" ? { status: "idle" as const } : {}),
+        },
         none,
       ];
 
@@ -178,6 +183,7 @@ export function queueReduce(state: QueueState, action: QueueAction): [QueueState
           pending: [state.current, ...state.pending],
           heldReason: "failed",
           interruptFor: undefined,
+          holdAfter: undefined,
         },
         none,
       ];

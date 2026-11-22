@@ -485,7 +485,7 @@ function AgentCall({
                   : retry === "pending"
                     ? copy.conversation.callFailure.retrying
                     : copy.conversation.callFailure.retried}
-                <span className="sr-only"> {sub.name}</span>
+                <span className="sr-only"> {nameOf(sub.name)}</span>
               </button>
             )}
           </span>

@@ -335,31 +335,47 @@ function bakeTurn(key: string, path: () => Path2D, color: string, unit: number) 
     if (!sctx || !fctx) return resolve("");
     const p = path();
     // One job builds the form, then one job draws each angle.
-    work(() => warmBotAvatarPlastic(key, p, box, undefined, true));
+    let failed = false;
+    work(() => {
+      try {
+        warmBotAvatarPlastic(key, p, box, undefined, true);
+      } catch {
+        failed = true;
+      }
+    });
     for (let i = 0; i < TURN_FRAMES; i++)
       work(() => {
-        fctx.clearRect(0, 0, side, side);
-        drawBotAvatarFrame(
-          fctx,
-          box,
-          { ...restPose("default"), yaw: (i / TURN_FRAMES) * Math.PI * 2 },
-          {
-            path: p,
-            face: "eyes",
-            faceX: 50,
-            faceY: 50,
-            faceScale: 0,
-            color,
-            ink: "#111111",
-            shading: "fabric",
-            still: true,
-            typeKey: key,
-            theme,
-            dpr: 1,
-          },
-        );
-        sctx.drawImage(frame, i * side, 0);
-        if (i === TURN_FRAMES - 1) urlOf(strip).then(resolve);
+        if (failed) {
+          if (i === TURN_FRAMES - 1) resolve("");
+          return;
+        }
+        try {
+          fctx.clearRect(0, 0, side, side);
+          drawBotAvatarFrame(
+            fctx,
+            box,
+            { ...restPose("default"), yaw: (i / TURN_FRAMES) * Math.PI * 2 },
+            {
+              path: p,
+              face: "eyes",
+              faceX: 50,
+              faceY: 50,
+              faceScale: 0,
+              color,
+              ink: "#111111",
+              shading: "fabric",
+              still: true,
+              typeKey: key,
+              theme,
+              dpr: 1,
+            },
+          );
+          sctx.drawImage(frame, i * side, 0);
+          if (i === TURN_FRAMES - 1) urlOf(strip).then(resolve);
+        } catch {
+          failed = true;
+        }
+        if (i === TURN_FRAMES - 1 && failed) resolve("");
       });
   });
   turns.set(key, made);
@@ -401,9 +417,14 @@ function bakeFabric(key: string, path: () => Path2D, color: string, unit: number
     };
     // Build the form and grow its pile, then draw it once with its fur.
     work(() => {
-      warmBotAvatarPlastic(key, path(), box, undefined, true);
-      draw();
-      urlOf(canvas).then(resolve);
+      // A throw resolves empty, so the cache forgets it and the next mark tries again.
+      try {
+        warmBotAvatarPlastic(key, path(), box, undefined, true);
+        draw();
+        urlOf(canvas).then(resolve);
+      } catch {
+        resolve("");
+      }
     });
   });
   fabrics.set(key, made);
@@ -508,7 +529,7 @@ function useFur(
         bake(`${name}|${k}`, BOX[name], parts[name], px).then(keep(name), () => {});
     else {
       bakeFabric(
-        `upper|${limbHex}|${unit}`,
+        `upper|${limbHex}|${unit}|${themeNow()}`,
         () => limbPath(UPPER, 11.5, false),
         limbHex,
         unit,
