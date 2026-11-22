@@ -173,7 +173,7 @@ func (s Settings) Validate() error {
 func RepoKey(repo string) (string, error) {
 	owner, name, ok := strings.Cut(strings.TrimSpace(repo), "/")
 	bad := func(r rune) bool {
-		return !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_' || r == '.')
+		return (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') && r != '-' && r != '_' && r != '.'
 	}
 	if !ok || owner == "" || name == "" || len(owner) > 39 || len(name) > 100 || name == "." || name == ".." ||
 		strings.ContainsFunc(owner, func(r rune) bool { return bad(r) || r == '_' || r == '.' }) || strings.ContainsFunc(name, bad) {

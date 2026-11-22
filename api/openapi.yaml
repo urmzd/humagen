@@ -19226,8 +19226,8 @@ components:
       properties:
         repository: {type: string, description: '"owner/name".'}
         auto_review: {$ref: '#/components/schemas/GitHubRepoAutoReview'}
-        agent: {type: string, maxLength: 63, description: Answers a mention that names no agent, and reviews pull requests, in place of the client's default agent.}
-        instructions: {type: string, maxLength: 4000, description: Given to every run on the repository, after the workspace's and the project's instructions.}
+        agent: {type: string, maxLength: 63, description: "Answers a mention that names no agent, and reviews pull requests, in place of the client's default agent."}
+        instructions: {type: string, maxLength: 4000, description: "Given to every run on the repository, after the workspace's and the project's instructions."}
         reads:
           type: array
           description: What the platform reads before a run here starts.
@@ -19244,7 +19244,7 @@ components:
         version: {type: integer, minimum: 0, description: The settings' version; 0 while the repository follows its client.}
         installed: {type: boolean, description: The client's GitHub App installation covers it.}
         auto_review: {$ref: '#/components/schemas/GitHubRepoAutoReview'}
-        agent: {type: string, description: The agent that answers here, the repository's or the client's default.}
+        agent: {type: string, description: "The agent that answers here, the repository's or the client's default."}
         cross_surface_reads: {type: boolean, description: "Runs other than the repository's own, and the console, may read it, in the whole workspace: false when any GitHub client keeps it to its own runs."}
         kept_by:
           type: array

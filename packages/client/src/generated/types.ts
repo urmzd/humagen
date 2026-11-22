@@ -4851,9 +4851,9 @@ export interface GitHubRepoSettings {
   /** "owner/name". */
   repository: string;
   auto_review?: GitHubRepoAutoReview;
-  /** Answers a mention that names no agent */
+  /** Answers a mention that names no agent, and reviews pull requests, in place of the client's default agent. */
   agent?: string;
-  /** Given to every run on the repository */
+  /** Given to every run on the repository, after the workspace's and the project's instructions. */
   instructions?: string;
   /** What the platform reads before a run here starts. */
   reads?: ("pull_diff" | "linked_issues")[];
@@ -4871,7 +4871,7 @@ export interface GitHubRepository {
   /** The client's GitHub App installation covers it. */
   installed: boolean;
   auto_review: GitHubRepoAutoReview;
-  /** The agent that answers here */
+  /** The agent that answers here, the repository's or the client's default. */
   agent?: string;
   /** Runs other than the repository's own, and the console, may read it, in the whole workspace: false when any GitHub client keeps it to its own runs. */
   cross_surface_reads: boolean;
