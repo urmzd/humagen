@@ -1,4 +1,4 @@
-import { toolCommand, toolFailed, toolKind } from "./timeline";
+import { toolArgs, toolCommand, toolFailed, toolKind, toolTarget } from "./timeline";
 import type { Task } from "./types";
 
 /**
@@ -62,6 +62,130 @@ export function failedCommands(tasks: readonly Task[]): (CommandResult & { id: s
       .slice(i + 1)
       .some((later) => later.result?.command === result.command && !later.result.failed);
     if (!fixed) out.push({ ...result, id });
+  }
+  return out;
+}
+
+/** The tool a call was made to, by name, or its title when the stream gave no name. */
+const toolName = (task: Pick<Task, "tool" | "title">) => task.tool || task.title;
+
+/** The arguments that say what a call acts on; any others (a body, content) do not. */
+const IDENTIFYING = [
+  "address",
+  "url",
+  "owner",
+  "repo",
+  "path",
+  "file",
+  "file_path",
+  "query",
+  "q",
+  "pattern",
+  "name",
+  "ref",
+  "number",
+];
+
+const GITHUB =
+  /^(?:github:\/\/|https?:\/\/github\.com\/)?([\w.-]+)\/([\w.-]+?)(?:\.git)?(?:\/(?:pull|issues)\/(\d+)|#(\d+))?\/?$/i;
+
+/** A GitHub address in one spelling, `owner/repo` or `owner/repo#12`, lower-cased as GitHub treats it. */
+function githubPlace(value: string): string | undefined {
+  const gh = GITHUB.exec(value.trim());
+  if (!gh) return undefined;
+  const n = gh[3] ?? gh[4];
+  return `${gh[1]}/${gh[2]}${n ? `#${n}` : ""}`.toLowerCase();
+}
+
+/**
+ * What a call acts on: `place`, the GitHub repository or item it names
+ * (from `address` or `url` written any GitHub way, or `owner` and `repo`),
+ * lower-cased; and `rest`, every other identifying argument exactly as
+ * given, so a path or a query keeps its case. Two calls act on the same
+ * thing when both parts are equal.
+ */
+interface CallTarget {
+  place: string;
+  rest: string;
+}
+
+function callTarget(task: Pick<Task, "input">): CallTarget | undefined {
+  const args = toolArgs(task);
+  if (!args) {
+    const t = toolTarget(task);
+    return t ? { place: "", rest: t.trim() } : undefined;
+  }
+  const value = (k: string) => {
+    const v = args[k];
+    if (typeof v === "string") return v.trim() || undefined;
+    return typeof v === "number" || typeof v === "boolean" ? String(v) : undefined;
+  };
+  let place = "";
+  const used = new Set<string>();
+  for (const k of ["address", "url"]) {
+    const v = value(k);
+    const gh =
+      v && (k === "address" || /^https?:\/\/github\.com\//i.test(v)) ? githubPlace(v) : undefined;
+    if (gh) {
+      place = gh;
+      used.add(k);
+      break;
+    }
+  }
+  const owner = value("owner");
+  const repo = value("repo");
+  if (!place && owner && repo) {
+    place = `${owner}/${repo}`.toLowerCase();
+    used.add("owner").add("repo");
+  }
+  const rest = IDENTIFYING.flatMap((k) => {
+    const v = used.has(k) ? undefined : value(k);
+    return v === undefined ? [] : [[k, v]];
+  });
+  if (!place && rest.length === 0) return undefined;
+  return { place, rest: JSON.stringify(rest) };
+}
+
+/**
+ * The failed calls in a turn that a later call recovered, by id. A failed
+ * call is recovered only when a later call in the same turn, to the same
+ * tool, at the same target, ended without failing: the same read, write or
+ * command tried again and done. A command needs the same command line and a
+ * zero exit. A read of a repository is also recovered by a read of one of
+ * its issues or pull requests through the same tool (`owner/repo` refused,
+ * then `owner/repo#541` read): that narrows the same source. A write never
+ * is: only the same write at the same target recovers it. A different tool,
+ * another target, a call still running or one that also failed leaves the
+ * failure standing.
+ *
+ * Pass every call of the turn, in order, so a retry in a later run of steps
+ * counts.
+ */
+export function recoveredCalls(tasks: readonly Task[]): Set<string> {
+  const out = new Set<string>();
+  for (const [i, task] of tasks.entries()) {
+    if (!toolFailed(task)) continue;
+    const name = toolName(task);
+    const kind = toolKind(task);
+    const command = kind === "run" ? toolCommand(task) : undefined;
+    const target = callTarget(task);
+    if (!name || (command === undefined && !target)) continue;
+    const recovered = tasks.slice(i + 1).some((later) => {
+      if (later.status !== "complete" || callFailed(later) || toolName(later) !== name)
+        return false;
+      if (command !== undefined) return toolCommand(later) === command;
+      const there = callTarget(later);
+      if (!there || !target || there.rest !== target.rest) return false;
+      if (there.place === target.place) return true;
+      // A repository read, narrowed to one of its items by the same tool.
+      return (
+        kind === "read" &&
+        target.place !== "" &&
+        !target.place.includes("#") &&
+        there.place.startsWith(`${target.place}#`)
+      );
+    });
+    if (recovered) out.add(task.id);
   }
   return out;
 }

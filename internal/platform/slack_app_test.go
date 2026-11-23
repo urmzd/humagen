@@ -181,3 +181,36 @@ func TestTheSlackAppsRecordNeverTakesOverAnotherClient(t *testing.T) {
 		t.Fatalf("clearing touched another client: %+v", kept)
 	}
 }
+
+// A Slack app's credential is one a Slack client names as its machine, or one
+// the server made for the app it starts, and it starts no work for nobody of
+// its own accord. Any other credential, and any person, may.
+func TestASlackAppsCredentialIsHeldToAskingForAPerson(t *testing.T) {
+	p, err := platform.New(platform.Config{Workspace: t.TempDir(), Backends: platform.Backends{State: state.NewMemory()}, ClientInterval: -1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = p.Close() }()
+	in := slackClient("webhook", "A01APP", "T01ACME", "lead")
+	in.Slack.Machine = "svc-slack"
+	if _, err := p.CreateClient(t.Context(), tenant, "ada", in); err != nil {
+		t.Fatal(err)
+	}
+	for name, who := range map[string]auth.Principal{
+		"a client's machine":     {Subject: "svc-slack", Tenant: tenant, Kind: auth.Machine},
+		"the server's app's":     {Subject: platform.SlackAppMachine("T09NEW"), Tenant: tenant, Kind: auth.Machine},
+		"the machine, elsewhere": {Subject: platform.SlackAppMachine("T01ACME"), Tenant: "globex", Kind: auth.Machine},
+	} {
+		if !p.SlackMachine(who) || !errors.Is(p.MayAskForNobody(who), platform.ErrForbidden) {
+			t.Errorf("%s may ask for nobody", name)
+		}
+	}
+	for name, who := range map[string]auth.Principal{
+		"another machine":          {Subject: "ci-bot", Tenant: tenant, Kind: auth.Machine},
+		"a person of that subject": {Subject: "svc-slack", Tenant: tenant, Kind: auth.User},
+	} {
+		if p.SlackMachine(who) || p.MayAskForNobody(who) != nil {
+			t.Errorf("%s is held to asking for a person", name)
+		}
+	}
+}

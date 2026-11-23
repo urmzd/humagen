@@ -116,6 +116,11 @@ type hidden struct {
 // acts as each person, so the routes naming one have something to hide from
 // another workspace, and housekeeping runs on the offline provider, so a
 // title agent is asked.
+// slackMachine is the credential the canaries' Slack apps name: an app of
+// its own, never the owner, as a Slack app's credential starts no run as
+// itself.
+const slackMachine = "svc-slack-acme"
+
 func confined(t *testing.T) *fixture {
 	t.Helper()
 	return newFixtureWith(t, platform.Config{
@@ -274,15 +279,15 @@ func hide(t *testing.T, f *fixture, owner string, inside bool) hidden {
 	if inside {
 		h.open = "slack-open"
 		bound = h.open
-		must("POST", "/api/clients", h.naming(slackApp(h.open, "A01OPEN", "svc-acme")), http.StatusCreated)
+		must("POST", "/api/clients", h.naming(slackApp(h.open, "A01OPEN", slackMachine)), http.StatusCreated)
 	} else {
-		must("POST", "/api/clients", h.naming(slackApp(h.client, "A01ZQX", "svc-acme")), http.StatusCreated)
+		must("POST", "/api/clients", h.naming(slackApp(h.client, "A01ZQX", slackMachine)), http.StatusCreated)
 	}
 	must("POST", "/api/projects/"+h.project+"/channels", `{"name":"`+h.channel+`","purpose":"Channel `+marker+`.","slack":{"client":"`+bound+`","channel":"C01CANARY"}}`, http.StatusCreated)
 	if inside {
 		// The open client's home is in the hidden project: the client is
 		// the outsider's to read, its home is not.
-		homed := strings.Replace(h.naming(slackApp(h.open, "A01OPEN", "svc-acme")), `"slack":`, `"home":{"project":"`+h.project+`"},"slack":`, 1)
+		homed := strings.Replace(h.naming(slackApp(h.open, "A01OPEN", slackMachine)), `"slack":`, `"home":{"project":"`+h.project+`"},"slack":`, 1)
 		if out := must("PUT", "/api/clients/"+h.open, homed, http.StatusOK); !strings.Contains(fmt.Sprint(out["home"]), h.project) || out["default_agent"] != h.agent {
 			t.Fatalf("the owner does not see the open client's home and agent: %v", out)
 		}
@@ -1175,7 +1180,7 @@ func sweepWrites(t *testing.T, f *fixture, owner, outsider string, h hidden) {
 			return string(out)
 		}
 		open := func(field string) string {
-			return strings.Replace(slackApp(h.open, "A01OPEN", "svc-acme"), `"default_agent":"helper"`, field, 1)
+			return strings.Replace(slackApp(h.open, "A01OPEN", slackMachine), `"default_agent":"helper"`, field, 1)
 		}
 		for _, tc := range []struct {
 			method, path string
