@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.196.0 (2026-11-23)
+
+### Features
+
+- **github**: a reply becomes a review once, for the run a person started ([5cdef6a](https://github.com/urmzd/humagen/commit/5cdef6a470fed2d9485ecee64e3b6cd945a21f76))
+- **github**: reply or review shape on the run, prompt voice rules and docs ([ad6dd06](https://github.com/urmzd/humagen/commit/ad6dd0686393966dfb5fd86318ec15ee1e48ea9b))
+- **github**: host-chosen reply or review shape, and reviews that read as prose ([28b1068](https://github.com/urmzd/humagen/commit/28b1068a104ab72524a96d0cd61872dc9b293ad9))
+
+### Bug Fixes
+
+- **github**: a started review is kept on the run's record ([df96c13](https://github.com/urmzd/humagen/commit/df96c13ab02a5db2ad6f4336bc7fdf7964e5386b))
+- **github**: a focused review request is a review ([8af322c](https://github.com/urmzd/humagen/commit/8af322c74bcd3443366f391faedc1a8e5ccf7893))
+- **github**: stop pings and outside links, strict review asks, recover earlier-layout reviews ([4dc57ff](https://github.com/urmzd/humagen/commit/4dc57ffee3547ff7ede2c17584a2391306011b2e))
+
+### Misc
+
+- **github**: the store lists start_review among the lead reviewer's tools ([b7a76f2](https://github.com/urmzd/humagen/commit/b7a76f2bc6f8c348b3245fb9a815666701a0a8ce))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.195.6...v0.196.0)
+
+
 ## 0.195.5 (2026-11-23)
 
 ### Bug Fixes
