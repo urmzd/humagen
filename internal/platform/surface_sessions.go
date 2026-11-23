@@ -30,6 +30,10 @@ import (
 // conversation before root sessions, which stays one.
 var ErrSurfaceThreadBeforeSessions = fmt.Errorf("%w: this thread started before sessions; post to it as a conversation, or start a new thread", threads.ErrExists)
 
+// surfaceRootLabel labels a surface thread's root session when the place's
+// unlabelled root was started by someone naming the place, not by a surface.
+const surfaceRootLabel = "surface"
+
 // surfacePlace is the address of a surface thread's root session.
 func surfacePlace(team, channel, ts string) string {
 	return "slack://" + team + "/" + channel + "/" + ts
@@ -85,17 +89,24 @@ func (p *Platform) StartSurfaceSession(ctx context.Context, who auth.Principal, 
 		// no audience is kept for it, so its answers draw on what they drew
 		// on as a conversation's.
 		adopted := threads.Adopted(th)
-		if !adopted && vis == threads.Private && ref.Audience != nil && len(ref.Audience.Members) > 0 {
-			if err := p.keepAudience(who.Tenant, th, people); err != nil {
-				return SessionView{}, false, err
-			}
-		}
 		if in.Listen {
+			// Refused before the root's people follow the conversation, so a
+			// message that is not taken keeps nothing.
 			if !p.listensTo(who, th, in.ActAs) {
 				return SessionView{}, false, ErrNotListening
 			}
 			// Heard either way; answered only when the agent says it is for it.
 			post.PostOnly = post.PostOnly || !p.callsFor(ctx, who.Tenant, th, in.Text)
+		}
+		// Who may post is checked before the root's people or audience
+		// change, so a message that is not taken keeps nothing.
+		if err := p.mayKeepFor(who, in.ActAs, th, postNeed(post), !adopted && vis == threads.Private && reportsMember(c, ref.Audience, person)); err != nil {
+			return SessionView{}, false, err
+		}
+		if !adopted && vis == threads.Private && ref.Audience != nil && len(ref.Audience.Members) > 0 {
+			if err := p.keepAudience(who.Tenant, th, people); err != nil {
+				return SessionView{}, false, err
+			}
 		}
 		if !adopted {
 			if err := p.audiences.Put(who.Tenant, th.ID, aud); err != nil {
@@ -120,23 +131,32 @@ func (p *Platform) StartSurfaceSession(ctx context.Context, who auth.Principal, 
 			return SessionView{}, false, fmt.Errorf("%w: nobody answers this chat here: the server has no entry agent and %s names no default agent", ErrNoDefault, c.ID)
 		}
 	}
-	rec, err := p.Sessions.Open(ctx, who.Tenant, session.Open{Parent: surfacePlace(c.Identity.Team, ref.Channel, ref.TS), Agent: owner, Channel: wire.Channel(who.Tenant)})
-	if err != nil {
-		return SessionView{}, false, err
-	}
 	// A channel thread whose first message was addressed to the app is
 	// listened to once the app has answered there (listenOnAnswer); a direct
 	// message needs no listening.
 	addressed := !in.PostOnly && !directMessage(ref.Channel) && ref.message() == ref.TS
 	startText, _ := p.surfaceText(who.Tenant, c, ref, in.Text)
-	th := threads.Thread{ID: rec.ID, Addressed: addressed, Project: at.project, Channel: at.channel, Visibility: vis, Participants: people, Title: runs.SessionTitle(startText), TitleSource: threads.TitlePlaceholder, Default: owner, Agents: []string{owner}, CreatedBy: humanSubject(person), Surface: &sf, Session: &threads.SessionIdentity{Agent: owner, Parent: rec.Key.Parent, Label: rec.Key.Label}}
-	_, err = p.Threads.Create(who.Tenant, th, p.now())
-	started = err == nil
-	if err != nil && !errors.Is(err, threads.ErrExists) {
-		return SessionView{}, false, err
-	}
-	if th, err = p.Threads.Get(who.Tenant, rec.ID); err != nil {
-		return SessionView{}, false, err
+	var th threads.Thread
+	// The place's root is the surface's when a surface started it. A root
+	// someone started there by naming the place stays theirs, as it is: the
+	// surface's root is then opened beside it, under its own label.
+	for _, label := range []string{"", surfaceRootLabel} {
+		rec, err := p.Sessions.Open(ctx, who.Tenant, session.Open{Parent: surfacePlace(c.Identity.Team, ref.Channel, ref.TS), Agent: owner, Label: label, Channel: wire.Channel(who.Tenant)})
+		if err != nil {
+			return SessionView{}, false, err
+		}
+		th = threads.Thread{ID: rec.ID, Addressed: addressed, Project: at.project, Channel: at.channel, Visibility: vis, Participants: people, Title: runs.SessionTitle(startText), TitleSource: threads.TitlePlaceholder, Default: owner, Agents: []string{owner}, CreatedBy: humanSubject(person), Surface: &sf, Session: &threads.SessionIdentity{Agent: owner, Parent: rec.Key.Parent, Label: rec.Key.Label}}
+		_, err = p.Threads.Create(who.Tenant, th, p.now())
+		started = err == nil
+		if err != nil && !errors.Is(err, threads.ErrExists) {
+			return SessionView{}, false, err
+		}
+		if th, err = p.Threads.Get(who.Tenant, rec.ID); err != nil {
+			return SessionView{}, false, err
+		}
+		if started || th.Surface != nil || th.Session == nil {
+			break
+		}
 	}
 	// The place's key can open a conversation's own id: another app of the
 	// team adopted it (threads.Adopted), or an adoption has yet to finish and
@@ -145,8 +165,18 @@ func (p *Platform) StartSurfaceSession(ctx context.Context, who auth.Principal, 
 	if th.Session == nil {
 		return SessionView{}, false, ErrSurfaceThreadBeforeSessions
 	}
+	if th.Surface == nil {
+		return SessionView{}, false, fmt.Errorf("%w: this place's session was not started on a surface", threads.ErrExists)
+	}
+	if !started {
+		// Another message started the root first: who may post is checked
+		// before its audience is kept, as above.
+		if err := p.mayKeepFor(who, in.ActAs, th, postNeed(post), !threads.Adopted(th) && vis == threads.Private && reportsMember(c, ref.Audience, person)); err != nil {
+			return SessionView{}, false, err
+		}
+	}
 	if !threads.Adopted(th) {
-		if err := p.audiences.Put(who.Tenant, rec.ID, aud); err != nil {
+		if err := p.audiences.Put(who.Tenant, th.ID, aud); err != nil {
 			return SessionView{}, false, err
 		}
 	}
@@ -396,6 +426,20 @@ func (p *Platform) keepAudience(tenant string, th threads.Thread, people []threa
 	}
 	_, err := p.Threads.Participants(tenant, th.ID, th.Version, add, remove, func(threads.Participant) bool { return true }, "surface", p.now())
 	return err
+}
+
+// reportsMember says whether a private channel's or a group direct
+// message's members, as the client reports them, include person. The person
+// a message is posted for is not one by posting it.
+func reportsMember(c clients.Client, a *SurfaceAudience, person auth.Principal) bool {
+	if a == nil || (a.Type != ChannelPrivate && a.Type != ChannelGroupDM) || c.Slack == nil {
+		return false
+	}
+	self := humanSubject(person)
+	return slices.ContainsFunc(a.Members, func(u string) bool {
+		s, ok := c.ActsFor(c.Slack.Machine, u)
+		return ok && s != "" && s == self
+	})
 }
 
 // sessionReading is the text of a session message as mentions are read

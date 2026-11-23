@@ -46,7 +46,7 @@ func slackRef(channel, ts, thread string) *platform.ExternalRef {
 
 func TestASlackDirectMessageIsAlwaysAnsweredInItsPlacesRoot(t *testing.T) {
 	p, ana := slackWorkspace(t)
-	out, err := p.SendMessages(t.Context(), ana, sayIn("howdy", slackRef("D0ANA", "1700000000.000100", "")))
+	out, err := p.SendSurfaceMessages(t.Context(), ana, sayIn("howdy", slackRef("D0ANA", "1700000000.000100", "")))
 	if err != nil {
 		t.Fatalf("a direct message was refused: %v", err)
 	}
@@ -70,7 +70,7 @@ func TestASlackDirectMessageIsAlwaysAnsweredInItsPlacesRoot(t *testing.T) {
 
 func TestAReplyInTheSameThreadPicksTheRootUpAndPostsOnce(t *testing.T) {
 	p, ana := slackWorkspace(t)
-	first, err := p.SendMessages(t.Context(), ana, sayIn("why did the deploy fail?", slackRef("C01ANY", "1700000000.000100", "")))
+	first, err := p.SendSurfaceMessages(t.Context(), ana, sayIn("why did the deploy fail?", slackRef("C01ANY", "1700000000.000100", "")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +86,7 @@ func TestAReplyInTheSameThreadPicksTheRootUpAndPostsOnce(t *testing.T) {
 
 func TestAMentionedAgentAnswersInThePlacesRootAndActivitySaysWhy(t *testing.T) {
 	p, ana := slackWorkspace(t)
-	out, err := p.SendMessages(t.Context(), ana, platform.MessagesInput{Ref: slackRef("C01ANY", "1700000000.000100", ""), Messages: []platform.Message{{Role: "user", Content: platform.Content{
+	out, err := p.SendSurfaceMessages(t.Context(), ana, platform.MessagesInput{Ref: slackRef("C01ANY", "1700000000.000100", ""), Messages: []platform.Message{{Role: "user", Content: platform.Content{
 		{Type: "mention", Agent: "analyst"},
 		{Type: "text", Text: "what did it cost?"},
 	}}}})
@@ -117,7 +117,7 @@ func TestAMentionedAgentAnswersInThePlacesRootAndActivitySaysWhy(t *testing.T) {
 func TestAPlaceElsewhereHasOneRootAndTheConsoleStartsANewOne(t *testing.T) {
 	p, ana := slackWorkspace(t)
 	pr := &platform.ExternalRef{Type: platform.RefGitHub, Repo: "acme/web", Kind: "pull", Number: 5}
-	a, err := p.SendMessages(t.Context(), ana, sayIn("review the deploy change", pr))
+	a, err := p.SendSurfaceMessages(t.Context(), ana, sayIn("review the deploy change", pr))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,7 +156,7 @@ func TestABatchPostsItsEarlierMessagesQuietly(t *testing.T) {
 		{Role: "user", Content: platform.Content{{Type: "text", Text: "the deploy failed at 2am"}}, Ref: slackRef("C01ANY", "1700000000.000100", "1700000000.000300")},
 		{Role: "user", Content: platform.Content{{Type: "text", Text: "@ops why?"}}, Ref: slackRef("C01ANY", "1700000000.000300", "")},
 	}}
-	out, err := p.SendMessages(t.Context(), ana, in)
+	out, err := p.SendSurfaceMessages(t.Context(), ana, in)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -183,11 +183,14 @@ func TestAMessagesRequestIsPeoplesMessagesFromAPlaceThatExists(t *testing.T) {
 		"an image":                 {Messages: []platform.Message{{Role: "user", Content: platform.Content{{Type: "image"}}}}},
 		"an unknown origin":        sayIn("hi", &platform.ExternalRef{Type: "fax"}),
 		"a slack ref with no team": sayIn("hi", &platform.ExternalRef{Type: platform.RefSlack, Channel: "C01", TS: "1.2"}),
-		"another team's client":    sayIn("hi", &platform.ExternalRef{Type: platform.RefSlack, Client: "app", Team: "T0OTHER", Channel: "C01", TS: "1.2"}),
 	} {
 		if _, err := p.SendMessages(t.Context(), ana, in); !errors.Is(err, threads.ErrInvalid) {
 			t.Errorf("%s = %v, want invalid", name, err)
 		}
+	}
+	otherTeam := sayIn("hi", &platform.ExternalRef{Type: platform.RefSlack, Client: "app", Team: "T0OTHER", Channel: "C01", TS: "1.2"})
+	if _, err := p.SendSurfaceMessages(t.Context(), ana, otherTeam); !errors.Is(err, threads.ErrInvalid) {
+		t.Errorf("a surface's message through another team's client = %v, want invalid", err)
 	}
 }
 
@@ -219,17 +222,16 @@ func TestASlackMessagesRunsAnswerOnItsThreadThroughItsClient(t *testing.T) {
 	if r.Client != "app" || wire.ActorOf(tag).ID != "U0ANA" || wire.ActorOf(tag).User != "ana" || !strings.HasPrefix(tag.Channel, "slack://T0TEAM/C01ANY") || !strings.Contains(tag.Channel, "1700000000.000100") {
 		t.Fatalf("run client %q, actor %+v, channel %q", r.Client, wire.ActorOf(tag), tag.Channel)
 	}
-	// Over the API the same Slack ref answers in the platform, never through
-	// the client: only a surface built into the server delivers.
-	api, err := p.SendMessages(t.Context(), ana, sayIn("@ops and the cost?", &platform.ExternalRef{Type: platform.RefSlack, Client: "app", Team: "T0TEAM", Channel: "C01OTHER", TS: "1700000000.000900", User: "U0SPOOF"}))
-	if err != nil {
-		t.Fatal(err)
+	// Over the API a Slack thread the app has not posted in has no root,
+	// and none is started: only a surface built into the server starts it.
+	if api, err := p.SendMessages(t.Context(), ana, sayIn("@ops and the cost?", &platform.ExternalRef{Type: platform.RefSlack, Client: "app", Team: "T0TEAM", Channel: "C01OTHER", TS: "1700000000.000900", User: "U0SPOOF"})); !errors.Is(err, threads.ErrNotFound) || len(api.Posted.Runs) != 0 {
+		t.Fatalf("an API message to a Slack thread with no root = %+v, %v; want not found", api, err)
 	}
 	console, err := p.SendMessages(t.Context(), ana, sayIn("@ops why did the deploy fail?", nil))
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, r := range append(api.Posted.Runs, console.Posted.Runs...) {
+	for _, r := range console.Posted.Runs {
 		if r.Client != "" || strings.HasPrefix(r.Tag().Channel, "slack://") || wire.ActorOf(r.Tag()).ID == "U0SPOOF" {
 			t.Fatalf("a run started over the API answers on %q through %q as %+v", r.Tag().Channel, r.Client, wire.ActorOf(r.Tag()))
 		}

@@ -682,7 +682,8 @@ after, the next of the previous page.
   /** People's messages from one origin, under the root session of the
 origin's place: found by its address, or started on its first message
 and owned by the entry agent, so work asked for in a place is picked
-up there later. With no ref (or type web) the message starts a new
+up there later. A slack or github place's root is started only by its
+surface, and is 404 until then. With no ref (or type web) the message starts a new
 console conversation. A message gets one answer, in the root: the
 one agent it mentions answers it; several mentioned are each asked
 first and the entry agent answers with what they said; with no

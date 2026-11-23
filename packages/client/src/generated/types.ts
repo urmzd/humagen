@@ -5754,10 +5754,17 @@ session, keyed slack://team/channel/thread_ts,
 github://owner/repo/pull/N or issues/N, schedule://name/occurrence or
 the normalized URL. client is the Humagen client the origin is
 reached through: it files the root where the client's channel is
-bound and maps a Slack conversation's members to people.
+bound and maps a Slack conversation's members to people. client and
+audience are read only from that client's own machine posting for a
+person (act_as); from any other caller they are ignored, and a root
+the message starts is the caller's own. A place that already has a
+root takes a message only from someone who reads that root; anyone
+else is answered 404. A slack or github place's root is started only
+by its surface: until then a message to it is answered 404.
  */
 export interface ExternalRef {
   type: "slack" | "github" | "schedule" | "url" | "web";
+  /** The Humagen client the origin is reached through. Read only from that client's own machine posting for a person (act_as). */
   client?: string;
   team?: string;
   channel?: string;

@@ -387,6 +387,31 @@ func (p *Platform) mayPost(person auth.Principal, at Place, need projects.Role) 
 	return false, fmt.Errorf("%w: thread %q", threads.ErrNotFound, at.Thread)
 }
 
+// mayKeepFor checks, before a surface's message changes the existing root
+// th's people or audience, that the message's poster (who, or the person as
+// names) may post there, as PostMessage asks, so a message that is not taken
+// keeps nothing. A member the conversation reports, whom keeping the
+// audience makes one of the root's people, need not take part in it yet;
+// everything else is asked of them too.
+func (p *Platform) mayKeepFor(who auth.Principal, as *ActAs, th threads.Thread, need projects.Role, member bool) error {
+	if _, _, _, _, err := p.author(who, as); err != nil {
+		return err
+	}
+	person, err := p.poster(who, as)
+	if err != nil {
+		return err
+	}
+	if !member {
+		_, err := p.mayPost(person, Place{Project: th.Project, Thread: th.ID}, need)
+		return err
+	}
+	if th.ReadOnly {
+		return fmt.Errorf("%w: this conversation is a read-only archive", ErrForbidden)
+	}
+	_, err = p.mayPost(person, Place{Project: th.Project}, need)
+	return err
+}
+
 // changesThread holds a caller to changing a thread's record at all: one they
 // read (else threads.ErrNotFound, as a thread that is not there), and not a
 // machine without projects:govern, which posts only for a person.
