@@ -4,11 +4,16 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
+	"github.com/urmzd/saige/flow/address"
 	transport "github.com/urmzd/saige/flow/connectors/github"
 )
 
 // ReviewScope pins the review to the exact source revision it inspected.
+// The host fills it from the pinned head (ReviewReport.Pin); a model's own
+// value is replaced.
 type ReviewScope struct {
 	Commit string `json:"commit"`
 }
@@ -27,40 +32,137 @@ var fullCommit = regexp.MustCompile(`^[0-9a-fA-F]{40}$`)
 // security-reviewer or security-reviewer#a.
 var foundBy = regexp.MustCompile(`^([a-z0-9][a-z0-9._-]{0,63}(#[A-Za-z0-9._-]{1,32})?)?$`)
 
+// The bounds on a v2 report's free text, in characters. The text itself is
+// free: it is escaped when rendered, so it cannot change the layout.
+const (
+	maxSummary     = 1500
+	maxComments    = 10
+	maxComment     = 500
+	maxTitle       = 150
+	maxWhy         = 600
+	maxSuggestion  = 600
+	maxPrompt      = 1000
+	maxEvidence    = 8
+	maxObservation = 600
+	maxSource      = 500
+	maxPath        = 400
+	maxChange      = 8000
+	maxRelated     = 10
+)
+
 func validateV2(r ReviewReport) error {
 	if strings.TrimSpace(r.Title) == "" || len(r.Title) > 200 {
-		return fmt.Errorf("github: review v2 needs a title of at most 200 characters")
+		return fmt.Errorf("the review needs a title of at most 200 characters")
 	}
 	switch r.Verdict {
 	case "approve", "comment", "request_changes":
 	default:
-		return fmt.Errorf("github: review v2 has an invalid verdict")
+		return fmt.Errorf("the verdict must be approve, comment or request_changes")
 	}
 	if r.Scope == nil || !fullCommit.MatchString(r.Scope.Commit) {
-		return fmt.Errorf("github: review v2 needs scope.commit pinned to a full SHA")
+		return fmt.Errorf("the review is not pinned to the reviewed commit")
 	}
 	if len(r.Findings) > 100 {
-		return fmt.Errorf("github: review has more than 100 findings")
+		return fmt.Errorf("the review has more than 100 findings")
+	}
+	if err := bounded("the summary", r.Summary, maxSummary); err != nil {
+		return err
+	}
+	if len(r.Comments) > maxComments {
+		return fmt.Errorf("the review has more than %d comments", maxComments)
+	}
+	for _, c := range r.Comments {
+		if err := bounded("a comment", c, maxComment); err != nil {
+			return err
+		}
+	}
+	if len(r.Related) > maxRelated {
+		return fmt.Errorf("the review has more than %d related links", maxRelated)
+	}
+	for _, l := range r.Related {
+		if err := bounded("a related link's title", l.Title, maxTitle); err != nil {
+			return err
+		}
 	}
 	seen := map[string]bool{}
-	for _, f := range r.Findings {
+	for i, f := range r.Findings {
+		n := i + 1
 		if strings.TrimSpace(f.ID) == "" || len(f.ID) > 100 || seen[f.ID] {
-			return fmt.Errorf("github: review v2 findings need unique ids")
+			return fmt.Errorf("finding %d needs an id no other finding has", n)
 		}
 		seen[f.ID] = true
 		if !foundBy.MatchString(f.FoundBy) {
-			return fmt.Errorf("github: review v2 found_by names an agent, with an optional #label, in at most 100 characters")
+			return fmt.Errorf("finding %d: found_by names an agent, with an optional #label", n)
+		}
+		for _, field := range []struct {
+			name, text string
+			max        int
+		}{{"title", f.Title, maxTitle}, {"why", f.Why, maxWhy}, {"suggestion", f.Suggestion, maxSuggestion}, {"prompt", f.Prompt, maxPrompt}} {
+			if err := bounded(fmt.Sprintf("finding %d's %s", n, field.name), field.text, field.max); err != nil {
+				return err
+			}
+		}
+		if len(f.Evidence) > maxEvidence {
+			return fmt.Errorf("finding %d has more than %d pieces of evidence", n, maxEvidence)
+		}
+		for _, e := range f.Evidence {
+			if err := bounded(fmt.Sprintf("finding %d's evidence", n), e.Observation, maxObservation); err != nil {
+				return err
+			}
+			if err := bounded(fmt.Sprintf("finding %d's evidence source", n), e.Source, maxSource); err != nil {
+				return err
+			}
+		}
+		if f.Change != nil && utf8.RuneCountInString(*f.Change) > maxChange {
+			return fmt.Errorf("finding %d's change is longer than %d characters", n, maxChange)
+		}
+		if l := f.Location; l != nil {
+			if err := validLocation(l); err != nil {
+				return fmt.Errorf("finding %d: %w", n, err)
+			}
 		}
 	}
 	return nil
 }
 
-// NativeReview prepares a real pull request review, preserving invalid anchors
-// in the body. The transport checks every anchor against the actual diff.
-// Agents never approve: an approve verdict is posted as a comment,
-// and a person approves and merges.
-func NativeReview(report ReviewReport, files []transport.ContextFile) (transport.Review, error) {
-	r, err := nativeReview(report)
+// bounded refuses text longer than max characters.
+func bounded(what, text string, max int) error {
+	if utf8.RuneCountInString(text) > max {
+		return fmt.Errorf("%s is longer than %d characters", what, max)
+	}
+	return nil
+}
+
+// validLocation checks a location is a repository path and a line in it.
+// A path is shown in code and in a link, so it may not hold a backtick, a
+// control character or a step out of the repository.
+func validLocation(l *ReviewLocation) error {
+	if l.Path == "" || len(l.Path) > maxPath || strings.HasPrefix(l.Path, "/") || strings.ContainsAny(l.Path, "`\\") || !utf8.ValidString(l.Path) {
+		return fmt.Errorf("the location's path is not a repository path")
+	}
+	for _, segment := range strings.Split(l.Path, "/") {
+		if segment == "" || segment == "." || segment == ".." {
+			return fmt.Errorf("the location's path is not a repository path")
+		}
+	}
+	for _, r := range l.Path {
+		if unicode.IsControl(r) {
+			return fmt.Errorf("the location's path is not a repository path")
+		}
+	}
+	if l.Line < 1 || l.StartLine < 0 || l.StartLine > l.Line || l.Side != "" && l.Side != "LEFT" && l.Side != "RIGHT" {
+		return fmt.Errorf("the location's lines are not a range in the file")
+	}
+	return nil
+}
+
+// NativeReview prepares a real pull request review at t. A finding whose
+// location is a line of the diff gets its own line comment; any other is
+// in the body alone, with its change. The transport checks every anchor
+// against the actual diff again. Agents never approve: an approve verdict is
+// posted as a comment, and a person approves and merges.
+func NativeReview(report ReviewReport, files []transport.ContextFile, t Target) (transport.Review, error) {
+	r, err := nativeReview(report, files, t)
 	if err != nil {
 		return transport.Review{}, err
 	}
@@ -71,8 +173,8 @@ func NativeReview(report ReviewReport, files []transport.ContextFile) (transport
 // matches it instead of posting another. disposition is the posted event. An
 // approval posted before agents stopped approving is reproduced as one; the
 // transport prepares it and never submits a new one.
-func RecoveredReview(report ReviewReport, files []transport.ContextFile, disposition string) (transport.Review, error) {
-	r, err := nativeReview(report)
+func RecoveredReview(report ReviewReport, files []transport.ContextFile, t Target, disposition string) (transport.Review, error) {
+	r, err := nativeReview(report, files, t)
 	if err != nil {
 		return transport.Review{}, err
 	}
@@ -83,19 +185,20 @@ func RecoveredReview(report ReviewReport, files []transport.ContextFile, disposi
 	return transport.PrepareReview(r, files)
 }
 
-func nativeReview(report ReviewReport) (transport.Review, error) {
-	body, err := FormatReview(report)
-	if err != nil {
-		return transport.Review{}, err
-	}
+func nativeReview(report ReviewReport, files []transport.ContextFile, t Target) (transport.Review, error) {
 	if report.Format != ReviewFormatV2 {
 		return transport.Review{}, fmt.Errorf("github: native reviews require %s", ReviewFormatV2)
 	}
-	r := transport.Review{CommitID: report.Scope.Commit, Body: body, Event: "COMMENT"}
+	if err := ValidateReview(report); err != nil {
+		return transport.Review{}, err
+	}
+	t.Head = report.Scope.Commit
+	r := transport.Review{CommitID: report.Scope.Commit, Event: "COMMENT"}
 	if report.Verdict == "request_changes" {
 		r.Event = "REQUEST_CHANGES"
 	}
-	for _, f := range report.Findings {
+	anchored := map[string]bool{}
+	for _, f := range ordered(report.Findings) {
 		if f.Location == nil {
 			continue
 		}
@@ -104,26 +207,38 @@ func nativeReview(report ReviewReport) (transport.Review, error) {
 		if side == "" {
 			side = "RIGHT"
 		}
-		var evidence strings.Builder
-		for _, e := range f.Evidence {
-			fmt.Fprintf(&evidence, "- %s (%s)", reviewText(e.Observation), reviewPointer(e.Source))
-			if e.Step != "" {
-				fmt.Fprintf(&evidence, " step %s", reviewText(e.Step))
-			}
-			if e.Session != "" {
-				fmt.Fprintf(&evidence, " session %s", reviewText(e.Session))
-			}
-			if e.Step == "" && e.Session == "" {
-				evidence.WriteString(" (unverified)")
-			}
-			evidence.WriteString("\n")
+		comment := transport.ReviewComment{FindingID: f.ID, Path: l.Path, Body: lineComment(f), Line: l.Line, Side: side, StartLine: l.StartLine, StartSide: side, Change: f.Change}
+		if !onDiff(comment, r.CommitID, files) {
+			continue
 		}
-		title := "**" + reviewText(f.Title) + "**"
-		if f.FoundBy != "" {
-			title += "\n\nFound by " + reviewText(f.FoundBy)
-		}
-		text := fmt.Sprintf("%s\n\n%s\n\n<details><summary>Evidence</summary>\n\n%s\n</details>", title, reviewText(f.Suggestion), evidence.String())
-		r.Comments = append(r.Comments, transport.ReviewComment{FindingID: f.ID, Path: l.Path, Body: text, Line: l.Line, Side: side, StartLine: l.StartLine, StartSide: side, Change: f.Change})
+		anchored[f.ID] = true
+		r.Comments = append(r.Comments, comment)
+	}
+	r.Body = renderReview(report, t, anchored)
+	if len(r.Body) > MaxBodyChars-2048 {
+		return transport.Review{}, fmt.Errorf("the review is too long for one GitHub review; shorten the findings and keep their evidence")
 	}
 	return r, nil
 }
+
+// onDiff reports whether the transport would post comment on a line of the
+// diff, by asking it to prepare a review of that comment alone. The
+// transport owns how a diff is read.
+func onDiff(comment transport.ReviewComment, commit string, files []transport.ContextFile) bool {
+	probe, err := transport.PrepareReview(transport.Review{CommitID: commit, Event: "COMMENT", Comments: []transport.ReviewComment{comment}}, files)
+	return err == nil && len(probe.Comments) == 1
+}
+
+// lineComment is a finding as a colleague leaves it on a line: what is
+// wrong, why it matters and what to do, then its severity and who found
+// it, small. The transport adds the committable suggestion under it.
+func lineComment(f ReviewFinding) string {
+	label := severityLabel[f.Severity]
+	if who := foundByName(f.FoundBy); who != "" {
+		label += " · found by " + who
+	}
+	return fmt.Sprintf("**%s**\n%s\n\n<sub>%s</sub>", prose(f.Title), findingText(f), label)
+}
+
+// parseAddress reads a run's channel.
+func parseAddress(s string) (address.Address, error) { return address.Parse(s) }

@@ -4,7 +4,6 @@ package github
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
@@ -29,6 +28,11 @@ type Config struct {
 	ObserveDelivery  connectors.DeliveryObserver
 	// ReviewText verifies host provenance before native and comment rendering.
 	ReviewText func(transport.View) (string, error)
+	// AsksReview reports whether the run v answers for was asked for a
+	// review: the shape the host saved on the run when it started
+	// (wire.ShapeOf). A run asked anything else posts no native review.
+	// Nil asks every run that answers with a review for one.
+	AsksReview func(transport.View) bool
 	// SessionLink is the console's address of the session a run answers
 	// in, linked under its comment. Nil, or "", links nothing.
 	SessionLink        func(transport.View) string
@@ -125,46 +129,35 @@ func New(cfg Config) (*Connector, error) {
 				v.Text = text
 			}
 		}
-		link := ""
-		if cfg.SessionLink != nil {
-			link = cfg.SessionLink(v)
-		}
-		return presentation.RenderComment(v, link)
+		return presentation.RenderComment(v, sessionLink(cfg, v))
 	}
 	if _, ok := cfg.API.(transport.ReviewAPI); ok && cfg.Login != "" {
 		if _, ok := cfg.API.(transport.ReviewHistoryAPI); ok {
 			if _, ok := cfg.API.(transport.ContextAPI); ok {
 				base.Review = func(v transport.View, files []transport.ContextFile) (transport.Review, bool, error) {
-					if cfg.ReviewText != nil {
-						text, err := cfg.ReviewText(v)
-						if err != nil {
-							return transport.Review{}, true, err
-						}
-						v.Text = text
-					}
-					var report presentation.ReviewReport
-					if err := json.Unmarshal([]byte(presentation.ReviewJSON(v.Text)), &report); err != nil || report.Format != presentation.ReviewFormatV2 {
+					// A run the host saved as a reply posts no review, whatever
+					// its agent wrote: the host, not the model, chose the shape.
+					if cfg.AsksReview != nil && !cfg.AsksReview(v) {
 						return transport.Review{}, false, nil
 					}
-					review, err := presentation.NativeReview(report, files)
+					report, ok, err := reviewOf(cfg, v)
+					if !ok || err != nil {
+						return transport.Review{}, err != nil, err
+					}
+					review, err := presentation.NativeReview(report, files, presentation.TargetOf(v.Channel))
+					review.Body += presentation.SessionFooter(sessionLink(cfg, v))
 					return review, true, err
 				}
 				// The transport calls this only after verifying an existing app-authored
 				// review's immutable payload digest. A historical approval reproduces its
 				// body; it grants no new submission and keeps current evidence checks.
 				base.RecoverReview = func(v transport.View, files []transport.ContextFile, disposition string) (transport.Review, bool, error) {
-					if cfg.ReviewText != nil {
-						text, err := cfg.ReviewText(v)
-						if err != nil {
-							return transport.Review{}, true, err
-						}
-						v.Text = text
+					report, ok, err := reviewOf(cfg, v)
+					if !ok || err != nil {
+						return transport.Review{}, err != nil, err
 					}
-					var report presentation.ReviewReport
-					if err := json.Unmarshal([]byte(presentation.ReviewJSON(v.Text)), &report); err != nil || report.Format != presentation.ReviewFormatV2 {
-						return transport.Review{}, false, nil
-					}
-					review, err := presentation.RecoveredReview(report, files, disposition)
+					review, err := presentation.RecoveredReview(report, files, presentation.TargetOf(v.Channel), disposition)
+					review.Body += presentation.SessionFooter(sessionLink(cfg, v))
 					return review, true, err
 				}
 			}
@@ -237,9 +230,33 @@ func setSource(tag *event.Envelope, a address.Address) {
 	tag.Source, tag.Channel = a.String(), a.String()
 }
 
+// reviewOf is a run's answer as a v2 review, after the host's provenance
+// check, scoped to the head the run pinned. ok is false for anything else.
+func reviewOf(cfg Config, v transport.View) (presentation.ReviewReport, bool, error) {
+	if cfg.ReviewText != nil {
+		text, err := cfg.ReviewText(v)
+		if err != nil {
+			return presentation.ReviewReport{}, true, err
+		}
+		v.Text = text
+	}
+	report, ok := presentation.ParseReview(v.Text, presentation.TargetOf(v.Channel).Head)
+	if !ok || report.Format != presentation.ReviewFormatV2 {
+		return presentation.ReviewReport{}, false, nil
+	}
+	return report, true, nil
+}
+
+// sessionLink is the console's address of the session v answers in, or "".
+func sessionLink(cfg Config, v transport.View) string {
+	if cfg.SessionLink == nil {
+		return ""
+	}
+	return cfg.SessionLink(v)
+}
+
 func conclusion(v transport.View) string {
-	var r presentation.ReviewReport
-	if json.Unmarshal([]byte(presentation.ReviewJSON(v.Text)), &r) == nil && presentation.IsReviewFormat(r.Format) {
+	if r, ok := presentation.ParseReview(v.Text, presentation.TargetOf(v.Channel).Head); ok {
 		if _, err := presentation.FormatReview(r); err != nil {
 			return "action_required"
 		}

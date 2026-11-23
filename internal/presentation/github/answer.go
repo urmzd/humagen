@@ -1,7 +1,6 @@
 package github
 
 import (
-	"encoding/json"
 	"net/url"
 	"strings"
 
@@ -18,7 +17,8 @@ import (
 // the run's session, linked in a small footer; empty leaves the footer out.
 func RenderComment(v transport.View, session string) string {
 	if isReview(v) {
-		return RenderReview(v)
+		footer := SessionFooter(session)
+		return clamp(RenderReview(v), MaxBodyChars-len(footer)) + footer
 	}
 	clean := transport.View{
 		Agent: v.Agent, RunID: v.RunID, Version: v.Version, Channel: v.Channel, Tenant: v.Tenant,
@@ -36,23 +36,22 @@ func RenderComment(v transport.View, session string) string {
 		// A finished answer is the answer alone.
 		clean.Agent = ""
 	}
-	footer := sessionFooter(session)
+	footer := SessionFooter(session)
 	return clamp(transport.RenderDefault(clean), MaxBodyChars-len(footer)) + footer
 }
 
 // isReview reports whether v is, or is becoming, a structured review.
 func isReview(v transport.View) bool {
 	text := ReviewJSON(v.Text)
-	var report ReviewReport
-	structured := json.Unmarshal([]byte(text), &report) == nil && IsReviewFormat(report.Format)
+	_, structured := ParseReview(text, "")
 	pending := strings.HasPrefix(text, "{") && NamesReviewFormat(text)
 	return structured || pending || (strings.HasPrefix(text, "{") && !v.Terminal())
 }
 
-// sessionFooter is the small link under an answer to its session in the
-// console, where the trace is. Empty for an address that is not a plain
-// http(s) URL.
-func sessionFooter(session string) string {
+// SessionFooter is the small link under an answer or a review to its
+// session in the console, where the trace is. Empty for an address that is
+// not a plain http(s) URL.
+func SessionFooter(session string) string {
 	u, err := url.Parse(session)
 	if session == "" || err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" || u.User != nil {
 		return ""

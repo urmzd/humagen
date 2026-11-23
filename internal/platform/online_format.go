@@ -1,72 +1,48 @@
 package platform
 
 import (
-	"context"
-	"encoding/json"
-	"regexp"
-	"strings"
-
-	"github.com/urmzd/humagen/internal/legacy"
 	github "github.com/urmzd/humagen/internal/presentation/github"
+	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/evals"
 	"github.com/urmzd/humagen/pkg/runs"
 )
 
 const onlineFormatBytes = 64 << 10
 
-var declaredReviewFormat = regexp.MustCompile(`"format"\s*:\s*"([^"\r\n]{1,80})"`)
-
-// checkReviewFormat assesses the known structured review contract. It verifies
-// shape only: diff applicability and evidence authorization belong to delivery.
-// A format explicitly named by the immutable agent instructions is required;
-// otherwise only an answer declaring a recognized format opts into this check.
-func checkReviewFormat(instructions, answer string) (evals.Verdict, bool) {
-	expected := ""
-	for _, format := range []string{github.ReviewFormatV2, github.ReviewFormat, legacy.ReviewFormat} {
-		if strings.Contains(instructions, format) {
-			expected = format
-			break
-		}
-	}
-	text := github.ReviewJSON(answer[:min(len(answer), onlineFormatBytes)])
-	declared := ""
-	var head struct {
-		Format string `json:"format"`
-	}
-	if err := json.Unmarshal([]byte(text), &head); err == nil {
-		if github.IsReviewFormat(head.Format) {
-			declared = head.Format
-		}
-	} else if match := declaredReviewFormat.FindStringSubmatch(text); len(match) == 2 && github.IsReviewFormat(match[1]) {
-		declared = match[1]
-	}
-	if expected == "" && declared == "" {
+// checkReviewFormat assesses a run the host saved as asked for a review
+// (wire.ShapeReview). It verifies shape only: diff applicability and
+// evidence authorization belong to delivery. head is the commit the host
+// pinned, which the review is scoped to; the model never writes it. Any
+// other run, a reply among them, is not checked, whatever its answer or
+// its agent's instructions say.
+func checkReviewFormat(shape, head, answer string) (evals.Verdict, bool) {
+	if shape != wire.ShapeReview {
 		return evals.Verdict{}, false
 	}
-	v := evals.Verdict{Check: "format", Passed: false, Reason: "The answer does not match its declared review format"}
+	v := evals.Verdict{Check: "format", Passed: false, Reason: "A review was asked for, and the answer is not a humagen.review.v2 report"}
 	if len(answer) > onlineFormatBytes {
-		v.Reason = "The structured answer exceeds the format-check size limit"
+		v.Reason = "The review exceeds the format-check size limit"
 		return v, true
 	}
-	var report github.ReviewReport
-	if json.Unmarshal([]byte(text), &report) != nil || !github.IsReviewFormat(report.Format) || expected != "" && report.Format != expected {
+	report, ok := github.ParseReview(answer, head)
+	if !ok || report.Format != github.ReviewFormatV2 {
 		return v, true
 	}
 	if _, err := github.FormatReview(report); err != nil {
+		v.Reason = "The review does not match its format: " + err.Error()
 		return v, true
 	}
 	v.Passed, v.Reason = true, ""
 	return v, true
 }
 
+// onlineFormat checks a run's answer against the shape saved on its tag
+// when it started, so a retry is assessed as the run was asked, whatever
+// its agent's instructions say now.
 func (p *Platform) onlineFormat(run runs.Run) (evals.Verdict, bool) {
-	// The saved run's revision is immutable. Later instruction edits must not
-	// change a retry's assessment or impose a format on an older answer.
-	instructions := ""
-	if run.Rev > 0 {
-		if revision, err := p.Catalog().Get(context.Background(), run.Tenant, run.Agent, run.Rev); err == nil {
-			instructions = revision.Spec.SystemPrompt
-		}
+	shape := wire.ShapeOf(run.Tag())
+	if shape != wire.ShapeReview {
+		return evals.Verdict{}, false
 	}
-	return checkReviewFormat(instructions, run.Answer)
+	return checkReviewFormat(shape, p.reviewedHead(run), run.Answer)
 }

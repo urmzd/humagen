@@ -16,18 +16,46 @@ func testReport() ReviewReport {
 	}, Related: []ReviewLink{{Title: "Idempotency", URL: "https://example.test/idempotency"}}}
 }
 
-func TestReviewCountsAndSectionsComeFromFindings(t *testing.T) {
-	body, err := FormatReview(testReport())
+func TestReviewReadsAsProseInSeverityOrder(t *testing.T) {
+	r := testReport()
+	r.Findings[0], r.Findings[2] = r.Findings[2], r.Findings[0]
+	body, err := FormatReview(r)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"🔴 **1 error** · 🟡 **1 warning** · 🔵 **1 info**", "## Summary", "## Comments", "| Level | Finding | Suggestion | Evidence | Follow-up prompt |", "#L42)", "## Related concepts", "👍 or 👎"} {
+	for _, want := range []string{"**Two problems worth fixing before merging.**", "Retries can duplicate writes.", "- Scope: inspected", "**1. Duplicate write**\n<sub>Must fix</sub>", "**2. Missing regression**", "**3. Existing ordering**\n<sub>Note</sub>", "<details><summary>Evidence</summary>", "#L42)", "Related: [Idempotency](https://example.test/idempotency)", "<!-- humagen.github.review.v1 verdict=comment errors=1 warnings=1 info=1 -->"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("missing %q in %s", want, body)
 		}
 	}
-	if strings.Index(body, "## Summary") > strings.Index(body, "## Findings") {
-		t.Fatal("findings precede summary")
+	// Three findings read as prose alone: no table, and the summary first.
+	if strings.Contains(body, "| # |") || strings.Index(body, "Retries can duplicate") > strings.Index(body, "**1.") {
+		t.Fatal(body)
+	}
+	assertHumanVoice(t, body)
+}
+
+func TestTheVerdictIsSaidInWords(t *testing.T) {
+	finding := func(sev string) ReviewFinding { return ReviewFinding{Severity: sev} }
+	for _, tc := range []struct {
+		verdict  string
+		findings []ReviewFinding
+		want     string
+	}{
+		{"approve", nil, "Looks good to merge."},
+		{"approve", []ReviewFinding{finding("warning")}, "Looks good to merge after one fix."},
+		{"approve", []ReviewFinding{finding("info"), finding("info")}, "Looks good to merge. Two notes below."},
+		{"request_changes", []ReviewFinding{finding("error"), finding("warning"), finding("info")}, "Needs changes: one problem to fix before merging, and one more worth fixing."},
+		{"request_changes", []ReviewFinding{finding("error")}, "Needs changes: one problem to fix before merging."},
+		{"request_changes", []ReviewFinding{finding("warning"), finding("warning")}, "Needs changes: two problems worth fixing before merging."},
+		{"request_changes", nil, "Needs changes before merging."},
+		{"comment", nil, "No problems found."},
+		{"comment", []ReviewFinding{finding("info")}, "One note, nothing blocking."},
+		{"comment", []ReviewFinding{finding("error")}, "One problem worth fixing before merging."},
+	} {
+		if got := verdictLine(tc.verdict, tc.findings); got != tc.want {
+			t.Errorf("%s %d: %q, want %q", tc.verdict, len(tc.findings), got, tc.want)
+		}
 	}
 }
 
@@ -61,21 +89,29 @@ func TestReviewCellsCannotBreakTheTable(t *testing.T) {
 	if !strings.Contains(body, "a &#124; b") {
 		t.Fatal("pipe not escaped")
 	}
+	r.Findings = append(r.Findings, r.Findings[1], r.Findings[2])
+	body, err = FormatReview(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(body, "| 1 | a &#124; b &lt;script&gt;") {
+		t.Fatalf("a pipe broke the findings table: %s", body)
+	}
 }
 
 func TestStructuredReviewStreamsProgressThenRendersTheFinalReport(t *testing.T) {
 	encoded, _ := json.Marshal(testReport())
 	v := render.View{Agent: "reviewer", Status: render.StatusRunning, Text: string(encoded[:80])}
-	if body := RenderReview(v); strings.Contains(body, ReviewFormat) || !strings.Contains(body, "Preparing") {
+	if body := RenderReview(v); strings.Contains(body, ReviewFormat) || !strings.Contains(body, "Reviewing the change") {
 		t.Fatal(body)
 	}
 	v.Status = render.StatusDone
 	v.Text = string(encoded)
-	if body := RenderReview(v); !strings.Contains(body, "🔴 **1 error**") || strings.Contains(body, ReviewFormat) {
+	if body := RenderReview(v); !strings.Contains(body, "**1. Duplicate write**") || strings.Contains(hidden.ReplaceAllString(body, ""), ReviewFormat) {
 		t.Fatal(body)
 	}
 	v.Text = string(encoded[:80])
-	if body := RenderReview(v); !strings.Contains(body, "Review incomplete") || strings.Contains(body, "0 errors") {
+	if body := RenderReview(v); !strings.Contains(body, "The review is incomplete") || strings.Contains(body, "No problems") {
 		t.Fatal(body)
 	}
 }
@@ -90,11 +126,11 @@ func TestAReviewUnderTheOldFormatIDStillRenders(t *testing.T) {
 	}
 	encoded, _ := json.Marshal(report)
 	v := render.View{Agent: "reviewer", Status: render.StatusRunning, Text: string(encoded[:80])}
-	if body := RenderReview(v); strings.Contains(body, "warp.github.review.v1") || !strings.Contains(body, "Preparing") {
+	if body := RenderReview(v); strings.Contains(body, "warp.github.review.v1") || !strings.Contains(body, "Reviewing the change") {
 		t.Fatal(body)
 	}
 	v.Status, v.Text = render.StatusDone, string(encoded)
-	if body := RenderReview(v); !strings.Contains(body, "🔴 **1 error**") {
+	if body := RenderReview(v); !strings.Contains(body, "**1. Duplicate write**") {
 		t.Fatal(body)
 	}
 	report.Format = "other.github.review.v1"
@@ -109,11 +145,11 @@ func TestAFencedReviewRendersAsAReview(t *testing.T) {
 	encoded, _ := json.Marshal(testReport())
 	fenced := "```json\n" + string(encoded) + "\n```"
 	v := render.View{Agent: "reviewer", Status: render.StatusRunning, Text: fenced[:90]}
-	if body := RenderReview(v); strings.Contains(body, ReviewFormat) || !strings.Contains(body, "Preparing") {
+	if body := RenderReview(v); strings.Contains(body, ReviewFormat) || !strings.Contains(body, "Reviewing the change") {
 		t.Fatal(body)
 	}
 	v.Status, v.Text = render.StatusDone, fenced
-	if body := RenderReview(v); !strings.Contains(body, "🔴 **1 error**") || strings.Contains(body, ReviewFormat) {
+	if body := RenderReview(v); !strings.Contains(body, "**1. Duplicate write**") || strings.Contains(hidden.ReplaceAllString(body, ""), ReviewFormat) {
 		t.Fatal(body)
 	}
 	for in, want := range map[string]string{

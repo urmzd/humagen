@@ -8,37 +8,42 @@ import (
 	github "github.com/urmzd/humagen/internal/presentation/github"
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/saige/flow/runtime"
 )
 
+// onlineReview is a valid review as a model writes it: without the
+// reviewed commit, which the host pins.
 func onlineReview(t *testing.T) string {
 	t.Helper()
-	raw, err := json.Marshal(github.ReviewReport{Format: github.ReviewFormatV2, Title: "Review", Verdict: "comment", Summary: "No findings in the inspected diff.", Scope: &github.ReviewScope{Commit: strings.Repeat("a", 40)}, Findings: []github.ReviewFinding{}})
+	raw, err := json.Marshal(github.ReviewReport{Format: github.ReviewFormatV2, Title: "Review", Verdict: "comment", Summary: "No findings in the inspected diff.", Findings: []github.ReviewFinding{}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	return string(raw)
 }
 
-func TestOnlineReviewFormatIsBoundedDeterministicAndOnlyAssessesKnownContracts(t *testing.T) {
+func TestOnlineReviewFormatChecksOnlyARequestedReview(t *testing.T) {
 	valid := onlineReview(t)
+	head := strings.Repeat("a", 40)
+	review := wire.ShapeReview
 	for _, tc := range []struct {
-		name, instructions, answer string
-		applies, passed            bool
+		name, shape, head, answer string
+		applies, passed           bool
 	}{
-		{"ordinary prose", "Be concise", "Done", false, false},
-		{"unknown contract", "Use custom.data", `{"format":"custom.data","value":1}`, false, false},
-		{"nested example is not declared output", "", `{"example":{"format":"humagen.review.v2"},"format":"custom.data"}`, false, false},
-		{"output declares review", "", valid, true, true},
-		{"fenced review", github.ReviewFormatV2, "```json\n" + valid + "\n```", true, true},
-		{"requested review omitted", github.ReviewFormatV2, "Looks good", true, false},
-		{"wrong review version", github.ReviewFormatV2, `{"format":"humagen.github.review.v1","summary":"Looks good","findings":[]}`, true, false},
-		{"truncated declaration", "", `{"format":"humagen.review.v2","title":`, true, false},
-		{"invalid verdict", "", strings.Replace(valid, `"comment"`, `"approved"`, 1), true, false},
-		{"unpinned commit", "", strings.Replace(valid, strings.Repeat("a", 40), "main", 1), true, false},
-		{"oversized review", github.ReviewFormatV2, valid + strings.Repeat(" ", onlineFormatBytes), true, false},
+		{"a reply is not checked", wire.ShapeReply, head, "Done", false, false},
+		{"a reply that declares a review is not checked", wire.ShapeReply, head, `{"format":"humagen.review.v2","title":`, false, false},
+		{"a run from before shapes is not checked", "", head, `{"format":"humagen.review.v2","title":`, false, false},
+		{"a review scoped by the host", review, head, valid, true, true},
+		{"a fenced review", review, head, "```json\n" + valid + "\n```", true, true},
+		{"prose where a review was asked", review, head, "Looks good", true, false},
+		{"another format", review, head, `{"format":"humagen.github.review.v1","summary":"Looks good","findings":[]}`, true, false},
+		{"truncated", review, head, `{"format":"humagen.review.v2","title":`, true, false},
+		{"invalid verdict", review, head, strings.Replace(valid, `"comment"`, `"approved"`, 1), true, false},
+		{"no pinned head", review, "", valid, true, false},
+		{"oversized", review, head, valid + strings.Repeat(" ", onlineFormatBytes), true, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			verdict, applies := checkReviewFormat(tc.instructions, tc.answer)
+			verdict, applies := checkReviewFormat(tc.shape, tc.head, tc.answer)
 			if applies != tc.applies || verdict.Passed != tc.passed {
 				t.Fatalf("%+v applies=%v", verdict, applies)
 			}
@@ -49,29 +54,43 @@ func TestOnlineReviewFormatIsBoundedDeterministicAndOnlyAssessesKnownContracts(t
 	}
 }
 
-func TestOnlineReviewFormatUsesTheRunsImmutableAgentRevision(t *testing.T) {
+// The check reads the shape saved on the run's tag when it started, not
+// its agent's instructions: a plain reply from an agent whose prompt names
+// the review format raises nothing, and a retry is assessed as first asked.
+func TestOnlineReviewFormatUsesTheShapeSavedOnTheRun(t *testing.T) {
 	p, err := New(Config{Workspace: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = p.Close() }()
 	spec := wire.AgentSpec{Name: "reviewer", Provider: "offline", Model: "offline", SystemPrompt: "Return " + github.ReviewFormatV2}
-	first, err := p.Agents.Create(t.Context(), "t", spec, "test")
-	if err != nil {
+	if _, err := p.Agents.Create(t.Context(), "t", spec, "test"); err != nil {
 		t.Fatal(err)
 	}
-	spec.SystemPrompt = "Answer in ordinary prose"
-	if _, err = p.Agents.Revise(t.Context(), "t", spec, first.Rev, "test"); err != nil {
-		t.Fatal(err)
+	record := func(id, shape string) runs.Run {
+		tag := wire.NewEvent(wire.Raise{ID: id, Tenant: "t", Agent: "reviewer", Origin: "github", Channel: "github://acme/site/pull/7?head_sha=" + strings.Repeat("a", 40), Text: "Review"})
+		if shape != "" {
+			wire.SetShape(&tag, shape)
+		}
+		runID := runtime.RunID("t", tag.ID)
+		if err := p.Runs.Record(runID, tag, 1); err != nil {
+			t.Fatal(err)
+		}
+		run, _ := p.Runs.Get("t", runID)
+		return run
 	}
-	run := runs.Run{Tenant: "t", Agent: spec.Name, Rev: first.Rev, Answer: "Looks good"}
-	verdict, applies := p.onlineFormat(run)
-	if !applies || verdict.Passed {
-		t.Fatalf("later instructions changed historical assessment: %+v %v", verdict, applies)
+	reply := record("reply", wire.ShapeReply)
+	reply.Answer = "The retry limit is three."
+	if verdict, applies := p.onlineFormat(reply); applies {
+		t.Fatalf("a plain reply was format-checked: %+v", verdict)
 	}
-	run.Answer = onlineReview(t)
-	verdict, applies = p.onlineFormat(run)
-	if !applies || !verdict.Passed {
-		t.Fatalf("historical valid review failed: %+v %v", verdict, applies)
+	review := record("review", wire.ShapeReview)
+	review.Answer = "Looks good"
+	if verdict, applies := p.onlineFormat(review); !applies || verdict.Passed {
+		t.Fatalf("prose passed where a review was asked: %+v %v", verdict, applies)
+	}
+	review.Answer = onlineReview(t)
+	if verdict, applies := p.onlineFormat(review); !applies || !verdict.Passed {
+		t.Fatalf("a review scoped to the pinned head failed: %+v %v", verdict, applies)
 	}
 }
