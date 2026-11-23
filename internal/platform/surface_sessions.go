@@ -94,13 +94,9 @@ func (p *Platform) StartSurfaceSession(ctx context.Context, who auth.Principal, 
 			post.PostOnly = post.PostOnly || !p.callsFor(ctx, who.Tenant, th, in.Text)
 		}
 		// Who may post is checked before the root's people or audience
-		// change, so a message that is not taken keeps nothing. A member the
-		// conversation reports is one of its people once they are kept, and
-		// is checked as one when the message posts.
-		if vis != threads.Private || !reportsMember(c, ref.Audience, person) {
-			if _, err := p.mayPost(person, Place{Project: th.Project, Thread: th.ID}, postNeed(post)); err != nil {
-				return SessionView{}, false, err
-			}
+		// change, so a message that is not taken keeps nothing.
+		if err := p.mayKeepFor(who, in.ActAs, th, postNeed(post), vis == threads.Private && reportsMember(c, ref.Audience, person)); err != nil {
+			return SessionView{}, false, err
 		}
 		if vis == threads.Private && ref.Audience != nil && len(ref.Audience.Members) > 0 {
 			if err := p.keepAudience(who.Tenant, th, people); err != nil {

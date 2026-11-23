@@ -14,6 +14,7 @@ import (
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/clients"
+	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/humagen/pkg/threads"
 	"github.com/urmzd/saige/flow/address"
@@ -630,15 +631,19 @@ func (p *Platform) rootAt(ctx context.Context, who auth.Principal, place string,
 	if th, err = p.Threads.Get(who.Tenant, rec.ID); err != nil {
 		return threads.Thread{}, false, err
 	}
-	// Who reads the root is checked before its people or audience change, so
-	// a message that is not taken keeps nothing. A member the surface reports
-	// is one of its people once they are kept, and is checked again below.
-	if !created && !p.SeesSession(who, th.ID) && (c == nil || vis != threads.Private || !reportsMember(*c, origin.Audience, who)) {
+	// Who reads the root, and may post there, is checked before its people
+	// or audience change, so a message that is not taken keeps nothing. A
+	// member the surface reports is one of its people once they are kept.
+	member := c != nil && vis == threads.Private && reportsMember(*c, origin.Audience, who)
+	if !created && !p.SeesSession(who, th.ID) && !member {
 		return threads.Thread{}, false, threads.ErrNotFound
 	}
 	if !created && !verified {
 		// The root is as it was started.
 		return th, false, nil
+	}
+	if !created && p.mayKeepFor(who, nil, th, projects.Member, member) != nil {
+		return threads.Thread{}, false, threads.ErrNotFound
 	}
 	if !created && vis == threads.Private && origin.Audience != nil && len(origin.Audience.Members) > 0 {
 		if err := p.keepAudience(who.Tenant, th, people); err != nil {

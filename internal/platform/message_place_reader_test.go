@@ -371,3 +371,59 @@ func TestAListeningMessageThatIsNotTakenLeavesTheRootsPeople(t *testing.T) {
 		t.Fatalf("the root kept %+v, want it as it was: %+v", after, before)
 	}
 }
+
+// The app posts for eve, whom it maps but who is no member of the project,
+// and reports her a member of the private channel: she may not post there,
+// so the message is refused and the root keeps nothing.
+func TestAReportedMemberWhoMayNotPostLeavesTheRootAsItWas(t *testing.T) {
+	st := state.NewMemory()
+	p, machine := slackRoomOn(t, startWith(t, platform.Config{Backends: platform.Backends{State: st}}), func(in *platform.ClientInput) {
+		in.Slack.People["U0BEN"] = "ben"
+		in.Slack.People["U0EVE"] = "eve"
+	})
+	seePeople(t, p, auth.Principal{Subject: "ben"}, auth.Principal{Subject: "eve"})
+	workIn(t, p, "Initech", auth.Principal{Subject: "ana"}, auth.Principal{Subject: "ben"}, auth.Principal{Subject: "vic"})
+	first, _, err := p.StartSurfaceSession(t.Context(), machine, withAudience(slackSession(placeChannel, placeThread, "", "<@UAPP> status?"), platform.ChannelPrivate, "U0ANA", "U0BEN"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	await(t, p, sessionRun(t, first).ID, runs.Completed)
+	before := keptOf(t, p, st, first.ID)
+	in := withAudience(slackSession(placeChannel, placeThread, "1700000000.000500", "<@UAPP> what was said?"), platform.ChannelPrivate, "U0ANA", "U0BEN", "U0EVE")
+	in.ActAs.User = "U0EVE"
+	if v, _, err := p.StartSurfaceSession(t.Context(), machine, in); err == nil {
+		t.Fatalf("a message for eve, who may not post in the project, was taken: root %s", v.ID)
+	}
+	if after := keptOf(t, p, st, first.ID); !sameKept(before, after) {
+		t.Fatalf("the root kept %+v, want it as it was: %+v", after, before)
+	}
+	if p.SeesSession(auth.Principal{Subject: "eve", Tenant: tenant, Kind: auth.User, Roles: []auth.Role{auth.Viewer}}, first.ID) {
+		t.Fatal("eve reads the root")
+	}
+}
+
+// A built-in surface's message for ana to a Slack place whose root vic named
+// first is not taken there: vic's root keeps nothing, and neither ana nor
+// ben reads it.
+func TestABuiltInSurfacesMessageLeavesARootNamedFirstAsItWas(t *testing.T) {
+	p, st, _, room := placeRoom(t)
+	vic := placeOperator("vic", tenant)
+	ana := placeOperator("ana", tenant)
+	const thread = "1700000001.000100"
+	roomRoot, err := p.Threads.Get(tenant, room)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mine := namedFirst(t, p, vic, roomRoot.Session.Agent, "slack://T0TEAM/G01OTHER/"+thread)
+	before := keptOf(t, p, st, mine)
+	ref := &platform.ExternalRef{Type: platform.RefSlack, Client: "app", Team: "T0TEAM", Channel: "G01OTHER", TS: thread, User: "U0ANA", Audience: &platform.SurfaceAudience{Type: platform.ChannelPrivate, Members: []string{"U0ANA", "U0BEN"}}}
+	if out, err := p.SendSurfaceMessages(t.Context(), ana, sayIn("@helper the plan is X", ref)); err == nil || out.Root == mine {
+		t.Fatalf("ana's message = root %q, %v; want it not taken in vic's root %s", out.Root, err, mine)
+	}
+	if after := keptOf(t, p, st, mine); !sameRoot(before, after) {
+		t.Fatalf("vic's root kept %+v, want it as it was: %+v", after, before)
+	}
+	if p.SeesSession(ana, mine) || p.SeesSession(placeOperator("ben", tenant), mine) {
+		t.Fatal("ana or ben reads vic's root")
+	}
+}
