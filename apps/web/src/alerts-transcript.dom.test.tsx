@@ -198,7 +198,7 @@ test("alerts sit in the transcript where they happened: after their answer, its 
       "alert:Pick a reviewer",
       "turn:m-1",
       "turn:r-1",
-      "alert:Github Reviewer Needs review: format",
+      "alert:GitHub Reviewer Needs review: format",
       "alert:Confirm the owner",
       "alert:Security Reviewer Failed",
       "turn:m-2",
@@ -209,9 +209,9 @@ test("alerts sit in the transcript where they happened: after their answer, its 
 
   // One quiet line: a status, the agent by its shown name, the reason, one action.
   // Its name is what it shows.
-  const line = screen.getByRole("region", { name: "Alert: Github Reviewer Needs review: format" });
+  const line = screen.getByRole("region", { name: "Alert: GitHub Reviewer Needs review: format" });
   assert.ok(within(line).getByRole("img", { name: "Waiting" }));
-  assert.ok(within(line).getByText("Github Reviewer"));
+  assert.ok(within(line).getByText("GitHub Reviewer"));
   assert.ok(within(line).getByText("Needs review: format"));
   assert.equal(within(line).queryByText(/@github-reviewer/), null);
   // Beside its own answer, a link back to that answer goes nowhere new.
@@ -348,7 +348,7 @@ test("Review asks the agent about the newest copy, and Snooze waits in the menu"
     },
   );
   const line = await screen.findByRole("region", {
-    name: "Alert: Github Reviewer Needs review: format",
+    name: "Alert: GitHub Reviewer Needs review: format",
   });
   fireEvent.click(within(line).getByRole("button", { name: "Review" }));
   await waitFor(() => assert.equal(opened, "s_review"));
@@ -404,7 +404,7 @@ test("a failed answer's own alert is its failure card's Mark Done, even with no 
     () => {},
     failed,
   );
-  const name = { name: "Alert: Github Reviewer Failed" };
+  const name = { name: "Alert: GitHub Reviewer Failed" };
   const controls = await screen.findByRole("group", name);
   // No line of its own: the failure card is the one place, and there is no Retry beside it.
   assert.equal(document.querySelector("section[data-alert-line]"), null);
@@ -414,8 +414,8 @@ test("a failed answer's own alert is its failure card's Mark Done, even with no 
   assert.ok(controls.closest('[data-turn-id="r-1"]'));
   // Fix with the agent waits in its menu.
   fireEvent.click(within(controls).getByRole("button", { name: "More alert actions" }));
-  assert.ok(within(controls).getByRole("menuitem", { name: "Fix with Github Reviewer" }));
-  fireEvent.keyDown(within(controls).getByRole("menuitem", { name: "Fix with Github Reviewer" }), {
+  assert.ok(within(controls).getByRole("menuitem", { name: "Fix with GitHub Reviewer" }));
+  fireEvent.keyDown(within(controls).getByRole("menuitem", { name: "Fix with GitHub Reviewer" }), {
     key: "Escape",
   });
   assert.ok(screen.getByRole("button", { name: "Go to the open alert" }));
@@ -465,7 +465,7 @@ test("an alert about a turn not loaded yet is listed as earlier, not placed amon
   );
   // A settled one waits for its turn to load.
   assert.equal(
-    screen.queryByRole("region", { name: "Alert: Github Reviewer Needs review: format" }),
+    screen.queryByRole("region", { name: "Alert: GitHub Reviewer Needs review: format" }),
     null,
   );
 });
@@ -481,7 +481,7 @@ test("on a phone the line's action waits in its menu, so the line stays one row"
   try {
     room([eval_("a-1", "github-reviewer", "r-1", "2026-11-22T09:01:00Z")], {}, () => {});
     const line = await screen.findByRole("region", {
-      name: "Alert: Github Reviewer Needs review: format",
+      name: "Alert: GitHub Reviewer Needs review: format",
     });
     assert.equal(within(line).queryByRole("button", { name: "Review" }), null);
     fireEvent.click(within(line).getByRole("button", { name: "More alert actions" }));

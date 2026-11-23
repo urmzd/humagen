@@ -94,4 +94,9 @@ test("the entry agent is shown by the workspace's name, every other agent by its
   assert.equal(titled("GitHub-bot"), "GitHub Bot");
   // A short word a name writes in capitals stays in capitals.
   assert.equal(agentShown("qa-reviewer"), "QA Reviewer");
+  // A brand keeps its own capitals.
+  assert.equal(agentShown("github-reviewer"), "GitHub Reviewer");
+  assert.equal(agentShown("slack_triage"), "Slack Triage");
+  assert.equal(agentShown("openai-evals"), "OpenAI Evals");
+  assert.equal(titled("GITHUB bigquery-analyst"), "GitHub BigQuery Analyst");
 });
