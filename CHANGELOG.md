@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.199.1 (2026-11-23)
+
+### Bug Fixes
+
+- **trigger**: lower-case text without changing its byte length ([1f0f91c](https://github.com/urmzd/humagen/commit/1f0f91ca59966950788faa8a08bcbc62434ba77f))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.199.0...v0.199.1)
+
+
 ## 0.199.0 (2026-11-23)
 
 ### Features
