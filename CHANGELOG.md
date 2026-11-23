@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.195.3 (2026-11-23)
+
+### Bug Fixes
+
+- **ci**: push the release image when CI was skipped for a tested tree ([cd922b0](https://github.com/urmzd/humagen/commit/cd922b0c071cb8a9cf910dca202d4bfc0b66ff93))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.195.2...v0.195.3)
+
+
 ## 0.195.2 (2026-11-23)
 
 ### Bug Fixes
