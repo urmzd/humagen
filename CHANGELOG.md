@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.194.0 (2026-11-23)
+
+### Features
+
+- **github**: read the place an answer was asked on, and post only the answer ([d30ae93](https://github.com/urmzd/humagen/commit/d30ae93d3f0682cea991498019ee66e54ca77dcb))
+
+### Bug Fixes
+
+- **github**: treat comments deleted mid-read as a change, and count reads in the e2e test ([038f65e](https://github.com/urmzd/humagen/commit/038f65e266e168b9b1f7a3bbe6d44a58b62ebd90))
+- **github**: read the latest comments through the last page, not every page ([2a0fda1](https://github.com/urmzd/humagen/commit/2a0fda14795beb4cbe9f2d73cc140cf2fcf6c00f))
+- **github**: read the latest comments, skip the client's own login, and read through a client only on its own place ([d9bce74](https://github.com/urmzd/humagen/commit/d9bce744dec5b996ab9da63a32b0e4be83945565))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.193.0...v0.194.0)
+
+
 ## 0.193.0 (2026-11-23)
 
 ### Breaking
