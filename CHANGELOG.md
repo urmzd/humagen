@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.195.5 (2026-11-23)
+
+### Bug Fixes
+
+- **web**: show the entry agent's typed name as typed ([d94cb4a](https://github.com/urmzd/humagen/commit/d94cb4a0699cfc9f5a61578cb0cf0c89675ac528))
+- **web**: spell brands their own way in tool titles ([8a7204c](https://github.com/urmzd/humagen/commit/8a7204c3ac75c8dc2fc7ac60d84d00e0a732845a))
+- **web**: keep brand capitals in agent display names ([6e8d872](https://github.com/urmzd/humagen/commit/6e8d872dbcfacdcc35ced06aa5a26bb040663a31))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.195.4...v0.195.5)
+
+
 ## 0.195.3 (2026-11-23)
 
 ### Bug Fixes

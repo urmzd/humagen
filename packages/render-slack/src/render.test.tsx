@@ -7,6 +7,7 @@ import {
   actionIdBase,
   decodeFeedbackModal,
   feedbackModal,
+  inertName,
   LIMITS,
   renderToSlack,
   toMrkdwn,
@@ -437,4 +438,60 @@ it("does not decorate Slack references with private retrieval facts without deli
   expect(text).not.toContain("2026-10-20");
   expect(text).not.toContain(defaultCopy.citation.lastGoodCopy);
   expect(text).not.toContain(defaultCopy.citation.indexed);
+});
+
+describe("a name a person chose, in a callout's title", () => {
+  const names = [
+    "[x](http://example.test)",
+    "**Launch** Lead",
+    "<@U123>",
+    "<!channel>",
+    "@here _now_",
+  ];
+  const words = defaultCopy.runFailure;
+  const sectionText = (blocks: unknown[]) =>
+    (blocks as { type: string; text?: { text: string } }[]).find((b) => b.type === "section")?.text
+      ?.text ?? "";
+
+  it.each(names)(
+    "formats, links and pings nothing in the blocks or the fallback text: %s",
+    (name) => {
+      const out = renderToSlack(
+        <Callout tone="bad" title={words.couldNotFinish(name)} text={words.because.unknown} />,
+      );
+      const shown = sectionText(out.blocks);
+      for (const said of [shown, out.text]) {
+        expect(said).not.toMatch(/<[@!]/);
+        expect(said).not.toMatch(/<http/);
+        expect(said).not.toMatch(/@(here|channel|everyone)/);
+      }
+      // The title is one run of bold, whatever the name holds.
+      expect(shown).toMatch(/^[^*]*\*[^*\n]+ could not finish\*\n/);
+      expect(shown.match(/[*_~`]/g)).toEqual(["*", "*"]);
+    },
+  );
+
+  it.each(names)("is inert in a failed turn's summary too, once made so: %s", (name) => {
+    const turn: Turn = {
+      ...fx.failedTurn,
+      failure: { kind: "internal", cause: "unknown", message: words.because.unknown },
+    };
+    const out = renderToSlack(<TurnView turn={turn} agentName={inertName(name)} />);
+    expect(out.text).toContain("could not finish");
+    const shown = (out.blocks as { type: string; text?: { text: string } }[])
+      .filter((b) => b.type === "section")
+      .map((b) => b.text?.text ?? "")
+      .join("\n");
+    expect(shown).toContain("could not finish");
+    for (const said of [out.text, shown]) {
+      expect(said).not.toMatch(/<[@!]/);
+      expect(said).not.toMatch(/<http/);
+      expect(said).not.toMatch(/@(here|channel|everyone)/);
+    }
+  });
+
+  it("leaves an ordinary name as it is", () => {
+    expect(inertName("Launch Lead")).toBe("Launch Lead");
+    expect(inertName(inertName("<@U123> **x**"))).toBe(inertName("<@U123> **x**"));
+  });
 });

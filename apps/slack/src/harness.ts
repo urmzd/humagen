@@ -291,8 +291,14 @@ export class FakeHumagen implements Humagen {
       permissions: ["runs:read", "runs:write", "agents:read"],
     };
   }
+  /** Each agent's look, by handle, as the agent list gives it. */
+  looks: Record<string, { display_name?: string }> = {};
   async listAgents() {
-    return { agents: this.agentList.map((spec) => ({ spec, rev: 1 })), builtin: [] };
+    return {
+      agents: this.agentList.map((spec) => ({ spec, rev: 1 })),
+      builtin: [],
+      looks: this.looks,
+    };
   }
   async getClient(id: string) {
     return this.clients.get(id) ?? null;
