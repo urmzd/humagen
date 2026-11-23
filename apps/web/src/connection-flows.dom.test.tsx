@@ -985,6 +985,69 @@ test("a rule answers with a review or a reply, a pull request rule reviewing unl
   );
 });
 
+test("a rule's answer stays through an event that offers it, and comes back with its own event", async () => {
+  const client = githubApp();
+  client.github.automations[0] = { ...client.github.automations[0], shape: "reply" } as never;
+  net = stubFetch(
+    offered({
+      "GET /api/connections/presets": () => [
+        {
+          id: "github",
+          name: "GitHub",
+          kind: "github_install",
+          scope: "workspace",
+          available: true,
+          connected: true,
+        },
+      ],
+      "GET /api/clients": () => ({ clients: [client], caps: { max: 10, max_per_surface: 10 } }),
+      "GET /api/agents": () => ({ agents: [{ spec: { name: "code-reviewer" } }] }),
+      "GET /api/projects": () => ({ projects: [] }),
+      "PUT /api/clients/acme-github": (body) => ({ ...client, ...(body as object), version: 4 }),
+    }),
+  );
+  render(<Connections provider="github" canConnect canWrite />);
+  const dialog = await sheet("GitHub");
+  const rules = await within(dialog).findByRole("region", { name: "Start a session when" });
+  const rule = within(rules).getByRole("listitem", { name: "review-prs" });
+  await choose(rule, "review-prs", "Edit");
+  const edit = within(rules).getByRole("form", { name: "Edit review-prs" });
+  const shape = () => within(edit).getByLabelText(/^Answers with/) as HTMLSelectElement;
+  const event = (value: string) =>
+    fireEvent.change(within(edit).getByLabelText(/^Event/), { target: { value } });
+  assert.equal(shape().value, "reply");
+
+  // The stored answer comes back when the event returns to the rule's own.
+  event("issues");
+  assert.equal(within(edit).queryByLabelText(/^Answers with/), null);
+  event("pull_request");
+  assert.equal(shape().value, "reply");
+
+  // A chosen answer stays between the two events that offer the choice.
+  fireEvent.change(shape(), { target: { value: "review" } });
+  event("check_run");
+  assert.equal(shape().value, "review");
+  event("pull_request");
+  assert.equal(shape().value, "review");
+
+  // An event without the choice clears it, and another event starts at its default.
+  event("push");
+  event("check_run");
+  assert.equal(shape().value, "reply");
+  event("pull_request");
+  assert.equal(shape().value, "reply");
+
+  fireEvent.click(within(edit).getByRole("button", { name: "Save Rule" }));
+  await sent("PUT", "/api/clients/acme-github");
+  const body = net.seen.find((r) => r.method === "PUT")?.body as {
+    github: { automations: { name: string; event: string; shape?: string }[] };
+  };
+  assert.deepEqual(
+    body.github.automations.map((a) => [a.name, a.event, a.shape]),
+    [["review-prs", "pull_request", "reply"]],
+  );
+});
+
 test("a rule left at its default saves no shape, so the server's default holds", async () => {
   const client = githubApp();
   net = stubFetch(

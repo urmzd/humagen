@@ -271,7 +271,14 @@ function RuleForm({
             value={rule.event}
             onChange={(e) => {
               const next = events.find((x) => x.id === e.target.value) ?? pullRequest;
-              set({ event: next.id, action: next.actions[0] ?? "", shape: undefined });
+              // The answer stays while the event still offers it, and the stored
+              // one comes back with the rule's own event.
+              const stored = next.id === initial?.event ? initial.shape : undefined;
+              set({
+                event: next.id,
+                action: next.actions[0] ?? "",
+                shape: canReview(next.id) ? (rule.shape ?? stored) : undefined,
+              });
             }}
           >
             {events.map((x) => (
