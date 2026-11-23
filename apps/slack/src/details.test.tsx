@@ -186,7 +186,7 @@ test("someone the client maps to nobody is told so, and Humagen is not asked", a
   assert.equal(asked, 0);
   const shown = w.slack.of("chat.postEphemeral").at(-1);
   assert.equal(shown?.user, STRANGER);
-  assert.equal(shown?.text, defaultCopy.runDetails.notConnected);
+  assert.equal(shown?.text, defaultCopy.threads.notConnected("Humagen"));
   assert.equal(shown?.blocks, undefined);
 });
 
@@ -209,10 +209,12 @@ test("a person who may not read the run is refused in Humagen's answer, with no 
   assert.equal(shown?.blocks, undefined);
 });
 
-test("an app whose client maps nobody offers no Run Details", async () => {
+test("an app whose client maps nobody offers no Run Details, and answers nobody", async () => {
   const w = world();
-  const final = await runWithCommands(w);
-  assert.doesNotMatch(JSON.stringify(blocksOf(final)), /Run Details/);
+  await deliver(w, mention("fix the refund rounding", TS));
+  await w.app.idle();
+  assert.equal(w.humagen.asked.length, 0, "nobody is mapped, so nothing starts");
+  assert.ok(!w.slack.methods.includes("chat.startStream"));
   assert.equal(offersRunDetails(undefined, SUBJECT), false);
   const client = {
     id: CLIENT,

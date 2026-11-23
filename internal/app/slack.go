@@ -151,7 +151,7 @@ func applySlackClients(ctx context.Context, p *platform.Platform, cfg spec.Confi
 // slackMachineSubject is who the Slack app the server starts is under
 // tailscale sign-in, where the server makes its credential. It is the same at
 // every start, so a client can name it as its slack.machine.
-func slackMachineSubject(team string) string { return "slack-app:" + team }
+func slackMachineSubject(team string) string { return platform.SlackAppMachine(team) }
 
 // slackMachineScopes are what that credential may do: the least the app's
 // README asks an identity provider for, and no role.
