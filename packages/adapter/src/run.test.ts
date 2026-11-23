@@ -81,9 +81,22 @@ test("a tool call keeps its name when the done event omits it", () => {
   const done = to(ev("run.delta.tool.done.v1", { id: "t1", result: "ok" })).find((e) => e.type === "task.upserted");
   assert.equal(done?.type, "task.upserted");
   if (done?.type === "task.upserted") {
-    assert.equal(done.task.title, "Github comment");
+    assert.equal(done.task.title, "GitHub comment");
     assert.equal(done.task.status, "complete");
   }
+});
+
+test("a tool's title spells brands and short words their own way", () => {
+  const titleOf = (name: string) => {
+    const event = adapter()(ev("run.delta.tool.call.v1", { id: "t1", name, phase: "requested" })).find((e) => e.type === "task.upserted");
+    return event?.type === "task.upserted" ? event.task.title : undefined;
+  };
+  assert.equal(titleOf("github_search"), "GitHub search");
+  assert.equal(titleOf("github.read-context"), "GitHub read context");
+  assert.equal(titleOf("slack_post_message"), "Slack post message");
+  assert.equal(titleOf("catalog_query"), "Catalog query");
+  assert.equal(titleOf("open_pr"), "Open PR");
+  assert.equal(titleOf("file_read"), "File read");
 });
 
 test("tool detail keeps bounded arguments and measures execution rather than approval time", () => {

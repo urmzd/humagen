@@ -1,3 +1,4 @@
+import { spelled } from "@humagen/core/spelling";
 import { agentLook } from "./agentHues.ts";
 import type { Branding } from "./api.ts";
 
@@ -71,25 +72,12 @@ export function agentShown(name: string): string {
   return agentLook(name)?.display_name || titled(brandShown(name));
 }
 
-/**
- * Words a name writes in one way: short words in capitals ("qa-reviewer" is
- * "QA Reviewer") and brands as their owners spell them ("github-reviewer" is
- * "GitHub Reviewer"). Keys are lower case.
- */
-const SPELLED: ReadonlyMap<string, string> = new Map(
-  [
-    ...["AI", "API", "AWS", "CI", "GCP", "HR", "ID", "LLM", "MCP", "PR", "QA", "SQL", "SRE"],
-    ...["UI", "UX", "BigQuery", "ChatGPT", "DevOps", "GitHub", "GitLab", "LinkedIn", "OAuth"],
-    ...["OpenAI", "PagerDuty", "PostgreSQL", "Slack", "YouTube"],
-  ].map((word) => [word.toLowerCase(), word]),
-);
-
 /** A handle as words in title case, with known words spelled their own way. */
 export function titled(handle: string): string {
   return handle
     .split(/[-_\s]+/)
     .filter(Boolean)
-    .map((word) => SPELLED.get(word.toLowerCase()) ?? word.charAt(0).toUpperCase() + word.slice(1))
+    .map((word) => spelled(word) ?? word.charAt(0).toUpperCase() + word.slice(1))
     .join(" ");
 }
 

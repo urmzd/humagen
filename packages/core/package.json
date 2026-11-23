@@ -8,7 +8,8 @@
     ".": "./src/index.ts",
     "./fixtures": "./src/fixtures.ts",
     "./fixtures/responses": "./src/fixtures/responses/index.ts",
-    "./review": "./src/review.ts"
+    "./review": "./src/review.ts",
+    "./spelling": "./src/spelling.ts"
   },
   "scripts": {
     "test": "vitest run",
