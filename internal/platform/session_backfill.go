@@ -9,7 +9,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/wire"
+	"github.com/urmzd/humagen/internal/wire/sessionstate"
+	"github.com/urmzd/humagen/pkg/clients"
+	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/threads"
 	"github.com/urmzd/saige/flow/session"
@@ -25,11 +29,18 @@ import (
 //     maps the askers' logins to now. Its conversation's runs move into the
 //     session's, oldest first, and the owner's are bound to its record.
 //   - A conversation from before sessions (a "th-" thread, a Slack thread or
-//     direct message among them) is left as it is. A session's id is its
-//     key's (s_...), and the conversation's messages, the runs filed in it,
-//     its surface's ids and every link to it are kept under its own id, so it
-//     cannot become a session without a new id that breaks them. A Slack
-//     reply there keeps reaching it (ErrSurfaceThreadBeforeSessions).
+//     direct message among them) is adopted as a session under the id it
+//     has (adoptionOf): its messages, the runs filed in it, its surface's
+//     ids and every link to it are kept under that id, so none of them
+//     moves. Its record gains a session identity and its one agent
+//     (threads.Store.Adopt), and the session store a record under that id,
+//     with an alias from the key's own id (sessionstate.Store.Adopt). Where
+//     it is filed, whether it is shared or private, who takes part and its
+//     surface stay as they are. A session's reader must also read its
+//     agent, so a conversation is adopted only when everyone who reads it
+//     reads that agent too; any other is left, with the reason. A Slack
+//     reply there reaches it as a session's does, and does not change who
+//     takes part.
 //
 // A session the backfill opens takes the times of its work: started when
 // its first run was asked, and last active when its latest run or message
@@ -58,6 +69,15 @@ const (
 	BackfillRunLeft          = "github run left"
 	BackfillThreadLeft       = "conversation left"
 	BackfillSlackThreadLeft  = "slack conversation left"
+	// A "th-" conversation adopted as a session under its own id, and one
+	// a first apply adopted.
+	BackfillThreadAdopted             = "conversation adopted"
+	BackfillSlackThreadAdopted        = "slack conversation adopted"
+	BackfillThreadAlreadyAdopted      = "conversation already a session"
+	BackfillSlackThreadAlreadyAdopted = "slack conversation already a session"
+	// The session's record a stopped apply wrote for a conversation that
+	// was archived since, removed.
+	BackfillAdoptionRemoved = "unfinished adoption removed"
 )
 
 // BackfillReport is what a backfill did, or with Apply unset would do, in
@@ -98,6 +118,8 @@ func (r BackfillReport) Changes() int {
 		switch kind {
 		case BackfillSessionOpened, BackfillRunFiled, BackfillRunBound, BackfillParticipantAdded, BackfillSessionDated:
 			n += c
+		case BackfillThreadAdopted, BackfillSlackThreadAdopted, BackfillAdoptionRemoved:
+			n += c
 		}
 	}
 	return n
@@ -122,7 +144,7 @@ func (p *Platform) BackfillSessions(ctx context.Context, tenant string, apply bo
 	if err := p.backfillGitHub(ctx, tenant, apply, &rep); err != nil {
 		return rep, err
 	}
-	if err := p.backfillThreads(tenant, &rep); err != nil {
+	if err := p.backfillThreads(ctx, tenant, apply, &rep); err != nil {
 		return rep, err
 	}
 	return rep, nil
@@ -473,23 +495,338 @@ func (p *Platform) bindInOrder(ctx context.Context, tenant, id string, bound []s
 	})
 }
 
-// backfillThreads reports the conversations from before sessions, which
-// it leaves as they are.
-func (p *Platform) backfillThreads(tenant string, rep *BackfillReport) error {
-	old, err := p.Threads.Records(tenant, func(th threads.Thread) bool { return th.Session == nil && th.Archive == nil })
+// threadAdopter adopts a conversation from before sessions as a session
+// under its own id (sessionstate.Store.Adopt).
+type threadAdopter interface {
+	Adopt(ctx context.Context, tenant, id string, o session.Open) (session.Record, error)
+	Unadopt(ctx context.Context, tenant, id string) error
+	Adoption(ctx context.Context, tenant, keyID string) (string, error)
+}
+
+// adoption is how one conversation from before sessions becomes a session:
+// the session it becomes, or why it is left.
+type adoption struct {
+	th     threads.Thread
+	agent  string
+	parent string
+	left   string
+}
+
+// backfillThreads adopts the tenant's "th-" conversations from before
+// sessions as sessions under their own ids, and reports the rest, which it
+// leaves.
+func (p *Platform) backfillThreads(ctx context.Context, tenant string, apply bool, rep *BackfillReport) error {
+	old, err := p.Threads.Records(tenant, func(th threads.Thread) bool {
+		return th.Session == nil || (th.Archive == nil && threads.Adopted(th))
+	})
 	if err != nil {
 		return err
 	}
 	slices.SortFunc(old, func(a, b threads.Thread) int {
 		return cmp.Or(a.CreatedAt.Compare(b.CreatedAt), strings.Compare(a.ID, b.ID))
 	})
-	const why = "a session's id is its key's, and this conversation's messages, runs, surface ids and links are kept under its own"
+	adopter, _ := p.Sessions.(threadAdopter)
+	// One key is one session: the conversations of one Slack thread, one per
+	// app of its team, have one key for one agent, and only the first holds
+	// it. The conversations adopted already hold theirs.
+	keys := map[string]string{}
 	for _, th := range old {
-		if th.Surface != nil {
-			rep.add(BackfillSlackThreadLeft, th.ID, "", why+"; replies on "+th.Surface.Client+" keep reaching it")
+		if th.Session != nil {
+			keys[session.Key{Tenant: tenant, Parent: th.Session.Parent, Agent: th.Session.Agent}.Normalize().ID()] = th.ID
+		}
+	}
+	for _, th := range old {
+		slack := th.Surface != nil
+		if th.Archive != nil {
+			if err := p.dropAdoption(ctx, tenant, th, apply, rep); err != nil {
+				return err
+			}
 			continue
 		}
-		rep.add(BackfillThreadLeft, th.ID, "", why)
+		if th.Session != nil {
+			kind := BackfillThreadAlreadyAdopted
+			if slack {
+				kind = BackfillSlackThreadAlreadyAdopted
+			}
+			rep.add(kind, th.ID, th.ID, "owned by "+th.Session.Agent)
+			continue
+		}
+		a, err := p.adoptionOf(ctx, tenant, th)
+		if err != nil {
+			return fmt.Errorf("backfill: read %s: %w", th.ID, err)
+		}
+		if a.left == "" {
+			key := session.Key{Tenant: tenant, Parent: a.parent, Agent: a.agent}.Normalize().ID()
+			if holder, held := keys[key]; held && holder != th.ID {
+				a.left = "conversation " + holder + " holds its place for " + a.agent + " already, and one place is one session"
+			} else {
+				keys[key] = th.ID
+			}
+		}
+		left := BackfillThreadLeft
+		if slack {
+			left = BackfillSlackThreadLeft
+		}
+		if a.left != "" {
+			if slack {
+				a.left += "; replies on " + th.Surface.Client + " keep reaching it as a conversation"
+			}
+			rep.add(left, th.ID, "", a.left)
+			continue
+		}
+		kind, detail := BackfillThreadAdopted, a.detail()
+		if slack {
+			kind, detail = BackfillSlackThreadAdopted, detail+"; replies on "+th.Surface.Client+" keep reaching it"
+		}
+		if !apply {
+			rep.add(kind, th.ID, th.ID, detail)
+			continue
+		}
+		if adopter == nil {
+			return errors.New("the session store cannot adopt a conversation")
+		}
+		// The session's record first: a conversation whose record is
+		// written and whose thread is not is still a conversation, and the
+		// next apply finishes it.
+		if _, err := adopter.Adopt(ctx, tenant, th.ID, session.Open{Parent: a.parent, Agent: a.agent, Channel: wire.Channel(tenant)}); errors.Is(err, sessionstate.ErrAdopted) {
+			// Another process took its id or its key since it was read.
+			rep.add(left, th.ID, "", "another session took its place while it was read; run the command again")
+			continue
+		} else if err != nil {
+			return fmt.Errorf("backfill: adopt %s: %w", th.ID, err)
+		}
+		identity := threads.SessionIdentity{Agent: a.agent, Parent: a.parent}
+		if _, err := p.Threads.Adopt(tenant, th.ID, th.Version, identity, p.now()); err != nil {
+			if !p.changedSince(tenant, th.ID, err) {
+				return fmt.Errorf("backfill: adopt %s: %w", th.ID, err)
+			}
+			// Someone changed it since it was read: who reads it may have
+			// changed too, so it is decided again by the next run, with no
+			// session's record left to decide it.
+			if err := adopter.Unadopt(ctx, tenant, th.ID); err != nil {
+				return fmt.Errorf("backfill: adopt %s: %w", th.ID, err)
+			}
+			rep.add(left, th.ID, "", "it changed while it was read; run the command again")
+			continue
+		}
+		rep.add(kind, th.ID, th.ID, detail)
 	}
 	return nil
+}
+
+// changedSince reports whether a conversation's adoption failed with err
+// because someone changed it after it was read: a new version, or archived,
+// read-only or deleted, which do not move its version.
+func (p *Platform) changedSince(tenant, id string, err error) bool {
+	if errors.Is(err, threads.ErrVersion) {
+		return true
+	}
+	if !errors.Is(err, threads.ErrInvalid) && !errors.Is(err, threads.ErrNotFound) {
+		return false
+	}
+	cur, gerr := p.Threads.Get(tenant, id)
+	if errors.Is(gerr, threads.ErrNotFound) {
+		return true
+	}
+	return gerr == nil && cur.Session == nil && (cur.Archive != nil || cur.ReadOnly)
+}
+
+// dropAdoption removes the session's record that an apply which stopped
+// wrote for a conversation archived since: an archived conversation is not
+// adopted, so no later run would finish or remove it. A conversation with
+// no such record is not listed.
+func (p *Platform) dropAdoption(ctx context.Context, tenant string, th threads.Thread, apply bool, rep *BackfillReport) error {
+	if !strings.HasPrefix(th.ID, threads.IDPrefix) {
+		return nil
+	}
+	// Only an adoption writes a record under a conversation's own id.
+	bound, err := p.Sessions.Runs(ctx, tenant, th.ID, 1)
+	if errors.Is(err, session.ErrNotFound) {
+		return nil
+	} else if err != nil {
+		return fmt.Errorf("backfill: read %s: %w", th.ID, err)
+	}
+	kind := BackfillThreadLeft
+	if th.Surface != nil {
+		kind = BackfillSlackThreadLeft
+	}
+	if len(bound) > 0 {
+		rep.add(kind, th.ID, "", "it is archived, and the session's record a stopped apply wrote for it binds runs, so it is kept")
+		return nil
+	}
+	rep.add(BackfillAdoptionRemoved, th.ID, "", "it is archived, so the session's record a stopped apply wrote for it is removed")
+	if !apply {
+		return nil
+	}
+	adopter, ok := p.Sessions.(threadAdopter)
+	if !ok {
+		return errors.New("the session store cannot adopt a conversation")
+	}
+	if err := adopter.Unadopt(ctx, tenant, th.ID); err != nil {
+		return fmt.Errorf("backfill: remove the session's record of %s: %w", th.ID, err)
+	}
+	return nil
+}
+
+// detail says what an adopted conversation is as a session: its agent, and
+// that who reads it and where it is filed do not change.
+func (a adoption) detail() string {
+	who := "shared with everyone who sees " + projectLabel(a.th.Project)
+	if a.th.Visibility == threads.Private {
+		var people []string
+		for _, pt := range a.th.Participants {
+			if pt.Kind == threads.Person {
+				people = append(people, pt.Name)
+			}
+		}
+		if a.th.CreatedBy != "" && !slices.Contains(people, a.th.CreatedBy) {
+			people = append([]string{a.th.CreatedBy}, people...)
+		}
+		who = "private to " + strings.Join(people, ", ")
+	}
+	return fmt.Sprintf("owned by %s, started by %s, filed in %s, %s, as before", a.agent, a.th.CreatedBy, projectLabel(a.th.Project), who)
+}
+
+func projectLabel(project string) string {
+	if project == "" {
+		return "the workspace"
+	}
+	return fmt.Sprintf("%q", project)
+}
+
+// adoptionOf decides how a conversation from before sessions becomes a
+// session, or why it is left. A "th-" conversation that someone started, on
+// no surface or on a Slack client's, becomes the session of the one agent
+// it names as its default or selects, else the first that answered in it,
+// else, on Slack, the client's default; its parent is its own place
+// (console://<id>, or the Slack thread's address), so no other
+// conversation's key is ever its own.
+//
+// A session is read by those who read its place and its agent (Seer.Place),
+// where a conversation asks only for its place. So that adopting one never
+// changes who reads it, its agent must be read by everyone who reads the
+// conversation: one that may answer in its project, which is an agent
+// everyone who reads the project reads (Available), and on a surface, whose
+// machine reads the conversation with no role in a project, a platform
+// agent. Anything else is left.
+func (p *Platform) adoptionOf(ctx context.Context, tenant string, th threads.Thread) (adoption, error) {
+	a := adoption{th: th}
+	switch {
+	case !strings.HasPrefix(th.ID, threads.IDPrefix):
+		a.left = "a conversation from before threads is kept under its first run's id, and a session's id is its own"
+		return a, nil
+	case th.CreatedBy == "":
+		a.left = "nobody started it, so it would be a session of nobody's"
+		return a, nil
+	case th.ReadOnly:
+		a.left = "it is read-only"
+		return a, nil
+	case th.Announcement != "":
+		a.left = "it answers an announcement, which a session does not"
+		return a, nil
+	case th.Fork != nil || th.Import != nil:
+		a.left = "it continues another conversation, whose history a session does not carry"
+		return a, nil
+	case len(th.Agents) > 1:
+		a.left = "it selects " + strings.Join(th.Agents, ", ") + ", and a session has one agent"
+		return a, nil
+	}
+	a.parent = "console://" + th.ID
+	var client clients.Client
+	if th.Surface != nil {
+		c, err := p.Clients.Get(tenant, th.Surface.Client)
+		switch {
+		case errors.Is(err, clients.ErrNotFound):
+			a.left = "its client " + th.Surface.Client + " is not in the store"
+			return a, nil
+		case err != nil:
+			return a, err
+		case c.Surface != clients.Slack || c.Identity.Team == "":
+			a.left = "its surface is not a Slack thread"
+			return a, nil
+		}
+		client = c
+		a.parent = surfacePlace(c.Identity.Team, th.Surface.Channel, th.Surface.TS)
+	}
+	// A first apply that wrote the session's record and stopped decided the
+	// agent: this one finishes that adoption, whatever answers there now.
+	held, err := p.Sessions.Get(ctx, tenant, th.ID)
+	switch {
+	case errors.Is(err, session.ErrNotFound):
+		if a.agent, err = p.adoptedAgent(tenant, th, client); err != nil {
+			return a, err
+		}
+	case err != nil:
+		return a, err
+	case held.Key != session.Key{Tenant: tenant, Parent: a.parent, Agent: held.Key.Agent}.Normalize():
+		a.left = "a session of another key holds its id"
+		return a, nil
+	default:
+		a.agent = held.Key.Agent
+	}
+	switch def := legacy.Default(th.Default); {
+	case a.agent == "":
+		a.left = "it names no agent and no agent answered in it"
+		return a, nil
+	case len(th.Agents) == 1 && th.Agents[0] != a.agent, def != "" && def != threads.OpenName && def != a.agent:
+		a.left = "it names another agent than " + a.agent + ", and a session has one agent"
+		return a, nil
+	}
+	if err := p.checkDefault(ctx, tenant, th.Project, a.agent, nil); err != nil {
+		a.left = "its agent " + a.agent + " cannot answer there: " + detailOf(err, projects.ErrInvalid)
+		return a, nil
+	}
+	// On a surface the client's machine reads the conversation too, with no
+	// role in any project: it reads a platform agent, and no other.
+	if home, homed := p.ProjectTree(tenant).Home(a.agent); homed && th.Surface != nil {
+		a.left = "its agent " + a.agent + " lives in " + projectLabel(home) + ", which the machine of " + th.Surface.Client + " does not read, and a session is read only by those who read its agent"
+		return a, nil
+	}
+	key := session.Key{Tenant: tenant, Parent: a.parent, Agent: a.agent}.Normalize()
+	if rec, err := p.Sessions.Get(ctx, tenant, key.ID()); err == nil {
+		a.left = "session " + rec.ID + " holds its place already"
+		return a, nil
+	} else if !errors.Is(err, session.ErrNotFound) {
+		return a, err
+	}
+	// Another conversation of the place, through another app of its team,
+	// may be adopted under the key, or have an adoption yet to finish.
+	if adopter, ok := p.Sessions.(threadAdopter); ok {
+		if holder, err := adopter.Adoption(ctx, tenant, key.ID()); err == nil && holder != th.ID {
+			a.left = "conversation " + holder + " holds its place for " + a.agent + " already, and one place is one session"
+			return a, nil
+		} else if err != nil && !errors.Is(err, session.ErrNotFound) {
+			return a, err
+		}
+	}
+	if _, err := p.Threads.Get(tenant, key.ID()); err == nil {
+		a.left = "conversation " + key.ID() + " holds its place already"
+		return a, nil
+	} else if !errors.Is(err, threads.ErrNotFound) {
+		return a, err
+	}
+	return a, nil
+}
+
+// adoptedAgent is the agent a conversation becomes the session of, or "".
+func (p *Platform) adoptedAgent(tenant string, th threads.Thread, c clients.Client) (string, error) {
+	if def := legacy.Default(th.Default); def != "" && def != threads.OpenName {
+		return def, nil
+	}
+	if len(th.Agents) > 0 {
+		return th.Agents[0], nil
+	}
+	turns, err := p.Runs.Conversation(tenant, th.ID)
+	if err != nil && !errors.Is(err, runs.ErrNotFound) {
+		return "", err
+	}
+	for _, r := range turns {
+		if r.Agent != "" {
+			return r.Agent, nil
+		}
+	}
+	if def := legacy.Default(c.DefaultAgent); def != Open && def != threads.OpenName {
+		return def, nil
+	}
+	return "", nil
 }

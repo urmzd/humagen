@@ -757,7 +757,7 @@ func (p *Platform) sessionRows(who auth.Principal, q SessionQuery) ([]sessionRow
 		if th.Session == nil || th.Archive != nil || (q.Parent != "" && th.Session.Parent != q.Parent) || (q.Agent != "" && th.Session.Agent != q.Agent) || (inProject && th.Project != project) {
 			return false
 		}
-		if q.Roots && strings.HasPrefix(th.Session.Parent, "s_") {
+		if q.Roots && threads.SessionParent(th.Session.Parent) {
 			return false
 		}
 		return !q.Mine || sessionOf(th, who.Subject)

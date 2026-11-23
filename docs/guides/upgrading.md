@@ -44,7 +44,9 @@ asked for it. Ratings by reaction are unchanged.
 A mention on a GitHub pull request or issue opens or continues that place's
 session ([GitHub sessions](../reference/github.md#sessions)). A run from
 before that release is a conversation of its own, and Recent and Sessions do
-not list it. `humagen migrate sessions` files that work into sessions once.
+not list it. Neither do they list a conversation from before sessions (a
+`th-` thread, a Slack thread or direct message among them). `humagen migrate
+sessions` files that work into sessions once.
 
 ```
 humagen migrate sessions -state postgres [-tenant NAME] [-server-tenant NAME] [-apply]
@@ -74,12 +76,66 @@ the tenants it read, then how many runs of each tenant it read. Check them befor
 | A session the command finds | Dates it from its runs, and changes nothing else, when its record was created after the first run the command files in it had ended. That is a session an earlier run of the command opened, which that release dated at the time it ran, so it sat at the top of Recent. It is also a session a mention opened on a pull request or issue that has older runs: the command files those runs in it, and the session then starts when the oldest of them was asked. An archived session that is not deleted is dated the same way, and stays archived. A session whose first run is the mention that opened it is left as it is, while that run is queued or running and after it ends. The servers keep running during the command, so a mention may open a session while it reads |
 | A session's last activity | The time of its latest run or message. It is never earlier than the latest message in the session when the command writes. A later change that is neither, such as a person added, does not count as activity |
 
+### Conversations from before sessions
+
+| Past work | What the command does |
+|-----------|-----------------------|
+| A conversation from before sessions (a `th-` thread) that names one agent | Adopts it as that agent's session under the id it has. Its messages, the runs filed in it and every link to it stay under that id, so nothing moves and no link breaks. Its record gains the session and its one agent; the session store gains a record under that id |
+| A Slack thread or direct message from before sessions | The same, at the Slack thread's address. Replies on Slack keep reaching it, now as a session's |
+
+The agent a conversation becomes the session of is the one it names as its
+default, else the one agent it selects, else the first agent that answered
+in it, else, on Slack, the client's default agent.
+
+When it is adopted, a conversation is read by the people who read it
+before, and by nobody else:
+
+- It stays in its project and channel, shared or private as it was, with
+  the same participants. A shared conversation is read by everyone who reads
+  its project. A private one is read by its participants. A Slack
+  client's machine reads the threads on its surface.
+- A session is also read only by those who read its agent. The command
+  adopts a conversation only when everyone who reads it reads that agent
+  too. Any other conversation is left, and its line says why.
+- Nothing is read across tenants. The command reads and writes one tenant
+  at a time.
+- A Slack reply in an adopted thread does not change who takes part. A
+  session that Slack starts now follows the members of its Slack
+  conversation; an adopted one keeps the people it had.
+
+Nobody gains a conversation by its adoption. Afterwards, someone can stop
+reading one they read before, in these cases:
+
+- A session is read only by those who read its agent. If the agent later
+  moves to a project some readers do not read, such as one kept to its
+  members, those readers stop reading the adopted conversation. As a
+  conversation, it did not depend on the agent.
+- The session has one agent, and that does not change. The conversation's
+  default and selected agents are set to it, so a person can no longer
+  select another agent there. A message can still tag another agent.
+- A private Slack thread that is adopted keeps the people it had. People
+  who join its Slack conversation later are not added, and they do not
+  read it in the console. This holds for a reply posted by the Slack app
+  and for a message sent with a `slack` ref that names the thread.
+
+A person's untagged message in an adopted conversation is answered by its
+agent, as in any session. Before, the console ran only the agents a message
+tagged.
+
 ### What it leaves
 
 | Past work | Why |
 |-----------|-----|
-| A conversation from before sessions (a `th-` thread) | A session's id is made from its key (`s_...`). The conversation's messages, the runs filed in it, its surface's ids and every link to it are kept under its own id. It cannot become a session without a new id, which would break them |
-| A Slack thread or direct message from before sessions | The same reason. Replies on Slack keep reaching the conversation |
+| A conversation that names no agent, and that no agent answered | A session belongs to one agent |
+| A conversation that selects several agents, or whose default and selected agent differ | A session has one agent |
+| A conversation whose agent is gone, or may not answer in its project | Not everyone who reads the conversation reads that agent, or nobody does |
+| A Slack thread whose agent lives in a project | The Slack client's machine reads its threads with no role in a project, so it does not read that agent |
+| A Slack thread whose client is not in the store, and a thread on any other surface | Its address cannot be worked out |
+| A conversation nobody started, a read-only one, one that answers an announcement, and one that continues another conversation or an import | A session is none of these |
+| A conversation from before threads, kept under its first run's id | A session's id is its own |
+| A conversation that someone changed, archived or deleted while the command read it | Who reads it may have changed. The command removes the session record it wrote for it, and the next run decides it again |
+| A second conversation of one Slack thread, one per Slack app of the team, for the same agent | One place is one session. The oldest is adopted, and the others keep reaching their app as conversations |
+| An archived conversation | It is not listed and not changed. A session record that a stopped apply wrote for it is removed, and listed as `unfinished adoption removed` |
 | A GitHub run that used its asker's private context | Filed with other people who asked there, they would read it |
 | A GitHub run whose place's session was deleted | Nothing is filed in a deleted session, and it is not dated |
 | A GitHub run that no mention on a pull request or issue started (an automation, the automatic review) | New runs of these kinds are not filed in sessions either |
@@ -125,15 +181,25 @@ read by administrators alone. Do the steps in this order:
    - Each line is one change, or one thing left and why. The counts at the
      end of each tenant say how many of each kind, and the last line says how
      many changes an apply would write.
+   - Each `conversation adopted` and `slack conversation adopted` line says
+     the agent, where the conversation is filed and who reads it. Check a
+     few against the console before you apply.
 6. Apply it:
 
    ```sh
    HUMAGEN_POSTGRES_URL=... humagen migrate sessions -state postgres -apply
    ```
 
-7. Run the dry run again. It must end with `would write 0 changes`.
+7. Run the dry run again. It must end with `would write 0 changes`. An
+   adopted conversation is now listed as `conversation already a session`.
 8. Open the console as a person who asked on one of the pull requests. Find
-   the session in Recent and in Sessions.
+   the session in Recent and in Sessions. Open an adopted conversation by
+   its old link, as one of its participants and as someone who is not.
+
+It is safe to run again. A second apply writes nothing. An apply that
+stopped part of the way is finished by the next one: a conversation whose
+session record was written and whose own record was not is still a
+conversation, and the next apply adopts it as the same agent's.
 
 The servers can keep running. The command writes each record at the version
 it read, as a server does, and a second run finds what the first one did.
