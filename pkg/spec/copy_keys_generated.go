@@ -956,6 +956,7 @@ var copyKeyList = []string{
 	"conversation.toolLine.noResult",
 	"conversation.toolLine.read.a",
 	"conversation.toolLine.result",
+	"conversation.toolLine.retriedRow",
 	"conversation.toolLine.run.a",
 	"conversation.toolLine.search.a",
 	"conversation.toolLine.showDetails",
