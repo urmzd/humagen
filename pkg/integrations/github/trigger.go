@@ -88,7 +88,7 @@ func (c *Connector) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		c.Connector.ServeHTTP(w, r)
 		return
 	}
-	a := asked{}
+	var a asked
 	if ask, found := trigger.Read(said.text, c.cfg.Triggers, c.lookup); found {
 		a = asked{triggered: true, agent: ask.Agent, text: ask.Text}
 	} else if said.place.Connector == "" || c.cfg.ContinueThread == nil || !c.cfg.ContinueThread(said.place) {
