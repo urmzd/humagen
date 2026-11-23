@@ -10,6 +10,7 @@ import {
   connectTurn,
   failedTurn,
   referencesTurn,
+  retriedTurn,
   runningTurn,
   toolsTurn,
 } from "./transcript.fixtures.ts";
@@ -38,6 +39,36 @@ test("the failed count opens the steps at the failures, each saying why", () => 
   fireEvent.click(within(failed).getByRole("button", { name: line.showDetails }));
   assert.ok(within(failed).getByText(/refused before it was sent/));
   assert.ok(within(failed).getByRole("button", { name: line.hideDetails }));
+});
+
+test("a failure a later call recovered reads as retried, quietly, with its reason kept", () => {
+  show(<AgentMessage turn={retriedTurn()} disclaimer={false} />);
+  const group = screen.getByTestId("step-group");
+  assert.ok(group.textContent?.includes("Checked 2 sources"));
+  assert.equal(within(group).getByTestId("retried-count").textContent, `|${line.retried(1)}`);
+  // Nothing failed that still stands: no failed count, and no alarm color on the line.
+  assert.equal(within(group).queryByTestId("failed-count"), null);
+  assert.equal(group.querySelector(".text-aui-bad"), null);
+  // Opened, the attempt is there, said as retried, and its reason waits behind Show Details.
+  fireEvent.click(within(group).getByRole("button", { expanded: false }));
+  const rows = screen.getAllByTestId("tool-row");
+  const retried = rows.find((r) => r.getAttribute("data-retried") === "true") as HTMLElement;
+  assert.ok(retried);
+  assert.equal(retried.getAttribute("data-failed"), null);
+  assert.ok(within(retried).getByText(line.retriedRow));
+  assert.ok(within(retried).getByTestId("failure-reason").textContent?.includes("undeliverable"));
+  assert.equal(retried.querySelector(".text-aui-bad"), null);
+  fireEvent.click(within(retried).getByRole("button", { name: line.showDetails }));
+  assert.ok(within(retried).getByText(/urmzd\/humagen/, { selector: "pre, code, span, p, div" }));
+});
+
+test("a failure no later call recovered stays a failed count", () => {
+  const turn = retriedTurn();
+  turn.tasks = [...turn.tasks].reverse();
+  show(<AgentMessage turn={turn} disclaimer={false} />);
+  const group = screen.getByTestId("step-group");
+  assert.ok(within(group).getByTestId("failed-count"));
+  assert.equal(within(group).queryByTestId("retried-count"), null);
 });
 
 test("a failed delegated run says why, opens its run, and Retry asks the agent again", async () => {

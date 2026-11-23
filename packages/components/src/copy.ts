@@ -2200,6 +2200,10 @@ export const defaultCopy = {
       files: (n: number) => `Updated ${n} files`,
       running: (what: string) => `Running ${what}`,
       failed: (n: number) => `${n} failed`,
+      /** Calls that failed and that a later call in the turn recovered: said quietly, not as a failure. */
+      retried: (n: number) => `${n} retried`,
+      /** A row for a failed call that a later call recovered. */
+      retriedRow: "retried",
       /** Every call in the run failed, so there is nothing done to name. */
       allFailed: (n: number) => `${n} steps failed`,
       earlierFailed: (n: number) =>
