@@ -862,7 +862,7 @@ func TestAConnectorRunsRequesterIsKnownThroughAnyClientOfTheTeam(t *testing.T) {
 	cfg := f.config()
 	cfg.Policy = operators(t, "ada")
 	p := stage(t, c, cfg)
-	create(t, p, tenant, slackClient("conn", "A0CONN", team, "deployer"))
+	create(t, p, tenant, mapsNobody(slackClient("conn", "A0CONN", team, "deployer")))
 	app := slackClient("app", "A0APP", team, "deployer")
 	app.Slack.Machine, app.Slack.People = "svc-slack", map[string]string{"U0HUMAN1": "ada", "U0OLU": "olu"}
 	create(t, p, tenant, app)

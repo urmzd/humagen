@@ -382,6 +382,12 @@ func Clone(e event.Envelope) event.Envelope {
 // default where it is filed, not whichever agent answered there before.
 const MetaTriggered = "_humagen.triggered"
 
+// MetaSlackSenderTeam is the Slack team a message's sender belongs to, as
+// the delivery named it (a Slack Connect user's own team, else the
+// delivery's). The Slack connector writes it on what it raises; it is kept
+// with the event and never shown to a model.
+const MetaSlackSenderTeam = "_humagen.slack_sender_team"
+
 // MetaSession is pinned by platform admission, never accepted from ingress.
 const MetaSession = "_humagen.session"
 

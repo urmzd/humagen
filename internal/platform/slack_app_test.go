@@ -166,7 +166,7 @@ func TestTheSlackAppsRecordNeverTakesOverAnotherClient(t *testing.T) {
 	f := &fakes{}
 	p := startWith(t, f.config())
 	id := platform.SlackAppClient("T01ACME")
-	mine := create(t, p, tenant, slackClient(id, "A0MINE", "T01ACME", "lead"))
+	mine := create(t, p, tenant, mapsNobody(slackClient(id, "A0MINE", "T01ACME", "lead")))
 	_, err := p.ApplySlackApp(t.Context(), tenant, "file", platform.SlackApp{Team: "T01ACME", Machine: "slack-app:T01ACME", People: map[string]string{"U0ANA": "ana"}})
 	if !errors.Is(err, clients.ErrExists) {
 		t.Fatalf("applying over another client = %v, want ErrExists", err)

@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.197.0 (2026-11-23)
+
+### Features
+
+- **slack**: note at start a Slack client whose team maps no people ([7339657](https://github.com/urmzd/humagen/commit/7339657c6021191aab48de3098a01f294d671b6b))
+
+### Bug Fixes
+
+- **slack**: read a delivery's sender as tolerantly as the transport reads the delivery ([1b68a1d](https://github.com/urmzd/humagen/commit/1b68a1dc24543bb5b03b2f84f0d5d5e9616a9ef0))
+- **slack**: confirm a stop only for a run that was asked to stop ([90581f8](https://github.com/urmzd/humagen/commit/90581f8fda0a48e5b86ff4541153af972084078b))
+- **slack**: ask about the sender of every event the connector raises ([e24daf2](https://github.com/urmzd/humagen/commit/e24daf293b6ef7f5aad228ad099324fa88cd2e37))
+- **slack**: stop a run from Slack for a mapped person or whoever asked for it ([de4278e](https://github.com/urmzd/humagen/commit/de4278e0d2531c94785a2b0d673174770502e57f))
+- **slack**: deny unmapped senders on the Slack webhook connector (wip) ([422041a](https://github.com/urmzd/humagen/commit/422041a1b49250a07354f9c4397df1806be3f0cd))
+
+### Misc
+
+- **slack**: every raised event's sender is asked about, and a stop is confirmed only when a run stops ([105a840](https://github.com/urmzd/humagen/commit/105a840695c204e2ede14d9e343bf583cda731c4))
+- **slack**: the webhook connector's entries as mapped people, and who starts and stops a run ([950543f](https://github.com/urmzd/humagen/commit/950543ffc92537b1b9a3aa415d2bec7e7b3fd602))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.196.0...v0.197.0)
+
+
 ## 0.195.5 (2026-11-23)
 
 ### Bug Fixes
