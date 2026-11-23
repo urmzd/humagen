@@ -1,5 +1,6 @@
 import { defaultCopy } from "@humagen/components";
 import { BellIcon, buttonClass, CheckIcon } from "@humagen/render-web";
+import { cn } from "@humagen/render-web/lib/utils";
 import { Modal } from "@humagen/web";
 import { type ReactNode, useCallback, useEffect, useId, useRef, useState } from "react";
 import type { AgentSession } from "../../../packages/client/src/generated/types.ts";
@@ -132,7 +133,7 @@ function visit(to: string) {
  * An alert's one text action: the same small quiet button as a failed
  * answer's Retry, so the transcript has one kind of action control.
  */
-const textAction = `${buttonClass("default")} h-6 shrink-0 px-2 py-0 text-aui-xs`;
+const textAction = cn(buttonClass("default"), "h-6 shrink-0 px-2 py-0 text-aui-xs");
 const iconAction =
   "inline-flex size-9 pointer-coarse:size-11 shrink-0 items-center justify-center rounded-aui text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent disabled:opacity-50";
 
@@ -528,15 +529,17 @@ function AlertLine({
         ) : (
           <BellIcon size={14} aria-hidden />
         )}
-        <span className="min-w-0 flex-1 truncate" title={said || undefined}>
+        <span className="min-w-0 truncate" title={said || undefined}>
           {agent ? alertReason({ title: alert.title, agent: alert.agent }) : alert.title}
-          {alerts.length > 1 && (
-            <span className="ml-1.5 tabular-nums text-aui-muted">
-              <span aria-hidden>{words.count(alerts.length)}</span>
-              <span className="sr-only">{words.countLabel(alerts.length)}</span>
-            </span>
-          )}
         </span>
+        {/* Outside the reason, so a narrow line cuts the words and keeps the count. */}
+        {alerts.length > 1 && (
+          <span className="shrink-0 tabular-nums text-aui-muted">
+            <span aria-hidden>{words.count(alerts.length)}</span>
+            <span className="sr-only">{words.countLabel(alerts.length)}</span>
+          </span>
+        )}
+        <span aria-hidden className="flex-1" />
         {said && (
           <span id={detail} className="sr-only">
             {said}
@@ -568,7 +571,8 @@ function AlertLine({
             </button>
           ))}
         {markDone}
-        {more}
+        {/* With nothing in its menu the line keeps the menu's place, so states line up. */}
+        {more || <span aria-hidden className="size-9 shrink-0 pointer-coarse:size-11" />}
       </div>
       {reviewProblem && alerts.some((a) => a.id === reviewProblem.id) && (
         <Problem message={reviewProblem.message} />
