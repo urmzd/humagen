@@ -570,6 +570,7 @@ func (p *Platform) dial(c clients.Client, secrets resolved) (*seat, error) {
 		_, cfg.StatusReactions = api.(ghtransport.ReactionAPI)
 		cfg.StatusReactions = cfg.StatusReactions && cfg.Login != ""
 		cfg.ReviewText = func(v ghtransport.View) (string, error) { return p.reviewView(c, v) }
+		cfg.AsksReview = func(v ghtransport.View) (bool, error) { return p.asksReview(c, v) }
 		cfg.SessionLink = func(v ghtransport.View) string { return p.runSessionURL(c.Tenant, v.Tenant, v.RunID) }
 		installed := p.installedRepos(c, api, app)
 		if installed != nil {

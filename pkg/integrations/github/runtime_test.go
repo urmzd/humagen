@@ -30,6 +30,7 @@ import (
 	"github.com/urmzd/saige/sandbox/tool"
 	"github.com/urmzd/saige/sandbox/workspace"
 
+	presentation "github.com/urmzd/humagen/internal/presentation/github"
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/integrations/github"
 	"github.com/urmzd/saige/flow/bus"
@@ -116,7 +117,7 @@ func TestGitHubCollaborationFlowsThroughDurableSandboxAndEgress(t *testing.T) {
 		t.Fatal(err)
 	}
 	report := func(sha string) string {
-		encoded, err := json.Marshal(github.ReviewReport{Format: github.ReviewFormat, Summary: "Reviewed commit " + sha, Comments: []string{"Read the complete file. Tests not run."}, Findings: []github.ReviewFinding{{Severity: "info", Title: "Package declaration", Suggestion: "Preserve the package name.", Evidence: []github.ReviewEvidence{{Observation: "retry.go declares package service.", Source: "https://github.com/acme/service/blob/" + sha + "/retry.go#L1"}}, Prompt: "Ask about the retry implementation."}}})
+		encoded, err := json.Marshal(github.ReviewReport{Format: github.ReviewFormat, Summary: "Reviewed commit " + sha + " \u2014 the retry path holds, cc @octocat about #12.", Comments: []string{"Read the complete file. Tests not run."}, Findings: []github.ReviewFinding{{Severity: "info", Title: "Package declaration", Suggestion: "Preserve the package name.", Evidence: []github.ReviewEvidence{{Observation: "retry.go declares package service.", Source: "https://github.com/acme/service/blob/" + sha + "/retry.go#L1"}}, Prompt: "Ask about the retry implementation."}}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -284,8 +285,13 @@ func TestGitHubCollaborationFlowsThroughDurableSandboxAndEgress(t *testing.T) {
 	if len(api.Comments()) != 2 {
 		t.Fatalf("want guide and review, got %+v", api.Comments())
 	}
-	if body := api.Comments()[1].Body; !strings.Contains(body, "🔵 **1 info**") || !strings.Contains(body, "| Level |") || strings.Contains(body, github.ReviewFormat) {
+	if body := api.Comments()[1].Body; !strings.Contains(body, "**One note, nothing blocking.**") || !strings.Contains(body, "<sub>Note") || strings.Contains(body, `"format"`) {
 		t.Fatalf("unformatted review %s", body)
+	}
+	// The model's own words, as posted, read as a colleague's: its em dash
+	// is a comma, and its mention and reference ping nobody.
+	if problems := presentation.VoiceProblems(api.Comments()[1].Body); len(problems) != 0 {
+		t.Fatalf("the posted review has %v:\n%s", problems, api.Comments()[1].Body)
 	}
 	// Signed webhook redelivery joins the same durable run and does not rerun the model.
 	if duplicate := run(webhook("pull_request", "initial-review", "review_requested", firstSHA, "")); duplicate != firstRun {

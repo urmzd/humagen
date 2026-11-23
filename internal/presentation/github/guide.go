@@ -33,7 +33,7 @@ func GuideBody(evidence transport.Context, agent, login string, mutations bool) 
 	if evidence.NextPage != 0 {
 		b.WriteString("\nMore context is available. This guide lists the first page; the review must read the remaining pages.\n")
 	}
-	fmt.Fprintf(&b, "\n### Working with %s\n\nTag @%s in a PR comment or review thread to ask a question, request a review, or discuss a suggested fix. Each review includes severity counts, evidence and follow-up prompts.\n\nAutomatic reviews continue for new commits while the configured auto label remains. Removing it stops automatic commit reviews.\n\nReviews and checks identify the commit they cover. A completed agent run does not mean tests passed. React with 👍 or 👎 on the review, or reply and tag the agent.\n", reviewText(agent), login)
+	fmt.Fprintf(&b, "\n### Working with %s\n\nTag @%s in a PR comment or review thread to ask a question, request a review, or discuss a suggested fix. Each review gives its verdict, each finding with its severity and fix, and the evidence.\n\nAutomatic reviews continue for new commits while the configured auto label remains. Removing it stops automatic commit reviews.\n\nReviews and checks identify the commit they cover. A completed agent run does not mean tests passed. React with 👍 or 👎 on the review, or reply and tag the agent.\n", reviewText(agent), login)
 	if mutations {
 		b.WriteString("\nRepository writers can follow the bot mention with `/fix <requested change>` or `/check <workflow-run-id>`. Fixes create a commit; check requests rerun an existing workflow on its exact commit. The agent reports actual results or a pending state.\n")
 	}

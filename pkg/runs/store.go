@@ -145,6 +145,9 @@ type storedRun struct {
 	LastSeq uint64 `json:"last_seq,omitempty"`
 	// OpenAttached is how many runs attached to this one have not ended.
 	OpenAttached int `json:"open_attached,omitempty"`
+	// ReviewStarted says the run turned from a reply into a review
+	// (Index.StartReview).
+	ReviewStarted bool `json:"review_started,omitempty"`
 }
 
 // trigger is the event the run was accepted with, read from an old tag for a
@@ -171,6 +174,7 @@ func (s storedRun) run() (*Run, error) {
 	r.privateContext = s.PrivateContext
 	r.tag, r.requesters, r.final, r.closed, r.settledUp = trigger, s.Requesters, s.Final, s.Closed, s.SettledUp
 	r.seq, r.tally, r.observedBy, r.lastSeq, r.openAttached = s.Seq, s.Tally, s.ObservedBy, s.LastSeq, s.OpenAttached
+	r.reviewStarted = s.ReviewStarted
 	return &r, nil
 }
 
@@ -178,6 +182,7 @@ func stored(r *Run) storedRun {
 	out := storedRun{
 		PrivateContext: r.privateContext, Run: *r, Seq: r.seq, Requesters: r.requesters, Final: r.final, Closed: r.closed, SettledUp: r.settledUp,
 		Tally: r.tally, ObservedBy: r.observedBy, LastSeq: r.lastSeq, OpenAttached: r.openAttached,
+		ReviewStarted: r.reviewStarted,
 	}
 	if r.tag.Type != "" {
 		t := r.tag

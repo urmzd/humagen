@@ -4839,6 +4839,8 @@ export interface GitHubAutomation {
   conclusion?: string;
   agent: string;
   instructions: string;
+  /** What the rule's sessions answer with: `review`, a review the host renders and posts on the pull request, or `reply`, plain prose. Left out, a rule on `pull_request` reviews and any other replies. */
+  shape?: "review" | "reply";
   paused: boolean;
   /** Read-only. What of a rule stored earlier is ignored now, such as a label (labels start nothing). Dropped when the rule is saved. */
   note?: string;

@@ -315,6 +315,12 @@ func (s *surface) stamp(ctx context.Context, st *seat, tag event.Envelope) []eve
 	if onRepo {
 		read = repoReads(ctx, st.context, repoSet, repo, repoKind, repoNumber)
 	}
+	// What the run answers with is chosen once, from what was asked, and
+	// saved on its tag, so a retry answers the same way.
+	shape := ""
+	if c.Surface == clients.GitHub {
+		shape = githubShape(tag, c.Triggers())
+	}
 	var out []event.Envelope
 	for _, a := range who {
 		if !c.Routes(a.agent) {
@@ -325,6 +331,9 @@ func (s *surface) stamp(ctx context.Context, st *seat, tag event.Envelope) []eve
 		t.ID, t.Tenant = a.id, c.Tenant
 		wire.SetAgent(&t, a.agent)
 		wire.DeleteMeta(&t, wire.MetaTriggered)
+		if shape != "" {
+			wire.SetShape(&t, shape)
+		}
 		if read != "" {
 			wire.SetText(&t, wire.TextOf(t)+"\n\n"+read)
 		}
@@ -626,7 +635,7 @@ func autoReviewTag(c clients.Client, kind string, req clients.AutoReviewRequest,
 		Channel: channel.String(),
 		Text:    autoReviewText(req, from),
 		At:      time.Now().UTC(),
-		Context: map[string]string{wire.MetaGitHubEvent: kind, wire.MetaGitHubOwner: owner, wire.MetaGitHubRepo: repo},
+		Context: map[string]string{wire.MetaGitHubEvent: kind, wire.MetaGitHubOwner: owner, wire.MetaGitHubRepo: repo, wire.MetaAnswerShape: wire.ShapeReview},
 	})
 }
 
@@ -688,7 +697,7 @@ func (s *surface) hand(st *seat, w http.ResponseWriter, r *http.Request, body []
 						Channel: automationChannel(rule, kind, body),
 						Text:    rule.Instructions + "\n\nRepository: " + rule.Repository + "\nEvent: " + kind + clients.AutomationContext(body),
 						At:      time.Now().UTC(),
-						Context: map[string]string{wire.MetaGitHubEvent: kind, wire.MetaGitHubOwner: strings.SplitN(rule.Repository, "/", 2)[0], wire.MetaGitHubRepo: strings.SplitN(rule.Repository, "/", 2)[1]},
+						Context: map[string]string{wire.MetaGitHubEvent: kind, wire.MetaGitHubOwner: strings.SplitN(rule.Repository, "/", 2)[0], wire.MetaGitHubRepo: strings.SplitN(rule.Repository, "/", 2)[1], wire.MetaAnswerShape: rule.AnswerShape()},
 					})
 					for _, raised := range s.stamp(r.Context(), st, tag) {
 						if _, err := s.p.Invoke(r.Context(), raised); err != nil {

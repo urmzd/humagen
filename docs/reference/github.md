@@ -301,17 +301,146 @@ with a model available to your configured Anthropic provider, then register it:
 humagen serve -agent-specs examples/github-review/agent.json
 ```
 
-Ordinary questions receive Markdown answers. Reviews return a JSON report with
-`format: "humagen.github.review.v1"`, which the sink converts to Markdown:
-severity counts, summary, comments, an aligned findings table, related concepts,
-and native reaction/mention instructions. Counts are derived from findings.
-Every finding requires a suggestion, observed evidence with a source, and a
-follow-up prompt. The formatter checks completeness, not the truth of claims.
-Reports with missing evidence are visibly rejected rather than shown as clean.
+### Reply or review
+
+The host decides what a run on GitHub starts as. It chooses when the run
+starts and saves the choice on the run's tag as `answer_shape`. The model
+reads it in its trigger context.
+
+| Shape | When | What the agent returns |
+| :--- | :--- | :--- |
+| `review` | On a pull request, and only on a signal that cannot be misread: an [automatic review](#automatic-review), a review requested from the app, an [event automation](#event-automations) whose shape is `review`, the bare command `@humagen review`, or `/review` | The fields of a `humagen.review.v2` report, as one JSON object. The host renders and posts it. |
+| `reply` | Anything else: a question, a follow-up, a request for a review in other words, or anything on an issue | Plain Markdown prose: short paragraphs, code in fences, files linked as `path:line` at the head. |
+
+The host reads the command and nothing else. It does not guess what a
+sentence means.
+
+| Message on a pull request | Starts as |
+| :--- | :--- |
+| `@humagen review`, `@humagen re-review`, `@Humagen Review.`, `review` in a conversation the agent already has | `review` |
+| `/review`, `/review focus on auth` | `review` |
+| `@humagen review this function's naming?`, `@humagen review the retry loop` | `reply` |
+| `@humagen can you review this?`, `please review this PR` | `reply` |
+| `hey @humagen review`, `@octocat review` | `reply` |
+| `this review is wrong`, `don't review yet` | `reply` |
+| Any of these on an issue | `reply` |
+
+The command is the whole message: `review`, `re-review` or `rereview`, in
+any case, with space around it and `.`, `!` or `?` after it. The trigger may
+address it when the trigger opens the message (`@humagen review`,
+`@humagen: review`). `/review` is a command when the message starts with it;
+what follows it is what to look at. Like any message, it reaches Humagen
+with the trigger (`@humagen /review`) or in a conversation the agent already
+has. Quoted lines do not count: a reply under a quote, after a
+blank line, is read on its own. Any other word, a trigger inside a sentence,
+or a mention of anyone else makes the message a reply. So does anything the
+message shows instead of saying, read as `@humagen` itself is read
+([Who a comment asks](#who-a-comment-asks)): code, an indented block, an
+HTML comment, or a line that runs on from a quote with no blank line
+between.
+
+#### A reply that becomes a review
+
+A person often asks for a review in their own words: `have a look before I
+merge`, `can you review this?`, `check this for security`. Such a run starts
+as a reply, and the agent reads what was meant. The built-in `code-reviewer`
+has one tool for this, `start_review`, which turns its run into a review.
+After it the agent returns the report, and the host checks, renders and posts
+it as it does for any review.
+
+`start_review` acts only on a pull request run that a person started. It
+takes no arguments and changes nothing but its own run. The host allows it
+only when all of these hold, and refuses it with a reason otherwise:
+
+- The run is on a pull request. On an issue there is nothing to review.
+- A person started the run. A run an agent started for another (a handoff, a
+  subagent or a delegation) cannot start a review, and neither can a run a
+  rule started: a rule's `shape` is the rule's to set.
+- The run is not a review yet. A run becomes a review once; a second call
+  is refused and changes nothing.
+
+Of the built-in agents only `code-reviewer` has the tool. An admin may grant
+it to any agent in its `tools`, and the same conditions hold for it there;
+an agent without it answers a reply run in prose.
+
+The switch is saved on the run's own record before the tool answers, beside
+the saved `answer_shape`, which stays `reply`. The format check and the
+native review read the record, in any process and after a restart, and
+nothing depends on the run's events still being kept. Two calls made at once
+start one review. If the switch cannot be saved, the call fails and the run
+stays a reply. A later attempt of the same run reads `answer_shape: review`
+in its trigger context, so the agent returns the report without calling the
+tool again.
+
+A run from before the host chose has no shape. The built-in `code-reviewer`
+returns a report there only when it was asked to review a change.
+
+The model never writes the reviewed commit. The host scopes the report to the
+head it pinned when the run started (the event's head, else its channel's
+`head_sha`, else the head the run read with `github_read_context`), and
+replaces any commit the model wrote. A review with no recorded head is shown
+as needing correction.
+
+Only a review gets the online format check: a run saved as `review`, or one
+that called `start_review`. Its answer must be a complete review report, else
+the session is marked for review with the reason. A reply is never
+format-checked, whatever its agent's instructions say, and it posts no native
+review, even if its agent answered with a report.
+
+A report is strict in structure and free in its words. `validateV2` requires a
+title, a verdict, unique finding ids, evidence and a prompt for each finding,
+and bounds the free text: a summary of at most 1,500 characters, a finding
+title of 150, `why` and `suggestion` of 600 each, at most 10 comments and 8
+pieces of evidence for each finding. A location is a repository path (no
+leading `/`, no `..`, no backtick) and a line range in it. Model text is
+escaped when it is rendered: HTML, links and emphasis show as typed, and only
+inline `code` stays code. An invisible word joiner (U+2060) follows each `@`
+and `#`, and sits inside `GH-`, so GitHub turns no `@name`, `@org/team`,
+`#12` or `owner/repo#12` into a mention or a reference; an HTML entity such
+as `&#64;` does not stop GitHub. A bare address is shown as code, and a
+source or related link is a link only into the reviewed repository, so a
+review links nowhere else. An em dash in model text reads as a comma.
+
+### How a review reads
+
+The host renders every review the same way, from the report:
+
+1. The verdict in words, in bold, such as **Needs changes: one problem to fix
+   before merging.** or **Looks good to merge.**
+2. The summary, in one to three sentences.
+3. Each finding, most urgent first: a bold numbered title, a small label with
+   its severity (Must fix, Should fix or Note), its location linked at the
+   reviewed head and the agent that found it, a blank line, then why it
+   matters and what to do. A finding with no line in the diff shows its
+   change here.
+4. With eight findings or more, a compact table of them, collapsed.
+5. The evidence, collapsed: each item numbered for its finding, without the
+   finding's title again. Evidence the host could not verify says so.
+6. A hidden marker, `<!-- humagen.review.v2 verdict=… errors=… warnings=… info=… -->`,
+   for programs, then the session link.
+
+```markdown
+**Needs changes: one problem to fix before merging.**
+
+This change adds retries with backoff to webhook delivery. The loop now loses the final error, so a failed delivery looks like a success.
+
+**1. Retry loop drops the final error**
+<sub>Must fix · [`internal/retry/retry.go:45`](https://github.com/acme/webhooks/blob/3f9c…/internal/retry/retry.go#L45) · found by code-reviewer</sub>
+
+After the last failed attempt `Do` returns `nil`, so callers treat a failed delivery as a success. Return `lastErr` when the loop ends.
+```
+
+Each line comment is the finding as a colleague leaves it: the title, why
+and what to do, a small severity label, then the committable suggestion.
+No ids, tool names or JSON are visible. The golden files in
+`internal/presentation/github/testdata/golden` hold a reply and four reviews,
+and their test checks the voice: no em dash, no filler opener, no internal
+id.
 
 Structured output is held while the run streams, then rendered in its existing
 comment. Lifecycle-only routes also render the final report. Ordinary Markdown
-answers retain their streaming behavior.
+answers retain their streaming behavior. The first format,
+`humagen.github.review.v1`, still renders the same way, as a comment.
 
 ### The answer comment
 
@@ -642,6 +771,14 @@ person's credentials and use the client's existing home and runtime policy.
 The prompt receives the rule's instructions and bounded repository, issue/PR
 number and head SHA identifiers, never arbitrary text from the webhook.
 
+A rule's `shape` says what its runs answer with (see
+[Reply or review](#reply-or-review)): `review` posts a review, `reply`
+answers in prose. Left out, a rule on `pull_request` reviews and any other
+replies, whatever its instructions say. A rule's run keeps the rule's shape:
+its agent cannot turn it into a review with `start_review`. The console's
+rule editor does not set it yet; set it in the client's configuration or
+through the API.
+
 Every run is a session, kept and readable in the console. It answers on the
 pull request or issue that triggered it (`github://owner/repo/pull/7` or
 `.../issues/7`), through the GitHub output policy every answer there passes.
@@ -659,15 +796,21 @@ rule: it is the connection's switch (see [Automatic review](#automatic-review)).
 ## Native reviews and feedback
 
 Managed installations submit validated `humagen.review.v2` results as native
-reviews when `github.login` is configured. The reviewed head is pinned; a moved
-head refuses publication. Each applicable finding gets a line comment and an
-optional committable suggestion. Missing diff locations become review-body text.
-Each finding may name the agent that found it (`found_by`, such as
-`security-reviewer` or `security-reviewer#a`), shown on its line comment and in
-the findings table. Agents never approve: an `approve` verdict is
-posted as a comment, `request_changes` as a change request, and a person
-approves and merges. Review recovery uses
-an app-owned marker and the durable delivery store to avoid duplicate reviews.
+reviews when `github.login` is configured, for runs saved as `review` (see
+[Reply or review](#reply-or-review)). The host pins the reviewed head; a moved
+head refuses publication. Each finding on a line of the diff gets a line
+comment and an optional committable suggestion. A finding with no location,
+or one off the diff, stays in the review body with its change. Each finding
+may name the agent that found it (`found_by`, such as `security-reviewer` or
+`security-reviewer#a`); the review shows the agent's name without the label.
+Agents never approve: an `approve` verdict is posted as a comment,
+`request_changes` as a change request, and a person approves and merges.
+Review recovery uses an app-owned marker and the durable delivery store to
+avoid duplicate reviews. Before it posts, the host records in the delivery
+store that the review is in the current layout. A review with no record was
+posted by the code from before reviews read as prose, and recovery
+reproduces it in that table layout, so it is still receipted and its
+findings stay mapped.
 
 The host verifies evidence references against recorded tool results and session
 reads before rendering a native review, Slack output, or console history. A
