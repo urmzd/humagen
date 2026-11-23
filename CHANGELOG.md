@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.192.1 (2026-11-23)
+
+### Bug Fixes
+
+- **migrate**: build the environment's clients as serve does before the backfill ([96d4e5e](https://github.com/urmzd/humagen/commit/96d4e5efc10c820657a531b61f5c61bc76f8b334))
+
+### Misc
+
+- fail the image job when it cannot tell whether a tag exists ([f3efca8](https://github.com/urmzd/humagen/commit/f3efca890bfb1bafe5dee285ed8804c119969f8f))
+- never overwrite either release image tag, report Test failed on a cancelled run ([0699a06](https://github.com/urmzd/humagen/commit/0699a0626268d1a1671e841378f3609b69202383))
+- shard the Go tests, skip a second CI run at release, push the release image ([f6eb74b](https://github.com/urmzd/humagen/commit/f6eb74b36b44b5661fc916dc2139159f00b1f693))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.192.0...v0.192.1)
+
+
 ## 0.192.0 (2026-11-23)
 
 ### Features
