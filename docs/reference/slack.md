@@ -106,10 +106,15 @@ document's `surfaces.slack.people` keeps. A bot's post never starts a run,
 and an app's bot user is asked about like any other user id.
 
 The connector decides after it verifies the request's signature and before
-it reads the request further, so no file is fetched for someone it does not
-map. The platform decides again when it files the run: the mapped person
-needs `runs:write` from the workspace's policy and membership where the run
-is filed, as before. The not-connected reply to a command is ephemeral, sent
+it hands the request on, for every message and mention it would raise,
+whatever its subtype, and for every command and button. So for someone it
+does not map no file is fetched, no reaction is added, nothing is posted and
+nothing is kept about the channel. A plain message in a channel, or a reply
+in a thread the client did not answer in, asks for nothing and nobody is
+looked up for it. The platform decides again when it files the run, with the
+sender's own team as the connector read it: the mapped person needs
+`runs:write` from the workspace's policy and membership where the run is
+filed, as before. The not-connected reply to a command is ephemeral, sent
 to one person at most once in ten minutes and to at most twenty people a
 minute. There is no setting that opens the connector to everyone.
 
@@ -117,7 +122,11 @@ A run is stopped from Slack by a person the client's team maps, or by the
 Slack user who asked for it, who keeps that though the map no longer names
 them. A press or a reaction from anyone else is acknowledged and changes
 nothing: the run carries on, nothing is posted and the session's status
-stays. See [stopping a run](#stopping-a-run).
+stays, in a session with no run known too. `Stopped by @user.` is posted
+only for a run that was asked to stop: a run answering in the session that
+the client did not raise is not stopped from Slack, and a press there posts
+nothing and leaves the status, whoever pressed. See
+[stopping a run](#stopping-a-run).
 
 The rest of this page describes the connector. The app is described in its
 [README](https://github.com/urmzd/humagen/blob/main/apps/slack/README.md).
@@ -690,7 +699,8 @@ nothing the run still publishes sets the session back to working, and the
 finished before the request reached it ends completed, as usual.
 
 A second press, or Slack redelivering the first, finds no run left to stop and
-posts nothing. A person the client's team maps may press it, and so may the
+posts nothing. A press that stops none of the session's runs posts nothing
+and leaves the status. A person the client's team maps may press it, and so may the
 Slack user who asked for the run; a press from anyone else is acknowledged,
 stops nothing, posts nothing and leaves the session's status as it is (see
 [who can start and stop a run](#who-can-start-and-stop-a-run-on-the-webhook-connector)).
@@ -709,8 +719,8 @@ thread each hold their own sessions, and another workspace's app in the same
 team cannot stop a run it did not raise.
 
 Which runs a session holds is remembered in memory, per client. After a
-restart, or after the client is changed, the button still settles the status
-but finds no run to stop.
+restart, or after the client is changed, the button finds no run to stop and
+settles the status, for a person the client's team maps.
 
 Check the manifest with the Slack CLI from `examples/slack`:
 
