@@ -109,3 +109,29 @@ func TestSessionParentTellsASessionFromAPlace(t *testing.T) {
 		}
 	}
 }
+
+// An archived conversation, and a read-only one, are not adopted, and
+// neither record changes.
+func TestAdoptRefusesAnArchivedOrReadOnlyConversation(t *testing.T) {
+	s := threads.NewStore()
+	identity := threads.SessionIdentity{Agent: "lead", Parent: "console://x"}
+	source, first := start(t, s, "acme", shared("Globex", "renewals"), msg("dana", "the source"))
+	archived, _ := start(t, s, "acme", shared("Globex", "renewals"), msg("dana", "put away"))
+	archived, err := s.SetArchive("acme", archived.ID, &threads.Archive{By: "dana", At: t0, DeleteAfter: t0.Add(time.Hour)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	readOnly, err := s.Create("acme", threads.Thread{Project: "Globex", Channel: "renewals", Visibility: threads.Private, CreatedBy: "dana", ReadOnly: true,
+		Fork: &threads.Fork{SourceThread: source.ID, Through: first.ID, By: "dana", At: t0, Context: []threads.ForkTurn{{Kind: threads.Person, By: "dana", Text: "context", At: t0}}}}, t0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, th := range map[string]threads.Thread{"archived": archived, "read-only": readOnly} {
+		if _, err := s.Adopt("acme", th.ID, th.Version, identity, t0); !errors.Is(err, threads.ErrInvalid) {
+			t.Errorf("%s: adopt = %v", name, err)
+		}
+		if kept, err := s.Get("acme", th.ID); err != nil || kept.Session != nil || kept.Version != th.Version || kept.Default != th.Default || fmt.Sprint(kept.Agents) != fmt.Sprint(th.Agents) {
+			t.Errorf("%s: the refused record changed: %+v, %v", name, kept, err)
+		}
+	}
+}

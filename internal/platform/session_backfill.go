@@ -394,6 +394,7 @@ func (p *Platform) bindInOrder(ctx context.Context, tenant, id string, bound []s
 // under its own id (sessionstate.Store.Adopt).
 type threadAdopter interface {
 	Adopt(ctx context.Context, tenant, id string, o session.Open) (session.Record, error)
+	Unadopt(ctx context.Context, tenant, id string) error
 }
 
 // adoption is how one conversation from before sessions becomes a session:
@@ -462,7 +463,11 @@ func (p *Platform) backfillThreads(ctx context.Context, tenant string, apply boo
 		identity := threads.SessionIdentity{Agent: a.agent, Parent: a.parent}
 		if _, err := p.Threads.Adopt(tenant, th.ID, th.Version, identity, p.now()); errors.Is(err, threads.ErrVersion) {
 			// Someone changed it since it was read: who reads it may have
-			// changed too, so it is decided again by the next run.
+			// changed too, so it is decided again by the next run, with no
+			// session's record left to decide it.
+			if err := adopter.Unadopt(ctx, tenant, th.ID); err != nil {
+				return fmt.Errorf("backfill: adopt %s: %w", th.ID, err)
+			}
 			kind = BackfillThreadLeft
 			if slack {
 				kind = BackfillSlackThreadLeft

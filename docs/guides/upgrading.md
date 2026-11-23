@@ -47,8 +47,8 @@ The agent a conversation becomes the session of is the one it names as its
 default, else the one agent it selects, else the first agent that answered
 in it, else, on Slack, the client's default agent.
 
-An adopted conversation is read by the people who read it before, no more
-and no fewer:
+When it is adopted, a conversation is read by the people who read it
+before, and by nobody else:
 
 - It stays in its project and channel, shared or private as it was, with
   the same participants. A shared conversation is read by everyone who reads
@@ -62,6 +62,21 @@ and no fewer:
 - A Slack reply in an adopted thread does not change who takes part. A
   session that Slack starts now follows the members of its Slack
   conversation; an adopted one keeps the people it had.
+
+Nobody gains a conversation by its adoption. Afterwards, someone can stop
+reading one they read before, in these cases:
+
+- A session is read only by those who read its agent. If the agent later
+  moves to a project some readers do not read, such as one kept to its
+  members, those readers stop reading the adopted conversation. As a
+  conversation, it did not depend on the agent.
+- The session has one agent, and that does not change. The conversation's
+  default and selected agents are set to it, so a person can no longer
+  select another agent there. A message can still tag another agent.
+- A private Slack thread that is adopted keeps the people it had. People
+  who join its Slack conversation later are not added, and they do not
+  read it in the console. This holds for a reply posted by the Slack app
+  and for a message sent with a `slack` ref that names the thread.
 
 A person's untagged message in an adopted conversation is answered by its
 agent, as in any session. Before, the console ran only the agents a message
@@ -78,7 +93,7 @@ tagged.
 | A Slack thread whose client is not in the store, and a thread on any other surface | Its address cannot be worked out |
 | A conversation nobody started, a read-only one, one that answers an announcement, and one that continues another conversation or an import | A session is none of these |
 | A conversation from before threads, kept under its first run's id | A session's id is its own |
-| A conversation that someone changed while the command read it | Who reads it may have changed. The next run decides it again |
+| A conversation that someone changed while the command read it | Who reads it may have changed. The command removes the session record it wrote for it, and the next run decides it again |
 | An archived conversation | It is not listed and not changed |
 | A GitHub run that used its asker's private context | Filed with other people who asked there, they would read it |
 | A GitHub run that no mention on a pull request or issue started (an automation, the automatic review) | New runs of these kinds are not filed in sessions either |

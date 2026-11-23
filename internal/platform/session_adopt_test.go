@@ -15,6 +15,7 @@ import (
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/state"
@@ -527,6 +528,7 @@ func samePeople(a, b []threads.Participant) bool {
 // adopter is the session store's half of an adoption.
 type adopter interface {
 	Adopt(ctx context.Context, tenant, id string, o session.Open) (session.Record, error)
+	Unadopt(ctx context.Context, tenant, id string) error
 }
 
 // An apply that stopped between its two writes left a session's record
@@ -773,3 +775,330 @@ const (
 	perConversation = 12
 	readSlack       = 20
 )
+
+// Each conversation that cannot be a session is left as it is, with the
+// reason, by the dry run and the apply alike: no record of it changes and
+// it gains no session's record. An archived one is not listed at all.
+func TestBackfillLeavesWhatCannotBeASessionWithTheReason(t *testing.T) {
+	ctx := t.Context()
+	st := state.NewMemory()
+	p, _ := adoptRoom(t, st)
+	create(t, p, tenant, platform.ClientInput{
+		Client: clients.Client{
+			ID: "gh", Name: "gh", Surface: clients.GitHub, Enabled: true,
+			Identity: clients.Identity{Owners: []string{"acme"}}, DefaultAgent: "lead",
+			GitHub: &clients.GitHubOptions{Login: "humagen[bot]"},
+		},
+		Token: clients.SecretInput{Value: "token-gh"}, SigningSecret: clients.SecretInput{Value: "secret-gh"},
+	})
+	store, ok := p.Sessions.(adopter)
+	if !ok {
+		t.Fatal("the session store adopts nothing")
+	}
+	turn := []threads.ForkTurn{{Kind: threads.Person, By: "ana", Text: "what was said", At: t0Adopt}}
+	fork := func(of string) *threads.Fork {
+		return &threads.Fork{SourceThread: of, Through: "m-1", By: "ana", At: t0Adopt, Context: turn}
+	}
+	source := conversation(t, p, tenant, threads.Thread{ID: "th-00000000000000a0", Project: "Field", Visibility: threads.Shared})
+	at := t0Adopt
+	branches := 1
+	imported := &threads.Import{
+		Source: "sessions-in-field", SourceID: strings.Repeat("5", 32), Document: "d-1", URI: threads.ImportChatGPT + ":generated-1", Title: "A generated chat",
+		Structure: threads.StructureKept, Tool: threads.ImportChatGPT, DocumentDigest: strings.Repeat("a", 64), StructureDigest: strings.Repeat("b", 64),
+		ImportedBy: "ana", ImportedAt: &at, StartedAt: &at, EndedAt: &at,
+		By: "ana", At: t0Adopt, Context: []threads.ImportTurn{{Speaker: threads.ImportUser, Text: "a question", At: &at}}, Branches: &branches, ImportCut: &threads.ImportCut{Turns: 1, Attachments: 1},
+	}
+	// A session, and a conversation, that hold the place another
+	// conversation would be adopted at.
+	const taken, shadowed = "th-00000000000000f1", "th-00000000000000f2"
+	if _, err := p.Sessions.Open(ctx, tenant, session.Open{Parent: "console://" + taken, Agent: "lead"}); err != nil {
+		t.Fatal(err)
+	}
+	shadow := session.Key{Tenant: tenant, Parent: "console://" + shadowed, Agent: "lead"}.Normalize().ID()
+	conversation(t, p, tenant, threads.Thread{ID: shadow, Project: "Field", Visibility: threads.Shared})
+	// A session's record under a conversation's id, for another place.
+	const held = "th-00000000000000f3"
+	left := []struct {
+		name, because string
+		th            threads.Thread
+	}{
+		{"read-only", "it is read-only", threads.Thread{ID: "th-00000000000000f4", Project: "Field", Visibility: threads.Private, ReadOnly: true, Fork: fork(source.ID)}},
+		{"a fork", "continues another conversation", threads.Thread{ID: "th-00000000000000f5", Project: "Field", Visibility: threads.Private, Default: "lead", Fork: fork(source.ID)}},
+		{"a continued import", "continues another conversation", threads.Thread{ID: "th-00000000000000f6", Project: "Field", Visibility: threads.Private, Default: "lead", Import: imported}},
+		{"an announcement's", "answers an announcement", threads.Thread{ID: "th-00000000000000f7", Project: "Field", Visibility: threads.Shared, Default: "lead", Announcement: "m-12", Surface: &threads.Surface{Client: "app", Channel: "C0NEWS", TS: "1700000000.000700"}}},
+		{"from before threads", "from before threads", threads.Thread{ID: "r" + strings.Repeat("0123456789abcdef", 2), Project: "Field", Visibility: threads.Shared, Default: "lead"}},
+		{"a session's record of another key", "a session of another key holds its id", threads.Thread{ID: held, Project: "Field", Visibility: threads.Shared, Default: "lead"}},
+		{"a session at its place", "session " + session.Key{Tenant: tenant, Parent: "console://" + taken, Agent: "lead"}.Normalize().ID() + " holds its place already", threads.Thread{ID: taken, Project: "Field", Visibility: threads.Shared, Default: "lead"}},
+		{"a conversation at its place", "conversation " + shadow + " holds its place already", threads.Thread{ID: shadowed, Project: "Field", Visibility: threads.Shared, Default: "lead"}},
+		{"a surface that is not Slack's", "its surface is not a Slack thread", threads.Thread{ID: "th-00000000000000f8", Project: "Field", Visibility: threads.Shared, Default: "lead", Surface: &threads.Surface{Client: "gh", Channel: "acme/handbook", TS: "issues/7"}}},
+	}
+	for i := range left {
+		left[i].th = conversation(t, p, tenant, left[i].th)
+	}
+	// Nobody started this one: the store writes such a record for a
+	// conversation nobody asked in.
+	nobody, err := p.Threads.Create(tenant, threads.Thread{ID: "th-00000000000000fa", Project: "Field", Channel: "general", Visibility: threads.Shared, Default: "lead"}, t0Adopt)
+	if err != nil || nobody.CreatedBy != "" {
+		t.Fatalf("a conversation nobody started: by %q, %v", nobody.CreatedBy, err)
+	}
+	left = append(left, struct {
+		name, because string
+		th            threads.Thread
+	}{"nobody started it", "nobody started it", nobody})
+	if _, err := store.Adopt(ctx, tenant, held, session.Open{Parent: "console://elsewhere", Agent: "lead", Channel: wire.Channel(tenant)}); err != nil {
+		t.Fatal(err)
+	}
+	archived := conversation(t, p, tenant, threads.Thread{ID: "th-00000000000000f9", Project: "Field", Visibility: threads.Shared, Default: "lead"})
+	archived, err = p.Threads.SetArchive(tenant, archived.ID, &threads.Archive{By: "ana", At: t0Adopt, DeleteAfter: t0Adopt.Add(time.Hour)})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	before := stored(t, st)
+	dry, err := p.BackfillSessions(ctx, tenant, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	applied, err := p.BackfillSessions(ctx, tenant, true)
+	if err != nil {
+		t.Fatalf("the apply stopped: %v", err)
+	}
+	if !reflect.DeepEqual(applied.Lines, dry.Lines) {
+		t.Fatalf("the apply did\n%+v\nthe dry run said\n%+v", applied.Lines, dry.Lines)
+	}
+	if after := stored(t, st); !reflect.DeepEqual(before, after) {
+		t.Fatal("the apply wrote to the store, with nothing to adopt")
+	}
+	lines := map[string]platform.BackfillLine{}
+	for _, l := range applied.Lines {
+		lines[l.Subject] = l
+	}
+	for _, c := range left {
+		l, listed := lines[c.th.ID]
+		if !listed || (l.Kind != platform.BackfillThreadLeft && l.Kind != platform.BackfillSlackThreadLeft) || !strings.Contains(l.Detail, c.because) {
+			t.Errorf("%s: %q (%s), want it left because %q", c.name, l.Kind, l.Detail, c.because)
+		}
+		if got, err := p.Threads.Get(tenant, c.th.ID); err != nil || got.Session != nil || got.Version != c.th.Version {
+			t.Errorf("%s: left, yet it changed: %+v, %v", c.name, got, err)
+		}
+	}
+	if l, listed := lines[archived.ID]; listed {
+		t.Errorf("the archived conversation is listed: %+v", l)
+	}
+	if got, err := p.Threads.Get(tenant, archived.ID); err != nil || got.Session != nil || got.Version != archived.Version {
+		t.Errorf("the archived conversation changed: %+v, %v", got, err)
+	}
+	if applied.Changes() != 0 {
+		t.Fatalf("the apply counts %d changes: %v", applied.Changes(), applied.Counts)
+	}
+}
+
+// hooked calls before ahead of each write to a namespace.
+type hooked struct {
+	state.Store
+	mu     sync.Mutex
+	before func(namespace string, ops []state.Op)
+}
+
+func (h *hooked) Write(ctx context.Context, namespace string, ops ...state.Op) error {
+	h.mu.Lock()
+	fn := h.before
+	h.mu.Unlock()
+	if fn != nil {
+		fn(namespace, ops)
+	}
+	return h.Store.Write(ctx, namespace, ops...)
+}
+
+// A conversation someone changes while the apply reads it is left for the
+// next run, with no session's record kept for it: the next run decides it
+// afresh, as the agent it names by then.
+func TestBackfillLeavesAConversationThatChangedForTheNextRun(t *testing.T) {
+	ctx := t.Context()
+	st := &hooked{Store: state.NewMemory()}
+	p, machine := adoptRoom(t, st)
+	th := conversation(t, p, tenant, threads.Thread{ID: "th-00000000000000e7", Project: "Field", Visibility: threads.Private})
+	other := conversation(t, p, tenant, threads.Thread{ID: "th-00000000000000e8", Project: "Field", Visibility: threads.Shared, Default: "lead"})
+	// It names helper when the apply reads it.
+	if _, err := p.Threads.Update(tenant, th.ID, th.Version, t0Adopt, func(next *threads.Thread) error { next.Default = "helper"; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	who := readers(machine)
+	was := reads(p, who, []string{th.ID, other.ID})
+	// Once, as the apply writes its session's record, someone names lead.
+	var once sync.Once
+	st.mu.Lock()
+	st.before = func(namespace string, ops []state.Op) {
+		if namespace != "agent-sessions" || !slices.ContainsFunc(ops, func(o state.Op) bool { return o.Key == "s:"+th.ID && o.Value != nil }) {
+			return
+		}
+		once.Do(func() {
+			cur, err := p.Threads.Get(tenant, th.ID)
+			if err == nil {
+				_, err = p.Threads.Update(tenant, th.ID, cur.Version, t0Adopt, func(next *threads.Thread) error { next.Default = "lead"; return nil })
+			}
+			if err != nil {
+				t.Errorf("the change during the apply: %v", err)
+			}
+		})
+	}
+	st.mu.Unlock()
+	applied, err := p.BackfillSessions(ctx, tenant, true)
+	if err != nil {
+		t.Fatalf("the apply stopped: %v", err)
+	}
+	var line platform.BackfillLine
+	for _, l := range applied.Lines {
+		if l.Subject == th.ID {
+			line = l
+		}
+	}
+	if line.Kind != platform.BackfillThreadLeft || !strings.Contains(line.Detail, "changed while it was read") || applied.Counts[platform.BackfillThreadAdopted] != 1 {
+		t.Fatalf("the changed conversation: %q (%s); counts %v", line.Kind, line.Detail, applied.Counts)
+	}
+	if got, err := p.Threads.Get(tenant, th.ID); err != nil || got.Session != nil || got.Default != "lead" {
+		t.Fatalf("the changed conversation is %+v, %v", got, err)
+	}
+	if _, err := p.Sessions.Get(ctx, tenant, th.ID); err == nil {
+		t.Fatal("a session's record is kept for the conversation that was left")
+	}
+	for _, r := range stored(t, st)["agent-sessions"] {
+		if r.Tenant == tenant && strings.Contains(string(r.Value), th.ID) {
+			t.Fatalf("the store keeps %s of the conversation that was left", r.Key)
+		}
+	}
+	if got, err := p.Threads.Get(tenant, other.ID); err != nil || got.Session == nil {
+		t.Fatalf("the conversation after it was not adopted: %+v, %v", got.Session, err)
+	}
+	// The next run adopts it as the agent it names now.
+	again, err := p.BackfillSessions(ctx, tenant, true)
+	if err != nil || again.Counts[platform.BackfillThreadAdopted] != 1 {
+		t.Fatalf("the next apply did %v, %v", again.Counts, err)
+	}
+	if got, err := p.Threads.Get(tenant, th.ID); err != nil || got.Session == nil || got.Session.Agent != "lead" {
+		t.Fatalf("after the next apply it is %+v, %v", got.Session, err)
+	}
+	if now := reads(p, who, []string{th.ID, other.ID}); !reflect.DeepEqual(now, was) {
+		t.Fatalf("who reads them changed: %v, was %v", now, was)
+	}
+}
+
+// A message sent through the messages route that names an adopted Slack
+// thread's place, by a member of its project who takes no part in it, is
+// refused as a place they cannot read. It changes nobody who takes part,
+// keeps no audience, and leaves the conversation unread by them. The same
+// holds for a conversation whose adoption stopped after the session's
+// record was written.
+func TestAMessageNamingAnAdoptedPlaceChangesNobodyWhoReadsIt(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		half bool
+	}{{"adopted", false}, {"an apply left half done", true}} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := t.Context()
+			p, machine := adoptRoom(t, state.NewMemory())
+			ana := auth.Principal{Subject: "ana", Tenant: tenant, Kind: auth.User, Roles: []auth.Role{auth.Operator}}
+			vic := auth.Principal{Subject: "vic", Tenant: tenant, Kind: auth.User, Roles: []auth.Role{auth.Operator}}
+			const root = "1700000000.000200"
+			dm, err := p.StartThread(ctx, machine, fromSlack("D0ANA", root, "", "hello"))
+			if err != nil || len(dm.Runs) != 1 {
+				t.Fatalf("the direct message: %d runs, %v", len(dm.Runs), err)
+			}
+			settle(t, p, dm.Runs[0].ID)
+			if tc.half {
+				if _, err := p.Sessions.(adopter).Adopt(ctx, tenant, dm.Thread.ID, session.Open{Parent: "slack://T0TEAM/D0ANA/" + root, Agent: "helper", Channel: wire.Channel(tenant)}); err != nil {
+					t.Fatal(err)
+				}
+			} else if rep, err := p.BackfillSessions(ctx, tenant, true); err != nil || rep.Counts[platform.BackfillSlackThreadAdopted] != 1 {
+				t.Fatalf("the apply did %v, %v", rep.Counts, err)
+			}
+			had, err := p.Threads.Get(tenant, dm.Thread.ID)
+			if err != nil || p.SeesThread(vic, dm.Thread.ID) || !p.SeesThread(ana, dm.Thread.ID) {
+				t.Fatalf("before the message vic reads the direct message, or ana does not: %v", err)
+			}
+			count := func() int {
+				ms, _, err := p.Threads.Messages(tenant, dm.Thread.ID, "", 50)
+				if err != nil {
+					t.Fatal(err)
+				}
+				return len(ms)
+			}
+			said := count()
+			in := platform.MessagesInput{
+				Ref:      &platform.ExternalRef{Type: platform.RefSlack, Client: "app", Team: "T0TEAM", Channel: "D0ANA", TS: "1700000000.000900", ThreadTS: root, Audience: &platform.SurfaceAudience{Type: platform.ChannelPrivate, Members: []string{"U0VIC"}}},
+				Messages: []platform.Message{{Role: "user", Content: platform.Content{{Type: "text", Text: "what was said here before?"}}}},
+			}
+			out, err := p.SendMessages(ctx, vic, in)
+			if err == nil && out.Root == dm.Thread.ID {
+				t.Fatalf("vic's message reached the direct message: %+v", out)
+			}
+			got, gerr := p.Threads.Get(tenant, dm.Thread.ID)
+			switch {
+			case gerr != nil:
+				t.Fatal(gerr)
+			case !samePeople(got.Participants, had.Participants) || got.Visibility != had.Visibility || got.Version != had.Version:
+				t.Fatalf("after the message it is %s with %+v at version %d; was %s with %+v at %d", got.Visibility, got.Participants, got.Version, had.Visibility, had.Participants, had.Version)
+			case count() != said:
+				t.Fatalf("the direct message holds %d messages, held %d", count(), said)
+			case p.SeesThread(vic, dm.Thread.ID) || p.SeesSession(vic, dm.Thread.ID):
+				t.Fatal("vic reads the direct message after sending a message that names its place")
+			case !p.SeesThread(ana, dm.Thread.ID):
+				t.Fatal("ana no longer reads the direct message")
+			}
+			if aud, kept := p.SessionAudience(tenant, dm.Thread.ID); kept {
+				t.Fatalf("an audience is kept for it: %+v", aud)
+			}
+		})
+	}
+}
+
+// A child of an adopted private conversation is read only by those who
+// read the conversation: someone added to the child alone reads neither,
+// and someone who does not read the conversation starts no child under it.
+func TestAChildOfAnAdoptedConversationIsReadByItsParentsReaders(t *testing.T) {
+	ctx := t.Context()
+	p, _ := adoptRoom(t, state.NewMemory())
+	ana := auth.Principal{Subject: "ana", Tenant: tenant, Kind: auth.User, Roles: []auth.Role{auth.Operator}}
+	vic := auth.Principal{Subject: "vic", Tenant: tenant, Kind: auth.User, Roles: []auth.Role{auth.Operator}}
+	private, err := p.StartThread(ctx, ana, platform.ThreadInput{Project: "Field", Visibility: threads.Private, Text: "@lead keep it"})
+	if err != nil || len(private.Runs) != 1 {
+		t.Fatalf("the conversation: %d runs, %v", len(private.Runs), err)
+	}
+	settle(t, p, private.Runs[0].ID)
+	if rep, err := p.BackfillSessions(ctx, tenant, true); err != nil || rep.Counts[platform.BackfillThreadAdopted] != 1 {
+		t.Fatalf("the apply did %v, %v", rep.Counts, err)
+	}
+	if _, err := p.StartSession(ctx, vic, platform.SessionInput{Parent: private.Thread.ID, Agent: "helper", Text: "let me in"}); err == nil {
+		t.Fatal("vic started a child under a private conversation they take no part in")
+	}
+	child, err := p.StartSession(ctx, ana, platform.SessionInput{Parent: private.Thread.ID, Agent: "helper", Text: "look into it"})
+	if err != nil || child.Parent != private.Thread.ID {
+		t.Fatalf("ana's child = %s under %q, %v", child.ID, child.Parent, err)
+	}
+	settle(t, p, sessionRun(t, child).ID)
+	grandchild, err := p.StartSession(ctx, ana, platform.SessionInput{Parent: child.ID, Agent: "lead", Text: "and deeper"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	settle(t, p, sessionRun(t, grandchild).ID)
+	for _, id := range []string{child.ID, grandchild.ID} {
+		cur, err := p.Threads.Get(tenant, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := p.Threads.Participants(tenant, id, cur.Version, []threads.Participant{{Kind: threads.Person, Name: "vic"}}, nil, func(threads.Participant) bool { return true }, "ana", cur.UpdatedAt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, id := range []string{private.Thread.ID, child.ID, grandchild.ID} {
+		if p.SeesSession(vic, id) || p.SeesThread(vic, id) {
+			t.Errorf("vic, added to the children alone, reads %s: as a session %v, as a conversation %v", id, p.SeesSession(vic, id), p.SeesThread(vic, id))
+		}
+		if !p.SeesSession(ana, id) || !p.SeesThread(ana, id) {
+			t.Errorf("ana does not read %s", id)
+		}
+	}
+	if turns, err := p.Runs.Conversation(tenant, child.ID); err != nil || len(turns) == 0 || p.Seer(vic).RunID(turns[0].ID) {
+		t.Errorf("vic reads the child's run, or it has none: %v", err)
+	}
+}

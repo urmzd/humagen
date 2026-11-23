@@ -157,6 +157,39 @@ func (s *Store) Adopt(ctx context.Context, tenant, id string, o session.Open) (s
 	return r, err
 }
 
+// Unadopt removes the record Adopt wrote under a conversation's id, and
+// the alias from its key, for an adoption whose conversation did not
+// become the session: the next adoption then decides it afresh. A record
+// that binds a run is a session in use and is refused (ErrAdopted), as is
+// a key's own id; an id with no record is left as it is.
+func (s *Store) Unadopt(ctx context.Context, tenant, id string) error {
+	if id == "" || strings.HasPrefix(id, "s_") {
+		return fmt.Errorf("%w: %q is not a conversation's id", session.ErrInvalid, id)
+	}
+	row, err := s.state.Lookup(ctx, namespace, tenant, "s:"+id)
+	if errors.Is(err, state.ErrNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	var r session.Record
+	if err := json.Unmarshal(row.Value, &r); err != nil {
+		return err
+	}
+	if bound, err := s.Runs(ctx, tenant, id, 1); err != nil {
+		return err
+	} else if len(bound) > 0 {
+		return fmt.Errorf("%w: %s binds runs", ErrAdopted, id)
+	}
+	gone := state.Delete(tenant, "s:"+id)
+	gone.If = row.Version
+	return s.state.Write(ctx, namespace, gone,
+		state.Delete(tenant, aliasKey(r.Key.ID())),
+		state.Delete(tenant, "p:"+hash(r.Key.Parent)+":"+id),
+		state.Delete(tenant, "a:"+hash(r.Key.Agent)+":"+id))
+}
+
 func (s *Store) List(ctx context.Context, tenant string, f session.Filter) ([]session.Record, error) {
 	prefix := "s:"
 	if f.Parent != "" {

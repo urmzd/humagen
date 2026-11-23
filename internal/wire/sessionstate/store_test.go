@@ -227,3 +227,60 @@ func TestAdoptRecordsASessionUnderAConversationsID(t *testing.T) {
 		}
 	})
 }
+
+// Unadopt removes an adoption's record and its alias, so the key opens a
+// session of its own again and the id can be adopted afresh. A record
+// that binds a run stays.
+func TestUnadoptRemovesAnAdoptionThatBindsNoRun(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		ctx := context.Background()
+		st := open(t)
+		s := sessionstate.New(st)
+		const id, place = "th-00112233445566aa", "console://th-00112233445566aa"
+		empty, err := st.Load(ctx, "agent-sessions")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.Adopt(ctx, "acme", id, session.Open{Parent: place, Agent: "lead"}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.Adopt(ctx, "globex", id, session.Open{Parent: place, Agent: "lead"}); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.Unadopt(ctx, "acme", id); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.Get(ctx, "acme", id); !errors.Is(err, session.ErrNotFound) {
+			t.Fatalf("after unadopt the record reads %v", err)
+		}
+		if _, err := s.Get(ctx, "globex", id); err != nil {
+			t.Fatalf("another tenant's adoption is gone: %v", err)
+		}
+		if err := s.Unadopt(ctx, "globex", id); err != nil {
+			t.Fatal(err)
+		}
+		if left, err := st.Load(ctx, "agent-sessions"); err != nil || len(left) != len(empty) {
+			t.Fatalf("unadopt left %d records, %v; want %d", len(left), err, len(empty))
+		}
+		if err := s.Unadopt(ctx, "acme", id); err != nil {
+			t.Fatalf("unadopting what is not adopted = %v", err)
+		}
+		// Adopted afresh, as another agent's.
+		if rec, err := s.Adopt(ctx, "acme", id, session.Open{Parent: place, Agent: "helper"}); err != nil || rec.Key.Agent != "helper" {
+			t.Fatalf("adopted afresh = %+v, %v", rec, err)
+		}
+		if err := s.BindRun(ctx, "acme", id, "r0123456789abcdef0123456789abcdef"); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.Unadopt(ctx, "acme", id); !errors.Is(err, sessionstate.ErrAdopted) {
+			t.Fatalf("unadopting a session that binds a run = %v", err)
+		}
+		opened, err := s.Open(ctx, "acme", session.Open{Parent: "console://own", Agent: "lead"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := s.Unadopt(ctx, "acme", opened.ID); !errors.Is(err, session.ErrInvalid) {
+			t.Fatalf("unadopting a key's own session = %v", err)
+		}
+	})
+}
