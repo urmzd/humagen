@@ -10,7 +10,7 @@ before that release is a conversation of its own, and Recent and Sessions do
 not list it. `humagen migrate sessions` files that work into sessions once.
 
 ```
-humagen migrate sessions -state postgres [-tenant NAME] [-apply]
+humagen migrate sessions -state postgres [-tenant NAME] [-server-tenant NAME] [-apply]
 ```
 
 | Flag | Default | Meaning |
@@ -18,10 +18,11 @@ humagen migrate sessions -state postgres [-tenant NAME] [-apply]
 | `-state` | `postgres` when `$HUMAGEN_POSTGRES_URL` is set, else `memory` | The stores to read and write. The command refuses `memory`, and a database that holds no runs: both have nothing to migrate. It writes through the stores, never with SQL |
 | `-tenant` | every tenant the run index holds | One tenant only |
 | `-apply` | off | Write the changes. Without it the command writes nothing and prints what it would do |
+| `-server-tenant` | `default` | The tenant the server's `-tenant` names. The clients the server's environment configures (`HUMAGEN_GITHUB_*`, `HUMAGEN_SLACK_*`) are never stored, so the command builds them in this tenant from its own environment, as `serve` does |
 | `-allow-empty-store` | off | For tests only: run against the in-memory store or an empty database |
 
-The output starts with the store and the tenants it read, then how many runs
-of each tenant it read. Check them before you go on.
+The output starts with the store, the environment's clients it built, and
+the tenants it read, then how many runs of each tenant it read. Check them before you go on.
 
 ### What it changes
 
@@ -51,19 +52,21 @@ The command lists each of these with its reason.
 There is no undo. Restoring the backup also loses everything the servers
 wrote after it: messages, runs and sessions.
 
-The people map comes from the GitHub client's record in the database. A
-server writes it there when it starts with `HUMAGEN_GITHUB_PEOPLE` (or
-`github.people` in the spec). Without the map, the sessions get no people,
-and past runs that every member read until now are read by administrators
-alone. Do the steps in this order:
+The people map comes from the GitHub client. A client the environment
+configures (`default-github`, from `HUMAGEN_GITHUB_PEOPLE`) is never stored:
+the command builds it from its own environment, so run it where the server's
+environment is, such as inside the server's pod. A client made in the
+console or by a spec is read from the database. Without the map, the
+sessions get no people, and past runs that every member read until now are
+read by administrators alone. Do the steps in this order:
 
 1. Deploy the release that has the command, with `HUMAGEN_GITHUB_PEOPLE`
    set to each GitHub login and the person it is, as
    `login=subject,login=subject`.
-2. Confirm that the GitHub client's record has the map: read it with
+2. Confirm that the GitHub client has the map: read it with
    `GET /api/clients/<id>` and check that `github.people` lists each login.
 3. Back up the database.
-4. Run the dry run. It writes nothing:
+4. Run the dry run in the server's environment. It writes nothing:
 
    ```sh
    HUMAGEN_POSTGRES_URL=... humagen migrate sessions -state postgres
@@ -72,6 +75,9 @@ alone. Do the steps in this order:
 5. Read the output.
    - `store:` and `tenants:` must name the production database and
      workspace, and each tenant must read more than 0 runs.
+   - `environment clients:` must name the server's GitHub client in the
+     server's tenant, such as `default-github in tenant default`. Set
+     `-server-tenant` when the server runs with another `-tenant`.
    - There must be no `WARNING` line. A warning names a GitHub client with
      no people map, or one that is gone or turned off. Fix it and go back to
      step 2.

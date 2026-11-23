@@ -13,10 +13,12 @@ import (
 	"strings"
 
 	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/humagen/pkg/state"
 )
 
-const migrateUsage = `usage: humagen migrate sessions -state postgres [-tenant NAME] [-apply]
+const migrateUsage = `usage: humagen migrate sessions -state postgres [-tenant NAME] [-server-tenant NAME] [-apply]
 
 Files past work into sessions once, so it is listed in Recent and Sessions
 as work from now on is. It reads the stores -state names (postgres reads
@@ -29,7 +31,9 @@ sessions  files each GitHub run from before GitHub sessions in the session
 
 It writes nothing unless -apply is given: without it, it prints what it
 would do. A second -apply finds the first one's work and writes nothing.
-It refuses the in-memory store, and a store that holds no runs, which have
+The clients the server's environment configures are built from this
+process's environment, as serve builds them, in -server-tenant: run it
+where the server's environment is. It refuses the in-memory store, and a store that holds no runs, which have
 nothing to migrate: a dry run there would report nothing to do.`
 
 // migrateCmd runs humagen migrate.
@@ -56,6 +60,7 @@ func migrateSessions(ctx context.Context, args []string, out io.Writer, getenv f
 	stateKind := addStateFlags(fs, getenv)
 	tenant := fs.String("tenant", "", "the one tenant to migrate. Empty is every tenant the run index holds")
 	apply := fs.Bool("apply", false, "write the changes. Without it nothing is written")
+	serverTenant := fs.String("server-tenant", "default", "the tenant the server's -tenant names: the clients the environment configures ($HUMAGEN_GITHUB_*, $HUMAGEN_SLACK_*) are built in it, as serve builds them, since they are never stored")
 	allowEmpty := fs.Bool("allow-empty-store", false, "for tests only: run against the in-memory store, or a store that holds no runs")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -73,7 +78,7 @@ func migrateSessions(ctx context.Context, args []string, out io.Writer, getenv f
 		return err
 	}
 	defer release()
-	return migrateWith(ctx, backends, storeName(kind, getenv), *tenant, *apply, *allowEmpty, out)
+	return migrateWith(ctx, backends, storeName(kind, getenv), migrateTarget{tenant: *tenant, serverTenant: *serverTenant, getenv: getenv}, *apply, *allowEmpty, out)
 }
 
 // storeName says which store -state reads, without its credentials.
@@ -88,9 +93,18 @@ func storeName(kind string, getenv func(string) string) string {
 	return "postgres " + u.Host + u.Path
 }
 
+// migrateTarget is what a migration reads besides its store: the tenant to
+// migrate ("" for every one), the tenant the server's environment clients
+// belong to, and the environment they are built from.
+type migrateTarget struct {
+	tenant, serverTenant string
+	getenv               func(string) string
+}
+
 // migrateWith opens the platform on backends, as a server opens it but
-// never runs it (no loop, connector or turn starts), and backfills.
-func migrateWith(ctx context.Context, backends platform.Backends, store, tenant string, apply, allowEmpty bool, out io.Writer) error {
+// never runs it (no loop, connector or turn starts), builds the clients the
+// environment configures as serve does (seedClients), and backfills.
+func migrateWith(ctx context.Context, backends platform.Backends, store string, at migrateTarget, apply, allowEmpty bool, out io.Writer) error {
 	// Attachments go to a directory of their own, which nothing here
 	// writes to.
 	dir, err := os.MkdirTemp("", "humagen-migrate-")
@@ -101,18 +115,46 @@ func migrateWith(ctx context.Context, backends platform.Backends, store, tenant 
 	// What the platform says of itself on opening (its sandbox, say) is
 	// not this command's business: only its errors are shown.
 	quiet := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
-	p, err := platform.New(platform.Config{Backends: backends, Log: quiet, Workspace: dir})
+	// The environment's clients name their secrets by reference, as serve
+	// lets its own tenant's do. Creating one keeps a marker of each secret;
+	// those go to a store of this process's, so a dry run writes nothing.
+	refs, err := secretRefs("", at.serverTenant, at.getenv)
+	if err != nil {
+		return err
+	}
+	secrets, err := clients.OpenSecrets(state.NewMemory())
+	if err != nil {
+		return err
+	}
+	env := func(name string) (string, bool) {
+		v := at.getenv(name)
+		return v, v != ""
+	}
+	p, err := platform.New(platform.Config{Backends: backends, Log: quiet, Workspace: dir, Secrets: secrets, Env: env, SecretRefs: refs})
 	if err != nil {
 		return err
 	}
 	defer func() { _ = p.Close() }()
-	return backfill(ctx, p, store, tenant, apply, allowEmpty, out)
+	// A client the environment configures is never stored: every server
+	// builds it again at start, and so does this.
+	if err := seedClients(ctx, p, at.serverTenant, at.getenv); err != nil {
+		return err
+	}
+	note := "none"
+	if seeded, err := defaultClients(at.getenv); err == nil && len(seeded) > 0 {
+		ids := make([]string, len(seeded))
+		for i, in := range seeded {
+			ids[i] = in.ID
+		}
+		note = strings.Join(ids, ", ") + " in tenant " + at.serverTenant
+	}
+	return backfill(ctx, p, store, note, at.tenant, apply, allowEmpty, out)
 }
 
 // backfill runs the sessions backfill over one tenant, or every tenant, and
 // prints what it did or would do. A store, or a tenant, that holds no runs
 // is refused unless allowEmpty.
-func backfill(ctx context.Context, p *platform.Platform, store, tenant string, apply, allowEmpty bool, out io.Writer) error {
+func backfill(ctx context.Context, p *platform.Platform, store, envClients, tenant string, apply, allowEmpty bool, out io.Writer) error {
 	var tenants []string
 	if err := p.Runs.EachTenant(func(t string) error { tenants = append(tenants, t); return nil }); err != nil {
 		return err
@@ -138,7 +180,7 @@ func backfill(ctx context.Context, p *platform.Platform, store, tenant string, a
 	if apply {
 		mode = "applied"
 	}
-	fmt.Fprintf(out, "humagen migrate sessions (%s)\nstore: %s\ntenants: %s\n", mode, store, strings.Join(tenants, ", "))
+	fmt.Fprintf(out, "humagen migrate sessions (%s)\nstore: %s\nenvironment clients: %s\ntenants: %s\n", mode, store, envClients, strings.Join(tenants, ", "))
 	total := 0
 	for _, t := range tenants {
 		rep, err := p.BackfillSessions(ctx, t, apply)
