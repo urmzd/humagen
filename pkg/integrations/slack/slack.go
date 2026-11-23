@@ -57,6 +57,10 @@ type Config struct {
 	// through connector rebuilds. Replicas must share both.
 	DeliveryState deliverystate.Store
 	DeliveryScope string
+	// Sender is who the client acts for. A message, mention, slash command
+	// or interactive payload from anyone else is answered here and goes no
+	// further (refuse). Nil leaves the decision to the platform alone.
+	Sender SenderFunc
 }
 type Connector struct {
 	*transport.Connector
@@ -65,6 +69,7 @@ type Connector struct {
 	statusMu  sync.Mutex
 	statusSeq map[string]uint64
 	live      live
+	turned    turnAway
 }
 
 func New(cfg Config) (*Connector, error) {
@@ -207,17 +212,21 @@ const maxOpenedBody = 25 << 20
 // openedBySelf matches an event's text that opens with a user mention.
 var openedBySelf = regexp.MustCompile(`^\s*<@([A-Z0-9]+)(?:\|[^<>]*)?>`)
 
-// ServeHTTP notes whether a message opens with the app's own bot user, the
-// one place a word after it names an agent (prepare). The transport reads
-// and verifies the delivery as before.
+// ServeHTTP refuses a request from a sender the client does not map
+// (refuse), and notes whether a message opens with the app's own bot user,
+// the one place a word after it names an agent (prepare). The transport
+// reads and verifies the delivery as before.
 func (c *Connector) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost || r.Body == nil || c.cfg.Agents == nil {
+	if r.Method != http.MethodPost || r.Body == nil || (c.cfg.Agents == nil && c.cfg.Sender == nil) {
 		c.Connector.ServeHTTP(w, r)
 		return
 	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxOpenedBody+1))
 	r.Body = io.NopCloser(io.MultiReader(bytes.NewReader(body), r.Body))
-	if err == nil && len(body) <= maxOpenedBody && openedByApp(body) {
+	if err == nil && len(body) <= maxOpenedBody && c.refuse(w, r, body) {
+		return
+	}
+	if err == nil && len(body) <= maxOpenedBody && c.cfg.Agents != nil && openedByApp(body) {
 		r = r.WithContext(context.WithValue(r.Context(), openedKey{}, true))
 	}
 	c.Connector.ServeHTTP(w, r)

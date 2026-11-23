@@ -497,6 +497,7 @@ func (p *Platform) dial(c clients.Client, secrets resolved) (*seat, error) {
 			DeliveryState: deliveryState, DeliveryScope: clientDeliveryScope(c),
 		}
 		cfg.Feedback, cfg.ObserveDelivery = p.feedbackFor(c), p.deliveredFor(c)
+		cfg.Sender = func(team, user string) bool { return p.slackSender(c, team, user) }
 		cfg.ContinueThread = func(team, channel, thread string) bool {
 			return p.continueSurface(c, address.Address{Connector: "slack", Workspace: team, Path: []string{channel}}.WithParam("thread", thread))
 		}

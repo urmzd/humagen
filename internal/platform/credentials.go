@@ -174,7 +174,28 @@ func (p *Platform) surfacePerson(c clients.Client, tag event.Envelope) string {
 		}
 		return c.GitHub.People[wire.ActorOf(tag).ID]
 	}
-	if c.Surface != clients.Slack || wire.ActorOf(tag).Bot || id == "" || c.Identity.Team == "" {
+	if c.Surface != clients.Slack || wire.ActorOf(tag).Bot {
+		return ""
+	}
+	return p.slackPerson(c, id)
+}
+
+// slackSender reports whether a Slack user in team may ask through client c:
+// the team is the client's, and the user is a person its team maps. The
+// connector asks it before it reads a request any further.
+func (p *Platform) slackSender(c clients.Client, team, user string) bool {
+	current, enabled := p.currentInstallation(c)
+	return enabled && current.Identity.Team != "" && team == current.Identity.Team && p.slackPerson(current, user) != ""
+}
+
+// slackPerson is the one place a Slack user becomes a person for a client's
+// connector: the subject the enabled Slack clients serving the client's team
+// map the user to, or "" for nobody. A Slack user in another team is nobody
+// here whatever the map says; the caller checks the team (slackSender).
+// Linked accounts, once they land, are read here too.
+func (p *Platform) slackPerson(c clients.Client, id string) string {
+	id = strings.TrimSpace(id)
+	if c.Surface != clients.Slack || id == "" || c.Identity.Team == "" {
 		return ""
 	}
 	person := ""
