@@ -63,7 +63,9 @@ func accountProvider(name string) connectionauth.Provider {
 	case GitHubAccount:
 		// A GitHub App's user authorization takes no scopes: what its token
 		// may do is the app's permissions, and it is used only for GET /user.
-		return connectionauth.Provider{Name: name, Resource: "https://api.github.com/", Issuer: "https://github.com", AuthorizationURL: "https://github.com/login/oauth/authorize", TokenURL: "https://github.com/login/oauth/access_token"}
+		// GitHub shows the account choice on every sign-in (select_account).
+		// Slack's OpenID Connect authorize documents no prompt parameter.
+		return connectionauth.Provider{Name: name, Resource: "https://api.github.com/", Issuer: "https://github.com", AuthorizationURL: "https://github.com/login/oauth/authorize", TokenURL: "https://github.com/login/oauth/access_token", Prompt: "select_account"}
 	case SlackAccount:
 		return connectionauth.Provider{Name: name, Resource: "https://slack.com/api/", Issuer: "https://slack.com", AuthorizationURL: "https://slack.com/openid/connect/authorize", TokenURL: "https://slack.com/api/openid.connect.token", Scopes: []string{"openid", "profile"}}
 	}
@@ -151,6 +153,7 @@ func (p *Platform) CompleteAccount(ctx context.Context, who auth.Principal, name
 		return ErrForbidden
 	}
 	if binding == "" {
+		p.EndAccountLink(who, name, nonce)
 		return ErrAccountInConsole
 	}
 	attempt, err := p.BeginAudit(who, audit.Change{Action: "connection.connect", Resource: "connection", ID: name, Subject: who.Subject, Route: "POST /api/connections/{provider}/callback", Rule: string(auth.RunsWrite)})
@@ -158,10 +161,37 @@ func (p *Platform) CompleteAccount(ctx context.Context, who auth.Principal, name
 		return err
 	}
 	err = p.linkAccount(ctx, who, name, nonce, code, binding)
+	if errors.Is(err, connectionauth.ErrConsentEnded) {
+		p.log.Warn("platform: a callback that did not match an account link's consent ended it", "tenant", who.Tenant, "provider", name, "by", who.Subject)
+	}
 	if completion := attempt.Finish(err); completion != nil {
 		p.LogAuditCompletionFailure(completion)
 	}
 	return err
+}
+
+// EndAccountLink ends the account link consent whose state a callback
+// presented without the browser's secret, or from a caller that is not a
+// browser session, and records that it did. A consent ended completes
+// nothing afterwards.
+func (p *Platform) EndAccountLink(who auth.Principal, name, nonce string) {
+	if !IsAccountLink(name) || p.ConnectionAuth == nil || nonce == "" {
+		return
+	}
+	attempt, err := p.BeginAudit(who, audit.Change{Action: "connection.end", Resource: "connection", ID: name, Subject: who.Subject, Route: "POST /api/connections/{provider}/callback", Rule: string(auth.RunsWrite)})
+	if err != nil {
+		p.log.Warn("platform: an account link callback could not be audited", "tenant", who.Tenant, "provider", name, "err", err)
+		return
+	}
+	ended, err := p.ConnectionAuth.EndBound(who.Tenant, nonce)
+	if ended {
+		p.log.Warn("platform: a callback that did not match an account link's consent ended it", "tenant", who.Tenant, "provider", name, "by", who.Subject)
+	} else if err == nil {
+		err = connectionauth.ErrInvalid
+	}
+	if completion := attempt.Finish(err); completion != nil {
+		p.LogAuditCompletionFailure(completion)
+	}
 }
 
 func (p *Platform) linkAccount(ctx context.Context, who auth.Principal, name, nonce, code, binding string) error {
@@ -260,8 +290,8 @@ func slackIdentity(raw []byte) (accounts.Account, error) {
 		return accounts.Account{}, fmt.Errorf("%w: Slack did not say which user signed in", ErrAccountRefused)
 	}
 	name := strings.TrimSpace(u.Name)
-	if len(name) > 200 {
-		name = name[:200]
+	if r := []rune(name); len(r) > 200 {
+		name = string(r[:200])
 	}
 	return accounts.Account{Surface: accounts.Slack, ID: u.User, Team: u.Team, Login: name, Avatar: httpsURL(u.Picture)}, nil
 }
@@ -322,7 +352,12 @@ func (p *Platform) UnlinkAccount(who auth.Principal, client, id string) error {
 	default:
 		return accounts.ErrNotFound
 	}
-	attempt, err := p.BeginAudit(who, audit.Change{Action: "account.unlink", Resource: "linked_account", ID: surface + ":" + id, Scope: "workspace", Route: "DELETE /api/clients/{id}/accounts/{account}", Rule: string(auth.ClientsWrite)})
+	// The audit names the person whose account is removed.
+	held, err := p.Accounts.Get(who.Tenant, surface, team, id)
+	if err != nil {
+		return err
+	}
+	attempt, err := p.BeginAudit(who, audit.Change{Action: "account.unlink", Resource: "linked_account", ID: surface + ":" + id, Scope: "workspace", Subject: held.Subject, Before: map[string]string{"subject": held.Subject}, Route: "DELETE /api/clients/{id}/accounts/{account}", Rule: string(auth.ClientsWrite)})
 	if err != nil {
 		return err
 	}

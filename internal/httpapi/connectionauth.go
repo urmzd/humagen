@@ -99,6 +99,9 @@ func (s *Server) completeConnection(w http.ResponseWriter, r *http.Request, who 
 	var err error
 	if provider := r.PathValue("provider"); platform.IsAccountLink(provider) {
 		if !s.browserCall(r) {
+			// A callback from anything but a browser session ends the
+			// consent it names.
+			s.P.EndAccountLink(who, provider, body.State)
 			s.problem(w, platform.ErrAccountInConsole)
 			return
 		}

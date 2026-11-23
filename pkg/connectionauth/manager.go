@@ -29,8 +29,11 @@ var (
 	ErrUnavailable = errors.New("connection authorization is not configured")
 	ErrInvalid     = errors.New("invalid connection authorization")
 	ErrReconnect   = errors.New("reconnect this service to continue")
-	ErrRejected    = errors.New("connection authorization was rejected")
-	ErrBusy        = errors.New("connection refresh is in progress; try again")
+	// ErrConsentEnded reports a browser-bound consent that a callback which
+	// did not match it ended: it completes nothing afterwards.
+	ErrConsentEnded = fmt.Errorf("%w: this sign-in was ended; start again", ErrInvalid)
+	ErrRejected     = errors.New("connection authorization was rejected")
+	ErrBusy         = errors.New("connection refresh is in progress; try again")
 )
 
 // Provider is trusted deployment configuration, never taken from callback input.
@@ -48,6 +51,10 @@ type Provider struct {
 	TokenURL         string
 	Offline          bool
 	SigningSecret    string
+	// Prompt is the authorization request's prompt parameter, for a
+	// provider that takes one: GitHub's select_account shows the account
+	// choice even where the application was authorized before.
+	Prompt string
 }
 
 // Config contains the encryption key and the one registered callback URL.
@@ -264,7 +271,23 @@ func (m *Manager) begin(ctx context.Context, tenant, person, owner, provider str
 	if err != nil {
 		return Authorization{}, err
 	}
-	if err = m.records.Put(tenant, key, encrypted); err != nil {
+	batch := m.records.Batch()
+	// A consent begun again replaces the one before it, and that one's state
+	// index with it.
+	if old, err := m.records.Lookup(tenant, key); err == nil {
+		m.dropPending(batch, tenant, old)
+	} else if !errors.Is(err, state.ErrNotFound) {
+		return Authorization{}, err
+	}
+	batch.Put(tenant, key, encrypted)
+	if tx.Binding != "" {
+		index, err := m.seal(tenant, stateKey(nonceText), stateIndex{Pending: key})
+		if err != nil {
+			return Authorization{}, err
+		}
+		batch.Put(tenant, stateKey(nonceText), index)
+	}
+	if err = batch.Commit(); err != nil {
 		return Authorization{}, err
 	}
 	config := oauth2.Config{ClientID: clientID, RedirectURL: m.cfg.RedirectURL, Endpoint: oauth2.Endpoint{AuthURL: md.AuthorizationEndpoint}, Scopes: p.Scopes}
@@ -278,7 +301,87 @@ func (m *Manager) begin(ctx context.Context, tenant, person, owner, provider str
 	if p.Name == "slack" {
 		options = append(options, oauth2.SetAuthURLParam("scope", strings.Join(p.Scopes, ",")))
 	}
+	if p.Prompt != "" && !p.Offline {
+		options = append(options, oauth2.SetAuthURLParam("prompt", p.Prompt))
+	}
 	return Authorization{Provider: provider, URL: config.AuthCodeURL(nonceText, options...), ExpiresAt: tx.Expires}, nil
+}
+
+// stateIndex finds a browser-bound pending consent by its state, whoever
+// presents it, so a callback that does not match it can end it.
+type stateIndex struct {
+	Pending string
+}
+
+// pendingConsent is a pending record's sealed value.
+type pendingConsent struct {
+	State       string
+	Transaction transaction
+}
+
+// stateKey is where a bound consent's state index is kept: a digest of the
+// state, never the state.
+func stateKey(nonce string) string {
+	sum := sha256.Sum256([]byte("connectionauth state\x00" + nonce))
+	return "state/" + hex.EncodeToString(sum[:])
+}
+
+// dropPending adds to b the deletion of a pending record and, for a bound
+// consent, of its state index.
+func (m *Manager) dropPending(b *state.Batch[string], tenant string, item state.Item[string]) {
+	b.DeleteAt(tenant, item.Key, item.Version)
+	var pending pendingConsent
+	if m.open(tenant, item.Key, item.Value, &pending) == nil && pending.Transaction.Binding != "" && pending.State != "" {
+		b.Delete(tenant, stateKey(pending.State))
+	}
+}
+
+// EndBound ends the browser-bound consent whose state a callback presented,
+// whoever presented it, and reports whether there was one. A consent ended
+// completes nothing afterwards.
+func (m *Manager) EndBound(tenant, nonce string) (bool, error) {
+	if m == nil || tenant == "" || nonce == "" || len(nonce) > maxState {
+		return false, nil
+	}
+	item, pending, found, err := m.boundByState(tenant, nonce)
+	if err != nil || !found {
+		return false, err
+	}
+	b := m.records.Batch()
+	b.DeleteAt(tenant, item.Key, item.Version)
+	b.Delete(tenant, stateKey(pending.State))
+	return true, b.Commit()
+}
+
+// boundByState is the bound pending consent a state names. An index whose
+// consent was replaced or spent is removed and names nothing.
+func (m *Manager) boundByState(tenant, nonce string) (state.Item[string], pendingConsent, bool, error) {
+	ikey := stateKey(nonce)
+	idx, err := m.records.Lookup(tenant, ikey)
+	if errors.Is(err, state.ErrNotFound) {
+		return state.Item[string]{}, pendingConsent{}, false, nil
+	}
+	if err != nil {
+		return state.Item[string]{}, pendingConsent{}, false, err
+	}
+	var ref stateIndex
+	var pending pendingConsent
+	item, lerr := state.Item[string]{}, error(nil)
+	if m.open(tenant, ikey, idx.Value, &ref) == nil && strings.HasPrefix(ref.Pending, "pending/") {
+		item, lerr = m.records.Lookup(tenant, ref.Pending)
+	} else {
+		lerr = state.ErrNotFound
+	}
+	if lerr != nil && !errors.Is(lerr, state.ErrNotFound) {
+		return state.Item[string]{}, pendingConsent{}, false, lerr
+	}
+	if lerr != nil || m.open(tenant, item.Key, item.Value, &pending) != nil || pending.Transaction.Binding == "" ||
+		subtle.ConstantTimeCompare([]byte(pending.State), []byte(nonce)) != 1 {
+		b := m.records.Batch()
+		b.DeleteAt(tenant, ikey, idx.Version)
+		return state.Item[string]{}, pendingConsent{}, false, b.Commit()
+	}
+	return item, pending, true, nil
 }
 
 // bindingDigest is what a pending consent keeps of a browser's secret:
@@ -331,8 +434,15 @@ const MaxIdentity = 1 << 20
 // takes only a consent begun with BeginBound: binding must be the secret the
 // browser that began it holds.
 func (m *Manager) CompleteIdentity(ctx context.Context, tenant, person, provider, nonce, code, path, binding string) ([]byte, error) {
-	if strings.Contains(path, "://") || strings.HasPrefix(path, "/") || strings.Contains(path, "..") || binding == "" {
+	if strings.Contains(path, "://") || strings.HasPrefix(path, "/") || strings.Contains(path, "..") {
 		return nil, ErrInvalid
+	}
+	if binding == "" {
+		// A callback without the browser's secret ends the consent it names.
+		if ended, err := m.EndBound(tenant, nonce); err != nil || !ended {
+			return nil, ErrInvalid
+		}
+		return nil, ErrConsentEnded
 	}
 	tx, tok, _, err := m.exchange(ctx, tenant, person, person, provider, nonce, code, binding)
 	if err != nil {
@@ -367,21 +477,36 @@ func (m *Manager) exchange(ctx context.Context, tenant, person, owner, provider,
 	if !identity(tenant, person) || (owner != person && owner != WorkspaceOwner) || nonce == "" || len(nonce) > maxState || code == "" || len(code) > 8192 {
 		return transaction{}, nil, nil, ErrInvalid
 	}
-	key := recordKey("pending", owner, provider)
-	item, err := m.records.Lookup(tenant, key)
+	// A browser-bound consent is found by its state, whoever presents it; any
+	// other by the caller's own record.
+	item, pending, bound, err := m.boundByState(tenant, nonce)
 	if err != nil {
 		return transaction{}, nil, nil, ErrInvalid
 	}
-	var pending struct {
-		State       string
-		Transaction transaction
+	if !bound {
+		key := recordKey("pending", owner, provider)
+		if item, err = m.records.Lookup(tenant, key); err != nil || m.open(tenant, key, item.Value, &pending) != nil {
+			return transaction{}, nil, nil, ErrInvalid
+		}
+		if subtle.ConstantTimeCompare([]byte(pending.State), []byte(nonce)) != 1 {
+			return transaction{}, nil, nil, ErrInvalid
+		}
 	}
-	if m.open(tenant, key, item.Value, &pending) != nil || subtle.ConstantTimeCompare([]byte(pending.State), []byte(nonce)) != 1 || pending.Transaction.Person != person || pending.Transaction.Owner != owner || pending.Transaction.Provider != provider || !m.now().Before(pending.Transaction.Expires) ||
-		subtle.ConstantTimeCompare([]byte(pending.Transaction.Binding), []byte(bindingDigest(binding))) != 1 {
+	match := pending.Transaction.Person == person && pending.Transaction.Owner == owner && pending.Transaction.Provider == provider && m.now().Before(pending.Transaction.Expires) &&
+		subtle.ConstantTimeCompare([]byte(pending.Transaction.Binding), []byte(bindingDigest(binding))) == 1
+	batch := m.records.Batch()
+	m.dropPending(batch, tenant, item)
+	if !match {
+		// A bound consent ends at a callback that does not match it: another
+		// person, another browser, no browser secret, another provider.
+		if pending.Transaction.Binding != "" {
+			if batch.Commit() != nil {
+				return transaction{}, nil, nil, ErrInvalid
+			}
+			return transaction{}, nil, nil, ErrConsentEnded
+		}
 		return transaction{}, nil, nil, ErrInvalid
 	}
-	batch := m.records.Batch()
-	batch.DeleteAt(tenant, key, item.Version)
 	if err = batch.Commit(); err != nil {
 		return transaction{}, nil, nil, ErrInvalid
 	}
@@ -548,6 +673,10 @@ func (m *Manager) Disconnect(tenant, person, provider string) error {
 	}
 	batch := m.records.Batch()
 	batch.Delete(tenant, recordKey("account", person, provider))
-	batch.Delete(tenant, recordKey("pending", person, provider))
+	if old, err := m.records.Lookup(tenant, recordKey("pending", person, provider)); err == nil {
+		m.dropPending(batch, tenant, old)
+	} else if !errors.Is(err, state.ErrNotFound) {
+		return err
+	}
 	return batch.Commit()
 }

@@ -37,6 +37,7 @@ import {
   ways,
   whereReferences,
 } from "./connections.ts";
+import { consentReturn } from "./consentReturn.ts";
 import { GitHubRules } from "./GitHubRules.tsx";
 import { InstalledClientSetup } from "./InstalledClientSetup.tsx";
 import { href, type Route } from "./route.ts";
@@ -475,15 +476,15 @@ export function Connections({
   }, [provider, resolve, selectConnection]);
   const callbackStarted = useRef(false);
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (!params.has("state") || callbackStarted.current) return;
+    if (callbackStarted.current) return;
+    // Taken from the address when the console started (consentReturn.ts).
+    const back = consentReturn();
+    if (!back) return;
     callbackStarted.current = true;
     const provider = sessionStorage.getItem("humagen.connection.provider");
-    const nonce = params.get("state");
-    const code = params.get("code");
-    const installation = params.get("installation_id") ?? undefined;
-    // Remove authorization material from browser history before any request.
-    window.history.replaceState(window.history.state, "", "/connections");
+    const nonce = back.get("state");
+    const code = back.get("code");
+    const installation = back.get("installation_id") ?? undefined;
     sessionStorage.removeItem("humagen.connection.provider");
     if (!provider || !nonce || !code) {
       setProblem("Connection was not authorized. Choose Connect to try again.");

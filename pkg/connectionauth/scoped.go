@@ -208,7 +208,7 @@ func (m *Manager) limitPending(tenant, owner, provider string) error {
 			return err
 		}
 		if !m.now().Before(pending.Transaction.Expires) {
-			batch.DeleteAt(tenant, row.Key, row.Version)
+			m.dropPending(batch, tenant, row)
 			continue
 		}
 		count++

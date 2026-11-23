@@ -9,9 +9,11 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/accounts"
+	"github.com/urmzd/humagen/pkg/audit"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/connectionauth"
@@ -358,7 +360,12 @@ func TestAccountLinkIsBoundToTheBrowserThatBeganIt(t *testing.T) {
 	if _, err := p.Accounts.Of("t", accounts.GitHub, "ana"); !errors.Is(err, accounts.ErrNotFound) {
 		t.Fatal("linked from another browser")
 	}
-	if err := p.CompleteAccount(t.Context(), ana, GitHubAccount, state, "code", browser(ana)); err != nil {
+	// Those callbacks ended the consent: her own browser completes nothing
+	// with it, and completes one begun again.
+	if err := p.CompleteAccount(t.Context(), ana, GitHubAccount, state, "code", browser(ana)); !errors.Is(err, connectionauth.ErrInvalid) {
+		t.Fatalf("an ended consent: %v", err)
+	}
+	if err := p.CompleteAccount(t.Context(), ana, GitHubAccount, beginLink(t, p, ana, GitHubAccount), "code", browser(ana)); err != nil {
 		t.Fatalf("her own browser: %v", err)
 	}
 }
@@ -391,6 +398,20 @@ func TestAnAdministratorUnlinksAnAccount(t *testing.T) {
 	if err := p.UnlinkAccount(admin, "gh", "42"); err != nil {
 		t.Fatal(err)
 	}
+	// The audit names the person whose account was removed.
+	records, err := p.Audit.List("t", audit.Query{Resource: "linked_account", From: time.Now().Add(-time.Hour), To: time.Now().Add(time.Hour), Limit: 10}, func(audit.Record) bool { return true })
+	if err != nil || len(records) == 0 {
+		t.Fatalf("audit %v %v", records, err)
+	}
+	var removed *audit.Record
+	for i := range records {
+		if records[i].Outcome == audit.Succeeded {
+			removed = &records[i]
+		}
+	}
+	if removed == nil || removed.Action != "account.unlink" || removed.Subject != "ana" || removed.Before["subject"] != "ana" || removed.Actor != "admin" {
+		t.Fatalf("the unlink's audit: %+v", records)
+	}
 	if _, err := p.Accounts.Of("t", accounts.GitHub, "ana"); !errors.Is(err, accounts.ErrNotFound) {
 		t.Fatal("still linked")
 	}
@@ -409,5 +430,20 @@ func TestADisabledSlackClientServesNoTeam(t *testing.T) {
 	ana := person("t", "ana")
 	if err := p.CompleteAccount(t.Context(), ana, SlackAccount, beginLink(t, p, ana, SlackAccount), "code", browser(ana)); !errors.Is(err, ErrAccountRefused) {
 		t.Fatalf("a disabled client's team: %v", err)
+	}
+}
+
+// A Slack name is kept to 200 characters, cut between characters.
+func TestASlackNameIsCutBetweenCharacters(t *testing.T) {
+	long := strings.Repeat("é", 250)
+	a, err := slackIdentity([]byte(`{"ok":true,"https://slack.com/user_id":"U0ANA","https://slack.com/team_id":"T0TEAM","name":"` + long + `"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.Login != strings.Repeat("é", 200) || !utf8.ValidString(a.Login) {
+		t.Fatalf("name %q (%d bytes)", a.Login, len(a.Login))
+	}
+	if _, err := accounts.Open(nil).Link("t", accounts.Account{Surface: accounts.Slack, ID: a.ID, Team: a.Team, Login: a.Login, Subject: "ana"}); err != nil {
+		t.Fatalf("the cut name is not kept: %v", err)
 	}
 }

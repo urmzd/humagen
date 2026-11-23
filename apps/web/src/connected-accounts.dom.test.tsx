@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { ConnectedAccounts, LinkedPeople } from "./ConnectedAccounts.tsx";
 import { Connections } from "./Connections.tsx";
 import type { ConnectionPreset } from "./connectionApi.ts";
+import { signInAddress, takeConsentReturn } from "./consentReturn.ts";
 import { stubFetch } from "./dom.ts";
 
 let net: ReturnType<typeof stubFetch> | undefined;
@@ -157,6 +158,55 @@ test("the consent's return completes the link with its state and code", async ()
   assert.deepEqual(sent?.body, { state: "s1", code: "c1" });
   // The code is gone from the address before anything else reads it.
   assert.equal(window.location.search, "");
+});
+
+test("the consent's return leaves the address before the console draws, and is completed once", async () => {
+  let posts = 0;
+  net = page(() => [posts ? linkedGitHub : github()], {
+    "POST /api/connections/github-account/callback": () => {
+      posts++;
+      return undefined;
+    },
+  });
+  sessionStorage.setItem("humagen.connection.provider", "github-account");
+  window.history.replaceState(null, "", "/connections/callback?state=s1&code=c1&installation_id=9");
+  const before = window.history.length;
+  takeConsentReturn(window);
+  // Nothing drawn yet, and the address already holds no authorization.
+  assert.equal(window.location.pathname, "/connections");
+  assert.equal(window.location.search, "");
+  assert.equal(window.history.length, before);
+  render(<Connections />);
+  await screen.findByText("@octocat");
+  const sent = net.seen.filter((r) => r.path === "/api/connections/github-account/callback");
+  assert.deepEqual(
+    sent.map((r) => r.body),
+    [{ state: "s1", code: "c1", installation_id: "9" }],
+  );
+  cleanup();
+  // Drawn again, nothing is completed a second time.
+  render(<Connections />);
+  await screen.findByText("@octocat");
+  assert.equal(posts, 1);
+});
+
+test("signing in again does not carry a consent's return", () => {
+  assert.equal(
+    signInAddress({
+      pathname: "/connections/callback",
+      search: "?state=s1&code=c1&iss=x&error=denied",
+    }),
+    `/auth/login?return_to=${encodeURIComponent("/connections/callback")}`,
+  );
+  assert.equal(
+    signInAddress({ pathname: "/connections/callback", search: "?code=c1&view=x" }),
+    `/auth/login?return_to=${encodeURIComponent("/connections/callback")}`,
+  );
+  // Any other page comes back as it was.
+  assert.equal(
+    signInAddress({ pathname: "/sessions", search: "?state=open" }),
+    `/auth/login?return_to=${encodeURIComponent("/sessions?state=open")}`,
+  );
 });
 
 test("a claim another person holds is said on the page", async () => {

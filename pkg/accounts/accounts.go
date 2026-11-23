@@ -22,6 +22,7 @@ import (
 	"errors"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/urmzd/humagen/pkg/state"
 )
@@ -167,7 +168,7 @@ func (s *Store) Of(tenant, surface, subject string) (Account, error) {
 // user again refreshes its login and avatar. Linking in another Slack team
 // leaves the first team's link alone.
 func (s *Store) Link(tenant string, a Account) (Account, error) {
-	if s == nil || !valid(tenant, a.Surface, a.Team, a.ID) || a.Subject == "" || len(a.Subject) > 200 || len(a.Login) > 200 || len(a.Avatar) > 2048 {
+	if s == nil || !valid(tenant, a.Surface, a.Team, a.ID) || a.Subject == "" || len(a.Subject) > 200 || utf8.RuneCountInString(a.Login) > 200 || len(a.Login) > 800 || len(a.Avatar) > 2048 {
 		return Account{}, ErrInvalid
 	}
 	err := state.Retry(func() error {

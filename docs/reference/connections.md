@@ -53,9 +53,9 @@ callback ◀───────  code + state                    ◀─── 
 
 | Step | What holds |
 |------|------------|
-| Start | `POST /api/connections/{provider}/authorize`, from the person's browser session only: a call with a bearer token, and one an agent or the MCP endpoint dispatched, is refused with 403. The answer is the provider's consent address with a `state` of 32 random bytes and a PKCE challenge (S256). The browser is given an HttpOnly cookie, one per provider, that the consent is bound to. A person has one pending consent per provider, good for 10 minutes; starting again replaces it |
-| Return | The provider redirects to `redirect_url`, which is configuration. The console removes `code` and `state` from the address, shows Connections, and posts them to `POST /api/connections/{provider}/callback` |
-| Finish | The consent is completed only by the person who started it, in the browser that started it, once, before it expires. Anything else is refused and links nothing. The code is exchanged with the application's client id and secret and the PKCE verifier |
+| Start | `POST /api/connections/{provider}/authorize`, from the person's browser session only: a call with a bearer token, and one an agent or the MCP endpoint dispatched, is refused with 403. The answer is the provider's consent address with a `state` of 32 random bytes and a PKCE challenge (S256); GitHub's also asks for the account choice (`prompt=select_account`), and Slack's carries no prompt, since Slack documents none for it. The browser is given an HttpOnly cookie, one per provider, that the consent is bound to. A person has one pending consent per provider, good for 10 minutes; starting again replaces it |
+| Return | The provider redirects to `redirect_url`, which is configuration. The console takes `code` and `state` from the address before anything else runs and puts `/connections` there, then posts them to `POST /api/connections/{provider}/callback`. A person signed out on the callback page signs in and comes back to it with none of its query, and starts again |
+| Finish | The consent is completed only by the person who started it, in the browser that started it, once, before it expires. A callback for it from anywhere else (another person, another browser, no link cookie, a bearer token or a dispatched call) is refused and ends the consent, and is logged and audited; the state then completes nothing, and the person starts again. The code is exchanged with the application's client id and secret and the PKCE verifier |
 | Identity | One read with the new token: `GET /user` on GitHub, `openid.connect.userInfo` on Slack, of at most 1 MiB. The token is not written anywhere, logged or returned. A GitHub answer that is not a user, and a Slack team that none of the workspace's enabled Slack clients is in, are refused |
 | Record | The surface's user id (and on Slack the team id) beside the person's subject, in the person's workspace |
 
@@ -90,7 +90,9 @@ Linking is off until all of this is set. Each surface is on by itself.
 
 A surface with no client is not offered: its row is not shown. A client id
 from the environment with no secret, or a secret that cannot be read, stops
-the server at start.
+the server at start. A client secret with no client id, a variable the
+spec's own app replaces, and any of them with no `connections` block are not
+read, and the server says so once at start.
 
 Tested with stand-ins for GitHub and Slack. A real GitHub or Slack consent
 has not been exercised.

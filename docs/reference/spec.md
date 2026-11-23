@@ -1592,7 +1592,8 @@ known, and off otherwise:
 
 The environment's pair is read only with a `connections` block, and the
 secret through `env:`, never stored. A client id set with no secret, or a
-secret that cannot be read, stops the server. `HUMAGEN_SLACK_OAUTH_CLIENT_SECRET`
+secret that cannot be read, stops the server; a secret set with no id, or a
+variable the spec's app replaces, is not read, with a warning at start. `HUMAGEN_SLACK_OAUTH_CLIENT_SECRET`
 is the Slack app's own client secret, from Slack; it is not
 `HUMAGEN_SLACK_CLIENT_SECRET`, which the example above uses for the secret the
 Slack app signs in to Humagen with (`surfaces.slack.humagen_client`).

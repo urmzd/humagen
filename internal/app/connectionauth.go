@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"log/slog"
 
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/connectionauth"
@@ -30,13 +31,22 @@ func RedirectURL(system spec.System) string {
 	return system.Spec.Connections.Redirect(system.Spec.Server.PublicURL)
 }
 
-func connectionAuthorization(ctx context.Context, system spec.System, keys credref.Resolver, env func(string) string) (*connectionauth.Config, error) {
-	settings := system.Spec.Connections
-	if settings == nil {
-		return nil, nil
-	}
+func connectionAuthorization(ctx context.Context, system spec.System, keys credref.Resolver, env func(string) string, log *slog.Logger) (*connectionauth.Config, error) {
 	if env == nil {
 		env = func(string) string { return "" }
+	}
+	if log == nil {
+		log = slog.New(slog.DiscardHandler)
+	}
+	settings := system.Spec.Connections
+	if settings == nil {
+		for _, name := range []string{EnvGitHubClientID, EnvGitHubClientSecret, EnvSlackClientID, EnvSlackClientSecret} {
+			if env(name) != "" {
+				log.Warn("connections: account linking is off: the spec has no connections block, so the environment's OAuth clients are not read", "variable", name)
+				break
+			}
+		}
+		return nil, nil
 	}
 	encoded, err := keys.Resolve(ctx, settings.EncryptionKey.Ref)
 	if err != nil {
@@ -95,6 +105,25 @@ func connectionAuthorization(ctx context.Context, system spec.System, keys credr
 		{name: platform.GitHubAccount, idEnv: EnvGitHubClientID, secretEnv: EnvGitHubClientSecret},
 		{name: platform.SlackAccount, idEnv: EnvSlackClientID, secretEnv: EnvSlackClientSecret},
 	} {
+		declared := link.name == platform.GitHubAccount && settings.GitHub != nil || link.name == platform.SlackAccount && settings.Clients["slack"].ClientID != ""
+		if declared {
+			// The spec's app is used; a variable it does not itself name is
+			// not read.
+			var id, ref string
+			if link.name == platform.GitHubAccount {
+				id, ref = settings.GitHub.ClientID, refOf(settings.GitHub.ClientSecret)
+			} else {
+				id, ref = settings.Clients["slack"].ClientID, refOf(settings.Clients["slack"].ClientSecret)
+			}
+			if v := env(link.idEnv); v != "" && v != id {
+				log.Warn("connections: the spec declares this app's OAuth client, so the variable is not read", "variable", link.idEnv)
+			}
+			if env(link.secretEnv) != "" && ref != "env:"+link.secretEnv {
+				log.Warn("connections: the spec declares this app's OAuth client, so the variable is not read", "variable", link.secretEnv)
+			}
+		} else if env(link.idEnv) == "" && env(link.secretEnv) != "" {
+			log.Warn("connections: account linking is off for this surface: the client secret is set without its client id", "secret", link.secretEnv, "missing", link.idEnv)
+		}
 		switch {
 		case link.name == platform.GitHubAccount && settings.GitHub != nil:
 			link.id, link.ref = settings.GitHub.ClientID, settings.GitHub.ClientSecret
@@ -123,4 +152,12 @@ func connectionAuthorization(ctx context.Context, system spec.System, keys credr
 		config.Providers = append(config.Providers, provider)
 	}
 	return config, nil
+}
+
+// refOf is a reference's text, empty for none.
+func refOf(r *spec.Ref) string {
+	if r == nil {
+		return ""
+	}
+	return r.Ref
 }

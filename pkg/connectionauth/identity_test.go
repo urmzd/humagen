@@ -77,31 +77,48 @@ func TestABoundConsentIsCompletedOnceByWhoBeganItAndKeepsNothing(t *testing.T) {
 	if first == second || len(second) < 43 {
 		t.Fatalf("states %q and %q", first, second)
 	}
-	other := begin("ana", "two", "browser-a")
-	refused := []struct {
-		why                                    string
-		tenant, person, provider, nonce, bound string
-	}{
-		{"the state a later start replaced", "tenant", "ana", "one", first, "browser-a"},
-		{"another provider's state", "tenant", "ana", "one", other, "browser-a"},
-		{"this state at another provider", "tenant", "ana", "two", second, "browser-a"},
-		{"another person", "tenant", "bob", "one", second, "browser-a"},
-		{"another tenant", "elsewhere", "ana", "one", second, "browser-a"},
-		{"another browser", "tenant", "ana", "one", second, "browser-b"},
-		{"a state longer than any made here", "tenant", "ana", "one", second + strings.Repeat("x", maxState), "browser-a"},
-	}
-	for _, r := range refused {
-		if _, err := m.CompleteIdentity(ctx, r.tenant, r.person, r.provider, r.nonce, "code", "user", r.bound); !errors.Is(err, ErrInvalid) {
+	// A state a later start replaced, one longer than any made here, and one
+	// presented in another workspace name nothing and leave the consent be.
+	for _, r := range []struct{ why, tenant, nonce string }{
+		{"the state a later start replaced", "tenant", first},
+		{"a state longer than any made here", "tenant", second + strings.Repeat("x", maxState)},
+		{"another tenant", "elsewhere", second},
+	} {
+		if _, err := m.CompleteIdentity(ctx, r.tenant, "ana", "one", r.nonce, "code", "user", "browser-a"); !errors.Is(err, ErrInvalid) {
 			t.Fatalf("%s: %v", r.why, err)
 		}
 	}
-	if _, err := m.CompleteIdentity(ctx, "tenant", "ana", "one", second, "code", "user", ""); !errors.Is(err, ErrInvalid) {
-		t.Fatalf("no binding: %v", err)
+	// A callback that does not match its consent ends it: the right callback
+	// after it completes nothing.
+	ended := []struct {
+		why                     string
+		person, provider, bound string
+	}{
+		{"this state at another provider", "ana", "two", "browser-a"},
+		{"another person", "bob", "one", "browser-a"},
+		{"another browser", "ana", "one", "browser-b"},
+		{"no browser secret", "ana", "one", ""},
 	}
-	// The call that keeps a credential does not take a bound consent.
-	if err := m.Complete(ctx, "tenant", "ana", "one", second, "code"); !errors.Is(err, ErrInvalid) {
+	for _, r := range ended {
+		nonce := begin("ana", "one", "browser-a")
+		if _, err := m.CompleteIdentity(ctx, "tenant", r.person, r.provider, nonce, "code", "user", r.bound); !errors.Is(err, ErrConsentEnded) {
+			t.Fatalf("%s: %v", r.why, err)
+		}
+		if _, err := m.CompleteIdentity(ctx, "tenant", "ana", "one", nonce, "code", "user", "browser-a"); !errors.Is(err, ErrInvalid) {
+			t.Fatalf("after %s, the right callback: %v", r.why, err)
+		}
+	}
+	other := begin("ana", "two", "browser-a")
+	if _, err := m.CompleteIdentity(ctx, "tenant", "ana", "one", other, "code", "user", "browser-a"); !errors.Is(err, ErrConsentEnded) {
+		t.Fatalf("another provider's state: %v", err)
+	}
+	other = begin("ana", "two", "browser-a")
+	// The call that keeps a credential ends a bound consent it is given.
+	second = begin("ana", "one", "browser-a")
+	if err := m.Complete(ctx, "tenant", "ana", "one", second, "code"); !errors.Is(err, ErrConsentEnded) {
 		t.Fatalf("a bound consent completed as a connection: %v", err)
 	}
+	second = begin("ana", "one", "browser-a")
 	if exchanges.Load() != 0 || reads.Load() != 0 {
 		t.Fatalf("a refused callback reached the provider: %d exchanges, %d reads", exchanges.Load(), reads.Load())
 	}
@@ -148,5 +165,9 @@ func TestABoundConsentIsCompletedOnceByWhoBeganItAndKeepsNothing(t *testing.T) {
 	}
 	if exchanges.Load() != 1 {
 		t.Fatalf("%d exchanges", exchanges.Load())
+	}
+	// No consent is pending, so no state index is left.
+	if rows, _, err = state.NewTable[string](store, "connection_oauth").List("tenant", state.Query{Prefix: "state/", Limit: 100}); err != nil || len(rows) != 0 {
+		t.Fatalf("state indexes left: %d %v", len(rows), err)
 	}
 }
