@@ -3,6 +3,7 @@ package github
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -108,6 +109,34 @@ func TestLastPageReadsOnlyAPageNumber(t *testing.T) {
 	} {
 		if got := lastPage(link); got != want {
 			t.Errorf("lastPage(%q) = %d, want %d", link, got, want)
+		}
+	}
+}
+
+// Comments deleted between page 1 and the last page leave the pages apart:
+// an empty last page, or a short page before it, is ErrCommentsChanged, never
+// a read of no comments or of too few.
+func TestCommentsDeletedWhileReadAreAChange(t *testing.T) {
+	for name, sizes := range map[string]map[int]int{
+		"an empty last page":        {1: 30, 4: 0},
+		"a short page before it":    {1: 30, 4: 2, 3: 10},
+		"a last page gone entirely": {1: 30},
+	} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+			// Page 1 was read when there were four pages.
+			w.Header().Set("Link", `<https://api.github.com/x?per_page=30&page=4>; rel="last"`)
+			out := []map[string]any{}
+			for i := 0; i < sizes[page]; i++ {
+				out = append(out, map[string]any{"id": page*100 + i, "body": "x", "user": map[string]any{"login": "ana"}})
+			}
+			_ = json.NewEncoder(w).Encode(out)
+		}))
+		api := &HTTPAPI{base: srv.URL, http: srv.Client()}
+		got, err := api.LatestComments(context.Background(), Ref{Owner: "acme", Repo: "repo", Number: 7}, 5, func(ContextComment) bool { return true })
+		srv.Close()
+		if !errors.Is(err, ErrCommentsChanged) || got != nil {
+			t.Errorf("%s: %d comments, %v; want ErrCommentsChanged", name, len(got), err)
 		}
 	}
 }

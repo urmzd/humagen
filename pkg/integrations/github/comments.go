@@ -3,6 +3,7 @@ package github
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -21,6 +22,11 @@ type CommentsAPI interface {
 	LatestComments(ctx context.Context, ref Ref, want int, keep func(ContextComment) bool) ([]ContextComment, error)
 }
 
+// ErrCommentsChanged reports comments deleted while they were read, so the
+// pages no longer meet: the caller keeps what it read before and says the
+// latest may be missing.
+var ErrCommentsChanged = errors.New("github comments: changed while read")
+
 // commentsPage is how many comments one page holds, as ReadContext asks.
 const commentsPage = 30
 
@@ -35,7 +41,8 @@ var commentsRepo = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9
 // LatestComments reads GET /repos/{owner}/{repo}/issues/{n}/comments, which
 // GitHub lists oldest first: page 1, then the page its Link header names
 // rel="last", then the one before that when the last page is short of want
-// kept comments. The Link header gives only a page number; the request
+// kept comments. A last page that comes back empty, or a page before it that
+// is not full, means comments were deleted meanwhile: ErrCommentsChanged. The Link header gives only a page number; the request
 // is always built here, never taken from the header.
 func (a *HTTPAPI) LatestComments(ctx context.Context, ref Ref, want int, keep func(ContextComment) bool) ([]ContextComment, error) {
 	if !commentsRepo.MatchString(ref.Owner+"/"+ref.Repo) || ref.Repo == "." || ref.Repo == ".." || ref.Number <= 0 {
@@ -48,6 +55,11 @@ func (a *HTTPAPI) LatestComments(ctx context.Context, ref Ref, want int, keep fu
 	tail, _, err := a.commentsPage(ctx, ref, last)
 	if err != nil {
 		return nil, err
+	}
+	if len(tail) == 0 {
+		// Comments were deleted since page 1 named its last page: the latest
+		// are not known, and an empty page must not read as none.
+		return nil, fmt.Errorf("%w: page %d of %s is empty", ErrCommentsChanged, last, ref)
 	}
 	kept := 0
 	for _, c := range tail {
@@ -62,6 +74,9 @@ func (a *HTTPAPI) LatestComments(ctx context.Context, ref Ref, want int, keep fu
 	if last-1 > 1 {
 		if before, _, err = a.commentsPage(ctx, ref, last-1); err != nil {
 			return nil, err
+		}
+		if len(before) < commentsPage {
+			return nil, fmt.Errorf("%w: page %d of %s is short", ErrCommentsChanged, last-1, ref)
 		}
 	}
 	return append(before, tail...), nil

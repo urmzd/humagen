@@ -7,8 +7,11 @@ import (
 	"encoding/hex"
 	"net/http"
 	"net/http/httptest"
+	"runtime"
+	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/urmzd/saige/agent/agenttest"
@@ -26,7 +29,7 @@ import (
 // sends every request to "reviewer", which reads the place with get_context,
 // asks "helper" to summarize, and answers. post delivers a comment that asks
 // @humagen on acme/repo's issue or pull request number.
-func githubAsked(t *testing.T) (p *platform.Platform, c *cast, fake *github.Fake, post func(delivery string, number int, pull bool)) {
+func githubAsked(t *testing.T) (p *platform.Platform, c *cast, fake *latestFake, post func(delivery string, number int, pull bool)) {
 	t.Helper()
 	f := &fakes{}
 	c = &cast{
@@ -45,7 +48,13 @@ func githubAsked(t *testing.T) (p *platform.Platform, c *cast, fake *github.Fake
 		spawn: map[string][]string{"reviewer": {"helper"}},
 	}
 	cfg := f.config()
-	cfg.GitHubAPI = func(token string) github.API { return latestFake{f.githubFor(token)} }
+	fake = &latestFake{Fake: f.githubFor("token-acme-gh")}
+	cfg.GitHubAPI = func(token string) github.API {
+		if token == "token-acme-gh" {
+			return fake
+		}
+		return f.githubFor(token)
+	}
 	cfg.PublicURL = "https://console.example/"
 	cfg.Limits = call.Limits{MaxDepth: 2, MaxFanOut: 4}
 	p = stage(t, c, cfg)
@@ -59,7 +68,6 @@ func githubAsked(t *testing.T) (p *platform.Platform, c *cast, fake *github.Fake
 		},
 		Token: clients.SecretInput{Value: "token-acme-gh"}, SigningSecret: clients.SecretInput{Value: "secret-acme-gh"},
 	})
-	fake = f.githubFor("token-acme-gh")
 	t.Cleanup(func() {
 		if t.Failed() {
 			for _, r := range p.Runs.List(tenant, 20) {
@@ -120,13 +128,49 @@ func githubAsked(t *testing.T) (p *platform.Platform, c *cast, fake *github.Fake
 }
 
 // latestFake is the fake GitHub with CommentsAPI, as the HTTP API has it:
-// the last page of comments, and the one before it.
-type latestFake struct{ *github.Fake }
+// the last page of comments, and the one before it. It records the pages
+// of context read and the comment reads, so a test can tell the comments
+// read alone from every page of context read again.
+type latestFake struct {
+	*github.Fake
+	mu     sync.Mutex
+	pages  []int
+	latest int
+}
 
-func (f latestFake) LatestComments(ctx context.Context, ref github.Ref, _ int, _ func(github.ContextComment) bool) ([]github.ContextComment, error) {
+func (f *latestFake) ReadContext(ctx context.Context, ref github.Ref, page int) (github.Context, error) {
+	if fromGetContext() {
+		f.mu.Lock()
+		f.pages = append(f.pages, page)
+		f.mu.Unlock()
+	}
+	return f.Fake.ReadContext(ctx, ref, page)
+}
+
+// fromGetContext reports whether get_context's GitHub resolver is reading:
+// the connector's own review sink pages through context too, and its reads
+// are not what this test counts.
+func fromGetContext() bool {
+	pc := make([]uintptr, 64)
+	frames := runtime.CallersFrames(pc[:runtime.Callers(2, pc)])
+	for {
+		fr, more := frames.Next()
+		if strings.Contains(fr.Function, "(*Platform).githubContext") {
+			return true
+		}
+		if !more {
+			return false
+		}
+	}
+}
+
+func (f *latestFake) LatestComments(ctx context.Context, ref github.Ref, _ int, _ func(github.ContextComment) bool) ([]github.ContextComment, error) {
+	f.mu.Lock()
+	f.latest++
+	f.mu.Unlock()
 	var before, last []github.ContextComment
 	for page := 1; ; page++ {
-		read, err := f.ReadContext(ctx, ref, page)
+		read, err := f.Fake.ReadContext(ctx, ref, page)
 		if err != nil {
 			return nil, err
 		}
@@ -139,6 +183,13 @@ func (f latestFake) LatestComments(ctx context.Context, ref github.Ref, _ int, _
 		}
 	}
 	return append(before, last...), nil
+}
+
+// reads are the pages of context read and how many comment reads were made.
+func (f *latestFake) reads() ([]int, int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.pages), f.latest
 }
 
 // finalComment is the one comment on number once it holds the answer.
@@ -169,7 +220,7 @@ func finalComment(t *testing.T, fake *github.Fake, number int, answer string) gi
 func TestARunAskedOnAPullRequestReadsItAndAnswersWithoutItsTrace(t *testing.T) {
 	p, c, fake, post := githubAsked(t)
 	post("d-pull", 7, true)
-	comment := finalComment(t, fake, 7, "It retries the sink twice.")
+	comment := finalComment(t, fake.Fake, 7, "It retries the sink twice.")
 
 	root, ok := runOf(p, tenant, "reviewer")
 	if !ok {
@@ -178,6 +229,13 @@ func TestARunAskedOnAPullRequestReadsItAndAnswersWithoutItsTrace(t *testing.T) {
 	helper := called(t, p, root.ID, "helper", runs.Completed)
 	if !strings.HasPrefix(helper.Text, "Summarize the change in one line.") || !strings.Contains(helper.Text, "acme/repo#7") {
 		t.Fatalf("the helper's brief does not name the place: %q", helper.Text)
+	}
+
+	// Each get_context read the context once, page 1, and the latest
+	// comments alone: never every page of context again.
+	pages, latest := fake.reads()
+	if latest < 2 || len(pages) < 2 || slices.ContainsFunc(pages, func(n int) bool { return n != 1 }) {
+		t.Errorf("get_context read context pages %v and the latest comments %d times; want page 1 only, and a comment read for each of the two runs", pages, latest)
 	}
 
 	// The helper, asked from the pull request, reads it too.
@@ -234,7 +292,7 @@ func TestARunAskedOnAPullRequestReadsItAndAnswersWithoutItsTrace(t *testing.T) {
 func TestARunAskedOnAnIssueReadsIt(t *testing.T) {
 	_, c, fake, post := githubAsked(t)
 	post("d-issue", 3, false)
-	finalComment(t, fake, 3, "It retries the sink twice.")
+	finalComment(t, fake.Fake, 3, "It retries the sink twice.")
 	var read string
 	for _, sent := range c.requests("reviewer") {
 		if strings.Contains(sent, "The sink drops events") {

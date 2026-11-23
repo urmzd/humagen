@@ -73,7 +73,7 @@ func TestTheLatestCommentsAreReadThroughCommentsAPI(t *testing.T) {
 func TestUnreadLatestCommentsSaySo(t *testing.T) {
 	p := quietPlatform()
 	ref := github.Ref{Owner: "acme", Repo: "repo", Number: 7}
-	for name, reader := range map[string]any{"no CommentsAPI": nil, "a failed read": &commentsStub{err: errors.New("status 502")}} {
+	for name, reader := range map[string]any{"no CommentsAPI": nil, "a failed read": &commentsStub{err: errors.New("status 502")}, "comments deleted meanwhile": &commentsStub{err: github.ErrCommentsChanged}} {
 		got, partial := p.latestComments(context.Background(), reader, ref, notes(1, 30), isPerson(nil))
 		if !partial || len(got) != 30 {
 			t.Fatalf("%s: partial %v, %d comments", name, partial, len(got))
