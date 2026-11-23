@@ -322,8 +322,10 @@ still said in the comment. A structured review renders as described above.
 `get_context` in a session that started on an issue or pull request reads that
 place. It gives the title and state, the description, the five latest comments
 by people, and for a pull request its head, changed files and patches. GitHub
-lists comments oldest first, so later pages are read while each is full, at
-most 10 pages; past that the answer says the latest may be missing. Comments by
+lists comments oldest first, so when the first page is full the latest are
+read from the last page its `Link` header names, and the page before it when
+the last holds too few comments by people: at most three requests. When they
+cannot be read, the answer says the latest may be missing. Comments by
 apps (`[bot]`) and by any login a client of the workspace answers as are left
 out. Each part is cut to a bound, and the whole stays under the tool's 12,000
 characters.

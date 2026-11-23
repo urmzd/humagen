@@ -59,6 +59,7 @@ func (p *Platform) githubContext(ctx context.Context, req ContextRequest) (Conte
 		issue, err := p.GitHubIssue(ctx, req.Tenant, repo, number, page)
 		return issue.Context, err
 	}
+	var reader any
 	if req.Run != "" {
 		api, own, granted := p.runPlaceReader(ctx, req, owner, name, kind, number)
 		if own && !granted {
@@ -66,9 +67,18 @@ func (p *Platform) githubContext(ctx context.Context, req ContextRequest) (Conte
 		}
 		if own {
 			readPage = func(page int) (github.Context, error) { return api.ReadContext(ctx, ref, page) }
+			reader = api
 		}
 	}
-	read, partial, err := readLatest(readPage)
+	read, err := readPage(1)
+	if err == nil && reader == nil {
+		// GitHubIssue read through this client, under the same grants.
+		reader = p.sourceReader(ctx, req.Tenant, owner, name)
+	}
+	partial := false
+	if err == nil {
+		read.Comments, partial = p.latestComments(ctx, reader, ref, read.Comments, isPerson(p.githubLogins(req.Tenant)))
+	}
 	if errors.Is(err, ErrSourceNotFound) || errors.Is(err, ErrSourceInvalid) {
 		return ContextResult{Note: fmt.Sprintf("%s #%d may not be read here: no GitHub client of this workspace is granted %s, or it does not exist.", placeNoun(kind), number, repo)}, nil
 	}
@@ -81,46 +91,42 @@ func (p *Platform) githubContext(ctx context.Context, req ContextRequest) (Conte
 		link = fmt.Sprintf("https://github.com/%s/%s/%d", repo, kind, number)
 	}
 	return ContextResult{
-		Text:    placeRead(read, repo, kind, number, p.githubLogins(req.Tenant), partial, readNonce()),
+		Text:    placeRead(read, repo, kind, number, isPerson(p.githubLogins(req.Tenant)), partial, readNonce()),
 		Sources: []ContextSource{{Title: fmt.Sprintf("%s#%d", repo, number), URL: link}},
 	}, nil
 }
 
-// placeReadPages bounds the pages of comments read to reach the latest.
-const placeReadPages = 10
+// latestComments are an issue's latest comments: page 1's when they are all
+// there are, else the last pages, read by reader's CommentsAPI in at most
+// three requests (GitHub lists comments oldest first, so page 1 is the
+// oldest). partial says the latest may be missing: page 1 was full and the
+// later pages could not be read.
+func (p *Platform) latestComments(ctx context.Context, reader any, ref github.Ref, first []github.ContextComment, person func(github.ContextComment) bool) ([]github.ContextComment, bool) {
+	if len(first) < placeCommentPage {
+		return first, false
+	}
+	api, ok := reader.(github.CommentsAPI)
+	if !ok {
+		return first, true
+	}
+	latest, err := api.LatestComments(ctx, ref, placeReadComments, person)
+	if err != nil {
+		p.log.Warn("platform: the latest comments of a GitHub place could not be read for get_context", "repository", ref.Owner+"/"+ref.Repo, "number", ref.Number, "error", err)
+		return first, true
+	}
+	return latest, false
+}
 
-// placeCommentPage is how many comments GitHub gives on a full page of an
-// issue's comments, which it lists oldest first.
+// placeCommentPage is how many comments GitHub gives on a full page.
 const placeCommentPage = 30
 
-// readLatest reads page 1 of an issue or pull request, then later pages of
-// its comments while each page is full, at most placeReadPages, so the
-// latest comments are the ones kept: GitHub lists them oldest first. The
-// subject and the files are page 1's. partial says the latest comments may
-// not have been reached: the bound was hit, or a later page failed.
-func readLatest(read func(page int) (github.Context, error)) (github.Context, bool, error) {
-	first, err := read(1)
-	if err != nil {
-		return github.Context{}, false, err
+// isPerson reports whether a comment is a person's: not an app's ("[bot]")
+// and not by a login a client of the workspace answers as (own), so not one
+// of Humagen's own answers.
+func isPerson(own map[string]bool) func(github.ContextComment) bool {
+	return func(c github.ContextComment) bool {
+		return c.User.Login != "" && !strings.HasSuffix(c.User.Login, "[bot]") && !own[strings.ToLower(c.User.Login)]
 	}
-	last := first.Comments
-	for page := 2; len(last) >= placeCommentPage; page++ {
-		if page > placeReadPages {
-			return first, true, nil
-		}
-		next, err := read(page)
-		if err != nil {
-			return first, true, nil
-		}
-		if len(next.Comments) == 0 {
-			break
-		}
-		// The page before is kept too, so a short last page still gives
-		// placeReadComments when there are that many.
-		first.Comments = append(slices.Clone(last), next.Comments...)
-		last = next.Comments
-	}
-	return first, false, nil
 }
 
 // githubLogins are the logins the tenant's GitHub clients comment as, by
@@ -185,7 +191,7 @@ func surfaceIsPlace(sf *threads.Surface, client, owner, name, kind string, numbe
 // placeRead is an issue or pull request as get_context gives it: its title
 // and state, its description, its latest comments, and for a pull request
 // its changed files and their patches, bounded, in one data block.
-func placeRead(read github.Context, repo, kind string, number int, own map[string]bool, partial bool, nonce string) string {
+func placeRead(read github.Context, repo, kind string, number int, person func(github.ContextComment) bool, partial bool, nonce string) string {
 	b := newReadBlock(placeReadBudget)
 	what := placeNoun(kind)
 	b.write(fmt.Sprintf("%s %s#%d: %s (%s)\n", what, repo, number, read.Subject.Title, read.Subject.State))
@@ -203,13 +209,13 @@ func placeRead(read github.Context, repo, kind string, number int, own map[strin
 	// as, are left out: they are Humagen's own answers or a bot's.
 	var people []github.ContextComment
 	for _, c := range read.Comments {
-		if c.User.Login != "" && !strings.HasSuffix(c.User.Login, "[bot]") && !own[strings.ToLower(c.User.Login)] {
+		if person(c) {
 			people = append(people, c)
 		}
 	}
 	comments := people[max(0, len(people)-placeReadComments):]
 	if partial {
-		b.write("\nNot every comment could be read, so the latest may be missing; read them with your GitHub tools.\n")
+		b.write("\nOnly the oldest comments could be read, so the latest may be missing; read them with your GitHub tools.\n")
 	}
 	if len(comments) > 0 {
 		b.write("\nLatest comments:\n")

@@ -2,7 +2,10 @@ package platform
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
+	"log/slog"
 	"strings"
 	"testing"
 
@@ -10,61 +13,74 @@ import (
 	"github.com/urmzd/humagen/pkg/threads"
 )
 
-// seededComments is a fake issue acme/repo#7 with n comments by ana, oldest
-// first, as GitHub lists them.
-func seededComments(t *testing.T, n int) (*github.Fake, github.Ref) {
-	t.Helper()
-	fake := github.NewFake()
-	ref := github.Ref{Owner: "acme", Repo: "repo", Number: 7}
-	read := github.Context{Subject: github.ContextSubject{Number: 7, Title: "Busy", State: "open"}}
-	for i := 1; i <= n; i++ {
+// commentsStub is a CommentsAPI over n comments by ana, oldest first, that
+// counts its calls.
+type commentsStub struct {
+	n     int
+	calls int
+	err   error
+}
+
+func (s *commentsStub) LatestComments(_ context.Context, _ github.Ref, want int, _ func(github.ContextComment) bool) ([]github.ContextComment, error) {
+	s.calls++
+	if s.err != nil {
+		return nil, s.err
+	}
+	return notes(max(1, s.n-want-25), s.n), nil
+}
+
+// notes are comments from..to by ana, each saying note-NNN.
+func notes(from, to int) []github.ContextComment {
+	var out []github.ContextComment
+	for i := from; i <= to; i++ {
 		c := github.ContextComment{ID: int64(i), Body: fmt.Sprintf("note-%03d", i)}
 		c.User.Login = "ana"
-		read.Comments = append(read.Comments, c)
+		out = append(out, c)
 	}
-	if err := fake.SeedContext(ref, read); err != nil {
-		t.Fatal(err)
-	}
-	return fake, ref
+	return out
 }
 
-// GitHub lists an issue's comments oldest first, 30 to a page, so the
-// latest are on the last page: they are the ones read, across pages.
-func TestTheLatestCommentsAreReadAcrossPages(t *testing.T) {
-	for _, n := range []int{3, 30, 40, 61, 65} {
-		fake, ref := seededComments(t, n)
-		pages := 0
-		read, partial, err := readLatest(func(page int) (github.Context, error) {
-			pages++
-			return fake.ReadContext(context.Background(), ref, page)
-		})
-		if err != nil || partial {
-			t.Fatalf("%d comments: partial %v, %v", n, partial, err)
+func quietPlatform() *Platform { return &Platform{log: slog.New(slog.NewTextHandler(io.Discard, nil))} }
+
+// Page 1 holds every comment when it is not full: nothing more is read. A
+// full page 1 is the oldest, so the latest are read through CommentsAPI,
+// once, and those are the ones given.
+func TestTheLatestCommentsAreReadThroughCommentsAPI(t *testing.T) {
+	p := quietPlatform()
+	ref := github.Ref{Owner: "acme", Repo: "repo", Number: 7}
+	person := isPerson(nil)
+	stub := &commentsStub{n: 300}
+	if got, partial := p.latestComments(context.Background(), stub, ref, notes(1, 12), person); len(got) != 12 || partial || stub.calls != 0 {
+		t.Fatalf("a short page 1 gave %d comments, partial %v, %d reads", len(got), partial, stub.calls)
+	}
+	got, partial := p.latestComments(context.Background(), stub, ref, notes(1, 30), person)
+	if partial || stub.calls != 1 || got[len(got)-1].ID != 300 {
+		t.Fatalf("a full page 1 gave up to %d, partial %v, %d reads", got[len(got)-1].ID, partial, stub.calls)
+	}
+	text := placeRead(github.Context{Subject: github.ContextSubject{Number: 7, Title: "Busy", State: "open"}, Comments: got}, "acme/repo", "issues", 7, person, partial, "0123456789abcdef01234567")
+	for i := 296; i <= 300; i++ {
+		if !strings.Contains(text, fmt.Sprintf("note-%03d", i)) {
+			t.Errorf("note-%03d, among the latest, was not read", i)
 		}
-		if want := (n / 30) + 1; pages != want {
-			t.Errorf("%d comments took %d reads, want %d", n, pages, want)
-		}
-		text := placeRead(read, "acme/repo", "issues", 7, nil, partial, "0123456789abcdef01234567")
-		for i := max(1, n-placeReadComments+1); i <= n; i++ {
-			if !strings.Contains(text, fmt.Sprintf("note-%03d", i)) {
-				t.Errorf("%d comments: note-%03d, among the latest, was not read:\n%s", n, i, text)
-			}
-		}
-		if n > placeReadComments && strings.Contains(text, fmt.Sprintf("note-%03d", n-placeReadComments)) {
-			t.Errorf("%d comments: an older comment was kept over a latest one", n)
-		}
+	}
+	if strings.Contains(text, "note-295") || strings.Contains(text, "may be missing") {
+		t.Errorf("exactly 300 comments read as partial or kept an older one:\n%s", text)
 	}
 }
 
-// Past the page bound the read says the latest may be missing.
-func TestTooManyCommentsSayTheLatestMayBeMissing(t *testing.T) {
-	fake, ref := seededComments(t, placeReadPages*30+5)
-	read, partial, err := readLatest(func(page int) (github.Context, error) { return fake.ReadContext(context.Background(), ref, page) })
-	if err != nil || !partial {
-		t.Fatalf("partial %v, %v", partial, err)
-	}
-	if text := placeRead(read, "acme/repo", "issues", 7, nil, partial, "0123456789abcdef01234567"); !strings.Contains(text, "the latest may be missing") {
-		t.Fatalf("the read does not say it is partial:\n%s", text)
+// Without CommentsAPI, or when it fails, a full page 1 says the latest may
+// be missing.
+func TestUnreadLatestCommentsSaySo(t *testing.T) {
+	p := quietPlatform()
+	ref := github.Ref{Owner: "acme", Repo: "repo", Number: 7}
+	for name, reader := range map[string]any{"no CommentsAPI": nil, "a failed read": &commentsStub{err: errors.New("status 502")}} {
+		got, partial := p.latestComments(context.Background(), reader, ref, notes(1, 30), isPerson(nil))
+		if !partial || len(got) != 30 {
+			t.Fatalf("%s: partial %v, %d comments", name, partial, len(got))
+		}
+		if text := placeRead(github.Context{Comments: got}, "acme/repo", "issues", 7, isPerson(nil), partial, "0123456789abcdef01234567"); !strings.Contains(text, "the latest may be missing") {
+			t.Fatalf("%s: the read does not say it is partial:\n%s", name, text)
+		}
 	}
 }
 
@@ -77,7 +93,7 @@ func TestTheClientsOwnCommentsAreNotAPersons(t *testing.T) {
 		c.User.Login = who
 		read.Comments = append(read.Comments, c)
 	}
-	text := placeRead(read, "acme/repo", "issues", 7, map[string]bool{"humagen-token": true}, false, "0123456789abcdef01234567")
+	text := placeRead(read, "acme/repo", "issues", 7, isPerson(map[string]bool{"humagen-token": true}), false, "0123456789abcdef01234567")
 	if !strings.Contains(text, "said by ana") || strings.Contains(text, "said by Humagen-Token") || strings.Contains(text, "said by ci[bot]") {
 		t.Fatalf("comments read:\n%s", text)
 	}

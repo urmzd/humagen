@@ -1,6 +1,7 @@
 package platform_test
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
@@ -35,12 +36,16 @@ func githubAsked(t *testing.T) (p *platform.Platform, c *cast, fake *github.Fake
 				tagging("helper", "Summarize the change in one line."),
 				say("It retries the sink twice."),
 			},
-			"helper": {say("Retries the sink.")},
+			"helper": {
+				agenttest.ToolCallResponse("hctx", platform.ToolGetContext, map[string]any{"request": "the diff"}),
+				say("Retries the sink."),
+			},
 		},
-		tools: map[string][]string{"reviewer": {platform.ToolGetContext}},
+		tools: map[string][]string{"reviewer": {platform.ToolGetContext}, "helper": {platform.ToolGetContext}},
 		spawn: map[string][]string{"reviewer": {"helper"}},
 	}
 	cfg := f.config()
+	cfg.GitHubAPI = func(token string) github.API { return latestFake{f.githubFor(token)} }
 	cfg.PublicURL = "https://console.example/"
 	cfg.Limits = call.Limits{MaxDepth: 2, MaxFanOut: 4}
 	p = stage(t, c, cfg)
@@ -114,6 +119,28 @@ func githubAsked(t *testing.T) (p *platform.Platform, c *cast, fake *github.Fake
 	return p, c, fake, post
 }
 
+// latestFake is the fake GitHub with CommentsAPI, as the HTTP API has it:
+// the last page of comments, and the one before it.
+type latestFake struct{ *github.Fake }
+
+func (f latestFake) LatestComments(ctx context.Context, ref github.Ref, _ int, _ func(github.ContextComment) bool) ([]github.ContextComment, error) {
+	var before, last []github.ContextComment
+	for page := 1; ; page++ {
+		read, err := f.ReadContext(ctx, ref, page)
+		if err != nil {
+			return nil, err
+		}
+		if len(read.Comments) == 0 {
+			break
+		}
+		before, last = last, read.Comments
+		if len(read.Comments) < 30 {
+			break
+		}
+	}
+	return append(before, last...), nil
+}
+
 // finalComment is the one comment on number once it holds the answer.
 func finalComment(t *testing.T, fake *github.Fake, number int, answer string) github.FakeComment {
 	t.Helper()
@@ -151,6 +178,15 @@ func TestARunAskedOnAPullRequestReadsItAndAnswersWithoutItsTrace(t *testing.T) {
 	helper := called(t, p, root.ID, "helper", runs.Completed)
 	if !strings.HasPrefix(helper.Text, "Summarize the change in one line.") || !strings.Contains(helper.Text, "acme/repo#7") {
 		t.Fatalf("the helper's brief does not name the place: %q", helper.Text)
+	}
+
+	// The helper, asked from the pull request, reads it too.
+	helperRead := false
+	for _, sent := range c.requests("helper") {
+		helperRead = helperRead || strings.Contains(sent, "Pull request acme/repo#7: Retry the sink (open)")
+	}
+	if !helperRead {
+		t.Errorf("the helper's get_context did not read the root's pull request: %q", c.requests("helper"))
 	}
 
 	var read string
