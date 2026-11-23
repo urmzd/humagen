@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"regexp"
 	"slices"
 	"strings"
 	"unicode/utf8"
@@ -212,20 +213,20 @@ func renderReview(report ReviewReport, t Target, anchored map[string]bool) strin
 	}
 	findings := ordered(report.Findings)
 	var b strings.Builder
-	fmt.Fprintf(&b, "**%s**\n\n%s\n", verdictLine(report.Verdict, findings), prose(report.Summary))
+	fmt.Fprintf(&b, "**%s**\n\n%s\n", verdictLine(report.Verdict, findings), proseIn(report.Summary, t.Repo))
 	if len(report.Comments) > 0 {
 		b.WriteString("\n")
 		for _, comment := range report.Comments {
-			fmt.Fprintf(&b, "- %s\n", prose(comment))
+			fmt.Fprintf(&b, "- %s\n", proseIn(comment, t.Repo))
 		}
 	}
 	for i, f := range findings {
-		fmt.Fprintf(&b, "\n**%d. %s**\n<sub>%s</sub>\n%s\n", i+1, prose(f.Title), findingLabel(f, t), findingText(f))
+		fmt.Fprintf(&b, "\n**%d. %s**\n<sub>%s</sub>\n\n%s\n", i+1, prose(f.Title), findingLabel(f, t), findingText(f, t.Repo))
 		if f.Change != nil && !anchored[f.ID] {
 			fmt.Fprintf(&b, "\n<details><summary>Suggested change</summary>\n\n%s\n\n</details>\n", fenced(*f.Change, f.Location))
 		}
 	}
-	if len(findings) >= 4 {
+	if len(findings) >= tableFrom {
 		fmt.Fprintf(&b, "\n<details><summary>All %d findings</summary>\n\n| # | Finding | Severity | Where |\n| ---: | :--- | :--- | :--- |\n", len(findings))
 		for i, f := range findings {
 			where := "General"
@@ -237,11 +238,10 @@ func renderReview(report ReviewReport, t Target, anchored map[string]bool) strin
 		b.WriteString("\n</details>\n")
 	}
 	if len(findings) > 0 {
-		b.WriteString("\n<details><summary>Evidence</summary>\n")
+		b.WriteString("\n<details><summary>Evidence</summary>\n\n")
 		for i, f := range findings {
-			fmt.Fprintf(&b, "\n**%d. %s**\n", i+1, prose(f.Title))
 			for _, e := range f.Evidence {
-				fmt.Fprintf(&b, "- %s%s\n", prose(e.Observation), evidenceNote(e, report.Format))
+				fmt.Fprintf(&b, "- **%d.** %s%s\n", i+1, proseIn(e.Observation, t.Repo), evidenceNote(e, report.Format, t.Repo))
 			}
 		}
 		b.WriteString("\n</details>\n")
@@ -249,7 +249,7 @@ func renderReview(report ReviewReport, t Target, anchored map[string]bool) strin
 	if len(report.Related) > 0 {
 		var links []string
 		for _, link := range report.Related {
-			links = append(links, linkTo(prose(link.Title), link.URL))
+			links = append(links, repoLink(prose(link.Title), link.URL, t.Repo))
 		}
 		fmt.Fprintf(&b, "\n<sub>Related: %s</sub>\n", strings.Join(links, " · "))
 	}
@@ -363,21 +363,38 @@ func foundByName(s string) string {
 }
 
 // findingText is what is wrong and what to do, as one paragraph.
-func findingText(f ReviewFinding) string {
+func findingText(f ReviewFinding, repo string) string {
 	if strings.TrimSpace(f.Why) == "" {
-		return prose(f.Suggestion)
+		return proseIn(f.Suggestion, repo)
 	}
-	return prose(f.Why) + " " + prose(f.Suggestion)
+	return proseIn(f.Why, repo) + " " + proseIn(f.Suggestion, repo)
+}
+
+// tableFrom is how many findings a review needs before a table of them is
+// worth having under the numbered findings, collapsed.
+const tableFrom = 8
+
+// repoLink links label to dest when dest is in repo. A model's address
+// anywhere else is shown as code beside the label, so a review links to
+// nothing outside the repository it reviews.
+func repoLink(label, dest, repo string) string {
+	if u := webURL(dest); u != "" && repo != "" && strings.HasPrefix(strings.ToLower(dest), strings.ToLower(repo)+"/") {
+		return "[" + label + "](" + u + ")"
+	}
+	if code := codeSpan(dest); code != "" {
+		return label + " " + code
+	}
+	return label
 }
 
 // evidenceNote is how a piece of evidence is sourced: a link, a location
 // in code, or a note that the host could not verify it.
-func evidenceNote(e ReviewEvidence, format string) string {
+func evidenceNote(e ReviewEvidence, format, repo string) string {
 	note := ""
 	switch src := strings.TrimSpace(e.Source); {
 	case src == "" || src == "Unverified evidence":
 	case webURL(src) != "":
-		note = " (" + linkTo("source", src) + ")"
+		note = " (" + repoLink("source", src, repo) + ")"
 	default:
 		note = " (" + codeSpan(src) + ")"
 	}
@@ -439,36 +456,80 @@ func languageOf(path string) string {
 // prose keeps model text inside its own paragraph: whitespace becomes one
 // space, and HTML, links, emphasis and mentions are escaped, so the text
 // cannot change the layout or ping anyone. Inline `code` stays code.
-func prose(s string) string {
+func prose(s string) string { return proseIn(s, "") }
+
+// proseIn is prose for a review of repo (https://github.com/owner/name): a
+// bare address into that repository stays a link, and any other is code.
+func proseIn(s, repo string) string {
 	s = strings.Join(strings.Fields(s), " ")
 	var b strings.Builder
 	for s != "" {
 		open := strings.IndexByte(s, '`')
 		if open < 0 {
-			b.WriteString(escape(s))
+			b.WriteString(text(s, repo))
 			break
 		}
 		closing := strings.IndexByte(s[open+1:], '`')
 		if closing <= 0 {
 			// A lone backtick, or an empty pair, is text.
-			b.WriteString(escape(s[:open+1]))
+			b.WriteString(text(s[:open+1], repo))
 			s = s[open+1:]
 			continue
 		}
-		b.WriteString(escape(s[:open]))
+		b.WriteString(text(s[:open], repo))
 		b.WriteString(codeSpan(s[open+1 : open+1+closing]))
 		s = s[open+1+closing+1:]
 	}
 	return b.String()
 }
 
-var escaper = strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;", "|", "&#124;", "\\", "&#92;", "`", "&#96;", "*", "&#42;", "_", "&#95;", "[", "&#91;", "]", "&#93;", "@", "&#64;", "~", "&#126;")
+// bareURL is an address GitHub would link by itself. Trailing punctuation
+// is the sentence's, not the address's.
+var bareURL = regexp.MustCompile(`(?i)\b(?:https?://|www\.)[^\s<>\[\]()` + "`" + `]*[^\s<>\[\]()` + "`" + `.,;:!?'"]`)
 
-func escape(s string) string { return escaper.Replace(s) }
+// text is model text outside code: a bare address into repo is a link,
+// any other address is code so GitHub links nothing, and the rest is
+// escaped.
+func text(s, repo string) string {
+	var b strings.Builder
+	for {
+		loc := bareURL.FindStringIndex(s)
+		if loc == nil {
+			b.WriteString(escape(s))
+			return b.String()
+		}
+		b.WriteString(escape(s[:loc[0]]))
+		u := s[loc[0]:loc[1]]
+		if dest := webURL(u); repo != "" && dest != "" && strings.HasPrefix(strings.ToLower(u), strings.ToLower(repo)+"/") {
+			b.WriteString("[" + escape(u) + "](" + dest + ")")
+		} else {
+			b.WriteString(codeSpan(u))
+		}
+		s = s[loc[1]:]
+	}
+}
+
+// joiner is the invisible word joiner (U+2060). Put after "@" or "#" it
+// stops GitHub reading a mention, a team mention or a reference to an
+// issue, while the text reads the same. An HTML entity does not: GitHub
+// decodes &#64;name and mentions the person.
+const joiner = "\u2060"
+
+var escaper = strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;", "|", "&#124;", "\\", "&#92;", "`", "&#96;", "*", "&#42;", "_", "&#95;", "[", "&#91;", "]", "&#93;", "~", "&#126;", "@", "@"+joiner, "#", "#"+joiner, " \u2014 ", ", ", "\u2014", ", ")
+
+// ghReference is GH-123, which GitHub links to an issue.
+var ghReference = regexp.MustCompile(`(?i)\bgh-([0-9])`)
+
+// escape keeps text as typed: HTML, links, emphasis, mentions and issue
+// references do nothing, and an em dash reads as a comma.
+func escape(s string) string {
+	s = escaper.Replace(s)
+	return ghReference.ReplaceAllStringFunc(s, func(m string) string { return m[:3] + joiner + m[3:] })
+}
 
 // cell is text for a table cell: prose without code spans, whose pipes
 // would still split the cell.
-func cell(s string) string { return escape(strings.Join(strings.Fields(s), " ")) }
+func cell(s string) string { return text(strings.Join(strings.Fields(s), " "), "") }
 
 // reviewText is kept for the PR guide: text with all markup escaped.
 func reviewText(s string) string { return cell(s) }

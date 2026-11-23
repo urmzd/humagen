@@ -83,6 +83,10 @@ type Config struct {
 	// through connector rebuilds. Replicas must share both.
 	DeliveryState deliverystate.Store
 	DeliveryScope string
+
+	// legacyPosts posts reviews in the layout from before reviews read as
+	// prose, as a deploy of that code did. Tests only.
+	legacyPosts bool
 }
 
 // Connector decorates the transport without introducing another execution path.
@@ -134,6 +138,7 @@ func New(cfg Config) (*Connector, error) {
 	if _, ok := cfg.API.(transport.ReviewAPI); ok && cfg.Login != "" {
 		if _, ok := cfg.API.(transport.ReviewHistoryAPI); ok {
 			if _, ok := cfg.API.(transport.ContextAPI); ok {
+				layouts := newLayouts(cfg)
 				base.Review = func(v transport.View, files []transport.ContextFile) (transport.Review, bool, error) {
 					// A run the host saved as a reply posts no review, whatever
 					// its agent wrote: the host, not the model, chose the shape.
@@ -144,17 +149,39 @@ func New(cfg Config) (*Connector, error) {
 					if !ok || err != nil {
 						return transport.Review{}, err != nil, err
 					}
+					if cfg.legacyPosts {
+						review, err := presentation.LegacyRecoveredReview(report, files, "")
+						return review, true, err
+					}
 					review, err := presentation.NativeReview(report, files, presentation.TargetOf(v.Channel))
+					if err != nil {
+						return transport.Review{}, true, err
+					}
+					// Say which layout this review is posted in before posting it,
+					// so its recovery reproduces it.
+					if err := layouts.mark(v); err != nil {
+						return transport.Review{}, true, err
+					}
 					review.Body += presentation.SessionFooter(sessionLink(cfg, v))
-					return review, true, err
+					return review, true, nil
 				}
 				// The transport calls this only after verifying an existing app-authored
 				// review's immutable payload digest. A historical approval reproduces its
 				// body; it grants no new submission and keeps current evidence checks.
+				// A review posted before reviews read as prose is reproduced in that
+				// layout, so it is receipted and its findings stay mapped.
 				base.RecoverReview = func(v transport.View, files []transport.ContextFile, disposition string) (transport.Review, bool, error) {
 					report, ok, err := reviewOf(cfg, v)
 					if !ok || err != nil {
 						return transport.Review{}, err != nil, err
+					}
+					current, err := layouts.posted(v)
+					if err != nil {
+						return transport.Review{}, true, err
+					}
+					if !current {
+						review, err := presentation.LegacyRecoveredReview(report, files, disposition)
+						return review, true, err
 					}
 					review, err := presentation.RecoveredReview(report, files, presentation.TargetOf(v.Channel), disposition)
 					review.Body += presentation.SessionFooter(sessionLink(cfg, v))

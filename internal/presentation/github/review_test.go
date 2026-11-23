@@ -23,7 +23,7 @@ func TestReviewReadsAsProseInSeverityOrder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"**Two problems worth fixing before merging.**", "Retries can duplicate writes.", "- Scope: inspected", "**1. Duplicate write**\n<sub>Must fix</sub>", "**2. Missing regression**", "**3. Existing ordering**\n<sub>Note</sub>", "<details><summary>Evidence</summary>", "#L42)", "Related: [Idempotency](https://example.test/idempotency)", "<!-- humagen.github.review.v1 verdict=comment errors=1 warnings=1 info=1 -->"} {
+	for _, want := range []string{"**Two problems worth fixing before merging.**", "Retries can duplicate writes.", "- Scope: inspected", "**1. Duplicate write**\n<sub>Must fix</sub>", "**2. Missing regression**", "**3. Existing ordering**\n<sub>Note</sub>", "<details><summary>Evidence</summary>", "(source `https://github.com/acme/repo/blob/abc/retry.go#L42`)", "Related: Idempotency `https://example.test/idempotency`", "<!-- humagen.github.review.v1 verdict=comment errors=1 warnings=1 info=1 -->"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("missing %q in %s", want, body)
 		}
@@ -89,7 +89,9 @@ func TestReviewCellsCannotBreakTheTable(t *testing.T) {
 	if !strings.Contains(body, "a &#124; b") {
 		t.Fatal("pipe not escaped")
 	}
-	r.Findings = append(r.Findings, r.Findings[1], r.Findings[2])
+	for len(r.Findings) < tableFrom {
+		r.Findings = append(r.Findings, r.Findings[1])
+	}
 	body, err = FormatReview(r)
 	if err != nil {
 		t.Fatal(err)

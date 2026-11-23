@@ -4,7 +4,6 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -139,42 +138,11 @@ func TestGoldenGitHubOutput(t *testing.T) {
 	}
 }
 
-// hidden is every HTML comment: machine markers a person never sees.
-var hidden = regexp.MustCompile(`(?s)<!--.*?-->`)
-
-// internalName is an id a person should not see: a run, a session, a tool
-// step, a tool name, or the report's own JSON.
-var internalName = regexp.MustCompile(`\b(?:s|run|tc|step)(?:_|&#95;)[A-Za-z0-9]+\b|github_read_context|github_read_file|file_read|file_list|session_read|"format"\s*:|\{"|humagen\.review\.v2|humagen\.github\.review|found_by|#[a-z]\b`)
-
-// fillers open an answer without saying anything.
-var fillers = []string{"great question", "i'd be happy to", "i would be happy to", "happy to help", "certainly!", "absolutely!", "let me know if", "hope this helps", "as an ai"}
-
 // assertHumanVoice checks what a person sees reads as a colleague wrote
-// it: no em dash, no filler, no internal ids, tool names or JSON, and no
-// wall of emoji. Links (the session's address) and hidden markers are left
-// out of the check.
+// it (VoiceProblems).
 func assertHumanVoice(t *testing.T, body string) {
 	t.Helper()
-	visible := hidden.ReplaceAllString(body, "")
-	visible = regexp.MustCompile(`\]\([^)]*\)`).ReplaceAllString(visible, "]")
-	if strings.Contains(visible, "—") {
-		t.Errorf("an em dash is visible:\n%s", visible)
-	}
-	lower := strings.ToLower(visible)
-	for _, f := range fillers {
-		if strings.Contains(lower, f) {
-			t.Errorf("filler %q is visible", f)
-		}
-	}
-	if m := internalName.FindString(visible); m != "" {
-		t.Errorf("an internal name %q is visible:\n%s", m, visible)
-	}
-	for _, emoji := range []string{"🔴", "🟡", "🔵", "⚠️", "👍", "👎"} {
-		if strings.Contains(visible, emoji) {
-			t.Errorf("emoji %s is visible", emoji)
-		}
-	}
-	if strings.Contains(visible, "## ") {
-		t.Errorf("a heading is visible:\n%s", visible)
+	for _, problem := range VoiceProblems(body) {
+		t.Errorf("%s is visible in:\n%s", problem, body)
 	}
 }

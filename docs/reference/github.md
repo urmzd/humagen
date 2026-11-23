@@ -296,10 +296,11 @@ trigger context.
 
 | Shape | When | What the agent returns |
 | :--- | :--- | :--- |
-| `review` | On a pull request: an [automatic review](#automatic-review), a review requested from the app, or a request that starts by asking for one (`@humagen review`, `@humagen can you re-review this?`) | The fields of a `humagen.review.v2` report, as one JSON object. The host renders and posts it. |
+| `review` | On a pull request: an [automatic review](#automatic-review), a review requested from the app, an [event automation](#event-automations) whose shape is `review`, or a message that is itself a request for one (`@humagen review`, `re-review`, `please review this PR`, `could you review it?`) | The fields of a `humagen.review.v2` report, as one JSON object. The host renders and posts it. |
 | `reply` | Anything else: a question, a follow-up, or anything on an issue | Plain Markdown prose: short paragraphs, code in fences, files linked as `path:line` at the head. |
 
-A question about a review (`why did the review flag line 42?`) is a reply.
+A sentence about a review is a reply: `this review is wrong`, `Review: why is
+this nil?`, `don't review yet`. Quoted lines and code do not count.
 A run from before the host chose has no shape. The built-in `code-reviewer`
 returns a report there only when it was asked to review a change.
 
@@ -321,8 +322,13 @@ and bounds the free text: a summary of at most 1,500 characters, a finding
 title of 150, `why` and `suggestion` of 600 each, at most 10 comments and 8
 pieces of evidence for each finding. A location is a repository path (no
 leading `/`, no `..`, no backtick) and a line range in it. Model text is
-escaped when it is rendered: HTML, links, emphasis and mentions show as typed,
-and only inline `code` stays code.
+escaped when it is rendered: HTML, links and emphasis show as typed, and only
+inline `code` stays code. An invisible word joiner (U+2060) follows each `@`
+and `#`, and sits inside `GH-`, so GitHub turns no `@name`, `@org/team`,
+`#12` or `owner/repo#12` into a mention or a reference; an HTML entity such
+as `&#64;` does not stop GitHub. A bare address is shown as code, and a
+source or related link is a link only into the reviewed repository, so a
+review links nowhere else. An em dash in model text reads as a comma.
 
 ### How a review reads
 
@@ -333,10 +339,12 @@ The host renders every review the same way, from the report:
 2. The summary, in one to three sentences.
 3. Each finding, most urgent first: a bold numbered title, a small label with
    its severity (Must fix, Should fix or Note), its location linked at the
-   reviewed head and the agent that found it, then why it matters and what to
-   do. A finding with no line in the diff shows its change here.
-4. With four findings or more, a compact table of them, collapsed.
-5. The evidence, collapsed. Evidence the host could not verify says so.
+   reviewed head and the agent that found it, a blank line, then why it
+   matters and what to do. A finding with no line in the diff shows its
+   change here.
+4. With eight findings or more, a compact table of them, collapsed.
+5. The evidence, collapsed: each item numbered for its finding, without the
+   finding's title again. Evidence the host could not verify says so.
 6. A hidden marker, `<!-- humagen.review.v2 verdict=… errors=… warnings=… info=… -->`,
    for programs, then the session link.
 
@@ -347,6 +355,7 @@ This change adds retries with backoff to webhook delivery. The loop now loses th
 
 **1. Retry loop drops the final error**
 <sub>Must fix · [`internal/retry/retry.go:45`](https://github.com/acme/webhooks/blob/3f9c…/internal/retry/retry.go#L45) · found by code-reviewer</sub>
+
 After the last failed attempt `Do` returns `nil`, so callers treat a failed delivery as a success. Return `lastErr` when the loop ends.
 ```
 
@@ -691,6 +700,12 @@ person's credentials and use the client's existing home and runtime policy.
 The prompt receives the rule's instructions and bounded repository, issue/PR
 number and head SHA identifiers, never arbitrary text from the webhook.
 
+A rule's `shape` says what its runs answer with (see
+[Reply or review](#reply-or-review)): `review` posts a review, `reply`
+answers in prose. Left out, a rule on `pull_request` reviews and any other
+replies, whatever its instructions say. The console's rule editor does not
+set it yet; set it in the client's configuration or through the API.
+
 Every run is a session, kept and readable in the console. It answers on the
 pull request or issue that triggered it (`github://owner/repo/pull/7` or
 `.../issues/7`), through the GitHub output policy every answer there passes.
@@ -718,7 +733,11 @@ may name the agent that found it (`found_by`, such as `security-reviewer` or
 Agents never approve: an `approve` verdict is posted as a comment,
 `request_changes` as a change request, and a person approves and merges.
 Review recovery uses an app-owned marker and the durable delivery store to
-avoid duplicate reviews.
+avoid duplicate reviews. Before it posts, the host records in the delivery
+store that the review is in the current layout. A review with no record was
+posted by the code from before reviews read as prose, and recovery
+reproduces it in that table layout, so it is still receipted and its
+findings stay mapped.
 
 The host verifies evidence references against recorded tool results and session
 reads before rendering a native review, Slack output, or console history. A

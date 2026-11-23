@@ -19206,6 +19206,7 @@ components:
         conclusion: {type: string, maxLength: 64}
         agent: {type: string}
         instructions: {type: string, maxLength: 16000}
+        shape: {type: string, enum: [review, reply], description: "What the rule's sessions answer with: `review`, a review the host renders and posts on the pull request, or `reply`, plain prose. Left out, a rule on `pull_request` reviews and any other replies."}
         paused: {type: boolean}
         note:
           description: Read-only. What of a rule stored earlier is ignored now, such as a label (labels start nothing). Dropped when the rule is saved.

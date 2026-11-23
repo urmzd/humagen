@@ -207,7 +207,7 @@ func nativeReview(report ReviewReport, files []transport.ContextFile, t Target) 
 		if side == "" {
 			side = "RIGHT"
 		}
-		comment := transport.ReviewComment{FindingID: f.ID, Path: l.Path, Body: lineComment(f), Line: l.Line, Side: side, StartLine: l.StartLine, StartSide: side, Change: f.Change}
+		comment := transport.ReviewComment{FindingID: f.ID, Path: l.Path, Body: lineComment(f, t.Repo), Line: l.Line, Side: side, StartLine: l.StartLine, StartSide: side, Change: f.Change}
 		if !onDiff(comment, r.CommitID, files) {
 			continue
 		}
@@ -232,12 +232,12 @@ func onDiff(comment transport.ReviewComment, commit string, files []transport.Co
 // lineComment is a finding as a colleague leaves it on a line: what is
 // wrong, why it matters and what to do, then its severity and who found
 // it, small. The transport adds the committable suggestion under it.
-func lineComment(f ReviewFinding) string {
+func lineComment(f ReviewFinding, repo string) string {
 	label := severityLabel[f.Severity]
 	if who := foundByName(f.FoundBy); who != "" {
 		label += " · found by " + who
 	}
-	return fmt.Sprintf("**%s**\n%s\n\n<sub>%s</sub>", prose(f.Title), findingText(f), label)
+	return fmt.Sprintf("**%s**\n%s\n\n<sub>%s</sub>", prose(f.Title), findingText(f, repo), label)
 }
 
 // parseAddress reads a run's channel.

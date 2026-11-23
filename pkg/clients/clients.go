@@ -236,10 +236,26 @@ type GitHubAutomation struct {
 	Conclusion   string `json:"conclusion,omitempty"`
 	Agent        string `json:"agent"`
 	Instructions string `json:"instructions"`
-	Paused       bool   `json:"paused"`
+	// Shape is what the rule's runs answer with: "review", a review the
+	// host renders and posts, or "reply", plain prose. Left out, a rule on
+	// pull_request reviews and any other replies (AnswerShape).
+	Shape  string `json:"shape,omitempty"`
+	Paused bool   `json:"paused"`
 	// Note is read-only: what of a rule stored earlier is ignored now. It is
 	// dropped when the rule is saved.
 	Note string `json:"note,omitempty"`
+}
+
+// AnswerShape is what a rule's runs answer with: its Shape, else
+// "review" for a rule on pull_request and "reply" for any other.
+func (a GitHubAutomation) AnswerShape() string {
+	if a.Shape != "" {
+		return a.Shape
+	}
+	if a.Event == "pull_request" {
+		return "review"
+	}
+	return "reply"
 }
 
 // labelAction reports an action that a label change sends. Labels start
@@ -635,6 +651,9 @@ func (c Client) validateGitHub() error {
 		names[a.Name] = true
 		if a.Event != "check_run" && a.Event != "issues" && a.Event != "pull_request" && a.Event != "push" {
 			return bad("unsupported automation event")
+		}
+		if a.Shape != "" && a.Shape != "review" && a.Shape != "reply" {
+			return bad("an automation's shape is review or reply")
 		}
 		if a.Action == "" && a.Event != "push" {
 			return bad("an automation needs an action")

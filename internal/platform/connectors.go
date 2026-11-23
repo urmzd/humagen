@@ -697,7 +697,7 @@ func (s *surface) hand(st *seat, w http.ResponseWriter, r *http.Request, body []
 						Channel: automationChannel(rule, kind, body),
 						Text:    rule.Instructions + "\n\nRepository: " + rule.Repository + "\nEvent: " + kind + clients.AutomationContext(body),
 						At:      time.Now().UTC(),
-						Context: map[string]string{wire.MetaGitHubEvent: kind, wire.MetaGitHubOwner: strings.SplitN(rule.Repository, "/", 2)[0], wire.MetaGitHubRepo: strings.SplitN(rule.Repository, "/", 2)[1]},
+						Context: map[string]string{wire.MetaGitHubEvent: kind, wire.MetaGitHubOwner: strings.SplitN(rule.Repository, "/", 2)[0], wire.MetaGitHubRepo: strings.SplitN(rule.Repository, "/", 2)[1], wire.MetaAnswerShape: rule.AnswerShape()},
 					})
 					for _, raised := range s.stamp(r.Context(), st, tag) {
 						if _, err := s.p.Invoke(r.Context(), raised); err != nil {
