@@ -35,6 +35,8 @@ export {
 export * from "./icons";
 export { localizeTimes, MarkdownHeadingContext, webImpls } from "./impls";
 export {
+  type ActionsExtra,
+  ActionsExtraContext,
   ArtifactOpenContext,
   type ItemActions,
   ItemActionsContext,

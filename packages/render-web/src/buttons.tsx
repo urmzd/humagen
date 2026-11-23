@@ -16,7 +16,7 @@ import {
 import { useGroup } from "./form";
 import { AlertTriangleIcon, ChevronDownIcon, EllipsisIcon, RefreshIcon } from "./icons";
 import { cn } from "./lib/utils.ts";
-import { SuppressContext } from "./meta";
+import { ActionsExtraContext, SuppressContext } from "./meta";
 import { buttonVariants } from "./ui/button.tsx";
 
 export const ActionContext = createContext<ActionHandler>(() => {});
@@ -329,6 +329,7 @@ export function Actions({ children, blockId, confirmChoice }: PrimitiveProps["Ac
   const [pending, setPending] = useState<{ spec: ConfirmSpec; run: () => void } | null>(null);
   const row = useRef<HTMLFieldSetElement>(null);
   const kind = blockId?.split(":")[0];
+  const extra = useContext(ActionsExtraContext)?.(blockId ?? "") ?? null;
 
   const cancel = () => {
     setPending(null);
@@ -340,7 +341,7 @@ export function Actions({ children, blockId, confirmChoice }: PrimitiveProps["Ac
 
   if (kind && suppressed.has(`block:${kind}`)) return null;
   // Same as Slack: a row with nothing in it is left out.
-  if (Children.toArray(children).length === 0) return null;
+  if (Children.toArray(children).length === 0 && !extra) return null;
   return (
     <fieldset
       ref={row}
@@ -364,6 +365,7 @@ export function Actions({ children, blockId, confirmChoice }: PrimitiveProps["Ac
           <ChoiceContext.Provider value={confirmChoice ? { selected, select: setSelected } : null}>
             <FailureRowContext.Provider value={kind === "failure"}>
               {keepSplitsTogether(children)}
+              {extra}
             </FailureRowContext.Provider>
           </ChoiceContext.Provider>
           {confirmChoice && (

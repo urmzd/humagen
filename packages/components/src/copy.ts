@@ -3438,7 +3438,18 @@ export const defaultCopy = {
     /** The menu that holds an alert's lesser actions, such as Snooze. */
     more: "More alert actions",
     markDone: "Mark Done",
+    /** Open a settled alert again, from its menu: Undo is offered only for a moment. */
+    reopen: "Reopen",
     markDoneNamed: (title: string) => `Mark ${title} done`,
+    /** The child session that works on an alert, started by the agent it is about, by its shown name. */
+    fixWith: (agent: string) => `Fix with ${agent}`,
+    /** How many times the same alert was raised on one answer, drawn once. */
+    count: (n: number) => `×${n}`,
+    countLabel: (n: number) => `Raised ${n} times`,
+    /** Above alerts about turns earlier than the ones loaded. */
+    earlier: "Earlier in this session",
+    /** The session header's way to the first alert still waiting. */
+    jump: (n: number) => (n === 1 ? "Go to the open alert" : `Go to the first of ${n} open alerts`),
     /** What an alert's card in a session opens, by the alert's action. */
     open: {
       answer: "Open Question",

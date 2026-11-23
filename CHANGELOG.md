@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.195.0 (2026-11-23)
+
+### Features
+
+- **web**: show session alerts in the transcript as one line each ([5ad5920](https://github.com/urmzd/humagen/commit/5ad5920218616667a9312c5ae0e435bf471b059c))
+
+### Bug Fixes
+
+- **web**: keep a failed answer's alert reachable and reopenable ([1ad867c](https://github.com/urmzd/humagen/commit/1ad867cb8a6dd289894d6b24a851572b3684ce1e))
+- **web**: align settled alert states and keep the repeat count on a phone ([5f1797d](https://github.com/urmzd/humagen/commit/5f1797d35d589b5b8073e51d95e2edfa0d31e996))
+- **web**: fold a failed answer's alert into its card and steady alert lines ([4b8e24c](https://github.com/urmzd/humagen/commit/4b8e24c2371f2c7a3ca2e571268095b737a5209a))
+- **web**: keep alert lines readable on a phone and Undo beside the composer ([692a429](https://github.com/urmzd/humagen/commit/692a4292ca7a4efbf23f18f4f192eda188a25e42))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.194.0...v0.195.0)
+
+
+## 0.194.0 (2026-11-23)
+
+### Features
+
+- **github**: read the place an answer was asked on, and post only the answer ([d30ae93](https://github.com/urmzd/humagen/commit/d30ae93d3f0682cea991498019ee66e54ca77dcb))
+
+### Bug Fixes
+
+- **github**: treat comments deleted mid-read as a change, and count reads in the e2e test ([038f65e](https://github.com/urmzd/humagen/commit/038f65e266e168b9b1f7a3bbe6d44a58b62ebd90))
+- **github**: read the latest comments through the last page, not every page ([2a0fda1](https://github.com/urmzd/humagen/commit/2a0fda14795beb4cbe9f2d73cc140cf2fcf6c00f))
+- **github**: read the latest comments, skip the client's own login, and read through a client only on its own place ([d9bce74](https://github.com/urmzd/humagen/commit/d9bce744dec5b996ab9da63a32b0e4be83945565))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.193.0...v0.194.0)
+
+
 ## 0.193.0 (2026-11-23)
 
 ### Breaking
