@@ -63,6 +63,26 @@ func TestAnAccountLinkIsBoundToTheBrowserThatBeganIt(t *testing.T) {
 	if status, out := dispatch(t.Context(), h, who, "POST", authorize, nil, strings.NewReader(`{}`)); status != http.StatusForbidden {
 		t.Fatalf("a dispatched call began a link: %d %s", status, out)
 	}
+	// A page on another site cannot start, finish or disconnect a link with
+	// the person's cookies.
+	crossSite := func(r *http.Request) {
+		r.Header.Set("Origin", "https://elsewhere.test")
+		r.Header.Set("Sec-Fetch-Site", "cross-site")
+	}
+	for _, c := range []struct{ method, path, body string }{
+		{"POST", authorize, `{}`},
+		{"POST", callback, `{"state":"s","code":"c"}`},
+		{"DELETE", "/api/connections/github-account", ""},
+		{"DELETE", "/api/clients/gh/accounts/42", ""},
+	} {
+		w := call(c.method, c.path, c.body, crossSite)
+		if w.Code != http.StatusForbidden {
+			t.Fatalf("%s %s from another site: %d %s", c.method, c.path, w.Code, w.Body)
+		}
+		for _, ck := range w.Result().Cookies() {
+			t.Fatalf("%s %s from another site set %s", c.method, c.path, ck.Name)
+		}
+	}
 
 	w := call("POST", authorize, `{}`, nil)
 	if w.Code != http.StatusOK {

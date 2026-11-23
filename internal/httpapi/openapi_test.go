@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/urmzd/humagen/pkg/accounts"
 	"go/ast"
 	gotypesconst "go/constant"
 	"go/importer"
@@ -44,6 +43,7 @@ import (
 	"go.yaml.in/yaml/v4"
 
 	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/pkg/accounts"
 	"github.com/urmzd/humagen/pkg/artifacts"
 	"github.com/urmzd/humagen/pkg/audit"
 	"github.com/urmzd/humagen/pkg/auth"
