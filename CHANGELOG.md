@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.200.0 (2026-11-23)
+
+### Features
+
+- **accounts**: a Slack app acts for people who linked their Slack account ([0bf8e9c](https://github.com/urmzd/humagen/commit/0bf8e9cc369b1953e3685eaa9326bb91c378a2aa))
+- **console**: list linked people on the GitHub and Slack app ([cff391c](https://github.com/urmzd/humagen/commit/cff391c84d3ff4c0412db74e78e2926181cc8c1c))
+- **console**: connected accounts, one row per surface ([d742f29](https://github.com/urmzd/humagen/commit/d742f29fbb4645dde9cc6d048d2b5701c8a29346))
+- **accounts**: link GitHub and Slack accounts through OAuth sign-in ([14ffdf3](https://github.com/urmzd/humagen/commit/14ffdf3c93e754ba60b7cc8ba509c2d182acc324))
+
+### Bug Fixes
+
+- **accounts**: a consent's return a tab cannot complete ends its consent ([99f6648](https://github.com/urmzd/humagen/commit/99f664839bfcf00fb96717ee3f8e76d052290338))
+- **connectionauth**: a consent begun again removes only the earlier state index ([4340ab3](https://github.com/urmzd/humagen/commit/4340ab3ee4c156d59eada6f0aa3f2475ed326aa4))
+- **accounts**: a consent is completed only in the browser that began it ([4c778c4](https://github.com/urmzd/humagen/commit/4c778c45b4c8d39c8ed757ae551163c9cc97ef71))
+- **accounts**: linking is configured as a whole and disconnected in the browser ([d01f2f8](https://github.com/urmzd/humagen/commit/d01f2f814df922c6b133ffb819b5637c54f66e29))
+- **console**: give the Set up by hand focus ring room around its text ([d7cc01a](https://github.com/urmzd/humagen/commit/d7cc01a30c84d5f07f3d5596bfdfc038320f7daa))
+- **accounts**: address the security review ([17a3e49](https://github.com/urmzd/humagen/commit/17a3e49fd66ef0a0c792430fb038f766183c590f))
+
+### Misc
+
+- **accounts**: account link routes refuse a request from another site ([b4346fb](https://github.com/urmzd/humagen/commit/b4346fb93059df50f2c96440388fe9f6d1e851d2))
+- **httpapi**: the confinement sweep hides a linked account id ([f29477c](https://github.com/urmzd/humagen/commit/f29477c533cdb54bc3533bb00c808abd09b7b892))
+- **accounts**: cover the link flow, resolution order and the admin list ([e8375ba](https://github.com/urmzd/humagen/commit/e8375badf255d13d1d23212b3d0e980de22ade0d))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.199.1...v0.200.0)
+
+
 ## 0.199.1 (2026-11-23)
 
 ### Bug Fixes
