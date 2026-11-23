@@ -510,15 +510,6 @@ func linkTo(label, dest string) string {
 	return label
 }
 
-// reviewPointer renders a source: a link for a plain web address, code for
-// anything else.
-func reviewPointer(source string) string {
-	if webURL(source) != "" {
-		return linkTo("source", source)
-	}
-	return codeSpan(source)
-}
-
 // RenderReview renders a run snapshot as a comment body. Ordinary text uses the
 // default layout. A structured review shows progress while it streams and the
 // formatted report once the run is terminal; a truncated or invalid report is

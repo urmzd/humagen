@@ -19,13 +19,13 @@ func checkReviewFormat(shape, head, answer string) (evals.Verdict, bool) {
 	if shape != wire.ShapeReview {
 		return evals.Verdict{}, false
 	}
-	v := evals.Verdict{Check: "format", Passed: false, Reason: "A review was asked for, and the answer is not a humagen.review.v2 report"}
+	v := evals.Verdict{Check: "format", Passed: false, Reason: "A review was asked for, and the answer is not a review report"}
 	if len(answer) > onlineFormatBytes {
 		v.Reason = "The review exceeds the format-check size limit"
 		return v, true
 	}
 	report, ok := github.ParseReview(answer, head)
-	if !ok || report.Format != github.ReviewFormatV2 {
+	if !ok {
 		return v, true
 	}
 	if _, err := github.FormatReview(report); err != nil {

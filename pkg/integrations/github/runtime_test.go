@@ -284,7 +284,7 @@ func TestGitHubCollaborationFlowsThroughDurableSandboxAndEgress(t *testing.T) {
 	if len(api.Comments()) != 2 {
 		t.Fatalf("want guide and review, got %+v", api.Comments())
 	}
-	if body := api.Comments()[1].Body; !strings.Contains(body, "🔵 **1 info**") || !strings.Contains(body, "| Level |") || strings.Contains(body, github.ReviewFormat) {
+	if body := api.Comments()[1].Body; !strings.Contains(body, "**One note, nothing blocking.**") || !strings.Contains(body, "<sub>Note") || strings.Contains(body, `"format"`) {
 		t.Fatalf("unformatted review %s", body)
 	}
 	// Signed webhook redelivery joins the same durable run and does not rerun the model.

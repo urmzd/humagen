@@ -287,17 +287,80 @@ with a model available to your configured Anthropic provider, then register it:
 humagen serve -agent-specs examples/github-review/agent.json
 ```
 
-Ordinary questions receive Markdown answers. Reviews return a JSON report with
-`format: "humagen.github.review.v1"`, which the sink converts to Markdown:
-severity counts, summary, comments, an aligned findings table, related concepts,
-and native reaction/mention instructions. Counts are derived from findings.
-Every finding requires a suggestion, observed evidence with a source, and a
-follow-up prompt. The formatter checks completeness, not the truth of claims.
-Reports with missing evidence are visibly rejected rather than shown as clean.
+### Reply or review
+
+The host, not the model, decides what a run on GitHub answers with. It
+chooses when the run starts and saves the choice on the run's tag as
+`answer_shape`, so a retry answers the same way. The model reads it in its
+trigger context.
+
+| Shape | When | What the agent returns |
+| :--- | :--- | :--- |
+| `review` | On a pull request: an [automatic review](#automatic-review), a review requested from the app, or a request that starts by asking for one (`@humagen review`, `@humagen can you re-review this?`) | The fields of a `humagen.review.v2` report, as one JSON object. The host renders and posts it. |
+| `reply` | Anything else: a question, a follow-up, or anything on an issue | Plain Markdown prose: short paragraphs, code in fences, files linked as `path:line` at the head. |
+
+A question about a review (`why did the review flag line 42?`) is a reply.
+A run from before the host chose has no shape. The built-in `code-reviewer`
+returns a report there only when it was asked to review a change.
+
+The model never writes the reviewed commit. The host scopes the report to the
+head it pinned when the run started (the event's head, else its channel's
+`head_sha`, else the head the run read with `github_read_context`), and
+replaces any commit the model wrote. A review with no recorded head is shown
+as needing correction.
+
+Only a run saved as `review` gets the online format check: its answer must be
+a complete review report, else the session is marked for review with the
+reason. A reply is never format-checked, whatever its agent's instructions
+say. A run saved as `reply` posts no native review, even if its agent
+answered with a report.
+
+A report is strict in structure and free in its words. `validateV2` requires a
+title, a verdict, unique finding ids, evidence and a prompt for each finding,
+and bounds the free text: a summary of at most 1,500 characters, a finding
+title of 150, `why` and `suggestion` of 600 each, at most 10 comments and 8
+pieces of evidence for each finding. A location is a repository path (no
+leading `/`, no `..`, no backtick) and a line range in it. Model text is
+escaped when it is rendered: HTML, links, emphasis and mentions show as typed,
+and only inline `code` stays code.
+
+### How a review reads
+
+The host renders every review the same way, from the report:
+
+1. The verdict in words, in bold, such as **Needs changes: one problem to fix
+   before merging.** or **Looks good to merge.**
+2. The summary, in one to three sentences.
+3. Each finding, most urgent first: a bold numbered title, a small label with
+   its severity (Must fix, Should fix or Note), its location linked at the
+   reviewed head and the agent that found it, then why it matters and what to
+   do. A finding with no line in the diff shows its change here.
+4. With four findings or more, a compact table of them, collapsed.
+5. The evidence, collapsed. Evidence the host could not verify says so.
+6. A hidden marker, `<!-- humagen.review.v2 verdict=… errors=… warnings=… info=… -->`,
+   for programs, then the session link.
+
+```markdown
+**Needs changes: one problem to fix before merging.**
+
+This change adds retries with backoff to webhook delivery. The loop now loses the final error, so a failed delivery looks like a success.
+
+**1. Retry loop drops the final error**
+<sub>Must fix · [`internal/retry/retry.go:45`](https://github.com/acme/webhooks/blob/3f9c…/internal/retry/retry.go#L45) · found by code-reviewer</sub>
+After the last failed attempt `Do` returns `nil`, so callers treat a failed delivery as a success. Return `lastErr` when the loop ends.
+```
+
+Each line comment is the finding as a colleague leaves it: the title, why
+and what to do, a small severity label, then the committable suggestion.
+No ids, tool names or JSON are visible. The golden files in
+`internal/presentation/github/testdata/golden` hold a reply and four reviews,
+and their test checks the voice: no em dash, no filler opener, no internal
+id.
 
 Structured output is held while the run streams, then rendered in its existing
 comment. Lifecycle-only routes also render the final report. Ordinary Markdown
-answers retain their streaming behavior.
+answers retain their streaming behavior. The first format,
+`humagen.github.review.v1`, still renders the same way, as a comment.
 
 ### The answer comment
 
@@ -645,15 +708,17 @@ rule: it is the connection's switch (see [Automatic review](#automatic-review)).
 ## Native reviews and feedback
 
 Managed installations submit validated `humagen.review.v2` results as native
-reviews when `github.login` is configured. The reviewed head is pinned; a moved
-head refuses publication. Each applicable finding gets a line comment and an
-optional committable suggestion. Missing diff locations become review-body text.
-Each finding may name the agent that found it (`found_by`, such as
-`security-reviewer` or `security-reviewer#a`), shown on its line comment and in
-the findings table. Agents never approve: an `approve` verdict is
-posted as a comment, `request_changes` as a change request, and a person
-approves and merges. Review recovery uses
-an app-owned marker and the durable delivery store to avoid duplicate reviews.
+reviews when `github.login` is configured, for runs saved as `review` (see
+[Reply or review](#reply-or-review)). The host pins the reviewed head; a moved
+head refuses publication. Each finding on a line of the diff gets a line
+comment and an optional committable suggestion. A finding with no location,
+or one off the diff, stays in the review body with its change. Each finding
+may name the agent that found it (`found_by`, such as `security-reviewer` or
+`security-reviewer#a`); the review shows the agent's name without the label.
+Agents never approve: an `approve` verdict is posted as a comment,
+`request_changes` as a change request, and a person approves and merges.
+Review recovery uses an app-owned marker and the durable delivery store to
+avoid duplicate reviews.
 
 The host verifies evidence references against recorded tool results and session
 reads before rendering a native review, Slack output, or console history. A

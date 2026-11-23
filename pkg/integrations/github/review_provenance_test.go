@@ -59,9 +59,48 @@ func TestReviewHostProjectionPrecedesNativeAndCommentRendering(t *testing.T) {
 					t.Fatalf("comments: %+v", comments)
 				}
 			}
-			if calls == 0 || strings.Contains(body, "fabricated") || !strings.Contains(strings.ToLower(body), "unverified") {
+			if calls == 0 || strings.Contains(body, "fabricated") || !strings.Contains(strings.ToLower(body), "not verified") {
 				t.Fatalf("host projection bypassed: %q calls=%d", body, calls)
 			}
 		})
+	}
+}
+
+// The host pins the reviewed commit from the run's channel: a report the
+// model wrote without one is posted at the pinned head, with the session
+// link under it. A run the host saved as a reply posts no native review,
+// whatever its agent answered.
+func TestNativeReviewIsPinnedByTheHostAndOnlyForARequestedReview(t *testing.T) {
+	for _, asked := range []bool{true, false} {
+		api := transport.NewFake()
+		sha := strings.Repeat("a", 40)
+		proof := transport.Context{}
+		proof.Subject.Head.SHA = sha
+		if err := api.SeedContext(transport.Ref{Owner: "acme", Repo: "repo", Number: 1}, proof); err != nil {
+			t.Fatal(err)
+		}
+		answer := `{"format":"humagen.review.v2","title":"Review","verdict":"comment","summary":"Inspected the change.","findings":[]}`
+		peer, err := github.New(github.Config{API: api, Owners: []string{"acme"}, Tenant: "t", Login: "humagen[bot]", Interval: -1,
+			AsksReview:  func(transport.View) bool { return asked },
+			SessionLink: func(transport.View) string { return "https://humagen.example/sessions/s_1" },
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		target := address.MustParse("github://acme/repo/pull/1?head_sha=" + sha)
+		e := event.Envelope{Tenant: "t", ID: "completed", Run: "run", Seq: 1, Agent: "reviewer", Type: event.TypeCompleted, Time: time.Now(), Channel: target.String(), Data: event.Completed{Text: answer}}
+		if err := peer.Deliver(t.Context(), target, e); err != nil {
+			t.Fatal(err)
+		}
+		reviews := api.SubmittedReviews()
+		if !asked {
+			if len(reviews) != 0 {
+				t.Fatalf("a reply posted a native review: %+v", reviews)
+			}
+			continue
+		}
+		if len(reviews) != 1 || reviews[0].Review.CommitID != sha || !strings.Contains(reviews[0].Review.Body, "**No problems found.**") || !strings.Contains(reviews[0].Review.Body, "[View the session in Humagen ↗](https://humagen.example/sessions/s_1)") {
+			t.Fatalf("native review: %+v", reviews)
+		}
 	}
 }
