@@ -455,8 +455,8 @@ func TestDeliveringTheSameEventsTwiceKeepsOneEditedComment(t *testing.T) {
 	if got := strings.Count(comment.Body, "The retry path posts twice because the handle was lost."); got != 1 {
 		t.Errorf("body contains the answer %d times, want 1:\n%s", got, comment.Body)
 	}
-	if !strings.Contains(comment.Body, "**docs-bot** _(done)_") {
-		t.Errorf("body is not GitHub markdown:\n%s", comment.Body)
+	if !strings.HasPrefix(comment.Body, "The retry path posts twice") || strings.Contains(comment.Body, "**docs-bot**") {
+		t.Errorf("a finished answer is not the answer alone:\n%s", comment.Body)
 	}
 	if !strings.Contains(comment.Body, "[1] [sink.go](https://github.com/urmzd/fiber/blob/main/sink.go)") {
 		t.Errorf("citation is not a markdown footnote:\n%s", comment.Body)

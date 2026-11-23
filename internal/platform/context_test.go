@@ -83,8 +83,8 @@ func TestContextSaysWhyNothingCanBePulled(t *testing.T) {
 		t.Fatal(err)
 	}
 	res, err = p.GetContext(t.Context(), ana, pr.ID, "the failing checks")
-	if err != nil || !strings.Contains(res.Note, "github places here yet") || res.Origin != "github://acme/web/pull/9" {
-		t.Fatalf("a place with no resolver = %+v, %v", res, err)
+	if err != nil || !strings.Contains(res.Note, "may not be read here") || res.Origin != "github://acme/web/pull/9" {
+		t.Fatalf("a GitHub place no client is granted = %+v, %v", res, err)
 	}
 }
 

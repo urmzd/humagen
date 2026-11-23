@@ -28,7 +28,10 @@ type Config struct {
 	FixPullContext   func(context.Context, transport.Ref) (transport.FixPullContext, error)
 	ObserveDelivery  connectors.DeliveryObserver
 	// ReviewText verifies host provenance before native and comment rendering.
-	ReviewText         func(transport.View) (string, error)
+	ReviewText func(transport.View) (string, error)
+	// SessionLink is the console's address of the session a run answers
+	// in, linked under its comment. Nil, or "", links nothing.
+	SessionLink        func(transport.View) string
 	Feedback           connectors.FeedbackHandler
 	ContinueThread     func(address.Address) bool
 	StatusReactions    bool
@@ -122,7 +125,11 @@ func New(cfg Config) (*Connector, error) {
 				v.Text = text
 			}
 		}
-		return presentation.RenderReview(v)
+		link := ""
+		if cfg.SessionLink != nil {
+			link = cfg.SessionLink(v)
+		}
+		return presentation.RenderComment(v, link)
 	}
 	if _, ok := cfg.API.(transport.ReviewAPI); ok && cfg.Login != "" {
 		if _, ok := cfg.API.(transport.ReviewHistoryAPI); ok {
