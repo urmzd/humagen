@@ -29,10 +29,11 @@ type Config struct {
 	// ReviewText verifies host provenance before native and comment rendering.
 	ReviewText func(transport.View) (string, error)
 	// AsksReview reports whether the run v answers for was asked for a
-	// review: the shape the host saved on the run when it started
-	// (wire.ShapeOf). A run asked anything else posts no native review.
-	// Nil asks every run that answers with a review for one.
-	AsksReview func(transport.View) bool
+	// review: the shape the host saved on the run when it started, or a
+	// review its agent started (start_review). A run asked anything else
+	// posts no native review. An error is retried. Nil asks every run that
+	// answers with a review for one.
+	AsksReview func(transport.View) (bool, error)
 	// SessionLink is the console's address of the session a run answers
 	// in, linked under its comment. Nil, or "", links nothing.
 	SessionLink        func(transport.View) string
@@ -142,8 +143,14 @@ func New(cfg Config) (*Connector, error) {
 				base.Review = func(v transport.View, files []transport.ContextFile) (transport.Review, bool, error) {
 					// A run the host saved as a reply posts no review, whatever
 					// its agent wrote: the host, not the model, chose the shape.
-					if cfg.AsksReview != nil && !cfg.AsksReview(v) {
-						return transport.Review{}, false, nil
+					if cfg.AsksReview != nil {
+						asked, err := cfg.AsksReview(v)
+						if err != nil {
+							return transport.Review{}, true, err
+						}
+						if !asked {
+							return transport.Review{}, false, nil
+						}
 					}
 					report, ok, err := reviewOf(cfg, v)
 					if !ok || err != nil {

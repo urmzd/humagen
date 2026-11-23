@@ -81,7 +81,7 @@ func TestNativeReviewIsPinnedByTheHostAndOnlyForARequestedReview(t *testing.T) {
 		}
 		answer := `{"format":"humagen.review.v2","title":"Review","verdict":"comment","summary":"Inspected the change.","findings":[]}`
 		peer, err := github.New(github.Config{API: api, Owners: []string{"acme"}, Tenant: "t", Login: "humagen[bot]", Interval: -1,
-			AsksReview:  func(transport.View) bool { return asked },
+			AsksReview:  func(transport.View) (bool, error) { return asked, nil },
 			SessionLink: func(transport.View) string { return "https://humagen.example/sessions/s_1" },
 		})
 		if err != nil {

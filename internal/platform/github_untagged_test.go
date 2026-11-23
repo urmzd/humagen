@@ -303,7 +303,8 @@ func TestAGitHubRunCarriesTheShapeTheHostChose(t *testing.T) {
 		on       address.Address
 		want     string
 	}{
-		{"gh-review", "@humagen review this please", pull, wire.ShapeReview},
+		{"gh-review", "@humagen review", pull, wire.ShapeReview},
+		{"gh-in-words", "@humagen please review this", pull, wire.ShapeReply},
 		{"gh-question", "why does the retry give up?", pull, wire.ShapeReply},
 		{"gh-issue", "review this please", issue, wire.ShapeReply},
 	} {

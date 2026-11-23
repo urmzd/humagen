@@ -338,6 +338,10 @@ type Platform struct {
 	// renamedProviders notes, once per workspace and name, a stored model
 	// provider name read as the name it was renamed to (readProvider).
 	renamedProviders sync.Map
+	// startedReviews is the runs that turned into a review in this
+	// process (start_review), so a second call does nothing even before
+	// the journal has the first.
+	startedReviews   sync.Map
 	surfaceRecords   *surfaceRecords
 	ConnectionAuth   *connectionauth.Manager
 	GitHubInstall    *githubinstall.Manager

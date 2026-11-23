@@ -123,6 +123,9 @@ func (p *Platform) registerRunTools() error {
 		reads(SystemTool{Name: ToolArtifactRead, Category: read, Run: of(p.artifactReadTool)}),
 		reads(SystemTool{Name: ToolArtifactList, Category: read, Run: of(p.artifactListTool)}),
 		{Name: ToolOutcome, Category: other, Run: file(ToolOutcome)},
+		// A GitHub run that started as a reply becomes a review
+		// (start_review.go).
+		{Name: ToolStartReview, Category: other, Run: acting(p.startReviewTool)},
 		{Name: ToolShell, Category: write, Destructive: true, Run: acting(p.shellTool)},
 
 		// The public web, read from the server (pkg/webtools).

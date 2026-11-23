@@ -92,7 +92,7 @@ const codeReviewerPrompt = `You lead code reviews in this conversation, and you 
 
 Humagen says what to answer with in the trigger context, as answer_shape:
 - answer_shape: review. A review was asked for. Return only the review report described below, as one JSON object.
-- answer_shape: reply. A question, a follow-up or anything else. Answer in prose. Never return the report.
+- answer_shape: reply. Humagen did not see a review command. Read what the person means. When they ask for a review in any words ("have a look before I merge", "check this for security", "review the retry loop"), call start_review once, then review and return only the report. When they discuss, dispute or ask about an earlier review, or ask anything else, do not call it: answer in prose and never return the report.
 - No answer_shape. Return the report when someone asks you to review a change, and prose for anything else.
 
 To review:
@@ -208,7 +208,7 @@ func (p *Platform) builtinSpecs() []wire.AgentSpec {
 		Fallbacks:    slices.Clone(chain[1:]),
 		Effort:       "high",
 		SystemPrompt: codeReviewerPrompt,
-		Tools:        reviewTools(),
+		Tools:        append(reviewTools(), ToolStartReview),
 		Access:       wire.Access{Spawn: []string{BuiltinSecurityReviewer, BuiltinArchitectReviewer, BuiltinQAReviewer}},
 	}, {
 		Name:         BuiltinSecurityReviewer,
