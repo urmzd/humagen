@@ -175,6 +175,27 @@ describe("a failed call a later call recovered", () => {
       ];
       expect(recoveredCalls(calls).size).toBe(0);
     });
+    it("when a write to a path failed and one to the same path in another case succeeded", () => {
+      const calls = [
+        call("a", "write_file", { path: "src/Foo.go" }, refused),
+        call("b", "write_file", { path: "src/foo.go" }),
+      ];
+      expect(recoveredCalls(calls).size).toBe(0);
+    });
+    it("when a file read failed and another file at the same address was read", () => {
+      const at = "github://acme/docs/pull/7";
+      const calls = [
+        call("a", "github_read_file", { address: at, path: "secret.txt" }, refused),
+        call("b", "github_read_file", { address: at, path: "readme.md" }),
+      ];
+      expect(recoveredCalls(calls).size).toBe(0);
+      // The same file read again at that address, spelled another way, recovers it.
+      const again = call("c", "github_read_file", {
+        address: "https://github.com/ACME/docs/pull/7",
+        path: "secret.txt",
+      });
+      expect([...recoveredCalls([...calls, again])]).toEqual(["a"]);
+    });
     it("when a write to one file failed and a write to another succeeded", () => {
       const calls = [
         call("a", "write_file", { path: "a.go" }, refused),

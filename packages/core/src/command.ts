@@ -1,4 +1,4 @@
-import { toolCommand, toolFailed, toolKind, toolTarget } from "./timeline";
+import { toolArgs, toolCommand, toolFailed, toolKind, toolTarget } from "./timeline";
 import type { Task } from "./types";
 
 /**
@@ -69,23 +69,81 @@ export function failedCommands(tasks: readonly Task[]): (CommandResult & { id: s
 /** The tool a call was made to, by name, or its title when the stream gave no name. */
 const toolName = (task: Pick<Task, "tool" | "title">) => task.tool || task.title;
 
+/** The arguments that say what a call acts on; any others (a body, content) do not. */
+const IDENTIFYING = [
+  "address",
+  "url",
+  "owner",
+  "repo",
+  "path",
+  "file",
+  "file_path",
+  "query",
+  "q",
+  "pattern",
+  "name",
+  "ref",
+  "number",
+];
+
+const GITHUB =
+  /^(?:github:\/\/|https?:\/\/github\.com\/)?([\w.-]+)\/([\w.-]+?)(?:\.git)?(?:\/(?:pull|issues)\/(\d+)|#(\d+))?\/?$/i;
+
+/** A GitHub address in one spelling, `owner/repo` or `owner/repo#12`, lower-cased as GitHub treats it. */
+function githubPlace(value: string): string | undefined {
+  const gh = GITHUB.exec(value.trim());
+  if (!gh) return undefined;
+  const n = gh[3] ?? gh[4];
+  return `${gh[1]}/${gh[2]}${n ? `#${n}` : ""}`.toLowerCase();
+}
+
 /**
- * A call's target in one spelling: a GitHub address as `owner/repo` or
- * `owner/repo#12` whichever way it was written (`github://`, a github.com
- * URL, `.git`), lower-cased, without a trailing slash.
+ * What a call acts on: `place`, the GitHub repository or item it names
+ * (from `address` or `url` written any GitHub way, or `owner` and `repo`),
+ * lower-cased; and `rest`, every other identifying argument exactly as
+ * given, so a path or a query keeps its case. Two calls act on the same
+ * thing when both parts are equal.
  */
-function sameTarget(task: Pick<Task, "input">): string | undefined {
-  const t = toolTarget(task);
-  if (!t) return undefined;
-  const gh =
-    /^(?:github:\/\/|https?:\/\/github\.com\/)?([\w.-]+)\/([\w.-]+?)(?:\.git)?(?:\/(?:pull|issues)\/(\d+)|#(\d+))?\/?$/i.exec(
-      t.trim(),
-    );
-  if (gh) {
-    const n = gh[3] ?? gh[4];
-    return `${gh[1]}/${gh[2]}${n ? `#${n}` : ""}`.toLowerCase();
+interface CallTarget {
+  place: string;
+  rest: string;
+}
+
+function callTarget(task: Pick<Task, "input">): CallTarget | undefined {
+  const args = toolArgs(task);
+  if (!args) {
+    const t = toolTarget(task);
+    return t ? { place: "", rest: t.trim() } : undefined;
   }
-  return t.trim().replace(/\/+$/, "").toLowerCase();
+  const value = (k: string) => {
+    const v = args[k];
+    if (typeof v === "string") return v.trim() || undefined;
+    return typeof v === "number" || typeof v === "boolean" ? String(v) : undefined;
+  };
+  let place = "";
+  const used = new Set<string>();
+  for (const k of ["address", "url"]) {
+    const v = value(k);
+    const gh =
+      v && (k === "address" || /^https?:\/\/github\.com\//i.test(v)) ? githubPlace(v) : undefined;
+    if (gh) {
+      place = gh;
+      used.add(k);
+      break;
+    }
+  }
+  const owner = value("owner");
+  const repo = value("repo");
+  if (!place && owner && repo) {
+    place = `${owner}/${repo}`.toLowerCase();
+    used.add("owner").add("repo");
+  }
+  const rest = IDENTIFYING.flatMap((k) => {
+    const v = used.has(k) ? undefined : value(k);
+    return v === undefined ? [] : [[k, v]];
+  });
+  if (!place && rest.length === 0) return undefined;
+  return { place, rest: JSON.stringify(rest) };
 }
 
 /**
@@ -110,17 +168,22 @@ export function recoveredCalls(tasks: readonly Task[]): Set<string> {
     const name = toolName(task);
     const kind = toolKind(task);
     const command = kind === "run" ? toolCommand(task) : undefined;
-    const target = command ?? sameTarget(task);
-    if (!name || !target) continue;
+    const target = callTarget(task);
+    if (!name || (command === undefined && !target)) continue;
     const recovered = tasks.slice(i + 1).some((later) => {
       if (later.status !== "complete" || callFailed(later) || toolName(later) !== name)
         return false;
       if (command !== undefined) return toolCommand(later) === command;
-      const there = sameTarget(later);
-      if (!there) return false;
-      if (there === target) return true;
+      const there = callTarget(later);
+      if (!there || !target || there.rest !== target.rest) return false;
+      if (there.place === target.place) return true;
       // A repository read, narrowed to one of its items by the same tool.
-      return kind === "read" && !target.includes("#") && there.startsWith(`${target}#`);
+      return (
+        kind === "read" &&
+        target.place !== "" &&
+        !target.place.includes("#") &&
+        there.place.startsWith(`${target.place}#`)
+      );
     });
     if (recovered) out.add(task.id);
   }
