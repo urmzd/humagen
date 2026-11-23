@@ -585,7 +585,10 @@ func (s *Store) place(tenantName string, cur Thread, next *head, w *write, at ti
 // moves it in the activity order to match. It is how a record opened for
 // past work (humagen migrate sessions) takes the times of that work, not
 // the time it was opened. It changes nothing else, not even the record's
-// version. An updated time before the created time is the created time.
+// version. An updated time before the created time is the created time,
+// and one before the thread's latest message, read with the record in the
+// same edit, is that message's time: a message posted since the caller
+// read the thread keeps it as active as it is.
 func (s *Store) Redate(tenantName, id string, created, updated time.Time) (Thread, error) {
 	if created.IsZero() || updated.IsZero() {
 		return Thread{}, fmt.Errorf("%w: a thread is dated by two times", ErrInvalid)
@@ -593,20 +596,30 @@ func (s *Store) Redate(tenantName, id string, created, updated time.Time) (Threa
 	if updated.Before(created) {
 		updated = created
 	}
-	changed := false
+	changed, told := false, updated
 	h, err := s.edit(tenantName, id, func(next *head, _ *write) error {
-		if next.CreatedAt.Equal(created) && next.UpdatedAt.Equal(updated) {
-			changed = false
+		changed = false
+		active := updated
+		if next.Head > 0 {
+			m, _, err := s.message(tenantName, id, next.Head)
+			if err != nil {
+				return err
+			}
+			if m.At.After(active) {
+				active = m.At
+			}
+		}
+		if next.CreatedAt.Equal(created) && next.UpdatedAt.Equal(active) {
 			return state.ErrUnchanged
 		}
-		next.CreatedAt, next.UpdatedAt, changed = created, updated, true
+		next.CreatedAt, next.UpdatedAt, changed, told = created, active, true, active
 		return nil
 	})
 	if err != nil {
 		return Thread{}, err
 	}
 	if changed {
-		s.tell(tenantName, Notice{ID: id, At: updated})
+		s.tell(tenantName, Notice{ID: id, At: told})
 	}
 	return h.Thread, nil
 }

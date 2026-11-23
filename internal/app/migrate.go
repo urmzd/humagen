@@ -28,8 +28,9 @@ sessions  files each GitHub run from before GitHub sessions in the session
           of its pull request or issue, the one a mention there opens now,
           private to the people the client maps the askers to, and dated
           from its runs: started when the first was asked, last active
-          when the latest run or message was. A session an earlier
-          backfill dated when it ran is dated from its runs on the next.
+          when the latest run or message was. A session found, whose
+          record was created after the first run filed in it had ended,
+          is dated from its runs too.
           Conversations from before sessions are listed and left as they
           are.
 

@@ -33,9 +33,12 @@ import (
 //
 // A session the backfill opens takes the times of its work: started when
 // its first run was asked, and last active when its latest run or message
-// was. A session an earlier backfill opened with the time it ran, started
-// after its first run had ended, which no mention opens, is dated the same
-// way when the backfill finds it.
+// was. A session the backfill finds is dated the same way when its record
+// was created after the first run filed in it had ended: one an earlier
+// backfill opened with the time it ran, and one a mention opened where
+// older runs are filed too. A session whose first run is the mention that
+// opened it is left as it is, a session whose runs carry no time is
+// reported and not dated, and a deleted session's runs are left.
 //
 // Nothing is written unless apply is set, and a second apply writes
 // nothing: each step finds what the first one did.
@@ -49,6 +52,7 @@ const (
 	BackfillRunBound         = "github run bound to its session"
 	BackfillParticipantAdded = "github participant added"
 	BackfillSessionDated     = "github session dated from its runs"
+	BackfillSessionUndated   = "github session not dated"
 	BackfillRunLeft          = "github run left"
 	BackfillThreadLeft       = "conversation left"
 	BackfillSlackThreadLeft  = "slack conversation left"
@@ -227,6 +231,13 @@ func (p *Platform) backfillGitHubPlace(ctx context.Context, tenant string, apply
 			}
 			return nil
 		}
+		if th.Archive != nil && th.Archive.Deleted != nil {
+			// Its record is kept as a marker and nothing is filed in it.
+			for _, b := range past {
+				rep.add(BackfillRunLeft, b.run.ID, th.ID, "the session of "+first.place+" was deleted")
+			}
+			return nil
+		}
 		id, owner, project = th.ID, th.Session.Agent, th.Project
 		rep.add(BackfillSessionFound, first.place, id, "owned by "+owner)
 	} else {
@@ -365,9 +376,17 @@ func (p *Platform) backfillGitHubPlace(ctx context.Context, tenant string, apply
 			return fmt.Errorf("backfill: bind runs to %s: %w", id, err)
 		}
 	}
-	// A session found is dated only when it was opened after its first run
-	// had ended: a mention opens its session before its run starts.
-	if firstFiled == nil || span.created.IsZero() || (found && !th.CreatedAt.After(firstFiled.UpdatedAt)) {
+	// A session found is dated only when its record was created after the
+	// first run filed in it had ended. A mention opens its session before
+	// its own run starts, so a session whose first run is the mention that
+	// opened it is left as it is; one a mention opened where older runs are
+	// filed too was created after the first of those ended, and is dated
+	// from them.
+	if firstFiled == nil || (found && !th.CreatedAt.After(firstFiled.UpdatedAt)) {
+		return nil
+	}
+	if span.created.IsZero() {
+		rep.add(BackfillSessionUndated, first.place, id, "none of its runs says when it was asked")
 		return nil
 	}
 	detail := "started " + stampOf(span.created) + ", last active " + stampOf(span.updated)
