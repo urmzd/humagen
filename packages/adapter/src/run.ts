@@ -1,4 +1,15 @@
-import type { ArtifactKind, Citation, Failure, Interrupt, Task, Turn, TurnEvent } from "@humagen/core";
+import { defaultCopy } from "@humagen/components/copy";
+import type {
+  ArtifactKind,
+  Citation,
+  Failure,
+  FailureCause,
+  FailureKind,
+  Interrupt,
+  Task,
+  Turn,
+  TurnEvent,
+} from "@humagen/core";
 import type { RunEvent } from "@humagen/client/types";
 import { interruptOf, settledOf, type WireQuestion } from "./question.ts";
 
@@ -654,27 +665,69 @@ export function needsOf(run: Pick<Run, "needs_connection">): NonNullable<Turn["n
   });
 }
 
-/** Classify known failure causes without copying credential paths into user-facing text. */
-export function failureOf(error: string | undefined, reference: string): Failure {
-  const text = error || "";
-  const base = { reference };
+/**
+ * The cause of a run's failure, read from the runtime's error. Specific
+ * causes come first: "durable: max attempts exhausted" wraps the error of the
+ * last attempt, so it names the cause only when nothing under it does. The
+ * strings are humagen's and saige's own (internal/platform/models.go,
+ * agent/types, durable/run, flow/connector, flow/session).
+ */
+export function failureCause(error: string | undefined): FailureCause {
+  const text = error ?? "";
+  if (/needs a model provider/i.test(text)) return "no_model_provider";
   if (/budget|spend limit|insufficient (?:credit|fund)|(?:status|http)[: ]+402/i.test(text))
-    return { ...base, kind: "forbidden", title: "Budget reached", message: "Review the spending limit or provider balance before trying again.", retryable: false };
-  if (/credential|api[_ -]?key|secret reference|unauthorized|(?:status|http)[: ]+401/i.test(text)) {
-    const provider = /anthropic/i.test(text) ? "Anthropic" : /openai/i.test(text) ? "OpenAI" : /gemini|google/i.test(text) ? "Google" : "Model";
-    return { ...base, kind: "forbidden", title: `${provider} credential unavailable`, message: "Ask a workspace operator to check this provider's connection, then try again.", retryable: false };
-  }
-  if (/rate.?limit|too many requests|(?:status|http)[: ]+429/i.test(text))
-    return { ...base, kind: "rate_limited", message: "Wait a moment, then try again." };
-  if (/timed? ?out|deadline exceeded/i.test(text))
-    return { ...base, kind: "timeout", message: "The request took too long. Try again." };
-  if (/permission denied|forbidden|(?:status|http)[: ]+403/i.test(text))
-    return { ...base, kind: "forbidden", message: "The agent does not have access to complete this request.", retryable: false };
+    return "budget";
+  if (/credential|api[_ -]?key|secret reference|unauthorized|(?:status|http)[: ]+401/i.test(text))
+    return "credential";
+  if (/rate.?limit|too many requests|(?:status|http)[: ]+429/i.test(text)) return "rate_limited";
+  if (/timed? ?out|deadline exceeded/i.test(text)) return "timeout";
+  if (
+    /permission denied|access denied|denied by (?:policy|grant)|egress: denied|forbidden|(?:status|http)[: ]+403/i.test(
+      text,
+    )
+  )
+    return "permission_denied";
+  if (/undeliverable/i.test(text)) return "undeliverable";
   if (/unavailable|connection refused|(?:status|http)[: ]+50[234]/i.test(text))
-    return { ...base, kind: "unavailable", message: /connection refused/i.test(text) ? "The service could not be reached (connection refused). Try again shortly." : "The service is unavailable. Try again shortly." };
-  // The engine stops a run whose every tool call failed several turns running.
-  const stuck = /too many consecutive failed tool turns(?::\s*(\d+))?/i.exec(text);
-  if (stuck)
-    return { ...base, kind: "tool_error", title: "Stopped after failed steps", message: `${stuck[1] ? `${stuck[1]} steps` : "Several steps"} in a row failed, so the run stopped. Open the steps above to see why.` };
-  return { ...base, kind: "internal", message: lastLine(error) || "The run failed." };
+    return "unavailable";
+  if (/too many consecutive failed tool turns/i.test(text)) return "failed_steps";
+  if (/max(?:imum)? iterations/i.test(text)) return "max_iterations";
+  if (/max attempts exhausted/i.test(text)) return "max_attempts";
+  return "unknown";
+}
+
+/** How each cause is handled: who can fix it, and whether Retry can help. */
+const CAUSE_KIND: Record<FailureCause, { kind: FailureKind; retryable?: boolean }> = {
+  no_model_provider: { kind: "forbidden", retryable: false },
+  credential: { kind: "forbidden", retryable: false },
+  budget: { kind: "forbidden", retryable: false },
+  rate_limited: { kind: "rate_limited" },
+  permission_denied: { kind: "forbidden", retryable: false },
+  timeout: { kind: "timeout" },
+  unavailable: { kind: "unavailable" },
+  failed_steps: { kind: "tool_error" },
+  max_iterations: { kind: "timeout" },
+  undeliverable: { kind: "unavailable" },
+  max_attempts: { kind: "internal" },
+  unknown: { kind: "internal" },
+};
+
+/** Text that names where a credential is kept, which stays out of every view of a failure. */
+const CREDENTIAL_TEXT = /op:\/\/|1password|credential|api[_ -]?key|secret reference|unauthorized/i;
+
+/**
+ * A run's failure from the runtime's error: its cause, said in plain words
+ * (`copy.runFailure`), with the error itself kept as `detail` for Show
+ * details. An error that names where a credential is kept has no detail.
+ */
+export function failureOf(error: string | undefined, reference: string): Failure {
+  const cause = failureCause(error);
+  const detail = error?.trim();
+  return {
+    ...CAUSE_KIND[cause],
+    cause,
+    message: defaultCopy.runFailure.because[cause],
+    ...(detail && !CREDENTIAL_TEXT.test(detail) ? { detail } : {}),
+    reference,
+  };
 }

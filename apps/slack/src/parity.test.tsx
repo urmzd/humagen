@@ -301,14 +301,22 @@ test("a failed run is the same failure in both", () => {
   const turn = live(events);
   assert.deepEqual(replay(run(), events), turn);
   assert.equal(turn.status, "failed");
+  // The cause is said in plain words; the runtime's own stay in details.
   assert.deepEqual(turn.failure, {
     kind: "internal",
-    message: "provider: 529 overloaded",
+    cause: "unknown",
+    message: defaultCopy.runFailure.because.unknown,
+    detail: "agent: step 2\nprovider: 529 overloaded",
     reference: RUN,
   });
   // Keep the diagnostic reference for explicit reporting, out of the everyday response.
   const failed = <TurnView turn={turn} />;
-  bothSay(failed, defaultCopy.retry, defaultCopy.report);
+  bothSay(failed, defaultCopy.retry, defaultCopy.report, defaultCopy.runFailure.because.unknown);
+  // Neither says the runtime's words in the answer: the console folds them
+  // behind Show details, and Slack, with nowhere to fold them, leaves them out.
+  assert.equal(web(failed).includes("529 overloaded"), false);
+  assert.equal(slackVisibleText(failed).includes("529 overloaded"), false);
+  assert.equal(web(failed).includes(defaultCopy.conversation.toolLine.showDetails), true);
   assert.equal(web(failed).includes(RUN), false);
   assert.equal(slackVisibleText(failed).includes(RUN), false);
   assert.deepEqual(slackAction(failed, ActionId.report), {

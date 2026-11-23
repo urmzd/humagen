@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { UnknownEvent } from "@humagen/client/types";
-import { adapter, failureOf, type RunEvent } from "./run.ts";
+import { defaultCopy } from "@humagen/components/copy";
+import { type FailureCause, type FailureKind, isRetryable } from "@humagen/core";
+import { adapter, failureCause, failureOf, type RunEvent } from "./run.ts";
 
 function ev(type: string, data: unknown = {}, seq = 1): RunEvent {
   return {
@@ -347,28 +349,62 @@ test("legacy and malformed citation facts remain explicitly unproven", () => {
 
 test("provider credential failures preserve safe context without exposing a secret", () => {
   const failure = failureOf("Anthropic API key sk-private is unauthorized", "r1");
-  assert.equal(failure.title, "Anthropic credential unavailable");
+  assert.equal(failure.cause, "credential");
   assert.equal(failure.retryable, false);
   assert.doesNotMatch(JSON.stringify(failure), /sk-private/);
-  assert.match(failure.message ?? "", /workspace operator/);
+  assert.equal(failure.detail, undefined);
+  assert.equal(failure.message, defaultCopy.runFailure.because.credential);
 });
 
-test("budget exhaustion is not retried blindly and connection refusal keeps its safe cause", () => {
+test("budget exhaustion is not retried blindly and connection refusal keeps its cause in details", () => {
   const budget = failureOf("workspace spend limit reached", "r2");
-  assert.equal(budget.title, "Budget reached");
+  assert.equal(budget.cause, "budget");
   assert.equal(budget.retryable, false);
   const unavailable = failureOf("dial tcp private-host.internal:443: connection refused", "r3");
   assert.equal(unavailable.kind, "unavailable");
-  assert.match(unavailable.message ?? "", /connection refused/);
-  assert.doesNotMatch(unavailable.message ?? "", /private-host/);
+  assert.doesNotMatch(unavailable.message, /private-host/);
+  assert.match(unavailable.detail ?? "", /connection refused/);
 });
 
 test("the engine's stop after failed steps is said in plain words, with Retry", () => {
   const failure = failureOf("agent run: too many consecutive failed tool turns: 2 turns", "r4");
   assert.equal(failure.kind, "tool_error");
-  assert.equal(failure.title, "Stopped after failed steps");
-  assert.match(failure.message, /^2 steps in a row failed/);
-  assert.doesNotMatch(JSON.stringify(failure), /consecutive|tool turns/);
+  assert.equal(failure.cause, "failed_steps");
+  assert.doesNotMatch(failure.message, /consecutive|tool turns/);
+  assert.equal(failure.detail, "agent run: too many consecutive failed tool turns: 2 turns");
+});
+
+test("each runtime error is read as its cause, the specific cause before the retry wrapper", () => {
+  const cases: [string, FailureCause, FailureKind][] = [
+    [
+      'durable: max attempts exhausted: runtime: run r1: agent "github-reviewer" version 1.0.0: platform: model provider: @github-reviewer needs a model provider its models name (anthropic); an administrator enables one in Settings, under Model providers',
+      "no_model_provider",
+      "forbidden",
+    ],
+    ["durable: max attempts exhausted: agent: max iterations reached", "max_iterations", "timeout"],
+    ["durable: max attempts exhausted", "max_attempts", "internal"],
+    ["durable: max attempts exhausted: weird thing", "max_attempts", "internal"],
+    ["session: access denied", "permission_denied", "forbidden"],
+    ["sandbox: access denied by policy: user \"a\", op read, key \"k\"", "permission_denied", "forbidden"],
+    ["mcptools: denied by grant", "permission_denied", "forbidden"],
+    ["budget exceeded: spent $1.00 of $1.00 after 3 requests", "budget", "forbidden"],
+    ["session: budget exceeded or not granted", "budget", "forbidden"],
+    ["llm call exceeded timeout 30s: context deadline exceeded", "timeout", "timeout"],
+    ["connector: undeliverable: channel_not_found", "undeliverable", "unavailable"],
+    ["provider: 429 too many requests", "rate_limited", "rate_limited"],
+    ["agent: step 2\nprovider: 529 overloaded", "unknown", "internal"],
+  ];
+  for (const [error, cause, kind] of cases) {
+    assert.equal(failureCause(error), cause, error);
+    const failure = failureOf(error, "r");
+    assert.equal(failure.cause, cause, error);
+    assert.equal(failure.kind, kind, error);
+    assert.equal(failure.message, defaultCopy.runFailure.because[cause], error);
+    assert.equal(failure.detail, error, error);
+  }
+  assert.equal(failureCause(undefined), "unknown");
+  assert.equal(failureOf(undefined, "r").detail, undefined);
+  assert.equal(isRetryable(failureOf(cases[0]?.[0], "r")), false);
 });
 
 test("a publish that fails before it reports does not stay generating", () => {

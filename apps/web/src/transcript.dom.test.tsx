@@ -1,9 +1,16 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
+import { failureOf } from "@humagen/adapter/run";
 import { defaultCopy } from "@humagen/components";
-import { ActionId, type UiAction } from "@humagen/core";
+import { ActionId, emptyTurn, type Turn, type UiAction } from "@humagen/core";
 import { GitHubRefKindsContext, githubRefKinds, NowContext, WebSurface } from "@humagen/render-web";
-import { AgentMessage, ConnectLinkContext, type RetryCall, RetryCallContext } from "@humagen/web";
+import {
+  AgentMessage,
+  AgentNameContext,
+  ConnectLinkContext,
+  type RetryCall,
+  RetryCallContext,
+} from "@humagen/web";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import {
@@ -38,6 +45,51 @@ test("the failed count opens the steps at the failures, each saying why", () => 
   fireEvent.click(within(failed).getByRole("button", { name: line.showDetails }));
   assert.ok(within(failed).getByText(/refused before it was sent/));
   assert.ok(within(failed).getByRole("button", { name: line.hideDetails }));
+});
+
+test("a failed answer says what happened in one plain sentence, the runtime's words behind Show details", () => {
+  const raw =
+    'durable: max attempts exhausted: runtime: run r1: agent "github-reviewer" version 1.0.0: platform: model provider: @github-reviewer needs a model provider its models name (anthropic); an administrator enables one in Settings, under Model providers';
+  const turn: Turn = {
+    ...emptyTurn("r-provider", { name: "github-reviewer" }),
+    status: "failed",
+    failure: failureOf(raw, "r-provider"),
+  };
+  const words = defaultCopy.runFailure;
+  show(
+    <AgentNameContext.Provider value={(n) => (n === "github-reviewer" ? "Github Reviewer" : n)}>
+      <AgentMessage turn={turn} disclaimer={false} />
+    </AgentNameContext.Provider>,
+  );
+  // Who can fix it is an admin, so it is a warning, not an alarm.
+  const alert = document.querySelector<HTMLElement>('[data-aui="callout"]') as HTMLElement;
+  assert.equal(alert.getAttribute("data-tone"), "warn");
+  assert.ok(alert.textContent?.includes(words.couldNotRun("Github Reviewer")));
+  assert.ok(alert.textContent?.includes(words.because.no_model_provider));
+  // The runtime's words wait behind Show details.
+  assert.ok(!document.body.textContent?.includes("max attempts exhausted"));
+  assert.equal(screen.queryByTestId("callout-details"), null);
+  fireEvent.click(within(alert).getByRole("button", { name: line.showDetails }));
+  assert.equal(screen.getByTestId("callout-details").textContent, raw);
+  fireEvent.click(within(alert).getByRole("button", { name: line.hideDetails }));
+  assert.equal(screen.queryByTestId("callout-details"), null);
+});
+
+test("an error no cause matches falls back to a plain sentence, with its words behind Show details", () => {
+  const turn: Turn = {
+    ...emptyTurn("r-odd", { name: "helper" }),
+    status: "failed",
+    failure: failureOf("agent: step 2\nprovider: 529 overloaded", "r-odd"),
+  };
+  show(<AgentMessage turn={turn} disclaimer={false} />);
+  const alert = screen.getByRole("alert");
+  assert.ok(alert.textContent?.includes(defaultCopy.runFailure.couldNotFinish("helper")));
+  assert.ok(alert.textContent?.includes(defaultCopy.runFailure.because.unknown));
+  assert.ok(!alert.textContent?.includes("overloaded"));
+  fireEvent.click(
+    within(alert).getByRole("button", { name: defaultCopy.conversation.toolLine.showDetails }),
+  );
+  assert.match(screen.getByTestId("callout-details").textContent ?? "", /529 overloaded/);
 });
 
 test("a failed delegated run says why, opens its run, and Retry asks the agent again", async () => {

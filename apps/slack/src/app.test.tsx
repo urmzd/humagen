@@ -393,7 +393,11 @@ test("a failed run shows why, and Retry asks again in the same conversation", as
   });
   await w.app.idle();
   const final = w.slack.of("chat.stopStream")[0];
-  assert.match(textIn(blocksOf(final)), /provider: 529 overloaded/);
+  // One plain sentence; the runtime's own words stay out of the thread.
+  const said = textIn(blocksOf(final));
+  assert.ok(said.includes(defaultCopy.runFailure.couldNotFinish("lead")), said);
+  assert.ok(said.includes(defaultCopy.runFailure.because.unknown), said);
+  assert.doesNotMatch(said, /529 overloaded/);
   assert.deepEqual(w.slack.statuses, ["processing", "active"]);
   assert.equal(w.slack.of("reactions.add").at(-1)?.name, "x");
   collect("failed", w.slack);
@@ -432,7 +436,7 @@ test("a run whose retries ran out is ended by its record, as the ledger decides"
   });
   await w.app.idle();
   const final = w.slack.of("chat.stopStream")[0];
-  assert.match(textIn(blocksOf(final)), /connection refused/);
+  assert.ok(textIn(blocksOf(final)).includes(defaultCopy.runFailure.because.unavailable));
   assert.match(textIn(blocksOf(final)), new RegExp(defaultCopy.retry));
   assert.deepEqual(w.slack.statuses, ["processing", "active"]);
 });

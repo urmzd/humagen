@@ -9,6 +9,7 @@ import {
   canDecide,
   contextPressure,
   type Failure,
+  type FailureCause,
   type Field,
   fileEdits,
   formatAmount,
@@ -588,12 +589,26 @@ function capitalize(text: string) {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
-export function failureTitle(failure: Failure, copy: Copy = defaultCopy): string {
+export function failureTitle(
+  failure: Failure,
+  copy: Copy = defaultCopy,
+  agent: string = copy.runFailure.someone,
+): string {
+  if (failure.cause) return causeTitle(failure.cause, agent, copy);
   return failure.title || capitalize(copy.failure[failure.kind](failure.service));
+}
+
+/** What happened to the agent, by what stopped it. */
+function causeTitle(cause: FailureCause, agent: string, copy: Copy): string {
+  const words = copy.runFailure;
+  if (cause === "no_model_provider" || cause === "credential") return words.couldNotRun(agent);
+  if (cause === "undeliverable") return words.couldNotReply(agent);
+  return words.couldNotFinish(agent);
 }
 
 /** Keep credential configuration paths in authorized run details, not the answer body. */
 function failureMessage(failure: Failure, copy: Copy): string {
+  if (failure.cause) return copy.runFailure.because[failure.cause];
   return /(?:op:\/\/|1password|credential|api[_ -]?key|secret reference)/i.test(failure.message) &&
     failure.kind === "internal"
     ? copy.credentialUnavailable
@@ -607,11 +622,14 @@ function failureMessage(failure: Failure, copy: Copy): string {
 export function FailureAlert({
   turnId,
   failure,
+  agent,
   report = true,
   copy = defaultCopy,
 }: {
   turnId: string;
   failure: Failure;
+  /** The name people see the agent by, for the plain sentence. */
+  agent?: string;
   /** Offer Report Issue. False when the host has nowhere to send a report. */
   report?: boolean;
 } & WithCopy) {
@@ -640,8 +658,17 @@ export function FailureAlert({
     <>
       <Callout
         tone={failure.kind === "auth_required" || failure.kind === "forbidden" ? "warn" : "bad"}
-        title={failureTitle(failure, copy)}
+        title={failureTitle(failure, copy, agent)}
         text={lines.join(" ")}
+        details={
+          failure.detail
+            ? {
+                text: failure.detail,
+                show: copy.conversation.toolLine.showDetails,
+                hide: copy.conversation.toolLine.hideDetails,
+              }
+            : undefined
+        }
       />
       {/* Always the row, even with no button: a renderer leaves an empty row out, and a host may add its own controls to it. */}
       <Actions blockId={`failure:${turnId}`}>
@@ -892,7 +919,11 @@ export function answerTakesLink(markdown: string): boolean {
 }
 
 /** The point of the turn in one line, for notifications and screen readers. */
-export function summarizeTurn(turn: Turn, copy: Copy = defaultCopy): string {
+export function summarizeTurn(
+  turn: Turn,
+  copy: Copy = defaultCopy,
+  agent: string = turn.agent.name,
+): string {
   const pending = turn.interrupts.find((i) =>
     i.type === "approval" ? i.decision.kind === "pending" : i.answer.kind === "pending",
   );
@@ -902,7 +933,7 @@ export function summarizeTurn(turn: Turn, copy: Copy = defaultCopy): string {
       : copy.inputNeeded(pending.question);
   }
   if (turn.status === "failed" && turn.failure) {
-    return `${failureTitle(turn.failure, copy)}: ${failureMessage(turn.failure, copy)}`;
+    return `${failureTitle(turn.failure, copy, agent)}: ${failureMessage(turn.failure, copy)}`;
   }
   if (turn.status === "stopped") return copy.stopped;
   const review = readReview(turn.text);
@@ -927,8 +958,11 @@ export function TurnView({
   capabilities,
   hideTasks = false,
   linked = false,
+  agentName,
 }: {
   turn: Turn;
+  /** The name people see the agent by, where it differs from its handle. */
+  agentName?: string;
   /**
    * Slack: the streamed answer already ends with the arrow to the
    * conversation (`streamLink`), so the final blocks do not repeat it.
@@ -1002,7 +1036,7 @@ export function TurnView({
 
   return (
     <>
-      <Summary text={summarizeTurn(turn, copy)} />
+      <Summary text={summarizeTurn(turn, copy, agentName)} />
       {/* Slack shows status as a reaction and the session status (see render-slack lifecycle). */}
       <Only surface="web">
         <Context items={[`**${turn.agent.name}**: ${copy.status[turn.status]}`]} />
@@ -1152,6 +1186,7 @@ export function TurnView({
         <FailureAlert
           turnId={turn.id}
           failure={turn.failure}
+          agent={agentName ?? turn.agent.name}
           report={capabilities?.report !== false}
           copy={copy}
         />

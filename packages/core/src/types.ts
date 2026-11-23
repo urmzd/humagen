@@ -289,8 +289,39 @@ export type FailureKind =
   /** A bug on our side. */
   | "internal";
 
+/**
+ * What stopped a run, read from the runtime's error, so a surface can say it
+ * in one plain sentence. `unknown` is an error no cause matched.
+ */
+export type FailureCause =
+  /** None of the agent's model providers is enabled. */
+  | "no_model_provider"
+  /** The model provider's key could not be read. */
+  | "credential"
+  /** A spending limit was reached. */
+  | "budget"
+  | "rate_limited"
+  /** The agent was not allowed to do what it tried. */
+  | "permission_denied"
+  | "timeout"
+  /** A service the run needed did not answer. */
+  | "unavailable"
+  /** Several steps in a row failed, so the engine stopped the run. */
+  | "failed_steps"
+  /** The agent used every step it may take for one answer. */
+  | "max_iterations"
+  /** The surface the conversation is on refused the answer. */
+  | "undeliverable"
+  /** Every attempt failed, for a reason no other cause names. */
+  | "max_attempts"
+  | "unknown";
+
 export interface Failure {
   kind: FailureKind;
+  /** What stopped the run, when it came from the runtime: decides the plain sentence. */
+  cause?: FailureCause;
+  /** The runtime's own words, shown only on request (Show details). */
+  detail?: string;
   /** A safe, specific cause supplied by the adapter. */
   title?: string;
   /** Plain-language cause, e.g. "The deploys service timed out after 30s". */

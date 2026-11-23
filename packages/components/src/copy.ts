@@ -3932,6 +3932,39 @@ export const defaultCopy = {
     internal: () => "Run failed",
   },
   /**
+   * A failed run in plain words: the title says what happened to the agent,
+   * the body why and what to do. The runtime's own words wait behind Show details
+   * (`conversation.toolLine.showDetails`, the words a failed step uses).
+   */
+  runFailure: {
+    /** The agent, when the failure does not say which. */
+    someone: "The agent",
+    couldNotRun: (agent: string) => `${agent} could not run`,
+    couldNotFinish: (agent: string) => `${agent} could not finish`,
+    couldNotReply: (agent: string) => `${agent} could not send its answer`,
+    because: {
+      no_model_provider:
+        "Its model provider is not enabled. An admin can turn it on in Settings > Model providers.",
+      credential:
+        "Its model provider's key could not be read. An admin can check it in Settings > Model providers.",
+      budget:
+        "It reached its spending limit. An admin can raise the limit, then you can try again.",
+      rate_limited: "Its model provider got too many requests. Wait a moment, then try again.",
+      permission_denied:
+        "It does not have permission to do this. An admin can give it the access it needs.",
+      timeout: "It ran out of time. Try again, or ask for less at once.",
+      unavailable: "A service it needs did not answer. Try again shortly.",
+      failed_steps:
+        "Several steps in a row failed, so it stopped. Open the steps above to see why.",
+      max_iterations:
+        "It used every step it may take for one answer. Try again with a narrower request.",
+      undeliverable:
+        "The app this conversation is in refused the answer. Check that the app is still connected, then try again.",
+      max_attempts: "It failed on every try. Try again later.",
+      unknown: "It stopped on an error. Try again, or report it if it happens again.",
+    },
+  },
+  /**
    * What to say under each failure's title, for a host that has no words of its
    * own to put in `Failure.message`. It never repeats the title.
    */
