@@ -296,11 +296,13 @@ trigger context.
 
 | Shape | When | What the agent returns |
 | :--- | :--- | :--- |
-| `review` | On a pull request: an [automatic review](#automatic-review), a review requested from the app, an [event automation](#event-automations) whose shape is `review`, or a message that is itself a request for one (`@humagen review`, `re-review`, `please review this PR`, `could you review it?`) | The fields of a `humagen.review.v2` report, as one JSON object. The host renders and posts it. |
+| `review` | On a pull request: an [automatic review](#automatic-review), a review requested from the app, an [event automation](#event-automations) whose shape is `review`, or a message that opens with a request for one: `@humagen review`, `re-review`, `please review this PR`, `could you review it?`, or one with a focus such as `review the retry loop`, `review: focus on auth`, `review for security` or a path | The fields of a `humagen.review.v2` report, as one JSON object. The host renders and posts it. |
 | `reply` | Anything else: a question, a follow-up, or anything on an issue | Plain Markdown prose: short paragraphs, code in fences, files linked as `path:line` at the head. |
 
-A sentence about a review is a reply: `this review is wrong`, `Review: why is
-this nil?`, `don't review yet`. Quoted lines and code do not count.
+A sentence about a review is a reply: `this review is wrong`, `the review
+said`, `Review: why is this nil?`, `don't review yet`, and so is a request
+that also asks for changes (`review it and fix them`). Quoted lines and code
+do not count.
 A run from before the host chose has no shape. The built-in `code-reviewer`
 returns a report there only when it was asked to review a change.
 
