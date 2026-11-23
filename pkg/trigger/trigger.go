@@ -116,7 +116,8 @@ func endsWord(text string, e int) bool {
 // hidden marks the bytes of text that are not prose: what a person shows or
 // quotes rather than says. They are fenced and indented code blocks, inline
 // code spans (across lines, within a paragraph), <code> and <pre> elements,
-// HTML comments, and quoted lines with the lines a quote runs on to.
+// HTML comments, and quoted lines with the lines a quote runs on to. A line
+// indented under a list item is the item's paragraph, not code.
 func hidden(text string) []bool {
 	out := make([]bool, len(text))
 	mark := func(from, to int) {
@@ -133,6 +134,12 @@ func hidden(text string) []bool {
 				break
 			}
 			i += from
+			// A tag is its whole name: "<pre>" and "<code class=x>", not
+			// "<pre-commit>" or "<codebase>".
+			if after := i + len(pair[0]); pair[0] != "<!--" && (after >= len(text) || text[after] != '>' && !isSpace(text[after])) {
+				from = after
+				continue
+			}
 			j := strings.Index(lower[i+len(pair[0]):], pair[1])
 			end := len(text)
 			if j >= 0 {
@@ -143,7 +150,7 @@ func hidden(text string) []bool {
 		}
 	}
 	// Blocks, line by line.
-	fence, quoted, prevBlank, inCode := "", false, true, false
+	fence, quoted, prevBlank, inCode, inList := "", false, true, false, false
 	for off := 0; off < len(text); {
 		lineEnd, next := len(text), len(text)
 		if nl := strings.IndexByte(text[off:], '\n'); nl >= 0 {
@@ -155,6 +162,14 @@ func hidden(text string) []bool {
 		indented := !blank && indentOf(raw) >= 4
 		wasCode := inCode
 		inCode = false
+		// A list item runs on through blank lines and its indented
+		// paragraphs, until a line that is neither starts at the margin.
+		switch {
+		case !blank && !indented && listItem(line):
+			inList = true
+		case !blank && indentOf(raw) == 0 && prevBlank:
+			inList = false
+		}
 		switch {
 		case fence != "":
 			mark(off, next)
@@ -169,7 +184,7 @@ func hidden(text string) []bool {
 			quoted = false
 			// A blank line inside an indented block does not end it.
 			inCode = wasCode
-		case indented && !quoted && (prevBlank || wasCode):
+		case indented && !quoted && !inList && (prevBlank || wasCode):
 			// An indented code block starts after a blank line.
 			mark(off, next)
 			inCode = true
@@ -220,6 +235,19 @@ func hidden(text string) []bool {
 		i = close - 1
 	}
 	return out
+}
+
+// listItem reports whether a line starts a list item: "- ", "* ", "+ ",
+// "1. " or "1) ".
+func listItem(line string) bool {
+	if len(line) >= 2 && strings.ContainsRune("-*+", rune(line[0])) && isSpace(line[1]) {
+		return true
+	}
+	i := 0
+	for i < len(line) && i < 9 && line[i] >= '0' && line[i] <= '9' {
+		i++
+	}
+	return i > 0 && i+1 < len(line) && (line[i] == '.' || line[i] == ')') && isSpace(line[i+1])
 }
 
 // blankAfter reports whether the line after the newline at text[nl] is
