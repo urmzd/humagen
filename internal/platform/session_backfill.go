@@ -36,9 +36,11 @@ import (
 // was. A session the backfill finds is dated the same way when its record
 // was created after the first run filed in it had ended: one an earlier
 // backfill opened with the time it ran, and one a mention opened where
-// older runs are filed too. A session whose first run is the mention that
-// opened it is left as it is, a session whose runs carry no time is
-// reported and not dated, and a deleted session's runs are left.
+// older runs are filed too. An archived session is dated too. A session
+// whose first run is the mention that opened it is left as it is, and so is
+// one whose first run is still queued or running. A session whose runs
+// carry no time is reported and not dated, and a deleted session's runs
+// are left.
 //
 // Nothing is written unless apply is set, and a second apply writes
 // nothing: each step finds what the first one did.
@@ -376,13 +378,15 @@ func (p *Platform) backfillGitHubPlace(ctx context.Context, tenant string, apply
 			return fmt.Errorf("backfill: bind runs to %s: %w", id, err)
 		}
 	}
-	// A session found is dated only when its record was created after the
-	// first run filed in it had ended. A mention opens its session before
-	// its own run starts, so a session whose first run is the mention that
-	// opened it is left as it is; one a mention opened where older runs are
-	// filed too was created after the first of those ended, and is dated
-	// from them.
-	if firstFiled == nil || (found && !th.CreatedAt.After(firstFiled.UpdatedAt)) {
+	// A session found is dated only when the first run filed in it has
+	// ended and its record was created after that. A mention opens its
+	// session before its own run starts, and the servers keep running while
+	// the backfill does, so a session whose first run is the mention that
+	// opened it, still queued or running or ended since, is left as it is.
+	// One a mention opened where older runs are filed too was created after
+	// the first of those ended, and is dated from them. An archived session
+	// is dated as any other; a deleted one was left above.
+	if firstFiled == nil || (found && (!firstFiled.Status.Terminal() || !th.CreatedAt.After(firstFiled.UpdatedAt))) {
 		return nil
 	}
 	if span.created.IsZero() {
@@ -432,8 +436,9 @@ func (p *Platform) spanConversation(tenant, id string, span *workSpan) error {
 	return nil
 }
 
-// stampOf is a time as the report shows it.
-func stampOf(at time.Time) string { return at.UTC().Format(time.RFC3339) }
+// stampOf is a time as the report shows it, to the nanosecond, so two
+// times that differ by less than a second never read the same.
+func stampOf(at time.Time) string { return at.UTC().Format(time.RFC3339Nano) }
 
 // orderedBinder binds runs to a session in the order they were asked
 // (sessionstate.Store.BindRunsInOrder).

@@ -1,12 +1,19 @@
 package platform_test
 
 import (
+	"maps"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/urmzd/saige/flow/event"
+	"github.com/urmzd/saige/flow/runtime"
+	"github.com/urmzd/saige/flow/session"
+
 	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/internal/wire"
+	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/humagen/pkg/threads"
 )
@@ -168,5 +175,163 @@ func TestBackfillNeverDatesASessionBeforeItsLatestMessage(t *testing.T) {
 	}
 	if again, err := p.BackfillSessions(ctx, tenant, true); err != nil || again.Changes() != 0 {
 		t.Fatalf("a second apply did %v, %v", again.Counts, err)
+	}
+}
+
+// liveMention opens pull 13's session as a mention does now, at opened,
+// and records the mention's run, asked at when and filed in it. The run is
+// still queued.
+func liveMention(t *testing.T, p *platform.Platform, when, opened time.Time) (string, string) {
+	t.Helper()
+	ctx := t.Context()
+	pull13 := "github://acme/handbook/pull/13"
+	rec, err := p.Sessions.Open(ctx, tenant, session.Open{Parent: pull13, Agent: "docs"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.Threads.Create(tenant, threads.Thread{
+		ID: rec.ID, Channel: runs.DefaultChannel, Title: "Fix the handbook", Visibility: threads.Private, CreatedBy: "ana", Default: "docs", Agents: []string{"docs"},
+		Surface: &threads.Surface{Client: "gh", Channel: "acme/handbook", TS: "pull/13"},
+		Session: &threads.SessionIdentity{Agent: "docs", Parent: pull13},
+	}, opened); err != nil {
+		t.Fatal(err)
+	}
+	at := pull13 + "?head_sha=" + strings.Repeat("c", 40)
+	context := map[string]string{runs.MetaClient: "gh", "github_event": "issue_comment", "github_owner": "acme", "github_repo": "handbook", "github_sender": "octocat"}
+	maps.Copy(context, map[string]string{wire.MetaSession: rec.ID})
+	tag := wire.NewEvent(wire.Raise{ID: "gh-live", Agent: "docs", Tenant: tenant, Origin: "github", Text: "@docs what changed?", Channel: at, Actor: event.Actor{ID: "octocat"}, At: when, Context: context})
+	tag.Source, tag.Type = at, event.TypeGitHubIssueCommentCreated
+	tag.Data = event.GitHubIssueCommentCreated{
+		Request:   event.Request{Text: "@docs what changed?", Actor: event.Actor{ID: "octocat"}, Mentions: []string{"docs"}, Context: wire.ContextOf(tag)},
+		GitHubRef: event.GitHubRef{Owner: "acme", Repo: "handbook", Number: 13, Pull: true, Title: "Fix the handbook", Sender: "octocat"},
+	}
+	runID := runtime.RunID(tenant, "gh-live")
+	if err := p.Runs.Record(runID, tag, 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.Sessions.BindRun(ctx, tenant, rec.ID, runID); err != nil {
+		t.Fatal(err)
+	}
+	if r, err := p.Runs.Get(tenant, runID); err != nil || r.Thread != rec.ID || r.Status.Terminal() {
+		t.Fatalf("the live run is %+v, %v", r, err)
+	}
+	return rec.ID, runID
+}
+
+// A session a mention just opened is left while its run is queued, and
+// after it ends: the mention's tag is stamped before its session is
+// opened, and the servers keep running while the backfill does.
+func TestBackfillLeavesASessionWhoseMentionIsStillInFlight(t *testing.T) {
+	ctx := t.Context()
+	p, st := redateRoom(t)
+	asked := time.Date(2026, 11, 20, 9, 0, 0, 0, time.UTC)
+	id, runID := liveMention(t, p, asked, asked.Add(200*time.Millisecond))
+	before, err := p.Threads.Get(tenant, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	was := stored(t, st)
+	dry, err := p.BackfillSessions(ctx, tenant, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(was, stored(t, st)) {
+		t.Fatal("a dry run wrote to the store")
+	}
+	if dry.Counts[platform.BackfillSessionDated] != 0 || dry.Changes() != 0 {
+		t.Fatalf("the dry run would date a session a mention opened: %+v", dry.Lines)
+	}
+	if rep, err := p.BackfillSessions(ctx, tenant, true); err != nil || rep.Changes() != 0 {
+		t.Fatalf("the apply did %v, %v", rep.Counts, err)
+	}
+	if _, ok := p.Runs.End(tenant, runID, runs.Completed, "Done.", "", asked.Add(time.Minute)); !ok {
+		t.Fatal("the run did not end")
+	}
+	if rep, err := p.BackfillSessions(ctx, tenant, true); err != nil || rep.Changes() != 0 {
+		t.Fatalf("the apply after the run ended did %v, %v", rep.Counts, err)
+	}
+	after, err := p.Threads.Get(tenant, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !after.CreatedAt.Equal(before.CreatedAt) {
+		t.Fatalf("the mention's session started %s and now starts %s", before.CreatedAt, after.CreatedAt)
+	}
+}
+
+// An archived session that is not deleted is dated from its runs, as any
+// other, and keeps its archive, visibility, owner and version.
+func TestBackfillDatesAnArchivedSession(t *testing.T) {
+	ctx := t.Context()
+	p, _ := redateRoom(t)
+	pull12 := "github://acme/handbook/pull/12"
+	t0 := time.Date(2026, 10, 1, 9, 0, 0, 0, time.UTC)
+	pastGitHubRun(t, p, "gh-arch-a", "docs", pull12+"?head_sha="+strings.Repeat("a", 40), "octocat", 12, t0, false)
+	if _, err := p.BackfillSessions(ctx, tenant, true); err != nil {
+		t.Fatal(err)
+	}
+	th, ok, err := p.Threads.BySurface(tenant, threads.Surface{Client: "gh", Channel: "acme/handbook", TS: "pull/12"})
+	if err != nil || !ok {
+		t.Fatalf("pull 12 has no session: %v", err)
+	}
+	migrated := t0.Add(30 * 24 * time.Hour)
+	if _, err := p.Threads.Redate(tenant, th.ID, migrated, migrated); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.Threads.SetArchive(tenant, th.ID, &threads.Archive{By: "ana", At: migrated, DeleteAfter: migrated.Add(threads.DeletionDelay)}); err != nil {
+		t.Fatal(err)
+	}
+	before, err := p.Threads.Get(tenant, th.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rep, err := p.BackfillSessions(ctx, tenant, true)
+	if err != nil || rep.Counts[platform.BackfillSessionDated] != 1 {
+		t.Fatalf("the apply did %v, %v", rep.Counts, err)
+	}
+	after, err := p.Threads.Get(tenant, th.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !after.CreatedAt.Equal(t0) {
+		t.Fatalf("the archived session starts %s; want %s", after.CreatedAt, t0)
+	}
+	if !reflect.DeepEqual(after.Archive, before.Archive) || after.Visibility != before.Visibility || after.Session.Agent != before.Session.Agent || after.Version != before.Version {
+		t.Fatalf("dating changed more than the times: %+v -> %+v", before, after)
+	}
+	if again, err := p.BackfillSessions(ctx, tenant, true); err != nil || again.Changes() != 0 {
+		t.Fatalf("a second apply did %v, %v", again.Counts, err)
+	}
+}
+
+// A session dated less than a second after its work ended reads so in the
+// dated line: its old times keep their fraction of a second.
+func TestBackfillReportsTimesToTheSubSecond(t *testing.T) {
+	ctx := t.Context()
+	p, _ := redateRoom(t)
+	pull12 := "github://acme/handbook/pull/12"
+	t0 := time.Date(2026, 10, 1, 9, 0, 0, 0, time.UTC)
+	pastGitHubRun(t, p, "gh-sub-a", "docs", pull12+"?head_sha="+strings.Repeat("a", 40), "octocat", 12, t0, false)
+	if _, err := p.BackfillSessions(ctx, tenant, true); err != nil {
+		t.Fatal(err)
+	}
+	th, ok, err := p.Threads.BySurface(tenant, threads.Surface{Client: "gh", Channel: "acme/handbook", TS: "pull/12"})
+	if err != nil || !ok {
+		t.Fatalf("pull 12 has no session: %v", err)
+	}
+	// Opened half a second after its run ended at t0 plus a minute.
+	opened := t0.Add(time.Minute + 500*time.Millisecond)
+	if _, err := p.Threads.Redate(tenant, th.ID, opened, opened); err != nil {
+		t.Fatal(err)
+	}
+	dry, err := p.BackfillSessions(ctx, tenant, false)
+	if err != nil || dry.Counts[platform.BackfillSessionDated] != 1 {
+		t.Fatalf("the dry run did %v, %v", dry.Counts, err)
+	}
+	const want = "started 2026-10-01T09:00:00Z, last active 2026-10-01T09:01:00Z; was started 2026-10-01T09:01:00.5Z, last active 2026-10-01T09:01:00.5Z"
+	for _, l := range dry.Lines {
+		if l.Kind == platform.BackfillSessionDated && l.Detail != want {
+			t.Fatalf("the dated line reads %q; want %q", l.Detail, want)
+		}
 	}
 }
