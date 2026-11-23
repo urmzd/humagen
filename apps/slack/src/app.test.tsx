@@ -17,10 +17,12 @@ import {
   failureMail,
   homeOpened,
   interactive,
+  mappedWorld,
   memoryMail,
   mention,
   OTHER_TEAM,
   OTHER_USER,
+  PEOPLE,
   QUESTIONS,
   questionMail,
   resultMail,
@@ -38,6 +40,8 @@ import { validateBlocks } from "./validate.ts";
 
 const TS = "1700000000.000100";
 const KEY = `slack-${TEAM}-${CHANNEL}-1700000000-000100`;
+/** USER as the client "app" maps them (mappedWorld): ana. */
+const ANA = { client: "app", user: USER };
 
 /** Every Block Kit payload these tests hand to Slack, for the validity check at the end. */
 const produced: { from: string; blocks?: unknown[]; view?: object }[] = [];
@@ -66,18 +70,20 @@ const blocksOf = (args: Record<string, unknown> | undefined) => (args?.blocks ??
 const textIn = (blocks: unknown[]) => JSON.stringify(blocks);
 
 test("a mention becomes one run, streamed natively, with the session kept in step", async () => {
-  const w = world();
+  const w = mappedWorld();
   await deliver(w, mention("what changed in the last deploy?", TS));
 
-  // The run: a new conversation named by the thread, the default agent, the Slack person as actor.
+  // The message: posted as the person into the session the Slack thread is,
+  // where it starts one run, by the default agent, that acts for them.
+  assert.equal(w.humagen.posts.length, 1);
+  assert.deepEqual(w.humagen.posts[0]?.act_as, ANA);
+  assert.equal(w.humagen.posts[0]?.surface.ts, TS);
   assert.equal(w.humagen.started.length, 1);
   const asked = w.humagen.started[0];
-  assert.equal(asked?.idempotencyKey, KEY);
   assert.equal(asked?.agent, "lead");
   assert.equal(asked?.text, "what changed in the last deploy?");
   assert.equal(asked?.after, undefined);
-  assert.equal(w.humagen.last.id, runId("acme", SUBJECT, KEY));
-  assert.equal(w.humagen.last.tag_id, tagId(SUBJECT, KEY));
+  assert.equal(w.humagen.last.actor?.user, "ana");
 
   // Before any event: seen, processing, a status line, and a stream opened in the mention's thread.
   assert.deepEqual(w.slack.methods, [
@@ -163,7 +169,7 @@ test("a mention becomes one run, streamed natively, with the session kept in ste
 });
 
 test("a redelivery of the same Slack event starts no second run, before or after a restart", async () => {
-  const w = world();
+  const w = mappedWorld();
   await deliver(w, mention("ping", TS));
   await emit(w, "run.accepted.v1");
   await emit(w, "run.completed.v1", { text: "pong" });
@@ -184,19 +190,22 @@ test("a redelivery of the same Slack event starts no second run, before or after
 });
 
 test("a reply in the thread continues the conversation, also after a restart", async () => {
-  const w = world();
+  const w = mappedWorld();
   await deliver(w, mention("first", TS));
   await emit(w, "run.accepted.v1");
   await emit(w, "run.completed.v1", { text: "one" });
   await w.app.idle();
-  const first = w.humagen.last.id;
+  const first = w.humagen.last;
 
   const app = w.restart();
   await deliver(w, mention("second", "1700000050.000200", { thread_ts: TS }), app);
-  const second = w.humagen.started[1];
-  assert.equal(second?.after, first);
-  assert.equal(second?.idempotencyKey, `slack-${TEAM}-${CHANNEL}-1700000050-000200`);
-  assert.equal(w.humagen.last.thread, first, "one Slack thread is one conversation");
+  // Posted as the person into the session the thread is, after a restart too.
+  const second = w.humagen.posts.at(-1);
+  assert.deepEqual(second?.act_as, ANA);
+  assert.equal(second?.surface.ts, TS);
+  assert.equal(second?.surface.message, "1700000050.000200");
+  assert.notEqual(w.humagen.last.id, first.id);
+  assert.equal(w.humagen.last.thread, first.thread, "one Slack thread is one conversation");
   assert.equal(w.slack.of("chat.startStream").at(-1)?.thread_ts, TS);
   await emit(w, "run.accepted.v1");
   await emit(w, "run.completed.v1", { text: "two" });
@@ -204,9 +213,11 @@ test("a reply in the thread continues the conversation, also after a restart", a
 });
 
 test("a direct message is a conversation per thread", async () => {
-  const w = world();
+  const w = mappedWorld();
   await deliver(w, direct("hello", "1700000100.000100"));
-  assert.equal(w.humagen.started[0]?.idempotencyKey, `slack-${TEAM}-${DM}-1700000100-000100`);
+  assert.equal(w.humagen.posts[0]?.surface.channel, DM);
+  assert.equal(w.humagen.posts[0]?.surface.ts, "1700000100.000100");
+  const first = w.humagen.last;
   assert.equal(w.slack.of("chat.startStream")[0]?.thread_ts, "1700000100.000100");
   await emit(w, "run.accepted.v1");
   await emit(w, "run.completed.v1", { text: "hi" });
@@ -214,7 +225,8 @@ test("a direct message is a conversation per thread", async () => {
 
   // A new top-level message is a new conversation.
   await deliver(w, direct("something else", "1700000200.000100"));
-  assert.equal(w.humagen.started[1]?.after, undefined);
+  assert.equal(w.humagen.posts[1]?.surface.ts, "1700000200.000100");
+  assert.notEqual(w.humagen.last.thread, first.thread);
   await emit(w, "run.accepted.v1");
   await emit(w, "run.completed.v1", { text: "ok" });
   await w.app.idle();
@@ -252,7 +264,7 @@ test("a bot's message, the app's own and an edit never start a run", async () =>
 });
 
 test("stop mid-run stops the run, confirms in the thread, settles the session and renders nothing more", async () => {
-  const w = world();
+  const w = mappedWorld();
   await deliver(w, mention("write a long report", TS));
   const run = w.humagen.last.id;
   await emit(w, "run.accepted.v1");
@@ -281,7 +293,7 @@ test("stop mid-run stops the run, confirms in the thread, settles the session an
 });
 
 test("a stop that loses the race to the answer shows the answer, and is not called stopped", async () => {
-  const w = world();
+  const w = mappedWorld();
   await deliver(w, mention("quick question", TS));
   await emit(w, "run.accepted.v1");
   await emit(w, "run.delta.text.v1", { text: "The whole answer." });
@@ -342,7 +354,7 @@ test("stop after a restart still finds the run, through humagen", async () => {
 });
 
 test("a stop humagen does not confirm says so, and still renders nothing more", async () => {
-  const w = world();
+  const w = mappedWorld();
   await deliver(w, mention("question", TS));
   await emit(w, "run.accepted.v1");
   w.humagen.stopFails = true;
@@ -356,7 +368,7 @@ test("a stop humagen does not confirm says so, and still renders nothing more", 
 });
 
 test("a run stopped from the console ends in Slack, though it publishes no final event", async () => {
-  const w = world();
+  const w = mappedWorld();
   await deliver(w, mention("question", TS));
   const run = w.humagen.last.id;
   await emit(w, "run.accepted.v1");
@@ -367,7 +379,7 @@ test("a run stopped from the console ends in Slack, though it publishes no final
 });
 
 test("a stopped event on the stream ends the turn, once the platform publishes one", async () => {
-  const w = world();
+  const w = mappedWorld();
   await deliver(w, mention("question", TS));
   await emit(w, "run.accepted.v1");
   await emit(w, "run.delta.text.v1", { text: "Half an answer." });
@@ -380,7 +392,7 @@ test("a stopped event on the stream ends the turn, once the platform publishes o
 });
 
 test("a failed run shows why, and Retry asks again in the same conversation", async () => {
-  const w = world();
+  const w = mappedWorld();
   await deliver(w, mention("deploy it", TS));
   const failedRun = w.humagen.last.id;
   await emit(w, "run.accepted.v1");
@@ -405,7 +417,8 @@ test("a failed run shows why, and Retry asks again in the same conversation", as
   assert.equal(retry?.text, "deploy it");
   assert.equal(retry?.agent, "lead");
   assert.equal(retry?.after, failedRun, "the retry stays in the thread's conversation");
-  assert.equal(w.humagen.last.thread, failedRun);
+  assert.deepEqual(retry?.act_as, ANA, "asked again as the person it acted for");
+  assert.equal(w.humagen.last.thread, w.humagen.runs.get(failedRun)?.thread);
   await emit(w, "run.accepted.v1");
   await emit(w, "run.completed.v1", { text: "Deployed." });
   await w.app.idle();
@@ -417,7 +430,7 @@ test("a failed run shows why, and Retry asks again in the same conversation", as
 });
 
 test("a run whose retries ran out is ended by its record, as the ledger decides", async () => {
-  const w = world();
+  const w = mappedWorld();
   await deliver(w, mention("deploy it", TS));
   const run = w.humagen.last.id;
   await emit(w, "run.accepted.v1");
@@ -440,6 +453,27 @@ test("a run whose retries ran out is ended by its record, as the ledger decides"
 /** A failed turn in the thread, and the message holding its Retry button. */
 async function failedTurn(w: World) {
   await deliver(w, mention("deploy it", TS));
+  return failed(w);
+}
+
+/**
+ * A failed turn that acted for nobody: USER asked about OTHER_USER's
+ * message, whose words the app asks at USER's asking, for nobody.
+ */
+async function failedNobodyTurn(w: World) {
+  await deliver(
+    w,
+    interactive({
+      type: "message_action",
+      callback_id: "aui_ask_about",
+      channel: { id: CHANNEL },
+      message: { ts: TS, text: "deploy it", user: OTHER_USER },
+    }),
+  );
+  return failed(w);
+}
+
+async function failed(w: World) {
   const run = w.humagen.last.id;
   await emit(w, "run.accepted.v1");
   await emit(w, "run.failed.v1", { error: "provider: 529 overloaded", terminal: true });
@@ -449,9 +483,19 @@ async function failedTurn(w: World) {
 }
 
 test("a turn that acted for nobody is asked again, for nobody, by the person who asked or an operator", async () => {
-  const w = world({ operators: ["U03ABCDEF"] });
-  const { run, blocks, ts } = await failedTurn(w);
-  assert.equal(w.humagen.runs.get(run)?.actor?.bot, true, "the app asked as itself, for nobody");
+  const w = mappedWorld({ operators: ["U03ABCDEF", "U04ABCDEF"] }, { ...PEOPLE, U03ABCDEF: "oz" });
+  const { run, blocks, ts } = await failedNobodyTurn(w);
+  assert.equal(w.humagen.runs.get(run)?.actor?.bot, true, "the app asked for nobody");
+  assert.deepEqual(w.humagen.started[0]?.asked_by, ANA, "at ana's asking");
+
+  // An operator the client maps to nobody is told so, and nothing starts.
+  await deliver(w, click(blocks, defaultCopy.retry, { ts, threadTs: TS, user: "U04ABCDEF" }));
+  await w.app.idle();
+  assert.equal(w.humagen.started.length, 1);
+  assert.equal(
+    w.slack.of("chat.postEphemeral").at(-1)?.text,
+    defaultCopy.threads.notConnected("Humagen"),
+  );
 
   // Someone else in the channel is told no, and nothing starts.
   await deliver(w, click(blocks, defaultCopy.retry, { ts, threadTs: TS, user: OTHER_USER }));
@@ -467,6 +511,7 @@ test("a turn that acted for nobody is asked again, for nobody, by the person who
   await deliver(w, click(blocks, defaultCopy.retry, { ts, threadTs: TS, user: "U03ABCDEF" }));
   assert.equal(w.humagen.started.length, 2);
   assert.equal(w.humagen.started[1]?.act_as, undefined);
+  assert.deepEqual(w.humagen.started[1]?.asked_by, { client: "app", user: "U03ABCDEF" });
   const retried = w.humagen.last.id;
   assert.equal(w.humagen.last.prev ?? w.humagen.last.thread, run);
   await emit(w, "run.accepted.v1");
@@ -500,9 +545,9 @@ test("a turn that acted for nobody is asked again, for nobody, by the person who
 });
 
 test("when the app's own credential is a person, as under dev sign-in, a turn it asked as itself is asked again through it", async () => {
-  const w = world({ operators: ["U03ABCDEF"] });
+  const w = mappedWorld({ operators: ["U03ABCDEF"] }, { ...PEOPLE, U03ABCDEF: "oz" });
   w.humagen.person = true;
-  const { run, blocks, ts } = await failedTurn(w);
+  const { run, blocks, ts } = await failedNobodyTurn(w);
   assert.equal(
     w.humagen.runs.get(run)?.actor?.user,
     SUBJECT,
@@ -513,6 +558,7 @@ test("when the app's own credential is a person, as under dev sign-in, a turn it
   await deliver(w, click(blocks, defaultCopy.retry, { ts, threadTs: TS }));
   assert.equal(w.humagen.started.length, 2);
   assert.equal(w.humagen.started[1]?.act_as, undefined);
+  assert.deepEqual(w.humagen.started[1]?.asked_by, ANA);
   assert.equal(w.humagen.last.actor?.user, SUBJECT);
   await emit(w, "run.accepted.v1");
   await emit(w, "run.completed.v1", { text: "Deployed." });
@@ -536,8 +582,8 @@ test("when the app's own credential is a person, as under dev sign-in, a turn it
 });
 
 test("after a restart, who asked is not known, so only an operator may ask again", async () => {
-  const w = world({ operators: ["U03ABCDEF"] });
-  const { blocks, ts } = await failedTurn(w);
+  const w = mappedWorld({ operators: ["U03ABCDEF"] }, { ...PEOPLE, U03ABCDEF: "oz" });
+  const { blocks, ts } = await failedNobodyTurn(w);
   const app = w.restart();
   await deliver(w, click(blocks, defaultCopy.retry, { ts, threadTs: TS }), app);
   await app.idle();
@@ -573,7 +619,7 @@ function pressed(id: "retry" | "resume", run: string, user: string) {
 }
 
 test("a turn that acted for a person is asked again only by them, as themselves, after a restart too", async () => {
-  const w = mapped({ operators: [OPERATOR] });
+  const w = mapped({ operators: [OPERATOR] }, { default_agent: "lead" }, { [OPERATOR]: "oz" });
   const { run, blocks, ts } = await failedTurn(w);
   assert.equal(w.humagen.runs.get(run)?.actor?.user, "ana");
 
@@ -609,14 +655,15 @@ test("a turn that acted for a person is asked again only by them, as themselves,
 });
 
 test("a turn that acted for nobody is asked again for nobody, and each person's press is its own run", async () => {
-  // Olu is an operator the client maps. The person who asks is not mapped.
-  const w = mapped({ operators: [OTHER_USER, OPERATOR] });
-  await deliver(w, mention("deploy it", TS, { user: "U05UNMAPPED" }));
-  const run = w.humagen.last.id;
+  // Olu and oz are operators the client maps. Ana asked about olu's
+  // message, so the turn acted for nobody.
+  const w = mapped(
+    { operators: [OTHER_USER, OPERATOR] },
+    { default_agent: "lead" },
+    { [OPERATOR]: "oz" },
+  );
+  const { run } = await failedNobodyTurn(w);
   assert.equal(w.humagen.asked[0]?.act_as, undefined);
-  await emit(w, "run.accepted.v1");
-  await emit(w, "run.failed.v1", { error: "provider: 529 overloaded", terminal: true });
-  await w.app.idle();
 
   // After a restart, so who asked is not known: each operator's press is a
   // run of its own, and each acts for nobody, never for whoever pressed.
@@ -628,6 +675,7 @@ test("a turn that acted for nobody is asked again for nobody, and each person's 
     undefined,
     "olu's credential is not put behind the words",
   );
+  assert.deepEqual(w.humagen.started[1]?.asked_by, { client: CLIENT, user: OTHER_USER });
   assert.equal(w.humagen.last.actor?.bot, true);
   const first = w.humagen.last.id;
   await emit(w, "run.accepted.v1");
@@ -647,13 +695,14 @@ test("a turn that acted for nobody is asked again for nobody, and each person's 
 });
 
 test("asking again is refused once the agent may no longer be reached", async () => {
-  const w = world({ clientId: "docs-bot", defaultAgent: undefined });
+  const w = mappedWorld({ clientId: "docs-bot", defaultAgent: undefined });
   const client = {
     id: "docs-bot",
     surface: "slack",
     enabled: true,
     default_agent: "lead",
     identity: { team: TEAM },
+    slack: { machine: SUBJECT, people: PEOPLE },
   };
   w.humagen.clients.set("docs-bot", client);
   const { blocks, ts } = await failedTurn(w);
@@ -692,8 +741,9 @@ function failureCard(run: string, where: "home" | "thread", user: string) {
 
 for (const where of ["home", "thread"] as const) {
   test(`Retry on an inbox failure card from ${where} never asks humagen to retry on its own`, async () => {
-    const w = world({ operators: ["U03ABCDEF"] });
-    const { run } = await failedTurn(w);
+    const people = { ...PEOPLE, U03ABCDEF: "oz" };
+    const w = mappedWorld({ operators: ["U03ABCDEF"] }, people);
+    const { run } = await failedNobodyTurn(w);
     w.humagen.mailbox.set("m-failure", failureMail(run));
 
     // Someone who did not ask: told no, nothing sent.
@@ -738,6 +788,7 @@ for (const where of ["home", "thread"] as const) {
       enabled: true,
       default_agent: "helper",
       identity: { team: TEAM },
+      slack: { machine: SUBJECT, people },
     });
     await deliver(w, failureCard(run, where, "U03ABCDEF"), gated.app);
     await gated.app.idle();
@@ -795,7 +846,7 @@ test("Retry on an inbox card of a person's failed turn is theirs, after a restar
 });
 
 test("a forged Retry on an inbox part that is not a failure is refused, and nothing is sent", async () => {
-  const w = world({ operators: [USER] });
+  const w = mappedWorld({ operators: [USER] });
   w.humagen.mailbox.set("m-memory", memoryMail("api-svc-slack-any"));
   w.humagen.mailbox.set("m-alert", alertMail());
   for (const [id, target] of [
@@ -819,7 +870,7 @@ test("a forged Retry on an inbox part that is not a failure is refused, and noth
 });
 
 test("a Slack write that fails mid-turn still ends the turn: whole, and off processing", async () => {
-  const w = world();
+  const w = mappedWorld();
   await deliver(w, mention("long answer", TS));
   await emit(w, "run.accepted.v1");
   await emit(w, "run.delta.text.v1", { text: "First part. " });
@@ -847,7 +898,7 @@ test("a Slack write that fails mid-turn still ends the turn: whole, and off proc
 });
 
 test("when the streamed message cannot take the turn at all, the turn is posted as a new one", async () => {
-  const w = world();
+  const w = mappedWorld();
   await deliver(w, mention("long answer", TS));
   await emit(w, "run.accepted.v1");
   await emit(w, "run.delta.text.v1", { text: "First part. " });
@@ -863,7 +914,7 @@ test("when the streamed message cannot take the turn at all, the turn is posted 
 });
 
 test("when editing in place fails, the turn is still posted and the session settled", async () => {
-  const w = world();
+  const w = mappedWorld();
   w.slack.failing["chat.startStream"] = "unknown_method";
   w.slack.failing["chat.update"] = "ratelimited";
   await deliver(w, mention("hello", TS));
@@ -884,7 +935,7 @@ const finals = (w: World, text: string) =>
   w.slack.of("chat.postMessage").filter((a) => textIn(blocksOf(a)).includes(text));
 
 test("a long, silent tool call is not a failure: the stream closes and the answer follows once", async () => {
-  const w = world({ stallMs: 30, slowPollMs: 40 });
+  const w = mappedWorld({ stallMs: 30, slowPollMs: 40 });
   await deliver(w, mention("rebuild the index", TS));
   const run = w.humagen.last.id;
   await emit(w, "run.accepted.v1");
@@ -909,7 +960,7 @@ test("a long, silent tool call is not a failure: the stream closes and the answe
 });
 
 test("a parked run is only waiting, and its end is posted when it comes", async () => {
-  const w = world({ stallMs: 30, slowPollMs: 40 });
+  const w = mappedWorld({ stallMs: 30, slowPollMs: 40 });
   await deliver(w, mention("ask the helper", TS));
   const run = w.humagen.last.id;
   await emit(w, "run.accepted.v1");
@@ -924,7 +975,7 @@ test("a parked run is only waiting, and its end is posted when it comes", async 
 });
 
 test("a quiet run does not hold the thread, and the next message follows it as humagen orders turns", async () => {
-  const w = world({ stallMs: 30, slowPollMs: 40 });
+  const w = mappedWorld({ stallMs: 30, slowPollMs: 40 });
   await deliver(w, mention("long job", TS));
   const first = w.humagen.last.id;
   await emit(w, "run.accepted.v1");
@@ -943,7 +994,7 @@ test("a quiet run does not hold the thread, and the next message follows it as h
 });
 
 test("stop on a quiet run confirms it once, and its end is not posted again", async () => {
-  const w = world({ stallMs: 30, slowPollMs: 40 });
+  const w = mappedWorld({ stallMs: 30, slowPollMs: 40 });
   await deliver(w, mention("long job", TS));
   const run = w.humagen.last.id;
   await emit(w, "run.accepted.v1");
@@ -959,7 +1010,7 @@ test("stop on a quiet run confirms it once, and its end is not posted again", as
 });
 
 test("a quiet run whose stop loses the race posts its answer, once", async () => {
-  const w = world({ stallMs: 30, slowPollMs: 40 });
+  const w = mappedWorld({ stallMs: 30, slowPollMs: 40 });
   await deliver(w, mention("long job", TS));
   const run = w.humagen.last.id;
   await emit(w, "run.accepted.v1");
@@ -998,7 +1049,7 @@ test("a stop slower than the wait is confirmed when it lands, and the session wa
 });
 
 test("a slow follow and a late lifecycle.stopped post a quiet run's stopped end once", async () => {
-  const w = world({ stallMs: 30, slowPollMs: 40 });
+  const w = mappedWorld({ stallMs: 30, slowPollMs: 40 });
   await deliver(w, mention("long job", TS));
   const run = w.humagen.last.id;
   await emit(w, "run.accepted.v1");
@@ -1021,7 +1072,7 @@ test("a slow follow and a late lifecycle.stopped post a quiet run's stopped end 
 });
 
 test("on shutdown a quiet run stops being followed", async () => {
-  const w = world({ stallMs: 30, slowPollMs: 40 });
+  const w = mappedWorld({ stallMs: 30, slowPollMs: 40 });
   await deliver(w, mention("long job", TS));
   await emit(w, "run.accepted.v1");
   await pause(120);
@@ -1031,7 +1082,7 @@ test("on shutdown a quiet run stops being followed", async () => {
 });
 
 test("an inbox decision humagen refuses is explained in humagen's words, not the platform's", async () => {
-  const w = world();
+  const w = mappedWorld();
   const watching = new AbortController();
   const watch = w.app.watchInbox(watching.signal);
   await deliver(w, mention("remember this", TS));
@@ -1058,7 +1109,7 @@ test("an inbox decision humagen refuses is explained in humagen's words, not the
 });
 
 test("an answer that never streamed arrives whole when the run completes", async () => {
-  const w = world();
+  const w = mappedWorld();
   await deliver(w, mention("quick", TS));
   await emit(w, "run.accepted.v1");
   await emit(w, "run.completed.v1", { text: "Done." });
@@ -1067,7 +1118,7 @@ test("an answer that never streamed arrives whole when the run completes", async
 });
 
 test("where native streaming is refused, the turn is posted once and edited", async () => {
-  const w = world();
+  const w = mappedWorld();
   w.slack.failing["chat.startStream"] = "unknown_method";
   await deliver(w, mention("hello", TS));
   await emit(w, "run.accepted.v1");
@@ -1096,7 +1147,7 @@ test("where native streaming is refused, the turn is posted once and edited", as
 });
 
 test("an agent named in the message answers, when it exists and may be reached", async () => {
-  const w = world();
+  const w = mappedWorld();
   await deliver(w, mention("@helper summarize this", TS));
   assert.equal(w.humagen.started[0]?.agent, "helper");
   assert.equal(w.humagen.started[0]?.text, "summarize this");
@@ -1114,7 +1165,7 @@ test("an agent named in the message answers, when it exists and may be reached",
 });
 
 test("as a client, the app routes only to its default agent and its list", async () => {
-  const w = world({ clientId: "docs-bot", defaultAgent: undefined });
+  const w = mappedWorld({ clientId: "docs-bot", defaultAgent: undefined });
   w.humagen.clients.set("docs-bot", {
     id: "docs-bot",
     surface: "slack",
@@ -1168,7 +1219,7 @@ test("a client for another team, or one that is gone, routes to nothing", async 
 });
 
 test("a message that names no agent leaves the choice to the platform's default", async () => {
-  const w = world({ defaultAgent: undefined });
+  const w = mappedWorld({ defaultAgent: undefined });
   await deliver(w, mention("what changed?", TS));
   assert.equal(w.humagen.asked[0]?.agent, "", "the app picks nobody itself");
   await emit(w, "run.accepted.v1");
@@ -1177,7 +1228,7 @@ test("a message that names no agent leaves the choice to the platform's default"
 });
 
 test("a message no agent takes waits for a person, and says so", async () => {
-  const w = world({ defaultAgent: undefined });
+  const w = mappedWorld({ defaultAgent: undefined });
   w.humagen.refuse = new HumagenError(
     409,
     "no agent takes it: it waits for a person to answer or tag an agent",
@@ -1190,7 +1241,7 @@ test("a message no agent takes waits for a person, and says so", async () => {
 });
 
 test("with no default anywhere, the person is asked to tag an agent, for example one this app may reach", async () => {
-  const w = world({ defaultAgent: undefined });
+  const w = mappedWorld({ defaultAgent: undefined });
   w.humagen.refuse = new HumagenError(
     409,
     "tag an agent: nothing answers in the workspace by default",
@@ -1215,7 +1266,7 @@ test("with no default anywhere, the person is asked to tag an agent, for example
 });
 
 test("a run a limit refuses is shown in humagen's words, and humagen's are kept in the log", async () => {
-  const w = world();
+  const w = mappedWorld();
   w.humagen.refuse = new HumagenError(429, "the workspace reached 200 runs today", {
     limit: "runs",
     resets_at: new Date(Date.now() + 3_600_000).toISOString(),
@@ -1237,7 +1288,7 @@ test("a run a limit refuses is shown in humagen's words, and humagen's are kept 
 });
 
 test("a message sent while a turn is running waits its turn", async () => {
-  const w = world();
+  const w = mappedWorld();
   await deliver(w, mention("first", TS));
   const first = w.humagen.last.id;
   await emit(w, "run.accepted.v1");
@@ -1255,7 +1306,7 @@ test("a message sent while a turn is running waits its turn", async () => {
 });
 
 test("stop also drops what was waiting behind the stopped turn", async () => {
-  const w = world();
+  const w = mappedWorld();
   await deliver(w, mention("first", TS));
   await emit(w, "run.accepted.v1");
   await deliver(w, mention("second", "1700000060.000100", { thread_ts: TS }));
@@ -1270,7 +1321,7 @@ test("stop also drops what was waiting behind the stopped turn", async () => {
 });
 
 test("/agent asks in a new thread, and /agent help lists who can be asked", async () => {
-  const w = world();
+  const w = mappedWorld();
   await deliver(w, command("what is on call this week?"));
   const root = w.slack.of("chat.postMessage")[0];
   assert.equal(root?.channel, CHANNEL);
@@ -1296,7 +1347,7 @@ test("/agent asks in a new thread, and /agent help lists who can be asked", asyn
 });
 
 test("the shortcuts: a form for asking from anywhere, and a message as the question", async () => {
-  const w = world();
+  const w = mappedWorld();
   await deliver(w, interactive({ type: "shortcut", callback_id: "aui_ask" }));
   const opened = w.slack.of("views.open")[0];
   assert.equal((opened?.view as { callback_id: string }).callback_id, "aui_form");
@@ -1338,7 +1389,7 @@ test("the shortcuts: a form for asking from anywhere, and a message as the quest
 });
 
 test("an inbox item about a run lands in its thread, and the button resolves it in humagen", async () => {
-  const w = world();
+  const w = mappedWorld();
   const watching = new AbortController();
   const watch = w.app.watchInbox(watching.signal);
   await deliver(w, mention("remember how we deploy", TS));
@@ -1398,7 +1449,7 @@ test("an inbox item about a run lands in its thread, and the button resolves it 
 // The platform sends a run's thread beside the run on a result, an artifact,
 // a recap and a draft: the message still lands where the run was asked for.
 test("an inbox item about a run in a humagen thread lands in the run's Slack thread", async () => {
-  const w = world();
+  const w = mappedWorld();
   const watching = new AbortController();
   const watch = w.app.watchInbox(watching.signal);
   await deliver(w, mention("check the deploy", TS));
@@ -1454,7 +1505,7 @@ test("an inbox item about a run is not posted where humagen refuses the run's de
 });
 
 test("the Home tab shows a person what waits on them, and an operator the whole inbox", async () => {
-  const w = world({ operators: [OTHER_USER] });
+  const w = mappedWorld({ operators: [OTHER_USER] });
   await deliver(w, mention("deploy it", TS));
   const run = w.humagen.last.id;
   await emit(w, "run.accepted.v1");
@@ -1674,7 +1725,7 @@ test("text the app repeats as itself can mention a person or channel but never n
 });
 
 test("asking from the shortcut form cannot make the app notify a whole channel", async () => {
-  const w = world();
+  const w = mappedWorld();
   await deliver(
     w,
     interactive({
@@ -1702,6 +1753,7 @@ const CLIENT = "app";
 function mapped(
   opts: Parameters<typeof world>[0] = {},
   routing: Pick<ClientRecord, "default_agent" | "agents"> = { default_agent: "lead" },
+  more: Record<string, string> = {},
 ): World {
   const w = world({ clientId: CLIENT, ...opts });
   w.humagen.clients.set(CLIENT, {
@@ -1710,7 +1762,7 @@ function mapped(
     enabled: true,
     ...routing,
     identity: { team: TEAM },
-    slack: { machine: SUBJECT, people: { [USER]: "ana", [OTHER_USER]: "olu" } },
+    slack: { machine: SUBJECT, people: { [USER]: "ana", [OTHER_USER]: "olu", ...more } },
   });
   return w;
 }
@@ -1732,7 +1784,7 @@ test("a person the client maps asks as themselves, so their run is theirs", asyn
   const w = mapped();
   await deliver(w, mention("hello", TS));
   assert.deepEqual(w.humagen.asked[0]?.act_as, { client: CLIENT, user: USER });
-  const other = world();
+  const other = mappedWorld();
   await deliver(other, mention("hello", TS));
   assert.equal(other.humagen.asked[0]?.act_as, undefined, "without a client nobody is mapped");
   await emit(w, "run.completed.v1", { text: "Hi." });
@@ -2140,7 +2192,7 @@ test("disabled installation event subscriptions do not post or start native work
 });
 
 test("a thread asked for an agent by name keeps it: untagged replies there go to it, not the default", async () => {
-  const w = world();
+  const w = mappedWorld();
   await deliver(w, mention("@helper summarize this", TS));
   assert.equal(w.humagen.started[0]?.agent, "helper");
   await emit(w, "run.accepted.v1");
@@ -2168,7 +2220,7 @@ test("a thread asked for an agent by name keeps it: untagged replies there go to
 });
 
 test("/agent alone opens the ask form with a picker of who to ask, and the one picked answers", async () => {
-  const w = world();
+  const w = mappedWorld();
   await deliver(w, command(""));
   const opened = w.slack.of("views.open")[0]?.view as {
     blocks: { block_id: string; element: { options?: { value: string }[] } }[];

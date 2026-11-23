@@ -2190,41 +2190,44 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	// Asked before the client below names acme's credential as a Slack
 	// app's machine, which starts no run as itself.
 	bridgeDeliveryRunFixture := c.call(acme, "POST", "/api/runs", "/api/runs", `{"agent":"helper","text":"Delivery check","project":"Launch"}`, http.StatusAccepted)
-	// A Slack app's machine records where it posted a message; nobody else can.
-	app := `{"id":"app","name":"App","surface":"slack","identity":{"app_id":"A01APP","team":"T01ABCDEF"},"default_agent":"helper","slack":{"machine":"svc-acme"},` +
+	// A Slack app's machine records where it posted a message; nobody else
+	// can. It is a credential of its own: a Slack app's starts no run as
+	// itself, and acme's starts many below.
+	appMachine := f.machineAs(t, "svc-acme-app", "acme", everything...)
+	app := `{"id":"app","name":"App","surface":"slack","identity":{"app_id":"A01APP","team":"T01ABCDEF"},"default_agent":"helper","slack":{"machine":"svc-acme-app"},` +
 		`"credentials":{"token":{"value":"` + botToken + `"},"signing_secret":{"value":"` + signingSecret + `"}}}`
 	c.call(acme, "POST", "/api/clients", "/api/clients", app, http.StatusCreated)
 	installationCapsFixture := c.call(acme, "GET", "/api/clients/{id}/capabilities", "/api/clients/support/capabilities", "", http.StatusOK)
 	c.call(acme, "PUT", "/api/clients/{id}/capabilities", "/api/clients/support/capabilities", fmt.Sprintf(`{"version":%v,"events":["app_mention","message","slash_command"],"actions":["slack_post_message","slack_add_reaction"],"deliver_outcomes":true}`, installationCapsFixture.field("version")), http.StatusOK)
 	c.call(acme, "PUT", "/api/clients/{id}/capabilities", "/api/clients/support/capabilities", `{"version":0,"events":[],"actions":[],"deliver_outcomes":false}`, http.StatusConflict)
 	c.call(acme, "PUT", "/api/clients/{id}/capabilities", "/api/clients/support/capabilities", `{"version":2,"events":["not_an_event"],"actions":[],"deliver_outcomes":false}`, http.StatusBadRequest)
-	c.call(acme, "GET", "/api/clients/{id}/delivery", "/api/clients/app/delivery?run="+bridgeDeliveryRunFixture.str("id")+"&channel=C01DELIVERY", "", http.StatusOK)
-	c.call(acme, "GET", "/api/clients/{id}/delivery", "/api/clients/app/delivery", "", http.StatusBadRequest)
-	c.call(acme, "GET", "/api/clients/{id}/delivery", "/api/clients/app/delivery?run=missing&channel=C01DELIVERY", "", http.StatusNotFound)
+	c.call(appMachine, "GET", "/api/clients/{id}/delivery", "/api/clients/app/delivery?run="+bridgeDeliveryRunFixture.str("id")+"&channel=C01DELIVERY", "", http.StatusOK)
+	c.call(appMachine, "GET", "/api/clients/{id}/delivery", "/api/clients/app/delivery", "", http.StatusBadRequest)
+	c.call(appMachine, "GET", "/api/clients/{id}/delivery", "/api/clients/app/delivery?run=missing&channel=C01DELIVERY", "", http.StatusNotFound)
 
 	deliveries := "/api/inbox/{id}/deliveries/{client}"
-	c.call(acme, "PUT", deliveries, inboxPath+"/deliveries/app", `{"channel":"C0123ABC","ts":"1700000000.000100"}`, http.StatusNoContent)
-	c.call(acme, "PUT", deliveries, inboxPath+"/deliveries/app", `{"channel":"","ts":"1700000000.000100"}`, http.StatusBadRequest)
+	c.call(appMachine, "PUT", deliveries, inboxPath+"/deliveries/app", `{"channel":"C0123ABC","ts":"1700000000.000100"}`, http.StatusNoContent)
+	c.call(appMachine, "PUT", deliveries, inboxPath+"/deliveries/app", `{"channel":"","ts":"1700000000.000100"}`, http.StatusBadRequest)
 	c.call(acme, "PUT", deliveries, inboxPath+"/deliveries/support", `{"channel":"C0123ABC","ts":"1700000000.000100"}`, http.StatusNotFound)
-	if got := c.call(acme, "GET", "/api/inbox/{id}", inboxPath, "", http.StatusOK); obj(obj(obj(got.field("message"))["deliveries"])["app"])["ts"] != "1700000000.000100" {
+	if got := c.call(appMachine, "GET", "/api/inbox/{id}", inboxPath, "", http.StatusOK); obj(obj(obj(got.field("message"))["deliveries"])["app"])["ts"] != "1700000000.000100" {
 		t.Errorf("the machine does not see its own receipt: %s", got.raw)
 	}
 	// Where the app files the threads it starts outside a bound channel.
-	homed := strings.Replace(strings.Replace(app, `"slack":`, `"home":{"project":"Launch"},"slack":`, 1), `"machine":"svc-acme"`, `"machine":"svc-acme","people":{"U01ANA":"00u-ana"}`, 1)
+	homed := strings.Replace(strings.Replace(app, `"slack":`, `"home":{"project":"Launch"},"slack":`, 1), `"machine":"svc-acme-app"`, `"machine":"svc-acme-app","people":{"U01ANA":"00u-ana"}`, 1)
 	c.call(acme, "PUT", "/api/clients/{id}", "/api/clients/app", homed, http.StatusOK)
 	c.call(acme, "PUT", "/api/clients/{id}", "/api/clients/app", strings.Replace(homed, "Launch", "Ghost", 1), http.StatusBadRequest)
 	c.call(acme, "PUT", "/api/clients/{id}", "/api/clients/app", strings.Replace(homed, `"project":"Launch"`, `"project":"Launch","channel":"nowhere"`, 1), http.StatusBadRequest)
 	// The machine reads a mapped person's inbox for them, and nobody else's.
 	// Here the policy grants ana nothing by subject, so she reads nothing
 	// through Slack; platform tests cover a person who may.
-	c.call(acme, "GET", "/api/inbox/count", "/api/inbox/count?act_as_client=app&act_as_user=U01ANA", "", http.StatusForbidden)
-	c.call(acme, "GET", "/api/inbox", "/api/inbox?act_as_client=app&act_as_user=U01NOBODY", "", http.StatusForbidden)
-	c.call(acme, "GET", "/api/inbox/count", "/api/inbox/count?act_as_client=app", "", http.StatusBadRequest)
-	c.call(acme, "GET", "/api/inbox/{id}", inboxPath+"?act_as_client=app", "", http.StatusBadRequest)
+	c.call(appMachine, "GET", "/api/inbox/count", "/api/inbox/count?act_as_client=app&act_as_user=U01ANA", "", http.StatusForbidden)
+	c.call(appMachine, "GET", "/api/inbox", "/api/inbox?act_as_client=app&act_as_user=U01NOBODY", "", http.StatusForbidden)
+	c.call(appMachine, "GET", "/api/inbox/count", "/api/inbox/count?act_as_client=app", "", http.StatusBadRequest)
+	c.call(appMachine, "GET", "/api/inbox/{id}", inboxPath+"?act_as_client=app", "", http.StatusBadRequest)
 	c.call(acme, "GET", "/api/inbox/count", "/api/inbox/count?act_as_client=support&act_as_user=U01ANA", "", http.StatusNotFound)
 	// And lists her projects the same way: acting_projects_test.go covers a
 	// person who may.
-	c.call(acme, "GET", "/api/projects", "/api/projects?act_as_client=app&act_as_user=U01ANA", "", http.StatusForbidden)
+	c.call(appMachine, "GET", "/api/projects", "/api/projects?act_as_client=app&act_as_user=U01ANA", "", http.StatusForbidden)
 	c.call(acme, "GET", "/api/projects", "/api/projects?act_as_user=U01ANA", "", http.StatusBadRequest)
 	c.call(acme, "GET", "/api/projects", "/api/projects?act_as_client=support&act_as_user=U01ANA", "", http.StatusNotFound)
 	c.call(acme, "PUT", "/api/clients/{id}", "/api/clients/support", `{"name":"Support","surface":"slack","identity":{"app_id":"A01CONTRACT","team":"T01ABCDEF"},"default_agent":"helper","agents":["*"],"slack":{"sessions":true},"enabled":false}`, http.StatusOK)
@@ -2421,16 +2424,16 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	// as that person, who must hold runs:write themselves: here the policy
 	// grants ana nothing by subject (platform tests post as one who may).
 	surface := `{"text":"<@UAPP> who has the PO?","act_as":{"client":"app","user":"U01ANA"},"surface":{"client":"app","channel":"C01RENEW","ts":"1700000000.000200","app_user":"UAPP"}}`
-	c.call(acme, "POST", "/api/threads", "/api/threads", surface, http.StatusForbidden)
+	c.call(appMachine, "POST", "/api/threads", "/api/threads", surface, http.StatusForbidden)
 	c.call(ana, "POST", "/api/threads", "/api/threads", surface, http.StatusNotFound)
-	c.call(acme, "POST", "/api/threads", "/api/threads", strings.Replace(surface, `"surface"`, `"project":"Field","surface"`, 1), http.StatusBadRequest)
+	c.call(appMachine, "POST", "/api/threads", "/api/threads", strings.Replace(surface, `"surface"`, `"project":"Field","surface"`, 1), http.StatusBadRequest)
 	// A message that addressed nobody, sent where no thread is listening,
 	// starts nothing and is not kept.
-	c.call(acme, "POST", "/api/threads", "/api/threads", `{"text":"anyone around?","listen":true,"act_as":{"client":"app","user":"U01ANA"},"surface":{"client":"app","channel":"C01RENEW","ts":"1700000000.000900","message":"1700000000.000950","app_user":"UAPP"}}`, http.StatusConflict)
+	c.call(appMachine, "POST", "/api/threads", "/api/threads", `{"text":"anyone around?","listen":true,"act_as":{"client":"app","user":"U01ANA"},"surface":{"client":"app","channel":"C01RENEW","ts":"1700000000.000900","message":"1700000000.000950","app_user":"UAPP"}}`, http.StatusConflict)
 	// A reply under the post of an announcement since withdrawn starts
 	// nothing, in a Slack channel bound to the announcement's project.
-	c.call(acme, "PUT", deliveries, "/api/inbox/"+news.str("id")+"/deliveries/app", `{"channel":"C01RENEW","ts":"1700000000.000300"}`, http.StatusNoContent)
-	c.call(acme, "POST", "/api/threads", "/api/threads", `{"text":"<@UAPP> still on?","act_as":{"client":"app","user":"U01ANA"},"surface":{"client":"app","channel":"C01RENEW","ts":"1700000000.000300","message":"1700000000.000400","app_user":"UAPP"}}`, http.StatusGone)
+	c.call(appMachine, "PUT", deliveries, "/api/inbox/"+news.str("id")+"/deliveries/app", `{"channel":"C01RENEW","ts":"1700000000.000300"}`, http.StatusNoContent)
+	c.call(appMachine, "POST", "/api/threads", "/api/threads", `{"text":"<@UAPP> still on?","act_as":{"client":"app","user":"U01ANA"},"surface":{"client":"app","channel":"C01RENEW","ts":"1700000000.000300","message":"1700000000.000400","app_user":"UAPP"}}`, http.StatusGone)
 	started := c.call(ana, "POST", "/api/threads", "/api/threads", `{"project":"Field","channel":"renewals","visibility":"shared","title":"Globex renewal","text":"@helper when does Globex renew? @vic @sme:billing"}`, http.StatusCreated)
 	tid, _ := obj(started.field("thread"))["id"].(string)
 	if started.str("rule") != "tagged" || len(sliceOf(started.field("runs"))) != 1 || len(sliceOf(started.field("notified"))) != 1 {

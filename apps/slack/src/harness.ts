@@ -310,6 +310,13 @@ export class FakeHumagen implements Humagen {
       const person = this.clients.get(t.act_as.client)?.slack?.people?.[t.act_as.user];
       if (!person) throw new HumagenError(403, "this client does not map that person");
       actor = { id: person, display: person, user: person };
+    } else if (t.asked_by) {
+      // As the real route does: a run for nobody at a person's asking, who must be mapped.
+      if (!this.clients.get(t.asked_by.client)?.slack?.people?.[t.asked_by.user])
+        throw new HumagenError(403, "this client does not map that person");
+    } else if ([...this.clients.values()].some((c) => c.slack?.machine === SUBJECT)) {
+      // As the real route does: a Slack app's credential starts nothing as itself.
+      throw new HumagenError(403, "a Slack app starts work only for a person its client maps");
     }
     const id = runId("acme", SUBJECT, t.idempotencyKey);
     const existing = this.runs.get(id);
@@ -931,6 +938,32 @@ export function world(
       ...opts,
     });
   return { slack, humagen, app: make(), logs, restart: make };
+}
+
+/** Whom the client "app" maps by default: USER is ana, OTHER_USER is olu. */
+export const PEOPLE: Record<string, string> = { [USER]: "ana", [OTHER_USER]: "olu" };
+
+/**
+ * A world whose app is the client "app", enabled in TEAM, naming the app's
+ * credential as its machine and mapping `people`: the only people a Slack
+ * app starts anything for.
+ */
+export function mappedWorld(
+  opts: Partial<AppOptions> = {},
+  people: Record<string, string> = PEOPLE,
+  over: Partial<ClientRecord> = {},
+): World {
+  const w = world({ clientId: "app", ...opts });
+  w.humagen.clients.set("app", {
+    id: "app",
+    surface: "slack",
+    enabled: true,
+    identity: { team: TEAM },
+    agents: ["*"],
+    ...over,
+    slack: { machine: SUBJECT, people, ...over.slack },
+  });
+  return w;
 }
 
 // Slack deliveries, as Socket Mode hands them over.
