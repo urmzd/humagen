@@ -348,7 +348,10 @@ function AlertLine({
     });
   if (!open && alert.review && onOpen)
     actions.push({ kind: "button", label: words.openReview, run: () => onOpen(alert.review!) });
-  const [main, ...rest] = actions;
+  // A settled line asks nothing: what it still offers waits in its menu, so
+  // its right edge lines up with the open lines around it.
+  const main = open ? actions[0] : undefined;
+  const rest = open ? actions.slice(1) : actions;
   const menu: PageAction[] = rest.map((a) => ({
     label: a.label,
     disabled: a.disabled,
@@ -373,76 +376,83 @@ function AlertLine({
       data-alert-message={anchor}
       data-alert-state={state}
       data-reviewed={alert.review ? "" : undefined}
-      className={`flex min-w-0 flex-col rounded-aui px-1 text-aui-xs outline-none focus-visible:outline-2 focus-visible:outline-aui-accent ${open ? "" : "text-aui-muted"}`}
+      className={`flex min-w-0 flex-col rounded-aui px-1 text-aui-xs focus-visible:outline-2 focus-visible:outline-aui-accent ${open ? "" : "text-aui-muted"}`}
     >
-      <div className="flex min-h-9 min-w-0 items-center gap-2">
-        {open ? (
-          <span
-            role="img"
-            aria-label={words.states.open}
-            className={`size-2 shrink-0 rounded-full ${tone(alert)}`}
-          />
-        ) : (
-          <Pill size="compact">{words.states[state]}</Pill>
-        )}
-        {agent ? (
-          <span className={`flex shrink-0 items-center gap-1.5 ${open ? "" : "opacity-60"}`}>
-            <AgentMark name={agent} size={16} />
-            <span className={`font-medium ${open ? "text-aui-fg" : ""}`}>{agentShown(agent)}</span>
+      {/* What it is on the left, what to do on the right; on a narrow screen the actions wrap under it. */}
+      <div className="flex min-w-0 flex-wrap items-center gap-x-2">
+        <span className="flex min-h-9 min-w-0 flex-1 basis-56 items-center gap-2">
+          {open ? (
+            <span
+              role="img"
+              aria-label={words.states.open}
+              className={`size-2 shrink-0 rounded-full ${tone(alert)}`}
+            />
+          ) : (
+            <Pill size="compact">{words.states[state]}</Pill>
+          )}
+          {agent ? (
+            <span className={`flex shrink-0 items-center gap-1.5 ${open ? "" : "opacity-60"}`}>
+              <AgentMark name={agent} size={16} />
+              <span className={`font-medium ${open ? "text-aui-fg" : ""}`}>
+                {agentShown(agent)}
+              </span>
+            </span>
+          ) : (
+            <BellIcon size={14} aria-hidden />
+          )}
+          <span className="min-w-0 flex-1 truncate" title={said || undefined}>
+            {agent ? alertReason({ title: alert.title, agent: alert.agent }) : alert.title}
+            {alerts.length > 1 && (
+              <span className="ml-1.5 tabular-nums text-aui-muted">
+                <span aria-hidden>{words.count(alerts.length)}</span>
+                <span className="sr-only">{words.countLabel(alerts.length)}</span>
+              </span>
+            )}
           </span>
-        ) : (
-          <BellIcon size={14} aria-hidden />
-        )}
-        <span className="min-w-0 flex-1 truncate" title={said || undefined}>
-          {agent ? alertReason({ title: alert.title, agent: alert.agent }) : alert.title}
-          {alerts.length > 1 && (
-            <span className="ml-1.5 tabular-nums text-aui-muted">
-              <span aria-hidden>{words.count(alerts.length)}</span>
-              <span className="sr-only">{words.countLabel(alerts.length)}</span>
+          {said && (
+            <span id={detail} className="sr-only">
+              {said}
             </span>
           )}
         </span>
-        {said && (
-          <span id={detail} className="sr-only">
-            {said}
-          </span>
-        )}
-        {main &&
-          (main.kind === "link" ? (
-            <a
-              className={`${textAction} ${open ? "text-aui-fg" : "text-aui-muted"}`}
-              href={main.to}
-              onClick={(event) => {
-                if (event.button || event.metaKey || event.ctrlKey || event.shiftKey) return;
-                event.preventDefault();
-                main.run();
-              }}
-            >
-              {main.label}
-            </a>
-          ) : (
+        <span className="ml-auto flex shrink-0 items-center gap-2 empty:hidden">
+          {main &&
+            (main.kind === "link" ? (
+              <a
+                className={`${textAction} ${open ? "text-aui-fg" : "text-aui-muted"}`}
+                href={main.to}
+                onClick={(event) => {
+                  if (event.button || event.metaKey || event.ctrlKey || event.shiftKey) return;
+                  event.preventDefault();
+                  main.run();
+                }}
+              >
+                {main.label}
+              </a>
+            ) : (
+              <button
+                type="button"
+                className={`${textAction} ${open ? "text-aui-fg" : "text-aui-muted"}`}
+                disabled={main.disabled}
+                onClick={main.run}
+              >
+                {main.label}
+              </button>
+            ))}
+          {open && canWrite && (
             <button
               type="button"
-              className={`${textAction} ${open ? "text-aui-fg" : "text-aui-muted"}`}
-              disabled={main.disabled}
-              onClick={main.run}
+              className={iconAction}
+              aria-label={words.markDone}
+              title={words.markDone}
+              disabled={attention.busy}
+              onClick={() => void attention.change(alerts, "resolved")}
             >
-              {main.label}
+              <CheckIcon size={16} aria-hidden />
             </button>
-          ))}
-        {open && canWrite && (
-          <button
-            type="button"
-            className={iconAction}
-            aria-label={words.markDone}
-            title={words.markDone}
-            disabled={attention.busy}
-            onClick={() => void attention.change(alerts, "resolved")}
-          >
-            <CheckIcon size={16} aria-hidden />
-          </button>
-        )}
-        {menu.length > 0 && <MoreMenu label={words.more} items={menu} />}
+          )}
+          {menu.length > 0 && <MoreMenu label={words.more} items={menu} />}
+        </span>
       </div>
       {reviewProblem && alerts.some((a) => a.id === reviewProblem.id) && (
         <Problem message={reviewProblem.message} />
@@ -456,7 +466,8 @@ export function jumpToOpenAlert(root: ParentNode = document) {
   const line = root.querySelector<HTMLElement>('[data-alert-line][data-alert-state="open"]');
   if (!line) return false;
   line.scrollIntoView?.({ block: "center" });
-  line.focus();
+  // Shown as focused even after a click, so the eye lands on the line.
+  line.focus({ focusVisible: true } as FocusOptions);
   return true;
 }
 

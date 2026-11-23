@@ -1307,6 +1307,30 @@ export function ThreadRoom({
                         className="mx-auto flex w-full max-w-4xl flex-col gap-2 px-4 pb-3"
                       >
                         <Problem message={problem} />
+                        {/* An alert changed anywhere in the transcript is undone here, beside the composer. */}
+                        <Problem message={attention.problem ?? null} />
+                        {attention.problem && (
+                          <button
+                            type="button"
+                            className={`${button} self-start`}
+                            onClick={attention.refresh}
+                          >
+                            Reload alerts
+                          </button>
+                        )}
+                        {attention.undo && (
+                          <p role="status" className="text-aui-xs">
+                            Alert updated.{" "}
+                            <button
+                              type="button"
+                              className="underline"
+                              disabled={attention.busy}
+                              onClick={() => void attention.change(attention.undo!, "open")}
+                            >
+                              Undo
+                            </button>
+                          </p>
+                        )}
                         {canRun && !posts && (
                           <p className="text-aui-xs text-aui-muted">{words.viewerOnly}</p>
                         )}
@@ -1387,25 +1411,6 @@ export function ThreadRoom({
                       </div>
                     }
                   >
-                    <Problem message={attention.problem ?? null} />
-                    {attention.problem && (
-                      <button type="button" className={button} onClick={attention.refresh}>
-                        Reload alerts
-                      </button>
-                    )}
-                    {attention.undo && (
-                      <p role="status" className="text-aui-xs">
-                        Alert updated.{" "}
-                        <button
-                          type="button"
-                          className="underline"
-                          disabled={attention.busy}
-                          onClick={() => void attention.change(attention.undo!, "open")}
-                        >
-                          Undo
-                        </button>
-                      </p>
-                    )}
                     {before && (
                       <button
                         type="button"
