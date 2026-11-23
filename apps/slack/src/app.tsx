@@ -857,6 +857,10 @@ export class App {
     };
   };
 
+  /** The name people gave an agent, for a sentence about it; nothing when it has only its handle. */
+  private nameOf = (agent: string): string | undefined =>
+    this.agentLooks[agent]?.display_name || undefined;
+
   /** Nothing answers by default: say how to tag an agent this app may reach, naming one. */
   private async tagOne(routing: Routing | undefined): Promise<Failure> {
     const known = await this.agents().catch(() => [] as Agent[]);
@@ -1289,6 +1293,7 @@ export class App {
     await this.agents().catch(() => [] as Agent[]);
     const presenter = new Presenter(this.slack, this.target(job), {
       authorOf: this.authorOf,
+      nameOf: this.nameOf,
       native: this.native,
       outcomesOnly: controls.policy.bound,
       // A refused delivery is said once per run, never dropped without a word.
@@ -1878,7 +1883,14 @@ export class App {
     const turn = follow(run, { href: this.href }).settle(run);
     await this.postView(
       session,
-      renderToSlack(<TurnView copy={this.copy} capabilities={this.capabilities} turn={turn} />),
+      renderToSlack(
+        <TurnView
+          copy={this.copy}
+          capabilities={this.capabilities}
+          turn={turn}
+          agentName={this.nameOf(turn.agent.name)}
+        />,
+      ),
     ).catch((e: Error) => this.log(`the end of run ${run.id} was not posted: ${e.message}`));
   }
 

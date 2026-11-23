@@ -436,6 +436,22 @@ test("a failed run shows why, and Retry asks again in the same conversation", as
   assert.equal(w.humagen.started.length, 2);
 });
 
+test("a failed run names its agent as people know it, not by its handle", async () => {
+  const w = mappedWorld();
+  w.humagen.looks = { lead: { display_name: "Launch Lead" } };
+  await deliver(w, mention("deploy it", TS));
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.failed.v1", {
+    error: "agent: step 2\nprovider: 529 overloaded",
+    terminal: true,
+  });
+  await w.app.idle();
+  const final = w.slack.of("chat.stopStream")[0];
+  const said = textIn(blocksOf(final));
+  assert.ok(said.includes(defaultCopy.runFailure.couldNotFinish("Launch Lead")), said);
+  assert.ok(!said.includes(defaultCopy.runFailure.couldNotFinish("lead")), said);
+});
+
 test("a run whose retries ran out is ended by its record, as the ledger decides", async () => {
   const w = mappedWorld();
   await deliver(w, mention("deploy it", TS));

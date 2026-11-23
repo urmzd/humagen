@@ -67,6 +67,8 @@ test("a failed answer says what happened in one plain sentence, the runtime's wo
   assert.equal(alert.getAttribute("data-tone"), "warn");
   assert.ok(alert.textContent?.includes(words.couldNotRun("Github Reviewer")));
   assert.ok(alert.textContent?.includes(words.because.no_model_provider));
+  // The sentence says what to do, so nothing under it says to send a new message.
+  assert.ok(!document.body.textContent?.includes(defaultCopy.cantRetry));
   // The runtime's words wait behind Show details.
   assert.ok(!document.body.textContent?.includes("max attempts exhausted"));
   assert.equal(screen.queryByTestId("callout-details"), null);
