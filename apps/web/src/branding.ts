@@ -64,12 +64,18 @@ export function setEntryAgent(agent: string, name: string): void {
   entry = { agent, name };
 }
 
+/** The name the workspace typed for its entry agent, when `name` is that agent. */
+function entryName(name: string): string {
+  return entry.agent !== "" && name === entry.agent ? entry.name : "";
+}
+
 /**
  * The name people see for an agent: its look's display name, else the
- * workspace's name for its entry agent, else its handle in title case.
+ * workspace's name for its entry agent, else its handle in title case. A
+ * name a person typed is shown as typed; only a handle is written as a name.
  */
 export function agentShown(name: string): string {
-  return agentLook(name)?.display_name || titled(brandShown(name));
+  return agentLook(name)?.display_name || entryName(name) || titled(name);
 }
 
 /** A handle as words in title case, with known words spelled their own way. */
@@ -86,7 +92,7 @@ export function titled(handle: string): string {
  * drawn from, so naming an agent never changes its face.
  */
 export function brandShown(name: string): string {
-  return entry.agent !== "" && name === entry.agent && entry.name ? entry.name : name;
+  return entryName(name) || name;
 }
 
 /**
