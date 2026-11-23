@@ -965,6 +965,7 @@ export function AgentMessage({
                       {before.handed && lastWords && <Speaker agent={turn.agent} />}
                       <TurnView
                         turn={{ ...turn, text: tail }}
+                        agentName={who}
                         copy={copy}
                         capabilities={{ ...capabilities, followUp }}
                         hideTasks

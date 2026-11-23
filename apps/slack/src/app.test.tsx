@@ -408,7 +408,11 @@ test("a failed run shows why, and Retry asks again in the same conversation", as
   });
   await w.app.idle();
   const final = w.slack.of("chat.stopStream")[0];
-  assert.match(textIn(blocksOf(final)), /provider: 529 overloaded/);
+  // One plain sentence; the runtime's own words stay out of the thread.
+  const said = textIn(blocksOf(final));
+  assert.ok(said.includes(defaultCopy.runFailure.couldNotFinish("lead")), said);
+  assert.ok(said.includes(defaultCopy.runFailure.because.unknown), said);
+  assert.doesNotMatch(said, /529 overloaded/);
   assert.deepEqual(w.slack.statuses, ["processing", "active"]);
   assert.equal(w.slack.of("reactions.add").at(-1)?.name, "x");
   collect("failed", w.slack);
@@ -432,6 +436,39 @@ test("a failed run shows why, and Retry asks again in the same conversation", as
   assert.equal(w.humagen.started.length, 2);
 });
 
+test("a failed run names its agent as people know it, not by its handle", async () => {
+  const w = mappedWorld();
+  w.humagen.looks = { lead: { display_name: "Launch Lead" } };
+  await deliver(w, mention("deploy it", TS));
+  await emit(w, "run.accepted.v1");
+  await emit(w, "run.failed.v1", {
+    error: "agent: step 2\nprovider: 529 overloaded",
+    terminal: true,
+  });
+  await w.app.idle();
+  const final = w.slack.of("chat.stopStream")[0];
+  const said = textIn(blocksOf(final));
+  assert.ok(said.includes(defaultCopy.runFailure.couldNotFinish("Launch Lead")), said);
+  assert.ok(!said.includes(defaultCopy.runFailure.couldNotFinish("lead")), said);
+});
+
+test("a failed run's agent name formats, links and pings nothing in Slack", async () => {
+  for (const name of ["<@U123>", "<!channel>", "[x](http://example.test)", "**Launch** Lead"]) {
+    const w = mappedWorld();
+    w.humagen.looks = { lead: { display_name: name } };
+    await deliver(w, mention("deploy it", TS));
+    await emit(w, "run.accepted.v1");
+    await emit(w, "run.failed.v1", { error: "agent: step 2\nodd thing", terminal: true });
+    await w.app.idle();
+    // What Slack reads as text: every call's blocks and words, apart from the byline's username.
+    const sent = JSON.stringify(w.slack.calls.map(({ args }) => ({ ...args, username: "" })));
+    assert.ok(sent.includes("could not finish"), name);
+    assert.doesNotMatch(sent, /<[@!](?:U123|channel)/, name);
+    assert.doesNotMatch(sent, /<http:\/\/example\.test/, name);
+    assert.doesNotMatch(sent, /\*\*Launch/, name);
+  }
+});
+
 test("a run whose retries ran out is ended by its record, as the ledger decides", async () => {
   const w = mappedWorld();
   await deliver(w, mention("deploy it", TS));
@@ -448,7 +485,7 @@ test("a run whose retries ran out is ended by its record, as the ledger decides"
   });
   await w.app.idle();
   const final = w.slack.of("chat.stopStream")[0];
-  assert.match(textIn(blocksOf(final)), /connection refused/);
+  assert.ok(textIn(blocksOf(final)).includes(defaultCopy.runFailure.because.unavailable));
   assert.match(textIn(blocksOf(final)), new RegExp(defaultCopy.retry));
   assert.deepEqual(w.slack.statuses, ["processing", "active"]);
 });

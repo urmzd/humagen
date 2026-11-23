@@ -1,0 +1,88 @@
+import { emptyTurn, type Failure, type FailureCause, type Turn } from "@humagen/core";
+import { describe, expect, it } from "vitest";
+import { failureTitle, summarizeTurn } from "./components";
+import { defaultCopy } from "./copy";
+
+const words = defaultCopy.runFailure;
+
+const failure = (cause: FailureCause): Failure => ({
+  kind: "internal",
+  cause,
+  message: words.because[cause],
+  detail: "raw error",
+});
+
+const failed = (cause: FailureCause): Turn => ({
+  ...emptyTurn("r1", { name: "github-reviewer" }),
+  status: "failed",
+  failure: failure(cause),
+});
+
+describe("a failed run in plain words", () => {
+  const title: Record<FailureCause, (agent: string) => string> = {
+    no_model_provider: words.couldNotRun,
+    credential: words.couldNotFinish,
+    provider_credential: words.couldNotRun,
+    budget: words.couldNotFinish,
+    rate_limited: words.couldNotFinish,
+    provider_rate_limited: words.couldNotFinish,
+    permission_denied: words.couldNotFinish,
+    timeout: words.couldNotFinish,
+    unavailable: words.couldNotFinish,
+    failed_steps: words.couldNotFinish,
+    max_iterations: words.couldNotFinish,
+    undeliverable: words.couldNotReply,
+    max_attempts: words.couldNotFinish,
+    unknown: words.couldNotFinish,
+  };
+
+  it("names the agent by the name people see, and says why and what to do", () => {
+    for (const cause of Object.keys(title) as FailureCause[]) {
+      expect(failureTitle(failure(cause), defaultCopy, "GitHub Reviewer")).toBe(
+        title[cause]("GitHub Reviewer"),
+      );
+      const summary = summarizeTurn(failed(cause), defaultCopy, "GitHub Reviewer");
+      expect(summary).toBe(`${title[cause]("GitHub Reviewer")}: ${words.because[cause]}`);
+      // The runtime's words are never the summary.
+      expect(summary).not.toContain("raw error");
+    }
+  });
+
+  it("says the model provider case as one sentence with where to fix it", () => {
+    expect(summarizeTurn(failed("no_model_provider"), defaultCopy, "GitHub Reviewer")).toBe(
+      "GitHub Reviewer could not run: Its model provider is not enabled. An admin can turn it on in Settings > Model providers.",
+    );
+  });
+
+  it("falls back to the agent's handle, then to the agent", () => {
+    expect(summarizeTurn(failed("timeout"))).toContain(words.couldNotFinish("github-reviewer"));
+    expect(failureTitle({ kind: "internal", cause: "unknown", message: "" })).toBe(
+      words.couldNotFinish(words.someone),
+    );
+  });
+
+  it("names the agent by its handle, then as the agent, when the name given is empty", () => {
+    expect(summarizeTurn(failed("timeout"), defaultCopy, "")).toContain(
+      words.couldNotFinish("github-reviewer"),
+    );
+    expect(summarizeTurn(failed("timeout"), defaultCopy, "  ")).toContain(
+      words.couldNotFinish("github-reviewer"),
+    );
+    expect(failureTitle(failure("timeout"), defaultCopy, "")).toBe(
+      words.couldNotFinish(words.someone),
+    );
+  });
+
+  it("says a cause it has no sentence for as an unknown one", () => {
+    for (const cause of ["from_a_newer_host", "constructor", "toString", "__proto__"]) {
+      const turn = failed(cause as FailureCause);
+      expect(summarizeTurn(turn, defaultCopy, "Launch Lead")).toBe(
+        `${words.couldNotFinish("Launch Lead")}: ${words.because.unknown}`,
+      );
+    }
+  });
+
+  it("keeps a failure with no cause as it was", () => {
+    expect(failureTitle({ kind: "timeout", message: "It took too long." })).toBe("Timed out");
+  });
+});

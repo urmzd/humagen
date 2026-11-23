@@ -65,6 +65,23 @@ export function plainName(text: string): string {
     .replaceAll("`", "\u02CB");
 }
 
+/**
+ * A name made safe inside a sentence that is read as markdown and then as
+ * Slack text: it pings nobody, links nowhere and starts no formatting. It is
+ * not yet escaped, so it goes through `toMrkdwn` or `escapeSlackText` like the
+ * sentence around it. Use it for a name a person chose, such as an agent's.
+ */
+export function inertName(text: string): string {
+  return text
+    .replace(/<(?=[@#!])/g, "<\u200B")
+    .replace(/@(here|channel|everyone)\b/gi, "@\u200B$1")
+    .replace(/\](?=\()/g, "]\u200B")
+    .replaceAll("*", "\u2217")
+    .replaceAll("_", "\uFF3F")
+    .replaceAll("~", "\u223C")
+    .replaceAll("`", "\u02CB");
+}
+
 function escapeHtml(text: string): string {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
