@@ -1,3 +1,4 @@
+import { spelled } from "@humagen/core/spelling";
 import { agentLook } from "./agentHues.ts";
 import type { Branding } from "./api.ts";
 
@@ -63,27 +64,26 @@ export function setEntryAgent(agent: string, name: string): void {
   entry = { agent, name };
 }
 
-/**
- * The name people see for an agent: its look's display name, else the
- * workspace's name for its entry agent, else its handle in title case.
- */
-export function agentShown(name: string): string {
-  return agentLook(name)?.display_name || titled(brandShown(name));
+/** The name the workspace typed for its entry agent, when `name` is that agent. */
+function entryName(name: string): string {
+  return entry.agent !== "" && name === entry.agent ? entry.name : "";
 }
 
-/** Words a name writes in capitals: "qa-reviewer" is "QA Reviewer". */
-const ACRONYMS = new Set(["ai", "api", "ci", "hr", "id", "pr", "qa", "sql", "ui", "ux"]);
+/**
+ * The name people see for an agent: its look's display name, else the
+ * workspace's name for its entry agent, else its handle in title case. A
+ * name a person typed is shown as typed; only a handle is written as a name.
+ */
+export function agentShown(name: string): string {
+  return agentLook(name)?.display_name || entryName(name) || titled(name);
+}
 
-/** A handle as words in title case. */
+/** A handle as words in title case, with known words spelled their own way. */
 export function titled(handle: string): string {
   return handle
     .split(/[-_\s]+/)
     .filter(Boolean)
-    .map((word) =>
-      ACRONYMS.has(word.toLowerCase())
-        ? word.toUpperCase()
-        : word.charAt(0).toUpperCase() + word.slice(1),
-    )
+    .map((word) => spelled(word) ?? word.charAt(0).toUpperCase() + word.slice(1))
     .join(" ");
 }
 
@@ -92,7 +92,7 @@ export function titled(handle: string): string {
  * drawn from, so naming an agent never changes its face.
  */
 export function brandShown(name: string): string {
-  return entry.agent !== "" && name === entry.agent && entry.name ? entry.name : name;
+  return entryName(name) || name;
 }
 
 /**
