@@ -1020,6 +1020,10 @@ func (p *Platform) retry(ctx context.Context, who auth.Principal, runID string) 
 	if err := p.mayRetry(who, run.ID); err != nil {
 		return runs.Run{}, err
 	}
+	// A Slack app asks a turn again itself, as a person's (apps/slack), never through here.
+	if err := p.MayAskForNobody(who); err != nil {
+		return runs.Run{}, err
+	}
 	// Whoever pressed it asked for it, so they do not approve its calls.
 	// It acts for the person the turn acted for, who is them, or for
 	// nobody.

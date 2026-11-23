@@ -391,6 +391,11 @@ const NO_AGENT: Failure = {
 // humagen: needs copy for this, such as copy.notYoursRetry; copy.notYours speaks of approving.
 const RETRY_NOT_YOURS = "Only the person who asked can retry this.";
 
+/** How long one person the client maps to nobody is told so only once. */
+export const TURNED_AWAY_MS = 10 * 60_000;
+/** How many people the app tells they are not connected in a minute, at most. */
+export const TURNED_AWAY_BURST = 20;
+
 /** Wait, or stop waiting when the signal aborts. */
 const sleep = (ms: number, signal: AbortSignal) =>
   new Promise<void>((resolve) => {
@@ -495,6 +500,10 @@ export class App {
   private readonly seen = new Recent<true>(10_000);
   /** Who asked for each run, by Slack user id. */
   private readonly requesters = new Recent<string>(10_000);
+  /** When each person the client maps to nobody was last told so (turnAway). */
+  private readonly turnedAway = new Recent<number>(10_000);
+  /** When anyone was told so in the last minute, oldest first. */
+  private readonly turnedAwayAt: number[] = [];
   /** Inbox messages posted to a thread, so a change edits the post instead of adding one. */
   private readonly mail = new Recent<{ channel: string; ts: string; threadTs?: string }>(2_000);
   private readonly work = new Set<Promise<unknown>>();
@@ -940,7 +949,7 @@ export class App {
         (event.text ?? "").includes(`<@${this.opts.botUser}>`) &&
         subscribed(controls.client, "app_mention");
       if (passive && !duplicateMention) {
-        const as = await this.actAs(event.user);
+        const as = await this.actAs(event.user, senderTeam(event));
         if (!as || !event.ts) return;
         const session = {
           team: this.opts.team,
@@ -979,6 +988,11 @@ export class App {
     };
     const text = wholeMessage(event.text ?? "", this.opts.botUser, this.selfName);
     if (!text && !event.files?.length) return;
+    // Only a person the client maps asks, in a direct message, a mention in
+    // any channel, or a reply in someone else's session: anyone else is told
+    // so, privately, and nothing is read, kept or run for them.
+    if (!(await this.mapped(event.user, senderTeam(event))))
+      return this.turnAway({ user: event.user, channel: event.channel, threadTs: event.thread_ts });
     await this.offerSkills(event.channel);
     // A mention in a code channel continues the conversation of the thread it was opened from.
     const conversation =
@@ -1004,7 +1018,8 @@ export class App {
    * whether this message calls for it. A thread a later mention started was
    * answered once, and a message outside a thread is nobody's. A reply that
    * tags someone else and names no agent is addressed to them, not to the
-   * agent, so it is not offered. Reports whether the message was offered.
+   * agent, so it is not offered. Reports whether the message was taken:
+   * offered, or dropped as from someone the client maps to nobody.
    */
   private async listenTo(event: SlackEvent): Promise<boolean> {
     if (
@@ -1024,6 +1039,9 @@ export class App {
       return false;
     const text = (event.text ?? "").trim();
     if (!text) return false;
+    // Someone the client maps to nobody is not listened to, and, as they
+    // asked nobody, not told so either: their reply is taken and dropped.
+    if (!(await this.mapped(event.user, senderTeam(event)))) return true;
     if (
       tagsSomeoneElse(text, this.opts.botUser) &&
       !namesAgent(text, await this.agents().catch(() => [] as Agent[]))
@@ -1207,6 +1225,19 @@ export class App {
   }
 
   private async answer(thread: Thread, job: Job, queued: boolean) {
+    // Every way in checks the sender first; this is the check behind them
+    // all. A person the client maps no longer (as since a message queued)
+    // starts nothing, and a reply that asked nobody is not answered at all.
+    const who = await this.mapped(job.user);
+    if (!who) {
+      if (!job.listen)
+        await this.turnAway({
+          user: job.user,
+          channel: job.session.channel,
+          threadTs: job.session.threadTs,
+        });
+      return "done" as const;
+    }
     const controls = await this.bridgeControls(job.session.channel);
     if (!controls.policy.inbound) return "done" as const;
     if (controls.policy.passive) {
@@ -1312,15 +1343,13 @@ export class App {
       } else {
         // A bound channel is a humagen channel: its thread, its default, its
         // allow list and its limits are the platform's, and only a person
-        // the client maps posts there, in their own words. Anyone else is
-        // told so, never answered around it, and so is someone asking about
-        // another's message there, which nobody may post as them.
+        // the client maps posts there, in their own words. Someone asking
+        // about another's message there is told so, never answered around
+        // it, as nobody may post it as them.
         if (!asking && !job.again && (await this.isBound(job.session.channel)))
           return this.refuse(job, presenter, "", {
             kind: "forbidden",
-            message: job.notTheirs
-              ? this.copy.threads.notTheirsInBound
-              : this.copy.threads.unmappedInBound,
+            message: this.copy.threads.notTheirsInBound,
           });
         if (job.files)
           throw new HumagenError(403, "Files need a connected workspace account and client.");
@@ -1374,13 +1403,15 @@ export class App {
         // Who asked, the client and the thread are known here and have nowhere to go:
         // the route takes none of them. See the README.
         // A person the client maps asks as themselves, so they do not approve
-        // their own run's calls.
+        // their own run's calls. A run for nobody (someone else's words, or
+        // a turn for nobody asked again) says which person asked for it:
+        // humagen starts none for this app without one.
         run = await this.humagen.createRun(
           {
             agent,
             text,
             ...(placed.after ? { after: placed.after } : {}),
-            ...(asking ? { act_as: asking } : {}),
+            ...(asking ? { act_as: asking } : { asked_by: who.as }),
           },
           placed.key,
         );
@@ -1895,6 +1926,15 @@ export class App {
     const dedupe = `action-${p.trigger_id ?? ""}`;
     if (p.trigger_id && this.seen.has(dedupe)) return;
     this.seen.set(dedupe, true);
+    // A button acts for whoever pressed it: Approve, Retry, an answer, a
+    // mode, a move, a rating, a form. Someone the client maps to nobody
+    // acts on none of them, an operator included, and is told so.
+    if (!(await this.mapped(p.user.id, p.user.team_id)))
+      return this.turnAway({
+        user: p.user.id,
+        ...(at ? { channel: at } : {}),
+        ...(p.message?.thread_ts ? { threadTs: p.message.thread_ts } : {}),
+      });
 
     if (ui.id === ActionId.feedback) return this.onFeedback(ui, p);
     if (ui.id === ActionId.runDetails) return this.onRunDetails(ui, p);
@@ -2006,6 +2046,9 @@ export class App {
       if (!mapped || mapped.person !== person) return "not-theirs";
       as = mapped.as;
     } else {
+      // Asked again for nobody, it is still asked at a person's asking: the
+      // presser must be someone the client maps, an operator included.
+      if (!(await this.mapped(user))) return "not-yours";
       const operator = (this.opts.operators ?? []).includes(user);
       if (!operator && (!owner || owner !== user)) return "not-yours";
     }
@@ -2114,17 +2157,67 @@ export class App {
    * or null. Only the client this app is maps people, and only for the
    * credential it names, which must be this app's own.
    */
-  private async actAs(user: string): Promise<ActAs | null> {
-    return (await this.mapped(user))?.as ?? null;
+  private async actAs(user: string, team?: string): Promise<ActAs | null> {
+    return (await this.mapped(user, team))?.as ?? null;
   }
 
-  /** How to ask as a Slack person, and whom the client maps them to, or null (see actAs). */
-  private async mapped(user: string): Promise<{ as: ActAs; person: string } | null> {
+  /**
+   * How to ask as a Slack person, and whom the client maps them to, or null
+   * (see actAs). This is the one place a Slack sender becomes a person, and
+   * nothing starts for anyone it answers null for. A sender whose delivery
+   * names another team (a Slack Connect user from another company) is
+   * nobody, whatever the map says.
+   */
+  // humagen: once linked accounts land (#541), a person linked in this team
+  // counts here too; the platform resolves them, so this asks it rather than
+  // reading `slack.people` alone.
+  private async mapped(user: string, team?: string): Promise<{ as: ActAs; person: string } | null> {
+    if (team && team !== this.opts.team) return null;
     const routing = await this.routing().catch(() => null);
     const client = routing?.client;
     if (!client || !this.opts.clientId || !client.enabled) return null;
     const person = client.slack?.machine === this.opts.subject ? client.slack?.people?.[user] : "";
     return person ? { as: { client: this.opts.clientId, user }, person } : null;
+  }
+
+  /**
+   * Tell someone the client maps to nobody, privately, that nothing was
+   * started for them and how to be let in: in the thread they wrote in, by
+   * the command's own reply, or else in their messages with the app. They
+   * are told once per TURNED_AWAY_MS, and the app tells at most
+   * TURNED_AWAY_BURST people a minute, so the reply cannot be used to flood
+   * a channel or Slack's rate limits.
+   */
+  private async turnAway(to: {
+    user: string;
+    channel?: string;
+    threadTs?: string;
+    responseUrl?: string;
+  }): Promise<void> {
+    const now = (this.opts.now ?? Date.now)();
+    const last = this.turnedAway.get(to.user);
+    this.log(`nothing started for ${to.user}: this client maps them to nobody`);
+    if (last !== undefined && now - last < TURNED_AWAY_MS) return;
+    while (this.turnedAwayAt.length && now - (this.turnedAwayAt[0] ?? 0) >= 60_000)
+      this.turnedAwayAt.shift();
+    if (this.turnedAwayAt.length >= TURNED_AWAY_BURST) return;
+    this.turnedAway.set(to.user, now);
+    this.turnedAwayAt.push(now);
+    const text = this.copy.threads.notConnected(this.selfName);
+    try {
+      if (to.responseUrl)
+        await this.slack.respond(to.responseUrl, { response_type: "ephemeral", text });
+      else if (to.channel)
+        await this.slack.call("chat.postEphemeral", {
+          channel: to.channel,
+          user: to.user,
+          ...(to.threadTs ? { thread_ts: to.threadTs } : {}),
+          text,
+        });
+      else await this.slack.call("chat.postMessage", { channel: to.user, text });
+    } catch (e) {
+      this.log(`${to.user} was not told they are not connected: ${(e as Error).message}`);
+    }
   }
 
   /**
@@ -3143,6 +3236,16 @@ export class App {
     text: string,
     responseUrl?: string,
   ): Promise<void> {
+    // Nothing is posted for someone the client maps to nobody, not even their words.
+    if (!(await this.mapped(where.user)))
+      return this.turnAway({
+        user: where.user,
+        ...(responseUrl
+          ? { responseUrl }
+          : where.channel !== where.user
+            ? { channel: where.channel }
+            : {}),
+      });
     let root: { ts: string; channel: string };
     try {
       root = await this.slack.call("chat.postMessage", {
@@ -3177,6 +3280,11 @@ export class App {
       if (this.seen.has(`command-${c.trigger_id}`)) return;
       this.seen.set(`command-${c.trigger_id}`, true);
     }
+    // Only a person the client maps uses a command. `/agent connections`
+    // says itself how to be connected, so it is left to say so.
+    const text = (c.text ?? "").trim();
+    if (!(c.command === ENTRY.command && text === "connections") && !(await this.mapped(c.user_id)))
+      return this.turnAway({ user: c.user_id, responseUrl: c.response_url });
     if (c.command !== ENTRY.command && c.command !== "/skill") {
       const skills = (await this.routing()).client?.slack?.commands ?? [];
       const skill = skills.find((skill) => `/${skill.name}` === c.command);
@@ -3187,7 +3295,6 @@ export class App {
         c.response_url,
       );
     }
-    const text = (c.text ?? "").trim();
     if (c.command === "/skill" || text === "skills" || text.startsWith("skill ")) {
       const skills = (await this.routing()).client?.slack?.commands ?? [];
       const args = c.command === "/skill" ? text : text === "skills" ? "" : text.slice(6).trim();
@@ -3307,6 +3414,15 @@ export class App {
       if (this.seen.has(once)) return;
       this.seen.set(once, true);
     }
+    // A shortcut, a form or a modal submitted acts for whoever used it, so
+    // someone the client maps to nobody uses none of them: they are told
+    // where they were, or in their messages with the app.
+    if (!(await this.mapped(p.user.id, p.user.team_id)))
+      return this.turnAway({
+        user: p.user.id,
+        ...(p.channel?.id ? { channel: p.channel.id } : {}),
+        ...(p.message ? { threadTs: p.message.thread_ts ?? p.message.ts } : {}),
+      });
     if (p.type === "shortcut" && p.callback_id === ENTRY.ask) {
       await this.slack.call("views.open", { trigger_id: p.trigger_id, view: askForm(this.words) });
       return;
@@ -3472,6 +3588,12 @@ export function approvalModeNote(
 const replyingKey = (user: string, at: { run: string; question: string }) =>
   `${user}\n${at.run}\n${at.question}`;
 
+/**
+ * The team a message's sender belongs to, as the event says: in a Slack
+ * Connect channel, another company's. Undefined when the event names none.
+ */
+const senderTeam = (e: SlackEvent): string | undefined => e.user_team ?? e.team;
+
 /** The team a delivery says it is from. Each kind of delivery carries it somewhere else. */
 function teamOf(type: string, p: Record<string, unknown>): string | undefined {
   const at = (v: unknown, k: string) =>
@@ -3491,6 +3613,9 @@ interface SlackEvent {
   channel_id?: string;
   channel_type?: string;
   user?: string;
+  /** The sender's own team, which in a Slack Connect channel is another company's. */
+  user_team?: string;
+  team?: string;
   bot_id?: string;
   text?: string;
   ts?: string;
@@ -3500,7 +3625,7 @@ interface SlackEvent {
 }
 
 interface ActionPayload {
-  user: { id: string };
+  user: { id: string; team_id?: string };
   channel?: { id: string };
   container?: { type?: string; channel_id?: string };
   view?: { type?: string };
@@ -3514,7 +3639,7 @@ interface InteractivePayload {
   type: string;
   callback_id?: string;
   trigger_id: string;
-  user: { id: string };
+  user: { id: string; team_id?: string };
   channel?: { id: string };
   message?: { ts: string; thread_ts?: string; text?: string; user?: string };
   view?: {

@@ -814,6 +814,12 @@ func (s *Server) createRun(w http.ResponseWriter, r *http.Request, who auth.Prin
 		// ActAs is the person a surface asks for: a Slack user its client
 		// maps. The run is theirs, so they do not approve its calls.
 		ActAs *platform.ActAs `json:"act_as"`
+		// AskedBy is the person a surface's credential starts a run for
+		// nobody at the asking of: a Slack user its client maps, asking
+		// about someone else's message or asking again a turn that acted
+		// for nobody. The run acts for nobody; a Slack app's credential
+		// starts none without act_as or asked_by.
+		AskedBy *platform.ActAs `json:"asked_by"`
 	}
 	if !decode(w, r, &body) {
 		return
@@ -821,6 +827,25 @@ func (s *Server) createRun(w http.ResponseWriter, r *http.Request, who auth.Prin
 	if strings.TrimSpace(body.Text) == "" {
 		fail(w, http.StatusBadRequest, "a run needs a request")
 		return
+	}
+	if body.ActAs != nil && body.AskedBy != nil {
+		fail(w, http.StatusBadRequest, "a run acts for a person (act_as) or for nobody at a person's asking (asked_by), not both")
+		return
+	}
+	// A Slack app answers anyone who can message it, so its credential
+	// starts a run only for a person its client maps: as them, or for
+	// nobody at their asking. Without either it is refused here, whatever
+	// the app that called says, so an old or forged app starts nothing.
+	if body.ActAs == nil {
+		if body.AskedBy != nil {
+			if _, err := s.P.AskedBy(who, *body.AskedBy); err != nil {
+				s.problem(w, err)
+				return
+			}
+		} else if err := s.P.MayAskForNobody(who); err != nil {
+			s.problem(w, err)
+			return
+		}
 	}
 	// The run acts for the caller, or for the person a surface asks for:
 	// their credentials are the ones its person-scoped tools use, and their
@@ -1042,6 +1067,11 @@ func (s *Server) createCall(w http.ResponseWriter, r *http.Request, who auth.Pri
 		Contract *call.Contract `json:"contract,omitempty"`
 	}
 	if !decode(w, r, &body) {
+		return
+	}
+	// A call names no person, so a Slack app's credential makes none.
+	if err := s.P.MayAskForNobody(who); err != nil {
+		s.problem(w, err)
 		return
 	}
 	// A call is a turn of the run's conversation, filed where it lives, so
