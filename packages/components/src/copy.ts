@@ -3508,7 +3508,7 @@ export const defaultCopy = {
     /** Who you are on GitHub and Slack, linked by signing in there. */
     accounts: {
       title: "Connected accounts",
-      lede: "What you ask on GitHub or in Slack acts as you.",
+      lede: "Who you are on GitHub and in Slack.",
       connect: "Connect",
       disconnect: "Disconnect",
       notConnected: "Not connected",

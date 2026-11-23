@@ -26,14 +26,74 @@ rule: HTTPS, or plain HTTP only on a loopback address.
 
 ## Accounts a person links
 
+A person links their own GitHub account and Slack account in the console,
+under Connected accounts in their settings (`/settings/connections`). A link
+records who they are on that surface: the surface's own user id beside their
+subject, in their workspace. It holds no credential.
+
+Linking by itself changes nothing about whom a GitHub or Slack user acts for:
+a client's `github.people` and `slack.people` maps still decide that
+([GitHub](github.md#who-may-ask), [Slack](slack.md#who-can-start-a-run)).
+Reading links there is planned and not built.
+
 | Preset | Signs in with | Keeps |
 |--------|---------------|-------|
-| `github-account` | The GitHub App's user authorization: client id and secret from `github`, else `HUMAGEN_GITHUB_CLIENT_ID` and `HUMAGEN_GITHUB_CLIENT_SECRET` | The GitHub user's numeric id, login and avatar. No token |
-| `slack-account` | Sign in with Slack (`openid profile`): client id and secret from `clients.slack`, else `HUMAGEN_SLACK_CLIENT_ID` and `HUMAGEN_SLACK_CLIENT_SECRET` | The Slack user and team ids, name and picture. No token |
+| `github-account` | The GitHub App's user authorization | GitHub's numeric user id, with the login and avatar for display. No token |
+| `slack-account` | Sign in with Slack (OpenID Connect, scopes `openid profile`) | Slack's user id and team id, with the name and picture for display. No token |
 
-They use the same `authorize`, `callback` and `DELETE` routes as every
-connection, and the preset's `account` field says who the person linked. See
-[GitHub](github.md#linked-accounts) and [Slack](slack.md#linked-accounts).
+### The flow
+
+```text
+console            Humagen                              GitHub / Slack
+Connect  ───────▶  state for this person and browser ─▶ authorize
+callback ◀───────  code + state                    ◀─── redirect_url
+           ───────▶ exchange the code, read who signed in
+                    record (surface, user id) beside the person; keep no token
+```
+
+| Step | What holds |
+|------|------------|
+| Start | `POST /api/connections/{provider}/authorize`, from the person's browser session only: a call with a bearer token, and one an agent or the MCP endpoint dispatched, is refused with 403. The answer is the provider's consent address with a `state` of 32 random bytes and a PKCE challenge (S256). The browser is given an HttpOnly cookie, one per provider, that the consent is bound to. A person has one pending consent per provider, good for 10 minutes; starting again replaces it |
+| Return | The provider redirects to `redirect_url`, which is configuration. The console removes `code` and `state` from the address, shows Connections, and posts them to `POST /api/connections/{provider}/callback` |
+| Finish | The consent is completed only by the person who started it, in the browser that started it, once, before it expires. Anything else is refused and links nothing. The code is exchanged with the application's client id and secret and the PKCE verifier |
+| Identity | One read with the new token: `GET /user` on GitHub, `openid.connect.userInfo` on Slack, of at most 1 MiB. The token is not written anywhere, logged or returned. A GitHub answer that is not a user, and a Slack team that none of the workspace's enabled Slack clients is in, are refused |
+| Record | The surface's user id (and on Slack the team id) beside the person's subject, in the person's workspace |
+
+### The rules
+
+| Rule | Behavior |
+|------|----------|
+| Key | GitHub's numeric user id; Slack's user id with its team id. A login or display name is kept for display only |
+| One person per surface user | In a workspace, a second person's link to the same user is refused with 409 until the first is disconnected |
+| One account per person | Linking another GitHub account replaces the first. A person has one Slack account per Slack team |
+| Workspace | A link belongs to the person's workspace, which comes from their sign-in. Another workspace may link the same user to its own person |
+| Disconnect | `DELETE /api/connections/{provider}`, by the person, in their browser. An administrator removes one on the GitHub or Slack app's sheet: `DELETE /api/clients/{id}/accounts/{account}` (`clients:write`, audited) |
+| Who sees links | The person sees their own in `GET /api/connections/presets` (`account`). `GET /api/clients/{id}/accounts` (`clients:read`) lists up to 200 on a client's surface; a Slack client lists its own team's. Another workspace's client is not found |
+| Machines | A machine credential links nothing |
+
+### Turning it on
+
+Linking is off until all of this is set. Each surface is on by itself.
+
+1. A `connections` block with an `encryption_key`
+   ([spec](spec.md#service-connection-authorization)). `redirect_url` is
+   `server.public_url` followed by `/connections/callback` unless set.
+2. The application's OAuth client:
+
+   | Surface | In the application's settings | Given to Humagen as |
+   |---------|-------------------------------|---------------------|
+   | GitHub | The GitHub App's **Callback URL** is `redirect_url`. Generate a **client secret**. **Expire user authorization tokens** on. No user permission is needed: only `GET /user` is read | `connections.github` (`client_id`, `client_secret`) where the console installs the app, else `HUMAGEN_GITHUB_CLIENT_ID` and `HUMAGEN_GITHUB_CLIENT_SECRET` |
+   | Slack | Under OAuth & Permissions, add `redirect_url` to **Redirect URLs**, and the **User Token Scopes** `openid` and `profile` | `connections.clients.slack` (`client_id`, `client_secret`) where the console installs the app, else `HUMAGEN_SLACK_OAUTH_CLIENT_ID` and `HUMAGEN_SLACK_OAUTH_CLIENT_SECRET` |
+
+3. For Slack, an enabled Slack client of the workspace whose team is the one
+   people sign in from.
+
+A surface with no client is not offered: its row is not shown. A client id
+from the environment with no secret, or a secret that cannot be read, stops
+the server at start.
+
+Tested with stand-ins for GitHub and Slack. A real GitHub or Slack consent
+has not been exercised.
 
 ## Tool servers a person connects
 

@@ -104,8 +104,8 @@ export function ConnectedAccounts({
 
 /**
  * The people who linked an account on a client's surface, for its
- * administrators: the account, the person it acts for, and Disconnect for
- * someone who left or whose account was taken. Nothing is shown until
+ * administrators: the account, the person who linked it, and Disconnect for
+ * someone who left. Nothing is shown until
  * someone has linked one.
  */
 export function LinkedPeople({

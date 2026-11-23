@@ -9061,8 +9061,9 @@ is left out.
   }
 
   /** The GitHub or Slack accounts people in the workspace linked to
-themselves, which this client's users are resolved through before
-its people map. A Slack client lists its own team's. At most 200.
+themselves. A link records who a person is on the surface; it does
+not change whom the client acts for. A Slack client lists its own
+team's. At most 200.
  */
   async listClientLinkedAccounts(id: string, options?: RequestOptions): Promise<ListClientLinkedAccountsResponse> {
     let path = "/api/clients/{id}/accounts";
@@ -9082,8 +9083,7 @@ its people map. A Slack client lists its own team's. At most 200.
 
   /** Removes the link a person made to this GitHub or Slack user (the
 surface's user id; a Slack client's own team), as an administrator
-does for someone who left or whose account was taken. The person may
-link again. Audited.
+does for someone who left. The person may link again. Audited.
  */
   async unlinkClientAccount(id: string, account: string, options?: RequestOptions): Promise<void> {
     let path = "/api/clients/{id}/accounts/{account}";
