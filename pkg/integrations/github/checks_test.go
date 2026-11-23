@@ -34,7 +34,8 @@ func TestChecksStreamAndKeepTheirPinnedCommit(t *testing.T) {
 		}
 	}
 	checks := fake.Checks()
-	if len(checks) != 1 || checks[0].Check.HeadSHA != commitSHA || checks[0].Check.Status != "completed" || checks[0].Check.Conclusion != "neutral" || checks[0].Edits != 3 {
+	if len(checks) != 1 || checks[0].Check.HeadSHA != commitSHA || checks[0].Check.Status != "completed" || checks[0].Check.Conclusion != "neutral" || checks[0].Edits != 2 {
+		// A tool call alone changes nothing the comment shows, so it is no edit.
 		t.Fatalf("checks %+v", checks)
 	}
 	if len(fake.Comments()) != 1 {

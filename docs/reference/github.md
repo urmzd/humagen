@@ -299,6 +299,53 @@ Structured output is held while the run streams, then rendered in its existing
 comment. Lifecycle-only routes also render the final report. Ordinary Markdown
 answers retain their streaming behavior.
 
+### The answer comment
+
+An ordinary answer's comment holds the answer alone. While the run works, it
+shows one status line, such as `**humagen** _(working)_`. The tools the agent
+called, the helpers it started and the helpers it waits on are the session's
+trace: the comment does not show them. A small footer links the session in the
+console, where the trace is:
+
+```markdown
+The pull request links GitHub and Slack accounts through OAuth.
+
+<sub>[View the session in Humagen ↗](https://console.example/sessions/s_...)</sub>
+```
+
+The footer needs the console's canonical address (`server.public_url`); without one
+there is no footer. A failure, a stop and a question a person must answer are
+still said in the comment. A structured review renders as described above.
+
+### get_context on an issue or pull request
+
+`get_context` in a session that started on an issue or pull request reads that
+place. It gives the title and state, the description, the five latest comments
+by people, and for a pull request its head, changed files and patches. GitHub
+lists comments oldest first, so when the first page is full the latest are
+read from the last page its `Link` header names, and the page before it when
+the last holds too few comments by people: at most three requests. When they
+cannot be read, the answer says the latest may be missing. Comments by
+apps (`[bot]`) and by any login a client of the workspace answers as are left
+out. Each part is cut to a bound, and the whole stays under the tool's 12,000
+characters.
+
+A run reads through the GitHub client that raised it when the session's root
+is that client's thread on that issue or pull request, and only when that
+client serves the owner, names the repository in `read_repositories`, or
+covers it by its App installation. Any other run, and a person in the console,
+reads as a cross-surface read: under the workspace's grants and the
+repository's `cross_surface_reads`. Anything else gets a note that the place
+may not be read, and no text.
+
+What is read is untrusted. It is wrapped in one `github-data` block whose
+markers carry a nonce made for that read, as the reads made before a run are.
+
+A brief that a run on an issue or pull request gives another agent ends with
+the place, for example `Asked on GitHub pull request acme/site#7
+(https://github.com/acme/site/pull/7).`, so the helper never has to ask which
+repository.
+
 ### Reviews in the console and Slack
 
 The console and the Slack app read the same report and draw it as a review
