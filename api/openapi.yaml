@@ -20831,13 +20831,18 @@ components:
         github://owner/repo/pull/N or issues/N, schedule://name/occurrence or
         the normalized URL. client is the Humagen client the origin is
         reached through: it files the root where the client's channel is
-        bound and maps a Slack conversation's members to people.
+        bound and maps a Slack conversation's members to people. client and
+        audience are read only from that client's own machine posting for a
+        person (act_as); from any other caller they are ignored, and a root
+        the message starts is the caller's own. A place that already has a
+        root takes a message only from someone who reads that root; anyone
+        else is answered 404.
       type: object
       additionalProperties: false
       required: [type]
       properties:
         type: {type: string, enum: [slack, github, schedule, url, web]}
-        client: {type: string}
+        client: {type: string, description: "The Humagen client the origin is reached through. Read only from that client's own machine posting for a person (act_as)."}
         team: {type: string}
         channel: {type: string}
         user: {type: string, description: "Who wrote the message on the surface (a Slack user id, a GitHub login). Set by surfaces built into the server; the API ignores it, since the token says who speaks."}

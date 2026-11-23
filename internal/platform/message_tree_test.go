@@ -221,7 +221,7 @@ func TestTheRootsAreListedNewestFirstWithTheirPlaceAndAudience(t *testing.T) {
 	p, ana := slackWorkspace(t)
 	public := slackRef("C01ANY", "1700000000.000100", "")
 	public.Audience = &platform.SurfaceAudience{Type: platform.ChannelPublic}
-	first, err := p.SendMessages(t.Context(), ana, sayIn("why did the deploy fail?", public))
+	first, err := p.SendSurfaceMessages(t.Context(), ana, sayIn("why did the deploy fail?", public))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -183,11 +183,14 @@ func TestAMessagesRequestIsPeoplesMessagesFromAPlaceThatExists(t *testing.T) {
 		"an image":                 {Messages: []platform.Message{{Role: "user", Content: platform.Content{{Type: "image"}}}}},
 		"an unknown origin":        sayIn("hi", &platform.ExternalRef{Type: "fax"}),
 		"a slack ref with no team": sayIn("hi", &platform.ExternalRef{Type: platform.RefSlack, Channel: "C01", TS: "1.2"}),
-		"another team's client":    sayIn("hi", &platform.ExternalRef{Type: platform.RefSlack, Client: "app", Team: "T0OTHER", Channel: "C01", TS: "1.2"}),
 	} {
 		if _, err := p.SendMessages(t.Context(), ana, in); !errors.Is(err, threads.ErrInvalid) {
 			t.Errorf("%s = %v, want invalid", name, err)
 		}
+	}
+	otherTeam := sayIn("hi", &platform.ExternalRef{Type: platform.RefSlack, Client: "app", Team: "T0OTHER", Channel: "C01", TS: "1.2"})
+	if _, err := p.SendSurfaceMessages(t.Context(), ana, otherTeam); !errors.Is(err, threads.ErrInvalid) {
+		t.Errorf("a surface's message through another team's client = %v, want invalid", err)
 	}
 }
 

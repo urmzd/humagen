@@ -80,17 +80,19 @@ func (p *Platform) StartSurfaceSession(ctx context.Context, who auth.Principal, 
 		if th.Session == nil {
 			return SessionView{}, false, ErrSurfaceThreadBeforeSessions
 		}
-		if vis == threads.Private && ref.Audience != nil && len(ref.Audience.Members) > 0 {
-			if err := p.keepAudience(who.Tenant, th, people); err != nil {
-				return SessionView{}, false, err
-			}
-		}
 		if in.Listen {
+			// Refused before the root's people follow the conversation, so a
+			// message that is not taken keeps nothing.
 			if !p.listensTo(who, th, in.ActAs) {
 				return SessionView{}, false, ErrNotListening
 			}
 			// Heard either way; answered only when the agent says it is for it.
 			post.PostOnly = post.PostOnly || !p.callsFor(ctx, who.Tenant, th, in.Text)
+		}
+		if vis == threads.Private && ref.Audience != nil && len(ref.Audience.Members) > 0 {
+			if err := p.keepAudience(who.Tenant, th, people); err != nil {
+				return SessionView{}, false, err
+			}
 		}
 		if err := p.audiences.Put(who.Tenant, th.ID, aud); err != nil {
 			return SessionView{}, false, err
