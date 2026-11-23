@@ -106,7 +106,7 @@ func TestCompletedOnlyDeliveryRendersTheStructuredReviewOnce(t *testing.T) {
 		}
 	}
 	comments := fake.Comments()
-	if len(comments) != 1 || !strings.Contains(comments[0].Body, "🔴 **0 errors**") || strings.Contains(comments[0].Body, github.ReviewFormat) {
+	if len(comments) != 1 || !strings.Contains(comments[0].Body, "**No problems found.**") || strings.Contains(comments[0].Body, `"format"`) {
 		t.Fatalf("comments %+v", comments)
 	}
 }

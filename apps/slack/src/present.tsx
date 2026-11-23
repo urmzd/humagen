@@ -147,6 +147,8 @@ export class Presenter {
       statusEvery?: number;
       /** Who a message is posted as, by the agent answering. Left out, every message is the app's. */
       authorOf?: (agent: string) => Author | undefined;
+      /** The name people see an agent by, where it has one besides its handle. */
+      nameOf?: (agent: string) => string | undefined;
     } = {},
   ) {
     this.native = opts.outcomesOnly ? false : (opts.native ?? true);
@@ -155,6 +157,11 @@ export class Presenter {
 
   private log(line: string) {
     this.opts.log?.(line);
+  }
+
+  /** The name a turn's sentences call its agent by, or nothing for its handle. */
+  private named(turn: Turn): string | undefined {
+    return this.opts.nameOf?.(turn.agent.name);
   }
 
   /** The name and picture this turn's messages carry, or nothing. */
@@ -468,7 +475,12 @@ export class Presenter {
         }
       }
       const view = renderToSlack(
-        <TurnView copy={this.copy} capabilities={this.caps} turn={turn} />,
+        <TurnView
+          copy={this.copy}
+          capabilities={this.caps}
+          turn={turn}
+          agentName={this.named(turn)}
+        />,
       );
       const [first = []] = view.pages;
       if (first.length === 0) return;
@@ -499,7 +511,14 @@ export class Presenter {
     try {
       const linked = await this.link(turn);
       const final = renderToSlack(
-        <TurnView copy={this.copy} capabilities={this.caps} turn={turn} streamed linked={linked} />,
+        <TurnView
+          copy={this.copy}
+          capabilities={this.caps}
+          turn={turn}
+          agentName={this.named(turn)}
+          streamed
+          linked={linked}
+        />,
       );
       await this.slack.call("chat.stopStream", {
         channel: this.target.channel,
@@ -563,6 +582,7 @@ export class Presenter {
         copy={this.copy}
         capabilities={this.caps}
         turn={shown}
+        agentName={this.named(shown)}
         streamed={this.native}
         linked={paused.linked}
       />,
@@ -616,6 +636,7 @@ export class Presenter {
             copy={this.copy}
             capabilities={this.caps}
             turn={turn}
+            agentName={this.named(turn)}
             streamed
             linked={linked}
           />,
@@ -633,7 +654,12 @@ export class Presenter {
       } else {
         // Nothing was streamed, so the message carries the whole turn.
         const final = renderToSlack(
-          <TurnView copy={this.copy} capabilities={this.caps} turn={turn} />,
+          <TurnView
+            copy={this.copy}
+            capabilities={this.caps}
+            turn={turn}
+            agentName={this.named(turn)}
+          />,
         );
         const [first = [], ...rest] = final.pages;
         if (!this.ts) await this.post(first, final.text);
@@ -644,7 +670,12 @@ export class Presenter {
     } catch (e) {
       this.log(`ending the turn as streamed failed: ${(e as Error).message}`);
       const final = renderToSlack(
-        <TurnView copy={this.copy} capabilities={this.caps} turn={turn} />,
+        <TurnView
+          copy={this.copy}
+          capabilities={this.caps}
+          turn={turn}
+          agentName={this.named(turn)}
+        />,
       );
       const [first = [], ...rest] = final.pages;
       // The streamed message is closed with the whole turn as its final layout, so the
@@ -685,7 +716,14 @@ export class Presenter {
     this.by(turn);
     if (this.opts.canDeliver && !(await this.opts.canDeliver())) return;
     if (this.opts.outcomesOnly) turn = bridgeOutcome(turn);
-    const final = renderToSlack(<TurnView copy={this.copy} capabilities={this.caps} turn={turn} />);
+    const final = renderToSlack(
+      <TurnView
+        copy={this.copy}
+        capabilities={this.caps}
+        turn={turn}
+        agentName={this.named(turn)}
+      />,
+    );
     try {
       const [first = [], ...rest] = final.pages;
       await this.post(first, final.text);

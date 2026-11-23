@@ -1,7 +1,7 @@
 import { defaultCopy } from "@humagen/components";
 import { type Citation, encodeAction, formatBytes, type Tone } from "@humagen/core";
 import type { PrimitiveName, PrimitiveProps, TaskProps } from "@humagen/primitives";
-import { escapeSlackText, isMention, plainName, toMrkdwn, toPlain } from "./mrkdwn";
+import { escapeSlackText, inertName, isMention, plainName, toMrkdwn, toPlain } from "./mrkdwn";
 import type { HostChild, HostNode } from "./reconciler";
 import { nextBreak } from "./split";
 import { slackTaskNote, slackTaskStatus } from "./status";
@@ -431,7 +431,9 @@ class Serializer {
     this.blocks.push(this.preformatted(text));
   }
 
-  callout({ tone, title, text }: PrimitiveProps["Callout"]) {
+  callout({ tone, title: given, text }: PrimitiveProps["Callout"]) {
+    // A title is words, and may carry a name a person chose: it formats, links and pings nothing.
+    const title = given ? inertName(given) : given;
     const line = title ? `${title}: ${text}` : text;
     this.fallback.push(line);
     // alert blocks exist only in modals; messages and Home get a framed section.
