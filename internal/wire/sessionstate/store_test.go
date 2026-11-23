@@ -150,3 +150,80 @@ func testSessionIdentityAndAdmissionAcrossReplicas(t *testing.T, st state.Store)
 		t.Fatalf("grant lost: %v %v", allowed, err)
 	}
 }
+
+// A conversation is adopted as a session under its own id: its record is
+// kept under that id with the key it would open, and opening that key
+// finds it, never a second session. Adopting it again writes nothing, and
+// an id or a key that is taken is refused.
+func TestAdoptRecordsASessionUnderAConversationsID(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		ctx := context.Background()
+		st := open(t)
+		s := sessionstate.New(st)
+		const id, place = "th-00112233445566aa", "console://th-00112233445566aa"
+		rec, err := s.Adopt(ctx, "acme", id, session.Open{Parent: place, Agent: "Lead"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		key := session.Key{Tenant: "acme", Parent: place, Agent: "lead"}.Normalize()
+		if rec.ID != id || rec.Key != key || rec.Channel == "" {
+			t.Fatalf("adopted = %+v, want %s under %+v", rec, id, key)
+		}
+		if got, err := s.Get(ctx, "acme", id); err != nil || got.ID != id || got.Key != key {
+			t.Fatalf("read back = %+v, %v", got, err)
+		}
+		if _, err := s.Get(ctx, "acme", key.ID()); !errors.Is(err, session.ErrNotFound) {
+			t.Fatalf("the key's own id holds a session: %v", err)
+		}
+		if got, err := s.Open(ctx, "acme", session.Open{Parent: place, Agent: "lead"}); err != nil || got.ID != id {
+			t.Fatalf("opening its key = %s, %v; want %s", got.ID, err, id)
+		}
+		// Another tenant's key and id are its own.
+		if _, err := s.Get(ctx, "globex", id); !errors.Is(err, session.ErrNotFound) {
+			t.Fatalf("another tenant reads it: %v", err)
+		}
+		if got, err := s.Open(ctx, "globex", session.Open{Parent: place, Agent: "lead"}); err != nil || got.ID == id {
+			t.Fatalf("another tenant opening the key = %s, %v", got.ID, err)
+		}
+		before, err := st.Load(ctx, "agent-sessions")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if again, err := s.Adopt(ctx, "acme", id, session.Open{Parent: place, Agent: "lead"}); err != nil || again.ID != id || !again.CreatedAt.Equal(rec.CreatedAt) {
+			t.Fatalf("adopted again = %+v, %v", again, err)
+		}
+		if after, err := st.Load(ctx, "agent-sessions"); err != nil || fmt.Sprint(after) != fmt.Sprint(before) {
+			t.Fatalf("adopting again wrote to the store: %v", err)
+		}
+		// A child opens under it as under any session.
+		child, err := s.Open(ctx, "acme", session.Open{Parent: id, Agent: "helper"})
+		if err != nil || child.Key.Parent != id {
+			t.Fatalf("a child of it = %+v, %v", child, err)
+		}
+
+		for name, tc := range map[string]struct {
+			id string
+			o  session.Open
+		}{
+			"another key for its id":   {id, session.Open{Parent: place, Agent: "helper"}},
+			"a key's id":               {key.ID(), session.Open{Parent: "console://other", Agent: "lead"}},
+			"a place as an id":         {"console://x", session.Open{Parent: "console://x", Agent: "lead"}},
+			"no id":                    {"", session.Open{Parent: place, Agent: "lead"}},
+			"a child":                  {"th-00112233445566bb", session.Open{Parent: id, Agent: "lead"}},
+			"a label":                  {"th-00112233445566bb", session.Open{Parent: "console://th-00112233445566bb", Agent: "lead", Label: "x"}},
+			"a key another id adopted": {"th-00112233445566bb", session.Open{Parent: place, Agent: "lead"}},
+		} {
+			if _, err := s.Adopt(ctx, "acme", tc.id, tc.o); !errors.Is(err, session.ErrInvalid) {
+				t.Errorf("%s: adopt = %v", name, err)
+			}
+		}
+		// A key a session was opened under already is not adopted over.
+		opened, err := s.Open(ctx, "acme", session.Open{Parent: "console://th-00112233445566cc", Agent: "lead"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.Adopt(ctx, "acme", "th-00112233445566cc", session.Open{Parent: "console://th-00112233445566cc", Agent: "lead"}); !errors.Is(err, sessionstate.ErrAdopted) {
+			t.Fatalf("adopting over session %s = %v", opened.ID, err)
+		}
+	})
+}

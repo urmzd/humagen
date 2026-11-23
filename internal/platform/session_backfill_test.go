@@ -81,8 +81,10 @@ func stored(t *testing.T, st state.Store) map[string][]state.Record {
 // of each pull request, moves each run's conversation into it oldest first,
 // binds the owner's runs to its record, and makes it private to the people
 // the client maps the askers to; a second apply writes nothing. Nobody
-// reads a run afterwards that they could not read before, and
-// conversations from before sessions are left as they are.
+// reads a run afterwards that they could not read before. A conversation
+// from before sessions that names its agent is adopted as that agent's
+// session under the id it has, read by whom it was read by, and one the
+// backfill cannot decide is left as it is.
 func TestBackfillFilesPastGitHubRunsInTheirSessions(t *testing.T) {
 	ctx := t.Context()
 	st := state.NewMemory()
@@ -107,8 +109,9 @@ func TestBackfillFilesPastGitHubRunsInTheirSessions(t *testing.T) {
 	if err := p.Sessions.BindRun(ctx, tenant, rec.ID, a.ID); err != nil {
 		t.Fatal(err)
 	}
-	// A conversation from before sessions, and a Slack direct message's.
-	plain, err := p.Threads.Create(tenant, threads.Thread{ID: "th-00112233445566aa", Project: "", Channel: "general", Visibility: threads.Private, CreatedBy: "ana", Title: "Old notes"}, t0)
+	// A conversation from before sessions that docs answers, and a direct
+	// message's on a Slack client the store does not hold.
+	plain, err := p.Threads.Create(tenant, threads.Thread{ID: "th-00112233445566aa", Project: "", Channel: "general", Visibility: threads.Private, CreatedBy: "ana", Title: "Old notes", Default: "docs"}, t0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,6 +131,10 @@ func TestBackfillFilesPastGitHubRunsInTheirSessions(t *testing.T) {
 		for _, r := range all {
 			saw[who.Subject+" "+r.ID] = p.Seer(who).RunID(r.ID)
 		}
+		saw[who.Subject+" "+plain.ID] = p.SeesThread(who, plain.ID)
+	}
+	if !saw["ana "+plain.ID] || saw["mona "+plain.ID] || saw["vic "+plain.ID] {
+		t.Fatalf("before the backfill the private conversation is read by %v", saw)
 	}
 
 	before := stored(t, st)
@@ -144,8 +151,8 @@ func TestBackfillFilesPastGitHubRunsInTheirSessions(t *testing.T) {
 		platform.BackfillRunBound:         2, // b and d: a is bound, c is ops's
 		platform.BackfillParticipantAdded: 1, // mona; ana started it, ghost maps to nobody
 		platform.BackfillRunLeft:          2, // private and repo
-		platform.BackfillThreadLeft:       1,
-		platform.BackfillSlackThreadLeft:  1,
+		platform.BackfillThreadAdopted:    1, // the conversation docs answers
+		platform.BackfillSlackThreadLeft:  1, // its client is not in the store
 	}
 	for _, l := range dry.Lines {
 		t.Logf("%s: %s -> %s (%s)", l.Kind, l.Subject, l.Session, l.Detail)
@@ -196,9 +203,28 @@ func TestBackfillFilesPastGitHubRunsInTheirSessions(t *testing.T) {
 			t.Fatalf("run %s, which is left, moved to %q", r.ID, got.Thread)
 		}
 	}
-	for _, kept := range []threads.Thread{plain, dm} {
-		if got, err := p.Threads.Get(tenant, kept.ID); err != nil || got.Session != nil || got.Version != kept.Version {
-			t.Fatalf("conversation %s changed: %+v, %v", kept.ID, got, err)
+	if got, err := p.Threads.Get(tenant, dm.ID); err != nil || got.Session != nil || got.Version != dm.Version {
+		t.Fatalf("the direct message, which is left, changed: %+v, %v", got, err)
+	}
+	// The conversation is docs's session under its own id, filed where it
+	// was, private to the same people, and read by the same people.
+	adopted, err := p.Threads.Get(tenant, plain.ID)
+	switch {
+	case err != nil || adopted.Session == nil || adopted.Session.Agent != "docs" || adopted.Session.Parent != "console://"+plain.ID:
+		t.Fatalf("the conversation's session is %+v, %v", adopted.Session, err)
+	case adopted.Visibility != threads.Private || adopted.Project != plain.Project || adopted.Channel != plain.Channel || adopted.CreatedBy != "ana" || adopted.Title != "Old notes":
+		t.Fatalf("the adopted conversation moved: %+v", adopted)
+	case !reflect.DeepEqual(adopted.Participants, plain.Participants):
+		t.Fatalf("its participants are %+v, were %+v", adopted.Participants, plain.Participants)
+	}
+	for _, who := range people {
+		was := saw[who.Subject+" "+plain.ID]
+		if p.SeesThread(who, plain.ID) != was || p.SeesSession(who, plain.ID) != was {
+			t.Fatalf("%s reads the adopted conversation: as a conversation %v, as a session %v; before %v", who.Subject, p.SeesThread(who, plain.ID), p.SeesSession(who, plain.ID), was)
+		}
+		listed, err := p.ListSessions(ctx, who, "", "", "", "")
+		if err != nil || slices.ContainsFunc(listed, func(s platform.SessionSummary) bool { return s.ID == plain.ID }) != was {
+			t.Fatalf("%s's sessions list the adopted conversation, or not, against %v: %v", who.Subject, was, err)
 		}
 	}
 	if got, ok, err := p.Threads.BySurface(tenant, *dm.Surface); err != nil || !ok || got.ID != dm.ID {
@@ -238,7 +264,7 @@ func TestBackfillFilesPastGitHubRunsInTheirSessions(t *testing.T) {
 	if after := stored(t, st); !reflect.DeepEqual(before, after) {
 		t.Fatal("a second apply wrote to the store")
 	}
-	if again.Changes() != 0 || again.Counts[platform.BackfillSessionFound] != 2 || again.Counts[platform.BackfillRunAlreadyFiled] != 4 {
+	if again.Changes() != 0 || again.Counts[platform.BackfillSessionFound] != 2 || again.Counts[platform.BackfillRunAlreadyFiled] != 4 || again.Counts[platform.BackfillThreadAlreadyAdopted] != 1 || again.Counts[platform.BackfillSlackThreadLeft] != 1 {
 		t.Fatalf("a second apply did %v", again.Counts)
 	}
 }

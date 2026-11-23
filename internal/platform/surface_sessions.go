@@ -80,7 +80,12 @@ func (p *Platform) StartSurfaceSession(ctx context.Context, who auth.Principal, 
 		if th.Session == nil {
 			return SessionView{}, false, ErrSurfaceThreadBeforeSessions
 		}
-		if vis == threads.Private && ref.Audience != nil && len(ref.Audience.Members) > 0 {
+		// A conversation adopted as a session (threads.Adopted) stays as it
+		// was filed: the place's members now are not made its people, and
+		// no audience is kept for it, so its answers draw on what they drew
+		// on as a conversation's.
+		adopted := threads.Adopted(th)
+		if !adopted && vis == threads.Private && ref.Audience != nil && len(ref.Audience.Members) > 0 {
 			if err := p.keepAudience(who.Tenant, th, people); err != nil {
 				return SessionView{}, false, err
 			}
@@ -92,8 +97,10 @@ func (p *Platform) StartSurfaceSession(ctx context.Context, who auth.Principal, 
 			// Heard either way; answered only when the agent says it is for it.
 			post.PostOnly = post.PostOnly || !p.callsFor(ctx, who.Tenant, th, in.Text)
 		}
-		if err := p.audiences.Put(who.Tenant, th.ID, aud); err != nil {
-			return SessionView{}, false, err
+		if !adopted {
+			if err := p.audiences.Put(who.Tenant, th.ID, aud); err != nil {
+				return SessionView{}, false, err
+			}
 		}
 		out, err := p.surfacePost(ctx, who, th, post)
 		return out, false, err

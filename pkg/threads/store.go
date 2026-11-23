@@ -617,13 +617,16 @@ func (s *Store) Claim(tenantName, id, by string, at time.Time) (Thread, error) {
 }
 
 // Adopt makes a conversation from before sessions (a "th-" thread) the
-// session s names, under its own id, so its messages, runs, surface ids,
-// activity entry and links stay as they are: only the record's session
-// identity is set, and its version moves. Where it is filed, who reads it,
-// who takes part and when it was last active do not change. version must be
-// the current one (ErrVersion). A thread that is a session already, is
-// archived or read-only, or whose id is not a thread's is refused
-// (ErrInvalid); adopting one again as the same session changes nothing.
+// session identity names, under its own id, so its messages, runs, surface
+// ids, activity entry and links stay as they are. The record gains its
+// session identity, and the session's agent becomes the one agent it
+// selects and its default, as every session's is; its version moves. Where
+// it is filed, whether it is shared or private, who takes part and when it
+// was last active do not change. version must be the current one
+// (ErrVersion). A thread that is a session already, is archived or
+// read-only, selects another agent or several, or whose id is not a
+// thread's is refused (ErrInvalid); adopting one again as the same session
+// changes nothing.
 func (s *Store) Adopt(tenantName, id string, version int, identity SessionIdentity, at time.Time) (Thread, error) {
 	if !strings.HasPrefix(id, IDPrefix) {
 		return Thread{}, fmt.Errorf("%w: only a %q conversation is adopted as a session", ErrInvalid, IDPrefix)
@@ -646,10 +649,13 @@ func (s *Store) Adopt(tenantName, id string, version int, identity SessionIdenti
 			return fmt.Errorf("%w: an archived or read-only conversation is not adopted", ErrInvalid)
 		case next.Version != version:
 			return fmt.Errorf("%w: %q is at version %d, not %d", ErrVersion, id, next.Version, version)
+		case len(next.Agents) > 1 || (len(next.Agents) == 1 && next.Agents[0] != identity.Agent):
+			return fmt.Errorf("%w: %s selects other agents, and a session has one", ErrInvalid, id)
 		}
 		adopted := identity
 		adopted.Repos = slices.Clone(identity.Repos)
 		next.Session = &adopted
+		next.Default, next.Agents, next.Mode = identity.Agent, []string{identity.Agent}, ""
 		next.Version, changed = next.Version+1, true
 		return next.validate()
 	})

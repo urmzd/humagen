@@ -26,8 +26,10 @@ $HUMAGEN_POSTGRES_URL) and writes through them, never with SQL.
 
 sessions  files each GitHub run from before GitHub sessions in the session
           of its pull request or issue, the one a mention there opens now,
-          private to the people the client maps the askers to. Conversations
-          from before sessions are listed and left as they are.
+          private to the people the client maps the askers to. A
+          conversation from before sessions that names one agent becomes
+          that agent's session under the id it has, read by the people
+          who read it before; any other is listed and left as it is.
 
 It writes nothing unless -apply is given: without it, it prints what it
 would do. A second -apply finds the first one's work and writes nothing.
