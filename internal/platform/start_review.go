@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 
 	saigetypes "github.com/urmzd/saige/agent/types"
 	"github.com/urmzd/saige/flow/event"
@@ -29,9 +30,12 @@ const startReviewAlready = "start_review: this run is already a review, and a ru
 // startReviewTool is start_review for one turn. It works only for the run a
 // person started on a pull request: not on an issue, not for a run an agent
 // started for another, and not for one a rule started, whose shape is the
-// rule's. It works once: the switch is an action on the run's record, which
-// a retry, the native review and the format check read, so the run stays a
-// review, and any later call is refused.
+// rule's. It works once: the switch is saved on the run's own record
+// (runs.Index.StartReview) before the tool answers, so a retry, the native
+// review and the format check read it in every process and after a
+// restart, and any later call is refused. A switch that cannot be saved
+// fails the call. The action on the run's stream is what a person reads in
+// the session; nothing is decided from it.
 func (p *Platform) startReviewTool(req runtime.Request, action func(event.Action) error) saigetypes.Tool {
 	return &saigetypes.ToolFunc{
 		Def: saigetypes.ToolDef{
@@ -56,23 +60,20 @@ func (p *Platform) startReviewTool(req runtime.Request, action func(event.Action
 			if _, kind, _, ok := channelRepository(run.Tag().Channel); !ok || kind != "pull" {
 				return "", fmt.Errorf("start_review: a review needs a pull request; answer in prose")
 			}
-			shape, err := p.runShape(run)
+			if runShape(run) == wire.ShapeReview {
+				return "", errors.New(startReviewAlready)
+			}
+			started, err := p.Runs.StartReview(run.Tenant, run.ID)
 			if err != nil {
-				return "", fmt.Errorf("start_review: the run's record could not be read; try again")
+				return "", fmt.Errorf("start_review: the switch could not be saved, so this run is still a reply; try again")
 			}
-			if shape == wire.ShapeReview {
+			if !started {
 				return "", errors.New(startReviewAlready)
 			}
-			if action == nil {
-				return "", fmt.Errorf("start_review: recording is unavailable")
-			}
-			key := run.Tenant + "\x00" + run.ID
-			if _, done := p.startedReviews.LoadOrStore(key, true); done {
-				return "", errors.New(startReviewAlready)
-			}
-			if err := action(event.Action{Name: ToolStartReview, Summary: "Started a review of the pull request"}); err != nil {
-				p.startedReviews.Delete(key)
-				return "", err
+			if action != nil {
+				// Shown in the session. The run is a review whether or
+				// not this reaches the stream.
+				_ = action(event.Action{Name: ToolStartReview, Summary: "Started a review of the pull request"})
 			}
 			return startReviewDone, nil
 		},
@@ -80,21 +81,29 @@ func (p *Platform) startReviewTool(req runtime.Request, action func(event.Action
 }
 
 // runShape is the shape a run answers with: the one the host saved on its
-// tag when it started, or a review once the run called start_review. A run
-// from before shapes were saved has none.
-func (p *Platform) runShape(run runs.Run) (string, error) {
+// tag when it started, or a review once the run called start_review, which
+// its record holds. A run from before shapes were saved has none.
+func runShape(run runs.Run) string {
 	shape := wire.ShapeOf(run.Tag())
-	if shape != wire.ShapeReply {
-		return shape, nil
+	if shape == wire.ShapeReply && run.StartedReview() {
+		return wire.ShapeReview
 	}
-	events, err := p.Journal.Events(run.Tenant, []string{run.ID})
-	if err != nil {
-		return shape, err
+	return shape
+}
+
+// withStartedReview tells a later attempt of a run that became a review
+// that it is one: its trigger context reads answer_shape: review, so the
+// agent returns the report without calling start_review again. The run's
+// tag keeps the shape it started with.
+func (p *Platform) withStartedReview(req runtime.Request) runtime.Request {
+	if req.Attempt <= 1 || req.RunID == "" || req.Meta[wire.MetaAnswerShape] != wire.ShapeReply {
+		return req
 	}
-	for _, e := range events {
-		if a, ok := e.Data.(event.Action); ok && a.Name == ToolStartReview && a.Error == "" {
-			return wire.ShapeReview, nil
-		}
+	run, err := p.Runs.Get(req.Tenant, req.RunID)
+	if err != nil || !run.StartedReview() {
+		return req
 	}
-	return shape, nil
+	req.Meta = maps.Clone(req.Meta)
+	req.Meta[wire.MetaAnswerShape] = wire.ShapeReview
+	return req
 }

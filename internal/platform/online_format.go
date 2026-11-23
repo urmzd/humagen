@@ -38,11 +38,11 @@ func checkReviewFormat(shape, head, answer string) (evals.Verdict, bool) {
 
 // onlineFormat checks a run's answer against its final shape: the one
 // saved on its tag when it started, or a review once it called
-// start_review. A retry is assessed as the run was asked, whatever its
-// agent's instructions say now.
+// start_review, which its record holds. A retry is assessed as the run was
+// asked, whatever its agent's instructions say now.
 func (p *Platform) onlineFormat(run runs.Run) (evals.Verdict, bool) {
-	shape, err := p.runShape(run)
-	if err != nil || shape != wire.ShapeReview {
+	shape := runShape(run)
+	if shape != wire.ShapeReview {
 		return evals.Verdict{}, false
 	}
 	return checkReviewFormat(shape, p.reviewedHead(run), run.Answer)

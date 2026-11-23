@@ -237,6 +237,39 @@ func hidden(text string) []bool {
 	return out
 }
 
+// Said is what a person said in text once the lines they quote are taken
+// out, and whether that is all the text held besides. plain is false when
+// the text also shows something rather than saying it: code, an HTML
+// comment, or a line a quote runs on to. A caller that reads a whole
+// message as one command reads said, and only when plain is true.
+func Said(text string) (said string, plain bool) {
+	mask := hidden(text)
+	var b strings.Builder
+	plain = true
+	for off := 0; off < len(text); {
+		lineEnd, next := len(text), len(text)
+		if nl := strings.IndexByte(text[off:], '\n'); nl >= 0 {
+			lineEnd, next = off+nl, off+nl+1
+		}
+		shown := 0
+		for i := off; i < lineEnd; i++ {
+			if mask[i] {
+				shown++
+			}
+		}
+		switch {
+		case shown == 0:
+			b.WriteString(text[off:next])
+		case shown == lineEnd-off && strings.HasPrefix(strings.TrimSpace(text[off:lineEnd]), ">"):
+			// A quoted line: what the person replies to.
+		default:
+			plain = false
+		}
+		off = next
+	}
+	return b.String(), plain
+}
+
 // listItem reports whether a line starts a list item: "- ", "* ", "+ ",
 // "1. " or "1) ".
 func listItem(line string) bool {

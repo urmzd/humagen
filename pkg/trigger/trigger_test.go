@@ -149,3 +149,38 @@ func TestLeadingReadsOnlyTheFirstWords(t *testing.T) {
 		}
 	}
 }
+
+// Said takes quoted lines out of a message and says whether the rest is
+// all prose: anything shown rather than said makes it not plain.
+func TestSaidIsTheMessageWithoutItsQuotes(t *testing.T) {
+	for text, want := range map[string]struct {
+		said  string
+		plain bool
+	}{
+		"review":                            {"review", true},
+		"":                                  {"", true},
+		"> earlier\n\nreview":               {"\nreview", true},
+		"> one\n> two\n\n@humagen review\n": {"\n@humagen review\n", true},
+		"review\n\n> earlier":               {"review\n\n", true},
+		"> earlier":                         {"", true},
+		"  review  ":                        {"  review  ", true},
+		"> earlier\nreview":                 {"", false},
+		"> earlier\n/review":                {"", false},
+		"> earlier\n@humagen review":        {"", false},
+		"    review":                        {"", false},
+		"\treview":                          {"", false},
+		"```\nreview\n```":                  {"", false},
+		"`review`":                          {"", false},
+		"`x` review":                        {"", false},
+		"<!-- review -->":                   {"", false},
+		"<!-- note -->\nreview":             {"review", false},
+		"review\n\n    indented code":       {"review\n\n", false},
+		"- item\n    review":                {"- item\n    review", true},
+		"review <code>x</code>":             {"", false},
+	} {
+		said, plain := trigger.Said(text)
+		if plain != want.plain || plain && said != want.said {
+			t.Errorf("Said(%q) = %q, %v, want %q, %v", text, said, plain, want.said, want.plain)
+		}
+	}
+}

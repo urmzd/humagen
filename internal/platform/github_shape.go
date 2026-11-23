@@ -42,21 +42,23 @@ func githubShape(tag event.Envelope, handles []string) string {
 // the word "/review".
 var reviewCommand = regexp.MustCompile(`^(?:re-?review|review)[.!?]*$|^/review(?:\s|$)`)
 
-// quotedLine is a quoted line: what a person replies to, not what they ask.
-var quotedLine = regexp.MustCompile(`(?m)^[ \t]*>.*$`)
-
 // isReviewCommand reports whether text is the review command and nothing
 // else: the command alone, or addressed by a trigger that opens the
 // message ("@humagen review"). Case, surrounding space and quoted lines do
 // not count. A trigger inside a sentence, a mention of anyone else, and any
-// other word make the message a reply. Nothing else is read for intent
-// here: the agent reads what a person meant.
+// other word make the message a reply, and so does anything the message
+// shows rather than says (trigger.Said): code, an HTML comment, or a line a
+// quote runs on to. Nothing else is read for intent here: the agent reads
+// what a person meant.
 func isReviewCommand(text string, handles []string) bool {
-	text = quotedLine.ReplaceAllString(text, "")
-	if ask, ok := trigger.Read(text, handles, nil); ok {
+	said, plain := trigger.Said(text)
+	if !plain {
+		return false
+	}
+	if ask, ok := trigger.Read(said, handles, nil); ok {
 		// A trigger that opens the message is its address and is taken
 		// out; one inside a sentence stays, so the sentence is no command.
-		text = ask.Text
+		said = ask.Text
 	}
-	return reviewCommand.MatchString(strings.ToLower(strings.TrimSpace(text)))
+	return reviewCommand.MatchString(strings.ToLower(strings.TrimSpace(said)))
 }
