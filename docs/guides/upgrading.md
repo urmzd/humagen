@@ -70,6 +70,9 @@ the tenants it read, then how many runs of each tenant it read. Check them befor
 | A run of the session's owner | Binds it to the session's record, in the order the runs were asked and ahead of any newer run bound already, so the session's latest run stays its newest. A run the runtime bound when it ran stays bound once |
 | The conversation's title in the run index | The pull request's or issue's title, from the run's trigger |
 | The person who asked | Adds the person the GitHub client maps the login to now (`github.people`). A login mapped to nobody adds nobody. The session is private to these people, as a new one is, and gets no Slack audience record |
+| The session's times | Dates the session from its work: started when its first run was asked, last active when its latest run or message was. Recent and Sessions then list it where that work falls, not at the time the command ran |
+| A session the command finds | Dates it from its runs, and changes nothing else, when its record was created after the first run the command files in it had ended. That is a session an earlier run of the command opened, which that release dated at the time it ran, so it sat at the top of Recent. It is also a session a mention opened on a pull request or issue that has older runs: the command files those runs in it, and the session then starts when the oldest of them was asked. An archived session that is not deleted is dated the same way, and stays archived. A session whose first run is the mention that opened it is left as it is, while that run is queued or running and after it ends. The servers keep running during the command, so a mention may open a session while it reads |
+| A session's last activity | The time of its latest run or message. It is never earlier than the latest message in the session when the command writes. A later change that is neither, such as a person added, does not count as activity |
 
 ### What it leaves
 
@@ -78,6 +81,7 @@ the tenants it read, then how many runs of each tenant it read. Check them befor
 | A conversation from before sessions (a `th-` thread) | A session's id is made from its key (`s_...`). The conversation's messages, the runs filed in it, its surface's ids and every link to it are kept under its own id. It cannot become a session without a new id, which would break them |
 | A Slack thread or direct message from before sessions | The same reason. Replies on Slack keep reaching the conversation |
 | A GitHub run that used its asker's private context | Filed with other people who asked there, they would read it |
+| A GitHub run whose place's session was deleted | Nothing is filed in a deleted session, and it is not dated |
 | A GitHub run that no mention on a pull request or issue started (an automation, the automatic review) | New runs of these kinds are not filed in sessions either |
 | A GitHub run filed in another project than its place's session | A run is not moved between projects |
 | A GitHub run of a second GitHub client on the same repository, when the first client's session of that place has the same owner | The first client holds that session. A mention there now is left its own conversation too |
@@ -133,3 +137,17 @@ read by administrators alone. Do the steps in this order:
 
 The servers can keep running. The command writes each record at the version
 it read, as a server does, and a second run finds what the first one did.
+
+### Dating sessions an earlier run opened
+
+A release before this fix dated each session the command opened at the
+time the command ran. Run the same command again to date those sessions
+from their runs. There is no extra flag.
+
+1. Run the dry run. Each session to date has a `github session dated from
+   its runs` line with its new times and its old ones.
+2. Apply it with `-apply`.
+3. Run the dry run again. It must end with `would write 0 changes`.
+
+A session whose runs carry no time has a `github session not dated` line
+and is left with the times it has.

@@ -26,8 +26,15 @@ $HUMAGEN_POSTGRES_URL) and writes through them, never with SQL.
 
 sessions  files each GitHub run from before GitHub sessions in the session
           of its pull request or issue, the one a mention there opens now,
-          private to the people the client maps the askers to. Conversations
-          from before sessions are listed and left as they are.
+          private to the people the client maps the askers to, and dated
+          from its runs: started when the first was asked, last active
+          when the latest run or message was. A session found, whose
+          record was created after the first run filed in it had ended,
+          is dated from its runs too, archived or not. A session whose
+          first run is still queued or running, such as one a mention
+          just opened, is left. A deleted session is left.
+          Conversations from before sessions are listed and left as they
+          are.
 
 It writes nothing unless -apply is given: without it, it prints what it
 would do. A second -apply finds the first one's work and writes nothing.

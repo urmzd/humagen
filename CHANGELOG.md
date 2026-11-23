@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.198.1 (2026-11-23)
+
+### Bug Fixes
+
+- **platform**: leave a session whose first run is in flight when dating ([da405c3](https://github.com/urmzd/humagen/commit/da405c3bbd67e0ddabdeeff156d754d27a28cd8c))
+- **migrate**: leave a deleted session, and date none before its latest message ([31c4662](https://github.com/urmzd/humagen/commit/31c4662c42149fd4d9658dbc2aafcc2c404e6705))
+- **migrate**: date backfilled sessions from their runs ([60f8eec](https://github.com/urmzd/humagen/commit/60f8eec4d1a0392de63ca7b4dc9c1753beaaf008))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.198.0...v0.198.1)
+
+
 ## 0.198.0 (2026-11-23)
 
 ### Features
