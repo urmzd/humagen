@@ -466,6 +466,9 @@ func (p *Platform) bind(s *surface, st *seat) {
 			p.log.Info("platform: a stop from a surface was refused", "surface", name, "tenant", tenant, "client", client, "run", runID, "user", who, "why", err.Error())
 			return fmt.Errorf("%w: %w", slack.ErrStopRefused, err)
 		}
+		if errors.Is(err, errNothingToStop) {
+			return fmt.Errorf("%w: %w", slack.ErrNothingToStop, err)
+		}
 		return err
 	})
 }

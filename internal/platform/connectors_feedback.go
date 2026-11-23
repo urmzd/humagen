@@ -171,6 +171,9 @@ func (p *Platform) feedbackFor(c clients.Client) connectors.FeedbackHandler {
 				p.log.Info("platform: a stop from a surface was refused", "surface", string(c.Surface), "tenant", tenant, "client", c.ID, "run", run, "user", actor.ID, "why", err.Error())
 				return nil
 			}
+			if errors.Is(err, errNothingToStop) {
+				return nil
+			}
 			return err
 		},
 	}
