@@ -121,35 +121,16 @@ grant operator to subject "vic"`)
 		t.Fatalf("after the machine's message the root's people are %v", peopleIn(joined))
 	}
 
-	// A place someone named before its thread reached the client: the
-	// request's client and audience are not read, the root is the caller's
-	// own, and the thread's first message from the machine starts the
-	// surface's root beside it.
+	// A place someone names before its thread reached the client: only the
+	// surface starts its root, so the request is not found and starts
+	// nothing, and the thread's first message from the machine starts it.
 	other := func(ts, members string) string {
 		return strings.Replace(place(ts, members), `"thread_ts":"1700000000.000200"`, `"thread_ts":"1700000001.000100"`, 1)
 	}
 	ben := f.person(t, "acme", "ben", "Ben", "humagen-operators")
-	named := want(t, f, ben, "POST", "/api/messages", say("@helper hello", other("1700000001.000100", `"U0ANA","U0VIC"`)), http.StatusCreated)
-	own := named["root"].(string)
-	for _, r := range sliceOf(obj(named["posted"])["runs"]) {
-		ended(t, f, ben, obj(r)["id"].(string))
-	}
-	mine := want(t, f, ben, "GET", "/api/sessions/"+own, "", http.StatusOK)
-	if !slices.Equal(peopleIn(mine), []string{"ben"}) || mine["project"] == "Field" || obj(mine["thread"])["visibility"] != "private" {
-		t.Fatalf("the caller's root has people %v in %v, %v", peopleIn(mine), mine["project"], obj(mine["thread"])["visibility"])
-	}
-	want(t, f, ana, "GET", "/api/sessions/"+own, "", http.StatusNotFound)
+	want(t, f, ben, "POST", "/api/messages", say("@helper hello", other("1700000001.000100", `"U0ANA","U0VIC"`)), http.StatusNotFound)
 	surfaced := want(t, f, app, "POST", "/api/messages", forAna("<@UAPP> status?", other("1700000001.000100", `"U0ANA","U0VIC"`)), http.StatusCreated)
 	theirs := surfaced["root"].(string)
-	if theirs == own {
-		t.Fatalf("the machine's first message landed in the caller's root %s", own)
-	}
-	if now := want(t, f, ben, "GET", "/api/sessions/"+own, "", http.StatusOK); !slices.Equal(peopleIn(now), []string{"ben"}) || obj(now["thread"])["version"] != obj(mine["thread"])["version"] {
-		t.Fatalf("the caller's root has people %v at version %v, want ben at %v", peopleIn(now), obj(now["thread"])["version"], obj(mine["thread"])["version"])
-	}
-	if kind := obj(want(t, f, ben, "GET", "/api/messages/"+own+"?depth=0", "", http.StatusOK)["audience"])["kind"]; kind != "direct" {
-		t.Fatalf("the caller's root's audience is %v", kind)
-	}
 	want(t, f, ben, "GET", "/api/sessions/"+theirs, "", http.StatusNotFound)
 	if in := want(t, f, ana, "GET", "/api/sessions/"+theirs, "", http.StatusOK); !slices.Equal(peopleIn(in), []string{"ana", "vic"}) {
 		t.Fatalf("the surface's root has people %v", peopleIn(in))
