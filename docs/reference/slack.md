@@ -12,11 +12,11 @@
 | Code channel slash commands | Yes | Yes: each command in the client's `slack.commands`, registered with `agents.conversations.setCommands` when a message is accepted in the channel. Ordinary channels use `/skill` |
 | `/agent`, shortcuts, Home tab | No | Yes, from Humagen's sandbox manifest |
 | Inbox items about a run | No | In the run's thread, and on Home |
-| Several apps per workspace, as [clients](clients.md) | Yes: tenant, limits and allow-list come from the client | Reads one client's default agent and allow-list, in full as the client's `slack.machine`, though they name an agent that lives in a project the machine may not read. A mapped person's messages are the client's (threads with a surface, below); anyone else's runs are not yet recorded as the client's |
-| Channels bound to projects | Yes: a run in a bound Slack channel is filed in the channel it is bound to, and an untagged one answered by that channel's chain, else in the client's home | Yes: a mapped person's Slack thread is a Humagen thread filed by the binding, someone the client maps to nobody is refused in a bound channel, and announcements reach a bound general channel, caught up on after a restart or a reconnect, where a reply that mentions the app starts a thread seeded with the announcement |
+| Several apps per workspace, as [clients](clients.md) | Yes: tenant, limits and allow-list come from the client | Reads one client's default agent and allow-list, in full as the client's `slack.machine`, though they name an agent that lives in a project the machine may not read. A mapped person's messages are the client's (threads with a surface, below). Nobody else starts a run (see [who can start a run](#who-can-start-a-run)) |
+| Channels bound to projects | Yes: a run in a bound Slack channel is filed in the channel it is bound to, and an untagged one answered by that channel's chain, else in the client's home | Yes: a mapped person's Slack thread is a Humagen thread filed by the binding, and announcements reach a bound general channel, caught up on after a restart or a reconnect, where a reply that mentions the app starts a thread seeded with the announcement |
 | Mentions of a person | No | In their direct messages with the app, with Open Thread and Reply, unless they are in the Slack thread already (they wrote there or were mentioned there with `<@U…>`). Experts named by a role are each told |
 | Background work and `notify` | No | A reply in the app's Slack thread the work was asked from, naming the person, with its one line and Open Session; else in their direct messages. See [background results](#background-results) |
-| Who asked | Recorded on the run, and the run acts for the person the team's clients map the Slack user to | Recorded as the person, and acts for them, when the app's client maps them (`act_as`): their message is theirs in the Humagen thread, and so are the runs it starts. Else as the app, acting for nobody. Tools that act as a person use the person's own credential |
+| Who asked | Recorded on the run, and the run acts for the person the team's clients map the Slack user to | Recorded as the person, and acts for them (`act_as`): their message is theirs in the Humagen thread, and so are the runs it starts. Only someone the app's client maps asks at all. Someone else's words they ask about are asked for nobody, at their asking (`asked_by`). Tools that act as a person use the person's own credential |
 | Questions a run waits on | No | In the run's thread, answered for the person the client maps. See below |
 | Tokens and cost | No | Never on a turn. A finished turn offers **Run Details** to a person the client maps, answered to them alone. See [steps, command output and run details](#steps-command-output-and-run-details) |
 
@@ -31,9 +31,48 @@ credential and whose `slack.people` maps them. An app the server starts
 under a sign-in other than `tailscale` also `machine`, make the server keep
 the record `slack-app-<team>` and start the app with `HUMAGEN_CLIENT` naming
 it. With no `people` there is no record and no `HUMAGEN_CLIENT`, and the app
-acts for nobody. That record has no bot token, so files attached in Slack are
+answers nobody. That record has no bot token, so files attached in Slack are
 not read through it. See
 [the spec](spec.md#whom-the-slack-app-acts-for).
+
+## Who can start a run
+
+Only a Slack person the app's client maps. Anyone who can message the app can
+reach it: a new member of the workspace, a guest, or someone from another
+company in a Slack Connect channel. So the app refuses everyone else, and so
+does the server.
+
+| Entry | A mapped person | Anyone else |
+|---|---|---|
+| A direct message, a mention in any channel, a reply that mentions the app | Asks as themselves (`act_as`) | Told privately, nothing posted or run |
+| A reply that mentions nobody, in a session the app listens to | Offered to the agent as theirs | Dropped, and not answered |
+| `/agent`, `/skill`, a skill command, the shortcuts and their forms | Asks as themselves | Told privately; `/agent connections` still says how to be connected |
+| A button: Approve, Retry, Resume, Stop, an answer, a mode, a move, a rating | Acts as themselves | Told privately, nothing read or done |
+| **Ask agent about this** on someone else's message | Asked for nobody, at their asking (`asked_by`) | Told privately |
+
+A person is mapped when the client the app is (`HUMAGEN_CLIENT`) names the
+app's credential as its `slack.machine` and its `slack.people` maps their
+Slack user id. A delivery that names another team for the sender (Slack
+Connect) is nobody, whatever the map says. An app with no client answers
+nobody. There is no setting that opens the app to everyone.
+
+The reply says the person's Slack account is not connected and to ask a
+workspace admin to connect it. It is ephemeral where the person wrote, the
+command's own reply for a command, and a direct message from the app where
+there is no channel (the Home tab, a global shortcut). One person is told at
+most once in ten minutes, and the app tells at most twenty people a minute,
+so the reply cannot be used to flood a channel or Slack's rate limits.
+
+The server holds the app's credential to the same rule, whatever the app
+sends, so an old or forged app starts nothing either. `POST /api/runs` from a
+credential a Slack client names as its `slack.machine` (or the `slack-app:`
+credential the server makes) needs `act_as` or `asked_by` naming a person the
+client maps who holds `runs:write`; without one it answers 403. A run at a
+person's asking acts for nobody and records them as `requested_by`. The same
+credential makes no call (`POST /api/runs/{id}/calls`), runs no assignment
+(`POST /api/assignments/{id}/run`), tests no skill and asks no failed turn
+again through the inbox. A stop that names no Slack user stops nothing. Runs the server starts itself
+(schedules, automations, housekeeping) are not affected.
 
 The rest of this page describes the connector. The app is described in its
 [README](https://github.com/urmzd/humagen/blob/main/apps/slack/README.md).
@@ -44,7 +83,7 @@ The app works around each of these and says where in its README.
 
 | Missing | Effect today | Proposal |
 |---------|--------------|----------|
-| `actor` on `POST /api/runs` for anyone | Runs are recorded as the Slack person only when the app's client maps them (`act_as`, see [clients](clients.md#people-a-slack-app-answers-for)); anyone else's run is the app's | Built for mapped people. A Slack person nobody mapped stays unnamed on purpose |
+| `actor` on `POST /api/runs` for anyone | Runs are recorded as the Slack person the app's client maps (`act_as`, see [clients](clients.md#people-a-slack-app-answers-for)), and nobody else asks | Built for mapped people. A Slack person nobody mapped starts nothing |
 | `client` on `POST /api/runs`, or a machine bound to a client | The client's run limits and allow-list are not applied by the platform, except that `*` for a person the client acts for (`act_as`) asks only the client's agents whether to join. The app sends `*` only for a client whose list is `*` | Bind a machine credential to one client (a `client` claim, or a `client_id` on the token mapped in the client record) so the platform places its runs as it places webhook runs |
 | `metadata` on `POST /api/runs` | The Slack team, channel and thread a run answers are not on the run; the app derives them from the run id instead | Accept a bounded `metadata` map (string keys and values, a few hundred bytes) and return it on the run, so a surface can find its own place without encoding it in the idempotency key |
 | A router preview that knows a client's allow-list | A client with a list and no default answers nothing, and a default of `*` is not sent for a client with a list: the platform would ask agents past it | `GET /api/join?client=` and the same rule in `POST /api/runs` |
@@ -108,8 +147,8 @@ figure the run did not record has no row.
 The run is read as the person who clicked (`act_as_client` and `act_as_user`),
 never as the app's machine, so Humagen decides: a person sees a run's usage in
 Slack only where they may read the run. A person who may not is told they have
-no access, with no figures. A Slack user the client maps to nobody is told to
-ask an admin to connect their account, and Humagen is not asked. A bridged
+no access, with no figures. A Slack user the client maps to nobody is told
+their account is not connected, and Humagen is not asked. A bridged
 outcome does not offer the button.
 
 ### Questions a run waits on
@@ -117,8 +156,8 @@ outcome does not offer the button.
 The Slack app shows a run's question in the run's thread: the streamed message
 is closed with Humagen's approval or choice card, so its buttons can be pressed.
 A click answers through Humagen (`answerQuestion`) as the person the app's
-client maps the Slack user to; a Slack user it does not map is told in Humagen's
-words that they cannot, and Humagen is not asked. Humagen decides the rest:
+client maps the Slack user to; a Slack user it does not map is told their
+account is not connected, and Humagen is not asked. Humagen decides the rest:
 who may answer is the run's spec's to say, and a refusal is shown with Humagen's
 `noPermission` copy. The card settles in place from the run's own events,
 whoever answered, and the answer continues in a new message. A question's inbox
@@ -151,8 +190,8 @@ thread to Auto**, where the app's client maps people. It sets
 the conversation the thread is (`PUT /api/threads/{id}/approval` with
 `act_as`), with the same checks as the console's toggle, made as the person
 who pressed: Humagen decides whether they may, and its refusal is said to
-them alone. A Slack user the client maps to nobody is told they cannot, and
-Humagen is not asked. The change is said in the thread, naming who made it:
+them alone. A Slack user the client maps to nobody is told their account is
+not connected, and Humagen is not asked. The change is said in the thread, naming who made it:
 the approval agent approves and answers from the next action on, as that
 person could, and an action already waiting still waits for a person. Under
 it, **Switch to Manual** sets the conversation back, and that change is said the
@@ -299,12 +338,12 @@ asked to join. `@auto` tags nobody. The machine reads every thread on its
 own surface, wherever it is filed, but a person it posts or answers for is held to where they may
 read: someone who may not read a project's runs answers no question there,
 even on a card in a channel bound to it. A bound channel is a project's
-channel, so only people the client maps post there: anyone else who mentions
-the app in one is told to ask an admin to connect their Slack account, and
-Humagen is not asked. Elsewhere they ask through the app as before. When Humagen
-cannot say which channels are bound, the app answers nobody it would ask as
-itself: the turn is refused as Humagen being unavailable, and the next one reads
-the bindings again.
+channel, so only people the client maps post there, as everywhere (see
+[who can start a run](#who-can-start-a-run)), and a mapped person asking
+about someone else's message there is told to ask in their own words. When
+Humagen cannot say which channels are bound, the app answers nobody it would
+ask for nobody: the turn is refused as Humagen being unavailable, and the
+next one reads the bindings again.
 
 An announcement of a project whose general channel is bound is posted there,
 top-level, once; the app records where (`PUT /api/inbox/{id}/deliveries/{client}`),
@@ -386,8 +425,8 @@ own message, read in the one grammar and answered by the channel's chain as
 any message there. What the announcement says tags nobody. A later reply
 finds the same thread by its surface. The thread reads the announcement as
 it stands, so once it is withdrawn the thread says only that. Someone the
-client maps to nobody is told to connect their Slack account, as anywhere in
-a bound channel. A thread is seeded only where the Slack channel's binding
+client maps to nobody is told privately that their account is not connected,
+as anywhere. A thread is seeded only where the Slack channel's binding
 files it in the announcement's own project, so only those who see that
 project read it. There a reply under an announcement that was withdrawn
 before anyone replied starts nothing, and the app says so (Humagen answers
@@ -465,8 +504,9 @@ is offered only where the client may reach it. Search Context opens the
 console. The tab shows no access or connections, which the app cannot know for
 the person. Their projects are left out when they cannot be read: the app's
 machine needs `humagen:projects:read` for them, and the person `projects:read`.
-Someone the client maps to nobody sees the mailbox, as before: an operator the
-whole inbox the app may read, anyone else what they may settle.
+Someone the client maps to nobody sees the mailbox: an operator the whole inbox
+the app may read, anyone else nothing, as they asked for nothing. They act on
+none of it: a press is told their account is not connected.
 
 The webhook connector files its runs by the same binding: a run in a bound
 Slack channel is in the channel it is bound to, anything else in the client's

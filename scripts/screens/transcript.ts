@@ -59,6 +59,17 @@ const scenes: Scene[] = [
     },
   },
   { name: "running-step", scene: "running" },
+  // A source refused and then read at its full address: the line says retried, not failed.
+  { name: "retried-source", scene: "retried" },
+  {
+    name: "retried-source-open",
+    scene: "retried",
+    act: async (page) => {
+      await openGroup(page, /Checked 2 sources/);
+      const row = page.locator('[data-testid="failure-reason"] button').first();
+      if (await row.count()) await row.click();
+    },
+  },
 ];
 
 function chrome(): string {

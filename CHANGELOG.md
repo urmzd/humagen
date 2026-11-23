@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.195.2 (2026-11-23)
+
+### Bug Fixes
+
+- **core**: compare a call's identifying arguments, keeping paths case-sensitive ([28a5e51](https://github.com/urmzd/humagen/commit/28a5e51fa8000719f6d84f3d12ca4af809d81ff3))
+- **console**: recover a failure only by the same tool at the same target; read address as the transport does ([9d6c324](https://github.com/urmzd/humagen/commit/9d6c324a99f0c434b46ecda77f183e60b79bf7be))
+- **console**: say a recovered tool failure as retried; read repositories with github_read_context ([af8399d](https://github.com/urmzd/humagen/commit/af8399d766e8a537b326bbd418791ff86f142456))
+
+### Misc
+
+- **copy**: regenerate the product copy keys after merging main ([bb07b2e](https://github.com/urmzd/humagen/commit/bb07b2e057c6d33f8c960f3fa6950b18a85d6935))
+- **deps**: saige v0.50.0, repository reads and untrusted-data notice ([571deb4](https://github.com/urmzd/humagen/commit/571deb4c4c9dc8f84fc52b854d4b4769d464c58a))
+- **deps**: tidy go.sum after the saige pin ([6c8b92d](https://github.com/urmzd/humagen/commit/6c8b92d375131887356787fc66db4f136d1a25ef))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.195.1...v0.195.2)
+
+
+## 0.195.1 (2026-11-23)
+
+### Bug Fixes
+
+- **slack**: stop fails closed, the sender's team on every check, requested_by on runs ([b29a59e](https://github.com/urmzd/humagen/commit/b29a59e697779578a5d5b0e1b2d554048d361579))
+- **slack**: start runs only for people the client maps ([9696d57](https://github.com/urmzd/humagen/commit/9696d57d6dc2265407306fbaa9c7e7023a7f2ddc))
+
+### Misc
+
+- **slack**: the server test signs the app in as its own machine, mapping a person ([155b905](https://github.com/urmzd/humagen/commit/155b9055c1d99f4ee30b7bce0113a61fdc56fdea))
+- **copy**: regenerate copy keys for notConnected ([4a0bc37](https://github.com/urmzd/humagen/commit/4a0bc3783f5da216a6ad60a83d04927f4c27ae39))
+- **platform**: a Slack app's credential is held to asking for a person ([34c7ea0](https://github.com/urmzd/humagen/commit/34c7ea02e168e205c9e358266e301de5f388eb8e))
+- **slack**: deny by default on every entry; api: asked_by on runs ([a7e2ee7](https://github.com/urmzd/humagen/commit/a7e2ee7c918a7abc755a1d119b92b297724052ae))
+- **slack**: every Slack test asks as a person the client maps ([3e1a158](https://github.com/urmzd/humagen/commit/3e1a158a0567d0b136a55d367d41c8db524bec2e))
+- **slack**: move app tests to people the client maps (wip) ([ca6bd67](https://github.com/urmzd/humagen/commit/ca6bd67ad3a0345343eb9462870573348b638510))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.195.0...v0.195.1)
+
+
 ## 0.195.0 (2026-11-23)
 
 ### Features

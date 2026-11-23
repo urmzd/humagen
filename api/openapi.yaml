@@ -14116,6 +14116,12 @@ components:
             as `m-3`. Runs that answer one message answer it side by side and
             are not branches.
           type: string
+        requested_by:
+          description: |
+            The person, by subject, who asked through a surface's credential
+            for a run that acts for nobody (`asked_by`). The run uses nobody's
+            credentials; this only records who asked.
+          type: string
         lease:
           description: The run's budget in micro-USD. Zero means unmetered.
           type: integer
@@ -14244,6 +14250,15 @@ components:
             The person a surface asks for, such as a Slack user its client
             maps. The run's actor is that person, so they do not approve its
             calls. Only the credential the client names may send it.
+          $ref: "#/components/schemas/ActAs"
+        asked_by:
+          description: |
+            The person a surface's credential starts a run for nobody at the
+            asking of: a Slack user its client maps who asked about someone
+            else's message, or asked again a turn that acted for nobody. The
+            run acts for nobody. The person must hold runs:write. A Slack
+            app's credential starts no run without act_as or asked_by (403),
+            and the two may not be sent together (400).
           $ref: "#/components/schemas/ActAs"
     ActAs:
       description: A person a surface authenticated itself, named by the surface's client and the surface's own user id.

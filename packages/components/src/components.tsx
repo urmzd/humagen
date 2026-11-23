@@ -22,6 +22,7 @@ import {
   paragraphsAtSteps,
   readAgentChange,
   readReview,
+  recoveredCalls,
   SERVICE_TONE,
   type Segment,
   type SessionState,
@@ -807,12 +808,14 @@ export function toolsLineText(
   tasks: readonly TaskT[],
   copy: Copy = defaultCopy,
   turnEdits?: ReturnType<typeof fileEdits>,
+  recovered?: ReadonlySet<string>,
 ): string {
-  const line = toolsLine(tasks, copy, turnEdits);
+  const line = toolsLine(tasks, copy, turnEdits, recovered);
   const w = copy.conversation.toolLine;
   return [
     line.counts && line.file && !line.running ? `${line.text} ${line.counts}` : line.text,
     line.failed > 0 ? w.failed(line.failed) : "",
+    line.retried > 0 ? w.retried(line.retried) : "",
     line.waiting ? w.waiting : "",
   ]
     .filter(Boolean)
@@ -830,6 +833,7 @@ export function toolsLineText(
 export function ToolLines({ turn, copy = defaultCopy }: { turn: Turn } & WithCopy) {
   const { segments, rest } = timeline(turn);
   const edits = fileEdits(turn.tasks);
+  const recovered = recoveredCalls(turn.tasks);
   const all = [...segments, ...rest].filter(
     (s): s is Extract<Segment, { kind: "tools" | "call" }> =>
       s.kind === "tools" || s.kind === "call",
@@ -841,8 +845,8 @@ export function ToolLines({ turn, copy = defaultCopy }: { turn: Turn } & WithCop
   const summary =
     ended && own.length > 0
       ? own.length === 1
-        ? toolsLineText(own, copy, edits)
-        : workSummary(turn.tasks, copy, edits)
+        ? toolsLineText(own, copy, edits, recovered)
+        : workSummary(turn.tasks, copy, edits, recovered)
       : undefined;
   const runs = ended ? all.filter((s) => s.kind === "call") : all;
   const shown = runs.length > MAX_TOOL_LINES ? runs.slice(0, MAX_TOOL_LINES - 1) : runs;
@@ -858,7 +862,7 @@ export function ToolLines({ turn, copy = defaultCopy }: { turn: Turn } & WithCop
             copy={copy}
           />
         ) : (
-          <Context key={s.key} items={[toolsLineText(s.tasks, copy, edits)]} />
+          <Context key={s.key} items={[toolsLineText(s.tasks, copy, edits, recovered)]} />
         ),
       )}
       {more.length > 0 && (
