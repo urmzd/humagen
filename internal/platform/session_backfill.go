@@ -31,6 +31,12 @@ import (
 //     cannot become a session without a new id that breaks them. A Slack
 //     reply there keeps reaching it (ErrSurfaceThreadBeforeSessions).
 //
+// A session the backfill opens takes the times of its work: started when
+// its first run was asked, and last active when its latest run or message
+// was. A session an earlier backfill opened with the time it ran, started
+// after its first run had ended, which no mention opens, is dated the same
+// way when the backfill finds it.
+//
 // Nothing is written unless apply is set, and a second apply writes
 // nothing: each step finds what the first one did.
 
@@ -42,6 +48,7 @@ const (
 	BackfillRunAlreadyFiled  = "github run already filed"
 	BackfillRunBound         = "github run bound to its session"
 	BackfillParticipantAdded = "github participant added"
+	BackfillSessionDated     = "github session dated from its runs"
 	BackfillRunLeft          = "github run left"
 	BackfillThreadLeft       = "conversation left"
 	BackfillSlackThreadLeft  = "slack conversation left"
@@ -83,7 +90,7 @@ func (r BackfillReport) Changes() int {
 	n := 0
 	for kind, c := range r.Counts {
 		switch kind {
-		case BackfillSessionOpened, BackfillRunFiled, BackfillRunBound, BackfillParticipantAdded:
+		case BackfillSessionOpened, BackfillRunFiled, BackfillRunBound, BackfillParticipantAdded, BackfillSessionDated:
 			n += c
 		}
 	}
@@ -271,6 +278,19 @@ func (p *Platform) backfillGitHubPlace(ctx context.Context, tenant string, apply
 			th = threads.Thread{ID: id, Project: project, CreatedBy: first.person, Session: &threads.SessionIdentity{Agent: owner, Parent: first.place}}
 		}
 	}
+	// When the session's work was done, read before anything moves.
+	var span workSpan
+	if found {
+		if err := p.spanConversation(tenant, id, &span); err != nil {
+			return err
+		}
+		if m, err := p.Threads.Last(tenant, id); err == nil {
+			span.active(m.At)
+		} else if !errors.Is(err, threads.ErrNotFound) {
+			return err
+		}
+	}
+	var firstFiled *runs.Run
 	// The runtime opened the same record for many of these runs when they
 	// ran, and bound them to it.
 	bound := map[string]bool{}
@@ -297,6 +317,15 @@ func (p *Platform) backfillGitHubPlace(ctx context.Context, tenant string, apply
 		if r.Project != project {
 			rep.add(BackfillRunLeft, r.ID, id, fmt.Sprintf("it is filed in %q and its session in %q", r.Project, project))
 			continue
+		}
+		if firstFiled == nil {
+			firstFiled = &b.run
+		}
+		span.add(r.CreatedAt, r.UpdatedAt)
+		if r.Thread != id {
+			if err := p.spanConversation(tenant, r.Thread, &span); err != nil {
+				return err
+			}
 		}
 		if r.Thread == id {
 			rep.add(BackfillRunAlreadyFiled, r.ID, id, "")
@@ -336,8 +365,56 @@ func (p *Platform) backfillGitHubPlace(ctx context.Context, tenant string, apply
 			return fmt.Errorf("backfill: bind runs to %s: %w", id, err)
 		}
 	}
+	// A session found is dated only when it was opened after its first run
+	// had ended: a mention opens its session before its run starts.
+	if firstFiled == nil || span.created.IsZero() || (found && !th.CreatedAt.After(firstFiled.UpdatedAt)) {
+		return nil
+	}
+	detail := "started " + stampOf(span.created) + ", last active " + stampOf(span.updated)
+	if found {
+		detail += "; was started " + stampOf(th.CreatedAt) + ", last active " + stampOf(th.UpdatedAt)
+	}
+	rep.add(BackfillSessionDated, first.place, id, detail)
+	if apply {
+		if _, err := p.Threads.Redate(tenant, id, span.created, span.updated); err != nil {
+			return fmt.Errorf("backfill: date %s: %w", id, err)
+		}
+	}
 	return nil
 }
+
+// workSpan is when a session's work was done: the first run's start and
+// the latest time a run or a message changed.
+type workSpan struct{ created, updated time.Time }
+
+func (s *workSpan) add(created, updated time.Time) {
+	if !created.IsZero() && (s.created.IsZero() || created.Before(s.created)) {
+		s.created = created
+	}
+	s.active(updated)
+}
+
+func (s *workSpan) active(at time.Time) {
+	if at.After(s.updated) {
+		s.updated = at
+	}
+}
+
+// spanConversation adds what the run index holds of a conversation's
+// times, nothing when it holds no run of it.
+func (p *Platform) spanConversation(tenant, id string, span *workSpan) error {
+	sum, err := p.Runs.ConversationSummary(tenant, id)
+	if err != nil {
+		return err
+	}
+	if sum.ID != "" {
+		span.add(sum.CreatedAt, sum.UpdatedAt)
+	}
+	return nil
+}
+
+// stampOf is a time as the report shows it.
+func stampOf(at time.Time) string { return at.UTC().Format(time.RFC3339) }
 
 // orderedBinder binds runs to a session in the order they were asked
 // (sessionstate.Store.BindRunsInOrder).

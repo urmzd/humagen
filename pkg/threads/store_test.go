@@ -504,3 +504,61 @@ func TestLastIsAThreadsLatestMessage(t *testing.T) {
 		t.Fatalf("Last of a thread that is not there = %v", err)
 	}
 }
+
+// A thread redated takes the times it is given, moves to its place in the
+// activity order, and keeps everything else, its version among them.
+func TestRedateMovesAThreadToItsPlaceInTheActivityOrder(t *testing.T) {
+	s := threads.NewStore()
+	old, _ := start(t, s, "acme", shared("", "general"), msg("dana", "From last month"))
+	newer, err := s.Create("acme", shared("", "general"), t0.Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Opened later, for work done before the first.
+	late, err := s.Create("acme", shared("", "general"), t0.Add(48*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := func() []string {
+		t.Helper()
+		page, _, err := s.List("acme", threads.Query{Project: ""})
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := make([]string, len(page))
+		for i, th := range page {
+			out[i] = th.ID
+		}
+		return out
+	}
+	if got := ids(); fmt.Sprint(got) != fmt.Sprint([]string{late.ID, newer.ID, old.ID}) {
+		t.Fatalf("before = %v", got)
+	}
+	created, updated := t0.Add(-2*time.Hour), t0.Add(-time.Hour)
+	got, err := s.Redate("acme", late.ID, created, updated)
+	switch {
+	case err != nil:
+		t.Fatal(err)
+	case !got.CreatedAt.Equal(created) || !got.UpdatedAt.Equal(updated):
+		t.Fatalf("redated = %v, %v", got.CreatedAt, got.UpdatedAt)
+	case got.Version != late.Version || got.Title != late.Title || got.Channel != late.Channel || got.Visibility != late.Visibility:
+		t.Fatalf("redating changed more than its times: %+v, was %+v", got, late)
+	}
+	if got := ids(); fmt.Sprint(got) != fmt.Sprint([]string{newer.ID, old.ID, late.ID}) {
+		t.Fatalf("after = %v", got)
+	}
+	// The same times again change nothing; an update before the start is
+	// the start; a zero time is refused.
+	if again, err := s.Redate("acme", late.ID, created, updated); err != nil || !again.UpdatedAt.Equal(updated) {
+		t.Fatalf("again = %+v, %v", again, err)
+	}
+	if early, err := s.Redate("acme", late.ID, created, created.Add(-time.Minute)); err != nil || !early.UpdatedAt.Equal(created) {
+		t.Fatalf("an update before the start = %v, %v", early.UpdatedAt, err)
+	}
+	if _, err := s.Redate("acme", late.ID, time.Time{}, updated); !errors.Is(err, threads.ErrInvalid) {
+		t.Fatalf("a zero time = %v", err)
+	}
+	if _, err := s.Redate("acme", "th-00112233445566ff", created, updated); !errors.Is(err, threads.ErrNotFound) {
+		t.Fatalf("a missing thread = %v", err)
+	}
+}

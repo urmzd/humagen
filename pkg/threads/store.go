@@ -581,6 +581,36 @@ func (s *Store) place(tenantName string, cur Thread, next *head, w *write, at ti
 	return nil
 }
 
+// Redate sets when a thread was started and when it was last active, and
+// moves it in the activity order to match. It is how a record opened for
+// past work (humagen migrate sessions) takes the times of that work, not
+// the time it was opened. It changes nothing else, not even the record's
+// version. An updated time before the created time is the created time.
+func (s *Store) Redate(tenantName, id string, created, updated time.Time) (Thread, error) {
+	if created.IsZero() || updated.IsZero() {
+		return Thread{}, fmt.Errorf("%w: a thread is dated by two times", ErrInvalid)
+	}
+	if updated.Before(created) {
+		updated = created
+	}
+	changed := false
+	h, err := s.edit(tenantName, id, func(next *head, _ *write) error {
+		if next.CreatedAt.Equal(created) && next.UpdatedAt.Equal(updated) {
+			changed = false
+			return state.ErrUnchanged
+		}
+		next.CreatedAt, next.UpdatedAt, changed = created, updated, true
+		return nil
+	})
+	if err != nil {
+		return Thread{}, err
+	}
+	if changed {
+		s.tell(tenantName, Notice{ID: id, At: updated})
+	}
+	return h.Thread, nil
+}
+
 // Claim makes by the owner of a thread nobody started, the record of a
 // conversation from before threads that no person asked in: they start it,
 // and take part as its owner. A thread someone started is returned as it is.

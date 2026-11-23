@@ -33,6 +33,8 @@ the tenants it read, then how many runs of each tenant it read. Check them befor
 | A run of the session's owner | Binds it to the session's record, in the order the runs were asked and ahead of any newer run bound already, so the session's latest run stays its newest. A run the runtime bound when it ran stays bound once |
 | The conversation's title in the run index | The pull request's or issue's title, from the run's trigger |
 | The person who asked | Adds the person the GitHub client maps the login to now (`github.people`). A login mapped to nobody adds nobody. The session is private to these people, as a new one is, and gets no Slack audience record |
+| The session's times | Dates the session from its work: started when its first run was asked, last active when its latest run or message was. Recent and Sessions then list it where that work falls, not at the time the command ran |
+| A session an earlier run of the command opened | Before this was fixed, the command dated each session it opened at the time it ran, so those sessions sat at the top of Recent. The command dates such a session from its runs and changes nothing else. A session that a mention opened is left as it is |
 
 ### What it leaves
 
@@ -96,3 +98,14 @@ read by administrators alone. Do the steps in this order:
 
 The servers can keep running. The command writes each record at the version
 it read, as a server does, and a second run finds what the first one did.
+
+### Dating sessions an earlier run opened
+
+A release before this fix dated each session the command opened at the
+time the command ran. Run the same command again to date those sessions
+from their runs. There is no extra flag.
+
+1. Run the dry run. Each session to date has a `github session dated from
+   its runs` line with its new times and its old ones.
+2. Apply it with `-apply`.
+3. Run the dry run again. It must end with `would write 0 changes`.
