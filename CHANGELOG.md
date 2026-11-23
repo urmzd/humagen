@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.200.1 (2026-11-23)
+
+### Bug Fixes
+
+- **messages**: check that the poster may post before a root's audience is kept ([27464bc](https://github.com/urmzd/humagen/commit/27464bcdf2c68b7238bb571c451d17eb9f2016f2))
+- **messages**: check who may post before a place's root is kept ([44e9967](https://github.com/urmzd/humagen/commit/44e99675114274c9cb80cab38b4adb16b5479679))
+- **surfaces**: start a surface's root beside a root someone named first ([054faa2](https://github.com/urmzd/humagen/commit/054faa273c860c9a84675e1417962bba44dceb1e))
+- **messages**: check who reads a place's root before a message changes it ([5c0cdcc](https://github.com/urmzd/humagen/commit/5c0cdcc81f3d9d01d0262effa15f9d870450928d))
+
+### Misc
+
+- **messages**: a Slack place's root is the surface's, and one named first stays its caller's ([7e7b9fe](https://github.com/urmzd/humagen/commit/7e7b9fe1ce8660206270a3303f211945b96a6e43))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.200.0...v0.200.1)
+
+
 ## 0.200.0 (2026-11-23)
 
 ### Features
