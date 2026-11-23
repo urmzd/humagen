@@ -95,7 +95,9 @@ func New(cfg Config) (*Connector, error) {
 		// whoever decides again what the event may start. Nothing else
 		// writes this key.
 		wire.DeleteMeta(tag, wire.MetaSlackSenderTeam)
-		if who, ok := ctx.Value(senderKey{}).(sender); ok && who.team != "" {
+		if who, ok := ctx.Value(senderKey{}).(sender); ok && who.noTeam {
+			wire.SetMeta(tag, wire.MetaSlackSenderTeam, noSlackTeam)
+		} else if ok && who.team != "" {
 			wire.SetMeta(tag, wire.MetaSlackSenderTeam, who.team)
 		}
 		if cfg.Agents != nil && wire.AgentOf(*tag) == "" {
@@ -212,6 +214,10 @@ func firstToken(text string) int {
 	return i
 }
 
+// noSlackTeam is written as the sender's team when the delivery named it
+// with something that is not a string. It is no team's id.
+const noSlackTeam = "(none)"
+
 type openedKey struct{}
 
 // maxOpenedBody bounds the delivery read for the app's mention. A larger one
@@ -233,7 +239,18 @@ func (c *Connector) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxOpenedBody+1))
 	r.Body = io.NopCloser(io.MultiReader(bytes.NewReader(body), r.Body))
 	if err == nil && len(body) <= maxOpenedBody {
-		if who, ok := c.asks(r, body); ok {
+		who, ok, unread := c.asks(r, body)
+		if unread != nil {
+			// A verified delivery whose sender cannot be read is
+			// acknowledged, so Slack does not send it again, and goes
+			// no further.
+			if c.cfg.Log != nil {
+				c.cfg.Log.Debug("slack: a delivery was not read for its sender and went no further")
+			}
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		if ok {
 			if c.refuse(w, who) {
 				return
 			}

@@ -96,7 +96,9 @@ clients map to different people is nobody. The sender's team is the one
 Slack names for them (`user_team`, then the event's `team`, then the
 delivery's `team_id`; for a command its `team_id`; for a button the user's
 `team_id`, then the payload's team), and it must be the client's `identity.team`: a mapped user id
-from another team, or a delivery that names no team, is nobody. A client
+from another team, or a delivery that names no team or names one with
+something that is not a string, is nobody; a verified delivery the connector
+cannot read is acknowledged and goes no further. A client
 that names no team, and a connector an embedding program passes as a
 `Connection` (which has no client record, so no team and no people), start
 nothing. The default client made from the `HUMAGEN_SLACK_*` variables has no

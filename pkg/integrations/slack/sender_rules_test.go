@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -256,5 +257,93 @@ func TestAStopWithNoRunKnownSettlesTheStatusOnlyForAMappedPerson(t *testing.T) {
 	press("U0ANA")
 	if st := g.fake.Statuses(); len(st) != 1 || st[0].Status != slack.StatusActive || len(g.fake.Messages()) != 0 {
 		t.Fatalf("a mapped person's press set %+v and posted %+v", st, g.fake.Messages())
+	}
+}
+
+// A delivery that names a team with something that is not a string (a
+// number, an object, an array, a bool) raises nothing, for a mapped user id
+// and for anyone else: the sender's own team and the event's team are no
+// team, and a delivery whose own team cannot be read goes no further. No
+// reaction is added and no file is read.
+func TestATeamThatIsNotAStringRaisesNothing(t *testing.T) {
+	var api *fileReads
+	g := newGate(t, func(cfg *slack.Config) {
+		api = &fileReads{Fake: cfg.API.(*slack.Fake)}
+		cfg.API, cfg.Files, cfg.FileToken, cfg.StatusReactions = api, connectors.Files{Store: blob.NewMemory()}, "xoxb-test", true
+	})
+	delivery := func(top, inner string) string {
+		eventSeq++
+		return `{"type":"event_callback",` + top + `"event_id":"Ev` + strconv.Itoa(eventSeq) + `","event":` + inner + `}`
+	}
+	own := `"team_id":"` + senderTeam + `",`
+	var said []string
+	for _, user := range []string{"U0ANA", "U0EVE"} {
+		for _, value := range []string{`5`, `{"id":"` + senderTeam + `"}`, `["` + senderTeam + `"]`, `true`, `1.5`} {
+			thanked := g.fake.Say(senderTeam, "C02CHANNEL", knownThread, user, "thanks")
+			said = append(said, thanked)
+			shapes := map[string]func(extra string) string{
+				"a mention": func(extra string) string {
+					return `{"type":"app_mention","user":"` + user + `","text":"<@U08BOTID> go","ts":"1700000090.001200","channel":"C02CHANNEL"` + extra + `}`
+				},
+				"a direct message": func(extra string) string {
+					return `{"type":"message","channel_type":"im","user":"` + user + `","text":"go","ts":"1700000091.000100","channel":"D01"` + extra + `}`
+				},
+				"a thanks in the thread": func(extra string) string {
+					return `{"type":"message","channel_type":"channel","user":"` + user + `","text":"thanks","ts":"` + thanked + `","thread_ts":"` + knownThread + `","channel":"C02CHANNEL"` + extra + `}`
+				},
+				"a shared file": func(extra string) string {
+					return `{"type":"message","subtype":"file_share","channel_type":"im","user":"` + user + `","text":"read","ts":"1700000093.000100","channel":"D01","files":[{"id":"F01","file_access":"check_file_info"}]` + extra + `}`
+				},
+			}
+			for shape, inner := range shapes {
+				for field, body := range map[string]string{
+					"user_team":         delivery(own, inner(`,"user_team":`+value)),
+					"the event's team":  delivery(own, inner(`,"team":`+value)),
+					"both":              delivery(own, inner(`,"user_team":"`+senderTeam+`","team":`+value)),
+					"the delivery team": delivery(`"team_id":`+value+`,`, inner("")),
+				} {
+					g.reset()
+					if w := g.post("", body); w.Code != http.StatusOK || w.Body.Len() != 0 {
+						t.Errorf("%s from %s with %s = %s answered %d %q, want an empty 200", shape, user, field, value, w.Code, w.Body.String())
+					}
+					if _, raised := g.counts(); raised != 0 {
+						t.Errorf("%s from %s with %s = %s was raised", shape, user, field, value)
+					}
+				}
+			}
+		}
+	}
+	if n := api.n.Load(); n != 0 {
+		t.Errorf("%d files were read", n)
+	}
+	for _, ts := range said {
+		if m, _ := g.fake.Message(ts); len(m.Reactions) != 0 {
+			t.Errorf("the app reacted to %s: %v", ts, m.Reactions)
+		}
+	}
+	if len(g.fake.Messages()) != len(said) {
+		t.Errorf("%d messages were posted", len(g.fake.Messages())-len(said))
+	}
+
+	// A team left out, or null, names none: the delivery's team stands.
+	g.reset()
+	if w := g.post("", delivery(own, mentionBy("U0ANA", `,"user_team":null,"team":null`))); w.Code != http.StatusOK {
+		t.Fatalf("answered %d", w.Code)
+	}
+	if asked, raised := g.counts(); raised != 1 || len(asked) != 1 || asked[0] != senderTeam+"/U0ANA" {
+		t.Fatalf("a mention with null teams: asked about %v and raised %d", asked, raised)
+	}
+
+	// A button whose user names a team that is not a string is asked about
+	// with no team.
+	for _, value := range []string{`5`, `{"id":"` + senderTeam + `"}`, `["` + senderTeam + `"]`, `true`} {
+		g.reset()
+		payload := `{"type":"block_actions","team":{"id":"` + senderTeam + `"},"user":{"id":"U0ANA","team_id":` + value + `},"actions":[{"action_id":"stop","value":"run_1"}]}`
+		if w := g.post("/interactive", url.Values{"payload": {payload}}.Encode()); w.Code != http.StatusOK {
+			t.Fatalf("a button with team_id = %s answered %d", value, w.Code)
+		}
+		if asked, _ := g.counts(); len(asked) != 1 || asked[0] != "/U0ANA" {
+			t.Errorf("a button with team_id = %s: asked about %v, want no team", value, asked)
+		}
 	}
 }

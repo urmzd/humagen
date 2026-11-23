@@ -2,6 +2,7 @@ package slack
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/url"
 	"strings"
@@ -32,6 +33,9 @@ const (
 type sender struct {
 	team, user string
 	command    bool
+	// noTeam says the delivery named the sender's team with something that
+	// is not a string, so they belong to none.
+	noTeam bool
 }
 
 // requestSender reads who a verified delivery asks as: a slash command's
@@ -47,68 +51,110 @@ type sender struct {
 // or a reply in a thread the client answered in, with no subtype or a shared
 // file's. A test holds the two together: nothing is raised that was not
 // asked about here first.
-func (c *Connector) requestSender(path string, body []byte) (sender, bool) {
+//
+// errUnread is the answer for a delivery this reading cannot make out: its
+// form or its JSON does not parse into the fields read here. Such a delivery
+// goes no further, since what cannot be read here cannot be asked about. A
+// team named by something other than a string is no team: the sender is
+// asked about with none, which is nobody's.
+func (c *Connector) requestSender(path string, body []byte) (sender, bool, error) {
 	switch {
 	case strings.HasSuffix(path, transport.CommandsPath):
 		form, err := url.ParseQuery(string(body))
-		if err != nil || form.Get("user_id") == "" {
-			return sender{}, false
+		if err != nil {
+			return sender{}, false, errUnread
 		}
-		return sender{team: form.Get("team_id"), user: form.Get("user_id"), command: true}, true
+		if form.Get("user_id") == "" {
+			return sender{}, false, nil
+		}
+		return sender{team: form.Get("team_id"), user: form.Get("user_id"), command: true}, true, nil
 	case strings.HasSuffix(path, transport.InteractivityPath):
 		form, err := url.ParseQuery(string(body))
 		if err != nil {
-			return sender{}, false
+			return sender{}, false, errUnread
 		}
 		var p struct {
 			Team struct {
 				ID string `json:"id"`
 			} `json:"team"`
 			User struct {
-				ID   string `json:"id"`
-				Team string `json:"team_id"`
+				ID   string          `json:"id"`
+				Team json.RawMessage `json:"team_id"`
 			} `json:"user"`
 		}
-		if json.Unmarshal([]byte(form.Get("payload")), &p) != nil || p.User.ID == "" {
-			return sender{}, false
+		if json.Unmarshal([]byte(form.Get("payload")), &p) != nil {
+			return sender{}, false, errUnread
 		}
-		return sender{team: first(p.User.Team, p.Team.ID), user: p.User.ID}, true
+		if p.User.ID == "" {
+			return sender{}, false, nil
+		}
+		own, ok := teamOf(p.User.Team)
+		if !ok {
+			return sender{user: p.User.ID, noTeam: true}, true, nil
+		}
+		return sender{team: first(own, p.Team.ID), user: p.User.ID}, true, nil
 	}
+	// The fields the transport reads are typed as it types them, so what it
+	// can read this can. The sender's own team, which only this reads, is
+	// taken as it comes.
 	var env struct {
 		Type  string `json:"type"`
 		Team  string `json:"team_id"`
 		Event struct {
-			Type        string `json:"type"`
-			Subtype     string `json:"subtype"`
-			User        string `json:"user"`
-			BotID       string `json:"bot_id"`
-			UserTeam    string `json:"user_team"`
-			Team        string `json:"team"`
-			Channel     string `json:"channel"`
-			ChannelType string `json:"channel_type"`
-			ThreadTS    string `json:"thread_ts"`
+			Type        string          `json:"type"`
+			Subtype     string          `json:"subtype"`
+			User        string          `json:"user"`
+			BotID       string          `json:"bot_id"`
+			UserTeam    json.RawMessage `json:"user_team"`
+			Team        json.RawMessage `json:"team"`
+			Channel     string          `json:"channel"`
+			ChannelType string          `json:"channel_type"`
+			ThreadTS    string          `json:"thread_ts"`
 		} `json:"event"`
 	}
-	if json.Unmarshal(body, &env) != nil || env.Type != "event_callback" {
-		return sender{}, false
+	if json.Unmarshal(body, &env) != nil {
+		return sender{}, false, errUnread
+	}
+	if env.Type != "event_callback" {
+		return sender{}, false, nil
 	}
 	ev := env.Event
 	if ev.BotID != "" || ev.User == "" {
-		return sender{}, false
+		return sender{}, false, nil
 	}
 	switch ev.Type {
 	case "app_mention":
 	case "message":
 		if ev.Subtype != "" && ev.Subtype != "file_share" {
-			return sender{}, false
+			return sender{}, false, nil
 		}
 		if ev.ChannelType != "im" && (ev.ThreadTS == "" || c.cfg.ContinueThread == nil || !c.cfg.ContinueThread(env.Team, ev.Channel, ev.ThreadTS)) {
-			return sender{}, false
+			return sender{}, false, nil
 		}
 	default:
-		return sender{}, false
+		return sender{}, false, nil
 	}
-	return sender{team: first(ev.UserTeam, ev.Team, env.Team), user: ev.User}, true
+	userTeam, ok := teamOf(ev.UserTeam)
+	eventTeam, also := teamOf(ev.Team)
+	if !ok || !also {
+		return sender{user: ev.User, noTeam: true}, true, nil
+	}
+	return sender{team: first(userTeam, eventTeam, env.Team), user: ev.User}, true, nil
+}
+
+// errUnread is requestSender's answer for a delivery it cannot make out.
+var errUnread = errors.New("slack: the delivery could not be read for its sender")
+
+// teamOf reads a team a delivery names. A field left out, or null, names
+// none; ok is false for one that is not a string, which names no team.
+func teamOf(raw json.RawMessage) (team string, ok bool) {
+	if len(raw) == 0 || string(raw) == "null" {
+		return "", true
+	}
+	if json.Unmarshal(raw, &team) != nil {
+		return "", false
+	}
+	return team, true
 }
 
 func first(s ...string) string {
@@ -163,10 +209,11 @@ func (t *turnAway) allow(key string, now time.Time) bool {
 type senderKey struct{}
 
 // asks reads who a request asks as, once its signature verifies. ok is
-// false for a request that is not verified here, or asks for nothing.
-func (c *Connector) asks(r *http.Request, body []byte) (sender, bool) {
+// false for a request that is not verified here, or asks for nothing; the
+// error is errUnread for a verified one that cannot be read.
+func (c *Connector) asks(r *http.Request, body []byte) (sender, bool, error) {
 	if c.cfg.Verifier == nil || c.cfg.Verifier.Verify(r.Header, body) != nil {
-		return sender{}, false
+		return sender{}, false, nil
 	}
 	return c.requestSender(r.URL.Path, body)
 }
