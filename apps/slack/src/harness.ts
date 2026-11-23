@@ -266,6 +266,11 @@ export class FakeHumagen implements Humagen {
     return this.clock;
   }
 
+  /** Move humagen's clock, and so the app's, on by `ms`. */
+  advance(ms: number) {
+    this.clock += ms;
+  }
+
   /** A time some way back on humagen's clock, for a message raised then. */
   ago(ms: number) {
     return new Date(this.clock - ms).toISOString();

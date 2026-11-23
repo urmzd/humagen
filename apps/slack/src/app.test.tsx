@@ -35,7 +35,6 @@ import {
   world,
 } from "./harness.ts";
 import { type ClientRecord, HumagenError } from "./humagen.ts";
-import { runId, tagId } from "./keys.ts";
 import { validateBlocks } from "./validate.ts";
 
 const TS = "1700000000.000100";

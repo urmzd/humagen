@@ -1513,6 +1513,7 @@ branch from that point.
   /** Files a new conversation under a project. A follow-up keeps its conversation's project. */
   project?: string;
   act_as?: ActAs;
+  asked_by?: ActAs;
 }
 
 /** A person a surface authenticated itself, named by the surface's client and the surface's own user id. */

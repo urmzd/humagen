@@ -17,7 +17,6 @@ import {
   settle,
   USER,
   type World,
-  world,
 } from "./harness.ts";
 import { Names } from "./history.ts";
 import {
