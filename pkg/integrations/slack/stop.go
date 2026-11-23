@@ -11,10 +11,21 @@ import (
 )
 
 // StopFunc asks one run to stop at the request of the Slack user who pressed
-// stop. Asking a run that has already ended is not an error. It is an alias so
-// a composition root can ask for the capability without importing this
-// package.
+// stop. nil means the run was asked to stop. ErrStopRefused means the user
+// may not stop it, and ErrNothingToStop that it is not the host's to stop or
+// has already ended; neither is a failure. It is an alias so a composition
+// root can ask for the capability without importing this package.
 type StopFunc = func(ctx context.Context, runID, slackUser string) error
+
+// ErrStopRefused is what a StopFunc answers when the Slack user may not stop
+// the run. The run is left as it is: still open, nothing said in the
+// session, and the press is acknowledged so Slack does not deliver it again.
+var ErrStopRefused = errors.New("slack: stop refused")
+
+// ErrNothingToStop is what a StopFunc answers for a run it did not ask to
+// stop because it is not the host's to stop, or has already ended. Nobody is
+// told the run stopped.
+var ErrNothingToStop = errors.New("slack: nothing to stop")
 
 // maxRuns bounds how many open and stopping runs the connector remembers.
 // Forgetting an open run costs its stop button; forgetting a stopping one lets
@@ -45,8 +56,8 @@ func sessionOf(a address.Address) session {
 	return session{workspace: a.Workspace, channel: a.Path[0], thread: thread}
 }
 
-// OnStop sets what stops a run. Until it is set a stop still settles the
-// session's status, but no run is told.
+// OnStop sets what stops a run. Until it is set no run is told, and a press
+// confirms nothing.
 func (c *Connector) OnStop(fn StopFunc) {
 	c.live.mu.Lock()
 	defer c.live.mu.Unlock()
@@ -130,14 +141,22 @@ func (c *Connector) stopped(ctx context.Context, s stopRequest) error {
 	stop := c.live.stop
 	c.live.mu.Unlock()
 
+	// The host decides, run by run, whether this user stops it. Only a run
+	// it accepted the request for counts as stopped.
 	var failed error
+	open := c.live.in(at)
 	halted := 0
-	for _, id := range c.live.in(at) {
-		if stop != nil {
-			if err := stop(ctx, id, s.User); err != nil {
-				failed = errors.Join(failed, err)
-				continue
-			}
+	for _, id := range open {
+		if stop == nil {
+			continue
+		}
+		err := stop(ctx, id, s.User)
+		if errors.Is(err, ErrStopRefused) || errors.Is(err, ErrNothingToStop) {
+			continue
+		}
+		if err != nil {
+			failed = errors.Join(failed, err)
+			continue
 		}
 		c.live.settle(id)
 		halted++
@@ -155,7 +174,18 @@ func (c *Connector) stopped(ctx context.Context, s stopRequest) error {
 			return err
 		}
 	}
-	if !c.cfg.Sessions {
+	// The status moves off processing when a run was stopped. A press that
+	// stopped none of the session's runs leaves it as it is: they are still
+	// working. With no run known (a second press, or after a restart) the
+	// status is settled for someone the client acts for, and for anyone
+	// where the host gave no Sender.
+	switch {
+	case !c.cfg.Sessions:
+		return nil
+	case halted > 0:
+	case len(open) > 0:
+		return nil
+	case c.cfg.Sender != nil && !c.cfg.Sender(at.workspace, s.User):
 		return nil
 	}
 	err := c.cfg.API.(transport.AgentAPI).SetStatus(ctx, Session{

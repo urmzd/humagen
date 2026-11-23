@@ -9,6 +9,7 @@ import {
   canDecide,
   contextPressure,
   type Failure,
+  type FailureCause,
   type Field,
   fileEdits,
   formatAmount,
@@ -21,6 +22,7 @@ import {
   paragraphsAtSteps,
   readAgentChange,
   readReview,
+  recoveredCalls,
   SERVICE_TONE,
   type Segment,
   type SessionState,
@@ -588,12 +590,32 @@ function capitalize(text: string) {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
-export function failureTitle(failure: Failure, copy: Copy = defaultCopy): string {
+export function failureTitle(failure: Failure, copy: Copy = defaultCopy, agent?: string): string {
+  if (failure.cause)
+    return causeTitle(failure.cause, agent?.trim() || copy.runFailure.someone, copy);
   return failure.title || capitalize(copy.failure[failure.kind](failure.service));
+}
+
+/** What happened to the agent, by what stopped it. */
+function causeTitle(cause: FailureCause, agent: string, copy: Copy): string {
+  const words = copy.runFailure;
+  if (cause === "no_model_provider" || cause === "provider_credential")
+    return words.couldNotRun(agent);
+  if (cause === "undeliverable") return words.couldNotReply(agent);
+  return words.couldNotFinish(agent);
+}
+
+/** Why a cause stopped the run. A cause this copy has no sentence for is said as an unknown one. */
+function causeSentence(cause: string, copy: Copy): string {
+  const because: Record<string, string> = copy.runFailure.because;
+  return Object.hasOwn(because, cause)
+    ? (because[cause] as string)
+    : copy.runFailure.because.unknown;
 }
 
 /** Keep credential configuration paths in authorized run details, not the answer body. */
 function failureMessage(failure: Failure, copy: Copy): string {
+  if (failure.cause) return causeSentence(failure.cause, copy);
   return /(?:op:\/\/|1password|credential|api[_ -]?key|secret reference)/i.test(failure.message) &&
     failure.kind === "internal"
     ? copy.credentialUnavailable
@@ -607,11 +629,14 @@ function failureMessage(failure: Failure, copy: Copy): string {
 export function FailureAlert({
   turnId,
   failure,
+  agent,
   report = true,
   copy = defaultCopy,
 }: {
   turnId: string;
   failure: Failure;
+  /** The name people see the agent by, for the plain sentence. */
+  agent?: string;
   /** Offer Report Issue. False when the host has nowhere to send a report. */
   report?: boolean;
 } & WithCopy) {
@@ -640,8 +665,17 @@ export function FailureAlert({
     <>
       <Callout
         tone={failure.kind === "auth_required" || failure.kind === "forbidden" ? "warn" : "bad"}
-        title={failureTitle(failure, copy)}
+        title={failureTitle(failure, copy, agent)}
         text={lines.join(" ")}
+        details={
+          failure.detail
+            ? {
+                text: failure.detail,
+                show: copy.conversation.toolLine.showDetails,
+                hide: copy.conversation.toolLine.hideDetails,
+              }
+            : undefined
+        }
       />
       {/* Always the row, even with no button: a renderer leaves an empty row out, and a host may add its own controls to it. */}
       <Actions blockId={`failure:${turnId}`}>
@@ -654,9 +688,11 @@ export function FailureAlert({
           />
         ))}
       </Actions>
-      {!isRetryable(failure) && failure.kind !== "auth_required" && copy.cantRetry && (
-        <Context items={[copy.cantRetry]} />
-      )}
+      {/* A failure said by its cause already says what to do next. */}
+      {!isRetryable(failure) &&
+        !failure.cause &&
+        failure.kind !== "auth_required" &&
+        copy.cantRetry && <Context items={[copy.cantRetry]} />}
       {notOffered && <Context items={[notOffered]} />}
     </>
   );
@@ -780,12 +816,14 @@ export function toolsLineText(
   tasks: readonly TaskT[],
   copy: Copy = defaultCopy,
   turnEdits?: ReturnType<typeof fileEdits>,
+  recovered?: ReadonlySet<string>,
 ): string {
-  const line = toolsLine(tasks, copy, turnEdits);
+  const line = toolsLine(tasks, copy, turnEdits, recovered);
   const w = copy.conversation.toolLine;
   return [
     line.counts && line.file && !line.running ? `${line.text} ${line.counts}` : line.text,
     line.failed > 0 ? w.failed(line.failed) : "",
+    line.retried > 0 ? w.retried(line.retried) : "",
     line.waiting ? w.waiting : "",
   ]
     .filter(Boolean)
@@ -803,6 +841,7 @@ export function toolsLineText(
 export function ToolLines({ turn, copy = defaultCopy }: { turn: Turn } & WithCopy) {
   const { segments, rest } = timeline(turn);
   const edits = fileEdits(turn.tasks);
+  const recovered = recoveredCalls(turn.tasks);
   const all = [...segments, ...rest].filter(
     (s): s is Extract<Segment, { kind: "tools" | "call" }> =>
       s.kind === "tools" || s.kind === "call",
@@ -814,8 +853,8 @@ export function ToolLines({ turn, copy = defaultCopy }: { turn: Turn } & WithCop
   const summary =
     ended && own.length > 0
       ? own.length === 1
-        ? toolsLineText(own, copy, edits)
-        : workSummary(turn.tasks, copy, edits)
+        ? toolsLineText(own, copy, edits, recovered)
+        : workSummary(turn.tasks, copy, edits, recovered)
       : undefined;
   const runs = ended ? all.filter((s) => s.kind === "call") : all;
   const shown = runs.length > MAX_TOOL_LINES ? runs.slice(0, MAX_TOOL_LINES - 1) : runs;
@@ -831,7 +870,7 @@ export function ToolLines({ turn, copy = defaultCopy }: { turn: Turn } & WithCop
             copy={copy}
           />
         ) : (
-          <Context key={s.key} items={[toolsLineText(s.tasks, copy, edits)]} />
+          <Context key={s.key} items={[toolsLineText(s.tasks, copy, edits, recovered)]} />
         ),
       )}
       {more.length > 0 && (
@@ -892,7 +931,7 @@ export function answerTakesLink(markdown: string): boolean {
 }
 
 /** The point of the turn in one line, for notifications and screen readers. */
-export function summarizeTurn(turn: Turn, copy: Copy = defaultCopy): string {
+export function summarizeTurn(turn: Turn, copy: Copy = defaultCopy, agent?: string): string {
   const pending = turn.interrupts.find((i) =>
     i.type === "approval" ? i.decision.kind === "pending" : i.answer.kind === "pending",
   );
@@ -902,7 +941,7 @@ export function summarizeTurn(turn: Turn, copy: Copy = defaultCopy): string {
       : copy.inputNeeded(pending.question);
   }
   if (turn.status === "failed" && turn.failure) {
-    return `${failureTitle(turn.failure, copy)}: ${failureMessage(turn.failure, copy)}`;
+    return `${failureTitle(turn.failure, copy, agent?.trim() || turn.agent.name)}: ${failureMessage(turn.failure, copy)}`;
   }
   if (turn.status === "stopped") return copy.stopped;
   const review = readReview(turn.text);
@@ -927,8 +966,11 @@ export function TurnView({
   capabilities,
   hideTasks = false,
   linked = false,
+  agentName,
 }: {
   turn: Turn;
+  /** The name people see the agent by, where it differs from its handle. */
+  agentName?: string;
   /**
    * Slack: the streamed answer already ends with the arrow to the
    * conversation (`streamLink`), so the final blocks do not repeat it.
@@ -1002,7 +1044,7 @@ export function TurnView({
 
   return (
     <>
-      <Summary text={summarizeTurn(turn, copy)} />
+      <Summary text={summarizeTurn(turn, copy, agentName)} />
       {/* Slack shows status as a reaction and the session status (see render-slack lifecycle). */}
       <Only surface="web">
         <Context items={[`**${turn.agent.name}**: ${copy.status[turn.status]}`]} />
@@ -1152,6 +1194,7 @@ export function TurnView({
         <FailureAlert
           turnId={turn.id}
           failure={turn.failure}
+          agent={agentName?.trim() || turn.agent.name}
           report={capabilities?.report !== false}
           copy={copy}
         />

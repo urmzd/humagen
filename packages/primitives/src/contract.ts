@@ -79,6 +79,12 @@ export interface CalloutProps {
   tone: Tone;
   title?: string;
   text: string;
+  /**
+   * Raw words behind the plain ones (a runtime error), folded under a
+   * control. The web opens them in place; Slack has nowhere to fold text,
+   * so it leaves them out.
+   */
+  details?: { text: string; show: string; hide: string };
 }
 
 export interface ConfirmSpec {

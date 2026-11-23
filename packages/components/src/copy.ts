@@ -2214,6 +2214,10 @@ export const defaultCopy = {
       files: (n: number) => `Updated ${n} files`,
       running: (what: string) => `Running ${what}`,
       failed: (n: number) => `${n} failed`,
+      /** Calls that failed and that a later call in the turn recovered: said quietly, not as a failure. */
+      retried: (n: number) => `${n} retried`,
+      /** A row for a failed call that a later call recovered. */
+      retriedRow: "retried",
       /** Every call in the run failed, so there is nothing done to name. */
       allFailed: (n: number) => `${n} steps failed`,
       earlierFailed: (n: number) =>
@@ -3944,6 +3948,42 @@ export const defaultCopy = {
     tool_error: (service = "A tool") => `${service} failed`,
     forbidden: () => "Not allowed",
     internal: () => "Run failed",
+  },
+  /**
+   * A failed run in plain words: the title says what happened to the agent,
+   * the body why and what to do. The runtime's own words wait behind Show details
+   * (`conversation.toolLine.showDetails`, the words a failed step uses).
+   */
+  runFailure: {
+    /** The agent, when the failure does not say which. */
+    someone: "The agent",
+    couldNotRun: (agent: string) => `${agent} could not run`,
+    couldNotFinish: (agent: string) => `${agent} could not finish`,
+    couldNotReply: (agent: string) => `${agent} could not send its answer`,
+    because: {
+      no_model_provider:
+        "Its model provider is not enabled. An admin can turn it on in Settings > Model providers.",
+      credential: "A sign-in or key it uses was refused. An admin can check its connections.",
+      provider_credential:
+        "Its model provider's key could not be read. An admin can check it in Settings > Model providers.",
+      budget:
+        "It reached its spending limit. An admin can raise the limit, then you can try again.",
+      rate_limited: "A service it uses got too many requests. Wait a moment, then try again.",
+      provider_rate_limited:
+        "Its model provider got too many requests. Wait a moment, then try again.",
+      permission_denied:
+        "It does not have permission to do this. An admin can give it the access it needs.",
+      timeout: "It ran out of time. Try again, or ask for less at once.",
+      unavailable: "A service it needs did not answer. Try again shortly.",
+      failed_steps:
+        "Several steps in a row failed, so it stopped. Open the steps above to see why.",
+      max_iterations:
+        "It used every step it may take for one answer. Try again with a narrower request.",
+      undeliverable:
+        "The app this conversation is in refused the answer. Check that the app is still connected, then try again.",
+      max_attempts: "It failed on every try. Try again later.",
+      unknown: "It stopped on an error. Try again, or report it if it happens again.",
+    },
   },
   /**
    * What to say under each failure's title, for a host that has no words of its
@@ -5728,9 +5768,12 @@ export const defaultCopy = {
       post: "The message could not be posted. Try again.",
       channel: "The channel could not be created.",
     },
-    /** In a Slack channel bound to a project, to someone the app maps to nobody in humagen. */
-    unmappedInBound:
-      "This channel is a project's channel in Humagen, and only people Humagen knows post in it. Ask an admin to connect your Slack account.",
+    /**
+     * In Slack, privately, to someone the app's client maps to nobody, on any
+     * message, command, shortcut or button: nothing was started for them.
+     */
+    notConnected: (product: string) =>
+      `Your Slack account is not connected to ${product}, so nothing was started. Ask a workspace admin to connect your account.`,
     /** In a Slack channel bound to a project, to someone asking about another person's message. */
     notTheirsInBound:
       "This channel is a project's channel in Humagen, where a message is asked only as its writer's own. Ask in the thread in your own words.",

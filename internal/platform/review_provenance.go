@@ -345,11 +345,15 @@ func pinnedHead(tag event.Envelope) string {
 }
 
 // asksReview reports whether the run v answers for may post a native
-// review: one the host saved as asked for a review, or one from before the
-// host saved a shape.
-func (p *Platform) asksReview(c clients.Client, v transport.View) bool {
+// review: one the host saved as asked for a review, one that called
+// start_review, or one from before the host saved a shape. It reads the
+// run's record alone, so a reply's delivery waits on nothing.
+func (p *Platform) asksReview(c clients.Client, v transport.View) (bool, error) {
 	run, err := p.Runs.Get(c.Tenant, v.RunID)
-	return err == nil && wire.ShapeOf(run.Tag()) != wire.ShapeReply
+	if err != nil {
+		return false, errors.New("review context is not available")
+	}
+	return runShape(run) != wire.ShapeReply, nil
 }
 
 func (p *Platform) reviewView(c clients.Client, v transport.View) (string, error) {

@@ -303,9 +303,15 @@ func TestAGitHubRunCarriesTheShapeTheHostChose(t *testing.T) {
 		on       address.Address
 		want     string
 	}{
-		{"gh-review", "@humagen review this please", pull, wire.ShapeReview},
+		{"gh-review", "@humagen review", pull, wire.ShapeReview},
+		{"gh-slash", "/review", pull, wire.ShapeReview},
+		{"gh-in-words", "@humagen please review this", pull, wire.ShapeReply},
+		{"gh-more-after", "@humagen review this function's naming?", pull, wire.ShapeReply},
+		{"gh-asked-as-question", "@humagen can you review this?", pull, wire.ShapeReply},
+		{"gh-inside-a-sentence", "hey @humagen review", pull, wire.ShapeReply},
 		{"gh-question", "why does the retry give up?", pull, wire.ShapeReply},
 		{"gh-issue", "review this please", issue, wire.ShapeReply},
+		{"gh-issue-command", "@humagen review", issue, wire.ShapeReply},
 	} {
 		tag := fromGitHub(tc.id, "docs", tc.text)
 		tag.Channel, tag.Source = tc.on.String(), tc.on.String()

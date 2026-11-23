@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { afterEach, test } from "node:test";
+import { cleanup, renderHook, waitFor } from "@testing-library/react";
 import { alertReason, groupAlerts, placeAlerts } from "./alertPlacement.ts";
 import type { ThreadTurn } from "./api.ts";
+import { stubFetch } from "./dom.ts";
+import { useAlertRoots, withinTime } from "./SessionAlerts.tsx";
 import type { Alert } from "./sessionCenter.ts";
 
 const turns = [
@@ -9,6 +12,13 @@ const turns = [
   { kind: "run", run: { id: "r-1", created_at: "2026-11-22T09:00:01Z" } },
   { kind: "message", message: { id: "m-2", at: "2026-11-22T09:10:00Z" } },
 ] as unknown as ThreadTurn[];
+
+let net: ReturnType<typeof stubFetch> | undefined;
+afterEach(() => {
+  cleanup();
+  net?.restore();
+  net = undefined;
+});
 
 const alert = (over: Partial<Alert>): Alert => ({
   id: "a",
@@ -133,4 +143,42 @@ test("the reason drops the agent's handle that leads the title", () => {
     "Failed",
   );
   assert.equal(alertReason({ title: "Confirm the owner" }), "Confirm the owner");
+});
+
+test("a read that answers in time gives its answer; one that hangs is refused once the time is up", async () => {
+  assert.equal(await withinTime(Promise.resolve("r-root"), 50), "r-root");
+  await assert.rejects(withinTime(new Promise(() => {}), 10), /no answer in 10ms/);
+});
+
+test("an alert whose run's root does not come back in time is placed by its own time", async () => {
+  let answer: ((run: unknown) => void) | undefined;
+  net = stubFetch({
+    "GET /api/runs/r-called": () =>
+      new Promise((resolve) => {
+        answer = resolve;
+      }),
+  });
+  const alerts = [alert({ id: "a-hang", run_id: "r-called" })];
+  const { result } = renderHook(() => useAlertRoots(alerts, turns, 20));
+  assert.ok(result.current.waiting.has("r-called"), "it waits while the read is out");
+  await waitFor(() => assert.equal(result.current.waiting.size, 0));
+  assert.equal(result.current.roots.get("r-called"), "", "no root: placed at its own time");
+  const placed = placeAlerts(turns, alerts, false, result.current.roots);
+  assert.deepEqual(
+    placed.after.get("r-1")?.map((a) => a.id),
+    ["a-hang"],
+    "an alert with no root sits by its time, after the turn before it",
+  );
+  // A late answer does not move an alert already placed.
+  answer?.({ id: "r-called", root: "r-1" });
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(result.current.roots.get("r-called"), "");
+});
+
+test("an alert whose run's root comes back in time sits after that root", async () => {
+  net = stubFetch({ "GET /api/runs/r-called": () => ({ id: "r-called", root: "r-1" }) });
+  const alerts = [alert({ id: "a-called", run_id: "r-called" })];
+  const { result } = renderHook(() => useAlertRoots(alerts, turns, 1000));
+  await waitFor(() => assert.equal(result.current.roots.get("r-called"), "r-1"));
+  assert.equal(result.current.waiting.size, 0);
 });

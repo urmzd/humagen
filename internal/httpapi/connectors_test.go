@@ -15,6 +15,7 @@ import (
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/clients"
 	githubflow "github.com/urmzd/humagen/pkg/integrations/github"
 	slackflow "github.com/urmzd/humagen/pkg/integrations/slack"
 	"github.com/urmzd/saige/flow/signature"
@@ -24,6 +25,7 @@ func TestSignedIntegrationsRunThroughThePlatformAndAppearInItsConsoleAPI(t *test
 	for _, surface := range []string{"github", "slack"} {
 		t.Run(surface, func(t *testing.T) {
 			const secret = "humagen-integration-secret"
+			cfg := platform.Config{Workspace: t.TempDir()}
 			var peer platform.Peer
 			var replies func() int
 			var body, path string
@@ -38,19 +40,24 @@ func TestSignedIntegrationsRunThroughThePlatformAndAppearInItsConsoleAPI(t *test
 				path = "/connectors/github"
 				body = `{"tenant":"evil","action":"created","repository":{"name":"repo","owner":{"login":"acme"}},"sender":{"login":"human","type":"User"},"issue":{"number":7},"comment":{"id":91,"body":"@helper explain"}}`
 			} else {
+				// On Slack a run starts only for a person a client maps,
+				// so the connector is a client's, made once the platform runs.
 				api := slackflow.NewFake()
-				c, err := slackflow.New(slackflow.Config{API: api, Verifier: signature.NewSlack(secret), Team: "T01", Bots: map[string]string{"U0HELPER": "helper"}, Interval: -1, Sessions: true})
+				pol, err := auth.ParsePolicy("test", "role viewer { allow read on * }\nrole operator extends viewer { allow write on runs }\ngrant operator to subject \"ana\"\n")
 				if err != nil {
 					t.Fatal(err)
 				}
-				peer = c
+				cfg.SlackAPI, cfg.ClientInterval, cfg.Policy = func(string) slackflow.API { return api }, -1, pol
 				replies = func() int { return len(api.Messages()) }
 				path = "/connectors/slack"
 				body = `{"tenant":"evil","type":"event_callback","event_id":"slack-1","team_id":"T01","event":{"type":"app_mention","user":"U01","channel":"C01","ts":"1700000000.000100","text":"<@U0HELPER> explain"}}`
 			}
-			p, err := platform.New(platform.Config{Workspace: t.TempDir(), Connections: func(wire.AgentStore) ([]platform.Connection, error) {
-				return []platform.Connection{{Tenant: "acme", Peer: peer}}, nil
-			}})
+			if peer != nil {
+				cfg.Connections = func(wire.AgentStore) ([]platform.Connection, error) {
+					return []platform.Connection{{Tenant: "acme", Peer: peer}}, nil
+				}
+			}
+			p, err := platform.New(cfg)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -76,7 +83,26 @@ func TestSignedIntegrationsRunThroughThePlatformAndAppearInItsConsoleAPI(t *test
 					}
 				}
 			}
-			wait(peer.Ingesting)
+			if peer == nil {
+				if _, err := p.CreateClient(ctx, "acme", "test", platform.ClientInput{
+					Client: clients.Client{
+						ID: "helper-app", Name: "Helper", Surface: clients.Slack, Enabled: true,
+						Identity: clients.Identity{AppID: "A0HELPER", Team: "T01"}, DefaultAgent: "helper",
+						Bots:  map[string]string{"U0HELPER": "helper"},
+						Slack: &clients.SlackOptions{Sessions: true, Machine: "svc-slack", People: map[string]string{"U01": "ana"}},
+					},
+					Token: clients.SecretInput{Value: "xoxb-integration"}, SigningSecret: clients.SecretInput{Value: secret},
+				}); err != nil {
+					t.Fatal(err)
+				}
+				wait(func() bool {
+					w := httptest.NewRecorder()
+					p.IngressHandler().ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+					return w.Code == http.StatusOK
+				})
+			} else {
+				wait(peer.Ingesting)
+			}
 			s := &Server{P: p, Authn: &Authn{Dev: &auth.Principal{Subject: "test", Tenant: "acme", Kind: auth.User, Roles: []auth.Role{auth.Admin}}}}
 			h := s.Handler()
 			for _, path := range []string{"/api/me", "/api/runs", "/auth/login", "/"} {

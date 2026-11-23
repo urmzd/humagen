@@ -1,15 +1,23 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
+import { failureOf } from "@humagen/adapter/run";
 import { defaultCopy } from "@humagen/components";
-import { ActionId, type UiAction } from "@humagen/core";
+import { ActionId, emptyTurn, type Turn, type UiAction } from "@humagen/core";
 import { GitHubRefKindsContext, githubRefKinds, NowContext, WebSurface } from "@humagen/render-web";
-import { AgentMessage, ConnectLinkContext, type RetryCall, RetryCallContext } from "@humagen/web";
+import {
+  AgentMessage,
+  AgentNameContext,
+  ConnectLinkContext,
+  type RetryCall,
+  RetryCallContext,
+} from "@humagen/web";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import {
   connectTurn,
   failedTurn,
   referencesTurn,
+  retriedTurn,
   runningTurn,
   toolsTurn,
 } from "./transcript.fixtures.ts";
@@ -38,6 +46,99 @@ test("the failed count opens the steps at the failures, each saying why", () => 
   fireEvent.click(within(failed).getByRole("button", { name: line.showDetails }));
   assert.ok(within(failed).getByText(/refused before it was sent/));
   assert.ok(within(failed).getByRole("button", { name: line.hideDetails }));
+});
+
+test("a failed answer says what happened in one plain sentence, without the runtime's words", () => {
+  const raw =
+    'durable: max attempts exhausted: runtime: run r1: agent "github-reviewer" version 1.0.0: platform: model provider: @github-reviewer needs a model provider its models name (anthropic); an administrator enables one in Settings, under Model providers';
+  const turn: Turn = {
+    ...emptyTurn("r-provider", { name: "github-reviewer" }),
+    status: "failed",
+    failure: failureOf(raw, "r-provider"),
+  };
+  const words = defaultCopy.runFailure;
+  show(
+    <AgentNameContext.Provider value={(n) => (n === "github-reviewer" ? "GitHub Reviewer" : n)}>
+      <AgentMessage turn={turn} disclaimer={false} />
+    </AgentNameContext.Provider>,
+  );
+  // Who can fix it is an admin, so it is a warning, not an alarm.
+  const alert = document.querySelector<HTMLElement>('[data-aui="callout"]') as HTMLElement;
+  assert.equal(alert.getAttribute("data-tone"), "warn");
+  assert.ok(alert.textContent?.includes(words.couldNotRun("GitHub Reviewer")));
+  assert.ok(alert.textContent?.includes(words.because.no_model_provider));
+  // The sentence says what to do, so nothing under it says to send a new message.
+  assert.ok(!document.body.textContent?.includes(defaultCopy.cantRetry));
+  // The sentence explains it, so the runtime's words are not kept, even on request.
+  assert.ok(!document.body.textContent?.includes("max attempts exhausted"));
+  assert.equal(within(alert).queryByRole("button", { name: line.showDetails }), null);
+  // An admin enables a provider: neither Retry nor Report Issue helps here.
+  assert.equal(screen.queryByRole("button", { name: defaultCopy.retry }), null);
+  assert.equal(screen.queryByRole("button", { name: defaultCopy.report }), null);
+});
+
+test("a failure another sentence explains keeps Retry and Report Issue", () => {
+  const turn: Turn = {
+    ...emptyTurn("r-denied", { name: "helper" }),
+    status: "failed",
+    failure: failureOf("sandbox: exec: egress: denied", "r-denied"),
+  };
+  show(<AgentMessage turn={turn} disclaimer={false} />);
+  assert.ok(document.body.textContent?.includes(defaultCopy.runFailure.because.permission_denied));
+  assert.ok(screen.getByRole("button", { name: defaultCopy.retry }));
+  assert.ok(screen.getByRole("button", { name: defaultCopy.report }));
+  assert.ok(!document.body.textContent?.includes("egress"));
+});
+
+test("an error no cause matches falls back to a plain sentence, with its words behind Show details", () => {
+  const turn: Turn = {
+    ...emptyTurn("r-odd", { name: "helper" }),
+    status: "failed",
+    failure: failureOf("agent: step 2\nprovider: 529 overloaded", "r-odd"),
+  };
+  show(<AgentMessage turn={turn} disclaimer={false} />);
+  const alert = screen.getByRole("alert");
+  assert.ok(alert.textContent?.includes(defaultCopy.runFailure.couldNotFinish("helper")));
+  assert.ok(alert.textContent?.includes(defaultCopy.runFailure.because.unknown));
+  assert.ok(!alert.textContent?.includes("overloaded"));
+  fireEvent.click(
+    within(alert).getByRole("button", { name: defaultCopy.conversation.toolLine.showDetails }),
+  );
+  assert.match(screen.getByTestId("callout-details").textContent ?? "", /529 overloaded/);
+  fireEvent.click(
+    within(alert).getByRole("button", { name: defaultCopy.conversation.toolLine.hideDetails }),
+  );
+  assert.equal(screen.queryByTestId("callout-details"), null);
+});
+
+test("a failure a later call recovered reads as retried, quietly, with its reason kept", () => {
+  show(<AgentMessage turn={retriedTurn()} disclaimer={false} />);
+  const group = screen.getByTestId("step-group");
+  assert.ok(group.textContent?.includes("Checked 2 sources"));
+  assert.equal(within(group).getByTestId("retried-count").textContent, `|${line.retried(1)}`);
+  // Nothing failed that still stands: no failed count, and no alarm color on the line.
+  assert.equal(within(group).queryByTestId("failed-count"), null);
+  assert.equal(group.querySelector(".text-aui-bad"), null);
+  // Opened, the attempt is there, said as retried, and its reason waits behind Show Details.
+  fireEvent.click(within(group).getByRole("button", { expanded: false }));
+  const rows = screen.getAllByTestId("tool-row");
+  const retried = rows.find((r) => r.getAttribute("data-retried") === "true") as HTMLElement;
+  assert.ok(retried);
+  assert.equal(retried.getAttribute("data-failed"), null);
+  assert.ok(within(retried).getByText(line.retriedRow));
+  assert.ok(within(retried).getByTestId("failure-reason").textContent?.includes("undeliverable"));
+  assert.equal(retried.querySelector(".text-aui-bad"), null);
+  fireEvent.click(within(retried).getByRole("button", { name: line.showDetails }));
+  assert.ok(within(retried).getByText(/urmzd\/humagen/, { selector: "pre, code, span, p, div" }));
+});
+
+test("a failure no later call recovered stays a failed count", () => {
+  const turn = retriedTurn();
+  turn.tasks = [...turn.tasks].reverse();
+  show(<AgentMessage turn={turn} disclaimer={false} />);
+  const group = screen.getByTestId("step-group");
+  assert.ok(within(group).getByTestId("failed-count"));
+  assert.equal(within(group).queryByTestId("retried-count"), null);
 });
 
 test("a failed delegated run says why, opens its run, and Retry asks the agent again", async () => {

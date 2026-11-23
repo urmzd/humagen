@@ -14,6 +14,7 @@ import {
   fileEdits,
   formatArgs,
   formatResult,
+  recoveredCalls,
   type Segment,
   type Task,
   type Thought,
@@ -392,12 +393,15 @@ function ToolRow({
   task,
   edit,
   copy,
+  retried,
   arrive,
 }: {
   turn: Turn;
   task: Task;
   edit?: FileEdit;
   copy: Copy;
+  /** It failed and a later call in the turn recovered it: said quietly, with its reason kept. */
+  retried?: boolean;
   /** Opened from the failed count: scrolled to and focused. */
   arrive?: boolean;
 }) {
@@ -424,7 +428,12 @@ function ToolRow({
   const status = (
     <>
       {task.status === "waiting" && <span className="shrink-0 text-aui-warn">{w.waiting}</span>}
-      {failed && <span className="shrink-0 text-aui-bad">{w.failed(1)}</span>}
+      {failed &&
+        (retried ? (
+          <span className="shrink-0 text-aui-muted">{w.retriedRow}</span>
+        ) : (
+          <span className="shrink-0 text-aui-bad">{w.failed(1)}</span>
+        ))}
       {running && <Elapsed since={task.startedAt} copy={copy} />}
       {took && !running && (
         <span className="ml-auto shrink-0 text-aui-2xs text-aui-muted tabular-nums">{took}</span>
@@ -453,7 +462,8 @@ function ToolRow({
       className="min-w-0"
       data-testid="tool-row"
       data-tool={task.tool}
-      data-failed={failed || undefined}
+      data-failed={(failed && !retried) || undefined}
+      data-retried={(failed && retried) || undefined}
     >
       <div className="flex min-w-0 items-center">
         {href && edit ? (
@@ -499,7 +509,11 @@ function ToolRow({
           data-testid="failure-reason"
           className="m-0 flex min-w-0 flex-wrap items-baseline gap-x-2 px-2.5 pb-1.5 pl-[2.1rem] text-aui-xs"
         >
-          <span className="min-w-0 text-aui-bad [overflow-wrap:anywhere]">{reason}</span>
+          <span
+            className={`min-w-0 [overflow-wrap:anywhere] ${retried ? "text-aui-muted" : "text-aui-bad"}`}
+          >
+            {reason}
+          </span>
           <button
             type="button"
             aria-expanded={open}
@@ -580,13 +594,18 @@ export function StepGroup({
   // Opened from the failed count: the first failed step is scrolled to.
   const [toFailed, setToFailed] = useState(false);
   const edits = useMemo(() => fileEdits(turn.tasks), [turn.tasks]);
-  const line = useMemo(() => toolsLine(tasks, copy, edits), [tasks, copy, edits]);
+  // A failure a later call in the turn recovered is said quietly, as retried.
+  const recovered = useMemo(() => recoveredCalls(turn.tasks), [turn.tasks]);
+  const line = useMemo(
+    () => toolsLine(tasks, copy, edits, recovered),
+    [tasks, copy, edits, recovered],
+  );
   const runningTask = tasks.find(live);
   const shown = open ?? (waiting || (!!runningTask && lineKind(runningTask) === "run"));
   const w = copy.conversation.toolLine;
   const first = tasks[0];
   const kind = line.file ? "file" : first ? lineKind(first) : "tool";
-  const firstFailed = tasks.find(toolFailed)?.id;
+  const firstFailed = tasks.find((t) => toolFailed(t) && !recovered.has(t.id))?.id;
   // Calls waiting on a person, or with their own controls or sources, keep the full task row.
   const full = (t: Task) =>
     t.status === "waiting" || t.interruptId !== undefined || (t.sources?.length ?? 0) > 0;
@@ -600,6 +619,12 @@ export function StepGroup({
       {line.running && runningTask && <Elapsed since={runningTask.startedAt} copy={copy} />}
       {line.counts && !line.running && line.file && <Counts edit={line.file} />}
       {line.waiting && <span className="shrink-0 text-aui-warn">{w.waiting}</span>}
+      {line.retried > 0 && !line.running && (
+        <span data-testid="retried-count" className="inline-flex shrink-0 items-center gap-1">
+          <span aria-hidden>|</span>
+          {w.retried(line.retried)}
+        </span>
+      )}
     </>
   );
   const lineClass =
@@ -677,6 +702,7 @@ export function StepGroup({
                 task={t}
                 edit={edits.get(t.id)}
                 copy={copy}
+                retried={recovered.has(t.id)}
                 arrive={toFailed && t.id === firstFailed}
               />
             ),
