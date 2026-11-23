@@ -1431,6 +1431,11 @@ as `m-3`. Runs that answer one message answer it side by side and
 are not branches.
  */
   message?: string;
+  /** The person, by subject, who asked through a surface's credential
+for a run that acts for nobody (`asked_by`). The run uses nobody's
+credentials; this only records who asked.
+ */
+  requested_by?: string;
   /** The run's budget in micro-USD. Zero means unmetered. */
   lease: number;
   /** The budget the run has leased to calls that have not ended, in
@@ -1513,6 +1518,7 @@ branch from that point.
   /** Files a new conversation under a project. A follow-up keeps its conversation's project. */
   project?: string;
   act_as?: ActAs;
+  asked_by?: ActAs;
 }
 
 /** A person a surface authenticated itself, named by the surface's client and the surface's own user id. */

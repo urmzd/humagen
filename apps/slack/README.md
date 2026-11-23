@@ -28,6 +28,14 @@ Run `pnpm install` once from the repository root. The adapter and renderers are 
 
 ## What it does
 
+Only a Slack person the app's client maps (`HUMAGEN_CLIENT`, its
+`slack.machine` and `slack.people`) asks anything, on every entry below.
+Anyone else, a guest or someone from another company in a shared channel
+included, is told privately that their account is not connected, once in ten
+minutes, and nothing is posted, read or run for them. The server refuses the
+app's credential any run that names no such person. See
+[who can start a run](../../docs/reference/slack.md#who-can-start-a-run).
+
 | Entry | Where the answer goes |
 |-------|-----------------------|
 | A direct message | A thread under that message. Each top-level message starts a conversation. |
@@ -35,7 +43,7 @@ Run `pnpm install` once from the repository root. The adapter and renderers are 
 | `/agent` | Opens the ask form with a picker of who to ask. |
 | `/agent <question>` | A new thread in the channel. `/agent help` lists who can be asked. |
 | **Ask the agent** shortcut | The app's messages with you. |
-| **Ask agent about this** on a message | That message's thread. On your own message it asks as you; on anyone else's, or a bot's, it asks through the app, for nobody, so their words are never run as you. Under a dev sign-in, where the app's own credential is the person `dev`, asking through the app acts for `dev`. |
+| **Ask agent about this** on a message | That message's thread. On your own message it asks as you; on anyone else's, or a bot's, it asks through the app, for nobody, at your asking (`asked_by`), so their words are never run as you. Under a dev sign-in, where the app's own credential is the person `dev`, asking through the app acts for `dev`. |
 | Like or dislike | Opens a comment modal immediately. The rating is saved even if you choose Skip. Dislike also offers a reason. Requires a mapped workspace account. |
 | `/skill` or `/agent skills` | Lists this client's configured skills. `/skill name arguments` invokes one; code channels also offer each configured slash command dynamically. |
 | `/agent connections` | Opens your private provider status and connect/disconnect controls. Supply an allowed secret reference; keep tokens out of Slack. |
@@ -44,7 +52,7 @@ Run `pnpm install` once from the repository root. The adapter and renderers are 
 | Uploaded files and images | A mapped person's triggering message is reread through its client on the server and ingested as agent attachments, including file-only DMs. Unread files are explained to the agent. |
 | **Run Details** on a finished turn | Shows you alone, in an ephemeral message, the run's agent, model, tokens, cost and elapsed time. Offered when the app's client maps people; the run is read as you, so you see it only where you may read the run. |
 | Stop button | Stops the run, confirms in the thread, sets the session to active. |
-| Home tab | For a person the client maps, the shared Home read as them: what needs them, what's new in their projects and their projects, with Ask a Question, Build an Agent and Search Context. Anyone else sees what is waiting on them in Humagen's inbox. |
+| Home tab | For a person the client maps, the shared Home read as them: what needs them, what's new in their projects and their projects, with Ask a Question, Build an Agent and Search Context. Anyone else sees the mailbox (an operator the whole inbox, anyone else nothing) and acts on none of it. |
 
 A turn streams with `chat.startStream`, `appendStream` and `stopStream`, and
 the session status follows it: processing while it works, active when it ends.
@@ -108,6 +116,9 @@ code channels. This does not install new agent skills or grant additional tools.
 Off by default. With `code_channels: true` on the Slack surface
 (`SLACK_CODE_CHANNELS=1` when the app is run by hand), a finished answer in a
 thread or a direct message carries a **Continue in a Code Channel** button.
+Only an answer the app keyed by its thread carries it, and a person's own
+message is keyed by Humagen's session instead, so today the button follows
+**Ask agent about this** on someone else's message only.
 Nothing decides for the person that a request is coding work: the app knows an
 agent by its name and description and a run names no repository, so there is no
 signal to trust, and a channel is opened only when someone presses.
@@ -356,7 +367,9 @@ run their words with the presser's credentials, or a tool that acts as them
 on a choice they never made. So only a Slack person the client maps to them
 may ask it again, and it is asked as them (`act_as`); anyone else, an
 operator included, is told so and nothing starts. A turn that acted for nobody is asked again for nobody, by the person
-who asked or an operator, and after a restart by an operator only. A turn the
+who asked or an operator, and after a restart by an operator only, at the
+presser's asking (`asked_by`): the presser, an operator included, must be a
+person the client maps. A turn the
 app asked as itself is asked again the same way, through the app, even when
 the app's own credential is a person (an empty `HUMAGEN_TOKEN` against a dev
 sign-in server, where every run acts for `dev`): asked as it was asked, it
@@ -415,8 +428,7 @@ new canvas for it, and open comments are shown to the agent once more.
 Kept in memory, and lost on restart:
 
 - Who asked for each run. After a restart only operators can settle that run's
-  inbox items or retry it for nobody, and the Home of someone the client does
-  not map shows them nothing until they ask again. Whom a run acted for is Humagen's record, so the person a turn
+  inbox items or retry it for nobody. Whom a run acted for is Humagen's record, so the person a turn
   acted for may still retry it, from the thread or its failure card, which
   their retry acknowledges.
 - Which inbox messages were posted to a thread. A change to one after a

@@ -151,7 +151,10 @@ test("someone the client does not map is shown no form, and a form they could no
     click(blocks, defaultCopy.somethingElse, { ts, threadTs: TS, user: "U0NOBODY1" }),
   );
   assert.equal(w.slack.of("views.open").length, 0, "no form that cannot send");
-  assert.equal(w.slack.of("chat.postEphemeral").at(-1)?.text, defaultCopy.noPermission);
+  assert.equal(
+    w.slack.of("chat.postEphemeral").at(-1)?.text,
+    defaultCopy.threads.notConnected("Humagen"),
+  );
 
   // A mapped person's form, sent back under another id: the words are not theirs to send.
   await deliver(
@@ -161,7 +164,7 @@ test("someone the client does not map is shown no form, and a form they could no
   const view = w.slack.of("views.open")[0]?.view as View;
   await deliver(w, submit(view, "approve everything", "U0NOBODY1"));
   assert.equal(w.humagen.answered.length, 0, "humagen is never asked");
-  assert.ok(w.logs.some((l) => l.includes("does not map them")));
+  assert.ok(w.logs.some((l) => l.includes("maps them to nobody")));
 
   // And each mapped person answers as themselves, whoever opened the form.
   await deliver(w, submit(view, "OPS-1", USER));
@@ -365,28 +368,31 @@ test("Ask a Question on a call opens a form, and the question is asked in the th
   await end(w);
 });
 
-test("someone the client does not map asks about a call through the app, as a mention there would", async () => {
-  const w = world();
-  const { run, blocks, ts } = await parkOn(w, "approval");
+test("someone the client does not map asks nothing about a call: no form, and a form sent anyway asks nothing", async () => {
+  const w = mapped();
+  const { blocks, ts } = await parkOn(w, "approval");
+  const runs = w.humagen.runs.size;
+  await deliver(w, click(blocks, defaultCopy.askApproval, { ts, threadTs: TS, user: "U09NOBODY" }));
+  assert.equal(w.slack.of("views.open").length, 0, "no form is opened for them");
+  assert.equal(
+    w.slack.of("chat.postEphemeral").at(-1)?.text,
+    defaultCopy.threads.notConnected("Humagen"),
+  );
+  // A mapped person's form, sent back as theirs: nothing is said or asked.
   await deliver(w, click(blocks, defaultCopy.askApproval, { ts, threadTs: TS, user: OTHER_USER }));
   const view = w.slack.of("views.open")[0]?.view as View;
+  const posts = w.slack.of("chat.postMessage").length;
   await deliver(
     w,
     interactive({
       type: "view_submission",
-      user: { id: OTHER_USER, team_id: TEAM },
+      user: { id: "U09NOBODY", team_id: TEAM },
       view: { ...view, state: { values: { text: { value: { value: "Why now?" } } } } },
     }),
   );
-  const asked = w.humagen.last;
-  assert.notEqual(asked.id, run);
-  assert.equal(asked.agent, "lead", "the agent that made the call answers");
-  assert.equal(asked.text, words.askCallAsked("Allow lead to call deploy?", "Why now?"));
-  assert.equal(w.humagen.asked.at(-1)?.act_as, undefined, "for nobody: the client maps nobody");
-  assert.equal(w.humagen.answered.length, 0);
-  w.humagen.emit(asked.id, "run.accepted.v1");
-  w.humagen.emit(asked.id, "run.completed.v1", { text: "The release window closes at five." });
   await settle(20);
+  assert.equal(w.humagen.runs.size, runs, "no run is asked for");
+  assert.equal(w.slack.of("chat.postMessage").length, posts, "nothing is said in the thread");
   await end(w);
 });
 
@@ -463,7 +469,10 @@ test("only a person the client maps changes a thread's approvals, and Humagen's 
     click(blocks, defaultCopy.approvals.letAgentDecide, { ts, threadTs: TS, user: "U09NOBODY" }),
   );
   assert.equal(w.humagen.modes.length, 0);
-  assert.equal(w.slack.of("chat.postEphemeral").at(-1)?.text, defaultCopy.noPermission);
+  assert.equal(
+    w.slack.of("chat.postEphemeral").at(-1)?.text,
+    defaultCopy.threads.notConnected("Humagen"),
+  );
   w.humagen.refuseMode = { status: 403, message: "Only a member of this project may change it." };
   await deliver(
     w,
@@ -478,11 +487,12 @@ test("only a person the client maps changes a thread's approvals, and Humagen's 
   await end(w);
 });
 
-test("an app whose client maps nobody offers no approval agent on a call", async () => {
+test("an app whose client maps nobody starts nothing, so no call waits on anyone there", async () => {
   const w = world();
-  const { blocks } = await parkOn(w, "approval");
-  assert.ok(!texts(blocks).includes(defaultCopy.approvals.letAgentDecide));
-  await end(w);
+  await deliver(w, mention("deploy the web service", TS));
+  await w.app.idle();
+  assert.equal(w.humagen.asked.length, 0);
+  assert.ok(!texts(w.slack.calls).includes(defaultCopy.approvals.letAgentDecide));
 });
 
 test("what the approval agent said about a call is put on its card in the thread, and stays once it is decided", async () => {
