@@ -647,6 +647,11 @@ func (p *Platform) rootAt(ctx context.Context, who auth.Principal, place string,
 		// The root is as it was started.
 		return th, false, nil
 	}
+	if !created && th.Surface != nil && (c == nil || th.Surface.Client != c.ID) {
+		// A root a client's surface started is kept by that client: another
+		// client of the team, or an origin with none, changes nothing of it.
+		return threads.Thread{}, false, errNotThatSurfaces
+	}
 	if !created && p.mayKeepFor(who, nil, th, projects.Member, member) != nil {
 		return threads.Thread{}, false, threads.ErrNotFound
 	}

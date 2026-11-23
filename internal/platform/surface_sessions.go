@@ -84,6 +84,9 @@ func (p *Platform) StartSurfaceSession(ctx context.Context, who auth.Principal, 
 		if th.Session == nil {
 			return SessionView{}, false, ErrSurfaceThreadBeforeSessions
 		}
+		if err := surfaceRoot(th, sf); err != nil {
+			return SessionView{}, false, err
+		}
 		// A conversation adopted as a session (threads.Adopted) stays as it
 		// was filed: the place's members now are not made its people, and
 		// no audience is kept for it, so its answers draw on what they drew
@@ -168,6 +171,12 @@ func (p *Platform) StartSurfaceSession(ctx context.Context, who auth.Principal, 
 	if th.Surface == nil {
 		return SessionView{}, false, fmt.Errorf("%w: this place's session was not started on a surface", threads.ErrExists)
 	}
+	// The place's key is the team's, so another client of the same team may
+	// have started its root: that root is posted to only through its own
+	// client, and nothing of the message is kept on it.
+	if err := surfaceRoot(th, sf); err != nil {
+		return SessionView{}, false, err
+	}
 	if !started {
 		// Another message started the root first: who may post is checked
 		// before its audience is kept, as above.
@@ -185,6 +194,20 @@ func (p *Platform) StartSurfaceSession(ctx context.Context, who auth.Principal, 
 		p.nameSessionAtStart(ctx, who.Tenant, th, startText)
 	}
 	return out, started, err
+}
+
+// errNotThatSurfaces is a surface's message for a thread another surface
+// started.
+var errNotThatSurfaces = fmt.Errorf("%w: this thread is not that surface's", threads.ErrInvalid)
+
+// surfaceRoot checks that th, an existing root a surface's message is for,
+// is that surface's (sf), as surfaceOfPost asks before posting, so its
+// people and audience are changed only by its own surface.
+func surfaceRoot(th threads.Thread, sf threads.Surface) error {
+	if th.Surface == nil || *th.Surface != sf {
+		return errNotThatSurfaces
+	}
+	return nil
 }
 
 // SessionPosted is what one posted message did: the message, the run it

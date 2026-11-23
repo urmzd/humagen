@@ -365,8 +365,8 @@ func (p *Platform) surfaceOfPost(who auth.Principal, th threads.Thread, in Messa
 	if err != nil {
 		return nil, err
 	}
-	if th.Surface == nil || *th.Surface != in.Surface.surface(c.ID) {
-		return nil, fmt.Errorf("%w: this thread is not that surface's", threads.ErrInvalid)
+	if err := surfaceRoot(th, in.Surface.surface(c.ID)); err != nil {
+		return nil, err
 	}
 	return &surfaced{client: c, ref: *in.Surface}, nil
 }
