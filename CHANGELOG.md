@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.192.0 (2026-11-23)
+
+### Features
+
+- **migrate**: file past GitHub runs into their sessions ([0bc1fd0](https://github.com/urmzd/humagen/commit/0bc1fd0d4aacd558577abe9c2ab02733d61d3ec3))
+
+### Bug Fixes
+
+- **migrate**: print usage and name the unknown migration in the error (lint ST1005) ([4cba5d3](https://github.com/urmzd/humagen/commit/4cba5d3d9f0909045d62d9e9e79cd7bfa6a5f21a))
+- **sessionstate**: read again when a run is bound between BindRunsInOrder's reads ([a18d0f1](https://github.com/urmzd/humagen/commit/a18d0f10f43e6400981fff829e64bc58d077077e))
+- **migrate**: refuse an empty store, warn of unmapped clients, leave a second client's place, bind in time order ([e027198](https://github.com/urmzd/humagen/commit/e0271981641ba5f1621d369c3bcb5476a8f97b40))
+- **migrate**: show only the platform's errors, and log the dry run's lines in the test ([8a1ead4](https://github.com/urmzd/humagen/commit/8a1ead4030c03f6f7395a7bfd8a9c15218e8c863))
+
+### Misc
+
+- **migrate**: cover the sessions backfill, Refile and the command; document it ([d6a101e](https://github.com/urmzd/humagen/commit/d6a101e30733c95d63ff98533817d71fec7e307b))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.191.0...v0.192.0)
+
+
 ## 0.191.0 (2026-11-22)
 
 ### Breaking
