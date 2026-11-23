@@ -18,6 +18,7 @@ import (
 	"github.com/urmzd/saige/flow/signature"
 
 	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/integrations/github"
 	"github.com/urmzd/humagen/pkg/integrations/slack"
@@ -101,8 +102,15 @@ func TestTheLegacyEnvironmentYieldsOneWorkingDefaultClientPerSurface(t *testing.
 	}
 	slackFake, githubFake := slack.NewFake(), github.NewFake()
 	tokens := map[string]bool{}
+	// On Slack a run starts only for a person a client of the team maps,
+	// who may start runs. The variables map nobody, so the team's people
+	// come from the record a Platform document's surfaces.slack.people makes.
+	pol, err := auth.ParsePolicy("test", "role viewer { allow read on * }\nrole operator extends viewer { allow write on runs }\ngrant operator to subject \"ana\"\n")
+	if err != nil {
+		t.Fatal(err)
+	}
 	p, err := platform.New(platform.Config{
-		Workspace: t.TempDir(), ClientInterval: -1,
+		Workspace: t.TempDir(), ClientInterval: -1, Policy: pol,
 		Env:        func(name string) (string, bool) { v, ok := vars[name]; return v, ok },
 		SecretRefs: refs,
 		SlackAPI:   func(token string) slack.API { tokens[token] = true; return slackFake },
@@ -170,7 +178,10 @@ func TestTheLegacyEnvironmentYieldsOneWorkingDefaultClientPerSurface(t *testing.
 			}
 		}
 	}
-	wait("the default clients are ingesting", ready)
+	if _, err := p.ApplySlackApp(ctx, "trial", "file", platform.SlackApp{Team: "T01ABCDEF", Machine: "svc-slack", People: map[string]string{"U01": "ana"}}); err != nil {
+		t.Fatal(err)
+	}
+	wait("the clients are ingesting", ready)
 
 	// The legacy payloads carry no app id, and are still routed and verified.
 	slackBody := `{"type":"event_callback","event_id":"slack-1","team_id":"T01ABCDEF","event":{"type":"app_mention","user":"U01","channel":"C01","ts":"1700000000.000100","text":"explain"}}`

@@ -9,6 +9,7 @@ import (
 	"github.com/urmzd/humagen/internal/wire"
 
 	saigetypes "github.com/urmzd/saige/agent/types"
+	"github.com/urmzd/saige/flow/address"
 	"github.com/urmzd/saige/flow/event"
 	"github.com/urmzd/saige/flow/isolation"
 	"github.com/urmzd/saige/flow/runtime"
@@ -20,6 +21,14 @@ import (
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/threads"
 )
+
+// SurfaceAnswered reports whether a client has an answer on record at a
+// place on its surface: the thread a run answered in, or the answer's own
+// message. A reply there continues it and a reaction there finds its run.
+func (p *Platform) SurfaceAnswered(tenant, client string, at address.Address) bool {
+	c, err := p.Clients.Get(tenant, client)
+	return err == nil && p.continueSurface(c, at)
+}
 
 // UseTool calls one of a turn's file tools the way the agent loop would, and
 // returns what the tool reported on the run's stream.

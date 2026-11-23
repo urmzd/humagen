@@ -1,7 +1,6 @@
 package platform_test
 
 import (
-	"cmp"
 	"context"
 	"errors"
 	"log/slog"
@@ -253,8 +252,7 @@ func TestAConnectorsRunIsFiledByItsBinding(t *testing.T) {
 	p := stage(t, c, cfg)
 	setAgents(t, p, "~", platform.AgentsInput{Enable: []string{"*"}, Default: "ops"})
 	// mentionOf's Slack user is ada, mapped by the Slack app built on the
-	// API in the same team: only people the client maps ask in a bound
-	// channel.
+	// API in the same team: only people the team maps ask.
 	mapper := slackClient("api-app", "A0API", team, "docs")
 	mapper.Slack.Machine, mapper.Slack.People = "svc-slack", map[string]string{"U0HUMAN1": "ada"}
 	create(t, p, tenant, mapper)
@@ -264,7 +262,7 @@ func TestAConnectorsRunIsFiledByItsBinding(t *testing.T) {
 	if _, err := p.CreateProject(t.Context(), tenant, ada, platform.ProjectInput{Name: "Launch"}); err != nil {
 		t.Fatal(err)
 	}
-	in := slackClient("docs-app", "A0DOCS", team, "docs")
+	in := mapsNobody(slackClient("docs-app", "A0DOCS", team, "docs"))
 	in.Home, in.Agents = &clients.Home{Project: "Launch"}, []string{"ops"}
 	create(t, p, tenant, in)
 	if _, err := p.CreateChannel(t.Context(), tenant, "Field", ada, platform.ChannelInput{Name: "docs", Slack: &projects.SlackBinding{Client: "docs-app", Channel: "C01"}}); err != nil {
@@ -300,9 +298,9 @@ func TestAConnectorsRunIsFiledByItsBinding(t *testing.T) {
 // A run a client's own connector raises acts for the person its team maps
 // the Slack user to, so it is held to what that person may do where the
 // binding files it, as the API holds a surface asking for a person: their
-// own runs:write, and being a member of the project. A bound channel is the
-// project's, so someone the team maps to nobody is not answered there; in
-// an unbound channel they are, for nobody, as before.
+// own runs:write, and being a member of the project. Someone the team maps
+// to nobody is not answered, in a bound channel or any other: the connector
+// turns them away before anything is raised.
 func TestAConnectorsRunIsHeldToThePersonItActsFor(t *testing.T) {
 	f := &fakes{}
 	c := &cast{says: map[string][][]saigetypes.Delta{"docs": {say("Docs here."), say("Again.")}}}
@@ -337,22 +335,18 @@ func TestAConnectorsRunIsHeldToThePersonItActsFor(t *testing.T) {
 	mention("Ev1", "U0OLU", "C0VAULT", "1700000000.000100")
 	mention("Ev2", "U0VIC", "C09", "1700000000.000200")
 	mention("Ev3", "U0NOBODY", "C0VAULT", "1700000000.000300")
-	// Ada is Vault's owner; U0NOBODY in a channel that is not bound is
-	// answered for nobody, in the client's home.
+	// Ada is Vault's owner; U0NOBODY is not answered in a channel that is
+	// not bound either.
 	mention("Ev4", "U0ADA", "C0VAULT", "1700000000.000400")
 	mention("Ev5", "U0NOBODY", "C09", "1700000000.000500")
 	var got []runs.Run
-	eventually(t, "three mentions were refused and two answered", func() bool {
+	eventually(t, "four mentions were refused and one answered", func() bool {
 		got = p.Runs.List(tenant, 20)
-		return strings.Count(said.String(), "a client's message was refused") == 3 && len(got) >= 2
+		return strings.Count(said.String(), "a client's message was refused") == 2 &&
+			strings.Count(said.String(), "refused a sender the client does not map") == 2 && len(got) >= 1
 	})
-	who := map[string]string{}
-	for _, r := range got {
-		who[wire.Meta(r.Tag())["slack_channel"]+" "+r.Actor.ID] = r.Project + " for " + cmp.Or(r.Actor.User, "nobody")
-	}
-	want := map[string]string{"C0VAULT U0ADA": "Vault for ada", "C09 U0NOBODY": " for nobody"}
-	if len(got) != 2 || who["C0VAULT U0ADA"] != want["C0VAULT U0ADA"] || who["C09 U0NOBODY"] != want["C09 U0NOBODY"] {
-		t.Fatalf("the connector's runs are %v, want %v", who, want)
+	if len(got) != 1 || got[0].Actor.ID != "U0ADA" || got[0].Actor.User != "ada" || got[0].Project != "Vault" || wire.Meta(got[0].Tag())["slack_channel"] != "C0VAULT" {
+		t.Fatalf("the connector's runs are %+v, want ada's in Vault alone", got)
 	}
 }
 
