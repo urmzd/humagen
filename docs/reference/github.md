@@ -331,9 +331,13 @@ address it when the trigger opens the message (`@humagen review`,
 `@humagen: review`). `/review` is a command when the message starts with it;
 what follows it is what to look at. Like any message, it reaches Humagen
 with the trigger (`@humagen /review`) or in a conversation the agent already
-has. Quoted lines do not count. Any other
-word, a trigger inside a sentence, or a mention of anyone else makes the
-message a reply.
+has. Quoted lines do not count: a reply under a quote, after a
+blank line, is read on its own. Any other word, a trigger inside a sentence,
+or a mention of anyone else makes the message a reply. So does anything the
+message shows instead of saying, read as `@humagen` itself is read
+([Who a comment asks](#who-a-comment-asks)): code, an indented block, an
+HTML comment, or a line that runs on from a quote with no blank line
+between.
 
 #### A reply that becomes a review
 
@@ -344,20 +348,29 @@ has one tool for this, `start_review`, which turns its run into a review.
 After it the agent returns the report, and the host checks, renders and posts
 it as it does for any review.
 
-`start_review` takes no arguments. The host allows it only when all of these
-hold, and refuses it with a reason otherwise:
+`start_review` acts only on a pull request run that a person started. It
+takes no arguments and changes nothing but its own run. The host allows it
+only when all of these hold, and refuses it with a reason otherwise:
 
 - The run is on a pull request. On an issue there is nothing to review.
 - A person started the run. A run an agent started for another (a handoff, a
   subagent or a delegation) cannot start a review, and neither can a run a
   rule started: a rule's `shape` is the rule's to set.
 - The run is not a review yet. A run becomes a review once; a second call
-  changes nothing.
+  is refused and changes nothing.
 
-The switch is an action on the run's record, not a change to the saved
-`answer_shape`. A retry, the format check and the native review all read
-the record, so the run stays a review. Any agent may be given the tool in
-its `tools`; an agent without it answers a reply run in prose.
+Of the built-in agents only `code-reviewer` has the tool. An admin may grant
+it to any agent in its `tools`, and the same conditions hold for it there;
+an agent without it answers a reply run in prose.
+
+The switch is saved on the run's own record before the tool answers, beside
+the saved `answer_shape`, which stays `reply`. The format check and the
+native review read the record, in any process and after a restart, and
+nothing depends on the run's events still being kept. Two calls made at once
+start one review. If the switch cannot be saved, the call fails and the run
+stays a reply. A later attempt of the same run reads `answer_shape: review`
+in its trigger context, so the agent returns the report without calling the
+tool again.
 
 A run from before the host chose has no shape. The built-in `code-reviewer`
 returns a report there only when it was asked to review a change.
