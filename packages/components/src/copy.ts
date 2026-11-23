@@ -5714,9 +5714,12 @@ export const defaultCopy = {
       post: "The message could not be posted. Try again.",
       channel: "The channel could not be created.",
     },
-    /** In a Slack channel bound to a project, to someone the app maps to nobody in humagen. */
-    unmappedInBound:
-      "This channel is a project's channel in Humagen, and only people Humagen knows post in it. Ask an admin to connect your Slack account.",
+    /**
+     * In Slack, privately, to someone the app's client maps to nobody, on any
+     * message, command, shortcut or button: nothing was started for them.
+     */
+    notConnected: (product: string) =>
+      `Your Slack account is not connected to ${product}, so nothing was started. Ask a workspace admin to connect your account.`,
     /** In a Slack channel bound to a project, to someone asking about another person's message. */
     notTheirsInBound:
       "This channel is a project's channel in Humagen, where a message is asked only as its writer's own. Ask in the thread in your own words.",

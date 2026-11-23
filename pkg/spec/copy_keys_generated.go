@@ -3299,7 +3299,6 @@ var copyKeyList = []string{
 	"threads.startPrivate",
 	"threads.startThread",
 	"threads.typeahead",
-	"threads.unmappedInBound",
 	"threads.viewerOnly",
 	"threads.waitingOnOthers",
 	"timedOut",

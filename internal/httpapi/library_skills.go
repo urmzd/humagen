@@ -163,6 +163,11 @@ func (s *Server) testLibrarySkill(w http.ResponseWriter, r *http.Request, who au
 		fail(w, 400, "a skill test needs a bounded request")
 		return
 	}
+	// A test names no person, so a Slack app's credential starts none.
+	if err := s.P.MayAskForNobody(who); err != nil {
+		s.problem(w, err)
+		return
+	}
 	run, err := s.P.TestSkill(r.Context(), who, row.ID, row.Version, body.Agent, body.Project, body.Text)
 	if err != nil {
 		s.problem(w, err)
