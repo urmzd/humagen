@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.199.0 (2026-11-23)
+
+### Features
+
+- **migrate**: adopt conversations for the readers they had, with tests ([df32f92](https://github.com/urmzd/humagen/commit/df32f92065fec25cf0e1554480054d01ae5a7080))
+- **migrate**: adopt th- conversations as sessions under their own ids (wip) ([3e5f8aa](https://github.com/urmzd/humagen/commit/3e5f8aa39609f9584d49baf8dd249c2c15545376))
+
+### Bug Fixes
+
+- **migrate**: decide each session key once and leave changed conversations ([7e9f384](https://github.com/urmzd/humagen/commit/7e9f384c8652fff7321b0c4719e21ccf80aa70fd))
+- **migrate**: keep an adopted place as it was filed on the messages route ([205020f](https://github.com/urmzd/humagen/commit/205020fbda266d350f5417140d22b32d217d92e1))
+
+### Misc
+
+- **platform**: wait for the answer's delivery before an untagged reply ([2e1ba43](https://github.com/urmzd/humagen/commit/2e1ba435cf666d9b31c71401cb70acd0192ac3bc))
+- **migrate**: check the recent sessions list for adopted conversations ([2edb1f2](https://github.com/urmzd/humagen/commit/2edb1f247bb08e5867c1a2aad27310b1708bfe65))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.198.1...v0.199.0)
+
+
 ## 0.198.1 (2026-11-23)
 
 ### Bug Fixes
