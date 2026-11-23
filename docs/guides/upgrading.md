@@ -73,7 +73,7 @@ the tenants it read, then how many runs of each tenant it read. Check them befor
 | The conversation's title in the run index | The pull request's or issue's title, from the run's trigger |
 | The person who asked | Adds the person the GitHub client maps the login to now (`github.people`). A login mapped to nobody adds nobody. The session is private to these people, as a new one is, and gets no Slack audience record |
 | The session's times | Dates the session from its work: started when its first run was asked, last active when its latest run or message was. Recent and Sessions then list it where that work falls, not at the time the command ran |
-| A session the command finds | Dates it from its runs, and changes nothing else, when its record was created after the first run the command files in it had ended. That is a session an earlier run of the command opened, which that release dated at the time it ran, so it sat at the top of Recent. It is also a session a mention opened on a pull request or issue that has older runs: the command files those runs in it, and the session then starts when the oldest of them was asked. An archived session that is not deleted is dated the same way, and stays archived. A session whose first run is the mention that opened it is left as it is, while that run is queued or running and after it ends. The servers keep running during the command, so a mention may open a session while it reads |
+| A session the command finds | Dates it from its runs, and changes nothing else, when its record was created after the first run the command files in it had ended. That is a session an earlier run of the command opened, which that release dated at the time it ran, so it sat at the top of Recent. It is also a session a mention opened on a pull request or issue that has older runs: the command files those runs in it, and the session then starts when the oldest of them was asked. An archived session that is not deleted is dated the same way, and stays archived. A session whose first run is the mention that opened it is left as it is, while that run is queued or running and after it ends. A session whose first run is another run that has not ended, such as one that stopped before it reached an ending, is left as it is too, with a `github session not dated` line that names the run. The servers keep running during the command, so a mention may open a session while it reads |
 | A session's last activity | The time of its latest run or message. It is never earlier than the latest message in the session when the command writes. A later change that is neither, such as a person added, does not count as activity |
 
 ### Conversations from before sessions
@@ -129,11 +129,11 @@ tagged.
 | A conversation that names no agent, and that no agent answered | A session belongs to one agent |
 | A conversation that selects several agents, or whose default and selected agent differ | A session has one agent |
 | A conversation whose agent is gone, or may not answer in its project | Not everyone who reads the conversation reads that agent, or nobody does |
-| A Slack thread whose agent lives in a project | The Slack client's machine reads its threads with no role in a project, so it does not read that agent |
+| A Slack thread whose agent lives in a project the Slack client's machine does not read | The machine reads the threads on its surface, and a session is read only by those who read its agent. The machine reads an agent of the workspace, and an agent of a project open to everyone or to the machine itself |
 | A Slack thread whose client is not in the store, and a thread on any other surface | Its address cannot be worked out |
 | A conversation nobody started, a read-only one, one that answers an announcement, and one that continues another conversation or an import | A session is none of these |
 | A conversation from before threads, kept under its first run's id | A session's id is its own |
-| A conversation that someone changed, archived or deleted while the command read it | Who reads it may have changed. The command removes the session record it wrote for it, and the next run decides it again |
+| A conversation that someone changed, archived or deleted while the command read it | Who reads it may have changed. The command removes the session record it wrote for it, and the next run decides it again. If a run was bound to that record in the meantime, the record is kept, the line says so, and the next run decides the conversation as the agent that record names |
 | A second conversation of one Slack thread, one per Slack app of the team, for the same agent | One place is one session. The oldest is adopted, and the others keep reaching their app as conversations |
 | An archived conversation | It is not listed and not changed. A session record that a stopped apply wrote for it is removed, and listed as `unfinished adoption removed` |
 | A GitHub run that used its asker's private context | Filed with other people who asked there, they would read it |
@@ -216,4 +216,6 @@ from their runs. There is no extra flag.
 3. Run the dry run again. It must end with `would write 0 changes`.
 
 A session whose runs carry no time has a `github session not dated` line
-and is left with the times it has.
+and is left with the times it has. So does a session whose first run never
+reached an ending, such as one that stopped while it ran, unless that run
+is the mention that opened the session: its line names the run.

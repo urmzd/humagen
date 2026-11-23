@@ -31,8 +31,9 @@ sessions  files each GitHub run from before GitHub sessions in the session
           when the latest run or message was. A session found, whose
           record was created after the first run filed in it had ended,
           is dated from its runs too, archived or not. A session whose
-          first run is still queued or running, such as one a mention
-          just opened, is left. A deleted session is left. A
+          first run has not ended is left: when that run is not the
+          mention that opened it, it is listed as not dated. A deleted
+          session is left. A
           conversation from before sessions that names one agent becomes
           that agent's session under the id it has, read by the people
           who read it before; any other is listed and left as it is.

@@ -12,6 +12,7 @@ import (
 	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/humagen/internal/wire/sessionstate"
+	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
@@ -404,11 +405,23 @@ func (p *Platform) backfillGitHubPlace(ctx context.Context, tenant string, apply
 	// ended and its record was created after that. A mention opens its
 	// session before its own run starts, and the servers keep running while
 	// the backfill does, so a session whose first run is the mention that
-	// opened it, still queued or running or ended since, is left as it is.
-	// One a mention opened where older runs are filed too was created after
-	// the first of those ended, and is dated from them. An archived session
-	// is dated as any other; a deleted one was left above.
-	if firstFiled == nil || (found && (!firstFiled.Status.Terminal() || !th.CreatedAt.After(firstFiled.UpdatedAt))) {
+	// opened it (its tag names the session), still queued or running or
+	// ended since, is left as it is. One a mention opened where older runs
+	// are filed too was created after the first of those ended, and is dated
+	// from them. A first run that is not that mention and has not ended, such
+	// as one that stopped before it reached an ending, leaves the session as
+	// it is, and says so. An archived session is dated as any other; a
+	// deleted one was left above.
+	if firstFiled == nil {
+		return nil
+	}
+	if found && !firstFiled.Status.Terminal() {
+		if wire.Meta(firstFiled.Tag())[wire.MetaSession] != id {
+			rep.add(BackfillSessionUndated, first.place, id, "its first run "+firstFiled.ID+" has not ended")
+		}
+		return nil
+	}
+	if found && !th.CreatedAt.After(firstFiled.UpdatedAt) {
 		return nil
 	}
 	if span.created.IsZero() {
@@ -603,7 +616,12 @@ func (p *Platform) backfillThreads(ctx context.Context, tenant string, apply boo
 			// Someone changed it since it was read: who reads it may have
 			// changed too, so it is decided again by the next run, with no
 			// session's record left to decide it.
-			if err := adopter.Unadopt(ctx, tenant, th.ID); err != nil {
+			if err := adopter.Unadopt(ctx, tenant, th.ID); errors.Is(err, sessionstate.ErrAdopted) {
+				// A run was bound to the record since it was written: the
+				// record is in use and kept, and the apply goes on.
+				rep.add(left, th.ID, "", "it changed while it was read, and the session's record written for it binds a run since, so the record is kept, and the next run decides it as the agent that record names")
+				continue
+			} else if err != nil {
 				return fmt.Errorf("backfill: adopt %s: %w", th.ID, err)
 			}
 			rep.add(left, th.ID, "", "it changed while it was read; run the command again")
@@ -687,6 +705,16 @@ func (a adoption) detail() string {
 	return fmt.Sprintf("owned by %s, started by %s, filed in %s, %s, as before", a.agent, a.th.CreatedBy, projectLabel(a.th.Project), who)
 }
 
+// clientMachine is the principal of the machine a Slack client names to host
+// its surface (machineOf), with no role or permission beyond its subject: what
+// it reads as itself. A client that names none has no machine to read.
+func clientMachine(tenant string, c clients.Client) (auth.Principal, bool) {
+	if c.Slack == nil || c.Slack.Machine == "" {
+		return auth.Principal{}, false
+	}
+	return auth.Principal{Tenant: tenant, Subject: c.Slack.Machine, Kind: auth.Machine}, true
+}
+
 func projectLabel(project string) string {
 	if project == "" {
 		return "the workspace"
@@ -707,8 +735,8 @@ func projectLabel(project string) string {
 // changes who reads it, its agent must be read by everyone who reads the
 // conversation: one that may answer in its project, which is an agent
 // everyone who reads the project reads (Available), and on a surface, whose
-// machine reads the conversation with no role in a project, a platform
-// agent. Anything else is left.
+// machine reads the conversation as the host of the surface, one that
+// machine reads as itself. Anything else is left.
 func (p *Platform) adoptionOf(ctx context.Context, tenant string, th threads.Thread) (adoption, error) {
 	a := adoption{th: th}
 	switch {
@@ -776,9 +804,12 @@ func (p *Platform) adoptionOf(ctx context.Context, tenant string, th threads.Thr
 		a.left = "its agent " + a.agent + " cannot answer there: " + detailOf(err, projects.ErrInvalid)
 		return a, nil
 	}
-	// On a surface the client's machine reads the conversation too, with no
-	// role in any project: it reads a platform agent, and no other.
-	if home, homed := p.ProjectTree(tenant).Home(a.agent); homed && th.Surface != nil {
+	// On a surface the client's machine reads the conversation too, as the
+	// host of its surface: the session's agent must be one it reads as
+	// itself (Seer.Agent), as it reads the session after. A client that names
+	// no machine has none to read it.
+	if machine, ok := clientMachine(tenant, client); ok && !p.Seer(machine).Agent(a.agent) {
+		home, _ := p.ProjectTree(tenant).Home(a.agent)
 		a.left = "its agent " + a.agent + " lives in " + projectLabel(home) + ", which the machine of " + th.Surface.Client + " does not read, and a session is read only by those who read its agent"
 		return a, nil
 	}

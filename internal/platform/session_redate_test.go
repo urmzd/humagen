@@ -238,8 +238,8 @@ func TestBackfillLeavesASessionWhoseMentionIsStillInFlight(t *testing.T) {
 	if !reflect.DeepEqual(was, stored(t, st)) {
 		t.Fatal("a dry run wrote to the store")
 	}
-	if dry.Counts[platform.BackfillSessionDated] != 0 || dry.Changes() != 0 {
-		t.Fatalf("the dry run would date a session a mention opened: %+v", dry.Lines)
+	if dry.Counts[platform.BackfillSessionDated] != 0 || dry.Counts[platform.BackfillSessionUndated] != 0 || dry.Changes() != 0 {
+		t.Fatalf("the dry run would date a session a mention opened, or reports it: %+v", dry.Lines)
 	}
 	if rep, err := p.BackfillSessions(ctx, tenant, true); err != nil || rep.Changes() != 0 {
 		t.Fatalf("the apply did %v, %v", rep.Counts, err)
@@ -333,5 +333,56 @@ func TestBackfillReportsTimesToTheSubSecond(t *testing.T) {
 		if l.Kind == platform.BackfillSessionDated && l.Detail != want {
 			t.Fatalf("the dated line reads %q; want %q", l.Detail, want)
 		}
+	}
+}
+
+// A session an earlier release opened and dated, whose first run never
+// reached an ending and is not the mention that opened it, keeps its times
+// and is reported as not dated, with the run, in the dry run and the apply.
+func TestBackfillReportsASessionWhoseFirstRunHasNotEnded(t *testing.T) {
+	ctx := t.Context()
+	p, st := redateRoom(t)
+	pull12 := "github://acme/handbook/pull/12"
+	t0 := time.Date(2026, 9, 1, 9, 0, 0, 0, time.UTC)
+	stuck := recordGitHubRun(t, p, "gh-stuck", "docs", pull12+"?head_sha="+strings.Repeat("b", 40), "octocat", 12, t0, nil)
+	pastGitHubRun(t, p, "gh-later", "docs", pull12+"?head_sha="+strings.Repeat("a", 40), "octocat", 12, t0.Add(time.Hour), false)
+	if _, err := p.BackfillSessions(ctx, tenant, true); err != nil {
+		t.Fatal(err)
+	}
+	th, ok, err := p.Threads.BySurface(tenant, threads.Surface{Client: "gh", Channel: "acme/handbook", TS: "pull/12"})
+	if err != nil || !ok {
+		t.Fatalf("pull 12 has no session: %v", err)
+	}
+	if r, err := p.Runs.Get(tenant, stuck); err != nil || r.Status.Terminal() || r.Thread != th.ID {
+		t.Fatalf("the first run is %+v, %v", r, err)
+	}
+	// Dated at the time an earlier backfill ran.
+	migrated := t0.Add(60 * 24 * time.Hour)
+	if _, err := p.Threads.Redate(tenant, th.ID, migrated, migrated); err != nil {
+		t.Fatal(err)
+	}
+	was := stored(t, st)
+	dry, err := p.BackfillSessions(ctx, tenant, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(was, stored(t, st)) {
+		t.Fatal("a dry run wrote to the store")
+	}
+	applied, err := p.BackfillSessions(ctx, tenant, true)
+	if err != nil || !reflect.DeepEqual(applied.Lines, dry.Lines) || applied.Changes() != 0 {
+		t.Fatalf("the apply did %v, %v; the dry run said %v", applied.Counts, err, dry.Counts)
+	}
+	var line platform.BackfillLine
+	for _, l := range applied.Lines {
+		if l.Kind == platform.BackfillSessionUndated {
+			line = l
+		}
+	}
+	if line.Session != th.ID || line.Subject != pull12 || line.Detail != "its first run "+stuck+" has not ended" {
+		t.Fatalf("the session is reported %+v; lines %+v", line, applied.Lines)
+	}
+	if got, err := p.Threads.Get(tenant, th.ID); err != nil || !got.CreatedAt.Equal(migrated) || !got.UpdatedAt.Equal(migrated) {
+		t.Fatalf("its times moved: %s, %s, %v", got.CreatedAt, got.UpdatedAt, err)
 	}
 }
