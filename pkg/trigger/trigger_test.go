@@ -47,6 +47,28 @@ func TestTheTriggerIsAWholeWordInAnyCase(t *testing.T) {
 		"> @humagen what changed?\n\nI agree with this":   false,
 		"  > > @humagen old question":                     false,
 		"> earlier\n\n@humagen and now?":                  true,
+		// What is shown or quoted rather than said.
+		"<!-- @humagen review -->":                        false,
+		"<!--\nTemplate: @humagen review\n-->\nmy change": false,
+		"<!-- note -->\n@humagen review":                  true,
+		"intro\n\n    @humagen help\n\nafter":             false,
+		"\t@humagen help":                                 false,
+		"intro\n    @humagen run-on line":                 true,
+		"see <code>@humagen help</code>":                  false,
+		"<pre>\n@humagen help\n</pre>":                    false,
+		"run `the\n@humagen help` here":                   false,
+		"one ` tick\n\n@humagen and now?":                 true,
+		"> quoted\nlazily @humagen continued":             false,
+		"> quoted\n\n@humagen fresh":                      true,
+		// A whole word, with nothing that makes it an address or a path.
+		"@humagen.dev is a site":      false,
+		"https://github.com/@humagen": false,
+		"see a/@humagen":              false,
+		"thanks @humagen.":            true,
+		"thanks @humagen. More":       true,
+		"@humagen, please":            true,
+		"@humagen's take?":            true,
+		"@humagen@example.com":        false,
 	} {
 		if _, ok := trigger.Read(text, handles, agents); ok != want {
 			t.Errorf("%q: triggered = %v, want %v", text, ok, want)
@@ -56,21 +78,25 @@ func TestTheTriggerIsAWholeWordInAnyCase(t *testing.T) {
 
 func TestTheAgentAfterTheTriggerIsWhoIsAsked(t *testing.T) {
 	for text, want := range map[string]trigger.Ask{
-		"@humagen what changed?":                        {Text: "what changed?"},
-		"@humagen: what changed?":                       {Text: "what changed?"},
-		"@humagen github-reviewer review this":          {Agent: "github-reviewer", Text: "review this"},
-		"@humagen GitHub-Reviewer: review this":         {Agent: "github-reviewer", Text: "review this"},
-		"@humagen @docs summarize":                      {Agent: "docs", Text: "summarize"},
-		"@humagen ask research-bot about the cache":     {Agent: "research-bot", Text: "about the cache"},
-		"@humagen, ask research-bot: why?":              {Agent: "research-bot", Text: "why?"},
-		"@humagen ask what the cache does":              {Text: "ask what the cache does"},
-		"@humagen docs":                                 {Agent: "docs", Text: ""},
-		"@humagen docsbot help":                         {Text: "docsbot help"},
-		"@humagen docs's index is stale":                {Text: "docs's index is stale"},
-		"@humagen please ask github-reviewer":           {Text: "please ask github-reviewer"},
-		"could @humagen take a look?":                   {Text: "could @humagen take a look?"},
-		"Thanks. @humagen research-bot can you dig in?": {Agent: "research-bot", Text: "Thanks. @humagen research-bot can you dig in?"},
-		"@humagen\n\nwhy did CI fail?":                  {Text: "why did CI fail?"},
+		"@humagen what changed?":                         {Text: "what changed?"},
+		"@humagen: what changed?":                        {Text: "what changed?"},
+		"@humagen github-reviewer review this":           {Text: "github-reviewer review this"},
+		"@humagen github-reviewer, review this":          {Agent: "github-reviewer", Text: "review this"},
+		"@humagen docs are stale":                        {Text: "docs are stale"},
+		"@humagen GitHub-Reviewer: review this":          {Agent: "github-reviewer", Text: "review this"},
+		"@humagen @docs summarize":                       {Agent: "docs", Text: "summarize"},
+		"@humagen ask research-bot about the cache":      {Agent: "research-bot", Text: "about the cache"},
+		"@humagen, ask research-bot: why?":               {Agent: "research-bot", Text: "why?"},
+		"@humagen ask what the cache does":               {Text: "ask what the cache does"},
+		"@humagen docs":                                  {Text: "docs"},
+		"@humagen @docs":                                 {Agent: "docs", Text: ""},
+		"@humagen docsbot help":                          {Text: "docsbot help"},
+		"@humagen docs's index is stale":                 {Text: "docs's index is stale"},
+		"@humagen please ask github-reviewer":            {Text: "please ask github-reviewer"},
+		"could @humagen take a look?":                    {Text: "could @humagen take a look?"},
+		"Thanks. @humagen research-bot: can you dig in?": {Agent: "research-bot", Text: "Thanks. @humagen research-bot: can you dig in?"},
+		"Thanks. @humagen research-bot can you dig in?":  {Text: "Thanks. @humagen research-bot can you dig in?"},
+		"@humagen\n\nwhy did CI fail?":                   {Text: "why did CI fail?"},
 	} {
 		got, ok := trigger.Read(text, handles, agents)
 		if !ok || got != want {
@@ -100,7 +126,8 @@ func TestEveryHandleIsATrigger(t *testing.T) {
 
 func TestLeadingReadsOnlyTheFirstWords(t *testing.T) {
 	for s, want := range map[string]string{
-		"docs help":          "docs",
+		"docs help":          "",
+		"docs: help":         "docs",
 		" @docs help":        "docs",
 		"ask docs":           "docs",
 		"help docs":          "",
@@ -108,6 +135,8 @@ func TestLeadingReadsOnlyTheFirstWords(t *testing.T) {
 		"ask":                "",
 		"docs-bot":           "",
 		"research-bot, why?": "research-bot",
+		"research-bot why?":  "",
+		"ask research-bot":   "research-bot",
 	} {
 		if got, _ := trigger.Leading(s, agents); got != want {
 			t.Errorf("Leading(%q) = %q, want %q", s, got, want)

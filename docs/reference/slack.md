@@ -206,20 +206,23 @@ colon or comma after it, and anywhere else it reads as the app's name, so
 
 `@Humagen`, the app's bot user, is the one trigger, as `@humagen` is on
 [GitHub](github.md#who-a-comment-asks). Agents are not Slack users, so Slack
-cannot offer their names. Type the agent's name right after the mention, with
-or without `@`, or after `ask`:
+cannot offer their names. When the message opens with the app's mention, type
+the agent's name right after it, after `ask`, with `:` or `,` after it, or as
+`@name`:
 
 | Message | Who answers |
 |---|---|
 | `@Humagen what changed?` | The default: the thread's agent, the client's, the bound channel's, else the entry agent |
-| `@Humagen research-bot why is the cache cold?` | research-bot, which reads `why is the cache cold?` |
-| `@Humagen ask research-bot: why is the cache cold?` | research-bot |
+| `@Humagen ask research-bot why is the cache cold?` | research-bot, which reads `why is the cache cold?` |
+| `@Humagen research-bot: why is the cache cold?` | research-bot |
 | `@Humagen @research-bot why is the cache cold?` | research-bot |
+| `@Humagen docs are stale` | The default: a bare first word is part of the question |
 
 The first word names an agent only when it is one the client may route to.
-Any other first word is part of the question. In a direct message the first
-word is read the same way, since the message is addressed to the app. A
-plain `@name` of an agent later in the message still tags it, as before. The
+Only a message that opens with the app's own mention is read this way. In a
+direct message, a thread reply, or a message that opens with someone else
+(`@Ana research-bot: ...`), the first word is part of the message. A plain
+`@name` of an agent anywhere in a message still tags it, as before. The
 connector and the Slack app read the name the same way.
 
 Only a person the client maps is listened to. The agent's answer to "does this

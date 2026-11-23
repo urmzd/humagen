@@ -25,6 +25,9 @@ const maxTriggerBody = 25 << 20
 // before the transport reads it, and applied to the event it raises
 // (prepare).
 type asked struct {
+	// review says a review was requested from a trigger's account, such as
+	// the humagen user: the host's default reviews, as for "@humagen review".
+	review bool
 	// triggered says the text holds the trigger. Without it the text is a
 	// reply in a conversation an agent already has there.
 	triggered bool
@@ -43,6 +46,9 @@ func askedOf(ctx context.Context) (asked, bool) {
 // wrote, and where a reply to it would continue a conversation.
 type personText struct {
 	text string
+	// command says the comment is "/stop" or "/feedback", which the
+	// transport handles on its own.
+	command bool
 	// place is the conversation a reply continues, zero for an event that
 	// opens one (a review, a new issue or pull request).
 	place address.Address
@@ -70,8 +76,15 @@ func (c *Connector) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		c.Connector.ServeHTTP(w, r)
 		return
 	}
-	said, ok := personTextOf(r.Header.Get(transport.HeaderEvent), body)
-	if !ok {
+	kind := r.Header.Get(transport.HeaderEvent)
+	if c.reviewFromTrigger(kind, body) {
+		c.Connector.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), askedKey{}, asked{review: true})))
+		return
+	}
+	said, ok := personTextOf(kind, body)
+	if !ok || said.command {
+		// "/stop" and "/feedback" act on an answer already there, and
+		// the transport answers them as before.
 		c.Connector.ServeHTTP(w, r)
 		return
 	}
@@ -121,6 +134,13 @@ func (c *Connector) isTrigger(word string) bool {
 func applyAsked(ctx context.Context, tag *event.Envelope) {
 	a, ok := askedOf(ctx)
 	if !ok {
+		return
+	}
+	if a.review {
+		if wire.ReviewerOf(*tag) != "" {
+			wire.ClearReviewer(tag)
+			wire.SetMeta(tag, wire.MetaTriggered, "true")
+		}
 		return
 	}
 	if _, isRequest := event.RequestOf(tag.Data); !isRequest {
@@ -186,7 +206,7 @@ func personTextOf(kind string, body []byte) (personText, bool) {
 		if len(p.Issue.PullRequest) > 0 && string(p.Issue.PullRequest) != "null" {
 			where = "pull"
 		}
-		return personText{text: p.Comment.Body, place: place(where, p.Issue.Number)}, true
+		return personText{text: p.Comment.Body, command: isCommand(p.Comment.Body), place: place(where, p.Issue.Number)}, true
 	case "pull_request_review_comment":
 		if p.PullRequest == nil || p.Comment == nil {
 			return personText{}, false
@@ -199,7 +219,7 @@ func personTextOf(kind string, body []byte) (personText, bool) {
 		if p.PullRequest.Head.SHA != "" {
 			at = at.WithParam("head_sha", p.PullRequest.Head.SHA)
 		}
-		return personText{text: p.Comment.Body, place: at.WithParam("review_comment", strconv.FormatInt(root, 10))}, true
+		return personText{text: p.Comment.Body, command: isCommand(p.Comment.Body), place: at.WithParam("review_comment", strconv.FormatInt(root, 10))}, true
 	case "pull_request_review":
 		if p.PullRequest == nil || p.Review == nil {
 			return personText{}, false
@@ -243,4 +263,30 @@ func (s triggerSet) Lookup(token string) (string, bool) {
 		}
 	}
 	return s.triggers.Lookup(token)
+}
+
+// isCommand reports whether a comment is one the transport acts on itself:
+// "/stop", or "/feedback up|down ...", on an answer already there.
+func isCommand(body string) bool {
+	fields := strings.Fields(body)
+	return len(fields) > 0 && (fields[0] == "/stop" || fields[0] == "/feedback")
+}
+
+// reviewFromTrigger reports whether a delivery requests a pull request's
+// review from a trigger's account, such as the humagen user people add as a
+// collaborator.
+func (c *Connector) reviewFromTrigger(kind string, body []byte) bool {
+	if kind != "pull_request" {
+		return false
+	}
+	var p struct {
+		Action   string `json:"action"`
+		Reviewer *struct {
+			Login string `json:"login"`
+		} `json:"requested_reviewer"`
+	}
+	if json.Unmarshal(body, &p) != nil || p.Action != "review_requested" || p.Reviewer == nil {
+		return false
+	}
+	return c.isTrigger(strings.TrimSuffix(p.Reviewer.Login, "[bot]"))
 }

@@ -93,8 +93,9 @@ func TestOnlyTheTriggerAsksOnGitHub(t *testing.T) {
 	comment("bare", 1, "ada", "@ops can you deploy it?")
 	comment("in-code", 2, "ada", "run `@humagen help` to see the commands")
 	comment("in-quote", 3, "ada", "> @humagen what changed?\n\nI wonder too")
+	comment("in-template", 15, "ada", "<!-- @humagen review -->\nMy change")
 
-	comment("named", 4, "ada", "@Humagen ops deploy it")
+	comment("named", 4, "ada", "@Humagen ops: deploy it")
 	if run := answeredBy(t, p, "named"); run.Agent != "ops" || run.Text != "deploy it" {
 		t.Fatalf("the trigger naming ops was answered by %s with %q", run.Agent, run.Text)
 	}
@@ -106,11 +107,15 @@ func TestOnlyTheTriggerAsksOnGitHub(t *testing.T) {
 	if run := answeredBy(t, p, "plain"); run.Agent != "docs" || run.Text != "what changed?" {
 		t.Fatalf("a plain question was answered by %s with %q, want the client's default", run.Agent, run.Text)
 	}
+	comment("bare-word", 8, "ada", "@humagen ops deploy it")
+	if run := answeredBy(t, p, "bare-word"); run.Agent != "docs" || run.Text != "ops deploy it" {
+		t.Fatalf("a bare first word was answered by %s with %q, want the default with the whole text", run.Agent, run.Text)
+	}
 	comment("mid", 7, "ada", "Thanks! Could @humagen summarize the thread?")
 	if run := answeredBy(t, p, "mid"); run.Agent != "docs" || run.Text != "Thanks! Could @humagen summarize the thread?" {
 		t.Fatalf("a trigger inside a sentence was answered by %s with %q", run.Agent, run.Text)
 	}
-	for _, d := range []string{"bare", "in-code", "in-quote"} {
+	for _, d := range []string{"bare", "in-code", "in-quote", "in-template"} {
 		if !startedNothing(p, d) {
 			t.Errorf("%s started a run", d)
 		}
@@ -122,7 +127,7 @@ func TestOnlyTheTriggerAsksOnGitHub(t *testing.T) {
 // continues with it, and an agent's name in that reply does not take it over.
 func TestTheTriggerAsksTheDefaultAfterANamedAgentAnswered(t *testing.T) {
 	p, comment := triggerRoom(t, nil)
-	comment("first", 9, "ada", "@humagen ops look at the deploy")
+	comment("first", 9, "ada", "@humagen ask ops to look at the deploy")
 	if run := answeredBy(t, p, "first"); run.Agent != "ops" {
 		t.Fatalf("first answered by %s", run.Agent)
 	}
@@ -193,11 +198,41 @@ func TestTheTriggerLandsOnTheEntryAgent(t *testing.T) {
 // whichever agent it names.
 func TestAStrangersTriggerStartsNothing(t *testing.T) {
 	p, comment := triggerRoom(t, func(in *platform.ClientInput) { in.GitHub.Askers = []string{"ada"} })
-	comment("stranger", 13, "mallory", "@humagen ops deploy it")
-	comment("asker", 14, "ada", "@humagen ops deploy it")
+	comment("stranger", 13, "mallory", "@humagen ask ops to deploy it")
+	comment("asker", 14, "ada", "@humagen ask ops to deploy it")
 	answeredBy(t, p, "asker")
 	time.Sleep(50 * time.Millisecond)
 	if !startedNothing(p, "stranger") {
 		t.Fatal("a stranger's trigger started a run")
+	}
+}
+
+// A review requested from the humagen account, the one people add as a
+// collaborator, is the repository's agent's, as "@humagen review" is.
+func TestAReviewRequestedFromTheTriggerAccountIsTheRepositorysAgents(t *testing.T) {
+	// No bot login is mapped: production drops the app's own.
+	p, _ := triggerRoom(t, func(in *platform.ClientInput) {
+		in.GitHub.ReadRepositories, in.Bots = []string{"acme/site"}, nil
+	})
+	if _, err := p.SetGitHubRepository(t.Context(), admin, "gh", "acme/site", reposettings.Settings{Agent: "ops"}, 0); err != nil {
+		t.Fatal(err)
+	}
+	sha := strings.Repeat("a", 40)
+	body := `{"action":"review_requested","installation":{"id":101},"repository":{"full_name":"acme/site","name":"site","owner":{"login":"acme"}},` +
+		`"sender":{"login":"ada","type":"User"},"requested_reviewer":{"login":"humagen","type":"User"},` +
+		`"pull_request":{"number":21,"title":"Speed up search","body":"Please review.","state":"open","draft":false,"user":{"login":"ada"},"head":{"ref":"fast","sha":"` + sha + `"},"base":{"ref":"main"},"author_association":"COLLABORATOR"}}`
+	mac := hmac.New(sha256.New, []byte("secret-gh"))
+	mac.Write([]byte(body))
+	r := httptest.NewRequest(http.MethodPost, "/connectors/github", strings.NewReader(body))
+	r.Header.Set(signature.HeaderGitHubSignature, "sha256="+hex.EncodeToString(mac.Sum(nil)))
+	r.Header.Set("X-GitHub-Event", "pull_request")
+	r.Header.Set("X-GitHub-Delivery", "review-from-humagen")
+	w := httptest.NewRecorder()
+	p.IngressHandler().ServeHTTP(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("answered %d", w.Code)
+	}
+	if run := answeredBy(t, p, "review-from-humagen"); run.Agent != "ops" {
+		t.Fatalf("the review request was answered by %s, want the repository's agent", run.Agent)
 	}
 }

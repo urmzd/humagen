@@ -112,6 +112,25 @@ func SetAgent(e *event.Envelope, agent string) {
 	})
 }
 
+// ReviewerOf is the agent a review request was resolved to, "" for any
+// other event.
+func ReviewerOf(e event.Envelope) string {
+	if b, ok := e.Data.(event.GitHubReviewRequested); ok {
+		return b.Reviewer
+	}
+	return ""
+}
+
+// ClearReviewer makes a review request name no agent, so its host chooses
+// who reviews, as for a request that names none.
+func ClearReviewer(e *event.Envelope) {
+	if b, ok := e.Data.(event.GitHubReviewRequested); ok {
+		b.Reviewer = ""
+		e.Data = b
+	}
+	SetAgent(e, "")
+}
+
 // RequestOf is the request an event carries, zero for one that asks nothing.
 func RequestOf(e event.Envelope) event.Request {
 	if e.Data == nil {

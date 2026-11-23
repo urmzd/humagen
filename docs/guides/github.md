@@ -58,7 +58,7 @@ humagen install github --org acme --webhook-url https://hooks.example.com/connec
 Open a pull request in a repository the app is installed on. The default
 agent, `code-reviewer`, reviews it when it is ready for review. To ask a
 question, write `@humagen` in a comment, and name an agent right after it to
-ask that agent: `@humagen code-reviewer look at the retry path`. Add the
+ask that agent: `@humagen ask code-reviewer to look at the retry path`. Add the
 `humagen` GitHub account as a collaborator so GitHub offers the name as you
 type ([who a comment asks](../reference/github.md#who-a-comment-asks)).
 

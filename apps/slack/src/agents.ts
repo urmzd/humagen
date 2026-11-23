@@ -4,11 +4,12 @@ import { builtinAgent } from "./legacy.ts";
 /**
  * Who answers a message. In order:
  *
- * 1. An agent named first in the message, right after the app's mention,
- *    with or without `@`: `docs-bot help`, `@docs-bot help`, `ask docs-bot
- *    help` (see `leadingAgent`). Then an agent named anywhere in it as
- *    `@name`. Either only when that agent exists and this surface may route
- *    to it, and the name is taken out of the message. `@auto` names nobody.
+ * 1. When the message opened with the app's own mention (`addressed`), an
+ *    agent named first after it: `ask docs-bot help`, `docs-bot: help` or
+ *    `@docs-bot help` (see `leadingAgent`). Then an agent named anywhere in
+ *    it as `@name`. Either only when that agent exists and this surface may
+ *    route to it, and the name is taken out of the message. `@auto` names
+ *    nobody.
  * 2. The default agent: the client's, or the one configured for the app.
  *    `*` asks every agent available where the message lands whether to take
  *    it, where this surface may reach any agent.
@@ -70,21 +71,24 @@ export function namesAgent(text: string, agents: Agent[]): boolean {
   return false;
 }
 
-const LEADING = /^\s*(?:ask\s+)?@?([A-Za-z0-9][A-Za-z0-9_-]*)(?=$|[\s,.:;!?])[\s,:;-]*/i;
+const ASKED = /^\s*ask\s+@?([A-Za-z0-9][A-Za-z0-9_-]*)(?=$|[\s,.:;!?])[\s,:;-]*/i;
+const TAGGED = /^\s*@([A-Za-z0-9][A-Za-z0-9_-]*)(?=$|[\s,.:;!?])[\s,:;-]*/;
+const SET_APART = /^\s*([A-Za-z0-9][A-Za-z0-9_-]*)[:,][\s,:;-]*/;
 
 /**
  * The agent a message names first, as `@Humagen` is followed on every
- * surface: `docs-bot help`, `@docs-bot help` or `ask docs-bot help`. Agents are
- * not Slack users, so a person cannot pick one from Slack's list and types
- * its name. Only an agent that exists and, with routing, that this surface may
- * route to. `text` is what follows the name.
+ * surface: `ask docs-bot help`, `docs-bot: help` or `@docs-bot help`. A bare
+ * first word with no `:` or `,` after it is part of the question ("docs are
+ * stale"). Agents are not Slack users, so a person cannot pick one from
+ * Slack's list and types its name. Only an agent that exists and, with
+ * routing, that this surface may route to. `text` is what follows the name.
  */
 export function leadingAgent(
   text: string,
   agents: Agent[],
   routing?: Routing,
 ): { agent: string; text: string } | null {
-  const m = LEADING.exec(text);
+  const m = ASKED.exec(text) ?? TAGGED.exec(text) ?? SET_APART.exec(text);
   if (!m) return null;
   const word = (m[1] as string).toLowerCase();
   const found = agents.find((a) => a.name.toLowerCase() === builtinAgent(word));
@@ -99,9 +103,14 @@ export function tagLeading(text: string, agents: Agent[]): string {
   return lead.text ? `@${lead.agent} ${lead.text}` : `@${lead.agent}`;
 }
 
-export function choose(text: string, agents: Agent[], routing: Routing): Choice {
+export function choose(
+  text: string,
+  agents: Agent[],
+  routing: Routing,
+  opts: { addressed?: boolean } = {},
+): Choice {
   const said = text.trim();
-  const lead = leadingAgent(said, agents, routing);
+  const lead = opts.addressed ? leadingAgent(said, agents, routing) : null;
   if (lead) return { agent: lead.agent, text: lead.text || said, how: "named" };
   const known = new Set(agents.map((a) => a.name));
   for (const m of said.matchAll(NAMED)) {

@@ -193,6 +193,11 @@ interface Job {
   /** A mention in a channel thread: what people said there since the app was last asked goes with it. */
   history?: boolean;
   /**
+   * The message opens with the app's own mention, the one place the word
+   * after it names an agent (`leadingAgent`): "@Humagen ask docs-bot ...".
+   */
+  addressed?: boolean;
+  /**
    * The message addressed nobody: a reply, with no mention, in a channel
    * thread. Humagen takes it only where the thread began with a mention, and
    * answers only when the agent says it calls for it. Until a run starts
@@ -986,6 +991,7 @@ export class App {
       triggerTs: event.ts,
       user: event.user,
       key: eventKey(session, event.ts),
+      ...(opensWithApp(event.text ?? "", this.opts.botUser) ? { addressed: true } : {}),
       // A direct message is always addressed to the app, so only a channel thread has more to read.
       history: event.type === "app_mention" && session.threadTs !== event.ts,
     });
@@ -1322,7 +1328,9 @@ export class App {
         // Humagen already has a run for this Slack event: it was answered before a restart.
         if (placed === "duplicate") return "done" as const;
         if (!job.again) {
-          const choice = choose(job.text, await this.agents(), routing);
+          const choice = choose(job.text, await this.agents(), routing, {
+            addressed: Boolean(job.addressed),
+          });
           // A thread asked for an agent by name keeps it for the untagged messages after.
           const where = sessionName(job.session);
           const before = this.named.get(where);
@@ -1506,10 +1514,11 @@ export class App {
         this.log(`thread history skipped: ${(e as Error).message}`);
       }
     }
-    // The agent named right after the app's mention is a tag for the platform.
-    const text = job.listen
-      ? job.text
-      : tagLeading(job.text, await this.agents().catch(() => [] as Agent[]));
+    // The agent named right after the app's opening mention is a tag for the platform.
+    const text =
+      job.addressed && !job.listen
+        ? tagLeading(job.text, await this.agents().catch(() => [] as Agent[]))
+        : job.text;
     return post({
       text,
       act_as: asking,
@@ -3396,6 +3405,11 @@ export function wholeMessage(text: string, botUser: string, name: string): strin
   const own = new RegExp(`<@${botUser}(?:\\|[^<>]*)?>`, "g");
   const opened = new RegExp(`^\\s*<@${botUser}(?:\\|[^<>]*)?>[ \\t]*[:,]?[ \\t]*`);
   return text.replace(opened, "").replace(own, name).trim();
+}
+
+/** Whether Slack text opens with the app's own mention, `<@U…>` or `<@U…|name>`. */
+export function opensWithApp(text: string, botUser: string): boolean {
+  return Boolean(botUser) && new RegExp(`^\\s*<@${botUser}(?:\\|[^<>]*)?>`).test(text);
 }
 
 /** Whether Slack text mentions the app, wherever in it: `<@U…>` or `<@U…|name>`. */

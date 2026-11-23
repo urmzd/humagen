@@ -7,13 +7,14 @@
 // for is the word after it:
 //
 //	@humagen what changed?                     the default answers
-//	@humagen github-reviewer review this       github-reviewer answers
-//	@humagen @docs-bot summarize               docs-bot answers
 //	@humagen ask research-bot about the cache  research-bot answers
+//	@humagen github-reviewer: review this      github-reviewer answers
+//	@humagen @docs-bot summarize               docs-bot answers
+//	@humagen docs are stale                    the default answers
 //
 // The trigger counts in any case, as a whole word, anywhere in the text, but
-// not inside code or a quoted reply: "`@humagen help`" shows a command, and a
-// line that starts with ">" repeats what someone else said.
+// not where text is shown or quoted rather than said: code, HTML comments
+// (a pull request template can hold one) and quoted replies.
 //
 // This package is a leaf: stdlib only.
 package trigger
@@ -54,8 +55,15 @@ func Read(text string, handles []string, lookup Lookup) (Ask, bool) {
 }
 
 // Find locates the first trigger in text: "@" and one of handles, in any
-// case, as a whole word, outside code spans, fenced code and quoted lines.
-// start and end are the byte offsets of the "@" and one past the name.
+// case, as a whole word, outside anything that quotes or shows text rather
+// than says it (prose). start and end are the byte offsets of the "@" and one
+// past the name.
+//
+// A trigger is a whole word: the "@" follows the start of the text or a rune
+// that is neither a name character nor "/", "." or "@" (so not
+// "https://github.com/@humagen" or "ops@humagen"), and the name is followed
+// by the end of the text, a space, or punctuation other than "/" and a "."
+// that runs on into a word (so not "@humagen.dev" or "@humagen/reviewers").
 func Find(text string, handles ...string) (start, end int, ok bool) {
 	names := make([]string, 0, len(handles))
 	for _, h := range handles {
@@ -67,77 +75,198 @@ func Find(text string, handles ...string) (start, end int, ok bool) {
 		return 0, 0, false
 	}
 	lower := strings.ToLower(text)
-	fence := ""
+	shown := hidden(text)
+	for i := 0; i < len(text); i++ {
+		if text[i] != '@' || shown[i] {
+			continue
+		}
+		if i > 0 && (nameByte(lower[i-1]) || lower[i-1] == '.' || lower[i-1] == '@' || lower[i-1] == '/') {
+			continue
+		}
+		for _, name := range names {
+			e := i + 1 + len(name)
+			if e > len(text) || lower[i+1:e] != name {
+				continue
+			}
+			// The app's login as its payloads spell it is the same account.
+			if strings.HasPrefix(lower[e:], "[bot]") {
+				e += len("[bot]")
+			}
+			if e < len(text) && !endsWord(lower, e) {
+				continue
+			}
+			return i, e, true
+		}
+	}
+	return 0, 0, false
+}
+
+// endsWord reports whether a name may end at text[e:]: a space, or
+// punctuation other than "/" and a "." followed by more of a word.
+func endsWord(text string, e int) bool {
+	switch b := text[e]; {
+	case nameByte(b), b == '/', b == '@':
+		return false
+	case b == '.':
+		return e+1 == len(text) || isSpace(text[e+1])
+	}
+	return true
+}
+
+// hidden marks the bytes of text that are not prose: what a person shows or
+// quotes rather than says. They are fenced and indented code blocks, inline
+// code spans (across lines, within a paragraph), <code> and <pre> elements,
+// HTML comments, and quoted lines with the lines a quote runs on to.
+func hidden(text string) []bool {
+	out := make([]bool, len(text))
+	mark := func(from, to int) {
+		for i := from; i < to && i < len(text); i++ {
+			out[i] = true
+		}
+	}
+	lower := strings.ToLower(text)
+	// Elements and comments, wherever they sit.
+	for _, pair := range [][2]string{{"<!--", "-->"}, {"<code", "</code>"}, {"<pre", "</pre>"}} {
+		for from := 0; ; {
+			i := strings.Index(lower[from:], pair[0])
+			if i < 0 {
+				break
+			}
+			i += from
+			j := strings.Index(lower[i+len(pair[0]):], pair[1])
+			end := len(text)
+			if j >= 0 {
+				end = i + len(pair[0]) + j + len(pair[1])
+			}
+			mark(i, end)
+			from = end
+		}
+	}
+	// Blocks, line by line.
+	fence, quoted, prevBlank, inCode := "", false, true, false
 	for off := 0; off < len(text); {
 		lineEnd, next := len(text), len(text)
 		if nl := strings.IndexByte(text[off:], '\n'); nl >= 0 {
 			lineEnd, next = off+nl, off+nl+1
 		}
-		line := strings.TrimSpace(text[off:lineEnd])
+		raw := text[off:lineEnd]
+		line := strings.TrimSpace(raw)
+		blank := line == ""
+		indented := !blank && indentOf(raw) >= 4
+		wasCode := inCode
+		inCode = false
 		switch {
 		case fence != "":
+			mark(off, next)
 			if strings.HasPrefix(line, fence) && strings.Trim(line, fence[:1]) == "" {
 				fence = ""
 			}
-		case fenceOf(line) != "":
+		case !indented && fenceOf(line) != "":
 			fence = fenceOf(line)
-		case strings.HasPrefix(line, ">"):
-			// A quoted reply repeats someone else's words.
-		default:
-			if s, e, found := findInLine(text, lower, off, lineEnd, names); found {
-				return s, e, true
-			}
+			quoted = false
+			mark(off, next)
+		case blank:
+			quoted = false
+			// A blank line inside an indented block does not end it.
+			inCode = wasCode
+		case indented && !quoted && (prevBlank || wasCode):
+			// An indented code block starts after a blank line.
+			mark(off, next)
+			inCode = true
+		case strings.HasPrefix(line, ">") && indentOf(raw) < 4:
+			quoted = true
+			mark(off, next)
+		case quoted:
+			// A line that runs on from a quote is part of it.
+			mark(off, next)
 		}
+		prevBlank = blank
 		off = next
 	}
-	return 0, 0, false
-}
-
-// findInLine finds a trigger in text[from:to], one line outside fenced code,
-// skipping inline code spans.
-func findInLine(text, lower string, from, to int, names []string) (start, end int, ok bool) {
-	for i := from; i < to; i++ {
-		switch text[i] {
-		case '`':
-			// An inline code span runs to the next run of as many backticks.
-			n := i
-			for n < to && text[n] == '`' {
-				n++
+	// Inline code spans in what is left, which may cross lines but not a
+	// blank one.
+	for i := 0; i < len(text); i++ {
+		if text[i] != '`' || out[i] {
+			continue
+		}
+		n := i
+		for n < len(text) && text[n] == '`' {
+			n++
+		}
+		run := text[i:n]
+		close := -1
+		for k := n; k < len(text); k++ {
+			if out[k] || text[k] == '\n' && blankAfter(text, k) {
+				break
 			}
-			run := text[i:n]
-			if close := strings.Index(text[n:to], run); close >= 0 {
-				i = n + close + len(run) - 1
-			} else {
-				i = n - 1
-			}
-		case '@':
-			if i > from && (nameByte(lower[i-1]) || lower[i-1] == '.' || lower[i-1] == '@') {
+			if text[k] != '`' {
 				continue
 			}
-			for _, name := range names {
-				e := i + 1 + len(name)
-				if e > to || lower[i+1:e] != name {
-					continue
-				}
-				// "@humagen/reviewers" is a team, not the account.
-				if e < to && (nameByte(lower[e]) || lower[e] == '/') {
-					continue
-				}
-				// The app's login as its payloads spell it is the same account.
-				if strings.HasPrefix(lower[e:to], "[bot]") {
-					e += len("[bot]")
-				}
-				return i, e, true
+			m := k
+			for m < len(text) && text[m] == '`' {
+				m++
 			}
+			if m-k == len(run) {
+				close = m
+				break
+			}
+			k = m - 1
 		}
+		if close < 0 {
+			i = n - 1
+			continue
+		}
+		mark(i, close)
+		i = close - 1
 	}
-	return 0, 0, false
+	return out
 }
 
-// Leading reads an agent named at the start of s: "docs-bot ...",
-// "@docs-bot ...", "docs-bot: ..." or "ask docs-bot ...". n is how many
-// bytes of s the name, its "ask" and the space after it take. A word lookup
-// does not resolve names nobody, and n is 0.
+// blankAfter reports whether the line after the newline at text[nl] is
+// blank: the end of a paragraph.
+func blankAfter(text string, nl int) bool {
+	for k := nl + 1; k < len(text); k++ {
+		switch text[k] {
+		case '\n':
+			return true
+		case ' ', '\t', '\r':
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+// indentOf is how far a line is indented, a tab counting as four.
+func indentOf(line string) int {
+	n := 0
+	for i := 0; i < len(line); i++ {
+		switch line[i] {
+		case ' ':
+			n++
+		case '\t':
+			n += 4
+		default:
+			return n
+		}
+	}
+	return n
+}
+
+func isSpace(b byte) bool {
+	switch b {
+	case ' ', '\t', '\n', '\r', '\v', '\f':
+		return true
+	}
+	return false
+}
+
+// Leading reads an agent named at the start of s, written so that it can
+// only be a name: "@docs-bot ...", "ask docs-bot ...", or "docs-bot: ..." and
+// "docs-bot, ..." with the punctuation that sets a name apart. A bare word
+// with no such punctuation is part of the sentence ("docs are stale"), even
+// when an agent has that name. n is how many bytes of s the name, its "ask"
+// and the space after it take. With no name, agent is "" and n is 0.
 func Leading(s string, lookup Lookup) (agent string, n int) {
 	if lookup == nil {
 		return "", 0
@@ -151,13 +280,19 @@ func Leading(s string, lookup Lookup) (agent string, n int) {
 			}
 		}
 	}
-	if word == "" {
+	if word == "" || !strings.HasPrefix(word, "@") && !setApart(s, after) {
 		return "", 0
 	}
 	if a, ok := resolve(word, lookup); ok {
 		return a, skipAddress(s, after)
 	}
 	return "", 0
+}
+
+// setApart reports whether the word ending at s[at] is followed by the
+// punctuation people put after a name they address: ":" or ",".
+func setApart(s string, at int) bool {
+	return at < len(s) && (s[at] == ':' || s[at] == ',')
 }
 
 // resolve looks a word up, with or without the "@" a person may type.

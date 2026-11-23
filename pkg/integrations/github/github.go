@@ -48,14 +48,17 @@ type Config struct {
 	ReadRefused func(ctx context.Context, owner, repo string) bool
 	Bots        map[string]string
 	Agents      mention.Set
-	// Login is the app's own login. A comment that mentions it and names
-	// no agent is raised naming none, and the host chooses who answers.
+	// Login is the app's own login, which it comments as. With Triggers
+	// set, it asks as a trigger does; without them, a comment that mentions
+	// it and names no agent is raised naming none, and the host chooses who
+	// answers.
 	Login string
 	// Triggers are the handles that ask, "humagen" and the app's login
 	// without "[bot]" (pkg/trigger). Set, only a comment that holds one asks,
 	// and the agent named right after it answers (trigger.go); a mention of
-	// an agent's name alone asks nobody. Empty leaves the transport's own
-	// reading, where any agent's mention asks.
+	// an agent's name alone asks nobody, and a review requested from a
+	// trigger's account is the host's default's. Empty leaves the
+	// transport's own reading, where any agent's mention asks.
 	Triggers       []string
 	Checks         bool
 	Interval       time.Duration

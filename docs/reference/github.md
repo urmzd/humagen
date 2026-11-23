@@ -61,23 +61,38 @@ export HUMAGEN_GITHUB_ASKERS=octocat,hubot
 `@humagen` is the one trigger. A comment, a review comment, a review body, or
 the body of a new issue or pull request starts a run only when it holds
 `@humagen`, in any case, as a whole word. The trigger counts anywhere in the
-text, but not inside code (`` `@humagen help` `` or a fenced block) or on a
-quoted line (`> @humagen ...`), which repeats what someone else said. The
+text, except where text is shown or quoted rather than said:
+
+- code: an inline span (`` `@humagen help` ``, also across lines), a fenced
+  block, a block indented four spaces, and `<code>` or `<pre>`;
+- an HTML comment (`<!-- @humagen review -->`), so a pull request template
+  can hold one without asking on every pull request;
+- a quoted line (`> @humagen ...`) and the lines that run on from it.
+
+A whole word means nothing joins the name to a word or a path: not
+`@humagen.dev`, `ops@humagen`, `https://github.com/@humagen` or
+`@humagen/reviewers`. A sentence may end on it (`thanks @humagen.`). The
 app's own login without `[bot]` (`github.login`, such as `humagen-acme` for
 `humagen-acme[bot]`) is a trigger too.
 
-The agent named right after the trigger answers. Name it with or without
-`@`, or after `ask`. Otherwise the default answers:
+The agent named right after the trigger answers. Write the name so it can
+only be a name: after `ask`, with `:` or `,` after it, or as `@name`. A bare
+first word is part of the question, even when an agent has that name, so
+`@humagen docs are stale` asks the default about stale docs. Otherwise the
+default answers:
 
 | Comment | Who answers | What the agent reads |
 |---|---|---|
 | `@humagen what changed?` | The default (below) | `what changed?` |
-| `@humagen research-bot why is the cache cold?` | research-bot | `why is the cache cold?` |
-| `@humagen @research-bot why is the cache cold?` | research-bot | `why is the cache cold?` |
-| `@humagen ask research-bot: why is the cache cold?` | research-bot | `why is the cache cold?` |
+| `@humagen ask research-bot why is the cache cold?` | research-bot | `why is the cache cold?` |
+| `@humagen research-bot: why is the cache cold?` | research-bot | `why is the cache cold?` |
+| `@humagen research-bot why is the cache cold?` | The default | `research-bot why is the cache cold?` |
 | `Thanks. Could @humagen summarize this?` | The default | The whole comment, as written |
 | `@research-bot why is the cache cold?` | Nobody | Nothing starts |
 | `> @humagen what changed?` and a reply under it | Nobody | Nothing starts |
+
+`@humagen @research-bot ...` names research-bot too, but on GitHub it also
+notifies any account called `research-bot`. Prefer `ask research-bot`.
 
 A trigger that opens the comment is its address, and is taken out with the
 agent's name after it. Anywhere else the whole comment is sent as written.
@@ -99,6 +114,10 @@ never swapped for one it may. A plain question asks the default even where
 another agent answered before, so `@humagen what changed?` gets a plain
 answer on a pull request that was reviewed.
 
+A review requested from the `humagen` account (or another trigger's) is the
+default's, as `@humagen review` is: the repository's agent reviews, else the
+next default.
+
 A reply without the trigger continues a conversation an agent already has
 there: the agent that answered there before reads it, whatever the reply
 mentions. A comment that holds no trigger anywhere else starts nothing, so a
@@ -119,7 +138,7 @@ reviewer, such as `github-reviewer`, still sends every plain question to that
 reviewer. Unset it, or set it to the entry agent, so a plain question gets a
 plain answer. To keep automatic review, name the reviewer in the repository's
 [settings](#repository-settings). People ask the reviewer by name:
-`@humagen github-reviewer review this`. A `HUMAGEN_GITHUB_BOTS` entry for the
+`@humagen ask github-reviewer to review this`. A `HUMAGEN_GITHUB_BOTS` entry for the
 app's own login (`humagen[bot]=github-reviewer`) no longer changes who a
 mention asks, and can go.
 
@@ -454,7 +473,7 @@ humagen serve -agent-specs examples/github-review/fixer.json
 A repository writer can request a fix in a PR conversation or review thread:
 
 ```text
-@humagen github-fixer /fix handle the retry timeout and add a regression test
+@humagen ask github-fixer /fix handle the retry timeout and add a regression test
 ```
 
 `github_read_file` reads complete UTF-8 source at an immutable SHA before editing.
@@ -465,9 +484,9 @@ are read-only for this tool. Branch protections still apply.
 
 Fixes require an explicit `/fix` mention from a person with effective GitHub
 write permission. The command is the first word after the address, the
-trigger and the agent's name: `@humagen github-fixer /fix the typo` asks for a
+trigger and the agent's name: `@humagen ask github-fixer /fix the typo` asks for a
 fix, and a comment that puts words or a mention before the command, as
-`/check @humagen github-fixer 123456789` does before the run id, grants
+`/check @humagen ask github-fixer 123456789` does before the run id, grants
 nothing. Permission is checked at acceptance and again before writing.
 The connector signs a grant bound to the run ID, actor, repository, PR and head.
 The run ID is the runtime's, derived from the client's workspace and the
@@ -494,7 +513,7 @@ GitHub permission.
 With mutations enabled, a repository writer can request:
 
 ```text
-@humagen github-fixer /check 123456789
+@humagen ask github-fixer /check 123456789
 ```
 
 The number is an existing GitHub Actions run ID. The connector binds the grant
