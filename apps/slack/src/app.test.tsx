@@ -123,8 +123,8 @@ test("a mention becomes one run, streamed natively, with the session kept in ste
   assert.deepEqual(
     tasks.map((t) => [t.title, t.status]),
     [
-      ["Github search", "in_progress"],
-      ["Github search", "complete"],
+      ["GitHub search", "in_progress"],
+      ["GitHub search", "complete"],
     ],
   );
   assert.ok(
@@ -152,7 +152,7 @@ test("a mention becomes one run, streamed natively, with the session kept in ste
   ]);
   assert.deepEqual(w.slack.statuses, ["processing", "active"]);
   // The status line follows the work, and is cleared before the session settles.
-  assert.deepEqual(w.slack.lines, ["Thinking", "Github search", "Thinking", ""]);
+  assert.deepEqual(w.slack.lines, ["Thinking", "GitHub search", "Thinking", ""]);
   assert.equal(w.slack.of("reactions.add").at(-1)?.name, "white_check_mark");
   assert.equal(
     w.slack.streamed,

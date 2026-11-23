@@ -38,19 +38,19 @@ describe("a failed run in plain words", () => {
 
   it("names the agent by the name people see, and says why and what to do", () => {
     for (const cause of Object.keys(title) as FailureCause[]) {
-      expect(failureTitle(failure(cause), defaultCopy, "Github Reviewer")).toBe(
-        title[cause]("Github Reviewer"),
+      expect(failureTitle(failure(cause), defaultCopy, "GitHub Reviewer")).toBe(
+        title[cause]("GitHub Reviewer"),
       );
-      const summary = summarizeTurn(failed(cause), defaultCopy, "Github Reviewer");
-      expect(summary).toBe(`${title[cause]("Github Reviewer")}: ${words.because[cause]}`);
+      const summary = summarizeTurn(failed(cause), defaultCopy, "GitHub Reviewer");
+      expect(summary).toBe(`${title[cause]("GitHub Reviewer")}: ${words.because[cause]}`);
       // The runtime's words are never the summary.
       expect(summary).not.toContain("raw error");
     }
   });
 
   it("says the model provider case as one sentence with where to fix it", () => {
-    expect(summarizeTurn(failed("no_model_provider"), defaultCopy, "Github Reviewer")).toBe(
-      "Github Reviewer could not run: Its model provider is not enabled. An admin can turn it on in Settings > Model providers.",
+    expect(summarizeTurn(failed("no_model_provider"), defaultCopy, "GitHub Reviewer")).toBe(
+      "GitHub Reviewer could not run: Its model provider is not enabled. An admin can turn it on in Settings > Model providers.",
     );
   });
 

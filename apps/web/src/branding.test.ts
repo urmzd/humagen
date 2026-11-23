@@ -90,8 +90,19 @@ test("the entry agent is shown by the workspace's name, every other agent by its
   brandCopy({}, { ...servedBranding("Acme"), entry_agent: "front-desk" });
   assert.equal(agentShown("front-desk"), "Acme");
   assert.equal(agentShown("humagen"), "Humagen");
+  // A name the workspace typed is shown as typed, whatever its words or capitals.
+  for (const typed of ["Github Sre Devops", "acme ai", "the qa_desk", "front-desk"]) {
+    brandCopy({}, { ...servedBranding(typed), entry_agent: "front-desk" });
+    assert.equal(agentShown("front-desk"), typed);
+  }
+  brandCopy({}, { ...servedBranding("Acme"), entry_agent: "front-desk" });
   // A name already written as one is kept as it is.
   assert.equal(titled("GitHub-bot"), "GitHub Bot");
   // A short word a name writes in capitals stays in capitals.
   assert.equal(agentShown("qa-reviewer"), "QA Reviewer");
+  // A brand keeps its own capitals.
+  assert.equal(agentShown("github-reviewer"), "GitHub Reviewer");
+  assert.equal(agentShown("slack_triage"), "Slack Triage");
+  assert.equal(agentShown("openai-evals"), "OpenAI Evals");
+  assert.equal(titled("GITHUB bigquery-analyst"), "GitHub BigQuery Analyst");
 });

@@ -168,6 +168,20 @@ export function foldsIntoFailure(alert: Alert, turns: ThreadTurn[]): string | un
 
 /** How many runs not on view a session reads to place their alerts. */
 const ROOT_READS = 20;
+/**
+ * How long an alert waits for its run's root. A read that hangs past it
+ * counts as failed, so the alert is placed by its time rather than hidden.
+ */
+export const ROOT_WAIT_MS = 4000;
+
+/** `read`, or a rejection once `ms` pass first. A later answer is ignored. */
+export function withinTime<T>(read: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`no answer in ${ms}ms`)), ms);
+  });
+  return Promise.race([read, late]).finally(() => clearTimeout(timer));
+}
 
 /**
  * The run at the top of each call tree an alert is about, when that run is
@@ -178,6 +192,7 @@ const ROOT_READS = 20;
 export function useAlertRoots(
   alerts: Alert[],
   turns: ThreadTurn[],
+  wait = ROOT_WAIT_MS,
 ): { roots: Map<string, string>; waiting: Set<string> } {
   // A run's root, or "" once a read of it failed.
   const [roots, setRoots] = useState<Map<string, string>>(() => new Map());
@@ -194,13 +209,14 @@ export function useAlertRoots(
     if (!key) return;
     for (const id of key.split(",")) {
       asked.current.add(id);
-      api.run(id).then(
+      withinTime(api.run(id), wait).then(
         // A run nobody called is its own root: a turn, on a page not read yet.
         (run) => setRoots((m) => new Map(m).set(id, run.root ?? "")),
+        // A failed or hanging read: the alert is placed at its own time.
         () => setRoots((m) => new Map(m).set(id, "")),
       );
     }
-  }, [key]);
+  }, [key, wait]);
   // Read, or about to be: its alert waits for the answer rather than moving once it comes.
   const reading = new Set([...asked.current, ...wanted]);
   return { roots, waiting: new Set(off.filter((id) => reading.has(id) && !roots.has(id))) };

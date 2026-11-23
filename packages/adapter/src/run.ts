@@ -10,6 +10,7 @@ import type {
   Turn,
   TurnEvent,
 } from "@humagen/core";
+import { spelled } from "@humagen/core/spelling";
 import type { RunEvent } from "@humagen/client/types";
 import { interruptOf, settledOf, type WireQuestion } from "./question.ts";
 
@@ -588,10 +589,17 @@ function lastLine(error?: string): string {
   return lines[lines.length - 1]?.trim() ?? "";
 }
 
-/** A tool name as a person would read it: "github.comment" becomes "Github comment". */
+/**
+ * A tool name as a person would read it: "github.comment" becomes "GitHub
+ * comment", with brands and short words spelled their own way.
+ */
 function title(name?: string): string {
   if (!name) return "Tool call";
-  const words = name.replace(/[._-]+/g, " ").trim();
+  const words = name
+    .split(/[._\-\s]+/)
+    .filter(Boolean)
+    .map((word) => spelled(word) ?? word)
+    .join(" ");
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 

@@ -58,14 +58,14 @@ test("a failed answer says what happened in one plain sentence, without the runt
   };
   const words = defaultCopy.runFailure;
   show(
-    <AgentNameContext.Provider value={(n) => (n === "github-reviewer" ? "Github Reviewer" : n)}>
+    <AgentNameContext.Provider value={(n) => (n === "github-reviewer" ? "GitHub Reviewer" : n)}>
       <AgentMessage turn={turn} disclaimer={false} />
     </AgentNameContext.Provider>,
   );
   // Who can fix it is an admin, so it is a warning, not an alarm.
   const alert = document.querySelector<HTMLElement>('[data-aui="callout"]') as HTMLElement;
   assert.equal(alert.getAttribute("data-tone"), "warn");
-  assert.ok(alert.textContent?.includes(words.couldNotRun("Github Reviewer")));
+  assert.ok(alert.textContent?.includes(words.couldNotRun("GitHub Reviewer")));
   assert.ok(alert.textContent?.includes(words.because.no_model_provider));
   // The sentence says what to do, so nothing under it says to send a new message.
   assert.ok(!document.body.textContent?.includes(defaultCopy.cantRetry));

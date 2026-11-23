@@ -283,7 +283,7 @@ test("a streamed answer with a tool call is one turn, rendered by both surfaces"
   assert.deepEqual(
     turn.tasks.map((t) => [t.title, t.status, t.output]),
     [
-      ["Github search", "complete", "3 commits"],
+      ["GitHub search", "complete", "3 commits"],
       ["Publish artifact", "complete", "published"],
     ],
   );
