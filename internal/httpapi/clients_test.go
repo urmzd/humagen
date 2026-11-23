@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/clients"
 	slackflow "github.com/urmzd/humagen/pkg/integrations/slack"
 	"github.com/urmzd/saige/flow/signature"
@@ -54,9 +55,16 @@ func (s *syncBuffer) String() string {
 func clientFixture(t *testing.T) (*fixture, *slackflow.Fake, *syncBuffer) {
 	t.Helper()
 	fake, logs := slackflow.NewFake(), &syncBuffer{}
+	// A Slack connector starts a run only for a person its client maps, who
+	// may start runs: ana, where a test maps her.
+	pol, err := auth.ParsePolicy("test", "role viewer { allow read on * }\nrole operator extends viewer { allow write on runs }\ngrant operator to subject \"ana\"\n")
+	if err != nil {
+		t.Fatal(err)
+	}
 	f := newFixtureWith(t, platform.Config{
 		SlackAPI:       func(string) slackflow.API { return fake },
 		ClientInterval: -1,
+		Policy:         pol,
 		Log:            slog.New(slog.NewTextHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug})),
 	})
 	return f, fake, logs
@@ -93,7 +101,7 @@ func TestClientSecretsNeverAppearInAResponseOrALog(t *testing.T) {
 	keep(f.do(t, nil, "GET", "/api/clients/docs", admin, ""))
 	// An update that sends no secrets keeps them, and still shows none.
 	res, updated := keep(f.do(t, nil, "PUT", "/api/clients/docs", admin,
-		`{"name":"Docs","surface":"slack","identity":{"app_id":"A0DOCS","team":"T01ABCDEF"},"default_agent":"helper","slack":{"sessions":true}}`))
+		`{"name":"Docs","surface":"slack","identity":{"app_id":"A0DOCS","team":"T01ABCDEF"},"default_agent":"helper","slack":{"sessions":true,"machine":"svc-slack","people":{"U01":"ana"}}}`))
 	if res.StatusCode != http.StatusOK || updated["version"].(float64) != 2 || updated["name"] != "Docs" {
 		t.Fatalf("update = %d %v", res.StatusCode, updated)
 	}

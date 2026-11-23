@@ -435,6 +435,27 @@ test("models are chosen per agent: old shared-chain addresses land on the agents
   assert.deepEqual(parse("/settings/models"), { page: "agents" });
 });
 
+test("a GitHub app's repositories, and one repository's settings, have addresses under Apps", () => {
+  const list: Route = { page: "repositories", client: "gh" };
+  const one: Route = { page: "repositories", client: "gh", repo: "acme/site" };
+  assert.equal(href(list), "/settings/apps/github/gh/repositories");
+  assert.equal(href(one), "/settings/apps/github/gh/repositories/acme/site");
+  assert.deepEqual(parse(href(list)), list);
+  assert.deepEqual(parse(href(one)), one);
+  assert.equal(
+    href({ page: "repositories", client: "a b", repo: "acme/my.site" }),
+    "/settings/apps/github/a%20b/repositories/acme/my.site",
+  );
+  // A half repository name opens the list, and the app's sheet keeps its address.
+  assert.deepEqual(parse("/settings/apps/github/gh/repositories/acme"), list);
+  assert.deepEqual(parse("/settings/apps/github/gh"), {
+    page: "connections",
+    provider: "github",
+    scope: "apps",
+  });
+  assert.match(documentTitle(list), /^Repositories - /);
+});
+
 test("Plugins is a section of your settings and Apps one of the workspace's; old Connections links still open", () => {
   assert.equal(href({ page: "connections" }), "/settings/plugins");
   assert.equal(href({ page: "connections", provider: "notion" }), "/settings/plugins/notion");

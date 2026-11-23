@@ -1,7 +1,6 @@
 package platform
 
 import (
-	"context"
 	"errors"
 	"io"
 	"net/http"
@@ -288,80 +287,42 @@ func TestAccountLinkRefusesMachinesAndSharedScope(t *testing.T) {
 	}
 }
 
-func TestLinkedAccountsResolveBeforeThePeopleMap(t *testing.T) {
+// Linking records who a person is on a surface and nothing else: whom a
+// client's connector acts for is still its people map alone, with or without
+// a link.
+func TestALinkedAccountLeavesWhoASurfaceUserIsUnchanged(t *testing.T) {
 	p, _ := linkFixture(t)
-	gh := clients.Client{ID: "github", Tenant: "t", Surface: clients.GitHub, Enabled: true, GitHub: &clients.GitHubOptions{People: map[string]string{"octocat": "from-env", "hubot": "hubot-env"}}}
-	tag := func(login string) event.Envelope { return wire.NewEvent(wire.Raise{Actor: event.Actor{ID: login}}) }
-	delivery := func(id, login string) context.Context {
-		return withGitHubSender(t.Context(), []byte(`{"sender":{"id":`+id+`,"login":"`+login+`"}}`))
-	}
-	if got := p.surfacePerson(delivery("42", "octocat"), gh, tag("octocat")); got != "from-env" {
-		t.Fatalf("unlinked: %q", got)
-	}
-	if _, err := p.Accounts.Link("t", accounts.Account{Surface: accounts.GitHub, ID: "42", Login: "old-name", Subject: "ana"}); err != nil {
-		t.Fatal(err)
-	}
-	for _, test := range []struct {
-		ctx   context.Context
-		login string
-		want  string
-	}{
-		{delivery("42", "octocat"), "octocat", "ana"},
-		// A login renamed since linking still resolves by id.
-		{delivery("42", "OctoCat"), "OctoCat", "ana"},
-		// Without the delivery's sender, only the map.
-		{t.Context(), "octocat", "from-env"},
-		// A sender who is not the actor is not believed.
-		{delivery("42", "hubot"), "octocat", "from-env"},
-		{delivery("7", "hubot"), "hubot", "hubot-env"},
-	} {
-		if got := p.surfacePerson(test.ctx, gh, tag(test.login)); got != test.want {
-			t.Fatalf("%s: %q want %q", test.login, got, test.want)
-		}
-	}
-	// Another tenant's link is not this client's.
-	other := gh
-	other.Tenant = "t2"
-	if got := p.surfacePerson(delivery("42", "octocat"), other, tag("octocat")); got != "from-env" {
-		t.Fatalf("t2: %q", got)
-	}
-
-	sl := clients.Client{ID: "slack", Name: "Slack", Surface: clients.Slack, Enabled: true, Identity: clients.Identity{Team: "T0TEAM"}, Slack: &clients.SlackOptions{Machine: "m", People: map[string]string{"U0ANA": "from-file", "U0BOB": "bob-file"}}}
-	created, err := p.Clients.Create("t", sl, clients.DefaultCaps(), time.Now())
+	gh := clients.Client{ID: "github", Tenant: "t", Surface: clients.GitHub, Enabled: true, GitHub: &clients.GitHubOptions{People: map[string]string{"hubot": "from-map"}}}
+	sl, err := p.Clients.Create("t", clients.Client{ID: "slack", Name: "Slack", Surface: clients.Slack, Enabled: true, Identity: clients.Identity{Team: "T0TEAM"}, Slack: &clients.SlackOptions{Machine: "m", People: map[string]string{"U0BOB": "from-map"}}}, clients.DefaultCaps(), time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := p.surfacePerson(t.Context(), created, tag("U0ANA")); got != "from-file" {
-		t.Fatalf("unlinked Slack: %q", got)
+	tag := func(id string) event.Envelope { return wire.NewEvent(wire.Raise{Actor: event.Actor{ID: id}}) }
+	type answer struct {
+		octocat, hubot, ana, bob string
+		sender, acts             bool
 	}
-	if _, err := p.Accounts.Link("t", accounts.Account{Surface: accounts.Slack, ID: "U0ANA", Team: "T0TEAM", Login: "Ana", Subject: "ana"}); err != nil {
+	read := func() answer {
+		_, acts := sl.ActsFor("m", "U0ANA")
+		return answer{
+			octocat: p.surfacePerson(gh, tag("octocat")), hubot: p.surfacePerson(gh, tag("hubot")),
+			ana: p.surfacePerson(sl, tag("U0ANA")), bob: p.surfacePerson(sl, tag("U0BOB")),
+			sender: p.slackSender(sl, "T0TEAM", "U0ANA"), acts: acts,
+		}
+	}
+	before := read()
+	if before != (answer{hubot: "from-map", bob: "from-map"}) {
+		t.Fatalf("before linking: %+v", before)
+	}
+	ana := person("t", "ana")
+	if err := p.CompleteAccount(t.Context(), ana, GitHubAccount, beginLink(t, p, ana, GitHubAccount), "code", browser(ana)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := p.Accounts.Link("t", accounts.Account{Surface: accounts.Slack, ID: "U0BOB", Team: "T0ELSE", Login: "Bob", Subject: "bob"}); err != nil {
+	if err := p.CompleteAccount(t.Context(), ana, SlackAccount, beginLink(t, p, ana, SlackAccount), "code", browser(ana)); err != nil {
 		t.Fatal(err)
 	}
-	if got := p.surfacePerson(t.Context(), created, tag("U0ANA")); got != "ana" {
-		t.Fatalf("linked Slack: %q", got)
-	}
-	// A link from another team does not answer for this one.
-	if got := p.surfacePerson(t.Context(), created, tag("U0BOB")); got != "bob-file" {
-		t.Fatalf("other team's link: %q", got)
-	}
-	if people := p.slackPeople("t", created); people["U0ANA"] != "ana" || people["U0BOB"] != "bob-file" {
-		t.Fatalf("slack people %v", people)
-	}
-	// The Slack app's own credential acts for a linked person; no other may.
-	if _, err := p.Accounts.Link("t", accounts.Account{Surface: accounts.Slack, ID: "U0CAROL", Team: "T0TEAM", Login: "Carol", Subject: "carol"}); err != nil {
-		t.Fatal(err)
-	}
-	if who, ok := p.actsFor(created, "m", "U0CAROL"); !ok || who != "carol" {
-		t.Fatalf("app acts for %q %v", who, ok)
-	}
-	if who, ok := p.actsFor(created, "m", "U0BOB"); !ok || who != "bob-file" {
-		t.Fatalf("map fallback %q %v", who, ok)
-	}
-	if _, ok := p.actsFor(created, "someone-else", "U0CAROL"); ok {
-		t.Fatal("another credential acted for a linked person")
+	if after := read(); after != before {
+		t.Fatalf("linking changed who a surface user is: %+v, was %+v", after, before)
 	}
 }
 
@@ -399,53 +360,6 @@ func TestAccountLinkIsBoundToTheBrowserThatBeganIt(t *testing.T) {
 	}
 	if err := p.CompleteAccount(t.Context(), ana, GitHubAccount, state, "code", browser(ana)); err != nil {
 		t.Fatalf("her own browser: %v", err)
-	}
-}
-
-// A login the map names for a person who linked their account no longer
-// speaks for them: GitHub lets anyone register a login its owner renamed away
-// from, so only the linked id does.
-func TestTheLoginMapStopsSpeakingForAPersonWhoLinked(t *testing.T) {
-	p, _ := linkFixture(t)
-	gh := clients.Client{ID: "github", Tenant: "t", Surface: clients.GitHub, Enabled: true, GitHub: &clients.GitHubOptions{People: map[string]string{"alice": "ana", "bob": "bo"}}}
-	tag := func(login string) event.Envelope { return wire.NewEvent(wire.Raise{Actor: event.Actor{ID: login}}) }
-	delivery := func(id, login string) context.Context {
-		return withGitHubSender(t.Context(), []byte(`{"sender":{"id":`+id+`,"login":"`+login+`"}}`))
-	}
-	if got := p.surfacePerson(delivery("2", "alice"), gh, tag("alice")); got != "ana" {
-		t.Fatalf("before linking, the map: %q", got)
-	}
-	if _, err := p.Accounts.Link("t", accounts.Account{Surface: accounts.GitHub, ID: "1", Login: "alice", Subject: "ana"}); err != nil {
-		t.Fatal(err)
-	}
-	// alice renamed; someone else registered "alice" (id 2).
-	if got := p.surfacePerson(delivery("2", "alice"), gh, tag("alice")); got != "" {
-		t.Fatalf("the new owner of the login acts for %q", got)
-	}
-	if got := p.surfacePerson(t.Context(), gh, tag("alice")); got != "" {
-		t.Fatalf("with no sender id, the map acts for %q", got)
-	}
-	if got := p.surfacePerson(delivery("1", "alice-renamed"), gh, tag("alice-renamed")); got != "ana" {
-		t.Fatalf("ana by her id: %q", got)
-	}
-	// Someone who did not link is still mapped.
-	if got := p.surfacePerson(delivery("3", "bob"), gh, tag("bob")); got != "bo" {
-		t.Fatalf("bob: %q", got)
-	}
-	asks := func(id int64, login string) bool {
-		return p.linkedGitHub("t", id) != "" || p.githubMapped(gh, login) != ""
-	}
-	body := func(id, login string) []byte {
-		return []byte(`{"action":"created","sender":{"id":` + id + `,"login":"` + login + `"},"comment":{"user":{"id":` + id + `,"login":"` + login + `"},"author_association":"NONE"}}`)
-	}
-	if _, ok, _ := gh.GitHubAsker("issue_comment", body("2", "alice"), asks); ok {
-		t.Fatal("the new owner of a linked person's old login may ask")
-	}
-	if _, ok, why := gh.GitHubAsker("issue_comment", body("1", "alice-renamed"), asks); !ok {
-		t.Fatalf("the linked person may not ask: %s", why)
-	}
-	if _, ok, why := gh.GitHubAsker("issue_comment", body("3", "bob"), asks); !ok {
-		t.Fatalf("a mapped person may not ask: %s", why)
 	}
 }
 

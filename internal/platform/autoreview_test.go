@@ -26,7 +26,7 @@ func TestAPullRequestIsReviewedAutomaticallyOncePerCommit(t *testing.T) {
 	f := &fakes{}
 	p := stage(t, &cast{says: map[string][][]saigetypes.Delta{"lead": {say("Reviewed."), say("Reviewed again.")}}}, f.config())
 	create(t, p, tenant, platform.ClientInput{
-		Client: clients.Client{ID: "gh", Name: "GitHub", Surface: clients.GitHub, Enabled: true, Identity: clients.Identity{Owners: []string{"acme"}, Installation: "101"}, DefaultAgent: "lead", GitHub: &clients.GitHubOptions{}},
+		Client: clients.Client{ID: "gh", Name: "GitHub", Surface: clients.GitHub, Enabled: true, Identity: clients.Identity{Owners: []string{"acme"}, Installation: "101"}, DefaultAgent: "lead", GitHub: &clients.GitHubOptions{AutoReview: reviewOn()}},
 		Token:  clients.SecretInput{Value: "token-gh"}, SigningSecret: clients.SecretInput{Value: "secret-gh"},
 	})
 	first, second := strings.Repeat("a", 40), strings.Repeat("b", 40)
@@ -90,7 +90,7 @@ func TestAutomaticReviewPausesAfterFivePushesUntilSomeoneAsks(t *testing.T) {
 	}
 	p := stage(t, &cast{says: map[string][][]saigetypes.Delta{"lead": answers}}, f.config())
 	create(t, p, tenant, platform.ClientInput{
-		Client: clients.Client{ID: "gh", Name: "GitHub", Surface: clients.GitHub, Enabled: true, Identity: clients.Identity{Owners: []string{"acme"}, Installation: "101"}, DefaultAgent: "lead", GitHub: &clients.GitHubOptions{Login: "humagen[bot]"}},
+		Client: clients.Client{ID: "gh", Name: "GitHub", Surface: clients.GitHub, Enabled: true, Identity: clients.Identity{Owners: []string{"acme"}, Installation: "101"}, DefaultAgent: "lead", GitHub: &clients.GitHubOptions{Login: "humagen[bot]", AutoReview: reviewOn()}},
 		Token:  clients.SecretInput{Value: "token-gh"}, SigningSecret: clients.SecretInput{Value: "secret-gh"},
 	})
 	deliver := func(kind, delivery, body string) {
@@ -167,7 +167,7 @@ func TestAutomaticReviewWaitsForTheReviewPackage(t *testing.T) {
 		t.Fatal(err)
 	}
 	create(t, p, tenant, platform.ClientInput{
-		Client: clients.Client{ID: "gh", Name: "GitHub", Surface: clients.GitHub, Enabled: true, Identity: clients.Identity{Owners: []string{"acme"}, Installation: "101"}, DefaultAgent: platform.BuiltinCodeReviewer, GitHub: &clients.GitHubOptions{}},
+		Client: clients.Client{ID: "gh", Name: "GitHub", Surface: clients.GitHub, Enabled: true, Identity: clients.Identity{Owners: []string{"acme"}, Installation: "101"}, DefaultAgent: platform.BuiltinCodeReviewer, GitHub: &clients.GitHubOptions{AutoReview: reviewOn()}},
 		Token:  clients.SecretInput{Value: "token-gh"}, SigningSecret: clients.SecretInput{Value: "secret-gh"},
 	})
 	post := func(sha, delivery string) {
@@ -199,4 +199,11 @@ func TestAutomaticReviewWaitsForTheReviewPackage(t *testing.T) {
 	if run, err := p.Runs.Get(tenant, id(second)); err != nil || run.Agent != platform.BuiltinCodeReviewer {
 		t.Fatalf("with Review installed: %+v, %v", run, err)
 	}
+}
+
+// reviewOn is a client's automatic review switched on, which it is not by
+// default.
+func reviewOn() *clients.AutoReview {
+	on := true
+	return &clients.AutoReview{Enabled: &on}
 }

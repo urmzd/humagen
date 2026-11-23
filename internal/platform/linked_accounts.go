@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"maps"
 	"net/url"
 	"regexp"
 	"strconv"
@@ -23,11 +22,14 @@ import (
 // consent every person-scoped service uses, begun and finished only in their
 // own browser (AuthorizeAccount, then CompleteAccount on the consent's
 // return): the state is theirs alone, bound to a secret that browser holds,
-// and spent once. An agent's tool or an MCP client is refused. The callback asks the surface who
-// signed in (GitHub's GET /user, Slack's OpenID Connect userInfo) and keeps
-// only the answer, in Accounts. The token is used for that one request and
-// never written: nothing Humagen does needs to act as the person on the
-// surface, so nothing holds the means to.
+// and spent once. An agent's tool or an MCP client is refused. The callback
+// asks the surface who signed in (GitHub's GET /user, Slack's OpenID Connect
+// userInfo) and keeps only the answer, in Accounts. The token is used for
+// that one request and never written: nothing Humagen does needs to act as
+// the person on the surface, so nothing holds the means to.
+//
+// A link is a record and no more. Whom a surface's user acts for is still
+// the client's people map (surfacePerson, slackPerson), which reads no link.
 
 // The account-link connections, one per surface.
 const (
@@ -300,8 +302,8 @@ func (p *Platform) LinkedAccounts(who auth.Principal, client string) ([]accounts
 }
 
 // UnlinkAccount removes the account a surface user linked, on a client's
-// surface, as the workspace's administrator does for someone who left or
-// whose account was taken. Another tenant's client, or a user nobody linked
+// surface, as the workspace's administrator does for someone who left.
+// Another tenant's client, or a user nobody linked
 // there, is not found.
 func (p *Platform) UnlinkAccount(who auth.Principal, client, id string) error {
 	if !who.Can(auth.ClientsWrite) {
@@ -332,129 +334,4 @@ func (p *Platform) UnlinkAccount(who auth.Principal, client, id string) error {
 		p.LogAuditCompletionFailure(completion)
 	}
 	return err
-}
-
-// linkedGitHub is the person a GitHub user id is linked to in a workspace.
-func (p *Platform) linkedGitHub(tenant string, id int64) string {
-	if id <= 0 || p.Accounts == nil {
-		return ""
-	}
-	a, err := p.Accounts.Get(tenant, accounts.GitHub, "", strconv.FormatInt(id, 10))
-	if err != nil {
-		if !errors.Is(err, accounts.ErrNotFound) {
-			p.log.Warn("platform: linked GitHub accounts could not be read", "tenant", tenant, "error", err)
-		}
-		return ""
-	}
-	return a.Subject
-}
-
-// linkedSlack is the person a Slack user of a team is linked to in a
-// workspace.
-func (p *Platform) linkedSlack(tenant, team, user string) string {
-	if user == "" || team == "" || p.Accounts == nil {
-		return ""
-	}
-	a, err := p.Accounts.Get(tenant, accounts.Slack, team, user)
-	if err != nil {
-		if !errors.Is(err, accounts.ErrNotFound) {
-			p.log.Warn("platform: linked Slack accounts could not be read", "tenant", tenant, "error", err)
-		}
-		return ""
-	}
-	return a.Subject
-}
-
-// githubMapped is the person a GitHub client's login map names for login,
-// unless that person linked their GitHub account. A link names the user by
-// the id GitHub gives them for good; a login can be renamed and registered by
-// someone else, so the map stops speaking for anyone who linked.
-func (p *Platform) githubMapped(c clients.Client, login string) string {
-	if c.GitHub == nil {
-		return ""
-	}
-	who := c.GitHub.People[login]
-	if who == "" {
-		return ""
-	}
-	if _, err := p.Accounts.Of(c.Tenant, accounts.GitHub, who); err == nil {
-		return ""
-	} else if !errors.Is(err, accounts.ErrNotFound) {
-		p.log.Warn("platform: linked GitHub accounts could not be read, so the login map is not used", "tenant", c.Tenant, "error", err)
-		return ""
-	}
-	return who
-}
-
-// slackPeople is who a Slack client's users are: the people who linked an
-// account in its team, then the client's own map for anyone who did not.
-// Nil when there is neither.
-func (p *Platform) slackPeople(tenant string, c clients.Client) map[string]string {
-	var out map[string]string
-	if c.Slack != nil && len(c.Slack.People) > 0 {
-		out = make(map[string]string, len(c.Slack.People))
-		maps.Copy(out, c.Slack.People)
-	}
-	if p.Accounts == nil || c.Surface != clients.Slack || c.Identity.Team == "" {
-		return out
-	}
-	linked, err := p.Accounts.List(tenant, accounts.Slack, c.Identity.Team, accounts.MaxList)
-	if err != nil {
-		p.log.Warn("platform: linked Slack accounts could not be read", "tenant", tenant, "error", err)
-		return out
-	}
-	for _, a := range linked {
-		if out == nil {
-			out = map[string]string{}
-		}
-		out[a.ID] = a.Subject
-	}
-	return out
-}
-
-// actsFor is the person a Slack app's own credential (machine) asks for when
-// it acts for a Slack user of its client: the person who linked that user
-// in the client's team, else the client's people map (clients.ActsFor).
-// Only the credential the client names may ask, as before.
-func (p *Platform) actsFor(c clients.Client, machine, user string) (string, bool) {
-	if c.Surface != clients.Slack || !c.Enabled || c.Slack == nil || c.Slack.Machine == "" || machine != c.Slack.Machine {
-		return "", false
-	}
-	if who := p.linkedSlack(c.Tenant, c.Identity.Team, user); who != "" {
-		return who, true
-	}
-	return c.ActsFor(machine, user)
-}
-
-// githubSender is who sent a GitHub delivery, by the id GitHub gives every
-// user for good and the login they go by now. The connector reads the
-// login alone; the hand-off to it carries both on the request's context.
-type githubSender struct {
-	ID    int64
-	Login string
-}
-
-type githubSenderKey struct{}
-
-// withGitHubSender reads a signature-verified delivery's sender onto ctx.
-func withGitHubSender(ctx context.Context, body []byte) context.Context {
-	var h struct {
-		Sender struct {
-			ID    int64  `json:"id"`
-			Login string `json:"login"`
-		} `json:"sender"`
-	}
-	if json.Unmarshal(body, &h) != nil || h.Sender.ID <= 0 || h.Sender.Login == "" {
-		return ctx
-	}
-	return context.WithValue(ctx, githubSenderKey{}, githubSender{ID: h.Sender.ID, Login: h.Sender.Login})
-}
-
-// githubSenderOf is the delivery's sender when its login is login.
-func githubSenderOf(ctx context.Context, login string) (int64, bool) {
-	s, ok := ctx.Value(githubSenderKey{}).(githubSender)
-	if !ok || login == "" || !strings.EqualFold(s.Login, login) {
-		return 0, false
-	}
-	return s.ID, true
 }

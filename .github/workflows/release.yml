@@ -12,17 +12,83 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  # Not secrets: resource names. The provider accepts only this workflow on
+  # main of urmzd/humagen (urmzd/infra, gcp/humagen/ci.tf).
+  WIF_PROVIDER: projects/1026063194415/locations/global/workloadIdentityPools/github/providers/github-humagen
+  IMAGE_PUSHER: humagen-release@gen-lang-client-0907526271.iam.gserviceaccount.com
+  REGISTRY: us-central1-docker.pkg.dev/gen-lang-client-0907526271/humagen
+
 jobs:
+  # A tree is never tagged before CI has passed on it. CI already ran on the
+  # pull request, so this looks for a successful CI run that tested exactly
+  # the tree this commit has, and CI runs again only when none did. The
+  # rule is in docs/guides/ci-and-release.md.
+  tested:
+    name: Find a CI pass for this tree
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
+    outputs:
+      passed: ${{ steps.find.outputs.passed }}
+    steps:
+      - name: Look for a successful CI run on the same tree
+        id: find
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          tree=$(gh api "repos/$REPO/git/commits/$SHA" -q .tree.sha)
+          echo "This commit's tree: $tree"
+          runs="repos/$REPO/actions/workflows/ci.yml/runs?status=success&per_page=20"
+          # 1. CI on this commit itself (a push or a manual run).
+          candidates=$(gh api "$runs&head_sha=$SHA" -q '.workflow_runs[] | select(.event != "pull_request") | .id')
+          # 2. CI on the head of the pull request this commit merged. That
+          #    run tested the head merged into main as main was then, which
+          #    is this tree only if main has not moved since: the recorded
+          #    tree says which.
+          for head in $(gh api "repos/$REPO/commits/$SHA/pulls" \
+              -q ".[] | select(.merge_commit_sha == \"$SHA\" and .base.ref == \"main\") | .head.sha"); do
+            candidates="$candidates $(gh api "$runs&event=pull_request&head_sha=$head" -q '.workflow_runs[].id')"
+          done
+          passed=false
+          for id in $candidates; do
+            dir="$RUNNER_TEMP/tested-tree-$id"
+            if gh run download "$id" -R "$REPO" -n tested-tree -D "$dir" 2>/dev/null \
+                && [ "$(cat "$dir/tested-tree")" = "$tree" ]; then
+              echo "CI run $id passed on this tree: https://github.com/$REPO/actions/runs/$id"
+              passed=true
+              break
+            fi
+            echo "CI run $id tested another tree, or recorded none"
+          done
+          [ "$passed" = true ] || echo "No CI run passed on this tree: CI runs now."
+          echo "passed=$passed" >> "$GITHUB_OUTPUT"
+
+  # If the lookup itself fails, CI runs: only a found pass skips it.
   ci:
+    needs: tested
+    if: ${{ !cancelled() && needs.tested.outputs.passed != 'true' }}
     uses: ./.github/workflows/ci.yml
 
   release:
     name: Release
-    needs: ci
+    needs: [tested, ci]
+    # ci is skipped when the tree already passed; it must pass when it runs.
+    if: >-
+      ${{ !cancelled()
+      && (needs.tested.outputs.passed == 'true' || needs.ci.result == 'success') }}
     environment: release
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    outputs:
+      released: ${{ steps.sr.outputs.released }}
+      tag: ${{ steps.sr.outputs.tag }}
     steps:
       - name: Generate app token
         id: app-token
@@ -38,5 +104,96 @@ jobs:
           token: ${{ steps.app-token.outputs.token }}
 
       - uses: urmzd/sr@v9
+        id: sr
         with:
           github-token: ${{ steps.app-token.outputs.token }}
+
+  # The release's image, built once and pushed to the Artifact Registry the
+  # GKE deploy pulls from (urmzd/infra, gcp/humagen), tagged with the version
+  # and the release commit. The deploy's Images job then finds the tag and
+  # builds nothing. Its build from source stays for refs with no image.
+  image:
+    name: Image
+    needs: release
+    # A bare condition means success() too, and success() fails when any job
+    # upstream was skipped, ci included (it is skipped when the tree already
+    # passed). So the release's own result is checked instead.
+    if: >-
+      ${{ !cancelled()
+      && needs.release.result == 'success'
+      && needs.release.outputs.released == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      TAG: ${{ needs.release.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.release.outputs.tag }}
+
+      - name: The release commit
+        run: echo "SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - uses: google-github-actions/auth@v2
+        id: auth
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.IMAGE_PUSHER }}
+          token_format: access_token
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: oauth2accesstoken
+          password: ${{ steps.auth.outputs.access_token }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      # A tag is written once, so a running pod's tag keeps its digest. The
+      # deploy's fallback may have built humagen:<release SHA> (its usual
+      # humagen_ref) or humagen:<tag> from source first. Then the missing
+      # tag points at that same image, and nothing is built or overwritten.
+      - name: Which tags are already pushed?
+        id: exists
+        run: |
+          set -euo pipefail
+          # Only a clear not-found counts as missing. Any other error (sign-in,
+          # network) fails the job, so it cannot build over a tag it did not see.
+          has() {
+            local out
+            if out=$(docker buildx imagetools inspect "$REGISTRY/humagen:$1" 2>&1); then return 0; fi
+            if grep -qiE ': not found$|manifest unknown' <<<"$out"; then return 1; fi
+            echo "::error::cannot tell whether humagen:$1 exists: $out"
+            exit 1
+          }
+          tag=false sha=false
+          if has "$TAG"; then tag=true; fi
+          if has "$SHA"; then sha=true; fi
+          echo "humagen:$TAG exists: $tag; humagen:$SHA exists: $sha"
+          if [ "$sha" = true ] && [ "$tag" = false ]; then
+            docker buildx imagetools create -t "$REGISTRY/humagen:$TAG" "$REGISTRY/humagen:$SHA"
+          elif [ "$tag" = true ] && [ "$sha" = false ]; then
+            docker buildx imagetools create -t "$REGISTRY/humagen:$SHA" "$REGISTRY/humagen:$TAG"
+          fi
+          if [ "$sha" = true ] || [ "$tag" = true ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # The deploy's fallback passes the same COMMIT. Its VERSION is the
+      # humagen_ref it was given, so only the version string can differ.
+      - name: Build and push
+        if: steps.exists.outputs.exists != 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/humagen:${{ env.TAG }}
+            ${{ env.REGISTRY }}/humagen:${{ env.SHA }}
+          build-args: |
+            VERSION=${{ env.TAG }}
+            COMMIT=${{ env.SHA }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

@@ -99,6 +99,39 @@ func TestAnAutomationAnswersOnTheThreadThatTriggeredIt(t *testing.T) {
 	})
 }
 
+// An automation rule's runs answer with the rule's shape: a rule on
+// pull_request reviews whatever its instructions say, unless it says
+// reply, and a rule on any other event replies.
+func TestAnAutomationRuleCarriesItsShape(t *testing.T) {
+	f := &fakes{}
+	p := stage(t, &cast{says: map[string][][]saigetypes.Delta{"lead": {say("Looked."), say("Looked."), say("Looked.")}}}, f.config())
+	create(t, p, tenant, platform.ClientInput{
+		Client: clients.Client{ID: "gh", Name: "GitHub", Surface: clients.GitHub, Enabled: true, Identity: clients.Identity{Owners: []string{"acme"}, Installation: "101"}, DefaultAgent: "lead", GitHub: &clients.GitHubOptions{Automations: []clients.GitHubAutomation{
+			{Name: "security", Repository: "acme/repo", Event: "pull_request", Action: "opened", Agent: "lead", Instructions: "Check the change for leaked secrets."},
+			{Name: "notes", Repository: "acme/repo", Event: "pull_request", Action: "opened", Agent: "lead", Instructions: "Review the change and draft release notes.", Shape: "reply"},
+		}}},
+		Token: clients.SecretInput{Value: "token-gh"}, SigningSecret: clients.SecretInput{Value: "secret-gh"},
+	})
+	body := `{"action":"opened","installation":{"id":101},"repository":{"full_name":"acme/repo","name":"repo","owner":{"login":"acme"}},"sender":{"login":"human","type":"User"},"pull_request":{"number":7,"user":{"login":"human"},"author_association":"OWNER","head":{"sha":"` + strings.Repeat("a", 40) + `"}},"number":7}`
+	mac := hmac.New(sha256.New, []byte("secret-gh"))
+	mac.Write([]byte(body))
+	r := httptest.NewRequest(http.MethodPost, "/connectors/github", strings.NewReader(body))
+	r.Header.Set("X-Hub-Signature-256", "sha256="+hex.EncodeToString(mac.Sum(nil)))
+	r.Header.Set("X-GitHub-Event", "pull_request")
+	r.Header.Set("X-GitHub-Delivery", "d2")
+	w := httptest.NewRecorder()
+	p.IngressHandler().ServeHTTP(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("delivery = %d", w.Code)
+	}
+	for rule, want := range map[string]string{"security": wire.ShapeReview, "notes": wire.ShapeReply} {
+		run := await(t, p, runtime.RunID(tenant, "automation/gh/d2/"+rule), runs.Completed)
+		if got := wire.ShapeOf(run.Tag()); got != want {
+			t.Errorf("rule %s: shape %q, want %q", rule, got, want)
+		}
+	}
+}
+
 // A schedule that sends its answer to Slack posts through the Slack connection
 // it names, even when another one serves the same workspace, and only there.
 func TestAScheduleDeliversThroughTheSlackConnectionItNames(t *testing.T) {

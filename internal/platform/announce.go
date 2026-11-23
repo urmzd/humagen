@@ -202,11 +202,10 @@ func (p *Platform) SurfaceNoticesFor(ctx context.Context, who auth.Principal, n 
 		if !machineOf(c, who) || c.Slack == nil {
 			continue
 		}
-		people := p.slackPeople(who.Tenant, c)
-		for _, user := range slices.Sorted(maps.Keys(people)) {
+		for _, user := range slices.Sorted(maps.Keys(c.Slack.People)) {
 			// Who the message names is read first, by subject and roles,
 			// so nobody else's projects are walked.
-			named := p.mapped(who, people[user])
+			named := p.mapped(who, c.Slack.People[user])
 			m, err := p.Inbox.GetAs(who.Tenant, n.ID, named)
 			if err != nil || !addressedTo(m, named) {
 				continue

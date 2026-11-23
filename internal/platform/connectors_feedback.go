@@ -164,7 +164,17 @@ func (p *Platform) feedbackFor(c clients.Client) connectors.FeedbackHandler {
 			if _, enabled := p.currentInstallation(c); !enabled || tenant != c.Tenant || actor.ID == "" || actor.Bot {
 				return errors.New("stop: installation or actor refused")
 			}
-			return p.stopFromSurface(ctx, tenant, c.ID, string(c.Surface), run, actor.ID)
+			err := p.stopFromSurface(ctx, tenant, c.ID, string(c.Surface), run, actor.ID)
+			if errors.Is(err, ErrForbidden) {
+				// Refused is final: answering an error would have the
+				// surface deliver the reaction again.
+				p.log.Info("platform: a stop from a surface was refused", "surface", string(c.Surface), "tenant", tenant, "client", c.ID, "run", run, "user", actor.ID, "why", err.Error())
+				return nil
+			}
+			if errors.Is(err, errNothingToStop) {
+				return nil
+			}
+			return err
 		},
 	}
 }
@@ -180,7 +190,7 @@ func (p *Platform) recordSurfaceFeedback(ctx context.Context, c clients.Client, 
 	}
 	nativeID := surfaceHash(c.ID, id)
 	tag := event.Envelope{Data: event.MessagePosted{Request: event.Request{Actor: b.Actor}}}
-	subject := p.surfacePerson(ctx, current, tag)
+	subject := p.surfacePerson(current, tag)
 	if subject == "" {
 		subject = "native:" + string(c.Surface) + ":" + surfaceHash(c.ID, b.Actor.ID)
 	}

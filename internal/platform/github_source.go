@@ -156,6 +156,11 @@ func (p *Platform) sourceReader(ctx context.Context, tenant, owner, repo string)
 	if s == nil {
 		return nil
 	}
+	// A repository the workspace keeps to its own runs is not shown here,
+	// through any client.
+	if !p.readableElsewhere(tenant, owner+"/"+repo) {
+		return nil
+	}
 	for _, st := range s.all() {
 		c := st.client
 		if c.Tenant != tenant || !c.Enabled || st.files == nil {

@@ -185,9 +185,6 @@ func (p *Platform) resolveRequester(tenant string, tag event.Envelope, client st
 	if team == "" {
 		return out
 	}
-	if who := p.linkedSlack(tenant, team, id); who != "" && !slices.Contains(out, who) {
-		out = append(out, who)
-	}
 	all, err := p.Clients.List(tenant)
 	if err != nil {
 		p.log.Error("platform: clients could not be read", "tenant", tenant, "error", err)
@@ -861,7 +858,7 @@ func (p *Platform) answerer(who auth.Principal, as *ActAs) (inbox.Reader, string
 	if err != nil {
 		return inbox.Reader{}, "", fmt.Errorf("%w: this credential does not answer for people of that client", ErrForbidden)
 	}
-	subject, ok := p.actsFor(c, who.Subject, as.User)
+	subject, ok := c.ActsFor(who.Subject, as.User)
 	if !ok {
 		return inbox.Reader{}, "", fmt.Errorf("%w: that person is not mapped to anyone in this workspace", ErrForbidden)
 	}

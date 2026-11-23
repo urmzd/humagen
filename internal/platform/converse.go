@@ -415,6 +415,10 @@ type Turn struct {
 	// agent the turn names that they may not read is refused as one that
 	// does not exist, before anything is asked of it.
 	Sees func(agent string) bool
+	// RequestedBy is the person who asked, by subject, for a turn that acts
+	// for nobody through a surface's credential (asked_by). It is recorded on
+	// the run and grants nothing.
+	RequestedBy string
 	// NamesSkills says the text is a person's own words, so the skills it
 	// names ($<name>, /<name>, @skill:<name>) are pinned for the run as a
 	// message posted in the conversation's project pins them
@@ -495,6 +499,10 @@ func (p *Platform) Converse(ctx context.Context, tenant string, t Turn) (runs.Ru
 			return runs.Run{}, err
 		}
 		pinSkills(meta, skills)
+	}
+
+	if t.RequestedBy != "" {
+		meta[runs.MetaRequestedBy] = t.RequestedBy
 	}
 
 	if t.KeepsNotes && meta[runs.MetaProject] != "" {

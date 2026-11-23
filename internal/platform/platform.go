@@ -97,6 +97,7 @@ import (
 	"github.com/urmzd/humagen/pkg/projectforks"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/readaudit"
+	"github.com/urmzd/humagen/pkg/reposettings"
 	"github.com/urmzd/humagen/pkg/rooms"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/scratchpads"
@@ -439,6 +440,9 @@ type Platform struct {
 	AgentColors *agentcolors.Store
 	// AgentLooks keeps how each agent is drawn and the name people see.
 	AgentLooks *agentlooks.Store
+	// RepoSettings keeps what the workspace set for each repository a
+	// GitHub client covers (github_repo_settings.go).
+	RepoSettings *reposettings.Store
 	// Images keeps the sandbox images each workspace added.
 	Images *images.Store
 	// Scratchpads keeps each conversation's named scratchpads.
@@ -1112,6 +1116,12 @@ func (p *Platform) call(ctx context.Context, tenant, runID string, req call.Requ
 		return runs.Run{}, err
 	}
 
+	// A brief from a run asked on a GitHub issue or pull request names it,
+	// so the agent called never has to ask where it is.
+	brief := req.Text
+	if line := placeLine(parent.Tag().Channel); line != "" && req.Input == nil && req.Text != "" && !strings.Contains(req.Text, line) {
+		req.Text = strings.TrimRight(req.Text, " \t\n") + "\n\n" + line
+	}
 	input := req.Input
 	if input == nil {
 		input = &call.Input{Messages: []call.Message{{Role: "user", Content: []call.Part{call.TextPart{Text: req.Text}}}}, ResponseFormat: call.TextFormat{}}
@@ -1125,7 +1135,14 @@ func (p *Platform) call(ctx context.Context, tenant, runID string, req call.Requ
 			if grant && compare.Lease == 0 {
 				compare.Lease = existing.Lease
 			}
-			if !sameCallInput(existing, compare, *input) || !p.sameHandoffTerms(existing, req.Contract) {
+			same := sameCallInput(existing, compare, *input)
+			if !same && brief != req.Text {
+				// A call made before briefs named their place joins its run.
+				before := compare
+				before.Text = brief
+				same = sameCallInput(existing, before, call.Input{Messages: []call.Message{{Role: "user", Content: []call.Part{call.TextPart{Text: brief}}}}, ResponseFormat: call.TextFormat{}})
+			}
+			if !same || !p.sameHandoffTerms(existing, req.Contract) {
 				return runs.Run{}, fmt.Errorf("%w: call key already identifies a different call", call.ErrInvalid)
 			}
 			return existing, nil

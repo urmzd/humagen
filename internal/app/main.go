@@ -91,6 +91,7 @@ const usage = `usage: humagen start [-f PATH] [flags]     run the platform here;
        humagen create github|slack [flags] connect a surface through the API
        humagen store list|install|remove  use the agent store through the API
        humagen import sessions|skills|agents  bring sessions, skills and agents from other assistants in, through the API
+       humagen migrate sessions [-apply]  file past work into sessions; a dry run unless -apply
        humagen config check|print -f PATH check a spec, or print it with every default
        humagen config copy-keys           list the console's text branding.copy may replace
        humagen slack manifest [flags]     print the Slack app manifest
@@ -171,6 +172,8 @@ func run(o Options, args []string) error {
 		return slackCmd(args[1:], os.Stdout)
 	case "config":
 		return configCmd(o, args[1:], os.Stdout)
+	case "migrate":
+		return migrateCmd(args[1:], os.Stdout)
 	case "help", "-h", "-help", "--help":
 		fmt.Println(usage)
 		return nil
@@ -568,6 +571,7 @@ func serve(o Options, args []string, d serveDefaults) error {
 	for _, app := range slack {
 		app.client = slackClients[app.tenant]
 	}
+	noteSlackPeople(p, o.notes)
 	postReleaseNotes(p, file.cfg, release.Running(o.Version.Version), o.Changelog, log)
 	// After the agents, so an agent the file or the seed names keeps its
 	// name and a person whose handle would be it gets a suffix.

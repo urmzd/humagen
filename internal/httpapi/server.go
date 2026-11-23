@@ -56,6 +56,7 @@ import (
 	"github.com/urmzd/humagen/pkg/prefs"
 	"github.com/urmzd/humagen/pkg/projectforks"
 	"github.com/urmzd/humagen/pkg/projects"
+	"github.com/urmzd/humagen/pkg/reposettings"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/scratchpads"
 	"github.com/urmzd/humagen/pkg/sourcelinks"
@@ -280,6 +281,7 @@ func (s *Server) Handler() http.Handler {
 	s.threadRoutes(mux)
 	s.billingRoutes(mux)
 	s.clientRoutes(mux)
+	s.githubRepoRoutes(mux)
 	s.brandingRoutes(mux)
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, _ *http.Request) { fail(w, http.StatusNotFound, "no such route") })
 
@@ -813,6 +815,12 @@ func (s *Server) createRun(w http.ResponseWriter, r *http.Request, who auth.Prin
 		// ActAs is the person a surface asks for: a Slack user its client
 		// maps. The run is theirs, so they do not approve its calls.
 		ActAs *platform.ActAs `json:"act_as"`
+		// AskedBy is the person a surface's credential starts a run for
+		// nobody at the asking of: a Slack user its client maps, asking
+		// about someone else's message or asking again a turn that acted
+		// for nobody. The run acts for nobody; a Slack app's credential
+		// starts none without act_as or asked_by.
+		AskedBy *platform.ActAs `json:"asked_by"`
 	}
 	if !decode(w, r, &body) {
 		return
@@ -820,6 +828,28 @@ func (s *Server) createRun(w http.ResponseWriter, r *http.Request, who auth.Prin
 	if strings.TrimSpace(body.Text) == "" {
 		fail(w, http.StatusBadRequest, "a run needs a request")
 		return
+	}
+	if body.ActAs != nil && body.AskedBy != nil {
+		fail(w, http.StatusBadRequest, "a run acts for a person (act_as) or for nobody at a person's asking (asked_by), not both")
+		return
+	}
+	// A Slack app answers anyone who can message it, so its credential
+	// starts a run only for a person its client maps: as them, or for
+	// nobody at their asking. Without either it is refused here, whatever
+	// the app that called says, so an old or forged app starts nothing.
+	requested := ""
+	if body.ActAs == nil {
+		if body.AskedBy != nil {
+			person, err := s.P.AskedBy(who, *body.AskedBy)
+			if err != nil {
+				s.problem(w, err)
+				return
+			}
+			requested = person.Subject
+		} else if err := s.P.MayAskForNobody(who); err != nil {
+			s.problem(w, err)
+			return
+		}
 	}
 	// The run acts for the caller, or for the person a surface asks for:
 	// their credentials are the ones its person-scoped tools use, and their
@@ -882,6 +912,7 @@ func (s *Server) createRun(w http.ResponseWriter, r *http.Request, who auth.Prin
 	keeps := project != "" && s.P.MayChangeNotes(asks, project) == nil
 	run, err := s.P.Converse(r.Context(), who.Tenant, platform.Turn{
 		ID: id, Agent: body.Agent, Text: body.Text, After: body.After, Project: body.Project, Actor: actor, Client: client, KeepsNotes: keeps,
+		RequestedBy: requested,
 		// An agent the person may not read is one that is not there.
 		Sees: s.P.Seer(asks).Agent,
 		// The text is the person's own, so a skill it names is used.
@@ -1041,6 +1072,11 @@ func (s *Server) createCall(w http.ResponseWriter, r *http.Request, who auth.Pri
 		Contract *call.Contract `json:"contract,omitempty"`
 	}
 	if !decode(w, r, &body) {
+		return
+	}
+	// A call names no person, so a Slack app's credential makes none.
+	if err := s.P.MayAskForNobody(who); err != nil {
+		s.problem(w, err)
 		return
 	}
 	// A call is a turn of the run's conversation, filed where it lives, so
@@ -1412,6 +1448,14 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 		fail(w, http.StatusConflict, detail(err, platform.ErrScheduleManaged))
 	case errors.Is(err, clients.ErrInvalid), errors.Is(err, callpolicy.ErrInvalid):
 		fail(w, http.StatusBadRequest, err.Error())
+	case errors.Is(err, reposettings.ErrInvalid):
+		fail(w, http.StatusBadRequest, detail(err, reposettings.ErrInvalid))
+	case errors.Is(err, reposettings.ErrNotFound):
+		fail(w, http.StatusNotFound, "not found")
+	case errors.Is(err, reposettings.ErrVersion):
+		fail(w, http.StatusConflict, "these settings changed since they were read; reload and try again")
+	case errors.Is(err, reposettings.ErrLimit):
+		fail(w, http.StatusTooManyRequests, detail(err, reposettings.ErrLimit))
 	case errors.Is(err, projectforks.ErrInvalid), errors.Is(err, projects.ErrInvalid):
 		fail(w, http.StatusBadRequest, detail(err, projects.ErrInvalid))
 	case errors.Is(err, projectforks.ErrLimit), errors.Is(err, projects.ErrLimit):

@@ -316,7 +316,9 @@ func (p *Platform) author(who auth.Principal, as *ActAs) (subject, name, via str
 	if err != nil {
 		return "", "", "", nil, err
 	}
-	slack = p.slackPeople(who.Tenant, c)
+	if c.Slack != nil {
+		slack = c.Slack.People
+	}
 	return reader.Subject, p.nameOf(who.Tenant, reader.Subject), c.ID, slack, nil
 }
 

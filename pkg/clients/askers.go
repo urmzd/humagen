@@ -17,17 +17,13 @@ var writeAccess = []string{"OWNER", "MEMBER", "COLLABORATOR"}
 // they can write to the repository (owner, member or collaborator) or the
 // client maps them to a person, and, when the client names askers, they are
 // one of them. A delivery nobody asks through (a push, a check run) is
-// allowed. why says why someone may not. mapped, when given, decides whether
-// the GitHub user (by numeric id and login) is someone the workspace knows,
-// in place of the client's login map: the platform answers from linked
-// accounts first.
-func (c Client) GitHubAsker(kind string, body []byte, mapped func(id int64, login string) bool) (login string, allowed bool, why string) {
+// allowed. why says why someone may not.
+func (c Client) GitHubAsker(kind string, body []byte) (login string, allowed bool, why string) {
 	if c.Surface != GitHub || c.GitHub == nil {
 		return "", true, ""
 	}
 	type author struct {
 		User struct {
-			ID    int64  `json:"id"`
 			Login string `json:"login"`
 		} `json:"user"`
 		Association string `json:"author_association"`
@@ -35,7 +31,6 @@ func (c Client) GitHubAsker(kind string, body []byte, mapped func(id int64, logi
 	var p struct {
 		Action string `json:"action"`
 		Sender struct {
-			ID    int64  `json:"id"`
 			Login string `json:"login"`
 		} `json:"sender"`
 		Comment     author `json:"comment"`
@@ -57,7 +52,7 @@ func (c Client) GitHubAsker(kind string, body []byte, mapped func(id int64, logi
 	case "pull_request":
 		if p.Action == "review_requested" {
 			// Only people with write access may request a review.
-			who.User.ID, who.User.Login, who.Association = p.Sender.ID, p.Sender.Login, "COLLABORATOR"
+			who.User.Login, who.Association = p.Sender.Login, "COLLABORATOR"
 			break
 		}
 		who = p.PullRequest
@@ -68,11 +63,8 @@ func (c Client) GitHubAsker(kind string, body []byte, mapped func(id int64, logi
 	if login == "" {
 		return "", false, "it names nobody who asks"
 	}
-	known := c.GitHub.People[login] != ""
-	if mapped != nil {
-		known = mapped(who.User.ID, login)
-	}
-	if !known && !slices.Contains(writeAccess, who.Association) {
+	mapped := c.GitHub.People[login] != ""
+	if !mapped && !slices.Contains(writeAccess, who.Association) {
 		return login, false, login + " has no write access to the repository (" + strings.ToLower(cmpOr(who.Association, "none")) + ")"
 	}
 	if len(c.GitHub.Askers) > 0 && !slices.ContainsFunc(c.GitHub.Askers, func(a string) bool { return strings.EqualFold(a, login) }) {

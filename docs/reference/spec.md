@@ -997,19 +997,18 @@ file does not give.
 
 #### Whom the Slack app acts for
 
-By default the app acts for nobody: it answers, and every run it asks for is
-the app's own. `people` names who is who, a Slack user id (`U...` or `W...`)
-in `team` to the subject that person signs in to Humagen with. With it, or where people link their Slack accounts and the
-app's credential is known (under `tailscale`, or `machine`), the
+By default the app answers nobody: only a person its client maps starts
+anything ([who can start a run](slack.md#who-can-start-a-run)). `people` names who is who, a Slack user id (`U...` or `W...`)
+in `team` to the subject that person signs in to Humagen with. With it the
 server keeps a [client](clients.md#people-a-slack-app-answers-for) for the app
 and starts the app with `HUMAGEN_CLIENT` set to that client's id, so a mapped
 person's message, runs, Home tab and answers to a run's questions are theirs.
-A Slack user the map does not name stays nobody, unless they
-[link their Slack account](slack.md#linked-accounts), which is found first.
+A Slack user the map does not name is told their account is not connected,
+and nothing starts for them.
 
 | Field | Default | Meaning |
 |-------|---------|---------|
-| `people` | none: the app acts for people who linked their Slack account when linking is configured and its credential is known, else for nobody, with no client record and no `HUMAGEN_CLIENT` | At most 500 Slack user ids, each mapped to a subject of 1 to 200 characters. `team` must then be a team id of at most 30 characters |
+| `people` | none: the app answers nobody, with no client record and no `HUMAGEN_CLIENT` | At most 500 Slack user ids, each mapped to a subject of 1 to 200 characters. `team` must then be a team id of at most 30 characters |
 | `machine` | under `tailscale`, `slack-app:<team>`, the subject of the credential the server makes | The subject the app's own credential signs in as, the only credential that may act for `people`. Under `tailscale` it is refused, since the server knows it. Under every other sign-in it is required with `people`: the subject is the identity provider's to choose, so the server cannot know it |
 
 The record is `slack-app-<team id in lowercase>`, such as `slack-app-t0123456`,
@@ -1231,7 +1230,7 @@ it:
 | asked in the console, or through the API with a person's sign-in | that person |
 | asked by the Slack app built on the API for a Slack person its client maps (`act_as`) | the mapped person, never the app. A message the app posts for them into the Humagen thread their Slack thread is (with its `surface`) is theirs, and so is every run it starts |
 | asked about with that app's message shortcut, on someone else's message | nobody: the app asks as itself, since those words are the whole request. Under a dev sign-in, where the app's own credential is the person `dev`, asking as itself acts for `dev`. In a channel bound to a project the app refuses it, since only a person's own words are posted there |
-| raised by a Slack client's own connector | the one person the team's Slack clients map that Slack user to; none, or two different people, is nobody. It is started only if that person may start it where it is filed: the policy grants their subject `runs:write` and they are a member of the project. In a channel bound to a project it is not started for nobody |
+| raised by a Slack client's own connector | the one person the team's Slack clients map that Slack user to; none, or two different people, is nobody. It is started only if that person may start it where it is filed: the policy grants their subject `runs:write` and they are a member of the project. On Slack nothing is started for nobody, in any channel ([who can start and stop a run](slack.md#who-can-start-and-stop-a-run-on-the-webhook-connector)) |
 | started by a message in a shared thread (a tagged agent, an agent that joined, or the thread's default) | the person who posted it, never another participant, though it is sent what the others said in the room ahead of the poster's words; its retry is the poster's alone, from their inbox |
 | Run Now on a schedule | whoever pressed it, when they wrote what it runs (whoever last changed its text, or its creator while nobody has, unless someone else has since chosen its agent or its project, whose instructions and notes go ahead of the text); anyone else's press acts for nobody. When the answer may hold what their own credentials reached, `deliver` does not post it in the project, hold it for the owners or send it to someone else who created the schedule: it goes to them alone, saying why |
 | Retry on a failed turn in the inbox, and Retry or Resume in the Slack app | whoever the turn acted for. A turn that acted for a person is retried only by that person, as themselves, and anyone else, an operator included, is refused, except a turn the Slack app asked as itself, which it asks again the same way, by the person who asked or an operator: under a dev sign-in, one that acted for `dev`. A turn that acted for nobody is retried for nobody: in the inbox by anyone who may start runs, in the Slack app by the person who asked or an operator |
@@ -1566,8 +1565,7 @@ for fields, deterministic checks, and approved regression overrides.
 ### Service connection authorization
 
 `System.spec.connections` defaults to disabled. It accepts an `encryption_key`
-secret reference, a `redirect_url` (by default `server.public_url` followed by
-`/connections/callback`), optional registered `clients`, and optional
+secret reference, a `redirect_url`, optional registered `clients`, and optional
 GitHub App installation configuration under `github`. The key resolves to a
 base64-encoded 32-byte value. Registered clients bind an issuer, client ID,
 optional secret reference and scopes; native providers use their fixed profiles.

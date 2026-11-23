@@ -4,7 +4,6 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
-	"github.com/urmzd/humagen/pkg/accounts"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -201,43 +200,5 @@ func TestAGitHubCommentThroughTheConnectorOpensItsSession(t *testing.T) {
 	}
 	if th.Session.Parent != "github://acme/repo/issues/7" || th.Title != "Fix the build" || th.CreatedBy != "ana" || th.Visibility != threads.Private {
 		t.Fatalf("the comment's session = %+v titled %q by %q, %s", th.Session, th.Title, th.CreatedBy, th.Visibility)
-	}
-}
-
-// A person who linked their GitHub account is found by the sender's id
-// through the connector, with no people map and with a login renamed
-// since: the run acts for them, and they may ask without write access.
-func TestALinkedGitHubAccountActsForItsPersonThroughTheConnector(t *testing.T) {
-	cfg := (&fakes{}).config()
-	cfg.Policy = operators(t, "ana")
-	p := stage(t, &cast{says: map[string][][]saigetypes.Delta{"reviewer": {say("Looked.")}}}, cfg)
-	create(t, p, tenant, platform.ClientInput{
-		Client: clients.Client{ID: "gh", Name: "GitHub", Surface: clients.GitHub, Enabled: true, Identity: clients.Identity{Owners: []string{"acme"}, Installation: "101"}, DefaultAgent: "reviewer", GitHub: &clients.GitHubOptions{Login: "humagen[bot]"}},
-		Token:  clients.SecretInput{Value: "token-gh"}, SigningSecret: clients.SecretInput{Value: "secret-gh"},
-	})
-	if _, err := p.Accounts.Link(tenant, accounts.Account{Surface: accounts.GitHub, ID: "583231", Login: "octocat-old", Subject: "ana"}); err != nil {
-		t.Fatal(err)
-	}
-	body := `{"action":"created","installation":{"id":101},"repository":{"full_name":"acme/repo","name":"repo","owner":{"login":"acme"}},` +
-		`"sender":{"id":583231,"login":"octocat","type":"User"},"issue":{"number":8,"title":"Linked"},` +
-		`"comment":{"id":92,"body":"@humagen review this","user":{"id":583231,"login":"octocat"},"author_association":"NONE"}}`
-	mac := hmac.New(sha256.New, []byte("secret-gh"))
-	mac.Write([]byte(body))
-	req := httptest.NewRequest(http.MethodPost, "/connectors/github", strings.NewReader(body))
-	req.Header.Set(signature.HeaderGitHubSignature, "sha256="+hex.EncodeToString(mac.Sum(nil)))
-	req.Header.Set("X-GitHub-Event", "issue_comment")
-	req.Header.Set("X-GitHub-Delivery", "d-linked")
-	w := httptest.NewRecorder()
-	p.IngressHandler().ServeHTTP(w, req)
-	if w.Code != http.StatusOK {
-		t.Fatalf("the comment answered %d", w.Code)
-	}
-	run := await(t, p, runtime.RunID(tenant, "d-linked"), runs.Completed)
-	if run.Actor.User != "ana" {
-		t.Fatalf("the run acts for %q", run.Actor.User)
-	}
-	th, err := p.Threads.Get(tenant, run.Thread)
-	if err != nil || th.CreatedBy != "ana" {
-		t.Fatalf("the session is %+v: %v", th, err)
 	}
 }

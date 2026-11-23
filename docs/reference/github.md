@@ -1,7 +1,7 @@
 # GitHub agent delivery
 
-The GitHub connector accepts signed mentions on issues, pull requests, reviews,
-and review comments. It also accepts review requests for configured agent logins.
+The GitHub connector accepts signed comments that ask `@humagen` on issues,
+pull requests, reviews, and review comments. It also accepts review requests for configured agent logins.
 Responses use one Markdown comment per run, edited as events arrive.
 
 ## Configuration
@@ -24,10 +24,10 @@ create the default client, `default-github`:
 | `HUMAGEN_GITHUB_CHECKS`, `HUMAGEN_GITHUB_GUIDES`, `HUMAGEN_GITHUB_MUTATIONS` | `github.checks`, `github.guides`, `github.mutations` |
 | `HUMAGEN_GITHUB_READ_REPOSITORIES` | `github.read_repositories`. Optional: empty means the repositories the app is installed on (see [Repositories the app is installed on](#repositories-the-app-is-installed-on)) |
 | `HUMAGEN_GITHUB_LOGIN` | `github.login` |
-| `HUMAGEN_GITHUB_DEFAULT_AGENT` | `default_agent` |
+| `HUMAGEN_GITHUB_DEFAULT_AGENT` | `default_agent`: who answers `@humagen` when no agent is named, ahead of the entry agent, and who does automatic reviews. Optional |
 | `HUMAGEN_GITHUB_ASKERS` | `github.askers`: the only logins whose mentions, reviews and pull requests are acted on, comma separated. Optional |
-| `HUMAGEN_GITHUB_PEOPLE` | `github.people`: `login=subject` pairs, comma separated, such as `urmzd=tailscale:urmzd@github`. The subject is the person's console sign-in subject. A malformed or repeated entry stops the server. Optional, and a fallback: people [link their own account](#linked-accounts) instead |
-| `HUMAGEN_GITHUB_AUTO_REVIEW` | `github.auto_review.enabled`: `false` switches automatic review off. Unset, it is on |
+| `HUMAGEN_GITHUB_PEOPLE` | `github.people`: `login=subject` pairs, comma separated, such as `urmzd=tailscale:urmzd@github`. The subject is the person's console sign-in subject. A malformed or repeated entry stops the server. Optional |
+| `HUMAGEN_GITHUB_AUTO_REVIEW` | `github.auto_review.enabled`: `true` switches automatic review on, `false` off. Unset, it is off. A repository's [settings](#repository-settings) override it |
 | `HUMAGEN_GITHUB_AUTO_REVIEW_REPOSITORIES` | `github.auto_review.repositories`, as `owner/repo=on` or `owner/repo=off` pairs, comma separated |
 
 `HUMAGEN_GITHUB_AUTO_LABELS` is retired: labels start nothing, and the server
@@ -37,77 +37,12 @@ The default client may route to any agent. One created through the API routes
 to its default agent and its `agents` list, and an event rule or a bot that
 names any other agent is refused when the client is saved.
 
-## Linked accounts
-
-Each person links their own GitHub account in the console: **Connect** on the
-GitHub row under Connected accounts (`/settings/connections`). This replaces
-`github.people` and `HUMAGEN_GITHUB_PEOPLE`, which stay as a fallback for a
-deployment that set them.
-
-```text
-console            Humagen                         GitHub
-Connect  ───────▶  state bound to the person  ───▶ authorize the GitHub App
-callback ◀───────  code + state               ◀─── redirect to the callback
-           ───────▶ exchange the code, GET /user ─▶ id, login, avatar
-                    link id ↔ person, drop the token
-```
-
-1. Humagen starts the GitHub App's user authorization with a `state` that only
-   the signed-in person's own callback, from the same browser, can spend,
-   once, within 10 minutes. The browser holds an HttpOnly cookie the consent
-   is bound to. It sends a PKCE challenge. Only the console starts or finishes
-   a link: an agent's tool, an MCP client or an API token is refused.
-2. On the callback it exchanges the code with the app's client id and secret,
-   then reads `GET /user` with the user token.
-3. It links the numeric user id to the person, with the login and avatar for
-   display. The token is used for that one request and never stored, since
-   nothing Humagen does needs to act as the person on GitHub.
-
-| Rule | Behavior |
-|------|----------|
-| Key | GitHub's numeric user id. A renamed login still resolves |
-| One person per GitHub user | A second person's claim is refused until the first person disconnects |
-| One GitHub account per person | Linking another account replaces the first |
-| Scope | The workspace. Another workspace may link the same user to its own person |
-| Disconnect | The person's own row, or an administrator on the GitHub app's sheet (`DELETE /api/clients/{id}/accounts/{account}`, `clients:write`, audited) for someone who left or whose account was taken |
-
-**Resolution.** A delivery's `sender.id` is read from the signature-verified
-payload. The person who linked that id is who the run acts for; without a
-link, `github.people` maps the login. A map entry that names a person who
-linked an account is not used: GitHub lets anyone register a login its owner
-renamed away from, so only the linked id speaks for that person. Linked people
-may also ask without write access to the repository, as mapped people may.
-
-Administrators see who linked an account on the GitHub app's sheet (Settings,
-Apps, GitHub), from `GET /api/clients/{id}/accounts`.
-
-**What the operator sets.** Linking signs in through the GitHub App's own OAuth
-client. In the GitHub App's settings:
-
-| Setting | Value |
-|---------|-------|
-| Callback URL | `<server.public_url>/connections/callback`, the same as `connections.redirect_url` when that is set |
-| Expire user authorization tokens | On. Humagen keeps no user token, so a token it read expires on its own |
-| Request user authorization (OAuth) during installation | Leave it as the console's app install needs it: on when people install the app from the console (`connections.github`), else off. Linking works either way |
-| Client secret | Generate one; give it to Humagen as below |
-
-In Humagen, [`connections`](connections.md) must be set (its `encryption_key`
-keeps the pending sign-in). The client id and secret come from
-`connections.github` when the console installs the app, else from the
-environment:
-
-| Variable | Value |
-|----------|-------|
-| `HUMAGEN_GITHUB_CLIENT_ID` | The GitHub App's client id |
-| `HUMAGEN_GITHUB_CLIENT_SECRET` | Its client secret, read through `env:HUMAGEN_GITHUB_CLIENT_SECRET` and never stored |
-
 ## Who may ask
 
 On a public repository anyone can comment, so the client acts only on people
 who may ask: those GitHub says can write to the repository (its owner, a
 member of its organization or a collaborator, read from the payload's
-`author_association`), people who [linked their account](#linked-accounts), and
-people the client maps (`github.people`). A
+`author_association`) and people the client maps (`github.people`). A
 comment, a review or a pull request from anyone else starts nothing, its
 event rules included, and the log says why. An issue from them still meets
 the client's event rules, which are written to read issues, but asks no
@@ -123,42 +58,95 @@ export HUMAGEN_GITHUB_ASKERS=octocat,hubot
 
 ## Who a comment asks
 
-The rule is Slack's: an `@agent` in a comment is a tag; otherwise the client's default; otherwise nothing. Slack delivers a
-message only when it mentions the app, so on GitHub a comment that names no
-agent is addressed to the client only when it mentions the app's own login.
-Set it as `github.login`: the login the app comments as, `humagen[bot]`, which
-people mention as `@Humagen`. With it set, and the app's login not in `bots`:
+`@humagen` is the one trigger. A comment, a review comment, a review body, or
+the body of a new issue or pull request starts a run only when it holds
+`@humagen`, in any case, as a whole word. The trigger counts anywhere in the
+text, except where text is shown or quoted rather than said:
 
-- `@docs-bot summarize this` tags docs-bot.
-- `@Humagen @docs-bot summarize this` tags docs-bot, which reads `summarize
-  this`. The mentions that open a comment are its address and are taken out
-  of the text, the app's as an agent's.
-- `could @docs-bot take a look?` tags docs-bot too, and the agent reads the
-  comment as written. A mention after the first words is part of the sentence
-  and stays in the text. A name inside code, as in `` `@docs-bot help` ``,
-  tags nobody.
-- `@Humagen what changed?` names no agent, so it is answered as an untagged Slack
-  message outside a bound channel is: by the client's `default_agent`, then by
-  the default of the client's home channel and its chain. The client's
-  `agents` list holds: a default it may not route to is refused, never swapped
-  for one it may. With no default anywhere, nothing runs and nothing is posted.
-- A comment that names no agent and does not mention the app starts nothing,
-  so a busy repository wakes no agent on every comment. A bot's comment starts
-  nothing, whatever it mentions.
+- code: an inline span (`` `@humagen help` ``, also across lines), a fenced
+  block, a block indented four spaces, and `<code>` or `<pre>`;
+- an HTML comment (`<!-- @humagen review -->`), so a pull request template
+  can hold one without asking on every pull request;
+- a quoted line (`> @humagen ...`) and the lines that run on from it.
 
-A login in the client's `bots` names its agent, as a Slack bot user in `bots`
-does, today as well. So when `bots` maps the app's own login to an agent, as
-`HUMAGEN_GITHUB_BOTS='humagen[bot]=ops'` does and the [PR guide's
-setup](#pr-guide-and-review-threads) does for its agent, `@Humagen` is a tag for
-that agent: `@Humagen what changed?` asks ops, and so does `@Humagen @docs-bot
-summarize this`, since the first agent a comment names answers it. The
-client's `default_agent` is not asked.
+A whole word means nothing joins the name to a word or a path: not
+`@humagen.dev`, `ops@humagen`, `https://github.com/@humagen` or
+`@humagen/reviewers`. A sentence may end on it (`thanks @humagen.`). The
+app's own login without `[bot]` (`github.login`, such as `humagen-acme` for
+`humagen-acme[bot]`) is a trigger too.
+
+The agent named right after the trigger answers. Write the name so it can
+only be a name: after `ask`, with `:` or `,` after it, or as `@name`. A bare
+first word is part of the question, even when an agent has that name, so
+`@humagen docs are stale` asks the default about stale docs. Otherwise the
+default answers:
+
+| Comment | Who answers | What the agent reads |
+|---|---|---|
+| `@humagen what changed?` | The default (below) | `what changed?` |
+| `@humagen ask research-bot why is the cache cold?` | research-bot | `why is the cache cold?` |
+| `@humagen research-bot: why is the cache cold?` | research-bot | `why is the cache cold?` |
+| `@humagen research-bot why is the cache cold?` | The default | `research-bot why is the cache cold?` |
+| `Thanks. Could @humagen summarize this?` | The default | The whole comment, as written |
+| `@research-bot why is the cache cold?` | Nobody | Nothing starts |
+| `> @humagen what changed?` and a reply under it | Nobody | Nothing starts |
+
+`@humagen @research-bot ...` names research-bot too, but on GitHub it also
+notifies any account called `research-bot`. Prefer `ask research-bot`.
+
+A trigger that opens the comment is its address, and is taken out with the
+agent's name after it. Anywhere else the whole comment is sent as written.
+
+An agent's name alone asks nobody. On GitHub `@name` is an account, and the
+account may be a stranger's: `@github-reviewer` notifies the GitHub user of
+that name. So a mention of an agent's name, or of a login in `bots`, starts
+nothing.
+
+When no agent is named, the default answers, nearest first:
+
+1. The repository's agent, when its [settings](#repository-settings) name one.
+2. The client's `default_agent`.
+3. The workspace's default.
+4. The workspace's entry agent, the agent that answers a Slack direct message.
+
+The client's `agents` list holds: a default it may not route to is refused,
+never swapped for one it may. A plain question asks the default even where
+another agent answered before, so `@humagen what changed?` gets a plain
+answer on a pull request that was reviewed.
+
+A review requested from the `humagen` account (or another trigger's) is the
+default's, as `@humagen review` is: the repository's agent reviews, else the
+next default.
+
+A reply without the trigger continues a conversation an agent already has
+there: the agent that answered there before reads it, whatever the reply
+mentions. A comment that holds no trigger anywhere else starts nothing, so a
+busy repository wakes no agent on every comment. A bot's comment starts
+nothing, whatever it holds.
+
+Add the `humagen` GitHub account as a collaborator on each repository, with
+read access. GitHub then offers `@humagen` as people type it. The account
+exists so that the name is Humagen's: GitHub cannot autocomplete or notify a
+GitHub App's login (`humagen[bot]`), and an agent's name may be anyone's.
+
+`bots` still maps a login to its agent for a review request: requesting a
+review from a mapped login asks that agent. It no longer makes a mention a
+tag, the app's own login included.
+
+**Upgrading.** A deployment that sets `HUMAGEN_GITHUB_DEFAULT_AGENT` to a
+reviewer, such as `github-reviewer`, still sends every plain question to that
+reviewer. Unset it, or set it to the entry agent, so a plain question gets a
+plain answer. To keep automatic review, name the reviewer in the repository's
+[settings](#repository-settings). People ask the reviewer by name:
+`@humagen ask github-reviewer to review this`. A `HUMAGEN_GITHUB_BOTS` entry for the
+app's own login (`humagen[bot]=github-reviewer`) no longer changes who a
+mention asks, and can go.
 
 A review, a review comment and a new issue or pull request are read the same
 way. Every run is filed where the client files it: the project its repository
 is linked to, else the client's [home](clients.md#the-record). It acts for the
-person who [linked](#linked-accounts) that GitHub user, else the person the
-client maps the login to (`github.people`), and for nobody otherwise. A comment addressed to the app on a
+person the client maps the GitHub login to (`github.people`), and for nobody
+when the client maps the login to nobody. A comment addressed to the app on a
 pull request posts no guide, since the guide names the agent that answers; the
 next one that names an agent does.
 
@@ -174,7 +162,7 @@ the pull request's head commit is then:
 | Owner | The agent that answered first. Another agent asked there answers in the same session, with a conversation of its own |
 | Filed in | The project and channel the run is filed in: the repository's linked project, else the client's home |
 | Title | The pull request's or issue's title, else `<owner>/<repo>#<n>` |
-| People | Each person who linked, or the client maps, a GitHub user that asked there, added when they ask |
+| People | Each person the client maps a login that asked there to, added when they ask |
 | Visibility | Private to those people |
 
 The key is the one the runtime already keeps the agent's conversation under,
@@ -183,8 +171,9 @@ The console lists it in Sessions and in Recent for each person in it, with
 Where set to GitHub, linked to the pull request or issue.
 
 **Who reads it.** Only the people who asked there read the session in the
-console. A person is found by their [linked account](#linked-accounts), else by
-`github.people` (for the default client, `HUMAGEN_GITHUB_PEOPLE`). GitHub showed each of them the repository, so the session shows
+console. A person is found by `github.people` (for the default
+client, `HUMAGEN_GITHUB_PEOPLE`), so map each login whose sessions should
+show in the console. GitHub showed each of them the repository, so the session shows
 them nothing they could not read. Humagen cannot check that anyone else can
 read the repository, so nobody else is added, and a login the client maps to
 nobody adds nobody. A workspace administrator reads it by exception, as any
@@ -214,14 +203,18 @@ session: no person asked it.
 
 ## Automatic review
 
-A pull request is reviewed automatically when it opens or reopens ready for
-review, leaves draft, or gets a push. The client's default agent
-reviews it, on the pull request; a client with no default agent reviews
-nothing. A default agent from the agent store that the workspace has not
+Mentions start work. Automatic review is off unless something turns it on: the
+client's switch below, or a repository's [settings](#repository-settings) in
+the console.
+
+When it is on, a pull request is reviewed automatically when it opens or
+reopens ready for review, leaves draft, or gets a push. The client's default
+agent, or the repository's own agent, reviews it, on the pull request; with
+neither, nothing is reviewed. A default agent from the agent store that the workspace has not
 installed, such as `code-reviewer` before the Review package is installed,
 reviews nothing either: the delivery is taken, and the server logs
 `automatic review skipped` saying to install the Review package from the
-Store. It is on unless switched off, and labels start nothing:
+Store. It is off unless switched on, and labels start nothing:
 
 ```json
 {"github":{"auto_review":{"enabled":true,"repositories":{"acme/handbook":false}}}}
@@ -236,23 +229,24 @@ export HUMAGEN_GITHUB_AUTO_REVIEW=false
 export HUMAGEN_GITHUB_AUTO_REVIEW_REPOSITORIES=acme/review-sandbox=on
 ```
 
-`enabled` is the connection's switch, on when left out. `repositories` turns it
+`enabled` is the connection's switch, off when left out. `repositories` turns it
 on or off for exact `owner/repo` names whatever `enabled` says, for at most 64
-repositories the client serves. Subscribe the webhook to `pull_request`.
+repositories the client serves. Both are defaults: a repository's settings in
+the console win over them for that repository. Subscribe the webhook to
+`pull_request`.
 
 Drafts and closed pull requests wait. One commit is one review: its run is
 named for the client, repository, pull request and head SHA, so a redelivery,
 or a pull request that opens and is pushed at the same commit, joins it. The
 run is asked with identifiers only, never the pull request's title or body;
-the reviewer reads the pull request with its tools. An `@agent` mention still
+the reviewer reads the pull request with its tools. An `@humagen` comment still
 starts its own request.
 
 Opening, reopening or leaving draft reviews the whole pull request. Each push
 after that reviews only the commits after the last one reviewed. Five pushes
 are reviewed; the sixth pauses automatic review on that pull request, and
-later pushes wait. A person who mentions the app (`@Humagen`, such as
-`@Humagen review`) or one of the client's agents on the pull request resumes
-it: the count starts again, and the next push is reviewed from the last
+later pushes wait. A person who asks `@humagen` on the pull request, such
+as `@humagen review`, resumes it: the count starts again, and the next push is reviewed from the last
 reviewed commit. Opening, reopening or leaving draft also starts the count
 again. The count and the pause are kept per pull request in the shared store
 (`pull_reviews`), so every replica sees them.
@@ -262,6 +256,20 @@ again. The count and the pause are kept per pull request in the shared store
 `github_read_context` returns the subject and a page of comments. For PRs it
 also returns the head SHA, reviews, inline comments and changed-file patches.
 Follow `next_page` until absent. A missing patch is unavailable evidence.
+
+Its `address` takes an issue or pull request as `github://owner/repo/pull/12`,
+`github://owner/repo/issues/12`, `owner/repo#12` or the `https://github.com`
+URL of one. It also takes a repository as `owner/repo`, `github://owner/repo`
+or `https://github.com/owner/repo` (a trailing `.git` is dropped), which
+returns one bounded page: the
+description, the default branch, the first 4000 bytes of the README, and the
+10 most recently updated open pull requests and the 10 open issues, each with
+the address that reads it. A repository with a `number` reads that issue or
+pull request. A repository read passes the same grants as its issues below.
+Every read leads with a `notice` field marking the GitHub text in it as
+untrusted data. The grants read `address` in any letter case, as the tool
+does, and refuse a call that names it twice or passes an argument the tool
+does not declare.
 Reads default to the source repository. A run from Slack, Jira, or a link in
 another repository may also read any repository the client's GitHub App
 installation covers (see
@@ -293,17 +301,193 @@ with a model available to your configured Anthropic provider, then register it:
 humagen serve -agent-specs examples/github-review/agent.json
 ```
 
-Ordinary questions receive Markdown answers. Reviews return a JSON report with
-`format: "humagen.github.review.v1"`, which the sink converts to Markdown:
-severity counts, summary, comments, an aligned findings table, related concepts,
-and native reaction/mention instructions. Counts are derived from findings.
-Every finding requires a suggestion, observed evidence with a source, and a
-follow-up prompt. The formatter checks completeness, not the truth of claims.
-Reports with missing evidence are visibly rejected rather than shown as clean.
+### Reply or review
+
+The host decides what a run on GitHub starts as. It chooses when the run
+starts and saves the choice on the run's tag as `answer_shape`. The model
+reads it in its trigger context.
+
+| Shape | When | What the agent returns |
+| :--- | :--- | :--- |
+| `review` | On a pull request, and only on a signal that cannot be misread: an [automatic review](#automatic-review), a review requested from the app, an [event automation](#event-automations) whose shape is `review`, the bare command `@humagen review`, or `/review` | The fields of a `humagen.review.v2` report, as one JSON object. The host renders and posts it. |
+| `reply` | Anything else: a question, a follow-up, a request for a review in other words, or anything on an issue | Plain Markdown prose: short paragraphs, code in fences, files linked as `path:line` at the head. |
+
+The host reads the command and nothing else. It does not guess what a
+sentence means.
+
+| Message on a pull request | Starts as |
+| :--- | :--- |
+| `@humagen review`, `@humagen re-review`, `@Humagen Review.`, `review` in a conversation the agent already has | `review` |
+| `/review`, `/review focus on auth` | `review` |
+| `@humagen review this function's naming?`, `@humagen review the retry loop` | `reply` |
+| `@humagen can you review this?`, `please review this PR` | `reply` |
+| `hey @humagen review`, `@octocat review` | `reply` |
+| `this review is wrong`, `don't review yet` | `reply` |
+| Any of these on an issue | `reply` |
+
+The command is the whole message: `review`, `re-review` or `rereview`, in
+any case, with space around it and `.`, `!` or `?` after it. The trigger may
+address it when the trigger opens the message (`@humagen review`,
+`@humagen: review`). `/review` is a command when the message starts with it;
+what follows it is what to look at. Like any message, it reaches Humagen
+with the trigger (`@humagen /review`) or in a conversation the agent already
+has. Quoted lines do not count: a reply under a quote, after a
+blank line, is read on its own. Any other word, a trigger inside a sentence,
+or a mention of anyone else makes the message a reply. So does anything the
+message shows instead of saying, read as `@humagen` itself is read
+([Who a comment asks](#who-a-comment-asks)): code, an indented block, an
+HTML comment, or a line that runs on from a quote with no blank line
+between.
+
+#### A reply that becomes a review
+
+A person often asks for a review in their own words: `have a look before I
+merge`, `can you review this?`, `check this for security`. Such a run starts
+as a reply, and the agent reads what was meant. The built-in `code-reviewer`
+has one tool for this, `start_review`, which turns its run into a review.
+After it the agent returns the report, and the host checks, renders and posts
+it as it does for any review.
+
+`start_review` acts only on a pull request run that a person started. It
+takes no arguments and changes nothing but its own run. The host allows it
+only when all of these hold, and refuses it with a reason otherwise:
+
+- The run is on a pull request. On an issue there is nothing to review.
+- A person started the run. A run an agent started for another (a handoff, a
+  subagent or a delegation) cannot start a review, and neither can a run a
+  rule started: a rule's `shape` is the rule's to set.
+- The run is not a review yet. A run becomes a review once; a second call
+  is refused and changes nothing.
+
+Of the built-in agents only `code-reviewer` has the tool. An admin may grant
+it to any agent in its `tools`, and the same conditions hold for it there;
+an agent without it answers a reply run in prose.
+
+The switch is saved on the run's own record before the tool answers, beside
+the saved `answer_shape`, which stays `reply`. The format check and the
+native review read the record, in any process and after a restart, and
+nothing depends on the run's events still being kept. Two calls made at once
+start one review. If the switch cannot be saved, the call fails and the run
+stays a reply. A later attempt of the same run reads `answer_shape: review`
+in its trigger context, so the agent returns the report without calling the
+tool again.
+
+A run from before the host chose has no shape. The built-in `code-reviewer`
+returns a report there only when it was asked to review a change.
+
+The model never writes the reviewed commit. The host scopes the report to the
+head it pinned when the run started (the event's head, else its channel's
+`head_sha`, else the head the run read with `github_read_context`), and
+replaces any commit the model wrote. A review with no recorded head is shown
+as needing correction.
+
+Only a review gets the online format check: a run saved as `review`, or one
+that called `start_review`. Its answer must be a complete review report, else
+the session is marked for review with the reason. A reply is never
+format-checked, whatever its agent's instructions say, and it posts no native
+review, even if its agent answered with a report.
+
+A report is strict in structure and free in its words. `validateV2` requires a
+title, a verdict, unique finding ids, evidence and a prompt for each finding,
+and bounds the free text: a summary of at most 1,500 characters, a finding
+title of 150, `why` and `suggestion` of 600 each, at most 10 comments and 8
+pieces of evidence for each finding. A location is a repository path (no
+leading `/`, no `..`, no backtick) and a line range in it. Model text is
+escaped when it is rendered: HTML, links and emphasis show as typed, and only
+inline `code` stays code. An invisible word joiner (U+2060) follows each `@`
+and `#`, and sits inside `GH-`, so GitHub turns no `@name`, `@org/team`,
+`#12` or `owner/repo#12` into a mention or a reference; an HTML entity such
+as `&#64;` does not stop GitHub. A bare address is shown as code, and a
+source or related link is a link only into the reviewed repository, so a
+review links nowhere else. An em dash in model text reads as a comma.
+
+### How a review reads
+
+The host renders every review the same way, from the report:
+
+1. The verdict in words, in bold, such as **Needs changes: one problem to fix
+   before merging.** or **Looks good to merge.**
+2. The summary, in one to three sentences.
+3. Each finding, most urgent first: a bold numbered title, a small label with
+   its severity (Must fix, Should fix or Note), its location linked at the
+   reviewed head and the agent that found it, a blank line, then why it
+   matters and what to do. A finding with no line in the diff shows its
+   change here.
+4. With eight findings or more, a compact table of them, collapsed.
+5. The evidence, collapsed: each item numbered for its finding, without the
+   finding's title again. Evidence the host could not verify says so.
+6. A hidden marker, `<!-- humagen.review.v2 verdict=… errors=… warnings=… info=… -->`,
+   for programs, then the session link.
+
+```markdown
+**Needs changes: one problem to fix before merging.**
+
+This change adds retries with backoff to webhook delivery. The loop now loses the final error, so a failed delivery looks like a success.
+
+**1. Retry loop drops the final error**
+<sub>Must fix · [`internal/retry/retry.go:45`](https://github.com/acme/webhooks/blob/3f9c…/internal/retry/retry.go#L45) · found by code-reviewer</sub>
+
+After the last failed attempt `Do` returns `nil`, so callers treat a failed delivery as a success. Return `lastErr` when the loop ends.
+```
+
+Each line comment is the finding as a colleague leaves it: the title, why
+and what to do, a small severity label, then the committable suggestion.
+No ids, tool names or JSON are visible. The golden files in
+`internal/presentation/github/testdata/golden` hold a reply and four reviews,
+and their test checks the voice: no em dash, no filler opener, no internal
+id.
 
 Structured output is held while the run streams, then rendered in its existing
 comment. Lifecycle-only routes also render the final report. Ordinary Markdown
-answers retain their streaming behavior.
+answers retain their streaming behavior. The first format,
+`humagen.github.review.v1`, still renders the same way, as a comment.
+
+### The answer comment
+
+An ordinary answer's comment holds the answer alone. While the run works, it
+shows one status line, such as `**humagen** _(working)_`. The tools the agent
+called, the helpers it started and the helpers it waits on are the session's
+trace: the comment does not show them. A small footer links the session in the
+console, where the trace is:
+
+```markdown
+The pull request links GitHub and Slack accounts through OAuth.
+
+<sub>[View the session in Humagen ↗](https://console.example/sessions/s_...)</sub>
+```
+
+The footer needs the console's canonical address (`server.public_url`); without one
+there is no footer. A failure, a stop and a question a person must answer are
+still said in the comment. A structured review renders as described above.
+
+### get_context on an issue or pull request
+
+`get_context` in a session that started on an issue or pull request reads that
+place. It gives the title and state, the description, the five latest comments
+by people, and for a pull request its head, changed files and patches. GitHub
+lists comments oldest first, so when the first page is full the latest are
+read from the last page its `Link` header names, and the page before it when
+the last holds too few comments by people: at most three requests. When they
+cannot be read, the answer says the latest may be missing. Comments by
+apps (`[bot]`) and by any login a client of the workspace answers as are left
+out. Each part is cut to a bound, and the whole stays under the tool's 12,000
+characters.
+
+A run reads through the GitHub client that raised it when the session's root
+is that client's thread on that issue or pull request, and only when that
+client serves the owner, names the repository in `read_repositories`, or
+covers it by its App installation. Any other run, and a person in the console,
+reads as a cross-surface read: under the workspace's grants and the
+repository's `cross_surface_reads`. Anything else gets a note that the place
+may not be read, and no text.
+
+What is read is untrusted. It is wrapped in one `github-data` block whose
+markers carry a nonce made for that read, as the reads made before a run are.
+
+A brief that a run on an issue or pull request gives another agent ends with
+the place, for example `Asked on GitHub pull request acme/site#7
+(https://github.com/acme/site/pull/7).`, so the helper never has to ask which
+repository.
 
 ### Reviews in the console and Slack
 
@@ -343,7 +527,8 @@ token reaches nothing else, so Humagen grants nothing else.
   first 100. A session may choose any of them.
 - **Reads.** `github_read_context`, `github_read_file` and
   `github_workflow_status` from another surface, and the console's source,
-  issue and pull request reads, reach any repository the installation covers.
+  issue and pull request reads, reach any repository the installation covers,
+  unless its [settings](#repository-settings) keep it to its own runs.
   The read tools check the client's `owners` first, so they refuse an
   installed repository of an account `owners` does not list. The console's
   reads do not: they reach any repository the installation covers. Keep
@@ -364,6 +549,60 @@ removed is refused by GitHub at once, since the token no longer reaches it.
 
 A client with a personal token has no installation to list. It offers and
 reads only what its owners and `read_repositories` name.
+
+## Repository settings
+
+Each repository a GitHub client covers can have settings of its own, kept in
+the workspace's store (`github_repo_settings`), one versioned record per
+client and repository, at most 1,000 per client. Set them in the console under
+**Settings > Apps > GitHub > Repositories**
+(`/settings/apps/github/<client>/repositories`), or with the API:
+
+| Route | Permission |
+|---|---|
+| `GET /api/clients/{id}/repositories` | `clients:read` |
+| `GET /api/clients/{id}/repositories/{owner}/{repo}` | `clients:read` |
+| `PUT /api/clients/{id}/repositories/{owner}/{repo}` | `clients:write` |
+| `DELETE /api/clients/{id}/repositories/{owner}/{repo}?version=N` | `clients:write` |
+
+The list shows the repositories the installation covers, those the client
+names (`read_repositories`, `action_repositories`, `auto_review.repositories`,
+event rules), and those with settings. Those are the repositories the client
+covers. Another workspace's client, a Slack client, or any other repository,
+even one of an account the client serves, answers 404.
+
+| Setting | Field | Left empty | What the platform does |
+|---|---|---|---|
+| Automatic review | `auto_review: {opened, pushes}` | the client's switch | Reviews when a pull request opens, on each push, both, or never (`{false, false}`). |
+| Answers `@humagen` when no agent is named | `agent` | the client's `default_agent` | That agent answers `@humagen` with no agent named, ahead of the client's default and the entry agent, and does automatic reviews. It must be one the client routes to. |
+| Instructions for runs here | `instructions` | none | Pinned on every run the client raises on the repository, as the last instruction layer, after the workspace's and the projects'. At most 4,000 characters. |
+| Read before a run starts | `reads: [pull_diff, linked_issues]` | none | Before a run on a pull request or issue starts, Humagen reads the pull request's description and changed files (`pull_diff`), and the issues its description links in the same repository, at most 3 (`linked_issues`), within 24,000 characters and 3 seconds. A read that fails or runs out of time is named, not left out. |
+| Readable from other surfaces | `cross_surface_reads` | readable | When `false`, only runs on the repository's own issues and pull requests read it. Runs from Slack, the console or another repository are refused by `github_read_context`, `github_read_file` and `github_workflow_status`, whatever `read_repositories` or the installation grants. The console does not show its source, issues or pull requests, and the session picker does not offer it. One client turning it off keeps the repository so in the whole workspace, through every client that covers it. Every client's view shows the workspace's answer, with the clients that keep it in `kept_by`. |
+
+What is read before a run is untrusted: anyone who can open a pull request
+writes its description and its patch. It is added to the run's text in one
+block, `<github-data id="NONCE">` to `</github-data id="NONCE">`, whose id is
+a nonce made for that run, after a sentence that says the block is data and
+never instructions. Each description and patch sits in a code fence longer
+than any run of backticks inside it, and a `github-data` marker inside the
+data is broken, so nothing a pull request says can end the block early.
+When the budget cuts the data, it cuts inside a fence and closes it, so the
+note that says so and the closing marker stay outside every fence. The
+reads happen inside GitHub's webhook request, which GitHub abandons after 10
+seconds, so they stop at 3; the agent reads the rest with its GitHub tools.
+
+A write names the `version` it read, `0` while the repository follows its
+client; a write over a change made since answers 409, and so does a write of
+empty settings with version `0` while settings are kept. Settings that change
+nothing remove the record, and `DELETE` returns the repository to the client.
+
+The client's own settings are the defaults, so a deployment configured by
+environment variables behaves as it did until someone changes a repository:
+`HUMAGEN_GITHUB_AUTO_REVIEW`, `HUMAGEN_GITHUB_AUTO_REVIEW_REPOSITORIES` and
+`HUMAGEN_GITHUB_DEFAULT_AGENT` still set the client, and the repository's
+settings win where they are set. `HUMAGEN_GITHUB_ASKERS` stays the client's:
+who may ask is not set per repository. Settings that cannot be read fall back
+to the client for the agent, review nothing, and refuse cross-surface reads.
 
 ## Check progress
 
@@ -406,9 +645,9 @@ comment updates: a commit arriving between the final head read and comment edit
 can leave the guide temporarily stale until its new webhook is processed.
 Multiple server instances need shared serialization for guide creation.
 
-Tags in inline PR review comments answer inside the same native review thread,
-including when the tag is itself a reply. The answer is edited as it streams.
-Issue and PR conversation tags continue answering in the main conversation.
+A trigger in an inline PR review comment is answered inside the same native
+review thread, including when the comment is itself a reply. The answer is edited as it streams.
+A trigger in an issue or PR conversation is answered in the main conversation.
 Explicit delivery overrides retain their configured destination.
 
 ## Requested fixes
@@ -424,7 +663,7 @@ humagen serve -agent-specs examples/github-review/fixer.json
 A repository writer can request a fix in a PR conversation or review thread:
 
 ```text
-@github-fixer /fix handle the retry timeout and add a regression test
+@humagen ask github-fixer /fix handle the retry timeout and add a regression test
 ```
 
 `github_read_file` reads complete UTF-8 source at an immutable SHA before editing.
@@ -434,10 +673,11 @@ source PR must be open and its branch must be in the same repository. Fork PRs
 are read-only for this tool. Branch protections still apply.
 
 Fixes require an explicit `/fix` mention from a person with effective GitHub
-write permission. The command is the first word after the address:
-`@github-fixer /fix the typo` asks for a fix, and a comment that puts words or
-a mention before the command, as `/check @github-fixer 123456789` does
-before the run id, grants nothing. Permission is checked at acceptance and again before writing.
+write permission. The command is the first word after the address, the
+trigger and the agent's name: `@humagen ask github-fixer /fix the typo` asks for a
+fix, and a comment that puts words or a mention before the command, as
+`/check @humagen ask github-fixer 123456789` does before the run id, grants
+nothing. Permission is checked at acceptance and again before writing.
 The connector signs a grant bound to the run ID, actor, repository, PR and head.
 The run ID is the runtime's, derived from the client's workspace and the
 delivery ID, so a connector that may commit is built with its workspace.
@@ -463,7 +703,7 @@ GitHub permission.
 With mutations enabled, a repository writer can request:
 
 ```text
-@github-fixer /check 123456789
+@humagen ask github-fixer /check 123456789
 ```
 
 The number is an existing GitHub Actions run ID. The connector binds the grant
@@ -531,6 +771,14 @@ person's credentials and use the client's existing home and runtime policy.
 The prompt receives the rule's instructions and bounded repository, issue/PR
 number and head SHA identifiers, never arbitrary text from the webhook.
 
+A rule's `shape` says what its runs answer with (see
+[Reply or review](#reply-or-review)): `review` posts a review, `reply`
+answers in prose. Left out, a rule on `pull_request` reviews and any other
+replies, whatever its instructions say. A rule's run keeps the rule's shape:
+its agent cannot turn it into a review with `start_review`. The console's
+rule editor does not set it yet; set it in the client's configuration or
+through the API.
+
 Every run is a session, kept and readable in the console. It answers on the
 pull request or issue that triggered it (`github://owner/repo/pull/7` or
 `.../issues/7`), through the GitHub output policy every answer there passes.
@@ -548,15 +796,21 @@ rule: it is the connection's switch (see [Automatic review](#automatic-review)).
 ## Native reviews and feedback
 
 Managed installations submit validated `humagen.review.v2` results as native
-reviews when `github.login` is configured. The reviewed head is pinned; a moved
-head refuses publication. Each applicable finding gets a line comment and an
-optional committable suggestion. Missing diff locations become review-body text.
-Each finding may name the agent that found it (`found_by`, such as
-`security-reviewer` or `security-reviewer#a`), shown on its line comment and in
-the findings table. Agents never approve: an `approve` verdict is
-posted as a comment, `request_changes` as a change request, and a person
-approves and merges. Review recovery uses
-an app-owned marker and the durable delivery store to avoid duplicate reviews.
+reviews when `github.login` is configured, for runs saved as `review` (see
+[Reply or review](#reply-or-review)). The host pins the reviewed head; a moved
+head refuses publication. Each finding on a line of the diff gets a line
+comment and an optional committable suggestion. A finding with no location,
+or one off the diff, stays in the review body with its change. Each finding
+may name the agent that found it (`found_by`, such as `security-reviewer` or
+`security-reviewer#a`); the review shows the agent's name without the label.
+Agents never approve: an `approve` verdict is posted as a comment,
+`request_changes` as a change request, and a person approves and merges.
+Review recovery uses an app-owned marker and the durable delivery store to
+avoid duplicate reviews. Before it posts, the host records in the delivery
+store that the review is in the current layout. A review with no record was
+posted by the code from before reviews read as prose, and recovery
+reproduces it in that table layout, so it is still receipted and its
+findings stay mapped.
 
 The host verifies evidence references against recorded tool results and session
 reads before rendering a native review, Slack output, or console history. A
@@ -624,9 +878,7 @@ in `[humagen]`. Its body links the verified source issue or PR; issue links use
 
 The requester must have a verified GitHub identity with current repository write
 permission. For console/Slack requests, `github.people` maps their workspace
-subject to a GitHub login; ambiguous mappings deny. A linked account is not
-used here yet: its login is the one at the last sign-in, and this check needs
-the current one. An explicit cross-surface
+subject to a GitHub login; ambiguous mappings deny. An explicit cross-surface
 repository write grant is also required. Creating a fix PR asks for human approval
 by default. Only explicit allow policies for both `write_files` and
 `external_messages` skip that approval; a deny in either category wins.

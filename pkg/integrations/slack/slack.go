@@ -3,10 +3,15 @@
 package slack
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
+	"net/http"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -20,6 +25,7 @@ import (
 	"github.com/urmzd/saige/flow/event"
 
 	"github.com/urmzd/humagen/internal/wire"
+	"github.com/urmzd/humagen/pkg/trigger"
 )
 
 type Config struct {
@@ -51,6 +57,12 @@ type Config struct {
 	// through connector rebuilds. Replicas must share both.
 	DeliveryState deliverystate.Store
 	DeliveryScope string
+	// Sender is who the client acts for. A message, mention, slash command
+	// or interactive payload from anyone else is answered here and goes no
+	// further (refuse), and a stop in a session with no run known settles
+	// its status only for them. Nil leaves the decision to the platform
+	// alone.
+	Sender SenderFunc
 }
 type Connector struct {
 	*transport.Connector
@@ -59,6 +71,7 @@ type Connector struct {
 	statusMu  sync.Mutex
 	statusSeq map[string]uint64
 	live      live
+	turned    turnAway
 }
 
 func New(cfg Config) (*Connector, error) {
@@ -77,9 +90,32 @@ func New(cfg Config) (*Connector, error) {
 	base.FileTokenSource = cfg.FileTokenSource
 	base.DeliveryState, base.DeliveryScope = cfg.DeliveryState, cfg.DeliveryScope
 	base.Feedback, base.ObserveDelivery, base.ContinueThread, base.StatusReactions, base.ActionChannels = cfg.Feedback, cfg.ObserveDelivery, cfg.ContinueThread, cfg.StatusReactions, cfg.ActionChannels
-	base.Prepare = func(_ context.Context, tag *event.Envelope) error {
+	base.Prepare = func(ctx context.Context, tag *event.Envelope) error {
+		// The team the sender belongs to, as the delivery named it, for
+		// whoever decides again what the event may start. Nothing else
+		// writes this key.
+		wire.DeleteMeta(tag, wire.MetaSlackSenderTeam)
+		if who, ok := ctx.Value(senderKey{}).(sender); ok && who.noTeam {
+			wire.SetMeta(tag, wire.MetaSlackSenderTeam, noSlackTeam)
+		} else if ok && who.team != "" {
+			wire.SetMeta(tag, wire.MetaSlackSenderTeam, who.team)
+		}
 		if cfg.Agents != nil && wire.AgentOf(*tag) == "" {
-			if agent, stripped, ok := mention.Find(wire.TextOf(*tag), cfg.Agents); ok {
+			text := wire.TextOf(*tag)
+			// The agent named right after the app's own mention that opens
+			// the message is asked: "@Humagen ask docs-bot ...", "@Humagen
+			// docs-bot: ...". Agents are not Slack users, so a person cannot
+			// pick one from Slack's list. Only there: a thread reply, a
+			// direct message, or a message that opens with someone else
+			// reads its first word as words.
+			at, opened := 0, ctx.Value(openedKey{}) != nil
+			if opened {
+				at = firstToken(text)
+			}
+			if agent, n := trigger.Leading(text[at:], cfg.Agents.Lookup); opened && agent != "" {
+				wire.SetAgent(tag, agent)
+				wire.SetText(tag, strings.TrimSpace(text[:at]+text[at+n:]))
+			} else if agent, stripped, ok := mention.Find(text, cfg.Agents); ok {
 				wire.SetAgent(tag, agent)
 				wire.SetText(tag, stripped)
 			}
@@ -163,3 +199,93 @@ const (
 
 var NewFake = transport.NewFake
 var NewHTTPAPI = transport.NewHTTPAPI
+
+// firstToken is how many bytes of text its first "@name" takes: the app's
+// own mention as the transport writes it ("@U08BOT", or "@humagen" from a
+// label). 0 when the text does not open with one.
+func firstToken(text string) int {
+	if text == "" || text[0] != '@' {
+		return 0
+	}
+	i := 1
+	for i < len(text) && !strings.ContainsRune(" \t\n\r:,", rune(text[i])) {
+		i++
+	}
+	return i
+}
+
+// noSlackTeam is written as the sender's team when the delivery named it
+// with something that is not a string. It is no team's id.
+const noSlackTeam = "(none)"
+
+type openedKey struct{}
+
+// maxOpenedBody bounds the delivery read for the app's mention. A larger one
+// is handed on unread, and the transport refuses it by its own limit.
+const maxOpenedBody = 25 << 20
+
+// openedBySelf matches an event's text that opens with a user mention.
+var openedBySelf = regexp.MustCompile(`^\s*<@([A-Z0-9]+)(?:\|[^<>]*)?>`)
+
+// ServeHTTP refuses a request from a sender the client does not map
+// (refuse), and notes whether a message opens with the app's own bot user,
+// the one place a word after it names an agent (prepare). The transport
+// reads and verifies the delivery as before.
+func (c *Connector) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost || r.Body == nil {
+		c.Connector.ServeHTTP(w, r)
+		return
+	}
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxOpenedBody+1))
+	r.Body = io.NopCloser(io.MultiReader(bytes.NewReader(body), r.Body))
+	if err == nil && len(body) <= maxOpenedBody {
+		who, ok, unread := c.asks(r, body)
+		if unread != nil {
+			// A verified delivery whose sender cannot be read is
+			// acknowledged, so Slack does not send it again, and goes
+			// no further.
+			if c.cfg.Log != nil {
+				c.cfg.Log.Debug("slack: a delivery was not read for its sender and went no further")
+			}
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		if ok {
+			if c.refuse(w, who) {
+				return
+			}
+			r = r.WithContext(context.WithValue(r.Context(), senderKey{}, who))
+		}
+	}
+	if err == nil && len(body) <= maxOpenedBody && c.cfg.Agents != nil && openedByApp(body) {
+		r = r.WithContext(context.WithValue(r.Context(), openedKey{}, true))
+	}
+	c.Connector.ServeHTTP(w, r)
+}
+
+// openedByApp reports whether an event's text opens with a mention of a bot
+// user the delivery was made for (its authorizations): the app itself.
+func openedByApp(body []byte) bool {
+	var env struct {
+		Authorizations []struct {
+			UserID string `json:"user_id"`
+			IsBot  bool   `json:"is_bot"`
+		} `json:"authorizations"`
+		Event struct {
+			Text string `json:"text"`
+		} `json:"event"`
+	}
+	if json.Unmarshal(body, &env) != nil {
+		return false
+	}
+	m := openedBySelf.FindStringSubmatch(env.Event.Text)
+	if m == nil {
+		return false
+	}
+	for _, a := range env.Authorizations {
+		if a.IsBot && a.UserID == m[1] {
+			return true
+		}
+	}
+	return false
+}

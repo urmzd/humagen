@@ -16,21 +16,23 @@ func pullEvent(action, repo string, number int, sha string, draft bool, state st
 	return b
 }
 
-// Automatic review is on unless the connection or the repository turns it
-// off; a repository's own setting wins either way.
-func TestAutoReviewIsOnUnlessTurnedOff(t *testing.T) {
+// Automatic review is off unless the connection or the repository turns it
+// on; a repository's own setting wins either way.
+func TestAutoReviewIsOffUnlessTurnedOn(t *testing.T) {
 	off, on := false, true
 	for _, tc := range []struct {
 		name string
 		a    *AutoReview
 		want bool
 	}{
-		{"left out", nil, true},
-		{"no switch", &AutoReview{}, true},
+		{"left out", nil, false},
+		{"no switch", &AutoReview{}, false},
+		{"switched on", &AutoReview{Enabled: &on}, true},
 		{"switched off", &AutoReview{Enabled: &off}, false},
 		{"off, but on here", &AutoReview{Enabled: &off, Repositories: map[string]bool{"ACME/Site": true}}, true},
 		{"on, but off here", &AutoReview{Enabled: &on, Repositories: map[string]bool{"acme/site": false}}, false},
-		{"off elsewhere", &AutoReview{Repositories: map[string]bool{"acme/other": false}}, true},
+		{"off elsewhere", &AutoReview{Repositories: map[string]bool{"acme/other": false}}, false},
+		{"on elsewhere", &AutoReview{Enabled: &on, Repositories: map[string]bool{"acme/other": false}}, true},
 	} {
 		if got := tc.a.Reviews("acme/site"); got != tc.want {
 			t.Errorf("%s: reviews = %v", tc.name, got)
@@ -44,7 +46,8 @@ func TestAutoReviewIsOnUnlessTurnedOff(t *testing.T) {
 func TestAutoReviewMatchesReadyPullRequestsOnly(t *testing.T) {
 	sha := strings.Repeat("a", 40)
 	gh := githubOf("gh", "acme")
-	gh.GitHub = &GitHubOptions{}
+	on := true
+	gh.GitHub = &GitHubOptions{AutoReview: &AutoReview{Enabled: &on}}
 	for _, tc := range []struct {
 		name string
 		kind string
@@ -79,8 +82,9 @@ func TestAutoReviewMatchesReadyPullRequestsOnly(t *testing.T) {
 func TestAutoReviewNeedsTheSwitchAnAgentAndTheEvent(t *testing.T) {
 	sha := strings.Repeat("b", 40)
 	body := pullEvent("opened", "acme/site", 7, sha, false, "open")
-	off := false
+	off, on := false, true
 	for name, change := range map[string]func(*Client){
+		"left out":               func(c *Client) { c.GitHub.AutoReview = nil },
 		"switched off":           func(c *Client) { c.GitHub.AutoReview = &AutoReview{Enabled: &off} },
 		"off for the repo":       func(c *Client) { c.GitHub.AutoReview = &AutoReview{Repositories: map[string]bool{"acme/site": false}} },
 		"no default agent":       func(c *Client) { c.DefaultAgent = "" },
@@ -89,7 +93,7 @@ func TestAutoReviewNeedsTheSwitchAnAgentAndTheEvent(t *testing.T) {
 		"slack":                  func(c *Client) { c.Surface = Slack },
 	} {
 		c := githubOf("gh", "acme")
-		c.GitHub = &GitHubOptions{}
+		c.GitHub = &GitHubOptions{AutoReview: &AutoReview{Enabled: &on}}
 		change(&c)
 		if _, ok := c.MatchAutoReview("pull_request", body); ok {
 			t.Errorf("%s: reviewed", name)
@@ -97,25 +101,9 @@ func TestAutoReviewNeedsTheSwitchAnAgentAndTheEvent(t *testing.T) {
 	}
 }
 
-func TestMentionsAreWholeNames(t *testing.T) {
-	for text, want := range map[string]bool{
-		"@humagen review":          true,
-		"please @humagen.":         true,
-		"(@Humagen) again":         true,
-		"@humagen-bot review":      false,
-		"mail me at a@humagen.dev": false,
-		"@@humagen":                false,
-		"humagen review":           false,
-		"thanks @lead, done":       false,
-	} {
-		if got := mentions(text, "humagen"); got != want {
-			t.Errorf("mentions(%q) = %v", text, got)
-		}
-	}
-}
-
-// A person addressing the app or an agent on a pull request is what resumes
-// automatic review there. Bots, issues and other accounts do not.
+// A person asking with the trigger on a pull request is what resumes
+// automatic review there. An agent's name alone, bots, issues and other
+// accounts do not.
 func TestAMentionOnAPullRequestIsFound(t *testing.T) {
 	gh := githubOf("gh", "acme")
 	gh.Agents = []string{"reviewer", "*"}
@@ -139,8 +127,10 @@ func TestAMentionOnAPullRequestIsFound(t *testing.T) {
 		pull, want               bool
 	}{
 		{"the app", "issue_comment", "User", "@humagen review", true, true},
-		{"the default agent", "pull_request_review_comment", "User", "@lead look here", true, true},
-		{"a listed agent", "issue_comment", "User", "@reviewer again", true, true},
+		{"the trigger naming an agent", "pull_request_review_comment", "User", "@Humagen reviewer look here", true, true},
+		{"the default agent alone", "pull_request_review_comment", "User", "@lead look here", true, false},
+		{"a listed agent alone", "issue_comment", "User", "@reviewer again", true, false},
+		{"the trigger in a quote", "issue_comment", "User", "> @humagen review\n\nthanks", true, false},
 		{"nobody", "issue_comment", "User", "looks good", true, false},
 		{"a bot", "issue_comment", "Bot", "@humagen review", true, false},
 		{"an issue", "issue_comment", "User", "@humagen review", false, false},

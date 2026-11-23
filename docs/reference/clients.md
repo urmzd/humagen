@@ -17,7 +17,7 @@ one per agent are all the same record with different values.
 | `agents` | The agents the client may route to, besides its default. |
 | `bots` | A Slack bot user id, or a GitHub login, to the agent it stands for. A Slack bot is read through every enabled Slack client in the team, so a mention of an agent's own app's bot names the agent in any of them (see [An agent's own Slack app](#an-agents-own-slack-app)). These three, and `github.automations`, show only the agents the reader may read (see [Agents a reader may not read](#agents-a-reader-may-not-read)). |
 | `slack` | `sessions`, `commands`, and `machine` and `people` (see [People a Slack app answers for](#people-a-slack-app-answers-for)). |
-| `github` | `auto_review` (see [Automatic review](github.md#automatic-review)), `automations`, `checks`, `guides`, `mutations`, `read_repositories` (optional extra repositories a run from another surface may read; empty means the repositories the app is installed on, see [Repositories the app is installed on](github.md#repositories-the-app-is-installed-on)), and `login`, the app's own login, which a comment mentions to ask the client's default (see [Who a comment asks](github.md#who-a-comment-asks)). |
+| `github` | `auto_review` (off when left out; see [Automatic review](github.md#automatic-review)), `automations`, `checks`, `guides`, `mutations`, `read_repositories` (optional extra repositories a run from another surface may read; empty means the repositories the app is installed on, see [Repositories the app is installed on](github.md#repositories-the-app-is-installed-on)), and `login`, the app's own login, which a comment mentions to ask the client's default (see [Who a comment asks](github.md#who-a-comment-asks)). These are the defaults for every repository the client covers; each repository can override automatic review and the default agent, and add instructions, context reads and a cross-surface read switch, in its own settings, kept apart from the record (see [Repository settings](github.md#repository-settings)). |
 | `home` | `{project, channel}`: where the client files the threads it starts outside a channel bound to one, such as direct messages and GitHub issues. `project` is a project's name, or `~` for the workspace, and must exist. `channel` is one of its channels, not archived; left out, `general`. Left out entirely, the workspace's `general`. A Slack thread outside a bound channel is filed here, private for a direct message (see [Slack coworking](slack.md#coworking-channels-threads-and-mentions)). A home in a project the reader may not read is not shown to them, and their change that names no home keeps it. |
 | `enabled` | A disabled client answers nothing and carries nothing. |
 
@@ -93,14 +93,14 @@ when the client:
 | Field | Meaning |
 |-------|---------|
 | `slack.machine` | The subject of the credential the app signs in with. No other credential may act for the client's people. |
-| `slack.people` | Slack user ids in the client's team, each mapped to the principal it is in this workspace, by subject. At most 500. A fallback: a person who [linked their Slack account](slack.md#linked-accounts) in the client's team is found first. |
+| `slack.people` | Slack user ids in the client's team, each mapped to the principal it is in this workspace, by subject. At most 500. |
 
 For the app a server starts itself, both come from the Platform document
 (`surfaces.slack.people` and `machine`, see
 [the spec](spec.md#whom-the-slack-app-acts-for)), and the server tells the app
 which client it is.
 
-Anyone who neither linked their account nor is named in the map is refused with 403, and the app does not ask on
+Anyone the map does not name is refused with 403, and the app does not ask on
 their behalf. To ask for a run or to answer, the person's own grant must include `runs:write`. A Slack click
 carries no groups, so someone who holds a role only through a group (`grant
 operator to group "..."`) holds nothing here and cannot ask or answer from Slack:
@@ -446,18 +446,8 @@ withheld. Explicit action-policy Ask still requires the native approval path;
 automatic delivery cannot grant it. Direction edits preserve binding identity and
 require the channel's current version and existing project/client permissions.
 
-People link their own GitHub and Slack accounts in the console
-([GitHub](github.md#linked-accounts), [Slack](slack.md#linked-accounts)). A link
-is the workspace's, keyed by the surface and its stable user id, and holds no
-credential. A surface user resolves through a link first and a client's map
-second. `GET /api/clients/{id}/accounts` (`clients:read`) lists who linked an
-account on a client's surface; a Slack client lists its own team's.
-`DELETE /api/clients/{id}/accounts/{account}` (`clients:write`, audited)
-removes one, by the surface's user id. A GitHub `github.people` entry that
-names a person who linked an account is no longer used.
-
-GitHub installations may also set `github.people`, a bounded exact GitHub-login to
-workspace-subject map, as a fallback. Only that verified installation's map applies. Bot,
+GitHub installations may set `github.people`, a bounded exact GitHub-login to
+workspace-subject map. Only that verified installation's map applies. Bot,
 unmapped and disabled-installation actors act for nobody. A mapping does not
 grant membership or permissions; current project and policy checks still apply.
 Like a Slack client's `slack.people`, each subject a GitHub client maps is

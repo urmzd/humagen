@@ -35,7 +35,12 @@ export function bridgeOutcome(turn: Turn): Turn {
     usage: undefined,
     handoff: undefined,
     failure: turn.failure
-      ? { kind: turn.failure.kind, message: turn.failure.message, retryable: false }
+      ? {
+          kind: turn.failure.kind,
+          ...(turn.failure.cause ? { cause: turn.failure.cause } : {}),
+          message: turn.failure.message,
+          retryable: false,
+        }
       : undefined,
   };
 }

@@ -245,12 +245,56 @@ export function runningTurn(now = Date.now(), elapsedMs = 112_000): Turn {
   };
 }
 
+const retriedIntro = "Reading the pull request before I review it.";
+
+/**
+ * A source read that was refused and then read at its full address: the
+ * first attempt failed, the second worked, so the line says it was retried,
+ * not that it failed. The production case behind it: `urmzd/humagen` was
+ * refused, `github://urmzd/humagen/pull/541` read in 2.2 s.
+ */
+export function retriedTurn(): Turn {
+  return {
+    id: "turn-retried",
+    agent: { name: "code-reviewer" },
+    status: "done",
+    text: `${retriedIntro}\n\nThe change is small and the tests cover it. One suggestion below.`,
+    tasks: [
+      {
+        id: "context-1",
+        title: "Read GitHub context",
+        tool: "github_read_context",
+        status: "error",
+        input: json({ address: "urmzd/humagen" }),
+        output: "connector: undeliverable: expected a github:// address or github.com issue/PR URL",
+        durationMs: 40,
+        at: retriedIntro.length,
+      },
+      {
+        id: "context-2",
+        title: "Read GitHub context",
+        tool: "github_read_context",
+        status: "complete",
+        input: json({ address: "github://urmzd/humagen/pull/541" }),
+        output: json({ subject: { number: 541, title: "Show a recovered failure quietly" } }),
+        durationMs: 2_200,
+        at: retriedIntro.length,
+      },
+    ],
+    citations: [],
+    interrupts: [],
+    notices: [],
+    durationMs: 14_000,
+  };
+}
+
 export const transcriptScenes = {
   failed: { ask: "please check my repos; whats their status right now?", turn: failedTurn },
   connect: { ask: "please check my repos; whats their status right now?", turn: connectTurn },
   refs: { ask: "Why is the stack blocked?", turn: referencesTurn },
   tools: { ask: "Fix CI on the first PR.", turn: toolsTurn },
   running: { ask: "Lint the top branch before pushing.", turn: runningTurn },
+  retried: { ask: "Review urmzd/humagen#541.", turn: retriedTurn },
 } as const;
 
 export type TranscriptScene = keyof typeof transcriptScenes;

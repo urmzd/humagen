@@ -3,9 +3,9 @@ package platform
 import (
 	"encoding/json"
 	"net/http"
-	"strings"
 
 	"github.com/urmzd/humagen/pkg/clients"
+	"github.com/urmzd/humagen/pkg/trigger"
 )
 
 // statusWriter remembers the status a connector answered a delivery with.
@@ -125,32 +125,8 @@ func githubIgnoredWhy(c clients.Client, event string, g githubDelivery) string {
 	default:
 		return "the connector does not act on " + event + " events"
 	}
-	handle := ""
-	if c.GitHub != nil {
-		handle = strings.TrimSuffix(c.GitHub.Login, "[bot]")
+	if _, asked := trigger.Read(text, c.Triggers(), nil); asked {
+		return "it asks @" + trigger.Name + ", but the connector raised nothing: check the client's accounts (owners) and the repository's access"
 	}
-	for _, name := range append([]string{handle, c.DefaultAgent}, mentionNames(c)...) {
-		if name != "" && strings.Contains(strings.ToLower(text), "@"+strings.ToLower(name)) {
-			return "it mentions @" + name + ", but the connector raised nothing: check the client's accounts (owners) and the repository's access"
-		}
-	}
-	if handle == "" {
-		return "it mentions no agent, and the client has no login (HUMAGEN_GITHUB_LOGIN) for a mention of the app to reach it"
-	}
-	return "it mentions neither the app (@" + handle + ") nor one of the client's agents"
-}
-
-// mentionNames are the agents and bot logins a comment may mention to reach
-// a client.
-func mentionNames(c clients.Client) []string {
-	var names []string
-	for _, a := range c.Agents {
-		if a != "*" {
-			names = append(names, a)
-		}
-	}
-	for login, agent := range c.Bots {
-		names = append(names, strings.TrimSuffix(login, "[bot]"), agent)
-	}
-	return names
+	return "it does not ask @" + trigger.Name + ": an agent's name alone, or a mention in code or a quoted reply, asks nobody"
 }

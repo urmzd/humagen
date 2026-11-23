@@ -54,6 +54,7 @@ import (
 	"github.com/urmzd/humagen/pkg/projectforks"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/readaudit"
+	"github.com/urmzd/humagen/pkg/reposettings"
 	"github.com/urmzd/humagen/pkg/rooms"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/scratchpads"
@@ -253,6 +254,7 @@ func (p *Platform) openStores(cfg Config) error {
 	p.deliveries = deliveryStore(perRequest)
 	// A conversation that came from a corpus item pulls that item.
 	p.RegisterContextResolver("corpus", p.corpusContext)
+	p.RegisterContextResolver("github", p.githubContext)
 	p.Prefs, err = prefs.Open(perRequest)
 	keep("prefs", err)
 	p.Marks, err = marks.Open(perRequest)
@@ -362,6 +364,7 @@ func (p *Platform) openStores(cfg Config) error {
 		reviews = state.NewMemory()
 	}
 	p.pullReviews = state.NewTable[PullReview](reviews, "pull_reviews")
+	p.RepoSettings = reposettings.Open(perRequest)
 	if cfg.ConnectionAuth != nil {
 		connectionConfig := *cfg.ConnectionAuth
 		connectionConfig.OnAuthFailure = p.RecordConnectionAuthFailure

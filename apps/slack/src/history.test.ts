@@ -4,6 +4,7 @@ import {
   BOT,
   CHANNEL,
   direct,
+  mappedWorld,
   mention,
   OTHER_USER,
   SUBJECT,
@@ -118,8 +119,8 @@ async function finish(w: World) {
   await w.app.idle();
 }
 
-test("history: a mention in a thread carries what people said there, with who said it", async () => {
-  const w = world();
+test("history: a mention in a thread reads it since the app was last asked, and each person's words go first as theirs", async () => {
+  const w = mappedWorld();
   withThread(w, THREAD, { [OTHER_USER]: "Dana", [USER]: "Sam" });
   await w.app.handle(mention("can we stop it safely?", ASK, { thread_ts: ROOT }));
   await settle();
@@ -131,29 +132,36 @@ test("history: a mention in a thread carries what people said there, with who sa
     inclusive: false,
     limit: 200,
   });
-  const asked = w.humagen.started[0]?.text ?? "";
-  assert.match(asked, new RegExp(`Dana \\(<@${OTHER_USER}>\\): who holds it\\?`));
-  assert.match(asked, new RegExp(`Sam \\(<@${USER}>\\): the nightly backfill, I think`));
-  assert.ok(!asked.includes("CI: build"), "a bot's message is left out");
-  assert.ok(!asked.includes("waited on a lock"), "the app's own answer is left out");
-  assert.ok(asked.endsWith("\ncan we stop it safely?"));
+  const said = w.humagen.posts.filter((p) => p.post_only);
+  assert.deepEqual(
+    said.map((p) => [p.act_as.user, p.surface.message, p.text]),
+    [
+      [OTHER_USER, "1700000004.000100", "who holds it?"],
+      [USER, "1700000007.000100", "the nightly backfill,\nI think"],
+    ],
+    "no bot's message, nor the app's",
+  );
+  assert.equal(w.humagen.posts.at(-1)?.text, "can we stop it safely?");
   await finish(w);
 });
 
-test("history: without users:read people are named by mention, and Slack is asked once", async () => {
-  const w = world();
-  withThread(w, THREAD, "refused");
+test("history: someone the client maps to nobody has no voice in a thread: their words are not posted", async () => {
+  const w = mappedWorld({}, { [USER]: "sam" });
+  withThread(w, THREAD, {});
   await w.app.handle(mention("can we stop it safely?", ASK, { thread_ts: ROOT }));
   await settle();
-  const asked = w.humagen.started[0]?.text ?? "";
-  assert.match(asked, new RegExp(`^<@${OTHER_USER}>: who holds it\\?`, "m"));
-  assert.equal(w.slack.of("users.info").length, 1);
-  assert.ok(w.logs.some((l) => /users:read/.test(l)));
+  const said = w.humagen.posts.filter((p) => p.post_only);
+  assert.deepEqual(
+    said.map((p) => p.act_as.user),
+    [USER],
+    "only the person the client maps is posted, as them",
+  );
+  assert.ok(!said.some((p) => p.text.includes("who holds it?")));
   await finish(w);
 });
 
 test("history: a thread Slack will not give still answers the question alone", async () => {
-  const w = world();
+  const w = mappedWorld();
   w.slack.failing["conversations.replies"] = "missing_scope";
   await w.app.handle(mention("can we stop it safely?", ASK, { thread_ts: ROOT }));
   await settle();
@@ -165,7 +173,7 @@ test("history: a thread Slack will not give still answers the question alone", a
 });
 
 test("history: a top-level mention or a direct message reads no thread", async () => {
-  const w = world();
+  const w = mappedWorld();
   withThread(w, THREAD, {});
   await w.app.handle(mention("hello", ROOT));
   await settle();

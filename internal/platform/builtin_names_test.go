@@ -61,6 +61,11 @@ func TestBuiltinNamesAndReviewGrants(t *testing.T) {
 		}
 		if slices.Contains(want[2:6], r.Spec.Name) {
 			tools := []string{platform.ToolFileRead, platform.ToolFileList, "github_read_context", "github_read_file"}
+			if r.Spec.Name == platform.BuiltinCodeReviewer {
+				// The lead reviewer may also turn a reply into a review,
+				// which changes nothing in the repository.
+				tools = append(tools, platform.ToolStartReview)
+			}
 			slices.Sort(tools)
 			got := slices.Clone(r.Spec.Tools)
 			slices.Sort(got)

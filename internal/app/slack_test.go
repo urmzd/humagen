@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"github.com/urmzd/humagen/pkg/connectionauth"
 	"io"
 	"log/slog"
 	"maps"
@@ -563,10 +562,15 @@ func TestTheSlackAppTheServerStartsActsForThePeopleTheFileMaps(t *testing.T) {
 	if status, out := call("POST", "/api/runs", `{"text":"hello","act_as":{"client":"`+client+`","user":"U0123EVE"}}`); status != 403 {
 		t.Fatalf("a run for an unmapped person: %d %v", status, out)
 	}
-	// An unnamed message, for a mapped person and for nobody, has one answerer.
-	status, own := call("POST", "/api/runs", `{"text":"hello"}`)
+	// The app starts nothing as itself, whatever the app asks.
+	if status, out := call("POST", "/api/runs", `{"text":"hello"}`); status != 403 {
+		t.Fatalf("the app's own run: %d %v", status, out)
+	}
+	// An unnamed message, for a mapped person and for nobody at their
+	// asking, has one answerer.
+	status, own := call("POST", "/api/runs", `{"text":"hello","asked_by":{"client":"`+client+`","user":"U0123ANA"}}`)
 	if status != 202 {
-		t.Fatalf("the app's own unnamed run: %d %v", status, own)
+		t.Fatalf("the app's unnamed run at ana's asking: %d %v", status, own)
 	}
 	status, theirs := call("POST", "/api/runs", `{"text":"hello","act_as":{"client":"`+client+`","user":"U0123ANA"}}`)
 	if status != 202 {
@@ -651,25 +655,6 @@ func TestTheSlackAppsRecordFollowsTheFileAtEveryStart(t *testing.T) {
 	p, kept := start("tailscale", slackWith(""))
 	if all, err := p.Clients.List("default"); err != nil || len(all) != 0 || len(kept) != 0 {
 		t.Fatalf("with nobody mapped: %d clients, kept %v, %v", len(all), kept, err)
-	}
-	_ = p.Close()
-
-	// Where people link their Slack accounts, the record is kept with nobody
-	// mapped, so the app acts for the people who linked one.
-	p, _ = start("tailscale", "")
-	slackLink := platform.NativeConnectionProvider(platform.SlackAccount)
-	slackLink.ClientID, slackLink.ClientSecret = "123.456", "secret"
-	linking, err := connectionauth.New(state.NewMemory(), connectionauth.Config{Key: []byte(strings.Repeat("k", 32)), RedirectURL: "https://humagen.test/connections/callback", Providers: []connectionauth.Provider{slackLink}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	p.ConnectionAuth = linking
-	kept, err = applySlackClients(t.Context(), p, mustLoadSlack(t, "tailscale", slackWith("")), "tailscale", log)
-	if c, _ := p.Clients.Get("default", id); err != nil || kept["default"] != id || c.Slack == nil || c.Slack.Machine != "slack-app:T0123ACME" || len(c.Slack.People) != 0 {
-		t.Fatalf("linking with nobody mapped: kept %v, %+v, %v", kept, c.Slack, err)
-	}
-	if err := p.Clients.Delete("default", id); err != nil {
-		t.Fatal(err)
 	}
 	_ = p.Close()
 

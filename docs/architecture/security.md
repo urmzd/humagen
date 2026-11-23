@@ -230,8 +230,26 @@ no permission, grants nothing.
   A run a Slack client's own connector raises is held to the same: it acts
   for the person the team maps the Slack user to only if the policy grants
   their subject `runs:write` and they are a member where it is filed, else
-  it is not started, and in a Slack channel bound to a project someone the
-  team maps to nobody is not answered. Mapping a person is `clients:write`.
+  it is not started, and someone the team maps to nobody, or who writes
+  from another Slack team, is not answered in any channel. A run is stopped
+  from Slack by a mapped person or by the Slack user who asked for it
+  ([reference](../reference/slack.md#who-can-start-and-stop-a-run-on-the-webhook-connector)).
+  Mapping a person is `clients:write`.
+- **A Slack app starts nothing for someone it was not given.** Anyone who
+  can message a Slack app reaches it: a new member, a guest, or someone from
+  another company in a Slack Connect channel. So the app checks the sender of
+  every message, command, shortcut and button against its client's `people`,
+  and the sender's own team against the client's, before it posts, reads or
+  runs anything; anyone else is told privately, at most once in ten minutes,
+  that their account is not connected. The server does not rely on the app:
+  a credential a Slack client names as its `machine`, or the `slack-app:`
+  credential the server makes, starts a run only as a person the client maps
+  (`act_as`) or for nobody at such a person's asking (`asked_by`), and makes
+  no call, skill test or inbox retry, so an old or forged app starts nothing
+  as itself (403). There is no setting that opens a Slack app to everyone
+  ([who can start a run](../reference/slack.md#who-can-start-a-run)). The
+  webhook connector in `humagen serve` still answers an unmapped Slack user
+  for nobody outside a bound channel.
 - **A person posts only as themselves.** A message in a shared thread is
   the caller's, or, for a credential, the person its client maps through
   `act_as`, who must hold `runs:write` themselves; a credential acting for

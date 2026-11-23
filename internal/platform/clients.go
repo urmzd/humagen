@@ -311,6 +311,9 @@ func (p *Platform) DeleteClient(_ context.Context, tenant, id, by string) error 
 	if err := p.secrets.Drop(tenant, id); err != nil {
 		return err
 	}
+	if err := p.RepoSettings.DeleteClient(tenant, id); err != nil {
+		return err
+	}
 	if err := p.Policies.Delete(tenant, policy.Scope{Kind: policy.Client, Name: id}, by, p.now()); err != nil && !errors.Is(err, policy.ErrNotFound) {
 		return err
 	}
@@ -458,7 +461,15 @@ func (p *Platform) bind(s *surface, st *seat) {
 	}
 	tenant, client, name := st.client.Tenant, st.client.ID, s.name
 	stopper.OnStop(func(ctx context.Context, runID, who string) error {
-		return p.stopFromSurface(ctx, tenant, client, name, runID, who)
+		err := p.stopFromSurface(ctx, tenant, client, name, runID, who)
+		if errors.Is(err, ErrForbidden) {
+			p.log.Info("platform: a stop from a surface was refused", "surface", name, "tenant", tenant, "client", client, "run", runID, "user", who, "why", err.Error())
+			return fmt.Errorf("%w: %w", slack.ErrStopRefused, err)
+		}
+		if errors.Is(err, errNothingToStop) {
+			return fmt.Errorf("%w: %w", slack.ErrNothingToStop, err)
+		}
+		return err
 	})
 }
 
@@ -494,6 +505,7 @@ func (p *Platform) dial(c clients.Client, secrets resolved) (*seat, error) {
 			DeliveryState: deliveryState, DeliveryScope: clientDeliveryScope(c),
 		}
 		cfg.Feedback, cfg.ObserveDelivery = p.feedbackFor(c), p.deliveredFor(c)
+		cfg.Sender = func(team, user string) bool { return p.slackSender(c, team, user) }
 		cfg.ContinueThread = func(team, channel, thread string) bool {
 			return p.continueSurface(c, address.Address{Connector: "slack", Workspace: team, Path: []string{channel}}.WithParam("thread", thread))
 		}
@@ -549,8 +561,11 @@ func (p *Platform) dial(c clients.Client, secrets resolved) (*seat, error) {
 			Tenant:         c.Tenant,
 			DeliveryState:  deliveryState, DeliveryScope: clientDeliveryScope(c),
 		}
-		// A comment that mentions the app and names no agent is raised
-		// naming none, and stamp decides who answers it where it is filed.
+		// Only the trigger asks ("@humagen", or the app's login): a comment
+		// that holds it and names no agent after it is raised naming none,
+		// and stamp decides who answers it where it is filed. An agent's
+		// name alone asks nobody, since on GitHub it may be someone's account.
+		cfg.Triggers = c.Triggers()
 		if g := c.GitHub; g != nil {
 			cfg.Checks, cfg.Guides, cfg.Mutations, cfg.ReadRepositories = g.Checks, g.Guides, g.Mutations, g.ReadRepositories
 			cfg.Login = g.Login
@@ -564,9 +579,16 @@ func (p *Platform) dial(c clients.Client, secrets resolved) (*seat, error) {
 		_, cfg.StatusReactions = api.(ghtransport.ReactionAPI)
 		cfg.StatusReactions = cfg.StatusReactions && cfg.Login != ""
 		cfg.ReviewText = func(v ghtransport.View) (string, error) { return p.reviewView(c, v) }
+		cfg.AsksReview = func(v ghtransport.View) (bool, error) { return p.asksReview(c, v) }
+		cfg.SessionLink = func(v ghtransport.View) string { return p.runSessionURL(c.Tenant, v.Tenant, v.RunID) }
 		installed := p.installedRepos(c, api, app)
 		if installed != nil {
 			cfg.MayRead = installed.Covers
+		}
+		// A repository its settings keep to its own runs is read by no other
+		// run, whatever grants it (github_repo_settings.go).
+		cfg.ReadRefused = func(_ context.Context, owner, repo string) bool {
+			return !p.readableElsewhere(c.Tenant, owner+"/"+repo)
 		}
 		peer, err := github.New(cfg)
 		if err != nil {
@@ -575,6 +597,9 @@ func (p *Platform) dial(c clients.Client, secrets resolved) (*seat, error) {
 		st := &seat{client: c, peer: peer, verifier: cfg.Verifier, guard: guard, installed: installed}
 		if files, ok := api.(github.FileAPI); ok {
 			st.files = files
+		}
+		if reader, ok := api.(github.ContextAPI); ok {
+			st.context = reader
 		}
 		return st, nil
 	}

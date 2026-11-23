@@ -17,7 +17,9 @@ import (
 	"github.com/urmzd/humagen/internal/wire"
 	"github.com/urmzd/saige/flow/signature"
 
+	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/integrations/github"
 	"github.com/urmzd/humagen/pkg/integrations/slack"
@@ -101,8 +103,15 @@ func TestTheLegacyEnvironmentYieldsOneWorkingDefaultClientPerSurface(t *testing.
 	}
 	slackFake, githubFake := slack.NewFake(), github.NewFake()
 	tokens := map[string]bool{}
+	// On Slack a run starts only for a person a client of the team maps,
+	// who may start runs. The variables map nobody, so the team's people
+	// come from the record a Platform document's surfaces.slack.people makes.
+	pol, err := auth.ParsePolicy("test", "role viewer { allow read on * }\nrole operator extends viewer { allow write on runs }\ngrant operator to subject \"ana\"\n")
+	if err != nil {
+		t.Fatal(err)
+	}
 	p, err := platform.New(platform.Config{
-		Workspace: t.TempDir(), ClientInterval: -1,
+		Workspace: t.TempDir(), ClientInterval: -1, Policy: pol,
 		Env:        func(name string) (string, bool) { v, ok := vars[name]; return v, ok },
 		SecretRefs: refs,
 		SlackAPI:   func(token string) slack.API { tokens[token] = true; return slackFake },
@@ -170,7 +179,21 @@ func TestTheLegacyEnvironmentYieldsOneWorkingDefaultClientPerSurface(t *testing.
 			}
 		}
 	}
-	wait("the default clients are ingesting", ready)
+	// Until then a start says the Slack client will start no runs.
+	noted := legacy.NewNotes(nil)
+	noteSlackPeople(p, noted)
+	if all := noted.All(); len(all) != 1 || !strings.Contains(all[0], defaultSlackClient) || !strings.Contains(all[0], "starts no runs until people are mapped") {
+		t.Fatalf("notes at start = %q, want one about the Slack client's people", all)
+	}
+	if _, err := p.ApplySlackApp(ctx, "trial", "file", platform.SlackApp{Team: "T01ABCDEF", Machine: "svc-slack", People: map[string]string{"U01": "ana"}}); err != nil {
+		t.Fatal(err)
+	}
+	noted = legacy.NewNotes(nil)
+	noteSlackPeople(p, noted)
+	if all := noted.All(); len(all) != 0 {
+		t.Fatalf("notes at start with the team's people mapped = %q, want none", all)
+	}
+	wait("the clients are ingesting", ready)
 
 	// The legacy payloads carry no app id, and are still routed and verified.
 	slackBody := `{"type":"event_callback","event_id":"slack-1","team_id":"T01ABCDEF","event":{"type":"app_mention","user":"U01","channel":"C01","ts":"1700000000.000100","text":"explain"}}`
@@ -186,7 +209,7 @@ func TestTheLegacyEnvironmentYieldsOneWorkingDefaultClientPerSurface(t *testing.
 		t.Fatalf("slack webhook = %d %s", w.Code, w.Body)
 	}
 
-	githubBody := `{"action":"created","repository":{"name":"repo","owner":{"login":"acme"}},"sender":{"login":"human","type":"User"},"issue":{"number":7},"comment":{"id":91,"body":"@helper explain","user":{"login":"human"},"author_association":"MEMBER"}}`
+	githubBody := `{"action":"created","repository":{"name":"repo","owner":{"login":"acme"}},"sender":{"login":"human","type":"User"},"issue":{"number":7},"comment":{"id":91,"body":"@humagen helper explain","user":{"login":"human"},"author_association":"MEMBER"}}`
 	mac = hmac.New(sha256.New, []byte(vars[EnvGitHubSecret]))
 	mac.Write([]byte(githubBody))
 	r = httptest.NewRequest(http.MethodPost, "/connectors/github", strings.NewReader(githubBody))
@@ -465,9 +488,10 @@ func TestEnabledFalseTurnsTheFilesGitHubClientOff(t *testing.T) {
 	}
 }
 
-// Automatic review is on unless the environment switches it off, and single
-// repositories can be turned back on or off, so a deployment configured by
-// its environment controls it without the API.
+// Automatic review is off unless the environment switches it on, and single
+// repositories can be turned on or off, so a deployment configured by its
+// environment controls it without the API. A repository's settings in the
+// console override both.
 func TestTheEnvironmentSwitchesAutomaticReview(t *testing.T) {
 	base := map[string]string{EnvGitHubToken: "t", EnvGitHubSecret: "s", EnvGitHubOwners: "acme"}
 	read := func(extra map[string]string) *clients.AutoReview {
@@ -485,8 +509,11 @@ func TestTheEnvironmentSwitchesAutomaticReview(t *testing.T) {
 		}
 		return defaults[0].GitHub.AutoReview
 	}
-	if a := read(nil); a != nil || !a.Reviews("acme/site") {
+	if a := read(nil); a != nil || a.Reviews("acme/site") {
 		t.Fatalf("unset: %+v", a)
+	}
+	if a := read(map[string]string{EnvGitHubAutoReview: "true"}); !a.Reviews("acme/site") {
+		t.Fatalf("switched on: %+v", a)
 	}
 	a := read(map[string]string{EnvGitHubAutoReview: "false", EnvGitHubAutoReviewRepositories: "acme/test=on, acme/site=off"})
 	if a.Reviews("acme/site") || a.Reviews("acme/other") || !a.Reviews("acme/test") {

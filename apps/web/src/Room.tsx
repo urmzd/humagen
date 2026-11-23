@@ -7,7 +7,14 @@ import {
   splitHumanActivity,
   type UiAction,
 } from "@humagen/core";
-import { ForkIcon, GitHubRefKindsContext, githubRefKinds, WebSurface } from "@humagen/render-web";
+import {
+  ActionsExtraContext,
+  BellIcon,
+  ForkIcon,
+  GitHubRefKindsContext,
+  githubRefKinds,
+  WebSurface,
+} from "@humagen/render-web";
 import {
   AgentMessage,
   AgentNameContext,
@@ -27,6 +34,7 @@ import { Fragment, type ReactNode, useContext, useEffect, useMemo, useRef, useSt
 import { ApprovalToggle } from "./ApprovalToggle.tsx";
 import { AttachedDocument, opensAsDocument } from "./AttachedDocument.tsx";
 import { actedFor, citationOf, type Run, turnOf } from "./adapter.ts";
+import { besideItsTurn, placeAlerts, turnKey } from "./alertPlacement.ts";
 import {
   ApiError,
   api,
@@ -88,9 +96,12 @@ import {
 } from "./route.ts";
 import { SessionActions } from "./SessionActions.tsx";
 import {
-  alertAnchor,
   duplicatesInlineApproval,
+  foldsIntoFailure,
+  jumpToOpenAlert,
+  openLines,
   SessionAlerts,
+  useAlertRoots,
   useSessionAlerts,
 } from "./SessionAlerts.tsx";
 import { SessionDetailsProvider } from "./SessionDetails.tsx";
@@ -99,6 +110,7 @@ import { OriginButton, referenceOfPlace, SessionPlace, usePlace } from "./Sessio
 import { ComposerFooter, UsageRing } from "./SessionUsage.tsx";
 import { type SessionView, SessionViews, useUnavailableViews } from "./SessionViews.tsx";
 import { ShareDialog } from "./Share.tsx";
+import { type Alert, openAlert } from "./sessionCenter.ts";
 import { useSessionOptions } from "./sessionOptions.ts";
 import { useItemStops, useSessionBackground, useSessionStop } from "./stops.tsx";
 import { topicsOf } from "./topics.ts";
@@ -625,8 +637,11 @@ function AnswerView({
   focused = false,
   background = [],
   onBackgroundChanged,
+  failureControls,
 }: {
   run: Run;
+  /** The answer's own open alerts, drawn in its failure card beside Retry. */
+  failureControls?: ReactNode;
   canStop?: boolean;
   focused?: boolean;
   /** The reader's background work from this session, which a step's own Stop ends. */
@@ -688,20 +703,28 @@ function AnswerView({
           {(rated) => (
             <RetryCallContext.Provider value={ownsRun ? retryCalls : null}>
               <CallThreads run={run} calls={rated.tasks.some((t) => t.subagent)}>
-                <AgentMessage
-                  actions={actions}
-                  stop={stop}
-                  itemStops={itemStops}
-                  disclaimer={false}
-                  activity={false}
-                  timestamp={<MessageTime at={run.created_at} />}
-                  turn={ownsRun ? rated : { ...rated, needsConnection: undefined }}
-                  copy={copyFor(ask)}
-                  itemActions={itemActions(run)}
-                  capabilities={{ regenerate: false }}
-                  onAskAgent={onAsk}
-                  onRedirect={onRedirect}
-                />
+                <ActionsExtraContext.Provider
+                  value={
+                    failureControls
+                      ? (block) => (block === `failure:${rated.id}` ? failureControls : null)
+                      : null
+                  }
+                >
+                  <AgentMessage
+                    actions={actions}
+                    stop={stop}
+                    itemStops={itemStops}
+                    disclaimer={false}
+                    activity={false}
+                    timestamp={<MessageTime at={run.created_at} />}
+                    turn={ownsRun ? rated : { ...rated, needsConnection: undefined }}
+                    copy={copyFor(ask)}
+                    itemActions={itemActions(run)}
+                    capabilities={{ regenerate: false }}
+                    onAskAgent={onAsk}
+                    onRedirect={onRedirect}
+                  />
+                </ActionsExtraContext.Provider>
               </CallThreads>
             </RetryCallContext.Provider>
           )}
@@ -856,6 +879,27 @@ export function ThreadRoom({
   );
   // The cursor for the turns before the oldest one read.
   const [before, setBefore] = useState<string | null>(initial.next);
+  // Each alert sits in the transcript where it happened: after the answer it
+  // is about, or at its own time.
+  // A failed answer's own alert is drawn in that answer's failure card.
+  const calledBy = useAlertRoots(alertRows, turns);
+  const folded = new Map<string, Alert[]>();
+  const inline: Alert[] = [];
+  for (const a of alertRows) {
+    // An alert whose run is still being looked up is placed once it is known, not moved.
+    if (duplicatesInlineApproval(a, turns) || (a.run_id && calledBy.waiting.has(a.run_id)))
+      continue;
+    const run = foldsIntoFailure(a, turns);
+    if (run) folded.set(run, [...(folded.get(run) ?? []), a]);
+    else inline.push(a);
+  }
+  const placed = placeAlerts(turns, inline, !!before, calledBy.roots);
+  // What the header counts is what is drawn: a line each, and a failure card each.
+  const waiting =
+    openLines(placed.lead) +
+    openLines(placed.earlier) +
+    [...placed.after.values()].reduce((n, slot) => n + openLines(slot), 0) +
+    [...folded.values()].filter((slot) => slot.some(openAlert)).length;
   const [problem, setProblem] = useState<string | null>(null);
   const [localView, setLocalView] = useState<ConversationView>({});
   const [seed, setSeed] = useState<ComposerSeed>();
@@ -1140,6 +1184,27 @@ export function ThreadRoom({
                 />
               }
               title={title}
+              actions={
+                waiting > 0 ? (
+                  <button
+                    type="button"
+                    data-alert-jump=""
+                    className="inline-flex h-9 pointer-coarse:h-11 shrink-0 items-center gap-1 rounded-aui px-1.5 text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
+                    aria-label={defaultCopy.attention.jump(waiting)}
+                    title={defaultCopy.attention.jump(waiting)}
+                    onClick={() => jumpToOpenAlert()}
+                  >
+                    <span className="relative inline-flex">
+                      <BellIcon size={18} aria-hidden />
+                      <span
+                        aria-hidden
+                        className="absolute -top-0.5 -right-0.5 size-2 rounded-full bg-aui-warn ring-2 ring-aui-bg"
+                      />
+                    </span>
+                    <span className="text-aui-xs tabular-nums">{waiting}</span>
+                  </button>
+                ) : undefined
+              }
               // The reader's own Personal project is not named: a session is there unless it was filed elsewhere.
               project={
                 th.project === personalProject
@@ -1270,6 +1335,33 @@ export function ThreadRoom({
                         className="mx-auto flex w-full max-w-4xl flex-col gap-2 px-4 pb-3"
                       >
                         <Problem message={problem} />
+                        {/* An alert changed anywhere in the transcript is undone here, beside the composer. */}
+                        <Problem message={attention.problem ?? null} />
+                        {attention.problem && (
+                          <button
+                            type="button"
+                            className={`${button} self-start`}
+                            onClick={attention.refresh}
+                          >
+                            Reload alerts
+                          </button>
+                        )}
+                        {/* Mounted while empty, so what it says next is announced. */}
+                        <p role="status" data-alert-undo="" className="text-aui-xs empty:hidden">
+                          {attention.undo && (
+                            <>
+                              Alert updated.{" "}
+                              <button
+                                type="button"
+                                className="underline"
+                                disabled={attention.busy}
+                                onClick={() => void attention.change(attention.undo!, "open")}
+                              >
+                                Undo
+                              </button>
+                            </>
+                          )}
+                        </p>
                         {canRun && !posts && (
                           <p className="text-aui-xs text-aui-muted">{words.viewerOnly}</p>
                         )}
@@ -1350,37 +1442,6 @@ export function ThreadRoom({
                       </div>
                     }
                   >
-                    <Problem message={attention.problem ?? null} />
-                    {attention.problem && (
-                      <button type="button" className={button} onClick={attention.refresh}>
-                        Reload alerts
-                      </button>
-                    )}
-                    {attention.undo && (
-                      <p role="status" className="text-aui-xs">
-                        Alert updated.{" "}
-                        <button
-                          type="button"
-                          className="underline"
-                          disabled={attention.busy}
-                          onClick={() => void attention.change(attention.undo!, "open")}
-                        >
-                          Undo
-                        </button>
-                      </p>
-                    )}
-                    <SessionAlerts
-                      alerts={alertRows.filter(
-                        (a) =>
-                          !duplicatesInlineApproval(a, turns) &&
-                          (!alertAnchor(a) ||
-                            !turns.some((t) => (t.message?.id ?? t.run?.id) === alertAnchor(a))),
-                      )}
-                      attention={attention}
-                      canWrite={!!alertAccess?.write}
-                      agents={posts ? agents.map((a) => a.spec.name) : []}
-                      onOpen={onOpenThread}
-                    />
                     {before && (
                       <button
                         type="button"
@@ -1390,21 +1451,29 @@ export function ThreadRoom({
                         {words.olderTurns}
                       </button>
                     )}
-                    {turns.map((t, i) => (
-                      <Fragment key={t.announcement?.id ?? t.message?.id ?? t.run?.id}>
+                    {placed.earlier.length > 0 && (
+                      <div className="flex min-w-0 flex-col">
+                        <p className="px-1 text-aui-2xs text-aui-muted">
+                          {defaultCopy.attention.earlier}
+                        </p>
                         <SessionAlerts
-                          alerts={alertRows.filter(
-                            (a) =>
-                              !duplicatesInlineApproval(a, turns) &&
-                              !!alertAnchor(a) &&
-                              alertAnchor(a) === (t.message?.id ?? t.run?.id),
-                          )}
+                          alerts={placed.earlier}
                           attention={attention}
                           canWrite={!!alertAccess?.write}
                           agents={posts ? agents.map((a) => a.spec.name) : []}
                           onOpen={onOpenThread}
-                          beside
                         />
+                      </div>
+                    )}
+                    <SessionAlerts
+                      alerts={placed.lead}
+                      attention={attention}
+                      canWrite={!!alertAccess?.write}
+                      agents={posts ? agents.map((a) => a.spec.name) : []}
+                      onOpen={onOpenThread}
+                    />
+                    {turns.map((t, i) => (
+                      <Fragment key={t.announcement?.id ?? t.message?.id ?? t.run?.id}>
                         {t.announcement ? (
                           <AnnouncementView key={`a:${t.announcement.id}`} a={t.announcement} />
                         ) : t.message ? (
@@ -1438,6 +1507,18 @@ export function ThreadRoom({
                             focused={focus === t.run.id}
                             key={t.run.id}
                             run={t.run}
+                            failureControls={
+                              folded.has(t.run.id) ? (
+                                <SessionAlerts
+                                  controls
+                                  alerts={folded.get(t.run.id)!}
+                                  attention={attention}
+                                  canWrite={!!alertAccess?.write}
+                                  agents={posts ? agents.map((a) => a.spec.name) : []}
+                                  onOpen={onOpenThread}
+                                />
+                              ) : undefined
+                            }
                             canStop={posts}
                             background={background.items}
                             onBackgroundChanged={background.refresh}
@@ -1491,6 +1572,14 @@ export function ThreadRoom({
                             }
                           />
                         ) : null}
+                        <SessionAlerts
+                          alerts={placed.after.get(turnKey(t)) ?? []}
+                          attention={attention}
+                          canWrite={!!alertAccess?.write}
+                          agents={posts ? agents.map((a) => a.spec.name) : []}
+                          onOpen={onOpenThread}
+                          beside={(a) => besideItsTurn(a, turns)}
+                        />
                       </Fragment>
                     ))}
                     {/* Messages that wait behind the running turn, drawn by the composer. */}

@@ -41,19 +41,19 @@ func TestOnlyPeopleWhoMayWriteAsk(t *testing.T) {
 		{"a review request", "pull_request", "review_requested", "ada", "", true},
 		{"a push", "push", "", "", "", true},
 	} {
-		_, ok, why := gh.GitHubAsker(tc.kind, asking(tc.kind, tc.action, tc.login, tc.association), nil)
+		_, ok, why := gh.GitHubAsker(tc.kind, asking(tc.kind, tc.action, tc.login, tc.association))
 		if ok != tc.want {
 			t.Errorf("%s: allowed = %v (%s)", tc.name, ok, why)
 		}
 	}
 	gh.GitHub.Askers = []string{"Ada"}
-	if _, ok, _ := gh.GitHubAsker("issue_comment", asking("issue_comment", "created", "ada", "OWNER"), nil); !ok {
+	if _, ok, _ := gh.GitHubAsker("issue_comment", asking("issue_comment", "created", "ada", "OWNER")); !ok {
 		t.Error("a named asker was refused")
 	}
-	if _, ok, why := gh.GitHubAsker("issue_comment", asking("issue_comment", "created", "bob", "COLLABORATOR"), nil); ok || why != "bob is not one of the client's askers" {
+	if _, ok, why := gh.GitHubAsker("issue_comment", asking("issue_comment", "created", "bob", "COLLABORATOR")); ok || why != "bob is not one of the client's askers" {
 		t.Errorf("a collaborator who is not a named asker: %v (%s)", ok, why)
 	}
-	if _, _, why := gh.GitHubAsker("issue_comment", asking("issue_comment", "created", "mallory", "NONE"), nil); why != "mallory has no write access to the repository (none)" {
+	if _, _, why := gh.GitHubAsker("issue_comment", asking("issue_comment", "created", "mallory", "NONE")); why != "mallory has no write access to the repository (none)" {
 		t.Errorf("why = %q", why)
 	}
 }
@@ -63,16 +63,5 @@ func TestAskersAreLogins(t *testing.T) {
 	gh.GitHub = &GitHubOptions{Askers: []string{"not a login"}}
 	if err := gh.Validate(); err == nil {
 		t.Fatal("an asker that is not a login was accepted")
-	}
-}
-
-func TestGitHubAskerCountsALinkedAccountAsMapped(t *testing.T) {
-	gh := Client{Surface: GitHub, GitHub: &GitHubOptions{}}
-	body := []byte(`{"action":"created","sender":{"id":7,"login":"mallory"},"comment":{"user":{"id":7,"login":"mallory"},"author_association":"NONE"}}`)
-	if _, ok, _ := gh.GitHubAsker("issue_comment", body, func(int64, string) bool { return false }); ok {
-		t.Fatal("an unlinked reader without write access may ask")
-	}
-	if _, ok, why := gh.GitHubAsker("issue_comment", body, func(id int64, _ string) bool { return id == 7 }); !ok {
-		t.Fatalf("a linked person may not ask: %s", why)
 	}
 }

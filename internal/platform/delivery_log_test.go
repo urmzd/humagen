@@ -26,7 +26,7 @@ func TestEveryGitHubDeliverySaysWhatBecameOfIt(t *testing.T) {
 	cfg.Log = slog.New(slog.NewTextHandler(said, nil))
 	p := stage(t, &cast{says: map[string][][]saigetypes.Delta{"reviewer": {say("Looked.")}}}, cfg)
 	create(t, p, tenant, platform.ClientInput{
-		Client: clients.Client{ID: "gh", Name: "GitHub", Surface: clients.GitHub, Enabled: true, Identity: clients.Identity{Owners: []string{"acme"}, Installation: "101"}, DefaultAgent: "reviewer", GitHub: &clients.GitHubOptions{Login: "humagen[bot]"}},
+		Client: clients.Client{ID: "gh", Name: "GitHub", Surface: clients.GitHub, Enabled: true, Identity: clients.Identity{Owners: []string{"acme"}, Installation: "101"}, DefaultAgent: "reviewer", GitHub: &clients.GitHubOptions{Login: "humagen[bot]", AutoReview: reviewOn()}},
 		Token:  clients.SecretInput{Value: "token-gh"}, SigningSecret: clients.SecretInput{Value: "secret-gh"},
 	})
 	ingress := p.IngressHandler()
@@ -64,7 +64,7 @@ func TestEveryGitHubDeliverySaysWhatBecameOfIt(t *testing.T) {
 	lines := said.String()
 	for _, want := range []string{
 		`msg="platform: a webhook delivery was accepted" surface=github tenant=` + tenant + ` client=gh event=issue_comment action=created place=acme/repo delivery=d-mention status=200 requests=1`,
-		`delivery=d-plain status=200 why="it mentions neither the app (@humagen) nor one of the client's agents"`,
+		`delivery=d-plain status=200 why="it does not ask @humagen: an agent's name alone, or a mention in code or a quoted reply, asks nobody"`,
 		`delivery=d-forged status=401 why="its signature matches the secret of none of the 1 clients that claim it"`,
 		`event=pull_request action=opened place=acme/repo delivery=d-pull status=200 requests=1`,
 	} {

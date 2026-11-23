@@ -121,9 +121,8 @@ func slackMachine(mode string, s spec.Slack) string {
 }
 
 // applySlackClients keeps, for each Slack app the Platform documents turn on
-// and map people for, or whose credential is known where people link their
-// Slack accounts, the client record that makes it act for them, and
-// returns each workspace's record id. A workspace whose file does neither gets
+// and map people for, the client record that makes it act for them, and
+// returns each workspace's record id. A workspace whose file maps nobody gets
 // no record, and one an earlier start kept loses its machine and its people.
 // A record that cannot be kept because another client holds its id is said
 // and left out: that app acts for nobody.
@@ -131,10 +130,7 @@ func applySlackClients(ctx context.Context, p *platform.Platform, cfg spec.Confi
 	kept := map[string]string{}
 	for _, doc := range cfg.Platforms {
 		tenant := doc.Metadata.Name
-		// The record is kept for an app that maps people, and, where people
-		// sign in with Slack (platform.SlackAccount), for one whose credential
-		// is known, so they are acted for with no map at all.
-		if s := doc.Spec.Surfaces.Slack; s != nil && s.Enabled && s.Team != "" && (len(s.People) > 0 || slackMachine(mode, *s) != "" && p.ConnectionAuth.Available(platform.SlackAccount)) {
+		if s := doc.Spec.Surfaces.Slack; s != nil && s.Enabled && len(s.People) > 0 {
 			c, err := p.ApplySlackApp(ctx, tenant, "file", platform.SlackApp{Team: s.Team, Machine: slackMachine(mode, *s), People: s.People})
 			switch {
 			case errors.Is(err, clients.ErrExists):
@@ -155,7 +151,7 @@ func applySlackClients(ctx context.Context, p *platform.Platform, cfg spec.Confi
 // slackMachineSubject is who the Slack app the server starts is under
 // tailscale sign-in, where the server makes its credential. It is the same at
 // every start, so a client can name it as its slack.machine.
-func slackMachineSubject(team string) string { return "slack-app:" + team }
+func slackMachineSubject(team string) string { return platform.SlackAppMachine(team) }
 
 // slackMachineScopes are what that credential may do: the least the app's
 // README asks an identity provider for, and no role.

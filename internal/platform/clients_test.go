@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -66,8 +67,23 @@ func (f *fakes) config() platform.Config {
 		SlackAPI:       func(token string) slack.API { return f.slackFor(token) },
 		GitHubAPI:      func(token string) github.API { return f.githubFor(token) },
 		ClientInterval: -1,
+		Policy:         slackPeoplePolicy,
 	}
 }
+
+// slackPeople are the Slack users slackClient maps, by the subject each is
+// in the workspace, and slackPeoplePolicy lets those subjects start runs. A
+// Slack connector starts a run only for a person its client maps.
+var slackPeople = map[string]string{"U0HUMAN1": "human-one", "U0HUMAN2": "human-two"}
+
+var slackPeoplePolicy = func() *auth.Policy {
+	pol, err := auth.ParsePolicy("test", "role viewer { allow read on * }\nrole operator extends viewer { allow write on runs }\n"+
+		"grant operator to subject \"human-one\"\ngrant operator to subject \"human-two\"\n")
+	if err != nil {
+		panic(err)
+	}
+	return pol
+}()
 
 // operators is a workspace policy granting the operator role to people by
 // subject, as a client's own connector knows them: by the subject its team
@@ -92,11 +108,18 @@ func slackClient(id, app, team, agent string) platform.ClientInput {
 		Client: clients.Client{
 			ID: id, Name: id, Surface: clients.Slack, Enabled: true,
 			Identity: clients.Identity{AppID: app, Team: team}, DefaultAgent: agent,
-			Slack: &clients.SlackOptions{Sessions: true},
+			Slack: &clients.SlackOptions{Sessions: true, Machine: "svc-" + id, People: maps.Clone(slackPeople)},
 		},
 		Token:         clients.SecretInput{Value: "token-" + id},
 		SigningSecret: clients.SecretInput{Value: "secret-" + id},
 	}
+}
+
+// mapsNobody is a Slack client input with no people of its own: whoever asks
+// through it is a person only if another client of its team maps them.
+func mapsNobody(in platform.ClientInput) platform.ClientInput {
+	in.Slack.Machine, in.Slack.People = "", nil
+	return in
 }
 
 func create(t *testing.T, p *platform.Platform, tenantName string, in platform.ClientInput) clients.Client {
@@ -618,13 +641,13 @@ func TestTwoGitHubClientsAreToldApartByTheAccountTheyServe(t *testing.T) {
 		return w.Code
 	}
 	// One installation's secret does not open the other's account.
-	if code := post("secret-acme-gh", "d0", "acme-labs", "202", "triage"); code != http.StatusUnauthorized {
+	if code := post("secret-acme-gh", "d0", "acme-labs", "202", "humagen"); code != http.StatusUnauthorized {
 		t.Fatalf("acme's secret on labs' account answered %d, want 401", code)
 	}
-	if code := post("secret-acme-gh", "d1", "acme", "101", "reviewer"); code != http.StatusOK {
+	if code := post("secret-acme-gh", "d1", "acme", "101", "humagen"); code != http.StatusOK {
 		t.Fatalf("acme delivery answered %d", code)
 	}
-	if code := post("secret-labs-gh", "d2", "acme-labs", "202", "triage"); code != http.StatusOK {
+	if code := post("secret-labs-gh", "d2", "acme-labs", "202", "humagen"); code != http.StatusOK {
 		t.Fatalf("labs delivery answered %d", code)
 	}
 	acme, labs := f.githubFor("token-acme-gh"), f.githubFor("token-labs-gh")

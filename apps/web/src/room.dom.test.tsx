@@ -953,7 +953,7 @@ test("a room offers Retry only to the person whose failed turn it was", async ()
     } as never;
     const done = { ...page.turns[1]?.run, actor: ana } as never;
     for (const [me, run, says] of [
-      ["ana", failed, "provider: 529 overloaded"],
+      ["ana", failed, defaultCopy.runFailure.because.unknown],
       ["ben", failed, defaultCopy.retryOnlyTheirs],
       ["ana", done, "It renews on May 3."],
     ] as const) {

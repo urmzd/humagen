@@ -490,8 +490,13 @@ func TestTheStoreSaysWhatEachAgentIsGrantedBeforeInstall(t *testing.T) {
 		if a.Installed || a.Provider != "offline" || a.Model != "offline" || a.Fallbacks == nil || len(a.Fallbacks) != 0 {
 			t.Errorf("%s runs on %s/%s with %v", a.Name, a.Provider, a.Model, a.Fallbacks)
 		}
-		if want := []string{platform.ToolFileRead, platform.ToolFileList, "github_read_context", "github_read_file"}; !slices.Equal(a.Tools, want) {
-			t.Errorf("%s tools = %v, want %v", a.Name, a.Tools, want)
+		granted := []string{platform.ToolFileRead, platform.ToolFileList, "github_read_context", "github_read_file"}
+		if a.Name == platform.BuiltinCodeReviewer {
+			// The lead reviewer may turn a reply into a review.
+			granted = append(granted, platform.ToolStartReview)
+		}
+		if !slices.Equal(a.Tools, granted) {
+			t.Errorf("%s tools = %v, want %v", a.Name, a.Tools, granted)
 		}
 		if !slices.Equal(a.Connectors, []string{"github"}) || a.ToolServers == nil || len(a.ToolServers) != 0 {
 			t.Errorf("%s needs %v and %v", a.Name, a.Connectors, a.ToolServers)

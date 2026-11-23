@@ -333,6 +333,8 @@ export type Route =
    * manages. `provider` opens one in the side sheet.
    */
   | { page: "connections"; provider?: string; scope?: "apps" }
+  /** A GitHub app's repositories, or one ("owner/name") with `repo`. */
+  | { page: "repositories"; client: string; repo?: string }
   | { page: "directory"; tab: DirectoryTab }
   | { page: "settings"; section: SettingsSection };
 
@@ -392,6 +394,7 @@ const PAGE_TITLES: Record<Page, string> = {
   agent: "Agent",
   artifacts: "Artifacts",
   connections: "Plugins",
+  repositories: "Repositories",
   directory: "Directory",
   settings: "Settings",
 };
@@ -431,6 +434,7 @@ export function documentTitle(r: Route, unread = 0, product = "Humagen"): string
   else if (r.page === "corpus") place = r.name;
   else if (r.page === "context" && r.source) place = r.source;
   else if (r.page === "channel") place = `#${r.channel}`;
+  else if (r.page === "repositories" && r.repo) place = r.repo;
   return `${unread > 0 ? `(${unread}) ` : ""}${place} - ${product}`;
 }
 
@@ -645,6 +649,11 @@ export function href(r: Route): string {
     case "connections": {
       const base = r.scope === "apps" ? "/settings/apps" : "/settings/plugins";
       return r.provider ? `${base}/${enc(r.provider)}` : base;
+    }
+    case "repositories": {
+      const base = `/settings/apps/github/${enc(r.client)}/repositories`;
+      const [owner, name] = (r.repo ?? "").split("/");
+      return owner && name ? `${base}/${enc(owner)}/${enc(name)}` : base;
     }
     case "directory":
       return r.tab === "agents"
@@ -1099,6 +1108,12 @@ function read(pathname: string, search: string): Route {
       // Plugins is a section of your settings, with a path of its own. It was Connections.
       if (a === "plugins" || a === "connections") return { page: "connections", provider: b };
       // Apps are the workspace's installs, under Workspace settings.
+      if (a === "apps" && b === "github" && c && parts[4] === "repositories")
+        return {
+          page: "repositories",
+          client: c,
+          repo: parts[5] && parts[6] ? `${parts[5]}/${parts[6]}` : undefined,
+        };
       if (a === "apps") return { page: "connections", provider: b, scope: "apps" };
       if (a === "health") return { page: "monitor", tab: "health" };
       if (a === "audit" || a === "read-audit") return { page: "audit" };
