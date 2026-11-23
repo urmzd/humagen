@@ -2677,6 +2677,8 @@ var copyKeyList = []string{
 	"runFailure.because.max_iterations",
 	"runFailure.because.no_model_provider",
 	"runFailure.because.permission_denied",
+	"runFailure.because.provider_credential",
+	"runFailure.because.provider_rate_limited",
 	"runFailure.because.rate_limited",
 	"runFailure.because.timeout",
 	"runFailure.because.unavailable",

@@ -665,21 +665,31 @@ export function needsOf(run: Pick<Run, "needs_connection">): NonNullable<Turn["n
   });
 }
 
+/** Text that says a model provider is the one that refused, rather than a tool or the app the answer goes to. */
+const NAMES_MODEL_PROVIDER = /\b(?:provider|anthropic|openai|gemini|google|bedrock|vertex)\b/i;
+const NAMES_TOOL = /\b(?:tool|connector)\b/i;
+const fromModelProvider = (text: string) => NAMES_MODEL_PROVIDER.test(text) && !NAMES_TOOL.test(text);
+
 /**
- * The cause of a run's failure, read from the runtime's error. Specific
- * causes come first: "durable: max attempts exhausted" wraps the error of the
- * last attempt, so it names the cause only when nothing under it does. The
- * strings are humagen's and saige's own (internal/platform/models.go,
- * agent/types, durable/run, flow/connector, flow/session).
+ * The cause of a run's failure, read from the runtime's error, for the plain
+ * sentence. Specific causes come first: "durable: max attempts exhausted"
+ * wraps the error of the last attempt, so it names the cause only when
+ * nothing under it does, and an answer the app refused is that whatever the
+ * app's reason was. A refused key or a rate limit is the model provider's
+ * only when the error names one. The strings are humagen's and saige's own
+ * (internal/platform/models.go, agent/types, durable/run, flow/connector,
+ * flow/session).
  */
 export function failureCause(error: string | undefined): FailureCause {
   const text = error ?? "";
   if (/needs a model provider/i.test(text)) return "no_model_provider";
+  if (/undeliverable/i.test(text)) return "undeliverable";
   if (/budget|spend limit|insufficient (?:credit|fund)|(?:status|http)[: ]+402/i.test(text))
     return "budget";
   if (/credential|api[_ -]?key|secret reference|unauthorized|(?:status|http)[: ]+401/i.test(text))
-    return "credential";
-  if (/rate.?limit|too many requests|(?:status|http)[: ]+429/i.test(text)) return "rate_limited";
+    return fromModelProvider(text) ? "provider_credential" : "credential";
+  if (/rate.?limit|too many requests|(?:status|http)[: ]+429/i.test(text))
+    return fromModelProvider(text) ? "provider_rate_limited" : "rate_limited";
   if (/timed? ?out|deadline exceeded/i.test(text)) return "timeout";
   if (
     /permission denied|access denied|denied by (?:policy|grant)|egress: denied|forbidden|(?:status|http)[: ]+403/i.test(
@@ -687,7 +697,6 @@ export function failureCause(error: string | undefined): FailureCause {
     )
   )
     return "permission_denied";
-  if (/undeliverable/i.test(text)) return "undeliverable";
   if (/unavailable|connection refused|(?:status|http)[: ]+50[234]/i.test(text))
     return "unavailable";
   if (/too many consecutive failed tool turns/i.test(text)) return "failed_steps";
@@ -696,38 +705,70 @@ export function failureCause(error: string | undefined): FailureCause {
   return "unknown";
 }
 
-/** How each cause is handled: who can fix it, and whether Retry can help. */
-const CAUSE_KIND: Record<FailureCause, { kind: FailureKind; retryable?: boolean }> = {
-  no_model_provider: { kind: "forbidden", retryable: false },
-  credential: { kind: "forbidden", retryable: false },
-  budget: { kind: "forbidden", retryable: false },
-  rate_limited: { kind: "rate_limited" },
-  permission_denied: { kind: "forbidden", retryable: false },
-  timeout: { kind: "timeout" },
-  unavailable: { kind: "unavailable" },
-  failed_steps: { kind: "tool_error" },
-  max_iterations: { kind: "timeout" },
-  undeliverable: { kind: "unavailable" },
-  max_attempts: { kind: "internal" },
-  unknown: { kind: "internal" },
-};
+/**
+ * How a failure is handled: who can fix it, and whether Retry can help. It
+ * decides the actions a failure offers, apart from the words it is said in,
+ * so a new sentence never takes Retry or Report Issue away. Only a run with
+ * no model provider enabled is new here: nothing a person in the session
+ * can do helps until an admin enables one.
+ */
+function handling(error: string | undefined): { kind: FailureKind; retryable?: boolean } {
+  const text = error ?? "";
+  if (/needs a model provider/i.test(text)) return { kind: "forbidden", retryable: false };
+  if (/budget|spend limit|insufficient (?:credit|fund)|(?:status|http)[: ]+402/i.test(text))
+    return { kind: "forbidden", retryable: false };
+  if (/credential|api[_ -]?key|secret reference|unauthorized|(?:status|http)[: ]+401/i.test(text))
+    return { kind: "forbidden", retryable: false };
+  if (/rate.?limit|too many requests|(?:status|http)[: ]+429/i.test(text))
+    return { kind: "rate_limited" };
+  if (/timed? ?out|deadline exceeded/i.test(text)) return { kind: "timeout" };
+  if (/permission denied|forbidden|(?:status|http)[: ]+403/i.test(text))
+    return { kind: "forbidden", retryable: false };
+  if (/unavailable|connection refused|(?:status|http)[: ]+50[234]/i.test(text))
+    return { kind: "unavailable" };
+  if (/too many consecutive failed tool turns/i.test(text)) return { kind: "tool_error" };
+  return { kind: "internal" };
+}
 
 /** Text that names where a credential is kept, which stays out of every view of a failure. */
 const CREDENTIAL_TEXT = /op:\/\/|1password|credential|api[_ -]?key|secret reference|unauthorized/i;
 
+/** The causes whose error is offered behind Show details: those no plain sentence explains. */
+const DETAILED: ReadonlySet<FailureCause> = new Set(["unknown", "max_attempts"]);
+
+/**
+ * An error as it may be shown: without the name and password in an address,
+ * without an address's query, and without anything that reads as a key.
+ */
+export function scrubbed(error: string): string {
+  return error
+    .replace(/\b([a-z][a-z0-9+.-]*:\/\/)[^\s/@]+@/gi, "$1")
+    .replace(/(\b[a-z][a-z0-9+.-]*:\/\/[^\s?#"'<>]+)\?[^\s"'<>)]*/gi, "$1")
+    .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [hidden]")
+    .replace(
+      /\b((?:api[_-]?key|access[_-]?token|token|secret|password|passwd)["']?\s*[=:]\s*)["']?[^\s"',;&]+["']?/gi,
+      "$1[hidden]",
+    )
+    .replace(/\b(?:sk-|xox[a-z]-|gh[pousr]_|github_pat_|AKIA|eyJ)[A-Za-z0-9._-]{8,}/g, "[hidden]")
+    .replace(/\b[A-Za-z0-9_-]{40,}\b/g, "[hidden]");
+}
+
 /**
  * A run's failure from the runtime's error: its cause, said in plain words
- * (`copy.runFailure`), with the error itself kept as `detail` for Show
- * details. An error that names where a credential is kept has no detail.
+ * (`copy.runFailure`), and how it is handled. The error itself is kept as
+ * `detail`, for Show details, only where no sentence explains it, scrubbed,
+ * and never when it names where a credential is kept.
  */
 export function failureOf(error: string | undefined, reference: string): Failure {
   const cause = failureCause(error);
   const detail = error?.trim();
   return {
-    ...CAUSE_KIND[cause],
+    ...handling(error),
     cause,
     message: defaultCopy.runFailure.because[cause],
-    ...(detail && !CREDENTIAL_TEXT.test(detail) ? { detail } : {}),
+    ...(detail && DETAILED.has(cause) && !CREDENTIAL_TEXT.test(detail)
+      ? { detail: scrubbed(detail) }
+      : {}),
     reference,
   };
 }

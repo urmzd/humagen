@@ -349,21 +349,20 @@ test("legacy and malformed citation facts remain explicitly unproven", () => {
 
 test("provider credential failures preserve safe context without exposing a secret", () => {
   const failure = failureOf("Anthropic API key sk-private is unauthorized", "r1");
-  assert.equal(failure.cause, "credential");
+  assert.equal(failure.cause, "provider_credential");
   assert.equal(failure.retryable, false);
   assert.doesNotMatch(JSON.stringify(failure), /sk-private/);
   assert.equal(failure.detail, undefined);
-  assert.equal(failure.message, defaultCopy.runFailure.because.credential);
+  assert.equal(failure.message, defaultCopy.runFailure.because.provider_credential);
 });
 
-test("budget exhaustion is not retried blindly and connection refusal keeps its cause in details", () => {
+test("budget exhaustion is not retried blindly and a refused connection keeps its host out of every view", () => {
   const budget = failureOf("workspace spend limit reached", "r2");
   assert.equal(budget.cause, "budget");
   assert.equal(budget.retryable, false);
   const unavailable = failureOf("dial tcp private-host.internal:443: connection refused", "r3");
   assert.equal(unavailable.kind, "unavailable");
-  assert.doesNotMatch(unavailable.message, /private-host/);
-  assert.match(unavailable.detail ?? "", /connection refused/);
+  assert.doesNotMatch(JSON.stringify(unavailable), /private-host/);
 });
 
 test("the engine's stop after failed steps is said in plain words, with Retry", () => {
@@ -371,40 +370,143 @@ test("the engine's stop after failed steps is said in plain words, with Retry", 
   assert.equal(failure.kind, "tool_error");
   assert.equal(failure.cause, "failed_steps");
   assert.doesNotMatch(failure.message, /consecutive|tool turns/);
-  assert.equal(failure.detail, "agent run: too many consecutive failed tool turns: 2 turns");
+  assert.equal(failure.detail, undefined);
 });
 
+const NO_PROVIDER =
+  'durable: max attempts exhausted: runtime: run r1: agent "github-reviewer" version 1.0.0: platform: model provider: @github-reviewer needs a model provider its models name (anthropic); an administrator enables one in Settings, under Model providers';
+
 test("each runtime error is read as its cause, the specific cause before the retry wrapper", () => {
-  const cases: [string, FailureCause, FailureKind][] = [
-    [
-      'durable: max attempts exhausted: runtime: run r1: agent "github-reviewer" version 1.0.0: platform: model provider: @github-reviewer needs a model provider its models name (anthropic); an administrator enables one in Settings, under Model providers',
-      "no_model_provider",
-      "forbidden",
-    ],
-    ["durable: max attempts exhausted: agent: max iterations reached", "max_iterations", "timeout"],
-    ["durable: max attempts exhausted", "max_attempts", "internal"],
-    ["durable: max attempts exhausted: weird thing", "max_attempts", "internal"],
-    ["session: access denied", "permission_denied", "forbidden"],
-    ["sandbox: access denied by policy: user \"a\", op read, key \"k\"", "permission_denied", "forbidden"],
-    ["mcptools: denied by grant", "permission_denied", "forbidden"],
-    ["budget exceeded: spent $1.00 of $1.00 after 3 requests", "budget", "forbidden"],
-    ["session: budget exceeded or not granted", "budget", "forbidden"],
-    ["llm call exceeded timeout 30s: context deadline exceeded", "timeout", "timeout"],
-    ["connector: undeliverable: channel_not_found", "undeliverable", "unavailable"],
-    ["provider: 429 too many requests", "rate_limited", "rate_limited"],
-    ["agent: step 2\nprovider: 529 overloaded", "unknown", "internal"],
+  const cases: [string, FailureCause][] = [
+    [NO_PROVIDER, "no_model_provider"],
+    ["durable: max attempts exhausted: agent: max iterations reached", "max_iterations"],
+    ["durable: max attempts exhausted", "max_attempts"],
+    ["durable: max attempts exhausted: weird thing", "max_attempts"],
+    ["session: access denied", "permission_denied"],
+    ['sandbox: access denied by policy: user "a", op read, key "k"', "permission_denied"],
+    ["mcptools: denied by grant", "permission_denied"],
+    ["budget exceeded: spent $1.00 of $1.00 after 3 requests", "budget"],
+    ["session: budget exceeded or not granted", "budget"],
+    ["llm call exceeded timeout 30s: context deadline exceeded", "timeout"],
+    ["connector: undeliverable: channel_not_found", "undeliverable"],
+    ["provider: 429 too many requests", "provider_rate_limited"],
+    ["agent: step 2\nprovider: 529 overloaded", "unknown"],
   ];
-  for (const [error, cause, kind] of cases) {
+  for (const [error, cause] of cases) {
     assert.equal(failureCause(error), cause, error);
     const failure = failureOf(error, "r");
     assert.equal(failure.cause, cause, error);
-    assert.equal(failure.kind, kind, error);
     assert.equal(failure.message, defaultCopy.runFailure.because[cause], error);
-    assert.equal(failure.detail, error, error);
   }
   assert.equal(failureCause(undefined), "unknown");
   assert.equal(failureOf(undefined, "r").detail, undefined);
-  assert.equal(isRetryable(failureOf(cases[0]?.[0], "r")), false);
+});
+
+test("a refusal by a tool or by the app the answer goes to is not said as the model provider's", () => {
+  const cases: [string, FailureCause][] = [
+    ["tool github_search: GET https://api.github.com/search: status 401: Bad credentials", "credential"],
+    ["tool google_search: status 429: rate limit exceeded", "rate_limited"],
+    ["connector: undeliverable: slack chat.postMessage: http 401 unauthorized", "undeliverable"],
+    ["connector: undeliverable: slack: rate limited", "undeliverable"],
+    ["status 401: unauthorized", "credential"],
+    ["too many requests", "rate_limited"],
+    ["Anthropic API key is unauthorized", "provider_credential"],
+    ["openai: status 429: rate limit exceeded", "provider_rate_limited"],
+  ];
+  for (const [error, cause] of cases) assert.equal(failureCause(error), cause, error);
+  const words = defaultCopy.runFailure.because;
+  for (const neutral of [words.credential, words.rate_limited])
+    assert.doesNotMatch(neutral, /model provider/i);
+});
+
+test("a failure offers what it offered before it was said in plain words, but for a run with no model provider", () => {
+  // Each error with the kind and retryability it had before causes were read.
+  const before: [string, FailureKind, boolean][] = [
+    ["sandbox: exec: egress: denied", "internal", true],
+    ['sandbox: access denied by policy: user "a", op read, key "k"', "internal", true],
+    ["session: access denied", "internal", true],
+    ["tool deploy is denied by policy", "internal", true],
+    ["bigquery: Access Denied: Table x", "internal", true],
+    ["mcptools: denied by grant", "internal", true],
+    ["agent: max iterations reached", "internal", true],
+    ["durable: max attempts exhausted: agent: max iterations reached", "internal", true],
+    ["connector: undeliverable: channel_not_found", "internal", true],
+    ["connector: undeliverable: slack chat.postMessage: http 401 unauthorized", "forbidden", false],
+    ["connector: undeliverable: slack: rate limited", "rate_limited", true],
+    ["tool github_search: GET https://api.github.com/search: status 401: Bad credentials", "forbidden", false],
+    ["Anthropic API key sk-private is unauthorized", "forbidden", false],
+    ["anthropic: status 429: rate limit exceeded", "rate_limited", true],
+    ["provider: 429 too many requests", "rate_limited", true],
+    ["workspace spend limit reached", "forbidden", false],
+    ["budget exceeded: spent $1.00 of $1.00 after 3 requests", "forbidden", false],
+    ["session: budget exceeded or not granted", "forbidden", false],
+    ["llm call exceeded timeout 30s: context deadline exceeded", "timeout", true],
+    ["tool fetch: permission denied", "forbidden", false],
+    ["github: status 403: forbidden", "forbidden", false],
+    ["dial tcp private-host.internal:443: connection refused", "unavailable", true],
+    ["upstream: status 503: service unavailable", "unavailable", true],
+    ["agent run: too many consecutive failed tool turns: 2 turns", "tool_error", true],
+    ["durable: max attempts exhausted", "internal", true],
+    ["durable: max attempts exhausted: weird thing", "internal", true],
+    ["agent: step 2\nprovider: 529 overloaded", "internal", true],
+    ["", "internal", true],
+  ];
+  for (const [error, kind, retryable] of before) {
+    const failure = failureOf(error, "r");
+    assert.equal(failure.kind, kind, error);
+    assert.equal(isRetryable(failure), retryable, error);
+  }
+  // The one change: nothing a person in the session does helps until an admin enables a provider.
+  const none = failureOf(NO_PROVIDER, "r");
+  assert.equal(none.kind, "forbidden");
+  assert.equal(isRetryable(none), false);
+});
+
+test("the runtime's words are kept only for a failure no sentence explains", () => {
+  for (const error of ["agent: step 2\nprovider: 529 overloaded", "durable: max attempts exhausted: weird thing"])
+    assert.equal(failureOf(error, "r").detail, error, error);
+  for (const error of [
+    NO_PROVIDER,
+    "session: access denied",
+    "connector: undeliverable: channel_not_found",
+    "dial tcp private-host.internal:443: connection refused",
+    "llm call exceeded timeout 30s: context deadline exceeded",
+    "workspace spend limit reached",
+    "provider: 429 too many requests",
+    "agent: max iterations reached",
+    "Anthropic API key sk-private is unauthorized",
+    "tool github_search: status 401: Bad credentials",
+    // No sentence explains it, but it names where a credential is kept.
+    "durable: max attempts exhausted: read secret reference op://vault/item",
+  ])
+    assert.equal(failureOf(error, "r").detail, undefined, error);
+});
+
+test("the runtime's words are shown without an address's sign-in or query, and without keys", () => {
+  const shown = (error: string) => failureOf(error, "r").detail ?? "";
+  assert.equal(
+    shown("fetch https://dana:hunter2@files.example.test/a/b?sig=abc123&x=1 failed"),
+    "fetch https://files.example.test/a/b failed",
+  );
+  assert.equal(
+    shown("postgres://svc:pw@db.example.test:5432/app: broken pipe"),
+    "postgres://db.example.test:5432/app: broken pipe",
+  );
+  assert.equal(shown("header Authorization: Bearer abc.DEF-123_x sent"), "header Authorization: Bearer [hidden] sent");
+  assert.equal(shown("sent Bearer abc.DEF-123_x and stopped"), "sent Bearer [hidden] and stopped");
+  assert.equal(shown("request with token=s3cr3tvalue&x failed"), "request with token=[hidden]&x failed");
+  assert.equal(shown('body {"password": "hunter2"} refused'), 'body {"password": [hidden]} refused');
+  for (const key of ["sk-live1234567890", "xoxb-1234-abcdefgh", "ghp_abcdefghijklmnop", "eyJhbGciOiJIUzI1NiJ9.e30.abc"])
+    assert.doesNotMatch(shown(`step failed with ${key} in the reply`), new RegExp(key.slice(0, 12)), key);
+  assert.equal(
+    shown("digest 0123456789abcdef0123456789abcdef0123456789abcdef did not match"),
+    "digest [hidden] did not match",
+  );
+  // A run's id and ordinary words stay.
+  assert.equal(
+    shown("runtime: run r3d7fe6e5c2d3b2698248154ad1592982: weird thing"),
+    "runtime: run r3d7fe6e5c2d3b2698248154ad1592982: weird thing",
+  );
 });
 
 test("a publish that fails before it reports does not stay generating", () => {

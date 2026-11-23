@@ -296,11 +296,16 @@ export type FailureKind =
 export type FailureCause =
   /** None of the agent's model providers is enabled. */
   | "no_model_provider"
-  /** The model provider's key could not be read. */
+  /** A sign-in or key the run used was refused, by a tool or an app. */
   | "credential"
+  /** The model provider's key could not be read. */
+  | "provider_credential"
   /** A spending limit was reached. */
   | "budget"
+  /** Something the run used got too many requests. */
   | "rate_limited"
+  /** The model provider got too many requests. */
+  | "provider_rate_limited"
   /** The agent was not allowed to do what it tried. */
   | "permission_denied"
   | "timeout"

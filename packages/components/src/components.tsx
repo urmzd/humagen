@@ -590,26 +590,32 @@ function capitalize(text: string) {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
-export function failureTitle(
-  failure: Failure,
-  copy: Copy = defaultCopy,
-  agent: string = copy.runFailure.someone,
-): string {
-  if (failure.cause) return causeTitle(failure.cause, agent, copy);
+export function failureTitle(failure: Failure, copy: Copy = defaultCopy, agent?: string): string {
+  if (failure.cause)
+    return causeTitle(failure.cause, agent?.trim() || copy.runFailure.someone, copy);
   return failure.title || capitalize(copy.failure[failure.kind](failure.service));
 }
 
 /** What happened to the agent, by what stopped it. */
 function causeTitle(cause: FailureCause, agent: string, copy: Copy): string {
   const words = copy.runFailure;
-  if (cause === "no_model_provider" || cause === "credential") return words.couldNotRun(agent);
+  if (cause === "no_model_provider" || cause === "provider_credential")
+    return words.couldNotRun(agent);
   if (cause === "undeliverable") return words.couldNotReply(agent);
   return words.couldNotFinish(agent);
 }
 
+/** Why a cause stopped the run. A cause this copy has no sentence for is said as an unknown one. */
+function causeSentence(cause: string, copy: Copy): string {
+  const because: Record<string, string> = copy.runFailure.because;
+  return Object.hasOwn(because, cause)
+    ? (because[cause] as string)
+    : copy.runFailure.because.unknown;
+}
+
 /** Keep credential configuration paths in authorized run details, not the answer body. */
 function failureMessage(failure: Failure, copy: Copy): string {
-  if (failure.cause) return copy.runFailure.because[failure.cause];
+  if (failure.cause) return causeSentence(failure.cause, copy);
   return /(?:op:\/\/|1password|credential|api[_ -]?key|secret reference)/i.test(failure.message) &&
     failure.kind === "internal"
     ? copy.credentialUnavailable
@@ -925,11 +931,7 @@ export function answerTakesLink(markdown: string): boolean {
 }
 
 /** The point of the turn in one line, for notifications and screen readers. */
-export function summarizeTurn(
-  turn: Turn,
-  copy: Copy = defaultCopy,
-  agent: string = turn.agent.name,
-): string {
+export function summarizeTurn(turn: Turn, copy: Copy = defaultCopy, agent?: string): string {
   const pending = turn.interrupts.find((i) =>
     i.type === "approval" ? i.decision.kind === "pending" : i.answer.kind === "pending",
   );
@@ -939,7 +941,7 @@ export function summarizeTurn(
       : copy.inputNeeded(pending.question);
   }
   if (turn.status === "failed" && turn.failure) {
-    return `${failureTitle(turn.failure, copy, agent)}: ${failureMessage(turn.failure, copy)}`;
+    return `${failureTitle(turn.failure, copy, agent?.trim() || turn.agent.name)}: ${failureMessage(turn.failure, copy)}`;
   }
   if (turn.status === "stopped") return copy.stopped;
   const review = readReview(turn.text);
@@ -1192,7 +1194,7 @@ export function TurnView({
         <FailureAlert
           turnId={turn.id}
           failure={turn.failure}
-          agent={agentName ?? turn.agent.name}
+          agent={agentName?.trim() || turn.agent.name}
           report={capabilities?.report !== false}
           copy={copy}
         />

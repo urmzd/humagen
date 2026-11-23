@@ -21,9 +21,11 @@ const failed = (cause: FailureCause): Turn => ({
 describe("a failed run in plain words", () => {
   const title: Record<FailureCause, (agent: string) => string> = {
     no_model_provider: words.couldNotRun,
-    credential: words.couldNotRun,
+    credential: words.couldNotFinish,
+    provider_credential: words.couldNotRun,
     budget: words.couldNotFinish,
     rate_limited: words.couldNotFinish,
+    provider_rate_limited: words.couldNotFinish,
     permission_denied: words.couldNotFinish,
     timeout: words.couldNotFinish,
     unavailable: words.couldNotFinish,
@@ -57,6 +59,27 @@ describe("a failed run in plain words", () => {
     expect(failureTitle({ kind: "internal", cause: "unknown", message: "" })).toBe(
       words.couldNotFinish(words.someone),
     );
+  });
+
+  it("names the agent by its handle, then as the agent, when the name given is empty", () => {
+    expect(summarizeTurn(failed("timeout"), defaultCopy, "")).toContain(
+      words.couldNotFinish("github-reviewer"),
+    );
+    expect(summarizeTurn(failed("timeout"), defaultCopy, "  ")).toContain(
+      words.couldNotFinish("github-reviewer"),
+    );
+    expect(failureTitle(failure("timeout"), defaultCopy, "")).toBe(
+      words.couldNotFinish(words.someone),
+    );
+  });
+
+  it("says a cause it has no sentence for as an unknown one", () => {
+    for (const cause of ["from_a_newer_host", "constructor", "toString", "__proto__"]) {
+      const turn = failed(cause as FailureCause);
+      expect(summarizeTurn(turn, defaultCopy, "Launch Lead")).toBe(
+        `${words.couldNotFinish("Launch Lead")}: ${words.because.unknown}`,
+      );
+    }
   });
 
   it("keeps a failure with no cause as it was", () => {

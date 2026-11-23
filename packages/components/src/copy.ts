@@ -3949,11 +3949,14 @@ export const defaultCopy = {
     because: {
       no_model_provider:
         "Its model provider is not enabled. An admin can turn it on in Settings > Model providers.",
-      credential:
+      credential: "A sign-in or key it uses was refused. An admin can check its connections.",
+      provider_credential:
         "Its model provider's key could not be read. An admin can check it in Settings > Model providers.",
       budget:
         "It reached its spending limit. An admin can raise the limit, then you can try again.",
-      rate_limited: "Its model provider got too many requests. Wait a moment, then try again.",
+      rate_limited: "A service it uses got too many requests. Wait a moment, then try again.",
+      provider_rate_limited:
+        "Its model provider got too many requests. Wait a moment, then try again.",
       permission_denied:
         "It does not have permission to do this. An admin can give it the access it needs.",
       timeout: "It ran out of time. Try again, or ask for less at once.",

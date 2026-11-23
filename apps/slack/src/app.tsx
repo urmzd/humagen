@@ -48,6 +48,7 @@ import {
   escapeMentions,
   feedbackModal,
   homeView,
+  inertName,
   LIMITS,
   type ReplyTarget,
   reactionChanges,
@@ -857,9 +858,14 @@ export class App {
     };
   };
 
-  /** The name people gave an agent, for a sentence about it; nothing when it has only its handle. */
-  private nameOf = (agent: string): string | undefined =>
-    this.agentLooks[agent]?.display_name || undefined;
+  /**
+   * The name people gave an agent, for a sentence about it; nothing when it
+   * has only its handle. A person chose it, so it is made inert first.
+   */
+  private nameOf = (agent: string): string | undefined => {
+    const name = this.agentLooks[agent]?.display_name?.trim();
+    return name ? inertName(name) : undefined;
+  };
 
   /** Nothing answers by default: say how to tag an agent this app may reach, naming one. */
   private async tagOne(routing: Routing | undefined): Promise<Failure> {
