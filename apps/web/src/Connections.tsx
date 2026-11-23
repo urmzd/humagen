@@ -487,6 +487,9 @@ export function Connections({
     const installation = back.get("installation_id") ?? undefined;
     sessionStorage.removeItem("humagen.connection.provider");
     if (!provider || !nonce || !code) {
+      // A return this tab cannot complete still ends the consent it names,
+      // by its state alone.
+      if (nonce) connectionApi.endConsent(nonce).catch(() => undefined);
       setProblem("Connection was not authorized. Choose Connect to try again.");
       return;
     }

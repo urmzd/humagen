@@ -101,7 +101,7 @@ func (s *Server) completeConnection(w http.ResponseWriter, r *http.Request, who 
 		if !s.browserCall(r) {
 			// A callback from anything but a browser session ends the
 			// consent it names.
-			s.P.EndAccountLink(who, provider, body.State)
+			s.P.EndAccountLink(who, body.State, "POST /api/connections/{provider}/callback")
 			s.problem(w, platform.ErrAccountInConsole)
 			return
 		}
@@ -161,4 +161,25 @@ func (s *Server) getConnection(w http.ResponseWriter, r *http.Request, who auth.
 		return
 	}
 	ok(w, http.StatusOK, out)
+}
+
+// ConsentEnd names a consent by its state alone.
+type ConsentEnd struct {
+	State string `json:"state"`
+}
+
+// endConsent ends the account link consent a state names, for a tab that
+// began no link: a consent's return it cannot complete. It answers the same
+// whether a consent was ended or not.
+func (s *Server) endConsent(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	var body ConsentEnd
+	if !decode(w, r, &body) {
+		return
+	}
+	if body.State == "" || len(body.State) > 512 {
+		fail(w, http.StatusBadRequest, "state is required")
+		return
+	}
+	s.P.EndAccountLink(who, body.State, "POST /api/connections/consents/end")
+	w.WriteHeader(http.StatusNoContent)
 }

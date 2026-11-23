@@ -6468,6 +6468,10 @@ export interface ConnectionCallback {
   code: string;
 }
 
+export interface ConsentEnd {
+  state: string;
+}
+
 export interface BigQuerySetupCredential {
   kind?: "oauth" | "adc" | "reference";
   /** A permitted personal credential reference, required only for reference kind. */

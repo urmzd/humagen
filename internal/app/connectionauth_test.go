@@ -147,14 +147,20 @@ func TestAccountLinkVariablesThatAreNotReadAreNamedAtStart(t *testing.T) {
 	if out := run(block, map[string]string{EnvSlackClientSecret: "s"}); strings.Count(out, "level=WARN") != 1 || !strings.Contains(out, EnvSlackClientID) {
 		t.Fatalf("a secret with no id: %q", out)
 	}
-	if out := run(spec.System{}, map[string]string{EnvGitHubClientID: "Iv1.env", EnvGitHubClientSecret: "s"}); strings.Count(out, "level=WARN") != 1 || !strings.Contains(out, "no connections block") {
+	out := run(spec.System{}, map[string]string{EnvGitHubClientID: "Iv1.env", EnvGitHubClientSecret: "s", EnvSlackClientSecret: "s"})
+	if strings.Count(out, "level=WARN") != 1 || !strings.Contains(out, "no connections block") {
 		t.Fatalf("no connections block: %q", out)
+	}
+	for _, name := range []string{EnvGitHubClientID, EnvGitHubClientSecret, EnvSlackClientSecret} {
+		if !strings.Contains(out, name) {
+			t.Fatalf("%s is not named: %q", name, out)
+		}
 	}
 	declared := block
 	declared.Spec.Connections = &spec.ConnectionAuthorization{EncryptionKey: &spec.Ref{Ref: "env:KEY"},
 		GitHub:  &spec.GitHubInstallation{ClientID: "Iv1.spec", ClientSecret: &spec.Ref{Ref: "env:GH_SECRET"}},
 		Clients: map[string]spec.ConnectionOAuthClient{"slack": {ClientID: "1.2", ClientSecret: &spec.Ref{Ref: "env:SLACK_SECRET"}}}}
-	out := run(declared, map[string]string{EnvGitHubClientID: "Iv1.env", EnvGitHubClientSecret: "s", EnvSlackClientID: "3.4", EnvSlackClientSecret: "s"})
+	out = run(declared, map[string]string{EnvGitHubClientID: "Iv1.env", EnvGitHubClientSecret: "s", EnvSlackClientID: "3.4", EnvSlackClientSecret: "s"})
 	for _, name := range []string{EnvGitHubClientID, EnvGitHubClientSecret, EnvSlackClientID, EnvSlackClientSecret} {
 		if !strings.Contains(out, "variable="+name) {
 			t.Fatalf("%s replaced by the spec's app is not named: %q", name, out)
@@ -162,7 +168,9 @@ func TestAccountLinkVariablesThatAreNotReadAreNamedAtStart(t *testing.T) {
 	}
 	// The variable the spec's own reference names is read, and not named.
 	declared.Spec.Connections.GitHub.ClientSecret = &spec.Ref{Ref: "env:" + EnvGitHubClientSecret}
-	keys.LookupEnv = func(string) (string, bool) { return base64.StdEncoding.EncodeToString([]byte(strings.Repeat("k", 32))), true }
+	keys.LookupEnv = func(string) (string, bool) {
+		return base64.StdEncoding.EncodeToString([]byte(strings.Repeat("k", 32))), true
+	}
 	if out := run(declared, map[string]string{EnvGitHubClientSecret: "s"}); strings.Contains(out, "level=WARN") {
 		t.Fatalf("the spec's own reference: %q", out)
 	}

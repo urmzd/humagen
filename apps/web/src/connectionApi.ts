@@ -20,6 +20,8 @@ export const connectionApi = {
       code,
       ...(installation_id ? { installation_id } : {}),
     }),
+  /** Ends the account link consent a state names; no code goes with it. */
+  endConsent: (state: string) => call<void>("POST", "/api/connections/consents/end", { state }),
   disconnect: (provider: string) => call<void>("DELETE", path(provider)),
   check: (provider: string) => call<ConnectionHealth>("POST", `${path(provider)}/check`),
   checkClient: (id: string) =>

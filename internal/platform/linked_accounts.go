@@ -153,7 +153,7 @@ func (p *Platform) CompleteAccount(ctx context.Context, who auth.Principal, name
 		return ErrForbidden
 	}
 	if binding == "" {
-		p.EndAccountLink(who, name, nonce)
+		p.EndAccountLink(who, nonce, "POST /api/connections/{provider}/callback")
 		return ErrAccountInConsole
 	}
 	attempt, err := p.BeginAudit(who, audit.Change{Action: "connection.connect", Resource: "connection", ID: name, Subject: who.Subject, Route: "POST /api/connections/{provider}/callback", Rule: string(auth.RunsWrite)})
@@ -161,8 +161,9 @@ func (p *Platform) CompleteAccount(ctx context.Context, who auth.Principal, name
 		return err
 	}
 	err = p.linkAccount(ctx, who, name, nonce, code, binding)
-	if errors.Is(err, connectionauth.ErrConsentEnded) {
-		p.log.Warn("platform: a callback that did not match an account link's consent ended it", "tenant", who.Tenant, "provider", name, "by", who.Subject)
+	var ended *connectionauth.EndedError
+	if errors.As(err, &ended) {
+		p.recordEnded(who, ended.Provider, "POST /api/connections/{provider}/callback")
 	}
 	if completion := attempt.Finish(err); completion != nil {
 		p.LogAuditCompletionFailure(completion)
@@ -171,25 +172,45 @@ func (p *Platform) CompleteAccount(ctx context.Context, who auth.Principal, name
 }
 
 // EndAccountLink ends the account link consent whose state a callback
-// presented without the browser's secret, or from a caller that is not a
-// browser session, and records that it did. A consent ended completes
-// nothing afterwards.
-func (p *Platform) EndAccountLink(who auth.Principal, name, nonce string) {
-	if !IsAccountLink(name) || p.ConnectionAuth == nil || nonce == "" {
+// presented without the browser's secret, from a caller that is not a
+// browser session, or in a tab that began no link, and records that it did,
+// under the provider the consent was for. route is the route it came by.
+// A consent ended completes nothing afterwards; a state that names none
+// changes nothing.
+func (p *Platform) EndAccountLink(who auth.Principal, nonce, route string) {
+	if p.ConnectionAuth == nil || nonce == "" || who.Tenant == "" {
 		return
 	}
-	attempt, err := p.BeginAudit(who, audit.Change{Action: "connection.end", Resource: "connection", ID: name, Subject: who.Subject, Route: "POST /api/connections/{provider}/callback", Rule: string(auth.RunsWrite)})
+	provider, err := p.ConnectionAuth.BoundProvider(who.Tenant, nonce)
+	if err != nil || provider == "" {
+		return
+	}
+	attempt, err := p.BeginAudit(who, audit.Change{Action: "connection.end", Resource: "connection", ID: provider, Subject: who.Subject, Route: route, Rule: string(auth.RunsRead)})
 	if err != nil {
-		p.log.Warn("platform: an account link callback could not be audited", "tenant", who.Tenant, "provider", name, "err", err)
+		p.log.Warn("platform: an account link callback could not be audited", "tenant", who.Tenant, "provider", provider, "err", err)
 		return
 	}
 	ended, err := p.ConnectionAuth.EndBound(who.Tenant, nonce)
-	if ended {
-		p.log.Warn("platform: a callback that did not match an account link's consent ended it", "tenant", who.Tenant, "provider", name, "by", who.Subject)
+	if ended != "" {
+		p.log.Warn("platform: a callback that did not match an account link's consent ended it", "tenant", who.Tenant, "provider", ended, "by", who.Subject)
 	} else if err == nil {
 		err = connectionauth.ErrInvalid
 	}
 	if completion := attempt.Finish(err); completion != nil {
+		p.LogAuditCompletionFailure(completion)
+	}
+}
+
+// recordEnded logs and audits a consent a callback ended, under the
+// provider the consent was for.
+func (p *Platform) recordEnded(who auth.Principal, provider, route string) {
+	p.log.Warn("platform: a callback that did not match an account link's consent ended it", "tenant", who.Tenant, "provider", provider, "by", who.Subject)
+	attempt, err := p.BeginAudit(who, audit.Change{Action: "connection.end", Resource: "connection", ID: provider, Subject: who.Subject, Route: route, Rule: string(auth.RunsWrite)})
+	if err != nil {
+		p.log.Warn("platform: an account link callback could not be audited", "tenant", who.Tenant, "provider", provider, "err", err)
+		return
+	}
+	if completion := attempt.Finish(nil); completion != nil {
 		p.LogAuditCompletionFailure(completion)
 	}
 }

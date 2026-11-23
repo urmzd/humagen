@@ -369,3 +369,88 @@ func TestTheAccountLinkConsentAsksForTheAccountChoice(t *testing.T) {
 		}
 	}
 }
+
+// beginGitHubLink starts a GitHub account link as *who and returns its state
+// and the browser cookie it is bound to.
+func beginGitHubLink(t *testing.T, h http.Handler) (string, *http.Cookie) {
+	t.Helper()
+	w := accountLinkCall(h, "POST", "/api/connections/github-account/authorize", `{}`, nil)
+	var a connectionauth.Authorization
+	if err := json.Unmarshal(w.Body.Bytes(), &a); w.Code != http.StatusOK || err != nil {
+		t.Fatalf("authorize: %d %s", w.Code, w.Body)
+	}
+	var cookie *http.Cookie
+	for _, c := range w.Result().Cookies() {
+		if c.Name == "humagen_account_link_github_account" {
+			cookie = c
+		}
+	}
+	u, _ := url.Parse(a.URL)
+	return u.Query().Get("state"), cookie
+}
+
+// A tab that began no link ends the consent its return names, by the state
+// alone, and no other; the consent is recorded under its own provider,
+// whichever route named it.
+func TestAConsentIsEndedByItsStateAloneAndUnderItsOwnProvider(t *testing.T) {
+	h, p, who, exchanges, _ := accountLinkFixture(t)
+	const callback = "/api/connections/github-account/callback"
+	bobState, bobCookie := beginGitHubLink(t, h)
+	who.Subject = "carol"
+	carolState, carolCookie := beginGitHubLink(t, h)
+
+	who.Subject = "ana"
+	if w := accountLinkCall(h, "POST", "/api/connections/consents/end", `{"state":"`+bobState+`"}`, nil); w.Code != http.StatusNoContent {
+		t.Fatalf("end: %d %s", w.Code, w.Body)
+	}
+	// A state that names nothing is answered the same.
+	if w := accountLinkCall(h, "POST", "/api/connections/consents/end", `{"state":"nothing"}`, nil); w.Code != http.StatusNoContent {
+		t.Fatalf("end of nothing: %d %s", w.Code, w.Body)
+	}
+	if w := accountLinkCall(h, "POST", "/api/connections/consents/end", `{"state":"x","code":"c"}`, nil); w.Code != http.StatusBadRequest {
+		t.Fatalf("a code is not taken: %d %s", w.Code, w.Body)
+	}
+	who.Subject = "bob"
+	done, _ := json.Marshal(ConnectionCallback{State: bobState, Code: "the-code"})
+	if w := accountLinkCall(h, "POST", callback, string(done), func(r *http.Request) { r.AddCookie(bobCookie) }); w.Code != http.StatusBadRequest {
+		t.Fatalf("an ended consent: %d %s", w.Code, w.Body)
+	}
+	// Another person's consent is untouched.
+	who.Subject = "carol"
+	done, _ = json.Marshal(ConnectionCallback{State: carolState, Code: "the-code"})
+	if w := accountLinkCall(h, "POST", callback, string(done), func(r *http.Request) { r.AddCookie(carolCookie) }); w.Code != http.StatusNoContent {
+		t.Fatalf("another consent: %d %s", w.Code, w.Body)
+	}
+	if n := exchanges.Load(); n != 1 {
+		t.Fatalf("%d code exchanges", n)
+	}
+
+	// A GitHub consent's state at the Slack route ends the GitHub consent,
+	// recorded as GitHub's.
+	who.Subject = "bob"
+	bobState, bobCookie = beginGitHubLink(t, h)
+	done, _ = json.Marshal(ConnectionCallback{State: bobState, Code: "the-code"})
+	if w := accountLinkCall(h, "POST", "/api/connections/slack-account/callback", string(done), nil); w.Code != http.StatusForbidden {
+		t.Fatalf("at the Slack route: %d %s", w.Code, w.Body)
+	}
+	if w := accountLinkCall(h, "POST", callback, string(done), func(r *http.Request) { r.AddCookie(bobCookie) }); w.Code != http.StatusBadRequest {
+		t.Fatalf("after the Slack route: %d %s", w.Code, w.Body)
+	}
+	records, err := p.Audit.List("acme", audit.Query{Resource: "connection", From: time.Now().Add(-time.Hour), To: time.Now().Add(time.Hour), Limit: 50}, func(audit.Record) bool { return true })
+	if err != nil {
+		t.Fatal(err)
+	}
+	ends := 0
+	for _, r := range records {
+		if r.Action != "connection.end" {
+			continue
+		}
+		ends++
+		if r.Change.ID != platform.GitHubAccount {
+			t.Fatalf("an ended consent recorded as %q: %+v", r.Change.ID, r)
+		}
+	}
+	if ends != 2 {
+		t.Fatalf("%d endings recorded, want 2: %+v", ends, records)
+	}
+}

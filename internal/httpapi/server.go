@@ -183,6 +183,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/clients/{id}/check", s.authed(auth.ClientsWrite, s.checkClientConnection))
 	mux.HandleFunc("POST /api/connections/{provider}/authorize", s.authed(auth.RunsWrite, s.authorizeConnection))
 	mux.HandleFunc("POST /api/connections/{provider}/callback", s.authed(auth.RunsWrite, s.completeConnection))
+	mux.HandleFunc("POST /api/connections/consents/end", s.authed(auth.RunsRead, s.endConsent))
 	mux.HandleFunc("DELETE /api/connections/{provider}", s.authed(auth.RunsWrite, s.disconnectConnection))
 	s.agentSetupRoutes(mux)
 	s.outcomeLearningRoutes(mux)

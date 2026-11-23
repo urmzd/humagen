@@ -339,21 +339,45 @@ func (m *Manager) dropPending(b *state.Batch[string], tenant string, item state.
 	}
 }
 
-// EndBound ends the browser-bound consent whose state a callback presented,
-// whoever presented it, and reports whether there was one. A consent ended
-// completes nothing afterwards.
-func (m *Manager) EndBound(tenant, nonce string) (bool, error) {
+// EndedError reports a browser-bound consent that a callback which did not
+// match it ended, and the provider the consent was for. It is
+// ErrConsentEnded.
+type EndedError struct{ Provider string }
+
+func (e *EndedError) Error() string { return ErrConsentEnded.Error() }
+func (e *EndedError) Unwrap() error { return ErrConsentEnded }
+
+// BoundProvider is the provider of the browser-bound consent a state names,
+// or "" for none.
+func (m *Manager) BoundProvider(tenant, nonce string) (string, error) {
 	if m == nil || tenant == "" || nonce == "" || len(nonce) > maxState {
-		return false, nil
+		return "", nil
+	}
+	_, pending, found, err := m.boundByState(tenant, nonce)
+	if err != nil || !found {
+		return "", err
+	}
+	return pending.Transaction.Provider, nil
+}
+
+// EndBound ends the browser-bound consent whose state a callback presented,
+// whoever presented it and for whichever provider, and returns the provider
+// it was for, or "" for none. A consent ended completes nothing afterwards.
+func (m *Manager) EndBound(tenant, nonce string) (string, error) {
+	if m == nil || tenant == "" || nonce == "" || len(nonce) > maxState {
+		return "", nil
 	}
 	item, pending, found, err := m.boundByState(tenant, nonce)
 	if err != nil || !found {
-		return false, err
+		return "", err
 	}
 	b := m.records.Batch()
 	b.DeleteAt(tenant, item.Key, item.Version)
 	b.Delete(tenant, stateKey(pending.State))
-	return true, b.Commit()
+	if err := b.Commit(); err != nil {
+		return "", err
+	}
+	return pending.Transaction.Provider, nil
 }
 
 // boundByState is the bound pending consent a state names. An index whose
@@ -442,10 +466,11 @@ func (m *Manager) CompleteIdentity(ctx context.Context, tenant, person, provider
 	}
 	if binding == "" {
 		// A callback without the browser's secret ends the consent it names.
-		if ended, err := m.EndBound(tenant, nonce); err != nil || !ended {
+		ended, err := m.EndBound(tenant, nonce)
+		if err != nil || ended == "" {
 			return nil, ErrInvalid
 		}
-		return nil, ErrConsentEnded
+		return nil, &EndedError{Provider: ended}
 	}
 	tx, tok, _, err := m.exchange(ctx, tenant, person, person, provider, nonce, code, binding)
 	if err != nil {
@@ -506,7 +531,7 @@ func (m *Manager) exchange(ctx context.Context, tenant, person, owner, provider,
 			if batch.Commit() != nil {
 				return transaction{}, nil, nil, ErrInvalid
 			}
-			return transaction{}, nil, nil, ErrConsentEnded
+			return transaction{}, nil, nil, &EndedError{Provider: pending.Transaction.Provider}
 		}
 		return transaction{}, nil, nil, ErrInvalid
 	}

@@ -11575,6 +11575,34 @@ paths:
           "$ref": "#/components/responses/ServerError"
         '503':
           "$ref": "#/components/responses/Unavailable"
+  "/api/connections/consents/end":
+    post:
+      operationId: endConsent
+      tags:
+      - connections
+      summary: End an account link consent by its state
+      description: For a consent's return in a tab that began no link. The account
+        link consent the state names, whoever began it, is ended and completes nothing
+        afterwards; the answer is the same whether one was ended or not. Carries no
+        code.
+      x-permission: runs:read
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/ConsentEnd"
+      responses:
+        '204':
+          description: The state names no consent that can be completed.
+        '400':
+          "$ref": "#/components/responses/BadRequest"
+        '401':
+          "$ref": "#/components/responses/Unauthorized"
+        '403':
+          "$ref": "#/components/responses/Forbidden"
+        '500':
+          "$ref": "#/components/responses/ServerError"
   "/api/connections/{provider}":
     get:
       operationId: getConnection
@@ -22098,6 +22126,15 @@ components:
           type: string
         code:
           type: string
+    ConsentEnd:
+      type: object
+      additionalProperties: false
+      required:
+      - state
+      properties:
+        state:
+          type: string
+          maxLength: 512
     BigQuerySetupCredential:
       type: object
       additionalProperties: false

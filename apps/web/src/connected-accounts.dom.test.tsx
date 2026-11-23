@@ -190,6 +190,21 @@ test("the consent's return leaves the address before the console draws, and is c
   assert.equal(posts, 1);
 });
 
+test("a return this tab began no link for ends its consent by the state alone", async () => {
+  net = page(() => [github()], {
+    "POST /api/connections/consents/end": () => undefined,
+  });
+  window.history.replaceState(null, "", "/connections/callback?state=s1&code=c1");
+  render(<Connections provider="callback" />);
+  await waitFor(() => assert.ok(screen.getByText(/Connection was not authorized/)));
+  const sent = net.seen.filter((r) => r.method === "POST");
+  assert.deepEqual(
+    sent.map((r) => [r.path, r.body]),
+    [["/api/connections/consents/end", { state: "s1" }]],
+  );
+  assert.equal(window.location.search, "");
+});
+
 test("signing in again does not carry a consent's return", () => {
   assert.equal(
     signInAddress({

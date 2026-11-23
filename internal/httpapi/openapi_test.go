@@ -2268,6 +2268,9 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	if _, err := f.p.Accounts.Link("acme", accounts.Account{Surface: accounts.Slack, ID: "U01ELSE", Team: "T09OTHER", Login: "Else", Subject: "00u-bo", At: time.Now().UTC()}); err != nil {
 		t.Fatal(err)
 	}
+	// A tab that began no link ends a consent by its state; the answer is
+	// the same whether one was ended.
+	c.call(acme, "POST", "/api/connections/consents/end", "/api/connections/consents/end", `{"state":"unknown"}`, http.StatusNoContent)
 	linked := c.call(acme, "GET", "/api/clients/{id}/accounts", "/api/clients/app/accounts", "", http.StatusOK)
 	if a := sliceOf(linked.field("accounts")); len(a) != 1 || obj(a[0])["id"] != "U01ANA" || obj(a[0])["subject"] != "00u-ana" {
 		t.Errorf("the app's linked accounts are %s, only its own team's", linked.raw)

@@ -62,6 +62,7 @@ import type {
   ConnectionDetail,
   ConnectionHealth,
   ConnectionPreset,
+  ConsentEnd,
   ContextResult,
   ContinueImportedDocumentBody,
   ConversationMemory,
@@ -9742,6 +9743,25 @@ owns cannot be changed here and answers 409.
   async completeConnectionRaw(provider: string, body: ConnectionCallback, options?: RequestOptions): Promise<ApiResponse<void>> {
     let path = "/api/connections/{provider}/callback";
     path = path.replace("{provider}", encodeURIComponent(String(provider)));
+    return this.rawRequest<void>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** For a consent's return in a tab that began no link. The account link consent the state names, whoever began it, is ended and completes nothing afterwards; the answer is the same whether one was ended or not. Carries no code. */
+  async endConsent(body: ConsentEnd, options?: RequestOptions): Promise<void> {
+    const path = "/api/connections/consents/end";
+    await this.request<void>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async endConsentRaw(body: ConsentEnd, options?: RequestOptions): Promise<ApiResponse<void>> {
+    const path = "/api/connections/consents/end";
     return this.rawRequest<void>("POST", path, {
       body,
       contentType: "application/json",

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/connectionauth"
@@ -40,11 +41,14 @@ func connectionAuthorization(ctx context.Context, system spec.System, keys credr
 	}
 	settings := system.Spec.Connections
 	if settings == nil {
+		var unread []string
 		for _, name := range []string{EnvGitHubClientID, EnvGitHubClientSecret, EnvSlackClientID, EnvSlackClientSecret} {
 			if env(name) != "" {
-				log.Warn("connections: account linking is off: the spec has no connections block, so the environment's OAuth clients are not read", "variable", name)
-				break
+				unread = append(unread, name)
 			}
+		}
+		if len(unread) > 0 {
+			log.Warn("connections: account linking is off: the spec has no connections block, so the environment's OAuth clients are not read", "variables", strings.Join(unread, ","))
 		}
 		return nil, nil
 	}
