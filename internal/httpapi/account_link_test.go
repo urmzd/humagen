@@ -70,7 +70,7 @@ func TestAnAccountLinkIsBoundToTheBrowserThatBeganIt(t *testing.T) {
 	}
 	var cookie *http.Cookie
 	for _, c := range w.Result().Cookies() {
-		if c.Name == "humagen_account_link" {
+		if c.Name == "humagen_account_link_github_account" {
 			cookie = c
 		}
 	}
@@ -99,6 +99,18 @@ func TestAnAccountLinkIsBoundToTheBrowserThatBeganIt(t *testing.T) {
 	if _, err := p.Accounts.Of("acme", accounts.GitHub, "ana"); err == nil {
 		t.Fatal("linked before the right browser called back")
 	}
+	// Another person signed in to the same browser completes nothing, for
+	// themselves or for the person who began it.
+	who.Subject = "bob"
+	if w := call("POST", callback, string(done), func(r *http.Request) { r.AddCookie(cookie) }); w.Code != http.StatusBadRequest {
+		t.Fatalf("another person's callback: %d %s", w.Code, w.Body)
+	}
+	for _, subject := range []string{"ana", "bob"} {
+		if _, err := p.Accounts.Of("acme", accounts.GitHub, subject); err == nil {
+			t.Fatalf("%s was linked by another person's callback", subject)
+		}
+	}
+	who.Subject = "ana"
 	w = call("POST", callback, string(done), func(r *http.Request) { r.AddCookie(cookie) })
 	if w.Code != http.StatusNoContent {
 		t.Fatalf("the browser that began it: %d %s", w.Code, w.Body)
@@ -110,5 +122,42 @@ func TestAnAccountLinkIsBoundToTheBrowserThatBeganIt(t *testing.T) {
 		if c.Name == cookie.Name && c.MaxAge >= 0 {
 			t.Fatalf("the browser secret was kept: %+v", c)
 		}
+	}
+	// A second callback with the same state and secret is refused.
+	if w := call("POST", callback, string(done), func(r *http.Request) { r.AddCookie(cookie) }); w.Code != http.StatusBadRequest {
+		t.Fatalf("a repeated callback: %d %s", w.Code, w.Body)
+	}
+
+	// The person disconnects their own account in their browser, as they
+	// connected it.
+	const own = "/api/connections/github-account"
+	if w := call("DELETE", own, "", func(r *http.Request) { r.Header.Set("Authorization", "Bearer token") }); w.Code != http.StatusForbidden {
+		t.Fatalf("a bearer token disconnected an account: %d %s", w.Code, w.Body)
+	}
+	if status, out := dispatch(t.Context(), h, who, "DELETE", own, nil, nil); status != http.StatusForbidden {
+		t.Fatalf("a dispatched call disconnected an account: %d %s", status, out)
+	}
+	if _, err := p.Accounts.Of("acme", accounts.GitHub, "ana"); err != nil {
+		t.Fatalf("the account was disconnected: %v", err)
+	}
+	if w := call("DELETE", own, "", nil); w.Code != http.StatusNoContent {
+		t.Fatalf("disconnect in the browser: %d %s", w.Code, w.Body)
+	}
+	if _, err := p.Accounts.Of("acme", accounts.GitHub, "ana"); err == nil {
+		t.Fatal("still linked after Disconnect")
+	}
+}
+
+// Each provider's link has its own browser secret, so beginning one leaves
+// another's in place.
+func TestEachAccountLinkHasItsOwnBrowserSecret(t *testing.T) {
+	s := &Server{}
+	gh, sl := s.linkCookieName(platform.GitHubAccount), s.linkCookieName(platform.SlackAccount)
+	if gh == sl || gh == "" || sl == "" {
+		t.Fatalf("cookie names %q and %q", gh, sl)
+	}
+	s.Authn = &Authn{Secure: true}
+	if name := s.linkCookieName(platform.GitHubAccount); !strings.HasPrefix(name, "__Host-") {
+		t.Fatalf("secure cookie name %q", name)
 	}
 }

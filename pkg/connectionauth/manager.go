@@ -316,6 +316,10 @@ func (m *Manager) CompleteFor(ctx context.Context, tenant, person, owner, provid
 	return nil
 }
 
+// maxState bounds the state a callback presents; one made here is 43
+// characters.
+const maxState = 512
+
 // MaxIdentity bounds the identity document CompleteIdentity reads.
 const MaxIdentity = 1 << 20
 
@@ -360,7 +364,7 @@ func (m *Manager) exchange(ctx context.Context, tenant, person, owner, provider,
 	if m == nil {
 		return transaction{}, nil, nil, ErrUnavailable
 	}
-	if !identity(tenant, person) || (owner != person && owner != WorkspaceOwner) || nonce == "" || code == "" || len(code) > 8192 {
+	if !identity(tenant, person) || (owner != person && owner != WorkspaceOwner) || nonce == "" || len(nonce) > maxState || code == "" || len(code) > 8192 {
 		return transaction{}, nil, nil, ErrInvalid
 	}
 	key := recordKey("pending", owner, provider)
@@ -372,7 +376,7 @@ func (m *Manager) exchange(ctx context.Context, tenant, person, owner, provider,
 		State       string
 		Transaction transaction
 	}
-	if m.open(tenant, key, item.Value, &pending) != nil || pending.State != nonce || pending.Transaction.Person != person || pending.Transaction.Owner != owner || pending.Transaction.Provider != provider || !m.now().Before(pending.Transaction.Expires) ||
+	if m.open(tenant, key, item.Value, &pending) != nil || subtle.ConstantTimeCompare([]byte(pending.State), []byte(nonce)) != 1 || pending.Transaction.Person != person || pending.Transaction.Owner != owner || pending.Transaction.Provider != provider || !m.now().Before(pending.Transaction.Expires) ||
 		subtle.ConstantTimeCompare([]byte(pending.Transaction.Binding), []byte(bindingDigest(binding))) != 1 {
 		return transaction{}, nil, nil, ErrInvalid
 	}

@@ -1,7 +1,7 @@
 // Package accounts keeps the accounts people linked to themselves on the
 // surfaces Humagen answers on: a GitHub user, a Slack user. A link says that
-// one person in a workspace is that surface's user, so a message the user
-// writes there acts for the person.
+// one person in a workspace is that surface's user. The store records it and
+// decides nothing: what reads a link decides what it means.
 //
 // One record per surface user is the claim: a surface user is linked to one
 // person in a workspace, and a second person's claim is refused until the
@@ -228,28 +228,37 @@ func (s *Store) Unlink(tenant, surface, subject string) error {
 	if s == nil || tenant == "" || subject == "" || !known(surface) {
 		return ErrInvalid
 	}
-	return state.Retry(func() error {
-		ptrs, _, err := s.records.List(tenant, state.Query{Prefix: personPrefix(surface, subject), Limit: MaxPerPerson})
-		if err != nil {
-			return err
-		}
-		b := s.records.Batch()
-		for _, p := range ptrs {
-			if err := s.dropOld(b, tenant, surface, p.Value.Team, subject, p.Value.ID); err != nil {
+	// A page at a time, until a page is not full: nothing of theirs is left
+	// behind however many they linked.
+	for {
+		full := false
+		err := state.Retry(func() error {
+			ptrs, _, err := s.records.List(tenant, state.Query{Prefix: personPrefix(surface, subject), Limit: MaxPerPerson})
+			if err != nil {
 				return err
 			}
-			b.DeleteAt(tenant, p.Key, p.Version)
+			full = len(ptrs) == MaxPerPerson
+			b := s.records.Batch()
+			for _, p := range ptrs {
+				if err := s.dropOld(b, tenant, surface, p.Value.Team, subject, p.Value.ID); err != nil {
+					return err
+				}
+				b.DeleteAt(tenant, p.Key, p.Version)
+			}
+			if b.Len() == 0 {
+				return nil
+			}
+			return b.Commit()
+		})
+		if err != nil || !full {
+			return err
 		}
-		if b.Len() == 0 {
-			return nil
-		}
-		return b.Commit()
-	})
+	}
 }
 
 // Remove unlinks one surface user from whoever linked it, as an
-// administrator does for someone who left or whose account was taken, and
-// returns the account it removed. A user nobody linked is ErrNotFound.
+// administrator does for someone who left, and returns the account it
+// removed. A user nobody linked is ErrNotFound.
 func (s *Store) Remove(tenant, surface, team, id string) (Account, error) {
 	if s == nil || !valid(tenant, surface, team, id) {
 		return Account{}, ErrNotFound

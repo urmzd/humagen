@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"fmt"
 
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/connectionauth"
@@ -14,12 +15,13 @@ import (
 // The GitHub App's and the Slack app's OAuth clients, for a person linking
 // their account, when the spec does not declare the app (connections.github,
 // connections.clients.slack). The secret is read through env:, as a
-// credential reference, and never kept.
+// credential reference, and never kept. Each pair is set together or not at
+// all, and is read only where the spec has a connections block.
 const (
 	EnvGitHubClientID     = "HUMAGEN_GITHUB_CLIENT_ID"
 	EnvGitHubClientSecret = "HUMAGEN_GITHUB_CLIENT_SECRET"
-	EnvSlackClientID      = "HUMAGEN_SLACK_CLIENT_ID"
-	EnvSlackClientSecret  = "HUMAGEN_SLACK_CLIENT_SECRET"
+	EnvSlackClientID      = "HUMAGEN_SLACK_OAUTH_CLIENT_ID"
+	EnvSlackClientSecret  = "HUMAGEN_SLACK_OAUTH_CLIENT_SECRET"
 )
 
 // RedirectURL is where every connection's consent returns: the spec's
@@ -100,8 +102,15 @@ func connectionAuthorization(ctx context.Context, system spec.System, keys credr
 			link.id, link.ref = settings.Clients["slack"].ClientID, settings.Clients["slack"].ClientSecret
 		case env(link.idEnv) != "" && env(link.secretEnv) != "":
 			link.id, link.ref = env(link.idEnv), &spec.Ref{Ref: "env:" + link.secretEnv}
+		case env(link.idEnv) != "":
+			// The id alone names the pair, so half of it is said at start
+			// rather than left as a link that is off for no stated reason.
+			return nil, fmt.Errorf("%s is set without %s: set both to let people link their account, or neither", link.idEnv, link.secretEnv)
 		default:
 			continue
+		}
+		if link.id == "" {
+			return nil, errors.New("account link client id is empty")
 		}
 		provider := platform.NativeConnectionProvider(link.name)
 		provider.ClientID = link.id

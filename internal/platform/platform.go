@@ -480,7 +480,7 @@ type Platform struct {
 	// providers. Values are kept in the store client secrets are kept in.
 	Credentials *credentials.Store
 	// Accounts is the GitHub and Slack accounts people linked to
-	// themselves, which a surface's user is resolved through first.
+	// themselves. Nothing resolves a surface's user through it yet.
 	Accounts *accounts.Store
 	// Blobs holds the bytes of published files.
 	Blobs blob.Store

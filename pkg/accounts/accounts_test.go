@@ -2,6 +2,7 @@ package accounts_test
 
 import (
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -203,5 +204,29 @@ func TestRemoveUnlinksWhoeverLinkedIt(t *testing.T) {
 	}
 	if _, err := s.Link("t", account(accounts.GitHub, "42", "bob")); err != nil {
 		t.Fatalf("claim after removal: %v", err)
+	}
+}
+
+// Disconnecting removes every account a person linked on a surface, however
+// many Slack teams they linked one in.
+func TestUnlinkRemovesEveryAccountAPersonLinked(t *testing.T) {
+	s := accounts.Open(nil)
+	const teams = 2*accounts.MaxPerPerson + 3
+	for i := range teams {
+		team := fmt.Sprintf("T%03d", i)
+		if _, err := s.Link("t", accounts.Account{Surface: accounts.Slack, ID: "U0ANA", Team: team, Login: "Ana", Subject: "ana"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.Unlink("t", accounts.Slack, "ana"); err != nil {
+		t.Fatal(err)
+	}
+	if mine, err := s.Mine("t", accounts.Slack, "ana"); err != nil || len(mine) != 0 {
+		t.Fatalf("still linked: %d %v", len(mine), err)
+	}
+	for i := range teams {
+		if _, err := s.Get("t", accounts.Slack, fmt.Sprintf("T%03d", i), "U0ANA"); !errors.Is(err, accounts.ErrNotFound) {
+			t.Fatalf("team %d is still linked: %v", i, err)
+		}
 	}
 }

@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/urmzd/humagen/internal/platform"
@@ -22,18 +23,21 @@ func (s *Server) browserCall(r *http.Request) bool {
 	return r.Header.Get("Authorization") == ""
 }
 
-func (s *Server) linkCookieName() string {
+// linkCookieName is the cookie one provider's account link is bound to. Each
+// provider has its own, so a link begun on one does not replace another's.
+func (s *Server) linkCookieName(provider string) string {
+	name := "humagen_account_link_" + strings.ReplaceAll(provider, "-", "_")
 	if s.Authn != nil && s.Authn.Secure {
-		return "__Host-humagen_account_link"
+		return "__Host-" + name
 	}
-	return "humagen_account_link"
+	return name
 }
 
 // setLinkCookie gives the browser the secret its account link is bound to,
 // or takes it back when ttl is zero.
-func (s *Server) setLinkCookie(w http.ResponseWriter, value string, ttl time.Duration) {
+func (s *Server) setLinkCookie(w http.ResponseWriter, provider, value string, ttl time.Duration) {
 	c := &http.Cookie{
-		Name: s.linkCookieName(), Value: value, Path: "/", HttpOnly: true,
+		Name: s.linkCookieName(provider), Value: value, Path: "/", HttpOnly: true,
 		Secure: s.Authn != nil && s.Authn.Secure, SameSite: http.SameSiteLaxMode, MaxAge: int(ttl.Seconds()),
 	}
 	if ttl <= 0 {
@@ -76,7 +80,7 @@ func (s *Server) authorizeConnection(w http.ResponseWriter, r *http.Request, who
 		secret := token()
 		out, err = s.P.AuthorizeAccount(r.Context(), who, provider, input, secret)
 		if err == nil {
-			s.setLinkCookie(w, secret, accountLinkTTL)
+			s.setLinkCookie(w, provider, secret, accountLinkTTL)
 		}
 	} else {
 		out, err = s.P.AuthorizeConnection(r.Context(), who, provider, input)
@@ -99,11 +103,11 @@ func (s *Server) completeConnection(w http.ResponseWriter, r *http.Request, who 
 			return
 		}
 		secret := ""
-		if c, cerr := r.Cookie(s.linkCookieName()); cerr == nil {
+		if c, cerr := r.Cookie(s.linkCookieName(provider)); cerr == nil {
 			secret = c.Value
 		}
 		// The secret is spent with the state, whatever the answer.
-		s.setLinkCookie(w, "", 0)
+		s.setLinkCookie(w, provider, "", 0)
 		err = s.P.CompleteAccount(r.Context(), who, provider, body.State, body.Code, secret)
 	} else if r.PathValue("provider") == "github" {
 		err = s.P.CompleteGitHubInstall(r.Context(), who, body.State, body.Code, body.InstallationID)
@@ -117,6 +121,12 @@ func (s *Server) completeConnection(w http.ResponseWriter, r *http.Request, who 
 	w.WriteHeader(http.StatusNoContent)
 }
 func (s *Server) disconnectConnection(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	// A person unlinks their own account where they linked it: in their
+	// browser.
+	if platform.IsAccountLink(r.PathValue("provider")) && !s.browserCall(r) {
+		s.problem(w, platform.ErrAccountInConsole)
+		return
+	}
 	if err := s.P.DisconnectConnection(who, r.PathValue("provider")); err != nil {
 		s.problem(w, err)
 		return
