@@ -141,12 +141,17 @@ func TestTheSlackAppsRunsActAsTheMappedPerson(t *testing.T) {
 		t.Fatalf("the run carries ana's credential: %v", run)
 	}
 
-	own := f.ask(t, app, `{"agent":"worker","text":"Open bugs?"}`)
+	// The app starts nothing as itself; at a person's asking it acts for
+	// nobody, so no one's credential reaches the server.
+	if res, out := f.do(t, nil, "POST", "/api/runs", app, `{"agent":"worker","text":"Open bugs?"}`); res.StatusCode != http.StatusForbidden {
+		t.Fatalf("the app's own run: %d %v", res.StatusCode, out)
+	}
+	own := f.ask(t, app, `{"agent":"worker","text":"Open bugs?","asked_by":{"client":"slack-app","user":"U0ADA"}}`)
 	if actor, _ := own["actor"].(map[string]any); actor["user"] != nil || actor["bot"] != true {
-		t.Fatalf("the app's own run acts for %v", own["actor"])
+		t.Fatalf("the app's run at ana's asking acts for %v", own["actor"])
 	}
 	if calls := server.Calls(); len(calls) != 1 {
-		t.Fatalf("the app's own run reached the server: %q", calls)
+		t.Fatalf("the app's run at ana's asking reached the server: %q", calls)
 	}
 
 	f.ask(t, ana, `{"agent":"worker","text":"Open bugs?"}`)

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Run } from "@humagen/adapter";
 import { CodeChannels, contextBar, MAX_TITLE, summaryOf } from "./codechannel.ts";
-import { CHANNEL, FakeSlack, mention, SUBJECT, settle, TEAM, world } from "./harness.ts";
+import { CHANNEL, FakeSlack, mappedWorld, mention, SUBJECT, settle, TEAM } from "./harness.ts";
 import { runId } from "./keys.ts";
 
 const TS = "1700000000.000100";
@@ -247,7 +247,7 @@ const CHROME = [
 ];
 
 test("an ordinary thread makes no code channel call", async () => {
-  const w = world({ publicUrl: CONSOLE, titleWaits: [] });
+  const w = mappedWorld({ publicUrl: CONSOLE, titleWaits: [] });
   w.humagen.titles.set(runId("acme", SUBJECT, KEY), "Deploy changes");
   await w.app.handle(mention("what changed in the last deploy?", TS));
   await settle();
@@ -261,11 +261,13 @@ test("an ordinary thread makes no code channel call", async () => {
 });
 
 test("in a code channel a turn sets the context bar, and the session is named when the conversation is titled", async () => {
-  const w = world({ publicUrl: CONSOLE, titleWaits: [] });
+  const w = mappedWorld({ publicUrl: CONSOLE, titleWaits: [] });
   asCodeChannel(w.slack);
   await w.app.handle(mention("fix the flaky login test", TS));
   await settle();
+  // A person's run is in the session humagen keeps for the thread: its link names that.
   const id = w.humagen.last.id;
+  const conversation = w.humagen.last.thread;
   assert.deepEqual(w.slack.of("agents.conversations.setProperties"), [
     {
       channel_id: CHANNEL,
@@ -276,7 +278,7 @@ test("in a code channel a turn sets the context bar, and the session is named wh
             key: "conversation",
             label: "Open Conversation",
             icon: "link",
-            url: `${CONSOLE}/conversations/${id}`,
+            url: `${CONSOLE}/conversations/${conversation}`,
           },
         ],
       },
@@ -286,7 +288,7 @@ test("in a code channel a turn sets the context bar, and the session is named wh
   assert.deepEqual(w.slack.of("agents.sessions.rename"), []);
 
   // The conversation is titled as its first turn ends.
-  w.humagen.titles.set(id, "Fix flaky login test");
+  w.humagen.titles.set(conversation, "Fix flaky login test");
   w.humagen.emit(id, "run.completed.v1", { text: "Fixed." });
   await settle();
   await w.app.idle();
@@ -314,14 +316,14 @@ test("in a code channel a turn sets the context bar, and the session is named wh
 });
 
 test("a code channel Slack refuses the chrome for still gets its answer", async () => {
-  const w = world({ publicUrl: CONSOLE, titleWaits: [] });
+  const w = mappedWorld({ publicUrl: CONSOLE, titleWaits: [] });
   asCodeChannel(w.slack);
   w.slack.failing["agents.conversations.setProperties"] = "missing_scope";
   w.slack.failing["agents.sessions.rename"] = "missing_scope";
   await w.app.handle(mention("fix the flaky login test", TS));
   await settle();
   const id = w.humagen.last.id;
-  w.humagen.titles.set(id, "Fix flaky login test");
+  w.humagen.titles.set(w.humagen.last.thread, "Fix flaky login test");
   w.humagen.emit(id, "run.delta.text.v1", { text: "Fixed." });
   await settle();
   w.humagen.emit(id, "run.completed.v1", { text: "Fixed." });
@@ -339,7 +341,7 @@ test("a code channel Slack refuses the chrome for still gets its answer", async 
 });
 
 test("an archived code channel is forgotten", async () => {
-  const w = world({ publicUrl: CONSOLE, titleWaits: [] });
+  const w = mappedWorld({ publicUrl: CONSOLE, titleWaits: [] });
   asCodeChannel(w.slack);
   await w.app.handle(mention("fix the flaky login test", TS));
   await settle();

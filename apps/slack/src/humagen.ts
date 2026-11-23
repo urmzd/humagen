@@ -86,6 +86,12 @@ export interface RunRequest {
   project?: string;
   /** The Slack person asking, when the client maps them: the run is theirs, not the app's. */
   act_as?: ActAs;
+  /**
+   * The Slack person the client maps who asked for a run that acts for
+   * nobody: about someone else's message, or a turn that acted for nobody
+   * asked again. Humagen starts no run for this app without act_as or this.
+   */
+  asked_by?: ActAs;
 }
 
 /**

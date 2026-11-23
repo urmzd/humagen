@@ -562,10 +562,15 @@ func TestTheSlackAppTheServerStartsActsForThePeopleTheFileMaps(t *testing.T) {
 	if status, out := call("POST", "/api/runs", `{"text":"hello","act_as":{"client":"`+client+`","user":"U0123EVE"}}`); status != 403 {
 		t.Fatalf("a run for an unmapped person: %d %v", status, out)
 	}
-	// An unnamed message, for a mapped person and for nobody, has one answerer.
-	status, own := call("POST", "/api/runs", `{"text":"hello"}`)
+	// The app starts nothing as itself, whatever the app asks.
+	if status, out := call("POST", "/api/runs", `{"text":"hello"}`); status != 403 {
+		t.Fatalf("the app's own run: %d %v", status, out)
+	}
+	// An unnamed message, for a mapped person and for nobody at their
+	// asking, has one answerer.
+	status, own := call("POST", "/api/runs", `{"text":"hello","asked_by":{"client":"`+client+`","user":"U0123ANA"}}`)
 	if status != 202 {
-		t.Fatalf("the app's own unnamed run: %d %v", status, own)
+		t.Fatalf("the app's unnamed run at ana's asking: %d %v", status, own)
 	}
 	status, theirs := call("POST", "/api/runs", `{"text":"hello","act_as":{"client":"`+client+`","user":"U0123ANA"}}`)
 	if status != 202 {
