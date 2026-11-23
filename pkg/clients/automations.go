@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/urmzd/humagen/pkg/trigger"
 )
 
 // MatchAutomations reads only a signature-verified payload. Rules cannot grant
@@ -217,8 +219,8 @@ func fullSHA(s string) bool {
 }
 
 // MentionOnPullRequest reads a signature-verified comment or review payload
-// and reports the pull request a person mentioned the app or one of this
-// client's agents on. Automatic review resumes there.
+// and reports the pull request a person asked on with the trigger
+// ("@humagen", Triggers). Automatic review resumes there.
 func (c Client) MentionOnPullRequest(kind string, body []byte) (repo string, number int, ok bool) {
 	if c.Surface != GitHub || !c.Enabled || c.GitHub == nil {
 		return "", 0, false
@@ -264,53 +266,21 @@ func (c Client) MentionOnPullRequest(kind string, body []byte) (repo string, num
 	if number <= 0 || !repoPattern.MatchString(repo) || !c.Serves(owner) {
 		return "", 0, false
 	}
-	for _, name := range c.mentionable() {
-		if mentions(text, name) {
-			return repo, number, true
-		}
+	if _, asked := trigger.Read(text, c.Triggers(), nil); asked {
+		return repo, number, true
 	}
 	return "", 0, false
 }
 
-// mentionable is what a comment may @mention to address this client: the
-// app's login, and the agents and bots it routes to.
-func (c Client) mentionable() []string {
-	names := []string{strings.TrimSuffix(c.GitHub.Login, "[bot]"), c.DefaultAgent}
-	for _, a := range c.Agents {
-		if a != "*" {
-			names = append(names, a)
+// Triggers are the handles a comment asks this client with: "@humagen"
+// (pkg/trigger), and the app's own login without "[bot]" when it is
+// another, such as an app called humagen-acme.
+func (c Client) Triggers() []string {
+	out := []string{trigger.Name}
+	if c.GitHub != nil {
+		if handle := strings.TrimSuffix(c.GitHub.Login, "[bot]"); handle != "" && !strings.EqualFold(handle, trigger.Name) {
+			out = append(out, handle)
 		}
 	}
-	for login, agent := range c.Bots {
-		names = append(names, strings.TrimSuffix(login, "[bot]"), agent)
-	}
-	return names
-}
-
-// mentions reports whether text @mentions name as a whole word: not part of
-// a longer name or an email address. A sentence may end right after it.
-func mentions(text, name string) bool {
-	if name == "" {
-		return false
-	}
-	lower, at := strings.ToLower(text), "@"+strings.ToLower(name)
-	for from := 0; ; {
-		i := strings.Index(lower[from:], at)
-		if i < 0 {
-			return false
-		}
-		i += from
-		end := i + len(at)
-		before := i == 0 || !nameByte(lower[i-1]) && lower[i-1] != '.' && lower[i-1] != '@'
-		rest := lower[end:]
-		after := rest == "" || !nameByte(rest[0]) && (rest[0] != '.' || len(rest) == 1 || !nameByte(rest[1]))
-		if before && after {
-			return true
-		}
-		from = end
-	}
-}
-
-func nameByte(b byte) bool {
-	return b == '-' || b == '_' || b >= '0' && b <= '9' || b >= 'a' && b <= 'z'
+	return out
 }

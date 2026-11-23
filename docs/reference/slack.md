@@ -202,6 +202,29 @@ nobody: one that opens the message is the address and is dropped, with the
 colon or comma after it, and anywhere else it reads as the app's name, so
 "could @Humagen take a look" asks "could Humagen take a look".
 
+#### Naming an agent
+
+`@Humagen`, the app's bot user, is the one trigger, as `@humagen` is on
+[GitHub](github.md#who-a-comment-asks). Agents are not Slack users, so Slack
+cannot offer their names. When the message opens with the app's mention, type
+the agent's name right after it, after `ask`, with `:` or `,` after it, or as
+`@name`:
+
+| Message | Who answers |
+|---|---|
+| `@Humagen what changed?` | The default: the thread's agent, the client's, the bound channel's, else the entry agent |
+| `@Humagen ask research-bot why is the cache cold?` | research-bot, which reads `why is the cache cold?` |
+| `@Humagen research-bot: why is the cache cold?` | research-bot |
+| `@Humagen @research-bot why is the cache cold?` | research-bot |
+| `@Humagen docs are stale` | The default: a bare first word is part of the question |
+
+The first word names an agent only when it is one the client may route to.
+Only a message that opens with the app's own mention is read this way. In a
+direct message, a thread reply, or a message that opens with someone else
+(`@Ana research-bot: ...`), the first word is part of the message. A plain
+`@name` of an agent anywhere in a message still tags it, as before. The
+connector and the Slack app read the name the same way.
+
 Only a person the client maps is listened to. The agent's answer to "does this
 call for me?" is the one a message that names no agent is routed by
 ([overview](../architecture/overview.md)): a no, a failure and no agent to ask

@@ -328,11 +328,10 @@ type GitHubOptions struct {
 	// ReadRepositories are "owner/repo" names a run from another surface may
 	// read through this client.
 	ReadRepositories []string `json:"read_repositories,omitempty"`
-	// Login is the app's own GitHub login, such as "humagen[bot]", mentioned as
-	// @Humagen (in any case). A comment that mentions it and names no agent is
-	// addressed to the client and answered by its default, as an untagged Slack message is
-	// (see docs/reference/github.md). While it is empty, a comment that names no agent
-	// starts nothing.
+	// Login is the app's own GitHub login, such as "humagen[bot]". Without
+	// "[bot]" it is a trigger beside "@humagen" (Client.Triggers), so an app
+	// called humagen-acme is asked as "@humagen-acme" too. Empty, "@humagen"
+	// alone asks (see docs/reference/github.md#who-a-comment-asks).
 	Login string `json:"login,omitempty"`
 }
 

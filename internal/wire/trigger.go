@@ -112,6 +112,25 @@ func SetAgent(e *event.Envelope, agent string) {
 	})
 }
 
+// ReviewerOf is the agent a review request was resolved to, "" for any
+// other event.
+func ReviewerOf(e event.Envelope) string {
+	if b, ok := e.Data.(event.GitHubReviewRequested); ok {
+		return b.Reviewer
+	}
+	return ""
+}
+
+// ClearReviewer makes a review request name no agent, so its host chooses
+// who reviews, as for a request that names none.
+func ClearReviewer(e *event.Envelope) {
+	if b, ok := e.Data.(event.GitHubReviewRequested); ok {
+		b.Reviewer = ""
+		e.Data = b
+	}
+	SetAgent(e, "")
+}
+
 // RequestOf is the request an event carries, zero for one that asks nothing.
 func RequestOf(e event.Envelope) event.Request {
 	if e.Data == nil {
@@ -357,6 +376,11 @@ func Clone(e event.Envelope) event.Envelope {
 	e.Private = priv
 	return e
 }
+
+// MetaTriggered marks a surface's request that holds the trigger
+// ("@humagen", pkg/trigger) and names no agent after it. Its host asks the
+// default where it is filed, not whichever agent answered there before.
+const MetaTriggered = "_humagen.triggered"
 
 // MetaSession is pinned by platform admission, never accepted from ingress.
 const MetaSession = "_humagen.session"

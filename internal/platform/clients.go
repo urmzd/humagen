@@ -552,8 +552,11 @@ func (p *Platform) dial(c clients.Client, secrets resolved) (*seat, error) {
 			Tenant:         c.Tenant,
 			DeliveryState:  deliveryState, DeliveryScope: clientDeliveryScope(c),
 		}
-		// A comment that mentions the app and names no agent is raised
-		// naming none, and stamp decides who answers it where it is filed.
+		// Only the trigger asks ("@humagen", or the app's login): a comment
+		// that holds it and names no agent after it is raised naming none,
+		// and stamp decides who answers it where it is filed. An agent's
+		// name alone asks nobody, since on GitHub it may be someone's account.
+		cfg.Triggers = c.Triggers()
 		if g := c.GitHub; g != nil {
 			cfg.Checks, cfg.Guides, cfg.Mutations, cfg.ReadRepositories = g.Checks, g.Guides, g.Mutations, g.ReadRepositories
 			cfg.Login = g.Login

@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { fromServer } from "@humagen/adapter";
 import { defaultCopy, MessageView } from "@humagen/components";
 import { renderToSlack } from "@humagen/render-slack";
-import { echoed, forSlack, tagsSomeoneElse, wholeMessage } from "./app.tsx";
+import { echoed, forSlack, opensWithApp, tagsSomeoneElse, wholeMessage } from "./app.tsx";
 import {
   alertMail,
   BOT,
@@ -2833,3 +2833,11 @@ for (const [name, failure] of [
     );
   });
 }
+
+test("opensWithApp: only the app's own mention, at the start", () => {
+  assert.equal(opensWithApp("<@UBOT> ops: go", "UBOT"), true);
+  assert.equal(opensWithApp("  <@UBOT|humagen> ops: go", "UBOT"), true);
+  assert.equal(opensWithApp("<@UALICE> ops: go <@UBOT>", "UBOT"), false);
+  assert.equal(opensWithApp("ops: go", "UBOT"), false);
+  assert.equal(opensWithApp("<@UBOT> go", ""), false);
+});

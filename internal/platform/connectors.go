@@ -276,7 +276,11 @@ func (s *surface) stamp(ctx context.Context, st *seat, tag event.Envelope) []eve
 		return nil
 	}
 	agent := wire.AgentOf(tag)
-	if agent == "" {
+	// A request that holds the trigger and names no agent asks the default
+	// where it is filed; only a reply without it continues with the agent
+	// that answered there before.
+	triggered := wire.Meta(tag)[wire.MetaTriggered] != ""
+	if agent == "" && !triggered {
 		if place, err := address.Parse(tag.Channel); err == nil {
 			if prior, ok, err := s.p.resolveSurface(c, place); err == nil && ok {
 				if run, err := s.p.Runs.Get(c.Tenant, prior.Run); err == nil && run.Client == c.ID {
@@ -320,6 +324,7 @@ func (s *surface) stamp(ctx context.Context, st *seat, tag event.Envelope) []eve
 		t := wire.Clone(tag)
 		t.ID, t.Tenant = a.id, c.Tenant
 		wire.SetAgent(&t, a.agent)
+		wire.DeleteMeta(&t, wire.MetaTriggered)
 		if read != "" {
 			wire.SetText(&t, wire.TextOf(t)+"\n\n"+read)
 		}
