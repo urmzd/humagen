@@ -163,6 +163,20 @@ export const defaultCopy = {
       readOnly: "A workspace administrator changes repository settings.",
     },
   },
+  /** A GitHub app's automation rules: what starts a session, and how it answers. */
+  githubRules: {
+    /**
+     * What a rule's sessions answer with. Only a session on a pull request
+     * can review, so the choice shows for pull request and check run rules.
+     * Left unset, a pull request rule reviews and any other replies.
+     */
+    shape: {
+      label: "Answers with",
+      hint: "A review posts findings on the pull request. A reply is prose.",
+      review: "Review",
+      reply: "Reply",
+    },
+  },
   githubTabs: {
     repository: "Repository",
     address: "GitHub URL or #number",

@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.198.0 (2026-11-23)
+
+### Features
+
+- **web**: choose Review or Reply for a GitHub automation rule ([fbeb9b4](https://github.com/urmzd/humagen/commit/fbeb9b42879d7e77f2a484c393f1ed5abb2f2df4))
+
+### Bug Fixes
+
+- **web**: keep a rule's answer across events that offer the choice ([774e499](https://github.com/urmzd/humagen/commit/774e499ca6e0db9458c8e6a96946da760157019b))
+
+### Misc
+
+- **spec**: regenerate copy keys for the rule editor's answer choice ([d2292ac](https://github.com/urmzd/humagen/commit/d2292ace4f7f1ae0bb6c3cc22ac81c2bb5e1affe))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.197.0...v0.198.0)
+
+
 ## 0.197.0 (2026-11-23)
 
 ### Features
