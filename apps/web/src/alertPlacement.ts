@@ -56,8 +56,9 @@ export function groupAlerts(alerts: Alert[]): AlertGroup[] {
 /**
  * Where each alert sits in the transcript. One about a turn on view sits
  * right after it, and one about a run called from a turn on view (`callers`
- * maps a run to the run at the top of its call tree) sits after that turn. While earlier turns are unread, one about a turn not on view,
- * or older than every loaded turn, is listed as `earlier` (open only; a
+ * maps a run to the run at the top of its call tree, itself for a turn) sits
+ * after that turn. While earlier turns are unread, one known to be about a
+ * turn not on view, or older than every loaded turn, is listed as `earlier` (open only; a
  * settled one waits for its turn to load) rather than placed among turns it
  * is not about. Any other sits at its own time: after the last turn that
  * began before it, or before every turn when none did.
@@ -80,7 +81,11 @@ export function placeAlerts(
       (caller && shown.has(caller) ? caller : undefined);
     if (!slot && unread) {
       const at = ms(alert.at);
-      if (alertAnchor(alert) || !turns.length || at < times[0]!) {
+      // Known to be about a turn on an unread page: a person's message not on
+      // view, or a run whose call tree starts at a turn not on view.
+      const unloaded =
+        (!!alert.message && alert.message !== alert.run_id) || (!!caller && !shown.has(caller));
+      if (unloaded || !turns.length || at < times[0]!) {
         if (openAlert(alert)) earlier.push(alert);
         continue;
       }

@@ -58,6 +58,24 @@ test("with earlier turns still unread, an alert older than every turn, or about 
     ["open-old", "unloaded"],
   );
   assert.deepEqual(unread.lead, []);
+  // About a run whose caller is not known: by time, once newer than the oldest loaded turn.
+  const child = alert({
+    id: "child",
+    run_id: "r-child",
+    message: "r-child",
+    at: "2026-11-22T09:20:00Z",
+  });
+  assert.deepEqual(
+    placeAlerts(turns, [child], true)
+      .after.get("m-2")
+      ?.map((a) => a.id),
+    ["child"],
+  );
+  // A run known to be a turn not loaded is listed as earlier.
+  assert.deepEqual(
+    placeAlerts(turns, [child], true, new Map([["r-child", "r-child"]])).earlier.map((a) => a.id),
+    ["child"],
+  );
   assert.deepEqual(
     unread.after.get("m-2")?.map((a) => a.id),
     ["late-plain"],

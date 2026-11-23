@@ -476,6 +476,7 @@ var copyKeyList = []string{
 	"attention.open.retry",
 	"attention.open.session",
 	"attention.openReview",
+	"attention.reopen",
 	"attention.review",
 	"attention.reviewApproval",
 	"attention.reviewFailed",

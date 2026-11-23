@@ -886,12 +886,14 @@ export function ThreadRoom({
   const folded = new Map<string, Alert[]>();
   const inline: Alert[] = [];
   for (const a of alertRows) {
-    if (duplicatesInlineApproval(a, turns)) continue;
+    // An alert whose run is still being looked up is placed once it is known, not moved.
+    if (duplicatesInlineApproval(a, turns) || (a.run_id && calledBy.waiting.has(a.run_id)))
+      continue;
     const run = foldsIntoFailure(a, turns);
     if (run) folded.set(run, [...(folded.get(run) ?? []), a]);
     else inline.push(a);
   }
-  const placed = placeAlerts(turns, inline, !!before, calledBy);
+  const placed = placeAlerts(turns, inline, !!before, calledBy.roots);
   // What the header counts is what is drawn: a line each, and a failure card each.
   const waiting =
     openLines(placed.lead) +

@@ -172,33 +172,38 @@ const ROOT_READS = 20;
 /**
  * The run at the top of each call tree an alert is about, when that run is
  * not on view itself, such as a specialist another agent called: read once
- * each, so its alert sits after the answer that called it.
+ * each, so its alert sits after the answer that called it. `waiting` names
+ * the runs still being read.
  */
-export function useAlertRoots(alerts: Alert[], turns: ThreadTurn[]): Map<string, string> {
+export function useAlertRoots(
+  alerts: Alert[],
+  turns: ThreadTurn[],
+): { roots: Map<string, string>; waiting: Set<string> } {
+  // A run's root, or "" once a read of it failed.
   const [roots, setRoots] = useState<Map<string, string>>(() => new Map());
   const asked = useRef(new Set<string>());
   const shown = new Set(turns.map((t) => t.run?.id).filter(Boolean));
-  const wanted = [
-    ...new Set(
-      alerts
-        .map((a) => a.run_id)
-        .filter((id): id is string => !!id && !shown.has(id) && !asked.current.has(id)),
-    ),
+  const off = [
+    ...new Set(alerts.map((a) => a.run_id).filter((id): id is string => !!id && !shown.has(id))),
   ];
-  const key = wanted.slice(0, Math.max(0, ROOT_READS - asked.current.size)).join(",");
+  const wanted = off
+    .filter((id) => !asked.current.has(id))
+    .slice(0, Math.max(0, ROOT_READS - asked.current.size));
+  const key = wanted.join(",");
   useEffect(() => {
     if (!key) return;
     for (const id of key.split(",")) {
       asked.current.add(id);
       api.run(id).then(
-        (run) => {
-          if (run.root && run.root !== id) setRoots((m) => new Map(m).set(id, run.root));
-        },
-        () => {},
+        // A run nobody called is its own root: a turn, on a page not read yet.
+        (run) => setRoots((m) => new Map(m).set(id, run.root ?? "")),
+        () => setRoots((m) => new Map(m).set(id, "")),
       );
     }
   }, [key]);
-  return roots;
+  // Read, or about to be: its alert waits for the answer rather than moving once it comes.
+  const reading = new Set([...asked.current, ...wanted]);
+  return { roots, waiting: new Set(off.filter((id) => reading.has(id) && !roots.has(id))) };
 }
 
 type Fix = { alert: Alert; agent: string };
@@ -300,17 +305,16 @@ export function SessionAlerts({
   );
   let drawn: ReactNode = null;
   if (controls) {
-    // A failed answer's alerts act together: one Mark Done, one menu.
-    const open = alerts.filter(openAlert);
+    // A failed answer's alerts act together: one Mark Done, one menu. Once
+    // settled, the card keeps a muted Done with Reopen in its menu.
+    const open = byTime(alerts.filter(openAlert));
+    const all = byTime(alerts);
     drawn =
       open.length > 0
-        ? line({
-            key: "failure",
-            alerts: byTime(open).reverse(),
-            lead: byTime(open).at(-1)!,
-            open: true,
-          })
-        : null;
+        ? line({ key: "failure", alerts: [...open].reverse(), lead: open.at(-1)!, open: true })
+        : all.length > 0
+          ? line({ key: "failure", alerts: [...all].reverse(), lead: all.at(-1)!, open: false })
+          : null;
   } else if (groups.length > 0)
     // One slot's lines sit together, as one entry of the transcript.
     drawn = <div className="flex min-w-0 flex-col">{groups.map(line)}</div>;
@@ -467,6 +471,13 @@ function AlertLine({
       disabled: attention.busy,
       onSelect: () => void attention.change(alerts, "snoozed"),
     });
+  // Undo is brief: a settled alert can always be opened again from its menu.
+  if (!open && canWrite)
+    menu.push({
+      label: words.reopen,
+      disabled: attention.busy,
+      onSelect: () => void attention.change(alerts, "open"),
+    });
   const state = (open ? "open" : (alert.state ?? "resolved")) as "open" | "snoozed" | "resolved";
   const said = [alert.body, alert.resolve_when && words.doneWhen(alert.resolve_when)]
     .filter(Boolean)
@@ -496,8 +507,9 @@ function AlertLine({
         aria-label={name}
         data-alert-line=""
         data-alert-state={state}
-        className="inline-flex min-w-0 items-center rounded-aui focus-visible:outline-2 focus-visible:outline-aui-accent"
+        className="inline-flex min-w-0 items-center gap-1 rounded-aui focus-visible:outline-2 focus-visible:outline-aui-accent"
       >
+        {!open && <Pill size="compact">{words.states[state]}</Pill>}
         {markDone}
         {more}
       </fieldset>

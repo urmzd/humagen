@@ -305,6 +305,23 @@ test("marking a repeated alert done settles every copy, keeps focus on the line,
   );
   assert.equal(status.textContent, "");
   assert.ok(screen.getByRole("button", { name: "Go to the open alert" }));
+  // Undo is brief; a settled line's menu can always open it again.
+  fireEvent.click(
+    within(screen.getByRole("region", name)).getByRole("button", { name: "Mark Done" }),
+  );
+  await waitFor(() =>
+    assert.equal(screen.getByRole("region", name).getAttribute("data-alert-state"), "resolved"),
+  );
+  const settled = screen.getByRole("region", name);
+  fireEvent.click(within(settled).getByRole("button", { name: "More alert actions" }));
+  fireEvent.click(within(settled).getByRole("menuitem", { name: "Reopen" }));
+  await waitFor(() =>
+    assert.equal(screen.getByRole("region", name).getAttribute("data-alert-state"), "open"),
+  );
+  assert.deepEqual(
+    writes.slice(4).map((w) => w.state),
+    ["resolved", "resolved", "open", "open"],
+  );
 });
 
 test("Review asks the agent about the newest copy, and Snooze waits in the menu", async () => {
@@ -343,23 +360,25 @@ test("Review asks the agent about the newest copy, and Snooze waits in the menu"
   assert.equal((snoozed[0] as { state: string }).state, "snoozed");
 });
 
-test("a failed answer's own alert is its failure card's Mark Done, not a second line", async () => {
+test("a failed answer's own alert is its failure card's Mark Done, even with no Retry, and stays there once done", async () => {
   const failed = {
     ...page,
     turns: [
       page.turns[0],
       {
         kind: "run",
+        // Not retryable: the card offers no button of its own.
         run: {
           ...run("r-1", "github-reviewer", "2026-11-22T09:00:01Z"),
           status: "failed",
           answer: "",
-          error: "The model provider is not set up.",
+          error: "permission denied",
         },
       },
     ],
   } as unknown as ThreadPage;
   const writes: unknown[] = [];
+  let state = "open";
   const alert: Alert = {
     ...base,
     id: "a-failed",
@@ -373,28 +392,51 @@ test("a failed answer's own alert is its failure card's Mark Done, not a second 
     at: "2026-11-22T09:00:05Z",
   };
   room(
-    [alert],
+    [],
     {
+      "GET /api/alerts": () => ({ alerts: [{ ...alert, state }] }),
       "PATCH /api/alerts/a-failed": (body) => {
         writes.push(body);
-        return { ...alert, state: "resolved" };
+        state = (body as { state: string }).state;
+        return { ...alert, state };
       },
     },
     () => {},
     failed,
   );
-  const controls = await screen.findByRole("group", { name: "Alert: Github Reviewer Failed" });
-  // No line of its own: the failure card is the one place.
+  const name = { name: "Alert: Github Reviewer Failed" };
+  const controls = await screen.findByRole("group", name);
+  // No line of its own: the failure card is the one place, and there is no Retry beside it.
   assert.equal(document.querySelector("section[data-alert-line]"), null);
-  // In the failure's own row of actions, beside Retry.
-  assert.ok(controls.closest('[data-aui-block="failure"]'));
+  const row = controls.closest<HTMLElement>('[data-aui-block="failure"]');
+  assert.ok(row);
+  assert.equal(within(row).queryByRole("button", { name: "Retry" }), null);
   assert.ok(controls.closest('[data-turn-id="r-1"]'));
   // Fix with the agent waits in its menu.
   fireEvent.click(within(controls).getByRole("button", { name: "More alert actions" }));
   assert.ok(within(controls).getByRole("menuitem", { name: "Fix with Github Reviewer" }));
+  fireEvent.keyDown(within(controls).getByRole("menuitem", { name: "Fix with Github Reviewer" }), {
+    key: "Escape",
+  });
   assert.ok(screen.getByRole("button", { name: "Go to the open alert" }));
   fireEvent.click(within(controls).getByRole("button", { name: "Mark Done" }));
   await waitFor(() => assert.deepEqual(writes, [{ state: "resolved" }]));
+  // Done, the card keeps a muted Done with Reopen, and focus is on it.
+  await waitFor(() =>
+    assert.equal(screen.getByRole("group", name).getAttribute("data-alert-state"), "resolved"),
+  );
+  const done = screen.getByRole("group", name);
+  assert.equal(done, controls);
+  await waitFor(() => assert.equal(document.activeElement, done));
+  assert.ok(within(done).getByText("Done"));
+  assert.equal(within(done).queryByRole("button", { name: "Mark Done" }), null);
+  assert.equal(screen.queryByRole("button", { name: /open alert/ }), null);
+  fireEvent.click(within(done).getByRole("button", { name: "More alert actions" }));
+  fireEvent.click(within(done).getByRole("menuitem", { name: "Reopen" }));
+  await waitFor(() => assert.deepEqual(writes, [{ state: "resolved" }, { state: "open" }]));
+  await waitFor(() =>
+    assert.equal(screen.getByRole("group", name).getAttribute("data-alert-state"), "open"),
+  );
 });
 
 test("an alert about a turn not loaded yet is listed as earlier, not placed among other turns", async () => {
@@ -406,7 +448,8 @@ test("an alert about a turn not loaded yet is listed as earlier, not placed amon
         state: "resolved",
       },
     ],
-    {},
+    // r-old is a turn of its own on a page not read yet.
+    { "GET /api/runs/r-old": () => ({ ...run("r-old", "code-reviewer", ""), root: "r-old" }) },
     undefined,
     { ...page, next: "older" } as ThreadPage,
   );

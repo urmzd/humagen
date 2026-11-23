@@ -643,18 +643,17 @@ export function FailureAlert({
         title={failureTitle(failure, copy)}
         text={lines.join(" ")}
       />
-      {offered.length > 0 && (
-        <Actions blockId={`failure:${turnId}`}>
-          {offered.map((a) => (
-            <Button
-              key={a.id}
-              label={a.label}
-              action={{ id: a.id, payload }}
-              style={"style" in a ? a.style : undefined}
-            />
-          ))}
-        </Actions>
-      )}
+      {/* Always the row, even with no button: a renderer leaves an empty row out, and a host may add its own controls to it. */}
+      <Actions blockId={`failure:${turnId}`}>
+        {offered.map((a) => (
+          <Button
+            key={a.id}
+            label={a.label}
+            action={{ id: a.id, payload }}
+            style={"style" in a ? a.style : undefined}
+          />
+        ))}
+      </Actions>
       {!isRetryable(failure) && failure.kind !== "auth_required" && copy.cantRetry && (
         <Context items={[copy.cantRetry]} />
       )}

@@ -3434,6 +3434,8 @@ export const defaultCopy = {
     /** The menu that holds an alert's lesser actions, such as Snooze. */
     more: "More alert actions",
     markDone: "Mark Done",
+    /** Open a settled alert again, from its menu: Undo is offered only for a moment. */
+    reopen: "Reopen",
     markDoneNamed: (title: string) => `Mark ${title} done`,
     /** The child session that works on an alert, started by the agent it is about, by its shown name. */
     fixWith: (agent: string) => `Fix with ${agent}`,
