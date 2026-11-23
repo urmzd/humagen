@@ -284,3 +284,30 @@ func TestUnadoptRemovesAnAdoptionThatBindsNoRun(t *testing.T) {
 		}
 	})
 }
+
+func TestAdoptionNamesTheConversationAKeyOpens(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		ctx := context.Background()
+		s := sessionstate.New(open(t))
+		const id, place = "th-00112233445566bb", "slack://T0/C0/1700000000.000100"
+		key := session.Key{Tenant: "acme", Parent: place, Agent: "lead"}.Normalize().ID()
+		if _, err := s.Adoption(ctx, "acme", key); !errors.Is(err, session.ErrNotFound) {
+			t.Fatalf("before an adoption = %v", err)
+		}
+		if _, err := s.Adopt(ctx, "acme", id, session.Open{Parent: place, Agent: "lead"}); err != nil {
+			t.Fatal(err)
+		}
+		if got, err := s.Adoption(ctx, "acme", key); err != nil || got != id {
+			t.Fatalf("after an adoption = %q, %v", got, err)
+		}
+		if _, err := s.Adoption(ctx, "globex", key); !errors.Is(err, session.ErrNotFound) {
+			t.Fatalf("another tenant's = %v", err)
+		}
+		if err := s.Unadopt(ctx, "acme", id); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.Adoption(ctx, "acme", key); !errors.Is(err, session.ErrNotFound) {
+			t.Fatalf("after unadopt = %v", err)
+		}
+	})
+}

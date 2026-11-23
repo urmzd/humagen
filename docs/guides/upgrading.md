@@ -130,8 +130,9 @@ tagged.
 | A Slack thread whose client is not in the store, and a thread on any other surface | Its address cannot be worked out |
 | A conversation nobody started, a read-only one, one that answers an announcement, and one that continues another conversation or an import | A session is none of these |
 | A conversation from before threads, kept under its first run's id | A session's id is its own |
-| A conversation that someone changed while the command read it | Who reads it may have changed. The command removes the session record it wrote for it, and the next run decides it again |
-| An archived conversation | It is not listed and not changed |
+| A conversation that someone changed, archived or deleted while the command read it | Who reads it may have changed. The command removes the session record it wrote for it, and the next run decides it again |
+| A second conversation of one Slack thread, one per Slack app of the team, for the same agent | One place is one session. The oldest is adopted, and the others keep reaching their app as conversations |
+| An archived conversation | It is not listed and not changed. A session record that a stopped apply wrote for it is removed, and listed as `unfinished adoption removed` |
 | A GitHub run that used its asker's private context | Filed with other people who asked there, they would read it |
 | A GitHub run that no mention on a pull request or issue started (an automation, the automatic review) | New runs of these kinds are not filed in sessions either |
 | A GitHub run filed in another project than its place's session | A run is not moved between projects |

@@ -11,6 +11,7 @@ import (
 
 	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/wire"
+	"github.com/urmzd/humagen/internal/wire/sessionstate"
 	"github.com/urmzd/humagen/pkg/clients"
 	"github.com/urmzd/humagen/pkg/projects"
 	"github.com/urmzd/humagen/pkg/runs"
@@ -61,6 +62,9 @@ const (
 	BackfillSlackThreadAdopted        = "slack conversation adopted"
 	BackfillThreadAlreadyAdopted      = "conversation already a session"
 	BackfillSlackThreadAlreadyAdopted = "slack conversation already a session"
+	// The session's record a stopped apply wrote for a conversation that
+	// was archived since, removed.
+	BackfillAdoptionRemoved = "unfinished adoption removed"
 )
 
 // BackfillReport is what a backfill did, or with Apply unset would do, in
@@ -101,7 +105,7 @@ func (r BackfillReport) Changes() int {
 		switch kind {
 		case BackfillSessionOpened, BackfillRunFiled, BackfillRunBound, BackfillParticipantAdded:
 			n += c
-		case BackfillThreadAdopted, BackfillSlackThreadAdopted:
+		case BackfillThreadAdopted, BackfillSlackThreadAdopted, BackfillAdoptionRemoved:
 			n += c
 		}
 	}
@@ -395,6 +399,7 @@ func (p *Platform) bindInOrder(ctx context.Context, tenant, id string, bound []s
 type threadAdopter interface {
 	Adopt(ctx context.Context, tenant, id string, o session.Open) (session.Record, error)
 	Unadopt(ctx context.Context, tenant, id string) error
+	Adoption(ctx context.Context, tenant, keyID string) (string, error)
 }
 
 // adoption is how one conversation from before sessions becomes a session:
@@ -411,7 +416,7 @@ type adoption struct {
 // leaves.
 func (p *Platform) backfillThreads(ctx context.Context, tenant string, apply bool, rep *BackfillReport) error {
 	old, err := p.Threads.Records(tenant, func(th threads.Thread) bool {
-		return th.Archive == nil && (th.Session == nil || threads.Adopted(th))
+		return th.Session == nil || (th.Archive == nil && threads.Adopted(th))
 	})
 	if err != nil {
 		return err
@@ -420,8 +425,23 @@ func (p *Platform) backfillThreads(ctx context.Context, tenant string, apply boo
 		return cmp.Or(a.CreatedAt.Compare(b.CreatedAt), strings.Compare(a.ID, b.ID))
 	})
 	adopter, _ := p.Sessions.(threadAdopter)
+	// One key is one session: the conversations of one Slack thread, one per
+	// app of its team, have one key for one agent, and only the first holds
+	// it. The conversations adopted already hold theirs.
+	keys := map[string]string{}
+	for _, th := range old {
+		if th.Session != nil {
+			keys[session.Key{Tenant: tenant, Parent: th.Session.Parent, Agent: th.Session.Agent}.Normalize().ID()] = th.ID
+		}
+	}
 	for _, th := range old {
 		slack := th.Surface != nil
+		if th.Archive != nil {
+			if err := p.dropAdoption(ctx, tenant, th, apply, rep); err != nil {
+				return err
+			}
+			continue
+		}
 		if th.Session != nil {
 			kind := BackfillThreadAlreadyAdopted
 			if slack {
@@ -434,13 +454,23 @@ func (p *Platform) backfillThreads(ctx context.Context, tenant string, apply boo
 		if err != nil {
 			return fmt.Errorf("backfill: read %s: %w", th.ID, err)
 		}
+		if a.left == "" {
+			key := session.Key{Tenant: tenant, Parent: a.parent, Agent: a.agent}.Normalize().ID()
+			if holder, held := keys[key]; held && holder != th.ID {
+				a.left = "conversation " + holder + " holds its place for " + a.agent + " already, and one place is one session"
+			} else {
+				keys[key] = th.ID
+			}
+		}
+		left := BackfillThreadLeft
+		if slack {
+			left = BackfillSlackThreadLeft
+		}
 		if a.left != "" {
-			kind := BackfillThreadLeft
 			if slack {
-				kind = BackfillSlackThreadLeft
 				a.left += "; replies on " + th.Surface.Client + " keep reaching it as a conversation"
 			}
-			rep.add(kind, th.ID, "", a.left)
+			rep.add(left, th.ID, "", a.left)
 			continue
 		}
 		kind, detail := BackfillThreadAdopted, a.detail()
@@ -457,27 +487,82 @@ func (p *Platform) backfillThreads(ctx context.Context, tenant string, apply boo
 		// The session's record first: a conversation whose record is
 		// written and whose thread is not is still a conversation, and the
 		// next apply finishes it.
-		if _, err := adopter.Adopt(ctx, tenant, th.ID, session.Open{Parent: a.parent, Agent: a.agent, Channel: wire.Channel(tenant)}); err != nil {
+		if _, err := adopter.Adopt(ctx, tenant, th.ID, session.Open{Parent: a.parent, Agent: a.agent, Channel: wire.Channel(tenant)}); errors.Is(err, sessionstate.ErrAdopted) {
+			// Another process took its id or its key since it was read.
+			rep.add(left, th.ID, "", "another session took its place while it was read; run the command again")
+			continue
+		} else if err != nil {
 			return fmt.Errorf("backfill: adopt %s: %w", th.ID, err)
 		}
 		identity := threads.SessionIdentity{Agent: a.agent, Parent: a.parent}
-		if _, err := p.Threads.Adopt(tenant, th.ID, th.Version, identity, p.now()); errors.Is(err, threads.ErrVersion) {
+		if _, err := p.Threads.Adopt(tenant, th.ID, th.Version, identity, p.now()); err != nil {
+			if !p.changedSince(tenant, th.ID, err) {
+				return fmt.Errorf("backfill: adopt %s: %w", th.ID, err)
+			}
 			// Someone changed it since it was read: who reads it may have
 			// changed too, so it is decided again by the next run, with no
 			// session's record left to decide it.
 			if err := adopter.Unadopt(ctx, tenant, th.ID); err != nil {
 				return fmt.Errorf("backfill: adopt %s: %w", th.ID, err)
 			}
-			kind = BackfillThreadLeft
-			if slack {
-				kind = BackfillSlackThreadLeft
-			}
-			rep.add(kind, th.ID, "", "it changed while it was read; run the command again")
+			rep.add(left, th.ID, "", "it changed while it was read; run the command again")
 			continue
-		} else if err != nil {
-			return fmt.Errorf("backfill: adopt %s: %w", th.ID, err)
 		}
 		rep.add(kind, th.ID, th.ID, detail)
+	}
+	return nil
+}
+
+// changedSince reports whether a conversation's adoption failed with err
+// because someone changed it after it was read: a new version, or archived,
+// read-only or deleted, which do not move its version.
+func (p *Platform) changedSince(tenant, id string, err error) bool {
+	if errors.Is(err, threads.ErrVersion) {
+		return true
+	}
+	if !errors.Is(err, threads.ErrInvalid) && !errors.Is(err, threads.ErrNotFound) {
+		return false
+	}
+	cur, gerr := p.Threads.Get(tenant, id)
+	if errors.Is(gerr, threads.ErrNotFound) {
+		return true
+	}
+	return gerr == nil && cur.Session == nil && (cur.Archive != nil || cur.ReadOnly)
+}
+
+// dropAdoption removes the session's record that an apply which stopped
+// wrote for a conversation archived since: an archived conversation is not
+// adopted, so no later run would finish or remove it. A conversation with
+// no such record is not listed.
+func (p *Platform) dropAdoption(ctx context.Context, tenant string, th threads.Thread, apply bool, rep *BackfillReport) error {
+	if !strings.HasPrefix(th.ID, threads.IDPrefix) {
+		return nil
+	}
+	// Only an adoption writes a record under a conversation's own id.
+	bound, err := p.Sessions.Runs(ctx, tenant, th.ID, 1)
+	if errors.Is(err, session.ErrNotFound) {
+		return nil
+	} else if err != nil {
+		return fmt.Errorf("backfill: read %s: %w", th.ID, err)
+	}
+	kind := BackfillThreadLeft
+	if th.Surface != nil {
+		kind = BackfillSlackThreadLeft
+	}
+	if len(bound) > 0 {
+		rep.add(kind, th.ID, "", "it is archived, and the session's record a stopped apply wrote for it binds runs, so it is kept")
+		return nil
+	}
+	rep.add(BackfillAdoptionRemoved, th.ID, "", "it is archived, so the session's record a stopped apply wrote for it is removed")
+	if !apply {
+		return nil
+	}
+	adopter, ok := p.Sessions.(threadAdopter)
+	if !ok {
+		return errors.New("the session store cannot adopt a conversation")
+	}
+	if err := adopter.Unadopt(ctx, tenant, th.ID); err != nil {
+		return fmt.Errorf("backfill: remove the session's record of %s: %w", th.ID, err)
 	}
 	return nil
 }
@@ -602,6 +687,16 @@ func (p *Platform) adoptionOf(ctx context.Context, tenant string, th threads.Thr
 		return a, nil
 	} else if !errors.Is(err, session.ErrNotFound) {
 		return a, err
+	}
+	// Another conversation of the place, through another app of its team,
+	// may be adopted under the key, or have an adoption yet to finish.
+	if adopter, ok := p.Sessions.(threadAdopter); ok {
+		if holder, err := adopter.Adoption(ctx, tenant, key.ID()); err == nil && holder != th.ID {
+			a.left = "conversation " + holder + " holds its place for " + a.agent + " already, and one place is one session"
+			return a, nil
+		} else if err != nil && !errors.Is(err, session.ErrNotFound) {
+			return a, err
+		}
 	}
 	if _, err := p.Threads.Get(tenant, key.ID()); err == nil {
 		a.left = "conversation " + key.ID() + " holds its place already"

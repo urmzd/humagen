@@ -2,6 +2,7 @@ package platform_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"slices"
@@ -1100,5 +1101,215 @@ func TestAChildOfAnAdoptedConversationIsReadByItsParentsReaders(t *testing.T) {
 	}
 	if turns, err := p.Runs.Conversation(tenant, child.ID); err != nil || len(turns) == 0 || p.Seer(vic).RunID(turns[0].ID) {
 		t.Errorf("vic reads the child's run, or it has none: %v", err)
+	}
+}
+
+// secondApp adds a second Slack app of the team, homed in Initech, that
+// maps ana and vic, and returns its machine.
+func secondApp(t *testing.T, p *platform.Platform) auth.Principal {
+	t.Helper()
+	in := slackClient("app2", "A0APP2", "T0TEAM", "helper")
+	in.Agents = []string{clients.AnyAgent}
+	in.Slack.People = map[string]string{"U0ANA": "ana", "U0VIC": "vic"}
+	in.Home = &clients.Home{Project: "Initech"}
+	create(t, p, tenant, in)
+	pol, err := auth.ParsePolicy("second-app", `
+role viewer { allow read on * }
+role operator extends viewer { allow write on runs }
+grant operator to subject "ana"
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return auth.Principal{Subject: "svc-app2", Tenant: tenant, Kind: auth.Machine, Scopes: []auth.Permission{auth.RunsRead, auth.RunsWrite}}.WithPolicy(pol)
+}
+
+// Two conversations of one Slack thread, one per app of the team, have
+// one key for one agent. The first is adopted and the second left with the
+// reason, in the dry run as in the apply, and no apply stops on it.
+func TestBackfillAdoptsOneConversationOfASlackThreadPerKey(t *testing.T) {
+	ctx := t.Context()
+	p, _ := adoptRoom(t, state.NewMemory())
+	secondApp(t, p)
+	const ts = "1700000000.000900"
+	var ids []string
+	for i, client := range []string{"app", "app2"} {
+		th := conversation(t, p, tenant, threads.Thread{ID: threadID(900 + i), Project: "Initech", Visibility: threads.Shared, Default: "helper", Surface: &threads.Surface{Client: client, Channel: "C09DUP", TS: ts}})
+		ids = append(ids, th.ID)
+	}
+	dry, err := p.BackfillSessions(ctx, tenant, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	applied, err := p.BackfillSessions(ctx, tenant, true)
+	if err != nil {
+		t.Fatalf("the apply stopped: %v", err)
+	}
+	if !reflect.DeepEqual(applied.Lines, dry.Lines) || applied.Counts[platform.BackfillSlackThreadAdopted] != 1 || applied.Counts[platform.BackfillSlackThreadLeft] != 1 {
+		t.Fatalf("the apply did %v, the dry run %v", applied.Counts, dry.Counts)
+	}
+	for _, l := range applied.Lines {
+		if l.Subject == ids[1] && (l.Kind != platform.BackfillSlackThreadLeft || !strings.Contains(l.Detail, ids[0]+" holds its place")) {
+			t.Fatalf("the second app's conversation: %s (%s)", l.Kind, l.Detail)
+		}
+	}
+	if th, err := p.Threads.Get(tenant, ids[0]); err != nil || th.Session == nil {
+		t.Fatalf("the first is %+v, %v", th.Session, err)
+	}
+	if th, err := p.Threads.Get(tenant, ids[1]); err != nil || th.Session != nil {
+		t.Fatalf("the second is %+v, %v", th.Session, err)
+	}
+	if _, err := p.Sessions.Get(ctx, tenant, ids[1]); err == nil {
+		t.Fatal("a session's record is kept for the second")
+	}
+	again, err := p.BackfillSessions(ctx, tenant, true)
+	if err != nil || again.Changes() != 0 || again.Counts[platform.BackfillSlackThreadAlreadyAdopted] != 1 || again.Counts[platform.BackfillSlackThreadLeft] != 1 {
+		t.Fatalf("a second apply did %v, %v", again.Counts, err)
+	}
+}
+
+// An apply that stopped after the session's record was written leaves an
+// alias from the Slack thread's key to a conversation that is not yet a
+// session. A message from another app of the team there is refused, and
+// reaches nothing.
+func TestAHalfAdoptedSlackThreadRefusesAnotherAppsMessage(t *testing.T) {
+	ctx := t.Context()
+	p, _ := adoptRoom(t, state.NewMemory())
+	machine2 := secondApp(t, p)
+	const ts = "1700000000.000950"
+	th := conversation(t, p, tenant, threads.Thread{ID: threadID(950), Project: "Initech", Visibility: threads.Shared, Default: "helper", Surface: &threads.Surface{Client: "app", Channel: "C09HALF", TS: ts}})
+	if _, err := p.Sessions.(adopter).Adopt(ctx, tenant, th.ID, session.Open{Parent: "slack://T0TEAM/C09HALF/" + ts, Agent: "helper", Channel: wire.Channel(tenant)}); err != nil {
+		t.Fatal(err)
+	}
+	said, _, err := p.Threads.Messages(tenant, th.ID, "", 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	in := platform.SessionInput{
+		Text: "<@UAPP2> hello", ActAs: &platform.ActAs{Client: "app2", User: "U0ANA"},
+		Surface: &platform.SurfaceRef{Client: "app2", Channel: "C09HALF", TS: ts, AppUser: "UAPP2"},
+	}
+	_, _, err = p.StartSurfaceSession(ctx, machine2, withAudience(in, platform.ChannelPublic))
+	if !errors.Is(err, platform.ErrSurfaceThreadBeforeSessions) {
+		t.Fatalf("another app's message in the half-adopted thread = %v", err)
+	}
+	if now, _, err := p.Threads.Messages(tenant, th.ID, "", 50); err != nil || len(now) != len(said) {
+		t.Fatalf("the conversation holds %d messages, held %d: %v", len(now), len(said), err)
+	}
+	if aud, kept := p.SessionAudience(tenant, th.ID); kept {
+		t.Fatalf("an audience is kept for it: %+v", aud)
+	}
+}
+
+// Once adopted, a message from another app of the team at the same place
+// reaches the adopted session through the key's alias, and keeps no
+// audience for it.
+func TestAnAdoptedSlackThreadKeepsNoAudienceThroughAnotherApp(t *testing.T) {
+	ctx := t.Context()
+	p, _ := adoptRoom(t, state.NewMemory())
+	machine2 := secondApp(t, p)
+	const ts = "1700000000.000970"
+	th := conversation(t, p, tenant, threads.Thread{ID: threadID(970), Project: "Initech", Visibility: threads.Shared, Default: "helper", Surface: &threads.Surface{Client: "app", Channel: "C09FULL", TS: ts}})
+	if rep, err := p.BackfillSessions(ctx, tenant, true); err != nil || rep.Counts[platform.BackfillSlackThreadAdopted] != 1 {
+		t.Fatalf("the apply did %v, %v", rep.Counts, err)
+	}
+	in := platform.SessionInput{
+		Text: "<@UAPP2> hello", ActAs: &platform.ActAs{Client: "app2", User: "U0ANA"},
+		Surface: &platform.SurfaceRef{Client: "app2", Channel: "C09FULL", TS: ts, AppUser: "UAPP2"},
+	}
+	_, _, _ = p.StartSurfaceSession(ctx, machine2, withAudience(in, platform.ChannelPrivate, "U0ANA"))
+	if aud, kept := p.SessionAudience(tenant, th.ID); kept {
+		t.Fatalf("the adopted Slack thread keeps an audience after another app's message: %+v", aud)
+	}
+}
+
+// Archiving does not move a conversation's version. One archived while the
+// apply writes its session's record is left for the next run like any
+// other change, with no record kept, and the apply goes on.
+func TestBackfillLeavesAConversationArchivedDuringTheApply(t *testing.T) {
+	ctx := t.Context()
+	st := &hooked{Store: state.NewMemory()}
+	p, _ := adoptRoom(t, st)
+	th := conversation(t, p, tenant, threads.Thread{ID: threadID(990), Project: "Field", Visibility: threads.Shared, Default: "lead"})
+	later := conversation(t, p, tenant, threads.Thread{ID: threadID(991), Project: "Field", Visibility: threads.Shared, Default: "lead"})
+	var once sync.Once
+	st.mu.Lock()
+	st.before = func(namespace string, ops []state.Op) {
+		if namespace != "agent-sessions" || !slices.ContainsFunc(ops, func(o state.Op) bool { return o.Key == "s:"+th.ID && o.Value != nil }) {
+			return
+		}
+		once.Do(func() {
+			if _, err := p.Threads.SetArchive(tenant, th.ID, &threads.Archive{By: "ana", At: t0Adopt, DeleteAfter: t0Adopt.Add(threads.DeletionDelay)}); err != nil {
+				t.Errorf("archive during the apply: %v", err)
+			}
+		})
+	}
+	st.mu.Unlock()
+	applied, err := p.BackfillSessions(ctx, tenant, true)
+	if err != nil {
+		t.Fatalf("the apply stopped: %v", err)
+	}
+	var line platform.BackfillLine
+	for _, l := range applied.Lines {
+		if l.Subject == th.ID {
+			line = l
+		}
+	}
+	if line.Kind != platform.BackfillThreadLeft || !strings.Contains(line.Detail, "changed while it was read") {
+		t.Fatalf("the archived conversation: %q (%s)", line.Kind, line.Detail)
+	}
+	if got, err := p.Threads.Get(tenant, later.ID); err != nil || got.Session == nil {
+		t.Fatalf("the conversation after it was not adopted: %+v, %v", got.Session, err)
+	}
+	if rec, err := p.Sessions.Get(ctx, tenant, th.ID); err == nil {
+		t.Fatalf("a session's record %s (%s) is kept for the archived conversation", rec.ID, rec.Key.Parent)
+	}
+	if again, err := p.BackfillSessions(ctx, tenant, true); err != nil || again.Changes() != 0 {
+		t.Fatalf("a second apply did %v, %v", again.Counts, err)
+	}
+}
+
+// A session's record that an apply which stopped wrote for a conversation
+// archived since is removed by the next apply, as its dry run says, and the
+// alias from its key with it.
+func TestBackfillRemovesAnUnfinishedAdoptionOfAnArchivedConversation(t *testing.T) {
+	ctx := t.Context()
+	st := state.NewMemory()
+	p, _ := adoptRoom(t, st)
+	th := conversation(t, p, tenant, threads.Thread{ID: threadID(995), Project: "Field", Visibility: threads.Shared, Default: "lead"})
+	if _, err := p.Sessions.(adopter).Adopt(ctx, tenant, th.ID, session.Open{Parent: "console://" + th.ID, Agent: "lead", Channel: wire.Channel(tenant)}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.Threads.SetArchive(tenant, th.ID, &threads.Archive{By: "ana", At: t0Adopt, DeleteAfter: t0Adopt.Add(threads.DeletionDelay)}); err != nil {
+		t.Fatal(err)
+	}
+	before := stored(t, st)
+	dry, err := p.BackfillSessions(ctx, tenant, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after := stored(t, st); !reflect.DeepEqual(before, after) {
+		t.Fatal("a dry run wrote to the store")
+	}
+	applied, err := p.BackfillSessions(ctx, tenant, true)
+	if err != nil {
+		t.Fatalf("the apply stopped: %v", err)
+	}
+	if !reflect.DeepEqual(applied.Lines, dry.Lines) || applied.Counts[platform.BackfillAdoptionRemoved] != 1 || applied.Changes() != 1 {
+		t.Fatalf("the apply did %v, the dry run %v", applied.Counts, dry.Counts)
+	}
+	if _, err := p.Sessions.Get(ctx, tenant, th.ID); err == nil {
+		t.Fatal("the record is kept after the apply")
+	}
+	for _, r := range stored(t, st)["agent-sessions"] {
+		if r.Tenant == tenant && strings.Contains(string(r.Value), th.ID) {
+			t.Fatalf("the store keeps %s of the archived conversation", r.Key)
+		}
+	}
+	if got, err := p.Threads.Get(tenant, th.ID); err != nil || got.Session != nil || got.Archive == nil {
+		t.Fatalf("the archived conversation is %+v, %v", got, err)
+	}
+	if again, err := p.BackfillSessions(ctx, tenant, true); err != nil || len(again.Lines) != 0 {
+		t.Fatalf("a second apply did %v, %v", again.Counts, err)
 	}
 }

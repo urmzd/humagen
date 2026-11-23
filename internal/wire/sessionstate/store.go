@@ -157,6 +157,21 @@ func (s *Store) Adopt(ctx context.Context, tenant, id string, o session.Open) (s
 	return r, err
 }
 
+// Adoption is the id of the conversation adopted under a key (Adopt), by
+// the key's id, or session.ErrNotFound when no adoption holds the key.
+func (s *Store) Adoption(ctx context.Context, tenant, keyID string) (string, error) {
+	row, err := s.state.Lookup(ctx, namespace, tenant, aliasKey(keyID))
+	if errors.Is(err, state.ErrNotFound) {
+		return "", session.ErrNotFound
+	}
+	if err != nil {
+		return "", err
+	}
+	var id string
+	err = json.Unmarshal(row.Value, &id)
+	return id, err
+}
+
 // Unadopt removes the record Adopt wrote under a conversation's id, and
 // the alias from its key, for an adoption whose conversation did not
 // become the session: the next adoption then decides it afresh. A record

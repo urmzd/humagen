@@ -135,11 +135,20 @@ func (p *Platform) StartSurfaceSession(ctx context.Context, who auth.Principal, 
 	if err != nil && !errors.Is(err, threads.ErrExists) {
 		return SessionView{}, false, err
 	}
-	if err := p.audiences.Put(who.Tenant, rec.ID, aud); err != nil {
-		return SessionView{}, false, err
-	}
 	if th, err = p.Threads.Get(who.Tenant, rec.ID); err != nil {
 		return SessionView{}, false, err
+	}
+	// The place's key can open a conversation's own id: another app of the
+	// team adopted it (threads.Adopted), or an adoption has yet to finish and
+	// it is still a conversation, which is not posted to as a session. An
+	// adopted one keeps no audience, as above.
+	if th.Session == nil {
+		return SessionView{}, false, ErrSurfaceThreadBeforeSessions
+	}
+	if !threads.Adopted(th) {
+		if err := p.audiences.Put(who.Tenant, rec.ID, aud); err != nil {
+			return SessionView{}, false, err
+		}
 	}
 	out, err = p.surfacePost(ctx, who, th, post)
 	if err == nil && started {
