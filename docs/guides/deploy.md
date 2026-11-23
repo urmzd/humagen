@@ -218,7 +218,8 @@ make image                      # docker build -t humagen:local .
 docker build --build-arg VERSION=0.9.0 --build-arg COMMIT=$(git rev-parse --short HEAD) -t humagen .
 ```
 
-Releases do not publish an image yet: build it and push it to your registry.
+Releases push the image only to the project's own private registry (see
+[CI and release](ci-and-release.md)): build it and push it to your registry.
 The image carries only `humagen`. An MCP server run over stdio needs its own
 runtime (node, python), so build an image on top of this one for it, or run
 the server over HTTP.
