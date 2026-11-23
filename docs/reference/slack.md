@@ -16,7 +16,7 @@
 | Channels bound to projects | Yes: a run in a bound Slack channel is filed in the channel it is bound to, and an untagged one answered by that channel's chain, else in the client's home | Yes: a mapped person's Slack thread is a Humagen thread filed by the binding, and announcements reach a bound general channel, caught up on after a restart or a reconnect, where a reply that mentions the app starts a thread seeded with the announcement |
 | Mentions of a person | No | In their direct messages with the app, with Open Thread and Reply, unless they are in the Slack thread already (they wrote there or were mentioned there with `<@U…>`). Experts named by a role are each told |
 | Background work and `notify` | No | A reply in the app's Slack thread the work was asked from, naming the person, with its one line and Open Session; else in their direct messages. See [background results](#background-results) |
-| Who asked | Recorded on the run, and the run acts for the person the team's clients map the Slack user to | Recorded as the person, and acts for them (`act_as`): their message is theirs in the Humagen thread, and so are the runs it starts. Only someone the app's client maps asks at all. Someone else's words they ask about are asked for nobody, at their asking (`asked_by`). Tools that act as a person use the person's own credential |
+| Who asked | Recorded on the run, and the run acts for the person the team's clients map the Slack user to. Only someone they map asks at all (see [the webhook connector](#who-can-start-and-stop-a-run-on-the-webhook-connector)) | Recorded as the person, and acts for them (`act_as`): their message is theirs in the Humagen thread, and so are the runs it starts. Only someone the app's client maps asks at all. Someone else's words they ask about are asked for nobody, at their asking (`asked_by`). Tools that act as a person use the person's own credential |
 | Questions a run waits on | No | In the run's thread, answered for the person the client maps. See below |
 | Tokens and cost | No | Never on a turn. A finished turn offers **Run Details** to a person the client maps, answered to them alone. See [steps, command output and run details](#steps-command-output-and-run-details) |
 
@@ -73,6 +73,62 @@ credential makes no call (`POST /api/runs/{id}/calls`), runs no assignment
 (`POST /api/assignments/{id}/run`), tests no skill and asks no failed turn
 again through the inbox. A stop that names no Slack user stops nothing. Runs the server starts itself
 (schedules, automations, housekeeping) are not affected.
+
+### Who can start and stop a run on the webhook connector
+
+The webhook connector follows the same rule: it starts and continues runs
+only for a person the client's team maps, writing from the client's own
+Slack team.
+
+| Entry | A mapped person | Anyone else |
+|---|---|---|
+| A mention, a direct message, a message with a file | Starts a run that acts for them | Acknowledged to Slack, nothing read further, posted or run |
+| A reply in a thread the client answered in | Continues with the agent that answered | Acknowledged, nothing run |
+| A slash command (`/connectors/slack/commands`) | Starts a run that acts for them | Told privately that their Slack account is not connected, nothing run |
+| A button or shortcut, where a program serves the connector's interactivity path (`humagen serve` does not) | Read as before (the connector acts on none today) | Acknowledged, not read |
+| The stop button, or a raised-hand reaction on an answer | Stops the run | Stops the run only if they asked for it |
+
+A person is mapped when an enabled Slack client of the workspace serving
+the client's team maps their Slack user id in `slack.people` (see
+[clients](clients.md#people-a-slack-app-answers-for)); the map may be on
+another client of the same team than the one the message reached. A user two
+clients map to different people is nobody. The sender's team is the one
+Slack names for them (`user_team`, then the event's `team`, then the
+delivery's `team_id`; for a command its `team_id`; for a button the user's
+`team_id`, then the payload's team), and it must be the client's `identity.team`: a mapped user id
+from another team, or a delivery that names no team or names one with
+something that is not a string, is nobody; a verified delivery the connector
+cannot read is acknowledged and goes no further. A client
+that names no team, and a connector an embedding program passes as a
+`Connection` (which has no client record, so no team and no people), start
+nothing. The default client made from the `HUMAGEN_SLACK_*` variables has no
+people of its own and is not changed through the API: its team's people come
+from another Slack client record of the same team, such as the one a Platform
+document's `surfaces.slack.people` keeps. A bot's post never starts a run,
+and an app's bot user is asked about like any other user id.
+
+The connector decides after it verifies the request's signature and before
+it hands the request on, for every message and mention it would raise,
+whatever its subtype, and for every command and button. So for someone it
+does not map no file is fetched, no reaction is added, nothing is posted and
+nothing is kept about the channel. A plain message in a channel, or a reply
+in a thread the client did not answer in, asks for nothing and nobody is
+looked up for it. The platform decides again when it files the run, with the
+sender's own team as the connector read it: the mapped person needs
+`runs:write` from the workspace's policy and membership where the run is
+filed, as before. The not-connected reply to a command is ephemeral, sent
+to one person at most once in ten minutes and to at most twenty people a
+minute. There is no setting that opens the connector to everyone.
+
+A run is stopped from Slack by a person the client's team maps, or by the
+Slack user who asked for it, who keeps that though the map no longer names
+them. A press or a reaction from anyone else is acknowledged and changes
+nothing: the run carries on, nothing is posted and the session's status
+stays, in a session with no run known too. `Stopped by @user.` is posted
+only for a run that was asked to stop: a run answering in the session that
+the client did not raise is not stopped from Slack, and a press there posts
+nothing and leaves the status, whoever pressed. See
+[stopping a run](#stopping-a-run).
 
 The rest of this page describes the connector. The app is described in its
 [README](https://github.com/urmzd/humagen/blob/main/apps/slack/README.md).
@@ -645,9 +701,13 @@ nothing the run still publishes sets the session back to working, and the
 finished before the request reached it ends completed, as usual.
 
 A second press, or Slack redelivering the first, finds no run left to stop and
-posts nothing. Anyone who can see the button may press it: the session, not a
-console role, is the authority. If the runtime cannot carry the request, the
-press is answered with an error so Slack redelivers it, and nothing is posted.
+posts nothing. A press that stops none of the session's runs posts nothing
+and leaves the status. A person the client's team maps may press it, and so may the
+Slack user who asked for the run; a press from anyone else is acknowledged,
+stops nothing, posts nothing and leaves the session's status as it is (see
+[who can start and stop a run](#who-can-start-and-stop-a-run-on-the-webhook-connector)).
+If the runtime cannot carry the request, the press is answered with an error
+so Slack redelivers it, and nothing is posted.
 
 A follow-up mention in the thread is answered by a new run. Slack mentions do
 not carry the thread's history in Humagen today, so that run is not sent the
@@ -661,8 +721,8 @@ thread each hold their own sessions, and another workspace's app in the same
 team cannot stop a run it did not raise.
 
 Which runs a session holds is remembered in memory, per client. After a
-restart, or after the client is changed, the button still settles the status
-but finds no run to stop.
+restart, or after the client is changed, the button finds no run to stop and
+settles the status, for a person the client's team maps.
 
 Check the manifest with the Slack CLI from `examples/slack`:
 
@@ -734,8 +794,9 @@ threads do not start work.
 
 Signed thumbs-up/down reactions on delivered agent answers save the same
 `run.feedback.v1` assessment as console feedback, including reaction removal.
-A raised-hand reaction stops the known run through the installation's existing
-stop policy. Subscribe to `reaction_added` and `reaction_removed`, and include
+A raised-hand reaction stops the known run for whoever may stop it: a person
+the client's team maps, or the Slack user who asked for the run. Anyone else's
+is acknowledged and stops nothing. Subscribe to `reaction_added` and `reaction_removed`, and include
 them in an installation's explicit event capabilities when those are configured.
 Delivery handles and native event IDs persist across connector rebuilds.
 
