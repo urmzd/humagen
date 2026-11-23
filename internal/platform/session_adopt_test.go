@@ -323,6 +323,16 @@ func TestBackfillAdoptsConversationsForTheReadersTheyHad(t *testing.T) {
 			for _, s := range all {
 				listed = append(listed, s.ID)
 			}
+			recent, err := p.ListRootMessages(ctx, w, platform.MaxRootPage, "")
+			if err != nil {
+				t.Fatalf("%s's recent sessions: %v", readerName(w), err)
+			}
+			for _, s := range sources {
+				in := slices.ContainsFunc(recent.Messages, func(m platform.RootMessage) bool { return m.ID == s.th.ID })
+				if want := s.agent != "" && w.Tenant == tenant && was[readerName(w)+" thread "+s.th.ID]; in != want {
+					t.Errorf("%s's recent sessions list %s: %v, want %v", readerName(w), s.name, in, want)
+				}
+			}
 		}
 		for _, s := range sources {
 			read := w.Tenant == tenant && was[readerName(w)+" thread "+s.th.ID]
