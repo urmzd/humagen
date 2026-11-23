@@ -303,20 +303,62 @@ humagen serve -agent-specs examples/github-review/agent.json
 
 ### Reply or review
 
-The host, not the model, decides what a run on GitHub answers with. It
-chooses when the run starts and saves the choice on the run's tag as
-`answer_shape`, so a retry answers the same way. The model reads it in its
-trigger context.
+The host decides what a run on GitHub starts as. It chooses when the run
+starts and saves the choice on the run's tag as `answer_shape`. The model
+reads it in its trigger context.
 
 | Shape | When | What the agent returns |
 | :--- | :--- | :--- |
-| `review` | On a pull request: an [automatic review](#automatic-review), a review requested from the app, an [event automation](#event-automations) whose shape is `review`, or a message that opens with a request for one: `@humagen review`, `re-review`, `please review this PR`, `could you review it?`, or one with a focus such as `review the retry loop`, `review: focus on auth`, `review for security` or a path | The fields of a `humagen.review.v2` report, as one JSON object. The host renders and posts it. |
-| `reply` | Anything else: a question, a follow-up, or anything on an issue | Plain Markdown prose: short paragraphs, code in fences, files linked as `path:line` at the head. |
+| `review` | On a pull request, and only on a signal that cannot be misread: an [automatic review](#automatic-review), a review requested from the app, an [event automation](#event-automations) whose shape is `review`, the bare command `@humagen review`, or `/review` | The fields of a `humagen.review.v2` report, as one JSON object. The host renders and posts it. |
+| `reply` | Anything else: a question, a follow-up, a request for a review in other words, or anything on an issue | Plain Markdown prose: short paragraphs, code in fences, files linked as `path:line` at the head. |
 
-A sentence about a review is a reply: `this review is wrong`, `the review
-said`, `Review: why is this nil?`, `don't review yet`, and so is a request
-that also asks for changes (`review it and fix them`). Quoted lines and code
-do not count.
+The host reads the command and nothing else. It does not guess what a
+sentence means.
+
+| Message on a pull request | Starts as |
+| :--- | :--- |
+| `@humagen review`, `@humagen re-review`, `@Humagen Review.`, `review` in a conversation the agent already has | `review` |
+| `/review`, `/review focus on auth` | `review` |
+| `@humagen review this function's naming?`, `@humagen review the retry loop` | `reply` |
+| `@humagen can you review this?`, `please review this PR` | `reply` |
+| `hey @humagen review`, `@octocat review` | `reply` |
+| `this review is wrong`, `don't review yet` | `reply` |
+| Any of these on an issue | `reply` |
+
+The command is the whole message: `review`, `re-review` or `rereview`, in
+any case, with space around it and `.`, `!` or `?` after it. The trigger may
+address it when the trigger opens the message (`@humagen review`,
+`@humagen: review`). `/review` is a command when the message starts with it;
+what follows it is what to look at. Like any message, it reaches Humagen
+with the trigger (`@humagen /review`) or in a conversation the agent already
+has. Quoted lines do not count. Any other
+word, a trigger inside a sentence, or a mention of anyone else makes the
+message a reply.
+
+#### A reply that becomes a review
+
+A person often asks for a review in their own words: `have a look before I
+merge`, `can you review this?`, `check this for security`. Such a run starts
+as a reply, and the agent reads what was meant. The built-in `code-reviewer`
+has one tool for this, `start_review`, which turns its run into a review.
+After it the agent returns the report, and the host checks, renders and posts
+it as it does for any review.
+
+`start_review` takes no arguments. The host allows it only when all of these
+hold, and refuses it with a reason otherwise:
+
+- The run is on a pull request. On an issue there is nothing to review.
+- A person started the run. A run an agent started for another (a handoff, a
+  subagent or a delegation) cannot start a review, and neither can a run a
+  rule started: a rule's `shape` is the rule's to set.
+- The run is not a review yet. A run becomes a review once; a second call
+  changes nothing.
+
+The switch is an action on the run's record, not a change to the saved
+`answer_shape`. A retry, the format check and the native review all read
+the record, so the run stays a review. Any agent may be given the tool in
+its `tools`; an agent without it answers a reply run in prose.
+
 A run from before the host chose has no shape. The built-in `code-reviewer`
 returns a report there only when it was asked to review a change.
 
@@ -326,11 +368,11 @@ head it pinned when the run started (the event's head, else its channel's
 replaces any commit the model wrote. A review with no recorded head is shown
 as needing correction.
 
-Only a run saved as `review` gets the online format check: its answer must be
-a complete review report, else the session is marked for review with the
-reason. A reply is never format-checked, whatever its agent's instructions
-say. A run saved as `reply` posts no native review, even if its agent
-answered with a report.
+Only a review gets the online format check: a run saved as `review`, or one
+that called `start_review`. Its answer must be a complete review report, else
+the session is marked for review with the reason. A reply is never
+format-checked, whatever its agent's instructions say, and it posts no native
+review, even if its agent answered with a report.
 
 A report is strict in structure and free in its words. `validateV2` requires a
 title, a verdict, unique finding ids, evidence and a prompt for each finding,
@@ -719,8 +761,10 @@ number and head SHA identifiers, never arbitrary text from the webhook.
 A rule's `shape` says what its runs answer with (see
 [Reply or review](#reply-or-review)): `review` posts a review, `reply`
 answers in prose. Left out, a rule on `pull_request` reviews and any other
-replies, whatever its instructions say. The console's rule editor does not
-set it yet; set it in the client's configuration or through the API.
+replies, whatever its instructions say. A rule's run keeps the rule's shape:
+its agent cannot turn it into a review with `start_review`. The console's
+rule editor does not set it yet; set it in the client's configuration or
+through the API.
 
 Every run is a session, kept and readable in the console. It answers on the
 pull request or issue that triggered it (`github://owner/repo/pull/7` or
