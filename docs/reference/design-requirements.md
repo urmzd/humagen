@@ -2611,11 +2611,21 @@ sending. The choice stays attached to its queued message through wait/retry;
 removing its mention drops the draft choice. Canonical sessions use the generated
 post contract.
 
-Session alerts render beside their recorded message or above loaded history when
-the anchor is absent. Reading does not resolve them. Resolve and Snooze are
-permission-gated and offer Undo. Known actions lead to existing approval, answer,
-retry or connection controls; unknown actions open the session. A card beside its
-own message omits the link back to that session; page and connection links stay. A reviewed fix
+Session alerts sit in the transcript where they happened: right after the
+answer or message they are about, else at their own time (after the last turn
+that began before them, or before every loaded turn). Each is one quiet line: a
+status dot (red for a failure or urgency, amber otherwise), the agent's mark and
+shown name, the reason, one text action, Mark Done as a check icon, and the rest
+(View, Fix with the agent, Snooze) in its ⋯ menu. The same alert raised again on
+one answer is one line with a count, and Mark Done settles every copy. A done or
+snoozed alert stays in the history, muted, with a Done or Snoozed pill; one older
+than every loaded turn waits until earlier turns are read. The header's bell,
+with the count of open alerts, moves focus to the first one. Reading does not
+resolve them. Resolve and Snooze are permission-gated and offer Undo. Known
+actions lead to existing approval, answer, retry or connection controls; unknown
+actions open the session. A line right after its own answer omits the link back
+to it; page and connection links stay, and an answer not on view, such as a
+specialist's, opens at its own address. A reviewed fix
 request carries `source_alert`, uses a permitted agent, and inherits its source
 audience. Alert-only sessions render before their first human message. An
 addressed older message uses a bounded `around` page read and scrolls only the
@@ -2635,8 +2645,12 @@ explicit issue-report draft.
 
 Evidence: `session-ux.dom.test.tsx` covers continuation metadata, header writes,
 archive synchronization, explicit deletion review, alert resolution/undo, the
-alert card beside its own message without a link back to the session, fix
-review, canonical sharing and bounded old-anchor reads. `wave.dom.test.tsx` checks
+alert line beside its own message without a link back to the session, fix
+review, canonical sharing and bounded old-anchor reads. `alerts-transcript.dom.test.tsx`
+covers placement after the answer, by time and before loaded history, the
+repeated-alert count, done lines, the header jump, Mark Done on every copy with
+Undo, Review and Snooze; `alert-placement.dom.test.tsx` covers the placement and
+grouping rules. `wave.dom.test.tsx` checks
 that addressed history scrolls only the transcript once. Existing fork, share,
 room and Slack interaction suites retain their governed approval checks. Browser
 host access was unavailable; real responsive layout, live OAuth and user-visible

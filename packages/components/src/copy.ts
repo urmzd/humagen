@@ -3435,6 +3435,13 @@ export const defaultCopy = {
     more: "More alert actions",
     markDone: "Mark Done",
     markDoneNamed: (title: string) => `Mark ${title} done`,
+    /** The child session that works on an alert, started by the agent it is about, by its shown name. */
+    fixWith: (agent: string) => `Fix with ${agent}`,
+    /** How many times the same alert was raised on one answer, drawn once. */
+    count: (n: number) => `×${n}`,
+    countLabel: (n: number) => `Raised ${n} times`,
+    /** The session header's way to the first alert still waiting. */
+    jump: (n: number) => (n === 1 ? "Go to the open alert" : `Go to the first of ${n} open alerts`),
     /** What an alert's card in a session opens, by the alert's action. */
     open: {
       answer: "Open Question",

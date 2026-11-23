@@ -397,7 +397,7 @@ test("session UX header archive updates sidebar marks and Undo restores only my 
   assert.deepEqual(writes, [{ archived: true }, { archived: false }]);
 });
 
-test("session UX alerts read without resolving, offer governed fix review, and keep Undo after refresh", async () => {
+test("session UX alerts read without resolving, offer governed fix review, and keep a done alert muted with Undo", async () => {
   const { SessionAlerts, useSessionAlerts } = await import("./SessionAlerts.tsx");
   const { useState } = await import("react");
   const alert = {
@@ -422,7 +422,9 @@ test("session UX alerts read without resolving, offer governed fix review, and k
   net = stubFetch({
     "GET /api/alerts": (_, query) => {
       assert.equal(query.get("session"), "s_controls");
-      return { alerts: state === "open" ? [alert] : [] };
+      // Every state: a done alert stays in the history.
+      assert.equal(query.get("state"), null);
+      return { alerts: [{ ...alert, state }] };
     },
     "PATCH /api/alerts/alert-fix": (body) => {
       writes.push(body);
@@ -458,11 +460,17 @@ test("session UX alerts read without resolving, offer governed fix review, and k
   const card = await screen.findByRole("region", { name: "Alert: Review failed" });
   assert.equal(writes.length, 0);
   assert.equal(card.getAttribute("data-alert-message"), "r_failed");
+  assert.equal(card.getAttribute("data-alert-state"), "open");
+  // One line: the agent by its shown name, the reason, one action; the rest in its menu.
+  assert.ok(within(card).getByText("Reviewer"));
+  assert.equal(within(card).queryByText(/@reviewer/), null);
   assert.equal(
     within(card).getByRole("link", { name: "Review Failed Answer" }).getAttribute("href"),
     "/messages/s_controls?message=r_failed",
   );
-  fireEvent.click(within(card).getByRole("button", { name: "Fix with @reviewer" }));
+  assert.equal(within(card).queryByRole("button", { name: "Fix with Reviewer" }), null);
+  fireEvent.click(within(card).getByRole("button", { name: "More alert actions" }));
+  fireEvent.click(within(card).getByRole("menuitem", { name: "Fix with Reviewer" }));
   const dialog = await screen.findByRole("dialog", { name: "Start a fix session" });
   assert.equal(fixes.length, 0);
   fireEvent.change(within(dialog).getByRole("textbox", { name: "Request" }), {
@@ -475,11 +483,23 @@ test("session UX alerts read without resolving, offer governed fix review, and k
   ]);
   fireEvent.click(within(card).getByRole("button", { name: "Mark Done" }));
   const undo = await screen.findByRole("button", { name: "Undo alert" });
+  // Done, it stays where it happened, muted, with nothing left to do on it there.
   await waitFor(() =>
-    assert.equal(screen.queryByRole("region", { name: "Alert: Review failed" }), null),
+    assert.equal(
+      screen.getByRole("region", { name: "Alert: Review failed" }).getAttribute("data-alert-state"),
+      "resolved",
+    ),
   );
+  const done = screen.getByRole("region", { name: "Alert: Review failed" });
+  assert.ok(within(done).getByText("Done"));
+  assert.equal(within(done).queryByRole("button", { name: "Mark Done" }), null);
   fireEvent.click(undo);
-  await screen.findByRole("region", { name: "Alert: Review failed" });
+  await waitFor(() =>
+    assert.equal(
+      screen.getByRole("region", { name: "Alert: Review failed" }).getAttribute("data-alert-state"),
+      "open",
+    ),
+  );
   assert.deepEqual(writes, [{ state: "resolved" }, { state: "open" }]);
 });
 
@@ -535,13 +555,11 @@ test("session UX an alert beside its own message keeps its actions and drops the
     within(other).getByRole("link", { name: "Open Connections" }).getAttribute("href"),
     "/connections",
   );
-  // A reader who may not change alerts is left no empty row of actions.
+  // A reader who may not change alerts is left no controls on the line.
   view.rerender(<View beside canWrite={false} />);
   const read = await screen.findByRole("region", { name: "Alert: Confirm the owner" });
   assert.equal(within(read).queryByRole("link"), null);
   assert.equal(within(read).queryByRole("button"), null);
-  assert.equal(read.lastElementChild?.childElementCount, 0);
-  assert.match(read.lastElementChild?.className ?? "", /empty:hidden/);
 });
 
 test("session UX a health alert is viewed on its answer and reviewed in a session of its own", async () => {
@@ -595,10 +613,6 @@ test("session UX a health alert is viewed on its answer and reviewed in a sessio
   }
   const view = render(<View beside={false} />);
   const above = await screen.findByRole("region", { name: `Alert: ${health.title}` });
-  assert.equal(
-    within(above).getByRole("link", { name: "View" }).getAttribute("href"),
-    "/messages/s_origin?message=r0b65",
-  );
   // A normal priority says nothing; there is one control for each job.
   assert.equal(within(above).queryByText("Normal"), null);
   assert.deepEqual(
@@ -607,11 +621,14 @@ test("session UX a health alert is viewed on its answer and reviewed in a sessio
       .map((b) => b.getAttribute("aria-label") ?? b.textContent),
     ["Review", "Mark Done", "More alert actions"],
   );
+  // View waits in the menu and opens the answer the alert is about.
+  fireEvent.click(within(above).getByRole("button", { name: "More alert actions" }));
+  fireEvent.click(within(above).getByRole("menuitem", { name: "View" }));
+  assert.equal(`${location.pathname}${location.search}`, "/messages/s_origin?message=r0b65");
   const old = screen.getByRole("region", { name: `Alert: ${older.title}` });
-  assert.equal(
-    within(old).getByRole("link", { name: "View" }).getAttribute("href"),
-    `/messages/${older.run_id}`,
-  );
+  fireEvent.click(within(old).getByRole("button", { name: "More alert actions" }));
+  fireEvent.click(within(old).getByRole("menuitem", { name: "View" }));
+  assert.equal(location.pathname, `/messages/${older.run_id}`);
   // Once reviewed, the alert is one quiet line: open the review, or mark it done.
   const reviewed = {
     ...health,
@@ -644,8 +661,8 @@ test("session UX a health alert is viewed on its answer and reviewed in a sessio
   assert.deepEqual(
     within(line)
       .getAllByRole("button")
-      .map((b) => b.textContent),
-    ["Open Review", "Mark Done"],
+      .map((b) => b.getAttribute("aria-label") ?? b.textContent),
+    ["Open Review", "Mark Done", "More alert actions"],
   );
   fireEvent.click(within(line).getByRole("button", { name: "Open Review" }));
   assert.equal(opened, "s_done");

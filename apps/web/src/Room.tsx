@@ -7,7 +7,13 @@ import {
   splitHumanActivity,
   type UiAction,
 } from "@humagen/core";
-import { ForkIcon, GitHubRefKindsContext, githubRefKinds, WebSurface } from "@humagen/render-web";
+import {
+  BellIcon,
+  ForkIcon,
+  GitHubRefKindsContext,
+  githubRefKinds,
+  WebSurface,
+} from "@humagen/render-web";
 import {
   AgentMessage,
   AgentNameContext,
@@ -27,6 +33,7 @@ import { Fragment, type ReactNode, useContext, useEffect, useMemo, useRef, useSt
 import { ApprovalToggle } from "./ApprovalToggle.tsx";
 import { AttachedDocument, opensAsDocument } from "./AttachedDocument.tsx";
 import { actedFor, citationOf, type Run, turnOf } from "./adapter.ts";
+import { besideItsTurn, placeAlerts, turnKey } from "./alertPlacement.ts";
 import {
   ApiError,
   api,
@@ -88,8 +95,9 @@ import {
 } from "./route.ts";
 import { SessionActions } from "./SessionActions.tsx";
 import {
-  alertAnchor,
   duplicatesInlineApproval,
+  jumpToOpenAlert,
+  openAlertCount,
   SessionAlerts,
   useSessionAlerts,
 } from "./SessionAlerts.tsx";
@@ -856,6 +864,14 @@ export function ThreadRoom({
   );
   // The cursor for the turns before the oldest one read.
   const [before, setBefore] = useState<string | null>(initial.next);
+  // Each alert sits in the transcript where it happened: after the answer it
+  // is about, or at its own time.
+  const placed = placeAlerts(
+    turns,
+    alertRows.filter((a) => !duplicatesInlineApproval(a, turns)),
+    !!before,
+  );
+  const waiting = openAlertCount(alertRows.filter((a) => !duplicatesInlineApproval(a, turns)));
   const [problem, setProblem] = useState<string | null>(null);
   const [localView, setLocalView] = useState<ConversationView>({});
   const [seed, setSeed] = useState<ComposerSeed>();
@@ -1140,6 +1156,27 @@ export function ThreadRoom({
                 />
               }
               title={title}
+              actions={
+                waiting > 0 ? (
+                  <button
+                    type="button"
+                    data-alert-jump=""
+                    className="inline-flex h-9 pointer-coarse:h-11 shrink-0 items-center gap-1 rounded-aui px-1.5 text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
+                    aria-label={defaultCopy.attention.jump(waiting)}
+                    title={defaultCopy.attention.jump(waiting)}
+                    onClick={() => jumpToOpenAlert()}
+                  >
+                    <span className="relative inline-flex">
+                      <BellIcon size={18} aria-hidden />
+                      <span
+                        aria-hidden
+                        className="absolute -top-0.5 -right-0.5 size-2 rounded-full bg-aui-warn ring-2 ring-aui-bg"
+                      />
+                    </span>
+                    <span className="text-aui-xs tabular-nums">{waiting}</span>
+                  </button>
+                ) : undefined
+              }
               // The reader's own Personal project is not named: a session is there unless it was filed elsewhere.
               project={
                 th.project === personalProject
@@ -1369,18 +1406,6 @@ export function ThreadRoom({
                         </button>
                       </p>
                     )}
-                    <SessionAlerts
-                      alerts={alertRows.filter(
-                        (a) =>
-                          !duplicatesInlineApproval(a, turns) &&
-                          (!alertAnchor(a) ||
-                            !turns.some((t) => (t.message?.id ?? t.run?.id) === alertAnchor(a))),
-                      )}
-                      attention={attention}
-                      canWrite={!!alertAccess?.write}
-                      agents={posts ? agents.map((a) => a.spec.name) : []}
-                      onOpen={onOpenThread}
-                    />
                     {before && (
                       <button
                         type="button"
@@ -1390,21 +1415,15 @@ export function ThreadRoom({
                         {words.olderTurns}
                       </button>
                     )}
+                    <SessionAlerts
+                      alerts={placed.lead}
+                      attention={attention}
+                      canWrite={!!alertAccess?.write}
+                      agents={posts ? agents.map((a) => a.spec.name) : []}
+                      onOpen={onOpenThread}
+                    />
                     {turns.map((t, i) => (
                       <Fragment key={t.announcement?.id ?? t.message?.id ?? t.run?.id}>
-                        <SessionAlerts
-                          alerts={alertRows.filter(
-                            (a) =>
-                              !duplicatesInlineApproval(a, turns) &&
-                              !!alertAnchor(a) &&
-                              alertAnchor(a) === (t.message?.id ?? t.run?.id),
-                          )}
-                          attention={attention}
-                          canWrite={!!alertAccess?.write}
-                          agents={posts ? agents.map((a) => a.spec.name) : []}
-                          onOpen={onOpenThread}
-                          beside
-                        />
                         {t.announcement ? (
                           <AnnouncementView key={`a:${t.announcement.id}`} a={t.announcement} />
                         ) : t.message ? (
@@ -1491,6 +1510,14 @@ export function ThreadRoom({
                             }
                           />
                         ) : null}
+                        <SessionAlerts
+                          alerts={placed.after.get(turnKey(t)) ?? []}
+                          attention={attention}
+                          canWrite={!!alertAccess?.write}
+                          agents={posts ? agents.map((a) => a.spec.name) : []}
+                          onOpen={onOpenThread}
+                          beside={(a) => besideItsTurn(a, turns)}
+                        />
                       </Fragment>
                     ))}
                     {/* Messages that wait behind the running turn, drawn by the composer. */}
