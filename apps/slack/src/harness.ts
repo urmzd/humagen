@@ -952,8 +952,9 @@ export function mappedWorld(
   opts: Partial<AppOptions> = {},
   people: Record<string, string> = PEOPLE,
   over: Partial<ClientRecord> = {},
+  from?: Pick<World, "slack" | "humagen">,
 ): World {
-  const w = world({ clientId: "app", ...opts });
+  const w = world({ clientId: "app", ...opts }, from);
   w.humagen.clients.set("app", {
     id: "app",
     surface: "slack",

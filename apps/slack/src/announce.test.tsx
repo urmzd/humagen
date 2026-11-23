@@ -738,9 +738,11 @@ test("someone the client maps to nobody who replies under an announcement is tol
   await w.app.idle();
   assert.equal(w.humagen.posts.length, 0, "nothing is posted for them");
   assert.equal(w.humagen.asked.length, 0, "humagen is never asked");
-  const told = w.slack.of("chat.postMessage").at(-1);
+  // Told privately, under the announcement: the channel reads nothing of it.
+  const told = w.slack.of("chat.postEphemeral").at(-1);
   assert.equal(told?.thread_ts, post);
-  assert.match(blocksText(told), new RegExp(defaultCopy.threads.unmappedInBound.slice(0, 40)));
+  assert.equal(told?.user, "U09NOBODY");
+  assert.equal(told?.text, defaultCopy.threads.notConnected("Humagen"));
 });
 
 test("a reply under an announcement that was withdrawn starts nothing, and says so", async () => {

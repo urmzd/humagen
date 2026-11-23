@@ -554,6 +554,11 @@ export class App {
   private readonly confirmed = new Recent<true>(10_000);
   /** Runs followed slowly right now, and how to make each one look again at once. */
   private readonly slow = new Map<string, () => void>();
+  /**
+   * The session of each run followed slowly right now, by run. A person's
+   * run is keyed by humagen, not by the thread, so stop finds it here.
+   */
+  private readonly slowIn = new Map<string, string>();
   /** The presenter of each run followed right now, by run: the cards its questions are on. */
   private readonly presenting = new Map<string, Presenter>();
   private readonly branding: Branding;
@@ -899,6 +904,13 @@ export class App {
     }
     if (event.type === "agent_session_stopped") {
       const channel = event.channel ?? event.channel_id;
+      // Stop is a button too: someone the client maps to nobody stops nobody's run.
+      if (event.user && !(await this.mapped(event.user, senderTeam(event))))
+        return this.turnAway({
+          user: event.user,
+          ...(channel ? { channel } : {}),
+          ...(event.thread_ts ? { threadTs: event.thread_ts } : {}),
+        });
       if (channel && !event.thread_ts && this.code) {
         // A code channel is one session with no thread: every turn in flight in it stops.
         const inChannel = `${this.opts.team}/${channel}/`;
@@ -1471,6 +1483,7 @@ export class App {
     this.native = this.native && presenter.streaming;
     if (this.chrome.has(job.session.channel)) void this.chrome.settle(job.session.channel, run);
     if (stalled) {
+      this.slowIn.set(run.id, sessionName(job.session));
       this.track(this.later(run, following, presenter));
       // The thread is not held for it. A later message follows it in the conversation,
       // as humagen orders any turn sent after one that is still running.
@@ -1640,6 +1653,7 @@ export class App {
       }
     } finally {
       this.slow.delete(run.id);
+      this.slowIn.delete(run.id);
     }
   }
 
@@ -1791,6 +1805,8 @@ export class App {
     const conversation = runId(this.opts.tenant, this.opts.subject, threadKey(session));
     const turns = (await this.humagen.getThread(conversation).catch(() => null))?.turns;
     for (const t of turns ?? []) if (!t.parent && !terminal(t.status)) ids.add(t.id);
+    // A quiet run of a person's, which humagen keyed, followed slowly here.
+    for (const [id, where] of this.slowIn) if (where === sessionName(session)) ids.add(id);
 
     const stopped: Run[] = [];
     for (const id of ids) {
@@ -2296,9 +2312,6 @@ export class App {
     const channel = p.channel?.id ?? p.container?.channel_id ?? "";
     const { turnId: run, target: question } = ui.payload;
     if (!p.trigger_id || !run || !question) return;
-    // Nobody posts in a bound channel's thread but a person the client maps.
-    if (channel && !(await this.actAs(p.user.id)) && (await this.isBound(channel)))
-      return this.whisper(p, this.copy.threads.unmappedInBound);
     const threadTs = p.message?.thread_ts ?? p.message?.ts;
     const at: AskCall = {
       run,

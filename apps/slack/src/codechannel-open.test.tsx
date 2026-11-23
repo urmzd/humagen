@@ -15,9 +15,9 @@ import {
   CHANNEL,
   click,
   DM,
-  direct,
   FakeHumagen,
   FakeSlack,
+  interactive,
   mention,
   OTHER_USER,
   SUBJECT,
@@ -79,10 +79,36 @@ class CodeSlack extends FakeSlack {
 
 type CodeWorld = World & { slack: CodeSlack };
 
+/** People the app's client maps: only they ask, and only they press. */
+const PEOPLE = { [USER]: "ana", [OTHER_USER]: "olu", [OPERATOR]: "oz" };
+
 function codeWorld(opts: Partial<AppOptions> = {}): CodeWorld {
   const slack = new CodeSlack();
-  return world(opts, { slack, humagen: new FakeHumagen() }) as CodeWorld;
+  const w = world({ clientId: "app", ...opts }, { slack, humagen: new FakeHumagen() }) as CodeWorld;
+  w.humagen.clients.set("app", {
+    id: "app",
+    surface: "slack",
+    enabled: true,
+    agents: ["*"],
+    identity: { team: TEAM },
+    slack: { machine: SUBJECT, people: PEOPLE },
+  });
+  return w;
 }
+
+/**
+ * Ana asks about olu's message. A person's own message is posted into the
+ * session its Slack thread is, which humagen keys, so no code channel is
+ * offered under it; someone else's words are asked through the app, which
+ * keys the conversation by the thread, and that one can move.
+ */
+const askAbout = (text: string, ts: string, channel = CHANNEL, threadTs?: string) =>
+  interactive({
+    type: "message_action",
+    callback_id: "aui_ask_about",
+    channel: { id: channel },
+    message: { ts, text, user: OTHER_USER, ...(threadTs ? { thread_ts: threadTs } : {}) },
+  });
 
 const on = (opts: Partial<AppOptions> = {}) => codeWorld({ codeChannels: true, ...opts });
 
@@ -104,7 +130,11 @@ const labels = (blocks: unknown[]) =>
     .map((e) => e.text?.text);
 
 /** Ask, answer, and return the run and the message that holds the answer. */
-async function answered(w: World, envelope = mention("fix the flaky login test", TS), app = w.app) {
+async function answered(
+  w: World,
+  envelope = askAbout("fix the flaky login test", TS),
+  app = w.app,
+) {
   await deliver(w, envelope, app);
   const run = w.humagen.last.id;
   await emit(w, "run.accepted.v1", { rev: 1 }, run);
@@ -115,7 +145,7 @@ async function answered(w: World, envelope = mention("fix the flaky login test",
   return { run, final, blocks: blocksOf(final), ts: String(final?.ts) };
 }
 
-/** An answered mention whose button was pressed: the thread now has a code channel. */
+/** An answered question whose button was pressed: the thread now has a code channel. */
 async function moved(w: CodeWorld) {
   const first = await answered(w);
   await deliver(w, click(first.blocks, BUTTON, { ts: first.ts, threadTs: TS }));
@@ -156,7 +186,7 @@ test("with the setting off, a mention in a code channel is its own conversation,
   const w = codeWorld();
   w.slack.code.set("C0CODE9", { channel_id: CHANNEL, ts: TS });
   await answered(w);
-  await answered(w, mention("carry on", "1700000100.000100", { channel: "C0CODE9" }));
+  await answered(w, askAbout("carry on", "1700000100.000100", "C0CODE9"));
   assert.equal(w.humagen.started[1]?.idempotencyKey, `slack-${TEAM}-C0CODE9-1700000100-000100`);
   assert.equal(w.humagen.started[1]?.after, undefined);
   assert.notEqual(w.humagen.last.thread, runId("acme", SUBJECT, KEY));
@@ -167,7 +197,7 @@ test("with the setting off, a button left from when it was on does nothing", asy
   const lit = on();
   const a = await answered(lit);
   // The same Slack and humagen, restarted with the setting off.
-  const off = world({}, lit);
+  const off = world({ clientId: "app" }, lit);
   await deliver(off, click(a.blocks, BUTTON, { ts: a.ts, threadTs: TS }));
   await off.app.idle();
   assert.deepEqual(lit.slack.of("agents.conversations.create"), []);
@@ -267,14 +297,14 @@ test("after a restart the code channel is still its thread's conversation, read 
   assert.equal(w.humagen.last.thread, runId("acme", SUBJECT, KEY));
   assert.deepEqual(w.slack.of("conversations.info").at(-1), { channel: m.channel });
   // The thread still answers in the thread, in the same conversation.
-  await answered(w, mention("thanks", "1700000300.000100", { thread_ts: TS }), app);
+  await answered(w, askAbout("thanks", "1700000300.000100", CHANNEL, TS), app);
   assert.equal(w.humagen.last.thread, runId("acme", SUBJECT, KEY));
   assert.equal(w.slack.of("chat.startStream").at(-1)?.channel, CHANNEL);
 });
 
 test("a direct message can be moved by its person, and its channel gets no thread history", async () => {
   const w = on();
-  const a = await answered(w, direct("fix the flaky login test", TS));
+  const a = await answered(w, askAbout("fix the flaky login test", TS, DM));
   assert.ok(labels(a.blocks).includes(BUTTON));
   assert.deepEqual(w.slack.of("conversations.info"), [], "a direct message is never asked about");
   await deliver(w, click(a.blocks, BUTTON, { channel: DM, ts: a.ts, threadTs: TS }));
@@ -322,7 +352,7 @@ test("a person the client maps posts as themselves in the thread, which is not m
     identity: { team: TEAM },
     slack: { machine: SUBJECT, people: { [USER]: "ana" } },
   });
-  const a = await answered(w);
+  const a = await answered(w, mention("fix the flaky login test", TS));
   assert.equal(w.humagen.posts.length, 1, "posted into the humagen thread the Slack thread is");
   assert.ok(!labels(a.blocks).includes(BUTTON));
 
@@ -351,10 +381,7 @@ for (const code of ["missing_scope", "not_allowed_token_type", "feature_not_enab
     assert.ok(w.logs.some((l) => l.includes(`code channels are not available (${code})`)));
 
     // The next message is answered in the thread, in the same conversation, with no button.
-    const b = await answered(
-      w,
-      mention("then tell me why", "1700000100.000100", { thread_ts: TS }),
-    );
+    const b = await answered(w, askAbout("then tell me why", "1700000100.000100", CHANNEL, TS));
     assert.equal(b.final?.channel, CHANNEL);
     assert.equal(w.humagen.started[1]?.after, a.run);
     assert.ok(!labels(b.blocks).includes(BUTTON));
@@ -381,7 +408,8 @@ test("a channel Slack will not describe is answered as an ordinary one, and aske
   w.slack.code.set("C0CODE9", { channel_id: CHANNEL, ts: TS });
   const a = await answered(w, mention("hello", "1700000100.000100", { channel: "C0CODE9" }));
   // Today's behaviour: its own conversation, answered where it was asked.
-  assert.equal(w.humagen.started[0]?.idempotencyKey, `slack-${TEAM}-C0CODE9-1700000100-000100`);
+  assert.equal(w.humagen.posts[0]?.surface.channel, "C0CODE9");
+  assert.equal(w.humagen.posts[0]?.surface.ts, "1700000100.000100");
   assert.equal(a.final?.channel, "C0CODE9");
   await answered(w, mention("again", "1700000200.000100", { channel: "C0CODE9" }));
   await answered(w, mention("elsewhere", "1700000300.000100"));
@@ -392,7 +420,8 @@ test("a code channel with no thread behind it is answered as it was, and offers 
   const w = on();
   w.slack.code.set("C0CODE9", null);
   const a = await answered(w, mention("hello", "1700000100.000100", { channel: "C0CODE9" }));
-  assert.equal(w.humagen.started[0]?.idempotencyKey, `slack-${TEAM}-C0CODE9-1700000100-000100`);
+  assert.equal(w.humagen.posts[0]?.surface.channel, "C0CODE9");
+  assert.equal(w.humagen.posts[0]?.surface.ts, "1700000100.000100");
   assert.ok(!labels(a.blocks).includes(BUTTON));
 });
 
